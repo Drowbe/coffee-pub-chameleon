@@ -16,9 +16,9 @@ same day he decided, in [plan-object-window](plan-object-window.md) (decision 5)
 the phone, not a shrunk desktop", and that plan's question 16 suggested this plan with a scope this one follows. Added
 the same day, from Thomas: "We will need to understand how common each layout is and ensure we target the core
 experience to the expected size" (the section "How common each layout is", step 0, questions 18 to 23). On
-2026-11-01 Thomas decided questions 1 to 7, 16, 17 and 23, what a phone does not offer, and that every module gets
-the phone treatment in the default order (see "Decisions"); questions 9 to 15 he will be asked when the step that
-needs each starts. The plan stays a draft until the questions that still block a step are decided ("Still open" in
+2026-11-01 Thomas decided questions 1 to 7, 11, 16, 17, 23 and 24, what a phone does not offer, and that every
+module gets the phone treatment in the default order (see "Decisions"); questions 9, 10 and 12 to 15 he will be asked
+when the step that needs each starts. The plan stays a draft until the questions that still block a step are decided ("Still open" in
 "Open questions"). Every section below
 except "What it is today", "The audit" and "Decisions" is the planner's proposal, shaped by those decisions where
 they apply.
@@ -203,11 +203,18 @@ object window built on the shared sheet.
     Polls, To-do, Calendar, Places with Maps, Budget, Research, Assistant; then Home, Set up and Profile; sign in;
     Manage and the host console as "usable" (decision 10). Stream is not on a phone. The Vault gets its phone design
     when it is built. Reason: a phone experience is not a shrunk desktop, for any module.
-13. **The remaining topics are asked when their step starts:** installing (question 10, step 10), offline (question
-    11, step 9 and step 5's offline parts), notifications (question 13), share in (question 12, step 15), date and
+13. **The remaining topics are asked when their step starts:** installing (question 10, step 10), notifications
+    (question 13), share in (question 12, step 15), date and
     time pickers (question 9, step 8), the performance budget (question 14, step 16) and what a phone remembers
     (question 15, step 6). Product-planner brings each question, with the audit's evidence, to Thomas when its step is
-    next.
+    next. (Offline was first in this list; Thomas decided it the same day, decision 15.)
+14. **No safe-area token layer** (question 24, (b)). The `--safe-*` tokens are dropped; the pages use
+    `env(safe-area-inset-*, 0px)` where they need an inset, as today. Reason: the audit showed the insets can be
+    emulated directly, so the tokens are not needed for testing, and one more layer buys nothing a check needs.
+15. **Offline now: say it, keep what is unsaved, cache nothing** (question 11, (a)). A banner says the page is
+    offline; unsaved work is kept; a message that cannot be sent is kept and marked "Not sent". Nothing is cached
+    (the service worker keeps "fresh pages"). The cached "You're offline" page for the installed app stays a later
+    step. Reason: nothing is lost silently, without building a sync engine.
 
 ## Definitions (proposed)
 
@@ -424,8 +431,8 @@ space, unless it says otherwise.
   `(hover: none)` true, and `(any-pointer: fine)` and `(any-hover: hover)` false. (M)
 - **Safe areas can be emulated.** The DevTools protocol's `Emulation.setSafeAreaInsetsOverride` works in this build:
   `env(safe-area-inset-top)` read 47 px and `env(safe-area-inset-bottom)` 34 px. This replaces the plan's earlier
-  statement that safe areas have no stable emulation; the `--safe-*` tokens are no longer needed for testing (whether
-  they are wanted for one place to change the insets is question 24).
+  statement that safe areas have no stable emulation. The `--safe-*` tokens once proposed for testing are dropped
+  (decision 14).
 - **Long press and drag.** A 900 ms touch long press fires no `contextmenu`; a touch press-and-move fires no
   `dragstart`. So every `draggable` and every right-click menu is unreachable by touch today. (M)
 - **History.** No `pushState` and no `popstate` listener anywhere; `history.length` is unchanged when switching tabs
@@ -439,12 +446,13 @@ space, unless it says otherwise.
 
 ### What was fixed since
 
-Decided by Thomas on 2026-11-01, outside this plan's questions, and being built as their own small builds; not yet
-landed when this was written:
+Decided by Thomas on 2026-11-01, outside this plan's questions, as their own small builds:
 
-- **Leave asks first while in the call** (audit problem 2). A small build ahead of step 6; step 6 moves **Leave** to
-  the top bar's menu and keeps the confirm.
-- **Cream is the default theme's light mode.** Chosen for the default theme; it bears on the colours the manifest and
+- **Leave asks first while in the call** (audit problem 2). Done in `dc52d29`: while in a call, **Leave** asks
+  "Leave and end your call?" with **Leave** and **Stay**; out of a call it leaves at once, and being kicked or the
+  space ending never asks. `tools/check-leave-confirm.mjs` checks it. Step 6 moves **Leave** to the top bar's menu
+  and keeps this confirm.
+- **Cream is the default theme's light mode.** Being built. Chosen for the default theme; it bears on the colours the manifest and
   `theme-color` take from the theme in step 10.
 
 ## Navigation on a phone (questions 3, 5 and 6 decided)
@@ -565,7 +573,7 @@ planner reads it as a single edit, from the phases sheet, with Set up's Phases t
   Only an installed app receives shares, and the planner's understanding is that this works on Android and not on
   iOS; the device pass confirms it.
 
-## Offline and a flaky network (question 11)
+## Offline and a flaky network (decision 15)
 
 - **Say it.** One banner under the top bar, "You're offline. Changes will not be saved until you're back.", shown
   from `offline` events and from a failed request, gone with "Back online." for three seconds.
@@ -573,7 +581,8 @@ planner reads it as a single edit, from the phases sheet, with Set up's Phases t
   that fails stays in the box marked "Not sent" with **Send again**.
 - **Reconnect.** The live updates and the call already reconnect; the page refreshes what it shows on `online` and on
   `visibilitychange` back to visible (a phone that slept).
-- **No cached pages yet.** `sw.js` keeps its "fresh pages" rule; caching the shell is a later choice (question 11).
+- **No cached pages yet.** `sw.js` keeps its "fresh pages" rule; the cached "You're offline" page for the installed
+  app is a later step (decision 15).
 
 ## Performance budget (question 14)
 
@@ -699,8 +708,7 @@ screen locked, the camera and photo pickers, and HEIC and `.mov` handling.
   - the manifest is linked from every page meant to install (in `check-manifest`).
 - **`tools/check-touch.mjs`** (static, no browser): no `:hover` rule hides or shows a control or text unless the same
   rule has a `:focus-visible` or `(hover: none)` counterpart; every `draggable` or drag handler in a module has a
-  menu entry the module registers for the same action (a list the module declares, checked by name); no raw
-  `env(safe-area-inset-*)` outside the tokens, if question 24 keeps them.
+  menu entry the module registers for the same action (a list the module declares, checked by name).
 - **`tools/check-breakpoints.mjs`**: unchanged lines; gains `(pointer: coarse)`, `(hover: none)` and
   `(orientation: landscape)` with a height as allowed forms.
 - **`tools/check-manifest.mjs`**: the manifest's fields, its icons' sizes and that every page meant to install links it.
@@ -718,13 +726,13 @@ feedback builds for the module steps.
 | 0 | **Learn how common each layout is.** The tester device list (Thomas, no code), and, if chosen, the layout counters: `POST /api/layout-counts`, `DATA_DIR/layout-counts.json` by week, the environment variable, the pages' report, Manage's **Layouts** section with the "fewer than 5" rule, and a check. Shipped first so counts gather while the audit runs; the audit does not wait for them. | Thomas (the list), server-development (the route, the store, the check), experience-design (the report, the Manage section) | 18 to 21 |
 | 1 | **The audit.** Done 2026-10-31 by quality-assurance with Playwright 1.63's emulation (`hasTouch`, `isMobile`, safe areas through the DevTools protocol), at 390, 360 and 844 by 390; the scripts are in the session's scratchpad, not in the repository; the findings filled into this plan's table by product-planner. The `phone` option in `tools/shots.mjs` was not built; it moves to step 7. No product change. | quality-assurance (the run), product-planner (the table) | done |
 | 2 | **The phone decisions.** Thomas decides questions 1 to 7, 22 and 23 on the audit's results and the tester list; product-planner records them here and in [plan-phone-space-bar](plan-phone-space-bar.md)'s status, and orders steps 11 to 14. No build. Questions 1 to 7, 16 and 23 decided 2026-11-01 and recorded here, with the note in the phone space bar plan; steps 11 to 14 follow the default order (decision 12). Done, but for question 22's targets table and the four-week review. | Thomas, product-planner | 22 (the targets and the review only) |
-| 3 | **Foundations.** The width-class and input rules in `system.css` (the safe-area tokens if question 24 keeps them, the coarse-pointer tap areas everywhere, not only in the frame); one SDK answer a module can ask (`host.screen`, proposed: `{ width, touch, hover, installed, orientation }` with a `change` event); `check-breakpoints` extended; `check-touch` (static). | experience-design, server-development (the check) | 24 (1 and 2 decided) |
+| 3 | **Foundations.** The width-class and input rules in `system.css` (the coarse-pointer tap areas everywhere, not only in the frame; insets by `env(safe-area-inset-*, 0px)`, no token layer); one SDK answer a module can ask (`host.screen`, proposed: `{ width, touch, hover, installed, orientation }` with a `change` event); `check-breakpoints` extended; `check-touch` (static). | experience-design, server-development (the check) | none (1, 2 and 24 decided) |
 | 4 | **History: one entry per sheet.** The host's sheet stack; the editor window, the kind picker, the menus' drill-in, Set up and the phases sheet open through it; back closes; entering a space pushes once. | experience-design | none (6 decided) |
-| 5 | **The shared phone pieces**, drawn for Thomas in the design system first, then built in the SDK: the full-screen sheet (top bar with Back, title, menu; the keyboard rule), the bottom sheet (menus, pickers, the Modules list), the bottom action bar (one primary action), the offline banner, the "Not sent" state. The object window's phone sheet uses the full-screen sheet. | experience-design | none for the sheets and the bottom bar (2 decided); 11 for the offline banner and the "Not sent" state; the bars' insets follow 24 |
+| 5 | **The shared phone pieces**, drawn for Thomas in the design system first, then built in the SDK: the full-screen sheet (top bar with Back, title, menu; the keyboard rule), the bottom sheet (menus, pickers, the Modules list), the bottom action bar (one primary action), the offline banner, the "Not sent" state. The object window's phone sheet uses the full-screen sheet. | experience-design | none (2, 11 and 24 decided); Thomas approves the Prototype drawings before the build |
 | 6 | **The navigation model** as decided: the bottom bar, the Modules list, the top bar's Online and Leave, the call strip, the phone's own last view per space. Replaces the parts of the phone space bar it changes, cleanly. | experience-design | 15 (3 and 5 decided) |
 | 7 | **`tools/check-phone.mjs`**: the audit's `measure.js` and its list of screens moved into `tools/` on the layer question 8 chooses (touch, `mobile: true`, 390, 360 and 844 by 390, the safe-area override, the keyboard approximation), with the audit's cases ("The checks to add"); added to `npm run check`. The cases for what is not built yet start as reports and become failures as steps 3 to 6 land. | server-development | 8 |
 | 8 | **The keyboard and fields:** the 16 px fields, `inputmode` and `enterkeyhint` everywhere, the phone's date and time pickers on touch, Chat's box above the keyboard. | experience-design | 9 |
-| 9 | **Offline and reconnect:** the banner, failed saves kept with **Try again**, Chat's **Send again**, refresh on `online` and on waking. | experience-design | 11 |
+| 9 | **Offline and reconnect:** the banner, failed saves kept with **Try again**, Chat's **Send again**, refresh on `online` and on waking. | experience-design | none (11 decided) |
 | 10 | **Installability:** the manifest's fields and icons from the theme and the environment, linked from every page meant to install; `apple-touch-icon`; the install line in Profile; `check-manifest`. | server-development (the manifest), experience-design (the pages) | 10 |
 | 11 | **Chat on a phone:** read and reply, a visible **Send**, **Add a picture**, link chips opening sheets, `enterkeyhint="send"`. | experience-design | none (3 decided) |
 | 12 | **The call on a phone:** the call's own view (tiles, who is talking, the call bar at 44 px), no control hidden until hover on a coarse pointer, **Share your screen** not offered. The call strip is step 6. | experience-design | none |
@@ -752,8 +760,7 @@ Vault. Steps 3 to 6 come before the object window's steps (decision 8); its step
   measured results, with the media queries and insets confirmed in the page. Nothing of it is verified live on a phone;
   the device script in "Real devices and emulation" is how the findings are confirmed. The screenshots are for Thomas
   to review while the scratchpad exists.
-- **Step 3.** `check-touch` and `check-breakpoints` pass, and fail on a copy with a hover-only control (and with a raw
-  inset, if question 24 keeps the tokens). `host.screen` answers correctly under emulation at 390 touch, 390 mouse, 1280 touch and 1280 mouse.
+- **Step 3.** `check-touch` and `check-breakpoints` pass, and fail on a copy with a hover-only control. `host.screen` answers correctly under emulation at 390 touch, 390 mouse, 1280 touch and 1280 mouse.
 - **Step 4.** In headless Chromium: open a sheet, back closes it; open a sheet over a sheet, two backs close both; an
   edited sheet asks first; switching views adds no entry; back from a space's base goes to Home. The iPhone's edge
   swipe and Android's back button only on the devices.
@@ -795,7 +802,7 @@ Vault. Steps 3 to 6 come before the object window's steps (decision 8); its step
 ## Open questions
 
 Each has options and the planner's suggestion, marked as such. The table above says which step each blocks.
-Questions 1 to 7, 16, 17 and 23 were decided on 2026-11-01 and are kept below with the answer, for the record.
+Questions 1 to 7, 11, 16, 17, 23 and 24 were decided on 2026-11-01 and are kept below with the answer, for the record.
 
 ### Still open
 
@@ -804,12 +811,12 @@ As of 2026-11-01, and the steps each blocks now:
 - **8**, the emulation layer: step 7.
 - **18 to 21**, what a layout is and how it is counted: step 0.
 - **22**, the width targets table and the four-week review: nothing waits on it now (the order is decision 12).
-- **24**, the safe-area tokens: step 3, and how step 5's bars read the insets.
-- **25**, what to fix first from the audit: nothing; Leave's confirm (audit problem 2) is already being built on its
-  own (see "What was fixed since").
+- **25**, what to fix first from the audit: nothing; Leave's confirm (audit problem 2) is done on its own (see "What
+  was fixed since").
 
-Asked when the step that needs each starts (decision 13): **9** (step 8), **10** (step 10), **11** (step 9, and the
-offline banner and the "Not sent" state in step 5), **12** (step 15), **13** (nothing here), **14** (step 16) and
+Nothing open blocks step 3 or step 5. Step 5 waits only on Thomas approving its drawings in the Prototype.
+
+Asked when the step that needs each starts (decision 13): **9** (step 8), **10** (step 10), **12** (step 15), **13** (nothing here), **14** (step 16) and
 **15** (step 6).
 
 ### The questions
@@ -853,7 +860,7 @@ offline banner and the "Not sent" state in step 5), **12** (step 15), **13** (no
     spaces. *Suggestion: (a),* with (c) later. Asked when its step starts (Thomas, 2026-11-01).
 11. **Offline.** (a) Say it, keep unsaved work, nothing cached (the service worker keeps "fresh pages"). (b) (a) plus
     a cached shell, so the installed app opens to a "You're offline" page instead of the browser's error. (c) Offline
-    reading and queued changes. (c) is a sync engine. *Suggestion: (a) now, (b) as a later step.* Asked when its step starts (Thomas, 2026-11-01).
+    reading and queued changes. (c) is a sync engine. *Suggestion: (a) now, (b) as a later step.* Decided 2026-11-01: (a) now, (b) a later step; decision 15.
 12. **Share in.** (a) A share target and "Send to a space" (Android, installed). (b) Not now. *Suggestion: (b) until
     the Vault's first steps land, then (a).* Asked when its step starts (Thomas, 2026-11-01).
 13. **Notifications.** (a) Not in this plan; its own plan for web push (call started, a mention). (b) Web push here.
@@ -899,7 +906,7 @@ offline banner and the "Not sent" state in step 5), **12** (step 15), **13** (no
 24. **The safe-area tokens.** The audit showed the insets can be emulated directly, so the `--safe-*` tokens are not
     needed for testing. (a) Keep them anyway, as the one place the insets are read (a check can then forbid raw
     `env()`). (b) Drop them; use `env(safe-area-inset-*, 0px)` where needed, as today. *Suggestion: (b),* since one
-    more layer buys nothing a check needs now. Blocks step 3.
+    more layer buys nothing a check needs now. Decided 2026-11-01: (b), decision 14.
 25. **What to fix first from the audit.** (a) Fix the five worst (the microphone from another view, Leave's confirm,
     back, landscape, the Calendar's Month) as their own small builds now, before steps 3 to 6. (b) Fold each into the
     step that owns it (back into step 4, the call's way and Leave into step 6, landscape into step 3, the Month view
