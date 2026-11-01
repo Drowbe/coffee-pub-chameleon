@@ -13,8 +13,6 @@ const THEMES = [
 const MODES = [{ id: 'dark', label: 'Dark', icon: 'moon' }, { id: 'light', label: 'Light', icon: 'sun' }];
 const WIDTHS = [390, 500, 700, 1280].map((w) => ({ id: String(w), label: `${w}` }));
 
-// Design-process switches (Thomas, 2026-10-30; nothing here ships): a reworked light mode of Strong Coffee.
-const LOOKS = [{ id: 'current', label: 'Current' }, { id: 'paper', label: 'Paper' }, { id: 'mist', label: 'Cool mist' }, { id: 'cream', label: 'Cream' }, { id: 'contrast', label: 'Contrast' }];
 let planner = null;
 
 const q = new URLSearchParams(location.search);
@@ -22,7 +20,6 @@ const state = {
   theme: THEMES.some((t) => t.id === q.get('theme')) ? q.get('theme') : 'strong-coffee',
   mode: q.get('mode') === 'light' ? 'light' : 'dark',
   w: WIDTHS.some((w) => w.id === q.get('w')) ? q.get('w') : '700',
-  look: LOOKS.some((l) => l.id === q.get('look')) ? q.get('look') : 'current',
 };
 
 function apply() {
@@ -30,13 +27,11 @@ function apply() {
   D.documentElement.dataset.themeMode = state.mode;
   D.documentElement.style.setProperty('--pp-w', `${state.w}px`);
   D.documentElement.dataset.ppTheme = state.theme;
-  D.documentElement.dataset.ppLight = state.look;
   if (planner) planner.set(state);
   const u = new URL(location.href);
   u.searchParams.set('theme', state.theme);
   u.searchParams.set('mode', state.mode);
   u.searchParams.set('w', state.w);
-  u.searchParams.set('look', state.look);
   history.replaceState(null, '', u);
 }
 
@@ -366,5 +361,4 @@ planner.onView = (id) => { if (id !== shownView) { shownView = id; planned.frame
 pageSwitch('pp-theme', 'theme', THEMES);
 pageSwitch('pp-mode', 'mode', MODES);
 pageSwitch('pp-width', 'w', WIDTHS);
-pageSwitch('pp-look', 'look', LOOKS);
 apply();

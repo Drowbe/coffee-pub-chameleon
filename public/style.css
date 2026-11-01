@@ -94,7 +94,7 @@
   --radius-large: 11px;
   --radius-round: 999px;
   /* A selected, on or current tab, chip, button or row: a fill, never a border, an underline or a ring. */
-  --selected-bg: color-mix(in srgb, var(--accent-fill) 28%, transparent);
+  --selected-bg: color-mix(in srgb, var(--wash-ink, var(--accent-fill)) var(--wash-selected, 28%), transparent);
   --header-text: var(--text-bar, var(--text-primary));
   /* The two rows of the header, each its own colour (see architecture-navigation.md): the top bar's left zone is
      --header-bg itself, and the secondary nav (the space, a page's bar) its own, between the header and the page.
