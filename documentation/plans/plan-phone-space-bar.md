@@ -4,6 +4,8 @@
 
 **Status:** built 2026-10-03; approved 2026-10-03, with all six recommendations taken and the plan's own two choices (the 56 px least tab width and the `phone: 'bar'` marker) kept (decisions 1 to 8). Not built. From GitHub #160, found by QA on 2026-10-02 while testing the two-zone nav, and failing the same way on the code before it: "A module's nav tools on a phone. In a space at 390 px, a module that registers tools (`host.nav.set`) breaks the bottom tab bar: the module tabs collapse to zero width; the tools overlap Online; Leave is pushed off screen." And: "A pop-out narrower than 641 px. It draws the space bar without the phone styles. Online shows its full words, and the right zone, Leave included, runs past the window's edge." The issue's direction: "On a phone, a module's tools fold into the menu (or "…") instead of joining the tab bar. A narrow pop-out uses the phone layout." A third case, seen since: with five or more module tabs at 390 px, the last tab runs under Online's count. The TODO lists the pop-out case under the two-zone nav. [plan-layout-menu](plan-layout-menu.md) (decision 6, "No Layout on phones") says "A narrow pop-out follows #160".
 
+**To be replaced in part:** on 2026-11-01 Thomas chose the fixed bottom bar in [plan-phone-experience](plan-phone-experience.md) (its decision 3); its step 6 replaces this plan's decisions 1 to 4 and 7 to 8 and `phoneTabs()`, cleanly.
+
 ## What it is today
 
 **The space bar** (`#subnav`, built at the top of `public/space.js`) has two zones ([plan-two-zone-nav](plan-two-zone-nav.md), [architecture-navigation](../architecture/architecture-navigation.md), "The space bar"):
