@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides how work is divided and what each team may spend; and the project manager and the agents who follow it.
 
-**Status:** Draft, awaiting Thomas's approval. Decisions of 2026-11-01. Nothing here applies until Thomas approves it.
+**Status:** Approved by Thomas, 2026-11-01 (the weekly section is a starting proposal he can change).
 
 ## Purpose
 
@@ -63,11 +63,35 @@ Thomas tells the project manager in plain words. Examples:
 
 The project manager applies the change from the next job. The documentation agent records it under Changes, below, with the date and the sentence Thomas said.
 
+## The weekly plan budget
+
+Thomas is on the Max plan. The plan covers three things, in this order of rank:
+
+1. This project.
+2. D&D campaign processing and world building.
+3. His Foundry modules.
+
+This project yields to nothing. The other two use what is left. Thomas says they use roughly 25-30% of the plan in a week (2026-11-01). So this project may use up to about 70%. The starting ceiling is 65% of the weekly plan, which leaves a buffer.
+
+**Warnings.** The project manager tells Thomas at about 50% of the weekly plan, and again at about 60%. These are estimates; see below.
+
+**At the ceiling.** The project manager finishes what is running and starts nothing new. It lists what is waiting, with an estimate for each, and asks Thomas what to spend the rest on. Quality passes on work already built come first, because unreviewed work cannot be merged.
+
+**The week.** It resets on Wednesday at 1:00 AM, on Thomas's clock as shown on his usage page.
+
+**Reading the meter.** The project manager cannot see the meter. Thomas shares a screenshot of the usage page about every Monday and Friday, and when asked. Between readings the project manager keeps its own count.
+
+**Converting tokens to percent.** First estimate (2026-11-01): about 0.4M agent tokens per 1% of the weekly plan. So the 65% ceiling is about 25M agent tokens a week. This is rough. The count leaves out the project manager's own turns, the clocks differ, and it assumes the meter moves in proportion to agent tokens. Each reading corrects the estimate.
+
+**First calibration point.** Reading of 2026-11-01: 21% of the week used, 90% of it Claude Code (about 19% for this project). Against that, about 7.2M agent tokens were counted since Thursday 2026-10-29 (Oct 29 0.26M, Oct 30 5.54M, Oct 31 0.89M, Nov 1 0.48M; UTC days).
+
 ## The token ledger
 
 Every report from the project manager ends with one line, for example:
 
 `Tokens: Product 410k (3 jobs), Design 260k (2), Quality 340k (2); total 1.0M; over expectation: none`
+
+The line also shows the week to date, as agent tokens and the estimated percentage of the weekly plan, for example: `Week: 7.2M (about 19%), ceiling 65%`.
 
 A job's tokens are the number in the agent's own report. The project manager's own turns are not counted.
 
@@ -78,4 +102,6 @@ A job's tokens are the number in the agent's own report. The project manager's o
 
 ## Changes
 
-No changes yet. The starting values above are those of 2026-11-01.
+The starting values above are those of 2026-11-01.
+
+- 2026-11-01 Thomas: approved as written; weekly plan budget added: other work 25-30% of the plan, this project first in rank; warn at 50% and 60%, ceiling 65%.
