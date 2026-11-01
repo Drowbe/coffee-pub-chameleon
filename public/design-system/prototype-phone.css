@@ -1,0 +1,170 @@
+/* The phone pieces on the Prototype (Thomas, 2026-11-01; plan-phone-experience.md, "Navigation on a phone"). Design-process only: nothing
+   here ships. Two halves: the frame around the screen (.phf-*, drawn on prototype.html by prototype-phone.js) and the screen itself (.ph-*,
+   drawn on phone.html by prototype-phone-app.js, a real viewport of the frame's size).
+   Marked "to system.css": what would move into the product's own sheet when this is built, and under what rule. Every colour is a token;
+   every radius a token; type sizes the scale's steps. */
+
+/* ================= the frame (prototype.html) ================= */
+.phf { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.phf-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.phf-tool { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.phf-tool-label { color: var(--text-muted); font-size: var(--text-13); }
+.phf-stage { padding: var(--space-5); overflow-x: auto; border-radius: var(--radius-large); background: var(--surface-canvas); outline: 1px dashed var(--edge-hairline); outline-offset: -1px; }
+/* The device: a bezel-less rectangle of the screen's size; the iframe is the screen, the status bar and the home indicator are drawn over it. */
+.phf-device { position: relative; display: flex; flex-direction: column; box-sizing: content-box; width: var(--phf-w); height: var(--phf-h); margin: 0 auto; overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); box-shadow: var(--shadow-3); }
+.phf-screen { display: block; flex: none; width: 100%; height: var(--phf-screen-h, 100%); border: 0; background: var(--surface-page); }
+.phf-status { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; height: 47px; box-sizing: border-box; padding: 6px var(--space-6) 0; color: var(--text-bar); font-size: var(--text-14); font-weight: var(--weight-strong); pointer-events: none; }
+.phf-status i { margin-left: var(--space-1); font-size: var(--text-12); }
+.phf-land .phf-status { display: none; }
+.phf-home { position: absolute; left: 50%; bottom: var(--space-2); width: 134px; height: 5px; margin-left: -67px; border-radius: var(--radius-small); background: var(--text-primary); opacity: 0.5; pointer-events: none; }
+.phf-kb-up .phf-home { display: none; }
+/* The on-screen keyboard: a drawing, the height of the real one (336px portrait, 200px sideways). */
+.phf-kb { display: grid; flex: none; grid-template-columns: repeat(10, 1fr); align-content: start; gap: var(--space-2) var(--space-1); box-sizing: border-box; height: var(--phf-kb-h); padding: var(--space-3) var(--space-1); border-top: 1px solid var(--edge-hairline); background: var(--surface-menu, var(--surface-panel)); }
+.phf-kb span { height: 36px; border-radius: var(--radius-small); background: var(--surface-field); }
+.phf-land .phf-kb { gap: var(--space-1); padding-top: var(--space-1); }
+.phf-land .phf-kb span { height: 36px; }
+.phf-note { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.phf-measure { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
+
+/* ================= the screen (phone.html) ================= */
+html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body); }
+.ph-body * { box-sizing: border-box; }
+/* The safe areas, as a phone gives them (47px at the top and 34px at the foot upright; sideways 47px at each side and 21px at the foot, none at the top).
+   Product: env(safe-area-inset-*) already fills --safe-*; nothing to move. */
+:root { --safe-top: 47px; --safe-bottom: 34px; --safe-left: 0px; --safe-right: 0px; --ph-top-h: 48px; }
+:root.ph-land { --safe-top: 0px; --safe-bottom: 21px; --safe-left: 47px; --safe-right: 47px; --ph-top-h: 44px; }
+/* Touch sizes (to system.css: under (pointer: coarse) and (max-width: 640px), or (max-height: 500px) and (pointer: coarse); the plan's compact shape).
+   The product's own 640px rules already do this at 390 and 360; sideways the width is over 640px, so the page sets them itself. */
+:root.ph-compact { --btn-h: 44px; --field-h: 44px; --field-font: var(--text-16); --check-h: 44px; --tabbar-h: 54px; }
+.ph-compact :where(input, textarea, select) { font-size: var(--text-16); }
+
+.ph { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "view" "strip" "bar"; width: 100%; height: 100%; overflow: hidden; background: var(--surface-page); }
+.ph-top { grid-area: top; }
+.ph-view { grid-area: view; }
+.ph-strip { grid-area: strip; }
+.ph-bar { grid-area: bar; }
+.ph-none { display: none; }
+/* Sideways (to system.css: the bottom bar becomes a rail at the start edge): the call, Chat and the module use the width. */
+.ph-land .ph { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "bar view" "bar strip"; }
+.ph-land .ph-view, .ph-land .ph-strip { padding-right: var(--safe-right); }
+/* The keyboard is up: the bar and the strip give their room to the field (to system.css: the shared sheet and Chat listen to visualViewport). */
+.ph.kb .ph-bar, .ph.kb .ph-strip { display: none; }
+.ph.kb { --safe-bottom: 0px; }
+/* Sideways with the keyboard up the top bar goes too: 190px is left, and the field needs it. */
+.ph-land .ph.kb .ph-top { display: none; }
+.ph-land .ph.kb { grid-template-columns: minmax(0, 1fr); grid-template-areas: "view" "strip"; grid-template-rows: minmax(0, 1fr) auto; padding-left: var(--safe-left); }
+.ph-land .ph { padding-bottom: var(--safe-bottom); }
+
+/* The top bar: the space's name, Online beside it, the menu at the end. */
+.ph-top { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: calc(var(--ph-top-h) + var(--safe-top)); padding: var(--safe-top) calc(var(--space-2) + var(--safe-right)) 0 calc(var(--space-4) + var(--safe-left)); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-bar-top); color: var(--text-bar); }
+.ph-space { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: var(--text-16); font-weight: var(--weight-strong); line-height: var(--leading-ui); text-overflow: ellipsis; white-space: nowrap; }
+.ph-grow { flex: 1 1 0; }
+.ph-online { position: relative; display: inline-flex; flex: none; align-items: center; gap: var(--space-1); min-width: 44px; height: 44px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text-bar); font: inherit; font-size: var(--text-13); font-weight: var(--weight-medium); cursor: pointer; }
+.ph-online i { color: var(--status-ok-text); }
+.ph-online:hover { background: var(--fill-hover); }
+.ph-top .sdk-icon-btn { flex: none; }
+:is(.ph-online, .ph-strip-who, .ph-row, .ph-action):focus-visible, .ph .sdk-tabbar-tab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.ph-muted { color: var(--text-muted); font-size: var(--text-13); font-weight: var(--weight-regular); }
+
+/* The view: one at a time, between the top bar and the bottom bar. */
+.ph-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.ph-view > section { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
+/* The module's frame, full width and with no box of its own on a phone (to system.css: .mf.mf-page without edge, radius or shadow). */
+.ph-module > .mf { flex: 1 1 auto; border: 0; border-radius: 0; box-shadow: none; }
+.ph-view .mf-content.mf-content-flush:has(> .pp-planner) { display: flex; flex-direction: column; overflow: hidden; }
+
+/* The call: tiles use the width (a column of 150px or more, as many as fit), the controls under them. */
+.ph-call { padding: var(--space-3) var(--space-3); gap: var(--space-3); overflow-y: auto; }
+.ph-call > .sdk-empty { margin: auto; }
+.ph-tiles { display: grid; flex: 1 1 auto; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); grid-auto-rows: minmax(110px, 1fr); gap: var(--space-2); padding-inline: var(--space-3); min-height: 0; }
+.ph-tile { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-card, var(--surface-panel)); }
+.ph-tile.is-speaking { border-color: var(--status-ok-mark); box-shadow: 0 0 0 2px var(--status-ok-mark); }
+.ph-tile-name { position: absolute; left: var(--space-2); bottom: var(--space-2); display: inline-flex; align-items: center; gap: var(--space-1); max-width: calc(100% - var(--space-4)); padding: var(--space-0) var(--space-2); border-radius: var(--radius-small); background: var(--surface-panel); font-size: var(--text-13); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ph-tile-name i { color: var(--status-danger-text); }
+.ph-controls { display: flex; flex: none; align-items: center; justify-content: center; gap: var(--space-3); padding-inline: var(--space-3); }
+
+/* Chat: the messages scroll, the field and Send stay in view. */
+.ph-chat { overflow: hidden; }
+.ph-msgs { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; padding: var(--space-3) var(--space-4) var(--space-3); overflow-y: auto; }
+.ph-msg { display: flex; align-items: flex-start; gap: var(--space-2); }
+.ph-msg-main { min-width: 0; }
+.ph-msg-head { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-14); }
+.ph-msg-text { margin: 0; font-size: var(--text-14); overflow-wrap: anywhere; }
+.ph-compose { display: flex; flex: none; align-items: flex-end; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.ph-compose-field { flex: 1 1 auto; min-height: 44px; max-height: 112px; resize: none; padding: var(--space-3); border: 1px solid var(--edge-field); border-radius: var(--radius-small); background: var(--surface-field); color: var(--text-primary); font: inherit; font-size: var(--text-16); line-height: var(--leading-ui); }
+.ph-compose-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.ph-send { flex: none; min-width: 44px; }
+
+/* The call strip (to system.css, with the bottom bar): one row above the bar, 52px high: who is talking, the microphone, hang up. */
+.ph-strip { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 52px; padding: var(--space-1) calc(var(--space-2) + var(--safe-right)) var(--space-1) var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); color: var(--text-primary); }
+.ph-strip.is-speaking { box-shadow: inset 0 2px 0 var(--status-ok-mark); }
+.ph-strip.is-muted { box-shadow: inset 0 2px 0 var(--status-danger-text); }
+.ph-strip-who { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; min-height: 44px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ph-strip-who > i { color: var(--status-ok-text); font-size: var(--text-16); }
+.ph-strip.is-muted .ph-strip-who > i { color: var(--status-danger-text); }
+.ph-strip-who:hover { background: var(--fill-hover); }
+.ph-strip-words { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--text-14); }
+.ph-strip-words strong { overflow: hidden; text-overflow: ellipsis; }
+
+/* The bottom bar: the product's tab bar (.sdk-tabbar), four places. Sideways it is a rail at the start edge. */
+.ph .sdk-tabbar { height: auto; min-height: calc(var(--tabbar-h) + var(--safe-bottom)); }
+.ph-land .sdk-tabbar { flex-direction: column; width: calc(76px + var(--safe-left)); height: auto; min-height: 0; padding: var(--space-1) var(--space-1) var(--space-1) calc(var(--space-1) + var(--safe-left)); border-top: 0; border-right: 1px solid var(--edge-hairline); }
+.ph-land .sdk-tabbar .sdk-tabbar-tab { flex: 1 1 0; min-height: 45px; }
+
+/* The action bar (to system.css): one primary action a module names, at the foot of the view, above the strip and the bar. */
+.ph-actionbar { display: flex; flex: none; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.ph-actionbar .btn { flex: 1 1 auto; }
+
+/* The shared full-screen sheet (to system.css): it covers the screen, the bar has the controls, the content scrolls, nothing below it
+   but the safe area, so with the keyboard up the bar and the field stay in the smaller screen. */
+.ph-sheet { position: absolute; inset: 0; z-index: var(--z-dialog); display: flex; flex-direction: column; background: var(--surface-page); }
+.ph-sheet-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: calc(var(--ph-top-h) + var(--safe-top)); padding: var(--safe-top) calc(var(--space-2) + var(--safe-right)) 0 calc(var(--space-2) + var(--safe-left)); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-bar-top); color: var(--text-bar); }
+.ph-sheet-title { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: var(--text-16); font-weight: var(--weight-strong); line-height: var(--leading-ui); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.ph-sheet-bar > :is(.btn, .sdk-icon-btn) { flex: none; }
+.ph-bar-end { flex: none; width: 44px; }
+.ph-sheet-body { flex: 1 1 auto; min-height: 0; padding: var(--space-4) calc(var(--space-4) + var(--safe-right)) calc(var(--space-4) + var(--safe-bottom)) calc(var(--space-4) + var(--safe-left)); overflow-y: auto; overscroll-behavior: contain; }
+.ph-sheet-body:has(> .ph-list) { padding: 0 calc(var(--safe-right)) var(--safe-bottom) var(--safe-left); }
+.ph-sheet-body .sdk-form { max-width: 520px; margin: 0 auto; }
+.ph-stack { display: flex; flex-direction: column; gap: var(--space-4); align-items: flex-start; }
+.ph-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); margin: 0; font-size: var(--text-14); }
+.ph-facts dt { color: var(--text-muted); }
+.ph-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+/* The Modules list: large rows, icon, name, new count, a chevron (a check for the one in use). */
+.ph-list { margin: 0; padding: 0; list-style: none; }
+.ph-row { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: 0 var(--space-4); border: 0; border-bottom: 1px solid var(--edge-hairline); background: transparent; color: var(--text-primary); font: inherit; font-size: var(--text-16); text-align: left; cursor: pointer; }
+.ph-row:hover { background: var(--fill-hover); }
+.ph-row[aria-current="true"] { background: var(--fill-selected); }
+.ph-row-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; color: var(--text-accent); font-size: var(--text-18); }
+.ph-row-name { flex: 1 1 auto; min-width: 0; }
+.ph-row > i:last-child { color: var(--text-muted); }
+
+/* The bottom sheet (to system.css): a menu of actions, 48px rows, over a scrim; it ends at the screen's foot with the safe area under it. */
+.ph-sheet-layer { position: absolute; inset: 0; z-index: var(--z-dialog); display: flex; flex-direction: column; justify-content: flex-end; }
+.ph-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.ph-scrim-clear { background: transparent; }
+.ph-bottom { position: relative; display: flex; flex-direction: column; align-self: center; width: min(100%, 560px); max-height: 92%; padding: var(--space-3) calc(var(--space-2) + var(--safe-right)) calc(var(--space-2) + var(--safe-bottom)) calc(var(--space-2) + var(--safe-left)); overflow-y: auto; border-radius: var(--radius-large) var(--radius-large) 0 0; background: var(--surface-menu, var(--surface-panel)); box-shadow: var(--shadow-3); }
+.ph-bottom > * { flex: none; }
+.ph-bottom-title { margin: 0; padding: var(--space-1) var(--space-3) var(--space-2); color: var(--text-muted); font-size: var(--text-13); font-weight: var(--weight-medium); }
+.ph-bottom-text { margin: 0; padding: 0 var(--space-3) var(--space-3); font-size: var(--text-14); }
+.ph-bottom-foot { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
+.ph-bottom-foot .btn { flex: 1 1 0; }
+.ph-actions { display: flex; flex-direction: column; }
+.ph-action { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 48px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text-primary); font: inherit; font-size: var(--text-16); text-align: left; cursor: pointer; }
+.ph-action:hover { background: var(--fill-hover); }
+.ph-action.danger { color: var(--status-danger-text); }
+.ph-actions-line { height: 1px; margin: var(--space-1) var(--space-3); background: var(--edge-hairline); }
+.ph-action-cancel { width: 100%; margin-top: var(--space-2); }
+
+/* The top bar's menu: the host's own menu classes, under the button at the end of the bar. */
+.ph-menu-layer { justify-content: flex-start; align-items: flex-end; }
+.ph-menu { position: absolute; top: calc(var(--safe-top) + var(--ph-top-h) - var(--space-1)); right: calc(var(--space-2) + var(--safe-right)); min-width: 200px; }
+.ph-menu .host-menu-item { min-height: 44px; }
+
+/* The strip sits on the panel's surface, a step off the page's: the theme's muted text only reaches 4.5:1 on the page (burnt orange, light: 4.2),
+   so the strip's second words are the text colour toward the surface. */
+.ph-strip .ph-muted { color: color-mix(in srgb, var(--text-primary) 80%, var(--surface-panel)); }
+/* The product's tab bar words reach only 3.5 to 3.7:1 in light mode (Strong Coffee, Calming Teal) at 11px: the chosen tab's (accent 55% over the
+   text, on the selected fill). To system.css: --tabbar-now at 30% accent, the others' --tabbar-fg at 12% toward the bar (checked at 4.5:1 or more
+   in all three themes, both modes). */
+.ph .sdk-tabbar { --tabbar-fg: color-mix(in srgb, var(--text-bar) 88%, var(--surface-bar-top)); --tabbar-now: color-mix(in srgb, var(--accent-fill) 30%, var(--text-bar)); }
