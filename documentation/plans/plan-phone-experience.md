@@ -15,8 +15,11 @@ experience is not just a smaller, repurposed desktop experience". He expects pho
 same day he decided, in [plan-object-window](plan-object-window.md) (decision 5), "Phone experiences are designed for
 the phone, not a shrunk desktop", and that plan's question 16 suggested this plan with a scope this one follows. Added
 the same day, from Thomas: "We will need to understand how common each layout is and ensure we target the core
-experience to the expected size" (the section "How common each layout is", step 0, questions 18 to 23). Every
-section below except "What it is today" is the planner's proposal and waits on the open questions at the end.
+experience to the expected size" (the section "How common each layout is", step 0, questions 18 to 23). On
+2026-11-01 Thomas decided questions 1 to 7 and 17 (see "Decisions"); the plan stays a
+draft until the questions that still block a step are decided ("Still open" in "Open questions"). Every section below
+except "What it is today", "The audit" and "Decisions" is the planner's proposal, shaped by those decisions where
+they apply.
 
 ## Why
 
@@ -147,6 +150,44 @@ From [known-issues](../known-issues.md): the host console's Maps tab is too wide
 can scroll by itself at 390 px; a Calendar or Map editor in a narrow window is a phone sheet. Narrow bands in the
 status strip hide their label (any width).
 
+## Decisions
+
+Thomas, 2026-11-01, relayed by the project manager as the planner's suggestions in "Open questions". Two differ
+from the suggestion as written there: question 4's suggestion was (b), and question 17's content is its option (b);
+what Thomas decided is what is recorded.
+
+1. **The shape comes from the width, the touch rules from the input, independently** (question 1, (b)). The touch
+   rules (tap areas, no hover, long press) key off a coarse pointer, whatever the width. A guess from the user agent
+   is not used. Reason: a tablet and a narrow window each get what fits them; a width-only rule keeps hover-only
+   controls on touch screens.
+2. **A phone held sideways gets the compact shape** when the pointer is coarse and the height is 500 px or less; the
+   call's tiles use the width (question 2, (b)). Reason: the audit found the desktop at 844 by 390 leaves about
+   200 px for content and hides every message with the keyboard up (audit problem 4); asking the app to stay
+   portrait would stop a person watching the call sideways.
+3. **The fixed bottom bar:** Call, Chat, the module in use, and **Modules** (a full-screen list of the space's
+   modules); **Leave** in the top bar's menu, **Online** beside the space's name (question 3, (c)). Reason: the call
+   and Chat stay one tap away from anywhere, the places do not move as modules open, and the number of modules can
+   grow. This replaces parts of [plan-phone-space-bar](plan-phone-space-bar.md) (see "How it relates to other
+   plans").
+4. **Each module's primary phone task is the audit's for now** (question 4, (a)): the "Primary phone task" column of
+   the audit table. Each module's is corrected when its step (12 or 13) is reached.
+5. **A call strip above the bottom bar** while another view shows: who is talking, the microphone, hang up (question
+   5, (b)). Reason: the microphone cannot be reached from another view today (audit problem 1); a floating picture is
+   a drag and covers content.
+6. **Sheets push one history entry each; switching views replaces the entry; Back from a space's base goes to Home,
+   asking first while in the call** (question 6, (a)). Reason: back leaves the app today (audit problem 3); walking
+   back through every tab is not what a person expects.
+7. **Menu entries first, long press later** (question 7, (c)): **Move to**, **Move up** and **Move down** in the
+   menu for everything draggable; long press to pick up and drag later, only where a list is reordered often.
+   Reason: a touch press-and-move fires no `dragstart` (audit), and a long-press drag alone fights scrolling and
+   cannot be seen.
+8. **The phone foundations come before the object window's steps** (question 17): steps 1 to 6 (the shape rules,
+   the safe areas, history, the shared sheet and the bottom bar) are built first, and the
+   [object window](plan-object-window.md) is built on the shared sheet and the history stack. Reason: the sheet and
+   the history are built once, here, and the object window does not build a phone sheet that would be replaced.
+   Thomas answered the object window plan's question 15 (its place in the queue) the same way: after the phone
+   foundations.
+
 ## Definitions (proposed)
 
 The plan uses four separate ideas, and the code should too.
@@ -160,7 +201,7 @@ The plan uses four separate ideas, and the code should too.
   pen is also there) and `(hover: none)` (nothing can hover). It decides tap areas, whether hover may carry anything,
   and whether long press is offered. It is independent of width: a tablet is wide and coarse; a narrow desktop window
   is compact and fine.
-- **Phone**, for this plan, is compact width with a coarse pointer, in either orientation (question 2 covers a phone
+- **Phone**, for this plan, is compact width with a coarse pointer, in either orientation (decision 2 covers a phone
   held sideways, which is wider than 640 px but only about 390 px tall). Never detected from the user agent.
 - **Safe areas**: the `env(safe-area-inset-*)` insets, real only in the installed app with `viewport-fit=cover` (47 and
   34 px on the measured iPhone) and 0 in a browser tab, so nothing may depend on them being there.
@@ -375,7 +416,17 @@ space, unless it says otherwise.
   sign in, the Planner's form and Budget's form keep 16 px fields and keep **Save** above the keyboard; the date
   fields are the phone's own. (M)
 
-## Navigation on a phone (proposed, question 3)
+### What was fixed since
+
+Decided by Thomas on 2026-11-01, outside this plan's questions, and being built as their own small builds; not yet
+landed when this was written:
+
+- **Leave asks first while in the call** (audit problem 2). A small build ahead of step 6; step 6 moves **Leave** to
+  the top bar's menu and keeps the confirm.
+- **Cream is the default theme's light mode.** Chosen for the default theme; it bears on the colours the manifest and
+  `theme-color` take from the theme in step 10.
+
+## Navigation on a phone (questions 3, 5 and 6 decided)
 
 ### What a space is on a phone
 
@@ -387,8 +438,8 @@ on a phone; the phone remembers its own last view per space (question 15).
 
 ### The bottom bar
 
-Today's tab bar shows every open view as a tab and folds the rest into the **…**. Three shapes are possible (question
-3). The planner's suggestion is a fixed bar with stable places:
+Today's tab bar shows every open view as a tab and folds the rest into the **…**. Thomas chose a fixed bar with stable
+places (decision 3); the details below are the planner's:
 
 - **Call** (the conference; its dot as today), **Chat** (its unread count), the **module being used** (its icon and
   name; tapping it again goes to that module's top), and **Modules**, which opens a full-screen list of the space's
@@ -399,18 +450,18 @@ Today's tab bar shows every open view as a tab and folds the rest into the **…
 
 This keeps the call and Chat one tap away from anywhere, puts the places where the thumb learns them, and lets the
 number of modules grow without a crowded bar. It replaces parts of [plan-phone-space-bar](plan-phone-space-bar.md)
-(decisions 1 to 4 and 7 to 8 would change; `phoneTabs()` would go), which is why it is Thomas's call.
+(its decisions 1 to 4 and 7 to 8 change; `phoneTabs()` goes), which Thomas accepted with decision 3.
 
 ### The call, Chat and modules together
 
-- **In the call, looking at something else:** a **call strip** (question 5): one row above the bottom bar with the
+- **In the call, looking at something else:** a **call strip** (decision 5): one row above the bottom bar with the
   person talking (face and name), the microphone toggle and hang up. Tapping it shows the call. It is drawn from
   `host.call.state` ([plan-call-as-module](plan-call-as-module.md)) so it works the same when the call is a module.
 - **Audio keeps running** while another view or a sheet is shown, as today.
 - **Chat over a module:** a link chip in Chat opens its object's window as a sheet over Chat; Back returns to Chat
   ([plan-object-window](plan-object-window.md), question 9: on a phone the tab does not change).
 
-### Back and history (question 6)
+### Back and history (decision 6)
 
 - **One entry per sheet.** Opening a sheet (the object window, the editor, a menu, the kind picker, the Modules list,
   Set up, the phases sheet, a picker) pushes one entry; back closes it; a sheet with changes asks first ("Discard your
@@ -425,7 +476,7 @@ number of modules grow without a crowded bar. It replaces parts of [plan-phone-s
 - **Deep links** (`#object=` from [plan-object-window](plan-object-window.md)) open the space, the owner module as
   the view and the object's sheet over it, with one entry under it so back lands on the module.
 
-## Touch in place of drag (question 7)
+## Touch in place of drag (decision 7)
 
 | Desktop drag | On a phone (proposed) |
 |---|---|
@@ -590,7 +641,7 @@ screen locked, the camera and photo pickers, and HEIC and `.mov` handling.
 - **Cases from the audit** (quality-assurance's proposals, for `check-phone` unless marked):
   - every surface keeps a way to the microphone while in the call (the call's tab or strip is on screen on every view);
   - **Leave** while in the call asks first;
-  - at 844 by 390 with touch, the space draws the compact shape (question 2);
+  - at 844 by 390 with touch, the space draws the compact shape (decision 2);
   - back from an open sheet closes it, and from a space returns to Home; `history.length` grows by one per sheet;
   - no control is `opacity: 0` while tappable on a coarse pointer (the call tiles' controls); static in `check-touch`;
   - the call bar's buttons and chevrons at least 44 by 44 px, and **Share your screen** not drawn on a phone;
@@ -623,18 +674,18 @@ feedback builds for the module steps.
 |---|---|---|---|
 | 0 | **Learn how common each layout is.** The tester device list (Thomas, no code), and, if chosen, the layout counters: `POST /api/layout-counts`, `DATA_DIR/layout-counts.json` by week, the environment variable, the pages' report, Manage's **Layouts** section with the "fewer than 5" rule, and a check. Shipped first so counts gather while the audit runs; the audit does not wait for them. | Thomas (the list), server-development (the route, the store, the check), experience-design (the report, the Manage section) | 18 to 21 |
 | 1 | **The audit.** Done 2026-10-31 by quality-assurance with Playwright 1.63's emulation (`hasTouch`, `isMobile`, safe areas through the DevTools protocol), at 390, 360 and 844 by 390; the scripts are in the session's scratchpad, not in the repository; the findings filled into this plan's table by product-planner. The `phone` option in `tools/shots.mjs` was not built; it moves to step 7. No product change. | quality-assurance (the run), product-planner (the table) | done |
-| 2 | **The phone decisions.** Thomas decides questions 1 to 7, 22 and 23 on the audit's results and the tester list; product-planner records them here and in [plan-phone-space-bar](plan-phone-space-bar.md)'s status, and orders steps 11 to 14. No build. | Thomas, product-planner | 1 to 7, 22, 23 |
-| 3 | **Foundations.** The width-class and input rules in `system.css` (the safe-area tokens if question 24 keeps them, the coarse-pointer tap areas everywhere, not only in the frame); one SDK answer a module can ask (`host.screen`, proposed: `{ width, touch, hover, installed, orientation }` with a `change` event); `check-breakpoints` extended; `check-touch` (static). | experience-design, server-development (the check) | 1, 2, 24 |
-| 4 | **History: one entry per sheet.** The host's sheet stack; the editor window, the kind picker, the menus' drill-in, Set up and the phases sheet open through it; back closes; entering a space pushes once. | experience-design | 6 |
-| 5 | **The shared phone pieces**, drawn for Thomas in the design system first, then built in the SDK: the full-screen sheet (top bar with Back, title, menu; the keyboard rule), the bottom sheet (menus, pickers, the Modules list), the bottom action bar (one primary action), the offline banner, the "Not sent" state. The object window's phone sheet uses the full-screen sheet. | experience-design | 2 |
-| 6 | **The navigation model** as decided: the bottom bar, the Modules list, the top bar's Online and Leave, the call strip, the phone's own last view per space. Replaces the parts of the phone space bar it changes, cleanly. | experience-design | 3, 5, 15 |
+| 2 | **The phone decisions.** Thomas decides questions 1 to 7, 22 and 23 on the audit's results and the tester list; product-planner records them here and in [plan-phone-space-bar](plan-phone-space-bar.md)'s status, and orders steps 11 to 14. No build. Questions 1 to 7 decided 2026-11-01 and recorded here; the note in the phone space bar plan and the order of steps 11 to 14 wait. | Thomas, product-planner | 22, 23 (1 to 7 decided) |
+| 3 | **Foundations.** The width-class and input rules in `system.css` (the safe-area tokens if question 24 keeps them, the coarse-pointer tap areas everywhere, not only in the frame); one SDK answer a module can ask (`host.screen`, proposed: `{ width, touch, hover, installed, orientation }` with a `change` event); `check-breakpoints` extended; `check-touch` (static). | experience-design, server-development (the check) | 24 (1 and 2 decided) |
+| 4 | **History: one entry per sheet.** The host's sheet stack; the editor window, the kind picker, the menus' drill-in, Set up and the phases sheet open through it; back closes; entering a space pushes once. | experience-design | none (6 decided) |
+| 5 | **The shared phone pieces**, drawn for Thomas in the design system first, then built in the SDK: the full-screen sheet (top bar with Back, title, menu; the keyboard rule), the bottom sheet (menus, pickers, the Modules list), the bottom action bar (one primary action), the offline banner, the "Not sent" state. The object window's phone sheet uses the full-screen sheet. | experience-design | none for the sheets and the bottom bar (2 decided); 11 for the offline banner and the "Not sent" state; the bars' insets follow 24 |
+| 6 | **The navigation model** as decided: the bottom bar, the Modules list, the top bar's Online and Leave, the call strip, the phone's own last view per space. Replaces the parts of the phone space bar it changes, cleanly. | experience-design | 15 (3 and 5 decided) |
 | 7 | **`tools/check-phone.mjs`**: the audit's `measure.js` and its list of screens moved into `tools/` on the layer question 8 chooses (touch, `mobile: true`, 390, 360 and 844 by 390, the safe-area override, the keyboard approximation), with the audit's cases ("The checks to add"); added to `npm run check`. The cases for what is not built yet start as reports and become failures as steps 3 to 6 land. | server-development | 8 |
 | 8 | **The keyboard and fields:** the 16 px fields, `inputmode` and `enterkeyhint` everywhere, the phone's date and time pickers on touch, Chat's box above the keyboard. | experience-design | 9 |
 | 9 | **Offline and reconnect:** the banner, failed saves kept with **Try again**, Chat's **Send again**, refresh on `online` and on waking. | experience-design | 11 |
 | 10 | **Installability:** the manifest's fields and icons from the theme and the environment, linked from every page meant to install; `apple-touch-icon`; the install line in Profile; `check-manifest`. | server-development (the manifest), experience-design (the pages) | 10 |
-| 11 | **Chat on a phone:** read and reply, **Add a picture**, link chips opening sheets, `enterkeyhint="send"`. | experience-design | 3 |
-| 12 | **The Planner on a phone:** opens on today (the next stop and where), **Move to** in place of drag, add a stop from the bottom bar, the object window as its read view (with object window step 6). | experience-design | 4, 7 |
-| 13 | **Calendar, To-do, Places with Maps, Polls, Research, Budget, Assistant**, one step each, each opening on its proposed primary task with the drags replaced. | experience-design | 4, 7 |
+| 11 | **Chat on a phone:** read and reply, **Add a picture**, link chips opening sheets, `enterkeyhint="send"`. | experience-design | none (3 decided) |
+| 12 | **The Planner on a phone:** opens on today (the next stop and where), **Move to** in place of drag, add a stop from the bottom bar, the object window as its read view (with object window step 6). | experience-design | none (4 and 7 decided; its primary task is checked when the step starts) |
+| 13 | **Calendar, To-do, Places with Maps, Polls, Research, Budget, Assistant**, one step each, each opening on its primary task from the audit (corrected as each is reached) with the drags replaced. | experience-design | none (4 and 7 decided); the order inside the step follows 22 |
 | 14 | **Home, Set up and Profile on a phone**, then sign in and Manage; the host console last. | experience-design | 16 |
 | 15 | **Share out and share in:** `navigator.share` beside **Copy link**; the share target and "Send to a space" (after the Vault's first steps). | experience-design, server-development | 12 |
 | 16 | **The budget**, measured and, once set, checked. | server-development | 14 |
@@ -643,7 +694,7 @@ feedback builds for the module steps.
 Step 0 runs beside step 1 and blocks nothing. Steps 8 to 10 depend only on step 3 and can go in any order. Steps 11
 to 14 need steps 4 to 6, and their order (and the modules inside step 13) follows question 22: the default order until
 the counts say otherwise. Step 15 waits on the
-Vault.
+Vault. Steps 3 to 6 come before the object window's steps (decision 8); its step 1 waits for steps 3 to 5.
 
 ## Verify
 
@@ -676,19 +727,21 @@ Vault.
 
 - **[plan-object-window](plan-object-window.md)** (draft): its phone section (the full-screen sheet with Back, Save in
   the top bar, one bottom action, 44 px and 16 px, the keyboard, one history entry) is this plan's full-screen sheet
-  and history step. The planner suggests this plan owns the shared sheet and the history stack (steps 4 and 5) and the
-  object window uses them, so its step 1's phone part and its step 4's back handling are built once, here. If the
-  object window is built first, its sheet becomes the shared one and this plan's step 5 starts from it.
+  and history step. Decided (decision 8): this plan's foundations come first and own the shared sheet and the history
+  stack; the object window is built on them, so its step 1's phone part and its step 4's back handling are built once,
+  here. Its step 1 waits for this plan's steps 3 to 5. The object window plan records the same order under its own
+  decisions (its question 15, answered "after the phone foundations").
 - **[plan-call-as-module](plan-call-as-module.md)** (draft): the call strip and the Call tab's dot read
   `host.call.state`; the host draws the phone's bars, the call module draws only its content. Built before that plan,
   the strip reads today's `space.js` state and moves to `host.call.state` with that plan's step.
-- **[plan-phone-space-bar](plan-phone-space-bar.md)** (built): today's tab bar. Question 3's (a) keeps it; (b) and (c)
-  replace parts of it, which needs Thomas's word since its decisions are his.
+- **[plan-phone-space-bar](plan-phone-space-bar.md)** (built): today's tab bar. Decision 3 (the fixed bottom bar)
+  replaces its decisions 1 to 4 and 7 to 8 and `phoneTabs()` in step 6, cleanly. Its status is not yet marked; noting
+  this in it is part of step 2.
 - **[plan-unified-layout](plan-unified-layout.md)** (approved): its builders (`host.ui.list`, `host.ui.card`,
   `host.ui.table`, `host.ui.form`) should be phone-first when they come: a list's row actions in its menu, a table as
   rows on a phone, a form in the full-screen sheet.
 - **[plan-design-system](plan-design-system.md)**: the 44 px, 16 px and row rules; the approved Phone tab bar family
-  would be redrawn for question 3's (b) or (c); the new pieces in step 5 are drawn for approval before they are built.
+  is redrawn for the fixed bottom bar (decision 3); the new pieces in step 5 are drawn for approval before they are built.
 - **[plan-attachments-vault](plan-attachments-vault.md)** (approved): its phone parts stand; its share sheet and file
   chooser sheet are built on step 5's pieces.
 - **[plan-layout-menu](plan-layout-menu.md)** and **[plan-docked-limit](plan-docked-limit.md)**: no Layout and no
@@ -697,32 +750,54 @@ Vault.
 ## Open questions
 
 Each has options and the planner's suggestion, marked as such. The table above says which step each blocks.
+Questions 1 to 7 and 17 were decided on 2026-11-01 and are kept below with the answer, for the record.
+
+### Still open
+
+As of 2026-11-01, and the steps each blocks now:
+
+- **8**, the emulation layer: step 7.
+- **9**, date and time on a phone: step 8.
+- **10**, installing: step 10.
+- **11**, offline: step 9, and the offline banner and the "Not sent" state in step 5.
+- **12**, share in: step 15.
+- **13**, notifications: nothing here.
+- **14**, the performance budget: step 16.
+- **15**, what a phone remembers: step 6.
+- **16**, pages for the owner and the admin: step 14.
+- **18 to 21**, what a layout is and how it is counted: step 0.
+- **22**, the width targets and the default order: step 2's ordering of steps 11 to 14, and the order inside step 13.
+- **23**, the assumption until data exists: step 2.
+- **24**, the safe-area tokens: step 3, and how step 5's bars read the insets.
+- **25**, what to fix first from the audit: nothing; Leave's confirm (audit problem 2) is already being built on its
+  own (see "What was fixed since").
+
+### The questions
 
 1. **What makes the phone shape.** (a) Width only, as today: 640 px and below. (b) Width for the shape, input for the
    touch rules (tap areas, no hover, long press), independently. (c) A device guess from the user agent. (a) keeps
-   tablets on hover-only controls; (c) is wrong often and breaks on new devices. *Suggestion: (b).* Blocks steps 2
-   and 3.
+   tablets on hover-only controls; (c) is wrong often and breaks on new devices. *Suggestion: (b).* Decided 2026-11-01: (b), decision 1.
 2. **A phone held sideways.** (a) The desktop shape, as today (it is 844 px wide). (b) The compact shape when the
    pointer is coarse and the height is 500 px or less, with the call's tiles using the width. (c) Ask the installed app
    to stay portrait. (c) only works installed and stops a person watching the call sideways. *Suggestion: (b).*
-   Blocks step 3.
+   Decided 2026-11-01: (b), decision 2.
 3. **The bottom bar.** (a) Today's tab bar: every open view a tab, the rest in the **…**. (b) One module at a time
    with a switcher in the top bar (its name and a chevron), and the bottom bar holding that module's own actions.
    (c) A fixed bar: Call, Chat, the module being used, and **Modules** (a full-screen list); Leave in the top bar's
    menu, Online beside the space's name. (a) moves tabs as modules open and close; (b) hides the call and Chat a level
-   down. *Suggestion: (c).* Blocks steps 2 and 6.
+   down. *Suggestion: (c).* Decided 2026-11-01: (c), decision 3.
 4. **Each module's primary phone task.** The audit table proposes one per module (the Planner: what is next today and
    where; Budget: add a cost on the spot; Polls: vote). (a) Take them. (b) Correct them row by row. *Suggestion: (b),
-   in the review of step 1.* Blocks steps 12 and 13.
+   in the review of step 1.* Decided 2026-11-01: (a) for now, each module's corrected when its step is reached; decision 4.
 5. **The call while another view shows.** (a) The tab's dot only, as today. (b) A call strip above the bottom bar:
    who is talking, the microphone, hang up. (c) A floating picture of the speaker that can be moved. (c) is a drag
-   and covers content. *Suggestion: (b).* Blocks step 6.
+   and covers content. *Suggestion: (b).* Decided 2026-11-01: (b), decision 5.
 6. **Back and views.** (a) Switching views replaces the history entry; sheets push one each; back from a space's base
    goes to Home, asking first while in the call. (b) Switching views pushes too, so back walks through them. (c) No
-   history; Back buttons only. (c) leaves the back gesture leaving the page. *Suggestion: (a).* Blocks step 4.
+   history; Back buttons only. (c) leaves the back gesture leaving the page. *Suggestion: (a).* Decided 2026-11-01: (a), decision 6.
 7. **Drag on a phone.** (a) Menu entries only (**Move to**, **Move up**, **Move down**). (b) Long press to pick up and
    drag. (c) Menu entries first, long press later where a list is reordered often. (b) fights scrolling and is
-   invisible. *Suggestion: (c).* Blocks steps 12 and 13.
+   invisible. *Suggestion: (c).* Decided 2026-11-01: (c), decision 7.
 8. **The emulation layer.** (a) Extend `tools/shots.mjs` over the DevTools protocol; no new dependency. (b) Add
    Playwright as a dev dependency, for `hasTouch`, `isMobile` and a WebKit build. Evidence from the audit: Playwright's
    mobile emulation worked directly in this container (a global install of 1.63, not a repository dependency), and
@@ -752,7 +827,10 @@ Each has options and the planner's suggestion, marked as such. The table above s
     redesigned. (c) Manage and the host console say "Open this on a computer." *Suggestion: (b).* Blocks step 14.
 17. **Where this goes in the queue.** (a) Steps 1 and 2 now, the rest after the object window's steps 1 to 4. (b) Now,
     ahead of the object window, so the window is built on the shared sheet. (c) After unified layout slices 10 to 13.
-    *Suggestion: (a),* since the audit changes nothing and informs both plans. Blocks the start.
+    *Suggestion: (a),* since the audit changes nothing and informs both plans. Decided 2026-11-01: the phone foundations (steps 1
+    to 6) before the object window's steps, the object window built on the shared sheet and the history stack;
+    decision 8. As relayed this was "(a)", the suggestion, but its content is option (b) as written here; the content
+    is what is recorded.
 18. **What a layout is, for counting.** (a) The window's width class only. (b) The window's class, each shown
     module's width bucket and how it is shown, input, orientation and display mode. (c) (b) plus exact pixel widths.
     (a) misses a narrow docked module on a wide window; (c) is more identifying and the buckets already decide
@@ -786,4 +864,5 @@ Each has options and the planner's suggestion, marked as such. The table above s
     into step 13). (c) Fix the plain defects now (`/modules/todo` opening the Calendar, the host console's sideways
     scroll, the invisible call controls, the 13 px search field) and fold the rest. (a) builds pieces steps 4 and 6
     would replace; the defects in (c) are wrong under any design. *Suggestion: (c).* Blocks nothing; the defects can go
-    to bug-fixes at once.
+    to bug-fixes at once. Since asked, Leave's confirm (one of (a)'s five) is being built on its own (Thomas,
+    2026-11-01).

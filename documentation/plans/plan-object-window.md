@@ -105,6 +105,9 @@ Thomas, 2026-10-30:
    one, gets the same window by asking for it.
 5. **Phone experiences are designed for the phone,** not a shrunk desktop. A large share of use will be on phones.
 
+Thomas, 2026-11-01: question 15 (the queue) is answered "after the phone foundations": step 1 waits for
+[plan-phone-experience](plan-phone-experience.md)'s steps 3 to 5, and the window is built on its shared sheet and history stack.
+
 ## The contract (proposed)
 
 Everything in this section is the planner's proposal. Where an open question would change it, the question's number
