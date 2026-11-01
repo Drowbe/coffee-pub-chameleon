@@ -5485,6 +5485,10 @@ async function returnFromAside() {
 // Same nudge /api/asides/return already sends the others in
 // returnFromAside() above; I just never reconnect anywhere myself afterward.
 async function leaveSpace() {
+  // On a call, Leave drops it, and sits beside the Online tab: ask first (Thomas, 2026-11-01). Off a call it is one tap.
+  // A kick or the space ending does not come through here (leaveKicked, leaveSpaceNow), so they never ask.
+  if (inCall && !await confirmDialog({ title: `Leave and end your call?`, message: `You leave this ${word('space')} and the call.`, action: 'Leave', cancel: 'Stay', kind: 'destructive' })) return;
+  if (!entered) return; // the space ended while the question was open
   if (currentSpace?.isAside) {
     await api('POST', '/api/asides/return').catch(() => {});
   }
