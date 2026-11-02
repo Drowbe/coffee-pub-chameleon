@@ -8,7 +8,8 @@ used, cut short, the ask box from availability), the AI usage view, and later th
 and the AI inbox; quality-assurance reviews the policy layer and its redaction as a security change, and later the
 tokens, the OAuth pages and the MCP endpoint; content-manager documents.
 
-**Status:** draft for Thomas, first written 2026-11-02; four decisions made on 2026-11-02 after the AI audit (below).
+**Status:** draft for Thomas, first written 2026-11-02; eight decisions made on 2026-11-02 after the AI audit (below: four
+on the direction, then four answers to open questions 12, 13, 15 and 17).
 Slice 1, the prompt layer, is planned here and not built; it waits on the open questions marked as blocking it. The
 cheap must-fixes from the audit are being built now, outside this plan (see "Being built now"). From GitHub #382,
 raised by Thomas on 2026-11-02: today "a person pastes our custom prompt into the client, copies the JSON it returns,
@@ -167,6 +168,20 @@ Thomas, 2026-11-02, after the AI audit:
    elsewhere. Reason: an answer is stored in the space it was asked in and can be made public there (ai-12), and the AI
    setup page promises "never another" space.
 
+Thomas, 2026-11-02, answering open questions 12, 13, 15 and 17:
+
+5. **Use AI is on by default for moderators and members, off for guests** (open question 17). Guests are refused
+   whatever their role says (decision 1). Reason: Chat's AI stays available to members as it is today; the monthly
+   allowance, the role tick and the space's switch hold cost.
+6. **A turn is a question and its answer.** Up to 6 turns, capped at 3,000 tokens, the oldest turns dropped first (open
+   question 12).
+7. **Relevant objects are chosen by word match** on the space's object summaries, the best 15, plus the dated objects
+   in the next 7 days; objects the person can't read never enter (open question 13).
+8. **The owner sets what AI may see** (open question 15, answered with none of its options): "the space owner can set
+   what to send." Environment-wide objects, asks with no space, and the other parts of the rollup are governed by an
+   owner's setting, **What AI may see**, designed below. The setting can only narrow what is sent, never widen it past
+   the person's own read rights or past the current space.
+
 ### Choices the plan made
 
 Thomas may overrule these; they are not his decisions.
@@ -174,7 +189,8 @@ Thomas may overrule these; they are not his decisions.
 - **Data is JSON, instructions are not.** The system message holds only instructions; the context, the history and the
   material go as data in their own messages, JSON-encoded, so no text in an object can close a marker or read as an
   instruction. The question is its own last message, never spliced into a sentence.
-- **The asker's name and role word go in the context;** no other member's name does.
+- **The asker's name and role word go in the context;** other members' names only when the owner's setting allows
+  (decision 8).
 - **Default questions move to the registry.** A module asking about an object sends no question, and the template
   supplies "What should I know about <title>?". Research and the Assistant each take a patch version bump.
 - **`summarise` stays a template** although no bundled module uses it, because `host.ai.ask` offers it to modules.
@@ -263,9 +279,10 @@ the real count after, so two questions at once can't pass the allowance together
 
 **Material is admitted one object at a time** by `aiPolicy.admit(who, space, ref)`:
 
-- The object must be in the current space (`ref.scope === 'space'` and `ref.space === space.id`); anything else is
-  left out and the answer says so (decision 4). Environment-wide objects are left out until open question 15 is
-  answered.
+- The object must be in the current space (`ref.scope === 'space'` and `ref.space === space.id`), or an
+  environment-wide object (`ref.scope === 'environment'`) where the owner's setting allows it; an object of another
+  space is left out whatever the setting says, and the answer says so (decision 4).
+- It must pass the owner's setting, **What AI may see** (below): its module allowed, its category on.
 - It is read with `resolveRef` as the person at that moment; what they can't read is left out, never named.
 - **Redaction** before anything is rendered: no keys, tokens, share or guest links, the OBS access key, invitation
   addresses, other people's private messages or another person's person-scoped data; a Vault file's name only for
@@ -278,6 +295,73 @@ availability. Provider detail goes to the server log, never to the page (ai-16).
 **Bringing in pasted objects** calls no AI; whether it follows this rule is open question 18. Until then it keeps
 today's rule.
 
+### What AI may see (the owner's setting, decision 8)
+
+An owner chooses, for the environment and for each space, which parts of the context may be sent to the AI. It is
+part of the policy layer and built in step 2.
+
+**The switches.** Each is a category of what the context builder can send:
+
+| Key | What it sends | Default |
+|---|---|---|
+| `attached` | Objects the asker attaches from this space, with their text | On |
+| `relevant` | Summaries of this space's objects chosen for the question (decision 7) | On |
+| `linked` | Summaries of the objects linked to an attached object | On |
+| `history` | The asker's own earlier turns (decision 6) | On |
+| `chat` | The space's recent public chat messages the asker can read: the last 20, up to 1,500 tokens, never a private one | Off |
+| `members` | The display names and role words of the space's members (never a login, an address or a contact detail) | Off |
+| `environment` | Environment-wide objects: `never`, `attached` (only when the asker attaches one), or `readable` (also chosen as relevant, when the asker can read them) | `attached` |
+| `modules` | The modules whose objects may be sent: `all`, or a list of module ids | `all` |
+
+Always sent, not switchable: the space's name, today's date, the phases and their dates, and the asker's own name and
+role word (the rollup's first three parts). Turning AI off for the space stays the space's **Turn AI off** switch.
+
+**Safe defaults** are the table's: the current space only; environment-wide objects only when the asker attaches
+them; no other member's names; no chat messages.
+
+**Where it lives and who changes it.**
+
+- **The environment's default:** on Manage > Modules, the AI service tab, a **What AI may see** section with the
+  switches above. Stored with the AI setting in `DATA_DIR/ai.json` as `sees`, changed by `PUT /api/ai`
+  (`requireOwner`). It is also the setting for asks with no space (a module on an environment-wide page).
+- **A space's own:** in the space's Set up, the AI section, under **Turn AI off in this <space>**: **What AI may see**,
+  either **The <environment>'s choice** (the default) or **Choose for this <space>**, which shows the same switches.
+  Stored as the space field `aiSees` (absent means the environment's choice), changed by `PATCH /api/spaces/:id`
+  with `aiSees` (an object of the keys above, or `null` to go back to the environment's choice). Owners and the
+  admin only, as **Turn AI off** is: `aiSees` is not in `MODERATOR_SPACE_FIELDS`.
+- Unknown keys or values are refused (400) with a sentence naming the allowed ones. A module id no longer enabled is
+  dropped when read. No migration: a space without the field follows the environment, an environment without `sees`
+  has the defaults.
+- **Who sees it:** owners and the admin on Set up and Manage. Members and guests do not see the setting itself; they
+  see its effect on each answer (below).
+
+**What the policy enforces.** What is sent is the narrowest of three: the person's own read rights now, the current
+space (never another, decision 4), and the owner's setting. The setting can only narrow; no value of it lets in an
+object the person can't read or one from another space. The context builder asks the policy for the effective
+setting once per question and builds only what it allows; `aiPolicy.admit` checks each object against it again.
+
+**How it appears to the asker.** Each answer carries one line, **AI used:**, built from what was actually sent:
+"AI used: 2 attached notes, 9 other <objects> from <space>, 3 linked <objects>, your last 4 questions" (and "the
+chat", "who is in this <space>" when those were on). When the setting kept something out that the asker attached, a
+second line says so: "Not sent: this <space> doesn't send <module> <objects> to AI." The answer's stored message keeps
+the counts and the categories (`sent`), so the line reads the same later.
+
+**The record** of each call (Observability) lists the categories that were on and the counts sent per category.
+
+### Who may see the rollup's parts (check cases for step 2)
+
+- The defaults: an asker's attached environment-wide object is sent; one chosen as relevant is not; no member names,
+  no chat messages.
+- An owner turns a module off for a space: its objects are never in the rollup; attaching one gives the "Not sent"
+  line; the record shows it left out.
+- `environment: readable`, and a member who can't read that module: the object is not sent and not named.
+- `members` on: names and role words only; a guest's name only while they are in the space.
+- `chat` on: only public messages, only ones the asker can read, never another space's.
+- A moderator sending `aiSees` gets 403; a member gets 403; an owner and the admin succeed; `null` returns to the
+  environment's choice; an unknown key or value gets 400.
+- No value of the setting sends an object from another space.
+- A module asking from an environment-wide page uses the environment's setting, with no space part in the rollup.
+
 ### The context builder
 
 `buildContext(who, space, { template, question, refs, tz })` answers `{ context, history, material, leftOut, budget }`.
@@ -285,8 +369,9 @@ It runs after the policy and only reads through it. It is built fresh for every 
 nothing it makes is stored except the record below.
 
 **History (decision 2).** The person's own private AI messages in this space (`chatHistory`, the messages with
-`command: 'ai'` and their answers, paired by `replyTo`), newest first, up to 6 turns, then cut to the history budget
-oldest first. What a turn is, and the budget, are open question 12. Never another person's messages, never another
+`command: 'ai'` and their answers, paired by `replyTo`), newest first. A turn is a question and its answer;
+up to 6 turns, capped at 3,000 tokens, the oldest turns dropped first (decision 6). Only when the owner's setting has
+`history` on. Never another person's messages, never another
 space's, never a deleted one. An answer goes back as its text and the titles of its objects, not their details. A
 message the person made public still counts as theirs.
 
@@ -298,12 +383,14 @@ message the person made public still counts as theirs.
 | Dates | Today's date and weekday in the asker's time zone (open question 14); the space's phases from the template with their dates (`space.phases`, `public/phases.js`), and which phase today is in | 12 phases |
 | The person | The asker's display name and role word | |
 | Attached objects | The objects the person attached, with their text, as `material` | 12 objects, the material budget |
-| Relevant objects | Summaries (kind, title, when, place, no text) of the current space's objects chosen for the question (open question 13) | 15 objects |
+| Relevant objects | Summaries (kind, title, when, place, no text) of the current space's objects: the best 15 by word match of the question (and the last turn) against the summaries `GET /api/objects/search` makes, plus every dated object from today to 7 days ahead (decision 7) | 15 matched, plus the dated ones up to 30 |
 | Linked objects | For each attached object, the objects it links to and that link to it (`module-links.js`, one step), as summaries | 5 per object, 20 in all |
+| Chat | The space's last public chat messages the asker can read, only when the owner's setting has `chat` on | 20 messages, 1,500 tokens |
+| Members | The members' display names and role words, only when the owner's setting has `members` on | 50 names |
 
-Every object in the rollup goes through `aiPolicy.admit` as the person: from this space only, readable by them now,
-redacted. An object they can't read never enters, and neither does the fact that it exists. The rollup holds no chat
-messages in slice 1.
+Every part after the person is sent only when the owner's setting allows it (What AI may see, above). Every object in
+the rollup goes through `aiPolicy.admit` as the person: from this space (or environment-wide, as the setting allows),
+readable by them now, redacted. An object they can't read never enters, and neither does the fact that it exists.
 
 **Freshness and caching.** The rollup is read from live data for each question, so an edit made a second before shows.
 The server keeps no cache in slice 1; the space part is small and the objects are per person, so a cache would have to
@@ -316,8 +403,8 @@ public, what others see of `used` is open question 16.
 
 **The budget** (numbers proposed in open question 22). Tokens are estimated from characters before sending (about
 four characters to a token, rounded up) and the real counts come from the provider afterwards. When the prompt is over
-its budget, cut in this order and record each cut in `leftOut`: linked summaries, then relevant summaries (lowest
-first), then history (oldest first, down to the latest turn), then the attached objects' text (each shortened evenly,
+its budget, cut in this order and record each cut in `leftOut`: chat messages (oldest first), then linked summaries,
+then relevant summaries (lowest first), then history (oldest first, down to the latest turn), then the attached objects' text (each shortened evenly,
 the object itself kept). The question is never cut: one over 1,000 characters is refused at the route.
 
 ### The provider adapters
@@ -374,9 +461,10 @@ Each existing prompt moves, and the old code is deleted in the same step; no old
 
 Beyond the must-fixes already being built (the ask box from availability, chips for attached objects, `/ai` working):
 
-- **Under an answer, one line of what it used:** the attached objects as links, then "and N other <objects> from
-  <space>" and "your last N questions" when the rollup and history were used, and "Some <objects> were left out to
-  fit" when `leftOut` is not empty. Citations `[1]` link to the object they name (ai-24).
+- **Under an answer, the AI used: line** (What AI may see, above): the attached objects as links, then the counts of
+  the other parts sent, the "Not sent" line when the owner's setting kept out something attached, and "Some
+  <objects> were left out to fit" when `leftOut` is not empty. Citations `[1]` link to the object they name (ai-24).
+- **The What AI may see section** on the space's Set up and on Manage's AI service tab, for owners and the admin.
 - **A cut-short answer** says "The answer was cut short." under it, and keeps the objects that were complete.
 - **A question over 1,000 characters** is refused in the box before sending, with the count.
 - Answers look as they do now otherwise; nothing shows the template version to a person.
@@ -520,20 +608,23 @@ Starts once the must-fixes being built now are in, and once the open questions m
 2. **The policy layer (M).** server-development: `server/ai-policy.js` with decision 1's rule, the door rules, the
    reserved cap, the rate limit, space pinning, the redaction list and the refusal sentences; every AI and availability
    route switched to it, and `chatAiRefusal`, `chatAiSpace`, `aiAllowed` deleted (`importRefusal` per open question 18).
-   The Roles page's label becomes **Use AI** and its defaults follow open question 17. Security review by
-   quality-assurance. Blocked by open questions 15 and 17 (and 18 for the import door).
+   The Roles page's label becomes **Use AI**, on by default for moderators and members (decision 5, `ROLE_DEFAULTS` in
+   `server/store.js`; test data may be reset). **What AI may see:** `sees` in the AI setting and `aiSees` on a space,
+   their cleaning and refusals, the effective setting, and its check cases (above). experience-design: the What AI may
+   see section on Set up and on Manage's AI service tab. Security review by quality-assurance. Blocked only by open
+   question 18, for the import door.
 3. **The registry and the adapters (L).** server-development: `server/prompts/` with `ask`, `summarise`, `tags` and
    `paste`, typed inputs, the output contract, `render` and `parse`; `server/ai-providers.js` with structured output,
    the finish reason, token counts and the key binding; every prompt migrated (the list above) and the old prompt code
    in `server/ai.js` and `server/object-format.js` deleted. Material only (no rollup or history yet). Golden files per
    template. Blocked by open questions 19 and 21.
 4. **The context builder (M).** server-development: `server/ai-context.js` with the history window, the rollup, the
-   budget and `leftOut`; `tz` accepted on the ask routes. Golden files for the rollup per role. Blocked by open
-   questions 12, 13 and 14.
+   budget and `leftOut`, each part built only as the owner's setting allows; `sent` stored on the answer; `tz`
+   accepted on the ask routes. Golden files for the rollup per role and per setting. Blocked by open question 14.
 5. **Records and usage (S).** server-development: `DATA_DIR/ai-log.jsonl`, `ai-usage.json` by template, person and
    space, `GET /api/ai/usage` for owners and its host console counterpart, the activity line. Blocked by open
    questions 20 (the debugging switch only) and 23 (how long records are kept).
-6. **What a person sees (M).** experience-design: the "what it used" line, linked citations, "cut short", the question
+6. **What a person sees (M).** experience-design: the AI used: and Not sent lines, linked citations, "cut short", the question
    length in the box, `tz` sent with each ask, the default questions removed from Research, module-host and the
    Assistant (Research and the Assistant each a patch version bump), the AI usage view on Manage and the host
    console. Blocked by open question 16 for public answers.
@@ -578,8 +669,10 @@ Starts once the must-fixes being built now are in, and once the open questions m
   oldest go first; another person's messages, another space's, and deleted ones never appear.
 - **Rollup contents per role:** as owner, moderator, member, a member whose role can't read a module, a member without
   `useAi`, a member with `chat` off, and a guest (refused); an object attached from another space is left out and said
-  to be; an environment-wide object follows open question 15; a linked object the person can't read never appears,
-  and its existence is not named; redacted fields never appear in any rendered prompt.
+  to be; a linked object the person can't read never appears, and its existence is not named; redacted fields never
+  appear in any rendered prompt; the relevant objects are the best 15 by word match plus the next 7 days' dated ones.
+- **What AI may see:** the check cases listed with the setting, each also as a golden rollup: the defaults, each
+  switch off in turn, a module left out, `environment` at each value, and an ask with no space.
 - **The policy:** every refusal, status and sentence through `POST` and `GET /api/spaces/:id/ai` and
   `/api/modules/:id/ai`; availability agrees with the ask every time; two asks at once can't pass the allowance; a
   refused or failed ask doesn't use the rate limit.
@@ -611,8 +704,10 @@ No step needs a LiveKit call.
   privilege once tools exist.
 - **The rollup spends tokens** on every question. The budget and the per-part caps hold it, the records show it, and
   the numbers can be lowered without a new version of a template.
-- **Decision 1 changes who has AI by default:** with `useAi` off for members, as today, members lose Chat's AI until an
-  owner ticks it (open question 17).
+- **Use AI on by default** (decision 5) means every member's questions spend the environment's allowance until an
+  owner unticks it for a role; the monthly allowance is the backstop.
+- **An owner can make the AI less useful** by turning parts of What AI may see off; the AI used: line is what tells
+  the asker why an answer knew less.
 - **Structured output differs by provider and moves;** the adapters must be checked against the providers when built,
   not against this page.
 - **The clients move.** ChatGPT's and Claude's connector rules and MCP's authorization spec change often.
@@ -653,35 +748,24 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
     same as open question 23. Blocks step 10.
 11. **The word on Profile** for tokens. (a) "Connected apps"; (b) "AI connections"; (c) "Outside AI". Lean: (a).
     Blocks step 10.
-12. **What a "turn" is, and the history budget.** (a) A question and its answer, so 6 turns are up to 12 messages,
-    capped at 3,000 tokens; (b) one message, so 6 messages (3 questions and their answers); (c) (a) with a smaller cap,
-    1,500 tokens. Lean: (a), since a follow-up often points back two or three questions. Blocks step 4.
-13. **How the rollup chooses "the objects relevant to the question".** (a) Words of the question (and of the last
-    turn) matched against the current space's object summaries, the same summaries as `GET /api/objects/search`, the
-    best 15, plus every dated object from today to seven days ahead; (b) only the dated objects near today and the
-    attached ones, no word matching; (c) a first, cheap model call that picks them (a second call for every question).
-    Lean: (a); it is cheap, explainable and needs no second call; tools later let the model look further. Blocks
-    step 4.
+12. **What a "turn" is, and the history budget.** Answered 2026-11-02: a question and its answer, up to 6 turns,
+    capped at 3,000 tokens, the oldest dropped first (decision 6).
+13. **How the rollup chooses "the objects relevant to the question".** Answered 2026-11-02: word match on the
+    object summaries, the best 15, plus the dated objects in the next 7 days; objects the person can't read never
+    enter (decision 7).
 14. **Which time zone "today" is in.** (a) The asker's browser time zone, sent with each ask as module-host already
     sends `tz` with a data write, the server's (`ics.serverZone()`) when absent; (b) the server's always; (c) a new time
     zone setting per space. Lean: (a); (c) is better for a trip across time zones but is a new setting, and can come
     later. Blocks step 4.
-15. **Environment-wide objects** (scope `environment`, such as the environment's calendar or a module mounted on the
-    environment rather than a space). They are not another space, but not this space either. (a) Never sent, the strict
-    reading of decision 3; (b) sent when the person can read them; (c) sent only when attached by the person. Also: a
-    module asking from an environment-wide page (no space) gets (a) no rollup and only its own environment-wide
-    objects, or (b) is refused. Lean: (c), and for a module with no space, its own environment-wide objects with no
-    rollup. Blocks step 2.
+15. **Environment-wide objects and asks with no space.** Answered 2026-11-02, with none of the drafted options: the
+    owner sets what to send (decision 8, What AI may see).
 16. **A public answer that drew on objects some members can't read** (the rest of ai-12, inside one space: a module
     hidden from guests, person-scoped data). (a) Allowed; the "what it used" line shows each reader only what they may
     open, and "and N others"; (b) making it public is refused when any member can't read something it used; (c)
     allowed, nothing shown. Lean: (a); the answer's words are the asker's to share, as a message they type would be.
     Blocks step 6 only.
-17. **`useAi`'s defaults, now that it gates Chat too.** (a) On for moderators and members, so Chat behaves as it does
-    today and owners turn it off where cost matters; (b) off as today, so only owners have AI until they tick it for a
-    role; (c) on for moderators only. Lean: (a); the monthly allowance and the space switch already hold cost, and
-    members expect the Assistant view to answer. Blocks step 2 (the defaults in `server/store.js` only; test data may
-    be reset).
+17. **`useAi`'s defaults, now that it gates Chat too.** Answered 2026-11-02: on for moderators and members, off for
+    guests, who are refused whatever it says (decision 5).
 18. **Bringing in pasted objects** (`importRefusal`), which calls no AI but shares Chat's rule today. (a) Not AI use:
     signed in, not a guest, the module's write access; neither `useAi` nor the space's AI switch; (b) the AI rule, as
     now. Lean: (a); pasting is how a person without the app's AI brings objects in. Blocks step 2 for that door only.
@@ -697,7 +781,7 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
     older image. Lean: (a); one previous version is cheap to keep and a bad prompt is fixed without a release. Blocks
     step 3's shape.
 22. **The token budgets** (proposed numbers): an `ask` prompt up to 12,000 tokens in all (instructions 1,500, the
-    rollup 2,500, history 3,000 per open question 12, attached material 5,000), answers up to 1,500 tokens (1,200
+    rollup 2,500, history 3,000 (decision 6), attached material 5,000), answers up to 1,500 tokens (1,200
     today); `summarise` the same without history; `tags` 4,000 in and 200 out. Lean: these, tuned once real counts are
     recorded. Blocks nothing; they are constants in each template.
 23. **How long the per-call records are kept.** (a) 30 days, as private AI messages are; (b) 90 days; (c) the last
@@ -707,6 +791,18 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
     view being the assistant; (b) keep the module (as `optional`, per the must-fix) and remove only its `use`
     permission. Lean: (a). Blocks nothing in slice 1 beyond step 6's version bump.
 
-Blocking slice 1: 15 and 17 block step 2 (18 its import door); 19 and 21 block step 3; 12, 13 and 14 block step 4;
-16 blocks part of step 6; 20 and 23 block parts of step 5. Questions 1, 3, 4, 5, 7, 10 and 11 block step 10 onward;
-6 blocks step 8; 8 blocks step 14; 2, 22 and 24 block nothing now.
+Still blocking slice 1, with the suggestion for each:
+
+- **Step 2:** open question 18 (pasted objects), for the import door only. Suggestion: (a), not AI use.
+- **Step 3:** open question 19 (structured output from a `compatible` service). Suggestion: (a), try it and fall back
+  to prompt-then-parse, remembered per saved setting. Open question 21 (rolling a prompt back). Suggestion: (a), an
+  environment variable pinning the one previous version.
+- **Step 4:** open question 14 (which time zone today is in). Suggestion: (a), the asker's browser zone, the server's
+  as the fallback.
+- **Step 5:** open question 20 (logging full prompts). Suggestion: (b), an environment variable, off by default and
+  refused on a host. Open question 23 (how long records are kept). Suggestion: (a), 30 days.
+- **Step 6:** open question 16 (a public answer that drew on objects some members can't read). Suggestion: (a),
+  allowed, each reader's AI used: line showing only what they may open.
+
+Steps 1 and 7 are blocked by nothing. Questions 1, 3, 4, 5, 7, 10 and 11 block step 10 onward; 6 blocks step 8; 8
+blocks step 14; 2, 22 and 24 block nothing now.
