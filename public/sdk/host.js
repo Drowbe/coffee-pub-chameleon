@@ -2290,7 +2290,9 @@
 
     // Ask in Chat on a space's canvas: posts a private /ai question (the reply shows only to the person who asked).
     // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`.
+    //   available()  -> { available }   false off a space's canvas (a module's own page), where ask rejects: hide the button there.
     chat: {
+      available: () => call('chat.available', {}),
       ask: (o) => call('chat.ask', { question: o && o.question, refs: o && o.refs }),
     },
 
