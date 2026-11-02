@@ -4,6 +4,8 @@
  * The libraries are written to be inlined into a module page, so they are loaded here as a function body.
  */
 import fs from 'node:fs';
+import vm from 'node:vm';
+import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
 const read = (name) => fs.readFileSync(new URL(`../modules/maps/src/${name}`, import.meta.url), 'utf8');
@@ -13,7 +15,7 @@ const win = { addEventListener() {}, location: { search: '' } };
 win.parent = win;
 new Function('window', 'document', sdk)(win, { createElement: (tag) => ({ tag }) }); // ready() adds the SDK's shared styles: a <style> stand-in
 const geo = win.createHost({ call: async () => ({}), root: { appendChild() {} }, rootElement: {} }).host.util.geo;
-const names = ['TINTS', 'cleanColors', 'pinColor', 'cssColor', 'pinLook', 'markedFor', 'showHow', 'clusterPoints', 'boundsOf', 'rgbOf', 'mixRgb', 'buildStyle', 'buildPictureStyle', 'pictureLimits', 'capZoom', 'WORLD_MAX_ZOOM'];
+const names = ['TINTS', 'cleanColors', 'pinColor', 'cssColor', 'pinLook', 'markedFor', 'showHow', 'clusterPoints', 'boundsOf', 'rgbOf', 'mixRgb', 'buildStyle', 'buildPictureStyle', 'mapColours', 'guardMap', 'MAP_MIN', 'ratioOf', 'hueGap', 'pictureLimits', 'capZoom', 'WORLD_MAX_ZOOM'];
 const lib = new Function('geo', `${read('maps-lib-c-geo.js')}\n${read('maps-lib-d-style.js')}\n${read('maps-lib-e-pins.js')}\nreturn { ${names.join(', ')} };`)(geo);
 
 let n = 0;
@@ -88,10 +90,103 @@ test('the map is readable in both themes: water apart from land, one road ladder
   const css = fs.readFileSync(new URL('../public/sdk/system.css', import.meta.url), 'utf8');
   for (const name of ['land', 'water', 'park', 'wood', 'road-minor', 'road-medium', 'road-major', 'building', 'label', 'boundary']) assert.ok(new RegExp(`--map-${name}:`).test(css), `system.css defines --map-${name}`);
   const light = css.slice(css.indexOf(':root[data-theme-mode="light"],'));
-  for (const name of ['land', 'water', 'road-minor', 'road-medium', 'road-major', 'building', 'label']) assert.ok(new RegExp(`--map-${name}:`).test(light.slice(0, 2500)), `the light block redefines --map-${name}`);
+  for (const name of ['land', 'water', 'road-minor', 'road-medium', 'road-major', 'building']) assert.ok(new RegExp(`--map-${name}:`).test(light.slice(0, 2500)), `the light block redefines --map-${name}`);
   assert.ok(!/--map-[a-z-]+:[^;]*(#[0-9a-f]{3}|\brgba?\()/i.test(css), 'the map tokens hold no raw colour');
   const page = read('maps.js');
   assert.match(page, /--map-\$\{name\}/, 'the page reads the --map-* tokens and hands them to the style');
+});
+
+test('the map reads on every shipped theme, dark and light, and on a theme that sets the map badly', () => {
+  // The shipped themes (the default, Strong Coffee, whose light set is Cream, and the built-in ones), each mode, as the page draws
+  // them: the `--map-*` tokens of public/sdk/system.css worked out from the theme's own colours (a small evaluator for the
+  // `var()` and `color-mix(in srgb ...)` forms those lines use), handed to the style as the page hands them. Then every pair the
+  // reader needs is measured on the colours the style gives the map library, and none may fall below its minimum (lib.MAP_MIN).
+  const { DEFAULT_THEME } = createRequire(import.meta.url)('../server/store.js');
+  const storeSrc = fs.readFileSync(new URL('../server/store.js', import.meta.url), 'utf8');
+  const themes = [DEFAULT_THEME, ...vm.runInNewContext(/const BUILTIN_THEMES = (\[[\s\S]*?\n\]);/.exec(storeSrc)[1])];
+  assert.ok(themes.length >= 3, 'the shipped themes were found');
+  const css = fs.readFileSync(new URL('../public/sdk/system.css', import.meta.url), 'utf8');
+  const lightAt = css.indexOf(':root[data-theme-mode="light"],');
+  const decls = (text) => Object.fromEntries([...text.matchAll(/--map-([a-z-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].replace(/\/\*.*?\*\//g, '').trim()]));
+  const dark = decls(css.slice(0, lightAt));
+  const light = { ...dark, ...decls(css.slice(lightAt, css.indexOf('@media', lightAt))) };
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const TINTS = { dark: { blue: '#6aa6e8', green: '#6fbf73' }, light: { blue: '#2a62b0', green: '#2e7d32' } }; // public/style.css and host.css
+  const mix = (a, b, p) => [0, 1, 2].map((i) => a[i] * p / 100 + b[i] * (100 - p) / 100);
+  const evalCss = (e, env) => {
+    let m = /^var\(--([a-z-]+)\)$/.exec(e.trim());
+    if (m) { assert.ok(env[m[1]], `--${m[1]} is known`); return env[m[1]]; }
+    m = /^color-mix\(in srgb,\s*(.*)\)$/.exec(e.trim());
+    assert.ok(m, `a form this check reads: ${e}`);
+    const parts = []; let cur = ''; let depth = 0;
+    for (const ch of m[1]) { if (ch === '(') depth++; if (ch === ')') depth--; if (ch === ',' && !depth) { parts.push(cur); cur = ''; } else cur += ch; }
+    parts.push(cur);
+    const pa = /^(.*)\s+([\d.]+)%$/.exec(parts[0].trim());
+    return mix(evalCss(pa[1], env), evalCss(parts[1], env), Number(pa[2]));
+  };
+  const KEYS = { land: 'land', water: 'water', park: 'park', wood: 'wood', 'road-minor': 'roadMinor', 'road-medium': 'roadMedium', 'road-major': 'roadMajor', building: 'building', label: 'label', boundary: 'boundary' };
+  const drawn = (tok, map) => {
+    const style = lib.buildStyle(tok && map ? { ...tok, map } : tok, { tiles: 't', glyphs: 'g' });
+    const L = (id) => style.layers.find((l) => l.id === id);
+    const c = (id, prop) => lib.rgbOf(L(id).paint[prop]);
+    return { style, L, c, land: c('earth', 'fill-color'), water: c('water', 'fill-color') };
+  };
+  const MIN = lib.MAP_MIN;
+  const hold = (name, tok, map, water3 = true) => {
+    const { style, L, c, land, water } = drawn(tok, map);
+    const need = (what, got, min) => assert.ok(got >= min, `${name}: ${what} is ${got.toFixed(2)}:1, needs ${min}`);
+    need('water from the land', lib.ratioOf(water, land), MIN.water);
+    // (A land that is itself the water's blue, or one the tint is no lighter or darker than, cannot always be told apart by both; then lightness wins.)
+    if (lib.hueGap(tok.blue, land) >= 20 && lib.ratioOf(tok.blue, land) >= MIN.water) assert.ok(lib.hueGap(water, land) >= 14, `${name}: the water has a blue of its own (${lib.hueGap(water, land).toFixed(1)})`);
+    need('a park from the land', lib.ratioOf(c('landuse', 'fill-color'), land), MIN.park);
+    need('a wood from the land', lib.ratioOf(c('landcover', 'fill-color'), land), MIN.wood);
+    need('a building from the land', lib.ratioOf(c('buildings', 'fill-color'), land), MIN.building);
+    const roads = [['roads-minor', MIN.roadMinor], ['roads-medium', MIN.roadMedium], ['roads-major', MIN.roadMajor]].map(([id, min]) => { const r = lib.ratioOf(c(id, 'line-color'), land); need(`${id} from the land`, r, min); return r; });
+    assert.ok(roads[0] < roads[1] && roads[1] < roads[2], `${name}: the roads step up`);
+    const opacity = L('boundaries').paint['line-opacity'];
+    need('a border as drawn from the land', lib.ratioOf(mix(c('boundaries', 'line-color'), land, opacity * 100), land), MIN.boundary);
+    for (const id of ['places-local', 'places-city', 'places-region']) {
+      need(`${id} on the land`, lib.ratioOf(c(id, 'text-color'), land), MIN.label);
+      if (water3) need(`${id} on the water`, lib.ratioOf(c(id, 'text-color'), water), MIN.labelWater); // (a theme whose land is a mid grey can put both out of reach: the land, the halo's colour, wins)
+      assert.deepEqual(c(id, 'text-halo-color'), land, `${name}: ${id} has a halo in the land colour`);
+      const w = L(id).paint['text-halo-width'];
+      assert.ok(w >= 1.5 && w <= 2, `${name}: the halo is 1.5 to 2 px`);
+    }
+  };
+  let cases = 0;
+  for (const t of themes) {
+    for (const mode of ['dark', 'light']) {
+      const set = t[mode];
+      if (!set) continue;
+      const env = { 'surface-page': hex(set['surface-page']), 'surface-panel': hex(set['surface-panel']), 'text-primary': hex(set['text-primary']), 'text-muted': hex(set['text-muted']), 'tint-blue': hex(TINTS[mode].blue), 'tint-green': hex(TINTS[mode].green) };
+      const tokens = mode === 'light' ? light : dark;
+      const map = {};
+      for (const name of Object.keys(KEYS)) { env[`map-${name}`] = evalCss(tokens[name], env); map[KEYS[name]] = env[`map-${name}`]; }
+      const tok = { bg: env['surface-page'], section: env['surface-panel'], text: env['text-primary'], dim: env['text-muted'], blue: env['tint-blue'], green: env['tint-green'] };
+      hold(`${t.name} ${mode}`, tok, map); // as the page hands the theme's own tokens
+      hold(`${t.name} ${mode} (no tokens)`, tok); // as a style built without them
+      // The ladder is meant to hold on its own: the clamp only nudges a shipped theme a little (a text colour that is not as dark as another asks for a step more).
+      for (const [from, raw] of [['the style', lib.mapColours(tok)], ['system.css', map]]) {
+        const kept = lib.guardMap({ ...lib.mapColours(tok), ...raw }, tok);
+        for (const [k, v] of Object.entries(raw).filter(([k]) => !['label', 'city', 'region'].includes(k))) assert.ok(v.every((x, i) => Math.abs(x - kept[k][i]) <= 14), `${t.name} ${mode}: the ladder in ${from} is within a small nudge of what the clamp keeps (${k})`);
+      }
+      // A theme that sets the map tokens badly: every colour the land's own, or the text's own.
+      hold(`${t.name} ${mode} (every map token the land)`, tok, Object.fromEntries(Object.values(KEYS).map((k) => [k, map.land])));
+      hold(`${t.name} ${mode} (every map token the page)`, tok, Object.fromEntries(Object.values(KEYS).map((k) => [k, tok.bg])));
+      cases += 4;
+    }
+  }
+  // Themes a person could make in the editor, drawn at random (a fixed seed): any mix of page, panel, text and muted colours,
+  // light or dark, a low-contrast one included, and the tokens set to anything.
+  let seed = 20261102;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const colour = () => [0, 1, 2].map(() => Math.floor(rnd() * 256));
+  for (let i = 0; i < 400; i++) {
+    const mode = i % 2 ? 'light' : 'dark';
+    const tok = { bg: colour(), section: colour(), text: colour(), dim: colour(), blue: hex(TINTS[mode].blue), green: hex(TINTS[mode].green) };
+    hold(`random theme ${i}`, tok, i % 4 < 2 ? Object.fromEntries(Object.values(KEYS).map((k) => [k, colour()])) : undefined, false);
+  }
+  assert.ok(cases >= 18, 'every shipped theme and mode was measured');
 });
 
 test('several map files are drawn together, layer by layer', () => {

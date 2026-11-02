@@ -1,7 +1,7 @@
 {
   "id": "maps",
   "name": "Maps",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "content": "flush",
   "icon": "map-location-dot",
   "color": "pink",

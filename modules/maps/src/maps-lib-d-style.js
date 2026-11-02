@@ -31,28 +31,112 @@
   function mapColours(tok) {
     const dark = lumOf(tok.text) > lumOf(tok.section);
     const land = dark ? mixA(tok.text, tok.section, 4) : tok.section;
-    const ladder = dark ? [20, 30, 42] : [14, 24, 34];
+    const ladder = dark ? [20, 30, 42] : [27, 39, 50];
     return {
       land,
-      water: mixA(tok.blue, dark ? tok.bg : tok.section, dark ? 34 : 30),
-      park: mixA(tok.green, land, 14),
-      wood: mixA(tok.green, land, 8),
+      water: mixA(tok.blue, dark ? tok.bg : tok.section, 38),
+      park: mixA(tok.green, land, 16),
+      wood: mixA(tok.green, land, 9),
       roadMinor: mixA(tok.text, land, ladder[0]),
       roadMedium: mixA(tok.text, land, ladder[1]),
       roadMajor: mixA(tok.text, land, ladder[2]),
-      building: mixA(tok.text, land, dark ? 10 : 9),
-      label: dark ? mixA(tok.text, tok.dim, 40) : tok.dim,
+      building: mixA(tok.text, land, dark ? 10 : 12),
+      label: mixA(tok.text, tok.dim, 40),
       boundary: tok.dim,
+      city: tok.text,
+      region: tok.dim,
     };
+  }
+
+  // --- the guarantee: the map reads on any theme -------------------------------------------------------------------------------
+  // The tokens above are a good ladder for the shipped themes, but a theme may set a `--map-*` token badly, or have colours that
+  // put two of them together. So every colour goes through this clamp last: each is moved (a percent at a time, toward the text
+  // colour, else toward black or white) until it holds its minimum against the land. The minimums are WCAG's ratio (lighter + 0.05
+  // over darker + 0.05); a colour that already holds is not touched. tools/check-maps.mjs holds them for every shipped theme.
+  const MAP_MIN = {
+    label: 4.5,       // a place name on the land (it also has a halo in the land colour)
+    labelWater: 3,    // ... and on the water, where the halo is thin
+    roadMinor: 1.7, roadMedium: 2.3, roadMajor: 3,
+    roadStep: 1.1,    // each road class at least this much stronger than the one below
+    water: 1.5,       // water from the land, and with a hue of its own (WATER_HUE)
+    park: 1.15, wood: 1.06, building: 1.15,
+    boundary: 2,      // the dashed line as drawn (at BOUNDARY_OPACITY over the land): visible, still quiet
+  };
+  const WATER_HUE = 14; // the water's distance from the land on CIELAB's a and b axes: a visible tint of blue, whatever the land's own tint
+  const BOUNDARY_OPACITY = 0.7;
+  const ratioOf = (a, b) => { const x = lumOf(a); const y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  // How far apart two colours are in hue and colourfulness, not lightness: the distance between them on CIELAB's a and b axes
+  // (a hue angle says nothing for a land that is almost grey, as a teal theme's is).
+  const abOf = (c) => {
+    const lin = (x) => { const v = x / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const [r, g, b] = c.map(lin);
+    const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+    const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+    return [500 * (x - y), 200 * (y - z)];
+  };
+  const hueGap = (a, b) => { const p = abOf(a); const q = abOf(b); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+  // `c` moved toward `to` until `ok(colour)` holds; `to` itself when it never does.
+  // Colours are whole numbers throughout, as the style writes them, so what is measured is what is drawn.
+  const whole = (c) => c.map(Math.round);
+  function nudge(c, to, ok) { for (let p = 0; p <= 100; p += 1) { const x = whole(mixA(to, c, p)); if (ok(x)) return x; } return whole(to); }
+  function guardMap(given, tok) {
+    const m = Object.fromEntries(Object.entries(given).map(([k, v]) => [k, whole(v)]));
+    const land = m.land;
+    const ink = ratioOf([255, 255, 255], land) >= ratioOf([0, 0, 0], land) ? [255, 255, 255] : [0, 0, 0]; // the extreme that stands off from the land
+    // The colour a stronger mark is mixed toward: the theme's text while it stands off from the land, else black or white.
+    const toward = (min) => (ratioOf(tok.text, land) >= min * 1.15 ? tok.text : ink);
+    const out = { ...m };
+    // A tint of the land: moved from the land toward the tint until `ok` holds; where the tint itself is no lighter or darker than
+    // the land, toward the tint made paler or deeper, whichever stands off from it.
+    const tinted = (tint, ok) => {
+      const pale = mixA([255, 255, 255], tint, 45);
+      const deep = mixA([0, 0, 0], tint, 45);
+      const [first, second] = ratioOf(pale, land) >= ratioOf(deep, land) ? [pale, deep] : [deep, pale];
+      for (const to of [tint, first, second]) { const x = nudge(land, to, ok); if (ok(x)) return x; }
+      return nudge(land, first, () => false);
+    };
+    // Water: its own lightness and its own blue (the blue tint over the land, as far as it takes).
+    const blue = tok.blue || DARK_TOKENS.blue;
+    const waterOk = (x) => ratioOf(x, land) >= MAP_MIN.water && hueGap(x, land) >= WATER_HUE;
+    out.water = waterOk(m.water) ? m.water : tinted(blue, waterOk);
+    // Parks and woods: a green step off the land.
+    const green = tok.green || DARK_TOKENS.green;
+    for (const key of ['park', 'wood']) { const ok = (x) => ratioOf(x, land) >= MAP_MIN[key]; out[key] = ok(m[key]) ? m[key] : tinted(green, ok); }
+    // Roads: three steps above the land, each clearly above the one below.
+    let below = null;
+    for (const [key, min] of [['roadMinor', MAP_MIN.roadMinor], ['roadMedium', MAP_MIN.roadMedium], ['roadMajor', MAP_MIN.roadMajor]]) {
+      const need = Math.max(min, below ? ratioOf(below, land) * MAP_MIN.roadStep : 0);
+      out[key] = ratioOf(m[key], land) >= need ? m[key] : nudge(m[key], toward(need), (x) => ratioOf(x, land) >= need);
+      below = out[key];
+    }
+    out.building = ratioOf(m.building, land) >= MAP_MIN.building ? m.building : nudge(m.building, toward(MAP_MIN.building), (x) => ratioOf(x, land) >= MAP_MIN.building);
+    // The border is drawn at BOUNDARY_OPACITY, so it is the mixed colour that has to show.
+    const seen = (x) => mixA(x, land, BOUNDARY_OPACITY * 100);
+    out.boundary = ratioOf(seen(m.boundary), land) >= MAP_MIN.boundary ? m.boundary : nudge(m.boundary, toward(MAP_MIN.boundary * 2), (x) => ratioOf(seen(x), land) >= MAP_MIN.boundary);
+    // Names: on the land and on the water.
+    const legible = (x) => ratioOf(x, land) >= MAP_MIN.label && ratioOf(x, out.water) >= MAP_MIN.labelWater;
+    // ... toward the theme's text where that reads on both, else whichever of black and white stands off from both.
+    const both = (x) => Math.min(ratioOf(x, land), ratioOf(x, out.water) * MAP_MIN.label / MAP_MIN.labelWater);
+    const nameInk = legible(tok.text) ? tok.text : (both([255, 255, 255]) >= both([0, 0, 0]) ? [255, 255, 255] : [0, 0, 0]);
+    // (Land and water at once can be out of reach for a theme whose land is a mid grey; the land, which the halo is, wins then.)
+    const onLand = (x) => ratioOf(x, land) >= MAP_MIN.label;
+    const landInk = ratioOf(tok.text, land) >= MAP_MIN.label ? tok.text : ink;
+    for (const key of ['label', 'city', 'region']) {
+      if (legible(m[key])) { out[key] = m[key]; continue; }
+      const x = nudge(m[key], nameInk, legible);
+      out[key] = legible(x) ? x : nudge(m[key], landInk, onLand);
+    }
+    return out;
   }
 
   // The style. `t` holds the tokens as [r, g, b]; `o` is { tiles, glyphs }. `tiles` is the source address the map library
   // reads (pmtiles://<address of the file>).
   function buildStyle(t, o) {
     const tok = { ...DARK_TOKENS, ...t };
-    const m = { ...mapColours(tok), ...(t && t.map) };
+    const m = guardMap({ ...mapColours(tok), ...(t && t.map) }, tok);
     const ground = m.land;
-    const font = ['Noto Sans Regular'];
     const fontBold = ['Noto Sans Medium'];
     // A place's English name where the map data has one (name:en, an OpenStreetMap tag), its own local name otherwise --
     // always readable, never blank for a place that simply has no English name recorded.
@@ -80,7 +164,7 @@
       road('roads-medium', ['medium_road'], rgbText(m.roadMedium), width(0.6, 2.4, 12), []),
       road('roads-major', ['major_road', 'highway'], rgbText(m.roadMajor), width(0.8, 3.4, 16), []),
       // Only a country's and a region's border: a neighbourhood's would cut a city into dashed pieces.
-      { id: 'boundaries', type: 'line', source: 'map', 'source-layer': 'boundaries', filter: ['in', ['get', 'kind'], ['literal', ['country', 'macroregion', 'region', 'disputed']]], paint: { 'line-color': rgbText(m.boundary), 'line-width': 0.8, 'line-dasharray': [3, 2], 'line-opacity': 0.7 } },
+      { id: 'boundaries', type: 'line', source: 'map', 'source-layer': 'boundaries', filter: ['in', ['get', 'kind'], ['literal', ['country', 'macroregion', 'region', 'disputed']]], paint: { 'line-color': rgbText(m.boundary), 'line-width': 0.8, 'line-dasharray': [3, 2], 'line-opacity': BOUNDARY_OPACITY } },
       {
         id: 'places-local',
         type: 'symbol',
@@ -88,8 +172,8 @@
         'source-layer': 'places',
         filter: ['in', ['get', 'kind_detail'], ['literal', ['neighbourhood', 'macrohood', 'suburb', 'quarter']]],
         minzoom: 12,
-        layout: { 'text-field': NAME, 'text-font': font, 'text-size': 11, 'text-transform': 'uppercase', 'text-letter-spacing': 0.06, 'text-max-width': 8 },
-        paint: { 'text-color': rgbText(m.label), 'text-halo-color': rgbText(ground), 'text-halo-width': 1.5 },
+        layout: { 'text-field': NAME, 'text-font': fontBold, 'text-size': 12, 'text-transform': 'uppercase', 'text-letter-spacing': 0.06, 'text-max-width': 8 },
+        paint: { 'text-color': rgbText(m.label), 'text-halo-color': rgbText(ground), 'text-halo-width': 2 },
       },
       {
         id: 'places-city',
@@ -97,8 +181,8 @@
         source: 'map',
         'source-layer': 'places',
         filter: ['==', ['get', 'kind'], 'locality'],
-        layout: { 'text-field': NAME, 'text-font': fontBold, 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 12, 16], 'text-max-width': 8, 'symbol-sort-key': ['get', 'min_zoom'] },
-        paint: { 'text-color': rgbText(tok.text), 'text-halo-color': rgbText(ground), 'text-halo-width': 1.6 },
+        layout: { 'text-field': NAME, 'text-font': fontBold, 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 12, 12, 16], 'text-max-width': 8, 'symbol-sort-key': ['get', 'min_zoom'] },
+        paint: { 'text-color': rgbText(m.city), 'text-halo-color': rgbText(ground), 'text-halo-width': 2 },
       },
       {
         id: 'places-region',
@@ -107,8 +191,8 @@
         'source-layer': 'places',
         filter: ['in', ['get', 'kind'], ['literal', ['country', 'region']]],
         maxzoom: 8,
-        layout: { 'text-field': NAME, 'text-font': fontBold, 'text-size': 12, 'text-transform': 'uppercase', 'text-letter-spacing': 0.08, 'text-max-width': 8 },
-        paint: { 'text-color': rgbText(tok.dim), 'text-halo-color': rgbText(ground), 'text-halo-width': 1.5 },
+        layout: { 'text-field': NAME, 'text-font': fontBold, 'text-size': 13, 'text-transform': 'uppercase', 'text-letter-spacing': 0.08, 'text-max-width': 8 },
+        paint: { 'text-color': rgbText(m.region), 'text-halo-color': rgbText(ground), 'text-halo-width': 2 },
       },
     ];
     // One map file or several (regions that sit side by side): each is a source, and every layer is drawn for each in turn, so

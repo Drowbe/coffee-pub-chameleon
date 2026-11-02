@@ -245,11 +245,13 @@
 
   /* The map (the Maps module reads these to build its style; a light theme gives a light map). The land is a hair off the panel, the
      water a blue tint and parks a green one, and the roads are one ladder of the text colour over the land: minor, medium, major,
-     each clearly above the land and in that order (dark: 1.8, 2.4, 3.4 to 1; light 1.3, 1.7, 2.2 to 1). Light overrides below. */
+     each clearly above the land and in that order (dark 1.8, 2.4, 3.4 to 1; light 1.8, 2.4, 3.2). The Maps style also clamps every one of
+     these against the land (maps-lib-d-style.js, guardMap: names 4.5:1, major road 3, minor 1.7, water 1.5 and a blue of its own), so a
+     theme that sets one badly still reads; tools/check-maps.mjs holds the shipped themes to it. Light overrides below. */
   --map-land: color-mix(in srgb, var(--text-primary) 4%, var(--surface-panel));
-  --map-water: color-mix(in srgb, var(--tint-blue) 34%, var(--surface-page));
-  --map-park: color-mix(in srgb, var(--tint-green) 14%, var(--map-land));
-  --map-wood: color-mix(in srgb, var(--tint-green) 8%, var(--map-land));
+  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-page));
+  --map-park: color-mix(in srgb, var(--tint-green) 16%, var(--map-land));
+  --map-wood: color-mix(in srgb, var(--tint-green) 9%, var(--map-land));
   --map-road-minor: color-mix(in srgb, var(--text-primary) 20%, var(--map-land));
   --map-road-medium: color-mix(in srgb, var(--text-primary) 30%, var(--map-land));
   --map-road-major: color-mix(in srgb, var(--text-primary) 42%, var(--map-land));
@@ -268,12 +270,11 @@
   --shadow-color: color-mix(in srgb, black 10%, transparent);
   --text-danger: color-mix(in srgb, var(--status-danger-fill) 70%, var(--text-primary));
   --map-land: var(--surface-panel);
-  --map-water: color-mix(in srgb, var(--tint-blue) 30%, var(--surface-panel));
-  --map-road-minor: color-mix(in srgb, var(--text-primary) 14%, var(--map-land));
-  --map-road-medium: color-mix(in srgb, var(--text-primary) 24%, var(--map-land));
-  --map-road-major: color-mix(in srgb, var(--text-primary) 34%, var(--map-land));
-  --map-building: color-mix(in srgb, var(--text-primary) 9%, var(--map-land));
-  --map-label: var(--text-muted);
+  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-panel));
+  --map-road-minor: color-mix(in srgb, var(--text-primary) 27%, var(--map-land));
+  --map-road-medium: color-mix(in srgb, var(--text-primary) 39%, var(--map-land));
+  --map-road-major: color-mix(in srgb, var(--text-primary) 50%, var(--map-land));
+  --map-building: color-mix(in srgb, var(--text-primary) 12%, var(--map-land));
 }
 
 @media (max-width: 640px) {
