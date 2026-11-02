@@ -91,6 +91,33 @@
       return { ...(t || cleanTrip({})), start: span.start, end: span.end };
     };
 
+    // What the plan points at, told to the host (setLinks), so the object pointed at can show "Used by" and warn before it is deleted
+    // (Places does). Fire and forget: a viewer who may not write is refused, and the plan works the same.
+    const planRef = (id) => host.objects.make('plan', id);
+    function setLink(id, ref) {
+      if (!host.objects || typeof host.objects.setLinks !== 'function') return Promise.resolve(false);
+      return host.objects.setLinks(planRef(id), ref ? [ref] : []).then(() => true).catch(() => false);
+    }
+    // Plans made before the plan told the host: once per browser and change, tell it for every item that points at something. What was
+    // told is kept here ({ id: pointer key }) so a page load asks only about what changed.
+    async function backfillLinks() {
+      if (!host.objects || typeof host.objects.setLinks !== 'function' || typeof host.can !== 'function' || !host.can('edit')) return;
+      const here = typeof host.space === 'function' ? host.space() : null;
+      const key = `travel-links-told.${(here && here.id) || ''}`;
+      let told = {};
+      try { told = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (err) { told = {}; }
+      const now = {};
+      const todo = [...items.values()].map((x) => x.item).filter((i) => i.ref).slice(0, 200);
+      for (const i of todo) now[i.id] = objectKey(i.ref);
+      for (const id of Object.keys(told)) if (!now[id] && !items.has(id)) delete told[id];
+      let changed = false;
+      for (const i of todo) {
+        if (told[i.id] === now[i.id]) continue;
+        if (await setLink(i.id, i.ref)) { told[i.id] = now[i.id]; changed = true; }
+      }
+      if (changed) { try { localStorage.setItem(key, JSON.stringify(told)); } catch (err) { /* not kept */ } }
+    }
+
     async function load() {
       await moveOldKeys();
       const t = await host.storage.get(TRIP_KEY);
@@ -100,6 +127,7 @@
       for (const it of await host.storage.list(OLD_PLAN_PREFIX)) remember(it.key, it.value, it.version);
       changed();
       resolveSummaries().catch(() => {});
+      backfillLinks().catch(() => {});
     }
 
     host.on('change', (e) => {
@@ -208,7 +236,7 @@
       const saved = await host.storage.set(PLAN_PREFIX + id, value, {});
       items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
       changed();
-      if (item.ref) resolveSummaries().catch(() => {});
+      if (item.ref) { setLink(id, item.ref); resolveSummaries().catch(() => {}); }
       try {
         await stretchFor(item);
       } catch (err) {
@@ -286,6 +314,7 @@
         if (moving) await host.storage.delete(cur.key).catch(() => {});
         items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
         changed();
+        if ((cur.item.ref ? objectKey(cur.item.ref) : '') !== (item.ref ? objectKey(item.ref) : '')) setLink(id, item.ref || null);
         await stretchFor(item);
         return item;
       } catch (err) {
@@ -307,6 +336,7 @@
       await host.storage.delete(cur.key || PLAN_PREFIX + id);
       items.delete(id);
       changed();
+      if (cur.item.ref) setLink(id, null);
     }
 
     // A round trip: the outbound, then the return pointing at it. A car cannot be one.

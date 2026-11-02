@@ -6972,6 +6972,39 @@ app.get('/api/objects/links', (req, res) => {
   res.json({ summaries });
 });
 
+// What points at several of a module's items in one request (the list of places asks once, not once per place): the same
+// answer as GET /api/objects/links with dir=to for each, for what the viewer may see. An item that cannot be asked about
+// (not the module's own, not visible, a kind that shows no backlinks) is left out of the answer. Read only.
+app.post('/api/objects/links/batch', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' });
+  const asker = String(req.body?.module || '');
+  const found = modules.enabled(asker);
+  if (!found) return res.status(404).json({ error: `no such ${word('module')}` });
+  const out = [];
+  for (const ref of (Array.isArray(req.body?.refs) ? req.body.refs : []).slice(0, 200)) {
+    if (!refShape(ref) || ref.module !== asker) continue;
+    const produce = found.manifest.refs.produces.find((p) => p.kind === ref.kind);
+    if (!produce || !produce.backlinks) continue;
+    try {
+      resolveRef(who, ref, null, { skipConsumer: true });
+    } catch (err) {
+      if (!err.status) throw err;
+      continue;
+    }
+    const summaries = [];
+    for (const other of moduleLinks.to(ref)) {
+      try {
+        summaries.push(resolveRef(who, other, null, { skipConsumer: true }));
+      } catch (err) {
+        if (!err.status) throw err;
+      }
+    }
+    if (summaries.length) out.push({ ref, summaries });
+  }
+  res.json({ links: out });
+});
+
 // --- events and actions: modules reacting to and asking things of each other -------------------
 // Like refs, the host is only the conduit. A module declares in module.json the events it publishes and
 // the ones it wants to hear (`events`), and the actions it provides and the ones it wants to ask

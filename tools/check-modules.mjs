@@ -824,4 +824,23 @@ test('hooks.ai: true or "optional" only; required waits on the AI service, optio
   }
 });
 
+test('a bundled module that stores objects and may point at other modules\' tells the host what its objects point at (setLinks)', () => {
+  // Without it the object pointed at (a place) shows no "Used by", and deleting it warns of nothing (the Planner once did not).
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'modules');
+  const missing = [];
+  let seen = 0;
+  for (const id of fs.readdirSync(root)) {
+    const manifest = path.join(root, id, 'module.json');
+    const src = path.join(root, id, 'src');
+    if (!fs.existsSync(manifest) || !fs.existsSync(src)) continue;
+    const consumes = (JSON.parse(fs.readFileSync(manifest, 'utf8')).refs || {}).consumes || [];
+    const code = fs.readdirSync(src).filter((f) => f.endsWith('.js')).map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('\n');
+    if (!consumes.length || !/storage\.set\(/.test(code)) continue;
+    seen += 1;
+    if (!/objects\.setLinks\(/.test(code)) missing.push(id);
+  }
+  assert.ok(seen >= 6, 'the modules that keep objects were found');
+  assert.deepEqual(missing, [], `these modules store objects and consume other modules' kinds but never call host.objects.setLinks: ${missing.join(', ')}`);
+});
+
 console.log(`check-modules: ${n} groups OK`);
