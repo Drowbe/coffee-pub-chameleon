@@ -335,24 +335,6 @@ class ChatHistory {
     return removed.map(copy);
   }
 
-  // The person's private /ai questions and answers, in the old thread shape, for the ai/thread routes.
-  aiThread(spaceId, by) {
-    return this.list(spaceId, by)
-      .filter((m) => isPrivate(m) && m.by === by && isAi(m))
-      .map((m) => ({ id: m.id, at: m.at, role: m.kind === 'ai' ? 'ai' : 'user', text: m.text, ...(m.summaries ? { summaries: m.summaries } : {}) }));
-  }
-
-  removeAiThread(spaceId, by) {
-    return this.removePrivate(spaceId, by, isAi);
-  }
-
-  // null when that message is not one of the person's private AI messages.
-  removeAiEntry(spaceId, by, id) {
-    const m = this.find(spaceId, id, by);
-    if (!m || !isPrivate(m) || !isAi(m) || m.by !== by) return null;
-    return this.remove(spaceId, id, by);
-  }
-
   // Empties the space's chat for everyone, private messages included. The time is kept so a browser that still has an
   // old local copy does not bring those messages back.
   clear(spaceId) {

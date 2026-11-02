@@ -70,6 +70,10 @@ services:
       # certificate and a proxy host to port 3000; the base domain keeps the wildcard. Unset, they stay on the base
       # domain. The console is always at admin.<base domain>. Ignored without BASE_DOMAIN.
       # PRODUCT_DOMAIN: "product.example.com"
+      # With BASE_DOMAIN, the AI address an environment's owner types is guarded: https only, and never a private, loopback or
+      # link-local address. For a developer running the host on one machine only: "1" allows plain http / private addresses.
+      # AI_ALLOW_HTTP: "1"
+      # AI_ALLOW_PRIVATE_ADDRESSES: "1"
       # Names no new environment may take, on top of the built-in list (www, api, admin, mail, livekit ...). Comma
       # separated. An environment that already has one keeps working.
       # RESERVED_SLUGS: "studio,shop"

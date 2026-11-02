@@ -128,6 +128,7 @@ try {
   const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [member.key, other.key] } })).json.space;
   const pat = await login('pat', 'memberpass1234');
   const sam = await login('sam', 'memberpass1234');
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200); // using AI needs the role's Use AI
 
   const chat = await call('GET', `/api/spaces/${space.id}/chat`, { cookie: pat });
   assert.equal(chat.status, 200, chat.text);
@@ -167,33 +168,19 @@ try {
   const asked = await call('POST', `/api/spaces/${space.id}/ai`, { cookie: pat, body: { question: 'What is Faro?' } });
   assert.equal(asked.status, 200, asked.text);
   assert.match(asked.json.text, /short answer/i);
-  const thread = await call('GET', `/api/spaces/${space.id}/ai/thread`, { cookie: pat });
-  assert.equal(thread.status, 200, thread.text);
-  assert.equal(thread.json.entries.length, 2);
-  assert.equal(thread.json.entries[0].role, 'user');
-  assert.equal(thread.json.entries[1].role, 'ai');
-  assert.match(thread.json.entries[0].id, /^[a-f0-9]{12}$/);
-  const oneGone = await call('DELETE', `/api/spaces/${space.id}/ai/thread/${thread.json.entries[0].id}`, { cookie: pat });
-  assert.equal(oneGone.status, 200, oneGone.text);
-  const samCut = await call('DELETE', `/api/spaces/${space.id}/ai/thread/${thread.json.entries[1].id}`, { cookie: sam });
+  // The question and the answer are Pat's private chat messages: Pat sees both, nobody else sees either, and the old
+  // thread routes are gone.
+  const privateOf = async (cookie) => (await call('GET', `/api/spaces/${space.id}/chat`, { cookie })).json.messages.filter((m) => m.visibility === 'private');
+  const thread = await privateOf(pat);
+  assert.deepEqual(thread.map((m) => m.kind), ['command', 'ai']);
+  assert.match(thread[0].id, /^[a-f0-9]{12}$/);
+  assert.equal((await privateOf(sam)).length, 0);
+  assert.equal((await call('GET', `/api/spaces/${space.id}/ai/thread`, { cookie: pat })).status, 404, 'the old thread route is gone');
+  const samCut = await call('DELETE', `/api/spaces/${space.id}/chat/${thread[1].id}`, { cookie: sam });
   assert.equal(samCut.status, 404, samCut.text);
-  const left = await call('GET', `/api/spaces/${space.id}/ai/thread`, { cookie: pat });
-  assert.equal(left.json.entries.length, 1, left.text);
-  assert.equal(left.json.entries[0].role, 'ai');
-  n += 1;
-
-  const peek = await call('GET', `/api/spaces/${space.id}/ai/thread?user=${member.key}`, { cookie: sam });
-  assert.equal(peek.status, 403, peek.text);
-  const theirs = await call('GET', `/api/spaces/${space.id}/ai/thread`, { cookie: sam });
-  assert.equal(theirs.status, 200, theirs.text);
-  assert.equal((theirs.json.entries || []).length, 0);
-  n += 1;
-
-  const cleared = await call('DELETE', `/api/spaces/${space.id}/ai/thread`, { cookie: pat });
-  assert.equal(cleared.status, 200, cleared.text);
-  const empty = await call('GET', `/api/spaces/${space.id}/ai/thread`, { cookie: pat });
-  assert.equal(empty.status, 200, empty.text);
-  assert.equal((empty.json.entries || []).length, 0);
+  const oneGone = await call('DELETE', `/api/spaces/${space.id}/chat/${thread[0].id}`, { cookie: pat });
+  assert.equal(oneGone.status, 200, oneGone.text);
+  assert.equal((await privateOf(pat)).length, 1);
   n += 1;
 
   const unsigned = await call('POST', `/api/spaces/${space.id}/ai`, { body: { question: 'hello there' } });

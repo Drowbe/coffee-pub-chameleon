@@ -210,10 +210,14 @@ function cleanDetails(kind, raw) {
 
 const kindOf = (raw, handoff) => (KINDS.includes(raw.kind) || (handoff && HANDOFF_KINDS.includes(raw.kind)) ? raw.kind : undefined);
 
+// A title that is only a placeholder in angle brackets, as the prompt's example writes them. No real title is.
+const isPlaceholder = (title) => typeof title === 'string' && /^<[^<>]+>$/.test(title.trim());
+
 // One object as kept. `imported`: from a paste or file (basis "imported", no sources). `handoff`: from another page, so a
 // handoff kind (image) is kept; never set for an AI's answer or an import. `content` may be left out when details are kept.
 function cleanObject(raw, { count = 0, imported = false, handoff = false } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (isPlaceholder(raw.title)) return null; // the prompt's own example, written back as it was
   const title = plain(raw.title, MAX_TITLE);
   const content = plain(raw.content, MAX_CONTENT, true);
   const kind = kindOf(raw, handoff);
@@ -312,13 +316,15 @@ function cleanHandoff(raw) {
 
 const listWords = (list, last = 'or') => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} ${last} ${list[list.length - 1]}`);
 
-// The example in the prompt: Thomas's Southwest flight (#182) when flights are taken, else a plain object.
-const FLIGHT_EXAMPLE = '{"icon":"plane","kind":"flight","title":"Southwest 1234, Chicago to San Jose","content":"optional notes; plain prose, or simple Markdown","date":"2026-11-14","details":{"airline":"Southwest","number":"1234","from":{"code":"MDW","name":"Chicago Midway"},"to":{"code":"SJC","name":"San Jose"},"departs":"2026-11-14T12:50","arrives":"2026-11-14T15:25","reference":"ABC123"},"tags":["one","word"],"place":{"name":"optional"},"links":[{"title":"optional","url":"https://..."}]}';
+// The example in the prompt. Every value is a placeholder in <angle brackets>, never a real-looking one: a model that copies the example
+// writes an object whose title is still a placeholder, and the reader drops it (isPlaceholder, in cleanObject). A flight's when
+// flights are taken, else a plain object.
+const FLIGHT_EXAMPLE = '{"icon":"plane","kind":"flight","title":"<title>","content":"<notes; plain prose, or simple Markdown>","date":"<YYYY-MM-DD>","details":{"airline":"<airline>","number":"<number>","from":{"code":"<code>","name":"<name>"},"to":{"code":"<code>","name":"<name>"},"departs":"<YYYY-MM-DDTHH:MM>","arrives":"<YYYY-MM-DDTHH:MM>","reference":"<reference>"},"tags":["<tag>"],"place":{"name":"<name>"},"links":[{"title":"<title>","url":"<url>"}]}';
 function promptExample(kinds, withProvenance) {
   const example = kinds.includes('flight')
     ? FLIGHT_EXAMPLE
-    : `{"icon":"note",${kinds.length ? `"kind":"${kinds[0]}",` : ''}"title":"a short title","content":"the text to keep; plain prose, or simple Markdown (headings, **bold**, *italic*, lists, links) if that reads better","date":"optional YYYY-MM-DD","tags":["one","word"],"place":{"name":"optional"},"links":[{"title":"optional","url":"https://..."}]}`;
-  return withProvenance ? `${example.slice(0, -1)},"basis":"general","sources":[1]}` : example;
+    : `{"icon":"note",${kinds.length ? `"kind":"${kinds[0]}",` : ''}"title":"<title>","content":"<the text to keep; plain prose, or simple Markdown (headings, **bold**, *italic*, lists, links) if that reads better>","date":"<YYYY-MM-DD>","tags":["<tag>"],"place":{"name":"<name>"},"links":[{"title":"<title>","url":"<url>"}]}`;
+  return withProvenance ? `${example.slice(0, -1)},"basis":"<basis>","sources":[<numbers>]}` : example;
 }
 
 // What a details field needs said beside its name in the prompt. A `when` is explained once, in the dates line.
@@ -374,6 +380,7 @@ function objectRule({ fence, noun, max, withProvenance, kinds = TRAVEL_KINDS }) 
     `\`\`\`${fence}`,
     `[${promptExample(listed, withProvenance)}]`,
     '\`\`\`',
+    'Text in <angle brackets> is a placeholder: write a real value, never the brackets.',
     `One ${noun} per thing.${travel ? ` A whole itinerary is one ${noun} for each flight, train, stay, meal, visit and event, in the order they happen; a return flight is its own ${noun}.` : ''} Never fold several into one ${noun}'s text.`,
   ];
   if (listed.length) lines.push(`Set "kind" to what the ${noun} is: ${listWords(listed)}. Leave it out only when none fits.`);

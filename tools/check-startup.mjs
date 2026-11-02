@@ -140,4 +140,21 @@ ok(/conferenceOn = branding\.conferenceEnabled !== false && branding\.callServic
 const host = fs.readFileSync(path.join(ROOT, 'public/module-host.js'), 'utf8');
 ok(/if \(\(await brandingOnce\(\)\)\.callService === false\) \{/.test(host), 'module-host.js: host.media.watch answers unavailable with no call service, before loading LiveKit');
 
+// 5. the port is taken: one plain sentence naming it, a non-zero exit, no TypeError.
+await withServer({}, async ({ log }) => {
+  const taken = Number(/listening on :(\d+)/.exec(log())[1]);
+  const second = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
+    cwd: ROOT,
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(taken), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'check-startup-')), ADMIN_PASSWORD: 'testpass1234' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let said = '';
+  second.stdout.on('data', (d) => { said += d; });
+  second.stderr.on('data', (d) => { said += d; });
+  const code = await new Promise((resolve) => second.once('exit', resolve));
+  ok(code !== 0 && code !== null, `a taken port must exit non-zero (got ${code})`);
+  ok(said.includes(`Port ${taken} is already in use. Another copy of the server may still be running`), `the taken port is named in a plain sentence:\n${said}`);
+  ok(!/TypeError|at .*\.js:\d+/.test(said), `no TypeError or stack:\n${said}`);
+});
+
 console.log(`check-startup: ${n} checks passed`);

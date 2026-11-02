@@ -563,6 +563,7 @@ try {
   const owner = await login('admin', 'testpass1234');
   const pat = await login('pat', 'memberpass1234');
   const sam = await login('sam', 'memberpass1234');
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200); // using AI needs the role's Use AI
   const S = ids.space;
   const chatOf = async (cookie, q = '') => {
     const r = await call('GET', `/api/spaces/${S}/chat${q}`, { cookie });
@@ -579,10 +580,6 @@ try {
     for (const [who, list] of [['sam', await chatOf(sam)], ['owner', await chatOf(owner)], ['guest', await chatOf(null, asGuest)]]) {
       assert.ok(!list.some((m) => m.visibility === 'private'), `${label}: ${who} gets no private message`);
       assert.ok(!list.some((m) => mine.includes(m.id)), `${label}: ${who} gets none of Pat's private ids`);
-    }
-    for (const cookie of [sam, owner]) {
-      const thread = await call('GET', `/api/spaces/${S}/ai/thread`, { cookie });
-      assert.ok(!(thread.json.entries || []).some((e) => mine.includes(e.id)), `${label}: no thread of another person's`);
     }
     return mine;
   };
@@ -621,14 +618,8 @@ try {
   assert.ok((await chatOf(pat)).some((m) => m.id === asked.json.id));
   n += 1;
 
-  // The thread routes still answer in their old shape, from the one store.
-  const thread = await call('GET', `/api/spaces/${S}/ai/thread`, { cookie: pat });
-  assert.equal(thread.status, 200, thread.text);
-  assert.deepEqual(thread.json.entries.map((e) => e.role), ['user', 'ai', 'user', 'ai']);
-  assert.deepEqual(Object.keys(thread.json.entries[1]).sort(), ['at', 'id', 'role', 'summaries', 'text']);
-  assert.deepEqual(Object.keys(thread.json.entries[2]).sort(), ['at', 'id', 'role', 'text']);
-  assert.equal((await call('GET', `/api/spaces/${S}/ai/thread?user=${ids.pat}`, { cookie: sam })).status, 403);
-  assert.equal((await call('DELETE', `/api/spaces/${S}/ai/thread/${asked.json.id}`, { cookie: sam })).status, 404, "nobody deletes another's thread entry");
+  // The old thread routes are gone: the chat is the one place the thread lives.
+  assert.equal((await call('GET', `/api/spaces/${S}/ai/thread`, { cookie: pat })).status, 404);
   n += 1;
 
   // A command's echo is stored as the caller's private message.

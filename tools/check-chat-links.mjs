@@ -272,6 +272,7 @@ try {
   const owner = await login('admin', 'testpass1234');
   const pat = await login('pat', 'memberpass1234');
   const sam = await login('sam', 'memberpass1234');
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200); // using AI needs the role's Use AI
   await listenLive(`/api/live?space=${S}`, owner);
   const guest = `?guest=${encodeURIComponent((await call('POST', `/api/spaces/${S}/guest-link`, { cookie: owner, body: {} })).json.space.guestToken)}`;
   const post = async (cookie, text, q = '') => {
