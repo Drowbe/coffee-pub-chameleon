@@ -188,7 +188,7 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   for (const [id, v] of events) await put('calendar', `event:${id}`, { id, by: MIA, ...v });
 
   // --- Planner ---
-  await put('travel', 'trip:main', { title: SPACE_NAME, destination: 'Portugal', start: S, end: d(9), currency: 'EUR' });
+  await put('travel', 'trip:main', { title: SPACE_NAME, destination: 'Portugal', start: S, end: d(9), currency: 'EUR', tz: 'Europe/Lisbon' });
   const plan = [];
   let order = 0;
   const add = (v) => { order += 1; plan.push({ by: MIA, order: order * 1000, ...v }); };

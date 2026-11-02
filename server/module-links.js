@@ -84,6 +84,21 @@ class ModuleLinks extends EventEmitter {
     return found ? { pair: found.pair, from: plain(found.from), to: plain(found.to) } : null;
   }
 
+  // Who is whose copy, for flagging summaries: `copyOf(ref)` the original an object is the active copy of (or null),
+  // `copiesOf(ref)` the copies an original has. A detached pair is a hidden copy, so it is neither.
+  pairIndex() {
+    const originals = new Map();
+    const copies = new Map();
+    for (const l of this.items) {
+      if (l.pair !== 'active') continue;
+      originals.set(key(l.to), plain(l.from));
+      const k = key(l.from);
+      if (!copies.has(k)) copies.set(k, []);
+      copies.get(k).push(plain(l.to));
+    }
+    return { copyOf: (ref) => originals.get(key(ref)) || null, copiesOf: (ref) => copies.get(key(ref)) || [] };
+  }
+
   addPair(from, to, by) {
     const fk = key(from);
     const rest = this.items.filter((l) => !(l.pair && key(l.from) === fk && l.to.module === to.module && l.to.kind === to.kind));
@@ -105,11 +120,13 @@ class ModuleLinks extends EventEmitter {
     this.emit('change', { refs: [plain(hit.from), plain(hit.to)] });
   }
 
-  removePairs(ref) {
+  // Every pair `ref` sends. With `keepDetached`, a detached one (a copy hidden on purpose) stays as the record of it.
+  removePairs(ref, keepDetached = false) {
     const fk = key(ref);
-    const gone = this.items.filter((l) => l.pair && key(l.from) === fk);
+    const dies = (l) => l.pair && key(l.from) === fk && !(keepDetached && l.pair === 'detached');
+    const gone = this.items.filter(dies);
     if (!gone.length) return;
-    this.items = this.items.filter((l) => !(l.pair && key(l.from) === fk));
+    this.items = this.items.filter((l) => !dies(l));
     this.save();
     const refs = [plain(ref)];
     for (const l of gone) refs.push(plain(l.to));

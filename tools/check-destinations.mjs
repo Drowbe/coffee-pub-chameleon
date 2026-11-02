@@ -494,7 +494,7 @@ try {
       assert.equal(new URL(to, 'http://same.origin').origin, 'http://same.origin', `${sneaky} stays on this site`);
       assert.equal(new URL(to, 'http://same.origin').pathname, '/calendar');
     }
-    assert.equal(await goes('/modules/dest-tasks', aliceT), '/calendar');
+    assert.equal(await goes('/modules/dest-tasks', aliceT), '/calendar#panel=dest-tasks', 'a panel opens on itself');
     assert.equal(await goes(`/modules/dest-dates?space=${keep}`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-tasks?space=${keep}&popout=1`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-dates?space=${keep}&guest=${encodeURIComponent(guest)}`), 200, 'a guest\'s pop-out');
@@ -704,7 +704,7 @@ try {
 
   await test('map: the module pages lead to /map, pop-outs left alone, and the tile\'s href', async () => {
     assert.equal(await goes('/modules/dest-globe', aliceT), '/map');
-    assert.equal(await goes('/modules/dest-pins', aliceT), '/map');
+    assert.equal(await goes('/modules/dest-pins', aliceT), '/map#panel=dest-pins', 'a panel opens on itself');
     assert.equal(await goes(`/modules/dest-globe?space=${keep}`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-pins?space=${keep}&popout=1`, aliceT), 200);
     assert.equal((await hrefs(aliceT))['dest-pins'], '/map#panel=dest-pins');

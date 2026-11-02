@@ -14,7 +14,7 @@ const { ModuleManager, LIMITS: MODULE_LIMITS, compareVersions, oldNameIn, pendin
 const { buildModule, bundledModules, zipFiles } = require('./module-build');
 const { fillManifest } = require('./modules');
 const templates = require('./templates');
-const { ModuleLinks } = require('./module-links');
+const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
 const { ChatHistory } = require('./chat-history');
@@ -6587,7 +6587,7 @@ objectSync.configure({
   pairTo: (ref) => moduleLinks.pairTo(ref),
   addPair: (from, to, by) => moduleLinks.addPair(from, to, by),
   detachPair: (ref) => moduleLinks.detachPair(ref),
-  removePairs: (ref) => moduleLinks.removePairs(ref),
+  removePairs: (ref, keepDetached) => moduleLinks.removePairs(ref, keepDetached),
   newId: () => crypto.randomBytes(8).toString('hex'),
   nameOf: (by) => store.userByKey(by)?.displayName || String(by || ''),
   // Kinds in this space that receive a dated twin, and that this sender is approved to link to.
@@ -6644,12 +6644,22 @@ objectSync.configure({
   },
 });
 
+// A pair (a dated object and its copy in another module, plan-plan-calendar-sync.md) is flagged on both ends, so a
+// module can show a copy as one and a picker can offer the pair once: a copy says `copy: true` and `twinOf` (its original's
+// reference); an original that has copies says `twins` (their references). `index` is moduleLinks.pairIndex().
+function markPair(summary, index) {
+  const original = index.copyOf(summary.ref);
+  if (original) return { ...summary, copy: true, twinOf: original };
+  const copies = index.copiesOf(summary.ref);
+  return copies.length ? { ...summary, twins: copies } : summary;
+}
+
 function resolveRef(who, ref, from, opts = {}) {
   if (!refShape(ref)) throw refError(400, 'that is not a valid reference');
   const at = refScope(who, { provider: ref.module, kind: ref.kind, scope: ref.scope, space: ref.space, from, ...opts });
   const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(ref.id)));
   if (!item || !item.value) throw refError(404, `that ${word('object')} is no longer there`);
-  return objectSummary(at, String(ref.id), item.value, opts.withText === true);
+  return markPair(objectSummary(at, String(ref.id), item.value, opts.withText === true), moduleLinks.pairIndex());
 }
 
 // The kinds the consumer may point at: every kind of every other enabled module it was approved for.
@@ -6725,6 +6735,8 @@ app.get('/api/objects/search', (req, res) => {
     ? store.spaces.filter((r) => r.members.includes(who.user.key)).map((r) => ({ scope: 'space', space: r.id }))
     : [{ scope, space: req.query.space }];
   const summaries = [];
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
   // has=amount only: how many priced objects the viewer was kept from because they may not view the module that holds
   // them (a number alone, never for a guest, and in a space only for its members), so Budget can say some are left out.
   let withheld = 0;
@@ -6758,14 +6770,22 @@ app.get('/api/objects/search', (req, res) => {
       const prefix = at.produce.key.replace('{id}', '');
       for (const item of moduleData.list(k.module, at.scopeKey, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
-        const summary = objectSummary(at, item.key.slice(prefix.length), item.value);
-        if (inSpace && !(summary.spaces || []).includes(inSpace.id)) continue;
-        if (has === 'place' && !summary.place) continue;
-        if (has === 'amount' && !isPriced(summary)) continue;
-        if (q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q)) continue;
-        summaries.push(summary);
+        const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
+        const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
+          && !(has === 'place' && !summary.place)
+          && !(has === 'amount' && !isPriced(summary))
+          && !(q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q));
+        pool.push({ summary, fits });
       }
     }
+  }
+  // A pair is offered once: its original. A copy is left out when its original is among what this person may see, and
+  // always for the module that holds the original (the Itinerary is not offered its own objects through the Calendar).
+  const seen = new Set(pool.map((p) => objectKey(p.summary.ref)));
+  for (const { summary, fits } of pool) {
+    if (!fits) continue;
+    if (summary.copy && (summary.twinOf.module === from || seen.has(objectKey(summary.twinOf)))) continue;
+    summaries.push(summary);
   }
   // Newest dates first, undated last.
   summaries.sort((a, b) => String(b.when ?? '').localeCompare(String(a.when ?? '')) || a.title.localeCompare(b.title));
@@ -9088,14 +9108,18 @@ app.get('/modules/:id', (req, res) => {
   if (req.query.s === undefined && !keyedModule) res.set(FRAMED_HERE);
   if (!currentUser(req) && !hasGuestAccess(req)) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   // A module's environment page (no space, not a pop-out) leads to the destination it is a part of while that is shown
-  // (plan-calendar-destination.md, decision 16). The browser keeps the address's #day= or #ref= across the redirect,
+  // (plan-calendar-destination.md, decision 16). For the main the browser keeps the address's #day= or #ref= across the redirect,
   // and the query goes with it (?from=space&spaceName=... is the page's "Back to" link). Only the query is taken from
   // the request: the path is the destination's own, so the redirect never leaves this site.
   if (req.query.space === undefined && req.query.popout === undefined && req.query.guest === undefined) {
-    const to = destinationPathOf(req.params.id, destinationContext(moduleViewer(req)));
+    const dctx = destinationContext(moduleViewer(req));
+    const to = destinationPathOf(req.params.id, dctx);
     if (to && /^\/[A-Za-z0-9/_-]*$/.test(to) && !to.startsWith('//')) {
       const asked = new URL(req.originalUrl, 'http://same.origin');
-      return res.redirect(`${to}${asked.search}`);
+      // A panel (not the main) is named, so the destination opens on it: #panel=<module id>, as a tile's heading does.
+      // The main keeps the bare address, and with it the browser keeps the address's own #day= or #ref=.
+      const panel = widgetHref(req.params.id, dctx).slice(to.length);
+      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(panel) ? panel : ''}`);
     }
   }
   // A module popped out of the Lobby that the Lobby doesn't allow: the sentence, not its page.

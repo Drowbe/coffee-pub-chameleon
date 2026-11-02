@@ -1026,15 +1026,18 @@
       const current = events.get(keyOf(editing.scope, editing.id, editing.spaceId));
       const usual = current && current.ev.repeat ? 'Delete every one?' : 'Really delete?';
       let n = 0;
+      let original = null;
       if (current && host.objects && host.objects.linksTo) {
         try {
           const summaries = await host.objects.linksTo(host.objects.make('event', current.id, whereFor(current)));
           n = Array.isArray(summaries) ? summaries.length : 0;
+          // The object this event is a copy of (the host marks it: `twins` lists its copies). Deleting a copy only hides it.
+          original = (Array.isArray(summaries) ? summaries : []).find((x) => Array.isArray(x.twins) && x.twins.some((t) => t.module === 'calendar' && String(t.id) === String(current.id))) || null;
         } catch { /* the usual question still stands */ }
       }
       deleteAsking = false;
       deleteArmed = true;
-      $('f-delete').textContent = n ? `Used by ${n}. ${usual}` : usual;
+      $('f-delete').textContent = original ? `This hides it from the Calendar. The ${(original.module && original.module.name) || 'original'} keeps it. Hide it?` : n ? `Used by ${n}. ${usual}` : usual;
       setTimeout(() => { deleteArmed = false; $('f-delete').textContent = 'Delete'; }, 4000);
       return;
     }

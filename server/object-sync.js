@@ -11,17 +11,28 @@ bus.setMaxListeners(0);
 
 let deps = null;
 
+// A zone name Intl accepts, else null.
+function acceptZone(zone) {
+  if (typeof zone !== 'string' || !zone || zone.length > 64) return null;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
 function writerZone(tz) {
-  const accept = (zone) => {
-    if (typeof zone !== 'string' || !zone || zone.length > 64) return null;
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: zone });
-      return zone;
-    } catch {
-      return null;
-    }
-  };
-  return accept(tz) || accept(process.env.TZ) || 'UTC';
+  return acceptZone(tz) || acceptZone(process.env.TZ) || 'UTC';
+}
+
+// The zone a sender's times are written in: the one its space keeps (`dated.zone`: a stored object and the field that holds
+// a zone name, the trip's), else the writer's. A copy shows the trip's own wall time, whoever wrote it.
+function tripZone(moduleId, produce, scopeKey) {
+  const at = produce.dated?.zone;
+  if (!at || !deps) return null;
+  const stored = deps.read(moduleId, scopeKey, at.key);
+  return acceptZone(stored && typeof stored === 'object' ? stored[at.field] : null);
 }
 
 // The calendar day of a summary `when` in the writer's zone. A plain date is already a day. An instant
@@ -151,6 +162,8 @@ function readWall(value, dated) {
     day: YMD.test(v[dated.day]) ? v[dated.day] : null,
     time: dated.time && HM.test(v[dated.time]) ? v[dated.time] : null,
     endDay: dated.endDay && YMD.test(v[dated.endDay]) ? v[dated.endDay] : null,
+    endTime: dated.endTime && HM.test(v[dated.endTime]) ? v[dated.endTime] : null,
+    minutes: dated.minutes && Number.isFinite(v[dated.minutes]) && v[dated.minutes] > 0 && v[dated.minutes] <= 10080 ? Math.round(v[dated.minutes]) : null,
   };
 }
 
@@ -172,7 +185,10 @@ function holdsPointer(produce, value) {
   return Boolean(got && typeof got === 'object' && got.module && got.id);
 }
 
-// Wall clock onto an instant twin. No time means the whole day, and the end day is written only then.
+// Wall clock onto an instant twin, read in `tz` (the trip's zone). No time means the whole day, with the end day as its last
+// day. A time makes an instant; its end is the check-out (end day and end time, else the start's clock time) or the
+// length in minutes, and none when neither is there or the end would not be after the start. A timed twin also keeps
+// the zone it was written in (`dated.tz`), so a viewer elsewhere can be told.
 function fieldsForTwin(wall, tz, dated) {
   if (!wall.day) return null;
   const patch = { [dated.title]: wall.title };
@@ -180,19 +196,32 @@ function fieldsForTwin(wall, tz, dated) {
     if (dated.allDay) patch[dated.allDay] = true;
     patch[dated.start] = wall.day;
     if (dated.end) patch[dated.end] = wall.endDay;
+    if (dated.tz) patch[dated.tz] = null;
     return patch;
   }
   if (dated.allDay) patch[dated.allDay] = false;
-  patch[dated.start] = instantOf(wall.day, wall.time, tz);
+  const start = instantOf(wall.day, wall.time, tz);
+  patch[dated.start] = start;
+  if (dated.end) {
+    let end = null;
+    if (wall.endDay && wall.endDay >= wall.day) end = instantOf(wall.endDay, wall.endTime || wall.time, tz);
+    else if (wall.minutes) end = new Date(Date.parse(start) + wall.minutes * 60000).toISOString();
+    patch[dated.end] = end && Date.parse(end) > Date.parse(start) ? end : null;
+  }
+  if (dated.tz) patch[dated.tz] = tz;
   return patch;
 }
 
-// An instant twin onto a wall-clock sender. A whole day leaves the time empty. A timed twin leaves the end day alone.
-function fieldsForSender(instant, tz, dated) {
+// An instant twin onto a wall-clock sender. A whole day leaves the time empty, unless the sender has a time: ticking
+// "All day" on a copy never erases the sender's time or its end day (`current` is the sender as stored). A timed twin
+// leaves the end day alone.
+function fieldsForSender(instant, tz, dated, current) {
   const patch = { [dated.title]: instant.title };
   const whole = instant.allDay || (instant.start && YMD.test(instant.start));
   if (whole) {
     patch[dated.day] = instant.start && YMD.test(instant.start) ? instant.start : dayInZone(instant.start, tz);
+    const timed = dated.time && current && HM.test(current[dated.time]);
+    if (timed) return patch;
     if (dated.time) patch[dated.time] = null;
     if (dated.endDay) patch[dated.endDay] = !instant.end ? null : (YMD.test(instant.end) ? instant.end : dayInZone(instant.end, tz));
     return patch;
@@ -241,21 +270,17 @@ function createTwin(ref, wall, zone, by, taker, scopeKey) {
 function updateTwin(pair, wall, zone, by, taker, scopeKey) {
   const key = twinKey(taker.produce, pair.to.id);
   const current = deps.read(taker.moduleId, scopeKey, key);
-  if (!current) return createTwin(refFromPair(pair), wall, zone, by, taker, scopeKey);
+  // A copy that is gone was hidden on purpose (deleting it detaches the pair): it is not made again.
+  if (!current) return deps.detachPair(pair.to);
   const patch = fieldsForTwin(wall, zone, taker.produce.dated);
   const next = patch && changed(current, patch);
   if (next) deps.write(taker.moduleId, scopeKey, key, next, by);
-}
-
-function refFromPair(pair) {
-  return pair.from;
 }
 
 // A dated sender keeps one twin in each kind that receives them. A sender that holds a pointer sends none.
 // Server writes do not come back through afterWrite. A full store (413) skips that twin until the next change.
 function mirrorOut(ref, produce, scopeKey, before, after, zone, by) {
   if (produce.mirror !== 'out' || produce.dated?.form !== 'wall' || ref.scope !== 'space' || !deps.takers) return;
-  const was = readWall(before, produce.dated);
   const now = after == null ? { title: '', day: null, time: null, endDay: null } : readWall(after, produce.dated);
   const pairs = deps.pairsFrom(ref) || [];
   if (!now.day) {
@@ -264,24 +289,26 @@ function mirrorOut(ref, produce, scopeKey, before, after, zone, by) {
       const twin = deps.produceOf(pair.to.module, pair.to.kind);
       if (twin) removeTwin(twin, pair.to, scopeKey, by);
     }
-    if (pairs.length) deps.removePairs(ref);
+    // A hidden copy (a detached pair) is remembered while the object itself stays, so a day given back does not bring it back.
+    if (pairs.length) deps.removePairs(ref, after != null);
     return;
   }
   if (holdsPointer(produce, after)) return;
+  const wrote = tripZone(ref.module, produce, scopeKey) || zone;
   for (const taker of deps.takers(ref.module, produce.kind, ref.space)) {
     const pair = pairs.find((p) => p.to.module === taker.moduleId && p.to.kind === taker.produce.kind);
     try {
-      if (!pair) createTwin(ref, now, zone, by, taker, scopeKey);
-      else if (pair.pair === 'detached') { if (was.day !== now.day) createTwin(ref, now, zone, by, taker, scopeKey); }
-      else updateTwin(pair, now, zone, by, taker, scopeKey);
+      if (!pair) createTwin(ref, now, wrote, by, taker, scopeKey);
+      else if (pair.pair === 'detached') continue; // hidden from that module for good (plan-plan-calendar-sync.md)
+      else updateTwin(pair, now, wrote, by, taker, scopeKey);
     } catch (err) {
       if (!err || err.status !== 413) throw err;
     }
   }
 }
 
-// A twin's edit writes the sender. A twin with no pair is left alone. Deleting the twin detaches the pair
-// and leaves the sender's day. A repeating twin stays paired; the sender follows its first start.
+// A twin's edit writes the sender. A twin with no pair is left alone. Deleting the twin detaches the pair, which
+// stays as the record that it is hidden (it is never made again), and leaves the sender as it was. A repeating twin stays paired; the sender follows its first start.
 function mirrorIn(ref, produce, scopeKey, after, zone, by) {
   if (produce.mirror !== 'in' || produce.dated?.form !== 'instant' || !deps.pairTo) return;
   if (after == null) {
@@ -297,8 +324,13 @@ function mirrorIn(ref, produce, scopeKey, after, zone, by) {
   if (!senderScope) return;
   const current = deps.read(pair.from.module, senderScope, twinKey(sender, pair.from.id));
   if (!current) return;
-  const next = changed(current, fieldsForSender(readInstant(after, produce.dated), zone, sender.dated));
+  const wrote = tripZone(pair.from.module, sender, senderScope) || zone;
+  const next = changed(current, fieldsForSender(readInstant(after, produce.dated), wrote, sender.dated, current));
+  const sent = next || current;
   if (next) deps.write(pair.from.module, senderScope, twinKey(sender, pair.from.id), next, by);
+  // The copy then says what the sender says (its span, its zone, a time "All day" would not erase).
+  const copy = changed(after, fieldsForTwin(readWall(sent, sender.dated), wrote, produce.dated));
+  if (copy) deps.write(ref.module, scopeKey, twinKey(produce, ref.id), copy, by);
 }
 
 // { module, scopeKey, key, before, after, by, tz }. `before` and `after` are the stored values; `after` is null
