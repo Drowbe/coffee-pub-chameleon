@@ -51,6 +51,7 @@ Three words are used for the model tier. The project manager picks the model for
 - Risky work always gets a review on the larger tier.
 - At most five agents are in flight at once.
 - If a job runs well past its expectation, the project manager stops and asks Thomas.
+- A question to Thomas that goes unanswered is asked again. An unanswered or interrupted question is never read as a no, a stop or a decision. The project manager checks that its agents are still running before reporting them as running.
 - No hard cap can be enforced. Agents report the tokens they used. The limits are expectations written into each brief.
 
 ## How Thomas changes a card
@@ -105,3 +106,4 @@ A job's tokens are the number in the agent's own report. The project manager's o
 The starting values above are those of 2026-11-01.
 
 - 2026-11-01 Thomas: approved as written; weekly plan budget added: other work 25-30% of the plan, this project first in rank; warn at 50% and 60%, ceiling 65%.
+- 2026-11-02 Thomas: yes to recording the rule that an unanswered question is asked again.
