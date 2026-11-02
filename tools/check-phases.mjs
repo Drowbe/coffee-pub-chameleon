@@ -680,7 +680,7 @@ try {
   await test('the module context\'s space carries phases, for a member too', async () => {
     const ctx = await asMember('GET', `/api/modules/todo/context?scope=space&space=${trip.id}`);
     assert.equal(ctx.status, 200, ctx.text);
-    assert.deepEqual(ctx.json.space, { id: trip.id, name: 'Lisbon', createdAt: trip.createdAt, phases: stored().phases, budget: null }, 'no budget target set: null (#216)');
+    assert.deepEqual(ctx.json.space, { id: trip.id, name: 'Lisbon', createdAt: trip.createdAt, phases: stored().phases, budget: null, guestsSeeHidden: false }, 'no budget target set: null (#216)');
     assert.deepEqual(ctx.json.phases.map((p) => p.id), ['planning', 'booking', 'buffer', 'pre-trip', 'trip', 'post-trip'], 'the template\'s phases, as before');
   });
 

@@ -4,12 +4,12 @@
     "hash": "dc69c171d1890b19"
   },
   "budget": {
-    "version": "0.1.20",
-    "hash": "b5b288aac95bdceb"
+    "version": "0.1.21",
+    "hash": "805d43258066f514"
   },
   "calendar": {
-    "version": "1.24.30",
-    "hash": "295b9550ed3d3ae8"
+    "version": "1.24.31",
+    "hash": "a5162cfa432ddf88"
   },
   "maps": {
     "version": "0.9.13",
@@ -20,20 +20,20 @@
     "hash": "559cabce341736fa"
   },
   "polls": {
-    "version": "1.15.24",
-    "hash": "97b79147494d5ec2"
+    "version": "1.15.25",
+    "hash": "6c68ba82c5f3d201"
   },
   "research": {
-    "version": "0.4.27",
-    "hash": "1fdb043ce736e8ac"
+    "version": "0.4.28",
+    "hash": "93c20394f830f69c"
   },
   "stream": {
     "version": "0.1.15",
     "hash": "79a00d61cc45ecfe"
   },
   "todo": {
-    "version": "1.15.21",
-    "hash": "6ec57787fa1de18e"
+    "version": "1.15.22",
+    "hash": "59c2e5badb106da5"
   },
   "travel": {
     "version": "0.15.61",

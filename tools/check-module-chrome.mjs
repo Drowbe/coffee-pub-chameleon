@@ -439,6 +439,27 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.deepEqual(filters.groups.map((g) => [g.id, g.heading, g.single]), [['show', 'Trips', false], ['kind', 'Kind', true]], 'every chips item a group, under its label');
   assert.equal(R.frameToolbar([]).length, 0, 'nothing: no row');
   assert.ok(!R.frameToolbar(R.cleanToolbarItems([{ type: 'search', id: 'q' }])).some((e) => e.type === 'filters'), 'no chips: no Filters button');
+  // The Calendar destination's zones (Thomas, 2026-11-02): a host page's own items (they carry `send`) may say `zone: 'end'` (the
+  // row's right zone, after the search and Filters) and `pin` (never moved into More); any zone keeps the order given instead
+  // of sorting switches first. A module's own item has no say: the same words from a module are dropped.
+  const noop = () => {};
+  const zoned = R.cleanToolbarItems([
+    { type: 'title', text: 'October 2026', send: noop, zone: 'start' },
+    { id: 'prev', icon: 'chevron-left', title: 'Previous', send: noop, zone: 'start' },
+    { type: 'tabs', id: 'mode', value: 'month', options: [{ id: 'month', label: 'Month' }], send: noop, zone: 'start' },
+    { type: 'chips', id: 'f', label: 'Show', options: [{ id: 'a', label: 'A' }], send: noop },
+    { type: 'tabs', id: 'panel', value: 'a', options: [{ id: 'a', label: 'Agenda' }, { id: 'b', label: 'To-do', count: 4 }], send: noop, zone: 'end', pin: true },
+  ]);
+  const zrow = R.frameToolbar(zoned);
+  assert.deepEqual(zrow.map((e) => e.id || e.type), ['title', 'prev', 'mode', 'filters', 'panel'], 'the date group, the mode, the Filters button, then the right zone');
+  assert.equal(zrow[4].zone, 'end');
+  assert.equal(zrow[4].pin, true);
+  assert.equal(zrow[4].options[1].count, 4, 'a switch choice keeps its count, which stays when its words fold');
+  const stranger = R.cleanToolbarItems([{ type: 'tabs', id: 'panel', value: 'a', options: [{ id: 'a', label: 'A' }], zone: 'end', pin: true }]);
+  assert.equal(stranger[0].zone, undefined, 'a module cannot put itself in the right zone');
+  assert.equal(stranger[0].pin, undefined);
+  assert.deepEqual(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` })), 6).length, 6, 'a page may keep more status items than the default');
+  assert.equal(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` }))).length, 4, 'the default is four');
   // The title bar's actions: the header's icons, then the toolbar buttons placed there; past five, the menu.
   const header = R.cleanHeaderItems([{ id: 'pin', icon: 'thumbtack', title: 'Pin', on: true }, { id: 'del', icon: 'trash', title: 'Delete', danger: true }, { id: 'more', icon: 'gear', title: 'Options', overflow: true }]);
   const acts = R.titlebarActions(header, clean);

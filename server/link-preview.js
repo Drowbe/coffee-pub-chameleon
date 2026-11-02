@@ -8,6 +8,7 @@ const dns = require('dns').promises;
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const os = require('os');
 const tls = require('tls');
 const { userAgent } = require('./product-name');
 
@@ -46,8 +47,30 @@ function ipv6Groups(ip) {
 }
 const ipv4Of = (hi, lo) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
 
+// This machine's own addresses, on every interface, as the same text blockedAddress compares (IPv6 as its groups): a
+// page can't be read from the server itself, whatever range its address is in. Read again at most once a minute.
+const OWN_ADDRESSES_MS = 60 * 1000;
+let ownAddresses = { at: 0, set: new Set() };
+const addressText = (ip) => {
+  const plainIp = String(ip || '').toLowerCase().replace(/%.*$/, '');
+  if (net.isIP(plainIp) !== 6) return plainIp;
+  const g = ipv6Groups(plainIp);
+  return g ? g.join(':') : plainIp;
+};
+function ownAddress(ip) {
+  if (Date.now() - ownAddresses.at > OWN_ADDRESSES_MS) {
+    const set = new Set();
+    try {
+      for (const list of Object.values(os.networkInterfaces())) for (const a of list || []) set.add(addressText(a.address));
+    } catch { /* no interfaces to read: the ranges below still hold */ }
+    ownAddresses = { at: Date.now(), set };
+  }
+  return ownAddresses.set.has(addressText(ip));
+}
+
 function blockedAddress(ip) {
   const kind = net.isIP(String(ip || '').replace(/%.*$/, ''));
+  if (kind && ownAddress(ip)) return true;
   if (kind === 4) {
     const p = ip.split('.').map(Number);
     if (p[0] === 0 || p[0] === 10 || p[0] === 127) return true;
@@ -55,6 +78,13 @@ function blockedAddress(ip) {
     if (p[0] === 169 && p[1] === 254) return true;
     if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
     if (p[0] === 192 && p[1] === 168) return true;
+    // Special use: IETF protocol assignments, the three documentation ranges (TEST-NET-1, -2, -3), the 6to4 relay and
+    // benchmarking. None is a public page; a machine may still sit on one (a container on 192.0.2.0/24).
+    if (p[0] === 192 && p[1] === 0 && (p[2] === 0 || p[2] === 2)) return true;
+    if (p[0] === 192 && p[1] === 88 && p[2] === 99) return true;
+    if (p[0] === 198 && (p[1] === 18 || p[1] === 19)) return true;
+    if (p[0] === 198 && p[1] === 51 && p[2] === 100) return true;
+    if (p[0] === 203 && p[1] === 0 && p[2] === 113) return true;
     if (p[0] >= 224) return true;
     return false;
   }
@@ -95,6 +125,13 @@ function pageUrl(text) {
   if (blockedName(u.hostname)) return null;
   return u;
 }
+// A web page's or a picture's address for a preview: as pageUrl, and only on the web's own ports (80 and 443, or none
+// given), so a preview can't be used to knock on a machine's other services. Null otherwise.
+const WEB_PORTS = ['', '80', '443'];
+function previewUrl(text) {
+  const u = pageUrl(text);
+  return u && WEB_PORTS.includes(u.port) ? u : null;
+}
 
 async function publicAddresses(hostname) {
   if (net.isIP(hostname) === 4) {
@@ -117,7 +154,7 @@ function getOnce(target, addresses, maxBytes, accept, { timeoutMs = TIMEOUT_MS, 
     let settled = false;
     const done = (value) => { if (!settled) { settled = true; resolve(value); } };
     const fail = (err) => { if (!settled) { settled = true; reject(err); } };
-    const onSocketError = (err) => fail(new PreviewError('that page could not be read', err && err.code === 'timeout' ? 'timeout' : 'unreachable'));
+    const onSocketError = (err) => fail(err instanceof PreviewError ? err : new PreviewError('that page could not be read', err && err.code === 'timeout' ? 'timeout' : 'unreachable'));
     let req;
     try {
       req = lib.request({
@@ -152,7 +189,7 @@ function getOnce(target, addresses, maxBytes, accept, { timeoutMs = TIMEOUT_MS, 
     }, (res) => {
       const chunks = [];
       let size = 0;
-      res.on('error', () => fail(new PreviewError('that page could not be read', 'unreachable')));
+      res.on('error', (err) => fail(err instanceof PreviewError ? err : new PreviewError('that page could not be read', 'unreachable')));
       res.on('aborted', () => fail(new PreviewError('that page could not be read', 'unreachable')));
       res.on('data', (chunk) => {
         size += chunk.length;
@@ -169,14 +206,21 @@ function getOnce(target, addresses, maxBytes, accept, { timeoutMs = TIMEOUT_MS, 
       fail(new PreviewError('that page could not be read', 'unreachable'));
       return;
     }
+    // Too long, idle or in all: that is the answer, settled before the request is torn down (whose own errors come after).
+    const tooLong = () => {
+      const err = new PreviewError('that page took too long', 'timeout');
+      fail(err);
+      req.destroy(err);
+    };
     let late = null;
     if (deadline) {
-      late = setTimeout(() => req.destroy(new PreviewError('that page took too long', 'timeout')), Math.max(1, deadline - Date.now()));
+      late = setTimeout(tooLong, Math.max(1, deadline - Date.now()));
       if (late.unref) late.unref();
     }
     req.on('close', () => { if (late) clearTimeout(late); });
-    req.on('timeout', () => req.destroy(new PreviewError('that page took too long', 'timeout')));
-    req.on('error', (err) => fail(new PreviewError('that page could not be read', err && err.code === 'timeout' ? 'timeout' : 'unreachable')));
+    req.on('timeout', tooLong);
+    // A refusal of our own (too long) is passed on as it is; anything else the network says is "could not be read".
+    req.on('error', (err) => fail(err instanceof PreviewError ? err : new PreviewError('that page could not be read', err && err.code === 'timeout' ? 'timeout' : 'unreachable')));
     req.end();
   });
 }
@@ -221,7 +265,7 @@ function absoluteImage(raw, base) {
   try {
     const u = new URL(text, base);
     const ip = net.isIP(u.hostname) ? u.hostname : '';
-    if ((u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password && !blockedName(u.hostname) && !(ip && blockedAddress(ip)) && u.href.length <= 2000) return u.href;
+    if ((u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password && WEB_PORTS.includes(u.port) && !blockedName(u.hostname) && !(ip && blockedAddress(ip)) && u.href.length <= 2000) return u.href;
   } catch { /* not an address */ }
   return '';
 }
@@ -337,18 +381,34 @@ function readPreview(html, base) {
   return { title, description, image };
 }
 
+// The whole of one preview or one picture, redirects included, is given up after this.
+const PREVIEW_DEADLINE_MS = 10000;
+
+// Why an address typed for a preview is refused, as a sentence: not a web address, or one that isn't allowed.
+function previewRefusal(text) {
+  const u = pageUrl(text);
+  if (!u) {
+    let parsed = null;
+    try { parsed = new URL(String(text || '').trim()); } catch { /* not an address */ }
+    return parsed && (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password ? 'that address is not allowed' : 'give a web address that starts with https:// or http://';
+  }
+  return 'that address is not allowed';
+}
+
 async function fetchPreview(text) {
-  let current = pageUrl(text);
-  if (!current) throw new PreviewError('give a web address that starts with https:// or http://');
+  let current = previewUrl(text);
+  if (!current) throw new PreviewError(previewRefusal(text), 'blocked');
+  const deadline = Date.now() + PREVIEW_DEADLINE_MS;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const addresses = await publicAddresses(current.hostname);
-    const res = await getOnce(current, addresses, MAX_BYTES);
+    if (Date.now() >= deadline) throw new PreviewError('that page took too long', 'timeout');
+    const res = await getOnce(current, addresses, MAX_BYTES, undefined, { deadline });
     const status = res.status || 0;
     if (status >= 300 && status < 400 && res.headers.location) {
       if (hop === MAX_REDIRECTS) throw new PreviewError('that page could not be read');
       let next;
       try { next = new URL(res.headers.location, current); } catch { throw new PreviewError('that page could not be read'); }
-      current = pageUrl(next.href);
+      current = previewUrl(next.href);
       if (!current) throw new PreviewError('that address is not allowed');
       continue;
     }
@@ -394,18 +454,20 @@ function cachedImage(text) {
 async function fetchImage(text) {
   const hit = cachedImage(text);
   if (hit) return hit;
-  let current = pageUrl(text);
-  if (!current || current.href.length > 2000) throw new PreviewError('that address is not allowed');
+  let current = previewUrl(text);
+  if (!current || current.href.length > 2000) throw new PreviewError('that address is not allowed', 'blocked');
   const asked = current.href;
+  const deadline = Date.now() + PREVIEW_DEADLINE_MS;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const addresses = await publicAddresses(current.hostname);
-    const res = await getOnce(current, addresses, IMAGE_BYTES, 'image/webp,image/png,image/jpeg,image/gif');
+    if (Date.now() >= deadline) throw new PreviewError('that picture took too long', 'timeout');
+    const res = await getOnce(current, addresses, IMAGE_BYTES, 'image/webp,image/png,image/jpeg,image/gif', { deadline });
     const status = res.status || 0;
     if (status >= 300 && status < 400 && res.headers.location) {
       if (hop === MAX_REDIRECTS) throw new PreviewError('that picture could not be read');
       let next;
       try { next = new URL(res.headers.location, current); } catch { throw new PreviewError('that picture could not be read'); }
-      current = pageUrl(next.href);
+      current = previewUrl(next.href);
       if (!current) throw new PreviewError('that address is not allowed');
       continue;
     }
@@ -461,4 +523,4 @@ async function fetchCalendar(text) {
 }
 
 // getOnce is exported for tools/check-link-preview.mjs only (the request it sends, to an address already checked).
-module.exports = { PreviewError, blockedAddress, blockedName, readPreview, fetchPreview, fetchImage, cachedImage, getOnce, fetchCalendar, calendarUrl, CALENDAR_BYTES, CALENDAR_TIMEOUT_MS };
+module.exports = { PreviewError, blockedAddress, blockedName, previewUrl, PREVIEW_DEADLINE_MS, readPreview, fetchPreview, fetchImage, cachedImage, getOnce, fetchCalendar, calendarUrl, CALENDAR_BYTES, CALENDAR_TIMEOUT_MS };

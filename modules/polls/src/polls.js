@@ -555,7 +555,7 @@
     }
     armed.delete(key);
     try {
-      for (const user of [...(votes.get(key) || new Map()).keys()]) await host.storage.delete(`vote:${x.id}:${user}`);
+      // The server removes its votes with it (closed or not: a closed poll's votes are final on their own).
       await host.storage.delete('poll:' + x.id);
       polls.delete(key);
       votes.delete(key);

@@ -298,6 +298,7 @@ export function createModuleFrame(opts = {}) {
       if (o.icon) b.append(icon(o.icon, '', o.regular));
       if (o.label && !(o.iconOnly && o.icon)) b.append(word(o.label));
       else if (o.label) b.dataset.tip = o.label;
+      if (o.count !== undefined && o.count !== null) b.append(el('span', 'sdk-badge', { text: String(o.count) })); // stays when the words fold away
       b.addEventListener('click', () => { it.value = o.id; fire({ id: it.id, value: o.id, el: b }); redraw(); });
       seg.append(b);
     }
@@ -577,6 +578,7 @@ export function createModuleFrame(opts = {}) {
     // 'spacer' entry is not needed (the gap between the groups is drawn here) and is ignored.
     const start = [];
     const end = [];
+    const tail = []; // the right zone (`zone: 'end'`, the host page's own items): after the search and Filters, at the far right
     const used = new Set();
     for (const it of entries) {
       let els = [];
@@ -591,7 +593,7 @@ export function createModuleFrame(opts = {}) {
       else if (it.type === 'text') els = [el('span', 'mf-tb-text', { text: it.text })];
       it._els = els;
       if (!els.length) continue;
-      (it.type === 'search' || it.type === 'filters' ? end : start).push({ it, els });
+      (it.zone === 'end' ? tail : it.type === 'search' || it.type === 'filters' ? end : start).push({ it, els });
     }
     end.sort((x, y) => (x.it.type === 'search' ? 0 : 1) - (y.it.type === 'search' ? 0 : 1));
     for (const [key, k] of kept) {
@@ -602,7 +604,8 @@ export function createModuleFrame(opts = {}) {
       kept.delete(key);
     }
     // In order; a kept element is moved only when it is not already where it goes (moving a focused field would blur it).
-    const parts = [...start.flatMap((g) => g.els), moreBtn, spacer, ...end.flatMap((g) => g.els)];
+    for (const g of tail) for (const e of g.els) e.classList.add('mf-zone-end'); // the right zone: the row's last controls (tools/check-conformance.mjs)
+    const parts = [...start.flatMap((g) => g.els), moreBtn, spacer, ...end.flatMap((g) => g.els), ...tail.flatMap((g) => g.els)];
     const keep = new Set(parts);
     for (const child of [...toolbar.childNodes]) if (!keep.has(child)) child.remove();
     parts.forEach((p, at) => { if (toolbar.childNodes[at] !== p) toolbar.insertBefore(p, toolbar.childNodes[at] || null); });
@@ -646,7 +649,7 @@ export function createModuleFrame(opts = {}) {
       moreBtn.classList.add('is-shown');
       const order = entries
         .map((it, at) => ({ it, at, rank: it.type === 'button' ? MOVE[it.kind === 'primary' || it.kind === 'icon' ? it.kind : 'secondary'] : MOVE[it.type] }))
-        .filter((x) => x.rank && x.it._els && x.it._els.length)
+        .filter((x) => x.rank && !x.it.pin && x.it._els && x.it._els.length) // a pinned item (the right zone's switch) is never moved
         .sort((a, b) => a.rank - b.rank || b.at - a.at);
       for (const { it } of order) {
         if (!over()) break;

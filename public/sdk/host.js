@@ -2204,7 +2204,8 @@
       // set(key, value, { version }) -- pass the version you read to detect a
       // change made since; a conflict rejects with error.status 409 and
       // error.current holding what is stored now.
-      set: (key, value, o) => call('storage.set', { key, value, version: o && o.version, ...opts(o) }),
+      // `tz`: the time zone the value's clock times are in (an IANA name), when it is not the person's own.
+      set: (key, value, o) => call('storage.set', { key, value, version: o && o.version, ...(o && typeof o.tz === 'string' ? { tz: o.tz } : {}), ...opts(o) }),
       delete: (key, o) => call('storage.delete', { key, version: o && o.version, ...opts(o) }),
       list: (prefix, o) => call('storage.list', { prefix: prefix || '', ...opts(o) }),
     },
@@ -2747,8 +2748,18 @@
         const CURSOR = '_cursor:events';
         let cursor = null;
         let chain = Promise.resolve();
+        let waiting = 0; // events queued and not yet handled: the cursor is written once the batch is done, not after each one
+        const writeCursor = async () => {
+          try {
+            await host.storage.set(CURSOR, { id: cursor });
+          } catch (err) {
+            // read-only here: the cursor is kept for this visit only
+          }
+        };
         const deliver = (e) => {
+          waiting += 1;
           chain = chain.then(async () => {
+            waiting -= 1;
             if (cursor !== null && e.id <= cursor) return;
             try {
               await handler(e);
@@ -2756,18 +2767,15 @@
               console.error(err);
             }
             cursor = e.id;
-            try {
-              await host.storage.set(CURSOR, { id: cursor });
-            } catch (err) {
-              // read-only here: the cursor is kept for this visit only
-            }
+            if (waiting === 0) await writeCursor();
           });
         };
         const off = host.on('bus', deliver);
         (async () => {
           let saved = null;
           try {
-            const item = await host.storage.get(CURSOR);
+            // Asked as a list, not a get: a first visit has no cursor yet, and a get of a missing key is a 404 in the console.
+            const item = (await host.storage.list(CURSOR)).find((i) => i.key === CURSOR);
             saved = item && item.value && item.value.id;
           } catch (err) {
             saved = null;
@@ -2775,11 +2783,7 @@
           const r = await call('events.since', { after: saved == null ? 'now' : saved });
           if (saved == null) {
             if (cursor === null || cursor < r.latest) cursor = r.latest;
-            try {
-              await host.storage.set(CURSOR, { id: cursor });
-            } catch (err) {
-              // read-only here
-            }
+            await writeCursor();
           } else if (cursor === null || cursor < saved) {
             cursor = saved;
           }

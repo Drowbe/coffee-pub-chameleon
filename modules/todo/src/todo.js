@@ -309,7 +309,7 @@
     const links = (t.links || []).length ? `<span class="links">${t.links.map((r) => linkChip(r, false)).join('')}</span>` : '';
     return `<div class="sdk-row task ${t.done ? 'done' : ''}" data-task="${esc(x.key)}">
       <label class="sdk-row-tick"><input class="tick" type="checkbox" data-tick="${esc(x.key)}" ${t.done ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="Done"></label>
-      <button class="sdk-open text" type="button" data-open="${esc(x.key)}">${part && x.scope === 'spaces' ? spaceIcon(x.spaceId) : ''}${esc(t.title)}${notes}${links}</button>
+      <button class="sdk-open text" type="button" data-open="${esc(x.key)}">${part && x.scope === 'spaces' ? spaceIcon(x.spaceId) : ''}<span class="t-title">${esc(t.title)}</span>${notes}${links}</button>
       ${due && !t.done ? `<span class="due ${due.cls}">${esc(due.text)}</span>` : ''}
     </div>`;
   }
@@ -350,7 +350,7 @@
   function renderByDue() {
     const shown = [...tasks.values()].filter((x) => (x.scope === 'own' ? !hideOwn : !hiddenSpaces.has(x.spaceId)));
     const openCount = shown.filter((x) => !x.t.done).length;
-    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && openCount ? { ...f, label: `Open (${openCount})` } : f)));
+    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && openCount ? { ...f, count: openCount } : f)));
     if (!inSpace && hideOwn && ![...spaceInfo.keys()].some((id) => !hiddenSpaces.has(id))) {
       $('body').innerHTML = `<p class="sdk-empty">Pick at least one in ${esc(word('space', { many: true, cap: true }))}.</p>`;
       return;
@@ -376,7 +376,7 @@
     const own = [...tasks.values()].filter((x) => x.scope === 'own');
     const openCount = own.filter((x) => !x.t.done).length;
     syncToolbar();
-    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && openCount ? { ...f, label: `Open (${openCount})` } : f)));
+    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && openCount ? { ...f, count: openCount } : f)));
 
     let html = groupHtml(spaceInfo.size ? esc(envName()) : '', own);
     for (const r of spaceInfo.values()) {
@@ -386,6 +386,27 @@
     $('body').innerHTML = html || `<p class="sdk-empty">${show === 'done' ? 'Nothing done yet.' : 'Nothing to do.'}${canAdd() && show !== 'done' ? ' Add a task to get started.' : ''}</p>`;
   }
 
+  // A short notice with Undo (the SDK's toast has no action): ticking a task makes it leave the Open list, and a delete is gone,
+  // so each says what happened and takes it back for a while. One at a time; the next replaces it.
+  let undoFn = null;
+  let undoTimer = 0;
+  function showUndo(text, undo) {
+    undoFn = undo;
+    $('undo-text').textContent = text;
+    $('undo').hidden = false;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(hideUndo, 8000);
+  }
+  function hideUndo() {
+    undoFn = null;
+    $('undo').hidden = true;
+  }
+  $('undo-btn').addEventListener('click', async () => {
+    const fn = undoFn;
+    hideUndo();
+    if (!fn) return;
+    try { await fn(); } catch (err) { showNote(err.message); }
+  });
   function showNote(text) {
     $('note').textContent = text;
     $('note').hidden = !text;
@@ -434,6 +455,7 @@
     try {
       await put(x, t);
       applyReminder(t, whereOf(x)).catch(() => {});
+      if (done) showUndo(`Done: ${t.title.length > 40 ? `${t.title.slice(0, 40)}...` : t.title}`, () => tick(key, false));
     } catch (err) {
       showNote(err.status === 409 ? 'Someone changed that task first. It has been refreshed.' : err.message);
       try { await load(); } catch (e) { /* keep what we have */ }
@@ -627,7 +649,8 @@
     try {
       const found = [...await host.objects.search(text)];
       if (inSpace) found.push(...await host.objects.search(text, { scope: 'environment' }).catch(() => []));
-      const fresh = found.filter((c) => !editingLinks.some((r) => objectKey(r) === objectKey(c.ref))).slice(0, 12);
+      // A copy (the Calendar's copy of an Itinerary object) is the same thing twice: only the original is offered.
+      const fresh = found.filter((c) => !c.copy && !editingLinks.some((r) => objectKey(r) === objectKey(c.ref))).slice(0, 12);
       for (const c of fresh) summaries.set(objectKey(c.ref), c);
       box.innerHTML = fresh.length ? fresh.map((c) => `<button type="button" class="sdk-row result" data-link="${esc(objectKey(c.ref))}"><span>${esc(c.module.name)}: ${esc(c.title)}</span><small>${esc(dateText(c.when, c.allDay))}</small></button>`).join('') : '<span class="hint">Nothing found.</span>';
       box.dataset.found = JSON.stringify(fresh.map((c) => c.ref));
@@ -706,7 +729,16 @@
     const x = tasks.get(editing.key);
     if (!x) return;
     try {
+      const gone = { t: x.t, scope: x.scope, spaceId: x.spaceId, where: whereOf(x) };
       await host.storage.delete('task:' + editing.id, whereOf(x));
+      showUndo(`Deleted: ${x.t.title.length > 40 ? `${x.t.title.slice(0, 40)}...` : x.t.title}`, async () => {
+        const saved = await host.storage.set('task:' + gone.t.id, gone.t, gone.where);
+        remember(gone.scope, { key: 'task:' + gone.t.id, value: gone.t, version: saved.version }, gone.spaceId);
+        const back = tasks.get(keyOf(gone.scope, gone.t.id, gone.spaceId));
+        if (back) syncLinks(back, gone.t.links || []);
+        applyReminder(gone.t, gone.where).catch(() => {});
+        render();
+      });
       syncLinks(x, []);
       try { await host.cancelSchedule('remind:' + editing.id, whereOf(x)); } catch (err) { /* nothing to cancel */ }
       tasks.delete(editing.key);

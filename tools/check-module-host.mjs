@@ -687,7 +687,7 @@ test('the budget target: a module is let in by its manifest flag, which the moun
 
 test('the budget target (#216): the hello carries host.space().budget, the page says a change, the SDK keeps it current', () => {
   const server = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
-  assert.match(server, /space: here \? \{ id: here\.id, name: here\.name, createdAt: here\.createdAt, phases: here\.phases, budget: \(who\.user && here\.budget\) \|\| null \} : null,/, 'the context gives the budget to a signed-in person, null while none and always for a guest');
+  assert.match(server, /space: here \? \{ id: here\.id, name: here\.name, createdAt: here\.createdAt, phases: here\.phases, budget: \(who\.user && here\.budget\) \|\| null, guestsSeeHidden: here\.guestsSeeHidden === true \} : null,/, 'the context gives the budget to a signed-in person, null while none and always for a guest');
   const page = fs.readFileSync(new URL('../public/space.js', import.meta.url), 'utf8');
   // The space's record on the page no longer carries the budget (the presence list leaves it out): the phases' detail
   // has none, so a member's modules never hear it cleared; an owner's save says it at once.

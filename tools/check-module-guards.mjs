@@ -16,6 +16,15 @@
  *     live changes without cost, estimate, confirm or paidBy, has=amount refused for a guest, the owner opening the
  *     space's guestsSeeHidden showing them, a guest's write keeping them; a poll past its closing time `done` in its
  *     summary; a research photo removed or emptied only by whoever may; the canvas's `clear` flag.
+ *   - The feedback build's cases: a vote is a list of the poll's own option ids, no id twice, one unless the poll takes
+ *     several; a poll's closed, closesAt, multi and addable typed; an added option needs a new id and is named by the
+ *     server; a cost at least 0.01; a guest who can't see hidden fields can't remove, replace or clear what holds them;
+ *     guards whose hidden fields don't read shut the module's data to guests (after a restart); Research's ids are one
+ *     kind's only (exclusive), a photo's file must be the writer's and goes with the photo (also when a remove_photos
+ *     holder removes it, kept while another photo names it); a member without Research edit writes in Mine
+ *     (access.personWrite), notes and photos with their uploads; link pictures refused to guests and to addresses no link
+ *     here has; icons without a session; a closed poll's votes are final (nobody removes one), and a poll removed takes
+ *     its votes with it; the module context's space.guestsSeeHidden.
  * No network beyond localhost, no LiveKit.
  */
 import fs from 'node:fs';
@@ -167,7 +176,8 @@ await test('rules: what a PUT and a DELETE answer, case by case', () => {
     ['one\'s own poll deleted', del('poll:q1', person('mia', ['create'])), 200],
     ['someone else\'s vote deleted', del('vote:q1:mia', member, { options: ['o1'] }), 403],
     ['someone else\'s vote deleted by the poll\'s starter', del('vote:q1:sam', person('mia', ['create']), { options: ['o1'] }), 200],
-    ['someone else\'s vote on a closed poll deleted by a manager', del('vote:q2:sam', manager, { options: ['o1'] }), 200],
+    ['someone else\'s vote on a closed poll deleted by a manager: a closed poll is final', del('vote:q2:sam', manager, { options: ['o1'] }), 403],
+    ['a vote on a closed poll deleted by its starter', del('vote:q2:sam', person('mia', ['create']), { options: ['o1'] }), 403],
     ['one\'s own vote taken back on an open poll', del('vote:q1:sam', member, { options: ['o1'] }), 200],
     ['one\'s own vote taken back on a closed poll', del('vote:q2:sam', member, { options: ['o1'] }), 403],
     ['a key that is not there deleted', del('vote:q1:mia', member, null), 200],
@@ -224,10 +234,98 @@ await test('hidden fields: hide and keepHidden', () => {
   assert.equal(guards.hide(v, []), v);
   assert.deepEqual(guards.keepHidden({ title: 'New', cost: 1 }, v, ['cost', 'confirm']), { title: 'New', cost: 612, confirm: 'QX81ZP' });
   assert.deepEqual(guards.keepHidden({ title: 'New', cost: 1 }, null, ['cost']), { title: 'New' }, 'a guest sets no hidden field');
+  // What a writer who can't see them may not do: remove, replace with a non-object, clear (QA 2).
+  const H = ['cost', 'confirm'];
+  assert.equal(guards.holdsHidden(v, H), true);
+  assert.equal(guards.holdsHidden({ title: 'x', cost: null, confirm: '' }, H), false, 'empty is nothing to lose');
+  assert.equal(guards.hiddenDeleteRefusal(v, H).status, 403);
+  assert.equal(guards.hiddenDeleteRefusal(v, []), null, 'someone who sees them');
+  assert.equal(guards.hiddenDeleteRefusal({ title: 'x' }, H), null);
+  assert.equal(guards.hiddenPutRefusal('text', v, H).status, 403);
+  assert.equal(guards.hiddenPutRefusal(null, v, H).status, 403);
+  assert.equal(guards.hiddenPutRefusal({ title: 'x' }, v, H), null, 'an object keeps them (keepHidden)');
+  assert.equal(guards.hiddenClearRefusal([{ title: 'x' }, v], H).status, 403);
+  assert.equal(guards.hiddenClearRefusal([{ title: 'x' }], H), null);
+  // Guards that don't read: hidden fields kept as far as they read; when they don't read in full, shut to guests (QA 4).
+  assert.deepEqual(guards.unreadableGuards({ hidden: ['cost', 'cost'], keys: 'bad' }), { invalid: true, clear: null, hidden: ['cost'], keys: [], exclusive: null });
+  assert.equal(guards.unreadableGuards({ keys: 'bad' }).shut, undefined, 'no hidden fields declared: nothing to shut');
+  assert.equal(guards.unreadableGuards({ hidden: 'cost' }).shut, true, 'hidden not a list');
+  assert.equal(guards.unreadableGuards({ hidden: ['cost', 'not ok'] }).shut, true, 'a hidden entry that does not read');
+  assert.deepEqual(guards.unreadableGuards({ hidden: ['cost', 'not ok'] }).hidden, ['cost']);
+});
+
+await test('fields: lists (of, unique, pick), votes and options (QA 1, 6, 8)', () => {
+  const g = clean(POLLS_GUARDS);
+  const voter = { key: 'sam', name: 'Sam', owner: false, can: (p) => ['view', 'vote'].includes(p) };
+  const poll = (extra = {}) => ({ id: 'q1', question: 'Where?', options: [{ id: 'o1', text: 'A' }, { id: 'o2', text: 'B' }], multi: false, addable: true, closed: false, closesAt: null, by: 'Mia', byKey: 'mia', ...extra });
+  const store = { 'poll:q1': poll(), 'poll:q2': poll({ id: 'q2', multi: true }) };
+  const read = (k) => store[k] || null;
+  const put = (key, value, who = voter, before = store[key] || null) => guards.checkPut(g, { key, before, value, who, read, now: 0 });
+  const rows = [
+    ['one choice', put('vote:q1:sam', { options: ['o1'] }), 200],
+    ['no choice', put('vote:q1:sam', { options: [] }), 200],
+    ['two on a poll of one', put('vote:q1:sam', { options: ['o1', 'o2'] }), 400],
+    ['two on a poll of several', put('vote:q2:sam', { options: ['o1', 'o2'] }), 200],
+    ['the same twice', put('vote:q2:sam', { options: ['o1', 'o1'] }), 400],
+    ['a choice the poll has not', put('vote:q1:sam', { options: ['o9'] }), 400],
+    ['not text', put('vote:q1:sam', { options: [1] }), 400],
+    ['not a list', put('vote:q1:sam', { options: 'o1' }), 400],
+    ['left out', put('vote:q1:sam', {}), 400],
+    ['too many', put('vote:q2:sam', { options: Array.from({ length: 21 }, (_, i) => `o${i}`) }), 400],
+    ['closed as text', put('poll:q1', poll({ closed: 'yes' }), { ...voter, key: 'mia', can: () => true }), 400],
+    ['closesAt as text', put('poll:q1', poll({ closesAt: '2026-11-01' }), { ...voter, key: 'mia', can: () => true }), 400],
+    ['an option id twice', put('poll:q1', poll({ options: [{ id: 'o1', text: 'A' }, { id: 'o1', text: 'B' }] }), { ...voter, key: 'mia', can: () => true }), 400],
+    ['an option with no id', put('poll:q1', poll({ options: [{ text: 'A' }, { id: 'o2', text: 'B' }] }), { ...voter, key: 'mia', can: () => true }), 400],
+    ['an added option with a new id', put('poll:q1', poll({ options: [...poll().options, { id: 'o3', text: 'C' }] })), 200],
+    ['an added option reusing an id', put('poll:q1', poll({ options: [...poll().options, { id: 'o2', text: 'C' }] })), 400],
+    ['an added option that is not an object', put('poll:q1', poll({ options: [...poll().options, 'C'] })), 400],
+  ];
+  const status = (r) => (r.error ? r.status : 200);
+  for (const [what, answer, want] of rows) assert.equal(status(answer), want, `${what}: ${JSON.stringify(answer)}`);
+  assert.equal(put('poll:q1', poll({ options: [...poll().options, { id: 'o3', text: 'C', by: 'Mallory' }] })).value.options[2].by, 'Sam', 'the server names who added an option');
+  assert.equal(put('poll:q1', poll({ options: [...poll().options, { id: 'o3', text: 'C', by: 'Mallory' }] }), { ...voter, key: 'mia', can: () => true }).value.options[2].by, 'Mallory', 'the poll\'s starter edits options as written');
+  for (const [, answer] of rows) if (answer.error && !/^[a-z]/.test(answer.error)) assert.match(answer.error, /^[A-Z].*[.]$/, answer.error);
+  // The manifest's refusals for the new specs.
+  const bad = [
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', fields: { t: { type: 'string', of: 'string' } } }] }, /of is for a list field/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', fields: { t: { type: 'array', of: 'array' } } }] }, /of must be number, string, boolean or object/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', fields: { t: { type: 'array', pick: { from: 'options' } } } }] }, /pick needs a "parent"/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', fields: { t: { type: 'array', unique: 'not ok' } } }] }, /unique must name a stored field/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', owner: 'by', others: { change: 'create', may: [{ field: 'o', by: 'by' }] } }] }, /by needs append: true/],
+    [{ exclusive: ['note:{id}'] }, /guards.exclusive must be a list of 2/],
+    [{ exclusive: ['note:{id}', 'note:{other}'] }, /lists a key twice/],
+    [{ exclusive: ['note:{id}', 'link:{x}'] }, /the same \{name\} parts/],
+    [{ exclusive: ['note', 'link:{x}'] }, /each guards.exclusive entry must be a stored key with \{name\} parts/],
+  ];
+  for (const [raw, message] of bad) assert.throws(() => clean(raw), message, JSON.stringify(raw));
+});
+
+await test('exclusive ids and a rule\'s file (Research)', () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'research', 'module.json'), 'utf8'));
+  const g = guards.cleanGuards(raw.guards, raw.permissions.map((p) => p.key), ModuleError);
+  assert.deepEqual(g.exclusive, ['note:{id}', 'link:{id}', 'photo:{id}', 'answer:{id}']);
+  const files = { f1: { by: 'sam' }, f2: { by: 'mia' } };
+  const person = (key, perms, owner = false) => ({ key, name: key, owner, can: (p) => perms.includes(p), file: (id) => files[id] || null });
+  const sam = person('sam', ['view', 'edit']);
+  const store = { 'photo:p1': { kind: 'photo', title: 'P', by: 'sam', file: { id: 'f1' } } };
+  const read = (k) => store[k] || null;
+  const put = (key, value, who, before = store[key] || null) => guards.checkPut(g, { key, before, value, who, read });
+  const status = (r) => (r.error ? r.status : 200);
+  assert.equal(status(put('note:p1', { kind: 'note', title: 'N' }, sam)), 409, 'a note under a photo\'s id');
+  assert.equal(put('note:p1', { kind: 'note', title: 'N' }, sam).error, 'Something else here already has that id, so this can\'t be saved under it.');
+  assert.equal(status(put('note:n1', { kind: 'note', title: 'N' }, sam)), 200, 'a note with its own id');
+  assert.equal(status(put('photo:p1', { ...store['photo:p1'], title: 'Q' }, sam)), 200, 'the photo itself changed');
+  assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: { id: 'f9' } }, sam, null)), 400, 'a file that is not here');
+  assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: { id: 'f2' } }, sam, null)), 403, 'someone else\'s file');
+  assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: { id: 'f2' } }, person('boss', ['view', 'edit'], true), null)), 200, 'an owner may use any file');
+  assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: 'f1' }, sam, null)), 400, 'a file named by text, not { id }');
+  assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: { id: 'f1' } }, sam, null)), 200, 'one\'s own file');
+  assert.equal(guards.fileOf(g, 'photo:p1', store['photo:p1']), 'f1');
+  assert.equal(guards.fileOf(g, 'note:p1', { file: { id: 'f1' } }), null, 'only a rule with `file` names one');
 });
 
 // --- live, against the seed ----------------------------------------------------------------------------------------------
-const { bootSeeded, stopServer, freePort } = await import('./shots.mjs');
+const { bootSeeded, startServer, stopServer, freePort } = await import('./shots.mjs');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-module-guards-'));
 let server;
 try {
@@ -321,13 +419,14 @@ try {
   });
 
   await test('live: a cost\'s amounts are checked (PB-02)', async () => {
-    const rows = [[-500, 400], [0, 400], [1e12, 400], [1e13, 400], ['40', 400], [true, 400], [12.345, 200], [40, 200]];
+    // At least a cent (0.01), as the page rounds an amount to cents and drops one that rounds to nothing.
+    const rows = [[-500, 400], [0, 400], [0.004, 400], [0.009, 400], [1e12, 400], [1e13, 400], ['40', 400], [true, 400], [0.01, 200], [12.345, 200], [40, 200]];
     for (const [planned, want] of rows) {
       const r = await call('PUT', data('budget', 'cost:shape'), { value: { title: 'Shape', planned, amount: planned } }, 'sam');
       assert.equal(r.status, want, `planned ${JSON.stringify(planned)}: ${JSON.stringify(r.json)}`);
     }
     const r = await call('PUT', data('budget', 'cost:neg'), { value: { title: 'Neg', planned: -500, actual: -500, amount: -500 } }, 'sam');
-    assert.equal(r.json.error, 'planned must be a number above 0 and below 1000000000000, or empty.');
+    assert.equal(r.json.error, 'planned must be a number at least 0.01 and below 1000000000000, or empty.');
     assert.equal((await call('GET', data('budget', 'cost:neg'))).status, 404, 'nothing was stored');
     assert.equal((await call('DELETE', data('budget', 'cost:shape'), undefined, 'sam')).status, 200);
   });
@@ -402,6 +501,8 @@ try {
     assert.equal((await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: 'yes' })).status, 400);
     const opened = await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: true });
     assert.equal(opened.json.space.guestsSeeHidden, true);
+    assert.equal((await call('GET', `/api/modules/travel/context?${sp()}`, undefined, 'sam')).json.space.guestsSeeHidden, true, 'the module context says so: on');
+    assert.equal((await asGuest('GET', `/api/modules/travel/context?${sp()}`)).json.space.guestsSeeHidden, true, 'to a guest too');
     try {
       const seen = (await asGuest('GET', data('travel', 'plan:a1'))).json.item.value;
       assert.deepEqual([seen.cost, seen.confirm], [612, 'QX81ZP']);
@@ -409,6 +510,7 @@ try {
     } finally {
       const shut = await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: false });
       assert.equal(shut.json.space.guestsSeeHidden, undefined, 'off is stored as nothing');
+      assert.equal((await call('GET', `/api/modules/travel/context?${sp()}`, undefined, 'sam')).json.space.guestsSeeHidden, false, 'the module context says so: off');
     }
     assert.equal((await asGuest('GET', data('travel', 'plan:a1'))).json.item.value.cost, undefined, 'and closed again');
   });
@@ -422,8 +524,25 @@ try {
     assert.equal((await call('PUT', data('polls', `vote:late:${ctx.sam}`), { value: { options: ['o1'] } }, 'sam')).status, 403, 'and takes no votes');
   });
 
-  await test('live: a research photo is removed or emptied only by whoever may', async () => {
-    const photo = { kind: 'photo', title: 'Sam\'s photo', tags: [], date: '', at: '2026-10-15T10:00:00.000Z', text: 'Sam\'s photo', sub: '', file: { id: 'a'.repeat(24), hasThumb: true } };
+  // A picture uploaded to Research in the trip by `as`: its file id.
+  const { encodePng } = await import('./shots.mjs');
+  const upload = async (as, place = sp()) => {
+    const headers = { 'content-type': 'image/png' };
+    if (cookies[as]) headers.cookie = cookies[as].map((c) => `${c.name}=${c.value}`).join('; ');
+    const r = await fetch(`${server.base}/api/modules/research/uploads?${place}&name=p.png`, { method: 'POST', headers, body: encodePng({ w: 2, h: 2, data: Buffer.alloc(16, 200) }) });
+    const json = await r.json();
+    assert.equal(r.status, 201, JSON.stringify(json));
+    return json.file.id;
+  };
+  const filesHere = async () => (await call('GET', `/api/modules/research/uploads?${sp()}`)).json.files.map((f) => f.id);
+
+  await test('live: a research photo is removed or emptied only by whoever may, and its file goes with it (RS-01)', async () => {
+    const samFile = await upload('sam');
+    const photo = { kind: 'photo', title: 'Sam\'s photo', tags: [], date: '', at: '2026-10-15T10:00:00.000Z', text: 'Sam\'s photo', sub: '', file: { id: samFile, hasThumb: false } };
+    const nowhere = await call('PUT', data('research', 'photo:p0'), { value: { ...photo, file: { id: 'a'.repeat(24), hasThumb: false } } }, 'sam');
+    assert.deepEqual([nowhere.status, nowhere.json.error], [400, 'That file isn\'t here.'], 'a photo of a file that is not there');
+    const theirs = await call('PUT', data('research', 'photo:p0'), { value: { ...photo, by: undefined } }, 'mia');
+    assert.deepEqual([theirs.status, theirs.json.error], [403, 'You can only use a file you added.'], 'Mia making a photo of Sam\'s file');
     const made = await call('PUT', data('research', 'photo:p1'), { value: photo }, 'sam');
     assert.equal(made.status, 200);
     assert.equal(made.json.item.value.by, ctx.sam, 'the server names who added it');
@@ -431,7 +550,161 @@ try {
     assert.equal((await call('PUT', data('research', 'photo:p1'), { value: { ...made.json.item.value, file: { id: 'b'.repeat(24), hasThumb: true } } }, 'mia')).status, 403, 'nor swaps its picture');
     assert.equal((await call('DELETE', data('research', 'photo:p1'), undefined, 'mia')).status, 403, 'mia (no remove_photos) can\'t remove Sam\'s photo');
     assert.equal((await call('DELETE', data('research', ''), undefined, 'mia')).status, 403, 'nor clear Research');
-    assert.equal((await call('DELETE', data('research', 'photo:p1'), undefined, 'sam')).status, 200, 'Sam removes his own');
+    // Another kind of object can't take a photo's id (it would hide the photo on the page).
+    const shadow = await call('PUT', data('research', 'note:p1'), { value: { kind: 'note', title: 'Shadow', body: '', tags: [], date: '', at: '', text: '', sub: '' } }, 'mia');
+    assert.deepEqual([shadow.status, shadow.json.error], [409, 'Something else here already has that id, so this can\'t be saved under it.'], 'a note under the photo\'s id');
+    assert.equal((await call('PUT', data('research', 'answer:p1'), { value: { kind: 'answer', title: 'Shadow', content: 'x' } }, 'admin')).status, 409, 'nor an answer, by the admin');
+    // A member given remove_photos removes Sam's photo, and its file goes with it.
+    assert.equal((await call('PATCH', '/api/roles/member', { 'module.research.remove_photos': true })).status, 200);
+    try {
+      assert.ok((await filesHere()).includes(samFile));
+      assert.equal((await call('DELETE', data('research', 'photo:p1'), undefined, 'mia')).status, 200, 'mia, holding remove_photos, removes it');
+      assert.equal((await filesHere()).includes(samFile), false, 'the file went with the photo');
+    } finally {
+      await call('PATCH', '/api/roles/member', { 'module.research.remove_photos': false });
+    }
+    // Sam removes his own; a file another photo still names stays.
+    const second = await upload('sam');
+    for (const k of ['p2', 'p3']) assert.equal((await call('PUT', data('research', `photo:${k}`), { value: { ...photo, file: { id: second, hasThumb: false } } }, 'sam')).status, 200);
+    assert.equal((await call('DELETE', data('research', 'photo:p2'), undefined, 'sam')).status, 200, 'Sam removes his own');
+    assert.ok((await filesHere()).includes(second), 'still named by photo:p3, so kept');
+    assert.equal((await call('DELETE', data('research', 'photo:p3'), undefined, 'sam')).status, 200);
+    assert.equal((await filesHere()).includes(second), false, 'then removed with the last');
+  });
+
+  await test('live: a member without Research edit keeps private notes in Mine (RS-24)', async () => {
+    const note = { kind: 'note', title: 'Only mine', body: 'x', tags: [], date: '', at: '', text: 'x', sub: '' };
+    assert.equal((await call('PATCH', '/api/roles/member', { 'module.research.edit': false })).status, 200);
+    try {
+      const space = await call('PUT', data('research', 'note:mine1'), { value: note }, 'sam');
+      assert.equal(space.status, 403, 'not in the trip');
+      const mine = await call('PUT', '/api/modules/research/data/note:mine1?scope=person', { value: note }, 'sam');
+      assert.equal(mine.status, 200, `in Mine: ${JSON.stringify(mine.json)}`);
+      assert.equal((await call('DELETE', '/api/modules/research/data/note:mine1?scope=person', undefined, 'sam')).status, 200, 'and removes it');
+      // And a photo in Mine: the upload and the photo itself (not in the trip).
+      const headers = { 'content-type': 'image/png', cookie: cookies.sam.map((c) => `${c.name}=${c.value}`).join('; ') };
+      const inTrip = await fetch(`${server.base}/api/modules/research/uploads?${sp()}&name=p.png`, { method: 'POST', headers, body: encodePng({ w: 2, h: 2, data: Buffer.alloc(16, 9) }) });
+      assert.equal(inTrip.status, 403, 'no upload to the trip without edit');
+      const fileId = await upload('sam', 'scope=person');
+      const photo = await call('PUT', '/api/modules/research/data/photo:mine2?scope=person', { value: { kind: 'photo', title: 'Mine', tags: [], date: '', at: '', text: 'Mine', sub: '', file: { id: fileId, hasThumb: false } } }, 'sam');
+      assert.equal(photo.status, 200, `a photo in Mine: ${JSON.stringify(photo.json)}`);
+      assert.equal((await call('DELETE', '/api/modules/research/data/photo:mine2?scope=person', undefined, 'sam')).status, 200);
+      const left = (await call('GET', '/api/modules/research/uploads?scope=person', undefined, 'sam')).json.files.map((f) => f.id);
+      assert.equal(left.includes(fileId), false, 'its file went with it');
+      // Another module's own data still takes its write permission (Polls has no person scope; the Planner's is
+      // guarded by edit as before).
+      assert.equal((await call('PATCH', '/api/roles/member', { 'module.travel.edit': false })).status, 200);
+      try {
+        const travel = await call('PUT', '/api/modules/travel/data/plan:mine1?scope=person', { value: { title: 'x' } }, 'sam');
+        assert.ok([400, 403].includes(travel.status), `the Planner's own data without edit: ${travel.status}`);
+      } finally {
+        await call('PATCH', '/api/roles/member', { 'module.travel.edit': true });
+      }
+    } finally {
+      await call('PATCH', '/api/roles/member', { 'module.research.edit': true });
+    }
+  });
+
+  await test('live: votes are a list of the poll\'s own options, one unless it takes several (QA 1, 6, 8)', async () => {
+    const single = (await call('GET', data('polls', 'poll:q1'))).json.item.value;
+    assert.notEqual(single.multi, true, 'q1 takes one answer');
+    const rows = [
+      [{ options: ['o1', 'o2'] }, 400, 'options can hold only one choice here.'],
+      [{ options: ['nope'] }, 400, 'Each entry of options must be one of the choices.'],
+      [{ options: ['o1', 'o1'] }, 400, 'options has the same entry twice.'],
+      [{ options: 'o1' }, 400, 'options must be a list with at most 20 entries.'],
+      [{ options: [1] }, 400, 'Each entry of options must be text.'],
+      [{}, 400, 'options is needed.'],
+      [{ options: ['o2'] }, 200, null],
+    ];
+    for (const [value, want, error] of rows) {
+      const r = await call('PUT', data('polls', `vote:q1:${ctx.sam}`), { value: { ...value, name: 'x', at: 1 } }, 'sam');
+      assert.equal(r.status, want, `${JSON.stringify(value)}: ${JSON.stringify(r.json)}`);
+      if (error) assert.equal(r.json.error, error);
+    }
+    // A poll that takes several.
+    const several = { id: 'm1', question: 'Several', options: [{ id: 'o1', text: 'a' }, { id: 'o2', text: 'b' }], multi: true, addable: true, closed: false, closesAt: null };
+    assert.equal((await call('PUT', data('polls', 'poll:m1'), { value: several }, 'mia')).status, 200);
+    assert.equal((await call('PUT', data('polls', `vote:m1:${ctx.sam}`), { value: { options: ['o1', 'o2'] } }, 'sam')).status, 200, 'two on a poll that takes several');
+    // The poll's own fields have their types.
+    for (const [patch, error] of [[{ closed: 'yes' }, 'closed must be true or false.'], [{ closesAt: '2026-11-01' }, 'closesAt must be a number, or empty.'], [{ multi: 1 }, 'multi must be true or false.'], [{ options: [{ id: 'o1', text: 'a' }, { id: 'o1', text: 'b' }] }, 'Two entries of options have the same id.']]) {
+      const r = await call('PUT', data('polls', 'poll:m1'), { value: { ...several, ...patch } }, 'mia');
+      assert.deepEqual([r.status, r.json.error], [400, error], JSON.stringify(patch));
+    }
+    // An option someone else adds: a new id, named by the server.
+    const now = (await call('GET', data('polls', 'poll:m1'))).json.item.value;
+    const dup = await call('PUT', data('polls', 'poll:m1'), { value: { ...now, options: [...now.options, { id: 'o1', text: 'again' }] } }, 'sam');
+    assert.deepEqual([dup.status, dup.json.error], [400, 'Two entries of options have the same id.'], 'an added option reusing an id');
+    const added = await call('PUT', data('polls', 'poll:m1'), { value: { ...now, options: [...now.options, { id: 'o3', text: 'c', by: 'Someone else' }] } }, 'sam');
+    assert.equal(added.status, 200, JSON.stringify(added.json));
+    assert.equal(added.json.item.value.options[2].by, 'Sam Okafor', 'the server names who added it');
+    assert.equal((await call('PUT', data('polls', 'poll:m1'), { value: { ...added.json.item.value, options: [...added.json.item.value.options, 'd'] } }, 'sam')).status, 400, 'an added option that is not an object');
+    // Closed, it is final (QA 7, Thomas): no vote removed on its own, not by its voter or the poll's starter; the poll
+    // removed by its starter takes its votes with it.
+    assert.equal((await call('PUT', data('polls', 'poll:m1'), { value: { ...added.json.item.value, closed: true } }, 'mia')).status, 200);
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`), undefined, 'sam')).status, 403, 'the voter, after the close');
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`), undefined, 'mia')).status, 403, 'the starter, after the close');
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`))).status, 403, 'the admin, after the close');
+    assert.equal((await call('DELETE', data('polls', 'poll:m1'), undefined, 'mia')).status, 200, 'the starter removes the poll');
+    assert.equal((await call('GET', data('polls', `vote:m1:${ctx.sam}`))).status, 404, 'and its votes went with it');
+  });
+
+  await test('live: a guest can\'t remove or replace what holds hidden fields (QA 2)', async () => {
+    assert.equal((await call('PATCH', '/api/roles/guest', { 'module.travel.edit': true })).status, 200);
+    try {
+      const del = await asGuest('DELETE', data('travel', 'plan:a1'));
+      assert.deepEqual([del.status, del.json.error], [403, 'That holds details guests can\'t see, so a guest can\'t remove it.'], 'the booking with a cost');
+      const over = await asGuest('PUT', data('travel', 'plan:a1'), { value: 'gone' });
+      assert.deepEqual([over.status, over.json.error], [403, 'That holds details guests can\'t see, so it can only be changed, not replaced.']);
+      const clear = await asGuest('DELETE', data('travel', ''));
+      assert.deepEqual([clear.status, clear.json.error], [403, 'Some of it holds details guests can\'t see, so a guest can\'t clear everything.']);
+      const after = (await call('GET', data('travel', 'plan:a1'))).json.item.value;
+      assert.deepEqual([after.cost, after.confirm], [612, 'QX81ZP'], 'nothing was lost');
+      // What holds nothing hidden is the guest's to remove, as before.
+      assert.equal((await call('PUT', data('travel', 'plan:plain1'), { value: { title: 'No cost', kind: 'note' } })).status, 200);
+      assert.equal((await asGuest('DELETE', data('travel', 'plan:plain1'))).status, 200);
+    } finally {
+      await call('PATCH', '/api/roles/guest', { 'module.travel.edit': false });
+    }
+  });
+
+  await test('live: link pictures only for a signed-in person, only ones a link here has (RS-02); icons for guests (RS-08)', async () => {
+    const stored = 'https://pictures.example.org/tram.jpg';
+    assert.equal((await call('PUT', data('research', 'link:img1'), { value: { kind: 'link', title: 'Tram', url: 'https://example.org/tram', excerpt: '', image: stored, tags: [], date: '', at: '', text: '', sub: 'example.org' } }, 'sam')).status, 200);
+    const img = (url) => `/api/modules/research/link-image?${sp()}&url=${encodeURIComponent(url)}`;
+    const guest = await fetch(`${server.base}${img(stored)}&guest=${encodeURIComponent(guestToken)}`);
+    assert.equal(guest.status, 403, 'a guest');
+    const other = await call('GET', img('http://192.0.2.2:3390/img.png?probe=1'), undefined, 'sam');
+    assert.deepEqual([other.status, other.json?.error], [404, 'That picture isn\'t on a link here.'], 'an address no link here has');
+    const known = await call('GET', img(stored), undefined, 'sam');
+    assert.equal(known.status, 404, 'a stored picture is looked for (no network here, so not found)');
+    assert.equal(known.json, null, 'past the check: the fetch itself failed');
+    assert.equal((await call('DELETE', data('research', 'link:img1'), undefined, 'sam')).status, 200);
+    // A preview refuses a port that isn't the web's own.
+    const port = await call('POST', `/api/modules/research/link-preview?${sp()}`, { url: 'http://example.org:22/' }, 'sam');
+    assert.deepEqual([port.status, port.json.error], [400, 'that address is not allowed']);
+    // Icons need no session, so a guest's page shows them.
+    const icon = await fetch(`${server.base}/api/icons/solid/pen`);
+    assert.equal(icon.status, 200);
+    assert.match(await icon.text(), /^<svg/);
+  });
+
+  await test('live: guards whose hidden fields can\'t be read keep the module\'s data from guests (QA 4)', async () => {
+    assert.equal((await asGuest('GET', data('travel', 'plan:a1'))).status, 200, 'before');
+    await stopServer(server);
+    const versions = path.join(dataDir, 'modules', 'travel', 'versions');
+    for (const v of fs.readdirSync(versions)) {
+      const file = path.join(versions, v, 'module.json');
+      const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+      m.guards = { ...m.guards, hidden: 'cost' };
+      fs.writeFileSync(file, JSON.stringify(m));
+    }
+    server = await startServer(dataDir, port, 'second');
+    const r = await asGuest('GET', data('travel', ''));
+    assert.equal(r.status, 403, 'a guest reads nothing');
+    assert.match(r.json.error, /rules can't be read, so guests can't see what it holds\./);
+    assert.equal((await call('GET', data('travel', 'plan:a1'), undefined, 'sam')).json.item.value.cost, 612, 'a member still reads it');
+    assert.equal((await call('PUT', data('travel', 'plan:a1'), { value: { title: 'x' } }, 'sam')).status, 403, 'and nobody writes');
   });
 } catch (err) {
   failed += 1;

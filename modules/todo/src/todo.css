@@ -11,11 +11,11 @@
 .task .links { position: relative; z-index: 1; }
 .task .text { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .task .text small { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--text-12); }
-.task.done .text { color: var(--text-muted); text-decoration: line-through; }
-.task.done .text small { text-decoration: none; }
+.task.done .text { color: var(--text-muted); }
+.task.done .t-title { text-decoration: line-through; } /* the title only: the notes and the links stay plain */
 .due { flex: none; padding: 0 7px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-small); font-size: var(--text-11); color: var(--text-muted); white-space: nowrap; }
 .due.soon { color: var(--accent); border-color: var(--accent-fill); }
-.due.late { color: var(--danger); border-color: var(--status-danger-fill); }
+.due.late { color: var(--text-danger); border-color: var(--status-danger-fill); }
 
 /* links to other modules' items (a calendar event, a poll) */
 .links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -45,3 +45,7 @@
 
 /* As the Calendar destination's panel: each task's place. */
 .task .text .ri { margin-right: 5px; }
+
+/* The notice with Undo (a ticked or deleted task): at the foot, over the list. */
+.undo { position: fixed; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-field); box-shadow: var(--shadow-2); font-size: var(--text-13); }
+.undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

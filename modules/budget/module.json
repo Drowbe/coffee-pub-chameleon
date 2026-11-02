@@ -1,7 +1,7 @@
 {
   "id": "budget",
   "name": "Budget",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "icon": "wallet",
   "color": "gold",
   "description": "What your {space} spends: costs planned and paid, a target, and who owes whom.",
@@ -52,9 +52,9 @@
       {
         "key": "cost:{id}",
         "fields": {
-          "planned": { "type": "number", "null": true, "above": 0, "below": 1000000000000 },
-          "actual": { "type": "number", "null": true, "above": 0, "below": 1000000000000 },
-          "amount": { "type": "number", "null": true, "above": 0, "below": 1000000000000 }
+          "planned": { "type": "number", "null": true, "min": 0.01, "below": 1000000000000 },
+          "actual": { "type": "number", "null": true, "min": 0.01, "below": 1000000000000 },
+          "amount": { "type": "number", "null": true, "min": 0.01, "below": 1000000000000 }
         }
       }
     ]
