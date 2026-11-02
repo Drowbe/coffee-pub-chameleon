@@ -13,7 +13,7 @@
 // See documentation/architecture/architecture-canvas.md.
 
 import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, registerDragRelay, createFrameBands } from '/module-host.js';
+import { mountModule, createFrameLift, openClearMenu, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
 import { nav } from '/nav-bar.js';
@@ -829,6 +829,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const c = compositeOf(mod.m);
     const hostWin = frame.ownerDocument.defaultView || window;
     const post = (data) => { try { frame.contentWindow?.postMessage(data, hostWin.location.origin); } catch { /* the page is not there */ } };
+    // The page in the frame opens no event stream of its own: it hears this page's (module-host.js, relayStreamToFrame),
+    // for this space and this guest only, until the window closes.
+    const unstream = relayStreamToFrame(frame, { win: hostWin, allow: () => ({ space: spaceId || null, guest: guestToken || null }) });
     let opener = null; // the "+" or icon the person used: focus goes back to it when the editor window closes
     // The parts' "+" and title bar icons drawn in this window's frame (createFrameBands), a pick posted back to the page.
     const bands = createFrameBands(mod.frame, {
@@ -892,10 +895,11 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       beginDragForTest() {},
       ptrForTest() {},
     };
-    // Closing lets the "+", the status bar and the page's messages go too.
+    // Closing lets the "+", the status bar, the page's messages and the events it heard from this page's stream go too.
     const close = mount.destroy;
     mount.destroy = () => {
       hostWin.removeEventListener('message', onChrome);
+      unstream();
       bands.destroy();
       close();
     };
