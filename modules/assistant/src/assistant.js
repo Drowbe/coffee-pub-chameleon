@@ -1,7 +1,7 @@
 // Assistant: no window of its own. Its view is Chat's Assistant (GitHub #203): your
 // commands, the AI's answers and what you bring in, private until you share them. This
-// module keeps the Use permission (which gates /ai) and fulfils askAssistant by asking
-// there, so a drop-menu "Ask the assistant" does not wait on a page that never opens.
+// module only fulfils askAssistant by asking there (Chat decides who may use /ai), so a
+// drop-menu "Ask the assistant" does not wait on a page that never opens.
 (async () => {
   'use strict';
 

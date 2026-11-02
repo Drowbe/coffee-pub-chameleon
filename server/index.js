@@ -14,7 +14,7 @@ const { ModuleManager, LIMITS: MODULE_LIMITS, compareVersions, oldNameIn, pendin
 const { buildModule, bundledModules, zipFiles } = require('./module-build');
 const { fillManifest } = require('./modules');
 const templates = require('./templates');
-const { ModuleLinks } = require('./module-links');
+const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
 const { ChatHistory } = require('./chat-history');
@@ -2824,7 +2824,7 @@ function redirectToHost(req, res, status, newHost) {
 }
 // The paths the product host lets through beside / and the use pages: what those pages load and ask.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
-const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/environments', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
@@ -5556,7 +5556,7 @@ function chatAiRefusal(who, space) {
   return '';
 }
 
-function chatAiSpace(req, res) {
+function chatAiSpace(req, res, { needChat = false } = {}) {
   const who = moduleViewer(req);
   if (!who) { res.status(401).json({ error: 'sign in first' }); return null; }
   if (!who.user) { res.status(403).json({ error: `${word('guest', { many: true })} cannot use AI` }); return null; }
@@ -5564,8 +5564,8 @@ function chatAiSpace(req, res) {
   if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
   const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
   if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
-  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask.
-  if (!store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
+  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask (/ai only; a paste is not AI use).
+  if (needChat && !store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
   return { who, space };
 }
 
@@ -5594,7 +5594,7 @@ function aiRefusalFor(who, space) {
 }
 
 app.get('/api/spaces/:id/ai', (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
   const down = aiRefusalFor(found.who, found.space);
   if (down) return res.json({ available: false, why: down.why, reason: down.reason });
@@ -5605,7 +5605,7 @@ app.get('/api/spaces/:id/ai', (req, res) => {
 const chatAiLimitMessage = () => 'You have asked the AI too many times in a minute. Try again in a moment.';
 
 app.post('/api/spaces/:id/ai', async (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
   const down = aiRefusalFor(found.who, found.space);
   if (down) return res.status(down.status).json({ error: down.why });
@@ -6587,7 +6587,7 @@ objectSync.configure({
   pairTo: (ref) => moduleLinks.pairTo(ref),
   addPair: (from, to, by) => moduleLinks.addPair(from, to, by),
   detachPair: (ref) => moduleLinks.detachPair(ref),
-  removePairs: (ref) => moduleLinks.removePairs(ref),
+  removePairs: (ref, keepDetached) => moduleLinks.removePairs(ref, keepDetached),
   newId: () => crypto.randomBytes(8).toString('hex'),
   nameOf: (by) => store.userByKey(by)?.displayName || String(by || ''),
   // Kinds in this space that receive a dated twin, and that this sender is approved to link to.
@@ -6644,12 +6644,22 @@ objectSync.configure({
   },
 });
 
+// A pair (a dated object and its copy in another module, plan-plan-calendar-sync.md) is flagged on both ends, so a
+// module can show a copy as one and a picker can offer the pair once: a copy says `copy: true` and `twinOf` (its original's
+// reference); an original that has copies says `twins` (their references). `index` is moduleLinks.pairIndex().
+function markPair(summary, index) {
+  const original = index.copyOf(summary.ref);
+  if (original) return { ...summary, copy: true, twinOf: original };
+  const copies = index.copiesOf(summary.ref);
+  return copies.length ? { ...summary, twins: copies } : summary;
+}
+
 function resolveRef(who, ref, from, opts = {}) {
   if (!refShape(ref)) throw refError(400, 'that is not a valid reference');
   const at = refScope(who, { provider: ref.module, kind: ref.kind, scope: ref.scope, space: ref.space, from, ...opts });
   const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(ref.id)));
   if (!item || !item.value) throw refError(404, `that ${word('object')} is no longer there`);
-  return objectSummary(at, String(ref.id), item.value, opts.withText === true);
+  return markPair(objectSummary(at, String(ref.id), item.value, opts.withText === true), moduleLinks.pairIndex());
 }
 
 // The kinds the consumer may point at: every kind of every other enabled module it was approved for.
@@ -6725,6 +6735,8 @@ app.get('/api/objects/search', (req, res) => {
     ? store.spaces.filter((r) => r.members.includes(who.user.key)).map((r) => ({ scope: 'space', space: r.id }))
     : [{ scope, space: req.query.space }];
   const summaries = [];
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
   // has=amount only: how many priced objects the viewer was kept from because they may not view the module that holds
   // them (a number alone, never for a guest, and in a space only for its members), so Budget can say some are left out.
   let withheld = 0;
@@ -6758,14 +6770,22 @@ app.get('/api/objects/search', (req, res) => {
       const prefix = at.produce.key.replace('{id}', '');
       for (const item of moduleData.list(k.module, at.scopeKey, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
-        const summary = objectSummary(at, item.key.slice(prefix.length), item.value);
-        if (inSpace && !(summary.spaces || []).includes(inSpace.id)) continue;
-        if (has === 'place' && !summary.place) continue;
-        if (has === 'amount' && !isPriced(summary)) continue;
-        if (q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q)) continue;
-        summaries.push(summary);
+        const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
+        const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
+          && !(has === 'place' && !summary.place)
+          && !(has === 'amount' && !isPriced(summary))
+          && !(q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q));
+        pool.push({ summary, fits });
       }
     }
+  }
+  // A pair is offered once: its original. A copy is left out when its original is among what this person may see, and
+  // always for the module that holds the original (the Itinerary is not offered its own objects through the Calendar).
+  const seen = new Set(pool.map((p) => objectKey(p.summary.ref)));
+  for (const { summary, fits } of pool) {
+    if (!fits) continue;
+    if (summary.copy && (summary.twinOf.module === from || seen.has(objectKey(summary.twinOf)))) continue;
+    summaries.push(summary);
   }
   // Newest dates first, undated last.
   summaries.sort((a, b) => String(b.when ?? '').localeCompare(String(a.when ?? '')) || a.title.localeCompare(b.title));
@@ -6970,6 +6990,39 @@ app.get('/api/objects/links', (req, res) => {
     }
   }
   res.json({ summaries });
+});
+
+// What points at several of a module's items in one request (the list of places asks once, not once per place): the same
+// answer as GET /api/objects/links with dir=to for each, for what the viewer may see. An item that cannot be asked about
+// (not the module's own, not visible, a kind that shows no backlinks) is left out of the answer. Read only.
+app.post('/api/objects/links/batch', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' });
+  const asker = String(req.body?.module || '');
+  const found = modules.enabled(asker);
+  if (!found) return res.status(404).json({ error: `no such ${word('module')}` });
+  const out = [];
+  for (const ref of (Array.isArray(req.body?.refs) ? req.body.refs : []).slice(0, 200)) {
+    if (!refShape(ref) || ref.module !== asker) continue;
+    const produce = found.manifest.refs.produces.find((p) => p.kind === ref.kind);
+    if (!produce || !produce.backlinks) continue;
+    try {
+      resolveRef(who, ref, null, { skipConsumer: true });
+    } catch (err) {
+      if (!err.status) throw err;
+      continue;
+    }
+    const summaries = [];
+    for (const other of moduleLinks.to(ref)) {
+      try {
+        summaries.push(resolveRef(who, other, null, { skipConsumer: true }));
+      } catch (err) {
+        if (!err.status) throw err;
+      }
+    }
+    if (summaries.length) out.push({ ref, summaries });
+  }
+  res.json({ links: out });
 });
 
 // --- events and actions: modules reacting to and asking things of each other -------------------
@@ -7569,9 +7622,8 @@ app.get('/api/modules/:id/ai', (req, res) => {
 // Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
 function importRefusal(ctx) {
   if (!ctx.who.user) return `${word('guest', { many: true })} cannot bring in ${word('object', { many: true })}`;
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  // Same rule as /ai (plan-chat-model.md, decision 12): signed in, not a guest, space AI not off.
-  return chatAiRefusal(ctx.who, space);
+  // A pasted answer is not AI use (the plan's Q18): signed in, not a guest; the module's write access was checked by the caller.
+  return '';
 }
 app.get('/api/modules/:id/objects/check', (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
@@ -9056,14 +9108,18 @@ app.get('/modules/:id', (req, res) => {
   if (req.query.s === undefined && !keyedModule) res.set(FRAMED_HERE);
   if (!currentUser(req) && !hasGuestAccess(req)) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   // A module's environment page (no space, not a pop-out) leads to the destination it is a part of while that is shown
-  // (plan-calendar-destination.md, decision 16). The browser keeps the address's #day= or #ref= across the redirect,
+  // (plan-calendar-destination.md, decision 16). For the main the browser keeps the address's #day= or #ref= across the redirect,
   // and the query goes with it (?from=space&spaceName=... is the page's "Back to" link). Only the query is taken from
   // the request: the path is the destination's own, so the redirect never leaves this site.
   if (req.query.space === undefined && req.query.popout === undefined && req.query.guest === undefined) {
-    const to = destinationPathOf(req.params.id, destinationContext(moduleViewer(req)));
+    const dctx = destinationContext(moduleViewer(req));
+    const to = destinationPathOf(req.params.id, dctx);
     if (to && /^\/[A-Za-z0-9/_-]*$/.test(to) && !to.startsWith('//')) {
       const asked = new URL(req.originalUrl, 'http://same.origin');
-      return res.redirect(`${to}${asked.search}`);
+      // A panel (not the main) is named, so the destination opens on it: #panel=<module id>, as a tile's heading does.
+      // The main keeps the bare address, and with it the browser keeps the address's own #day= or #ref=.
+      const panel = widgetHref(req.params.id, dctx).slice(to.length);
+      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(panel) ? panel : ''}`);
     }
   }
   // A module popped out of the Lobby that the Lobby doesn't allow: the sentence, not its page.
@@ -9310,17 +9366,39 @@ app.get('/api/notifications/stream', requireUser, (req, res) => {
 // to what the viewer may read:
 //   with ?space=<id>   scope 'space' (that space) and 'environment'   -- a space's panes
 //   without a space    scope 'environment' and 'spaces' (the viewer's own spaces) -- a module's environment page
+// ?space=<id>&page=1 carries both on one connection (the space page, whose Home dashboard reads the second while its
+// canvas reads the first; health audit MP-01): each event of the second view says so with `"view": "page"`, and the
+// same change may then come once for each view. `page` without a space changes nothing.
+// Every event has an `id:` line, the same on every stream for the same thing that happened (eventIdOf), so a page that
+// moves from one stream to another (public/module-stream.js) hears each thing once while both are open. The id starts
+// with this start's own token, so ids after a restart never match ones a page remembers from before it.
+const streamEventIds = new WeakMap(); // what happened (the object its emitter sent) -> its id
+const streamEventStart = crypto.randomBytes(4).toString('hex');
+let lastStreamEventId = 0;
+function eventIdOf(happened) {
+  if (!happened || typeof happened !== 'object') return `${streamEventStart}.${++lastStreamEventId}`;
+  let id = streamEventIds.get(happened);
+  if (!id) {
+    id = `${streamEventStart}.${++lastStreamEventId}`;
+    streamEventIds.set(happened, id);
+  }
+  return id;
+}
 app.get('/api/modules/stream', (req, res) => {
   const env = currentEnvironment(); // captured once: the close handler below fires later, outside this request
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
   const space = req.query.space ? store.spaceById(String(req.query.space)) : null;
   if (req.query.space && !space) return res.status(404).json({ error: `no such ${word('space')}` });
+  // The views this connection carries: the space's (or, without a space, the page's), and with page=1 the page's too.
+  const views = [{ space, view: null }];
+  if (space && req.query.page === '1') views.push({ space: null, view: 'page' });
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
-  // Where a change belongs for this viewer, or null if they may not see it.
-  const place = (moduleId, scopeKey) => {
+  const send = (v, type, happened, data) => sseWrite(res, `id: ${eventIdOf(happened)}\nevent: ${type}\ndata: ${JSON.stringify(v.view ? { ...data, view: v.view } : data)}\n\n`);
+  // Where a change belongs for this viewer in view `v`, or null if they may not see it there.
+  const place = (v, moduleId, scopeKey) => {
     const found = modules.enabled(moduleId);
     if (!found) return null;
     const { manifest, entry } = found;
@@ -9334,54 +9412,66 @@ app.get('/api/modules/stream', (req, res) => {
     if (!scopeKey.startsWith('space:')) return null;
     const r = store.spaceById(scopeKey.slice(6));
     if (!r) return null;
-    if (space) {
-      return r.id === space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
+    if (v.space) {
+      return r.id === v.space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
     }
     const mine = who.user && r.members.includes(who.user.key) && modules.isOnIn(entry.id, r.id);
     return mine && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
   };
   const onChange = listenIn(env, (change) => {
-    const at = place(change.module, change.scopeKey);
-    if (at) sseWrite(res, `event: change\ndata: ${JSON.stringify({ ...change, ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (at) send(v, 'change', change, { ...change, ...at });
+    }
   });
   const onFire = listenIn(env, (fire) => {
-    const at = place(fire.module, fire.scopeKey);
-    if (at && at.scope !== 'spaces') sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ module: fire.module, key: fire.key, payload: fire.payload, ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, fire.module, fire.scopeKey);
+      if (at && at.scope !== 'spaces') send(v, 'schedule', fire, { module: fire.module, key: fire.key, payload: fire.payload, ...at });
+    }
   });
   // What points at (or from) an item changed: only the pointers go, and the module asks again for what it may see.
   const onLinks = listenIn(env, ({ refs }) => {
     for (const ref of refs) {
-      const at = place(ref.module, refScopeKey(ref));
-      if (at) sseWrite(res, `event: links\ndata: ${JSON.stringify({ module: ref.module, ref, ...at })}\n\n`);
+      for (const v of views) {
+        const at = place(v, ref.module, refScopeKey(ref));
+        if (at) send(v, 'links', ref, { module: ref.module, ref, ...at });
+      }
     }
   });
   // A module said something happened: sent to every module here that may hear it (the host delivers it to those frames).
   const onBus = listenIn(env, (ev) => {
-    const at = place(ev.module, ev.scopeKey);
-    if (!at) return;
-    const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
-    if (subscribers.length) sseWrite(res, `event: bus\ndata: ${JSON.stringify({ ...publicEvent(ev), scope: at.scope, subscribers })}\n\n`);
+    for (const v of views) {
+      const at = place(v, ev.module, ev.scopeKey);
+      if (!at) continue;
+      const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(v, m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
+      if (subscribers.length) send(v, 'bus', ev, { ...publicEvent(ev), scope: at.scope, subscribers });
+    }
   });
   // A request for a module to do something: the providing module's frames are told; one claims it.
   const onAction = listenIn(env, (r) => {
     if (r.local && r.by !== (who.user?.key || 'guest')) return; // a view is for the person who asked
-    const at = place(r.provider, r.scopeKey);
-    if (at) sseWrite(res, `event: action\ndata: ${JSON.stringify({ ...publicAction(r), provider: r.provider, scope: at.scope })}\n\n`);
+    for (const v of views) {
+      const at = place(v, r.provider, r.scopeKey);
+      if (at) send(v, 'action', r, { ...publicAction(r), provider: r.provider, scope: at.scope });
+    }
   });
   // A setting of a module changed: its pages here read their values again.
   // The person's other calendars changed on a read (plan-google-calendar.md, Part 2): only their own streams hear it,
   // naming the modules with the approved `external` hook, which ask again for what they show.
   if (who.user) externalCalendars.noteSeen(who.user.key);
-  const onExternal = listenIn(env, ({ userKey }) => {
-    if (!who.user || userKey !== who.user.key || !store.otherCalendarsOn()) return;
+  const onExternal = listenIn(env, (seen) => {
+    if (!who.user || seen.userKey !== who.user.key || !store.otherCalendarsOn()) return;
     const hearing = externalModules().map(({ manifest }) => manifest.id);
-    if (hearing.length) sseWrite(res, `event: external\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    if (hearing.length) for (const v of views) send(v, 'external', seen, { modules: hearing });
   });
   externalCalendars.on('change', onExternal);
   const onSettings = listenIn(env, (c) => {
     if (c.scope === 'person' && c.userKey !== who.user?.key) return;
-    if (c.scope === 'space' && !(space && space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) return;
-    sseWrite(res, `event: settings\ndata: ${JSON.stringify({ module: c.module, scope: c.scope, spaceId: c.spaceId })}\n\n`);
+    for (const v of views) {
+      if (c.scope === 'space' && !(v.space && v.space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) continue;
+      send(v, 'settings', c, { module: c.module, scope: c.scope, spaceId: c.spaceId });
+    }
   });
   moduleSettings.on('change', onSettings);
   // An object of a marker kind was written or deleted where this viewer reads it (plan-calendar-markers.md): the
@@ -9391,24 +9481,28 @@ app.get('/api/modules/stream', (req, res) => {
     if (!change.scopeKey.startsWith('space:') && change.scopeKey !== 'environment') return;
     const kind = markerKindAt(change.module, change.key);
     if (!kind) return;
-    const at = place(change.module, change.scopeKey);
-    if (!at || (space && at.scope !== 'space')) return;
-    const hearing = modules.enabledAll()
-      .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(m.manifest.id, change.scopeKey))
-      .map((m) => m.manifest.id);
-    if (hearing.length) sseWrite(res, `event: markers\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (!at || (v.space && at.scope !== 'space')) continue;
+      const hearing = modules.enabledAll()
+        .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(v, m.manifest.id, change.scopeKey))
+        .map((m) => m.manifest.id);
+      if (hearing.length) send(v, 'markers', change, { modules: hearing });
+    }
   });
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);
   moduleHooks.on('fire', onFire);
   // A linked object changed: only the modules that point at it are told, and only a viewer who may see that module here.
   const onRefChange = listenIn(env, (ev) => {
-    const hearing = [];
-    for (const holder of ev.holders) {
-      const at = place(holder.module, refScopeKey(holder));
-      if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+    for (const v of views) {
+      const hearing = [];
+      for (const holder of ev.holders) {
+        const at = place(v, holder.module, refScopeKey(holder));
+        if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+      }
+      if (hearing.length) send(v, 'refchange', ev, { ref: ev.ref, change: ev.change, modules: hearing });
     }
-    if (hearing.length) sseWrite(res, `event: refchange\ndata: ${JSON.stringify({ ref: ev.ref, change: ev.change, modules: hearing })}\n\n`);
   });
   moduleLinks.on('change', onLinks);
   objectSync.on('refchange', onRefChange);

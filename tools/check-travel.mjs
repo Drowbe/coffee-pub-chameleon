@@ -500,7 +500,7 @@ const run = async () => {
   await f.provided.acceptSuggestion({ title: 'Something odd', kind: 'nonsense' });
   assert.equal(plan.list().find((i) => i.title === 'Something odd').kind, 'stop');
   const ev = { ref: { module: 'calendar', kind: 'event', id: 'e1', scope: 'space', space: 'lobby' }, module: { id: 'calendar' }, title: 'Train', when: '2026-10-03' };
-  const g = fakeHost({ summaries: [ev], search: [ev, { ...ev, ref: { ...ev.ref, id: 'e2' }, when: '2026-12-25' }, { ...ev, ref: { ...ev.ref, id: 'e3' }, module: { id: 'travel' } }] });
+  const g = fakeHost({ summaries: [ev], search: [ev, { ...ev, ref: { ...ev.ref, id: 'e2' }, when: '2026-12-25' }, { ...ev, ref: { ...ev.ref, id: 'e3' }, module: { id: 'travel' } }, { ...ev, ref: { ...ev.ref, id: 'e4' }, copy: true, twinOf: { module: 'travel', kind: 'plan', id: 'p1', scope: 'space', space: 'lobby' } }] });
   const plan2 = lib.createPlan(g.t);
   await plan2.load();
   await plan2.saveTrip({ start: '2026-10-01', end: '2026-10-03' });

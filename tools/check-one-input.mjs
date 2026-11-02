@@ -128,7 +128,6 @@ try {
   const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [member.key, other.key] } })).json.space;
   const pat = await login('pat', 'memberpass1234');
   const sam = await login('sam', 'memberpass1234');
-  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200); // using AI needs the role's Use AI
 
   const chat = await call('GET', `/api/spaces/${space.id}/chat`, { cookie: pat });
   assert.equal(chat.status, 200, chat.text);

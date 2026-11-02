@@ -459,7 +459,7 @@
         },
       });
     }
-    if (state.ai && it.kind !== 'photo') {
+    if (state.ai && state.chat && it.kind !== 'photo') {
       items.push({
         id: 'ask-about',
         label: 'Research this',
@@ -849,6 +849,8 @@
 
   async function checkAi() {
     try { state.ai = Boolean((await host.ai.available()).available); } catch (err) { state.ai = false; }
+    // "Research this" asks in Chat, which a module's own page has none of.
+    try { state.chat = Boolean((await host.chat.available()).available); } catch (err) { state.chat = false; }
   }
 
   // Suggest tags for the object in the dialog (a saved one: the server reads it as the person asking). The words go into the tags field

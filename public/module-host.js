@@ -10,6 +10,7 @@ import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
 import { shareDialog, printFrame } from '/module-actions.js';
+import { createStreamHub, createStreamRelay, createStreamRelayClient } from '/module-stream.js';
 
 // The design tokens a module's frame receives (see design-theme.md).
 const THEME_TOKENS = [
@@ -34,40 +35,30 @@ export function readTheme() {
   return theme;
 }
 
-// One live stream per page (and space) is shared by every module frame on it. Browsers allow only a
-// few long-lived connections to one site, so a stream per module would starve everything else once
-// a handful of modules were open. See GET /api/modules/stream in server/index.js.
-const streams = new Map(); // "<space>|<guest>" -> { source, subs }
+// One event stream per page is shared by every module mount on it (public/module-stream.js: the page's own view and
+// one space's ride one connection). Browsers allow only a few long-lived connections to one site (six over HTTP/1.1),
+// so a stream per module, or per window frame, starves everything else. See GET /api/modules/stream in server/index.js.
+// A destination's page in a window frame on a space's Workspace (canvas.js marks that frame data-composite) opens no
+// stream: it hears the page's over postMessage (createStreamRelayClient; the page's side is relayStreamToFrame, below).
+const streamHub = createStreamHub();
+let frameRelay; // undefined: not asked yet; null: not in a window frame on the Workspace
 function joinStream(space, guest, onEvent) {
-  const key = `${space || ''}|${guest || ''}`;
-  let s = streams.get(key);
-  if (!s) {
-    const p = new URLSearchParams();
-    if (space) p.set('space', space);
-    if (guest) p.set('guest', guest);
-    const source = new EventSource(`/api/modules/stream?${p}`);
-    s = { source, subs: new Set() };
-    for (const type of ['change', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external']) {
-      source.addEventListener(type, (ev) => {
-        let data;
-        try {
-          data = JSON.parse(ev.data);
-        } catch {
-          return; // ignore a malformed event
-        }
-        for (const fn of s.subs) fn(type, data);
-      });
+  if (frameRelay === undefined) {
+    let inComposite = false;
+    try {
+      inComposite = window.self !== window.top && Boolean(window.frameElement && window.frameElement.hasAttribute('data-composite'));
+    } catch {
+      inComposite = false;
     }
-    streams.set(key, s);
+    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin }) : null;
   }
-  s.subs.add(onEvent);
-  return () => {
-    s.subs.delete(onEvent);
-    if (!s.subs.size) {
-      s.source.close();
-      streams.delete(key);
-    }
-  };
+  return (frameRelay || streamHub).join(space, guest, onEvent);
+}
+// The page's side of the relay, for one window frame on the Workspace (canvas.js, compositeMount): the frame may hear
+// only `allow()`'s view ({ space, guest }: the space and guest token the frame was made for). `win` is the window the
+// frame is in (not this one when the call has been popped out). Answers stop(), for when the window closes.
+export function relayStreamToFrame(frame, { win = window, allow }) {
+  return createStreamRelay({ win, frame, origin: win.location.origin, allow, join: (space, guest, fn) => streamHub.join(space, guest, fn) });
 }
 
 // --- watching one person's media (host.media.watch) ----------------------------------------------
@@ -421,6 +412,10 @@ const DESTINATION_FIELDS = {
   selected: (v) => (v === null ? null : REF_SHAPE(v) ? cleanPointer(v) : undefined),
   // A part asking the page to bring a part into view (on a phone, its tab): the map's "Show in list".
   reveal: (v) => (v === 'main' || v === 'panel' ? v : undefined),
+  // The map says whether it is drawn (a map file in use, a device that can draw it), so the list beside it says "On the map" only
+  // when that is true; the list says its places changed (a counter), so the map reads them again at once.
+  mapOn: (v) => (typeof v === 'boolean' ? v : undefined),
+  changed: (v) => (Number.isSafeInteger(v) && v >= 0 ? v : undefined),
   // The kinds of markers the calendar has shown (plan-calendar-markers.md), for the page's filter: up to 20 of
   // { id: '<module>:<kind>', label, icon, tint }, the label at most 40 characters, the icon a Font Awesome name, the
   // tint one of the eight or none.
@@ -441,7 +436,7 @@ const DESTINATION_FIELDS = {
 // The page's own fields (the view, the filter, the search, `phone`) are set only by the page.
 const DESTINATIONS = {
   calendar: { main: ['day', 'from', 'to', 'markerKinds'] },
-  map: { main: ['selected', 'reveal'], panel: ['selected', 'reveal'] },
+  map: { main: ['selected', 'reveal', 'mapOn'], panel: ['selected', 'reveal', 'changed'] },
 };
 const DESTINATION_PARTS = ['main', 'panel'];
 export function createDestination(id, initial = {}) {
@@ -1392,6 +1387,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       if (guestToken) p.set('guest', guestToken);
       return (await api('GET', `/api/objects/links?${p}`)).summaries;
     },
+    // What points at each of several of this module's objects, in one request: [{ ref, summaries }], only those something points at.
+    async 'objects.linksToAll'({ refs }) {
+      const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 200).map(cleanPointer);
+      if (!list.length) return [];
+      const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
+      return (await api('POST', `/api/objects/links/batch${q}`, { module: module.id, refs: list })).links;
+    },
     // Events and actions between modules (see the SDK's host.events and host.actions). Always in this
     // module's own place, and always on its behalf: the server checks what it declared and was approved for.
     async 'events.publish'({ name, ref, data }) {
@@ -1559,6 +1561,10 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return (await api('GET', url('/markers', scopeOf(), { from: when(from), to: when(to) }))).markers;
     },
     // Ask in this space's Chat (host.chat.ask). Only the canvas host provides it.
+    // Whether host.chat.ask can work here: only on a space's canvas, where Chat is.
+    async 'chat.available'() {
+      return { available: typeof onChatAsk === 'function' };
+    },
     async 'chat.ask'({ question, refs }) {
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);

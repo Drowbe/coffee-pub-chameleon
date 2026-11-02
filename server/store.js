@@ -218,8 +218,8 @@ const IMAGE_KEYS = ROLE_PERMISSIONS.filter((p) => p.group === 'Images').map((p) 
 const imageDefaults = (own) => Object.fromEntries(IMAGE_KEYS.map((k) => [k, own && (k === 'image_profile' || k === 'image_background')]));
 const EDITABLE_ROLES = ['moderator', 'member', 'guest'];
 const ROLE_DEFAULTS = {
-  moderator: { ...Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p.key, true])), useAi: false, ...imageDefaults(true) },
-  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: false, ...imageDefaults(true) },
+  moderator: { ...Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p.key, true])), useAi: true, ...imageDefaults(true) },
+  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: true, ...imageDefaults(true) },
   guest: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: false, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: false, ...imageDefaults(false) },
 };
 function cleanSpacePermissions(p) {

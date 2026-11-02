@@ -563,7 +563,6 @@ try {
   const owner = await login('admin', 'testpass1234');
   const pat = await login('pat', 'memberpass1234');
   const sam = await login('sam', 'memberpass1234');
-  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200); // using AI needs the role's Use AI
   const S = ids.space;
   const chatOf = async (cookie, q = '') => {
     const r = await call('GET', `/api/spaces/${S}/chat${q}`, { cookie });

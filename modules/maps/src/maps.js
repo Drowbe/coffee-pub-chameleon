@@ -80,6 +80,8 @@
   const NARROW = 720;
   const isNarrow = () => $('app').classList.contains('narrow');
   const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+  // On a phone the link opens the person's own maps app; on a desktop it is OpenStreetMap's website, and says so.
+  const MAPS_APP = apple || /Android/i.test(navigator.userAgent) ? 'Open in my maps app' : 'Open in OpenStreetMap';
 
   // The page's document hears this map (Escape while picking, the page coming back) only while its markup is there: once it
   // goes (the page or the space left, the module opened again), what was added there is taken off (letGo).
@@ -95,6 +97,7 @@
     q: '', // as the destination's part: the page's search text, which dims the pins that do not match it
     settings: { maps: [], web: false }, // the map files to draw (names on this server, or one https address when `web`)
     candidates: [], // search results drawn as pins to pick from
+    spread: null, // the ids of places in one spot that are spread out round it (a click on their cluster), or null
     picked: null, // the action that takes the spot a person picked for a place (`positionPicked`), if some module provides one
     pick: false, // a spot is being picked for a place the editor holds (`pickPoint`): the next click on the map answers it
     searcher: null, // the action that searches for a place, if some module provides one
@@ -113,7 +116,7 @@
     picture: pictureOf(host.environment && host.environment.pictureMap),
     landZoom: WORLD_MAX_ZOOM,
     maxZoom: WORLD_MAX_ZOOM, // the map's maximum: every fixed zoom below is capped at it (capZoom)
-    labelZoom: 11, // the zoom from which a pin shows its label
+    labelZoom: 14, // the zoom from which every pin shows its label (zoomed out, only the selected one and the one pointed at do)
     style: null, // builds the style from the theme's colours, for a theme change
   };
   const PICTURE_FOLDER = 'image-map'; // the `imageMap` setting's folder (module.json)
@@ -245,6 +248,14 @@
       state.adder = list.find((a) => a.name === 'newPlace' && a.input && a.input.lat && a.input.lng && a.may !== false && !state.refused) || null;
       state.searcher = list.find((a) => a.name === 'searchPlaces' && a.input && a.input.q) || null;
       state.picked = list.find((a) => a.name === 'positionPicked') || null; // where a picked spot (or none) is told
+      // Whether this person may add places is Places' call: with its page open here, ask, and show no "+" when the answer is no.
+      const may = state.adder && list.find((a) => a.name === 'mayAdd' && a.open === true);
+      if (may) {
+        try {
+          const out = await host.actions.request(may.action, {}, { wait: true, here: true });
+          if (out.status === 'done' && out.result && out.result.ok && out.result.data && out.result.data.may === false) state.adder = null;
+        } catch (err) { /* the add stays offered; a refusal is still handled when it comes */ }
+      }
       // The colours an owner chose for Places' categories: asked of the Places open in this page, if one is.
       const colors = list.find((a) => a.name === 'categoryColors' && a.open === true);
       if (colors) askColors(colors);
@@ -275,7 +286,7 @@
     hide(el.querySelector('.callout-where'), picture && !c.subtitle);
     setIcon(el.querySelector('.callout-source [data-icon]'), (c.module && c.module.icon) || 'link');
     const inMaps = el.querySelector('[data-action="open-in-maps"]');
-    if (picture) inMaps.remove(); else inMaps.href = mapsLink(c.place.lat, c.place.lng, c.title, apple);
+    if (picture) inMaps.remove(); else { inMaps.href = mapsLink(c.place.lat, c.place.lng, c.title, apple); fill(inMaps, { 'maps-label': MAPS_APP }); }
     // As the destination's part on a phone, where the list is the other tab: "Show in list" asks the page to show it.
     const inList = el.querySelector('[data-action="show-in-list"]');
     if (inList) inList.hidden = !(part && state.phone);
@@ -359,55 +370,103 @@
     if (x.dim) pin.classList.add('dim');
     if (x.soft) pin.classList.add('soft');
     setIcon(pin.querySelector('[data-icon]'), x.look.icon);
-    // The visit status: a small badge in the pin's corner, with its words for a screen reader.
+    // The visit status: a small badge in the pin's corner, with its words for a screen reader (the pin's name, set by addMarker).
     const badge = pin.querySelector('.pin-badge');
     if (x.look.visit) {
       badge.dataset.visit = x.look.visit;
       setIcon(badge.querySelector('[data-icon]'), x.look.visitIcon);
-      pin.setAttribute('aria-label', `${x.title}, ${x.look.visitLabel}`);
     } else badge.remove();
-    if (x.title && state.map.getZoom() >= state.labelZoom) fill(pin, { label: x.title }); else pin.querySelector('.pin-label').remove();
+    pinLabel(pin, x.title);
     if (state.selected === x.id) pin.classList.add('selected');
     pin.addEventListener('click', (e) => { e.stopPropagation(); if (!state.adding) on(); });
     return pin;
   }
+  // A pin's name on the map. Zoomed out the names would pile up on each other, so they show only for the selected pin and the one
+  // pointed at or focused (the stylesheet); from `labelZoom` in, every pin shows its name.
+  function pinLabel(pin, title) {
+    if (!title) { pin.querySelector('.pin-label').remove(); return; }
+    fill(pin, { label: title });
+    if (state.map.getZoom() < state.labelZoom) pin.classList.add('lowzoom');
+  }
+  // A marker on the map with its accessible name. The map library names every marker "Map marker" as it is added, so the name is
+  // set after, and it is the place's title (or "3 places" for a cluster), with the visit status when it has one.
+  function addMarker(el, lngLat, anchor, name) {
+    const m = new maplibregl.Marker({ element: el, anchor }).setLngLat(lngLat).addTo(state.map);
+    el.setAttribute('aria-label', name);
+    markers.push(m);
+    return m;
+  }
+  // The places that are all in one spot (to about 30 m): a cluster of them cannot be opened by zooming.
+  const together = (points) => { const b = boundsOf(points); return b[1][0] - b[0][0] < 0.0003 && b[1][1] - b[0][1] < 0.0003; };
+  const clusterPin = (points, dim, soft, onClick) => {
+    const c = clone('tpl-pin-cluster');
+    fill(c, { count: points.length });
+    c.dataset.key = `${points.length}:${points[0].id || points[0].title}`;
+    if (dim) c.classList.add('dim');
+    if (soft) c.classList.add('soft');
+    c.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    return c;
+  };
+  const elementKey = (el) => (el.dataset.id ? `id:${el.dataset.id}` : el.dataset.key ? `key:${el.dataset.key}` : '');
 
   function drawPins() {
     if (torn()) return;
     if (!state.map || !state.mapReady) return;
+    // The pins are drawn again on every move; keep the keyboard where it was (the same pin, or cluster, after the redraw).
+    const active = root.activeElement;
+    const keep = active && active.classList && active.classList.contains('pin') && markers.some((m) => m.getElement() === active) ? elementKey(active) : '';
     clearPins();
     const map = state.map;
     const all = state.found.map((c) => ({ kind: kindOf(c), id: summaryId(c), lat: c.place.lat, lng: c.place.lng, title: c.title, cat: c.category || '', scope: c.ref.scope === 'person' ? 'person' : '', look: pinLook(c, state.catColors), soft: state.how.get(summaryId(c)) === 'soft', dim: dimmed(c) }));
     const picked = all.filter((x) => x.id === state.selected);
     const rest = all.filter((x) => !picked.includes(x));
+    const pinName = (x) => (x.look.visit ? `${x.title}, ${x.look.visitLabel}` : x.title);
     for (const g of clusterPoints(rest, (lat, lng) => map.project([lng, lat]), 36)) {
       if (g.points.length === 1) {
         const x = g.points[0];
-        markers.push(new maplibregl.Marker({ element: makePin(x, () => select(x.id)), anchor: 'bottom' }).setLngLat([x.lng, x.lat]).addTo(map));
+        addMarker(makePin(x, () => select(x.id)), [x.lng, x.lat], 'bottom', pinName(x));
+      } else if (state.spread && g.points.every((x) => state.spread.has(x.id))) {
+        // Places in one spot, spread out round it so each can be picked (a click on the map puts them back).
+        const c = map.project([g.lng, g.lat]);
+        const radius = Math.max(36, 14 + g.points.length * 7);
+        g.points.forEach((x, i) => {
+          const a = (i / g.points.length) * 2 * Math.PI - Math.PI / 2;
+          const at = map.unproject([c.x + radius * Math.cos(a), c.y + radius * Math.sin(a)]);
+          addMarker(makePin(x, () => select(x.id)), [at.lng, at.lat], 'bottom', pinName(x));
+        });
       } else {
-        const c = clone('tpl-pin-cluster');
-        fill(c, { count: g.points.length });
-        if (g.points.every((x) => x.dim)) c.classList.add('dim');
-        if (g.points.every((x) => x.soft)) c.classList.add('soft');
-        c.addEventListener('click', (e) => {
-          e.stopPropagation();
+        const c = clusterPin(g.points, g.points.every((x) => x.dim), g.points.every((x) => x.soft), () => {
+          if (together(g.points)) { state.spread = new Set(g.points.map((x) => x.id)); drawPins(); return; }
           map.fitBounds(boundsOf(g.points), { padding: 60, maxZoom: cap(17), duration: 500 });
         });
-        markers.push(new maplibregl.Marker({ element: c, anchor: 'center' }).setLngLat([g.lng, g.lat]).addTo(map));
+        addMarker(c, [g.lng, g.lat], 'center', `${g.points.length} places`);
       }
     }
-    for (const c of state.candidates) {
+    // Search results not saved yet: near ones are a cluster too, so their names do not pile up.
+    for (const g of clusterPoints(state.candidates, (lat, lng) => map.project([lng, lat]), 36)) {
+      if (g.points.length > 1) {
+        const c = clusterPin(g.points, false, false, () => map.fitBounds(boundsOf(g.points), { padding: 60, maxZoom: cap(17), duration: 500 }));
+        c.classList.add('candidate');
+        addMarker(c, [g.lng, g.lat], 'center', `${g.points.length} places found`);
+        continue;
+      }
+      const cand = g.points[0];
       const pin = clone('tpl-pin');
       pin.dataset.kind = 'place';
       pin.classList.add('candidate');
       pin.querySelector('.pin-badge').remove();
       setIcon(pin.querySelector('[data-icon]'), 'location-dot');
-      fill(pin, { label: c.title });
-      pin.addEventListener('click', (e) => { e.stopPropagation(); draftAt(c.lat, c.lng, { title: c.title, address: c.sub }); });
-      markers.push(new maplibregl.Marker({ element: pin, anchor: 'bottom' }).setLngLat([c.lng, c.lat]).addTo(map));
+      pinLabel(pin, cand.title);
+      if (state.candidates.length === 1) pin.classList.remove('lowzoom');
+      pin.addEventListener('click', (e) => { e.stopPropagation(); draftAt(cand.lat, cand.lng, { title: cand.title, address: cand.sub, origin: cand.key }); });
+      addMarker(pin, [cand.lng, cand.lat], 'bottom', `${cand.title}, found by search`);
     }
-    for (const x of picked) markers.push(new maplibregl.Marker({ element: makePin({ ...x, dim: false }, () => {}), anchor: 'bottom' }).setLngLat([x.lng, x.lat]).addTo(map));
+    for (const x of picked) addMarker(makePin({ ...x, dim: false }, () => {}), [x.lng, x.lat], 'bottom', pinName(x));
     hydrate(root);
+    if (keep) {
+      const again = markers.map((m) => m.getElement()).find((el) => elementKey(el) === keep);
+      if (again) again.focus({ preventScroll: true });
+    }
   }
 
   function drawDraft() {
@@ -421,6 +480,7 @@
     setIcon(pin.querySelector('[data-icon]'), 'location-dot');
     pin.querySelector('.pin-label').remove();
     draftMarker = new maplibregl.Marker({ element: pin, anchor: 'bottom' }).setLngLat([state.draft.lng, state.draft.lat]).addTo(state.map);
+    pin.setAttribute('aria-label', 'The new place');
     hydrate(root);
   }
 
@@ -538,8 +598,16 @@
       state.searchMessage = 'Search is not available right now';
     }
     state.candidates = hits;
+    fitCandidates();
     drawPins();
     drawResults();
+  }
+  // Bring what a search found into view: all of them on the map, or the one.
+  function fitCandidates() {
+    if (!state.map || !state.mapReady || !state.candidates.length) return;
+    const b = boundsOf(state.candidates);
+    if (state.candidates.length > 1 && (b[0][0] !== b[1][0] || b[0][1] !== b[1][1])) state.map.fitBounds(b, { padding: 70, maxZoom: cap(16), duration: 500 });
+    else state.map.easeTo({ center: b[0], zoom: cap(Math.max(state.map.getZoom(), 15)), duration: 500 });
   }
   // On a picture map the outside search is off (it knows only the real world): a name is looked for among the places drawn
   // here, by title and where they are. The first match is selected; several are listed under the field to pick from.
@@ -588,6 +656,16 @@
   const tokens = () => {
     const t = { bg: tokenProbe('--bg'), section: tokenProbe('--bg-section'), text: tokenProbe('--text'), dim: tokenProbe('--text-dim'), accent: tokenProbe('--accent'), border: tokenProbe('--border') };
     for (const k of Object.keys(t)) if (!t[k]) delete t[k];
+    t.blue = tokenProbe('--tint-blue');
+    t.green = tokenProbe('--tint-green');
+    // The map's own colours (public/sdk/system.css, `--map-*`): used as they are, so the theme can set them.
+    const map = {};
+    for (const [k, name] of [['land', 'land'], ['water', 'water'], ['park', 'park'], ['wood', 'wood'], ['roadMinor', 'road-minor'], ['roadMedium', 'road-medium'], ['roadMajor', 'road-major'], ['building', 'building'], ['label', 'label'], ['boundary', 'boundary']]) {
+      const c = tokenProbe(`--map-${name}`);
+      if (c) map[k] = c;
+    }
+    t.map = map;
+    for (const k of ['blue', 'green']) if (!t[k]) delete t[k];
     return t;
   };
 
@@ -648,18 +726,20 @@
   };
 
   async function startMap() {
-    if (state.map) { state.map.remove(); state.map = null; state.mapReady = false; clearPins(); setBar(); }
+    if (state.map) { state.map.remove(); state.map = null; state.mapReady = false; clearPins(); setBar(); tellMapOn(); }
     // A picture map replaces the world map for the whole environment while it is set: only its one file is read.
     const picture = state.picture;
     syncPicture();
     const wanted = picture ? [picture.file] : state.settings.maps;
     if (!wanted.length) {
       showState('tpl-state-nomap'); // the same words for everyone: a module can't tell an owner apart without a permission
+      tellMapOn();
       render();
       return;
     }
     if (!webgl()) {
       showState('tpl-state-nowebgl');
+      tellMapOn();
       render();
       return;
     }
@@ -708,7 +788,7 @@
     } else {
       state.maxZoom = WORLD_MAX_ZOOM;
       state.landZoom = WORLD_MAX_ZOOM;
-      state.labelZoom = 11;
+      state.labelZoom = 14;
       state.style = () => buildStyle(tokens(), { tiles: state.tileUrls, glyphs });
       Object.assign(options, { maxZoom: WORLD_MAX_ZOOM, center: [header.centerLon, header.centerLat], zoom: 2 });
     }
@@ -727,12 +807,14 @@
         return;
       }
       if (state.adding) { draftAt(round6(e.lngLat.lat), round6(e.lngLat.lng)); return; }
+      if (state.spread) { state.spread = null; drawPins(); }
       if (state.selected) select(null);
     });
     map.on('moveend', drawPins);
     map.on('moveend', keepView);
     map.once('load', () => {
       state.mapReady = true;
+      tellMapOn();
       showState(null);
       const b = boundsOf(state.found.map((c) => c.place));
       const last = lastView();
@@ -941,8 +1023,14 @@
     if (!host.status || !state.started) return;
     const n = state.found.length;
     const found = state.candidates.length;
-    const shown = n ? `${n} ${n === 1 ? 'place' : 'places'} shown` : 'No places shown';
-    const items = state.adding ? [{ text: CLICK_TO_ADD }] : found ? [{ text: `${found} found` }, { text: shown }] : [{ text: shown }];
+    // The places the search text matches (the others are dimmed): "1 of 5 places shown" while it narrows them.
+    const matching = state.q ? state.found.filter((c) => !dimmed(c)).length : n;
+    const noun = n === 1 ? 'place' : 'places';
+    let shown;
+    if (!state.mapReady) shown = n ? `${n} ${noun}, no map drawn` : 'No places'; // a map that is not drawn shows nothing
+    else if (!n) shown = 'No places shown';
+    else shown = matching === n ? `${n} ${noun} shown` : `${matching} of ${n} ${noun} shown`;
+    const items = found ? [{ text: `${found} found` }, { text: shown }] : [{ text: shown }];
     host.status.set(items).catch(() => {});
   }
   // What was typed in the field: a pasted position or map link goes there (or starts a place there);
@@ -975,7 +1063,6 @@
         state.pick = true;
         if (part && state.phone && host.destination) host.destination.set({ reveal: 'main' }).catch(() => {});
         setAdding(true);
-        say(CLICK_TO_ADD);
         return {};
       },
       showOnMap: async (input) => {
@@ -1030,6 +1117,17 @@
   // that do not match; Enter (`find` raised) searches for new places, whose pins are drawn here and whose rows the panel
   // lists, or with a pasted position starts a new place there.
   let lastFind = null;
+  let lastChanged = null; // the list's change counter as last seen
+  let changeTimer = 0;
+  let lastQ = '';
+  // Tell the list beside whether the map is drawn, so it says "On the map" only when that is true.
+  let mapOnTold = null;
+  function tellMapOn() {
+    const on = Boolean(state.mapReady);
+    if (!part || !host.destination || on === mapOnTold) return;
+    mapOnTold = on;
+    host.destination.set({ mapOn: on }).catch(() => {});
+  }
   function showWanted(key) {
     if (!state.all.some((c) => summaryId(c) === key)) return false;
     if (state.mapReady) select(key, { quiet: true }); else state.openWanted = key;
@@ -1038,10 +1136,16 @@
   function takeState(st) {
     if (!st || typeof st !== 'object') return;
     state.phone = st.phone === true; // the page's parts are tabs (the callout offers Show in list)
+    // The list beside says its places changed (another person's new place too): read them again now, not at the next timer.
+    const changed = Number(st.changed) || 0;
+    if (lastChanged !== null && changed !== lastChanged && state.started) { clearTimeout(changeTimer); changeTimer = setTimeout(() => loadFound().then(() => { if (state.started) render(); }), 200); }
+    lastChanged = changed;
     state.filter = { mine: st.mine !== false, environment: st.environment !== false, spaces: Array.isArray(st.spaces) ? new Set(st.spaces.map(String)) : null };
     const text = typeof st.q === 'string' ? st.q.trim() : '';
     const point = text ? parsePoint(text) : null;
     state.q = point ? '' : text.toLowerCase();
+    // A place open in the callout that the new text does not match is put away (its pin would be dimmed under it).
+    if (state.q !== lastQ) { lastQ = state.q; const open = current(); if (open && state.q && dimmed(open)) select(null); }
     if (!text && (hits.length || state.candidates.length)) { searchToken += 1; hits = []; state.searchMessage = ''; state.candidates = []; }
     applyFilter();
     if (state.started) render();
