@@ -835,6 +835,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     let opener = null; // the "+" or icon the person used: focus goes back to it when the editor window closes
     // The parts' "+" and title bar icons drawn in this window's frame (createFrameBands), a pick posted back to the page.
     const bands = createFrameBands(mod.frame, {
+      statusLimit: 6, // the calendar's items and the shown panel's (4 open, 1 overdue, Showing all) all fit
       send: (event, data) => {
         opener = { el: frame.ownerDocument.activeElement, at: Date.now() };
         if (event === 'add' && data?.id) post({ type: 'app:compositeadd', id: data.id });
@@ -1344,7 +1345,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const out = { dock: false, window: false, popout: false, clear: false };
     const mod = opened.get(id);
     if (!mod) return out;
-    out.clear = !compositeOf(mod.m);
+    out.clear = !compositeOf(mod.m) && mod.m.clear === true; // only where the server says this person may (for-space `clear`)
     if (isNarrow()) return out;
     if (mod.mode === 'dock' && supports(mod, 'float')) out.window = true;
     if (mod.mode === 'float' && supports(mod, 'dock')) {

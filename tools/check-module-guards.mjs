@@ -22,7 +22,9 @@
  *     guards whose hidden fields don't read shut the module's data to guests (after a restart); Research's ids are one
  *     kind's only (exclusive), a photo's file must be the writer's and goes with the photo (also when a remove_photos
  *     holder removes it, kept while another photo names it); a member without Research edit writes in Mine
- *     (access.personWrite); link pictures refused to guests and to addresses no link here has; icons without a session.
+ *     (access.personWrite), notes and photos with their uploads; link pictures refused to guests and to addresses no link
+ *     here has; icons without a session; a closed poll's votes are final (nobody removes one), and a poll removed takes
+ *     its votes with it; the module context's space.guestsSeeHidden.
  * No network beyond localhost, no LiveKit.
  */
 import fs from 'node:fs';
@@ -174,7 +176,8 @@ await test('rules: what a PUT and a DELETE answer, case by case', () => {
     ['one\'s own poll deleted', del('poll:q1', person('mia', ['create'])), 200],
     ['someone else\'s vote deleted', del('vote:q1:mia', member, { options: ['o1'] }), 403],
     ['someone else\'s vote deleted by the poll\'s starter', del('vote:q1:sam', person('mia', ['create']), { options: ['o1'] }), 200],
-    ['someone else\'s vote on a closed poll deleted by a manager', del('vote:q2:sam', manager, { options: ['o1'] }), 200],
+    ['someone else\'s vote on a closed poll deleted by a manager: a closed poll is final', del('vote:q2:sam', manager, { options: ['o1'] }), 403],
+    ['a vote on a closed poll deleted by its starter', del('vote:q2:sam', person('mia', ['create']), { options: ['o1'] }), 403],
     ['one\'s own vote taken back on an open poll', del('vote:q1:sam', member, { options: ['o1'] }), 200],
     ['one\'s own vote taken back on a closed poll', del('vote:q2:sam', member, { options: ['o1'] }), 403],
     ['a key that is not there deleted', del('vote:q1:mia', member, null), 200],
@@ -498,6 +501,8 @@ try {
     assert.equal((await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: 'yes' })).status, 400);
     const opened = await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: true });
     assert.equal(opened.json.space.guestsSeeHidden, true);
+    assert.equal((await call('GET', `/api/modules/travel/context?${sp()}`, undefined, 'sam')).json.space.guestsSeeHidden, true, 'the module context says so: on');
+    assert.equal((await asGuest('GET', `/api/modules/travel/context?${sp()}`)).json.space.guestsSeeHidden, true, 'to a guest too');
     try {
       const seen = (await asGuest('GET', data('travel', 'plan:a1'))).json.item.value;
       assert.deepEqual([seen.cost, seen.confirm], [612, 'QX81ZP']);
@@ -505,6 +510,7 @@ try {
     } finally {
       const shut = await call('PATCH', `/api/spaces/${T}`, { guestsSeeHidden: false });
       assert.equal(shut.json.space.guestsSeeHidden, undefined, 'off is stored as nothing');
+      assert.equal((await call('GET', `/api/modules/travel/context?${sp()}`, undefined, 'sam')).json.space.guestsSeeHidden, false, 'the module context says so: off');
     }
     assert.equal((await asGuest('GET', data('travel', 'plan:a1'))).json.item.value.cost, undefined, 'and closed again');
   });
@@ -520,10 +526,10 @@ try {
 
   // A picture uploaded to Research in the trip by `as`: its file id.
   const { encodePng } = await import('./shots.mjs');
-  const upload = async (as) => {
+  const upload = async (as, place = sp()) => {
     const headers = { 'content-type': 'image/png' };
     if (cookies[as]) headers.cookie = cookies[as].map((c) => `${c.name}=${c.value}`).join('; ');
-    const r = await fetch(`${server.base}/api/modules/research/uploads?${sp()}&name=p.png`, { method: 'POST', headers, body: encodePng({ w: 2, h: 2, data: Buffer.alloc(16, 200) }) });
+    const r = await fetch(`${server.base}/api/modules/research/uploads?${place}&name=p.png`, { method: 'POST', headers, body: encodePng({ w: 2, h: 2, data: Buffer.alloc(16, 200) }) });
     const json = await r.json();
     assert.equal(r.status, 201, JSON.stringify(json));
     return json.file.id;
@@ -575,6 +581,16 @@ try {
       const mine = await call('PUT', '/api/modules/research/data/note:mine1?scope=person', { value: note }, 'sam');
       assert.equal(mine.status, 200, `in Mine: ${JSON.stringify(mine.json)}`);
       assert.equal((await call('DELETE', '/api/modules/research/data/note:mine1?scope=person', undefined, 'sam')).status, 200, 'and removes it');
+      // And a photo in Mine: the upload and the photo itself (not in the trip).
+      const headers = { 'content-type': 'image/png', cookie: cookies.sam.map((c) => `${c.name}=${c.value}`).join('; ') };
+      const inTrip = await fetch(`${server.base}/api/modules/research/uploads?${sp()}&name=p.png`, { method: 'POST', headers, body: encodePng({ w: 2, h: 2, data: Buffer.alloc(16, 9) }) });
+      assert.equal(inTrip.status, 403, 'no upload to the trip without edit');
+      const fileId = await upload('sam', 'scope=person');
+      const photo = await call('PUT', '/api/modules/research/data/photo:mine2?scope=person', { value: { kind: 'photo', title: 'Mine', tags: [], date: '', at: '', text: 'Mine', sub: '', file: { id: fileId, hasThumb: false } } }, 'sam');
+      assert.equal(photo.status, 200, `a photo in Mine: ${JSON.stringify(photo.json)}`);
+      assert.equal((await call('DELETE', '/api/modules/research/data/photo:mine2?scope=person', undefined, 'sam')).status, 200);
+      const left = (await call('GET', '/api/modules/research/uploads?scope=person', undefined, 'sam')).json.files.map((f) => f.id);
+      assert.equal(left.includes(fileId), false, 'its file went with it');
       // Another module's own data still takes its write permission (Polls has no person scope; the Planner's is
       // guarded by edit as before).
       assert.equal((await call('PATCH', '/api/roles/member', { 'module.travel.edit': false })).status, 200);
@@ -623,8 +639,14 @@ try {
     assert.equal(added.status, 200, JSON.stringify(added.json));
     assert.equal(added.json.item.value.options[2].by, 'Sam Okafor', 'the server names who added it');
     assert.equal((await call('PUT', data('polls', 'poll:m1'), { value: { ...added.json.item.value, options: [...added.json.item.value.options, 'd'] } }, 'sam')).status, 400, 'an added option that is not an object');
-    await call('DELETE', data('polls', `vote:m1:${ctx.sam}`), undefined, 'sam');
-    assert.equal((await call('DELETE', data('polls', 'poll:m1'), undefined, 'mia')).status, 200);
+    // Closed, it is final (QA 7, Thomas): no vote removed on its own, not by its voter or the poll's starter; the poll
+    // removed by its starter takes its votes with it.
+    assert.equal((await call('PUT', data('polls', 'poll:m1'), { value: { ...added.json.item.value, closed: true } }, 'mia')).status, 200);
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`), undefined, 'sam')).status, 403, 'the voter, after the close');
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`), undefined, 'mia')).status, 403, 'the starter, after the close');
+    assert.equal((await call('DELETE', data('polls', `vote:m1:${ctx.sam}`))).status, 403, 'the admin, after the close');
+    assert.equal((await call('DELETE', data('polls', 'poll:m1'), undefined, 'mia')).status, 200, 'the starter removes the poll');
+    assert.equal((await call('GET', data('polls', `vote:m1:${ctx.sam}`))).status, 404, 'and its votes went with it');
   });
 
   await test('live: a guest can\'t remove or replace what holds hidden fields (QA 2)', async () => {

@@ -9156,8 +9156,9 @@ app.get('/api/modules/:id/context', (req, res) => {
     // target, { amount?, currency? } (#216; set in Set up by an owner, the admin or a moderator of the space), or null
     // while none is set. This is how a member reads it (plan-budget-module.md, decision 3): through the module, never
     // the general space lists. Always null for a guest (moduleAccess has already refused anyone not in the space or
-    // without the module's read permission).
-    space: here ? { id: here.id, name: here.name, createdAt: here.createdAt, phases: here.phases, budget: (who.user && here.budget) || null } : null,
+    // without the module's read permission). `guestsSeeHidden`: true while an owner lets this space's guests see the fields
+    // modules keep from guests (costs and booking codes), so a page can say what a guest sees.
+    space: here ? { id: here.id, name: here.name, createdAt: here.createdAt, phases: here.phases, budget: (who.user && here.budget) || null, guestsSeeHidden: here.guestsSeeHidden === true } : null,
     phases: phases.map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) })),
     // Facts about the environment every module may need. `pictureMap`: { file, minZoom, maxZoom, tileType } while the
     // environment's map is a picture of an invented world (a module that declares `pictureMap` names the file), else null.
@@ -9375,7 +9376,14 @@ app.delete('/api/modules/:id/data/:key', (req, res) => {
     const removed = moduleData.remove(ctx.manifest.id, ctx.scopeKey, req.params.key, { expected: Number.isInteger(expected) ? expected : null, by: ctx.by });
     if (had) {
       objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
-      removeFilesOf(ctx, [{ key: req.params.key, value: had.value }]);
+      // What belongs to it (a rule's `parent`: a poll's votes) goes with it, closed or not.
+      const all = guards ? moduleData.list(ctx.manifest.id, ctx.scopeKey) : [];
+      const children = new Set(moduleGuards.childrenOf(guards, req.params.key, all.map((item) => item.key)));
+      for (const child of all.filter((item) => children.has(item.key))) {
+        moduleData.remove(ctx.manifest.id, ctx.scopeKey, child.key, { by: ctx.by });
+        objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: child.key, before: child.value, after: null, by: ctx.by, tz: req.query.tz });
+      }
+      removeFilesOf(ctx, [{ key: req.params.key, value: had.value }, ...all.filter((item) => children.has(item.key))]);
     }
     res.json(removed);
   } catch (err) {

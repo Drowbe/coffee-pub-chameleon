@@ -131,6 +131,12 @@
     }
     return item;
   }
+  // A stored link whose address is not a web address (a `javascript:` link, say) is not drawn as a link: it shows as an
+  // unreadable one, which can be removed and nothing else. It is never saved back.
+  function unreadable(kind, id, v) {
+    if (kind !== 'link' || !v || typeof v !== 'object') return null;
+    return { id: String(id), kind, title: 'Unreadable link', body: '', excerpt: 'This address cannot be used. Remove it.', content: '', url: '', site: '', image: '', tags: [], date: '', point: null, file: null, by: typeof v.by === 'string' ? v.by.slice(0, 64) : '', at: typeof v.at === 'string' ? v.at.slice(0, 32) : '', ai: null, icon: '', broken: true };
+  }
   // The plain words of an item, for a search and for the AI.
   const textOf = (it) => (it.kind === 'photo' ? it.title : it[BODY_FIELD[it.kind]] || '');
   // What is stored for an item: only what its kind uses, plus the derived `text` and `sub` its summary carries.
@@ -263,7 +269,7 @@
 
     const remember = (key, value, version) => {
       const [kind, id] = split(key);
-      const it = value ? cleanItem(kind, id, value) : null;
+      const it = value ? cleanItem(kind, id, value) || unreadable(kind, id, value) : null;
       const had = items.get(id);
       // One id is one object: another kind under the same id (the server refuses a new one) never takes its place.
       if (had && had.item.kind !== kind) return;

@@ -1,7 +1,7 @@
 {
   "id": "travel",
   "name": "Planner",
-  "version": "0.15.60",
+  "version": "0.15.61",
   "icon": "suitcase-rolling",
   "color": "teal",
   "description": "Plan together: a day-by-day itinerary that draws in the events, tasks and polls your {space} already has.",

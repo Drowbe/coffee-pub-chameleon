@@ -42,6 +42,7 @@
   // (this space, or the environment on its page -- the frame's own context),
   // 'environment' (shown read-only in a space) or 'spaces' (another space's, on the environment page).
   const events = new Map();
+  const LOBBY = 'lobby'; // the Lobby's id: not a space of the viewer's trips
   const spaceInfo = new Map(); // space id -> { id, name, icon, svg, write }, on the environment page
   const hiddenSpaces = new Set(); // spaces filtered out on the environment page
   let hideOwn = false; // as a part: the page's filter has the environment's own events off
@@ -142,6 +143,59 @@
     const r = x.scope === 'spaces' ? spaceInfo.get(x.spaceId) : null;
     return r && r.svg ? `<span class="ri" title="${esc(r.name)}">${r.svg}</span>` : '';
   };
+  const chipSpaceIcon = (x) => (spaceIconOn() ? spaceIcon(x) : '');
+  // Which events are copies of another module's object (the Itinerary's): the host says so on the object's summary (`copy: true`,
+  // `twinOf`), asked of host.objects.resolve for the events this page shows (a copy exists only in a space), once each. A copy
+  // is marked with the original's module icon and "from <its name>"; its length, All day and the end are the original's to set.
+  // key -> { name, icon, ref } for a copy, null for an event that is not one.
+  const pairInfo = new Map();
+  let learning = false;
+  const canHaveCopy = (x) => !isExternal(x) && !isMarker(x) && (x.scope === 'spaces' || (x.scope === 'here' && inSpace));
+  async function learnCopies() {
+    if (learning || !host.objects || !host.objects.resolve) return;
+    const todo = [...events.values()].filter((x) => canHaveCopy(x) && !pairInfo.has(x.key));
+    if (!todo.length) return;
+    learning = true;
+    let changed = false;
+    try {
+      const sums = await host.objects.resolve(todo.map((x) => host.objects.make('event', x.id, whereFor(x))));
+      const originals = new Map(); // ref key -> ref, for the copies' originals
+      todo.forEach((x, i) => {
+        const sum = sums[i];
+        if (sum && !sum.error && sum.copy === true && sum.twinOf) {
+          pairInfo.set(x.key, { name: '', icon: '', ref: sum.twinOf });
+          originals.set(JSON.stringify(sum.twinOf), sum.twinOf);
+        } else pairInfo.set(x.key, null);
+      });
+      if (originals.size) {
+        const refs = [...originals.values()];
+        const found = await host.objects.resolve(refs);
+        const byRef = new Map(refs.map((r, i) => [JSON.stringify(r), found[i]]));
+        for (const [k, info2] of pairInfo) {
+          const got = info2 && byRef.get(JSON.stringify(info2.ref));
+          if (!got || got.error || !got.module) continue;
+          info2.name = String(got.module.name || '');
+          info2.icon = String(got.module.icon || '');
+          if (typeof got.module.svg === 'string' && got.module.svg.includes('<svg') && info2.icon && !markerIcons.get(info2.icon)) markerIcons.set(info2.icon, got.module.svg);
+          else wantIcon(info2.icon);
+        }
+      }
+      changed = todo.some((x) => pairInfo.get(x.key));
+    } catch (err) {
+      for (const x of todo) if (!pairInfo.has(x.key)) pairInfo.set(x.key, null); // nothing is marked; not asked again
+    } finally {
+      learning = false;
+    }
+    if (changed && $('app')) render();
+  }
+  const copyOf = (x) => pairInfo.get(x.key) || null;
+  const copyName = (c) => c.name || 'the original';
+  const copyIcon = (c) => (c.icon && markerIcons.get(c.icon) ? `<span class="mi copy-mark" aria-hidden="true">${markerIcons.get(c.icon)}</span>` : '');
+  // The zone note for a copy shown in the trip's clock ("Lisbon time"), else ''.
+  const zoneFor = (x) => (isExternal(x) || isMarker(x) ? '' : zoneOf(x.ev));
+  // The space's icon on a chip: only where there is more than one place to tell apart (one space shown: it says nothing).
+  const placesShown = () => (hideOwn ? 0 : 1) + [...spaceInfo.keys()].filter((id) => !hiddenSpaces.has(id)).length;
+  const spaceIconOn = () => part === 'panel' || placesShown() > 1;
   async function load() {
     events.clear();
     // The names of the kinds this module may show as markers ("Task"), for the filter's words.
@@ -162,8 +216,9 @@
     } else if (info.context.scope === 'environment') {
       // Every space the viewer belongs to that has the calendar on.
       try {
-        for (const r of await host.spaces()) spaceInfo.set(r.id, r);
-        for (const item of await host.storage.list('event:', { scope: 'spaces' })) remember('spaces', item, item.spaceId);
+        // The Lobby is not a trip: the destination's filter and the To-do leave it out, so does this.
+        for (const r of await host.spaces()) if (r.id !== LOBBY) spaceInfo.set(r.id, r);
+        for (const item of await host.storage.list('event:', { scope: 'spaces' })) if (spaceInfo.has(item.spaceId)) remember('spaces', item, item.spaceId);
       } catch (err) {
         // no spaces is fine: just the environment's own events
       }
@@ -172,9 +227,10 @@
   host.on('change', (e) => {
     if (!e.key.startsWith('event:')) return;
     if (e.scope === 'environment' && inSpace && !showsEnvironment) return; // not shown here: a part in a space
+    if (e.scope === 'spaces' && !spaceInfo.has(e.spaceId)) return; // the Lobby, or a space this page does not list
     const scope = e.scope === 'spaces' ? 'spaces' : e.scope === 'environment' && inSpace ? 'environment' : 'here';
     const id = e.key.slice(6);
-    if (e.deleted) events.delete(keyOf(scope, id, e.spaceId));
+    if (e.deleted) { events.delete(keyOf(scope, id, e.spaceId)); pairInfo.delete(keyOf(scope, id, e.spaceId)); }
     else remember(scope, { key: e.key, value: e.value, version: e.version }, e.spaceId);
     if (editing && editing.scope === scope && editing.id === id && (scope !== 'spaces' || editing.spaceId === e.spaceId) && e.by !== info.user.key) {
       showError('This event was just changed by someone else. Close and reopen it to see the change.');
@@ -215,12 +271,16 @@
   const isCompact = () => $('app').classList.contains('sdk-cal-compact');
 
   const externalClass = (x) => `ext-${externalCalendars.get(x.calendar) ? externalCalendars.get(x.calendar).tint : 0}`;
-  function chipHtml({ x, start, cont }) {
+  function chipHtml({ x, start, cont, hour }) {
     if (isMarker(x)) return markerChipHtml(x, start);
-    // A multi-day event shows its time on the first day and an arrow on the days after.
-    const label = cont ? '\u2192 ' + x.ev.title : (x.ev.allDay ? '' : timeText(start) + ' ') + x.ev.title;
+    // A multi-day event shows its time on the first day and an arrow on the days after. The month's chips give the hour short
+    // ("7 PM"), the day's hour rows none at all on the hour (their row says it).
+    const label = cont ? '\u2192 ' + x.ev.title : (x.ev.allDay || (hour && start.getMinutes() === 0) ? '' : (hour ? timeText(start) : shortTime(start)) + ' ') + x.ev.title;
     if (isExternal(x)) return `<button class="sdk-cal-event sdk-bar-kept is-ext ${externalClass(x)}" data-open="${esc(x.key)}" title="${esc(`${x.ev.title} (${externalName(x.calendar)})`)}">${esc(label)}</button>`;
-    return `<button class="sdk-cal-event${x.scope === 'environment' && inSpace ? ' is-environment' : ''}" data-open="${esc(x.key)}" title="${esc(x.ev.title)}">${spaceIcon(x)}${x.ev.repeat ? '<span class="rep">&#8635;</span>' : ''}${esc(label)}</button>`;
+    const copy = copyOf(x);
+    const zone = zoneFor(x);
+    const tip = `${x.ev.title}${copy ? ` (from ${copyName(copy)})` : ''}${zone ? ` (${zoneNote(zone)})` : ''}`;
+    return `<button class="sdk-cal-event${x.scope === 'environment' && inSpace ? ' is-environment' : ''}${copy ? ' is-copy' : ''}" data-open="${esc(x.key)}" data-at="${ymd(start)}" title="${esc(tip)}">${copy ? copyIcon(copy) : ''}${chipSpaceIcon(x)}${x.ev.repeat ? '<span class="rep">&#8635;</span>' : ''}${esc(label)}</button>`;
   }
 
   // A day's cell: its phase wash, outside the month, today, the chosen day (as the destination's calendar).
@@ -242,13 +302,14 @@
     }
     const today = ymd(new Date());
     const sel = selectedDay();
+    const roving = rovingDay(Array.from({ length: 42 }, (_, i) => ymd(new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i))), ymd(first));
     let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => `<div class="sdk-cal-dow">${d}</div>`).join('');
     for (let i = 0; i < 42; i += 1) {
       const day = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       const list = byDay.get(ymd(day)) || [];
       const shown = isCompact() ? list : list.slice(0, 3);
       const ph = phaseFor(ymd(day), i === 0);
-      html += `<div class="${cellClass(day, ph, today, sel, day.getMonth() !== cursor.getMonth())}" data-day="${ymd(day)}"${ymd(day) === today ? ' aria-current="date"' : ''}${dayKeys(day)}>
+      html += `<div class="${cellClass(day, ph, today, sel, day.getMonth() !== cursor.getMonth())}" data-day="${ymd(day)}"${ymd(day) === today ? ' aria-current="date"' : ''}${dayKeys(day, roving, ph.label)}>
         <span class="sdk-cal-n">${day.getDate()}</span>${phaseNameHtml(ph)}<div class="sdk-cal-chips">${shown.map(chipHtml).join('')}</div>
         ${shown.length < list.length ? `<span class="sdk-cal-more">+${list.length - shown.length} more</span>` : ''}</div>`;
     }
@@ -268,8 +329,8 @@
       groups.get(k).push(occ);
     }
     return `<div class="list">${[...groups.values()].map((g) => `<div class="group"><h4>${esc(dayHeading(g[0].start < floor ? floor : g[0].start))}</h4><div class="sdk-cal-agenda">${g.map(({ x, start, end }) => (isMarker(x) ? markerItemHtml(x, start, agenda) : `
-      <button type="button" class="sdk-row sdk-bar-kept${isExternal(x) ? ` is-ext ${externalClass(x)}` : ''}" data-open="${esc(x.key)}" title="${esc(`${whenFull(x.ev, start, end)}  ${x.ev.title}${x.ev.desc ? ' - ' + x.ev.desc.slice(0, 120) : ''}`)}"><span class="sdk-row-meta">${esc(whenText(x.ev, start, end, isCompact()))}</span>
-        <span class="sdk-row-main"><span class="sdk-row-title">${agenda ? spaceIcon(x) : ''}${esc(x.ev.title)}${x.ev.repeat ? `<span class="sdk-chip-tag">${esc(REPEAT_NAMES[x.ev.repeat.every] || 'repeats')}</span>` : ''}${x.scope === 'environment' && inSpace ? `<span class="sdk-chip-tag">${esc(envName())}</span>` : ''}${!agenda && x.scope === 'spaces' && spaceInfo.get(x.spaceId) ? `<span class="sdk-chip-tag">${spaceIcon(x)} ${esc(spaceInfo.get(x.spaceId).name)}</span>` : ''}${isExternal(x) ? `<span class="sdk-chip-tag" data-tone="custom">${esc(externalName(x.calendar))}</span>` : ''}</span></span></button>`)).join('')}</div></div>`).join('')}${end ? `<p class="empty end">${esc(end)}</p>` : ''}</div>`;
+      <button type="button" class="sdk-row sdk-bar-kept${isExternal(x) ? ` is-ext ${externalClass(x)}` : ''}" data-open="${esc(x.key)}" data-at="${ymd(start)}" title="${esc(`${whenFull(x.ev, start, end)}${zoneFor(x) ? ` (${zoneNote(zoneFor(x))})` : ''}  ${x.ev.title}${x.ev.desc ? ' - ' + x.ev.desc.slice(0, 120) : ''}`)}"><span class="sdk-row-meta">${esc(whenText(x.ev, start, end, isCompact()))}</span>
+        <span class="sdk-row-main"><span class="sdk-row-title">${agenda ? spaceIcon(x) : ''}${copyOf(x) ? copyIcon(copyOf(x)) : ''}${esc(x.ev.title)}${copyOf(x) ? `<span class="sdk-chip-tag">from ${esc(copyName(copyOf(x)))}</span>` : ''}${zoneFor(x) ? `<span class="sdk-chip-tag">${esc(zoneNote(zoneFor(x)))}</span>` : ''}${x.ev.repeat ? `<span class="sdk-chip-tag">${esc(REPEAT_NAMES[x.ev.repeat.every] || 'repeats')}</span>` : ''}${x.scope === 'environment' && inSpace ? `<span class="sdk-chip-tag">${esc(envName())}</span>` : ''}${!agenda && x.scope === 'spaces' && spaceInfo.get(x.spaceId) ? `<span class="sdk-chip-tag">${spaceIcon(x)} ${esc(spaceInfo.get(x.spaceId).name)}</span>` : ''}${isExternal(x) ? `<span class="sdk-chip-tag" data-tone="custom">${esc(externalName(x.calendar))}</span>` : ''}</span></span></button>`)).join('')}</div></div>`).join('')}${end ? `<p class="empty end">${esc(end)}</p>` : ''}</div>`;
   }
 
   function monthList() {
@@ -306,12 +367,13 @@
     }
     const today = ymd(new Date());
     const sel = selectedDay();
+    const roving = rovingDay(Array.from({ length: 7 }, (_, i) => ymd(addDays(start, i))), ymd(start));
     let html = '';
     for (let i = 0; i < 7; i += 1) {
       const day = addDays(start, i);
       const list = byDay.get(ymd(day)) || [];
       const ph = phaseFor(ymd(day), i === 0);
-      html += `<div class="${cellClass(day, ph, today, sel, false)}" data-day="${ymd(day)}"${ymd(day) === today ? ' aria-current="date"' : ''}${dayKeys(day)}><span class="sdk-cal-n">${esc(day.toLocaleDateString([], { weekday: 'short' }))} <b>${day.getDate()}</b>${phaseNameHtml(ph)}</span><div class="sdk-cal-chips">${list.map(chipHtml).join('')}</div></div>`;
+      html += `<div class="${cellClass(day, ph, today, sel, false)}" data-day="${ymd(day)}"${ymd(day) === today ? ' aria-current="date"' : ''}${dayKeys(day, roving, ph.label)}><span class="sdk-cal-n">${esc(day.toLocaleDateString([], { weekday: 'short' }))} <b>${day.getDate()}</b>${phaseNameHtml(ph)}</span><div class="sdk-cal-chips">${list.map(chipHtml).join('')}</div></div>`;
     }
     return `<div class="sdk-cal-grid sdk-cal-week">${html}</div>`;
   }
@@ -334,12 +396,13 @@
       else {
         const h = occ.start.getHours();
         if (!byHour.has(h)) byHour.set(h, []);
-        byHour.get(h).push({ ...occ, cont: false });
+        byHour.get(h).push({ ...occ, cont: false, hour: true });
       }
     }
     const k = ymd(start);
     const ph = phaseFor(k, true);
-    let html = `${ph.label ? `<div class="phasehead ph ph-${esc(phaseOnDay(phaseBands, k).tint)}"><small class="ph-name">${esc(ph.label)}</small></div>` : ''}<div class="sdk-cal-allday"><span class="sdk-cal-hr">All day</span><div class="sdk-cal-chips">${allDay.map(chipHtml).join('')}</div></div><div class="sdk-cal-hours">`;
+    // The phase bar and the all-day row are one block that stays at the top of the scroll (the day opens at its first hour).
+    let html = `<div class="daytop">${ph.label ? `<div class="phasehead ph ph-${esc(phaseOnDay(phaseBands, k).tint)}"><small class="ph-name">${esc(ph.label)}</small></div>` : ''}<div class="sdk-cal-allday"><span class="sdk-cal-hr">All day</span><div class="sdk-cal-chips">${allDay.map(chipHtml).join('')}</div></div></div><div class="sdk-cal-hours">`;
     const now = new Date();
     for (let h = 0; h < 24; h += 1) {
       const at = new Date(start.getFullYear(), start.getMonth(), start.getDate(), h);
@@ -359,9 +422,9 @@
     const row = (first && first.closest('.sdk-cal-hour')) || now || root.querySelector('.sdk-cal-hours .sdk-cal-hour[data-hour="7"]');
     const body = $('body');
     if (!row || !body) return;
-    // The phase bar sticks to the top of the scroll, so the row stops just beneath it, not under it.
-    const bar = body.querySelector('.phasehead');
-    const go = () => { body.scrollTop = Math.max(0, row.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 4 - (bar ? bar.offsetHeight + 6 : 0)); };
+    // The phase bar and the all-day row stick to the top of the scroll, so the row stops just beneath them, not under them.
+    const top = body.querySelector('.daytop');
+    const go = () => { body.scrollTop = Math.max(0, row.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 4 - (top ? top.offsetHeight + 6 : 0)); };
     go();
     requestAnimationFrame(() => { if (row.isConnected) go(); }); // once laid out, in case the first pass had no height yet
   }
@@ -385,8 +448,22 @@
 
   // As the destination's calendar a day is selected by keyboard too: Tab to it, then Enter or Space. (Not a button:
   // it holds the events' own buttons.)
-  function dayKeys(day) {
-    return part === 'main' ? ` tabindex="0" title="${esc(dayHeading(day))}"` : '';
+  // One Tab stop in the grid (roving tabindex): the day the arrow keys moved to, else the selected day, else the first one;
+  // the arrows move it (root keydown, below). The chips of the other days are out of the Tab order (the Agenda lists them).
+  let focusDay = ''; // the day with the grid's Tab stop
+  let focusUntil = 0; // until then a redraw gives the focus back to focusDay (a pick redraws twice: the page's state comes round)
+  const rovingDay = (keys, fallback) => (keys.includes(focusDay) ? focusDay : keys.includes(selectedDay()) ? selectedDay() : fallback);
+  function dayKeys(day, roving, phase) {
+    return part === 'main' ? ` tabindex="${ymd(day) === roving ? 0 : -1}" title="${esc(dayHeading(day) + (phase ? ` \u2013 ${phase}` : ''))}"` : '';
+  }
+  function settleGrid() {
+    if (part !== 'main') return;
+    for (const chip of root.querySelectorAll('.sdk-cal-cell:not(.is-selected) .sdk-cal-event')) chip.tabIndex = -1;
+    if (Date.now() < focusUntil && focusDay) {
+      const cell = root.querySelector(`.sdk-cal-cell[data-day="${focusDay}"]`);
+      const active = root.activeElement || document.activeElement;
+      if (cell && (!active || active === document.body || !active.isConnected)) cell.focus({ preventScroll: true });
+    }
   }
   // As a part: the selected day (YYYY-MM-DD), which the Agenda follows.
   function selectedDay() {
@@ -431,6 +508,8 @@
     askExternal(false);
     askMarkers(false);
     syncStatus();
+    settleGrid();
+    learnCopies();
   }
 
   // The Agenda (the destination's panel): the events of the period the calendar shows, from the selected day on.
@@ -448,9 +527,11 @@
     const start = day > from && day < to ? day : from;
     const unit = st.view === 'day' ? 'day' : st.view === 'week' ? 'week' : 'month';
     const occs = inRange(start, to);
-    $('body').innerHTML = listHtml(occs, `Nothing else this ${unit}.`, start, `Nothing else this ${unit}.`);
+    // From the selected day on: "Nothing this day." for a day, "Nothing else this week." (the days before it are in the calendar).
+    $('body').innerHTML = listHtml(occs, unit === 'day' ? 'Nothing this day.' : `Nothing else this ${unit}.`, start, `Nothing else this ${unit}.`);
     askExternal(false);
     askMarkers(false);
+    learnCopies();
   }
 
   // --- the person's other calendars: asked of the host for what is shown -----------------------------------
@@ -595,7 +676,7 @@
   }
   function markerChipHtml(x, start) {
     const past = markerPast(x);
-    return `<button type="button" class="sdk-cal-event sdk-bar-kept is-marker${past ? ' is-past' : ''}${tintClass(x)}" data-marker="${esc(x.key)}" title="${esc(markerTip(x, past))}">${markerIconHtml(x)}${markerSpaceIcon(x)}${esc(markerText(x, start, past))}</button>`;
+    return `<button type="button" class="sdk-cal-event sdk-bar-kept is-marker${past ? (x.due ? ' is-overdue' : ' is-past') : ''}${tintClass(x)}" data-marker="${esc(x.key)}" title="${esc(markerTip(x, past))}">${markerIconHtml(x)}${markerSpaceIcon(x)}${esc(markerText(x, start, past))}</button>`;
   }
   function markerItemHtml(x, start, agenda) {
     const past = markerPast(x);
@@ -603,7 +684,7 @@
     const when = x.ev.allDay ? said : `${said} ${timeText(start)}`;
     const r = x.marker.ref.scope === 'space' && !inSpace ? spaceInfo.get(x.marker.ref.space) : null;
     const name = x.marker.module && x.marker.module.name ? String(x.marker.module.name) : '';
-    return `<button type="button" class="sdk-row sdk-bar-kept is-marker${past ? ' is-past' : ''}${tintClass(x)}" data-marker="${esc(x.key)}" title="${esc(markerTip(x, past))}"><span class="sdk-row-meta">${esc(isCompact() ? when.replace(/:00(?=\s?[AP]M)/i, '') : when)}</span>
+    return `<button type="button" class="sdk-row sdk-bar-kept is-marker${past ? (x.due ? ' is-overdue' : ' is-past') : ''}${tintClass(x)}" data-marker="${esc(x.key)}" title="${esc(markerTip(x, past))}"><span class="sdk-row-meta">${esc(isCompact() ? when.replace(/:00(?=\s?[AP]M)/i, '') : when)}</span>
       <span class="sdk-row-main"><span class="sdk-row-title">${markerIconHtml(x)}${agenda ? markerSpaceIcon(x) : ''}${esc(x.ev.title)}${name ? `<span class="sdk-chip-tag">${esc(name)}</span>` : ''}${!agenda && r ? `<span class="sdk-chip-tag">${spaceIcon({ scope: 'spaces', spaceId: r.id })} ${esc(r.name)}</span>` : ''}</span></span></button>`;
   }
   // A marker opens its object in its own module, as a link does; Ctrl or Cmd asks for a new tab where the page can.
@@ -860,21 +941,44 @@
     });
   }
 
-  function openEditor(x, day, prefill) {
+  // What a person who may not change an event reads instead of the form: when, where, how often, the details.
+  function summaryHtml(x, ev, zone) {
+    const start = startOf(ev);
+    const end = endOf(ev, start);
+    const lines = [`<p class="sum-when">${esc(dayHeading(start))}<br>${esc(whenText(ev, start, end, false))}${zone ? ` <span class="sdk-chip-tag">${esc(zoneNote(zone))}</span>` : ''}</p>`];
+    if (ev.repeat) lines.push(`<p>Repeats ${esc(REPEAT_NAMES[ev.repeat.every] || 'again and again')}${ev.repeat.until ? ` until ${esc(shortDay(parseYmd(ev.repeat.until)))}` : ''}.</p>`);
+    if (!inSpace) lines.push(`<p>${esc(isExternal(x) ? externalName(x.calendar) : placeName(x.scope, x.spaceId))}</p>`);
+    if (ev.desc) lines.push(`<p class="detail">${esc(ev.desc)}</p>`);
+    if (ev.by && !isExternal(x)) lines.push(`<p class="sdk-hint">Added by ${esc(ev.by)}</p>`);
+    return lines.join('');
+  }
+  function openEditor(x, day, prefill, at) {
     if (!x && !canAdd()) return;
     const readOnly = x ? !writable(x) : false;
     const ev = x ? x.ev : { title: '', allDay: false, start: '', end: null, desc: '', remind: null, repeat: null };
-    editing = x ? { scope: x.scope, id: x.id, version: x.version, spaceId: x.spaceId, key: x.key } : { scope: null, id: null, version: null, spaceId: null };
+    const copy = x ? copyOf(x) : null;
+    const zone = x ? zoneFor(x) : '';
+    editing = x ? { scope: x.scope, id: x.id, version: x.version, spaceId: x.spaceId, key: x.key, readOnly, base: ev, tz: zone || null, copy: Boolean(copy), at: ev.repeat && at && /^\d{4}-\d{2}-\d{2}$/.test(at) ? at : '' } : { scope: null, id: null, version: null, spaceId: null };
     showError('');
     fillWhere(x);
     // One of the person's other calendars: what it is and when, nothing to remind, repeat or link.
     const outside = Boolean(x && isExternal(x));
     for (const el of [$('f-remind').closest('.sdk-field'), $('f-repeat-row'), $('f-desc').closest('.sdk-field')]) el.hidden = outside;
-    // Read only in a place where the viewer may not add events: say why (on the environment page, where it can differ).
+    // A copy of another module's object (the Itinerary's): it says so, and the length, All day and the repeat are the original's.
+    $('f-repeat-row').hidden = outside || Boolean(copy);
+    $('f-copy').hidden = !copy;
+    $('f-copy').innerHTML = copy ? `${copyIcon(copy)}from ${esc(copyName(copy))}.${readOnly ? '' : ' Changing the title or the start changes it there too.'}` : '';
+    // Read only in a place where the viewer may not add events: say why.
     const why = outside ? `From your ${externalName(x.calendar)} calendar. Only you see this.`
-      : readOnly && !inSpace && x ? `Only people who can add events in ${placeName(x.scope, x.spaceId)} can change this.` : '';
+      : readOnly && !inSpace && x ? `Only people who can add events in ${placeName(x.scope, x.spaceId)} can change this.`
+      : readOnly ? 'You can look at this event, not change it.' : '';
     $('f-readonly').textContent = why;
     $('f-readonly').hidden = !why;
+    // A summary instead of a form of disabled fields.
+    $('f-fields').hidden = readOnly;
+    $('f-summary').hidden = !readOnly;
+    $('f-summary').innerHTML = readOnly ? summaryHtml(x, ev, zone) : '';
+    if (readOnly) $('f-where-wrap').hidden = true;
     const from = x && x.scope === 'spaces' && spaceInfo.get(x.spaceId) ? ` (${spaceInfo.get(x.spaceId).name})` : '';
     $('editor-title').textContent = x ? (readOnly ? ev.title + from : 'Edit event') : 'New event';
     $('f-title').value = ev.title;
@@ -883,7 +987,7 @@
     $('f-date').value = start ? ymd(start) : day || ymd(new Date());
     $('f-time').value = start && !ev.allDay ? `${pad(start.getHours())}:${pad(start.getMinutes())}` : '19:00';
     // The end: a date and time for a timed event, the last day for an all-day one.
-    const endAt = ev.end && !ev.allDay ? new Date(ev.end) : null;
+    const endAt = ev.end && !ev.allDay ? readAt(ev, ev.end) : null;
     $('f-end-date').value = ev.end ? (ev.allDay ? ev.end : ymd(endAt)) : '';
     $('f-end').value = endAt ? `${pad(endAt.getHours())}:${pad(endAt.getMinutes())}` : '';
     $('f-desc').value = ev.desc || '';
@@ -896,9 +1000,18 @@
     $('f-repeat').value = ev.repeat ? ev.repeat.every : '';
     $('f-until').value = ev.repeat && ev.repeat.until ? ev.repeat.until : '';
     for (const id of ['f-title', 'f-date', 'f-time', 'f-end-date', 'f-end', 'f-allday', 'f-desc', 'f-remind', 'f-repeat', 'f-until']) $(id).disabled = readOnly;
+    // The original owns a copy's length and whether it is all day: shown, not changed, and said so.
+    const owned = Boolean(copy) && !readOnly;
+    for (const id of ['f-allday', 'f-end-date', 'f-end']) $(id).disabled = readOnly || owned;
+    const ownedWords = owned ? `Set by the ${copyName(copy)}` : '';
+    $('f-owned').textContent = ownedWords; // under All day and the end: the date picker keeps its own hint line under the field
+    $('f-owned').hidden = !owned;
+    $('f-time-wrap').querySelector('.sdk-hint').textContent = zone ? zoneNote(zone) : '';
     $('f-save').hidden = readOnly;
     $('f-delete').hidden = readOnly || !x;
-    $('f-delete').textContent = 'Delete';
+    $('f-delete').textContent = deleteLabel();
+    $('f-delete-one').hidden = readOnly || !x || !(ev.repeat && editing.at);
+    $('f-delete-one').textContent = 'Delete this one';
     // Read-only (an event from elsewhere): no button row; the window's own Close in the corner is the one way out.
     $('f-cancel').hidden = readOnly;
     $('f-cancel').parentElement.hidden = readOnly;
@@ -960,11 +1073,22 @@
     const title = $('f-title').value.trim();
     const date = $('f-date').value;
     if (!title || !date) return showError('A title and a date are needed.');
-    const allDay = $('f-allday').checked;
+    const base = editing.id ? editing.base : null;
+    const allDay = editing.copy ? Boolean(base.allDay) : $('f-allday').checked;
     let start = date;
     let end = null;
     const endDate = $('f-end-date').value;
-    if (allDay) {
+    if (editing.copy && allDay) {
+      // A whole-day copy: moving its day moves its last day the same way.
+      end = base.end ? ymd(addDays(parseYmd(base.end), Math.round((parseYmd(date) - parseYmd(base.start)) / DAY))) : null;
+    } else if (editing.copy) {
+      const time = $('f-time').value || '19:00';
+      const s = instantFrom(date, time, editing.tz);
+      if (Number.isNaN(s.getTime())) return showError('That time is not valid.');
+      start = s.toISOString();
+      // Its length stays the original's: the end moves with the start.
+      end = base.end ? new Date(Date.parse(base.end) + (s.getTime() - Date.parse(base.start))).toISOString() : null;
+    } else if (allDay) {
       // An all-day event's end is its last day.
       if (endDate && endDate < date) return showError('The end is before the start.');
       if (endDate && endDate > date) end = endDate;
@@ -989,11 +1113,13 @@
       repeat = { every: $('f-repeat').value, until };
     }
     const id = editing.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const ev = { id, title, allDay, start, end, desc: $('f-desc').value.trim(), remind, repeat, by: info.user.name };
+    // The zone a copy's clock is read in, and the days taken out of a repeat, stay as they were.
+    const ev = { id, title, allDay, start, end, desc: $('f-desc').value.trim(), remind, repeat, by: info.user.name, ...(base && base.tz !== undefined ? { tz: base.tz } : {}), ...(base && repeat && base.skips ? { skips: base.skips } : {}) };
     const where = placeOpts(target.scope, target.spaceId);
     $('f-save').disabled = true;
     try {
-      const saved = await host.storage.set('event:' + id, ev, { ...(editing.id ? { version: editing.version } : {}), ...where });
+      // A copy is saved in its own zone, so the original's time follows what is on screen, not where this person is.
+      const saved = await host.storage.set('event:' + id, ev, { ...(editing.id ? { version: editing.version } : {}), ...(editing.copy && base && base.tz ? { tz: base.tz } : {}), ...where });
       remember(target.scope, { key: 'event:' + id, value: ev, version: saved.version }, target.spaceId);
       lastKey = keyOf(target.scope, id, target.spaceId);
       let reminderFailed = false;
@@ -1019,12 +1145,14 @@
 
   let deleteArmed = false;
   let deleteAsking = false;
+  // A copy is hidden, not deleted (the original keeps it); a repeat offers this one or all of them.
+  const deleteLabel = () => (editing && editing.copy ? 'Hide' : editing && editing.at ? 'Delete all' : 'Delete');
   $('f-delete').addEventListener('click', async () => {
     if (!editing || !editing.id || deleteAsking) return;
     if (!deleteArmed) {
       deleteAsking = true;
       const current = events.get(keyOf(editing.scope, editing.id, editing.spaceId));
-      const usual = current && current.ev.repeat ? 'Delete every one?' : 'Really delete?';
+      const usual = current && current.ev.repeat ? 'Really delete all of them?' : 'Really delete?';
       let n = 0;
       let original = null;
       if (current && host.objects && host.objects.linksTo) {
@@ -1038,7 +1166,7 @@
       deleteAsking = false;
       deleteArmed = true;
       $('f-delete').textContent = original ? `This hides it from the Calendar. The ${(original.module && original.module.name) || 'original'} keeps it. Hide it?` : n ? `Used by ${n}. ${usual}` : usual;
-      setTimeout(() => { deleteArmed = false; $('f-delete').textContent = 'Delete'; }, 4000);
+      setTimeout(() => { deleteArmed = false; $('f-delete').textContent = deleteLabel(); }, 4000);
       return;
     }
     deleteArmed = false;
@@ -1051,6 +1179,24 @@
       render();
     } catch (err) {
       showError(err.message);
+    }
+  });
+
+  // One occurrence of a repeat taken out: its day is kept in the event's `skips`, the rest go on.
+  $('f-delete-one').addEventListener('click', async () => {
+    if (!editing || !editing.id || !editing.at) return;
+    const current = events.get(keyOf(editing.scope, editing.id, editing.spaceId));
+    if (!current) return;
+    const where = placeOpts(editing.scope, editing.spaceId);
+    const ev = { ...current.ev, skips: [...new Set([...(Array.isArray(current.ev.skips) ? current.ev.skips : []), editing.at])].slice(-400) };
+    try {
+      const saved = await host.storage.set('event:' + editing.id, ev, { version: current.version, ...where });
+      remember(editing.scope, { key: 'event:' + editing.id, value: ev, version: saved.version }, editing.spaceId);
+      applyReminder(editing.id, ev, where).catch(() => {});
+      closeEditor();
+      render();
+    } catch (err) {
+      showError(err.status === 409 ? 'Someone changed this event since you opened it. Close it and open it again.' : err.message);
     }
   });
 
@@ -1271,7 +1417,7 @@
     const open = e.target.closest('[data-open]');
     if (open) {
       const x = events.get(open.dataset.open);
-      if (x) openEditor(x);
+      if (x) openEditor(x, undefined, undefined, open.dataset.at);
       return;
     }
     // An hour of the day view: a new event at that hour.
@@ -1286,17 +1432,42 @@
     if (part === 'main') {
       anchor = parseYmd(day.dataset.day);
       cursor = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      focusDay = day.dataset.day;
       render();
     } else if (canAdd()) openEditor(null, day.dataset.day);
   });
+  // On a day: Enter or Space picks it and keeps the focus on it (the redraws that follow give it back); the arrows move the
+  // focus a day or a week, Home and End to the week's ends, Page Up and Down a month. A day outside the grid is picked.
   root.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && part === 'main' && e.target.matches && e.target.matches('.sdk-cal-cell[data-day]')) {
+    if (part !== 'main' || !e.target.matches || !e.target.matches('.sdk-cal-cell[data-day]') || e.altKey || e.ctrlKey || e.metaKey) return;
+    const k = e.target.dataset.day;
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      const k = e.target.dataset.day;
+      focusDay = k;
+      focusUntil = Date.now() + 1500;
       e.target.click();
-      const again = root.querySelector(`.sdk-cal-cell[data-day="${k}"]`);
-      if (again) again.focus();
+      settleGrid();
+      return;
     }
+    const from = parseYmd(k);
+    const to = { ArrowLeft: addDays(from, -1), ArrowRight: addDays(from, 1), ArrowUp: addDays(from, -7), ArrowDown: addDays(from, 7),
+      Home: addDays(from, -from.getDay()), End: addDays(from, 6 - from.getDay()),
+      PageUp: new Date(from.getFullYear(), from.getMonth() - 1, from.getDate()), PageDown: new Date(from.getFullYear(), from.getMonth() + 1, from.getDate()) }[e.key];
+    if (!to) return;
+    e.preventDefault();
+    const key = ymd(to);
+    const cell = root.querySelector(`.sdk-cal-cell[data-day="${key}"]`);
+    focusDay = key;
+    if (cell && e.key !== 'PageUp' && e.key !== 'PageDown') {
+      for (const c of root.querySelectorAll('.sdk-cal-cell[tabindex="0"]')) c.tabIndex = -1;
+      cell.tabIndex = 0;
+      cell.focus();
+      return;
+    }
+    focusUntil = Date.now() + 1500;
+    anchor = to;
+    cursor = new Date(to.getFullYear(), to.getMonth(), 1);
+    render();
   });
 
   // A frame can report no width while it is still being laid out, so wait for a real
@@ -1379,7 +1550,7 @@
     let sent = 0;
     for (const x of [...events.values()]) {
       if (x.scope !== 'here' || x.ev.repeat || x.ev.announced || announcing.has(x.id) || sent >= 5) continue;
-      const ends = startOf(x.ev).getTime() + durationOf(x.ev);
+      const ends = instantOfStart(x.ev).getTime() + durationOf(x.ev);
       if (ends > now || now - ends > WEEK) continue;
       announcing.add(x.id);
       sent += 1;

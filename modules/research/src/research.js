@@ -57,12 +57,14 @@
   const geo = host.util.geo;
   /*__LIB__*/
 
-  const canEdit = host.can('edit');
+  // Mine is the person's own: anyone signed in may keep private notes there, whatever the role says about this space's research.
+  const personal = Boolean(info.user && info.user.key !== 'guest'); // a guest has no profile, so nothing of their own
+  const canEditSpace = host.can('edit');
+  const canEdit = () => (view === 'my' ? personal : canEditSpace);
   // The titlebar reads its name as this environment shows it (host.info's: the display name, else its own), with no
   // count beside it (#191).
   host.setTitle(info.module.name);
-  const personal = Boolean(info.user && info.user.key !== 'guest'); // a guest has no profile, so nothing of their own
-  const removeAnyPhoto = host.can('remove_photos'); // a space's photos other people added (owners always can)
+    const removeAnyPhoto = host.can('remove_photos'); // a space's photos other people added (owners always can)
   const me = (info.user && info.user.key) || '';
 
   // Two stores of the same kind of thing: this space's, and the person's own (private, the same in every space).
@@ -88,6 +90,7 @@
     tagColors: new Map(), // a well-known tag -> its colour
     previews: false, // the environment's Fetch link previews setting
     warming: new Set(), // link ids already asked for a picture, so a redraw does not ask again
+    peek: new Map(), // link id -> the page's picture, shown this visit only (never saved)
     ai: false, // whether this person may use AI here (for Suggest tags, and Research this)
     thumbs: new Map(), // photo id -> address of its thumbnail in the view it was asked for
   };
@@ -129,7 +132,12 @@
   }
   const setIcon = (node, name) => { if (node) { node.dataset.icon = name || ''; delete node.dataset.shown; node.textContent = ''; } };
   const say = (text, ms) => { const n = $('note'); n.textContent = text || ''; n.hidden = !text; if (text && ms) setTimeout(() => { if (n.textContent === text) say(''); }, ms); };
-  const message = (err) => (err && err.message) || String(err);
+  // Good news and hints go to the toast, never the red error line.
+  const told = (text) => { if (host.ui && typeof host.ui.toast === 'function') host.ui.toast(text).catch(() => {}); else say(text, 3000); };
+  const message = (err) => {
+    const m = (err && err.message) || String(err);
+    return /failed to fetch|networkerror|load failed/i.test(m) ? 'Check your connection and try again.' : m;
+  };
 
   // The pane's width, not the window's: a bundled module runs in the page, so a media query would follow the window.
   const fit = () => {
@@ -197,6 +205,7 @@
     if (changed) render();
   }
   if (host.on) host.on('links', () => { askedLinks.clear(); links.clear(); loadLinks().catch(() => {}); });
+  const pluralOf = (w) => (/[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/.test(w) ? `${w}es` : `${w}s`);
   function backlinkPills(summaries) {
     const groups = new Map();
     for (const c of summaries) { const k = c.kindName || c.kind || word('object', { cap: true }); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
@@ -204,7 +213,7 @@
     const pills = all.slice(0, 3).map(([kind, list]) => {
       const el = clone('tpl-backlink');
       setIcon(el.querySelector('[data-icon]'), (list[0].module && list[0].module.icon) || 'link');
-      fill(el, { label: list.length === 1 ? `${kind}: ${list[0].title}` : `${list.length} ${kind.toLowerCase()}s` });
+      fill(el, { label: list.length === 1 ? `${kind}: ${list[0].title}` : `${list.length} ${pluralOf(kind.toLowerCase())}` });
       el.title = list.map((c) => c.title).join(', ');
       linkTarget.set(el, list[0].ref);
       return el;
@@ -221,9 +230,10 @@
     el.classList.toggle('on', state.open.has(it.id));
     el.setAttribute('aria-expanded', state.open.has(it.id) ? 'true' : 'false');
     const pen = el.querySelector('[data-action="edit"]');
-    if (pen) { pen.setAttribute('aria-label', canEdit ? 'Edit' : 'View'); pen.title = canEdit ? 'Edit' : 'View'; }
+    if (pen && it.broken) pen.hidden = true;
+    else if (pen) { pen.setAttribute('aria-label', canEdit() ? 'Edit' : 'View'); pen.title = canEdit() ? 'Edit' : 'View'; }
     setIcon(el.querySelector('.kind [data-icon]'), it.kind === 'note' ? noteIcon(it.icon) : KIND_ICON[it.kind]);
-    fill(el, { kind: it.kind === 'note' ? noteIconLabel(it.icon) : KIND_LABEL[it.kind], title: it.title, site: it.site, when: it.date ? dayText(it.date) : '', place: placeText(it.point), by: initial(it.by) });
+    fill(el, { kind: it.kind === 'note' ? (noteIconLabel(it.icon) === 'General' ? 'Note' : noteIconLabel(it.icon)) : KIND_LABEL[it.kind], title: it.title, site: it.site, when: it.date ? dayText(it.date) : '', place: placeText(it.point), by: initial(it.by) });
     const words = it.kind === 'photo' ? '' : textOf(it);
     const excerpt = slot(el, 'excerpt');
     if (excerpt) {
@@ -244,7 +254,7 @@
       img.hidden = false;
     });
     if (it.kind === 'photo' && it.file) { const u = thumbUrl(it); if (u) { img.src = u; img.hidden = false; } }
-    else if (it.kind === 'link' && it.image && state.previews) showLinkImage(it, img);
+    else if (it.kind === 'link' && (it.image || state.peek.get(it.id)) && state.previews) showLinkImage(it.id, it.image || state.peek.get(it.id), img);
     else hide(img, true);
     const tags = slot(el, 'tags');
     tags.replaceChildren(...it.tags.map((t) => tagNode(t, 'tpl-tag')));
@@ -273,7 +283,7 @@
   function syncToolbar(empty) {
     host.toolbar.set(empty ? [] : [
       { type: 'search', id: 'search', value: state.filter, placeholder: 'Search research', label: 'Search research' },
-      { type: 'chips', id: 'kind', label: 'Kind', single: true, value: state.kind || 'all', options: [{ id: 'all', label: 'Every kind' }, ...KIND_CHIPS] },
+      { type: 'chips', id: 'kind', label: 'Kind', single: true, value: state.kind || 'all', options: [{ id: 'all', label: 'Every kind' }, ...KIND_CHIPS.filter((k) => k.id !== 'answer' || state.kind === 'answer' || research.list().some((it) => it.kind === 'answer'))] },
       ...(tagCounts(research.list()).length ? [{ type: 'chips', id: 'tags', label: 'Tags', options: tagCounts(research.list()).map(({ tag, count }) => ({ id: tag, label: tag, count, default: false, on: state.tags.includes(tag) })) }] : []),
     ]).catch(() => {});
   }
@@ -319,7 +329,7 @@
     if (!state.loaded) { body.replaceChildren(clone('tpl-state-loading')); return; }
     if (empty) {
       body.replaceChildren(clone('tpl-state-empty'));
-      for (const b of body.querySelectorAll('[data-action="new-note"], [data-action="new-link"], [data-action="add-photo"]')) hide(b, !canEdit);
+      for (const b of body.querySelectorAll('[data-action="new-note"], [data-action="new-link"], [data-action="add-photo"]')) hide(b, !canEdit());
       hydrate(root);
       return;
     }
@@ -337,65 +347,54 @@
     if (state.layout !== 'list') masonry(grid);
     renderUploads();
     hydrate(root);
-    warmLinks();
+    for (const id of state.open) peekLink(id);
   }
 
   // The page's picture, through this server, so the other site is not asked by the browser.
-  function showLinkImage(it, img) {
-    host.preview.image(it.image).then((u) => {
-      const node = root.querySelector(`.rcard[data-id="${it.id}"] [data-slot="thumb"]`) || img;
+  function showLinkImage(id, image, img) {
+    host.preview.image(image).then((u) => {
+      const node = root.querySelector(`.rcard[data-id="${CSS.escape(id)}"] [data-slot="thumb"]`) || img;
       if (!node || !u) return;
       node.src = u;
       node.hidden = false;
     }).catch(() => {});
   }
 
-  // A saved link that has no picture yet: read the page once and keep the picture, and a description when the note is empty.
-  let warmChain = Promise.resolve();
-  function warmLinks() {
-    if (!state.previews || !canEdit) return;
-    for (const it of research.list()) {
-      if (it.kind !== 'link' || !it.url || (it.image && it.excerpt) || state.warming.has(it.id)) continue;
-      if (state.editing && state.editing.id === it.id) continue;
-      state.warming.add(it.id);
-      const id = it.id;
-      const store = stores[view];
-      warmChain = warmChain.then(() => warmLink(store, id)).catch(() => {});
-    }
-  }
-  async function warmLink(store, id) {
-    const it = store.get(id);
-    if (!it || it.kind !== 'link' || !it.url || (it.image && it.excerpt)) return;
-    if (state.editing && state.editing.id === id) { state.warming.delete(id); return; }
-    const got = await host.preview.link(it.url);
-    if (!got || got.enabled === false) return;
-    const cur = store.get(id);
-    if (!cur || (state.editing && state.editing.id === id)) return;
-    const image = cleanUrl(got.image, 2000) || '';
-    const description = String(got.description || '').trim();
-    const next = { ...cur, image: cur.image || image, excerpt: cur.excerpt || description };
-    if (next.image === cur.image && next.excerpt === cur.excerpt) return;
-    await store.save(next, store.versionOf(id));
+  // A saved link that has no picture: only when its card is opened to read, the page is asked once (one at a time) and the
+  // picture is shown on the card for this visit. Nothing is saved: a visit never rewrites what someone else kept.
+  let peekChain = Promise.resolve();
+  function peekLink(id) {
+    const it = research.get(id);
+    if (!state.previews || !canEdit() || !it || it.kind !== 'link' || !it.url || it.image || state.peek.has(id) || state.warming.has(id)) return;
+    state.warming.add(id);
+    peekChain = peekChain.then(async () => {
+      const got = await host.preview.link(it.url);
+      const image = cleanUrl(got && got.image, 2000) || '';
+      if (!image) return;
+      state.peek.set(id, image);
+      const img = root.querySelector(`.rcard[data-id="${CSS.escape(id)}"] [data-slot="thumb"]`);
+      if (img) showLinkImage(id, image, img);
+    }).catch(() => {});
   }
 
   // Read the page again and replace the title, description and picture with what it says now.
   async function refreshLink(id) {
     const it = research.get(id);
-    if (!it || it.kind !== 'link' || !it.url || !canEdit) return;
-    if (!state.previews) { say('Turn on Fetch link previews to read the page again.', 4000); return; }
-    say('Reading the page...');
+    if (!it || it.kind !== 'link' || !it.url || !canEdit()) return;
+    if (!state.previews) { told('Turn on Fetch link previews to read the page again.'); return; }
     try {
       const got = await host.preview.link(it.url);
       const cur = research.get(id);
       if (!cur) return;
-      if (!got || got.enabled === false) { say('Turn on Fetch link previews to read the page again.', 4000); return; }
+      if (!got || got.enabled === false) { told('Turn on Fetch link previews to read the page again.'); return; }
       const title = String(got.title || '').trim();
       const description = String(got.description || '').trim();
       const image = cleanUrl(got.image, 2000) || '';
-      const next = { ...cur, title: title || cur.title, excerpt: description || cur.excerpt, image: image || cur.image };
-      if (next.title === cur.title && next.excerpt === cur.excerpt && next.image === cur.image) { say('Nothing new on that page.', 2500); return; }
+      // The person's own words stay; the page's description only fills an empty note.
+      const next = { ...cur, title: title || cur.title, excerpt: cur.excerpt || description, image: image || cur.image };
+      if (next.title === cur.title && next.excerpt === cur.excerpt && next.image === cur.image) { told('Nothing new on that page.'); return; }
       await research.save(next, research.versionOf(id));
-      say('Link refreshed.', 2500);
+      told('Link refreshed.');
     } catch (err) {
       say('That page could not be read.', 4000);
     }
@@ -432,19 +431,19 @@
 
   // --- an object's menu ------------------------------------------------------------------------------------------------
 
-  const mayRemove = (it) => canEdit && (view === 'my' || it.kind !== 'photo' || it.by === me || removeAnyPhoto);
+  const mayRemove = (it) => canEdit() && (view === 'my' || it.kind !== 'photo' || it.by === me || removeAnyPhoto);
   // Remove armed by id, cleared a few seconds after arming so a stray later click cannot remove unarmed.
   const armedRemove = new Set();
   function openMenu(id, button) {
     const it = research.get(id);
     if (!it) return;
-    const items = [
-      { id: 'edit', label: canEdit ? 'Edit' : 'View', icon: 'pen', onClick: () => openEditor(id) },
+    const items = it.broken ? [] : [
+      { id: 'edit', label: canEdit() ? 'Edit' : 'View', icon: 'pen', onClick: () => openEditor(id) },
     ];
-    if (canEdit && it.kind === 'link' && it.url) {
+    if (canEdit() && state.previews && it.kind === 'link' && it.url) {
       items.push({ id: 'refresh', label: 'Refresh link', icon: 'arrows-rotate', onClick: () => refreshLink(id) });
     }
-    if (canEdit && personal && inSpace && it.kind !== 'photo') {
+    if (personal && inSpace && it.kind !== 'photo' && !it.broken && (view === 'my' ? canEditSpace : true)) {
       items.push({
         id: 'copy-to',
         label: view === 'my' ? `Copy to This ${word('space')}` : 'Copy to Mine',
@@ -454,7 +453,7 @@
           try {
             await ensureLoaded(view === 'my' ? 'space' : 'my');
             await target.save({ ...it, id: '', by: me, at: new Date().toISOString(), ai: it.ai ? { ...it.ai, sources: [] } : null });
-            say(view === 'my' ? `Copied to this ${word('space')}.` : 'Copied to Mine.', 2500);
+            told(view === 'my' ? `Copied to this ${word('space')}.` : 'Copied to Mine.');
           } catch (err) { say('It could not be copied: ' + message(err)); }
         },
       });
@@ -484,7 +483,7 @@
             armedRemove.add(id);
             const label = b.querySelector('.sdk-menu-label');
             if (label) label.textContent = 'Remove it?';
-            setTimeout(() => armedRemove.delete(id), 4000);
+            setTimeout(() => { armedRemove.delete(id); if (label && label.isConnected) label.textContent = 'Remove'; }, 4000);
             return false;
           }
           armedRemove.delete(id);
@@ -586,7 +585,7 @@
   }
   async function pullPreview() {
     const e = state.editing;
-    if (!e || e.kind !== 'link' || !state.previews || !canEdit) return clearPreview();
+    if (!e || e.kind !== 'link' || !state.previews || !canEdit()) return clearPreview();
     const url = cleanUrl($('f-url').value);
     if (!url) return clearPreview();
     if (url === previewFor) return;
@@ -627,6 +626,7 @@
   function openEditor(id, seed) {
     const cur = id ? research.get(id) : null;
     if (id && !cur) return;
+    if (cur && cur.broken) return; // an unreadable link can only be removed
     const s = seed || {};
     const kind = cur ? cur.kind : KINDS.includes(s.kind) ? s.kind : 'note';
     const it = cur || { kind, title: s.title || '', body: s.body || '', excerpt: s.excerpt || '', content: '', url: s.url || '', tags: [], date: '', point: s.point || null, by: '', ai: null, icon: s.icon || '' };
@@ -634,7 +634,7 @@
     paintIconChoices();
     dropConflict();
     $('form').dataset.kind = kind;
-    $('editor-title').textContent = id ? (canEdit ? `Change this ${KIND_LABEL[kind].toLowerCase()}` : it.title) : `New ${KIND_LABEL[kind].toLowerCase()}`;
+    $('editor-title').textContent = id ? (canEdit() ? `Change this ${KIND_LABEL[kind].toLowerCase()}` : it.title) : `New ${KIND_LABEL[kind].toLowerCase()}`;
     $('f-title').value = kind === 'photo' ? '' : it.title;
     $('f-caption').value = kind === 'photo' ? it.title : '';
     $('f-url').value = it.url;
@@ -654,28 +654,28 @@
     }
     $('f-by').textContent = it.by ? `Added by ${nameOf(it.by) || 'someone'}${it.at ? ' on ' + dayText(it.at.slice(0, 10)) : ''}` : '';
     editorError('');
-    setFormEditable(canEdit);
+    setFormEditable(canEdit());
     datePicker.refresh();
-    hide($('f-save'), !canEdit);
-    hide($('form').querySelector('[data-action="suggest-tags"]'), !(state.ai && canEdit && id && kind !== 'photo'));
+    hide($('f-save'), !canEdit());
+    hide($('form').querySelector('[data-action="suggest-tags"]'), !(state.ai && canEdit() && id && kind !== 'photo'));
     hide($('f-delete'), !id || !cur || !mayRemove(cur));
     $('f-delete').textContent = 'Remove';
     // Read-only: no Cancel; the window's own Close in the corner is the one Close. The row goes when nothing in it shows.
-    hide($('f-cancel'), !canEdit);
+    hide($('f-cancel'), !canEdit());
     hide($('f-cancel').parentElement, [...$('f-cancel').parentElement.querySelectorAll('button')].every((b) => b.hidden));
     state.armed = null;
     hydrate($('editor'));
-    if (canEdit) state.editing.opened = formSnapshot();
+    if (canEdit()) state.editing.opened = formSnapshot();
     // Focus goes back to the object's card after a save (found again by its id, since render() redraws the list), else
     // to whatever had it before.
     editor.open({
-      focus: canEdit ? (kind === 'photo' ? $('f-caption') : kind === 'link' && !id ? $('f-url') : $('f-title')) : $('editor'), // read-only: the window itself
+      focus: canEdit() ? (kind === 'photo' ? $('f-caption') : kind === 'link' && !id ? $('f-url') : $('f-title')) : $('editor'), // read-only: the window itself
       returnTo: id ? () => root.querySelector(`.rcard[data-id="${CSS.escape(id)}"]`) : null,
     });
     if (kind === 'link' && it.image && state.previews) {
       host.preview.image(it.image).then((u) => { if (state.editing && state.editing.image === it.image && u) showShot(u); }).catch(() => {});
     }
-    if (kind === 'link' && it.url) pullPreview();
+    if (kind === 'link' && it.url && !id) pullPreview(); // a saved link is not read again until its address changes
   }
   // After a save or a removal, or when the view changes: closes at once, nothing asked.
   function closeEditor() { state.editing = null; editor.close(); }
@@ -683,7 +683,7 @@
   // Someone else changed the object that is open: say so, and offer their version or keeping mine.
   function checkConflict() {
     const e = state.editing;
-    if (!e || !e.id || !canEdit || e.conflict) return;
+    if (!e || !e.id || !canEdit() || e.conflict) return;
     if (!research.get(e.id)) { closeEditor(); return; }
     const now = research.versionOf(e.id);
     if (now !== e.version) showConflict(now);
@@ -709,7 +709,7 @@
   $('form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const e = state.editing;
-    if (!e || !canEdit) return;
+    if (!e || !canEdit()) return;
     const base = e.id ? research.get(e.id) : null;
     const kind = e.kind;
     readPoint();
@@ -717,6 +717,11 @@
     if (e.conflict) return editorError('Choose Use theirs or Keep mine first.');
     const url = kind === 'link' ? cleanUrl($('f-url').value) : '';
     if (kind === 'link' && !url) return editorError('Give a web address that starts with https:// or http://.');
+    // The same address twice: said once, and saved when Save is pressed again.
+    if (kind === 'link' && (!base || base.url !== url) && research.list().some((x) => x.kind === 'link' && x.id !== e.id && x.url === url) && e.dupFor !== url) {
+      e.dupFor = url;
+      return editorError('This link is already here. Press Save again to add it anyway.');
+    }
     const title = kind === 'photo' ? $('f-caption').value : $('f-title').value;
     if (!geo.oneLine(title, 120) && kind !== 'link' && !(kind === 'note' && $('f-body').value.trim())) return editorError(kind === 'photo' ? 'Give the photo a caption.' : 'Give it a title, or write something in it.');
     const item = {
@@ -751,6 +756,7 @@
     }
   });
   // Cancel goes the way the SDK's own Close does (editor.cancel), so it asks "Discard your changes?" after typing.
+  $('form').addEventListener('input', () => { if (!$('f-error').hidden) editorError(''); }); // a problem named is gone once the person types again
   $('f-cancel').addEventListener('click', () => editor.cancel());
   $('f-delete').addEventListener('click', async () => {
     const e = state.editing;
@@ -779,6 +785,7 @@
     const rec = { el, file, step: '', error: false, scope: scopeOf(), store: stores[view] }; // the view it was chosen in, even if the person switches
     state.uploads.push(rec);
     el.querySelector('[data-action="retry-upload"]').addEventListener('click', () => { rec.error = false; runUpload(rec); });
+    el.querySelector('[data-action="dismiss-upload"]').addEventListener('click', () => finishUpload(rec));
     return rec;
   }
   const setStep = (rec, step, progress, error) => {
@@ -787,6 +794,7 @@
     rec.el.classList.toggle('failed', Boolean(error));
     if (progress !== undefined) rec.el.querySelector('progress').value = progress;
     hide(rec.el.querySelector('[data-action="retry-upload"]'), !error);
+    hide(rec.el.querySelector('[data-action="dismiss-upload"]'), !error);
   };
   const finishUpload = (rec) => { state.uploads = state.uploads.filter((u) => u !== rec); rec.el.remove(); render(); };
 
@@ -831,14 +839,14 @@
     return el;
   }
   function addPhotos(files) {
-    if (!canEdit) return;
+    if (!canEdit()) return;
     const list = [...files].filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
     if (!list.length) return say('Choose a picture (JPEG, PNG, WebP or a phone photo).', 4000);
     for (const f of list.slice(0, 10)) runUpload(newUpload(f));
     renderUploads();
   }
   function choosePhotos() {
-    if (!canEdit) return;
+    if (!canEdit()) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -864,8 +872,9 @@
     try {
       const r = await host.ai.ask({ task: 'tags', objects: [research.refOf(e.kind, e.id)] });
       const have = parseTags($('f-tags').value);
-      $('f-tags').value = [...new Set([...have, ...(r.tags || [])])].slice(0, 8).join(', ');
-      if (!(r.tags || []).length) editorError('The AI had no tags to suggest.');
+      const suggested = (r.tags || []).map((t) => String(t).replace(/<[^>]*>/g, ' ').trim().replace(/\s+/g, '-')).filter(Boolean); // "old town" stays one tag
+      $('f-tags').value = [...new Set([...have, ...suggested])].slice(0, 8).join(', ');
+      if (!suggested.length) editorError('The AI had no tags to suggest.');
     } catch (err) { editorError('The AI could not suggest tags: ' + message(err)); } finally { btn.disabled = false; }
   }
 
@@ -899,6 +908,7 @@
     el.classList.toggle('open', open);
     el.classList.toggle('on', open);
     el.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) peekLink(el.dataset.id);
   }
   // An object can be dragged out to another module (onto a day of a plan, or a task that links to it): press its card and move.
   if (host.objects && host.objects.draggable) {
@@ -922,13 +932,14 @@
   // The empty state's own buttons stay: they add to an empty page.
   const addNote = () => openEditor(null, { kind: 'note' });
   const addLink = () => openEditor(null, { kind: 'link' });
-  host.add.set(canEdit ? [
+  const syncAdd = () => host.add.set(canEdit() ? [
     { id: 'note', label: 'Note', icon: 'note-sticky' },
     { id: 'link', label: 'Link', icon: 'link' },
     { id: 'photo', label: 'Photo', icon: 'camera' },
   ] : []).catch(() => {});
+  syncAdd();
   host.on('add', (e) => {
-    if (!canEdit) return;
+    if (!canEdit()) return;
     if (e.id === 'photo') return choosePhotos();
     if (e.id === 'link') return addLink();
     if (e.id === 'note') return addNote();
@@ -941,11 +952,11 @@
     const showDrop = (yes) => { $('app').classList.toggle('drop-target', yes); hide($('drop-hint'), !yes); };
     const foreign = (ref, dragged) => (ref ? ref.module !== info.module.id : Boolean(dragged && dragged.summary));
     host.objects.dropTarget({
-      over: (_point, ref, dragged) => showDrop(canEdit && foreign(ref, dragged)),
+      over: (_point, ref, dragged) => showDrop(canEdit() && foreign(ref, dragged)),
       leave: () => showDrop(false),
       drop: async (ref, pt, dragged) => {
         showDrop(false);
-        if (!canEdit || !foreign(ref, dragged)) return;
+        if (!canEdit() || !foreign(ref, dragged)) return;
         try {
           const chosen = await host.objects.dropMenu(dragged, pt, {
             context: {},
@@ -960,7 +971,7 @@
             }],
             remember: 'pane',
           });
-          if (chosen && chosen.id !== 'note') say(`${chosen.label}: done`, 3000);
+          if (chosen && chosen.id !== 'note') told(`${chosen.label}: done`);
         } catch (err) { say('It could not do that: ' + message(err), 4000); }
       },
     });
@@ -1025,6 +1036,7 @@
     view = next;
     try { localStorage.setItem('research-view', view); } catch (err) { /* not remembered */ }
     viewSwitch?.set(view);
+    syncAdd();
     state.filter = ''; state.kind = ''; state.tags = [];
     host.menu.close();
     closeEditor();

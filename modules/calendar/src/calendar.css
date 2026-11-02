@@ -21,12 +21,14 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .ph-gold { --ph: var(--tint-gold); }
 .ph-red { --ph: var(--tint-red); }
 .phasehead { position: relative; }
-.sdk-cal-cell.ph { --cal-wash: color-mix(in srgb, var(--ph) 16%, var(--surface-field)); }
-.phasehead.ph { background: color-mix(in srgb, var(--ph) 16%, var(--surface-field)); }
+.sdk-cal-cell.ph { --cal-wash: color-mix(in srgb, var(--ph) var(--cal-ph-wash, 16%), var(--surface-field)); }
+.phasehead.ph { background: color-mix(in srgb, var(--ph) var(--cal-ph-wash, 16%), var(--surface-field)); }
 .ph-name { display: block; min-width: 0; font-size: var(--text-11); font-weight: var(--weight-strong); line-height: var(--leading-title); color: color-mix(in srgb, var(--ph) 55%, var(--text-primary)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sdk-cal-grid:not(.sdk-cal-week) .sdk-cal-cell .ph-name { position: absolute; top: 3px; left: 26px; right: 4px; text-align: right; pointer-events: none; }
 .sdk-cal-week .sdk-cal-cell .ph-name { white-space: normal; overflow-wrap: anywhere; text-transform: none; letter-spacing: var(--tracking-normal); margin-top: 1px; }
-.sdk-cal-cell.is-selected .ph-name { color: var(--text-on-accent); }
+.sdk-cal-cell.is-selected .ph-name { color: var(--cal-sel-text, var(--text-on-accent)); }
+/* A narrow calendar (docked): a day's cell has no room for the phase's name, so its colour says it and its tooltip names it. */
+.sdk-cal-compact .sdk-cal-grid:not(.sdk-cal-week) .ph-name { display: none; }
 .phasehead { padding: 3px 6px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); }
 .phasehead .ph-name { font-size: var(--text-12); }
 
@@ -63,8 +65,9 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 
 /* The day view: an all-day row, then a column of hours (as one day of the week). */
 .dayview { display: flex; flex-direction: column; gap: 6px; }
-/* The day's phase bar stays at the top of the scroll; scrollDay() stops the first row just beneath it. */
-.dayview .phasehead { position: sticky; top: 0; z-index: 2; }
+/* The day's phase bar stays at the top of the scroll, and the all-day row beneath it (the day opens scrolled to its first hour
+   with an event, so what runs all day must not scroll away); scrollDay() stops the first row just beneath both. */
+.dayview .daytop { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; background: var(--mf-surface-content, var(--surface-panel)); }
 
 /* The person's own other calendars (plan-google-calendar.md, Part 2): read only and muted, each calendar's tint on the kept
    bar only (design-theme.md, "Tints"), in the same order as the destination's filter. */
@@ -87,3 +90,18 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .tint-pink { --tint: var(--tint-pink); }
 .mi { display: inline-flex; align-items: center; margin-right: 4px; vertical-align: -0.1em; }
 .mi svg { width: 1em; height: 1em; fill: var(--tint, var(--text-muted)); }
+
+/* The week fills the calendar's height when nothing is listed under it (the destination's calendar); a docked week is a list. */
+.body > .sdk-cal-grid.sdk-cal-week { min-height: 100%; }
+.sdk-cal-compact .body > .sdk-cal-grid.sdk-cal-week { min-height: 0; }
+
+/* A copy of another module's object (the Itinerary's): its module's icon before the title, in the muted colour. */
+.mi.copy-mark svg { fill: var(--text-muted); }
+.copy-line { display: flex; align-items: center; gap: 4px; }
+.copy-line .mi { margin-right: 0; }
+
+/* The editor window for an event the viewer may only look at: a summary, not a form of disabled fields. */
+.fields { display: contents; }
+.summary { display: flex; flex-direction: column; gap: var(--space-2); }
+.summary p { margin: 0; }
+.sum-when { font-weight: var(--weight-strong); }

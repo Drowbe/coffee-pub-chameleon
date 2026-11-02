@@ -1001,7 +1001,7 @@ export function createFrameLift(frame, { mount, tell, onLift = null, takeOpener 
 // Used by mountModule, by canvas.js for a composite and by destination.js for its page.
 // Returns { add(entries), header(items), toolbar(items) -> the cleaned items, status(items) -> true, standard(spec),
 // share(result) -> true, print({ iframe, height }) -> a promise, event(e), destroy() }.
-export function createFrameBands(frame, { send, box = null }) {
+export function createFrameBands(frame, { send, box = null, statusLimit = undefined }) {
   const win = frame.el.ownerDocument.defaultView || window;
   let header = [];
   let toolbar = [];
@@ -1050,7 +1050,7 @@ export function createFrameBands(frame, { send, box = null }) {
       return toolbar;
     },
     status(items) {
-      const clean = cleanStatusItems(items);
+      const clean = cleanStatusItems(items, statusLimit);
       const key = statusKey(clean);
       if (key === statusLast) return true;
       statusLast = key;
@@ -1307,9 +1307,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         throw err;
       }
     },
-    async 'storage.set'({ key, value, version, scope: s, space }) {
+    async 'storage.set'({ key, value, version, scope: s, space, tz: given }) {
+      // The zone the value's clock times are read in: this browser's, or the one the module names (the Calendar, saving a copy of
+      // an Itinerary object, names the trip's own, so the object's time is not moved by where the person is).
       let tz = '';
       try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* the server falls back */ }
+      if (typeof given === 'string' && /^[A-Za-z0-9_+\-/]{1,64}$/.test(given)) tz = given;
       return (await api('PUT', url(`/data/${encodeURIComponent(key)}`, scopeOf(s, space)), { value, version, tz })).item;
     },
     async 'storage.delete'({ key, version, scope: s, space }) {

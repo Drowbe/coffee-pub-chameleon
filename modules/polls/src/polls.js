@@ -504,7 +504,7 @@
   async function setClosed(key) {
     const x = polls.get(key);
     if (!x) return;
-    const closing = !x.p.closed;
+    const closing = !isClosed(x.p);
     const p = { ...x.p, closed: closing, closesAt: closing ? x.p.closesAt : null, announced: closing };
     try {
       const saved = await host.storage.set('poll:' + x.id, p, { version: x.version });
@@ -555,7 +555,7 @@
     }
     armed.delete(key);
     try {
-      for (const user of [...(votes.get(key) || new Map()).keys()]) await host.storage.delete(`vote:${x.id}:${user}`);
+      // The server removes its votes with it (closed or not: a closed poll's votes are final on their own).
       await host.storage.delete('poll:' + x.id);
       polls.delete(key);
       votes.delete(key);
@@ -757,7 +757,7 @@
         id: `poll-${key}`,
         anchor: mb,
         items: [
-          { id: 'toggle', label: x.p.closed ? 'Reopen poll' : 'End poll', icon: x.p.closed ? 'lock-open' : 'lock', onClick: () => setClosed(key) },
+          { id: 'toggle', label: isClosed(x.p) ? 'Reopen poll' : 'End poll', icon: isClosed(x.p) ? 'lock-open' : 'lock', onClick: () => setClosed(key) },
           { separator: true },
           { id: 'delete', label: 'Delete poll', icon: 'trash', danger: true, onClick: (item, b) => remove(key, b) },
         ],

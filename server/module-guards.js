@@ -452,10 +452,12 @@ function checkDelete(guards, { key, before, who, read, now = Date.now() }) {
     const parentKey = rule.parent ? fillKey(rule.parent, params) : null;
     const parent = parentKey ? read(parentKey) : null;
     const parentRule = parentKey ? ruleFor(guards, parentKey)?.rule : null;
-    // Whoever may remove the object it belongs to may remove this (a poll's votes go with the poll), closed or not.
+    // Once the object it belongs to is closed it is final: nobody removes it on its own (Thomas, 2026-11-02); it goes only
+    // with that object, which the server removes it with (childrenOf). While open, whoever may remove that object may
+    // remove this too.
+    if (parent && rule.parentOpen && closedNow(parentRule?.closed, parent, now)) return closedRefusal();
     if (parent && parentRule && mayDelete(parentRule, parent, who)) return null;
     if (rule.person && params.person !== who.key) return theirsRefusal();
-    if (parent && rule.parentOpen && closedNow(parentRule?.closed, parent, now)) return closedRefusal();
   }
   if (rule.owner) {
     if (rule.need && !who.can(rule.need)) return roleRefusal();
@@ -509,6 +511,17 @@ function hiddenClearRefusal(values, fields) {
   return values.some((v) => holdsHidden(v, fields)) ? refuse(403, `Some of it holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't clear everything.`) : null;
 }
 
+// The stored keys (of `keys`) that belong to the object under `key`: those whose rule's `parent` names it (a poll's
+// votes). The server removes them with it, closed or not.
+function childrenOf(guards, key, keys) {
+  const rules = (guards?.keys || []).filter((r) => r.parent);
+  if (!rules.length) return [];
+  return keys.filter((k) => k !== key && rules.some((r) => {
+    const params = matchKey(r.key, k);
+    return params && fillKey(r.parent, params) === key;
+  }));
+}
+
 // The id of the file a stored value names under its rule's `file`, or null: what the server removes with the object.
 function fileOf(guards, key, value) {
   const rule = ruleFor(guards, key)?.rule;
@@ -516,4 +529,4 @@ function fileOf(guards, key, value) {
   return isObject(ref) && typeof ref.id === 'string' && ref.id ? ref.id : null;
 }
 
-module.exports = { cleanGuards, unreadableGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, holdsHidden, hiddenPutRefusal, hiddenDeleteRefusal, hiddenClearRefusal, fileOf, deepEqual, fieldProblem };
+module.exports = { cleanGuards, unreadableGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, holdsHidden, hiddenPutRefusal, hiddenDeleteRefusal, hiddenClearRefusal, childrenOf, fileOf, deepEqual, fieldProblem };
