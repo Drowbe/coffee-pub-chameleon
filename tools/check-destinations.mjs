@@ -881,9 +881,13 @@ try {
     await guestRole(false);
     assert.deepEqual(await search(aliceT, 'has=amount'), [], 'a person who may not view the module gets none');
     assert.deepEqual(await counted(aliceT), { summaries: [], withheld: 3 }, 'only a count of the priced objects held back, no titles or figures');
-    assert.deepEqual((await guestSearch(`scope=space&space=${keep}&has=amount`)).json.withheld, 0, 'a guest is told of none');
-    assert.deepEqual((await guestSearch(`scope=space&space=${keep}&has=amount`)).json.summaries, [], 'a guest who may not view it gets none');
+    // Costs are kept from guests (server/module-guards.js; check-module-guards has the space's guestsSeeHidden opening them).
+    const refusedGuest = await guestSearch(`scope=space&space=${keep}&has=amount`);
+    assert.equal(refusedGuest.status, 403, 'a guest is refused has=amount');
+    assert.match(refusedGuest.json.error, /^Guests can't see costs in this \w+\.$/);
+    assert.equal('withheld' in refusedGuest.json, false, 'and is told of none');
     await guestRole(true);
+    assert.equal((await guestSearch(`scope=space&space=${keep}&has=amount`)).status, 403, 'even one who may view the module');
     await role({ 'module.dest-pins.view': true });
     assert.deepEqual([(await guestSearch('scope=spaces&has=amount')).status], [403], 'a guest cannot search across spaces');
     const anon = await call('GET', `/api/objects/search?from=dest-globe&scope=space&space=${keep}&has=amount`);

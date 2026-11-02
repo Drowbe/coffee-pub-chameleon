@@ -1,7 +1,7 @@
 {
   "id": "travel",
   "name": "Planner",
-  "version": "0.15.57",
+  "version": "0.15.58",
   "icon": "suitcase-rolling",
   "color": "teal",
   "description": "Plan together: a day-by-day itinerary that draws in the events, tasks and polls your {space} already has.",
@@ -47,6 +47,9 @@
   "access": {
     "read": "view",
     "write": "edit"
+  },
+  "guards": {
+    "hidden": ["cost", "estimate", "confirm", "paidBy"]
   },
   "lookups": [
     "flight"

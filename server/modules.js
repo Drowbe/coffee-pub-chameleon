@@ -19,6 +19,7 @@ const { word, fill } = require('./words');
 const { DESTINATION_IDS, DESTINATION_PARTS } = require('./destinations');
 const objectFormat = require('./object-format');
 const { scanBuiltPage } = require('./module-layout');
+const { cleanGuards } = require('./module-guards');
 
 // The text a person reads from a manifest, which may name levels by {space}-style placeholders (server/words.js's fill):
 // its description, the dashboard widget's title, its permissions' labels, its settings' labels and help (and their
@@ -78,7 +79,9 @@ function cleanHooks(raw) {
 }
 // What an object's summary (what another module may show of it) can carry, and which of the producing module's own
 // stored fields fill it (`refs.produces[].summary`). See documentation/api/api-module-sdk.md ("Objects").
-const SUMMARY_FIELDS = ['title', 'subtitle', 'when', 'end', 'allDay', 'done', 'place', 'category', 'text', 'amount', 'planned', 'paidBy', 'sharedBy', 'icon', 'visit', 'color', 'spaces'];
+// `doneAt`: a time (milliseconds) after which the summary's `done` is true whatever the `done` field says (a poll that
+// closes by its time).
+const SUMMARY_FIELDS = ['title', 'subtitle', 'when', 'end', 'allDay', 'done', 'doneAt', 'place', 'category', 'text', 'amount', 'planned', 'paidBy', 'sharedBy', 'icon', 'visit', 'color', 'spaces'];
 const REF_KIND_RE = /^[a-z][a-z0-9-]{0,23}$/;
 const REF_CONSUME_RE = /^[a-z][a-z0-9-]{1,31}:[a-z][a-z0-9-]{0,23}$/;
 const SCOPES = ['environment', 'space', 'person'];
@@ -877,6 +880,9 @@ function cleanManifest(raw, files) {
 
   const refs = cleanRefs(raw.refs, id);
   const storage = cleanStorage(raw.storage);
+  // What the server holds the module's data to beyond access.read and access.write (server/module-guards.js). It only
+  // narrows what people may do, so it asks for no approval.
+  const guards = cleanGuards(raw.guards, permissions.map((p) => p.key), ModuleError);
   const { events, actions } = cleanBus(raw.events, raw.actions, id, permissions.map((p) => p.key));
   const commands = cleanCommands(raw.commands, actions);
 
@@ -925,7 +931,7 @@ function cleanManifest(raw, files) {
   if (raw.content !== undefined && raw.content !== 'padded' && raw.content !== 'flush') throw new ModuleError('module.json: content must be "padded" or "flush"');
   const content = raw.content === 'flush' ? 'flush' : 'padded';
 
-  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install };
+  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install };
 }
 
 // The sentence for a zip's pages that draw or restyle what the host draws (server/module-layout.js), or null when they do not.
@@ -1081,6 +1087,14 @@ class ModuleManager {
         manifest.storage = cleanStorage(manifest.storage);
       } catch {
         manifest.storage = { renamed: [] };
+      }
+      // Guards that no longer read are not dropped (that would lift them): every write is refused, and the fields kept
+      // from guests are kept as far as they still read.
+      try {
+        manifest.guards = cleanGuards(manifest.guards, manifest.permissions.map((p) => p && p.key), ModuleError);
+      } catch {
+        const hidden = Array.isArray(manifest.guards?.hidden) ? manifest.guards.hidden.filter((f) => typeof f === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(f)) : [];
+        manifest.guards = { invalid: true, clear: null, hidden, keys: [] };
       }
       try {
         const bus = cleanBus(manifest.events, manifest.actions, id, manifest.permissions.map((p) => p && p.key));
