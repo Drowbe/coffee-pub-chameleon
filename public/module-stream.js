@@ -230,6 +230,7 @@ export function createStreamRelay({ win, frame, origin, allow, join }) {
       if (leave) { leave(); subs.delete(d.sub); }
       return;
     }
+    if (d.sub === '*') return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: false, error: 'that name is kept for leaving everything' }); // '*' means all of them
     if (subs.has(d.sub)) return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: true }); // asked again: still on
     const may = allow() || {};
     const space = typeof d.space === 'string' && d.space ? d.space : null;
@@ -242,40 +243,86 @@ export function createStreamRelay({ win, frame, origin, allow, join }) {
     subs.set(sub, join(space, guest, (event, data) => post({ type: 'app:streamevent', doc: mine, sub, event, data })));
     post({ type: 'app:streamjoined', doc, sub, ok: true });
   };
-  win.addEventListener('message', onMessage);
+  // The frame's messages arrive in the window it is in. That can change under the relay: popping the call out moves the
+  // canvas, this frame and all, into another window (and the frame's page loads again there). So on each load the relay
+  // listens where the frame is now, and says hello so the new page joins.
+  let at = null;
+  const listen = (w) => {
+    if (!w || w === at) return;
+    if (at) at.removeEventListener('message', onMessage);
+    at = w;
+    at.addEventListener('message', onMessage);
+  };
+  const where = () => {
+    try { return frame.ownerDocument?.defaultView || null; } catch { return null; }
+  };
+  const onLoad = () => {
+    listen(where());
+    post({ type: 'app:streamhello' });
+  };
+  listen(win);
+  if (typeof frame.addEventListener === 'function') frame.addEventListener('load', onLoad);
   post({ type: 'app:streamhello' }); // a frame already there (the relay made again) joins again
   return () => {
-    win.removeEventListener('message', onMessage);
+    if (at) at.removeEventListener('message', onMessage);
+    at = null;
+    if (typeof frame.removeEventListener === 'function') frame.removeEventListener('load', onLoad);
     dropAll();
     doc = null;
   };
 }
 
 // The frame's side: `parent` is the page's window, `self` this one. Answers { join(space, guest, onEvent) -> leave }, as
-// the hub's. A join the page has not answered within a moment is asked again (the page may still be wiring the frame).
-export function createStreamRelayClient({ parent, self, origin, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t) }) {
+// the hub's. A join the page has not answered within a moment is asked again (the page may still be wiring the frame);
+// one it never answers (RELAY_TRIES asks) is carried by `fallback` instead, the frame's own stream (the hub's join), so the
+// frame is never left without live updates.
+// Who answers. A message's source is the window whose script posted it: the page's own when the canvas is in it, but once
+// the call is popped out the frame sits in the popped-out window (`parent`) while the canvas's script still runs in the
+// page that opened that window (`parent.opener`). Both are heard; the opener only while it is this site's.
+const RELAY_TRIES = 4;
+export function createStreamRelayClient({ parent, self, origin, fallback = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t) }) {
   const doc = `d${Math.random().toString(36).slice(2, 12)}${Date.now().toString(36)}`;
-  const subs = new Map(); // sub -> { fn, space, guest, acked, tries, timer }
+  const subs = new Map(); // sub -> { fn, space, guest, acked, tries, timer, own }
   let n = 0;
   const post = (msg) => {
     try { parent.postMessage({ ...msg, doc }, origin); } catch { /* the page is gone */ }
   };
+  const fromPage = (src) => {
+    if (!src) return false;
+    if (src === parent) return true;
+    try {
+      const o = parent.opener;
+      return Boolean(o) && src === o && o.location.origin === origin;
+    } catch {
+      return false; // an opener of another site
+    }
+  };
+  // The page never answered: this join hears the frame's own stream from now on.
+  const ownStream = (s) => {
+    if (s.own || !fallback) return;
+    s.own = fallback(s.space, s.guest, (event, data) => { try { s.fn(event, data); } catch (err) { console.error(err); } });
+  };
   const ask = (sub, s) => {
+    if (s.own) return;
     post({ type: 'app:streamjoin', sub, space: s.space, guest: s.guest });
     if (s.timer !== null) cancel(s.timer);
-    s.timer = s.tries < 5 ? schedule(() => { s.timer = null; if (!s.acked && subs.get(sub) === s) { s.tries += 1; ask(sub, s); } }, 1000 * (s.tries + 1)) : null;
+    s.timer = schedule(() => {
+      s.timer = null;
+      if (s.acked || subs.get(sub) !== s) return;
+      s.tries += 1;
+      if (s.tries < RELAY_TRIES) ask(sub, s);
+      else ownStream(s);
+    }, 1000 * (s.tries + 1));
   };
+  const askAgain = () => { for (const [sub, s] of subs) { if (s.own) continue; s.acked = false; s.tries = 0; ask(sub, s); } };
   self.addEventListener('message', (e) => {
-    if (e.source !== parent || e.origin !== origin) return;
+    if (e.origin !== origin || !fromPage(e.source)) return;
     const d = e.data;
     if (!d || typeof d.type !== 'string') return;
-    if (d.type === 'app:streamhello') {
-      for (const [sub, s] of subs) { s.acked = false; s.tries = 0; ask(sub, s); }
-      return;
-    }
+    if (d.type === 'app:streamhello') return askAgain();
     if (d.doc !== doc) return;
     const s = subs.get(d.sub);
-    if (!s) return;
+    if (!s || s.own) return;
     if (d.type === 'app:streamjoined') {
       s.acked = true;
       if (s.timer !== null) cancel(s.timer);
@@ -285,20 +332,21 @@ export function createStreamRelayClient({ parent, self, origin, schedule = (fn, 
       try { s.fn(d.event, d.data); } catch (err) { console.error(err); }
     }
   });
-  self.addEventListener('pagehide', () => { if (subs.size) post({ type: 'app:streamleave', sub: '*' }); });
+  self.addEventListener('pagehide', () => { if ([...subs.values()].some((s) => !s.own)) post({ type: 'app:streamleave', sub: '*' }); });
   // Back from the browser's back-forward cache: the page dropped this document's subscriptions as it went, so join again.
-  self.addEventListener('pageshow', (e) => { if (e.persisted) for (const [sub, s] of subs) { s.acked = false; s.tries = 0; ask(sub, s); } });
+  self.addEventListener('pageshow', (e) => { if (e.persisted) askAgain(); });
   return {
     join(space, guest, onEvent) {
       n += 1;
       const sub = `s${n}`;
-      const s = { fn: onEvent, space: space || null, guest: guest || null, acked: false, tries: 0, timer: null };
+      const s = { fn: onEvent, space: space || null, guest: guest || null, acked: false, tries: 0, timer: null, own: null };
       subs.set(sub, s);
       ask(sub, s);
       return () => {
         if (subs.get(sub) !== s) return;
         subs.delete(sub);
         if (s.timer !== null) cancel(s.timer);
+        if (s.own) { s.own(); s.own = null; return; }
         post({ type: 'app:streamleave', sub });
       };
     },

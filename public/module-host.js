@@ -50,7 +50,8 @@ function joinStream(space, guest, onEvent) {
     } catch {
       inComposite = false;
     }
-    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin }) : null;
+    // A join the page never answers falls back to this frame's own stream (the hub), so live updates never stop.
+    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin, fallback: (space, guest, fn) => streamHub.join(space, guest, fn) }) : null;
   }
   return (frameRelay || streamHub).join(space, guest, onEvent);
 }
