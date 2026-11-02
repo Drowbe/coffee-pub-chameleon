@@ -7,7 +7,7 @@ import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { FILES, KINDS, PEOPLE, USES, QUOTA, TOTAL_BYTES, NOW, MB, GB, byId } from './prototype-vault-data.js';
 import { D, h, fa, btn, iconBtn, WORDS, size, when, clock, who, plural, circleIcon, thumb, personDot, inShadow } from './prototype-vault-ui.js';
-import { pictureStage, audioStage, videoStage, markdownStage, pdfStage, stageState, infoPanel } from './prototype-vault-viewers.js';
+import { pictureView, audioView, videoView, markdownView, pdfView, viewState, infoPanel } from './prototype-vault-viewers.js';
 import { liveOpen, heldDialog, removeSheet, renameSheet, usesSheet, shareSheet, shareListSheet, sheet, cancelBtn, okBtn, turnOffShareSheet } from './prototype-vault-dialogs.js';
 
 // What each role may do (plan, section 6): view, add, download, remove_any, share. A guest has none of them.
@@ -206,7 +206,7 @@ export function createVault(cfg = {}) {
     const u = used();
     const f = filterWords();
     const count = f ? `${shown} of ${plural(list.length, 'file')}` : plural(list.length, 'file');
-    const text = `${count} · ${size(u)} of ${size(cap)}${f ? ` · ${f}` : ''}`;
+    const text = `${count} · ${u === 0 ? '0 GB' : size(u)} of ${size(cap)}${f ? ` · ${f}` : ''}`;
     const items = [];
     if (u >= cap) items.push({ text: 'Full', icon: 'triangle-exclamation', tone: 'danger', title: `No room left in this ${W().space}'s ${W().module}` });
     else if (u / cap >= 0.8) items.push({ text: 'Almost full', icon: 'triangle-exclamation', tone: 'warn' });
@@ -283,7 +283,7 @@ export function createVault(cfg = {}) {
   }
   function sub(f) {
     const s = h('span', 'sdk-row-sub vt-sub');
-    s.append(`${KINDS[f.kind].word} · ${size(f.size)}`);
+    s.append(h('span', 'vt-sub-kind', `${KINDS[f.kind].word} · `), size(f.size));
     if (f.missing) { const t = h('span', 'vt-tone vt-warn'); t.append(fa('triangle-exclamation'), 'File missing'); s.append(' · ', t); }
     else if (f.viewable === false) { const t = h('span', 'vt-tone'); t.append('Download only'); s.append(' · ', t); }
     const n = h('span', 'vt-sub-narrow'); n.append(` · ${f.by === me ? 'You' : who(f.by)} · ${when(f.at)}`);
@@ -315,7 +315,9 @@ export function createVault(cfg = {}) {
       if (ticks()) over.append(tick(f));
       over.append(h('span', 'vt-fill'), menuButton(f));
       const meta = h('div', 'vt-card-meta');
-      meta.append(openButton(f, 'vt-card-name'), h('span', 'sdk-card-sub', `${k.word} · ${size(f.size)} · ${f.by === me ? 'You' : who(f.by)}`), badges(f));
+      const subl = h('span', 'sdk-card-sub');
+      subl.append(h('span', 'vt-x-kind', `${k.word} · `), size(f.size), h('span', 'vt-x-by', ` · ${f.by === me ? 'You' : who(f.by)}`));
+      meta.append(openButton(f, 'vt-card-name'), subl, badges(f));
       c.append(t, over, meta);
       return c;
     }
@@ -455,15 +457,15 @@ export function createVault(cfg = {}) {
   // ---- the viewer ----
   function openFile(id) { st.open = id; st.selecting = false; st.sel.clear(); render(); const b = app.querySelector('.vt-vbar [data-back]'); if (b) b.focus({ preventScroll: true }); }
   const closeViewer = () => { const id = st.open; st.open = null; render(); const r = app.querySelector(`[data-id="${id}"] .sdk-open`); if (r) r.focus({ preventScroll: true }); };
-  function stageFor(f) {
+  function viewFor(f) {
     const api = { can, downloadButton, trial: { pdfSearch: T('pdfSearch') }, info: (on) => { st.info = on; render(false); } };
-    if (f.missing) return stageState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${W().module}, or ask the admin to restore the ${W().module} folder.`, actions: canRemove(f) ? [(() => { const b = btn('btn btn-danger', { label: 'Remove', icon: 'trash' }); b.addEventListener('click', () => removeFiles([f])); return b; })()] : [] });
-    if (f.kind === 'picture') return pictureStage(f, api);
-    if (f.kind === 'audio') return audioStage(f, api);
-    if (f.kind === 'video') return videoStage(f, api);
-    if (f.kind === 'text') return markdownStage(f, api);
-    if (f.viewable === false || st.pdfOff) return stageState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", text: `The ${W().module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: can('download') ? [downloadButton(f, true)] : [] });
-    return pdfStage(f, api);
+    if (f.missing) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${W().module}, or ask the admin to restore the ${W().module} folder.`, actions: canRemove(f) ? [(() => { const b = btn('btn btn-danger', { label: 'Remove', icon: 'trash' }); b.addEventListener('click', () => removeFiles([f])); return b; })()] : [] });
+    if (f.kind === 'picture') return pictureView(f, api);
+    if (f.kind === 'audio') return audioView(f, api);
+    if (f.kind === 'video') return videoView(f, api);
+    if (f.kind === 'text') return markdownView(f, api);
+    if (f.viewable === false || st.pdfOff) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", text: `The ${W().module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: can('download') ? [downloadButton(f, true)] : [] });
+    return pdfView(f, api);
   }
   function viewerEl() {
     const list = filtered();
@@ -494,14 +496,14 @@ export function createVault(cfg = {}) {
     more.dataset.menu = f.id;
     bar.append(back, name, pos, prev, next, ...[dl, sh].filter(Boolean), info, more);
     const body = h('div', `vt-vbody${st.info ? ` has-info info-${T('info')}` : ''}`);
-    const stage = stageFor(f);
-    body.append(stage);
+    const shown = viewFor(f);
+    body.append(shown);
     if (f.kind === 'picture' && !f.missing) {
       for (const [dir, icon, label] of [[-1, 'chevron-left', 'Previous file'], [1, 'chevron-right', 'Next file']]) {
         const e = iconBtn(icon, label, `vt-edge vt-edge-${dir < 0 ? 'prev' : 'next'}`);
         e.disabled = at + dir < 0 || at + dir >= list.length;
         e.addEventListener('click', () => openFile(list[at + dir].id));
-        stage.append(e);
+        shown.append(e);
       }
     }
     if (st.info) body.append(infoPanel(f, { info: (on) => { st.info = on; render(false); } }));
@@ -517,7 +519,9 @@ export function createVault(cfg = {}) {
 
   // ---- the whole content ----
   let lastScroll = 0;
+  let renderedNarrow = false;
   function render(refreshBars = true) {
+    renderedNarrow = narrow();
     const keep = app.querySelector('.vt-scroll');
     if (keep) lastScroll = keep.scrollTop;
     app.textContent = '';
@@ -579,8 +583,7 @@ export function createVault(cfg = {}) {
   app.addEventListener('dragover', (e) => { if (can('add')) e.preventDefault(); });
   app.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; st.dropping = false; if (can('add') && e.dataTransfer.files.length) { st.panel = true; startFiles([...e.dataTransfer.files]); } else render(false); });
 
-  let wasNarrow = null;
-  new ResizeObserver(() => { const n = narrow(); if (wasNarrow !== null && n !== wasNarrow && !st.open) render(false); wasNarrow = n; }).observe(app);
+  new ResizeObserver(() => { if (narrow() !== renderedNarrow && !st.open) render(false); }).observe(app);
   frame = createModuleFrame({
     title: W().module, icon: W().icon, tint: 'blue', titlebar: titlebar(), toolbar: toolbar(), content: inShadow(app), flush: true, status: status(), onAction,
   });

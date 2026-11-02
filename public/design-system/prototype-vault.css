@@ -1,9 +1,17 @@
 /* The Prototype's Vault section (Thomas, 2026-11-02): design-process only, nothing here ships. Everything is a theme token (colours, radii, the
    type scale, spacing). A rule that would move into public/sdk/system.css when the Vault is built carries "to system.css" and says what it
    becomes; the rest is the Prototype's own page (the section, its trial switches, the pictures of dialogs and menus). The Vault module
-   itself measures its own width (a container, "vault"), never the page's, so a docked 360px Vault answers like a phone. */
+   itself measures its own width (a container, "vault"), never the page's, so a docked 360px Vault answers like a phone.
+
+   What would move to system.css when the Vault is built (each marked "to system.css" below): the file thumbnail and type tile
+   (.vt-thumb), the file row (.vt-row on .sdk-row) and card (.vt-card on .sdk-card-banded, .vt-card-thumb on .sdk-card), the file chip
+   (.vt-chip on .sdk-chip-tag), the upload row and the drop zone (.vt-up, .vt-drop, .vt-dropover), the media viewer frame (.vt-viewer and
+   its top row, zoom bar, info panel, PDF bar), and the form-width and browse-width dialog variants (.vt-sheet-form, .vt-sheet-browse). */
 
 /* ---- the section ---- */
+/* Small muted words on a row or a card: a step stronger than --text-muted, which is under 4.5 to 1 on a tinted or chosen fill (the Cards block does the same). */
+:host, .vt-hold, .vt-sheet, .vt-browser { --vt-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); }
+:is(.vt-row, .vt-card)[aria-selected="true"] :is(.vt-by, .vt-flags, .vt-card-line, .sdk-row-sub, .sdk-card-sub, .vt-sub, .menu-btn) { color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); }
 .vt-trials { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; }
 .vt-trial { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .vt-trial-label { color: var(--text-muted); font-size: var(--text-12); }
@@ -24,8 +32,7 @@
 .vt-frame[data-h="800"] { --vt-h: 800px; }
 .vt-pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); min-width: 0; }
 .vt-pair > .pp-state { flex: 1 1 360px; }
-.vt-pair > .pp-state:has(.vt-frame[data-w="360"]) { flex: 0 1 auto; }
-.vt-pair > .pp-state:has(.vt-frame[data-w="480"]) { flex: 0 1 auto; }
+.vt-pair > .pp-state:has(.vt-frame[data-w="360"]), .vt-pair > .pp-state:has(.vt-frame[data-w="480"]) { flex: 0 0 auto; max-width: 100%; }
 .vt-qs { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); max-width: 90ch; }
 .vt-qs li { color: var(--text-primary); }
 .vt-qs b { font-weight: var(--weight-strong); }
@@ -48,7 +55,7 @@
 .vt-thumb { position: relative; flex: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 36px; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-small); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-16); }
 .vt-thumb > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .vt-tile { font-size: var(--text-16); }
-.vt-play { position: absolute; inset: 0; margin: auto; display: flex; align-items: center; justify-content: center; width: 40%; max-width: 44px; aspect-ratio: 1; min-width: 14px; border-radius: var(--radius-round); background: color-mix(in srgb, var(--surface-page) 72%, transparent); color: var(--text-primary); font-size: var(--text-9); }
+.vt-play { position: absolute; inset: 0; margin: auto; display: flex; align-items: center; justify-content: center; width: 40%; max-width: 44px; aspect-ratio: 1; min-width: 14px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--surface-page) 72%, transparent); color: var(--text-primary); font-size: var(--text-9); }
 .vt-len { position: absolute; right: var(--space-1); bottom: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-min); background: color-mix(in srgb, var(--surface-page) 78%, transparent); color: var(--text-primary); font-size: var(--text-11); line-height: 14px; font-variant-numeric: tabular-nums; }
 .vt-row .vt-len, .vt-pick .vt-len { display: none; }
 .vt-row .vt-thumb, .vt-pickrow .vt-thumb { width: 36px; }
@@ -59,10 +66,10 @@
 .vt-row.is-missing .vt-thumb { color: var(--status-warn-text); }
 .vt-row .sdk-row-title { display: block; overflow: hidden; width: 100%; text-overflow: ellipsis; white-space: nowrap; }
 button.sdk-open { font: inherit; color: inherit; }
-.vt-by { flex: none; display: flex; align-items: center; gap: var(--space-2); width: 96px; min-width: 0; font-size: var(--text-12); color: var(--text-muted); }
+.vt-by { flex: none; display: flex; align-items: center; gap: var(--space-2); width: 96px; min-width: 0; font-size: var(--text-12); color: var(--vt-dim); }
 .vt-by-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vt-when { width: 72px; text-align: right; }
-.vt-flags { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 44px; color: var(--text-muted); font-size: var(--text-12); }
+.vt-flags { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 44px; color: var(--vt-dim); font-size: var(--text-12); }
 .vt-flag { display: inline-flex; align-items: center; gap: var(--space-1); }
 .vt-flag > i { font-size: var(--text-12); }
 .vt-sub-narrow { display: none; }
@@ -71,6 +78,9 @@ button.sdk-open { font: inherit; color: inherit; }
 @container vault (max-width: 600px) {
   .vt-by, .vt-when { display: none; }
   .vt-sub-narrow { display: inline; }
+}
+@container vault (max-width: 420px) {
+  .vt-sub-kind { display: none; }
 }
 
 /* ---- the Grid (to system.css: .sdk-file-grid, .sdk-file-card on .sdk-card-banded) ---- */
@@ -85,7 +95,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-card .vt-tile { font-size: var(--text-28); }
 .vt-card .vt-len { font-size: var(--text-11); }
 .vt-card .vt-play { font-size: var(--text-14); }
-.vt-card-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
+.vt-card-line { margin: 0; color: var(--vt-dim); font-size: var(--text-12); line-height: 16px; }
 .vt-card .vt-flags { justify-content: flex-start; min-width: 0; }
 .vt-card .vt-flags:empty { display: none; }
 .vt-card-thumb { padding: 0; gap: 0; overflow: hidden; }
@@ -103,6 +113,10 @@ button.sdk-open { font: inherit; color: inherit; }
 @container vault (max-width: 480px) {
   .vt-card-thumb .sdk-card-sub { font-size: var(--text-11); }
 }
+@container vault (max-width: 420px) {
+  .vt-x-kind, .vt-x-by { display: none; }
+  .vt-card-thumb .vt-card-name { -webkit-line-clamp: 2; line-clamp: 2; }
+}
 
 /* ---- Add files (to system.css: the drop zone and the upload row join the Progress block) ---- */
 .vt-add { display: flex; flex: none; flex-direction: column; gap: var(--space-3); max-height: 90%; overflow: auto; padding: var(--pad-card) var(--mf-inset) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-panel); }
@@ -117,6 +131,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-drop.is-compact > .vt-drop-ic { margin: 0; }
 .vt-drop.is-compact .vt-drop-sub { display: none; }
 .vt-drop.is-compact .btn { margin: 0; }
+.vt-drop.is-over, .vt-drop.is-over .vt-drop-sub { color: var(--text-primary); }
 .vt-drop.is-over { border: 2px solid var(--focus-ring); background: var(--fill-selected); }
 .vt-drop.is-off { background: var(--surface-field); }
 .vt-accept, .vt-notice, .vt-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
@@ -124,7 +139,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-where { align-self: stretch; }
 .vt-queue { margin: 0; padding: 0; list-style: none; }
 .vt-up .sdk-row-sub { white-space: normal; overflow: visible; }
-.vt-up-bad { color: var(--status-danger-text); }
+.vt-up-bad { color: color-mix(in srgb, var(--status-danger-text) 75%, var(--text-primary)); }
 .vt-up .sdk-progress { margin-top: var(--space-1); }
 .vt-up > .sdk-icon-btn { flex: none; }
 .vt-dropover { position: absolute; inset: var(--space-2); z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px dashed var(--focus-ring); border-radius: var(--radius-large); background: color-mix(in srgb, var(--surface-panel) 90%, transparent); color: var(--text-muted); pointer-events: none; text-align: center; padding: var(--space-4); }
@@ -143,7 +158,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-vbar > .sdk-icon-btn, .vt-vbar > .btn { flex: none; }
 .vt-vbody { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
 .vt-vbody.info-under { flex-direction: column; }
-.vt-stage { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-field); }
+.vt-view { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-field); }
 .vt-state { align-items: center; justify-content: center; background: var(--surface-panel); }
 @container vault (max-width: 560px) {
   .vt-vbar .vt-btn-word { display: none; }
@@ -162,7 +177,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-uses { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-13); }
 .vt-uses span { color: var(--text-muted); }
 @container vault (max-width: 560px) {
-  .vt-vbody.has-info > .vt-info { position: absolute; inset: auto 0 0 0; z-index: 2; width: auto; max-height: 70%; border-left: 0; border-top: 1px solid var(--edge-hairline); box-shadow: var(--shadow-3); border-radius: var(--radius-large) var(--radius-large) 0 0; }
+  .vt-vbody.has-info > .vt-info { position: absolute; inset: auto 0 0 0; z-index: 2; width: auto; max-height: 58%; border-left: 0; border-top: 1px solid var(--edge-hairline); box-shadow: var(--shadow-3); border-radius: var(--radius-large) var(--radius-large) 0 0; }
 }
 /* a picture */
 .vt-pic { align-items: center; justify-content: center; overflow: hidden; }
@@ -185,7 +200,7 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-video { align-items: center; justify-content: center; padding: var(--space-3); }
 .vt-video > video { display: block; width: 100%; max-height: 100%; border-radius: var(--radius-medium); background: var(--surface-page); }
 /* Markdown: the reading width */
-.vt-md-stage { overflow: auto; align-items: center; background: var(--surface-panel); }
+.vt-md-view { overflow: auto; align-items: center; background: var(--surface-panel); }
 .vt-md { box-sizing: border-box; width: min(var(--measure-reading), 100%); padding: var(--space-5) var(--space-4) var(--space-7); font-size: var(--text-14); line-height: 1.6; outline: none; }
 .vt-md > :first-child { margin-top: 0; }
 .vt-md h1 { margin: 0 0 var(--space-3); font-size: var(--text-22); line-height: var(--leading-title); }
@@ -211,8 +226,8 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-pdf-pages { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; gap: var(--space-3); min-height: 0; padding: var(--space-4); overflow: auto; outline: none; }
 .vt-pdf-canvas { flex: none; height: auto; max-width: none; border-radius: var(--radius-min); box-shadow: var(--shadow-2); }
 .vt-pdf-pages.is-fit .vt-pdf-canvas { width: min(100%, 880px); }
-@container vault (max-width: 560px) {
-  .vt-pdfbar .vt-zoom-level .vt-btn-word { display: inline; }
+@container vault (max-width: 420px) {
+  .vt-pdfbar-zoom > .sdk-icon-btn { display: none; }
 }
 .vt-sep:last-child { display: none; }
 .vt-sub { display: block; }
@@ -223,8 +238,8 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-chip { max-width: 100%; }
 .vt-chip-ic { color: color-mix(in srgb, var(--tint, var(--text-muted)) 55%, var(--text-primary)); }
 .vt-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vt-chip-size { flex: none; color: var(--text-muted); }
-.vt-chip-state { flex: none; color: var(--text-muted); font-style: normal; }
+.vt-chip-size { flex: none; color: var(--vt-dim); }
+.vt-chip-state { flex: none; color: var(--vt-dim); font-style: normal; }
 .vt-chip[data-state="missing"] .vt-chip-name { text-decoration: line-through; text-decoration-color: var(--text-muted); }
 .vt-chip[data-state="missing"] .vt-chip-ic, .vt-chip[data-state="missing"] .vt-chip-state { color: var(--status-warn-text); }
 .vt-chip:disabled { cursor: default; }
@@ -254,7 +269,6 @@ dialog.vt-sheet[open] { opacity: 1; transform: none; }
 .vt-share-address { font-family: var(--font-system); }
 .vt-sharelist { margin: 0; padding: 0; list-style: none; }
 .vt-share.is-ended { opacity: 1; }
-.vt-share.is-ended .sdk-card-title { color: var(--text-muted); }
 .vt-usesheet { margin: 0; padding: 0; list-style: none; }
 .vt-pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .vt-pick-bar > input { flex: 1 1 200px; min-width: 0; }
@@ -263,7 +277,7 @@ dialog.vt-sheet[open] { opacity: 1; transform: none; }
 .vt-pick-add { margin-right: auto; }
 .vt-sheet-browse .sdk-dialog-foot { flex-wrap: nowrap; }
 
-.vt-stagebox { position: relative; box-sizing: border-box; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); height: var(--vt-h, 480px); overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
+.vt-backdrop { position: relative; box-sizing: border-box; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); height: var(--vt-h, 480px); overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
 .vt-pagebox { display: flex; justify-content: center; }
 .vt-pagebox > .vt-browser { width: min(1100px, 100%); }
 
@@ -286,11 +300,17 @@ dialog.vt-sheet[open] { opacity: 1; transform: none; }
 .vt-card-thumb.is-gone .vt-thumb { color: var(--text-muted); }
 
 /* ---- coarse pointers: 44px taps, 16px fields ---- */
+@media (pointer: coarse), (max-width: 640px) {
+  /* The look stays and the tap area grows past it, so the chip must not cut it (system.css does this for a chip on a phone; a coarse pointer on a wide screen gets the same here). */
+  .vt-chip.sdk-chip-tag { position: relative; overflow: visible; }
+  .vt-files-list, .vt-chipwrap { row-gap: var(--space-3); }
+  .vt-pdf-page { height: 44px; }
+}
+@media (pointer: coarse) and (min-width: 641px) {
+  .vt-chip.sdk-chip-tag::after { content: ""; position: absolute; inset: -11px 0; }
+}
 @media (pointer: coarse) {
-  .vt-chip, .vt-chip-remove { position: relative; }
-  .vt-chip::after { content: ""; position: absolute; inset: -10px -4px; }
   .vt-app :is(input[type="text"], input[type="search"], input[type="password"], input:not([type])), .vt-sheet :is(input[type="text"], input[type="search"], input[type="password"]) { font-size: var(--text-16); }
-  .vt-zoombar .sdk-icon-btn, .vt-edge { position: relative; }
 }
 @media (max-width: 640px) {
   .vt-scroll { padding: var(--space-2); }
