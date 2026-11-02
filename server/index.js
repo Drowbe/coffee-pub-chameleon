@@ -9751,7 +9751,17 @@ setInterval(() => {
 if (adminMfaLockoutBypass) console.warn(`The lockout bypass (ADMIN_MFA_LOCKOUT_BYPASS) is on: ${BASE_DOMAIN ? 'every owner and host admin' : "every owner and the server's admin"} skips two-step sign-in entirely. Turn it off once you are back in.`);
 
 // The port it really listens on is logged, so PORT=0 (any free port, for a check) says which one it got.
-const listener = app.listen(Number(PORT), () => {
+// Express 5 hands a listen error (the port taken, no right to it) to this same callback, so it is told apart first.
+const listener = app.listen(Number(PORT), (listenError) => {
+  if (listenError) {
+    const why = listenError.code === 'EADDRINUSE'
+      ? `Port ${PORT} is already in use. Another copy of the server may still be running: close its window or stop it, then start this one again.\nTo find it: Windows \`netstat -ano | findstr :${PORT}\` then \`taskkill /PID <id> /F\`; Mac or Linux \`lsof -i :${PORT}\` then \`kill <id>\`.`
+      : listenError.code === 'EACCES'
+        ? `The server may not use port ${PORT}. Set PORT to a free port above 1024, then start it again.`
+        : `The server could not listen on port ${PORT}: ${listenError.message}`;
+    console.error(why);
+    process.exit(1);
+  }
   const port = listener.address().port;
   const fillTwins = () => {
     try {
