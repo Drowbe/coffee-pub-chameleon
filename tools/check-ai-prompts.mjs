@@ -221,20 +221,42 @@ try {
   const login = async (name, password) => (await call('POST', '/api/login', { body: { login: name, password } })).json.token;
   const owner = await login('admin', 'testpass1234');
   const mk = async (name) => (await call('POST', '/api/users', { cookie: owner, body: { login: name, displayName: name, role: 'member', password: 'memberpass1234' } })).json.user;
-  const [pat, sam, quin] = [await mk('pat'), await mk('sam'), await mk('quin')];
-  const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [pat.key, sam.key, quin.key] } })).json.space;
+  const [pat, sam, quin, mo] = [await mk('pat'), await mk('sam'), await mk('quin'), await mk('mo')];
+  const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [pat.key, sam.key, quin.key, mo.key] } })).json.space;
+  await call('PATCH', `/api/users/${mo.key}/spaces/${space.id}`, { cookie: owner, body: { permissions: { moderator: true } } });
   const other = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Elsewhere', members: [pat.key] } })).json.space;
-  const tok = { pat: await login('pat', 'memberpass1234'), sam: await login('sam', 'memberpass1234'), quin: await login('quin', 'memberpass1234') };
+  const tok = { pat: await login('pat', 'memberpass1234'), sam: await login('sam', 'memberpass1234'), quin: await login('quin', 'memberpass1234'), mo: await login('mo', 'memberpass1234') };
   const A = `/api/spaces/${space.id}/ai`;
   const ask = (who, q, extra = {}) => call('POST', A, { cookie: tok[who], body: { question: q, ...extra } });
 
-  // ai-06 (as decided): using AI needs the role's Use AI. Members have it off by default.
-  let r = await ask('pat', 'What is Faro?');
+  // ai-06 (as decided): using AI needs the role's Use AI, which a fresh environment gives moderators and members, never guests.
+  let r = await call('GET', A, { cookie: tok.pat });
+  assert.deepEqual([r.json.available, r.json.reason], [true, ''], 'a fresh environment: a member can use Chat AI');
+  assert.equal((await ask('pat', 'What is Faro?')).status, 200);
+  r = await call('GET', A, { cookie: tok.mo });
+  assert.deepEqual([r.json.available, r.json.reason], [true, ''], 'a moderator can too');
+  assert.equal((await call('POST', A, { cookie: tok.mo, body: { question: 'What is Faro?' } })).status, 200);
+  const link = (await call('POST', `/api/spaces/${space.id}/guest-link`, { cookie: owner, body: {} })).json.space.guestToken;
+  r = await call('POST', `${A}?guest=${encodeURIComponent(link)}`, { body: { question: 'What is Faro?' } });
   assert.equal(r.status, 403, r.text);
-  assert.equal(r.json.error, 'your role may not use AI');
+  assert.equal(r.json.error, 'guests cannot use AI');
+  // An owner switches Use AI off for a role: the ask is refused, and the availability says why.
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: false } })).status, 200);
+  r = await ask('pat', 'What is Faro?');
+  assert.equal([r.status, r.json.error].join('|'), '403|your role may not use AI');
   r = await call('GET', A, { cookie: tok.pat });
   assert.deepEqual([r.json.available, r.json.reason, r.json.why], [false, 'role', 'your role may not use AI']);
-  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { useAi: true } })).status, 200);
+  // Bringing in a pasted answer is not AI use (Q18): signed in, not a guest; no Use AI, no chat permission, AI off in the space: still open.
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { chat: false, chatRead: false } })).status, 200);
+  await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiOff: true } });
+  r = await call('GET', `/api/spaces/${space.id}/objects/check`, { cookie: tok.pat });
+  assert.deepEqual([r.status, r.json.available], [200, true]);
+  const paste = await fetch(`http://127.0.0.1:${port}/api/spaces/${space.id}/objects/check`, { method: 'POST', headers: { cookie: `app_session=${tok.pat}`, 'content-type': 'text/plain' }, body: '```objects\n{"title":"Faro","content":"A city."}\n```' });
+  assert.equal(paste.status, 200, await paste.clone().text());
+  const guestPaste = await fetch(`http://127.0.0.1:${port}/api/spaces/${space.id}/objects/check?guest=${encodeURIComponent(link)}`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' });
+  assert.equal(guestPaste.status, 403);
+  await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiOff: false } });
+  assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { chat: true, chatRead: true, useAi: true } })).status, 200);
   r = await call('GET', A, { cookie: tok.pat });
   assert.deepEqual([r.json.available, r.json.reason], [true, '']);
 
