@@ -3577,6 +3577,27 @@ a.crumb-here:hover {
   margin-top: 10px;
 }
 
+/* The Assistant says when the AI is not there (chat-input.js, checkAi), and shows what is going with the next question as
+   chips that can be taken off. */
+.chat-ai-state {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--text-muted);
+  font-size: var(--text-12);
+}
+
+.chat-ai-state[hidden],
+.chat-ai-context[hidden] {
+  display: none;
+}
+
+.chat-ai-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+}
+
 .chat-import-dropped {
   margin: 0;
   color: var(--text-muted);

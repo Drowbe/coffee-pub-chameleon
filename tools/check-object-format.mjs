@@ -40,7 +40,7 @@ let n = 0;
 const test = (name, fn) => { fn(); n += 1; };
 
 test('the /ai rule asks for one array in one objects fence, each one an object', () => {
-  const rule = buildPrompt('ask', [], 'Why?').prompt;
+  const rule = buildPrompt('ask', [], 'Why?').system;
   assert.match(rule, /Include objects only when your answer contains something worth keeping/);
   assert.ok(!/Always include/.test(rule));
   assert.match(rule, /```objects\n\[/);
@@ -605,9 +605,9 @@ test('old files, pastes and stored AI answers read exactly as before details', (
   // The prompt as built from the modules' `takes` (plan step 3), regenerated on purpose: with no `takes` declared (the travel
   // kinds, as before) and with every kind taken (the plan's text).
   assert.equal(instructions('object'), before.prompts.instructions);
-  assert.equal(buildPrompt('ask', [], 'Why?').prompt, before.prompts.summaryRule);
+  assert.equal(buildPrompt('ask', [], 'Why?').system, before.prompts.summaryRule);
   assert.equal(instructions('object', { kinds: KINDS }), before.prompts.instructionsEveryKind);
-  assert.equal(buildPrompt('ask', [], 'Why?', KINDS).prompt, before.prompts.summaryRuleEveryKind);
+  assert.equal(buildPrompt('ask', [], 'Why?', KINDS).system, before.prompts.summaryRuleEveryKind);
 });
 
 test('a booking keeps its travel kind rather than "event" when both are listed', () => {
@@ -618,7 +618,7 @@ test('a booking keeps its travel kind rather than "event" when both are listed',
   const all = sentence('flight, train, bus, ferry, car, hotel, restaurant, cafe, bar, sight, museum, attraction, tour or show');
   assert.ok(every.includes(`Leave it out only when none fits.\n${all}\n`), 'directly after the kind line');
   assert.ok(instructions('object', { kinds: KINDS }).includes(all));
-  assert.ok(buildPrompt('ask', [], 'Why?', KINDS).prompt.includes(all));
+  assert.ok(buildPrompt('ask', [], 'Why?', KINDS).system.includes(all));
   // Only the travel kinds listed, joined as the kind line joins them, whatever order they are given in.
   assert.ok(rule(['event', 'tour', 'hotel', 'task']).includes(sentence('hotel or tour')));
   assert.ok(rule(['museum', 'event']).includes(sentence('museum')));
@@ -628,7 +628,7 @@ test('a booking keeps its travel kind rather than "event" when both are listed',
     assert.ok(!rule(kinds).includes('For a booking or a stop on a trip'), kinds.join(','));
   }
   assert.ok(!instructions('object').includes('For a booking or a stop on a trip'), 'the default, travel kinds only');
-  assert.ok(!buildPrompt('ask', [], 'Why?').prompt.includes('For a booking or a stop on a trip'));
+  assert.ok(!buildPrompt('ask', [], 'Why?').system.includes('For a booking or a stop on a trip'));
 });
 
 test('crafted text cannot stall a read: 120 KB in any field reads in under 100 ms', () => {

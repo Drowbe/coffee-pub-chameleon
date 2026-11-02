@@ -73,6 +73,8 @@ From Thomas, 2026-10-02 (issue #157 and the conversation after it):
 12. **Who may use `/ai`:** signed in, not a guest, and not in a space with **Turn AI off in this space** ticked. The
     retired Assistant's **Use** permission no longer counts. Reason: the Assistant is retired and should not gate
     Chat, while an owner may still want AI off in one space.
+    Changed 2026-11-02 (Thomas): one rule for AI everywhere, Chat included: the role's **Use AI** permission (`useAi`)
+    and the space's AI switch on, never a guest ([plan-ai-integration](plan-ai-integration.md), decision 1).
 13. **"Clear your AI thread" becomes "Delete your private messages"** and deletes all of yours in this space. Reason:
     AI is no longer a thing apart.
 14. **The filter defaults to All** and is remembered per space for the browser session, as the switch is today.

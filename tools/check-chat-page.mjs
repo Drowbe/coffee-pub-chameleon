@@ -33,7 +33,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-page-check-'));
 fs.copyFileSync(path.join(ROOT, 'public/chat-input.js'), path.join(tmp, 'chat-input.mjs'));
-const { stripSummaryMarkers, readView, emptyLine, viewKey, CHAT_VIEWS, viewOf, inView, discussionWord, routeLine, commandName, commandForms, looksLikeImport, marksNew, clearTypeOf, ofClearType, inClearScope, clearChoices, clearTakesPicture, clearNoticeTakes, linkUrl, cleanPreview, cleanKept, siteName, linkKeeper, previewNoticeTakes, keptNoticeTakes, findLink, TRAVEL_KINDS, keeperFor, detailLines, keepInput, suggestionInput, takesKind, objectInputOf, objectKeepInput, namedKindCount, eventLooksLikeTravel, placeOrder, placeRank, settlePlace, splitTicked, leftOutWords, DAY_KINDS, hasDay, needsDay, keepTargets, keepTargetInput, canKeepAny, keepCountWords, detailsLine, plainTitle, messageObjects, sendChoices, requestOutcome, outcomesWords, chatDay, wordsExtra, pictureRefused } = await import(pathToFileURL(path.join(tmp, 'chat-input.mjs')).href);
+const { stripSummaryMarkers, readView, emptyLine, viewKey, CHAT_VIEWS, viewOf, inView, discussionWord, routeLine, aiNotice, commandName, commandForms, looksLikeImport, marksNew, clearTypeOf, ofClearType, inClearScope, clearChoices, clearTakesPicture, clearNoticeTakes, linkUrl, cleanPreview, cleanKept, siteName, linkKeeper, previewNoticeTakes, keptNoticeTakes, findLink, TRAVEL_KINDS, keeperFor, detailLines, keepInput, suggestionInput, takesKind, objectInputOf, objectKeepInput, namedKindCount, eventLooksLikeTravel, placeOrder, placeRank, settlePlace, splitTicked, leftOutWords, DAY_KINDS, hasDay, needsDay, keepTargets, keepTargetInput, canKeepAny, keepCountWords, detailsLine, plainTitle, messageObjects, sendChoices, requestOutcome, outcomesWords, chatDay, wordsExtra, pictureRefused } = await import(pathToFileURL(path.join(tmp, 'chat-input.mjs')).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 
 let n = 0;
@@ -323,6 +323,18 @@ test('the views: where a typed line goes; a command switches to the Assistant an
   assert.deepEqual(routeLine('/', 'discussion'), { run: 'none', view: 'discussion', line: '/' }, 'a lone slash stays in the box');
   assert.deepEqual(routeLine('/Hello there', 'assistant'), { run: 'none', view: 'assistant', line: '/Hello there' });
   assert.deepEqual(routeLine('   ', 'assistant'), { run: 'none', view: 'assistant', line: '' });
+  // ai-01: /ai is the one built-in command; it asks the AI from either view, and a module command is still a command.
+  assert.deepEqual(routeLine('/ai where to eat?', 'discussion'), { run: 'ai', view: 'assistant', line: 'where to eat?' }, '/ai asks the AI');
+  assert.deepEqual(routeLine('/ai where to eat?', 'assistant'), { run: 'ai', view: 'assistant', line: 'where to eat?' });
+  assert.deepEqual(routeLine('/ai', 'discussion'), { run: 'ai', view: 'assistant', line: '' }, 'a bare /ai asks for the question');
+  assert.deepEqual(routeLine('/aim high', 'discussion'), { run: 'command', view: 'assistant', line: '/aim high' }, '/aim is not /ai');
+  assert.equal(aiNotice('not-set-up'), 'AI is not set up yet.');
+  assert.equal(aiNotice('role', '', { owner: 'owner' }), "Your role can't use AI here: ask the owner.");
+  assert.equal(aiNotice('allowance'), "This month's AI allowance is used up.");
+  assert.equal(aiNotice('guest', '', { guests: 'Guests' }), 'Guests cannot use AI.');
+  assert.equal(aiNotice('space-off', '', { space: 'trip' }), 'AI is turned off in this trip.');
+  assert.equal(aiNotice(''), '');
+  assert.equal(aiNotice('new-reason', 'something else is wrong'), 'Something else is wrong.');
   assert.equal(routeLine('hi', 'nonsense').run, 'message', 'an unknown view is the Discussion');
   // The page: the box sends by the route; a known command switches before it runs, so its echo lands in the Assistant.
   const submit = space.slice(space.indexOf("$('chat-form').addEventListener('submit'"), space.indexOf('// Enter sends, as in any chat'));

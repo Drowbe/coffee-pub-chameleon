@@ -54,6 +54,46 @@ test('colours from the theme, and the style built from them', () => {
   assert.ok(labels.every((l) => JSON.stringify(l.layout['text-field']) === JSON.stringify(['coalesce', ['get', 'name:en'], ['get', 'name']])));
 });
 
+test('the map is readable in both themes: water apart from land, one road ladder, roads above the land', () => {
+  // Contrast as WCAG counts it, from the colours the style gives the map library.
+  const lum = (c) => { const f = (x) => { const v = x / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const hue = ([r, g, b]) => { const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); if (mx === mn) return 0; const d = mx - mn; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+  const themes = {
+    dark: { bg: [26, 20, 16], section: [36, 28, 22], text: [241, 230, 216], dim: [168, 153, 138], blue: [106, 166, 232], green: [111, 191, 115] },
+    light: { bg: [238, 237, 232], section: [247, 246, 242], text: [24, 23, 20], dim: [85, 83, 75], blue: [42, 98, 176], green: [46, 125, 50] },
+  };
+  for (const [mode, t] of Object.entries(themes)) {
+    const style = lib.buildStyle(t, { tiles: 't', glyphs: 'g' });
+    const col = (id, prop) => lib.rgbOf(style.layers.find((l) => l.id === id).paint[prop]);
+    const land = col('earth', 'fill-color');
+    const water = col('water', 'fill-color');
+    assert.ok(ratio(water, land) >= 1.5, `${mode}: water is at least 1.5:1 from the land (${ratio(water, land).toFixed(2)})`);
+    const apart = Math.abs(hue(water) - hue(land));
+    assert.ok(Math.min(apart, 360 - apart) >= 30, `${mode}: water has its own hue, not only its own lightness`);
+    assert.deepEqual(col('waterway', 'line-color'), water, `${mode}: waterways are the water`);
+    const [minor, medium, major] = ['roads-minor', 'roads-medium', 'roads-major'].map((id) => col(id, 'line-color'));
+    assert.ok(ratio(minor, land) < ratio(medium, land) && ratio(medium, land) < ratio(major, land), `${mode}: roads step up from minor to medium to major`);
+    assert.deepEqual(col('roads-path', 'line-color'), minor, `${mode}: a path is a minor road`);
+    if (mode === 'dark') for (const [name, c] of [['minor', minor], ['medium', medium], ['major', major]]) assert.ok(ratio(c, land) >= 1.7, `dark: a ${name} road is at least 1.7:1 from the land (${ratio(c, land).toFixed(2)})`);
+    assert.ok(ratio(col('landuse', 'fill-color'), land) > 1.04, `${mode}: parks show against the land`);
+    assert.ok(hue(col('landuse', 'fill-color')) !== hue(land), `${mode}: parks are green, not the accent`);
+    // Only a country's and a region's border; a neighbourhood's would cut a city into dashed pieces.
+    const border = style.layers.find((l) => l.id === 'boundaries');
+    assert.ok(JSON.stringify(border.filter).includes('"country"') && !JSON.stringify(border.filter).includes('"neighbourhood"') && !JSON.stringify(border.filter).includes('"locality"'), `${mode}: boundaries are country and region level`);
+    // A small label reads on the land (4.5:1).
+    assert.ok(ratio(col('places-local', 'text-color'), land) >= 4.5, `${mode}: small labels reach 4.5:1`);
+  }
+  // The theme writes the same ladder as the `--map-*` tokens, which the page hands the style; a token the style needs exists in both modes.
+  const css = fs.readFileSync(new URL('../public/sdk/system.css', import.meta.url), 'utf8');
+  for (const name of ['land', 'water', 'park', 'wood', 'road-minor', 'road-medium', 'road-major', 'building', 'label', 'boundary']) assert.ok(new RegExp(`--map-${name}:`).test(css), `system.css defines --map-${name}`);
+  const light = css.slice(css.indexOf(':root[data-theme-mode="light"],'));
+  for (const name of ['land', 'water', 'road-minor', 'road-medium', 'road-major', 'building', 'label']) assert.ok(new RegExp(`--map-${name}:`).test(light.slice(0, 2500)), `the light block redefines --map-${name}`);
+  assert.ok(!/--map-[a-z-]+:[^;]*(#[0-9a-f]{3}|\brgba?\()/i.test(css), 'the map tokens hold no raw colour');
+  const page = read('maps.js');
+  assert.match(page, /--map-\$\{name\}/, 'the page reads the --map-* tokens and hands them to the style');
+});
+
 test('several map files are drawn together, layer by layer', () => {
   const one = lib.buildStyle({}, { tiles: 'pmtiles://a', glyphs: 'g' });
   const two = lib.buildStyle({}, { tiles: ['pmtiles://a', 'pmtiles://b'], glyphs: 'g' });
@@ -80,7 +120,7 @@ test('a picture map: the theme\'s ground and one layer of picture tiles, nothing
   assert.ok(!('bounds' in light.sources.picture), 'no bounds given, none set');
   // The ground is --bg-section, as the world map's is.
   assert.equal(light.layers[0].paint['background-color'], 'rgb(250,248,244)');
-  assert.equal(dark.layers[0].paint['background-color'], lib.buildStyle({}, { tiles: 't', glyphs: 'g' }).layers.find((l) => l.id === 'background').paint['background-color']);
+  assert.equal(dark.layers[0].paint['background-color'], 'rgb(38,30,22)', 'a picture\'s ground is the section colour itself (the world map\'s land is a hair off it)');
   assert.ok(!JSON.stringify(dark).includes('NaN'));
   assert.ok(!dark.layers.some((l) => l.type === 'symbol' || l['source-layer']), 'no labels or map data layers on a picture');
 });
@@ -144,7 +184,7 @@ test('a picture map leaves out what means nothing on an invented world, and the 
   assert.match(html, /<div class="attribution" data-slot="attribution"><span data-slot="osm">&copy; <a href="https:\/\/www\.openstreetmap\.org\/copyright"[^>]*>OpenStreetMap<\/a> contributors<\/span><\/div>/);
   assert.match(page, /hide\(slot\(box, 'osm'\), picture\);/);
   assert.match(page, /credit\(metadata, Boolean\(picture\)\);/);
-  assert.match(page, /if \(picture\) inMaps\.remove\(\); else inMaps\.href = mapsLink\(/, 'no "Open in my maps app" on a picture');
+  assert.match(page, /if \(picture\) inMaps\.remove\(\); else \{ inMaps\.href = mapsLink\(/, 'no "Open in my maps app" on a picture');
   assert.match(page, /coords: picture \? '' : coordsText\(/, 'no coordinates in the callout on a picture');
   assert.match(page, /hide\(locateButton, Boolean\(state\.picture\)\)/, 'no "Show where I am" on a picture');
   // The picture's file is read from its own folder, and the picture style is used only with a picture.
@@ -172,7 +212,7 @@ test('a pin is the map library\'s marker: no rule sets the position of .pin itse
   const html = read('maps.html');
   // The pin templates are the markers' own elements (makePin hands them to new maplibregl.Marker).
   assert.match(html, /<template id="tpl-pin"><button class="pin"/);
-  assert.match(read('maps.js'), /new maplibregl\.Marker\(\{ element: makePin\(/);
+  assert.match(read('maps.js'), /addMarker\(makePin\(x, /);
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selectors = m[1].split(',').map((x) => x.trim());
     // A selector whose last compound is the pin itself (.pin, .pin.selected, .pin[data-cat] ...), not something inside it.
@@ -203,7 +243,7 @@ test('adding follows Places: its permission decides, the phone is shown the list
   assert.match(page, /type: 'search', id: 'find', value: searchValue/, 'the search is the toolbar\'s field');
   assert.match(page, /if \(e\.submit\) runFind\(searchValue\);/, 'Enter finds what was typed');
   // pickPoint: the map's click-the-map mode for the editor's target button; the spot (or none) is told back through positionPicked.
-  assert.match(page, /pickPoint: async \(input\) => \{[\s\S]*?state\.pick = true;[\s\S]*?setAdding\(true\);[\s\S]*?say\(CLICK_TO_ADD\);/);
+  assert.match(page, /pickPoint: async \(input\) => \{[\s\S]*?state\.pick = true;[\s\S]*?setAdding\(true\);\s*return \{\};/);
   assert.match(page, /if \(state\.adding && state\.pick\) \{[\s\S]*?tellPicked\(at\);/);
   assert.match(page, /if \(state\.adding && state\.pick\) \{[\s\S]*?tellPicked\(at\);/);
   assert.match(page, /a\.name === 'positionPicked'/);
@@ -282,7 +322,7 @@ test('a pin has the place\'s icon and its visit badge', () => {
   for (const [id, label, icon] of [['want', 'Want to go', 'bookmark'], ['booked', 'Booked', 'calendar-check'], ['visited', 'Visited', 'circle-check'], ['favorite', 'Favorite', 'star']]) assert.ok(places.includes(`{ id: '${id}', label: '${label}', icon: '${icon}' }`), `${id}: the same words and icon as Places' rows`);
   assert.match(html, /<span class="pin-badge" data-visit="">/);
   assert.match(css, /\.pin-badge \{[^}]*border-radius: var\(--radius-round\)/);
-  assert.match(page, /pin\.setAttribute\('aria-label', `\$\{x\.title\}, \$\{x\.look\.visitLabel\}`\)/, 'the badge has words');
+  assert.match(page, /const pinName = \(x\) => \(x\.look\.visit \? `\$\{x\.title\}, \$\{x\.look\.visitLabel\}` : x\.title\);/, 'the badge has words in the pin\'s name');
   assert.match(page, /'bookmark', 'calendar-check', 'circle-check', 'star'/, 'the badge icons are fetched');
 });
 
@@ -337,6 +377,48 @@ test('host.objects.search passes in to the server', () => {
   assert.deepEqual([p.get('scope'), p.get('has'), p.get('in')], ['environment', 'place', 'trip1']);
   const q = build('maps', { q: '', scope: 'environment' }, { scope: 'space', spaceId: 'S1', moduleScopes: ['environment', 'space'], keyed: false });
   assert.equal(q.has('in'), false, 'no in unless asked');
+});
+
+test('every pin and cluster has its own name and keeps the keyboard where it was; places in one spot can be spread out', () => {
+  const page = read('maps.js');
+  // The library names a marker "Map marker" as it is added, so the name is set after: one place does it, and nothing else adds a marker.
+  assert.match(page, /function addMarker\(el, lngLat, anchor, name\) \{\s*const m = new maplibregl\.Marker\(\{ element: el, anchor \}\)\.setLngLat\(lngLat\)\.addTo\(state\.map\);\s*el\.setAttribute\('aria-label', name\);/);
+  assert.equal((page.match(/new maplibregl\.Marker\(/g) || []).length, 2, 'only addMarker and the new place\'s pin make a marker');
+  assert.match(page, /draftMarker = new maplibregl\.Marker[^\n]*\n\s*pin\.setAttribute\('aria-label', 'The new place'\);/);
+  assert.ok(page.includes('`${g.points.length} places`') && page.includes('`${g.points.length} places found`'), 'a cluster says how many');
+  assert.ok(!/setAttribute\('aria-label', `\$\{x\.title\}, \$\{x\.look\.visitLabel\}`\)/.test(page), 'the visit name is not set where the library overwrites it');
+  assert.match(page, /const keep = active && active\.classList && active\.classList\.contains\('pin'\)/, 'the focused pin is noted before the redraw');
+  assert.match(page, /again\.focus\(\{ preventScroll: true \}\)/, 'and given the focus after it');
+  // A cluster of places in one spot: spread round it on a click (fitBounds on a zero-size box does nothing).
+  assert.match(page, /if \(together\(g\.points\)\) \{ state\.spread = new Set\(g\.points\.map\(\(x\) => x\.id\)\); drawPins\(\); return; \}/);
+  assert.match(page, /state\.spread && g\.points\.every\(\(x\) => state\.spread\.has\(x\.id\)\)/);
+  // Search results: brought into view together, near ones clustered.
+  assert.match(page, /function fitCandidates\(\)/);
+  assert.match(page, /for \(const g of clusterPoints\(state\.candidates,/);
+  // Zoomed out only the selected pin and the one pointed at show a name (the stylesheet), so names do not pile up.
+  assert.match(page, /labelZoom: 14/);
+  assert.match(read('maps.css'), /\.pin\.lowzoom:not\(\.selected\):not\(:hover\):not\(:focus-visible\) \.pin-label \{ display: none; \}/);
+});
+
+test('the map follows the list beside it, hides a "+" that would do nothing, and says things once and truthfully', () => {
+  const page = read('maps.js');
+  assert.match(page, /const changed = Number\(st\.changed\) \|\| 0;\s*if \(lastChanged !== null && changed !== lastChanged && state\.started\)/, 'a change in the list reads the places again now');
+  assert.match(page, /a\.name === 'mayAdd' && a\.open === true/);
+  assert.match(page, /out\.result\.data\.may === false\) state\.adder = null/);
+  assert.ok(!/say\(CLICK_TO_ADD\)/.test(page), '"Click the map to place it" is the banner\'s, not also a toast and a status line');
+  assert.ok(!/state\.adding \? \[\{ text: CLICK_TO_ADD \}\]/.test(page), 'and not the status line\'s');
+  assert.ok(page.includes('`${matching} of ${n} ${noun} shown`') && page.includes('`${n} ${noun}, no map drawn`'), 'the count says "1 of 5" while filtered and that no map is drawn');
+  assert.match(page, /host\.destination\.set\(\{ mapOn: on \}\)/, 'the list is told whether the map is drawn');
+  assert.match(page, /if \(open && state\.q && dimmed\(open\)\) select\(null\)/, 'a place the search text does not match is put away');
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('class="btn btn-small btn-primary" data-action="open-in-maps"') && html.includes('class="btn btn-small" type="button" data-action="copy-coords"'), 'the callout\'s buttons are the SDK\'s');
+  assert.ok(!/\.callout-actions \.primary/.test(read('maps.css')), 'no class of its own for the main button');
+  assert.match(page, /Open in my maps app' : 'Open in OpenStreetMap'/, 'a desktop says it opens OpenStreetMap');
+  assert.ok(/whoever runs the server/.test(html), 'the no-map notice says who puts the file in the data folder');
+  const dest = fs.readFileSync(new URL('../public/destination.js', import.meta.url), 'utf8');
+  assert.match(dest, /filterOnly: 'Filter places',/);
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
+  assert.ok(!JSON.stringify(manifest).includes('20260924'), 'the help\'s example build date is one that exists');
 });
 
 console.log(`check-maps: OK (${n} checks)`);

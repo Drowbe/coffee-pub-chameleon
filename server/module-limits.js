@@ -34,6 +34,12 @@ class ModuleLimits {
     if (this.hits.size > 5000) for (const [k, v] of this.hits) if (!v.length || now - v[v.length - 1] > WINDOW_MS) this.hits.delete(k);
     return { ok: true };
   }
+
+  // Give back the turn a `take` counted, for something that was then refused or failed: only asks that were carried out count.
+  refund(module, who, kind) {
+    const recent = this.hits.get(`${module}|${who || 'guest'}|${kind}`);
+    if (recent && recent.length) recent.pop();
+  }
 }
 
 module.exports = { ModuleLimits, MODULE_LIMITS: LIMITS };

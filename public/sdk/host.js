@@ -2290,7 +2290,9 @@
 
     // Ask in Chat on a space's canvas: posts a private /ai question (the reply shows only to the person who asked).
     // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`.
+    //   available()  -> { available }   false off a space's canvas (a module's own page), where ask rejects: hide the button there.
     chat: {
+      available: () => call('chat.available', {}),
       ask: (o) => call('chat.ask', { question: o && o.question, refs: o && o.refs }),
     },
 
@@ -2482,6 +2484,8 @@
       // one points at: summaries. The 'links' event says when to ask again.
       linksTo: (ref) => call('objects.links', { ref, dir: 'to' }),
       linksFrom: (ref) => call('objects.links', { ref, dir: 'from' }),
+      // What points at each of several of this module's objects, in one request: [{ ref, summaries }] (only those something points at).
+      linksToAll: (refs) => call('objects.linksToAll', { refs }),
       // Other modules' objects that show on a calendar as markers (a kind marked "marker": true beside "dated" in its
       // module.json): a task due on a day, a poll's closing time. Read through the kinds this module consumes (as
       // approved), in this module's place: in a space, that space's; on the environment's page, the environment's and

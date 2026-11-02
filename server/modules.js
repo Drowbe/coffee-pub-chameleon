@@ -338,7 +338,10 @@ function cleanDated(kind, raw) {
   const instant = ['start', 'end', 'allDay'].some((name) => raw[name] !== undefined);
   if (wall === instant) throw new ModuleError(`module.json: refs "${kind}" dated is either a day or an instant`);
   // `repeat` (either shape): the stored field holding a repeat in the Calendar's shape, { every, until }.
-  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'repeat'] : ['title', 'start', 'end', 'allDay', 'repeat'];
+  // A wall-clock kind may also name `endTime` (the check-out time), `minutes` (its length) and `zone` (where the zone its
+  // times are written in is kept: { key, field }, a stored object of the module and the field holding the zone name). An
+  // instant kind may name `tz`, the field a copy keeps that zone in.
+  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'endTime', 'minutes', 'zone', 'repeat'] : ['title', 'start', 'end', 'allDay', 'tz', 'repeat'];
   for (const key of Object.keys(raw)) {
     if (!allowed.includes(key)) throw new ModuleError(`module.json: refs "${kind}" dated.${key} is not used`);
   }
@@ -356,16 +359,29 @@ function cleanDated(kind, raw) {
     const dated = { form: 'wall', title, day: field('day', true) };
     const time = field('time', false);
     const endDay = field('endDay', false);
+    const endTime = field('endTime', false);
+    const minutes = field('minutes', false);
     if (time) dated.time = time;
     if (endDay) dated.endDay = endDay;
+    if (endTime) dated.endTime = endTime;
+    if (minutes) dated.minutes = minutes;
+    if (raw.zone !== undefined && raw.zone !== null) {
+      const z = raw.zone;
+      if (typeof z !== 'object' || Array.isArray(z) || typeof z.key !== 'string' || !/^[A-Za-z0-9:_.-]{1,80}$/.test(z.key) || typeof z.field !== 'string' || !HOLDS_FIELD_RE.test(z.field)) {
+        throw new ModuleError(`module.json: refs "${kind}" dated.zone must be { "key": a stored key, "field": a stored field }`);
+      }
+      dated.zone = { key: z.key, field: z.field };
+    }
     if (repeat) dated.repeat = repeat;
     return dated;
   }
   const dated = { form: 'instant', title, start: field('start', true) };
   const end = field('end', false);
   const allDay = field('allDay', false);
+  const tz = field('tz', false);
   if (end) dated.end = end;
   if (allDay) dated.allDay = allDay;
+  if (tz) dated.tz = tz;
   if (repeat) dated.repeat = repeat;
   return dated;
 }

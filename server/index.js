@@ -14,7 +14,7 @@ const { ModuleManager, LIMITS: MODULE_LIMITS, compareVersions, oldNameIn, pendin
 const { buildModule, bundledModules, zipFiles } = require('./module-build');
 const { fillManifest } = require('./modules');
 const templates = require('./templates');
-const { ModuleLinks } = require('./module-links');
+const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
 const { ChatHistory } = require('./chat-history');
@@ -34,7 +34,7 @@ const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const { watchArrival, slowSenders } = require('./arrival');
-const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
+const { Ai, AiError, OVER_CAP, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
 const { presenceView, belongsToSpace } = require('./presence-view');
 const { mergeCall, cleanAwayMessage } = require('./live');
@@ -1902,7 +1902,7 @@ function environmentUsage(slug) {
     logRefusalOnce(slug);
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
-  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: env.ai.usageView?.().callsThisMonth ?? null, spaces: env.store.spaces.length };
+  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -2347,11 +2347,11 @@ function refuseOverStorage(res) {
 function checkStorageCap(req, res, next) {
   if (!refuseOverStorage(res)) next();
 }
-function refuseOverAiCalls(res) {
+// The sentence when this environment's plan allows no more AI calls this month, else ''.
+function aiCallsRefusal() {
   const cap = planCap('aiCallsPerMonth');
-  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${cap} AI calls for this month.` });
-  return true;
+  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return '';
+  return `This ${word('environment')} has used its ${cap} AI calls for this month.`;
 }
 // 'all' (the default, and every self-hosted install) or a list of module ids. A module already on when a
 // plan shrinks under it is untouched here -- this only gates turning one on, never keeps one already running.
@@ -2557,7 +2557,9 @@ hostRouter.post('/api/host/ai/models', requireHostAdmin, async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');
     const slot = managedSlot(provider);
-    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || slot.envKey || slot.key;
+    // A saved key (or the one from the environment) goes only to the address it belongs to: another address needs a key typed with it.
+    const sameAddress = provider !== 'compatible' || req.body?.address === undefined || String(req.body.address).trim().replace(/\/$/, '') === slot.address;
+    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.envKey || slot.key : '');
     const workspace = typeof req.body?.workspace === 'string' ? req.body.workspace : slot.workspace;
     res.json({ models: await listModelsFor({ provider, address: req.body?.address ?? slot.address, key, workspace }) });
   } catch (err) {
@@ -2823,7 +2825,7 @@ function redirectToHost(req, res, status, newHost) {
 }
 // The paths the product host lets through beside / and the use pages: what those pages load and ask.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
-const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/environments', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
@@ -5573,15 +5575,16 @@ app.post('/api/spaces/:id/chat/:messageId/keep', (req, res) => {
 });
 
 // --- Chat /ai and commands (plan-one-input, #58) ----------------------------------------------------------------
-// Same people as #73 import: signed in, not a guest, not in a space with AI turned off. The retired Assistant's
-// `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the environment's `useAi` flag.
+// Same people as #73 import: signed in, not a guest, not in a space with AI turned off, and allowed to chat in the space (the
+// role's `chat`). The retired Assistant's `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the
+// environment's `useAi` flag.
 function chatAiRefusal(who, space) {
   if (!who.user) return `${word('guest', { many: true })} cannot use AI`;
   if (space && space.aiOff) return `AI is turned off in this ${word('space')}`;
   return '';
 }
 
-function chatAiSpace(req, res) {
+function chatAiSpace(req, res, { needChat = false } = {}) {
   const who = moduleViewer(req);
   if (!who) { res.status(401).json({ error: 'sign in first' }); return null; }
   if (!who.user) { res.status(403).json({ error: `${word('guest', { many: true })} cannot use AI` }); return null; }
@@ -5589,54 +5592,56 @@ function chatAiSpace(req, res) {
   if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
   const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
   if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
+  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask (/ai only; a paste is not AI use).
+  if (needChat && !store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
   return { who, space };
 }
 
+// Why AI cannot answer right now whoever asks -- not set up, a key this server can't read, or an allowance used up -- as
+// { status, why }, or null. The availability routes answer from this too, so a page can say so before a question is sent.
+function aiServiceRefusal() {
+  if (!ai.ready()) {
+    const v = ai.view();
+    if (v.keyUnreadable && v.enabled) return { status: 503, reason: 'not-set-up', why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
+    return { status: 503, reason: 'not-set-up', why: 'AI is not set up on this server' };
+  }
+  if (ai.overCap()) return { status: 429, reason: 'allowance', why: OVER_CAP };
+  const calls = aiCallsRefusal();
+  if (calls) return { status: 403, reason: 'allowance', why: calls };
+  return null;
+}
+
+// One rule for every AI door: signed in (not a guest), AI on for the space, the role's `useAi`, then the service itself.
+// { status, reason, why } or null. `reason`: 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'.
+function aiRefusalFor(who, space) {
+  if (!who.user) return { status: 403, reason: 'guest', why: `${word('guest', { many: true })} cannot use AI` };
+  if (space && space.aiOff) return { status: 403, reason: 'space-off', why: `AI is turned off in this ${word('space')}` };
+  const perms = space ? store.spacePermissions(who.user.key, space.id) : store.roleSet(who.user.role);
+  if (!perms.useAi) return { status: 403, reason: 'role', why: 'your role may not use AI' };
+  return aiServiceRefusal();
+}
+
 app.get('/api/spaces/:id/ai', (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.json({ available: false, why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.json({ available: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.json({ available: false, why: 'AI is not set up on this server' });
-  res.json({ available: true, why: '' });
+  const down = aiRefusalFor(found.who, found.space);
+  if (down) return res.json({ available: false, why: down.why, reason: down.reason });
+  res.json({ available: true, why: '', reason: '' });
 });
 
-app.get('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (req.query.user) return res.status(403).json({ error: 'that thread is not yours' });
-  // The caller's private /ai questions and answers from the one chat store, in the old thread shape.
-  res.json({ entries: chatHistory.aiThread(found.space.id, found.who.user.key) });
-});
-
-app.delete('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  chatHistory.removeAiThread(found.space.id, found.who.user.key);
-  res.json({ ok: true });
-});
-
-app.delete('/api/spaces/:id/ai/thread/:entryId', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (!/^[a-f0-9]{12}$/.test(req.params.entryId)) return res.status(404).json({ error: 'no such message' });
-  const gone = chatHistory.removeAiEntry(found.space.id, found.who.user.key, req.params.entryId);
-  if (!gone) return res.status(404).json({ error: 'no such message' });
-  res.json({ ok: true });
-});
+// Chat's own sentence for a person asking too often (the modules' one speaks of a module).
+const chatAiLimitMessage = () => 'You have asked the AI too many times in a minute. Try again in a moment.';
 
 app.post('/api/spaces/:id/ai', async (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.status(403).json({ error: why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.status(503).json({ error: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.status(503).json({ error: 'AI is not set up on this server' });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit('chat', found.who.user.key, 'ai')) return res.status(429).json({ error: limitMessage() });
+  const down = aiRefusalFor(found.who, found.space);
+  if (down) return res.status(down.status).json({ error: down.why });
+  const me = found.who.user.key;
   const question = String(req.body?.question || '').trim();
-  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : (Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : []);
+  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : [];
+  // Only this space's own objects go to the AI: what is asked, and so the answer kept here, never draws on another space.
+  if (refs.some((ref) => ref && ref.scope === 'space' && ref.space !== found.space.id)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
   const material = [];
   const given = [];
   for (const ref of refs) {
@@ -5649,6 +5654,10 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
       // gone or invisible: left out
     }
   }
+  // A bad ask is refused before it is counted: only asks that are carried out use the person's turns (a minute's worth).
+  try { ai.validateAsk('ask', material.length, question); } catch (err) { return sendAiError(err, res); }
+  const limited = overLimit('chat', me, 'ai');
+  if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: chatAiLimitMessage() });
   const askedAt = Date.now();
   try {
     const out = await ai.run('ask', material, question, { kinds: promptKinds() });
@@ -5657,14 +5666,14 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
       if (slug) hostRegistry.recordAiCall(slug);
     }
     const summaries = (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) }));
-    // Both kept as the asker's private messages (plan-chat-model.md). `share` is accepted and ignored: the author makes
-    // the answer public with PATCH .../chat/:messageId, and nothing is posted to the chat here.
-    const me = found.who.user.key;
+    // Both kept as the asker's private messages (plan-chat-model.md). The author makes the answer public with
+    // PATCH .../chat/:messageId; nothing is posted to the chat here.
     const asked = chatHistory.add(found.space.id, { by: me, who: found.who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
     const answered = chatHistory.add(found.space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: asked ? asked.id : undefined });
     noteActivity('chat', `asked the AI (${out.tokens} tokens)`, me, found.space.id);
-    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
+    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
   } catch (err) {
+    if (err instanceof AiError) moduleLimits.refund('chat', me, 'ai'); // it failed: it does not count
     sendAiError(err, res);
   }
 });
@@ -6613,7 +6622,7 @@ objectSync.configure({
   pairTo: (ref) => moduleLinks.pairTo(ref),
   addPair: (from, to, by) => moduleLinks.addPair(from, to, by),
   detachPair: (ref) => moduleLinks.detachPair(ref),
-  removePairs: (ref) => moduleLinks.removePairs(ref),
+  removePairs: (ref, keepDetached) => moduleLinks.removePairs(ref, keepDetached),
   newId: () => crypto.randomBytes(8).toString('hex'),
   nameOf: (by) => store.userByKey(by)?.displayName || String(by || ''),
   // Kinds in this space that receive a dated twin, and that this sender is approved to link to.
@@ -6670,12 +6679,22 @@ objectSync.configure({
   },
 });
 
+// A pair (a dated object and its copy in another module, plan-plan-calendar-sync.md) is flagged on both ends, so a
+// module can show a copy as one and a picker can offer the pair once: a copy says `copy: true` and `twinOf` (its original's
+// reference); an original that has copies says `twins` (their references). `index` is moduleLinks.pairIndex().
+function markPair(summary, index) {
+  const original = index.copyOf(summary.ref);
+  if (original) return { ...summary, copy: true, twinOf: original };
+  const copies = index.copiesOf(summary.ref);
+  return copies.length ? { ...summary, twins: copies } : summary;
+}
+
 function resolveRef(who, ref, from, opts = {}) {
   if (!refShape(ref)) throw refError(400, 'that is not a valid reference');
   const at = refScope(who, { provider: ref.module, kind: ref.kind, scope: ref.scope, space: ref.space, from, ...opts });
   const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(ref.id)));
   if (!item || !item.value) throw refError(404, `that ${word('object')} is no longer there`);
-  return objectSummary(at, String(ref.id), item.value, opts.withText === true);
+  return markPair(objectSummary(at, String(ref.id), item.value, opts.withText === true), moduleLinks.pairIndex());
 }
 
 // The kinds the consumer may point at: every kind of every other enabled module it was approved for.
@@ -6755,6 +6774,8 @@ app.get('/api/objects/search', (req, res) => {
     ? store.spaces.filter((r) => r.members.includes(who.user.key)).map((r) => ({ scope: 'space', space: r.id }))
     : [{ scope, space: req.query.space }];
   const summaries = [];
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
   // has=amount only: how many priced objects the viewer was kept from because they may not view the module that holds
   // them (a number alone, never for a guest, and in a space only for its members), so Budget can say some are left out.
   let withheld = 0;
@@ -6788,14 +6809,22 @@ app.get('/api/objects/search', (req, res) => {
       const prefix = at.produce.key.replace('{id}', '');
       for (const item of moduleData.list(k.module, at.scopeKey, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
-        const summary = objectSummary(at, item.key.slice(prefix.length), item.value);
-        if (inSpace && !(summary.spaces || []).includes(inSpace.id)) continue;
-        if (has === 'place' && !summary.place) continue;
-        if (has === 'amount' && !isPriced(summary)) continue;
-        if (q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q)) continue;
-        summaries.push(summary);
+        const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
+        const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
+          && !(has === 'place' && !summary.place)
+          && !(has === 'amount' && !isPriced(summary))
+          && !(q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q));
+        pool.push({ summary, fits });
       }
     }
+  }
+  // A pair is offered once: its original. A copy is left out when its original is among what this person may see, and
+  // always for the module that holds the original (the Itinerary is not offered its own objects through the Calendar).
+  const seen = new Set(pool.map((p) => objectKey(p.summary.ref)));
+  for (const { summary, fits } of pool) {
+    if (!fits) continue;
+    if (summary.copy && (summary.twinOf.module === from || seen.has(objectKey(summary.twinOf)))) continue;
+    summaries.push(summary);
   }
   // Newest dates first, undated last.
   summaries.sort((a, b) => String(b.when ?? '').localeCompare(String(a.when ?? '')) || a.title.localeCompare(b.title));
@@ -7000,6 +7029,39 @@ app.get('/api/objects/links', (req, res) => {
     }
   }
   res.json({ summaries });
+});
+
+// What points at several of a module's items in one request (the list of places asks once, not once per place): the same
+// answer as GET /api/objects/links with dir=to for each, for what the viewer may see. An item that cannot be asked about
+// (not the module's own, not visible, a kind that shows no backlinks) is left out of the answer. Read only.
+app.post('/api/objects/links/batch', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' });
+  const asker = String(req.body?.module || '');
+  const found = modules.enabled(asker);
+  if (!found) return res.status(404).json({ error: `no such ${word('module')}` });
+  const out = [];
+  for (const ref of (Array.isArray(req.body?.refs) ? req.body.refs : []).slice(0, 200)) {
+    if (!refShape(ref) || ref.module !== asker) continue;
+    const produce = found.manifest.refs.produces.find((p) => p.kind === ref.kind);
+    if (!produce || !produce.backlinks) continue;
+    try {
+      resolveRef(who, ref, null, { skipConsumer: true });
+    } catch (err) {
+      if (!err.status) throw err;
+      continue;
+    }
+    const summaries = [];
+    for (const other of moduleLinks.to(ref)) {
+      try {
+        summaries.push(resolveRef(who, other, null, { skipConsumer: true }));
+      } catch (err) {
+        if (!err.status) throw err;
+      }
+    }
+    if (summaries.length) out.push({ ref, summaries });
+  }
+  res.json({ links: out });
 });
 
 // --- events and actions: modules reacting to and asking things of each other -------------------
@@ -7539,8 +7601,9 @@ app.get('/api/destinations/:id', (req, res) => {
 // --- AI, for the modules that ask ---------------------------------------------------------------------------------------------
 // One server-wide setting (see ai.js); the key never leaves the server and is never sent back. A module asks through the `ai` hook:
 // the server checks the person's role and the space, reads the chosen objects as that person, asks the service the admin set up, and
-// returns text with any summaries the model wrote (each checked). Nothing is kept: no question, no answer, no object's text. The activity
-// list gets who, which module and task, and how many tokens.
+// returns text with any summaries the model wrote (each checked). A module's ask keeps nothing: no question, no answer, no object's text
+// (Chat's own /ai keeps the person's question and answer as private messages). The activity list gets who, which module and task, and
+// how many tokens.
 function sendAiError(err, res) {
   if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
   throw err;
@@ -7548,14 +7611,16 @@ function sendAiError(err, res) {
 app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage: ai.usageView(), dependents: modules.aiDependents() }));
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
+    await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });
     res.json({ models: await ai.listModels({ provider: String(req.body?.provider || ''), address: req.body?.address, key: req.body?.key, workspace: req.body?.workspace }) });
   } catch (err) {
     sendAiError(err, res);
   }
 });
-app.put('/api/ai', requireOwner, (req, res) => {
+app.put('/api/ai', requireOwner, async (req, res) => {
   try {
     const before = ai.view();
+    await ai.checkAddress(req.body || {});
     // Turning AI off (however the patch does it) while a module depends on it: the admin's page should have asked first (as it
     // does for a module others `requires`); a caller that skipped that, or forces past it, is handled the same way.
     if (before.enabled && !ai.previewEnabled(req.body || {}) && req.body?.force !== true) {
@@ -7563,7 +7628,17 @@ app.put('/api/ai', requireOwner, (req, res) => {
       if (dependents.length) throw new AiError(`${dependents.map((m) => m.name).join(' and ')} needs the AI service; turn ${dependents.length === 1 ? 'it' : 'them'} off too?`);
     }
     const after = ai.set(req.body || {});
-    if (before.enabled && !after.enabled) for (const m of modules.aiDependents()) modules.update(m.id, { enabled: false, force: true });
+    // The modules switched off with the service are remembered, and switched on again when the service is: turning AI off and on
+    // again leaves everything as it was.
+    if (before.enabled && !after.enabled) {
+      const off = modules.aiDependents();
+      ai.rememberCascade(off.map((m) => m.id));
+      for (const m of off) modules.update(m.id, { enabled: false, force: true });
+    } else if (!before.enabled && after.enabled) {
+      for (const id of ai.takeCascade()) {
+        try { if (modules.view(id) && !modules.enabled(id)) modules.update(id, { enabled: true }); } catch { /* left off: an owner can switch it on */ }
+      }
+    }
     noteActivity('host', `changed the AI setting (${after.provider}${after.keySet && !before.keySet ? ', key set' : ''})`, currentUser(req)?.key, null);
     res.json({ ai: after, usage: ai.usageView(), dependents: modules.aiDependents() });
   } catch (err) {
@@ -7572,30 +7647,22 @@ app.put('/api/ai', requireOwner, (req, res) => {
 });
 // Whether AI is available to this person here (for a page to show or hide its buttons): { available, why? }.
 function aiAllowed(ctx) {
-  const user = ctx.who.user;
-  if (!user) return { ok: false, why: `${word('guest', { many: true })} cannot use AI` };
-  // A saved key this server can't decrypt (data restored onto another host): said as such, not as "not set up".
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return { ok: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
-  if (!ai.ready()) return { ok: false, why: 'AI is not set up on this server' };
   const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  if (space && space.aiOff) return { ok: false, why: `AI is turned off in this ${word('space')}` };
-  const perms = ctx.spaceId ? store.spacePermissions(user.key, ctx.spaceId) : store.roleSet(user.role);
-  if (!perms.useAi) return { ok: false, why: 'your role may not use AI' };
-  return { ok: true };
+  const down = aiRefusalFor(ctx.who, space);
+  return down ? { ok: false, why: down.why, reason: down.reason, status: down.status === 429 ? 429 : 403 } : { ok: true };
 }
 app.get('/api/modules/:id/ai', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
   const a = aiAllowed(ctx);
-  res.json({ available: a.ok, why: a.why || '' });
+  res.json({ available: a.ok, why: a.why || '', reason: a.reason || '' });
 });
 
 // Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
 function importRefusal(ctx) {
   if (!ctx.who.user) return `${word('guest', { many: true })} cannot bring in ${word('object', { many: true })}`;
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  // Same rule as /ai (plan-chat-model.md, decision 12): signed in, not a guest, space AI not off.
-  return chatAiRefusal(ctx.who, space);
+  // A pasted answer is not AI use (the plan's Q18): signed in, not a guest; the module's write access was checked by the caller.
+  return '';
 }
 app.get('/api/modules/:id/objects/check', (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
@@ -7650,12 +7717,12 @@ app.post('/api/modules/:id/ai', async (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
   const allowed = aiAllowed(ctx);
-  if (!allowed.ok) return res.status(403).json({ error: allowed.why });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
+  if (!allowed.ok) return res.status(allowed.status || 403).json({ error: allowed.why });
   // Plan-names step 7: the objects to ask about are `objects`, no longer `items`; the old name is refused, not read.
   if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'items')) return res.status(400).json({ error: `items is an old name; send the ${word('object', { many: true })} to ask about as objects` });
   const refs = Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : [];
+  // Only the objects of the space the module is asked in go to the AI.
+  if (ctx.spaceId && refs.some((ref) => ref && ref.scope === 'space' && ref.space !== ctx.spaceId)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
   // The objects are read as this person: only what they may see, and only kinds this module produces or was approved to link to.
   const material = [];
   const given = [];
@@ -7670,8 +7737,11 @@ app.post('/api/modules/:id/ai', async (req, res) => {
       // an object that is gone, or that this person may not see, is simply left out
     }
   }
+  const task = String(req.body?.task || '');
+  // A bad ask is refused before it is counted, and one that fails is given back: only asks that are carried out use a turn.
+  try { ai.validateAsk(task, material.length, req.body?.question); } catch (err) { return sendAiError(err, res); }
+  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
   try {
-    const task = String(req.body?.task || '');
     const out = await ai.run(task, material, req.body?.question, { kinds: promptKinds() });
     // Counted on the registry entry regardless of provider (managed or the environment's own key) -- the plan's
     // aiCallsPerMonth cap is about how much of the environment's own allowance is used, not who is paying for
@@ -7681,8 +7751,9 @@ app.post('/api/modules/:id/ai', async (req, res) => {
       if (slug) hostRegistry.recordAiCall(slug);
     }
     noteActivity(ctx.manifest.id, `used AI to ${task} (${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
-    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens });
+    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens });
   } catch (err) {
+    if (err instanceof AiError) moduleLimits.refund(ctx.manifest.id, ctx.by, 'ai');
     sendAiError(err, res);
   }
 });
@@ -9076,14 +9147,18 @@ app.get('/modules/:id', (req, res) => {
   if (req.query.s === undefined && !keyedModule) res.set(FRAMED_HERE);
   if (!currentUser(req) && !hasGuestAccess(req)) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   // A module's environment page (no space, not a pop-out) leads to the destination it is a part of while that is shown
-  // (plan-calendar-destination.md, decision 16). The browser keeps the address's #day= or #ref= across the redirect,
+  // (plan-calendar-destination.md, decision 16). For the main the browser keeps the address's #day= or #ref= across the redirect,
   // and the query goes with it (?from=space&spaceName=... is the page's "Back to" link). Only the query is taken from
   // the request: the path is the destination's own, so the redirect never leaves this site.
   if (req.query.space === undefined && req.query.popout === undefined && req.query.guest === undefined) {
-    const to = destinationPathOf(req.params.id, destinationContext(moduleViewer(req)));
+    const dctx = destinationContext(moduleViewer(req));
+    const to = destinationPathOf(req.params.id, dctx);
     if (to && /^\/[A-Za-z0-9/_-]*$/.test(to) && !to.startsWith('//')) {
       const asked = new URL(req.originalUrl, 'http://same.origin');
-      return res.redirect(`${to}${asked.search}`);
+      // A panel (not the main) is named, so the destination opens on it: #panel=<module id>, as a tile's heading does.
+      // The main keeps the bare address, and with it the browser keeps the address's own #day= or #ref=.
+      const panel = widgetHref(req.params.id, dctx).slice(to.length);
+      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(panel) ? panel : ''}`);
     }
   }
   // A module popped out of the Lobby that the Lobby doesn't allow: the sentence, not its page.
@@ -9346,17 +9421,39 @@ app.get('/api/notifications/stream', requireUser, (req, res) => {
 // to what the viewer may read:
 //   with ?space=<id>   scope 'space' (that space) and 'environment'   -- a space's panes
 //   without a space    scope 'environment' and 'spaces' (the viewer's own spaces) -- a module's environment page
+// ?space=<id>&page=1 carries both on one connection (the space page, whose Home dashboard reads the second while its
+// canvas reads the first; health audit MP-01): each event of the second view says so with `"view": "page"`, and the
+// same change may then come once for each view. `page` without a space changes nothing.
+// Every event has an `id:` line, the same on every stream for the same thing that happened (eventIdOf), so a page that
+// moves from one stream to another (public/module-stream.js) hears each thing once while both are open. The id starts
+// with this start's own token, so ids after a restart never match ones a page remembers from before it.
+const streamEventIds = new WeakMap(); // what happened (the object its emitter sent) -> its id
+const streamEventStart = crypto.randomBytes(4).toString('hex');
+let lastStreamEventId = 0;
+function eventIdOf(happened) {
+  if (!happened || typeof happened !== 'object') return `${streamEventStart}.${++lastStreamEventId}`;
+  let id = streamEventIds.get(happened);
+  if (!id) {
+    id = `${streamEventStart}.${++lastStreamEventId}`;
+    streamEventIds.set(happened, id);
+  }
+  return id;
+}
 app.get('/api/modules/stream', (req, res) => {
   const env = currentEnvironment(); // captured once: the close handler below fires later, outside this request
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
   const space = req.query.space ? store.spaceById(String(req.query.space)) : null;
   if (req.query.space && !space) return res.status(404).json({ error: `no such ${word('space')}` });
+  // The views this connection carries: the space's (or, without a space, the page's), and with page=1 the page's too.
+  const views = [{ space, view: null }];
+  if (space && req.query.page === '1') views.push({ space: null, view: 'page' });
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
-  // Where a change belongs for this viewer, or null if they may not see it.
-  const place = (moduleId, scopeKey) => {
+  const send = (v, type, happened, data) => sseWrite(res, `id: ${eventIdOf(happened)}\nevent: ${type}\ndata: ${JSON.stringify(v.view ? { ...data, view: v.view } : data)}\n\n`);
+  // Where a change belongs for this viewer in view `v`, or null if they may not see it there.
+  const place = (v, moduleId, scopeKey) => {
     const found = modules.enabled(moduleId);
     if (!found) return null;
     const { manifest, entry } = found;
@@ -9370,57 +9467,69 @@ app.get('/api/modules/stream', (req, res) => {
     if (!scopeKey.startsWith('space:')) return null;
     const r = store.spaceById(scopeKey.slice(6));
     if (!r) return null;
-    if (space) {
-      return r.id === space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
+    if (v.space) {
+      return r.id === v.space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
     }
     const mine = who.user && r.members.includes(who.user.key) && modules.isOnIn(entry.id, r.id);
     return mine && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
   };
   const onChange = listenIn(env, (change) => {
-    const at = place(change.module, change.scopeKey);
-    if (!at) return;
-    // What a guest may not receive goes from the value (hiddenFor); a guest only ever hears their own space.
-    const hide = at.spaceId ? hiddenFor(who, modules.enabled(change.module).manifest, at.spaceId) : [];
-    sseWrite(res, `event: change\ndata: ${JSON.stringify({ ...hideItem(change, hide), ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (!at) continue;
+      // What a guest may not receive goes from the value (hiddenFor); a guest only ever hears their own space.
+      const hide = at.spaceId ? hiddenFor(who, modules.enabled(change.module).manifest, at.spaceId) : [];
+      send(v, 'change', change, { ...hideItem(change, hide), ...at });
+    }
   });
   const onFire = listenIn(env, (fire) => {
-    const at = place(fire.module, fire.scopeKey);
-    if (at && at.scope !== 'spaces') sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ module: fire.module, key: fire.key, payload: fire.payload, ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, fire.module, fire.scopeKey);
+      if (at && at.scope !== 'spaces') send(v, 'schedule', fire, { module: fire.module, key: fire.key, payload: fire.payload, ...at });
+    }
   });
   // What points at (or from) an item changed: only the pointers go, and the module asks again for what it may see.
   const onLinks = listenIn(env, ({ refs }) => {
     for (const ref of refs) {
-      const at = place(ref.module, refScopeKey(ref));
-      if (at) sseWrite(res, `event: links\ndata: ${JSON.stringify({ module: ref.module, ref, ...at })}\n\n`);
+      for (const v of views) {
+        const at = place(v, ref.module, refScopeKey(ref));
+        if (at) send(v, 'links', ref, { module: ref.module, ref, ...at });
+      }
     }
   });
   // A module said something happened: sent to every module here that may hear it (the host delivers it to those frames).
   const onBus = listenIn(env, (ev) => {
-    const at = place(ev.module, ev.scopeKey);
-    if (!at) return;
-    const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
-    if (subscribers.length) sseWrite(res, `event: bus\ndata: ${JSON.stringify({ ...publicEvent(ev), scope: at.scope, subscribers })}\n\n`);
+    for (const v of views) {
+      const at = place(v, ev.module, ev.scopeKey);
+      if (!at) continue;
+      const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(v, m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
+      if (subscribers.length) send(v, 'bus', ev, { ...publicEvent(ev), scope: at.scope, subscribers });
+    }
   });
   // A request for a module to do something: the providing module's frames are told; one claims it.
   const onAction = listenIn(env, (r) => {
     if (r.local && r.by !== (who.user?.key || 'guest')) return; // a view is for the person who asked
-    const at = place(r.provider, r.scopeKey);
-    if (at) sseWrite(res, `event: action\ndata: ${JSON.stringify({ ...publicAction(r), provider: r.provider, scope: at.scope })}\n\n`);
+    for (const v of views) {
+      const at = place(v, r.provider, r.scopeKey);
+      if (at) send(v, 'action', r, { ...publicAction(r), provider: r.provider, scope: at.scope });
+    }
   });
   // A setting of a module changed: its pages here read their values again.
   // The person's other calendars changed on a read (plan-google-calendar.md, Part 2): only their own streams hear it,
   // naming the modules with the approved `external` hook, which ask again for what they show.
   if (who.user) externalCalendars.noteSeen(who.user.key);
-  const onExternal = listenIn(env, ({ userKey }) => {
-    if (!who.user || userKey !== who.user.key || !store.otherCalendarsOn()) return;
+  const onExternal = listenIn(env, (seen) => {
+    if (!who.user || seen.userKey !== who.user.key || !store.otherCalendarsOn()) return;
     const hearing = externalModules().map(({ manifest }) => manifest.id);
-    if (hearing.length) sseWrite(res, `event: external\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    if (hearing.length) for (const v of views) send(v, 'external', seen, { modules: hearing });
   });
   externalCalendars.on('change', onExternal);
   const onSettings = listenIn(env, (c) => {
     if (c.scope === 'person' && c.userKey !== who.user?.key) return;
-    if (c.scope === 'space' && !(space && space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) return;
-    sseWrite(res, `event: settings\ndata: ${JSON.stringify({ module: c.module, scope: c.scope, spaceId: c.spaceId })}\n\n`);
+    for (const v of views) {
+      if (c.scope === 'space' && !(v.space && v.space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) continue;
+      send(v, 'settings', c, { module: c.module, scope: c.scope, spaceId: c.spaceId });
+    }
   });
   moduleSettings.on('change', onSettings);
   // An object of a marker kind was written or deleted where this viewer reads it (plan-calendar-markers.md): the
@@ -9430,24 +9539,28 @@ app.get('/api/modules/stream', (req, res) => {
     if (!change.scopeKey.startsWith('space:') && change.scopeKey !== 'environment') return;
     const kind = markerKindAt(change.module, change.key);
     if (!kind) return;
-    const at = place(change.module, change.scopeKey);
-    if (!at || (space && at.scope !== 'space')) return;
-    const hearing = modules.enabledAll()
-      .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(m.manifest.id, change.scopeKey))
-      .map((m) => m.manifest.id);
-    if (hearing.length) sseWrite(res, `event: markers\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (!at || (v.space && at.scope !== 'space')) continue;
+      const hearing = modules.enabledAll()
+        .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(v, m.manifest.id, change.scopeKey))
+        .map((m) => m.manifest.id);
+      if (hearing.length) send(v, 'markers', change, { modules: hearing });
+    }
   });
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);
   moduleHooks.on('fire', onFire);
   // A linked object changed: only the modules that point at it are told, and only a viewer who may see that module here.
   const onRefChange = listenIn(env, (ev) => {
-    const hearing = [];
-    for (const holder of ev.holders) {
-      const at = place(holder.module, refScopeKey(holder));
-      if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+    for (const v of views) {
+      const hearing = [];
+      for (const holder of ev.holders) {
+        const at = place(v, holder.module, refScopeKey(holder));
+        if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+      }
+      if (hearing.length) send(v, 'refchange', ev, { ref: ev.ref, change: ev.change, modules: hearing });
     }
-    if (hearing.length) sseWrite(res, `event: refchange\ndata: ${JSON.stringify({ ref: ev.ref, change: ev.change, modules: hearing })}\n\n`);
   });
   moduleLinks.on('change', onLinks);
   objectSync.on('refchange', onRefChange);
@@ -9790,7 +9903,17 @@ setInterval(() => {
 if (adminMfaLockoutBypass) console.warn(`The lockout bypass (ADMIN_MFA_LOCKOUT_BYPASS) is on: ${BASE_DOMAIN ? 'every owner and host admin' : "every owner and the server's admin"} skips two-step sign-in entirely. Turn it off once you are back in.`);
 
 // The port it really listens on is logged, so PORT=0 (any free port, for a check) says which one it got.
-const listener = app.listen(Number(PORT), () => {
+// Express 5 hands a listen error (the port taken, no right to it) to this same callback, so it is told apart first.
+const listener = app.listen(Number(PORT), (listenError) => {
+  if (listenError) {
+    const why = listenError.code === 'EADDRINUSE'
+      ? `Port ${PORT} is already in use. Another copy of the server may still be running: close its window or stop it, then start this one again.\nTo find it: Windows \`netstat -ano | findstr :${PORT}\` then \`taskkill /PID <id> /F\`; Mac or Linux \`lsof -i :${PORT}\` then \`kill <id>\`.`
+      : listenError.code === 'EACCES'
+        ? `The server may not use port ${PORT}. Set PORT to a free port above 1024, then start it again.`
+        : `The server could not listen on port ${PORT}: ${listenError.message}`;
+    console.error(why);
+    process.exit(1);
+  }
   const port = listener.address().port;
   const fillTwins = () => {
     try {

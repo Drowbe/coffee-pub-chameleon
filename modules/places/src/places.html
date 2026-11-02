@@ -60,7 +60,7 @@
       <label class="sdk-field"><span class="sdk-label">Notes</span><textarea id="f-notes" name="notes" rows="3" maxlength="1000"></textarea><span class="sdk-hint"></span></label>
       <div class="sdk-field" role="group" aria-labelledby="f-owners-label"><span class="sdk-label" id="f-owners-label">Whose is it</span><div class="sdk-choice-list" id="f-owners"></div></div>
       <div class="editor-links" id="f-links-out">
-        <a class="btn" id="f-open-in-maps" target="_blank" rel="noopener"><span class="ic" data-icon="arrow-up-right-from-square"></span> Open in my maps app</a>
+        <a class="btn" id="f-open-in-maps" target="_blank" rel="noopener"><span class="ic" data-icon="arrow-up-right-from-square"></span> <span data-slot="label">Open in my maps app</span></a>
       </div>
       <div class="used-by" id="f-used-by" hidden><div class="used-by-title">Used by</div><div class="links" id="f-used-by-links"></div></div>
       <div class="sdk-hint" id="f-by"></div>
@@ -90,7 +90,7 @@
         <span class="scope-mark" hidden><span class="ic" data-icon=""></span><span data-slot="scope"></span></span>
         <span class="saved-state" data-slot="saved-state" hidden></span>
         <span class="marks" data-slot="marks" hidden></span>
-        <span class="pinned" data-slot="pinned"><span class="ic" data-icon="location-dot"></span> On the map</span>
+        <span class="pinned" data-slot="pinned"><span class="ic" data-icon="location-dot"></span> <span class="pinned-text">On the map</span></span>
         <span class="nopos" data-slot="nopos">No position yet</span>
         <span class="visit" data-slot="visit" hidden><span class="ic" data-icon=""></span><span data-slot="word"></span></span>
         <span class="owners" data-slot="owners"></span>
@@ -114,6 +114,8 @@
 <template id="tpl-narrow"><div class="sdk-banner" data-kind="warn" data-bar="narrow" role="alert"><span class="sdk-banner-icon" data-icon="triangle-exclamation" aria-hidden="true"></span><span class="sdk-banner-text" data-slot="text"></span><button class="btn btn-small sdk-banner-action" type="button" data-action="keep-shared">Keep it shared</button><button class="btn btn-small btn-danger sdk-banner-action" type="button" data-action="take-away">Take it away</button></div></template>
 <template id="tpl-owner"><span class="owner"></span></template>
 <template id="tpl-link"><span class="link"><span class="ic" data-icon=""></span> <b data-slot="kind"></b> <span data-slot="title"></span></span></template>
+<!-- asked when a new place repeats one already in the lists: Open it, or Save anyway -->
+<template id="tpl-duplicate"><div class="sdk-banner" data-kind="warn" data-bar="duplicate" role="alert"><span class="sdk-banner-icon" data-icon="triangle-exclamation" aria-hidden="true"></span><span class="sdk-banner-text" data-slot="text"></span><button class="btn btn-small sdk-banner-action" type="button" data-action="open-duplicate">Open it</button><button class="btn btn-small sdk-banner-action" type="button" data-action="save-anyway">Save anyway</button></div></template>
 <template id="tpl-conflict"><div class="sdk-banner" data-kind="warn" data-bar="conflict" role="alert"><span class="sdk-banner-icon" data-icon="triangle-exclamation" aria-hidden="true"></span><span class="sdk-banner-text" data-slot="text"></span><button class="btn btn-small sdk-banner-action" type="button" data-action="use-theirs">Use theirs</button><button class="btn btn-small sdk-banner-action" type="button" data-action="keep-mine">Keep mine</button></div></template>
 <template id="tpl-readonly"><div class="readonly"><dl><dt>Type</dt><dd data-slot="type"></dd><dt>Visit</dt><dd data-slot="status"></dd><dt>Address</dt><dd data-slot="address"></dd><dt>Position</dt><dd data-slot="point"></dd><dt>Whose</dt><dd data-slot="owners"></dd></dl><p data-slot="notes"></p></div></template>
 

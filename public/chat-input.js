@@ -736,16 +736,38 @@ export function looksLikeImport(text) {
 }
 // What the box does with a line, by the view it is typed in: a command runs in the Assistant (typed in the Discussion,
 // it switches there first and the Discussion shows nothing of it), in either view; in the Assistant a pasted import
-// answer is brought in ('import') and any other words ask the AI; in the Discussion words are a message. A lone or
+// answer is brought in ('import') and any other words ask the AI; in the Discussion words are a message. /ai is the one
+// built-in command (plan-chat-model.md): in either view it asks the AI the words after it, in the Assistant. A lone or
 // malformed slash stays in the box ('none').
 export function routeLine(text, view) {
   const t = String(text || '').trim();
   const v = readView(view);
   if (!t) return { run: 'none', view: v, line: '' };
+  const ask = /^\/ai(?:\s+([\s\S]*))?$/.exec(t);
+  if (ask) return { run: 'ai', view: 'assistant', line: (ask[1] || '').trim() };
   if (/^\/[a-z0-9]{1,12}(?:\s[\s\S]*)?$/.test(t)) return { run: 'command', view: 'assistant', line: t };
   if (t.startsWith('/')) return { run: 'none', view: v, line: t };
   if (v === 'assistant') return looksLikeImport(t) ? { run: 'import', view: 'assistant', line: t } : { run: 'ai', view: 'assistant', line: t };
   return { run: 'message', view: 'discussion', line: t };
+}
+// What the page says when the AI is not there for this person, in plain words, from the server's `reason` (GET .../ai:
+// 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'; '' when it is there). `words` are this environment's: its
+// word for guests, for the owner and for a space. A reason the page does not know says the server's own sentence, capitalised.
+export function aiNotice(reason, why = '', { guests = 'Guests', owner = 'owner', space = 'space' } = {}) {
+  switch (reason) {
+    case '': return '';
+    case 'guest': return `${guests} cannot use AI.`;
+    case 'space-off': return `AI is turned off in this ${space}.`;
+    case 'role': return `Your role can't use AI here: ask the ${owner}.`;
+    case 'not-set-up': return 'AI is not set up yet.';
+    case 'allowance': return "This month's AI allowance is used up.";
+    default: {
+      const w = String(why || '').replace(/\s+/g, ' ').trim();
+      if (!w) return '';
+      const out = w[0].toUpperCase() + w.slice(1);
+      return /[.!?]$/.test(out) ? out : `${out}.`;
+    }
+  }
 }
 // Whether an arriving message marks a view as new to read: the Assistant's when it lands there while the person is not
 // looking at it (another view, or Chat out of sight); the Discussion's for a message from someone else while they are
@@ -925,11 +947,16 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   // A command's own hint is left alone. In the Assistant, plain words go to the AI (routeLine), and its hint says so.
   const HINTS = ['Send a message or type / for commands', 'Send a message, or / for commands', 'Send a message'];
   const ASK_HINTS = ['Instruct the Assistant or type / for commands', 'Instruct the Assistant, or / for commands', 'Instruct the Assistant'];
+  const NO_AI_HINTS = ['Type / for commands'];
+  // Whether the AI is there for this person in this space (GET /api/spaces/:id/ai, asked when Chat opens and when the
+  // Assistant shows): unknown until asked, and then the server's reason when it is not.
+  let aiState = { known: false, available: true, reason: '', why: '', at: 0 };
+  let aiBusy = false;
   let view = 'discussion';
   let importOk = false;
   let hintCtx = null;
   function defaultHint() {
-    const list = view === 'assistant' ? ASK_HINTS : HINTS;
+    const list = view === 'assistant' ? (aiState.known && !aiState.available ? NO_AI_HINTS : ASK_HINTS) : HINTS;
     const el = input();
     const cs = el && getComputedStyle(el);
     const free = el ? el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) : 0;
@@ -941,7 +968,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   }
   function fitHint() {
     const el = input();
-    if (el && (!el.placeholder || HINTS.includes(el.placeholder) || ASK_HINTS.includes(el.placeholder))) el.placeholder = defaultHint();
+    if (el && (!el.placeholder || HINTS.includes(el.placeholder) || ASK_HINTS.includes(el.placeholder) || NO_AI_HINTS.includes(el.placeholder))) el.placeholder = defaultHint();
   }
   // Back to the view's own hint unless a command is being typed (its example shows only then): after a send, a cancel
   // or a switch of view.
@@ -1009,6 +1036,10 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   function showPicker() {
     const items = commandList();
     const byName = new Map();
+    // /ai is Chat's own command, listed first (not at Home, which has no Assistant, nor for a guest).
+    if (!isHome() && !isGuest()) {
+      byName.set('ai', [{ name: 'ai', label: aiState.known && !aiState.available ? `Ask the AI (${aiLine().replace(/\.$/, '').toLowerCase()})` : 'Ask the AI', moduleName: '', word: '', hint: 'Ask the AI a question' }]);
+    }
     for (const c of items) {
       const key = c.name;
       if (!byName.has(key)) byName.set(key, []);
@@ -1089,6 +1120,8 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     resetHint();
     paintModeTools();
     syncEmpty();
+    paintAiState();
+    if (view === 'assistant' && id && !isHome()) checkAi();
     if (list) list.scrollTop = list.scrollHeight;
   }
   // Chat came into sight (opened, the column expanded): the view showing is read.
@@ -1169,8 +1202,13 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   // On entering a space: the views, and whether this space can keep a pasted import. Private and public messages
   // alike come from GET .../chat (space.js, renderChatHistory); there is no separate AI thread to load any more.
   async function loadThread() {
+    aiContext = [];
+    paintContext();
+    aiState = { known: false, available: true, reason: '', why: '', at: 0 };
+    paintAiState();
     setViewsVisible(Boolean(spaceId()) && !isHome());
     if (!spaceId() || isHome() || !getMe()) return;
+    checkAi(true);
     await refreshImport();
   }
 
@@ -1695,12 +1733,77 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     const prev = aiContext;
     aiContext = (refs || []).filter((r) => r && r.module && r.id).map((ref) => ({ ref }));
     setView('assistant'); // a module's question is answered where answers go
+    paintContext();
     try {
       input().focus();
       const ok = await runAi(q);
       return { ok };
     } finally {
       aiContext = prev;
+      paintContext();
+    }
+  }
+
+  // --- whether the AI is there, and what is attached to the next question ---
+  // Asked of the server (GET .../ai) when Chat loads a space and when the Assistant shows; a guest is known without asking.
+  // Unknown (the ask failed) is treated as there: the server has the last word when a question is sent.
+  async function checkAi(force = false) {
+    const id = spaceId();
+    if (!id || isHome()) return aiState;
+    if (!force && aiState.known && Date.now() - aiState.at < 30000) return aiState;
+    const was = `${aiState.known}${aiState.available}${aiState.reason}`;
+    if (isGuest()) aiState = { known: true, available: false, reason: 'guest', why: '', at: Date.now() };
+    else {
+      try {
+        const r = await api('GET', `/api/spaces/${encodeURIComponent(id)}/ai`);
+        aiState = { known: true, available: Boolean(r.available), reason: r.available ? '' : String(r.reason || 'other'), why: r.available ? '' : String(r.why || 'AI is not available'), at: Date.now() };
+      } catch {
+        aiState = { known: false, available: true, reason: '', why: '', at: 0 };
+      }
+    }
+    paintAiState();
+    if (was !== `${aiState.known}${aiState.available}${aiState.reason}`) resetHint();
+    return aiState;
+  }
+  function aiLine() {
+    return aiState.known && !aiState.available ? aiNotice(aiState.reason, aiState.why, { guests: word('guest', { many: true, cap: true }), owner: word('owner'), space: word('space') }) : '';
+  }
+  // The state line above the box: only in the Assistant, only when the AI is not there.
+  function paintAiState() {
+    const el = $('chat-ai-state');
+    if (!el) return;
+    const text = view === 'assistant' && spaceId() && !isHome() ? aiLine() : '';
+    el.hidden = !text;
+    if (el.textContent !== text) el.textContent = text;
+  }
+  // The objects dropped on Chat for the next question, as chips the person can take off. They go with one question.
+  function paintContext() {
+    const wrap = $('chat-ai-context');
+    if (!wrap) return;
+    wrap.replaceChildren();
+    wrap.hidden = aiContext.length === 0;
+    aiContext.forEach((c, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'sdk-chip-removable chat-ai-chip';
+      const kind = String(c.ref.kind || word('object'));
+      const mod = canvas.list().find((m) => m.id === c.ref.module);
+      const label = `${kind[0].toUpperCase()}${kind.slice(1)}${mod ? ` from ${mod.displayName || mod.name}` : ''}`;
+      const text = document.createElement('span');
+      text.textContent = label;
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'sdk-chip-x';
+      x.setAttribute('aria-label', `Do not ask about ${label}`);
+      x.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+      x.addEventListener('click', () => { aiContext.splice(i, 1); paintContext(); input().focus(); });
+      chip.append(text, x);
+      wrap.appendChild(chip);
+    });
+    if (aiContext.length) {
+      const said = document.createElement('span');
+      said.className = 'visually-hidden';
+      said.textContent = `${aiContext.length} ${word('object', { many: aiContext.length !== 1 })} will go with your next question.`;
+      wrap.appendChild(said);
     }
   }
 
@@ -1710,6 +1813,13 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   async function runAi(question) {
     const id = spaceId();
     if (!id) { setNote(`AI is only in ${word('space', { a: true })}.`); return false; }
+    if (!String(question || '').trim()) { setNote('Type your question after /ai.', true); return false; }
+    if (aiBusy) { setNote('Still asking. Wait for the answer.'); return false; }
+    // Known to be unavailable: look again once (it may have been set up since), then say why instead of sending.
+    if (aiState.known && !aiState.available && !isGuest()) await checkAi(true);
+    if (aiState.known && !aiState.available) { setNote(aiLine(), true); return false; }
+    aiBusy = true;
+    input().setAttribute('aria-busy', 'true');
     setNote('Asking the AI...');
     try {
       const reply = await api('POST', `/api/spaces/${encodeURIComponent(id)}/ai`, {
@@ -1717,12 +1827,20 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
         refs: aiContext.map((c) => c.ref).filter(Boolean),
       });
       setNote('');
+      // What was attached went with this question only.
+      aiContext = [];
+      paintContext();
       if (reply.question) addStored(reply.question);
       if (reply.message) addStored(reply.message);
       return true;
     } catch (err) {
-      setNote(err.message || 'The AI could not answer.', true);
+      // The server's own sentence for a refusal (403, 429, 400); a failure of the AI service is said plainly.
+      const said = String(err.message || 'The AI could not answer.');
+      setNote(said[0].toUpperCase() + said.slice(1) + (/[.!?]$/.test(said) ? '' : '.'), true);
       return false;
+    } finally {
+      aiBusy = false;
+      input().removeAttribute('aria-busy');
     }
   }
 
@@ -2044,6 +2162,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     const parsed = parseCommand(input().value);
     if (input().value.trim() === '/') showPicker();
     if (!parsed) input().placeholder = defaultHint();
+    else if (parsed.name === 'ai') input().placeholder = 'Ask the AI a question';
     else {
       const hit = matchesFor(parsed.name)[0];
       if (hit && hit.hint) input().placeholder = hit.hint;
@@ -2053,13 +2172,15 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   $('chat').addEventListener('drop', (event) => {
     const raw = event.dataTransfer?.getData(OBJECT_MIME);
     // An object dropped while asking the AI: plain words in the Assistant (routeLine).
-    const asking = view === 'assistant' && !parseCommand(input().value || '');
+    const typed = parseCommand(input().value || '');
+    const asking = view === 'assistant' && (!typed || typed.name === 'ai');
     if (!raw || !asking) return;
     try {
       const ref = JSON.parse(raw);
       if (ref && ref.module && ref.id) {
-        aiContext.push({ ref });
-        setNote(`Asking with ${aiContext.length} ${word('object', { many: aiContext.length !== 1 })}`);
+        if (!aiContext.some((c) => c.ref.module === ref.module && c.ref.id === ref.id)) aiContext.push({ ref });
+        setNote('');
+        paintContext();
       }
     } catch {
       // not an object
@@ -2099,7 +2220,8 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     // A pasted answer sent from the box (routeLine 'import'): true when its objects are shown.
     importText: (text) => checkObjects(text),
     // Words typed in the Assistant: asked of the AI. True when the answer came.
-    ask: (text) => { setNote(''); return runAi(text); },
+    ask: (text) => { setNote(''); if (view !== 'assistant') setView('assistant'); return runAi(text); },
+    checkAi,
     note: setNote,
     askAbout,
     // Send to... (plan-object-handoff.md): whether a message's menu offers it, from the actions held now; and the menu.
