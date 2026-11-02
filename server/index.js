@@ -577,12 +577,17 @@ function envSlot(provider) {
 function managedSlot(provider) {
   const saved = hostRegistry ? hostRegistry.managedAi[provider] : null;
   const env = envSlot(provider);
+  const address = provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '';
+  // The environment's key belongs to the environment's address (AI_ADDRESS): once a host admin saves another address for
+  // the compatible service, that key is never sent there; a key has to be saved with the new address.
+  const trim = (a) => String(a || '').trim().replace(/\/$/, '');
+  const envKeyHere = provider !== 'compatible' || trim(address) === trim(env.address);
   return {
     model: (saved && saved.model) || env.model || '',
     key: (saved && saved.key) || '',
-    address: provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '',
+    address,
     workspace: provider === 'anthropic' ? ((saved && saved.workspace) || env.workspace || '') : '',
-    envKey: env.key,
+    envKey: envKeyHere ? env.key : '',
   };
 }
 // The host's managed AI offer, every company at once, as an Ai instance reads it: real values, including keys,
@@ -5635,7 +5640,7 @@ function aiServiceRefusal() {
   }
   if (ai.overCap()) return { status: 429, reason: 'allowance', why: OVER_CAP };
   const calls = aiCallsRefusal();
-  if (calls) return { status: 403, reason: 'allowance', why: calls };
+  if (calls) return { status: 429, reason: 'allowance', why: calls };
   return null;
 }
 
@@ -5666,10 +5671,12 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const down = aiRefusalFor(found.who, found.space);
   if (down) return res.status(down.status).json({ error: down.why });
   const me = found.who.user.key;
+  if (req.body?.question !== undefined && req.body?.question !== null && typeof req.body.question !== 'string') return res.status(400).json({ error: 'the question must be text' });
   const question = String(req.body?.question || '').trim();
   const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : [];
   // Only this space's own objects go to the AI: what is asked, and so the answer kept here, never draws on another space.
-  if (refs.some((ref) => ref && ref.scope === 'space' && ref.space !== found.space.id)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
+  // (Not the person's own objects nor the environment's either: the answer is kept here and can be made public here.)
+  if (refs.some((ref) => !ref || ref.scope !== 'space' || ref.space !== found.space.id)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
   const material = [];
   const given = [];
   for (const ref of refs) {
@@ -5701,7 +5708,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     noteActivity('chat', `asked the AI (${out.tokens} tokens)`, me, found.space.id);
     res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
   } catch (err) {
-    if (err instanceof AiError) moduleLimits.refund('chat', me, 'ai'); // it failed: it does not count
+    if (err instanceof AiError && err.refund) moduleLimits.refund('chat', me, 'ai'); // failed before the service did any work: it does not count
     sendAiError(err, res);
   }
 });
@@ -7678,6 +7685,18 @@ app.put('/api/ai', requireOwner, async (req, res) => {
     sendAiError(err, res);
   }
 });
+// The sentence refusing a set of refs that holds an object from a space where this person may not use AI (the space's AI
+// is off, or their role there may not use it), or ''. A ref to a space that does not exist is left to resolveRef.
+function aiRefusedSpaceOf(who, refs) {
+  const spaces = new Set(refs.filter((ref) => ref && ref.scope === 'space' && typeof ref.space === 'string').map((ref) => ref.space));
+  for (const id of spaces) {
+    const space = store.spaceById(id);
+    if (!space) continue;
+    if (space.aiOff) return `one of those ${word('object', { many: true })} is in ${word('space', { a: true })} with AI turned off`;
+    if (who.user && !store.spacePermissions(who.user.key, space.id).useAi) return `one of those ${word('object', { many: true })} is in ${word('space', { a: true })} where your role may not use AI`;
+  }
+  return '';
+}
 // Whether AI is available to this person here (for a page to show or hide its buttons): { available, why? }.
 function aiAllowed(ctx) {
   const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
@@ -7756,6 +7775,10 @@ app.post('/api/modules/:id/ai', async (req, res) => {
   const refs = Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : [];
   // Only the objects of the space the module is asked in go to the AI.
   if (ctx.spaceId && refs.some((ref) => ref && ref.scope === 'space' && ref.space !== ctx.spaceId)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
+  // Asked outside a space (the environment's or the person's own page), an object from a space still goes only where AI may
+  // be used for this person in that space: never from a space with AI turned off, nor one where their role may not use AI.
+  const refused = aiRefusedSpaceOf(ctx.who, refs);
+  if (refused) return res.status(403).json({ error: refused });
   // The objects are read as this person: only what they may see, and only kinds this module produces or was approved to link to.
   const material = [];
   const given = [];
@@ -7771,7 +7794,7 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     }
   }
   const task = String(req.body?.task || '');
-  // A bad ask is refused before it is counted, and one that fails is given back: only asks that are carried out use a turn.
+  // A bad ask is refused before it is counted, and one that fails before the service did any work is given back (AiError.refund).
   try { ai.validateAsk(task, material.length, req.body?.question); } catch (err) { return sendAiError(err, res); }
   if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
   try {
@@ -7786,7 +7809,7 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     noteActivity(ctx.manifest.id, `used AI to ${task} (${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
     res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens });
   } catch (err) {
-    if (err instanceof AiError) moduleLimits.refund(ctx.manifest.id, ctx.by, 'ai');
+    if (err instanceof AiError && err.refund) moduleLimits.refund(ctx.manifest.id, ctx.by, 'ai'); // failed before the service did any work
     sendAiError(err, res);
   }
 });
@@ -9603,7 +9626,9 @@ app.get('/api/modules/stream', (req, res) => {
   const onSettings = listenIn(env, (c) => {
     if (c.scope === 'person' && c.userKey !== who.user?.key) return;
     for (const v of views) {
-      if (c.scope === 'space' && !(v.space && v.space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) continue;
+      // A space's setting goes only to a view that may read that module there (the same rule as its data's changes), so
+      // opening another space's stream as a non-member or another space's guest tells nothing of it.
+      if (c.scope === 'space' && !place(v, c.module, `space:${c.spaceId}`)) continue;
       send(v, 'settings', c, { module: c.module, scope: c.scope, spaceId: c.spaceId });
     }
   });
@@ -10010,6 +10035,10 @@ const listener = app.listen(Number(PORT), (listenError) => {
     return;
   }
   console.log(`${PRODUCT_NAME} ${VERSION} listening on :${port}, ${HAS_CALL_SERVICE ? `LiveKit at ${LIVEKIT_HOST}` : 'no LiveKit'}, base domain ${BASE_DOMAIN}, ${environments.size} environment${environments.size === 1 ? '' : 's'}, host console at ${CONSOLE_HOST}, product pages at ${PRODUCT_HOST}`);
+  // The developer's escape hatches for an environment's own AI address (server/ai-http.js, guardFrom): said out loud, since on
+  // a real host they let any owner make this server call plain http or its own network.
+  if (process.env.AI_ALLOW_HTTP === '1') console.warn('[ai] AI_ALLOW_HTTP=1: owners may point their AI service at a plain http address. Unset it on a real host.');
+  if (process.env.AI_ALLOW_PRIVATE_ADDRESSES === '1') console.warn('[ai] AI_ALLOW_PRIVATE_ADDRESSES=1: owners may point their AI service at this server\'s own network. Unset it on a real host.');
   for (const env of environments.values()) envContext.run(env, fillTwins);
 });
 // A library file of 2 GB takes longer than Node's own five minutes for a whole request on most connections, so a request

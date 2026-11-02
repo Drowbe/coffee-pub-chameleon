@@ -19,7 +19,9 @@ class AiNetError extends Error {
 
 const blocked = new net.BlockList();
 for (const [net4, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]]) blocked.addSubnet(net4, bits, 'ipv4');
-for (const [net6, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32], ['100::', 64]]) blocked.addSubnet(net6, bits, 'ipv6');
+// ::/96 (unspecified and the old IPv4-compatible form, ::7f00:1), local NAT64 64:ff9b:1::/48 and Teredo 2001::/32 can all
+// reach a private IPv4 address, so they are refused whole.
+for (const [net6, bits] of [['::', 96], ['::1', 128], ['64:ff9b:1::', 48], ['2001::', 32], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32], ['100::', 64]]) blocked.addSubnet(net6, bits, 'ipv6');
 
 // The IPv4 address inside an IPv6 one that carries it (::ffff:a.b.c.d, 64:ff9b::/96, 6to4 2002::/16), or ''.
 function embeddedV4(ip) {
@@ -108,9 +110,17 @@ async function request(url, { method = 'GET', headers = {}, body, timeoutMs = 15
   const lib = u.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     let done = false;
-    const finish = (fn, value) => { if (done) return; done = true; clearTimeout(timer); fn(value); };
+    let answered = false; // the service began its answer (a status line came back): it may have done, and billed, the work
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (value instanceof AiNetError) value.answered = answered;
+      fn(value);
+    };
     const opts = { method, headers: { ...headers, ...(body !== undefined ? { 'Content-Length': Buffer.byteLength(body) } : {}) }, ...(guard && !guard.allowPrivate ? { lookup: guardedLookup } : {}) };
     const req = lib.request(u, opts, (res) => {
+      answered = true;
       if (res.statusCode >= 300 && res.statusCode < 400) { res.resume(); req.destroy(); return finish(reject, new AiNetError('redirect', `redirect ${res.statusCode}`)); }
       const chunks = [];
       let size = 0;

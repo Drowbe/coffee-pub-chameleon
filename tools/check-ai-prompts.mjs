@@ -42,6 +42,9 @@ const stub = http.createServer((req, res) => {
     const send = (text, finish = 'stop', status = 200) => { res.statusCode = status; res.end(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: finish }], usage: { total_tokens: 12 } })); };
     if (script) { const s = script; return send(s.text, s.finish); }
     if (/ERR500/.test(last)) { res.statusCode = 500; return res.end(JSON.stringify({ error: { message: 'stub internal failure' } })); }
+    // An answer the service worked on (and billed) that is no use: blank, 900 tokens; and a refusal of its own (a content filter).
+    if (/BLANK/.test(last)) return res.end(JSON.stringify({ choices: [{ message: { content: '   ' }, finish_reason: 'stop' }], usage: { total_tokens: 900 } }));
+    if (/FILTER/.test(last)) { res.statusCode = 400; return res.end(JSON.stringify({ error: { message: 'content filtered' } })); }
     if (/ECHO/.test(last)) return send(`SYSTEM:\n${system}\n\nLAST:\n${last}`);
     send('A short answer.');
   });
@@ -154,7 +157,9 @@ await test('ai-13: the saved key stays with the address it was saved for', async
 
 await test('ai-14: a hosted owner cannot make the server call a private address', async () => {
   for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', '::', 'fe80::1', 'fd00::1', '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:169.254.169.254', '64:ff9b::7f00:1', '2002:7f00:1::', 'not an ip']) assert.equal(isPrivateAddress(ip), true, ip);
-  for (const ip of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8']) assert.equal(isPrivateAddress(ip), false, ip);
+  // The IPv6 forms that can still reach a private IPv4 address: the old IPv4-compatible ::/96, local NAT64 and Teredo.
+  for (const ip of ['::7f00:1', '::a9fe:a9fe', '64:ff9b:1::7f00:1', '2001:0:4136:e378:8000:63bf:3fff:fdd2']) assert.equal(isPrivateAddress(ip), true, ip);
+  for (const ip of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '2001:4860:4860::8888']) assert.equal(isPrivateAddress(ip), false, ip);
   const guard = { allowHttp: false, allowPrivate: false };
   for (const a of ['http://example.com/v1', 'https://127.0.0.1/v1', 'https://localhost/v1', 'https://[::1]/v1', 'https://169.254.169.254/latest', 'https://10.0.0.5', 'https://[::ffff:127.0.0.1]/', 'https://2130706433/', 'https://0x7f.1/', 'ftp://x']) {
     await assert.rejects(assertAddressAllowed(a, guard), (e) => e.code === 'blocked', a);
@@ -191,6 +196,32 @@ await test('ai-16: error sentences are plain', async () => {
   } finally { console.warn = warn; }
 });
 
+await test('ai-15: a failed ask is given back only when the service did no work, and what it reports is counted', async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const dead = fresh();
+    dead.set({ enabled: true, provider: 'compatible', address: 'http://127.0.0.1:1', model: 'm' });
+    await assert.rejects(dead.run('ask', [], 'hello there'), (e) => e.refund === true, 'no connection: given back');
+    await assert.rejects(setUp().run('ask', [], 'ERR500 please'), (e) => e.refund === true, 'the service down: given back');
+    await assert.rejects(setUp().run('ask', [], 'FILTER this'), (e) => e.refund === false && e.message === 'The AI service could not answer.', 'its own refusal: counted');
+    const blank = setUp();
+    await assert.rejects(blank.run('ask', [], 'BLANK please'), (e) => e.refund === false && e.message === 'The AI service gave no answer.', 'a blank answer: counted');
+    assert.equal(blank.usageView().tokens, 900, 'the tokens it reported are recorded');
+    await assert.rejects(fresh().run('ask', [], 'hello there'), (e) => e.refund === true, 'not set up: given back');
+  } finally { console.warn = warn; }
+});
+
+await test('a key with a line break is refused when typed, never saved; a question must be text', async () => {
+  for (const key of ['sk-abc\r\nX-Evil: 1', 'sk-abc\ndef', 'sk\tabc']) {
+    assert.throws(() => setUp({ key }), (e) => e instanceof AiError && e.status === 400 && e.message === 'a key is one line of text, without line breaks or tabs', JSON.stringify(key));
+    assert.throws(() => applyManagedFields('openai', {}, { key, model: 'm' }), (e) => e.message === 'a key is one line of text, without line breaks or tabs');
+  }
+  await assert.rejects(setUp().listModels({ provider: 'compatible', address, key: 'a\nb' }), (e) => e.message === 'a key is one line of text, without line breaks or tabs');
+  assert.equal(setUp({ key: '  sk-ok  ' }).view().keySet, true, 'spaces around a key are trimmed, as before');
+  assert.throws(() => setUp().validateAsk('ask', 0, { a: 1 }), (e) => e.message === 'the question must be text');
+});
+
 // ---- through a throwaway server ----
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-ai-prompts-'));
 fs.writeFileSync(path.join(dataDir, 'ai.json'), JSON.stringify({ source: 'custom', provider: 'compatible', address, model: 'stand-in', key: '', enabled: true }));
@@ -221,11 +252,11 @@ try {
   const login = async (name, password) => (await call('POST', '/api/login', { body: { login: name, password } })).json.token;
   const owner = await login('admin', 'testpass1234');
   const mk = async (name) => (await call('POST', '/api/users', { cookie: owner, body: { login: name, displayName: name, role: 'member', password: 'memberpass1234' } })).json.user;
-  const [pat, sam, quin, mo] = [await mk('pat'), await mk('sam'), await mk('quin'), await mk('mo')];
-  const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [pat.key, sam.key, quin.key, mo.key] } })).json.space;
+  const [pat, sam, quin, mo, kit] = [await mk('pat'), await mk('sam'), await mk('quin'), await mk('mo'), await mk('kit')];
+  const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Trip', members: [pat.key, sam.key, quin.key, mo.key, kit.key] } })).json.space;
   await call('PATCH', `/api/users/${mo.key}/spaces/${space.id}`, { cookie: owner, body: { permissions: { moderator: true } } });
   const other = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Elsewhere', members: [pat.key] } })).json.space;
-  const tok = { pat: await login('pat', 'memberpass1234'), sam: await login('sam', 'memberpass1234'), quin: await login('quin', 'memberpass1234'), mo: await login('mo', 'memberpass1234') };
+  const tok = { pat: await login('pat', 'memberpass1234'), sam: await login('sam', 'memberpass1234'), quin: await login('quin', 'memberpass1234'), mo: await login('mo', 'memberpass1234'), kit: await login('kit', 'memberpass1234') };
   const A = `/api/spaces/${space.id}/ai`;
   const ask = (who, q, extra = {}) => call('POST', A, { cookie: tok[who], body: { question: q, ...extra } });
 
@@ -302,15 +333,67 @@ try {
   assert.equal(r.json.error, 'You have asked the AI too many times in a minute. Try again in a moment.');
   assert.ok(!/module/i.test(r.json.error));
 
-  // ai-18: AI off and on again brings back what it switched off.
+  // ai-15: an ask the service answered uselessly (blank, 900 tokens billed) still uses a turn and is recorded; six of them
+  // and the seventh is slowed. A refusal of the service's own (a content filter) counts the same way.
+  const usedBefore = (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens;
+  for (let i = 0; i < 5; i++) {
+    r = await ask('kit', `BLANK answer ${i}`);
+    assert.deepEqual([r.status, r.json.error], [502, 'The AI service gave no answer.']);
+  }
+  r = await ask('kit', 'FILTER this one');
+  assert.deepEqual([r.status, r.json.error], [502, 'The AI service could not answer.']);
+  r = await ask('kit', 'a real question now');
+  assert.equal(r.status, 429, `the seventh ask in a minute after six the service answered is slowed: ${r.text}`);
+  const usedAfter = (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens;
+  assert.ok(usedAfter - usedBefore >= 5 * 900, `the blank answers' tokens are recorded (${usedBefore} -> ${usedAfter})`);
+
+  // ai-12: Chat's /ai takes only this space's objects: not the person's own, nor the environment's. A question must be text.
+  seen.length = 0;
+  for (const ref of [{ module: 'research', kind: 'note', scope: 'person', id: 'n1' }, { module: 'research', kind: 'note', scope: 'environment', id: 'n1' }]) {
+    r = await ask('sam', 'hello there', { refs: [ref] });
+    assert.deepEqual([r.status, r.json.error], [400, 'only objects from this space can be sent to the AI'], `${ref.scope}: ${r.text}`);
+  }
+  r = await ask('sam', { a: 1 });
+  assert.deepEqual([r.status, r.json.error], [400, 'the question must be text']);
+  assert.equal(seen.length, 0, 'none of those reached the service');
+
+  // ai-09: a space's AI switch holds at every door. A module asked at person scope with an object from a space whose AI is
+  // off is refused, and nothing reaches the service.
+  assert.equal((await call('POST', '/api/modules/bundled/research/install', { cookie: owner, body: {} })).status, 201);
+  assert.equal((await call('PATCH', '/api/modules/research', { cookie: owner, body: { enabled: true, allSpaces: true } })).status, 200);
+  const secret = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Secret', members: [pat.key] } })).json.space;
+  r = await call('PUT', `/api/modules/research/data/${encodeURIComponent('note:n1')}?scope=space&space=${secret.id}`, { cookie: tok.pat, body: { value: { title: 'Plan', text: 'TOPSECRET material' } } });
+  assert.equal(r.status, 200, r.text);
+  await call('PATCH', `/api/spaces/${secret.id}`, { cookie: owner, body: { aiOff: true } });
+  const secretRef = { module: 'research', kind: 'note', scope: 'space', space: secret.id, id: 'n1' };
+  seen.length = 0;
+  r = await call('POST', '/api/modules/research/ai?scope=person', { cookie: tok.pat, body: { task: 'ask', question: 'what is in it?', objects: [secretRef] } });
+  assert.deepEqual([r.status, r.json?.error], [403, 'one of those objects is in a space with AI turned off'], r.text);
+  r = await call('POST', `/api/modules/research/ai?scope=space&space=${secret.id}`, { cookie: tok.pat, body: { task: 'ask', question: 'what is in it?', objects: [secretRef] } });
+  assert.equal(r.status, 403, 'asked in the space itself: refused, as before');
+  assert.ok(!seen.some((s) => JSON.stringify(s.body).includes('TOPSECRET')), 'the AI-off space\'s object never reached the service');
+  await call('PATCH', `/api/spaces/${secret.id}`, { cookie: owner, body: { aiOff: false } });
+  r = await call('POST', '/api/modules/research/ai?scope=person', { cookie: tok.pat, body: { task: 'ask', question: 'what is in it?', objects: [secretRef] } });
+  assert.equal(r.status, 200, `AI on in that space again: the same ask is answered: ${r.text}`);
+
+  // ai-18: AI off and on again brings back what it switched off: a module that needs AI (hooks.ai true) goes off with the
+  // service and comes back with it; one that only uses it when it is on (the Assistant, hooks.ai "optional") stays on throughout.
+  const { zipFiles } = require('../server/module-build.js');
+  const needsAi = zipFiles([['module.json', Buffer.from(JSON.stringify({ id: 'needs-ai', name: 'Needs AI', version: '1.0.0', scope: ['space'], surfaces: { canvas: { entry: 'canvas.html' } }, hooks: { ai: true } }))], ['canvas.html', Buffer.from('<!doctype html><p>x</p>')]]);
+  const up = await fetch(`http://127.0.0.1:${port}/api/modules`, { method: 'POST', headers: { cookie: `app_session=${owner}`, 'content-type': 'application/zip', accept: 'application/json' }, body: needsAi });
+  assert.equal(up.status, 201, await up.clone().text());
+  assert.equal((await call('PATCH', '/api/modules/needs-ai', { cookie: owner, body: { enabled: true, allSpaces: true } })).status, 200);
   assert.equal((await call('POST', '/api/modules/bundled/assistant/install', { cookie: owner, body: {} })).status, 201);
   assert.equal((await call('PATCH', '/api/modules/assistant', { cookie: owner, body: { enabled: true, allSpaces: true } })).status, 200);
-  const assistantOn = async () => (await call('GET', '/api/modules', { cookie: owner })).json.modules.find((m) => m.id === 'assistant').enabled;
-  assert.equal(await assistantOn(), true);
+  const isOn = async (id) => (await call('GET', '/api/modules', { cookie: owner })).json.modules.find((m) => m.id === id).enabled;
+  assert.deepEqual((await call('GET', '/api/ai', { cookie: owner })).json.dependents.map((m) => m.id), ['needs-ai'], 'only the module that needs AI depends on it');
+  r = await call('PUT', '/api/ai', { cookie: owner, body: { enabled: false } });
+  assert.deepEqual([r.status, r.json.error], [400, 'Needs AI needs the AI service; turn it off too?'], 'not forced: asked first');
+  assert.deepEqual([await isOn('needs-ai'), await isOn('assistant')], [true, true]);
   assert.equal((await call('PUT', '/api/ai', { cookie: owner, body: { enabled: false, force: true } })).status, 200);
-  assert.equal(await assistantOn(), false);
+  assert.deepEqual([await isOn('needs-ai'), await isOn('assistant')], [false, true], 'off: the module that needs AI goes, the Assistant stays');
   assert.equal((await call('PUT', '/api/ai', { cookie: owner, body: { enabled: true } })).status, 200);
-  assert.equal(await assistantOn(), true, 'the Assistant is back');
+  assert.deepEqual([await isOn('needs-ai'), await isOn('assistant')], [true, true], 'on again: the module that needs AI is back, the Assistant still on');
 
   // ai-13 over the wire: a new address does not inherit the saved key.
   assert.equal((await call('PUT', '/api/ai', { cookie: owner, body: { key: 'sk-saved' } })).json.ai.keySet, true);
