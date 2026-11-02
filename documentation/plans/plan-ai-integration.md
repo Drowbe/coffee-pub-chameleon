@@ -8,10 +8,10 @@ used, cut short, the ask box from availability), the AI usage view, and later th
 and the AI inbox; quality-assurance reviews the policy layer and its redaction as a security change, and later the
 tokens, the OAuth pages and the MCP endpoint; content-manager documents.
 
-**Status:** draft for Thomas, first written 2026-11-02; eight decisions made on 2026-11-02 after the AI audit (below: four
-on the direction, then four answers to open questions 12, 13, 15 and 17).
-Slice 1, the prompt layer, is planned here and not built; it waits on the open questions marked as blocking it. The
-cheap must-fixes from the audit are being built now, outside this plan (see "Being built now"). From GitHub #382,
+**Status:** draft for Thomas, first written 2026-11-02; fifteen decisions made on 2026-11-02 after the AI audit (below: four
+on the direction, then Thomas's answers to the open questions). Slice 1 has no open questions left and is ready to build.
+Slice 1, the prompt layer, is planned here and not built. The cheap must-fixes from the audit landed in `4eccbae`,
+outside this plan (see "Being built now"). From GitHub #382,
 raised by Thomas on 2026-11-02: today "a person pastes our custom prompt into the client, copies the JSON it returns,
 and pastes that into the app. It works anywhere but is manual, error-prone and one-way", and inside the app "a prompt
 goes out and JSON comes back that we parse". Thomas wants "a better process for both. Ideally ChatGPT (or Claude) could
@@ -110,7 +110,10 @@ person can read is sent, and the answer, stored in the current space, can be mad
 
 ### Being built now (the cheap must-fixes)
 
-From the audit, outside this plan, built before slice 1 starts. Slice 1 keeps each one and moves it into the layer
+From the audit, outside this plan, built before slice 1 starts. The server half landed in `4eccbae` (2026-11-02):
+it already applies decision 1's rule to Chat (`aiRefusalFor`, `aiServiceRefusal`), added `server/ai-http.js`, and
+added `tools/check-ai-prompts.mjs` with a stand-in service, which step 1 grows into the fake model. The file and line
+numbers in this plan are at `d2d9897` and have moved; the functions named are what slice 1 replaces. Slice 1 keeps each one and moves it into the layer
 that owns it:
 
 - **On the server:** ai-03 (the prompt's example no longer parsed as an object), ai-04 (a cut-off answer: complete
@@ -181,6 +184,21 @@ Thomas, 2026-11-02, answering open questions 12, 13, 15 and 17:
    what to send." Environment-wide objects, asks with no space, and the other parts of the rollup are governed by an
    owner's setting, **What AI may see**, designed below. The setting can only narrow what is sent, never widen it past
    the person's own read rights or past the current space.
+
+Thomas, 2026-11-02, approving the rest:
+
+9. **What AI may see is approved as designed:** the switches, the defaults, owners and the admin setting it, the
+   **AI used:** line, and that it can only narrow.
+10. **Today is in the asker's browser time zone,** the server's as the fallback (open question 14).
+11. **A public answer may draw on objects some members can't open;** each reader's **AI used:** line shows only what
+    they may open (open question 16).
+12. **Bringing in pasted objects is not AI use:** signed in, not a guest, and the module's write access; neither
+    `useAi` nor the space's AI switch (open question 18).
+13. **Structured output from a `compatible` service is tried,** with a fall back to prompt-then-parse when the service
+    refuses the schema, remembered per saved setting (open question 19).
+14. **Full prompts are logged only through an environment variable,** off by default and refused on a hosted install;
+    **a prompt is rolled back by an environment variable** that pins the previous version (open questions 20 and 21).
+15. **Call records, with no content, are kept 30 days** (open question 23).
 
 ### Choices the plan made
 
@@ -256,8 +274,8 @@ render, then adapter, then parse, then record. It loses `ASK_FRAME`, `FRAME`, `b
   of the attached objects and the rollup objects the answer drew on. For `tags`: `{ tags }`, up to 6, plain text (HTML
   stripped first, ai-25). For `paste`: no contract, it is text for a person.
 - **Versions.** Any change to what a template renders or parses is a new version. The check fails when a rendered
-  golden prompt changes and the version did not. The registry keeps the current version and, while open question 21
-  is open, nothing older.
+  golden prompt changes and the version did not. The registry keeps the current version and the one before it, for
+  rollback (decision 14).
 
 ### The policy layer
 
@@ -292,8 +310,8 @@ the real count after, so two questions at once can't pass the allowance together
 **One set of refusal sentences,** plain and capitalised, in the template's words, used by every route and by
 availability. Provider detail goes to the server log, never to the page (ai-16).
 
-**Bringing in pasted objects** calls no AI; whether it follows this rule is open question 18. Until then it keeps
-today's rule.
+**Bringing in pasted objects** calls no AI and is not AI use (decision 12): `aiPolicy.importRefusal` checks only that
+the person is signed in, not a guest, and has the module's write access.
 
 ### What AI may see (the owner's setting, decision 8)
 
@@ -380,7 +398,7 @@ message the person made public still counts as theirs.
 | Part | What | Cap |
 |---|---|---|
 | The space | Its name; the template's word for a space and for objects | 200 characters |
-| Dates | Today's date and weekday in the asker's time zone (open question 14); the space's phases from the template with their dates (`space.phases`, `public/phases.js`), and which phase today is in | 12 phases |
+| Dates | Today's date and weekday in the asker's browser time zone, sent as `tz` with the ask, the server's (`ics.serverZone()`) when absent (decision 10); the space's phases from the template with their dates (`space.phases`, `public/phases.js`), and which phase today is in | 12 phases |
 | The person | The asker's display name and role word | |
 | Attached objects | The objects the person attached, with their text, as `material` | 12 objects, the material budget |
 | Relevant objects | Summaries (kind, title, when, place, no text) of the current space's objects: the best 15 by word match of the question (and the last turn) against the summaries `GET /api/objects/search` makes, plus every dated object from today to 7 days ahead (decision 7) | 15 matched, plus the dated ones up to 30 |
@@ -399,7 +417,8 @@ words) may be cached per space and dropped on any change to the space.
 
 **The privacy rule.** The rollup contains only what the person could open themselves, now, in this space. The answer
 records which objects it drew on (`used`, as pointers); nothing else of the rollup is kept. When the answer is made
-public, what others see of `used` is open question 16.
+public, it may have drawn on objects some readers can't open; each reader's **AI used:** line shows only what that
+reader may open, and "and N others" for the rest (decision 11).
 
 **The budget** (numbers proposed in open question 22). Tokens are estimated from characters before sending (about
 four characters to a token, rounded up) and the real counts come from the provider afterwards. When the prompt is over
@@ -413,7 +432,9 @@ the object itself kept). The question is never cut: one over 1,000 characters is
   and its answer into `{ text, structured?, finish, tokens: { in, out }, model }`.
 - **Structured output** where the provider takes a schema: OpenAI's JSON schema response format (strict), and for
   Anthropic its structured output or a single forced tool whose input is the output contract, whichever the adapter
-  targets when built. A `compatible` service: open question 19.
+  targets when built. A `compatible` service: tried with the schema first; when it refuses the schema the adapter falls back to
+  prompt-then-parse and remembers that for the saved setting, until the setting changes (decision 13). The record
+  says which was used.
 - **The finish reason** is one of `stop`, `length`, `filter`, `error`. On `length` the complete objects are kept, a
   partial one is dropped and the answer is marked cut short (carries ai-04 into the adapters). An answer cut by the
   stored limit is marked too (ai-21).
@@ -438,12 +459,14 @@ Each existing prompt moves, and the old code is deleted in the same step; no old
 
 ### Observability
 
-- **A record per call,** kept in `DATA_DIR/ai-log.jsonl` (how long is open question 23): when, the environment, space,
+- **A record per call,** kept in `DATA_DIR/ai-log.jsonl` (kept 30 days, decision 15): when, the environment, space,
   person, purpose, template and version, provider and model, tokens in and out, the finish reason, how long it took,
   the outcome (answered, refused and why, or the error's kind), and counts of what was sent (history turns, attached,
   rollup and linked objects, and what was left out). Never the key, a header, the question, the material or the
   answer.
-- **Full prompts** are never logged by default; a debugging switch is open question 20.
+- **Full prompts** are never logged by default. `AI_LOG_PROMPTS=1` writes each rendered prompt, redacted and without
+  the key, to the server log; it is off by default and refused (ignored, with one line in the log at start) on a
+  hosted install with `BASE_DOMAIN` (decision 14).
 - **`ai-usage.json`** gains tokens by template version, by person and by space for the month, beside tokens by task.
 - **The AI usage view** (pages half). On Manage > Modules, the AI service tab, for owners: this month's tokens and
   calls by template, by person and by space, refusals by reason, errors, cut-short answers, and the last 50 calls as
@@ -455,7 +478,9 @@ Each existing prompt moves, and the old code is deleted in the same step; no old
 - Every stored answer and every record names the template version that made it, so a bad answer can be traced to a
   version and a model.
 - A new version ships with its golden files; the check fails when they disagree.
-- How to go back to the previous version without a new image is open question 21.
+- **Rollback** (decision 14): `AI_PROMPT_VERSIONS` pins a template to its previous version (`AI_PROMPT_VERSIONS=ask@1`);
+  a pin naming a version the registry doesn't keep is ignored with one line in the log at start. The previous
+  version keeps its golden files until it is dropped.
 
 ### What a person sees (the pages half)
 
@@ -599,37 +624,45 @@ Sizes: S (a day or less), M (a few days), L (a week or more). Each step can be b
 
 ### Slice 1: the prompt layer
 
-Starts once the must-fixes being built now are in, and once the open questions marked as blocking a step are answered.
+Ready to build: no open question blocks it. Sizes: small (a day or less), medium (a few days), large (a week or more).
+Each step is built, checked, reviewed and committed before the next starts.
 
-1. **The fake model and the harness (M).** server-development: `tools/fake-model.mjs` (from the audit's stub: OpenAI
-   chat completions and Anthropic messages shapes, scripted answers for normal, echo, cut off, empty, not JSON, 401,
-   429, 500, slow, structured and Markdown); `tools/check-prompts.mjs` with `--update` to write golden files, run first
-   against today's routes so the starting behaviour is recorded. Added to `npm run check`.
-2. **The policy layer (M).** server-development: `server/ai-policy.js` with decision 1's rule, the door rules, the
-   reserved cap, the rate limit, space pinning, the redaction list and the refusal sentences; every AI and availability
-   route switched to it, and `chatAiRefusal`, `chatAiSpace`, `aiAllowed` deleted (`importRefusal` per open question 18).
-   The Roles page's label becomes **Use AI**, on by default for moderators and members (decision 5, `ROLE_DEFAULTS` in
-   `server/store.js`; test data may be reset). **What AI may see:** `sees` in the AI setting and `aiSees` on a space,
-   their cleaning and refusals, the effective setting, and its check cases (above). experience-design: the What AI may
-   see section on Set up and on Manage's AI service tab. Security review by quality-assurance. Blocked only by open
-   question 18, for the import door.
-3. **The registry and the adapters (L).** server-development: `server/prompts/` with `ask`, `summarise`, `tags` and
-   `paste`, typed inputs, the output contract, `render` and `parse`; `server/ai-providers.js` with structured output,
-   the finish reason, token counts and the key binding; every prompt migrated (the list above) and the old prompt code
-   in `server/ai.js` and `server/object-format.js` deleted. Material only (no rollup or history yet). Golden files per
-   template. Blocked by open questions 19 and 21.
-4. **The context builder (M).** server-development: `server/ai-context.js` with the history window, the rollup, the
-   budget and `leftOut`, each part built only as the owner's setting allows; `sent` stored on the answer; `tz`
-   accepted on the ask routes. Golden files for the rollup per role and per setting. Blocked by open question 14.
-5. **Records and usage (S).** server-development: `DATA_DIR/ai-log.jsonl`, `ai-usage.json` by template, person and
-   space, `GET /api/ai/usage` for owners and its host console counterpart, the activity line. Blocked by open
-   questions 20 (the debugging switch only) and 23 (how long records are kept).
-6. **What a person sees (M).** experience-design: the AI used: and Not sent lines, linked citations, "cut short", the question
-   length in the box, `tz` sent with each ask, the default questions removed from Research, module-host and the
-   Assistant (Research and the Assistant each a patch version bump), the AI usage view on Manage and the host
-   console. Blocked by open question 16 for public answers.
-7. **Documentation (S).** content-manager: [api-modules](../api/api-modules.md) and the AI routes, the architecture's
-   AI section, the user guide's AI and Roles pages, [plan-chat-model](plan-chat-model.md)'s status.
+1. **The fake model and the harness (medium).** server-development: `tools/fake-model.mjs`, grown from the stand-in in
+   `tools/check-ai-prompts.mjs` (OpenAI chat completions and Anthropic messages shapes; scripted answers for normal,
+   echo, cut off, empty, not JSON, 401, 429, 500, slow, structured, a refused schema and Markdown);
+   `tools/check-prompts.mjs` with `--update` to write golden files, run first against today's routes so the starting
+   behaviour is recorded. Added to `npm run check`.
+2. **The policy layer and What AI may see (large).** server-development: `server/ai-policy.js` with decision 1's rule,
+   the door rules, the import door (decision 12), the reserved cap, the rate limit, space pinning, the redaction list,
+   the refusal sentences and the effective What AI may see setting (`sees` in the AI setting, `aiSees` on a space,
+   their cleaning and refusals, the check cases above); every AI, import and availability route switched to it and
+   the old refusal functions deleted. The Roles label becomes **Use AI**, on by default for moderators and members
+   (decision 5, `ROLE_DEFAULTS` in `server/store.js`; test data may be reset). experience-design: the What AI may see
+   section on the space's Set up and on Manage's AI service tab.
+   **Needs the larger-tier review.** This step is security work: who may ask, what may leave the server, redaction,
+   and the owner's setting only ever narrowing. The project manager gives its build and its review the larger model,
+   and quality-assurance reviews it as a security change before it is committed.
+3. **The registry and the adapters (large).** server-development: `server/prompts/` with `ask`, `summarise`, `tags`
+   and `paste`, typed inputs, the output contract, `render` and `parse`, the previous-version pin
+   (`AI_PROMPT_VERSIONS`); `server/ai-providers.js` with structured output, the `compatible` try-and-fall-back
+   (decision 13), the finish reason, token counts and the key binding; every prompt migrated (the list above) and the
+   old prompt code deleted. Material only (no rollup or history yet). Golden files per template. The adapters send the
+   key and read untrusted answers, so quality-assurance reads that part as security too.
+4. **The context builder (medium).** server-development: `server/ai-context.js` with the history window, the rollup,
+   the budget and `leftOut`, each part built only as the owner's setting allows; `sent` stored on the answer; `tz`
+   accepted on the ask routes. Golden files for the rollup per role and per setting. Its permission filtering joins
+   step 2's security review (the larger tier).
+5. **Records and usage (small).** server-development: `DATA_DIR/ai-log.jsonl` kept 30 days, `AI_LOG_PROMPTS` (refused
+   on a hosted install), `ai-usage.json` by template, person and space, `GET /api/ai/usage` for owners and its host
+   console counterpart, the activity line. Checked that no record or log line holds the key, the question, the
+   material or the answer.
+6. **What a person sees (medium).** experience-design: the AI used: and Not sent lines (per reader on a public
+   answer, decision 11), linked citations, "cut short", the question length in the box, `tz` sent with each ask, the
+   default questions removed from Research, module-host and the Assistant (Research and the Assistant each a patch
+   version bump), the AI usage view on Manage and the host console.
+7. **Documentation (small).** content-manager: [api-modules](../api/api-modules.md) and the AI routes, the
+   architecture's AI section, the user guide's AI, Roles and Set up pages (What AI may see), the environment variables
+   `AI_LOG_PROMPTS` and `AI_PROMPT_VERSIONS`, [plan-chat-model](plan-chat-model.md)'s status.
 
 ### Slice 2 onward
 
@@ -744,8 +777,8 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
    space itself (lean: yes, with the answer showing what it read). Blocks step 14.
 9. **Chat's `/ai` and `useAi`.** Answered 2026-11-02: one rule, `useAi` and the space's AI switch, never a guest
    (decision 1).
-10. **How long the outside clients' audit trail is kept.** (a) 30 days; (b) 90 days; (c) the owner chooses. Lean: the
-    same as open question 23. Blocks step 10.
+10. **How long the outside clients' audit trail is kept.** (a) 30 days; (b) 90 days; (c) the owner chooses. Lean: (a),
+    as slice 1's call records (decision 15). Blocks step 10.
 11. **The word on Profile** for tokens. (a) "Connected apps"; (b) "AI connections"; (c) "Outside AI". Lean: (a).
     Blocks step 10.
 12. **What a "turn" is, and the history budget.** Answered 2026-11-02: a question and its answer, up to 6 turns,
@@ -753,56 +786,31 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
 13. **How the rollup chooses "the objects relevant to the question".** Answered 2026-11-02: word match on the
     object summaries, the best 15, plus the dated objects in the next 7 days; objects the person can't read never
     enter (decision 7).
-14. **Which time zone "today" is in.** (a) The asker's browser time zone, sent with each ask as module-host already
-    sends `tz` with a data write, the server's (`ics.serverZone()`) when absent; (b) the server's always; (c) a new time
-    zone setting per space. Lean: (a); (c) is better for a trip across time zones but is a new setting, and can come
-    later. Blocks step 4.
+14. **Which time zone "today" is in.** Answered 2026-11-02: the asker's browser time zone, the server's as the
+    fallback (decision 10).
 15. **Environment-wide objects and asks with no space.** Answered 2026-11-02, with none of the drafted options: the
     owner sets what to send (decision 8, What AI may see).
-16. **A public answer that drew on objects some members can't read** (the rest of ai-12, inside one space: a module
-    hidden from guests, person-scoped data). (a) Allowed; the "what it used" line shows each reader only what they may
-    open, and "and N others"; (b) making it public is refused when any member can't read something it used; (c)
-    allowed, nothing shown. Lean: (a); the answer's words are the asker's to share, as a message they type would be.
-    Blocks step 6 only.
+16. **A public answer that drew on objects some members can't read.** Answered 2026-11-02: allowed; each reader's
+    **AI used:** line shows only what they may open (decision 11).
 17. **`useAi`'s defaults, now that it gates Chat too.** Answered 2026-11-02: on for moderators and members, off for
     guests, who are refused whatever it says (decision 5).
-18. **Bringing in pasted objects** (`importRefusal`), which calls no AI but shares Chat's rule today. (a) Not AI use:
-    signed in, not a guest, the module's write access; neither `useAi` nor the space's AI switch; (b) the AI rule, as
-    now. Lean: (a); pasting is how a person without the app's AI brings objects in. Blocks step 2 for that door only.
-19. **Structured output from a `compatible` service.** (a) Try it, and fall back to prompt-then-parse when the service
-    refuses the schema, remembered for that saved setting; (b) an owner's setting on the AI service tab ("Structured
-    answers: on, off"); (c) always prompt-then-parse for `compatible`. Lean: (a), no new setting; the record says which
-    was used. Blocks step 3.
-20. **A switch to log full prompts for debugging.** (a) Never; (b) an environment variable (`AI_LOG_PROMPTS`), off by
-    default and refused on a host with `BASE_DOMAIN`, that writes rendered prompts, redacted, to the server log; (c)
-    an owner's switch per environment. Lean: (b), for a single-server owner chasing a bad answer. Blocks part of step 5.
-21. **Rolling a prompt back.** (a) An environment variable pins a template to its previous version
-    (`AI_PROMPT_VERSIONS=ask@1`), the registry keeping the current version and one before it; (b) only by running an
-    older image. Lean: (a); one previous version is cheap to keep and a bad prompt is fixed without a release. Blocks
-    step 3's shape.
+18. **Bringing in pasted objects.** Answered 2026-11-02: not AI use; signed in, not a guest, the module's write
+    access (decision 12).
+19. **Structured output from a `compatible` service.** Answered 2026-11-02: tried, falling back to prompt-then-parse,
+    remembered per saved setting (decision 13).
+20. **A switch to log full prompts.** Answered 2026-11-02: an environment variable, off by default, refused on a hosted
+    install (decision 14).
+21. **Rolling a prompt back.** Answered 2026-11-02: an environment variable pins the previous version (decision 14).
 22. **The token budgets** (proposed numbers): an `ask` prompt up to 12,000 tokens in all (instructions 1,500, the
     rollup 2,500, history 3,000 (decision 6), attached material 5,000), answers up to 1,500 tokens (1,200
     today); `summarise` the same without history; `tags` 4,000 in and 200 out. Lean: these, tuned once real counts are
     recorded. Blocks nothing; they are constants in each template.
-23. **How long the per-call records are kept.** (a) 30 days, as private AI messages are; (b) 90 days; (c) the last
-    1,000 calls. Lean: (a). Blocks part of step 5.
+23. **How long the per-call records are kept.** Answered 2026-11-02: 30 days, no content (decision 15).
 24. **The Assistant module and its `use` permission** (ai-18, ai-19). Plan-chat-model calls the Assistant retired, and
     under decision 1 its `use` permission gates nothing. (a) Remove the module and its permission, Chat's Assistant
     view being the assistant; (b) keep the module (as `optional`, per the must-fix) and remove only its `use`
-    permission. Lean: (a). Blocks nothing in slice 1 beyond step 6's version bump.
+    permission. Lean: (a). Blocks nothing in slice 1; if answered before step 6, the Assistant's version bump there follows it.
 
-Still blocking slice 1, with the suggestion for each:
-
-- **Step 2:** open question 18 (pasted objects), for the import door only. Suggestion: (a), not AI use.
-- **Step 3:** open question 19 (structured output from a `compatible` service). Suggestion: (a), try it and fall back
-  to prompt-then-parse, remembered per saved setting. Open question 21 (rolling a prompt back). Suggestion: (a), an
-  environment variable pinning the one previous version.
-- **Step 4:** open question 14 (which time zone today is in). Suggestion: (a), the asker's browser zone, the server's
-  as the fallback.
-- **Step 5:** open question 20 (logging full prompts). Suggestion: (b), an environment variable, off by default and
-  refused on a host. Open question 23 (how long records are kept). Suggestion: (a), 30 days.
-- **Step 6:** open question 16 (a public answer that drew on objects some members can't read). Suggestion: (a),
-  allowed, each reader's AI used: line showing only what they may open.
-
-Steps 1 and 7 are blocked by nothing. Questions 1, 3, 4, 5, 7, 10 and 11 block step 10 onward; 6 blocks step 8; 8
-blocks step 14; 2, 22 and 24 block nothing now.
+Nothing blocks slice 1: every question for its steps is answered (12 to 21 and 23), and 22 and 24 have working
+leans that block no step. Questions 1, 3, 4, 5, 7, 10 and 11 block step 10 onward; 6 blocks step 8; 8 blocks step 14;
+2 blocks nothing now.

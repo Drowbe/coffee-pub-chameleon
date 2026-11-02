@@ -2482,7 +2482,7 @@ function renderEnvironment() {
   const rows = [
     [word('member', { many: true, cap: true }), use.members ?? 0, plan.members, (n) => `${n}`],
     ['Storage', use.storageBytes ?? 0, plan.storageBytes, gb],
-    ['Assistant calls this month', use.aiCallsThisMonth ?? 0, plan.aiCallsPerMonth, (n) => `${n}`],
+    ['AI calls this month', use.aiCallsThisMonth ?? 0, plan.aiCallsPerMonth, (n) => `${n}`],
     ['Calls at once', use.callsNow ?? 0, plan.calls, (n) => `${n}`],
     [word('module', { many: true, cap: true }), Array.isArray(plan.modules) ? plan.modules.length : null, null, (n) => (n === null ? `every ${word('module')}` : `${n} allowed`), 'modules'],
   ];
