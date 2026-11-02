@@ -2,7 +2,7 @@
 // sharing (the sheet, the list of links, the public /shared page), deleting and erasing, and the questions for Thomas.
 import { createModuleFrame } from '/module-frame.js';
 import { FILES, SHARES, byId, TOTAL_BYTES } from './prototype-vault-data.js';
-import { h, fa, btn, fileChip, WORDS, inShadow } from './prototype-vault-ui.js';
+import { h, fa, btn, fileChip, WORDS, inShadow, lazy } from './prototype-vault-ui.js';
 import { TRIAL } from './prototype-vault-app.js';
 import { heldDialog, removeSheet, shareSheet, shareListSheet, renameSheet, usesSheet, turnOffShareSheet, eraseSpaceSheet, uninstallSheet, offInSpaceSheet, pickSheet } from './prototype-vault-dialogs.js';
 import { sharedPage } from './prototype-vault-shared.js';
@@ -17,15 +17,19 @@ function plain(into, { name, note, w, h: hh, frame, after, level = 'h4' }) {
   const box = h('div', 'pp-frame vt-frame');
   if (w) box.dataset.w = String(w);
   if (hh) box.dataset.h = String(hh);
-  const f = createModuleFrame(frame);
-  const hold = h('div', 'vt-hold');
-  hold.append(f.el);
-  f.hold = hold;
-  box.append(hold);
   wrap.append(box);
   into.append(wrap);
-  if (after) after(f, box);
-  return { f, box, wrap };
+  const out = { f: null, box, wrap };
+  lazy(box, () => {
+    const f = createModuleFrame(frame);
+    out.f = f;
+    const hold = h('div', 'vt-hold');
+    hold.append(f.el);
+    f.hold = hold;
+    box.append(hold);
+    if (after) after(f, box);
+  });
+  return out;
 }
 
 // The object's Files block (host.ui.fileChips): a head with Add file, then a chip for each file.
@@ -140,13 +144,13 @@ export function buildShare({ set, state, pair }) {
 
 export function buildDelete({ set, state, pair }) {
   const s = set('delete', 'Deleting and erasing', 'Remove asks first and says where the file is used. Links stay and read "File removed" (decision 2). Erasing a space deletes its files and its share links, and uninstalling the module removes every space\'s files: both are the typed, final question. Turning the Vault off in a space keeps its files. Removing is not undone; there is no recycle bin in the plan.');
-  const stage = (parent, name, note, dlg, { q } = {}) => {
+  const backdrop = (parent, name, note, dlg, { q } = {}) => {
     const wrap = h('section', 'pp-state');
     wrap.append(h('h4', 'pp-state-name', name));
     if (note) wrap.append(h('p', 'pp-state-note', note));
     const box = h('div', 'pp-frame vt-frame');
     box.dataset.h = '480';
-    const st = h('div', 'vt-stagebox');
+    const st = h('div', 'vt-backdrop');
     box.append(st);
     wrap.append(box);
     parent.append(wrap);
@@ -162,10 +166,10 @@ export function buildDelete({ set, state, pair }) {
   state(p3, { name: 'Rename', cfg: { role: 'member', state: { view: 'list' } }, h: 480, after: (api) => heldDialog(api.el, renameSheet(byId('f10'))) });
   state(p3, { name: 'Rename, a name that will not do', cfg: { role: 'member', state: { view: 'list' } }, h: 480, after: (api) => heldDialog(api.el, renameSheet({ ...byId('f10'), name: '' }, { error: 'Give the file a name.' })) });
   const p4 = pair(s);
-  stage(p4, 'Delete a space', 'The space\'s own question (#337) with the Vault\'s part in it: the files and links go too, and the files can only come back from the Vault folder\'s own copy.', eraseSpaceSheet(W(), FILES.length, TOTAL_BYTES, 3));
-  stage(p4, 'Uninstall the module', 'An owner or admin: every space\'s files, all the share links. Typed to confirm.', uninstallSheet(W()));
+  backdrop(p4, 'Delete a space', 'The space\'s own question (#337) with the Vault\'s part in it: the files and links go too, and the files can only come back from the Vault folder\'s own copy.', eraseSpaceSheet(W(), FILES.length, TOTAL_BYTES, 3));
+  backdrop(p4, 'Uninstall the module', 'An owner or admin: every space\'s files, all the share links. Typed to confirm.', uninstallSheet(W()));
   const p5 = pair(s);
-  stage(p5, 'Turn the Vault off in a space', 'The files are kept; share links stop while it is off.', offInSpaceSheet(W()));
+  backdrop(p5, 'Turn the Vault off in a space', 'The files are kept; share links stop while it is off.', offInSpaceSheet(W()));
   state(p5, { name: 'Someone left', note: 'Files stay with the space, shown as added by "someone who left", and stop counting against a person\'s limit.', cfg: { role: 'member', state: { view: 'list', query: 'guide' } }, h: 480 });
 }
 
@@ -178,7 +182,7 @@ const Q = [
   ['PDF search: ship it?', 'Decision 18 says "if cheap". It is drawn (a field, the count, Previous and Next match) and can be left out.', 'Leave it out of the first version; the space is kept in the toolbar. Ask again when pdf.js is sized.', 'the PDF search switch'],
   ['Remove where it was taken: on or off by default?', 'Plan "What is not decided" 1. Both are drawn.', 'On for pictures (a position is dropped unless the person keeps it, as Research does); the video notice always shows.', 'the Remove where taken switch'],
   ['A damaged PDF: refused or download only?', 'Plan "What is not decided" 4. Both rows are drawn.', 'Refused, with "This PDF looks damaged. Save it again and try once more.": a download-only file that cannot be read helps nobody.', 'set "Add files"'],
-  ['Guests: none, or read-only?', 'The plan says a guest has no access, cannot be given any, and the server answers 404. Your brief said a read-only guest. Both are drawn.', 'None, as the plan and the security review decided: a guest in a space then never learns a file exists.', 'set "What a person may do"'],
+  ['Guests: none, or read-only?', 'The plan says a guest has no access, cannot be given any, and the server answers 404. The task asked for a read-only guest too. Both are drawn.', 'None, as the plan and the security review decided: a guest in a space then never learns a file exists.', 'set "What a person may do"'],
   ['Filters beyond the plan', 'The plan has Type, Added by (Everyone, Mine) and Linked. I added the other people by name, Added (this week, this month, earlier) and Shared (only for people who can share), as you asked for date and shared.', 'Keep Added by with names, Added, and Shared for people who can share.', 'set "Search and Filters"'],
   ['Words with the template\'s name', 'The plan\'s "This trip\'s Vault is full" does not read with Documents or Handouts (plural). I wrote "No room left in this trip\'s Vault (5 GB). Remove some files to add more." so one sentence fits every name; the empty state for games asks for maps, pictures and handouts.', 'Approve the new sentence and the games empty state.', 'the Template words switch'],
   ['The room left, shown', 'Not in the plan: a meter in the Add files panel and an "Almost full" note in the status line at 80%, and a banner. The plan has only the status line text.', 'Keep the meter in the panel and the note in the status line; skip the banner except when full.', 'sets "Empty, and the room left" and "Add files"'],

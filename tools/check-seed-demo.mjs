@@ -6,13 +6,16 @@
  * with different pick-up and drop-off days, an empty day, and unscheduled objects with and without a phase; every module has content;
  * the second run gives the same counts and a new space (the first is gone); another space, its data and another account are left
  * untouched; a wrong password and a missing server are refused in one plain sentence; the target URL follows SEED_URL, then PORT.
- * No LiveKit and no browser are needed.
+ * Also: every bundled module is on; the place search is chosen; each earlier phase holds dated Planner objects, to-dos, Calendar
+ * events (and Planning, a dated Research object); a hosted install is refused without DEMO_ALLOW_HOSTED, DEMO_ENVIRONMENT and the
+ * environment's own address (a fake hosted answer stands in for the server). No LiveKit and no browser are needed.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runSeed, resolveTarget, dayPlus, SPACE_NAME } from './seed-demo.mjs';
@@ -55,6 +58,15 @@ try {
   await assert.rejects(runSeed({ base, adminPassword: '', today: TODAY, say: quiet }), /Set ADMIN_PASSWORD/);
   await assert.rejects(runSeed({ base, adminPassword: PASSWORD, today: 'tomorrow', say: quiet }), /SEED_TODAY must be a day/);
 
+  // A hosted install: refused unless allowed, named and addressed as that one environment (a stand-in server answers as hosted).
+  const fake = http.createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(req.url === '/api/branding' ? JSON.stringify({ hosted: true, phases: [] }) : '{}'); });
+  await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+  const hostedBase = `http://127.0.0.1:${fake.address().port}`;
+  await assert.rejects(runSeed({ base: hostedBase, adminPassword: PASSWORD, today: TODAY, say: quiet }), /hosted install .* DEMO_ALLOW_HOSTED=1 and DEMO_ENVIRONMENT/);
+  await assert.rejects(runSeed({ base: hostedBase, adminPassword: PASSWORD, today: TODAY, say: quiet, allowHosted: true }), /set DEMO_ENVIRONMENT/);
+  await assert.rejects(runSeed({ base: hostedBase, adminPassword: PASSWORD, today: TODAY, say: quiet, allowHosted: true, demoEnvironment: 'demo' }), /SEED_URL must be the demo environment's own address \(demo\.<your domain>\).*nothing was changed/);
+  fake.close();
+
   // Something else that must survive: a space with a task in it, and another account.
   await api('POST', '/api/login', { login: 'admin', password: PASSWORD });
   await api('PATCH', '/api/settings', { template: 'travel' });
@@ -93,6 +105,32 @@ try {
   assert.equal(phases.trip.start, trip.start);
   assert.ok(phases.planning.start <= TODAY && phases['pre-trip'].start < trip.start, 'the earlier phases are before the trip');
 
+  // Every bundled module is on, and the place search is chosen.
+  const mods = (await api('GET', '/api/modules')).json;
+  for (const b of mods.bundled) assert.ok(mods.modules.some((m) => m.id === b.id && m.enabled), `the ${b.id} module is on`);
+  assert.ok(first.configured.some((l) => /^Place search: Photon/.test(l)), 'the place search is set to Photon');
+  const placesSet = (await api('GET', '/api/module-settings/environment')).json.modules.find((m) => m.id === 'places').settings;
+  assert.equal(placesSet.find((x) => x.key === 'searchProvider').value, 'photon');
+
+  // Every earlier phase holds dated content: Planner objects, to-dos, Calendar events (Planning also a Research object).
+  const ids = Object.keys(phases);
+  const order = ['planning', 'booking', 'buffer', 'pre-trip', 'trip'];
+  const rangeOf = (id) => { const next = order[order.indexOf(id) + 1]; return [phases[id].start, dayPlus(phases[next].start, -1)]; };
+  const within = (day, [a, b]) => Boolean(day) && String(day).slice(0, 10) >= a && String(day).slice(0, 10) <= b;
+  const allTasks = (await api('GET', `/api/modules/todo/data?scope=space&space=${second.space.id}&prefix=task:`)).json.items.map((i) => i.value);
+  const allEvents = (await api('GET', `/api/modules/calendar/data?scope=space&space=${second.space.id}&prefix=event:`)).json.items.map((i) => i.value);
+  const research = (await api('GET', `/api/modules/research/data?scope=space&space=${second.space.id}&prefix=`)).json.items.map((i) => i.value);
+  for (const id of order.slice(0, 4)) {
+    assert.ok(ids.includes(id), `${id} is dated`);
+    const r = rangeOf(id);
+    assert.ok(r[1] >= r[0], `${id} has days`);
+    assert.ok(second.planRows.filter((i) => i.kind !== 'lane' && within(i.date, r)).length >= 2, `${id} has dated Planner objects`);
+    assert.ok(allTasks.some((t) => within(t.due, r)), `${id} has a dated to-do`);
+    assert.ok(allEvents.some((e) => within(e.start, r)), `${id} has a Calendar event`);
+  }
+  assert.ok(research.some((v) => within(v.date, rangeOf('planning'))), 'a Research object is dated inside Planning');
+  assert.ok(second.planRows.some((i) => i.confirm && within(i.date, rangeOf('booking'))), 'a booked reservation inside Booking');
+
   // Every kind of Planner object.
   const plan = second.planRows;
   const has = (f) => plan.some(f);
@@ -122,7 +160,7 @@ try {
   const c = second.counts;
   assert.ok(c.places >= 25, `25 or more places (${c.places})`);
   assert.ok(c.calendar >= 8, 'calendar events');
-  assert.ok(c.todo === 12, 'twelve tasks');
+  assert.equal(c.todo, 16, 'sixteen tasks');
   assert.equal(c.polls, 3, 'three polls');
   assert.ok(c.budget >= 15, 'fifteen or more costs');
   assert.equal(c.research, 4, 'four research objects');
@@ -142,9 +180,6 @@ try {
   const chat = (await api('GET', `/api/spaces/${second.space.id}/chat`)).json;
   assert.ok((chat.messages || []).some((m) => /\/modules\/travel\?space=/.test(m.text || '')), 'a shared object link in the chat');
 
-  // A hosted install is refused unless DEMO_ALLOW_HOSTED=1: the refusal is read from the server's own report.
-  const src = fs.readFileSync(path.join(ROOT, 'tools', 'seed-demo.mjs'), 'utf8');
-  assert.ok(/brand\.json\.hosted && !allowHosted/.test(src) && /DEMO_ALLOW_HOSTED/.test(src), 'a hosted server is refused unless allowed');
   console.log('check-seed-demo: ok');
 } catch (e) {
   failed = e;

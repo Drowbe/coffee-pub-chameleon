@@ -2,6 +2,8 @@
 // permission views. The first half and the helpers (set, state, pair) are prototype-vault.js's.
 import { TYPE_REFUSAL } from './prototype-vault-app.js';
 import { MB, GB } from './prototype-vault-data.js';
+import { ROLES } from './prototype-vault-app.js';
+import { heldMenu } from './prototype-vault-ui.js';
 
 const up = (name, mb, kind, status, extra = {}) => ({ name, size: Math.round(mb * MB), kind, status, pct: 0, msg: '', ...extra });
 
@@ -52,7 +54,7 @@ export function buildAddAndViewers({ set, state, pair }) {
     state(p3, { name: 'PDF, the app\'s own viewer', note: 'Previous and next page, a page number, zoom out and in, Fit width, search (Q6) and Full screen from the host. The page is drawn here: pdf.js is not on this page. The paper keeps the document\'s own colours in dark too.', cfg: { role: 'member', state: { open: 'f30' } }, h: 640 });
     const p4 = pair(s);
     state(p4, { name: 'PDF, with search open', cfg: { role: 'member', state: { open: 'f30' } }, h: 640, after: (api) => { const b = api.app.querySelector('.vt-pdfbar [aria-label="Search in the PDF"]'); if (b) { b.click(); const i = api.app.querySelector('.vt-pdf-search input'); i.value = 'hotel'; i.dispatchEvent(new Event('input')); } } });
-    state(p4, { name: 'A PDF the scanner could not judge: download only', note: 'Kept, never opened here: "This PDF can\'t be opened here. Download it." with Download, and nothing else in the stage.', cfg: { role: 'member', state: { open: 'f32' } }, h: 640 });
+    state(p4, { name: 'A PDF the scanner could not judge: download only', note: 'Kept, never opened here: "This PDF can\'t be opened here. Download it." with Download, and nothing else in the viewer.', cfg: { role: 'member', state: { open: 'f32' } }, h: 640 });
     const p5 = pair(s);
     state(p5, { name: 'A video this browser cannot play', note: 'A .mov in HEVC outside Safari. The Vault keeps the file and says so; the server does not transcode. A type the Vault refuses never gets here.', cfg: { role: 'member', state: { open: 'f24' } }, h: 560 });
     state(p5, { name: 'File missing', note: 'The record is there and the bytes are not (a restore without the Vault folder). Remove is the only thing to do.', cfg: { role: 'member', state: { open: 'f33' } }, h: 560 });
@@ -79,17 +81,20 @@ export function buildNarrowAndPermissions({ set, state, pair }) {
   // ================= Permissions =================
   {
     const s = set('perms', 'What a person may do', 'The plan\'s permissions: view, add, download and remove_any (Remove files other people added); share comes with the share links. Owners have all of them. What a person cannot do is not drawn disabled: the button or the menu entry is not there. A guest has none of them and cannot be given any (the server answers 404 to a guest), so a guest never sees a Vault; the read-only guest is drawn only as an option (Q9).');
+    const can = (role) => { const r = ROLES[role]; const yes = ['view', 'add', 'download', 'remove_any', 'share'].filter((k) => r[k]); const no = ['view', 'add', 'download', 'remove_any', 'share'].filter((k) => !r[k]); return ` Can: ${yes.join(', ') || 'nothing'}.${no.length ? ` Cannot: ${no.join(', ')}.` : ''}`; };
+    const menuOn = (api) => heldMenu(api.el, api.app.querySelector('[data-menu="f28"]'), api.fileMenuFor('f28'));
     const p = pair(s);
-    state(p, { name: 'Moderator', note: 'Add, Select, Share, Remove on anything.', cfg: { role: 'moderator', state: { view: 'list' } } });
-    state(p, { name: 'Owner', note: 'The same, and Settings (smaller limits for the space and a person).', cfg: { role: 'owner', state: { view: 'list' } } });
+    state(p, { name: 'Moderator', note: `Everything on anyone's files, and Share.${can('moderator')} The menu is a file Sam added.`, cfg: { role: 'moderator', state: { view: 'list' } }, h: 480, after: menuOn });
+    state(p, { name: 'Owner', note: `The same, and Settings in the title bar menu (smaller limits for the space and a person).${can('owner')}`, cfg: { role: 'owner', state: { view: 'list' } }, h: 480, after: (api) => heldMenu(api.el, api.el.querySelector('.mf-titlebar-menu'), api.frame.titlebarMenu()) });
     const p2 = pair(s);
-    state(p2, { name: 'Member who cannot add', note: 'No "+", no drop zone. Everything else as a member.', cfg: { role: 'member-noadd', state: { view: 'list' } } });
-    state(p2, { name: 'Member who cannot download', note: 'No Download in the menus or the viewer, and none on a PDF kept for download only.', cfg: { role: 'member-nodownload', state: { view: 'list' } } });
+    state(p2, { name: 'Member', note: `The default.${can('member')} The menu is a file Sam added: no Rename, no Share, no Remove.`, cfg: { role: 'member', state: { view: 'list' } }, h: 480, after: menuOn });
+    state(p2, { name: 'Member who cannot add', note: `No "+", no drop zone.${can('member-noadd')}`, cfg: { role: 'member-noadd', state: { view: 'list' } }, h: 480, after: menuOn });
     const p3 = pair(s);
-    state(p3, { name: 'Member with Share turned on', note: 'An owner can switch Share on for the member role in Roles: Share appears, and the Shared filter.', cfg: { role: 'member-share', state: { view: 'list' } } });
-    state(p3, { name: 'Guest', note: 'The plan: a guest has no access, so this is all they see. "You can\'t see the files in this trip."', cfg: { role: 'guest', state: {} }, h: 480 });
+    state(p3, { name: 'Member who cannot download', note: `No Download in the menus or the viewer.${can('member-nodownload')}`, cfg: { role: 'member-nodownload', state: { view: 'list' } }, h: 480, after: menuOn });
+    state(p3, { name: 'Member with Share turned on', note: `An owner can switch Share on for the member role in Roles: Share appears, with the Shared filter.${can('member-share')}`, cfg: { role: 'member-share', state: { view: 'list' } }, h: 480, after: menuOn });
     const p4 = pair(s);
-    state(p4, { name: 'A guest who may look (option, Q9)', note: 'Not in the plan: view only, no add, no download, no share, no Select.', cfg: { role: 'guest-view', state: { view: 'list' } } });
+    state(p4, { name: 'Guest', note: 'The plan: a guest has no access, so this is all they see.', cfg: { role: 'guest', state: {} }, h: 480 });
+    state(p4, { name: 'A guest who may look (option, Q9)', note: `Not in the plan: view only, no Select.${can('guest-view')}`, cfg: { role: 'guest-view', state: { view: 'list' } }, h: 480, after: menuOn });
     state(p4, { name: 'A download-only PDF, member who cannot download', cfg: { role: 'member-nodownload', state: { open: 'f32' } }, h: 480 });
   }
 }

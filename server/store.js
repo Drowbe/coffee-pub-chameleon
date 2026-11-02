@@ -772,6 +772,9 @@ class Store {
       ...(r.aiOff === true ? { aiOff: true } : {}),
       // Left out of the environment's published calendar (plan-space-calendars.md, section 2); absent means in it.
       ...(r.publishCalendar === false ? { publishCalendar: false } : {}),
+      // The space's guests see the fields modules keep from guests (a module's guards.hidden: the Planner's costs and
+      // booking codes, Budget's amounts); an owner turns it on. Absent means they don't.
+      ...(r.guestsSeeHidden === true ? { guestsSeeHidden: true } : {}),
       // The template's phases' dates on this space, { <id>: { start?, end? } } (plan-one-bar.md, step 1; the rule is
       // public/phases.js); absent while none is set. Kept as stored: the rule's refusals are updateSpace's.
       ...(Object.keys(phaseRule.cleanDates(r.phases)).length ? { phases: phaseRule.cleanDates(r.phases) } : {}),
@@ -1780,6 +1783,13 @@ class Store {
       if (patch.publishCalendar) delete draft.publishCalendar;
       else draft.publishCalendar = false;
     }
+    // Whether guests see what modules keep from guests (server/module-guards.js, `hidden`): false is the default and is
+    // stored as nothing. Who may send it is the route's to decide (owners and the admin).
+    if (patch.guestsSeeHidden !== undefined) {
+      if (typeof patch.guestsSeeHidden !== 'boolean') throw new StoreError('guestsSeeHidden is true or false');
+      if (patch.guestsSeeHidden) draft.guestsSeeHidden = true;
+      else delete draft.guestsSeeHidden;
+    }
     if (patch.profile !== undefined) {
       if (!SPACE_PROFILES.includes(patch.profile)) throw new StoreError('profile must be roleplaying, participants or characters');
       draft.profile = patch.profile;
@@ -1865,6 +1875,7 @@ class Store {
     if (!('opensWith' in draft)) delete space.opensWith;
     if (!('defaultLayout' in draft)) delete space.defaultLayout;
     if (!('publishCalendar' in draft)) delete space.publishCalendar;
+    if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;
     // Someone taken off the member list loses their address for this space, as removeMember does.
     for (const u of this.data.users) if (!space.members.includes(u.key)) this.dropSpaceCalendarFeed(u, id);

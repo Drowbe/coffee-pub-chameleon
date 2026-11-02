@@ -1345,7 +1345,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const out = { dock: false, window: false, popout: false, clear: false };
     const mod = opened.get(id);
     if (!mod) return out;
-    out.clear = !compositeOf(mod.m);
+    out.clear = !compositeOf(mod.m) && mod.m.clear === true; // only where the server says this person may (for-space `clear`)
     if (isNarrow()) return out;
     if (mod.mode === 'dock' && supports(mod, 'float')) out.window = true;
     if (mod.mode === 'float' && supports(mod, 'dock')) {

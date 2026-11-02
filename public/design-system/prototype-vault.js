@@ -6,7 +6,7 @@
 // prototype-vault-app.js, the viewers, the dialogs, the public page in their own files; the styles in prototype-vault.css.
 import { createVault, TRIAL, redrawAll } from './prototype-vault-app.js';
 import { GB } from './prototype-vault-data.js';
-import { D, h, btn, heldMenu } from './prototype-vault-ui.js';
+import { D, h, btn, heldMenu, lazy, runDeferred, ALL } from './prototype-vault-ui.js';
 import { buildAddAndViewers, buildNarrowAndPermissions } from './prototype-vault-sets.js';
 import { buildOther, buildShare, buildDelete, buildQuestions } from './prototype-vault-more.js';
 
@@ -57,7 +57,6 @@ jump.setAttribute('aria-label', 'Jump to a part of the Vault');
 jump.append(h('span', 'pp-jump-label', 'Jump to'));
 sec.append(jump);
 
-main.append(sec);
 const sets = [];
 function set(id, name, note) {
   const s = h('section', 'vt-set');
@@ -84,12 +83,16 @@ function state(into, { name, note, w, h: hh, cfg, after, level = 'h4' }) {
   const box = h('div', 'pp-frame vt-frame');
   if (w) box.dataset.w = String(w);
   if (hh) box.dataset.h = String(hh);
-  const api = createVault(cfg || {});
-  box.append(api.el);
   wrap.append(box);
   into.append(wrap);
-  if (after) after(api, box);
-  return { api, box, wrap };
+  const out = { api: null, box, wrap };
+  lazy(box, () => {
+    const api = createVault(cfg || {});
+    out.api = api;
+    box.append(api.el);
+    if (after) after(api, box);
+  });
+  return out;
 }
 const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); return p; };
 
@@ -144,6 +147,9 @@ const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); retu
   state(p, { name: 'No files yet, and a member who cannot add', cfg: { role: 'member-noadd', empty: true, state: { usedBytes: 0 } } });
   const p2 = pair(s);
   state(p2, { name: 'Almost full', note: '4.4 GB of 5 GB: the status line warns, the banner says what to do.', cfg: { role: 'member', state: { usedBytes: 4.4 * GB, notice: { kind: 'warn', text: 'Almost full. Remove some files to make room: 4.4 GB of 5 GB used in this trip.' } } } });
+  const p3 = pair(s);
+  state(p3, { name: 'The travel template\'s word: Documents', note: 'A template shows its own name for the module (Documents for trips) and every sentence uses it and the space word.', cfg: { role: 'member', empty: true, state: { usedBytes: 0 }, trial: { words: 'documents' } } });
+  state(p3, { name: 'The games template\'s word: Handouts', note: 'Handouts for campaigns; the empty state asks for maps, pictures and handouts.', cfg: { role: 'member', empty: true, state: { usedBytes: 0 }, trial: { words: 'handouts' } } });
   state(p2, { name: 'Full', note: '5 GB of 5 GB: adding is off and says why.', cfg: { role: 'member', state: { usedBytes: 5 * GB, capBytes: 5 * GB, panel: true, notice: { kind: 'danger', text: "No room left in this trip's Vault (5 GB). Remove some files to add more." } } } });
 }
 
@@ -154,6 +160,8 @@ buildShare(helpers);
 buildDelete(helpers);
 buildNarrowAndPermissions(helpers);
 buildQuestions(helpers);
+main.append(sec);
+requestAnimationFrame(() => { runDeferred(); D.documentElement.dataset.vtBuilt = ALL ? 'all' : 'lazy'; });
 // the page's jump list gets its Vault button (the page's list is the Phone script's)
 const pageJump = D.querySelector('nav.pp-jump[aria-label="Jump to a section of the page"]');
 if (pageJump) {

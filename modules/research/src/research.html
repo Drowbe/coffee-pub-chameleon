@@ -28,14 +28,14 @@
   <!-- an object, in the editor window (host.ui.editor: a modal dialog over everything, never clipped by the module's box).
        One form for all four kinds: the script sets data-kind on the form and the CSS shows the rows that kind uses. -->
   <dialog id="editor" class="sdk-editor">
-    <form id="form" class="sdk-form" data-kind="note">
+    <form id="form" class="sdk-form" data-kind="note" novalidate>
       <h3 id="editor-title">Note</h3>
       <div class="link-identity" data-kinds="note link answer">
         <div class="link-identity-fields sdk-section">
           <label class="sdk-field" data-kinds="link"><span class="sdk-label">Address</span><input id="f-url" name="url" type="url" maxlength="500" placeholder="https://" autocomplete="off"><span class="sdk-hint" id="f-url-note"></span></label>
           <label class="sdk-field" data-kinds="note link answer"><span class="sdk-label">Title</span><input id="f-title" name="title" type="text" maxlength="120"><span class="sdk-hint"></span></label>
         </div>
-        <div class="link-shot" id="f-preview" data-kinds="link"><img id="f-preview-img" alt="" hidden><span class="link-shot-empty ic" data-icon="user" aria-hidden="true"></span></div>
+        <div class="link-shot" id="f-preview" data-kinds="link"><img id="f-preview-img" alt="" hidden><span class="link-shot-empty ic" data-icon="image" aria-hidden="true"></span></div>
       </div>
       <div class="sdk-field" data-kinds="note" role="group" aria-labelledby="f-icons-label"><span class="sdk-label" id="f-icons-label">Type</span><div class="icon-choices" id="f-icons"></div></div>
       <label class="sdk-field" data-kinds="photo"><span class="sdk-label">Caption</span><input id="f-caption" name="caption" type="text" maxlength="200"><span class="sdk-hint"></span></label>
@@ -93,7 +93,7 @@
 </template>
 
 <!-- photo upload: one row per file. The script sets [data-slot=step] ("Preparing…", "Uploading…", an error) and the width of the bar through the value of progress. -->
-<template id="tpl-upload"><div class="upload"><span class="ic" data-icon="image"></span><span class="name" data-slot="name"></span><progress class="sdk-progress sdk-progress-sm" max="100" value="0" aria-label="Upload"></progress><span class="step" data-slot="step"></span><button class="btn" type="button" data-action="retry-upload" hidden>Try again</button></div></template>
+<template id="tpl-upload"><div class="upload"><span class="ic" data-icon="image"></span><span class="name" data-slot="name"></span><progress class="sdk-progress sdk-progress-sm" max="100" value="0" aria-label="Upload"></progress><span class="step" data-slot="step"></span><button class="btn" type="button" data-action="retry-upload" hidden>Try again</button><button class="btn" type="button" data-action="dismiss-upload" hidden>Dismiss</button></div></template>
 <!-- asked after an upload whose file had a position -->
 <template id="tpl-pos-ask"><div class="pos-ask"><span class="ic" data-icon="location-crosshairs"></span><span class="grow" data-slot="text"></span><button class="btn" type="button" data-action="keep-position">Keep it</button><button class="btn" type="button" data-action="drop-position">Leave it out</button></div></template>
 

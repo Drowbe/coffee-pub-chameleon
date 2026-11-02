@@ -1,13 +1,13 @@
 // The Prototype's Vault viewers (Thomas, 2026-11-02; design-process only): a picture (zoom, pan, full screen), audio and video with the browser's
 // own controls, Markdown through the SDK's own renderer, the PDF viewer (drawn: pdf.js is not shipped on this page), a PDF kept as download
-// only, a file the browser cannot play, a file whose bytes are missing, and the info panel. Each returns the stage the module's viewer shows
+// only, a file the browser cannot play, a file whose bytes are missing, and the info panel. Each returns the view the module's viewer shows
 // under its top row.
 import { KINDS, USES, MARKDOWN, artFull, art, sampleAudio, sampleVideo, PEOPLE } from './prototype-vault-data.js';
 import { D, h, fa, btn, iconBtn, size, when, dayWords, clock, who, plural } from './prototype-vault-ui.js';
 
-// A state in the stage: an icon, a title, a line and the buttons (the States family's empty state).
-export function stageState({ icon, title, text, tone, actions = [] }) {
-  const s = h('div', 'vt-stage vt-state');
+// A state in the view: an icon, a title, a line and the buttons (the States family's empty state).
+export function viewState({ icon, title, text, tone, actions = [] }) {
+  const s = h('div', 'vt-view vt-state');
   const box = h('div', 'sdk-empty');
   const i = fa(icon);
   if (tone) i.dataset.tone = tone;
@@ -18,11 +18,11 @@ export function stageState({ icon, title, text, tone, actions = [] }) {
   return s;
 }
 
-export function pictureStage(f, api) {
-  const stage = h('div', 'vt-stage vt-pic');
-  stage.tabIndex = 0;
-  stage.setAttribute('role', 'group');
-  stage.setAttribute('aria-label', `${f.name}. Use plus and minus to zoom, the arrow keys to move.`);
+export function pictureView(f, api) {
+  const view = h('div', 'vt-view vt-pic');
+  view.tabIndex = 0;
+  view.setAttribute('role', 'group');
+  view.setAttribute('aria-label', `${f.name}. Use plus and minus to zoom, the arrow keys to move.`);
   const { url } = artFull(f);
   const wrap = h('div', 'vt-pic-wrap');
   const img = h('img');
@@ -35,7 +35,7 @@ export function pictureStage(f, api) {
   const apply = () => {
     img.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
     level.querySelector('.vt-btn-word').textContent = z === 1 ? 'Fit' : `${Math.round(z * 100)}%`;
-    stage.classList.toggle('is-zoomed', z > 1);
+    view.classList.toggle('is-zoomed', z > 1);
     out.disabled = z <= 1;
     inn.disabled = z >= 4;
   };
@@ -46,12 +46,12 @@ export function pictureStage(f, api) {
   out.addEventListener('click', () => set(z - 0.5));
   inn.addEventListener('click', () => set(z + 0.5));
   level.addEventListener('click', () => set(1));
-  full.addEventListener('click', () => { if (D.fullscreenElement) D.exitFullscreen(); else if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {}); });
+  full.addEventListener('click', () => { if (D.fullscreenElement) D.exitFullscreen(); else if (view.requestFullscreen) view.requestFullscreen().catch(() => {}); });
   const bar = h('div', 'vt-zoombar');
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', 'Zoom');
   bar.append(out, level, inn, full);
-  stage.append(wrap, bar);
+  view.append(wrap, bar);
   wrap.addEventListener('wheel', (e) => { e.preventDefault(); set(z + (e.deltaY < 0 ? 0.25 : -0.25)); }, { passive: false });
   wrap.addEventListener('dblclick', () => set(z > 1 ? 1 : 2));
   let drag = null;
@@ -60,7 +60,7 @@ export function pictureStage(f, api) {
   const end = () => { drag = null; wrap.classList.remove('is-dragging'); };
   wrap.addEventListener('pointerup', end);
   wrap.addEventListener('pointercancel', end);
-  stage.addEventListener('keydown', (e) => {
+  view.addEventListener('keydown', (e) => {
     if (e.key === '+' || e.key === '=') set(z + 0.5);
     else if (e.key === '-') set(z - 0.5);
     else if (e.key === '0') set(1);
@@ -68,11 +68,11 @@ export function pictureStage(f, api) {
     e.stopPropagation();
   });
   apply();
-  return stage;
+  return view;
 }
 
-export function audioStage(f) {
-  const stage = h('div', 'vt-stage vt-audio');
+export function audioView(f) {
+  const view = h('div', 'vt-view vt-audio');
   const tile = h('span', 'vt-audio-tile');
   tile.dataset.tint = KINDS.audio.tint;
   tile.append(fa('file-audio'));
@@ -81,19 +81,19 @@ export function audioStage(f) {
   player.preload = 'metadata';
   player.src = sampleAudio();
   player.setAttribute('aria-label', f.name);
-  stage.append(tile, h('p', 'vt-audio-name', f.name), h('p', 'vt-audio-meta', `${clock(f.dur)} · ${size(f.size)}`), player);
-  return stage;
+  view.append(tile, h('p', 'vt-audio-name', f.name), h('p', 'vt-audio-meta', `${clock(f.dur)} · ${size(f.size)}`), player);
+  return view;
 }
 
-export function videoStage(f, api) {
+export function videoView(f, api) {
   if (f.codec) {
-    return stageState({
+    return viewState({
       icon: 'file-video', title: "This browser can't play this file.",
       text: `It is a ${f.codec} video. Safari plays it; other browsers may not. The Vault keeps it as it was sent.`,
       actions: api.can('download') ? [api.downloadButton(f, true)] : [],
     });
   }
-  const stage = h('div', 'vt-stage vt-video');
+  const view = h('div', 'vt-view vt-video');
   const v = h('video');
   v.controls = true;
   v.playsInline = true;
@@ -101,20 +101,20 @@ export function videoStage(f, api) {
   v.poster = art(f, 640, 360);
   v.setAttribute('aria-label', f.name);
   sampleVideo().then((u) => { if (u) v.src = u; });
-  stage.append(v);
-  return stage;
+  view.append(v);
+  return view;
 }
 
-export function markdownStage(f) {
-  const stage = h('div', 'vt-stage vt-md-stage');
+export function markdownView(f) {
+  const view = h('div', 'vt-view vt-md-view');
   const page = h('article', 'vt-md');
   page.tabIndex = 0;
   page.setAttribute('aria-label', f.name);
   const text = MARKDOWN[f.md] || '';
   page.innerHTML = window.hostText && window.hostText.markdown ? window.hostText.markdown(text) : '';
   if (!page.innerHTML) page.textContent = text;
-  stage.append(page);
-  return stage;
+  view.append(page);
+  return view;
 }
 
 // ---- a PDF page, drawn on a canvas in the document's own colours (paper) ----
@@ -140,8 +140,8 @@ function drawPage(canvas, f, n, pages) {
   ctx.font = '11px sans-serif'; ctx.fillStyle = 'hsl(215 10% 45%)'; ctx.fillText(`Page ${n} of ${pages}`, w / 2 - 28, hgt - 24);
 }
 
-export function pdfStage(f, api) {
-  const stage = h('div', 'vt-stage vt-pdf');
+export function pdfView(f, api) {
+  const view = h('div', 'vt-view vt-pdf');
   const pages = f.pages || 1;
   let page = 1, z = 1, searching = false;
   const bar = h('div', 'vt-pdfbar');
@@ -167,7 +167,7 @@ export function pdfStage(f, api) {
   searchBox.append(q, count, sPrev, sNext, sClose);
   searchBox.hidden = true;
   const left = h('div', 'vt-pdfbar-group'); left.append(prev, num, total, next);
-  const mid = h('div', 'vt-pdfbar-group'); mid.append(out, level, inn);
+  const mid = h('div', 'vt-pdfbar-group vt-pdfbar-zoom'); mid.append(out, level, inn);
   const right = h('div', 'vt-pdfbar-group'); if (api.trial.pdfSearch) right.append(find); right.append(full);
   bar.append(left, sep(), mid, h('span', 'vt-pdfbar-fill'), right);
   const scroller = h('div', 'vt-pdf-pages');
@@ -196,8 +196,8 @@ export function pdfStage(f, api) {
   out.addEventListener('click', () => { z = Math.max(0.5, (z || 1) - 0.25); apply(); });
   inn.addEventListener('click', () => { z = Math.min(3, (z || 1) + 0.25); apply(); });
   level.addEventListener('click', () => { z = 0; apply(); });
-  full.addEventListener('click', () => { if (D.fullscreenElement) D.exitFullscreen(); else if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {}); });
-  const showSearch = (on) => { searching = on; searchBox.hidden = !on; if (on) q.focus(); else find.focus(); };
+  full.addEventListener('click', () => { if (D.fullscreenElement) D.exitFullscreen(); else if (view.requestFullscreen) view.requestFullscreen().catch(() => {}); });
+  const showSearch = (on) => { searching = on; searchBox.hidden = !on; if (on) q.focus({ preventScroll: true }); else find.focus({ preventScroll: true }); };
   find.addEventListener('click', () => showSearch(!searching));
   sClose.addEventListener('click', () => showSearch(false));
   q.addEventListener('input', () => { count.textContent = q.value ? '1 of 3' : ''; });
@@ -207,10 +207,10 @@ export function pdfStage(f, api) {
     canvases.forEach((c, i) => { if (c.getBoundingClientRect().top - top < scroller.clientHeight / 2) best = i + 1; });
     if (best !== page) { page = best; apply(); }
   });
-  stage.append(bar, searchBox, scroller);
+  view.append(bar, searchBox, scroller);
   z = 0;
   apply();
-  return stage;
+  return view;
 }
 
 // The info panel: what the record holds, and where the file is used.

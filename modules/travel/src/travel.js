@@ -1241,7 +1241,10 @@
   ];
   // With Budget on in this space its Overview and Costs carry the money, so the Money view steps aside (the bookings keep their
   // cost fields). Found by the `budget` flag of another module that is on here, never by name; asked on load, on focus and every 30 s.
-  const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || !state.budgetOn);
+  // A guest gets the Money view only where an owner turned on "Guests can see costs and booking codes" in Set up
+  // (host.space().guestsSeeHidden); the server keeps the amounts from them otherwise.
+  const hideMoney = () => info.user.role === 'guest' && !(spaceOf() && spaceOf().guestsSeeHidden === true);
+  const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || (!state.budgetOn && !hideMoney()));
   const viewSwitch = host.ui.viewSwitch({
     id: 'view',
     options: viewsNow(),
@@ -1339,7 +1342,7 @@
     const sig = JSON.stringify(items);
     if (sig !== toolbarSig) { toolbarSig = sig; host.toolbar.set(items).catch(() => { toolbarSig = ''; }); }
     const openCount = openDecisions().length;
-    if (state.budgetOn && state.view === 'money') state.view = 'days';
+    if (state.view === 'money' && !viewsNow().some((v) => v.id === 'money')) state.view = 'days';
     viewSwitch.set(state.view, viewsNow().map((v) => (v.id === 'decisions' && openCount ? { ...v, label: `Decisions (${openCount} open)` } : v)));
     syncHeader();
     syncStatus();

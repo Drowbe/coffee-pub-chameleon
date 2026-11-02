@@ -105,7 +105,7 @@ async function start() {
     variant: 'page',
     titlebar: popout
       ? { close: true, standard: () => popoutStandard(mod), onAction: (e) => pageAction(mod, e, mounted) }
-      : { standard: spaceId ? { ...NONE, clear: true } : NONE, onAction: (e) => pageAction(mod, e, mounted) },
+      : { standard: spaceId ? { ...NONE, clear: mod.clear === true } : NONE, onAction: (e) => pageAction(mod, e, mounted) },
     flush: true,
     content: frame,
     onAction: (e) => { if (mounted) mounted.bandEvent(e); },
@@ -207,7 +207,7 @@ function popoutStandard(mod) {
     ...NONE,
     dock: Boolean(host && host.supportsMode(mod.id, 'dock')) && { label: 'Dock beside the call' },
     window: Boolean(host && host.supportsMode(mod.id, 'float')) && { label: 'Float over the call', tip: 'Float over the call' },
-    clear: true,
+    clear: mod.clear === true,
   };
 }
 function pageAction(mod, e, mounted) {

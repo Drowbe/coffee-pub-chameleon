@@ -1,7 +1,7 @@
 {
   "id": "research",
   "name": "Research",
-  "version": "0.4.25",
+  "version": "0.4.27",
   "icon": "book-open",
   "color": "blue",
   "description": "What a group finds out while it plans: notes, links with the part that mattered, photos with a caption. Tagged, searchable, linkable from anywhere, and questioned or summarised by the AI the {owner} chose.",
@@ -56,6 +56,20 @@
   "access": {
     "read": "view",
     "write": "edit"
+  },
+  "guards": {
+    "clear": "remove_photos",
+    "keys": [
+      {
+        "key": "photo:{id}",
+        "owner": "by",
+        "others": {
+          "change": "remove_photos",
+          "delete": "remove_photos",
+          "may": ["title", "tags", "date", "point", "text", "sub", "at"]
+        }
+      }
+    ]
   },
   "hooks": {
     "ai": "optional"

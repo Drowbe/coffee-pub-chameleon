@@ -1,7 +1,7 @@
 {
   "id": "polls",
   "name": "Polls",
-  "version": "1.15.22",
+  "version": "1.15.24",
   "icon": "square-poll-vertical",
   "color": "purple",
   "description": "Quick polls and votes for the whole {environment} and for each {space}, with live results.",
@@ -92,6 +92,32 @@
     "read": "view",
     "write": "vote"
   },
+  "guards": {
+    "clear": "manage_any",
+    "keys": [
+      {
+        "key": "poll:{id}",
+        "owner": "byKey",
+        "ownerName": "by",
+        "need": "create",
+        "others": {
+          "change": "manage_any",
+          "delete": "manage_any",
+          "may": [
+            "announced",
+            { "field": "options", "append": true, "when": "addable", "open": true }
+          ]
+        },
+        "closed": { "flag": "closed", "at": "closesAt" }
+      },
+      {
+        "key": "vote:{poll}:{person}",
+        "personName": "name",
+        "parent": "poll:{poll}",
+        "parentOpen": true
+      }
+    ]
+  },
   "hooks": {
     "notify": true
   },
@@ -150,7 +176,8 @@
         "summary": {
           "title": "question",
           "when": "closesAt",
-          "done": "closed"
+          "done": "closed",
+          "doneAt": "closesAt"
         },
         "dated": { "title": "question", "start": "closesAt" },
         "marker": true
