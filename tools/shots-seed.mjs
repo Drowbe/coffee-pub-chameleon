@@ -116,7 +116,8 @@ export async function seedServer(call) {
     ['q2', { question: 'Which days for the day trip?', options: [{ id: 'o1', text: 'Sintra', date: day(12) }, { id: 'o2', text: 'Cascais', date: day(14) }], multi: true, addable: false, closed: true, closesAt: null, createdAt: Date.parse(`${day(-9)}T10:00:00Z`), by: 'Sam Okafor', byKey: users.sam }],
   ];
   for (const [id, v] of polls) await put('polls', `poll:${id}`, { id, ...v });
-  await put('polls', `vote:q1:${users.mia}`, { options: ['o1'], name: 'Mia Alvarez', at: Date.parse(`${day(-4)}T10:00:00Z`) });
+  // A vote is its voter's own (the Polls guards): each is put by the person who cast it.
+  await put('polls', `vote:q1:${users.mia}`, { options: ['o1'], name: 'Mia Alvarez', at: Date.parse(`${day(-4)}T10:00:00Z`) }, trip.id, 'mia');
   await put('polls', `vote:q1:${users.sam}`, { options: ['o2'], name: 'Sam Okafor', at: Date.parse(`${day(-4)}T11:00:00Z`) }, trip.id, 'sam');
 
   // --- Calendar

@@ -295,9 +295,13 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
     ['q2', { question: 'Which day for the Sintra trip?', options: [{ id: 'o1', text: 'Day 3', date: d(2) }, { id: 'o2', text: 'Day 4', date: d(3) }, { id: 'o3', text: 'Day 6', date: d(5) }], multi: true, addable: false, closed: true, closesAt: null, createdAt: when(-0), by: SAM, byKey: sam }, { [mia]: ['o2'], [sam]: ['o2', 'o3'], [lee]: ['o2'] }],
     ['q3', { question: 'Rental car: manual or automatic?', options: [{ id: 'o1', text: 'Manual, it is cheaper' }, { id: 'o2', text: 'Automatic, steep hills' }], multi: false, addable: false, closed: false, closesAt: Date.parse(`${dayPlus(today, 20)}T12:00:00Z`), createdAt: when(4), by: LEE, byKey: lee }, { [lee]: ['o2'], [sam]: ['o2'] }],
   ];
+  // A vote is its voter's own and a closed poll takes none (the Polls guards): each person casts theirs while the poll is
+  // open, and a poll that ends closed is closed after.
+  const loginOf = { [mia]: 'mia', [sam]: 'sam', [lee]: 'lee' };
   for (const [id, v, votes] of polls) {
-    await put('polls', `poll:${id}`, { id, ...v });
-    for (const [key, options] of Object.entries(votes)) await put('polls', `vote:${id}:${key}`, { options, name: ({ [mia]: MIA, [sam]: SAM, [lee]: LEE })[key], at: when(3, 12) });
+    await put('polls', `poll:${id}`, { id, ...v, closed: false });
+    for (const [key, options] of Object.entries(votes)) await ok(loginOf[key], 'PUT', `/api/modules/polls/data/${encodeURIComponent(`vote:${id}:${key}`)}?scope=space&space=${space.id}`, { value: { options, name: ({ [mia]: MIA, [sam]: SAM, [lee]: LEE })[key], at: when(3, 12) }, tz: 'Europe/Lisbon' });
+    if (v.closed) await put('polls', `poll:${id}`, { id, ...v });
   }
 
   // --- Budget (its own costs; the Planner's costs show beside them) ---

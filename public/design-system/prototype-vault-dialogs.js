@@ -234,7 +234,7 @@ export function shareListSheet(w, { empty = false, shares = SHARES } = {}) {
     tags.append(tag('file', plural(sh.files.length, 'file')), tag('clock', sh.ended ? `Ended ${when(sh.ends)}` : `Ends ${when(sh.ends, { long: true })}`), tag(sh.password ? 'key' : 'lock-open', sh.password ? 'Password' : 'No password'), tag(sh.download ? 'download' : 'eye', sh.download ? 'Download allowed' : 'View only'), tag('eye', `Opened ${sh.opened} times`));
     const by = h('p', 'sdk-card-sub', `Made by ${who(sh.by)}, ${when(sh.at)}`);
     const acts = h('div', 'sdk-card-foot');
-    if (!sh.ended) acts.append(btn('btn btn-small', { label: 'Files', icon: 'pen-to-square' }), btn('btn btn-small btn-danger', { label: 'Turn off', icon: 'link-slash' }));
+    if (!sh.ended) acts.append(btn('btn btn-small', { label: 'Files', icon: 'pen-to-square' }), btn('btn btn-small', { label: 'Turn off', icon: 'link-slash' }));
     else acts.append(btn('btn btn-small', { label: 'Remove from the list', icon: 'trash' }));
     body.append(tags, by, acts);
     li.append(head, body);
