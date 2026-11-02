@@ -176,3 +176,26 @@ export function inShadow(node) {
   root.append(node);
   return host;
 }
+
+// What needs the page's layout (a menu held open under its button) waits until the whole section is in the page, so the page is laid out once
+// and not again for each of the many panels drawn.
+const waiting = [];
+export const defer = (fn) => { waiting.push(fn); };
+export function runDeferred() {
+  const y = window.scrollY;
+  while (waiting.length) { const fn = waiting.shift(); try { fn(); } catch (e) { console.error(e); } }
+  window.scrollTo(0, y); // opening a menu and closing it moves focus, which can scroll the page
+}
+
+// Seventy-odd panels each laid out in a page that is laid out again for every one of them is slow, so a panel is drawn when it comes near the
+// screen (a placeholder of its own height keeps the page's length). ?vtall=1 draws every panel at once (for measuring the whole section).
+export const ALL = new URLSearchParams(location.search).get('vtall') === '1';
+const watcher = !ALL && 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) { watcher.unobserve(e.target); const b = e.target.__draw; e.target.__draw = null; if (b) { e.target.classList.remove('is-pending'); b(); } }
+}, { rootMargin: '1200px 0px' }) : null;
+export function lazy(box, draw) {
+  if (!watcher) { defer(draw); return; }
+  box.classList.add('is-pending');
+  box.__draw = draw;
+  watcher.observe(box);
+}

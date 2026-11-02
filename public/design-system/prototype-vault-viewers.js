@@ -197,7 +197,7 @@ export function pdfView(f, api) {
   inn.addEventListener('click', () => { z = Math.min(3, (z || 1) + 0.25); apply(); });
   level.addEventListener('click', () => { z = 0; apply(); });
   full.addEventListener('click', () => { if (D.fullscreenElement) D.exitFullscreen(); else if (view.requestFullscreen) view.requestFullscreen().catch(() => {}); });
-  const showSearch = (on) => { searching = on; searchBox.hidden = !on; if (on) q.focus(); else find.focus(); };
+  const showSearch = (on) => { searching = on; searchBox.hidden = !on; if (on) q.focus({ preventScroll: true }); else find.focus({ preventScroll: true }); };
   find.addEventListener('click', () => showSearch(!searching));
   sClose.addEventListener('click', () => showSearch(false));
   q.addEventListener('input', () => { count.textContent = q.value ? '1 of 3' : ''; });

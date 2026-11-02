@@ -2,7 +2,7 @@
 // sharing (the sheet, the list of links, the public /shared page), deleting and erasing, and the questions for Thomas.
 import { createModuleFrame } from '/module-frame.js';
 import { FILES, SHARES, byId, TOTAL_BYTES } from './prototype-vault-data.js';
-import { h, fa, btn, fileChip, WORDS, inShadow } from './prototype-vault-ui.js';
+import { h, fa, btn, fileChip, WORDS, inShadow, lazy } from './prototype-vault-ui.js';
 import { TRIAL } from './prototype-vault-app.js';
 import { heldDialog, removeSheet, shareSheet, shareListSheet, renameSheet, usesSheet, turnOffShareSheet, eraseSpaceSheet, uninstallSheet, offInSpaceSheet, pickSheet } from './prototype-vault-dialogs.js';
 import { sharedPage } from './prototype-vault-shared.js';
@@ -17,15 +17,19 @@ function plain(into, { name, note, w, h: hh, frame, after, level = 'h4' }) {
   const box = h('div', 'pp-frame vt-frame');
   if (w) box.dataset.w = String(w);
   if (hh) box.dataset.h = String(hh);
-  const f = createModuleFrame(frame);
-  const hold = h('div', 'vt-hold');
-  hold.append(f.el);
-  f.hold = hold;
-  box.append(hold);
   wrap.append(box);
   into.append(wrap);
-  if (after) after(f, box);
-  return { f, box, wrap };
+  const out = { f: null, box, wrap };
+  lazy(box, () => {
+    const f = createModuleFrame(frame);
+    out.f = f;
+    const hold = h('div', 'vt-hold');
+    hold.append(f.el);
+    f.hold = hold;
+    box.append(hold);
+    if (after) after(f, box);
+  });
+  return out;
 }
 
 // The object's Files block (host.ui.fileChips): a head with Add file, then a chip for each file.

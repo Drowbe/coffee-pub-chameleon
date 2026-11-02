@@ -6,7 +6,7 @@
 // prototype-vault-app.js, the viewers, the dialogs, the public page in their own files; the styles in prototype-vault.css.
 import { createVault, TRIAL, redrawAll } from './prototype-vault-app.js';
 import { GB } from './prototype-vault-data.js';
-import { D, h, btn, heldMenu } from './prototype-vault-ui.js';
+import { D, h, btn, heldMenu, lazy, runDeferred, ALL } from './prototype-vault-ui.js';
 import { buildAddAndViewers, buildNarrowAndPermissions } from './prototype-vault-sets.js';
 import { buildOther, buildShare, buildDelete, buildQuestions } from './prototype-vault-more.js';
 
@@ -57,7 +57,6 @@ jump.setAttribute('aria-label', 'Jump to a part of the Vault');
 jump.append(h('span', 'pp-jump-label', 'Jump to'));
 sec.append(jump);
 
-main.append(sec);
 const sets = [];
 function set(id, name, note) {
   const s = h('section', 'vt-set');
@@ -84,12 +83,16 @@ function state(into, { name, note, w, h: hh, cfg, after, level = 'h4' }) {
   const box = h('div', 'pp-frame vt-frame');
   if (w) box.dataset.w = String(w);
   if (hh) box.dataset.h = String(hh);
-  const api = createVault(cfg || {});
-  box.append(api.el);
   wrap.append(box);
   into.append(wrap);
-  if (after) after(api, box);
-  return { api, box, wrap };
+  const out = { api: null, box, wrap };
+  lazy(box, () => {
+    const api = createVault(cfg || {});
+    out.api = api;
+    box.append(api.el);
+    if (after) after(api, box);
+  });
+  return out;
 }
 const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); return p; };
 
@@ -157,6 +160,8 @@ buildShare(helpers);
 buildDelete(helpers);
 buildNarrowAndPermissions(helpers);
 buildQuestions(helpers);
+main.append(sec);
+requestAnimationFrame(() => { runDeferred(); D.documentElement.dataset.vtBuilt = ALL ? 'all' : 'lazy'; });
 // the page's jump list gets its Vault button (the page's list is the Phone script's)
 const pageJump = D.querySelector('nav.pp-jump[aria-label="Jump to a section of the page"]');
 if (pageJump) {

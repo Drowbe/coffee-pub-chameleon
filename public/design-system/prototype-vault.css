@@ -19,6 +19,7 @@
 .vt-set-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
 .vt-set > .pp-state-note { margin-top: calc(-1 * var(--space-3)); }
 .vt-frame { position: relative; }
+.vt-frame.is-pending { min-height: calc(var(--vt-h, 640px) + 2 * var(--space-5)); }
 .vt-hold { position: relative; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); }
 .vt-hold > .vt-held-menu { position: absolute; z-index: 5; }
 .vt-hold > .mf { width: 100%; height: var(--vt-h, 640px); position: relative; }
