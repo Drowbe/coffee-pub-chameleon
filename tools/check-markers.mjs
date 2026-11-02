@@ -93,8 +93,10 @@ await test('pages: the Calendar draws markers as chips, by the filter, in every 
   assert.match(js, /return `\$\{past \? 'Closed' : 'Closes'\}\$\{x\.ev\.allDay \? '' : ` \$\{timeText\(start\)\}`\}: \$\{x\.ev\.title\}`;/);
   assert.match(js, /const said = x\.due \? \(past \? 'Overdue' : 'Due'\) : past \? 'Closed' : 'Closes';/, 'a list row says it the same way');
   assert.match(js, /const markerPast = \(x\) => \(x\.ev\.allDay \? x\.ev\.start < ymd\(new Date\(\)\) : x\.ev\.start <= Date\.now\(\)\);/);
-  assert.match(js, /class="sdk-cal-event sdk-bar-kept is-marker\$\{past \? ' is-past' : ''\}/, 'a chip with the kept bar, dimmed once past');
-  assert.match(js, /class="sdk-row sdk-bar-kept is-marker\$\{past \? ' is-past' : ''\}/, 'and a row');
+  // A closed poll is dimmed once past; an overdue task is not dimmed but takes the danger tone (is-overdue, readable text).
+  assert.match(js, /class="sdk-cal-event sdk-bar-kept is-marker\$\{past \? \(x\.due \? ' is-overdue' : ' is-past'\) : ''\}/, 'a chip with the kept bar, dimmed once past, or the danger tone when it is a task that is late');
+  assert.match(js, /class="sdk-row sdk-bar-kept is-marker\$\{past \? \(x\.due \? ' is-overdue' : ' is-past'\) : ''\}/, 'and a row');
+  assert.match(read('public/sdk/system.css'), /\.sdk-cal-event\.sdk-bar-kept\.is-marker\.is-overdue/, 'an overdue marker is in the danger tone, not dimmed');
   assert.match(read('public/sdk/system.css'), /:is\(\.sdk-cal-event, \.sdk-cal-agenda \.sdk-row\)\.is-past \{ opacity: var\(--cal-out\); \}/, 'past ones at 55% (the Calendar block)');
   // The module's tint on the edge and icon only (design-theme.md, "Tints"), from the eight, as the host sends it.
   assert.match(js, /const tint = TINTS\.includes\(m\.module\.color\) \? m\.module\.color : null;/);

@@ -17,6 +17,9 @@
       <h3 id="editor-title">New event</h3>
       <label class="sdk-field" id="f-where-wrap" hidden><span class="sdk-label">Where</span><select id="f-where"></select><span class="sdk-hint"></span></label>
       <div class="sdk-hint" id="f-readonly" hidden></div>
+      <div class="sdk-hint copy-line" id="f-copy" hidden></div>
+      <div class="summary" id="f-summary" hidden></div>
+      <div class="sdk-form fields" id="f-fields">
       <label class="sdk-field"><span class="sdk-label">Title</span><input id="f-title" type="text" maxlength="100" required><span class="sdk-hint"></span></label>
       <div class="sdk-form-row">
         <div class="sdk-field sdk-m" role="group" aria-labelledby="f-date-label"><span class="sdk-label" id="f-date-label">Starts</span><input id="f-date" type="date" required aria-labelledby="f-date-label"><span class="sdk-hint"></span></div>
@@ -27,6 +30,7 @@
         <label class="sdk-field sdk-s" id="f-end-wrap"><span class="sdk-label">at</span><input id="f-end" type="time"><span class="sdk-hint"></span></label>
       </div>
       <div class="sdk-choice-list"><label class="sdk-choice-row"><input id="f-allday" type="checkbox"><span>All day</span></label></div>
+      <div class="sdk-hint" id="f-owned" hidden></div>
       <div class="sdk-form-row" id="f-repeat-row">
         <label class="sdk-field sdk-m"><span class="sdk-label">Repeats</span><select id="f-repeat">
           <option value="">Does not repeat</option>
@@ -46,9 +50,11 @@
         <option value="60">1 hour before</option>
         <option value="1440">1 day before</option>
       </select><span class="sdk-hint" id="f-remind-hint"></span></label>
+      </div>
       <div class="sdk-field" id="f-links-wrap" role="group" aria-labelledby="f-links-label" hidden><span class="sdk-label" id="f-links-label">Linked from</span><div class="links" id="f-links"></div></div>
       <div class="sdk-form-error" id="f-error" role="alert" hidden></div>
       <div class="sdk-editor-actions">
+        <button class="btn btn-danger" type="button" id="f-delete-one" hidden>Delete this one</button>
         <button class="btn btn-danger" type="button" id="f-delete" hidden>Delete</button>
         <button class="btn btn-quiet" type="button" id="f-cancel">Cancel</button>
         <button class="btn btn-primary" type="button" id="f-save">Save</button>

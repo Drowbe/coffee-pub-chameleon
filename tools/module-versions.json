@@ -8,8 +8,8 @@
     "hash": "230bc6acf90b2e05"
   },
   "calendar": {
-    "version": "1.24.30",
-    "hash": "295b9550ed3d3ae8"
+    "version": "1.24.31",
+    "hash": "a5162cfa432ddf88"
   },
   "maps": {
     "version": "0.9.13",
@@ -32,8 +32,8 @@
     "hash": "79a00d61cc45ecfe"
   },
   "todo": {
-    "version": "1.15.21",
-    "hash": "6ec57787fa1de18e"
+    "version": "1.15.22",
+    "hash": "59c2e5badb106da5"
   },
   "travel": {
     "version": "0.15.59",

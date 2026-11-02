@@ -11,6 +11,7 @@
 <body>
 <div id="app" class="app sdk-slot" hidden>
   <p class="sdk-form-error" id="note" hidden></p>
+  <div class="undo" id="undo" role="status" hidden><span id="undo-text"></span><button type="button" class="btn btn-small btn-quiet" id="undo-btn">Undo</button></div>
   <main id="body" class="body"></main>
 
   <dialog id="editor" class="sdk-editor">
@@ -27,7 +28,7 @@
       <div class="sdk-field" id="f-links-wrap" role="group" aria-labelledby="f-links-label">
         <span class="sdk-label" id="f-links-label">Linked</span>
         <div id="f-links" class="links"></div>
-        <input id="f-link-search" type="text" maxlength="100" placeholder="Link an event or poll: type to search" aria-label="Search events and polls to link">
+        <input id="f-link-search" type="text" maxlength="100" placeholder="Link an object: type to search" aria-label="Search for an object to link">
         <div id="f-link-results" class="results"></div>
       </div>
       <div id="f-rules"></div>
