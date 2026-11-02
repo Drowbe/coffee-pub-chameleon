@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides whether and how one docked module can sit on top of another in the same column of the canvas; and the sessions that would build it: experience-design (`public/canvas.js`, `public/layouts.js`, `public/style.css`, `public/sdk/system.css`, the Design System Prototype), server-development (`server/layouts.js` and its check, only if saved layouts carry stacks), quality-assurance (each step), content-manager (the architecture and user guides, the changelog).
 
-**Status:** draft, 2026-11-02, by product-planner. Proposes; Thomas decides. Nothing built, and Thomas has said nothing is to be built yet: this is options only. From GitHub #387 (Layout: Stack docked panels by dragging one onto another). Thomas, 2026-11-02: "People like our window mode, but they tend to use the panel mode. In panel mode they could drag a panel into another panel and have them stacked. A good addition, especially for things like polls, which have less data." Everything below is the planner's proposal; "Decisions" is empty until Thomas answers the questions at the end.
+**Status:** approved by Thomas, 2026-11-02, awaiting the Prototype; nothing built. From GitHub #387 (Layout: Stack docked panels by dragging one onto another). Thomas, 2026-11-02: "People like our window mode, but they tend to use the panel mode. In panel mode they could drag a panel into another panel and have them stacked. A good addition, especially for things like polls, which have less data." He then answered "Agreed" to all ten of the draft's questions, taking the planner's suggestions (decisions 1 to 10). The next step, when it is scheduled, is step 0: the Prototype's drawings, which Thomas locks before anything is built. The build itself waits behind the phone foundations and the object window (decision 10). Sections below that still say "suggestion" or "proposed" are now these decisions; the contract is the planner's detail of them.
 
 A word on names. Thomas's "window mode" is a floating module and his "panel mode" is a docked one (the module frame's menu says **Open as a window** and **Dock as a panel**). The plan says docked module and column in its own sentences, and a module, never a pane. The place they sit is the canvas.
 
@@ -30,7 +30,18 @@ A **stack** is a column of the canvas that holds two or more docked modules one 
 
 ## Decisions
 
-None yet. Thomas has asked for options only; his answers to the open questions will be recorded here with their reasons.
+Thomas, 2026-11-02, answering "Agreed" to the draft's ten questions:
+
+1. **The shape is a vertical split with a draggable divider and a collapse on each section** (Option B). It matches "stacked", keeps every module's frame, menu and events unchanged, and does not hide the short module the stack is for. Tabs may come later as another view.
+2. **The host decides which modules may stack:** every docked module except the conference, Chat and the composites (`dest:*`). No manifest key. Reason: nothing shows a need for one yet.
+3. **At most three modules in a stack.** Three still leave about 180 px of content on a 700 px canvas.
+4. **A stack is saved in the person's remembered layout and in saved layouts,** shared and personal, including a space's default layout. `cleanLayout()` in `server/layouts.js` changes to accept it. Opens with does not change.
+5. **A floating window is stacked through the menu only at first** (**Stack with...**); dragging a floating window onto a column is later. Reason: one gesture should not mean both moving and docking.
+6. **A new stack starts with equal heights;** the divider moves them.
+7. **A stack counts as one column** against the docked limit. That is the point of the idea.
+8. **A stack left with one module becomes an ordinary column at once.**
+9. **The Layout menu's Arrange section gets Unstack all.**
+10. **Built after the phone foundations and the object window,** with the rest of the queue. Reason: the object window is built on the phone foundations first ([plan-phone-experience](plan-phone-experience.md), decision 8), and this is a canvas plan that needs neither.
 
 ## The options
 
@@ -58,13 +69,13 @@ Every module in the stack is a section with a title bar; any number may be open 
 - **Rules out.** Fine height control. Keeps what a closed section shows to its title bar and whatever a module puts in its status bar.
 - **Good for.** Many small modules; also what a vertical split collapses into when the canvas is short.
 
-### Suggestion (the planner's, not a decision)
+### Chosen: Option B (decision 1)
 
-**Option B, with a collapse on each section** (so the split degrades to Option C when there is not enough height). It matches what Thomas described ("stacked", polls "less data"), keeps every module's frame, menu and events exactly as they are, and needs nothing from the modules. Tabs (Option A) can be added later as a way to view a stack if wanted; it is the costliest of the three because of the event routing, and it hides the very thing a short module was stacked to show. Question 1.
+**Option B, with a collapse on each section** (so the split degrades to Option C when there is not enough height). It matches what Thomas described ("stacked", polls "less data"), keeps every module's frame, menu and events exactly as they are, and needs nothing from the modules. Tabs (Option A) can be added later as a way to view a stack if wanted; it is the costliest of the three because of the event routing, and it hides the very thing a short module was stacked to show.
 
 ## Which modules suit it
 
-Proposed rule, from the modules' own shape. Question 2 asks whether it is a host rule or a manifest flag.
+Proposed rule, from the modules' own shape. Decision 2.
 
 | Module | Stackable | Why |
 |---|---|---|
@@ -77,7 +88,7 @@ Proposed rule, from the modules' own shape. Question 2 asks whether it is a host
 | Stream | Not on a phone | Unchanged. |
 | An uploaded module in a sandboxed frame | Yes | It is a frame in a box; the box is smaller. |
 
-A module that cannot work below a height says so. Proposed: no new manifest field; the host's rule is a section never gets less than its title bar plus 120 px of content (question 3 on the number).
+A module that cannot work below a height says so. No new manifest field (decision 2); the host rule is a section never gets less than its title bar plus 120 px of content (decision 3 sets the number).
 
 ## Drag, drop zones and the menu path
 
@@ -99,9 +110,9 @@ Every title bar menu of a docked module gets these entries, in a group after **D
 - **Move up** and **Move down** in a stack (the phone plan's words), moving the section one place; at the end the entry is hidden.
 - **Move out of the stack** (visible only in a stack).
 - **Collapse** and **Expand** (visible only in a stack).
-- On a floating module, **Dock as a panel** is unchanged (its own column) and **Stack with...** is also offered, docking and stacking in one step (question 5 asks whether a floating window can also be dragged onto a column).
+- On a floating module, **Dock as a panel** is unchanged (its own column) and **Stack with...** is also offered, docking and stacking in one step (decision 5: the menu only, at first).
 
-These are plain menu entries, so the keyboard reaches them with the menu's keys, a screen reader reads them, and a tablet's finger can tap them. The Layout menu's Arrange section gains one entry, **Unstack all**, putting every stack back to separate columns (next to **Dock all**). Question 9.
+These are plain menu entries, so the keyboard reaches them with the menu's keys, a screen reader reads them, and a tablet's finger can tap them. The Layout menu's Arrange section gains one entry, **Unstack all**, putting every stack back to separate columns (next to **Dock all**).
 
 ### Placing a divider
 
@@ -127,7 +138,7 @@ The divider between two sections is a bar 8 px tall (a 24 px hit area on a coars
 
 ## How a stack is saved
 
-Proposed, in three places. Question 4 asks Thomas to choose.
+Proposed, in three places. Decision 4.
 
 1. **The person's own remembered layout** (browser only, `app.canvas.<space id>`): each stacked module's record gains a stack identity and its place in the stack: `stack` (the id of the column it is in), `at` (its order), `h` (its share of the column's height as a fraction), and `folded` (collapsed or not). The geometry is in fractions, not pixels, so a window that is a different height still gets the same split; the column's width stays `dockW` as now. A module with no `stack` is an ordinary column, so records written before stay valid: this needs no compatibility code because the key is only read if present.
 2. **Saved layouts** (the server, shared or personal): the layout's module entry gets the same `stack`, `at`, `h` and `folded`, so "Planning" can be the Calendar and a To-do over Polls. This needs `cleanLayout()` in `server/layouts.js` to accept the new keys with limits (a stack id up to 32 characters of `[a-z0-9]`, `at` 0 to 2, `h` between 0.1 and 0.9, `folded` boolean), the stored shape documented in [api-modules](../api/api-modules.md), and `tools/check-layouts.mjs` to hold the rules. Loading a layout through `placeLayout()` in `public/layouts.js` builds the stacks, passes them through the docked limit as one column each, and leaves a module out as it does now when it is not on in the space.
@@ -144,13 +155,13 @@ Names follow the project: space, canvas, module, object; a column; no pane or st
 ### Canvas and layout code (experience-design)
 
 - **A stack in the canvas.** `public/canvas.js`: a docked module's record may carry `stack` (a string id shared by the modules in one column). `dockedModules()` groups by `stack`; `syncDock()` counts a stack as one column (the docked limit, the flexible-column rule and the column widths all apply to the column); a stack's column holds its sections in `at` order, each as the module's own frame.
-- **Who may be a section.** Not the conference, the chat or a composite (`dest:*`); every other docked module. At most the maximum in question 3 per stack.
+- **Who may be a section.** Not the conference, the chat or a composite (`dest:*`); every other docked module. At most the maximum of three (decision 3) per stack.
 - **Heights.** The sections split the column's height by `h` (fractions summing to 1), minus the dividers. A divider drag changes the two neighbours' `h` only. A section never goes below its title bar plus 120 px of content; collapsed, a section is its title bar (and, if its module has one, its status bar's summary is hidden). The last section to be opened takes the height of the one that collapses, when it does.
 - **Drop zones.** Drawn by the canvas during the existing `.reordering` drag, as an overlay on each eligible column that is not part of the chrome. Names for the code are the experience-design builder's.
 - **The menu path.** The module frame's menu gains, for a docked or floating module that can stack: **Stack with...**; and for a stacked module: **Move up**, **Move down**, **Move out of the stack**, **Collapse** or **Expand**, **Equal heights**. The frame draws them from the host's standard actions, so a bundled and an uploaded module get them without code of their own. The Layout menu's Arrange gains **Unstack all**.
 - **Notes.** The same line as the docked limit's (`#modules-menu-note`, `#layout-announce`): "Polls was stacked under To-do." and "There is no room to stack here." Short, in the host's words.
 - **Pure functions** go in `public/layouts.js` (no document), so `tools/check-canvas.mjs` and `tools/check-layouts.mjs` can run them in node: group by stack, split heights and clamp by the minimum, collapse order for a short canvas, resolve a layout into columns and stacks.
-- **No SDK change** for the modules. The module learns only its box size, from the frame, as it does today. (If Thomas wants a module to refuse stacking, a manifest key is a later addition; question 2.)
+- **No SDK change** for the modules. The module learns only its box size, from the frame, as it does today. (If Thomas wants a module to refuse stacking, a manifest key is a later addition.)
 
 ### Server and saved layouts (server-development)
 
@@ -193,15 +204,15 @@ The design process is: draw it in the Design System Prototype, Thomas locks it, 
 
 Each step is built and checked on its own, and nothing starts until the Prototype is locked (step 0). The kind of build is Thomas's to name; the planner suggests a production build because it changes the canvas, the layout code and what a saved layout holds.
 
-| # | Step | Who | Blocked by |
+| # | Step | Who | Waits on |
 |---|---|---|---|
-| 0 | **The Prototype** draws the states above; Thomas locks them. | experience-design | questions 1, 2, 3 |
+| 0 | **The Prototype** draws the states above; Thomas locks them. | experience-design | the queue (decision 10); first when scheduled |
 | 1 | **The stack in the canvas.** The `stack` record, grouping in `syncDock()`, the column holding frames, heights and the minimum, the collapse for a short canvas, the docked limit counting a stack as one column. Pure functions in `public/layouts.js`. Opened by the menu path only (step 2) for now; no drag. | experience-design | step 0 |
-| 2 | **The menu path.** **Stack with...**, **Move up**, **Move down**, **Move out of the stack**, **Collapse**, **Expand**, **Equal heights** in the module frame's menu; **Unstack all** in the Layout menu; the notes and announcements. | experience-design | step 1; question 5 |
+| 2 | **The menu path.** **Stack with...**, **Move up**, **Move down**, **Move out of the stack**, **Collapse**, **Expand**, **Equal heights** in the module frame's menu; **Unstack all** in the Layout menu; the notes and announcements. | experience-design | step 1 |
 | 3 | **The divider**, with the pointer and the keys; the double click reset. | experience-design | step 1 |
 | 4 | **The drag.** Drop zones on the existing title-bar drag; ineligible columns; the notes. | experience-design | steps 1 to 3 |
-| 5 | **Remembering.** The browser's `app.canvas.<space id>` carries stacks; reloading the space restores them. | experience-design | step 1; question 4 |
-| 6 | **Saved layouts.** `cleanLayout()` and its limits, `LAYOUT_LIMITS`, `captureLayout()` and `placeLayout()`, the stored shape in the API document. | server-development (the server half), experience-design (capture and load) | step 5; question 4 |
+| 5 | **Remembering.** The browser's `app.canvas.<space id>` carries stacks; reloading the space restores them. | experience-design | step 1 |
+| 6 | **Saved layouts.** `cleanLayout()` and its limits, `LAYOUT_LIMITS`, `captureLayout()` and `placeLayout()`, the stored shape in the API document. | server-development (the server half), experience-design (capture and load) | step 5 |
 | 7 | **The checks.** `tools/check-canvas.mjs` (stack grouping, heights, the short canvas, the docked limit), `tools/check-layouts.mjs` (the new keys), `tools/check-nav.mjs` if the Layout menu's Arrange changes, and `check-conformance` measuring the divider's target. | server-development | steps 1 to 6 |
 | 8 | **QA** of the whole, at 1280, 760, 640 and 390 px, light and dark, keyboard and screen reader. | quality-assurance | steps 1 to 7 |
 | 9 | **Documentation.** [architecture-canvas](../architecture/architecture-canvas.md), [api-modules](../api/api-modules.md), the userguide for the canvas and layouts, the changelog. | content-manager | each step as it lands |
@@ -227,15 +238,4 @@ Steps 3 and 5 can go in either order after step 1. Step 4 comes after the menu p
 
 ## Open questions
 
-Each has options and the planner's suggestion, marked as such. None is decided.
-
-1. **The shape.** (a) A vertical split with a draggable divider and a collapse on each section. (b) A tabbed stack. (c) Accordion sections only. (b) hides the short module the stack exists to show and costs the most (the event routing). (c) gives no say over heights. *Suggestion: (a),* with tabs as a possible later view. Blocks the Prototype.
-2. **Which modules may stack.** (a) The host's rule: every docked module but the conference, the chat and the composites. (b) The same, plus a manifest key a module can use to refuse or to ask for a minimum height. (b) is more work and a new field for modules to learn before anything shows a need. *Suggestion: (a).* Blocks the Prototype.
-3. **How many in one stack.** (a) Up to three. (b) Up to two. (c) No limit but the height. A stack of two is the clearest, and three still leaves about 180 px of content on a 700 px canvas; more is not useful. *Suggestion: (a).* Blocks the Prototype.
-4. **What is saved.** (a) Both the remembered layout and saved layouts (including the shared and the default). (b) The remembered layout only, saved layouts holding columns as they do now. (b) means "Planning" cannot name its stack and is cheaper, with no server change. *Suggestion: (a).* Blocks steps 5 and 6.
-5. **A floating window onto a column.** (a) The menu only: **Stack with...** from a floating module. (b) Also a drag of a floating window's title bar onto a column's zones. (b) is natural but mixes two drags (moving the window and docking it) on one gesture. *Suggestion: (a) first, (b) later.* Blocks step 2's final entries.
-6. **The first split.** (a) Equal heights. (b) By content: a short module takes what it needs and the rest goes to the other. (b) needs the module to report its content height, which is a new thing for modules. *Suggestion: (a),* the divider moves it. Blocks step 1.
-7. **Stack and the docked limit.** (a) A stack counts as one column. (b) Each module still counts. (a) is the benefit Thomas's idea is for (more modules in fewer columns); (b) removes it. *Suggestion: (a).* Blocks step 1.
-8. **When a stack drops to one module.** (a) It becomes an ordinary column at once. (b) It stays a one-section stack until the person leaves. *Suggestion: (a)* so the canvas has one kind of column per module. Blocks step 1.
-9. **Unstack all.** (a) One entry in the Layout menu's Arrange. (b) Not offered; each section's **Move out of the stack** only. *Suggestion: (a),* as Dock all and Clean up are there. Blocks step 2.
-10. **Order of the build.** (a) After the phone foundations and the object window, with the rest of the queue. (b) Now, since it is small and touches only the canvas. *Suggestion: (a):* the object window is built on the phone foundations first (the phone plan's decision 8), and this is a canvas plan that does not need them; Thomas has said nothing is to be built until he decides. Blocks the start.
+None. All ten of the draft's questions are decided above (Thomas, 2026-11-02). The items under "What is not decided" are later additions, not blockers.
