@@ -1570,6 +1570,10 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return (await api('GET', url('/markers', scopeOf(), { from: when(from), to: when(to) }))).markers;
     },
     // Ask in this space's Chat (host.chat.ask). Only the canvas host provides it.
+    // Whether host.chat.ask can work here: only on a space's canvas, where Chat is.
+    async 'chat.available'() {
+      return { available: typeof onChatAsk === 'function' };
+    },
     async 'chat.ask'({ question, refs }) {
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);
