@@ -52,6 +52,15 @@
     'fill-secondary': 'var(--surface-card)',
     'text-on-secondary': 'var(--text-primary)',
     'fill-secondary-hover': 'color-mix(in srgb, var(--surface-card) 94%, var(--text-primary))',
+    'surface-field': 'color-mix(in srgb, var(--surface-page) 85%, var(--edge-hairline))',
+    'surface-menu': 'color-mix(in srgb, var(--surface-panel) 96%, var(--text-primary))',
+    'surface-bar-nav': 'var(--surface-page)',
+    'edge-field': 'color-mix(in srgb, var(--edge-hairline) 80%, var(--text-primary))',
+    'wash-ink': 'var(--accent-fill)',
+    'mf-surface-title': 'color-mix(in srgb, var(--surface-panel) 70%, black)',
+    'mf-surface-toolbar': 'color-mix(in srgb, var(--surface-panel) 93%, var(--text-primary))',
+    'mf-surface-row': 'color-mix(in srgb, var(--surface-panel) 94%, var(--accent-fill))',
+    'mf-surface-row-hover': 'color-mix(in srgb, var(--surface-panel) 88%, var(--accent-fill))',
   };
 
   // SCAFFOLDING, deleted with the old tokens when their last consumer moves (plan-design-system.md, step 36): four roles whose old
@@ -59,11 +68,12 @@
   // (server/theme-css.js), and the editor's preview does the same. LEGACY_AUTO is each old token's own default.
   const LEGACY = {
     'surface-card': '--bg-card',
+    'surface-field': '--bg-input',
     'fill-secondary': '--secondary',
     'fill-secondary-hover': '--secondary-hover',
     'icon-default': '--icon',
   };
-  const LEGACY_AUTO = { '--bg-card': 'var(--bg-input)', '--secondary': 'var(--surface)', '--secondary-hover': 'var(--surface-hover)', '--icon': 'initial' };
+  const LEGACY_AUTO = { '--bg-input': 'color-mix(in srgb, var(--surface-page) 85%, var(--edge-hairline) 15%)', '--bg-card': 'var(--bg-input)', '--secondary': 'var(--surface)', '--secondary-hover': 'var(--surface-hover)', '--icon': 'initial' };
 
   const hexOf = (x) => (typeof x === 'string' && /^#[0-9a-f]{6}$/i.test(x) ? x.toLowerCase() : null);
   const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };

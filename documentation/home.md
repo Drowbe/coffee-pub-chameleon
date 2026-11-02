@@ -48,6 +48,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
   module, must draw from.
 - [Architecture overview](architecture/architecture-overview.md) -- the pieces, the technology,
   and where the code lives.
+- [Teams and budgets](architecture/architecture-teams-and-budgets.md) -- draft: how work is divided into teams and what each may spend.
 - [Modules architecture](architecture/architecture-modules.md) -- how module install and storage
   are built.
 - [Canvas architecture](architecture/architecture-canvas.md) -- the canvas: its grid of modules, docked

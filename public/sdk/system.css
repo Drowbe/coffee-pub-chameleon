@@ -177,7 +177,7 @@
   --surface-popover: var(--surface-menu);
   --surface-toast: var(--surface-card);
   --surface-tooltip: var(--text-primary); /* the inverse of the page */
-  --surface-chat-own: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  --surface-chat-own: color-mix(in srgb, var(--wash-ink) var(--wash-own), transparent);
   --surface-toolbar: var(--surface-field);
   --surface-bar-top: var(--surface-page);
   --surface-bar-nav: var(--surface-page);
@@ -205,11 +205,17 @@
   --edge-menu: var(--edge-hairline);
   --scrollbar-thumb: var(--text-muted);
 
-  /* Interaction */
+  /* Interaction. The wash is what a chosen thing, today and your own chat message are tinted with: the accent by default; a theme that
+     sets wash-ink (a neutral ink) also gets quieter steps (server/theme-css.js writes them), so no large area is a tint of the accent. */
+  --wash-ink: var(--accent-fill);
+  --wash-selected: 28%;
+  --wash-today: 14%;
+  --wash-own: 10%;
+  --wash-pick: 28%;
   --accent-fill-hover: color-mix(in srgb, var(--accent-fill) 85%, white);
   --fill-hover: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  --fill-selected: color-mix(in srgb, var(--accent-fill) 28%, transparent);
-  --fill-today: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  --fill-selected: color-mix(in srgb, var(--wash-ink) var(--wash-selected), transparent);
+  --fill-today: color-mix(in srgb, var(--wash-ink) var(--wash-today), transparent);
   --fill-secondary: var(--surface-card);
   --fill-secondary-hover: color-mix(in srgb, var(--surface-card) 94%, var(--text-primary));
   --focus-ring: var(--accent-fill);
@@ -1270,7 +1276,7 @@
   --card-icon: 32px;
   --card-head-h: var(--btn-h-small); /* the banded card's head band: 30px */
   --card-head-tint: var(--text-primary); /* what the band is shaded with */
-  --card-head-step: 6%; /* how much: one step darker than the box's own surface */
+  --card-head-step: 6%; /* how much: one step darker than the box's own surface (a neutral-wash theme writes 8%) */
   --tick-hit: 28px; /* 44px on a phone */
   --tick-edge: -6px;
   --ls-label: 0.04em;
@@ -1442,7 +1448,7 @@
 /* The banded card's states: the same fills as a card, made on the box's own surface (--s), so the band, a step of it, follows. */
 .sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):hover { --s: color-mix(in srgb, var(--text-primary) 8%, var(--surface-card)); }
 .sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):active { --s: color-mix(in srgb, var(--text-primary) 14%, var(--surface-card)); }
-.sdk-card-banded:is([aria-current="true"], [aria-selected="true"], .on) { --s: color-mix(in srgb, var(--accent-fill) 28%, var(--surface-card)); }
+.sdk-card-banded:is([aria-current="true"], [aria-selected="true"], .on) { --s: color-mix(in srgb, var(--wash-ink) var(--wash-pick), var(--surface-card)); }
 .sdk-card-banded:has(.sdk-open:focus-visible),
 .sdk-card-banded:is(a, button, [role="button"], [tabindex="0"]):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-card-banded.is-dragging { box-shadow: var(--shadow-1); cursor: grabbing; }
@@ -2308,7 +2314,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 
 /* ---- the card, when current: the selected fill, opaque. Nothing else changes. ---- */
 .sdk-day { --s: var(--day-step, var(--surface-card)); --chip-surface: var(--s); } /* a page may put the card on another step (--day-step) */
-.sdk-day.is-current { background: color-mix(in srgb, var(--accent-fill) 28%, var(--s)); }
+.sdk-day.is-current { background: color-mix(in srgb, var(--wash-ink) var(--wash-pick), var(--s)); }
 .sdk-day.is-drop { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-day .sdk-card-list { margin-top: var(--space-1); }
 
@@ -2381,7 +2387,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-daychip:focus-visible { outline: 2px solid var(--day-focus, var(--focus-ring)); outline-offset: -2px; }
 .sdk-daychip:is(.is-current, [aria-current="true"]) { background: var(--fill-selected); color: var(--day-now); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) > b { color: var(--day-now); }
-.sdk-daychip:is(.is-current, [aria-current="true"]):hover { background: color-mix(in srgb, var(--accent-fill) 36%, transparent); }
+.sdk-daychip:is(.is-current, [aria-current="true"]):hover { background: color-mix(in srgb, var(--wash-ink) 36%, transparent); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) { --day-focus: var(--day-now); }
 /* In the trip: a 7px dot in the corner. A word for it is in the chip's label. */
 .sdk-daychip-dot { position: absolute; top: var(--space-1); right: var(--space-1); width: 7px; height: 7px; border-radius: var(--radius-round); background: var(--day-now); }
@@ -5713,7 +5719,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 }
 .mf-status[hidden] { display: none; }
 /* Light mode: the title and status bars are a deeper tint of the theme's own warm tone (panel toward the accent), never black. */
-:root[data-theme-mode="light"], :root[data-mode-shown="light"]:not([data-theme-mode="dark"]) {
+:root:where([data-theme-mode="light"]), :root:where([data-mode-shown="light"]:not([data-theme-mode="dark"])) { /* :where keeps the weight of :root, so a theme that sets the title bar (/theme.css) wins */
   --mf-surface-title: color-mix(in srgb, var(--surface-panel) 76%, color-mix(in srgb, var(--accent-fill) 60%, var(--text-primary)));
   --mf-surface-status: var(--mf-surface-title);
 }

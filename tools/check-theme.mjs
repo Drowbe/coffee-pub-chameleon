@@ -49,7 +49,7 @@ const prop = (body, name) => new RegExp(`^ {2}${name}: ([^;]+);$`, 'm').exec(bod
 test('the keys of a set are the colour roles: seven base ones, and the optional ones including the four status fills', () => {
   assert.deepEqual(THEME_BASE, ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent']);
   for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill']) assert.ok(THEME_OPTIONAL.includes(key), key);
-  assert.equal(THEME_OPTIONAL.length, 17);
+  assert.equal(THEME_OPTIONAL.length, 26);
   assert.equal(new Set([...THEME_BASE, ...THEME_OPTIONAL]).size, THEME_BASE.length + THEME_OPTIONAL.length);
 });
 
@@ -80,7 +80,7 @@ test("a null set writes nothing; an odd default mode reads as dark", () => {
 test('an untouched environment: Strong Coffee, both its sets sent', () => withStore((store) => {
   const sets = store.activeThemeSets();
   assert.equal(sets.dark['surface-page'], DEFAULT_THEME.dark['surface-page']);
-  assert.equal(sets.light['surface-page'], '#faf6f1');
+  assert.equal(sets.light['surface-page'], '#eeede8');
   assert.equal(store.settings.themeMode, 'dark');
   const css = themeCss(sets, 'dark');
   assert.match(blockOf(css, ':root:not([data-theme-mode="light"])'), /--surface-page: #1a1410;/);
@@ -240,13 +240,13 @@ test('CSS typed into a color never reaches /theme.css, and every line it writes 
 }));
 
 test('the old tokens that a role has its own default for are also written when the theme sets the role (scaffolding, deleted with the old tokens)', () => {
-  const css = themeCss({ light: { ...LIGHT, 'surface-card': '#123456', 'fill-secondary': '#234567', 'fill-secondary-hover': '#345678', 'icon-default': '#456789' }, dark: null }, 'light');
+  const css = themeCss({ light: { ...LIGHT, 'surface-card': '#123456', 'surface-field': '#567890', 'fill-secondary': '#234567', 'fill-secondary-hover': '#345678', 'icon-default': '#456789' }, dark: null }, 'light');
   const body = blockOf(css, ':root:not([data-theme-mode="dark"])');
-  for (const [role, old, value] of [['surface-card', '--bg-card', '#123456'], ['fill-secondary', '--secondary', '#234567'], ['fill-secondary-hover', '--secondary-hover', '#345678'], ['icon-default', '--icon', '#456789']]) {
+  for (const [role, old, value] of [['surface-card', '--bg-card', '#123456'], ['fill-secondary', '--secondary', '#234567'], ['fill-secondary-hover', '--secondary-hover', '#345678'], ['icon-default', '--icon', '#456789'], ['surface-field', '--bg-input', '#567890']]) {
     assert.equal(prop(body, `--${role}`), value, role);
     assert.equal(prop(body, old), value, old);
   }
-  assert.deepEqual(Object.keys(TC.LEGACY).sort(), ['fill-secondary', 'fill-secondary-hover', 'icon-default', 'surface-card']);
+  assert.deepEqual(Object.keys(TC.LEGACY).sort(), ['fill-secondary', 'fill-secondary-hover', 'icon-default', 'surface-card', 'surface-field']);
 });
 
 test('style.css has Strong Coffee dark as the default of the base roles, and the old tokens are defined from the roles', () => {

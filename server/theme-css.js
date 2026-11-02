@@ -29,6 +29,10 @@ const { LEGACY } = themeColour;
 // The roles written from a pick, after the ones the theme typed.
 const PICKED = ['text-on-accent', 'text-accent', 'status-ok-mark', ...themeColour.STATUSES.flatMap((k) => [`status-${k}-text`, `status-${k}-on-fill`])];
 
+// A theme that sets wash-ink tints with a neutral ink, which needs quieter steps than the accent's: selected, today, your own chat
+// message, a chosen card or day, and the card head band's shade.
+const NEUTRAL_WASH = [['wash-selected', '30%'], ['wash-today', '8%'], ['wash-own', '7%'], ['wash-pick', '12%'], ['card-head-step', '8%']];
+
 // The lines of one set for `mode` (the mode its selector shows, which decides the Auto status fills): the colours the theme typed,
 // then the ones picked. A null set writes nothing.
 function lines(colors, mode) {
@@ -39,6 +43,7 @@ function lines(colors, mode) {
     out.push(`  --${key}: ${colors[key]};`);
     if (LEGACY[key]) out.push(`  ${LEGACY[key]}: ${colors[key]};`);
   }
+  if (colors['wash-ink']) out.push(...NEUTRAL_WASH.map(([k, v]) => `  --${k}: ${v};`));
   const got = themeColour.resolve(colors, mode);
   if (!got) return out;
   for (const flag of got.flags) out.push(`  /* flagged: ${flag} */`);

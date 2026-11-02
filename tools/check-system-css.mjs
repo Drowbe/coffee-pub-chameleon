@@ -301,6 +301,9 @@ if (!problems.length) {
       // The colour roles, in every shipped theme and both modes.
       const probe = `(${function probe(roles, themeRules, flagged, legacy) {
         const out = [];
+        // The page's own /theme.css (the default theme, which sets optional roles) is off, so a theme tried here is judged alone, as it is when it is the live one.
+        const own = [...document.querySelectorAll('link[rel="stylesheet"]')].filter((l) => /\/theme\.css/.test(l.getAttribute('href') || ''));
+        for (const l of own) l.disabled = true;
         const style = document.createElement('style'); document.head.appendChild(style);
         const outer = document.createElement('div'); outer.style.color = 'rgb(1, 2, 3)'; // a role that does not resolve inherits this
         const inner = document.createElement('div'); outer.appendChild(inner); document.body.appendChild(outer);
@@ -329,7 +332,7 @@ if (!problems.length) {
               const got = colour(`var(--${r})`);
               if (got === 'rgb(1, 2, 3)' || !/^(rgb|color)/.test(got)) out.push(`${at}: --${r} does not resolve (${got})`);
             }
-            for (const [old, r] of SAME) { const a = colour(`var(${old})`); const b = colour(`var(${r})`); if (a !== b) out.push(`${at}: ${old} is ${a}, ${r} is ${b}`); }
+            for (const [old, r] of SAME) { if (old === '--bg-card' && /--surface-card:/.test(rules)) continue; /* a theme that sets the card has its own old card token */ const a = colour(`var(${old})`); const b = colour(`var(${r})`); if (a !== b) out.push(`${at}: ${old} is ${a}, ${r} is ${b}`); }
             // The picked colours, on the colours the browser computes.
             const page = role('surface-page'); const panel = role('surface-panel');
             const min = (what, fg, bg, need) => { const x = ratio(fg.a < 1 ? over(fg, bg) : fg, bg); if (x < need - 0.005) out.push(`${at}: ${what} is ${x.toFixed(2)} : 1, needs ${need}`); };
@@ -352,6 +355,7 @@ if (!problems.length) {
         style.textContent = legacy.rules; document.documentElement.setAttribute('data-theme-mode', 'dark');
         for (const [old, want] of legacy.expect) { const got = colour(`var(${old})`); if (got !== colour(want)) out.push(`legacy: ${old} is ${got}, the theme set ${want}`); }
         style.remove(); outer.remove(); document.documentElement.removeAttribute('data-theme-mode');
+        for (const l of own) l.disabled = false;
         return out;
       }})`;
       const themeRules = themes.map((t) => [t.name, themeCss({ light: t.light, dark: t.dark }, 'dark')]);

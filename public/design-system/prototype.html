@@ -9,12 +9,13 @@
        (public/module-frame.js) with the moduleframe block of public/sdk/system.css, in four states. What a tweak here changes is
        staged on Proposed. Not a route: the app serves this folder as it is. The themes are themes/<id>.css, written by
        tools/design-system-themes.mjs.
-       Address: /design-system/prototype.html?theme=<strong-coffee|calming-teal|burnt-orange>&mode=<dark|light>&w=<390|500|700|1280>&look=<current|paper|mist|cream|contrast> -->
+       Address: /design-system/prototype.html?theme=<strong-coffee|calming-teal|burnt-orange>&mode=<dark|light>&w=<390|500|700|1280> -->
   <link rel="stylesheet" href="../fa/css/all.min.css">
   <link rel="stylesheet" href="../style.css">
   <link rel="stylesheet" href="../sdk/system.css">
   <link rel="stylesheet" href="themes/strong-coffee.css" id="pp-theme-css">
   <link rel="stylesheet" href="prototype.css">
+  <link rel="stylesheet" href="prototype-phone.css">
   <link rel="stylesheet" href="pages.css">
 </head>
 <body class="pp-page">
@@ -25,7 +26,6 @@
       <div class="mf-switch" role="radiogroup" aria-label="Theme" id="pp-theme"></div>
       <div class="mf-switch" role="radiogroup" aria-label="Light or dark" id="pp-mode"></div>
       <div class="mf-switch" role="radiogroup" aria-label="Panel width" id="pp-width"></div>
-      <div class="mf-switch" role="radiogroup" aria-label="Light mode of Strong Coffee: current or a candidate" id="pp-look"></div>
     </div>
   </header>
   <main class="pp-main" id="pp-main">
@@ -34,5 +34,6 @@
   <script src="sources.js"></script>
   <script src="/sdk/host.js" data-host-sdk></script>
   <script type="module" src="prototype.js"></script>
+  <script type="module" src="prototype-phone.js"></script>
 </body>
 </html>

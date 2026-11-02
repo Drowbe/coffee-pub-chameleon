@@ -774,6 +774,15 @@ const THEME_OPTIONAL_FIELDS = [
   ['theme-status-ok', 'status-ok-fill'],
   ['theme-status-warn', 'status-warn-fill'],
   ['theme-status-info', 'status-info-fill'],
+  ['theme-field', 'surface-field'],
+  ['theme-menu', 'surface-menu'],
+  ['theme-nav-bg', 'surface-bar-nav'],
+  ['theme-field-edge', 'edge-field'],
+  ['theme-wash', 'wash-ink'],
+  ['theme-mf-title', 'mf-surface-title'],
+  ['theme-mf-toolbar', 'mf-surface-toolbar'],
+  ['theme-mf-row', 'mf-surface-row'],
+  ['theme-mf-row-hover', 'mf-surface-row-hover'],
 ].map(([id, key]) => [id, `--${key}`, key, TC.AUTO_CSS[key] ?? null]);
 // What an Auto field is set to on the page while previewing: its formula, or for a status fill the Auto fill of the mode being edited.
 const autoCssFor = (key, formula) => formula ?? TC.STATUS_AUTO[selectedMode][key.split('-')[1]];

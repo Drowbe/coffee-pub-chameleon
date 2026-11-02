@@ -419,6 +419,10 @@ const THEME_OPTIONAL = [
   'surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right',
   'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover',
   'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill',
+  // Surfaces a theme may set one by one (a theme that does not gets the formulas in system.css), and wash-ink: a neutral ink that
+  // tints a chosen card or day, today and your own chat message in place of the accent (server/theme-css.js writes its quieter steps).
+  'surface-field', 'surface-menu', 'surface-bar-nav', 'edge-field', 'wash-ink',
+  'mf-surface-title', 'mf-surface-toolbar', 'mf-surface-row', 'mf-surface-row-hover',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
@@ -429,7 +433,12 @@ const THEME_OPTIONAL = [
 const DEFAULT_THEME = {
   name: 'Strong Coffee',
   dark: { 'surface-page': '#1a1410', 'surface-panel': '#241c16', 'edge-hairline': '#3b2e24', 'text-primary': '#f1e6d8', 'text-muted': '#a8998a', 'accent-fill': '#c8873a', 'text-on-accent': '#1a1206' },
-  light: { 'surface-page': '#faf6f1', 'surface-panel': '#f1e9df', 'edge-hairline': '#ded0bf', 'text-primary': '#2b2119', 'text-muted': '#63564b', 'accent-fill': '#a6682a', 'text-on-accent': '#ffffff' },
+  // Light is Cream (Thomas, 2026-10-31): a warm off-white of very low chroma, strong ink, the accent only on actions and markers.
+  light: {
+    'surface-page': '#eeede8', 'surface-panel': '#f7f6f2', 'edge-hairline': '#c9c7bf', 'text-primary': '#181714', 'text-muted': '#55534b', 'accent-fill': '#9a5518', 'text-on-accent': '#ffffff',
+    'surface-card': '#fffffd', 'surface-bar-top': '#dad8d0', 'surface-field': '#ffffff', 'surface-menu': '#fffffd', 'surface-bar-nav': '#dad8d0', 'edge-field': '#8a877d', 'wash-ink': '#181714',
+    'mf-surface-title': '#dad8d0', 'mf-surface-toolbar': '#e9e8e2', 'mf-surface-row': '#fffffd', 'mf-surface-row-hover': '#eeede7',
+  },
 };
 // Shipped pre-made (see the seeding in load()), fixed ids so seeding is idempotent -- colors read straight off each real site's
 // own computed styles (button/link accent, body text, page background), not eyeballed.
