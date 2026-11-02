@@ -62,6 +62,9 @@ async function main() {
     const put = (body) => fetch(`${S.base}/api/ai`, { method: 'PUT', headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify(body) });
     const set = await put({ source: 'custom', provider: 'compatible', address: `http://127.0.0.1:${stubPort}/v1`, model: 'stub-model', key: 'sk-test', enabled: true });
     expect(set.status === 200, `could not point the AI at the stand-in (${set.status})`);
+    // Using AI needs the role's Use AI; give members theirs whatever the default is.
+    const role = await fetch(`${S.base}/api/roles/member`, { method: 'PATCH', headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify({ useAi: true }) });
+    expect(role.status === 200, `could not give members Use AI (${role.status})`);
     const open = async (screen, size = 1280) => {
       const tab = new Tab(browser.cdp, S.ctx);
       await tab.open(size, 'dark', screen.call === true);
@@ -134,6 +137,8 @@ async function main() {
     // The AI not set up: the Assistant says so first.
     const off = await put({ enabled: false, force: true });
     expect(off.status === 200, `could not turn the AI off (${off.status})`);
+    const avail = await (await fetch(`${S.base}/api/spaces/${S.ctx.trip}/ai`, { headers: { cookie: admin } })).json();
+    expect(avail.available === false && avail.reason === 'not-set-up', `availability with no AI should say reason "not-set-up" (${JSON.stringify(avail)})`);
     const t2 = await open(workspace);
     try {
       await sleep(1200);

@@ -328,12 +328,13 @@ test('the views: where a typed line goes; a command switches to the Assistant an
   assert.deepEqual(routeLine('/ai where to eat?', 'assistant'), { run: 'ai', view: 'assistant', line: 'where to eat?' });
   assert.deepEqual(routeLine('/ai', 'discussion'), { run: 'ai', view: 'assistant', line: '' }, 'a bare /ai asks for the question');
   assert.deepEqual(routeLine('/aim high', 'discussion'), { run: 'command', view: 'assistant', line: '/aim high' }, '/aim is not /ai');
-  assert.equal(aiNotice('AI is not set up on this server'), 'AI is not set up yet.');
-  assert.equal(aiNotice('your role may not use AI', { owner: 'owner' }), "Your role can't use AI here: ask the owner.");
-  assert.equal(aiNotice('this server has used its AI allowance for the month'), "This month's AI allowance is used up.");
-  assert.equal(aiNotice('guests cannot use AI', { guests: 'Guests' }), 'Guests cannot use AI.');
-  assert.equal(aiNotice('AI is turned off in this trip'), 'AI is turned off in this trip.');
+  assert.equal(aiNotice('not-set-up'), 'AI is not set up yet.');
+  assert.equal(aiNotice('role', '', { owner: 'owner' }), "Your role can't use AI here: ask the owner.");
+  assert.equal(aiNotice('allowance'), "This month's AI allowance is used up.");
+  assert.equal(aiNotice('guest', '', { guests: 'Guests' }), 'Guests cannot use AI.');
+  assert.equal(aiNotice('space-off', '', { space: 'trip' }), 'AI is turned off in this trip.');
   assert.equal(aiNotice(''), '');
+  assert.equal(aiNotice('new-reason', 'something else is wrong'), 'Something else is wrong.');
   assert.equal(routeLine('hi', 'nonsense').run, 'message', 'an unknown view is the Discussion');
   // The page: the box sends by the route; a known command switches before it runs, so its echo lands in the Assistant.
   const submit = space.slice(space.indexOf("$('chat-form').addEventListener('submit'"), space.indexOf('// Enter sends, as in any chat'));
