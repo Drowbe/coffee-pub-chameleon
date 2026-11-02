@@ -121,7 +121,7 @@ await test('the copied instructions for different sets of modules: each kind wit
   // Only To-do and the Calendar: no flight example, no itinerary line, a plain example, task's line.
   const small = instructions('object', { kinds: kindsTaken([todo, calendar]) });
   assert.ok(!small.includes('flight') && !small.includes('itinerary'));
-  assert.match(small, /\[\{"icon":"note","kind":"task","title":"a short title"/);
+  assert.match(small, /\[\{"icon":"note","kind":"task","title":"<title>"/);
   assert.match(small, /Set "kind" to what the object is: task\. /);
   assert.match(small, /\n- task: due\n/);
   // Nothing named: no kind line and no details, only the date rule.
