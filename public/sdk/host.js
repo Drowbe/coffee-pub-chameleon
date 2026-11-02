@@ -2484,6 +2484,8 @@
       // one points at: summaries. The 'links' event says when to ask again.
       linksTo: (ref) => call('objects.links', { ref, dir: 'to' }),
       linksFrom: (ref) => call('objects.links', { ref, dir: 'from' }),
+      // What points at each of several of this module's objects, in one request: [{ ref, summaries }] (only those something points at).
+      linksToAll: (refs) => call('objects.linksToAll', { refs }),
       // Other modules' objects that show on a calendar as markers (a kind marked "marker": true beside "dated" in its
       // module.json): a task due on a day, a poll's closing time. Read through the kinds this module consumes (as
       // approved), in this module's place: in a space, that space's; on the environment's page, the environment's and

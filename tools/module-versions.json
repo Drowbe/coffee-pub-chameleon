@@ -12,12 +12,12 @@
     "hash": "9e84facb6d772747"
   },
   "maps": {
-    "version": "0.9.12",
-    "hash": "c65b9b517f5f5d0a"
+    "version": "0.9.13",
+    "hash": "5407927580e4c71f"
   },
   "places": {
-    "version": "0.12.17",
-    "hash": "b2f269e3b33c49a2"
+    "version": "0.12.18",
+    "hash": "559cabce341736fa"
   },
   "polls": {
     "version": "1.15.22",
@@ -36,7 +36,7 @@
     "hash": "6ec57787fa1de18e"
   },
   "travel": {
-    "version": "0.15.57",
-    "hash": "49aa228946e91642"
+    "version": "0.15.58",
+    "hash": "235fc83977b67113"
   }
 }

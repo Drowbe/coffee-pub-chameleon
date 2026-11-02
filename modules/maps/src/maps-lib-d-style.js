@@ -20,13 +20,38 @@
   const mixRgb = (a, b, pct) => `rgb(${[0, 1, 2].map((i) => Math.round(a[i] * pct / 100 + b[i] * (100 - pct) / 100)).join(',')})`;
   const rgbText = (a) => `rgb(${a.map((x) => Math.round(x)).join(',')})`;
 
-  const DARK_TOKENS = { bg: [26, 18, 6], section: [38, 30, 22], text: [241, 232, 220], dim: [170, 158, 144], accent: [200, 135, 58], border: [70, 60, 50] };
+  const DARK_TOKENS = { bg: [26, 18, 6], section: [38, 30, 22], text: [241, 232, 220], dim: [170, 158, 144], accent: [200, 135, 58], border: [70, 60, 50], blue: [106, 166, 232], green: [111, 191, 115] };
+
+  // The map's colours, as [r, g, b]: the same ladder public/sdk/system.css writes as the `--map-*` tokens (the page reads those and
+  // hands them in as `t.map`, so a theme that sets one wins); this is what a style built without them uses, so the same
+  // look comes out. Land a hair off the ground, water a blue tint, parks a green one, roads one ladder of the text colour (minor,
+  // medium, major, each clearly above the land), buildings a quiet step, small labels the text over the dim one.
+  const lumOf = (c) => { const f = (x) => { const v = x / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const mixA = (a, b, pct) => [0, 1, 2].map((i) => a[i] * pct / 100 + b[i] * (100 - pct) / 100);
+  function mapColours(tok) {
+    const dark = lumOf(tok.text) > lumOf(tok.section);
+    const land = dark ? mixA(tok.text, tok.section, 4) : tok.section;
+    const ladder = dark ? [20, 30, 42] : [14, 24, 34];
+    return {
+      land,
+      water: mixA(tok.blue, dark ? tok.bg : tok.section, dark ? 34 : 30),
+      park: mixA(tok.green, land, 14),
+      wood: mixA(tok.green, land, 8),
+      roadMinor: mixA(tok.text, land, ladder[0]),
+      roadMedium: mixA(tok.text, land, ladder[1]),
+      roadMajor: mixA(tok.text, land, ladder[2]),
+      building: mixA(tok.text, land, dark ? 10 : 9),
+      label: dark ? mixA(tok.text, tok.dim, 40) : tok.dim,
+      boundary: tok.dim,
+    };
+  }
 
   // The style. `t` holds the tokens as [r, g, b]; `o` is { tiles, glyphs }. `tiles` is the source address the map library
   // reads (pmtiles://<address of the file>).
   function buildStyle(t, o) {
     const tok = { ...DARK_TOKENS, ...t };
-    const ground = tok.section;
+    const m = { ...mapColours(tok), ...(t && t.map) };
+    const ground = m.land;
     const font = ['Noto Sans Regular'];
     const fontBold = ['Noto Sans Medium'];
     // A place's English name where the map data has one (name:en, an OpenStreetMap tag), its own local name otherwise --
@@ -43,18 +68,19 @@
       paint: { 'line-color': color, 'line-width': w },
     });
     const layers = [
-      { id: 'background', type: 'background', paint: { 'background-color': rgbText(ground) } },
-      { id: 'earth', type: 'fill', source: 'map', 'source-layer': 'earth', paint: { 'fill-color': rgbText(ground) } },
-      { id: 'landcover', type: 'fill', source: 'map', 'source-layer': 'landcover', paint: { 'fill-color': mixRgb(tok.accent, ground, 7) } },
-      { id: 'landuse', type: 'fill', source: 'map', 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', ['park', 'nature_reserve', 'national_park', 'forest', 'wood', 'grass', 'garden', 'golf_course', 'cemetery', 'pitch', 'playground', 'zoo', 'farmland', 'meadow', 'scrub']]], paint: { 'fill-color': mixRgb(tok.accent, ground, 9) } },
-      { id: 'water', type: 'fill', source: 'map', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': mixRgb(tok.text, ground, 9) } },
-      { id: 'waterway', type: 'line', source: 'map', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': mixRgb(tok.text, ground, 9), 'line-width': width(0.4, 1.6, 6) } },
-      { id: 'buildings', type: 'fill', source: 'map', 'source-layer': 'buildings', minzoom: 15, paint: { 'fill-color': mixRgb(tok.text, ground, 6), 'fill-outline-color': mixRgb(tok.text, ground, 9) } },
-      road('roads-path', ['path'], rgbText(tok.border), width(0.3, 0.8, 2), []),
-      road('roads-minor', ['minor_road', 'other'], rgbText(tok.border), width(0.4, 1.6, 9), []),
-      road('roads-medium', ['medium_road'], mixRgb(tok.text, ground, 11), width(0.6, 2.4, 12), []),
-      road('roads-major', ['major_road', 'highway'], mixRgb(tok.text, ground, 16), width(0.8, 3.4, 16), []),
-      { id: 'boundaries', type: 'line', source: 'map', 'source-layer': 'boundaries', paint: { 'line-color': rgbText(tok.dim), 'line-width': 0.8, 'line-dasharray': [3, 2], 'line-opacity': 0.7 } },
+      { id: 'background', type: 'background', paint: { 'background-color': rgbText(m.land) } },
+      { id: 'earth', type: 'fill', source: 'map', 'source-layer': 'earth', paint: { 'fill-color': rgbText(m.land) } },
+      { id: 'landcover', type: 'fill', source: 'map', 'source-layer': 'landcover', paint: { 'fill-color': rgbText(m.wood) } },
+      { id: 'landuse', type: 'fill', source: 'map', 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', ['park', 'nature_reserve', 'national_park', 'forest', 'wood', 'grass', 'garden', 'golf_course', 'cemetery', 'pitch', 'playground', 'zoo', 'farmland', 'meadow', 'scrub']]], paint: { 'fill-color': rgbText(m.park) } },
+      { id: 'water', type: 'fill', source: 'map', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': rgbText(m.water) } },
+      { id: 'waterway', type: 'line', source: 'map', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': rgbText(m.water), 'line-width': width(0.4, 1.6, 6) } },
+      { id: 'buildings', type: 'fill', source: 'map', 'source-layer': 'buildings', minzoom: 15, paint: { 'fill-color': rgbText(m.building), 'fill-outline-color': rgbText(m.roadMinor) } },
+      road('roads-path', ['path'], rgbText(m.roadMinor), width(0.3, 0.8, 2), []),
+      road('roads-minor', ['minor_road', 'other'], rgbText(m.roadMinor), width(0.4, 1.6, 9), []),
+      road('roads-medium', ['medium_road'], rgbText(m.roadMedium), width(0.6, 2.4, 12), []),
+      road('roads-major', ['major_road', 'highway'], rgbText(m.roadMajor), width(0.8, 3.4, 16), []),
+      // Only a country's and a region's border: a neighbourhood's would cut a city into dashed pieces.
+      { id: 'boundaries', type: 'line', source: 'map', 'source-layer': 'boundaries', filter: ['in', ['get', 'kind'], ['literal', ['country', 'macroregion', 'region', 'disputed']]], paint: { 'line-color': rgbText(m.boundary), 'line-width': 0.8, 'line-dasharray': [3, 2], 'line-opacity': 0.7 } },
       {
         id: 'places-local',
         type: 'symbol',
@@ -63,7 +89,7 @@
         filter: ['in', ['get', 'kind_detail'], ['literal', ['neighbourhood', 'macrohood', 'suburb', 'quarter']]],
         minzoom: 12,
         layout: { 'text-field': NAME, 'text-font': font, 'text-size': 11, 'text-transform': 'uppercase', 'text-letter-spacing': 0.06, 'text-max-width': 8 },
-        paint: { 'text-color': rgbText(tok.dim), 'text-halo-color': rgbText(ground), 'text-halo-width': 1.5 },
+        paint: { 'text-color': rgbText(m.label), 'text-halo-color': rgbText(ground), 'text-halo-width': 1.5 },
       },
       {
         id: 'places-city',

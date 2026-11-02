@@ -77,6 +77,8 @@
   const onPicture = () => Boolean(host.environment && host.environment.pictureMap);
   const personal = Boolean(info.user && info.user.key !== 'guest'); // a guest has no profile, so no personal places
   const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+  // On a phone the link opens the person's own maps app; on a desktop it is OpenStreetMap's website, and says so.
+  const MAPS_APP = apple || /Android/i.test(navigator.userAgent) ? 'Open in my maps app' : 'Open in OpenStreetMap';
   // The categories are the environment's list (the module's `categories` setting, an owner's to change in Manage), in order:
   // [{ id, label, icon, color }]. This is what it starts as (places-lib.js). A place keeps the id it was saved with; one whose id is
   // not on the list is shown under Other (catRow) and is not rewritten. The five ids from before the library (eat, do, travel) are
@@ -151,6 +153,7 @@
     armed: null,
     search: false, // whether a place search is set up
     searchCredit: '', // what to say about it under the results
+    mapOn: false, // beside the map: the map is drawn (a map file is in use and the device can draw it), as the map says
     dest: null, // beside the map: the page's filter, { mine, environment, spaces: Set | null }; null shows everything
     q: '', // beside the map: the page's search text as typed
     selected: '', // beside the map: the selected place, `${w}/${id}`, shared with the map through the page
@@ -305,19 +308,30 @@
     return entries().filter((x) => matches(x.p, q));
   };
 
-  // What other modules point at each place (asked once per place; the 'links' event clears it).
+  // What other modules point at each place (asked once per place, all the places not yet asked in one request; the 'links' event
+  // clears it).
   const asked = new Set();
   async function loadLinks() {
-    if (!host.objects || !host.objects.linksTo) return;
-    let changed = false;
-    for (const { p, w } of entries().filter((x) => x.w !== 'my' && x.w !== 'saved').slice(0, 100)) { // personal places are not linked
+    if (!host.objects || !host.objects.linksToAll) return;
+    const todo = [];
+    for (const { p, w } of entries()) { // personal places are not linked
+      if (w === 'my' || w === 'saved') continue;
       const key = rowKey(w, p.id);
       if (asked.has(key)) continue;
       asked.add(key);
-      try {
-        const summaries = await host.objects.linksTo(placeRef(w, p.id));
-        if (summaries.length) { state.links.set(key, summaries); changed = true; }
-      } catch (err) { /* nothing points at it */ }
+      todo.push({ key, ref: placeRef(w, p.id) });
+    }
+    if (!todo.length) return;
+    let changed = false;
+    try {
+      const answer = await host.objects.linksToAll(todo.map((x) => x.ref));
+      const byRef = new Map((Array.isArray(answer) ? answer : []).map((x) => [host.util.objectKey(x.ref), x.summaries]));
+      for (const { key, ref } of todo) {
+        const summaries = byRef.get(host.util.objectKey(ref));
+        if (summaries && summaries.length) { state.links.set(key, summaries); changed = true; }
+      }
+    } catch (err) {
+      for (const { key } of todo) asked.delete(key); // asked again next time
     }
     if (changed) render();
   }
@@ -366,10 +380,15 @@
     if (st) { setIcon(visit.querySelector('[data-icon]'), st.icon); visit.querySelector('[data-slot="word"]').textContent = st.label; }
     visit.hidden = !st;
     fill(el, { title: p.title, address: p.address });
-    hide(slot(el, 'pinned'), !p.point);
+    // "On the map" only while a map is drawn beside (the Map page says so); otherwise it only has a position.
+    const pinned = slot(el, 'pinned');
+    const mapText = pinned.querySelector('.pinned-text');
+    if (mapText) mapText.textContent = asPart && state.mapOn ? 'On the map' : 'Has a position';
+    hide(pinned, !p.point);
     hide(slot(el, 'nopos'), Boolean(p.point));
     const owners = slot(el, 'owners');
-    owners.replaceChildren(...p.owners.map((k) => { const o = clone('tpl-owner'); o.textContent = initial(k); o.title = nameOf(k); return o; }));
+    // Someone this page cannot name (the environment's people list leaves out some) is left out, not shown as "?".
+    owners.replaceChildren(...p.owners.filter((k) => nameOf(k)).map((k) => { const o = clone('tpl-owner'); o.textContent = initial(k); o.title = nameOf(k); return o; }));
     owners.hidden = !owners.children.length;
     const links = slot(el, 'links');
     links.replaceChildren(...(state.links.get(rowKey(w, p.id)) || []).slice(0, 4).map(linkPill));
@@ -399,6 +418,9 @@
   // it is known where the viewer may add, and the status line names the selected place and its kind ("Blue Door · Food").
   // The empty state's own button stays: it adds to an empty list.
   const ADD_PLACE = { id: 'place', label: 'Add a place', icon: 'location-dot' };
+  // The dialog opens in this part. Where the parts are tabs (a phone) and the map's tab is the one showing, this part is hidden and the
+  // dialog would open there, unseen and holding the page: show this part first. Harmless where both parts are on the screen.
+  const revealPanel = () => { if (asPart && host.destination) host.destination.set({ reveal: 'panel' }).catch(() => {}); };
   let addAsked = null;
   function syncChrome() {
     if (asPart) {
@@ -426,7 +448,7 @@
     host.status.set(items).catch(() => {});
   }
   // Add a place is the "+" in the titlebar: it opens the dialog (its Position field takes pasted coordinates or a map link).
-  host.on('add', (e) => { if (e.id === 'place' && canAdd()) { closeFound(); openEditor(null, null); } });
+  host.on('add', (e) => { if (e.id === 'place' && canAdd()) { closeFound(); revealPanel(); openEditor(null, null); } });
 
   function render() {
     syncChrome();
@@ -489,10 +511,20 @@
   // A store's change redraws the list when it is shown, and checks the place open in the dialog.
   // Every store can change what is listed (the environment's marks fill a space's list, a saved place fills Mine), so any
   // change redraws.
+  // Beside the map, a change (this person's or another's) is told to the map through the page, so its pins follow at once
+  // (a counter in the page's state, `changed`; one telling after a burst of changes).
+  let tellTimer = 0;
+  let tellCount = 0;
+  function tellMap() {
+    if (!asPart || !host.destination || !state.loaded) return;
+    clearTimeout(tellTimer);
+    tellTimer = setTimeout(() => { tellCount += 1; host.destination.set({ changed: tellCount }).catch(() => {}); }, 300);
+  }
   function watch(key) {
     stores[key].subscribe(() => {
       if (state.loaded) render();
       checkConflict();
+      tellMap();
     });
   }
   for (const key of Object.keys(stores)) watch(key);
@@ -575,6 +607,11 @@
     return [];
   }
   const andList = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`);
+  // The modules that point at a place, by name, for the delete question ("The Planner uses it").
+  function usedByWords(w, id) {
+    const names = [...new Set((state.links.get(rowKey(w, id)) || []).map((x) => x && x.module && x.module.name).filter(Boolean))];
+    return names.length ? ` ${andList(names)} ${names.length > 1 ? 'use' : 'uses'} it.` : '';
+  }
   // Delete: the place goes for everyone, and from the person's own list.
   async function deletePlace(w, id) {
     const p = placeAt(w, id);
@@ -607,7 +644,7 @@
       const on = saved.has(placeRef(w, id));
       items.push({ id: on ? 'unsave' : 'save', label: on ? 'Take off my list' : 'Add to my list', icon: 'bookmark', onClick: () => setSaved(w, p, !on) });
     }
-    if (!onPicture()) items.push({ id: 'open-in-maps', label: 'Open in my maps app', icon: 'arrow-up-right-from-square', href: openLinkFor(p) });
+    if (!onPicture()) items.push({ id: 'open-in-maps', label: MAPS_APP, icon: 'arrow-up-right-from-square', href: openLinkFor(p) });
     if (p.point && !onPicture()) {
       items.push({
         id: 'copy-coords',
@@ -639,7 +676,7 @@
           if (!armedDelete.has(id)) {
             armedDelete.add(id);
             const label = b.querySelector('.sdk-menu-label');
-            if (label) label.textContent = where.length > 1 ? `Delete it for everyone? It is in ${andList(where)}.` : 'Delete it?';
+            if (label) label.textContent = (where.length > 1 ? `Delete it for everyone? It is in ${andList(where)}.` : 'Delete it?') + usedByWords(w, id);
             setTimeout(() => armedDelete.delete(id), 4000);
             return false;
           }
@@ -805,7 +842,7 @@
     typePicker = host.ui.kindPicker($('f-type'), {
       label: 'Type',
       groups: typeGroups(cats),
-      value: typeOf(e.type) ? e.type : DEFAULT_TYPE,
+      value: typeOf(e.type) ? e.type : e.id ? '' : DEFAULT_TYPE,
       recent: { key: 'type', max: 4 },
       onChange: (id) => {
         const x = state.editing;
@@ -816,6 +853,11 @@
         markLook();
       },
     });
+    // A place saved with no type shows its category, not "Custom Location" (a type it never had).
+    if (e.id && !typeOf(e.type)) {
+      typePicker.set('');
+      typePicker.input.placeholder = catRow(e.category).label;
+    }
     markLook();
   }
 
@@ -1036,7 +1078,7 @@
     } else {
       fillWhere(w, false);
       const ro = clone('tpl-readonly');
-      fill(ro, { type: (typeOf(shown.type) || typeOf(DEFAULT_TYPE) || {}).label || 'None', status: (statusOf(shown.status) || {}).label || 'None', address: shown.address || 'None', point: shown.point ? geo.coordsText(shown.point.lat, shown.point.lng) : 'None yet', owners: shown.owners.map(nameOf).filter(Boolean).join(', ') || 'Nobody in particular', notes: shown.notes });
+      fill(ro, { type: (typeOf(shown.type) || {}).label || (id ? catOf(shown).label : (typeOf(DEFAULT_TYPE) || {}).label) || 'None', status: (statusOf(shown.status) || {}).label || 'None', address: shown.address || 'None', point: shown.point ? geo.coordsText(shown.point.lat, shown.point.lng) : 'None yet', owners: shown.owners.map(nameOf).filter(Boolean).join(', ') || 'Nobody in particular', notes: shown.notes });
       $('form').prepend(ro); // first in the form: the title is in the window's head
     }
     // Where it is, and what uses it.
@@ -1074,6 +1116,7 @@
     $('f-point').placeholder = onPicture() ? 'A position on the map (optional)' : 'Paste coordinates or a map link (optional)';
     const p = e.id ? placeAt(e.where, e.id) : null;
     if (p) $('f-open-in-maps').href = openLinkFor(p);
+    $('f-open-in-maps').querySelector('[data-slot="label"]').textContent = MAPS_APP;
   }
   // After a save or a delete, or when the view changes: closes at once, nothing asked.
   function closeEditor() {
@@ -1126,6 +1169,32 @@
     $('form').querySelector('.sdk-editor-actions').before(bar);
     bar.querySelector('[data-action="take-away"]').focus();
   }
+  // A new place that repeats one already in the lists: Open it (the one there) or Save anyway.
+  function askDuplicate(dup) {
+    for (const n of $('form').querySelectorAll('[data-bar="duplicate"]')) n.remove();
+    const bar = clone('tpl-duplicate');
+    fill(bar, { text: `${dup.p.title} is already in ${dup.w === 'saved' ? 'your list' : whereName(dup.w)}.` });
+    bar.dataset.at = rowKey(dup.w, dup.p.id);
+    $('form').querySelector('.sdk-editor-actions').before(bar);
+    bar.querySelector('[data-action="open-duplicate"]').focus();
+  }
+  // Open the place that is already there: beside the map it is selected on the map, else its own dialog.
+  function openExisting(w, id) {
+    if (asPart && placeAt(w, id) && placeAt(w, id).point) selectPlace(w, id);
+    closeFound();
+    openEditor(w, id);
+  }
+  $('form').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-action="open-duplicate"], [data-action="save-anyway"]');
+    const e = state.editing;
+    if (!b || !e) return;
+    const bar = b.closest('[data-bar="duplicate"]');
+    if (b.dataset.action === 'save-anyway') { e.dupOk = true; bar.remove(); $('form').requestSubmit(); return; }
+    const [w, ...rest] = String(bar.dataset.at).split('/');
+    const id = rest.join('/');
+    closeEditor();
+    openExisting(w, id);
+  });
   $('form').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-action="keep-shared"], [data-action="take-away"]');
     const e = state.editing;
@@ -1170,6 +1239,11 @@
     const taken = to === 'global' ? before.filter((s) => !target.marks.includes(s)) : [];
     const refused = [...added, ...taken].find((s) => !canMark(s));
     if (refused) return editorError(`You cannot add places in ${spaceName(refused)}.`);
+    // A new place that repeats one in the lists (the same search result, or the same name within about 30 m): asked first.
+    if (!e.id && !e.dupOk) {
+      const dup = findDuplicate(entries(), { origin: e.origin, title, point: e.point });
+      if (dup) return askDuplicate(dup);
+    }
     // Narrowing takes it away from people: asked first.
     const narrowing = from ? narrows(homeOfW(from), target) : '';
     if (narrowing && !e.narrowOk) {
@@ -1192,6 +1266,7 @@
       color: e.color,
       status: e.status,
       spaces: to === 'global' ? target.marks : [],
+      ...((base && base.origin) || e.origin ? { origin: (base && base.origin) || e.origin } : {}),
     };
     // The icon drawn is stored on the place (the summary carries it), whoever chose it: its own, else its type's, else its category's.
     place.icon = lookOf(place, cats).icon;
@@ -1261,7 +1336,13 @@
   $('f-delete').addEventListener('click', async () => {
     const e = state.editing;
     if (!e || !e.id) return;
-    if (state.armed !== 'editor') { state.armed = 'editor'; $('f-delete').textContent = 'Delete it?'; return; }
+    if (state.armed !== 'editor') {
+      state.armed = 'editor';
+      $('f-delete').textContent = 'Delete it?';
+      const used = usedByWords(e.where, e.id);
+      if (used) editorError(`${used.trim()} It will show as no longer available there.`);
+      return;
+    }
     state.armed = null;
     try { await deletePlace(e.where, e.id); closeEditor(); } catch (err) { editorError('It could not be deleted: ' + ((err && err.message) || err)); }
   });
@@ -1354,7 +1435,17 @@
     if (!state.search) throw new Error('search is not configured');
     const out = await host.geocode.search(q, near || null);
     if (out.credit) state.searchCredit = out.credit;
-    return (out.results || []).slice(0, 6);
+    return uniqueResults(out.results || []).slice(0, 6);
+  }
+  // The same result once: by its key, and by its name, address and position (a service may answer one street three times).
+  function uniqueResults(list) {
+    const seen = new Set();
+    return list.filter((h) => {
+      const keys = [h.key ? `k:${h.key}` : '', `n:${String(h.title).toLowerCase()}|${String(h.sub || '').toLowerCase()}|${Number(h.lat).toFixed(4)},${Number(h.lng).toFixed(4)}`].filter(Boolean);
+      if (keys.some((k) => seen.has(k))) return false;
+      keys.forEach((k) => seen.add(k));
+      return true;
+    });
   }
   const closeFound = () => { searchToken += 1; hits = []; hide($('found'), true); $('found').replaceChildren(); };
   function foundHead(label, query, closable) {
@@ -1426,8 +1517,13 @@
     found.forEach((h, i) => {
       const r = clone('tpl-found-row');
       r.dataset.i = String(i);
-      fill(r, { title: h.title, address: h.sub, source: h.from || '' });
-      hide(r.querySelector('[data-action="save-found"]'), !canAdd());
+      // Where it came from; a result already in a list says so, and its button opens that place instead of saving it again.
+      const dup = findDuplicate(entries(), { origin: h.key, title: h.title, point: { lat: Number(h.lat), lng: Number(h.lng) } });
+      fill(r, { title: h.title, address: h.sub, source: dup ? `Already in ${whereName(dup.w)}` : h.source === 'server' ? 'From earlier searches' : h.from || '' });
+      const b = r.querySelector('[data-action="save-found"]');
+      if (dup) { r.dataset.dup = rowKey(dup.w, dup.p.id); b.textContent = 'Open it'; }
+      hide(b, !dup && !canAdd());
+      if (i > 0 || dup) b.classList.remove('btn-primary'); // one main Save in the list: the first result's
       rows.append(r);
     });
     const parts = [foundHead('Results for', query, true), rows];
@@ -1439,8 +1535,12 @@
   const markUsed = (key) => { if (key && host.geocode) host.geocode.used(key).catch(() => {}); };
   // A result saved as a place: its name, address and position (the category is left for the person to set).
   // Beside the map it opens the dialog with the result filled in, so it asks where the place goes.
-  function saveFound(i) {
+  function saveFound(i, rowEl) {
     const h = hits[i];
+    if (rowEl && rowEl.dataset.dup) {
+      const [w, ...rest] = rowEl.dataset.dup.split('/');
+      return openExisting(w, rest.join('/'));
+    }
     if (!h || !canAdd()) return;
     // The same dialog as every other way to add a place, so it asks where the place goes too.
     // A result that says what it is (an OpenStreetMap tag) takes that type and its category.
@@ -1451,12 +1551,12 @@
   $('found').addEventListener('click', (ev) => {
     const row = ev.target.closest('.found-row');
     if (ev.target.closest('[data-action="close-found"]')) return closeFound();
-    if (row) saveFound(Number(row.dataset.i));
+    if (row) saveFound(Number(row.dataset.i), row);
   });
   $('found').addEventListener('keydown', (ev) => {
     const row = ev.target.closest && ev.target.closest('.found-row');
     if (!row) return;
-    if (ev.key === 'Enter') { ev.preventDefault(); saveFound(Number(row.dataset.i)); }
+    if (ev.key === 'Enter') { ev.preventDefault(); saveFound(Number(row.dataset.i), row); }
     else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
       const next = ev.key === 'ArrowDown' ? row.nextElementSibling : row.previousElementSibling;
@@ -1498,12 +1598,19 @@
         resumeEditor(ok ? { lat: geo.round6(Number(i.lat)), lng: geo.round6(Number(i.lng)) } : null);
         return {};
       },
+      // Whether this person may add places here, for the map's "+" (it is hidden when not). Waits for the list to have been read:
+      // before that the answer would be no for everyone.
+      mayAdd: async () => {
+        for (let i = 0; i < 50 && !state.loaded; i += 1) await new Promise((r) => setTimeout(r, 100));
+        return { data: { may: state.loaded ? canAdd() : true } };
+      },
       newPlace: async (input) => {
         if (!canAdd()) throw new Error(REFUSED);
         const i = input || {};
         const has = (x) => x !== undefined && x !== null && x !== '';
         const point = has(i.lat) && has(i.lng) && geo.inRange(Number(i.lat), Number(i.lng)) ? { lat: geo.round6(Number(i.lat)), lng: geo.round6(Number(i.lng)) } : null;
         closeFound();
+        revealPanel();
         openEditor(null, null, { title: geo.oneLine(i.title, 120), point, address: geo.oneLine(i.address, 200), notes: String(i.notes || '').slice(0, 1000), origin: geo.oneLine(i.origin, 60) });
         return {};
       },
@@ -1660,6 +1767,7 @@
       lastFind = find;
       if (entry && entry.find && state.search) partFind(text);
     }
+    state.mapOn = st.mapOn === true;
     const ref = st.selected && typeof st.selected === 'object' ? st.selected : null;
     const sel = ref ? host.util.objectKey(ref) : '';
     const picked = sel !== told; // the map picked another (or none): bring the place into view in the list

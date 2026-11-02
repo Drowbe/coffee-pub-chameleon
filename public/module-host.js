@@ -412,6 +412,10 @@ const DESTINATION_FIELDS = {
   selected: (v) => (v === null ? null : REF_SHAPE(v) ? cleanPointer(v) : undefined),
   // A part asking the page to bring a part into view (on a phone, its tab): the map's "Show in list".
   reveal: (v) => (v === 'main' || v === 'panel' ? v : undefined),
+  // The map says whether it is drawn (a map file in use, a device that can draw it), so the list beside it says "On the map" only
+  // when that is true; the list says its places changed (a counter), so the map reads them again at once.
+  mapOn: (v) => (typeof v === 'boolean' ? v : undefined),
+  changed: (v) => (Number.isSafeInteger(v) && v >= 0 ? v : undefined),
   // The kinds of markers the calendar has shown (plan-calendar-markers.md), for the page's filter: up to 20 of
   // { id: '<module>:<kind>', label, icon, tint }, the label at most 40 characters, the icon a Font Awesome name, the
   // tint one of the eight or none.
@@ -432,7 +436,7 @@ const DESTINATION_FIELDS = {
 // The page's own fields (the view, the filter, the search, `phone`) are set only by the page.
 const DESTINATIONS = {
   calendar: { main: ['day', 'from', 'to', 'markerKinds'] },
-  map: { main: ['selected', 'reveal'], panel: ['selected', 'reveal'] },
+  map: { main: ['selected', 'reveal', 'mapOn'], panel: ['selected', 'reveal', 'changed'] },
 };
 const DESTINATION_PARTS = ['main', 'panel'];
 export function createDestination(id, initial = {}) {
@@ -1382,6 +1386,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       const p = new URLSearchParams({ from: module.id, ref: JSON.stringify(cleanPointer(ref)), dir: dir === 'from' ? 'from' : 'to' });
       if (guestToken) p.set('guest', guestToken);
       return (await api('GET', `/api/objects/links?${p}`)).summaries;
+    },
+    // What points at each of several of this module's objects, in one request: [{ ref, summaries }], only those something points at.
+    async 'objects.linksToAll'({ refs }) {
+      const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 200).map(cleanPointer);
+      if (!list.length) return [];
+      const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
+      return (await api('POST', `/api/objects/links/batch${q}`, { module: module.id, refs: list })).links;
     },
     // Events and actions between modules (see the SDK's host.events and host.actions). Always in this
     // module's own place, and always on its behalf: the server checks what it declared and was approved for.

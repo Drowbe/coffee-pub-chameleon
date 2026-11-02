@@ -750,19 +750,24 @@ export function routeLine(text, view) {
   if (v === 'assistant') return looksLikeImport(t) ? { run: 'import', view: 'assistant', line: t } : { run: 'ai', view: 'assistant', line: t };
   return { run: 'message', view: 'discussion', line: t };
 }
-// What the page says when the AI is not there for this person, in plain words: the server's reason (GET .../ai `why`),
-// capitalised and ended with a full stop. `guests` is the word for guests in this environment.
-export function aiNotice(why, { guests = 'Guests', owner = 'owner' } = {}) {
-  const w = String(why || '').replace(/\s+/g, ' ').trim();
-  if (!w) return '';
-  let out = w;
-  if (/not set up/i.test(w)) out = 'AI is not set up yet';
-  else if (/allowance/i.test(w)) out = "This month's AI allowance is used up";
-  else if (/role (?:may|can)(?: not|'t|not)/i.test(w)) out = `Your role can't use AI here: ask the ${owner}`;
-  else if (/^guests? cannot use AI/i.test(w) || w === 'guest') out = `${guests} cannot use AI`;
-  else if (/^sign in first/i.test(w)) out = 'Sign in to use AI';
-  out = out[0].toUpperCase() + out.slice(1);
-  return /[.!?]$/.test(out) ? out : `${out}.`;
+// What the page says when the AI is not there for this person, in plain words, from the server's `reason` (GET .../ai:
+// 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'; '' when it is there). `words` are this environment's: its
+// word for guests, for the owner and for a space. A reason the page does not know says the server's own sentence, capitalised.
+export function aiNotice(reason, why = '', { guests = 'Guests', owner = 'owner', space = 'space' } = {}) {
+  switch (reason) {
+    case '': return '';
+    case 'guest': return `${guests} cannot use AI.`;
+    case 'space-off': return `AI is turned off in this ${space}.`;
+    case 'role': return `Your role can't use AI here: ask the ${owner}.`;
+    case 'not-set-up': return 'AI is not set up yet.';
+    case 'allowance': return "This month's AI allowance is used up.";
+    default: {
+      const w = String(why || '').replace(/\s+/g, ' ').trim();
+      if (!w) return '';
+      const out = w[0].toUpperCase() + w.slice(1);
+      return /[.!?]$/.test(out) ? out : `${out}.`;
+    }
+  }
 }
 // Whether an arriving message marks a view as new to read: the Assistant's when it lands there while the person is not
 // looking at it (another view, or Chat out of sight); the Discussion's for a message from someone else while they are
@@ -945,7 +950,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   const NO_AI_HINTS = ['Type / for commands'];
   // Whether the AI is there for this person in this space (GET /api/spaces/:id/ai, asked when Chat opens and when the
   // Assistant shows): unknown until asked, and then the server's reason when it is not.
-  let aiState = { known: false, available: true, why: '', at: 0 };
+  let aiState = { known: false, available: true, reason: '', why: '', at: 0 };
   let aiBusy = false;
   let view = 'discussion';
   let importOk = false;
@@ -1199,7 +1204,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   async function loadThread() {
     aiContext = [];
     paintContext();
-    aiState = { known: false, available: true, why: '', at: 0 };
+    aiState = { known: false, available: true, reason: '', why: '', at: 0 };
     paintAiState();
     setViewsVisible(Boolean(spaceId()) && !isHome());
     if (!spaceId() || isHome() || !getMe()) return;
@@ -1746,22 +1751,22 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     const id = spaceId();
     if (!id || isHome()) return aiState;
     if (!force && aiState.known && Date.now() - aiState.at < 30000) return aiState;
-    const was = `${aiState.known}${aiState.available}${aiState.why}`;
-    if (isGuest()) aiState = { known: true, available: false, why: 'guest', at: Date.now() };
+    const was = `${aiState.known}${aiState.available}${aiState.reason}`;
+    if (isGuest()) aiState = { known: true, available: false, reason: 'guest', why: '', at: Date.now() };
     else {
       try {
         const r = await api('GET', `/api/spaces/${encodeURIComponent(id)}/ai`);
-        aiState = { known: true, available: Boolean(r.available), why: r.available ? '' : String(r.why || 'AI is not available'), at: Date.now() };
+        aiState = { known: true, available: Boolean(r.available), reason: r.available ? '' : String(r.reason || 'other'), why: r.available ? '' : String(r.why || 'AI is not available'), at: Date.now() };
       } catch {
-        aiState = { known: false, available: true, why: '', at: 0 };
+        aiState = { known: false, available: true, reason: '', why: '', at: 0 };
       }
     }
     paintAiState();
-    if (was !== `${aiState.known}${aiState.available}${aiState.why}`) resetHint();
+    if (was !== `${aiState.known}${aiState.available}${aiState.reason}`) resetHint();
     return aiState;
   }
   function aiLine() {
-    return aiState.known && !aiState.available ? aiNotice(aiState.why, { guests: word('guest', { many: true, cap: true }), owner: word('owner') }) : '';
+    return aiState.known && !aiState.available ? aiNotice(aiState.reason, aiState.why, { guests: word('guest', { many: true, cap: true }), owner: word('owner'), space: word('space') }) : '';
   }
   // The state line above the box: only in the Assistant, only when the AI is not there.
   function paintAiState() {
@@ -1829,7 +1834,9 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
       if (reply.message) addStored(reply.message);
       return true;
     } catch (err) {
-      setNote(aiNotice(err.message || 'The AI could not answer.'), true);
+      // The server's own sentence for a refusal (403, 429, 400); a failure of the AI service is said plainly.
+      const said = String(err.message || 'The AI could not answer.');
+      setNote(said[0].toUpperCase() + said.slice(1) + (/[.!?]$/.test(said) ? '' : '.'), true);
       return false;
     } finally {
       aiBusy = false;

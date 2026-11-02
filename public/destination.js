@@ -76,8 +76,8 @@ const KINDS = {
     mine: true,
     search: {
       label: 'Find a place',
-      placeholder: 'Find a place, or paste coordinates or a map link',
-      filterOnly: 'Filter places, or paste coordinates or a map link',
+      placeholder: 'Find a place',
+      filterOnly: 'Filter places',
     },
     searchSetUp: (values) => Boolean(values && values.searchProvider && values.searchProvider !== 'none'),
     initial: { q: '', find: 0, selected: null },
