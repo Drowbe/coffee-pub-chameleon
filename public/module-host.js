@@ -10,6 +10,7 @@ import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
 import { shareDialog, printFrame } from '/module-actions.js';
+import { createStreamHub, createStreamRelay, createStreamRelayClient } from '/module-stream.js';
 
 // The design tokens a module's frame receives (see design-theme.md).
 const THEME_TOKENS = [
@@ -34,40 +35,30 @@ export function readTheme() {
   return theme;
 }
 
-// One live stream per page (and space) is shared by every module frame on it. Browsers allow only a
-// few long-lived connections to one site, so a stream per module would starve everything else once
-// a handful of modules were open. See GET /api/modules/stream in server/index.js.
-const streams = new Map(); // "<space>|<guest>" -> { source, subs }
+// One event stream per page is shared by every module mount on it (public/module-stream.js: the page's own view and
+// one space's ride one connection). Browsers allow only a few long-lived connections to one site (six over HTTP/1.1),
+// so a stream per module, or per window frame, starves everything else. See GET /api/modules/stream in server/index.js.
+// A destination's page in a window frame on a space's Workspace (canvas.js marks that frame data-composite) opens no
+// stream: it hears the page's over postMessage (createStreamRelayClient; the page's side is relayStreamToFrame, below).
+const streamHub = createStreamHub();
+let frameRelay; // undefined: not asked yet; null: not in a window frame on the Workspace
 function joinStream(space, guest, onEvent) {
-  const key = `${space || ''}|${guest || ''}`;
-  let s = streams.get(key);
-  if (!s) {
-    const p = new URLSearchParams();
-    if (space) p.set('space', space);
-    if (guest) p.set('guest', guest);
-    const source = new EventSource(`/api/modules/stream?${p}`);
-    s = { source, subs: new Set() };
-    for (const type of ['change', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external']) {
-      source.addEventListener(type, (ev) => {
-        let data;
-        try {
-          data = JSON.parse(ev.data);
-        } catch {
-          return; // ignore a malformed event
-        }
-        for (const fn of s.subs) fn(type, data);
-      });
+  if (frameRelay === undefined) {
+    let inComposite = false;
+    try {
+      inComposite = window.self !== window.top && Boolean(window.frameElement && window.frameElement.hasAttribute('data-composite'));
+    } catch {
+      inComposite = false;
     }
-    streams.set(key, s);
+    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin }) : null;
   }
-  s.subs.add(onEvent);
-  return () => {
-    s.subs.delete(onEvent);
-    if (!s.subs.size) {
-      s.source.close();
-      streams.delete(key);
-    }
-  };
+  return (frameRelay || streamHub).join(space, guest, onEvent);
+}
+// The page's side of the relay, for one window frame on the Workspace (canvas.js, compositeMount): the frame may hear
+// only `allow()`'s view ({ space, guest }: the space and guest token the frame was made for). `win` is the window the
+// frame is in (not this one when the call has been popped out). Answers stop(), for when the window closes.
+export function relayStreamToFrame(frame, { win = window, allow }) {
+  return createStreamRelay({ win, frame, origin: win.location.origin, allow, join: (space, guest, fn) => streamHub.join(space, guest, fn) });
 }
 
 // --- watching one person's media (host.media.watch) ----------------------------------------------
