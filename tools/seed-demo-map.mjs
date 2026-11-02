@@ -4,6 +4,7 @@
 // to DATA_DIR/modules/maps/map-tiles/demo-portugal.pmtiles (DATA_DIR from the environment, else the repository's data folder: the
 // same folder the server uses). Then it signs in (SEED_URL / PORT / ADMIN_LOGIN / ADMIN_PASSWORD, as seed:demo does) and ticks the file.
 // The file is a few MB at most and is never committed; delete it from Manage to remove it.
+// `npm run seed:demo` runs this too (seedMap below) unless SEED_MAP=0; there, being offline is one quiet message, not a failure.
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -19,6 +20,7 @@ const BOXES = [[-9.50, 38.68, -9.10, 38.82], [-8.66, 41.12, -8.57, 41.18]];
 const say = (m) => console.log(m);
 const pm = new Function(`${fs.readFileSync(path.join(root, 'modules', 'maps', 'src', 'maps-lib-b-pmtiles.js'), 'utf8')};return pmtiles;`)();
 
+class Offline extends Error {}
 async function newestBuild() {
   for (let back = 0; back < 20; back += 1) {
     const d = new Date(Date.now() - back * 86400000);
@@ -26,7 +28,7 @@ async function newestBuild() {
     try {
       const r = await fetch(url, { headers: { range: 'bytes=0-1' } });
       if (r.status === 206 || r.status === 200) return url;
-    } catch (e) { throw new Error(`Cannot reach build.protomaps.com (${e.cause?.code || e.message}). This needs the network.`); }
+    } catch (e) { throw new Offline(`Cannot reach build.protomaps.com (${e.cause?.code || e.message}). This needs the network.`); }
   }
   throw new Error('Found no Protomaps build in the last 20 days.');
 }
@@ -34,10 +36,14 @@ async function newestBuild() {
 const lon2x = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
 const lat2y = (lat, z) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
 
-async function main() {
+export async function seedMap({ base, login = 'admin', adminPassword = '', say = console.log, folded = false } = {}) {
   const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, 'data'));
   const dir = path.join(dataDir, 'modules', 'maps', 'map-tiles');
-  const src = await newestBuild();
+  let src;
+  try { src = await newestBuild(); } catch (e) {
+    if (folded && e instanceof Offline) return { done: false, message: 'skipped, the map build could not be reached (offline). Run npm run seed:demo-map when online.' };
+    throw e;
+  }
   say(`Reading ${src}`);
   const source = {
     getKey: () => src,
@@ -100,16 +106,17 @@ async function main() {
   say(`Wrote ${file} (${tiles.length} tiles, ${Math.round((127 + rootDir.length + metaBytes.length + data.length) / 1024)} KB).`);
 
   // Tick it in the Maps module.
-  const base = resolveTarget();
-  const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login: process.env.ADMIN_LOGIN || 'admin', password: process.env.ADMIN_PASSWORD || '' }) }).catch(() => null);
-  if (!login || login.status !== 200) { say(`The file is in place, but ticking it needs the server: No server answered at ${base}, or the sign-in failed. Tick ${OUT_NAME} in Manage, on the Maps module's settings.`); return; }
-  const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const signIn = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login, password: adminPassword }) }).catch(() => null);
+  if (!signIn || signIn.status !== 200) { const message = `${OUT_NAME} is in place, but ticking it needs the server: No server answered at ${base}, or the sign-in failed. Tick it in Manage, on the Maps module's settings.`; say(message); return { done: false, message }; }
+  const cookie = signIn.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const call = async (method, url, body) => { const r = await fetch(base + url, { method, headers: { cookie, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, json: await r.json().catch(() => null) }; };
   const all = await call('GET', '/api/module-settings/environment');
   const maps = ((all.json && all.json.modules) || []).find((m) => m.id === 'maps');
   const current = maps && (maps.settings.find((s) => s.key === 'map') || {}).value;
   const ticked = [...new Set([...(Array.isArray(current) ? current : []), OUT_NAME])];
   const r = await call('PUT', '/api/modules/maps/settings/environment', { values: { map: ticked } });
-  say(r.status < 300 ? `Ticked ${OUT_NAME} for the Maps module. Open the Map from the top bar.` : `Could not tick the file (${r.status}: ${r.json && r.json.error}). Tick ${OUT_NAME} in Manage.`);
+  const message = r.status < 300 ? `made and ticked ${OUT_NAME} for the Maps module (${tiles.length} tiles). Open the Map from the top bar.` : `could not tick ${OUT_NAME} (${r.status}: ${r.json && r.json.error}). Tick it in Manage.`;
+  say(message);
+  return { done: r.status < 300, message, file };
 }
-main().catch((e) => { console.error(`seed:demo-map failed: ${e.message}`); process.exit(1); });
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) seedMap({ base: resolveTarget(), login: process.env.ADMIN_LOGIN || 'admin', adminPassword: process.env.ADMIN_PASSWORD || '' }).catch((e) => { console.error(`seed:demo-map failed: ${e.message}`); process.exit(1); });

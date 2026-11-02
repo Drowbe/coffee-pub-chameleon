@@ -5,14 +5,21 @@
 // Where: SEED_URL, else http://localhost:<PORT> when PORT is set in this window, else http://localhost:3000.
 // Who: ADMIN_LOGIN (default "admin") and ADMIN_PASSWORD, from the environment; the password is never printed.
 // Re-running resets only the demo space (found by its name and the marker in its description) and the demo people.
-// A hosted server (BASE_DOMAIN) is refused unless DEMO_ALLOW_HOSTED=1. SEED_TODAY=YYYY-MM-DD fakes the day (for the check).
-// SEED_NO_AI=1 skips the "/ai" exchanges that are otherwise made when an AI service is set up.
+// Every bundled module is installed and turned on (a module that is on is on in every space), the place search is chosen
+// (Photon, or SEED_SEARCH_URL, a Photon-compatible address) and, unless SEED_MAP=0, the small Lisbon, Sintra and Porto map file
+// is made and ticked (tools/seed-demo-map.mjs; skipped with one message when offline). The earlier phases hold dated objects.
+// A hosted install (BASE_DOMAIN) is refused unless DEMO_ALLOW_HOSTED=1 and DEMO_ENVIRONMENT names the ONE environment to fill;
+// SEED_URL must then be that environment's own address (<id>.<base domain>), and ADMIN_LOGIN / ADMIN_PASSWORD an owner of it.
+// It talks only to that address, so no other environment is touched. Hosted, the map files are the host's, so none is made.
+// SEED_TODAY=YYYY-MM-DD fakes the day (for the check). SEED_NO_AI=1 skips the "/ai" exchanges that are otherwise made when an
+// AI service is set up. Every date is worked out from today, so a nightly run keeps the demo ahead of the day.
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const SPACE_NAME = 'Demo: Portugal';
 export const MARKER = 'Demo data from npm run seed:demo.';
 const PEOPLE = [['mia', 'Mia Alvarez', true], ['lee', 'Lee Chen', false], ['sam', 'Sam Okafor', false]];
+// The core modules first (Maps needs Places), then every other bundled module, so the demo space has them all on.
 const MODULE_IDS = ['travel', 'places', 'todo', 'polls', 'calendar', 'budget', 'research', 'maps'];
 
 export function resolveTarget(env = process.env) {
@@ -28,7 +35,7 @@ const password = () => crypto.randomBytes(12).toString('base64url');
 class SeedError extends Error {}
 
 // ---------------------------------------------------------------------------------------------------------------------
-export async function runSeed({ base, login = 'admin', adminPassword, today, say = console.log, allowHosted = false, noAi = false }) {
+export async function runSeed({ base, login = 'admin', adminPassword, today, say = console.log, allowHosted = false, demoEnvironment = '', searchUrl = '', noAi = false }) {
   if (!isDay(today)) throw new SeedError('SEED_TODAY must be a day, YYYY-MM-DD.');
   const jars = {};
   const call = async (as, method, url, body, type) => {
@@ -55,7 +62,13 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   // --- is this a server to seed ---
   const brand = await call('none', 'GET', '/api/branding');
   if (brand.status !== 200) throw new SeedError(`The server at ${base} did not answer like this app (${brand.status}).`);
-  if (brand.json.hosted && !allowHosted) throw new SeedError('This server is a hosted install (BASE_DOMAIN is set), so the demo seeder will not run. Set DEMO_ALLOW_HOSTED=1 to run it anyway.');
+  if (brand.json.hosted) {
+    if (!allowHosted) throw new SeedError('This server is a hosted install (BASE_DOMAIN is set), so the demo seeder will not run. Set DEMO_ALLOW_HOSTED=1 and DEMO_ENVIRONMENT=<the demo environment id> to fill that one environment.');
+    if (!demoEnvironment) throw new SeedError('This server is a hosted install, so set DEMO_ENVIRONMENT to the id of the one environment to fill.');
+    const labels = new URL(base).hostname.split('.');
+    if (labels.length < 2 || labels[0] !== demoEnvironment) throw new SeedError(`SEED_URL must be the demo environment's own address (${demoEnvironment}.<your domain>); ${base} is not, so nothing was changed.`);
+  }
+  const configured = [];
   if (!adminPassword) throw new SeedError('Set ADMIN_PASSWORD (and ADMIN_LOGIN, if it is not "admin") in this window first.');
   const admin = await signIn('admin', login, adminPassword);
   say(`Signed in as ${admin.login || login}.`);
@@ -70,15 +83,43 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
     phases = (await ok('admin', 'GET', '/api/branding')).phases || [];
   }
   if (phases.length < 6) throw new SeedError('The template has fewer than six phases; the demo plan needs the travel template.');
-  const have = new Map(((await ok('admin', 'GET', '/api/modules')).modules || []).map((m) => [m.id, m]));
-  for (const id of MODULE_IDS) {
-    if (!have.has(id)) {
-      const r = await call('admin', 'POST', `/api/modules/bundled/${id}/install`);
-      if (r.status >= 300) throw new SeedError(`Could not install the ${id} module: ${r.json && r.json.error}`);
+  const listed = await ok('admin', 'GET', '/api/modules');
+  const have = new Map((listed.modules || []).map((m) => [m.id, m]));
+  const moduleIds = [...MODULE_IDS, ...(listed.bundled || []).map((b) => b.id).filter((id) => !MODULE_IDS.includes(id))];
+  const turnedOn = []; const notOn = [];
+  for (const id of moduleIds) {
+    const core = MODULE_IDS.includes(id);
+    try {
+      if (!have.has(id)) {
+        const r = await call('admin', 'POST', `/api/modules/bundled/${id}/install`);
+        if (r.status >= 300) throw new SeedError(`Could not install the ${id} module: ${r.json && r.json.error}`);
+      }
+      if (!have.get(id) || !have.get(id).enabled) await ok('admin', 'PATCH', `/api/modules/${id}`, { enabled: true });
+      turnedOn.push(id);
+    } catch (e) {
+      if (core) throw e;
+      notOn.push(id);
     }
-    if (!have.get(id) || !have.get(id).enabled) await ok('admin', 'PATCH', `/api/modules/${id}`, { enabled: true });
   }
+  configured.push(`Modules on for every space: ${turnedOn.join(', ')}.`);
+  if (notOn.length) configured.push(`Could not turn on: ${notOn.join(', ')} (not in the plan, or not installable here).`);
   await ok('admin', 'PATCH', '/api/settings', { showCalendar: true, showMap: true });
+
+  // --- the place search, which the Map's search field uses (Photon, the public service, unless SEED_SEARCH_URL is set) ---
+  {
+    const all = (await ok('admin', 'GET', '/api/module-settings/environment')).modules || [];
+    const places = all.find((m) => m.id === 'places');
+    const now = (key) => ((places && places.settings.find((x) => x.key === key)) || {}).value;
+    if (searchUrl) {
+      await ok('admin', 'PUT', '/api/modules/places/settings/environment', { values: { searchProvider: 'custom', search: searchUrl, saveResults: true } });
+      configured.push(`Place search: ${searchUrl} (SEED_SEARCH_URL), results saved.`);
+    } else if (!now('searchProvider') || now('searchProvider') === 'none') {
+      await ok('admin', 'PUT', '/api/modules/places/settings/environment', { values: { searchProvider: 'photon', saveResults: true } });
+      configured.push('Place search: Photon, the public service (photon.komoot.io), results saved.');
+    } else {
+      configured.push(`Place search: left as it was (${now('searchProvider')}).`);
+    }
+  }
 
   // --- the demo people ---
   const existing = (await ok('admin', 'GET', '/api/users')).users || [];
@@ -183,6 +224,13 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
     ['dm-checkin', { title: 'Online check-in opens', allDay: false, start: at(dayPlus(S, -1), 19, 30), end: null, desc: 'Pick seats together.', remind: 30, repeat: null }],
     ['dm-card', { title: 'Lisboa Card runs out', allDay: false, start: at(d(4), 10), end: null, desc: 'The 72 hours end around now.', remind: 60, repeat: null }],
     ['dm-family', { title: 'Video call with family', allDay: false, start: at(d(4), 19), end: at(d(4), 19, 30), desc: 'From the hotel lobby, it has good wifi.', remind: null, repeat: null }],
+    // The earlier phases: reminders dated inside each one.
+    ['dm-plan', { title: 'Planning session: pick the cities', allDay: false, start: at(dayPlus(today, 2), 18), end: at(dayPlus(today, 2), 19), desc: 'Lisbon, Sintra, Porto: in or out?', remind: 30, repeat: null }],
+    ['dm-book', { title: 'Book the Pena Palace tickets', allDay: false, start: at(dayPlus(today, 9), 9), end: null, desc: 'Timed entry sells out on weekends.', remind: 60, repeat: null }],
+    ['dm-deposit', { title: 'Douro winery deposit is due', allDay: true, start: dayPlus(today, 14), end: null, desc: '60 euros, paid by Lee.', remind: 1440, repeat: null }],
+    ['dm-visa', { title: 'Check passports, visa and insurance papers', allDay: false, start: at(dayPlus(today, 23), 12), end: null, desc: 'Passports valid past March; insurance policy printed.', remind: 1440, repeat: null }],
+    ['dm-print', { title: 'Print the tickets and bookings', allDay: false, start: at(dayPlus(today, 36), 18), end: null, desc: 'One folder, plus a copy on each phone.', remind: 60, repeat: null }],
+    ['dm-weigh', { title: 'Weigh the suitcases', allDay: false, start: at(dayPlus(today, 40), 18), end: null, desc: '23 kg each on Lusa Air.', remind: 60, repeat: null }],
     ['dm-return', { title: 'Back home: laundry and photos', allDay: true, start: d(11), end: null, desc: 'Share the best ones in Research.', remind: null, repeat: null }],
   ];
   for (const [id, v] of events) await put('calendar', `event:${id}`, { id, by: MIA, ...v });
@@ -256,6 +304,27 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   // Day 10: home
   add({ kind: 'journey', mode: 'flight', title: 'Flight home', date: d(9), time: '11:20', arrives: `${d(9)}T13:45`, minutes: 445, operator: 'Lusa Air', number: 'LA 483', fromCode: 'OPO', toCode: 'BOS', from: 'Porto', to: 'Boston Logan', terminal: '1', gate: 'A3', seat: '23A, 23B, 23C', travelClass: 'Economy', confirm: 'DEMO-4831', owners: all });
   add({ kind: 'lane', type: 'buffer', after: d(9) });
+  // Dated inside each earlier phase (the phases' own days, from today): the Itinerary shows them under their phase.
+  const early = (type, title, n, time, extra = {}) => add({ kind: 'stop', type, title, date: dayPlus(today, n), time, minutes: 30, ...extra });
+  // Planning
+  add({ kind: 'note', title: 'Which cities?', date: dayPlus(today, 1), notes: 'Lisbon for the city, Sintra for a day of palaces, Porto for the river. Skip the Algarve this time.' });
+  add({ kind: 'note', title: 'Rough budget: 6,500 euros', date: dayPlus(today, 3), notes: 'Flights and hotels first, then about 100 a day for food and tickets.' });
+  add({ kind: 'link', title: 'Casa do Largo (the hotel we like)', date: dayPlus(today, 4), ref: placeRef('casalargo') });
+  early('other', 'Read about Sintra in one day', 6, '19:00', { notes: 'Pena first, then Regaleira. See Research.' });
+  // Booking
+  early('other', 'Pena Palace: book the time slot', 9, '09:00', { notes: 'Timed entry. Lee books for 10:45.', owners: [lee] });
+  early('other', 'Flight booked: LA 482 to Lisbon', 10, '20:15', { notes: 'Seats 23A to 23C, confirmation DEMO-4821.', confirm: 'DEMO-4821', owners: all });
+  early('other', 'Reserve the Fado dinner', 12, '12:00', { notes: 'Ask about the early seating.', owners: [sam] });
+  early('other', 'Pay the Douro winery deposit', 14, '10:00', { notes: '60 euros, paid by Lee.', cost: 60, paidBy: lee, owners: [lee] });
+  early('other', 'Rental car booked', 16, '18:00', { notes: 'Automatic, a small one. Confirmation DEMO-CAR-77.', confirm: 'DEMO-CAR-77', owners: [lee] });
+  // Buffer
+  early('other', 'Check passports and visa rules', 22, '12:00', { notes: 'US passports need no visa for ninety days, but check the expiry date.' });
+  early('other', 'Insurance reminder: policy in the folder', 26, '19:00', { notes: 'Print the policy and the emergency number.' });
+  add({ kind: 'note', title: 'Wait for the forecast', date: dayPlus(today, 31), notes: 'Look at the ten-day forecast and decide what to swap if it rains in Porto.' });
+  // Pre-trip
+  early('other', 'Print the tickets and bookings', 36, '18:00', { notes: 'One folder, plus a copy on each phone.' });
+  early('other', 'Weigh the suitcases', 40, '18:00', { notes: '23 kg each. The scale is in the Budget.' });
+  add({ kind: 'note', title: 'The night before', date: dayPlus(today, 43), notes: 'Charge the power bank, set two alarms, leave the keys for the house sitter.' });
   // Unscheduled, with and without a phase
   const un = (title, notes, phaseIndex) => add({ kind: 'stop', type: 'other', title, date: null, after: null, notes, ...(phaseIndex !== undefined ? { phase: phaseOf(phaseIndex) } : {}) });
   un('Book the Douro winery', 'Two places left for the 11:00 tasting last time.', 1);
@@ -283,6 +352,10 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
     task('Download offline maps', 'Everyone. Lisbon, Sintra, Porto.', dayPlus(today, 28), { by: MIA }),
     task('Get an eSIM for each phone', 'Lee.', dayPlus(today, 30), { by: LEE }),
     task('Tell the bank we are travelling', 'Mia.', dayPlus(today, 33)),
+    task('Choose the cities and the dates', 'Everyone. Done in the planning call.', dayPlus(today, 2), { done: true, doneAt: doneAt(1) }),
+    task('Check passports and visa rules', 'Mia.', dayPlus(today, 22), { remind: true }),
+    task('Print the tickets and bookings', 'Sam. One folder, plus phone copies.', dayPlus(today, 36), { by: SAM }),
+    task('Weigh the suitcases', 'Lee. 23 kg each.', dayPlus(today, 40), { by: LEE, remind: true }),
     task('Pack adapters and chargers', 'Sam.', dayPlus(S, -3), { by: SAM }),
     task('Online check-in, seats together', 'Mia. Opens the day before.', dayPlus(S, -1), { remind: true }),
   ];
@@ -333,10 +406,10 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
 
   // --- Research ---
   const res = [
-    ['note:r1', { kind: 'note', title: 'Phrases worth learning', body: 'Bom dia (good morning). Obrigado / obrigada (thanks). A conta, por favor (the bill, please). Uma bica (a short coffee).', tags: ['language'], icon: 'language', date: '', by: MIA, at: new Date(when(5)).toISOString() }],
-    ['link:r2', { kind: 'link', title: 'Riding Tram 28 without the queue', url: 'https://example.com/lisbon-tram-28', excerpt: 'Board at the first stop, go before nine, and mind your pockets.', tags: ['lisbon'], date: '', by: SAM, at: new Date(when(6)).toISOString() }],
+    ['note:r1', { kind: 'note', title: 'Phrases worth learning', body: 'Bom dia (good morning). Obrigado / obrigada (thanks). A conta, por favor (the bill, please). Uma bica (a short coffee).', tags: ['language'], icon: 'language', date: dayPlus(today, 2), by: MIA, at: new Date(when(5)).toISOString() }],
+    ['link:r2', { kind: 'link', title: 'Riding Tram 28 without the queue', url: 'https://example.com/lisbon-tram-28', excerpt: 'Board at the first stop, go before nine, and mind your pockets.', tags: ['lisbon'], date: dayPlus(today, 5), by: SAM, at: new Date(when(6)).toISOString() }],
     ['link:r3', { kind: 'link', title: 'Sintra in one day', url: 'https://example.com/sintra-one-day', excerpt: 'Pena first, then Regaleira, with a bus between them. Skip the Moorish Castle if you are short of time.', tags: ['sintra'], date: d(3), by: LEE, at: new Date(when(7)).toISOString() }],
-    ['answer:r4', { kind: 'answer', title: 'Is the Lisboa Card worth it?', content: 'For three days of trams, metro and two or three entries (Jeronimos, Belem Tower) it pays for itself. If you walk everywhere and visit one museum, buy single tickets instead.', tags: ['lisbon', 'money'], date: '', by: MIA, at: new Date(when(8)).toISOString() }],
+    ['answer:r4', { kind: 'answer', title: 'Is the Lisboa Card worth it?', content: 'For three days of trams, metro and two or three entries (Jeronimos, Belem Tower) it pays for itself. If you walk everywhere and visit one museum, buy single tickets instead.', tags: ['lisbon', 'money'], date: dayPlus(today, 7), by: MIA, at: new Date(when(8)).toISOString() }],
   ];
   for (const [key, v] of res) await put('research', key, { text: v.body || v.excerpt || v.content, sub: '', ...v });
 
@@ -407,7 +480,7 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   };
   const settings = (await ok('admin', 'GET', '/api/settings')).settings;
   const mapReason = settings.topBarReasons && settings.topBarReasons.map;
-  return { space, S, users, pass, guestUrl, counts, plan, mapReason, aiDone, planRows };
+  return { space, S, users, pass, guestUrl, counts, plan, mapReason, aiDone, planRows, configured, hosted: Boolean(brand.json.hosted), dates };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -415,7 +488,17 @@ async function main() {
   const base = resolveTarget();
   console.log(`Using the server at ${base}.`);
   const today = process.env.SEED_TODAY || new Date().toISOString().slice(0, 10);
-  const r = await runSeed({ base, login: process.env.ADMIN_LOGIN || 'admin', adminPassword: process.env.ADMIN_PASSWORD, today, allowHosted: process.env.DEMO_ALLOW_HOSTED === '1', noAi: process.env.SEED_NO_AI === '1' });
+  const login = process.env.ADMIN_LOGIN || 'admin';
+  const r = await runSeed({ base, login, adminPassword: process.env.ADMIN_PASSWORD, today, allowHosted: process.env.DEMO_ALLOW_HOSTED === '1', demoEnvironment: process.env.DEMO_ENVIRONMENT || '', searchUrl: process.env.SEED_SEARCH_URL || '', noAi: process.env.SEED_NO_AI === '1' });
+  // The map file: made and ticked here unless SEED_MAP=0. Hosted, the map files are the host's, so none is made.
+  if (process.env.SEED_MAP === '0') r.configured.push('Map file: skipped (SEED_MAP=0).');
+  else if (r.hosted) r.configured.push('Map file: not made on a hosted install (the host keeps the map files); the host ticks one for this environment.');
+  else {
+    const { seedMap } = await import('./seed-demo-map.mjs');
+    let message;
+    try { message = (await seedMap({ base, login, adminPassword: process.env.ADMIN_PASSWORD, say: () => {}, folded: true })).message; } catch (e) { message = `not made (${e.message}). Run npm run seed:demo-map to try again.`; }
+    r.configured.push(`Map file: ${message}`);
+  }
   const c = r.counts;
   console.log('');
   console.log(`Done. The demo space "${SPACE_NAME}" is ready (the trip runs ${r.S} to ${dayPlus(r.S, 9)}).`);
@@ -428,7 +511,8 @@ async function main() {
   console.log(`    sam (member)     ${r.pass.sam}`);
   console.log('    You, the admin, are in the space too.');
   console.log(`  Planner ${c.planner} objects | Places ${c.places} | Calendar ${c.calendar} events | To-do ${c.todo} | Polls ${c.polls} | Budget ${c.budget} costs | Research ${c.research} | Chat ${c.chat} messages${r.aiDone ? ' (with /ai answers)' : ''}`);
-  if (r.mapReason) console.log('  The Map is on, but there is no map file yet. To get a small Lisbon, Sintra and Porto map, run: npm run seed:demo-map');
+  console.log('  Set up for you:');
+  for (const line of r.configured) console.log(`    ${line}`);
   console.log('  To reset: run npm run seed:demo again. It removes and rebuilds only this space and the three demo people.');
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
