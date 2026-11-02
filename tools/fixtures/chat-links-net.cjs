@@ -1,7 +1,7 @@
 // Loaded into the throwaway server by tools/check-chat-links.mjs (node --require), never by the app itself. It lets
 // the real page reader (server/link-preview.js, its address guard untouched) reach a local stand-in page:
 //
-// - a name under page.example.com resolves to 203.0.113.7 (TEST-NET-3, a public address the guard lets through);
+// - a name under page.example.com resolves to 93.184.215.14 (a public address the guard lets through; the documentation ranges such as TEST-NET-3 are refused);
 // - a name under intranet.example.com resolves to 10.0.0.5, which the guard must refuse;
 // - an HTTP request the reader sends to either name, after the guard has passed it, goes to the stand-in on
 //   127.0.0.1:CHECK_STUB_PORT instead. So a request that wrongly got past the guard for intranet.example.com would
@@ -15,7 +15,7 @@ const http = require('http');
 
 const port = Number(process.env.CHECK_STUB_PORT);
 const ANSWERS = [
-  [/(^|\.)page\.example\.com$/i, '203.0.113.7'],
+  [/(^|\.)page\.example\.com$/i, '93.184.215.14'],
   [/(^|\.)intranet\.example\.com$/i, '10.0.0.5'],
 ];
 const answerFor = (host) => ANSWERS.find(([re]) => re.test(String(host || '')))?.[1] || null;

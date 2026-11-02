@@ -356,7 +356,7 @@ await test('pages: the Configure page stops for a member and links owners to Mod
 // The app copied with its modules/ linked one by one, plus three stand-ins bundled beside them: dates that offer
 // themselves to the feed and take twins (as the Calendar does), plans that send twins (as the Planner does), and
 // notes that are dated but not offered.
-function writeModule(dir, id, refs, { scope = ['environment', 'space'], destination } = {}) {
+function writeModule(dir, id, refs, { scope = ['environment', 'space'], destination, guards } = {}) {
   const root = path.join(dir, id);
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });
   fs.writeFileSync(path.join(root, 'module.json'), JSON.stringify({
@@ -368,6 +368,7 @@ function writeModule(dir, id, refs, { scope = ['environment', 'space'], destinat
     ],
     access: { read: 'view', write: 'edit' },
     refs,
+    ...(guards ? { guards } : {}),
   }, null, 2));
   fs.writeFileSync(path.join(root, 'src', `${id}.html`), '<!DOCTYPE html><html><head><style>/*__CSS__*/</style></head><body><script>/*__JS__*/</script></body></html>');
   fs.writeFileSync(path.join(root, 'src', `${id}.css`), '');
@@ -385,7 +386,7 @@ function appCopy(name) {
     summary: { title: 'title', subtitle: 'desc', when: 'start', end: 'end', allDay: 'allDay' },
     dated: { title: 'title', start: 'start', end: 'end', allDay: 'allDay', repeat: 'repeat' },
     mirror: 'in', create: { id: '{id}', desc: '', repeat: null, by: '{by}' }, feed: true,
-  }] }, { destination: [{ id: 'calendar', part: 'main', entry: 'feed-dates.html' }] });
+  }] }, { destination: [{ id: 'calendar', part: 'main', entry: 'feed-dates.html' }], guards: { hidden: ['desc', 'end'] } }); // kept from guests, so from the published calendar too
   writeModule(mods, 'feed-plans', { produces: [{
     kind: 'plan', name: 'Plan', key: 'plan:{id}', summary: { title: 'title', when: 'date' },
     dated: { title: 'title', day: 'date', time: 'time' }, mirror: 'out',
@@ -943,6 +944,10 @@ try {
     const byTitle = Object.fromEntries(events.map((e) => [text(e, 'SUMMARY'), e]));
     assert.equal(text(byTitle['Session in B'], 'DESCRIPTION').split('\n')[0], 'Tower');
     assert.equal(text(byTitle['Market day, all; welcome'], 'DESCRIPTION').split('\n')[0], envName);
+    // The fields the module keeps from guests (guards.hidden: desc and end) are left out of everything read for it, its
+    // dates as well as its words; the personal address above has both.
+    assert.doesNotMatch(text(byTitle['Market day, all; welcome'], 'DESCRIPTION'), /Bring coin/, 'no hidden description');
+    assert.equal(prop(byTitle['Market day, all; welcome'], 'DTEND').value, `${Y}1011`, 'no hidden end: one day');
     assert.equal(text(byTitle['Session in B'], 'UID'), `event-b1-${spaceB}@localhost`);
     assert.ok(!r.text.includes('busy') && !r.text.includes('BUSY'), 'no busy block');
     assert.ok((await published()).readAt, 'Last read');

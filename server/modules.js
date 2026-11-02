@@ -19,7 +19,7 @@ const { word, fill } = require('./words');
 const { DESTINATION_IDS, DESTINATION_PARTS } = require('./destinations');
 const objectFormat = require('./object-format');
 const { scanBuiltPage } = require('./module-layout');
-const { cleanGuards } = require('./module-guards');
+const { cleanGuards, unreadableGuards } = require('./module-guards');
 
 // The text a person reads from a manifest, which may name levels by {space}-style placeholders (server/words.js's fill):
 // its description, the dashboard widget's title, its permissions' labels, its settings' labels and help (and their
@@ -902,9 +902,13 @@ function cleanManifest(raw, files) {
   const { events, actions } = cleanBus(raw.events, raw.actions, id, permissions.map((p) => p.key));
   const commands = cleanCommands(raw.commands, actions);
 
-  // Which of the module's own permissions guards reading and writing its data.
+  // Which of the module's own permissions guards reading and writing its data. `personWrite`: the one that guards writing
+  // a person's own data (scope "person") in place of `write`, for a module where anyone who may read keeps their own.
   const access = {};
-  for (const kind of ['read', 'write']) {
+  if (raw.access?.personWrite !== undefined && raw.access?.personWrite !== null && !scope.includes('person')) {
+    throw new ModuleError('module.json: access.personWrite needs the "person" scope');
+  }
+  for (const kind of ['read', 'write', 'personWrite']) {
     const named = raw.access?.[kind];
     if (named === undefined || named === null) continue;
     if (typeof named !== 'string' || !permissions.some((p) => p.key === named)) {
@@ -1104,13 +1108,13 @@ class ModuleManager {
       } catch {
         manifest.storage = { renamed: [] };
       }
-      // Guards that no longer read are not dropped (that would lift them): every write is refused, and the fields kept
-      // from guests are kept as far as they still read.
+      // Guards that no longer read are not dropped (that would lift them): every write is refused, the fields kept from
+      // guests are kept as far as they still read, and when those don't read either guests get none of its data
+      // (unreadableGuards).
       try {
         manifest.guards = cleanGuards(manifest.guards, manifest.permissions.map((p) => p && p.key), ModuleError);
       } catch {
-        const hidden = Array.isArray(manifest.guards?.hidden) ? manifest.guards.hidden.filter((f) => typeof f === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(f)) : [];
-        manifest.guards = { invalid: true, clear: null, hidden, keys: [] };
+        manifest.guards = unreadableGuards(manifest.guards);
       }
       try {
         const bus = cleanBus(manifest.events, manifest.actions, id, manifest.permissions.map((p) => p && p.key));

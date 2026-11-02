@@ -1,7 +1,7 @@
 {
   "id": "polls",
   "name": "Polls",
-  "version": "1.15.23",
+  "version": "1.15.24",
   "icon": "square-poll-vertical",
   "color": "purple",
   "description": "Quick polls and votes for the whole {environment} and for each {space}, with live results.",
@@ -105,16 +105,27 @@
           "delete": "manage_any",
           "may": [
             "announced",
-            { "field": "options", "append": true, "when": "addable", "open": true }
+            { "field": "options", "append": true, "when": "addable", "open": true, "by": "by" }
           ]
         },
-        "closed": { "flag": "closed", "at": "closesAt" }
+        "closed": { "flag": "closed", "at": "closesAt" },
+        "fields": {
+          "options": { "type": "array", "required": true, "maxLength": 20, "of": "object", "unique": "id" },
+          "multi": { "type": "boolean" },
+          "addable": { "type": "boolean" },
+          "closed": { "type": "boolean" },
+          "closesAt": { "type": "number", "null": true },
+          "announced": { "type": "boolean" }
+        }
       },
       {
         "key": "vote:{poll}:{person}",
         "personName": "name",
         "parent": "poll:{poll}",
-        "parentOpen": true
+        "parentOpen": true,
+        "fields": {
+          "options": { "type": "array", "required": true, "maxLength": 20, "pick": { "from": "options", "id": "id", "many": "multi" } }
+        }
       }
     ]
   },

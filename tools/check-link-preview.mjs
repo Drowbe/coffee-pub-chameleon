@@ -2,13 +2,14 @@
 /*
  * check-link-preview.mjs -- the page reader (server/link-preview.js) on its own: what it takes from HTML,
  * and which addresses it refuses before any request is made; and the user-agent it sends, "<product>/<version>"
- * (plan-kind-names.md, step 2), from the configured name.
+ * (plan-kind-names.md, step 2), from the configured name; the special-use ranges, the machine's own addresses and
+ * ports other than 80 and 443 refused (RS-04), and a request given up at its deadline with "that page took too long" (RS-03).
  */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { blockedAddress, blockedName, readPreview, getOnce, fetchPreview, fetchCalendar } = require('../server/link-preview.js');
+const { blockedAddress, blockedName, previewUrl, PREVIEW_DEADLINE_MS, readPreview, getOnce, fetchPreview, fetchImage, fetchCalendar } = require('../server/link-preview.js');
 const { version } = require('../package.json');
 
 let n = 0;
@@ -203,6 +204,66 @@ test('Research link previews are on unless an environment turned them off', () =
     console.log('ok an IPv6 address in the address is refused, and a failing connection never stops the process');
   } finally {
     process.off('uncaughtException', onUncaught);
+    server.close();
+  }
+}
+// The special-use ranges and this machine's own addresses are refused too (RS-04): a container may sit on a documentation
+// range (192.0.2.0/24), and then the server could read itself.
+test('special-use ranges and the machine\'s own addresses are refused', () => {
+  for (const ip of ['192.0.0.1', '192.0.0.255', '192.0.2.2', '192.88.99.1', '198.18.0.1', '198.19.255.255', '198.51.100.7', '203.0.113.9', '::ffff:192.0.2.2', '::ffff:c000:202']) {
+    assert.equal(blockedAddress(ip), true, ip);
+  }
+  for (const ip of ['192.0.1.1', '192.0.3.1', '198.17.255.255', '198.20.0.1', '198.51.101.1', '203.0.114.1', '8.8.8.8']) assert.equal(blockedAddress(ip), false, ip);
+  const os = require('node:os');
+  const own = Object.values(os.networkInterfaces()).flat().filter(Boolean).map((a) => a.address);
+  assert.ok(own.length, 'this machine has an address');
+  for (const ip of own) assert.equal(blockedAddress(ip), true, `this machine's own ${ip}`);
+});
+
+test('a preview reads only the web\'s own ports, and a picture on another port is dropped', () => {
+  for (const text of ['http://example.org/', 'https://example.org/', 'http://example.org:80/x', 'https://example.org:443/x', 'http://example.org:443/']) assert.ok(previewUrl(text), text);
+  for (const text of ['http://example.org:22/', 'https://example.org:8443/', 'http://example.org:3000/', 'http://example.org:1/']) assert.equal(previewUrl(text), null, text);
+  assert.equal(readPreview('<meta property="og:image" content="https://cdn.example.org:8443/a.jpg"><title>T</title>', 'https://example.org/').image, '');
+  assert.equal(readPreview('<meta property="og:image" content="https://cdn.example.org:443/a.jpg"><title>T</title>', 'https://example.org/').image, 'https://cdn.example.org/a.jpg');
+  assert.equal(PREVIEW_DEADLINE_MS <= 15000, true, 'a whole preview is given up within seconds');
+});
+
+{
+  // Refused before any lookup, with the sentence that says why.
+  for (const [text, sentence] of [['http://example.org:22/', 'that address is not allowed'], ['http://localhost:3341/', 'that address is not allowed'], ['http://192.0.2.2/', 'that address is not allowed'], ['ftp://example.org/', 'give a web address that starts with https:// or http://'], ['not an address', 'give a web address that starts with https:// or http://']]) {
+    await assert.rejects(fetchPreview(text), (err) => err.name === 'PreviewError' && err.message === sentence, text);
+    await assert.rejects(fetchImage(text), (err) => err.name === 'PreviewError', text);
+  }
+  n += 1;
+  console.log('ok an address that isn\'t allowed is refused before any lookup, in a plain sentence');
+}
+
+// A page that drips a byte now and then is given up at the deadline, and one that never answers says it took too long
+// (RS-03): the request is torn down with that sentence, never "could not be read".
+{
+  const http = require('node:http');
+  const timers = new Set();
+  const server = http.createServer((req, res) => {
+    if (req.url === '/hang') return; // never answers
+    res.writeHead(200, { 'content-type': 'text/html' });
+    const t = setInterval(() => res.write(' '), 100);
+    timers.add(t);
+    res.on('close', () => clearInterval(t));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  try {
+    const started = Date.now();
+    await assert.rejects(getOnce(new URL(`http://preview.test:${port}/drip`), ['127.0.0.1'], 1 << 20, undefined, { timeoutMs: 5000, deadline: Date.now() + 600 }),
+      (err) => err.name === 'PreviewError' && err.code === 'timeout' && err.message === 'that page took too long');
+    assert.ok(Date.now() - started < 2500, `given up at the deadline, not when the page stops (${Date.now() - started} ms)`);
+    await assert.rejects(getOnce(new URL(`http://preview.test:${port}/hang`), ['127.0.0.1'], 4096, undefined, { timeoutMs: 300 }),
+      (err) => err.name === 'PreviewError' && err.code === 'timeout' && err.message === 'that page took too long');
+    n += 1;
+    console.log('ok a dripping page is given up at the deadline, and a silent one took too long');
+  } finally {
+    for (const t of timers) clearInterval(t);
+    server.closeAllConnections?.();
     server.close();
   }
 }

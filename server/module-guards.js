@@ -8,7 +8,10 @@
 //                                          as soon as there are `keys`, so a rule on one key can't be undone by clearing all.
 //     "hidden": ["cost", ...],             top-level fields of every stored value a guest never receives (data routes,
 //                                          live changes, summaries) unless the space's owner opened them (the space's
-//                                          `guestsSeeHidden`). A guest's write keeps them as they were.
+//                                          `guestsSeeHidden`), nor the published calendar. A guest's write keeps them as they
+//                                          were, and a guest can't remove, replace with a non-object, or clear what holds any.
+//     "exclusive": ["note:{id}", ...],     keys that share their {name} parts: while one is stored the others can't be
+//                                          written (409), so two kinds of object never have the same id.
 //     "keys": [ {                          rules for the keys that match `key`; the first that matches is used
 //       "key": "vote:{poll}:{person}",     a stored key: letters and the like, with {name} parts (no ":" or "/" in a part).
 //                                          {person} is a person's key: only that person may write it.
@@ -25,11 +28,22 @@
 //         "change": "manage_any",          change it (without: anyone who may write); always with `need` too
 //         "delete": "manage_any",          remove it (without: anyone who may write)
 //         "may": ["announced",             fields anyone who may write still changes without `change`; an object entry
-//                 { "field": "options", "append": true, "when": "addable", "open": true }]  may only add to the end of a
-//                                          list, only while the field named by `when` is true, only while it is open
+//                 { "field": "options", "append": true, "when": "addable", "open": true, "by": "by" }]  may only add to
+//                                          the end of a list, only while the field named by `when` is true, only while it is
+//                                          open; with "by" each added entry is an object, its `by` set by the server to the
+//                                          writer's name
 //       },
 //       "closed": { "flag": "closed", "at": "closesAt" },  closed: the flag is true, or the time (ms) in `at` has passed
-//       "fields": { "planned": { "type": "number", "null": true, "above": 0, "below": 1e12 } }  the shape of the value
+//       "file": "file",                    the field holding { id } of a file uploaded to the module in the same place: a
+//                                          new or changed one must be there and added by the writer (or an owner); the
+//                                          server removes the file with the object
+//       "fields": { "planned": { "type": "number", "null": true, "above": 0, "below": 1e12 } }  the shape of the value:
+//                                          type, null, required; above, below, min, max on a number; maxLength on text or a
+//                                          list; on a list "of" (each entry's type), "unique" (true: no entry twice; a field
+//                                          name: each entry an object whose text there is given and never twice), and with
+//                                          a parent "pick": { "from": "options", "id": "id", "many": "multi" } (each entry
+//                                          the `id` of an entry of the parent's `from` list, more than one only while the
+//                                          parent's `many` is true)
 //     } ]
 //   }
 //
@@ -68,7 +82,7 @@ function cleanGuards(raw, permissionKeys, Err) {
     if (typeof value !== 'string' || !FIELD_RE.test(value)) fail(`${where} must name a stored field: a letter, then letters, digits or _.`);
     return value;
   };
-  const out = { clear: null, hidden: [], keys: [] };
+  const out = { clear: null, hidden: [], keys: [], exclusive: null };
 
   if (raw.hidden !== undefined) {
     if (!Array.isArray(raw.hidden) || raw.hidden.length > MAX_FIELDS) fail(`guards.hidden must be a list of at most ${MAX_FIELDS} stored fields.`);
@@ -112,6 +126,10 @@ function cleanGuards(raw, permissionKeys, Err) {
               if (m.when !== undefined) entry.when = field(m.when, `${at}.others.may "${entry.field}" when`);
               if (m.open !== undefined && typeof m.open !== 'boolean') fail(`${at}.others.may "${entry.field}" open must be true or false.`);
               if (m.open) entry.open = true;
+              if (m.by !== undefined) {
+                if (!entry.append) fail(`${at}.others.may "${entry.field}" by needs append: true.`);
+                entry.by = field(m.by, `${at}.others.may "${entry.field}" by`);
+              }
             }
             if (others.may.some((x) => x.field === entry.field)) fail(`${at}.others.may lists "${entry.field}" twice.`);
             if (entry.field === rule.owner || entry.field === rule.ownerName) fail(`${at}.others.may can't list the owner's fields.`);
@@ -135,6 +153,7 @@ function cleanGuards(raw, permissionKeys, Err) {
         if (r.parentOpen !== undefined && typeof r.parentOpen !== 'boolean') fail(`${at}.parentOpen must be true or false.`);
         if (r.parentOpen) rule.parentOpen = true;
       } else if (r.parentOpen !== undefined) fail(`${at}.parentOpen needs a "parent".`);
+      if (r.file !== undefined) rule.file = field(r.file, `${at}.file`);
       if (r.fields !== undefined) {
         if (!isObject(r.fields) || Object.keys(r.fields).length > MAX_FIELDS) fail(`${at}.fields must be an object of at most ${MAX_FIELDS} fields.`);
         rule.fields = {};
@@ -155,6 +174,21 @@ function cleanGuards(raw, permissionKeys, Err) {
             if (!['string', 'array'].includes(f.type) || !Number.isInteger(f.maxLength) || f.maxLength < 1 || f.maxLength > 100000) fail(`${at}.fields.${name}.maxLength must be a whole number from 1 to 100000, on a string or array field.`);
             spec.maxLength = f.maxLength;
           }
+          for (const listOnly of ['of', 'unique', 'pick']) if (f[listOnly] !== undefined && f.type !== 'array') fail(`${at}.fields.${name}.${listOnly} is for a list field.`);
+          if (f.of !== undefined) {
+            if (!TYPES.includes(f.of) || f.of === 'array') fail(`${at}.fields.${name}.of must be number, string, boolean or object.`);
+            spec.of = f.of;
+          }
+          if (f.unique !== undefined) {
+            if (f.unique === true) spec.unique = true;
+            else if (f.unique !== false) spec.unique = field(f.unique, `${at}.fields.${name}.unique`);
+          }
+          if (f.pick !== undefined) {
+            if (r.parent === undefined) fail(`${at}.fields.${name}.pick needs a "parent".`);
+            if (!isObject(f.pick)) fail(`${at}.fields.${name}.pick must be an object with "from".`);
+            spec.pick = { from: field(f.pick.from, `${at}.fields.${name}.pick.from`), id: f.pick.id === undefined ? 'id' : field(f.pick.id, `${at}.fields.${name}.pick.id`) };
+            if (f.pick.many !== undefined) spec.pick.many = field(f.pick.many, `${at}.fields.${name}.pick.many`);
+          }
           rule.fields[name] = spec;
         }
       }
@@ -172,8 +206,28 @@ function cleanGuards(raw, permissionKeys, Err) {
     if (!out.clear) fail('guards.clear must be "owner" or one of the module\'s own permissions.');
   }
   if (out.keys.length && !out.clear) fail('guards.clear is needed with guards.keys: say who may clear everything, "owner" or one of the module\'s own permissions.');
-  if (!out.keys.length && !out.hidden.length && !out.clear) return null;
+  if (raw.exclusive !== undefined) {
+    if (!Array.isArray(raw.exclusive) || raw.exclusive.length < 2 || raw.exclusive.length > MAX_KEYS) fail(`guards.exclusive must be a list of 2 to ${MAX_KEYS} stored keys.`);
+    out.exclusive = [];
+    for (const key of raw.exclusive) {
+      if (typeof key !== 'string' || !KEY_PATTERN_RE.test(key) || !partsOf(key).length) fail('each guards.exclusive entry must be a stored key with {name} parts, such as "note:{id}".');
+      if (out.exclusive.some((x) => shapeOf(x) === shapeOf(key))) fail('guards.exclusive lists a key twice.');
+      if (partsOf(key).slice().sort().join() !== partsOf(raw.exclusive[0] || '').slice().sort().join()) fail('every guards.exclusive key must have the same {name} parts.');
+      out.exclusive.push(key);
+    }
+  }
+  if (!out.keys.length && !out.hidden.length && !out.clear && !out.exclusive) return null;
   return out;
+}
+
+// The guards kept for a manifest whose guards no longer read (cleanGuards threw): every write is refused (`invalid`), and
+// the fields kept from guests are kept as far as they still read. When `hidden` itself does not read in full, nobody can
+// say which fields to keep from guests, so `shut` keeps the module's data from them altogether (fail closed).
+function unreadableGuards(raw) {
+  const list = isObject(raw) ? raw.hidden : undefined;
+  const readable = list === undefined || (Array.isArray(list) && list.every((f) => typeof f === 'string' && FIELD_RE.test(f)));
+  const hidden = Array.isArray(list) ? [...new Set(list.filter((f) => typeof f === 'string' && FIELD_RE.test(f)))] : [];
+  return { invalid: true, clear: null, hidden, keys: [], exclusive: null, ...(readable ? {} : { shut: true }) };
 }
 
 // --- matching ----------------------------------------------------------------------------------------------------------
@@ -243,19 +297,41 @@ function fieldSentence(name, spec) {
   if (spec.min !== undefined) bounds.push(`at least ${spec.min}`);
   if (spec.below !== undefined) bounds.push(`below ${spec.below}`);
   if (spec.max !== undefined) bounds.push(`at most ${spec.max}`);
-  if (spec.maxLength !== undefined) bounds.push(`at most ${spec.maxLength} ${spec.type === 'array' ? 'long' : 'characters'}`);
+  if (spec.maxLength !== undefined) bounds.push(spec.type === 'array' ? `with at most ${spec.maxLength} entries` : `at most ${spec.maxLength} characters`);
   return `${name} must be ${TYPE_WORDS[spec.type]}${bounds.length ? ` ${bounds.join(' and ')}` : ''}${spec.null ? ', or empty' : ''}.`;
 }
-// The first field of `value` that is not as its rule says, as a sentence; null when all are.
-function fieldProblem(fields, value) {
+const typeIs = (type, v) => (type === 'array' ? Array.isArray(v) : type === 'object' ? isObject(v) : type === 'number' ? typeof v === 'number' && Number.isFinite(v) : typeof v === type);
+const ENTRY_WORDS = { number: 'numbers', string: 'text', boolean: 'true or false', object: 'objects' };
+// The first field of `value` that is not as its rule says, as a sentence; null when all are. `parent`: the stored value
+// of the object this one belongs to (a rule's `parent`), for a list that picks from it.
+function fieldProblem(fields, value, parent = null) {
   for (const [name, spec] of Object.entries(fields || {})) {
     const v = value[name];
     if (v === undefined) { if (spec.required) return `${name} is needed.`; continue; }
     if (v === null) { if (spec.null && !spec.required) continue; return fieldSentence(name, spec); }
-    const typeOk = spec.type === 'array' ? Array.isArray(v) : spec.type === 'object' ? isObject(v) : spec.type === 'number' ? typeof v === 'number' && Number.isFinite(v) : typeof v === spec.type;
-    if (!typeOk) return fieldSentence(name, spec);
+    if (!typeIs(spec.type, v)) return fieldSentence(name, spec);
     if (spec.type === 'number' && ((spec.above !== undefined && !(v > spec.above)) || (spec.below !== undefined && !(v < spec.below)) || (spec.min !== undefined && v < spec.min) || (spec.max !== undefined && v > spec.max))) return fieldSentence(name, spec);
     if (spec.maxLength !== undefined && v.length > spec.maxLength) return fieldSentence(name, spec);
+    if (spec.type !== 'array') continue;
+    const of = spec.pick ? 'string' : spec.of;
+    if (of && !v.every((x) => typeIs(of, x))) return `Each entry of ${name} must be ${ENTRY_WORDS[of]}.`;
+    if (spec.unique === true || spec.pick) {
+      for (let i = 0; i < v.length; i += 1) if (v.slice(0, i).some((x) => deepEqual(x, v[i]))) return `${name} has the same entry twice.`;
+    } else if (spec.unique) {
+      const seen = new Set();
+      for (const x of v) {
+        const id = isObject(x) ? x[spec.unique] : undefined;
+        if (typeof id !== 'string' || !id) return `Each entry of ${name} needs its ${spec.unique}.`;
+        if (seen.has(id)) return `Two entries of ${name} have the same ${spec.unique}.`;
+        seen.add(id);
+      }
+    }
+    if (spec.pick) {
+      const list = isObject(parent) && Array.isArray(parent[spec.pick.from]) ? parent[spec.pick.from] : [];
+      const ids = new Set(list.filter(isObject).map((x) => x[spec.pick.id]).filter((x) => typeof x === 'string'));
+      if (!v.every((x) => ids.has(x))) return `Each entry of ${name} must be one of the choices.`;
+      if (v.length > 1 && !(spec.pick.many && parent[spec.pick.many] === true)) return `${name} can hold only one choice here.`;
+    }
   }
   return null;
 }
@@ -276,13 +352,20 @@ function mayDelete(rule, before, who) {
 // What to store for a PUT, or a refusal.
 function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
   if (guards?.invalid) return refuse(403, `This ${word('module')}'s rules can't be read, so nothing in it can be changed. Ask the ${word('admin')} to update it.`);
+  // Another kind of object with the same id already there (guards.exclusive): refused, so neither hides the other.
+  for (const pattern of guards?.exclusive || []) {
+    const params = matchKey(pattern, key);
+    if (!params) continue;
+    if (guards.exclusive.some((other) => other !== pattern && read(fillKey(other, params)) !== null)) return refuse(409, 'Something else here already has that id, so this can\'t be saved under it.');
+    break;
+  }
   const found = ruleFor(guards, key);
   // A key that starts as a rule's key does but is not one ("vote:q1:mia:x" beside "vote:{poll}:{person}") is refused,
   // so nothing slips past a rule by its shape.
   if (!found) return (guards?.keys || []).some((r) => String(key).startsWith(literalPrefix(r.key))) ? refuse(400, `That key isn't one this ${word('module')} keeps.`) : { value };
   const { rule, params } = found;
   if (!who.key && (rule.person || rule.owner)) return guestRefusal();
-  if (rule.person || rule.owner || rule.fields) {
+  if (rule.person || rule.owner || rule.fields || rule.file) {
     if (!isObject(value)) return refuse(400, 'That value must be an object.');
   }
   let next = value;
@@ -290,9 +373,10 @@ function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
     if (params.person !== who.key) return theirsRefusal();
     if (rule.personName) next = { ...next, [rule.personName]: who.name };
   }
+  let parent = null;
   if (rule.parent) {
     const parentKey = fillKey(rule.parent, params);
-    const parent = read(parentKey);
+    parent = read(parentKey);
     if (!parent) return goneRefusal();
     if (rule.parentOpen) {
       const parentRule = ruleFor(guards, parentKey)?.rule;
@@ -327,6 +411,11 @@ function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
             const was = before[f];
             const is = next[f];
             if (!Array.isArray(was) || !Array.isArray(is) || is.length <= was.length || !was.every((x, i) => deepEqual(x, is[i]))) return refuse(403, `You can only add to ${f}, not change what is there.`);
+            if (entry.by) {
+              // What was added is the writer's: each a set of fields, named by the server.
+              if (!is.slice(was.length).every(isObject)) return refuse(400, `Each entry added to ${f} must be a set of named fields, not a single value.`);
+              next = { ...next, [f]: [...was, ...is.slice(was.length).map((x) => ({ ...x, [entry.by]: who.name }))] };
+            }
           }
         }
       }
@@ -334,8 +423,19 @@ function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
   } else if (rule.need && !who.can(rule.need)) {
     return roleRefusal();
   }
+  if (rule.file && !isEmpty(next[rule.file])) {
+    const ref = next[rule.file];
+    if (!isObject(ref) || typeof ref.id !== 'string' || !ref.id) return refuse(400, `${rule.file} must name a file by its id.`);
+    const had = isObject(before) && isObject(before[rule.file]) ? before[rule.file].id : undefined;
+    if (ref.id !== had) {
+      // A file named for the first time (or swapped): it must be here, and the writer's own (an owner may use any).
+      const meta = typeof who.file === 'function' ? who.file(ref.id) : null;
+      if (!meta) return refuse(400, 'That file isn\'t here.');
+      if (meta.by !== who.key && !who.owner) return refuse(403, 'You can only use a file you added.');
+    }
+  }
   if (rule.fields) {
-    const problem = fieldProblem(rule.fields, next);
+    const problem = fieldProblem(rule.fields, next, parent);
     if (problem) return refuse(400, problem);
   }
   return { value: next };
@@ -395,4 +495,25 @@ function keepHidden(value, before, fields) {
   return out;
 }
 
-module.exports = { cleanGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, deepEqual, fieldProblem };
+// Whether a stored value holds anything in the hidden fields: what a writer who can't see them must not remove or replace.
+const holdsHidden = (value, fields) => Boolean(fields && fields.length && isObject(value) && fields.some((f) => !isEmpty(value[f])));
+// The refusals for a writer who can't see the hidden fields (`fields`, as hiddenFor gives them): null when it may go ahead.
+// A PUT that is not an object would replace what they can't see; a DELETE or a clear would remove it.
+function hiddenPutRefusal(value, before, fields) {
+  return !isObject(value) && holdsHidden(before, fields) ? refuse(403, `That holds details ${word('guest', { many: true })} can't see, so it can only be changed, not replaced.`) : null;
+}
+function hiddenDeleteRefusal(before, fields) {
+  return holdsHidden(before, fields) ? refuse(403, `That holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't remove it.`) : null;
+}
+function hiddenClearRefusal(values, fields) {
+  return values.some((v) => holdsHidden(v, fields)) ? refuse(403, `Some of it holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't clear everything.`) : null;
+}
+
+// The id of the file a stored value names under its rule's `file`, or null: what the server removes with the object.
+function fileOf(guards, key, value) {
+  const rule = ruleFor(guards, key)?.rule;
+  const ref = rule && rule.file && isObject(value) ? value[rule.file] : null;
+  return isObject(ref) && typeof ref.id === 'string' && ref.id ? ref.id : null;
+}
+
+module.exports = { cleanGuards, unreadableGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, holdsHidden, hiddenPutRefusal, hiddenDeleteRefusal, hiddenClearRefusal, fileOf, deepEqual, fieldProblem };

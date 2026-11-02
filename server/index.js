@@ -4288,6 +4288,7 @@ function moduleAccess(req, res, need) {
   // the permission, so there is no space, person or fine-grained access.read to check beyond that.
   if (who.keyed) {
     if (need !== 'read' || !manifest.surfaces.keyed) return void res.status(403).json({ error: `the access key only reads ${word('module', { a: true })} with a keyed page` });
+    if (shutFromGuests(who, manifest, null)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
     return { manifest, entry, scope: 'environment', spaceId: null, scopeKey: 'environment', who, perms: {}, by: 'keyed', hide: hiddenFor(who, manifest, null) };
   }
   const scope = askedScope(req.query.scope, res, ['environment', 'space', 'person']);
@@ -4308,7 +4309,9 @@ function moduleAccess(req, res, need) {
     return void res.status(403).json({ error: `${word('guest', { many: true })} can only use ${word('module', { a: true })} in ${word('space', { a: true })}` });
   }
   const perms = modulePerms(who, spaceId);
-  if (!moduleCan(manifest, perms, need)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  // Writing one's own data (scope person) takes the module's access.personWrite where it names one, else access.write.
+  if (!moduleCan(manifest, perms, need === 'write' && scope === 'person' && manifest.access?.personWrite ? 'personWrite' : need)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  if (shutFromGuests(who, manifest, spaceId)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
   return { manifest, entry, scope, spaceId, scopeKey: scopeKeyOf(scope, { spaceId, userKey: who.user?.key }), who, perms, by: who.user?.key || 'guest', hide: hiddenFor(who, manifest, spaceId) };
 }
 
@@ -4320,12 +4323,37 @@ function hiddenFor(who, manifest, spaceId) {
   if (!fields || !fields.length || who.user) return [];
   return spaceId && store.spaceById(spaceId)?.guestsSeeHidden === true ? [] : fields;
 }
+// Whether this viewer gets none of the module's data at all: guards whose hidden fields can't be read (guards.shut,
+// server/module-guards.js unreadableGuards) keep everything from whoever hiddenFor would keep those fields from.
+function shutFromGuests(who, manifest, spaceId) {
+  if (!manifest.guards?.shut || who.user) return false;
+  return !(spaceId && store.spaceById(spaceId)?.guestsSeeHidden === true);
+}
+const guestsShutRefusal = (manifest) => `${modules.shownName(manifest)}'s rules can't be read, so ${word('guest', { many: true })} can't see what it holds. Ask the ${word('admin')} to update it.`;
 const hideItem = (item, fields) => (item && fields && fields.length ? { ...item, value: moduleGuards.hide(item.value, fields) } : item);
 // Who is writing, as server/module-guards.js asks: their key (null for a guest), their name, whether they have the
-// environment's owner rights, and the module's permissions they hold where the write is.
+// environment's owner rights, the module's permissions they hold where the write is, and file(id): who added that file
+// to the module in the same place ({ by }), or null when it is not there.
 function guardWho(ctx) {
   const user = ctx.who.user;
-  return { key: user ? user.key : null, name: user ? user.displayName : '', owner: Boolean(user) && hasOwnerRights(user), can: (p) => Boolean(ctx.perms[`module.${ctx.manifest.id}.${p}`]) };
+  return {
+    key: user ? user.key : null,
+    name: user ? user.displayName : '',
+    owner: Boolean(user) && hasOwnerRights(user),
+    can: (p) => Boolean(ctx.perms[`module.${ctx.manifest.id}.${p}`]),
+    file: (id) => (ctx.manifest.uploads ? moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, id) : null),
+  };
+}
+// The files a removed object named (its rule's `file`) go with it, unless another object here still names the same one.
+function removeFilesOf(ctx, removed) {
+  const guards = ctx.manifest.guards;
+  if (!ctx.manifest.uploads || !guards?.keys?.some((r) => r.file)) return;
+  const ids = new Set(removed.map(({ key, value }) => moduleGuards.fileOf(guards, key, value)).filter(Boolean));
+  if (!ids.size) return;
+  for (const item of moduleData.list(ctx.manifest.id, ctx.scopeKey)) ids.delete(moduleGuards.fileOf(guards, item.key, item.value));
+  for (const id of ids) {
+    try { moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, id); } catch (err) { console.error(`A removed object's file could not be removed: ${err.message}`); }
+  }
 }
 // Whether this viewer may clear everything the module holds in a space (DELETE .../data): its write permission, and the
 // guards' `clear` when it has one. For the canvas's Clear.
@@ -5894,8 +5922,9 @@ function faSvg(style, name) {
 }
 
 // A Font Awesome icon as inline SVG, by style and name, for a module's widget in a sandboxed frame (which cannot
-// load the icon font). Anyone signed in may ask; only the free set's own files are ever read.
-app.get('/api/icons/:style/:name', requireUser, (req, res) => {
+// load the icon font). Anyone may ask, signed in or not, as for the icon font itself (/fa/css, /fa/webfonts), so a
+// space's guests, whose pages carry no session, get their icons too.
+app.get('/api/icons/:style/:name', (req, res) => {
   const { style, name } = req.params;
   if (!['solid', 'regular', 'brands'].includes(style) || !/^[a-z0-9-]{1,40}$/.test(name)) return res.status(400).json({ error: 'no such icon' });
   const svg = faSvg(style, name);
@@ -6015,11 +6044,16 @@ function readFeed(req, sources, { destinationFor, nameSpaces, published = false 
   const now = Date.now();
   const out = [];
   for (const { manifest, kinds, places } of sources) {
+    // The published calendar is read with nobody's rights: every field kept from guests (guards.hidden) is left out of what
+    // it reads, its dates and words alike; a module whose hidden fields can't be read is left out altogether.
+    if (published && manifest.guards?.shut) continue;
+    const hidden = published ? manifest.guards?.hidden || [] : [];
     const destination = destinationFor(manifest.id);
     for (const kind of kinds) {
       const prefix = kind.key.replace('{id}', '');
       for (const { scopeKey, space } of places) {
-        for (const row of moduleData.list(manifest.id, scopeKey, prefix)) {
+        for (const stored of moduleData.list(manifest.id, scopeKey, prefix)) {
+          const row = hidden.length ? { ...stored, value: moduleGuards.hide(stored.value, hidden) } : stored;
           const id = row.key.slice(prefix.length);
           if (!REF_ID_RE.test(id)) continue;
           const read = ics.readDated(row.value, kind.dated, tz);
@@ -6027,9 +6061,7 @@ function readFeed(req, sources, { destinationFor, nameSpaces, published = false 
           const ref = { module: manifest.id, kind: kind.kind, id, scope: space ? 'space' : 'environment', ...(space ? { space: space.id } : {}) };
           const hash = `#ref=${encodeURIComponent(JSON.stringify(ref))}`;
           const url = destination ? `${base}${destination}${hash}` : `${base}/modules/${encodeURIComponent(manifest.id)}${space ? `?space=${encodeURIComponent(space.id)}` : ''}${hash}`;
-          // The published calendar is read with nobody's rights: a field kept from guests (guards.hidden) is left out of it.
-          const subtitleHidden = published && (manifest.guards?.hidden || []).includes(kind.summary.subtitle);
-          const own = kind.summary.subtitle && !subtitleHidden && typeof row.value?.[kind.summary.subtitle] === 'string' ? row.value[kind.summary.subtitle].trim() : '';
+          const own = kind.summary.subtitle && typeof row.value?.[kind.summary.subtitle] === 'string' ? row.value[kind.summary.subtitle].trim() : '';
           out.push({
             ...read,
             uid: `${kind.kind}-${id}-${space ? space.id : 'environment'}@${host}`,
@@ -6498,6 +6530,7 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
     scopeKey = 'environment';
   }
   if (!moduleCan(manifest, perms, 'read')) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
+  if (shutFromGuests(who, manifest, scope === 'space' ? String(space) : null)) throw Object.assign(refError(403, guestsShutRefusal(manifest)), { unseen: true });
   // `hide`: the provider's fields this viewer may not see there (hiddenFor), left out of every summary made from it.
   return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
 }
@@ -8428,13 +8461,33 @@ function geocodeSetup(manifest) {
 // A link someone is adding: the server reads that page's title, description and image. Fetched only while the
 // module's linkPreviews setting resolves true (the manifest default applies when nothing is saved), because the request leaves this server for an address the person typed.
 // The picture from a link preview, fetched here and sent to the card. A browser asking the other site for it is often refused.
+// Only for a signed-in person, and only a picture this place already knows: one a stored value here names (a saved link's
+// picture), or one a link preview here offered in the last while (the editor shows it before the link is saved). So the
+// server never fetches an address only because someone asked it to.
+const OFFERED_IMAGE_MS = 30 * 60 * 1000;
+const OFFERED_IMAGE_MAX = 500;
+const offeredImages = new Map(); // `${environment slug} ${module} ${scopeKey} ${url}` -> when offered
+function offerImage(ctx, url) {
+  if (!url) return;
+  const key = `${currentEnvironment().slug || ''} ${ctx.manifest.id} ${ctx.scopeKey} ${url}`;
+  offeredImages.delete(key);
+  if (offeredImages.size >= OFFERED_IMAGE_MAX) offeredImages.delete(offeredImages.keys().next().value);
+  offeredImages.set(key, Date.now());
+}
+function imageKnownHere(ctx, url) {
+  const at = offeredImages.get(`${currentEnvironment().slug || ''} ${ctx.manifest.id} ${ctx.scopeKey} ${url}`);
+  if (at && Date.now() - at < OFFERED_IMAGE_MS) return true;
+  return moduleData.list(ctx.manifest.id, ctx.scopeKey).some((item) => item.value && typeof item.value === 'object' && Object.values(item.value).includes(url));
+}
 app.get('/api/modules/:id/link-image', async (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx) return;
   if (!(ctx.manifest.settings || []).some((s) => s.key === 'linkPreviews')) return res.status(404).end();
   const values = moduleSettings.values(ctx.manifest, 'environment', {});
   if (values.linkPreviews !== true) return res.status(404).end();
+  if (!ctx.who.user) return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can't load link pictures.` });
   const asked = String(req.query.url || '');
+  if (!asked || !imageKnownHere(ctx, asked)) return res.status(404).json({ error: 'That picture isn\'t on a link here.' });
   try {
     let image = cachedImage(asked);
     if (!image) {
@@ -8457,6 +8510,7 @@ app.post('/api/modules/:id/link-preview', async (req, res) => {
   if (overLimit(ctx.manifest.id, ctx.by, 'search')) return res.status(429).json({ error: limitMessage() });
   try {
     const preview = await fetchPreview(String(req.body?.url || ''));
+    offerImage(ctx, preview.image);
     res.json({ enabled: true, ...preview });
   } catch (err) {
     const message = err instanceof PreviewError ? err.message : 'that page could not be read';
@@ -9264,7 +9318,9 @@ app.put('/api/modules/:id/data/:key', (req, res) => {
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   try {
     const had = moduleData.get(ctx.manifest.id, ctx.scopeKey, req.params.key);
-    // A writer who can't see the hidden fields leaves them as they were.
+    // A writer who can't see the hidden fields leaves them as they were, and can't replace a value that holds any.
+    const hiddenRefused = moduleGuards.hiddenPutRefusal(req.body?.value, had ? had.value : null, ctx.hide);
+    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
     let value = moduleGuards.keepHidden(req.body?.value, had ? had.value : null, ctx.hide);
     const guards = guardsAt(ctx);
     if (guards) {
@@ -9289,10 +9345,14 @@ app.delete('/api/modules/:id/data', (req, res) => {
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   try {
     const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
+    // A writer who can't see the hidden fields can't remove what holds any.
+    const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
+    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
     for (const item of items) {
       moduleData.remove(ctx.manifest.id, ctx.scopeKey, item.key, { by: ctx.by });
       objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: item.key, before: item.value, after: null, by: ctx.by, tz: req.query.tz });
     }
+    removeFilesOf(ctx, items);
     res.json({ cleared: items.length });
   } catch (err) {
     sendModuleConflict(err, res);
@@ -9309,8 +9369,14 @@ app.delete('/api/modules/:id/data/:key', (req, res) => {
     const guards = guardsAt(ctx);
     const refused = guards ? moduleGuards.checkDelete(guards, { key: req.params.key, before: had ? had.value : null, who: guardWho(ctx), read: storedValue(ctx) }) : null;
     if (refused) return res.status(refused.status).json({ error: refused.error });
+    // A writer who can't see the hidden fields can't remove what holds any.
+    const hiddenRefused = had ? moduleGuards.hiddenDeleteRefusal(had.value, ctx.hide) : null;
+    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
     const removed = moduleData.remove(ctx.manifest.id, ctx.scopeKey, req.params.key, { expected: Number.isInteger(expected) ? expected : null, by: ctx.by });
-    if (had) objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
+    if (had) {
+      objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
+      removeFilesOf(ctx, [{ key: req.params.key, value: had.value }]);
+    }
     res.json(removed);
   } catch (err) {
     sendModuleConflict(err, res, ctx.hide);
@@ -9478,7 +9544,9 @@ app.get('/api/modules/stream', (req, res) => {
       const at = place(v, change.module, change.scopeKey);
       if (!at) continue;
       // What a guest may not receive goes from the value (hiddenFor); a guest only ever hears their own space.
-      const hide = at.spaceId ? hiddenFor(who, modules.enabled(change.module).manifest, at.spaceId) : [];
+      const changed = modules.enabled(change.module)?.manifest;
+      if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
+      const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
       send(v, 'change', change, { ...hideItem(change, hide), ...at });
     }
   });

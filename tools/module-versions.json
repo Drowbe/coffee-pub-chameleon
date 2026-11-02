@@ -4,8 +4,8 @@
     "hash": "dc69c171d1890b19"
   },
   "budget": {
-    "version": "0.1.20",
-    "hash": "b5b288aac95bdceb"
+    "version": "0.1.21",
+    "hash": "805d43258066f514"
   },
   "calendar": {
     "version": "1.24.30",
@@ -20,12 +20,12 @@
     "hash": "559cabce341736fa"
   },
   "polls": {
-    "version": "1.15.23",
-    "hash": "d5c7edeecd37bb4a"
+    "version": "1.15.24",
+    "hash": "e41d341c92e8a6f9"
   },
   "research": {
-    "version": "0.4.26",
-    "hash": "541045fded682422"
+    "version": "0.4.27",
+    "hash": "7d015aaf67a4d669"
   },
   "stream": {
     "version": "0.1.15",

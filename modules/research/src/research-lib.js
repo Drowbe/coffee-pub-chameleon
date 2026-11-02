@@ -264,6 +264,9 @@
     const remember = (key, value, version) => {
       const [kind, id] = split(key);
       const it = value ? cleanItem(kind, id, value) : null;
+      const had = items.get(id);
+      // One id is one object: another kind under the same id (the server refuses a new one) never takes its place.
+      if (had && had.item.kind !== kind) return;
       if (it) items.set(id, { item: it, version });
       else items.delete(id);
     };
