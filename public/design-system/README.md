@@ -10,7 +10,11 @@ Four pages, with the same links at the top of each (`pages.css` styles them): **
   `createModuleFrame` (`public/module-frame.js`) in four states, with a theme, Light or Dark, and a width chosen at the top. What a
   tweak here changes is staged on Proposed; a Proposed change moves into the Design System once it is built into production. Its
   themes are `themes/<id>.css`, the three shipped themes written by `server/theme-css.js`: run `node tools/design-system-themes.mjs`
-  after a shipped theme changes (`--check`, in `npm run check`, fails when they differ).
+  after a shipped theme changes (`--check`, in `npm run check`, fails when they differ). Its Planner, Phone and Vault sections are
+  jumped to from the Sections list. The Vault section (design-process only, nothing ships) is `prototype-vault.js` (the section, its
+  switches and its questions for Thomas), `prototype-vault-app.js` (the module), `-ui.js`, `-viewers.js`, `-dialogs.js`, `-more.js`,
+  `-sets.js`, `-shared.js` (the public page), `-data.js` (the made-up files, drawn in the page; no big assets) and
+  `prototype-vault.css`, whose rules marked "to system.css" are what the build would move into the shared stylesheet.
 - **Legacy** (`legacy/index.html`): frozen records.
   - `legacy/inventory/`: the inventory of the app before the design system, with its screenshots in `img/` ("before" is commit
     `c9fc16e`; "now" was `417b646`).

@@ -140,13 +140,13 @@ export function buildShare({ set, state, pair }) {
 
 export function buildDelete({ set, state, pair }) {
   const s = set('delete', 'Deleting and erasing', 'Remove asks first and says where the file is used. Links stay and read "File removed" (decision 2). Erasing a space deletes its files and its share links, and uninstalling the module removes every space\'s files: both are the typed, final question. Turning the Vault off in a space keeps its files. Removing is not undone; there is no recycle bin in the plan.');
-  const stage = (parent, name, note, dlg, { q } = {}) => {
+  const backdrop = (parent, name, note, dlg, { q } = {}) => {
     const wrap = h('section', 'pp-state');
     wrap.append(h('h4', 'pp-state-name', name));
     if (note) wrap.append(h('p', 'pp-state-note', note));
     const box = h('div', 'pp-frame vt-frame');
     box.dataset.h = '480';
-    const st = h('div', 'vt-stagebox');
+    const st = h('div', 'vt-backdrop');
     box.append(st);
     wrap.append(box);
     parent.append(wrap);
@@ -162,10 +162,10 @@ export function buildDelete({ set, state, pair }) {
   state(p3, { name: 'Rename', cfg: { role: 'member', state: { view: 'list' } }, h: 480, after: (api) => heldDialog(api.el, renameSheet(byId('f10'))) });
   state(p3, { name: 'Rename, a name that will not do', cfg: { role: 'member', state: { view: 'list' } }, h: 480, after: (api) => heldDialog(api.el, renameSheet({ ...byId('f10'), name: '' }, { error: 'Give the file a name.' })) });
   const p4 = pair(s);
-  stage(p4, 'Delete a space', 'The space\'s own question (#337) with the Vault\'s part in it: the files and links go too, and the files can only come back from the Vault folder\'s own copy.', eraseSpaceSheet(W(), FILES.length, TOTAL_BYTES, 3));
-  stage(p4, 'Uninstall the module', 'An owner or admin: every space\'s files, all the share links. Typed to confirm.', uninstallSheet(W()));
+  backdrop(p4, 'Delete a space', 'The space\'s own question (#337) with the Vault\'s part in it: the files and links go too, and the files can only come back from the Vault folder\'s own copy.', eraseSpaceSheet(W(), FILES.length, TOTAL_BYTES, 3));
+  backdrop(p4, 'Uninstall the module', 'An owner or admin: every space\'s files, all the share links. Typed to confirm.', uninstallSheet(W()));
   const p5 = pair(s);
-  stage(p5, 'Turn the Vault off in a space', 'The files are kept; share links stop while it is off.', offInSpaceSheet(W()));
+  backdrop(p5, 'Turn the Vault off in a space', 'The files are kept; share links stop while it is off.', offInSpaceSheet(W()));
   state(p5, { name: 'Someone left', note: 'Files stay with the space, shown as added by "someone who left", and stop counting against a person\'s limit.', cfg: { role: 'member', state: { view: 'list', query: 'guide' } }, h: 480 });
 }
 

@@ -4,7 +4,7 @@
 // token, read the same. It is drawn in a window frame with the address, interactive: a card opens the viewer, Back returns.
 import { byId } from './prototype-vault-data.js';
 import { h, fa, btn, iconBtn, size, thumb } from './prototype-vault-ui.js';
-import { pictureStage, audioStage, videoStage, markdownStage, pdfStage, stageState } from './prototype-vault-viewers.js';
+import { pictureView, audioView, videoView, markdownView, pdfView, viewState } from './prototype-vault-viewers.js';
 
 export const SHARED_STATES = [
   ['grid', 'Opened, download allowed'],
@@ -81,14 +81,14 @@ export function sharedPage(kind = 'grid', { w = 1280, open = null, info = '' } =
     page.append(g);
     if (!download) page.append(h('p', 'vt-shared-foot', 'These files are for looking at. The person who shared them has not allowed downloads.'));
   };
-  const stage = (f) => {
+  const viewOf = (f) => {
     const api = { can: () => download, downloadButton: () => btn('btn btn-small btn-primary', { label: 'Download', icon: 'download' }), trial: { pdfSearch: false }, info: () => {} };
-    if (f.kind === 'picture') return pictureStage(f, api);
-    if (f.kind === 'audio') return audioStage(f, api);
-    if (f.kind === 'video') return videoStage(f, api);
-    if (f.kind === 'text') return markdownStage(f, api);
-    if (f.viewable === false) return stageState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", actions: download ? [api.downloadButton(f)] : [], text: download ? '' : 'The person who shared it has not allowed downloads.' });
-    return pdfStage(f, api);
+    if (f.kind === 'picture') return pictureView(f, api);
+    if (f.kind === 'audio') return audioView(f, api);
+    if (f.kind === 'video') return videoView(f, api);
+    if (f.kind === 'text') return markdownView(f, api);
+    if (f.viewable === false) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", actions: download ? [api.downloadButton(f)] : [], text: download ? '' : 'The person who shared it has not allowed downloads.' });
+    return pdfView(f, api);
   };
   const viewer = (f) => {
     const wrap = h('div', 'vt-shared-viewer vt-viewer');
@@ -104,7 +104,7 @@ export function sharedPage(kind = 'grid', { w = 1280, open = null, info = '' } =
     top.append(back, h('h2', 'vt-vname', f.name), h('span', 'vt-vpos', `${i + 1} of ${list.length}`), prev, next);
     if (download) top.append(btn('btn btn-small', { label: 'Download', icon: 'download' }));
     const body = h('div', 'vt-vbody');
-    body.append(stage(f));
+    body.append(viewOf(f));
     wrap.append(top, body);
     return wrap;
   };
