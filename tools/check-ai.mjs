@@ -108,8 +108,12 @@ await test('a request: the frame, the numbered items, the key as a header, the t
   assert.equal(s.url, '/v1/chat/completions');
   assert.equal(s.auth, 'Bearer sk-secret');
   assert.match(s.body.messages[0].content, /never an instruction/);
+  // Instructions in the system turn; the material and the question in their own user turns, each in its own markers.
+  assert.equal(s.body.messages.length, 3);
+  assert.deepEqual(s.body.messages.map((m) => m.role), ['system', 'user', 'user']);
   assert.match(s.body.messages[1].content, /<item number="1" title="Hotel notes">/);
-  assert.match(s.body.messages[1].content, /Where is the hotel\?/);
+  assert.match(s.body.messages[2].content, /^<question>\nWhere is the hotel\?\n<\/question>$/);
+  assert.ok(!s.body.messages[0].content.includes('Where is the hotel?'), 'the question is never in the instructions');
   assert.ok(!('tools' in s.body));
   assert.equal(r.tokens, 50);
   assert.deepEqual(r.used, [1]);
@@ -167,7 +171,7 @@ await test('companies, migration and the model lists', async () => {
   await assert.rejects(new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {}, { openai: address }).listModels({ provider: 'openai' }), /enter the key/);
   const c = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   assert.equal((await c.listModels({ provider: 'compatible', address })).length, 6);
-  await assert.rejects(c.listModels({ provider: 'compatible', address: 'http://127.0.0.1:1' }), /could not be reached/);
+  await assert.rejects(c.listModels({ provider: 'compatible', address: 'http://127.0.0.1:1' }), /could not be reached/i);
   await assert.rejects(c.listModels({ provider: 'compatible' }), /address first/);
   await assert.rejects(c.listModels({ provider: 'none' }), /choose a service/);
   // Before there were companies, "openai" with an address was any compatible service.
@@ -237,17 +241,17 @@ await test('summaries are checked field by field', () => {
   // same way. A ```card fence is not read any more (plan-kind-names.md): it stays text.
   assert.equal(parseSummaries('```summary\n{"title":"T","content":"c"}\n```', 1).text, '{{summary:0}}');
   assert.equal(parseSummaries('```json\n{"title":"T","content":"c"}\n```', 1).summaries.length, 1);
-  assert.match(buildPrompt('ask', [], 'Why?').prompt, /```objects\n\[/);
-  assert.match(buildPrompt('ask', [], 'Why?').prompt, /exactly one, never one per object/);
-  const sum = buildPrompt('summarise', items, '').prompt;
+  assert.match(buildPrompt('ask', [], 'Why?').system, /```objects\n\[/);
+  assert.match(buildPrompt('ask', [], 'Why?').system, /exactly one, never one per object/);
+  const sum = buildPrompt('summarise', items, '').system;
   assert.match(sum, /the part of your summary worth keeping as objects, but none if the material has nothing worth keeping/);
   assert.ok(!/Always include/.test(sum));
-  const ask = buildPrompt('ask', [], 'Why?').prompt;
+  const ask = buildPrompt('ask', [], 'Why?').system;
   assert.match(ask, /Include objects only when your answer contains something worth keeping \(a place, an event, a fact, a thing to do or book\)\. Small talk, greetings and questions about you get none, and an answer with nothing to keep needs no block at all\. Objects go only in the fenced block, never inline in your answer text\./);
   assert.ok(!/Always include/.test(ask));
   // The rule is the copied instructions' lines (plan-object-handoff.md, "The prompt"), with the /ai answer's own date line:
   // it cannot stop to ask, so it says which dates it needs.
-  const rule = buildPrompt('ask', [], 'Why?').prompt;
+  const rule = buildPrompt('ask', [], 'Why?').system;
   assert.match(rule, /at most 20:\n```objects\n\[\{"icon":"plane","kind":"flight"/);
   assert.match(rule, /never guess a date or a year\. If something happens on a day you were not told, leave its date out and say in your answer which dates you still need\./);
   assert.ok(!rule.includes('ask me for the date'));
@@ -318,10 +322,10 @@ await test('tags and citations', async () => {
 });
 
 await test('the /ai rule lists the kinds it is given, and the travel kinds when given none', async () => {
-  const travel = buildPrompt('ask', [], 'Why?').prompt;
+  const travel = buildPrompt('ask', [], 'Why?').system;
   assert.match(travel, /Set "kind" to what the object is: flight, train, bus, ferry, car, hotel, restaurant, cafe, bar, sight, museum, attraction, tour or show\./);
   assert.ok(!/- task: due/.test(travel));
-  const tasks = buildPrompt('ask', [], 'Why?', ['task', 'note']).prompt;
+  const tasks = buildPrompt('ask', [], 'Why?', ['task', 'note']).system;
   assert.match(tasks, /Set "kind" to what the object is: task or note\./);
   assert.match(tasks, /\n- task: due\n- note: no details\.\n/);
   assert.ok(!tasks.includes('flight'), 'no flight example or itinerary line without a travel kind');
@@ -330,11 +334,11 @@ await test('the /ai rule lists the kinds it is given, and the travel kinds when 
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local' });
   reply = 'ok';
   await ai.run('ask', [], 'which?', { kinds: ['poll'] });
-  const prompt = sent.at(-1).body.messages[1].content;
+  const prompt = sent.at(-1).body.messages[0].content;
   assert.match(prompt, /- poll: options \(2 to 10 short answers\), closes, multiple \(true or false\)/);
   assert.ok(!prompt.includes('- flight:'));
   await ai.run('ask', [], 'which?');
-  assert.match(sent.at(-1).body.messages[1].content, /- flight: airline/);
+  assert.match(sent.at(-1).body.messages[0].content, /- flight: airline/);
 });
 
 await test('limits and refusals', async () => {
@@ -355,12 +359,12 @@ await test('limits and refusals', async () => {
   await ai.run('ask', items, 'first?');
   await ai.run('ask', items, 'second?'); // 100 tokens now, over 60
   await assert.rejects(ai.run('ask', items, 'third?'), (e) => e instanceof AiError && e.status === 429);
-  assert.match(buildPrompt('ask', [{ title: 'a"b', text: 'x'.repeat(20000) }], 'q').prompt, /title="a'b"/);
+  assert.match(buildPrompt('ask', [{ title: 'a"b', text: 'x'.repeat(20000) }], 'q').messages[0], /title="a&quot;b"/);
   // An item is cut to 8000 characters; the objects rule around it grew with the kinds' details (plan-object-handoff.md, step 3).
-  assert.ok(buildPrompt('ask', [{ title: 'a', text: 'x'.repeat(20000) }], 'q').prompt.length < buildPrompt('ask', [], 'q').prompt.length + 8200);
+  assert.ok(buildPrompt('ask', [{ title: 'a', text: 'x'.repeat(20000) }], 'q').prompt.length < 8200);
 });
 
-await test('a non-ok answer: the status and the service\'s own message reach the caller, never the key or the prompt', async () => {
+await test('a non-ok answer: a plain sentence reaches the caller; the service\'s own words go to the log; never the key or the prompt', async () => {
   const ai = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local', key: 'sk-should-never-leak' });
   const logs = [];
@@ -371,22 +375,22 @@ await test('a non-ok answer: the status and the service\'s own message reach the
     failNext = { status: 404, body: { error: { message: 'The model `gpt-bogus` does not exist' } } };
     await assert.rejects(
       ai.run('ask', items, 'a question'),
-      (e) => e instanceof AiError && e.status === 502 && /404.*does not exist/.test(e.message),
+      (e) => e instanceof AiError && e.status === 502 && e.message === 'The AI service could not answer.' && !/does not exist|404/.test(e.message),
     );
-    assert.ok(logs.some((l) => /404/.test(l) && /does not exist/.test(l)));
+    assert.ok(logs.some((l) => /404/.test(l) && /does not exist/.test(l)), 'the provider\'s own words go to the log, not the page');
     assert.ok(!logs.some((l) => l.includes('sk-should-never-leak')), 'the key never reaches the log');
     assert.ok(!logs.some((l) => l.includes('a question')), 'the prompt never reaches the log');
 
     // 401 and 429 keep their own plain wording, not the provider's raw text appended.
     logs.length = 0;
     failNext = { status: 401, body: { error: { message: 'Incorrect API key provided' } } };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'the AI service refused the key');
+    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service refused the key.');
     failNext = { status: 429, body: { error: { message: 'rate limited' } } };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'the AI service is busy; try again in a moment');
+    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service is busy. Try again in a moment.');
 
     // A body with nothing useful in it: no crash, just the status.
     failNext = { status: 500, body: {} };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'the AI service could not answer (500)');
+    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service had a problem. Try again in a moment.');
   } finally {
     console.warn = origWarn;
   }

@@ -34,7 +34,7 @@ const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const { watchArrival, slowSenders } = require('./arrival');
-const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
+const { Ai, AiError, OVER_CAP, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
 const { presenceView, belongsToSpace } = require('./presence-view');
 const { mergeCall, cleanAwayMessage } = require('./live');
@@ -1901,7 +1901,7 @@ function environmentUsage(slug) {
     logRefusalOnce(slug);
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
-  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: env.ai.usageView?.().callsThisMonth ?? null, spaces: env.store.spaces.length };
+  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -2346,11 +2346,11 @@ function refuseOverStorage(res) {
 function checkStorageCap(req, res, next) {
   if (!refuseOverStorage(res)) next();
 }
-function refuseOverAiCalls(res) {
+// The sentence when this environment's plan allows no more AI calls this month, else ''.
+function aiCallsRefusal() {
   const cap = planCap('aiCallsPerMonth');
-  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${cap} AI calls for this month.` });
-  return true;
+  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return '';
+  return `This ${word('environment')} has used its ${cap} AI calls for this month.`;
 }
 // 'all' (the default, and every self-hosted install) or a list of module ids. A module already on when a
 // plan shrinks under it is untouched here -- this only gates turning one on, never keeps one already running.
@@ -2556,7 +2556,9 @@ hostRouter.post('/api/host/ai/models', requireHostAdmin, async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');
     const slot = managedSlot(provider);
-    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || slot.envKey || slot.key;
+    // A saved key (or the one from the environment) goes only to the address it belongs to: another address needs a key typed with it.
+    const sameAddress = provider !== 'compatible' || req.body?.address === undefined || String(req.body.address).trim().replace(/\/$/, '') === slot.address;
+    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.envKey || slot.key : '');
     const workspace = typeof req.body?.workspace === 'string' ? req.body.workspace : slot.workspace;
     res.json({ models: await listModelsFor({ provider, address: req.body?.address ?? slot.address, key, workspace }) });
   } catch (err) {
@@ -5545,8 +5547,9 @@ app.post('/api/spaces/:id/chat/:messageId/keep', (req, res) => {
 });
 
 // --- Chat /ai and commands (plan-one-input, #58) ----------------------------------------------------------------
-// Same people as #73 import: signed in, not a guest, not in a space with AI turned off. The retired Assistant's
-// `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the environment's `useAi` flag.
+// Same people as #73 import: signed in, not a guest, not in a space with AI turned off, and allowed to chat in the space (the
+// role's `chat`). The retired Assistant's `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the
+// environment's `useAi` flag.
 function chatAiRefusal(who, space) {
   if (!who.user) return `${word('guest', { many: true })} cannot use AI`;
   if (space && space.aiOff) return `AI is turned off in this ${word('space')}`;
@@ -5561,54 +5564,56 @@ function chatAiSpace(req, res) {
   if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
   const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
   if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
+  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask.
+  if (!store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
   return { who, space };
+}
+
+// Why AI cannot answer right now whoever asks -- not set up, a key this server can't read, or an allowance used up -- as
+// { status, why }, or null. The availability routes answer from this too, so a page can say so before a question is sent.
+function aiServiceRefusal() {
+  if (!ai.ready()) {
+    const v = ai.view();
+    if (v.keyUnreadable && v.enabled) return { status: 503, reason: 'not-set-up', why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
+    return { status: 503, reason: 'not-set-up', why: 'AI is not set up on this server' };
+  }
+  if (ai.overCap()) return { status: 429, reason: 'allowance', why: OVER_CAP };
+  const calls = aiCallsRefusal();
+  if (calls) return { status: 403, reason: 'allowance', why: calls };
+  return null;
+}
+
+// One rule for every AI door: signed in (not a guest), AI on for the space, the role's `useAi`, then the service itself.
+// { status, reason, why } or null. `reason`: 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'.
+function aiRefusalFor(who, space) {
+  if (!who.user) return { status: 403, reason: 'guest', why: `${word('guest', { many: true })} cannot use AI` };
+  if (space && space.aiOff) return { status: 403, reason: 'space-off', why: `AI is turned off in this ${word('space')}` };
+  const perms = space ? store.spacePermissions(who.user.key, space.id) : store.roleSet(who.user.role);
+  if (!perms.useAi) return { status: 403, reason: 'role', why: 'your role may not use AI' };
+  return aiServiceRefusal();
 }
 
 app.get('/api/spaces/:id/ai', (req, res) => {
   const found = chatAiSpace(req, res);
   if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.json({ available: false, why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.json({ available: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.json({ available: false, why: 'AI is not set up on this server' });
-  res.json({ available: true, why: '' });
+  const down = aiRefusalFor(found.who, found.space);
+  if (down) return res.json({ available: false, why: down.why, reason: down.reason });
+  res.json({ available: true, why: '', reason: '' });
 });
 
-app.get('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (req.query.user) return res.status(403).json({ error: 'that thread is not yours' });
-  // The caller's private /ai questions and answers from the one chat store, in the old thread shape.
-  res.json({ entries: chatHistory.aiThread(found.space.id, found.who.user.key) });
-});
-
-app.delete('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  chatHistory.removeAiThread(found.space.id, found.who.user.key);
-  res.json({ ok: true });
-});
-
-app.delete('/api/spaces/:id/ai/thread/:entryId', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (!/^[a-f0-9]{12}$/.test(req.params.entryId)) return res.status(404).json({ error: 'no such message' });
-  const gone = chatHistory.removeAiEntry(found.space.id, found.who.user.key, req.params.entryId);
-  if (!gone) return res.status(404).json({ error: 'no such message' });
-  res.json({ ok: true });
-});
+// Chat's own sentence for a person asking too often (the modules' one speaks of a module).
+const chatAiLimitMessage = () => 'You have asked the AI too many times in a minute. Try again in a moment.';
 
 app.post('/api/spaces/:id/ai', async (req, res) => {
   const found = chatAiSpace(req, res);
   if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.status(403).json({ error: why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.status(503).json({ error: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.status(503).json({ error: 'AI is not set up on this server' });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit('chat', found.who.user.key, 'ai')) return res.status(429).json({ error: limitMessage() });
+  const down = aiRefusalFor(found.who, found.space);
+  if (down) return res.status(down.status).json({ error: down.why });
+  const me = found.who.user.key;
   const question = String(req.body?.question || '').trim();
-  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : (Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : []);
+  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : [];
+  // Only this space's own objects go to the AI: what is asked, and so the answer kept here, never draws on another space.
+  if (refs.some((ref) => ref && ref.scope === 'space' && ref.space !== found.space.id)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
   const material = [];
   const given = [];
   for (const ref of refs) {
@@ -5621,6 +5626,10 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
       // gone or invisible: left out
     }
   }
+  // A bad ask is refused before it is counted: only asks that are carried out use the person's turns (a minute's worth).
+  try { ai.validateAsk('ask', material.length, question); } catch (err) { return sendAiError(err, res); }
+  const limited = overLimit('chat', me, 'ai');
+  if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: chatAiLimitMessage() });
   const askedAt = Date.now();
   try {
     const out = await ai.run('ask', material, question, { kinds: promptKinds() });
@@ -5629,14 +5638,14 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
       if (slug) hostRegistry.recordAiCall(slug);
     }
     const summaries = (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) }));
-    // Both kept as the asker's private messages (plan-chat-model.md). `share` is accepted and ignored: the author makes
-    // the answer public with PATCH .../chat/:messageId, and nothing is posted to the chat here.
-    const me = found.who.user.key;
+    // Both kept as the asker's private messages (plan-chat-model.md). The author makes the answer public with
+    // PATCH .../chat/:messageId; nothing is posted to the chat here.
     const asked = chatHistory.add(found.space.id, { by: me, who: found.who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
     const answered = chatHistory.add(found.space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: asked ? asked.id : undefined });
     noteActivity('chat', `asked the AI (${out.tokens} tokens)`, me, found.space.id);
-    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
+    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
   } catch (err) {
+    if (err instanceof AiError) moduleLimits.refund('chat', me, 'ai'); // it failed: it does not count
     sendAiError(err, res);
   }
 });
@@ -7500,8 +7509,9 @@ app.get('/api/destinations/:id', (req, res) => {
 // --- AI, for the modules that ask ---------------------------------------------------------------------------------------------
 // One server-wide setting (see ai.js); the key never leaves the server and is never sent back. A module asks through the `ai` hook:
 // the server checks the person's role and the space, reads the chosen objects as that person, asks the service the admin set up, and
-// returns text with any summaries the model wrote (each checked). Nothing is kept: no question, no answer, no object's text. The activity
-// list gets who, which module and task, and how many tokens.
+// returns text with any summaries the model wrote (each checked). A module's ask keeps nothing: no question, no answer, no object's text
+// (Chat's own /ai keeps the person's question and answer as private messages). The activity list gets who, which module and task, and
+// how many tokens.
 function sendAiError(err, res) {
   if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
   throw err;
@@ -7509,14 +7519,16 @@ function sendAiError(err, res) {
 app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage: ai.usageView(), dependents: modules.aiDependents() }));
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
+    await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });
     res.json({ models: await ai.listModels({ provider: String(req.body?.provider || ''), address: req.body?.address, key: req.body?.key, workspace: req.body?.workspace }) });
   } catch (err) {
     sendAiError(err, res);
   }
 });
-app.put('/api/ai', requireOwner, (req, res) => {
+app.put('/api/ai', requireOwner, async (req, res) => {
   try {
     const before = ai.view();
+    await ai.checkAddress(req.body || {});
     // Turning AI off (however the patch does it) while a module depends on it: the admin's page should have asked first (as it
     // does for a module others `requires`); a caller that skipped that, or forces past it, is handled the same way.
     if (before.enabled && !ai.previewEnabled(req.body || {}) && req.body?.force !== true) {
@@ -7524,7 +7536,17 @@ app.put('/api/ai', requireOwner, (req, res) => {
       if (dependents.length) throw new AiError(`${dependents.map((m) => m.name).join(' and ')} needs the AI service; turn ${dependents.length === 1 ? 'it' : 'them'} off too?`);
     }
     const after = ai.set(req.body || {});
-    if (before.enabled && !after.enabled) for (const m of modules.aiDependents()) modules.update(m.id, { enabled: false, force: true });
+    // The modules switched off with the service are remembered, and switched on again when the service is: turning AI off and on
+    // again leaves everything as it was.
+    if (before.enabled && !after.enabled) {
+      const off = modules.aiDependents();
+      ai.rememberCascade(off.map((m) => m.id));
+      for (const m of off) modules.update(m.id, { enabled: false, force: true });
+    } else if (!before.enabled && after.enabled) {
+      for (const id of ai.takeCascade()) {
+        try { if (modules.view(id) && !modules.enabled(id)) modules.update(id, { enabled: true }); } catch { /* left off: an owner can switch it on */ }
+      }
+    }
     noteActivity('host', `changed the AI setting (${after.provider}${after.keySet && !before.keySet ? ', key set' : ''})`, currentUser(req)?.key, null);
     res.json({ ai: after, usage: ai.usageView(), dependents: modules.aiDependents() });
   } catch (err) {
@@ -7533,22 +7555,15 @@ app.put('/api/ai', requireOwner, (req, res) => {
 });
 // Whether AI is available to this person here (for a page to show or hide its buttons): { available, why? }.
 function aiAllowed(ctx) {
-  const user = ctx.who.user;
-  if (!user) return { ok: false, why: `${word('guest', { many: true })} cannot use AI` };
-  // A saved key this server can't decrypt (data restored onto another host): said as such, not as "not set up".
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return { ok: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
-  if (!ai.ready()) return { ok: false, why: 'AI is not set up on this server' };
   const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  if (space && space.aiOff) return { ok: false, why: `AI is turned off in this ${word('space')}` };
-  const perms = ctx.spaceId ? store.spacePermissions(user.key, ctx.spaceId) : store.roleSet(user.role);
-  if (!perms.useAi) return { ok: false, why: 'your role may not use AI' };
-  return { ok: true };
+  const down = aiRefusalFor(ctx.who, space);
+  return down ? { ok: false, why: down.why, reason: down.reason, status: down.status === 429 ? 429 : 403 } : { ok: true };
 }
 app.get('/api/modules/:id/ai', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
   const a = aiAllowed(ctx);
-  res.json({ available: a.ok, why: a.why || '' });
+  res.json({ available: a.ok, why: a.why || '', reason: a.reason || '' });
 });
 
 // Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
@@ -7611,12 +7626,12 @@ app.post('/api/modules/:id/ai', async (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
   const allowed = aiAllowed(ctx);
-  if (!allowed.ok) return res.status(403).json({ error: allowed.why });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
+  if (!allowed.ok) return res.status(allowed.status || 403).json({ error: allowed.why });
   // Plan-names step 7: the objects to ask about are `objects`, no longer `items`; the old name is refused, not read.
   if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'items')) return res.status(400).json({ error: `items is an old name; send the ${word('object', { many: true })} to ask about as objects` });
   const refs = Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : [];
+  // Only the objects of the space the module is asked in go to the AI.
+  if (ctx.spaceId && refs.some((ref) => ref && ref.scope === 'space' && ref.space !== ctx.spaceId)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
   // The objects are read as this person: only what they may see, and only kinds this module produces or was approved to link to.
   const material = [];
   const given = [];
@@ -7631,8 +7646,11 @@ app.post('/api/modules/:id/ai', async (req, res) => {
       // an object that is gone, or that this person may not see, is simply left out
     }
   }
+  const task = String(req.body?.task || '');
+  // A bad ask is refused before it is counted, and one that fails is given back: only asks that are carried out use a turn.
+  try { ai.validateAsk(task, material.length, req.body?.question); } catch (err) { return sendAiError(err, res); }
+  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
   try {
-    const task = String(req.body?.task || '');
     const out = await ai.run(task, material, req.body?.question, { kinds: promptKinds() });
     // Counted on the registry entry regardless of provider (managed or the environment's own key) -- the plan's
     // aiCallsPerMonth cap is about how much of the environment's own allowance is used, not who is paying for
@@ -7642,8 +7660,9 @@ app.post('/api/modules/:id/ai', async (req, res) => {
       if (slug) hostRegistry.recordAiCall(slug);
     }
     noteActivity(ctx.manifest.id, `used AI to ${task} (${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
-    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens });
+    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens });
   } catch (err) {
+    if (err instanceof AiError) moduleLimits.refund(ctx.manifest.id, ctx.by, 'ai');
     sendAiError(err, res);
   }
 });
