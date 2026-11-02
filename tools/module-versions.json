@@ -20,12 +20,12 @@
     "hash": "559cabce341736fa"
   },
   "polls": {
-    "version": "1.15.23",
-    "hash": "d5c7edeecd37bb4a"
+    "version": "1.15.24",
+    "hash": "97b79147494d5ec2"
   },
   "research": {
-    "version": "0.4.26",
-    "hash": "541045fded682422"
+    "version": "0.4.27",
+    "hash": "1fdb043ce736e8ac"
   },
   "stream": {
     "version": "0.1.15",
@@ -36,7 +36,7 @@
     "hash": "6ec57787fa1de18e"
   },
   "travel": {
-    "version": "0.15.60",
-    "hash": "dcb2c0085d333985"
+    "version": "0.15.61",
+    "hash": "d4de1bcfd9238d93"
   }
 }

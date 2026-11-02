@@ -50,15 +50,17 @@
 .rcard .excerpt a { color: var(--accent); }
 .rcard .excerpt code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
 .rcard .excerpt pre { white-space: pre-wrap; }
-.rcard .site { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: var(--text-12); }
+.rcard .site { display: flex; align-items: center; gap: 6px; color: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); font-size: var(--text-12); } /* 4.5:1 on the open card too */
+/* a long title shows three lines on a closed card; opening the card shows it whole */
+.rcard.rcard:not(.open) [data-slot="title"] { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 /* a photo, or a link's page picture: cropped 4:3 across the card under the band */
 .rcard .thumb { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: color-mix(in srgb, var(--tone) 25%, var(--surface-card)); }
 .rcard .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--text-muted); font-size: var(--text-11); }
 .rcard .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .rcard .by { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
-.rcard .by span { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-round); background: color-mix(in srgb, var(--accent-fill) 30%, var(--surface-card)); color: var(--text-primary); font-size: var(--text-11); font-weight: var(--weight-strong); }
+.rcard .by span { border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent); display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-round); background: color-mix(in srgb, var(--accent-fill) 30%, var(--surface-card)); color: var(--text-primary); font-size: var(--text-11); font-weight: var(--weight-strong); }
 /* the empty state, and the photo upload */
-.sdk-empty { max-width: 420px; margin: 8vh auto; }
+.sdk-empty { max-width: 520px; margin: 8vh auto; }
 .upload { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 10px; border: 1px dashed var(--accent-fill); border-radius: var(--radius-large); background: color-mix(in srgb, var(--accent-fill) 8%, var(--bg-card)); }
 .upload .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload .step { color: var(--text-muted); font-size: var(--text-12); }
@@ -113,6 +115,6 @@
 .upload progress::-webkit-progress-bar { background: var(--bg-card); }
 .upload progress::-webkit-progress-value { background: var(--accent-fill); }
 .upload progress::-moz-progress-bar { background: var(--accent-fill); }
-.upload .step[data-error] { color: var(--danger); }
+.upload.failed .step { color: var(--danger-text); }
 /* Ask is a panel over the pane (the whole pane on a phone) */
 
