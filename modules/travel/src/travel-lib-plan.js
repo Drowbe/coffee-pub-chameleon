@@ -461,7 +461,8 @@
     const addLink = (ref, place, title) => addItem({ kind: 'link', ref, ...placeFields(place), title: title || '' });
 
     // Dated objects other modules hold in this space, on days of the trip, that the plan does not already point at:
-    // what the plan could take in. Nothing is stored until one is added.
+    // what the plan could take in. Nothing is stored until one is added. A Calendar copy of the plan's own object (`copy`, set
+    // by the host) is never offered: that would be the plan's own item coming back.
     async function suggest() {
       const tripDaysList = days();
       if (!tripDaysList.length) { suggested = []; changed(); return suggested; }
@@ -472,7 +473,7 @@
         found = [];
       }
       const pinned = new Set(list().filter((i) => i.ref).map((i) => objectKey(i.ref)));
-      suggested = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !pinned.has(objectKey(c.ref)) && tripDaysList.includes((summaryWhen(c) || {}).day));
+      suggested = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && !pinned.has(objectKey(c.ref)) && tripDaysList.includes((summaryWhen(c) || {}).day));
       changed();
       return suggested;
     }

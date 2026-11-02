@@ -439,7 +439,7 @@ await (async (name, fn) => {
   assert.deepEqual(deliver('calendar', { modules: ['calendar'] }, false), [], 'within a space it is never heard');
   assert.deepEqual(deliver('todo', { modules: ['calendar'] }), []);
   assert.deepEqual(deliver('calendar', {}), []);
-  assert.match(src, /for \(const type of \[[^\]]*'external'\]\)/, 'the shared stream listens for it');
+  assert.match(fs.readFileSync(new URL('../public/module-stream.js', import.meta.url), 'utf8'), /STREAM_TYPES = Object.freeze\(\[[^\]]*'external'[^\]]*\]\)/, 'the shared stream listens for it (public/module-stream.js)');
   // Never within a space, whatever the scope says (the coordinator's decision for #42 Part 2).
   const rule = new Function(`${slice('public/module-host.js', 'export function externalAllowedHere', '// --- end of externalAllowedHere').replace('export function', 'function')}\nreturn externalAllowedHere;`)();
   assert.equal(rule({ scope: 'environment', search: '' }), true, 'the module\'s own page');
@@ -477,7 +477,7 @@ await (async (name, fn) => {
   assert.deepEqual(deliver('calendar', { modules: ['calendar'] }), [['markers', {}]]);
   assert.deepEqual(deliver('todo', { modules: ['calendar'] }), []);
   assert.deepEqual(deliver('calendar', {}), []);
-  assert.match(src, /for \(const type of \[[^\]]*'markers'[^\]]*\]\)/, 'the shared stream listens for it');
+  assert.match(fs.readFileSync(new URL('../public/module-stream.js', import.meta.url), 'utf8'), /STREAM_TYPES = Object.freeze\(\[[^\]]*'markers'[^\]]*\]\)/, 'the shared stream listens for it (public/module-stream.js)');
   const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
   assert.ok(sdk.includes("markers: (o) => call('objects.markers', { from: o && o.from, to: o && o.to }),"), 'the SDK passes from and to');
 });

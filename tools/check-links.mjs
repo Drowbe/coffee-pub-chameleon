@@ -399,10 +399,10 @@ try {
     assert.equal(sender.value.time, '15:00');
   });
 
-  await test('an end day is written only for a whole-day twin', async () => {
+  await test('a stay with a time ends at its check-out; a whole-day stay ends on its check-out day', async () => {
     assert.equal((await putOut('span', { title: 'Stay', date: '2026-06-15', time: '09:30', checkOut: '2026-06-18' }, 'UTC')).status, 200);
     const timed = await twinOf('span');
-    assert.equal(timed.item.value.end, undefined);
+    assert.equal(timed.item.value.end, '2026-06-18T09:30:00.000Z', 'no check-out time: the start\'s clock time');
     assert.equal((await putOut('span', { title: 'Stay', date: '2026-06-15', checkOut: '2026-06-18' }, 'UTC')).status, 200);
     const whole = await twinOf('span');
     assert.equal(whole.item.value.allDay, true);
@@ -424,8 +424,9 @@ try {
     const tokyo = await twinOf('tokyo');
     const asDay = { ...tokyo.item.value, allDay: true, start: '2026-06-15', end: null };
     assert.equal((await as('PUT', `/api/modules/sync-in/data/mark:${tokyo.pair.to.id}?scope=space&space=${space}`, { value: asDay, tz: 'Asia/Tokyo' })).status, 200);
-    assert.equal((await getOut('tokyo')).value.time ?? null, null);
+    assert.equal((await getOut('tokyo')).value.time, '09:30', 'All day on a copy does not erase the object\'s time');
     assert.equal((await getOut('tokyo')).value.date, '2026-06-15');
+    assert.equal((await twinOf('tokyo')).item.value.allDay, false, 'the copy says what the object says again');
   });
 
   await test('a receiver\'s own object makes no sender, a repeating twin keeps its pair, and setLinks leaves the pair', async () => {
@@ -476,9 +477,9 @@ try {
     assert.equal((await putOut('detach', { title: 'Detach', date: '2026-06-15', time: '11:00' }, 'UTC')).status, 200);
     assert.equal(pairOf('detach')[0].pair, 'detached', 'a new time on the same day does not make a new twin');
     assert.equal((await putOut('detach', { title: 'Detach', date: '2026-06-20', time: '11:00' }, 'UTC')).status, 200);
-    const again = await twinOf('detach');
-    assert.notEqual(again.pair.to.id, detached.pair.to.id);
-    assert.equal(again.item.value.start, '2026-06-20T11:00:00.000Z');
+    assert.equal(pairOf('detach').length, 1, 'moving the object does not bring the hidden copy back');
+    assert.equal(pairOf('detach')[0].pair, 'detached');
+    assert.equal((await getIn(detached.pair.to.id)).status, 404);
   });
 
   await test('clearing a module removes every key in that scope, and a dated twin goes with it', async () => {
