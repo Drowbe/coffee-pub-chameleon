@@ -5556,7 +5556,7 @@ function chatAiRefusal(who, space) {
   return '';
 }
 
-function chatAiSpace(req, res) {
+function chatAiSpace(req, res, { needChat = false } = {}) {
   const who = moduleViewer(req);
   if (!who) { res.status(401).json({ error: 'sign in first' }); return null; }
   if (!who.user) { res.status(403).json({ error: `${word('guest', { many: true })} cannot use AI` }); return null; }
@@ -5564,8 +5564,8 @@ function chatAiSpace(req, res) {
   if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
   const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
   if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
-  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask.
-  if (!store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
+  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask (/ai only; a paste is not AI use).
+  if (needChat && !store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
   return { who, space };
 }
 
@@ -5594,7 +5594,7 @@ function aiRefusalFor(who, space) {
 }
 
 app.get('/api/spaces/:id/ai', (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
   const down = aiRefusalFor(found.who, found.space);
   if (down) return res.json({ available: false, why: down.why, reason: down.reason });
@@ -5605,7 +5605,7 @@ app.get('/api/spaces/:id/ai', (req, res) => {
 const chatAiLimitMessage = () => 'You have asked the AI too many times in a minute. Try again in a moment.';
 
 app.post('/api/spaces/:id/ai', async (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = chatAiSpace(req, res, { needChat: true });
   if (!found) return;
   const down = aiRefusalFor(found.who, found.space);
   if (down) return res.status(down.status).json({ error: down.why });
@@ -7569,9 +7569,8 @@ app.get('/api/modules/:id/ai', (req, res) => {
 // Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
 function importRefusal(ctx) {
   if (!ctx.who.user) return `${word('guest', { many: true })} cannot bring in ${word('object', { many: true })}`;
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  // Same rule as /ai (plan-chat-model.md, decision 12): signed in, not a guest, space AI not off.
-  return chatAiRefusal(ctx.who, space);
+  // A pasted answer is not AI use (the plan's Q18): signed in, not a guest; the module's write access was checked by the caller.
+  return '';
 }
 app.get('/api/modules/:id/objects/check', (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
