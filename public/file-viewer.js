@@ -21,6 +21,8 @@ import { fileView, infoView, viewState, stopMedia, KINDS, kindOf, size, when, h 
 
 export const MAX_WINDOWS = 4;
 export const CAP_SENTENCE = 'Close a window to open another.';
+export const CAP_TITLE = 'Four windows are open';
+const SMALL_H = 300; // a window shorter than this has no Info: it would hide the file
 const PHONE = 640;
 // Share is step 5 (decision 12): the button is built and stays hidden until the share links exist.
 const SHARE_READY = false;
@@ -61,9 +63,9 @@ function createManager(doc) {
   const wins = [];
   let z = 10;
   let layer = null;
+  const pending = new Set();
   const people = new Map();
   let peopleAsked = 0;
-  const places = new Map(); // module/space -> { context: Promise }
 
   const phone = () => win.innerWidth <= PHONE;
   const ensureLayer = () => {
@@ -82,16 +84,8 @@ function createManager(doc) {
     for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
     return `${base(p)}${path}?${q}`;
   };
-  const contextOf = (p) => {
-    const key = `${p.module}/${p.space}`;
-    let c = places.get(key);
-    if (!c) {
-      c = api('GET', `/api/modules/${enc(p.module)}/context?scope=space&space=${enc(p.space)}`);
-      places.set(key, c);
-      c.catch(() => places.delete(key));
-    }
-    return c;
-  };
+  // Asked again each time a window opens, so a change of rights (download turned off) reaches the next window.
+  const contextOf = (p) => api('GET', `/api/modules/${enc(p.module)}/context?scope=space&space=${enc(p.space)}`);
   async function loadPeople() {
     if (Date.now() - peopleAsked < 15000) return;
     peopleAsked = Date.now();
@@ -102,21 +96,34 @@ function createManager(doc) {
   const MIN_W = 300; const MIN_H = 200;
   const vw = () => win.innerWidth;
   const vh = () => win.innerHeight;
+  // The box a window stays inside: the canvas (the work area the Layout menu belongs to), else the page.
+  function bounds() {
+    const c = doc.getElementById('canvas');
+    if (c && !c.hidden) {
+      const r = c.getBoundingClientRect();
+      if (r.width >= MIN_W && r.height >= MIN_H) return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    }
+    return { x: 0, y: 0, w: vw(), h: vh() };
+  }
   function putBox(w, b) {
-    const width = Math.min(Math.max(b.w, MIN_W), Math.max(MIN_W, vw()));
-    const height = Math.min(Math.max(b.h, MIN_H), Math.max(MIN_H, vh()));
-    const x = Math.min(Math.max(b.x, 0), Math.max(0, vw() - width));
-    const y = Math.min(Math.max(b.y, 0), Math.max(0, vh() - height));
+    const k = bounds();
+    const width = Math.min(Math.max(b.w, MIN_W), Math.max(MIN_W, k.w));
+    const height = Math.min(Math.max(b.h, MIN_H), Math.max(MIN_H, k.h));
+    const x = Math.min(Math.max(b.x, k.x), Math.max(k.x, k.x + k.w - width));
+    const y = Math.min(Math.max(b.y, k.y), Math.max(k.y, k.y + k.h - height));
     w.el.style.cssText = `z-index:${w.z};left:${x}px;top:${y}px;width:${width}px;height:${height}px`;
+    const small = height < SMALL_H;
+    if (small !== Boolean(w.small)) { w.small = small; if (w.files && w.files.size) { w.frame.setToolbar(toolbar(w)); drawInfo(w); } }
   }
   const boxOf = (w) => ({ x: w.el.offsetLeft, y: w.el.offsetTop, w: w.el.offsetWidth, h: w.el.offsetHeight });
   function place(w, n) {
     if (phone()) { w.el.style.cssText = `z-index:${w.z}`; return; }
     if (w.user) { putBox(w, boxOf(w)); return; }
-    const width = Math.round(Math.max(420, Math.min(720, vw() * 0.5)));
-    const left = Math.round(Math.min(vw() - width - 16, Math.max(16, vw() * 0.2) + n * 36));
-    const top = 70 + n * 28;
-    putBox(w, { x: left, y: top, w: width, h: Math.max(340, Math.min(vh() - top - 24, 640)) });
+    const k = bounds();
+    const width = Math.round(Math.max(420, Math.min(720, k.w * 0.5)));
+    const left = Math.round(k.x + Math.min(k.w - width - 16, 16 + n * 36));
+    const top = k.y + 16 + n * 28;
+    putBox(w, { x: left, y: top, w: width, h: Math.max(340, Math.min(k.y + k.h - top - 16, 640)) });
   }
   function wireDrag(w) {
     const grip = h('span', 'fv-grip');
@@ -238,10 +245,10 @@ function createManager(doc) {
       list.push({ type: 'button', id: 'next', label: 'Next', icon: 'chevron-right', kind: 'icon', disabled: i < 0 || i >= ids.length - 1 });
       list.push({ type: 'text', text: `${i + 1} of ${ids.length}` });
     }
-    if (f) list.push({ type: 'button', id: 'info', label: 'Info', icon: 'circle-info', kind: 'icon', on: w.info, tip: w.info ? 'Hide info' : 'Show info' });
+    if (f && !w.small) list.push({ type: 'button', id: 'info', label: 'Info', icon: 'circle-info', kind: 'icon', on: w.info, tip: w.info ? 'Hide info' : 'Show info' });
     const end = (it) => ({ ...it, zone: 'end', pin: true });
     if (f) {
-      if (can(w, 'download') && !phone()) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
+      if (can(w, 'download') && !phone() && !w.missing) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
       if (SHARE_READY && can(w, 'share')) list.push(end({ type: 'button', id: 'share', label: 'Share', icon: 'share-nodes', kind: 'secondary' }));
       if (f.viewable !== false && !w.broken) list.push(end({ type: 'button', id: 'full', label: 'Full screen', icon: 'expand', kind: 'icon' }));
     }
@@ -338,8 +345,8 @@ function createManager(doc) {
   function drawInfo(w) {
     if (w.infoSide) { w.infoSide.destroy(); w.infoSide.el.remove(); w.infoSide = null; }
     const f = w.files.get(w.id);
-    w.main.classList.toggle('has-info', Boolean(w.info && f));
-    if (!w.info || !f) return;
+    w.main.classList.toggle('has-info', Boolean(w.info && f && !w.small));
+    if (!w.info || !f || w.small) return;
     w.infoSide = infoView(f, {
       who: whoIs(w),
       uses: (file) => api('GET', libUrl(w.place, `/${enc(file.id)}/uses`)),
@@ -379,6 +386,7 @@ function createManager(doc) {
   function show(w, id) {
     w.id = id;
     w.broken = false;
+    w.missing = false;
     const f = w.files.get(id);
     if (!f) {
       w.frame.setTitle('File removed', 'file-circle-xmark');
@@ -399,7 +407,7 @@ function createManager(doc) {
     const source = sourceFor(w);
     const apiFor = {
       win,
-      replace: (view) => { if (w.dead || w.id !== id) return; w.broken = true; setBody(w, view); w.frame.setToolbar(toolbar(w)); },
+      replace: (view) => { if (w.dead || w.id !== id) return; w.broken = true; w.missing = Boolean(view.missing); if (w.missing) for (const bar of w.body.querySelectorAll('.fv-dlbar')) bar.remove(); setBody(w, view); w.frame.setToolbar(toolbar(w)); },
       fullscreen: () => fullscreen(w),
       escape: () => { if (!doc.fullscreenElement) close(w); },
     };
@@ -449,7 +457,9 @@ function createManager(doc) {
       const retry = h('button', 'btn btn-small', 'Try again');
       retry.type = 'button';
       retry.addEventListener('click', () => { stateIn(w, { busy: true, title: 'Opening…' }); load(w, id); });
-      stateIn(w, { icon: 'triangle-exclamation', tone: 'warn', title: err.status === 403 ? err.message : 'This file could not be opened.', text: err.status === 403 ? '' : err.message, actions: [retry] });
+      // Not allowed or not there: a plain sentence and no Try again. Anything else may pass, so it can be tried again.
+      if (err.status === 403 || err.status === 404) stateIn(w, { icon: 'triangle-exclamation', tone: 'warn', title: 'You can\'t open this file.', text: `It is in ${word('space', { a: true })} you are not in, or it is gone.` });
+      else stateIn(w, { icon: 'triangle-exclamation', tone: 'warn', title: 'This file could not be opened.', text: err.message, actions: [retry] });
     }
   }
 
@@ -458,9 +468,21 @@ function createManager(doc) {
     const ref = spec.ref;
     const place = { module: ref.module, space: ref.space };
     const same = (w) => w.place.module === place.module && w.place.space === place.space && w.id === ref.id;
+    const key = `${place.module}/${place.space}/${ref.id}`;
     const known = wins.find(same);
     if (known) { front(known); known.frame.el.focus({ preventScroll: true }); return true; }
-    await loadStyles(doc);
+    // The stylesheet may still be loading: a second open of the same file (a double-click) waits on the first, not a window of its own.
+    if (pending.has(key)) return true;
+    pending.add(key);
+    try {
+      await loadStyles(doc);
+      return openNow(spec, place, same);
+    } finally { pending.delete(key); }
+  }
+  function openNow(spec, place, same) {
+    const ref = spec.ref;
+    const known = wins.find(same);
+    if (known) { front(known); known.frame.el.focus({ preventScroll: true }); return true; }
     if (phone() && wins.length) {
       // One at a time on a phone: a new file replaces the one shown.
       const w = wins[0];
@@ -473,7 +495,7 @@ function createManager(doc) {
       return true;
     }
     if (wins.length >= MAX_WINDOWS) {
-      showNote(CAP_SENTENCE);
+      showNote(CAP_TITLE, CAP_SENTENCE);
       const top = topWindow();
       if (top) top.frame.el.focus({ preventScroll: true });
       return false;

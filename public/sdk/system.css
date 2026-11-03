@@ -336,6 +336,11 @@
   flex: none;
 }
 
+/* A touch screen: a small icon button is still a 44px target (the icon stays small). */
+@media (pointer: coarse) {
+  .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
+}
+
 .sdk-icon-btn :is(i, svg, .ic) {
   display: block;
   margin: 0;

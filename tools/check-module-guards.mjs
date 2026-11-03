@@ -483,7 +483,8 @@ try {
     assert.equal((await call('GET', data('polls', '', K))).json.items.length, 1);
     assert.equal((await call('GET', data('budget', '', K))).json.items.length, 1);
     assert.equal((await call('DELETE', data('polls', 'poll:k1', K), undefined, 'mia')).status, 403, 'nor one by one');
-    assert.deepEqual((await call('DELETE', data('budget', '', K))).json, { cleared: 1 }, 'the admin clears');
+    const cleared = (await call('DELETE', data('budget', '', K))).json;
+    assert.deepEqual([cleared.cleared, typeof cleared.restoreToken, cleared.undoSeconds], [1, 'string', 30], 'the admin clears, and may undo it for 30 seconds');
     // The canvas's Clear: who may.
     const forSpace = async (as) => Object.fromEntries((await call('GET', `/api/modules/for-space?space=${T}`, undefined, as)).json.modules.map((m) => [m.id, m.clear]));
     const sam = await forSpace('sam');

@@ -291,7 +291,7 @@ test('actions.list passes a valid ref on, cleaned, and drops a bad one; the drop
   const clearFor = (spaceId, guestToken) => {
     const calls = [];
     const api = async (method, url) => { calls.push([method, url]); };
-    // clearWithUndo (public/module-host.js) takes a copy, then sends the DELETE: here, the DELETE it ends with.
+    // clearWithUndo (public/module-host.js) sends the DELETE (the server holds what went for its Undo): here, that DELETE.
     const clearWithUndo = async (moduleId, query) => { calls.push(['DELETE', `/api/modules/${moduleId}/data?${query}`]); return null; };
     const fn = new Function('id', 'spaceId', 'guestToken', 'api', 'clearWithUndo', `${clearSrc}\nreturn clearModuleData;`)('todo', spaceId, guestToken, api, clearWithUndo);
     return fn().then(() => calls.map(([method, url]) => [method, url.replace(/&tz=[^&]*/, '')]));

@@ -321,3 +321,190 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     } finally { await t.close(); }
   }
 }
+
+// ---- the QA's findings on the file windows (feedback build), run after viewerCases (its files are in the library) ----
+const SHADOW_ACTIVE = `(() => { const r = document.querySelector('#module-frame'); const a = r && r.shadowRoot && r.shadowRoot.activeElement; return a ? (a.textContent || '').trim() : (document.activeElement === document.body ? 'BODY' : ''); })()`;
+export async function viewerFixCases({ S, api, say, fail, browser, until, open, trip }) {
+  const press = (tab, key, code, vk) => tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vk }, tab.sid).then(() => tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk }, tab.sid));
+  const openNamed = (tab, name, then = 'b.click()') => tab.eval(`(() => { const b = __q(${JSON.stringify(ROW)}, ${JSON.stringify(name)}); if (!b) return false; b.focus(); ${then}; return true; })()`);
+  const settleWin = (tab, name) => until(tab, `(() => { const w = [...document.querySelectorAll('.fv-win')].find((x) => x.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)}); return w && [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info'); })()`, Boolean);
+  const frontWin = (tab, name) => tab.eval(`(() => { const w = [...document.querySelectorAll('.fv-win')].find((x) => x.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)}); if (!w) return false; w.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); w.querySelector('.mf').focus(); return true; })()`);
+  const buttons = (tab) => tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].filter((b) => b.getClientRects().length).map((b) => b.getAttribute('aria-label') || b.textContent.trim())`);
+  const frontBox = (tab) => tab.eval(`(() => { const r = document.querySelector('.fv-win.is-front').getBoundingClientRect(); const c = document.getElementById('canvas'); const k = c && !c.hidden ? c.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight }; return { l: r.left, t: r.top, r: r.right, b: r.bottom, cl: k.left, ct: k.top, cr: k.right, cb: k.bottom }; })()`);
+  const lightLook = `(async () => { const v = await import('/file-viewer-views.js'); const s = document.createElement('span'); s.style.cssText = 'position:absolute;visibility:hidden;color:' + v.AROUND_PAGES; document.body.append(s); const c = getComputedStyle(s).color; s.remove();
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1; const x = cv.getContext('2d', { colorSpace: 'srgb' }); x.fillStyle = c; x.fillRect(0, 0, 1, 1); const d = x.getImageData(0, 0, 1, 1).data;
+    const lum = (a) => { const q = a.map((n) => { n /= 255; return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; }); return 0.2126 * q[0] + 0.7152 * q[1] + 0.0722 * q[2]; };
+    return 1.05 / (lum([d[0], d[1], d[2]]) + 0.05); })()`;
+
+  // F2: a double-click, and several opens in the same breath, on a page that has not opened a window yet, make one window.
+  let tab = await open(1280, 'mia');
+  try {
+    await openNamed(tab, 'photo.jpg', 'b.click(); b.click(); b.click()');
+    await sleep(1500);
+    const n = await tab.eval(WINS);
+    if (n !== 1) fail(`three quick opens of one file on a fresh page made ${n} windows, not one`);
+    say(`three quick opens of one file: ${n} window`);
+
+    // F1: focus goes back to what opened THAT window
+    await openNamed(tab, 'tone.mp3');
+    await settleWin(tab, 'tone.mp3');
+    await frontWin(tab, 'photo.jpg');
+    await press(tab, 'Escape', 'Escape', 27);
+    await until(tab, WINS, (v) => v === 1);
+    const back = await until(tab, SHADOW_ACTIVE, (v) => v === 'photo.jpg');
+    if (back !== 'photo.jpg') fail(`Esc on the photo's window put focus on "${back}", not on the photo's own row`);
+    // a refused fifth open leaves no trace: closing any window goes to its own row, not the refused one
+    for (const f of ['photo.jpg', 'planted.md', 'clip.webm']) { await openNamed(tab, f); await settleWin(tab, f); }
+    await openNamed(tab, 'link.pdf');
+    const cap = await until(tab, `document.body.innerText.includes('Four windows are open') && document.body.innerText.includes(${JSON.stringify(SENTENCE)})`, Boolean, 4000);
+    if (!cap) fail(`a fifth file did not say "Four windows are open" and "${SENTENCE}"`);
+    await frontWin(tab, 'clip.webm');
+    await press(tab, 'Escape', 'Escape', 27);
+    await until(tab, WINS, (v) => v === 3);
+    const afterCap = await until(tab, SHADOW_ACTIVE, (v) => v === 'clip.webm');
+    if (afterCap !== 'clip.webm') fail(`after a refused fifth open, closing the clip's window put focus on "${afterCap}", not the clip's row`);
+    // Close all from a window's menu: focus lands on a row, never on the page
+    await tab.eval(`(() => { const b = [...document.querySelectorAll('.fv-win.is-front .mf-titlebar button')].find((x) => /more/i.test(x.getAttribute('aria-label') || '')); b.click(); })()`);
+    await until(tab, `[...document.querySelectorAll('[role=menuitem]')].some((e) => e.getClientRects().length)`, Boolean);
+    await tab.eval(`[...document.querySelectorAll('[role=menuitem]')].filter((e) => e.getClientRects().length).find((e) => /Close all/.test(e.innerText)).click()`);
+    await until(tab, WINS, (v) => v === 0);
+    const all = await until(tab, SHADOW_ACTIVE, (v) => v !== 'BODY' && v !== '');
+    if (all === 'BODY' || all === '') fail('after Close all focus fell to the page, not to a row');
+    say(`focus returns to the window's own opener ("photo.jpg", "clip.webm"), also after a refused fifth open and Close all ("${all}")`);
+
+    // F6: a message is believed only from the PDF frame's own (null) origin
+    await openNamed(tab, 'plain.pdf');
+    await until(tab, `(() => { const bar = document.querySelector('.fv-win.is-front .fv-pdfbar'); return bar && !bar.hidden; })()`, Boolean, 12000);
+    const msg = await tab.eval(`(() => { const f = document.querySelector('.fv-win.is-front iframe'); const calls = []; const real = window.open; window.open = (u) => { calls.push(u); return null; };
+      const send = (origin) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'link', url: 'https://example.com/x' }, source: f.contentWindow, origin }));
+      send(location.origin); const other = calls.length; send('null'); const own = calls.length; window.open = real; return { other, own }; })()`);
+    if (msg.other !== 0 || msg.own !== 1) fail(`a link message from an origin other than null opened ${msg.other} tab(s), and from null ${msg.own} (0 and 1)`);
+    say('the PDF frame is believed only from its null origin');
+    await tab.key('Escape');
+  } finally { await tab.close(); }
+
+  // F10: the colour around the pages stands apart from white pages (1.5:1), in the light theme and the dark
+  for (const mode of ['light', 'dark']) {
+    const t = new Tab(browser.cdp, S.ctx);
+    await t.open(1280, mode, false);
+    const settle = t.settle.bind(t); t.settle = () => Promise.race([settle(), sleep(3000)]);
+    try {
+      await driveScreen(t, { id: 'vault', as: 'mia', url: '/modules/vault?space={trip}&popout=1', wait: ROW }, S.base, S.cookies, S.ctx);
+      await sleep(400);
+      const ratio = await t.eval(lightLook);
+      if (!(ratio >= 1.5)) fail(`${mode} theme: the colour around PDF pages has contrast ${ratio && ratio.toFixed ? ratio.toFixed(2) : ratio}:1 with white pages (1.5:1 needed)`);
+      say(`${mode} theme: the colour around PDF pages against white ${ratio.toFixed(2)}:1`);
+    } finally { await t.close(); }
+  }
+  tab = await open(1280, 'mia');
+  try {
+    // F8: a file with no bytes has no Download in the toolbar
+    await openNamed(tab, 'gone.png');
+    await until(tab, `(() => { const s = document.querySelector('.fv-win.is-front .fv-state'); return s ? s.innerText : ''; })()`, (v) => /File missing/.test(v), 8000);
+    await sleep(300);
+    const gone = await buttons(tab);
+    if (gone.includes('Download')) fail(`a file that is missing has ${gone.join(', ')} in its toolbar, with Download`);
+    say(`a missing file: toolbar ${gone.join(', ')}`);
+    await tab.key('Escape');
+    // F11: at the smallest size Info is not offered (it would hide the file); the file stays shown
+    await openNamed(tab, 'tone.mp3');
+    await settleWin(tab, 'tone.mp3');
+    const g = await tab.rect('.fv-win.is-front .fv-grip');
+    await tab.mouse('mouseMoved', g.x + g.w / 2, g.y + g.h / 2, { button: 'none', clickCount: 0 });
+    await tab.mouse('mousePressed', g.x + g.w / 2, g.y + g.h / 2);
+    await tab.mouse('mouseMoved', g.x - 600, g.y - 600);
+    await tab.mouse('mouseReleased', g.x - 600, g.y - 600);
+    await sleep(300);
+    const small = await tab.eval(`(() => { const w = document.querySelector('.fv-win.is-front'); const r = w.getBoundingClientRect(); const v = w.querySelector('.fv-view').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), view: Math.round(v.height), info: [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info' && b.getClientRects().length) }; })()`);
+    if (small.w !== 300 || small.h !== 200) fail(`the smallest window is ${small.w}x${small.h}, not 300x200`);
+    if (small.info) fail('at 300x200 the toolbar still offers Info, which would hide the file');
+    if (small.view < 60) fail(`at 300x200 the file has ${small.view}px of height`);
+    say(`smallest window ${small.w}x${small.h}: no Info, the file ${small.view}px high`);
+    await tab.key('Escape');
+  } finally { await tab.close(); }
+
+  // F7: someone outside the space opens one of its files: a plain capitalised sentence, no Try again
+  {
+    const t = new Tab(browser.cdp, S.ctx);
+    await t.open(1280, 'dark', false);
+    const settle = t.settle.bind(t); t.settle = () => Promise.race([settle(), sleep(3000)]);
+    try {
+      await driveScreen(t, { id: 'home', as: 'lee', url: '/', wait: 'body' }, S.base, S.cookies, S.ctx);
+      const id = (await api('GET', `/api/modules/vault/library?space=${trip}`, undefined, 'mia')).json.files[0].id;
+      await t.eval(`(async () => { const m = await import('/file-viewer.js'); m.openFile({ ref: { module: 'vault', kind: 'file', id: ${JSON.stringify(id)}, scope: 'space', space: ${JSON.stringify(trip)} }, doc: document }); })()`);
+      const said = await until(t, `(() => { const s = document.querySelector('.fv-win .fv-state'); return s ? { text: s.innerText, retry: !![...s.querySelectorAll('button')].length } : null; })()`, (v) => v && !/Opening/.test(v.text), 8000);
+      if (!said || !/^[A-Z]/.test(said.text) || said.retry || /not available in that/.test(said.text)) fail(`someone outside the space opening its file sees ${JSON.stringify(said)} (a capitalised sentence, no Try again)`);
+      say(`outside the space: "${said && said.text.replace(/\n+/g, ' ')}"`);
+    } finally { await t.close(); }
+  }
+
+  // F9 and the context asked again for each window: a member who may not download
+  const off = await api('PATCH', '/api/roles/member', { 'module.vault.download': false }, 'admin');
+  tab = await open(1280, 'sam');
+  try {
+    await openNamed(tab, 'locked.pdf');
+    const lk = await until(tab, `(() => { const s = document.querySelector('.fv-win.is-front .fv-state'); return s ? { said: s.innerText, dl: !![...s.querySelectorAll('button')].length } : null; })()`, (v) => v && !/Opening/.test(v.said), 8000);
+    if (off.status === 200 && (!lk || lk.dl || !/your role can't download it/.test(lk.said))) fail(`a member who may not download, opening a download-only PDF, sees ${JSON.stringify(lk)}`);
+    say(`no download, download-only PDF: "${lk && lk.said.split('\n')[0]}"`);
+    await tab.key('Escape');
+  } finally { await tab.close(); await api('PATCH', '/api/roles/member', { 'module.vault.download': true }, 'admin'); }
+  tab = await open(1280, 'sam');
+  try {
+    await openNamed(tab, 'photo.jpg');
+    await settleWin(tab, 'photo.jpg');
+    if (!(await buttons(tab)).includes('Download')) fail('a member who may download has no Download');
+    await api('PATCH', '/api/roles/member', { 'module.vault.download': false }, 'admin');
+    await openNamed(tab, 'tone.mp3');
+    await settleWin(tab, 'tone.mp3');
+    const now = await buttons(tab);
+    await api('PATCH', '/api/roles/member', { 'module.vault.download': true }, 'admin');
+    if (now.includes('Download')) fail('after the download permission was turned off, the next window on the same page still shows Download');
+    say('a change of the download permission reaches the next window without a reload');
+  } finally { await tab.close(); await api('PATCH', '/api/roles/member', { 'module.vault.download': true }, 'admin'); }
+
+  // F3: host.files.open opens a file of this space only, and only for a module that was approved to link to files
+  tab = await open(1280, 'mia');
+  try {
+    const id = (await api('GET', `/api/modules/vault/library?space=${trip}`, undefined, 'mia')).json.files[0].id;
+    const r = await tab.eval(`(async () => { const h = window.host; if (!h || !h.files) return 'nohost'; try { await h.files.open({ module: 'vault', kind: 'file', id: ${JSON.stringify(id)}, scope: 'space', space: ${JSON.stringify(S.ctx.second)} }); return 'opened'; } catch (e) { return 'refused ' + e.message; } })()`);
+    await sleep(500);
+    const n = await tab.eval(WINS);
+    if (r === 'nohost') say('(host.files.open could not be called from the page here; the cross-space rule is read from the source)');
+    else if (!/^refused/.test(r) || n !== 0) fail(`host.files.open with a pointer to another space answered "${r}" and left ${n} window(s)`);
+    else say(`host.files.open to another space: ${r}`);
+  } finally { await tab.close(); }
+  const stranger = await api('POST', '/api/objects/resolve', { from: 'stream', refs: [{ module: 'vault', kind: 'file', id: 'abcdef0123456789abcdef01', scope: 'space', space: trip }] }, 'mia');
+  const ans = stranger.json && stranger.json.summaries && stranger.json.summaries[0];
+  if (!ans || ans.status !== 403) fail(`a module that never consumed the file kind is answered ${JSON.stringify(ans)} (403), the answer files.open relies on`);
+  const src = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'public', 'module-host.js'), 'utf8');
+  const handler = src.slice(src.indexOf("async 'files.open'"), src.indexOf("async 'library.download'"));
+  if (!/ref\.space !== spaceId/.test(handler) || !/\/api\/objects\/resolve/.test(handler) || !/ref\.module !== module\.id/.test(handler)) fail("files.open does not check the pointer's space and the module's approval");
+  say('files.open: the space is the mount\'s own; another module needs the approval the server checks');
+
+  // F4: on the space page a window stays inside the canvas
+  tab = new Tab(browser.cdp, S.ctx);
+  await tab.open(1280, 'dark', true);
+  {
+    const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
+    try {
+      await driveScreen(tab, { id: 'workspace', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, space: true }, S.base, S.cookies, S.ctx);
+      await sleep(1500);
+      await tab.eval(`__q('[data-module-root=vault] >>> .vt-row .sdk-open', 'plain.pdf').click()`);
+      await until(tab, WINS, (v) => v === 1, 8000);
+      await sleep(400);
+      const first = await frontBox(tab);
+      if (first.t < first.ct || first.l < first.cl) fail(`the first window opens at ${Math.round(first.l)},${Math.round(first.t)}, outside the canvas (${Math.round(first.cl)},${Math.round(first.ct)})`);
+      const bar = await tab.rect('.fv-win.is-front .mf-titlebar-title');
+      const x = bar.x + 4; const y = bar.y + bar.h / 2;
+      await tab.mouse('mouseMoved', x, y, { button: 'none', clickCount: 0 });
+      await tab.mouse('mousePressed', x, y);
+      await tab.mouse('mouseMoved', x - 900, y - 600);
+      await tab.mouse('mouseReleased', x - 900, y - 600);
+      await sleep(300);
+      const b = await frontBox(tab);
+      if (b.t < b.ct - 0.5 || b.l < b.cl - 0.5 || b.b > b.cb + 0.5 || b.r > b.cr + 0.5) fail(`a window dragged to the corner is at ${Math.round(b.l)},${Math.round(b.t)} and the canvas starts at ${Math.round(b.cl)},${Math.round(b.ct)}`);
+      say(`space page: first window at ${Math.round(first.l)},${Math.round(first.t)}; dragged to the corner it stops at ${Math.round(b.l)},${Math.round(b.t)} (the canvas starts at ${Math.round(b.cl)},${Math.round(b.ct)})`);
+      await tab.key('Escape');
+    } finally { await tab.close(); }
+  }
+}
