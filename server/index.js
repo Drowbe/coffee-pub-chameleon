@@ -184,6 +184,9 @@ const {
   // recording's structure read, each in a worker thread with a memory limit; one that takes longer is stopped and the
   // file refused as one that could not be checked safely.
   VAULT_SCAN_SECONDS = '',
+  // The check on start that tidies the library (bytes with no record, records with no bytes, leftovers of deleted spaces)
+  // stops after VAULT_SWEEP_SECONDS (10) and finishes on the next start.
+  VAULT_SWEEP_SECONDS = '',
   VAULT_DIR = '',
   VAULT_MAX_GB = '',
   VAULT_SPACE_MAX_GB = '',
@@ -682,6 +685,7 @@ function environmentFor(slug) {
       managed: managedAi,
       secretsKey: secretsKeyBuf,
       vaultDir: vaultFolderOf(slug),
+      vaultSweepMs: (() => { const v = Number(VAULT_SWEEP_SECONDS); return Math.round((Number.isFinite(v) && v > 0 ? v : 10) * 1000); })(),
       onVaultBytes: (delta) => {
         if (vaultHost.bytes !== null) vaultHost.bytes += delta;
         if (hostRegistry && slug) hostRegistry.addStorageUsage(slug, delta);
@@ -4177,7 +4181,7 @@ function sharingOf(view, bundledById = new Map(bundledModules(BUNDLED_DIR).map((
 }
 app.get('/api/modules', requireOwner, (_req, res) => {
   const bundledById = new Map(bundledModules(BUNDLED_DIR).map((b) => [b.id, b]));
-  res.json({ modules: modules.list().map((m) => ({ ...m, ...sharingOf(m, bundledById) })), builtin: BUILTIN_MODULES.map((b) => builtinView(b)), bundled: bundledList(), limits: { zipBytes: MODULE_LIMITS.zipBytes } });
+  res.json({ modules: modules.list().map((m) => ({ ...m, ...sharingOf(m, bundledById), ...(m.library ? { libraryFiles: vault.summary(m.id).files, libraryBytes: vault.summary(m.id).bytes } : {}) })), builtin: BUILTIN_MODULES.map((b) => builtinView(b)), bundled: bundledList(), limits: { zipBytes: MODULE_LIMITS.zipBytes } });
 });
 app.post('/api/modules/bundled/:id/install', requireOwner, async (req, res) => {
   const id = req.params.id;
@@ -4258,6 +4262,8 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
   // it goes; its files go with its data: their bytes under VAULT_DIR, and what the server keeps of their records.
   stopLibraryUploads(req.params.id);
   moduleHolds.expireModule(req.params.id); // a Clear waiting for its Undo is finished now
+  // How many files the module holds: gone with its data, or kept (they stay on the disk and still count against storage).
+  const libraryFiles = modules.view(req.params.id)?.library ? vault.summary(req.params.id).files : 0;
   if (req.query.keepData === '0') vault.forgetModule(req.params.id);
   modules.uninstall(req.params.id, { keepData: req.query.keepData !== '0' });
   moduleData.forget(req.params.id);
@@ -4271,7 +4277,7 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
     facts.forgetModule(req.params.id);
     store.applyModuleDisplay(req.params.id, { name: null, icon: null }); // its display name and icon go with its data
   }
-  res.json({ ok: true });
+  res.json({ ok: true, ...(libraryFiles ? (req.query.keepData === '0' ? { filesRemoved: libraryFiles } : { filesKept: libraryFiles }) : {}) });
 });
 
 // --- module runtime -------------------------------------------------------
@@ -8038,6 +8044,8 @@ app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
 // Uploads stream to a part file, counted as they arrive, and reserve their Content-Length against the space's, the
 // person's, the environment's (a hosted plan's storage cap) and the server's totals first; serving streams with ranges.
 const NO_SUCH_FILE = 'There is no such file.';
+// A record whose bytes are gone from the disk (a backup restored without them, a lost disk): said as a state, with `missing: true`.
+const FILE_MISSING = 'File missing. Its content is gone from the server; remove it from the list.';
 const PDF_DOWNLOAD_ONLY = 'This PDF can\'t be opened here. Download it.';
 // A write that failed on the server's side: the detail goes to the log, never to the person (it can name a path).
 const LIBRARY_NOT_SAVED = 'The file could not be saved. Try again, or ask the admin if it keeps happening.';
@@ -8131,7 +8139,7 @@ function libraryAccess(req, res, need, { file = false } = {}) {
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
 // `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
-const fileView = (ctx, r) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}) });
+const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}) });
 // The owner's lower quotas, when the module declares them as `number` settings for the environment: spaceMaxGb and
 // personMaxGb, in GB; 0 or unset leaves the server's.
 function libraryQuotas(manifest) {
@@ -8330,7 +8338,8 @@ function receiveUpload(req, part, declared, onHead, onSlow = () => {}, handle = 
 app.get('/api/modules/:id/library', (req, res) => {
   const ctx = libraryAccess(req, res, 'view');
   if (!ctx) return;
-  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => fileView(ctx, r));
+  const present = vault.present(ctx.spaceId);
+  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => fileView(ctx, r, present));
   res.json({ files, usage: { bytes: vault.usage().spaces.get(ctx.spaceId) || 0, maxBytes: libraryQuotas(ctx.manifest).space } });
 });
 
@@ -8476,6 +8485,7 @@ function sendLibraryFile(req, res, thumb) {
   // A PDF kept as download only (decision 18) is sent only as a download (download=1, with `download`); asked for inline
   // it answers 404, with the note the viewer shows, to someone who may see the file at all.
   if (!thumb && !download && r.viewable === false) return res.status(404).json({ error: PDF_DOWNLOAD_ONLY });
+  if (vault.isMissing(ctx.spaceId, r.id)) return res.status(404).json({ error: FILE_MISSING, missing: true });
   const file = vault.filePath(ctx.spaceId, r.id, thumb);
   let slot = null;
   if (!thumb) {
@@ -8606,7 +8616,7 @@ app.get('/api/modules/:id/library/:fid/uses', (req, res) => {
       hidden += 1;
     }
   }
-  res.json({ uses, hidden });
+  res.json({ uses, hidden, ...(vault.isMissing(ctx.spaceId, r.id) ? { missing: true } : {}) });
 });
 
 // --- place search, from the server -----------------------------------------------------------------------------------------

@@ -86,8 +86,11 @@ function writeAtomic(file, data) {
 
 class VaultStore {
   // `bytesDir`: this environment's folder under VAULT_DIR. `modulesDir`: DATA_DIR/modules, where the records go.
+  // `spaceExists` lets the start-up sweep find what belongs to deleted spaces; `budgetMs` bounds that sweep.
   // `onBytes(delta)` is told every change in the bytes kept, for a total across environments.
-  constructor({ bytesDir, modulesDir, now = () => Date.now(), onBytes = () => {} }) {
+  constructor({ bytesDir, modulesDir, now = () => Date.now(), onBytes = () => {}, spaceExists = null, budgetMs = 10000 }) {
+    this.spaceExists = spaceExists; // (space id) -> whether the space is still there; without it the sweep removes nothing for a space
+    this.budgetMs = budgetMs;
     this.bytesDir = bytesDir;
     this.modulesDir = modulesDir;
     this.now = now;
@@ -418,29 +421,76 @@ class VaultStore {
     add(this.totals.people, by);
   }
 
-  // Removes what a restart left behind: every part and temp file in the bytes folders (nothing is arriving while the
-  // store is made), temp files beside the records, and bytes no module's record names once they are a week old.
-  // Answers what went: { parts, orphans }.
+  // Is the file's content gone from the disk while its record stays (a restore without the bytes, a disk lost)?
+  isMissing(spaceId, fid) {
+    const f = this.filePath(spaceId, fid);
+    return !f || !fs.existsSync(f);
+  }
+
+  // The names in a space's bytes folder, once, for a whole list (a hundred files cost one read, not a hundred).
+  present(spaceId) {
+    try { return new Set(fs.readdirSync(this.spaceDir(spaceId))); } catch { return new Set(); }
+  }
+
+  // What a module holds in this environment, for the Modules page: { files, bytes }.
+  summary(moduleId) {
+    let files = 0;
+    let bytes = 0;
+    if (MODULE_RE.test(String(moduleId))) {
+      for (const spaceId of this.spacesOf(moduleId)) for (const r of this.records(moduleId, spaceId).values()) { files += 1; bytes += this.bytesOf(r); }
+    }
+    return { files, bytes };
+  }
+
+  // Tidies what a crash, a cut upload, a restore or a deleted space left behind, once when the store is made (nothing is
+  // arriving yet), and answers what went. Within `budgetMs` (VAULT_SWEEP_SECONDS): past it, it stops and says so.
+  //   parts      unfinished uploads (part and temp files in the bytes folders, temp files beside the records)
+  //   orphans    bytes no record names, once a week old (a newer one may belong to a record being made)
+  //   missing    records whose bytes are gone: kept, and shown as "File missing" until someone removes them
+  //   folders    space folders left empty, or belonging to a space that no longer exists
+  //   spaces     spaces that no longer exist that still had records or share links here: those go
+  // Never touches anything outside the library: not a module's data, not a Clear's held data (module-holds), not a
+  // file whose space exists and whose record names it.
   sweep() {
-    const out = { parts: 0, orphans: 0 };
-    let spaces = [];
-    try { spaces = fs.readdirSync(this.bytesDir).filter((n) => /^space-[a-z0-9]{4,16}$/.test(n)); } catch { return out; }
-    const known = new Map(); // space id -> Set(file id)
+    const out = { parts: 0, orphans: 0, missing: 0, folders: 0, spaces: 0, partial: false };
+    const deadline = Date.now() + this.budgetMs;
+    const gone = new Set(); // spaces that no longer exist
+    const known = new Map(); // space id -> Map(file id -> number of records)
+    const recordSpaces = new Set();
     for (const moduleId of this.libraryModules()) {
-      for (const spaceId of this.spacesOf(moduleId)) {
+      const libDir = path.join(this.modulesDir, moduleId, 'library');
+      try {
+        for (const n of fs.readdirSync(libDir)) if (n.endsWith('.tmp')) { fs.rmSync(path.join(libDir, n), { force: true }); out.parts += 1; }
+      } catch { /* gone */ }
+      for (const spaceId of new Set([...this.spacesOf(moduleId), ...this.shareSpacesOf(moduleId)])) {
+        if (this.spaceExists && !this.spaceExists(spaceId)) {
+          fs.rmSync(this.recordFile(moduleId, spaceId), { force: true });
+          fs.rmSync(this.sharesFile(moduleId, spaceId), { force: true });
+          this.cache.delete(`${moduleId}|${spaceId}`);
+          this.shareCache.delete(`${moduleId}|${spaceId}`);
+          gone.add(spaceId);
+          continue;
+        }
+        if (!this.spacesOf(moduleId).includes(spaceId)) continue; // share links only
         const set = known.get(spaceId) || new Set();
         for (const fid of this.records(moduleId, spaceId).keys()) set.add(fid);
         known.set(spaceId, set);
+        recordSpaces.add(spaceId);
       }
-      try {
-        for (const n of fs.readdirSync(path.join(this.modulesDir, moduleId, 'library'))) if (n.endsWith('.tmp')) fs.rmSync(path.join(this.modulesDir, moduleId, 'library', n), { force: true });
-      } catch { /* gone */ }
     }
-    for (const folder of spaces) {
-      const dir = path.join(this.bytesDir, folder);
-      const spaceId = folder.slice('space-'.length);
+    out.spaces = gone.size;
+    let folders = [];
+    try { folders = fs.readdirSync(this.bytesDir).filter((n) => /^space-[a-z0-9]{4,16}$/.test(n)).map((n) => n.slice('space-'.length)); } catch { /* none yet */ }
+    for (const spaceId of new Set([...folders, ...recordSpaces])) {
+      if (Date.now() > deadline) { out.partial = true; break; }
+      const dir = this.spaceDir(spaceId);
+      if (this.spaceExists && !this.spaceExists(spaceId)) {
+        if (folders.includes(spaceId)) { fs.rmSync(dir, { recursive: true, force: true }); out.folders += 1; }
+        continue;
+      }
       let names = [];
-      try { names = fs.readdirSync(dir); } catch { continue; }
+      try { names = fs.readdirSync(dir); } catch { /* no folder */ }
+      const have = new Set();
       for (const n of names) {
         const full = path.join(dir, n);
         try {
@@ -450,13 +500,16 @@ class VaultStore {
             continue;
           }
           const m = /^([a-f0-9]{24})\.(bin|thumb)$/.exec(n);
-          if (!m || known.get(spaceId)?.has(m[1])) continue;
+          if (!m) continue;
+          if (known.get(spaceId)?.has(m[1])) { if (m[2] === 'bin') have.add(m[1]); continue; }
           if (this.now() - fs.statSync(full).mtimeMs > ORPHAN_MS) {
             fs.rmSync(full, { force: true });
             if (m[2] === 'bin') out.orphans += 1;
           }
         } catch { /* gone meanwhile */ }
       }
+      for (const fid of known.get(spaceId) || []) if (!have.has(fid)) out.missing += 1;
+      if (folders.includes(spaceId)) { try { fs.rmdirSync(dir); out.folders += 1; } catch { /* not empty */ } }
     }
     return out;
   }

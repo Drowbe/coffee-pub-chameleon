@@ -112,6 +112,22 @@ services:
       # CHAT_PICTURE_MB_PER_MINUTE: "20"  # MB of pictures one person (or guest link) may send a minute
       # LIVE_STREAM_BUFFER_MB: "8"        # how far a reader may fall behind before its stream is dropped (it reconnects)
       # PRESENCE_CHANGES_PER_MINUTE: "60" # times a minute one person may say away or on the call in a space
+      # The library (the Vault, files kept in a space): the bytes live in /app/vault, a volume of their own below, not in
+      # the data folder, so the in-app backups stay small. Back that folder up with the data folder: a restore of the data
+      # without it shows those files as "File missing". The limits below are the defaults; an owner may set lower ones.
+      VAULT_DIR: "/app/vault"
+      # VAULT_MAX_GB: "20"                # the most the whole folder may hold
+      # VAULT_SPACE_MAX_GB: "5"           # the most one space may hold
+      # VAULT_PERSON_MAX_GB: "2"          # the most one person may have added across an environment
+      # VAULT_MB_PER_MINUTE: "500"        # MB one person may send a minute
+      # VAULT_MIN_KB_PER_SECOND: "16"     # the slowest an upload may arrive, after its first minute
+      # VAULT_SLOW_CUTOFFS: "3"           # cut-offs for slowness ...
+      # VAULT_SLOW_MINUTES: "10"          # ... within this many minutes before a person's new uploads wait
+      # VAULT_SCAN_SECONDS: "5"           # the most the check of one file may take
+      # VAULT_SWEEP_SECONDS: "10"         # the most the tidy-up on start may take (bytes with no record, leftovers)
+      # REQUEST_BODY_SECONDS: "300"       # how long any other route's body may take to arrive (library uploads are exempt)
+      # CLEAR_UNDO_SECONDS: "30"          # how long a Clear can be undone (1 to 600)
       PORT: "3000"
     volumes:
       - /share/appdata/coffee-pub-collaborator:/app/data # users, settings and images
+      - /share/appdata/coffee-pub-collaborator-vault:/app/vault # the library's files (can be large)

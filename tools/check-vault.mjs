@@ -102,7 +102,7 @@ function pinMismatches(dir) {
   const bytesDir = path.join(base, 'vault', 'env');
   const modulesDir = path.join(base, 'data', 'modules');
   const s = new VaultStore({ bytesDir, modulesDir });
-  same(s.swept, { parts: 0, orphans: 0 }, 'a new store has nothing to sweep');
+  same(s.swept, { parts: 0, orphans: 0, missing: 0, folders: 0, spaces: 0, partial: false }, 'a new store has nothing to sweep');
 
   same(cleanName('  a\n\tb\u0000c  '), 'a b c', 'a name is one line without control characters');
   same(cleanName('../../etc/passwd'), 'etc passwd', 'path separators and leading dots go');
@@ -155,10 +155,55 @@ function pinMismatches(dir) {
   fs.utimesSync(orphanOld, weekAgo, weekAgo);
   fs.utimesSync(path.join(bytesDir, `space-${SPACE}`, `${fid}.bin`), weekAgo, weekAgo);
   const again = new VaultStore({ bytesDir, modulesDir });
-  same(again.swept, { parts: 1, orphans: 1 }, 'on start: the part goes, and the week-old bytes with no record');
+  same(again.swept, { parts: 2, orphans: 1, missing: 0, folders: 0, spaces: 0, partial: false }, 'on start: the part and the temp record go, and the week-old bytes with no record');
   ok(!fs.existsSync(left) && !fs.existsSync(`${recFile}.1234.tmp`), 'the part and the temp record are gone');
   ok(fs.existsSync(orphanNew) && !fs.existsSync(orphanOld), 'recent bytes with no record are kept for now');
   ok(fs.existsSync(path.join(bytesDir, `space-${SPACE}`, `${fid}.bin`)), 'a file with its record is kept, however old');
+  // The rest of the sweep: records with no bytes (kept, counted), empty folders, deleted spaces, a bound on time.
+  {
+    const alive = new Set([SPACE, OTHER, 'ee11', 'ff22']);
+    const spaceExists = (id) => alive.has(id);
+    const GONE = 'zz99';
+    const w = new VaultStore({ bytesDir, modulesDir, spaceExists });
+    // a deleted space's records, bytes and share file; two empty folders (one with only a stale part); a record with no bytes
+    fs.mkdirSync(path.join(bytesDir, `space-${GONE}`), { recursive: true });
+    const goneFid = 'd'.repeat(24);
+    fs.writeFileSync(path.join(bytesDir, `space-${GONE}`, `${goneFid}.bin`), 'x');
+    fs.mkdirSync(path.join(modulesDir, 'vault', 'library'), { recursive: true });
+    fs.writeFileSync(path.join(modulesDir, 'vault', 'library', `space-${GONE}.json`), JSON.stringify({ [goneFid]: { id: goneFid, name: 'x.pdf', size: 1, by: 'a', at: '2026-10-30T10:00:00.000Z' } }));
+    fs.writeFileSync(path.join(modulesDir, 'vault', 'library', `space-${GONE}.shares.json`), '{}');
+    fs.mkdirSync(path.join(bytesDir, 'space-ee11'), { recursive: true });
+    fs.mkdirSync(path.join(bytesDir, 'space-ff22'), { recursive: true });
+    fs.writeFileSync(path.join(bytesDir, 'space-ff22', ".part-abc"), 'cut');
+    const lost = w.newId();
+    const lp = w.newPart(OTHER);
+    fs.writeFileSync(lp, 'will be lost');
+    w.commit('vault', OTHER, lp, { id: lost, name: 'lost.pdf', type: 'application/pdf', group: 'document', size: 12, by: 'sam1', at: '2026-10-30T13:00:00.000Z', thumb: null });
+    fs.rmSync(w.filePath(OTHER, lost));
+    // another module's data, and a Clear's held data, are not touched
+    fs.mkdirSync(path.join(modulesDir, 'other', 'data'), { recursive: true });
+    fs.writeFileSync(path.join(modulesDir, 'other', 'data', `space-${GONE}.json`), '{"keep":1}');
+    fs.mkdirSync(path.join(modulesDir, 'vault', 'trash'), { recursive: true });
+    fs.writeFileSync(path.join(modulesDir, 'vault', 'trash', 'held.json'), '{"held":1}');
+    const sweptNow = new VaultStore({ bytesDir, modulesDir, spaceExists });
+    same(sweptNow.swept, { parts: 1, orphans: 0, missing: 1, folders: 4, spaces: 1, partial: false }, 'the sweep counts: a part, a record with no bytes, four folders (a deleted space\'s and three empty ones), a deleted space');
+    ok(!fs.existsSync(path.join(bytesDir, `space-${GONE}`)) && !fs.existsSync(path.join(modulesDir, 'vault', 'library', `space-${GONE}.json`)) && !fs.existsSync(path.join(modulesDir, 'vault', 'library', `space-${GONE}.shares.json`)), 'a deleted space\'s bytes, records and share file are gone');
+    ok(!fs.existsSync(path.join(bytesDir, 'space-ee11')) && !fs.existsSync(path.join(bytesDir, 'space-ff22')), 'empty space folders go, one that held only a stale part too');
+    ok(sweptNow.get('vault', OTHER, lost) && sweptNow.isMissing(OTHER, lost) && sweptNow.usage().spaces.get(OTHER) === 12, 'a record with no bytes is kept, reported missing, and still counts until it is removed');
+    same(sweptNow.present(OTHER).has(`${lost}.bin`), false, 'present() says which bytes are there');
+    ok(fs.existsSync(path.join(modulesDir, 'other', 'data', `space-${GONE}.json`)) && fs.existsSync(path.join(modulesDir, 'vault', 'trash', 'held.json')), 'another module\'s data and held clears are never touched');
+    same(new VaultStore({ bytesDir, modulesDir, spaceExists }).swept, { parts: 0, orphans: 0, missing: 1, folders: 0, spaces: 0, partial: false }, 'run again it finds only the missing file');
+    same(sweptNow.summary('vault'), { files: sweptNow.list('vault', SPACE).length + sweptNow.list('vault', OTHER).length, bytes: sweptNow.usage().all }, 'summary counts a module\'s files and bytes');
+    sweptNow.remove('vault', OTHER, lost);
+    same(sweptNow.usage().spaces.get(OTHER), undefined, 'removing the missing file frees its count');
+    same(new VaultStore({ bytesDir, modulesDir, spaceExists, budgetMs: -1 }).swept.partial, true, 'a sweep past its time stops and says so');
+    // a store with no spaceExists removes nothing for a space it cannot judge
+    fs.mkdirSync(path.join(bytesDir, `space-${GONE}`), { recursive: true });
+    fs.writeFileSync(path.join(bytesDir, `space-${GONE}`, `${goneFid}.bin`), 'x');
+    new VaultStore({ bytesDir, modulesDir });
+    ok(fs.existsSync(path.join(bytesDir, `space-${GONE}`, `${goneFid}.bin`)), 'without a way to tell, a new byte file is left alone');
+    fs.rmSync(path.join(bytesDir, `space-${GONE}`), { recursive: true, force: true });
+  }
 
   // Removing, and a deleted space.
   const p2 = again.newPart(OTHER);
@@ -1311,6 +1356,23 @@ try {
     const activity = (await send(A, 'GET', '/api/modules/activity', { cookie: admin })).json.activity.map((a) => a.what);
     ok(activity.includes('added a file to Shelf') && activity.includes('removed a file from Shelf') && !activity.some((w) => /matrix|one\.gif|ticket/.test(w)), 'activity lines, without the files\' names');
   }
+  // --- "File missing": a record whose bytes are gone (a disk lost, a restore without them) is a state, not an error -----
+  {
+    const gone = (await add('pat', 'lost.gif', gifOf(), { type: 'image/gif' })).json.file;
+    const tail = (kind) => `/api/modules/shelf/library/${gone.id}/${kind}?space=${trip.id}`;
+    const cookie = people.sam.token;
+    ok(gone.missing === undefined, 'a file with its bytes is not marked missing');
+    fs.rmSync(path.join(spaceDir, `${gone.id}.bin`), { force: true });
+    const listed = (await send(A, 'GET', lib(), { cookie })).json;
+    same([listed.files.find((x) => x.id === gone.id)?.missing, listed.files.filter((x) => x.id !== gone.id).some((x) => x.missing)], [true, false], 'the list marks the file missing, and only it');
+    const c = await send(A, 'GET', tail('content'), { cookie });
+    same([c.status, c.json?.missing, c.json?.error], [404, true, 'File missing. Its content is gone from the server; remove it from the list.'], 'its content: 404 with missing: true and one plain sentence');
+    same((await send(A, 'GET', tail('content') + '&download=1', { cookie })).json?.missing, true, 'a download says so too');
+    same((await send(A, 'GET', tail('thumb'), { cookie })).status, 404, 'its small picture: 404');
+    same((await send(A, 'GET', tail('uses'), { cookie })).json, { uses: [], hidden: 0, missing: true }, 'uses answers, with missing: true');
+    same((await send(A, 'DELETE', `/api/modules/shelf/library/${gone.id}?space=${trip.id}`, { cookie: people.pat.token })).json, { ok: true }, 'Remove works on it');
+    same((await send(A, 'GET', lib(), { cookie })).json.files.some((x) => x.id === gone.id), false, 'and it is off the list');
+  }
   // --- uninstalling: kept data stays, data removed takes the files' bytes and what the server holds of them -----------
   {
     const reinstall = async () => {
@@ -1321,10 +1383,14 @@ try {
     const before = await listOf();
     const one = before.files[0];
     ok(before.files.length > 5 && filesUnder(spaceDir).some((f) => f.endsWith('.bin')), 'the space has files');
-    same((await send(A, 'DELETE', '/api/modules/shelf', { cookie: admin })).status, 200, 'uninstalled, keeping its data');
+    const shown = (await send(A, 'GET', '/api/modules', { cookie: admin })).json.modules.find((m) => m.id === 'shelf');
+    ok(shown.libraryFiles >= before.files.length && shown.libraryBytes > 0, 'the Modules list says how many files and bytes a library module holds');
+    const kept1 = await send(A, 'DELETE', '/api/modules/shelf', { cookie: admin });
+    same([kept1.status, kept1.json?.filesKept, kept1.json?.filesRemoved], [200, shown.libraryFiles, undefined], 'uninstalled, keeping its data, and says how many files stay');
     await reinstall();
     same((await listOf()).files.map((f) => f.id), before.files.map((f) => f.id), 'installed again, its files are all there');
-    same((await send(A, 'DELETE', '/api/modules/shelf?keepData=0', { cookie: admin })).status, 200, 'uninstalled with its data');
+    const wiped = await send(A, 'DELETE', '/api/modules/shelf?keepData=0', { cookie: admin });
+    same([wiped.status, wiped.json?.filesRemoved, wiped.json?.filesKept], [200, shown.libraryFiles, undefined], 'uninstalled with its data, and says how many files went');
     same(filesUnder(spaceDir).filter((f) => /\.(bin|thumb)$/.test(f)), [], 'its files\' bytes and small pictures are gone from VAULT_DIR');
     ok(!fs.existsSync(path.join(A.dataDir, 'modules', 'shelf', 'library')), 'and their records');
     const folders = fs.readdirSync(path.join(A.vaultDir, '_default')).filter((d) => d.startsWith('space-'));
