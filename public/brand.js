@@ -80,6 +80,7 @@ function migrateStoredKeys() {
 }
 migrateStoredKeys();
 
+let templateHomeIcon = null; // the template's home icon (branding.templateHomeIcon): a space's icon when it picked none
 let product = ''; // filled by loadBranding(); no name is written in the page
 
 // The configured product name (PRODUCT_NAME), from /api/branding. Sentences use this, never a hard-coded name; it is ''
@@ -99,6 +100,7 @@ export async function loadBranding() {
   }
   if (typeof b.productName === 'string' && b.productName.trim()) product = b.productName.trim();
   ICONS = Array.isArray(b.icons) ? b.icons : [];
+  templateHomeIcon = typeof b.templateHomeIcon === 'string' && b.templateHomeIcon ? b.templateHomeIcon : null;
   setEnvironmentMode(b.themeMode, b.themeVersion); // the default mode, and a stylesheet that changed since this page loaded
   setVerbs(b.verbs); // every data-verb and {enter} on the page, and verb() from here on (addendum 4)
   setWords(b.words); // every data-word and data-fill on the page, and word() from here on
@@ -1181,11 +1183,15 @@ async function loadUpdateBadge() {
   }
 }
 
-// The header icon for a space: the launch-link icon the space picked, or the
-// folder when it has not picked one ('link' is the default). Never a chat bubble. The server also tries the template's
-// home icon first; the public branding does not carry it yet, so the page falls back to the folder.
+// A space's icon id, as the server's spaceSummary has it: the launch-link icon the space picked ('link' is the default,
+// meaning none), else the template's home icon, else the folder. Never a chat bubble.
+export function spaceIconId(space) {
+  return space?.linkIcon && space.linkIcon !== 'link' ? space.linkIcon : templateHomeIcon || 'folder';
+}
+
+// The header icon for a space (classes); with no space, the same fallback.
 export function spaceCrumbIcon(space) {
-  return space?.linkIcon && space.linkIcon !== 'link' ? iconClasses(space.linkIcon) : 'fa-solid fa-folder';
+  return iconClasses(spaceIconId(space));
 }
 
 // The anchor's segments after the Spaces slot. Only the space page sets them (updateCrumb() in space.js: "› <space>",

@@ -5526,11 +5526,11 @@ function updateCrumb() {
     space = { name: spaceName };
   }
   const segs = anchorSegments({ space, viewingHome, guestSpaceName: guestToken ? guestSpaceName : '', parentName, asideWord: word('aside', { cap: true }), others });
-  const iconOf = (seg) => (!currentSpace ? 'message' : currentSpace.isAside ? (seg.action ? spaceCrumbIcon(originSpace) : 'people-arrows') : spaceCrumbIcon(currentSpace));
+  const iconOf = (seg) => (!currentSpace ? spaceCrumbIcon(null) : currentSpace.isAside ? (seg.action ? spaceCrumbIcon(originSpace) : 'people-arrows') : spaceCrumbIcon(currentSpace));
   setTopbarLocation(segs.map((seg) => crumbSegmentHtml(seg, iconOf(seg))).join('<span class="crumb-sep" aria-hidden="true">&rsaquo;</span>'));
   // The one bar (step 7): the switcher reads the last segment; the Spaces slot leaves.
   const last = segs[segs.length - 1] || null;
-  paintSpaceSwitcher(last, last ? iconOf(last) : 'message');
+  paintSpaceSwitcher(last, last ? iconOf(last) : spaceCrumbIcon(null));
   setInSpace(oneBar());
   if (settingUp && !canSetUp()) spaceSetup.cancel(); // home over the space, an aside, a space left: Set up ends
   placeSetupName(); // while setting up, the current segment is the name's input
