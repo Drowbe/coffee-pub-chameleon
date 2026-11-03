@@ -331,6 +331,7 @@ const { word, fill: fillWords } = require('./words');
 require('./words').useCurrent(() => envContext.getStore()?.store.resolvedWords() || null);
 const modules = proxyFor('modules');
 const moduleData = proxyFor('moduleData');
+const moduleHolds = proxyFor('moduleHolds');
 const moduleHooks = proxyFor('moduleHooks');
 const chatHistory = proxyFor('chatHistory');
 const attention = proxyFor('attention');
@@ -693,6 +694,9 @@ function environmentFor(slug) {
   refusals.delete(key);
   // A fired schedule is told from a timer, outside any request: its listeners run in this environment.
   env.moduleHooks.runIn = (fn) => envContext.run(env, fn);
+  // So is a Clear whose Undo time ran out (server/module-holds.js): finishHold runs in this environment.
+  env.moduleHolds.runIn = (fn) => envContext.run(env, fn);
+  env.moduleHolds.onExpire = (hold) => finishHold(hold);
   // A display icon may also be a built-in module's own icon (store.displayIconIds), beside the installed modules' ones.
   const installedIcons = env.store.moduleIconIds;
   env.store.moduleIconIds = () => [...installedIcons(), ...BUILTIN_MODULES.map((b) => b.icon)];
@@ -4245,6 +4249,7 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
   // A library module's uploads still arriving or being checked are stopped and never kept, so nothing comes back after
   // it goes; its files go with its data: their bytes under VAULT_DIR, and what the server keeps of their records.
   stopLibraryUploads(req.params.id);
+  moduleHolds.expireModule(req.params.id); // a Clear waiting for its Undo is finished now
   if (req.query.keepData === '0') vault.forgetModule(req.params.id);
   modules.uninstall(req.params.id, { keepData: req.query.keepData !== '0' });
   moduleData.forget(req.params.id);
@@ -4412,11 +4417,41 @@ function removeFilesOf(ctx, removed) {
     try { moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, id); } catch (err) { console.error(`A removed object's file could not be removed: ${err.message}`); }
   }
 }
+// The upload ids a module's stored values name (their rule's `file`), for a Clear's hold: those files wait with it.
+function filesNamedBy(manifest, items) {
+  const guards = manifest.guards;
+  if (!manifest.uploads || !guards?.keys?.some((r) => r.file)) return [];
+  return [...new Set(items.map(({ key, value }) => moduleGuards.fileOf(guards, key, value)).filter(Boolean))];
+}
+// A Clear whose Undo time is over (server/module-holds.js, onExpire): what it waited to do now happens. Other modules hear
+// that each of its objects went (their dated copies, the pointers that hold them: objectSync.afterWrite), except for a
+// key that holds something again (that object is the one they follow now), and the files its objects named go, unless a
+// value stored there names one now.
+function finishHold(hold) {
+  for (const item of hold.items) {
+    try {
+      if (moduleData.get(hold.module, hold.scopeKey, item.key)) continue;
+      objectSync.afterWrite({ module: hold.module, scopeKey: hold.scopeKey, key: item.key, before: item.value, after: null, by: hold.by, tz: hold.tz });
+    } catch (err) {
+      console.error(`A cleared object's copies could not be updated: ${err.message}`);
+    }
+  }
+  if (!hold.files.length) return;
+  const stored = moduleData.list(hold.module, hold.scopeKey).map((item) => item.value);
+  for (const fid of hold.files) {
+    if (moduleGuards.namesFile(stored, fid)) continue;
+    try { moduleUploads.remove(hold.module, hold.scopeKey, fid); } catch (err) { console.error(`A cleared object's file could not be removed: ${err.message}`); }
+  }
+}
+// What Clear refuses for a library module (the Vault): its files are not module data, so it has nothing to clear.
+const libraryClearRefusal = (manifest) => `${modules.shownName(manifest)} keeps files, not ${word('module')} data, so Clear has nothing to remove.`;
 // Whether this viewer may clear everything the module holds in a space (DELETE .../data): its write permission, and the
-// guards' `clear` when it has one. For the canvas's Clear.
-function mayClearHere(manifest, who, perms) {
-  if (!moduleCan(manifest, perms, 'write')) return false;
-  return moduleGuards.mayClear(manifest.guards, guardWho({ who, perms, manifest }));
+// guards' `clear` when it has one. For the canvas's Clear, which is offered only where it removes something: never for a
+// library module, and not while the module holds nothing in the space.
+function mayClearHere(manifest, who, perms, spaceId) {
+  if (manifest.library || !moduleCan(manifest, perms, 'write')) return false;
+  if (!moduleGuards.mayClear(manifest.guards, guardWho({ who, perms, manifest }))) return false;
+  try { return moduleData.list(manifest.id, scopeKeyOf('space', { spaceId })).length > 0; } catch { return false; }
 }
 // The guards a data write here is held to. In a person's own data, which only they reach, only `exclusive` and the module's
 // own keys hold (checkPut's `personal`), and a delete or a clear is theirs.
@@ -7971,6 +8006,8 @@ app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
   if (!meta) return res.status(404).json({ error: 'no such file' });
   // The person who added a file, or an administrator, removes it. (A module decides who may remove its items; this is the guard on the bytes.)
   if (meta.by !== ctx.by && !hasOwnerRights(ctx.who.user)) return res.status(403).json({ error: 'only the person who added it can remove it' });
+  // A file a Clear holds for its Undo comes back with it, so it stays until that time is over.
+  if (moduleHolds.holdsFile(ctx.manifest.id, ctx.scopeKey, req.params.fid)) return res.status(409).json({ error: 'That file can\'t be removed while the clear that took it can still be undone.' });
   moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   res.json({ ok: true });
 });
@@ -9296,7 +9333,7 @@ app.get('/api/modules/for-space', (req, res) => {
   res.json({
     modules: modules.enabledAll()
       .filter(({ manifest, entry }) => manifest.scope.includes('space') && manifest.surfaces.canvas && moduleSpaceAccess(entry, who, space) && moduleCan(manifest, perms, 'read'))
-      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms) })),
+      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id) })),
     // The built-in modules' names and icons as this environment shows them (the canvas's Conference and Chat switches).
     builtin: BUILTIN_MODULES.map((b) => ({ id: b.id, ...shownModule(b), ...(b.description ? { description: fillWords(b.description) } : {}) })),
     // What this space opens with, or null when it has no list of its own. The environment's list is what a new space
@@ -9462,29 +9499,67 @@ app.put('/api/modules/:id/data/:key', (req, res) => {
     sendModuleConflict(err, res, ctx.hide);
   }
 });
+// Clear: everything the module holds in the scope, in one write, held for its Undo (server/module-holds.js) for 30 seconds:
+// the values leave at once, the files they name wait, and so does what the clear does to other modules. The answer's
+// restoreToken undoes it (POST .../data/restore) until undoUntil; a later Clear here first finishes this one for good.
+// The guards' `clear` decides who may (checkClear); a writer who can't see the hidden fields can't clear what holds any.
+function clearRefusal(ctx) {
+  if (ctx.manifest.library) return { status: 400, error: libraryClearRefusal(ctx.manifest) };
+  const guards = guardsAt(ctx);
+  // A person clears their own data; guards that don't read still refuse it.
+  return guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
+}
 app.delete('/api/modules/:id/data', (req, res) => {
   const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
-  const guards = guardsAt(ctx);
-  // A person clears their own data; guards that don't read still refuse it.
-  const refused = guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
+  const refused = clearRefusal(ctx);
   if (refused) return res.status(refused.status).json({ error: refused.error });
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
+  const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
+  // A writer who can't see the hidden fields can't remove what holds any.
+  const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
+  if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+  if (!items.length) return res.json({ cleared: 0 });
+  // Held first, then cleared: a stop between the two leaves the data where it was.
+  const held = moduleHolds.hold(ctx.manifest.id, ctx.scopeKey, {
+    items: items.map(({ key, value, version, updatedAt, by }) => ({ key, value, version, updatedAt, by })),
+    files: filesNamedBy(ctx.manifest, items),
+    by: ctx.by,
+    tz: typeof req.query.tz === 'string' ? req.query.tz : null,
+  });
+  moduleData.removeAll(ctx.manifest.id, ctx.scopeKey, { by: ctx.by });
+  res.json({ cleared: items.length, restoreToken: held.token, undoSeconds: held.seconds, undoUntil: held.undoUntil });
+});
+// Undo of a Clear: puts back exactly what that clear held (each value with its writer and time, its files kept), in one
+// write and one 'changes' event, never held to the write limit. The same permission as the clear. A key that holds something
+// now keeps it and is named in `taken`; the rest come back. Answers { restored, skipped, taken }.
+app.post('/api/modules/:id/data/restore', (req, res) => {
+  const ctx = moduleAccess(req, res, 'own');
+  if (!ctx) return;
+  const refused = clearRefusal(ctx);
+  if (refused) return res.status(refused.status).json({ error: refused.error });
+  const token = req.body?.restoreToken;
+  if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'Say which clear to undo: send the restoreToken its answer gave.' });
+  const hold = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
+  if (!hold || hold.token !== token) return res.status(410).json({ error: 'The time to undo that clear is over.' });
+  const hiddenRefused = moduleGuards.hiddenClearRefusal(hold.items.map((item) => item.value), ctx.hide);
+  if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+  let result;
   try {
-    const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
-    // A writer who can't see the hidden fields can't remove what holds any.
-    const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
-    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
-    for (const item of items) {
-      moduleData.remove(ctx.manifest.id, ctx.scopeKey, item.key, { by: ctx.by });
-      objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: item.key, before: item.value, after: null, by: ctx.by, tz: req.query.tz });
-    }
-    removeFilesOf(ctx, items);
-    res.json({ cleared: items.length });
+    result = moduleData.restoreMany(ctx.manifest.id, ctx.scopeKey, hold.items, { by: ctx.by });
   } catch (err) {
-    sendModuleConflict(err, res);
+    if (err instanceof StoreError && err.status === 413) return res.status(413).json({ error: `${modules.shownName(ctx.manifest)}'s storage is full, so nothing came back. Remove something and press Undo again.` });
+    throw err;
   }
+  moduleHolds.drop(ctx.manifest.id, ctx.scopeKey);
+  // What did not come back is cleared for good: other modules hear of it (unless its key now holds the object they
+  // follow) and its files go, as when a hold runs out.
+  if (result.taken.length) {
+    const left = new Set(result.taken);
+    finishHold({ ...hold, items: hold.items.filter((item) => left.has(item.key)) });
+  }
+  res.json({ restored: result.restored.length, skipped: result.taken.length, taken: result.taken.slice(0, 50) });
 });
 app.delete('/api/modules/:id/data/:key', (req, res) => {
   const ctx = moduleAccess(req, res, 'own');
@@ -9687,6 +9762,17 @@ app.get('/api/modules/stream', (req, res) => {
       send(v, 'change', change, { ...hideItem(change, hide), ...at });
     }
   });
+  // Many keys at once (a Clear, its Undo: moduleData.removeAll, restoreMany): one 'changes' event, so a page draws once.
+  const onChanges = listenIn(env, (batch) => {
+    for (const v of views) {
+      const at = place(v, batch.module, batch.scopeKey);
+      if (!at) continue;
+      const changed = modules.enabled(batch.module)?.manifest;
+      if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
+      const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
+      send(v, 'changes', batch, { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, value: h.value, version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
+    }
+  });
   const onFire = listenIn(env, (fire) => {
     for (const v of views) {
       const at = place(v, fire.module, fire.scopeKey);
@@ -9755,8 +9841,18 @@ app.get('/api/modules/stream', (req, res) => {
       if (hearing.length) send(v, 'markers', change, { modules: hearing });
     }
   });
+  // A batch tells the marker modules once per kind it touched.
+  const onMarkersBatch = (batch) => {
+    const kinds = new Set();
+    for (const c of batch.changes) {
+      const kind = markerKindAt(c.module, c.key);
+      if (kind && !kinds.has(kind.kind)) { kinds.add(kind.kind); onMarkers(c); }
+    }
+  };
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);
+  moduleData.on('changes', onMarkersBatch);
+  moduleData.on('changes', onChanges);
   moduleHooks.on('fire', onFire);
   // A linked object changed: only the modules that point at it are told, and only a viewer who may see that module here.
   const onRefChange = listenIn(env, (ev) => {
@@ -9779,6 +9875,8 @@ app.get('/api/modules/stream', (req, res) => {
     moduleSettings.off('change', onSettings);
     moduleData.off('change', onMarkers);
     moduleData.off('change', onChange);
+    moduleData.off('changes', onMarkersBatch);
+    moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
     moduleLinks.off('change', onLinks);
     objectSync.off('refchange', onRefChange);
@@ -9809,16 +9907,28 @@ app.get('/api/modules/:id/events', (req, res) => {
     if (change.scopeKey !== ctx.scopeKey) return;
     sseWrite(res, `event: change\ndata: ${JSON.stringify(hideItem(change, ctx.hide))}\n\n`);
   });
+  const onChanges = listenIn(env, (batch) => {
+    if (batch.module !== ctx.manifest.id) return;
+    if (spaceIds) {
+      const spaceId = batch.scopeKey.startsWith('space:') ? batch.scopeKey.slice(6) : null;
+      if (!spaceIds.has(spaceId)) return;
+      return void sseWrite(res, `event: changes\ndata: ${JSON.stringify({ ...batch, spaceId })}\n\n`);
+    }
+    if (batch.scopeKey !== ctx.scopeKey) return;
+    sseWrite(res, `event: changes\ndata: ${JSON.stringify({ ...batch, changes: batch.changes.map((c) => hideItem(c, ctx.hide)) })}\n\n`);
+  });
   const onFire = listenIn(env, (fire) => {
     if (spaceIds || fire.module !== ctx.manifest.id || fire.scopeKey !== ctx.scopeKey) return;
     sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ key: fire.key, payload: fire.payload })}\n\n`);
   });
   moduleData.on('change', onChange);
+  moduleData.on('changes', onChanges);
   moduleHooks.on('fire', onFire);
   const beat = setInterval(() => sseWrite(res, ': ping\n\n'), 25000);
   req.on('close', () => envContext.run(env, () => {
     clearInterval(beat);
     moduleData.off('change', onChange);
+    moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
   }));
 });

@@ -213,6 +213,48 @@ class ModuleData extends EventEmitter {
     this.emit('change', change);
     return { key, deleted: true, version: change.version };
   }
+
+  // Everything one module holds in one scope goes in one write (Clear, DELETE .../data): answers what was there, each
+  // { key, value, version, updatedAt, by }. One 'changes' event names every key, so an open page draws once, not per key.
+  removeAll(id, scopeKey, { by = '' } = {}) {
+    const map = this.load(id, scopeKey);
+    const removed = [...map].map(([key, entry]) => ({ key, ...entry })).sort((a, b) => (a.key < b.key ? -1 : 1));
+    if (!removed.length) return removed;
+    this.persist(id, scopeKey, new Map());
+    this.cache.set(`${id}|${scopeKey}`, new Map());
+    const at = new Date().toISOString();
+    const who = String(by).slice(0, 40);
+    const changes = removed.map((e) => ({ module: id, scopeKey, key: e.key, value: null, version: e.version + 1, updatedAt: at, by: who, deleted: true }));
+    this.emit('changes', { module: id, scopeKey, by: who, cleared: true, changes });
+    return removed;
+  }
+
+  // Puts back what removeAll took (an Undo of Clear): each entry as it was, its value, its writer (`by`) and its time, at a
+  // version past the delete's, in one write and one 'changes' event. A key that holds something now keeps it and is
+  // answered in `taken`. Held to the module's storage cap like any write (a 413 puts nothing back); never to a write limit.
+  restoreMany(id, scopeKey, entries, { by = '' } = {}) {
+    const map = this.load(id, scopeKey);
+    const next = new Map(map);
+    const restored = [];
+    const taken = [];
+    for (const e of entries) {
+      if (!e || typeof e.key !== 'string' || !KEY_RE.test(e.key) || !('value' in e)) continue;
+      if (next.has(e.key)) { taken.push(e.key); continue; }
+      next.set(e.key, { value: e.value, version: (Number(e.version) || 0) + 2, updatedAt: e.updatedAt || new Date().toISOString(), by: String(e.by || '').slice(0, 40) });
+      restored.push(e.key);
+    }
+    if (!restored.length) return { restored, taken };
+    const before = this.usage(id);
+    const oldSize = (() => { try { return fs.statSync(this.fileFor(id, scopeKey)).size; } catch { return 0; } })();
+    if (before - oldSize + this.serialize(next).length > LIMITS.moduleBytes) {
+      throw new StoreError(`this ${word('module')}'s storage is full (${LIMITS.moduleBytes / (1024 * 1024)} MB)`, 413);
+    }
+    this.persist(id, scopeKey, next);
+    this.cache.set(`${id}|${scopeKey}`, next);
+    const changes = restored.map((key) => ({ module: id, scopeKey, key, ...next.get(key), deleted: false }));
+    this.emit('changes', { module: id, scopeKey, by: String(by).slice(0, 40), restored: true, changes });
+    return { restored, taken };
+  }
 }
 
 module.exports = { ModuleData, moduleFolders, LIMITS: { ...LIMITS } };

@@ -2288,9 +2288,21 @@ test('the sheet: one row per phase with native date inputs, Skip and Add dates, 
 const setupCopy = path.join(tmp, 'space-setup.mjs');
 fs.mkdirSync(tmp, { recursive: true });
 fs.copyFileSync(path.join(ROOT, 'public/space-setup.js'), setupCopy);
-fs.copyFileSync(path.join(ROOT, 'public/action-bar.js'), path.join(tmp, 'action-bar.js')); // the panel imports it
-fs.copyFileSync(path.join(ROOT, 'public/phase-sheet.js'), path.join(tmp, 'phase-sheet.js')); // and the sheet's row helpers
-fs.copyFileSync(path.join(ROOT, 'public/ai-sees.js'), path.join(tmp, 'ai-sees.js')); // and What AI may see's rows
+// Every file the panel imports from beside it (action-bar.js, phase-sheet.js, ai-sees.js...), and what those import, so a
+// new import never breaks the copy.
+{
+  const copied = new Set();
+  const copyImports = (file) => {
+    for (const m of fs.readFileSync(path.join(ROOT, 'public', file), 'utf8').matchAll(/^import\s[^;]*?from\s+'\.\/([\w.-]+\.js)'/gm)) {
+      if (copied.has(m[1])) continue;
+      copied.add(m[1]);
+      fs.copyFileSync(path.join(ROOT, 'public', m[1]), path.join(tmp, m[1]));
+      copyImports(m[1]);
+    }
+  };
+  copyImports('space-setup.js');
+  assert.ok(['action-bar.js', 'phase-sheet.js', 'ai-sees.js'].every((f) => copied.has(f)), 'the panel\'s imports are copied with it');
+}
 const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 

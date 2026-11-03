@@ -19,6 +19,7 @@ const { EventEmitter } = require('events');
 const { Store, randomToken } = require('./store');
 const { ModuleManager } = require('./modules');
 const { ModuleData } = require('./module-data');
+const { ModuleHolds, HOLD_SECONDS } = require('./module-holds');
 const { ModuleHooks } = require('./module-hooks');
 const { ChatHistory } = require('./chat-history');
 const { Attention } = require('./attention');
@@ -74,6 +75,8 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   const store = new Store(dataDir);
   const modules = new ModuleManager(dataDir);
   const moduleData = new ModuleData(modules.dir);
+  // What a Clear took, held for its Undo (server/module-holds.js); index.js sets runIn and onExpire.
+  const moduleHolds = new ModuleHolds(modules.dir, { holdSeconds: undoSeconds(process.env.CLEAR_UNDO_SECONDS) });
   store.extraPermissions = () => modules.permissionList(); // enabled modules' permissions join the Roles grid
   // A library module's permissions that guests never have, whatever is stored for them (server/vault-types.js).
   store.guestLocked = () => modules.enabledAll().filter(({ manifest }) => manifest.library).flatMap(({ manifest }) => GUEST_LOCKED.map((k) => `module.${manifest.id}.${k}`));
@@ -218,6 +221,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
     if (!activityTimer) { activityTimer = setTimeout(saveActivity, 5000); if (activityTimer.unref) activityTimer.unref(); }
   }
   moduleData.on('change', (c) => noteActivity(c.module, `${c.deleted ? 'deleted' : 'saved'} ${c.key}`, c.by, c.scopeKey));
+  moduleData.on('changes', (c) => noteActivity(c.module, `${c.restored ? 'put back' : 'cleared'} ${c.changes.length} ${c.changes.length === 1 ? 'key' : 'keys'}`, c.by, c.scopeKey));
   moduleBus.on('event', (e) => noteActivity(e.module, `published the event ${e.name}`, e.by, e.scopeKey));
   moduleBus.on('action', (a) => noteActivity(a.from, `asked ${a.provider} to ${a.action}`, a.by, a.scopeKey));
   // The upload sweep (plan-object-handoff.md, "Send to...", pictures): Chat uploads a picture into the target module's
@@ -234,6 +238,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
           const meta = moduleUploads.meta(a.provider, a.scopeKey, fid);
           if (!meta || meta.by !== a.by) continue;
           if (JSON.stringify(moduleData.list(a.provider, a.scopeKey)).includes(fid)) continue;
+          if (moduleHolds.holdsFile(a.provider, a.scopeKey, fid)) continue; // a Clear's Undo may still bring it back
           if (moduleUploads.remove(a.provider, a.scopeKey, fid)) noteActivity(a.provider, `removed a picture sent to it that was never added (${meta.name || fid})`, a.by, a.scopeKey);
         } catch {
           // a place that no longer reads: the file stays, as any upload does
@@ -251,10 +256,16 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   return {
     slug, dataDir,
-    store, modules, moduleData, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
+    store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
     geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, invites, inviteEvents, themeEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
     moduleActivity, noteActivity, saveActivity, externalCalendars,
   };
+}
+
+// How long a Clear can be undone, in seconds (CLEAR_UNDO_SECONDS): a whole number from 1 to 600, else 30.
+function undoSeconds(raw) {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 600 ? n : HOLD_SECONDS;
 }
 
 // Every write this environment might still owe the disk, at shutdown or when it is set aside (suspended, or

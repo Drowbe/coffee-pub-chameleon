@@ -31,7 +31,7 @@
 // Pure: nothing here reads the page's globals; module-host.js and canvas.js hand in the windows, and tools/check-streams.mjs
 // runs it against a stand-in EventSource and clock.
 
-export const STREAM_TYPES = Object.freeze(['change', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external']);
+export const STREAM_TYPES = Object.freeze(['change', 'changes', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external']);
 const PAGE = ''; // the page's own view
 const SEEN_MAX = 512; // ids remembered per view, to hand on once what two connections both carried
 const EVENT_SOURCE_CLOSED = 2;
