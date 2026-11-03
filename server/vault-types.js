@@ -195,11 +195,64 @@ function sniff(b, name) {
   return { refuse: 'kind' };
 }
 
-// How many pixels a picture's header says it has, or null when the header can't be read. Reads the header only.
+// A GIF's largest picture: its screen, or any frame (with where it stands) that reaches past it, since a browser grows
+// the picture to a frame larger than the screen (security QA round 2, round 2: a 2x2 screen with a 65535x65535 frame).
+// Walks every block to the end; null when they don't read as a GIF's.
+function gifPixels(b) {
+  const screenW = b.readUInt16LE(6);
+  const screenH = b.readUInt16LE(8);
+  let most = screenW * screenH;
+  let i = 13 + (b[10] & 0x80 ? 3 * 2 ** ((b[10] & 7) + 1) : 0);
+  const blocks = () => { // sub-blocks, to the empty one
+    while (i < b.length && b[i]) i += b[i] + 1;
+    i += 1;
+  };
+  while (i < b.length) {
+    const kind = b[i];
+    if (kind === 0x3b) break;
+    if (kind === 0x21) { i += 2; blocks(); continue; }
+    if (kind !== 0x2c || i + 10 > b.length) return null;
+    const right = b.readUInt16LE(i + 1) + b.readUInt16LE(i + 5);
+    const bottom = b.readUInt16LE(i + 3) + b.readUInt16LE(i + 7);
+    most = Math.max(most, Math.max(screenW, right) * Math.max(screenH, bottom));
+    const flags = b[i + 9];
+    i += 10 + (flags & 0x80 ? 3 * 2 ** ((flags & 7) + 1) : 0) + 1; // the colours, then the code size
+    blocks();
+  }
+  return most;
+}
+
+// A JPEG's size from its frame header (SOF), walking every segment to the end of the picture (EOI): null when a second
+// frame header follows (a decoder may take either), or when the segments don't read as a JPEG's.
+function jpegPixels(b) {
+  let i = 2;
+  let pixels = null;
+  while (i + 4 <= b.length) {
+    if (b[i] !== 0xff) return null;
+    const m = b[i + 1];
+    if (m === 0xff) { i += 1; continue; }
+    if (m === 0xd9) break;
+    if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01) { i += 2; continue; }
+    const len = b.readUInt16BE(i + 2);
+    if (len < 2) return null;
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      if (pixels !== null || i + 9 > b.length) return null;
+      pixels = b.readUInt16BE(i + 5) * b.readUInt16BE(i + 7);
+    }
+    i += 2 + len;
+    if (m === 0xda) {
+      // The scan's coded data, to the next marker that is not a stuffed byte or a restart.
+      while (i + 1 < b.length && !(b[i] === 0xff && b[i + 1] !== 0 && !(b[i + 1] >= 0xd0 && b[i + 1] <= 0xd7))) i += 1;
+    }
+  }
+  return pixels;
+}
+
+// How many pixels a picture says it has (for a GIF and a JPEG, its largest frame), or null when that can't be read.
 function picturePixels(b, type) {
   try {
     if (type === 'image/png') return b.toString('latin1', 12, 16) === 'IHDR' ? b.readUInt32BE(16) * b.readUInt32BE(20) : null;
-    if (type === 'image/gif') return b.readUInt16LE(6) * b.readUInt16LE(8);
+    if (type === 'image/gif') return gifPixels(b);
     if (type === 'image/webp') {
       const chunk = b.toString('latin1', 12, 16);
       if (chunk === 'VP8X') return (1 + b.readUIntLE(24, 3)) * (1 + b.readUIntLE(27, 3));
@@ -207,19 +260,7 @@ function picturePixels(b, type) {
       if (chunk === 'VP8L' && b[20] === 0x2f) { const v = b.readUInt32LE(21); return ((v & 0x3fff) + 1) * (((v >>> 14) & 0x3fff) + 1); }
       return null;
     }
-    if (type === 'image/jpeg') {
-      let i = 2;
-      while (i + 9 <= b.length) {
-        if (b[i] !== 0xff) return null;
-        const m = b[i + 1];
-        if (m === 0xff) { i += 1; continue; }
-        if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01) { i += 2; continue; }
-        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return b.readUInt16BE(i + 5) * b.readUInt16BE(i + 7);
-        if (m === 0xda || m === 0xd9) return null;
-        i += 2 + b.readUInt16BE(i + 2);
-      }
-      return null;
-    }
+    if (type === 'image/jpeg') return jpegPixels(b);
   } catch {
     return null;
   }
@@ -315,6 +356,49 @@ function webmRefusal(read, size) {
   return null;
 }
 
+// WAV: after "RIFF", its size and "WAVE", chunks one after the other to the file's end, each a four-character id and a
+// size (padded to an even length), at most 100,000 of them, with a format chunk ("fmt ") before the sound ("data"). Only
+// the sound may run past the end (a recording cut short, or written without its size). Answers null or 'damaged'.
+const RIFF_CHUNKS_MAX = 100 * 1000;
+function wavRefusal(read, size) {
+  let pos = 12;
+  let fmt = false;
+  for (let n = 0; pos < size; n += 1) {
+    if (n >= RIFF_CHUNKS_MAX || size - pos < 8) return 'damaged';
+    const h = read(pos, 8);
+    const id = h.toString('latin1', 0, 4);
+    if (!/^[\x20-\x7e]{4}$/.test(id)) return 'damaged';
+    const len = h.readUInt32LE(4);
+    if (id === 'fmt ') fmt = true;
+    if (id === 'data') {
+      if (!fmt) return 'damaged';
+      if (pos + 8 + len >= size) return null;
+    }
+    pos += 8 + len + (len & 1);
+    if (pos > size + 1) return 'damaged';
+  }
+  return fmt ? null : 'damaged';
+}
+
+// Ogg: pages one after the other from the start to the file's end, each "OggS", version 0, its header flags, and a
+// segment table whose sizes give its length, at most a million of them; the first page starts a stream. The last page
+// may be cut short. Answers null or 'damaged'.
+const OGG_PAGES_MAX = 1000 * 1000;
+function oggRefusal(read, size) {
+  let pos = 0;
+  for (let n = 0; pos < size; n += 1) {
+    if (n >= OGG_PAGES_MAX || size - pos < 27) return 'damaged';
+    const h = read(pos, 27);
+    if (h.toString('latin1', 0, 4) !== 'OggS' || h[4] !== 0 || h[5] > 7 || (n === 0 && !(h[5] & 2))) return 'damaged';
+    const segments = read(pos + 27, h[26]);
+    if (segments.length < h[26]) return 'damaged';
+    let body = 0;
+    for (const s of segments) body += s;
+    pos += 27 + h[26] + body;
+  }
+  return null;
+}
+
 // Whether a Markdown file's bytes are text the Vault takes: UTF-8 with no NUL, and not a page or a drawing dressed as
 // text. Answers null or 'kind'.
 function markdownRefusal(b) {
@@ -331,7 +415,9 @@ function markdownRefusal(b) {
 
 // What stops a file that is not a picture or a PDF from being taken once it is in, from its structure: null, 'kind' or
 // 'damaged'. Synchronous and bounded: it runs in the scan worker (server/vault-scan.js), never on the main thread.
-const STRUCTURE = { 'audio/mpeg': mp3Refusal, 'video/mp4': isoRefusal, 'audio/mp4': isoRefusal, 'video/quicktime': isoRefusal, 'video/webm': webmRefusal };
+const STRUCTURE = { 'audio/mpeg': mp3Refusal, 'video/mp4': isoRefusal, 'audio/mp4': isoRefusal, 'video/quicktime': isoRefusal, 'video/webm': webmRefusal, 'audio/wav': wavRefusal, 'audio/ogg': oggRefusal };
+// The types whose whole file is looked at once it is in (the upload route sends these, pictures and PDFs to the worker).
+const STRUCTURED = ['text/markdown', ...Object.keys(STRUCTURE)];
 function structureRefusal(file, type) {
   if (type === 'text/markdown') return markdownRefusal(fs.readFileSync(file));
   const walk = STRUCTURE[type];
@@ -339,9 +425,18 @@ function structureRefusal(file, type) {
   const fd = fs.openSync(file, 'r');
   try {
     const size = fs.fstatSync(fd).size;
+    // Reads through a 64 KB block kept from the last read, so a walk of many small parts (Ogg pages, RIFF chunks) makes
+    // few reads of the file.
+    const BLOCK = 64 * 1024;
+    let block = Buffer.alloc(0);
+    let blockAt = 0;
     const read = (position, length) => {
-      const b = Buffer.alloc(Math.max(0, Math.min(length, size - position)));
-      return b.subarray(0, b.length ? fs.readSync(fd, b, 0, b.length, position) : 0);
+      const want = Math.max(0, Math.min(length, size - position));
+      if (position >= blockAt && position + want <= blockAt + block.length) return block.subarray(position - blockAt, position - blockAt + want);
+      const b = Buffer.alloc(Math.max(want, Math.min(BLOCK, size - position)));
+      block = b.subarray(0, b.length ? fs.readSync(fd, b, 0, b.length, position) : 0);
+      blockAt = position;
+      return block.subarray(0, Math.min(want, block.length));
     };
     return walk(read, size);
   } finally {
@@ -349,4 +444,9 @@ function structureRefusal(file, type) {
   }
 }
 
-module.exports = { TYPES, LIMITS, MAX_BYTES, HEAD_BYTES, MAX_PIXELS, claimRefusal, claimedType, mismatch, sniff, picturePixels, structureRefusal, markdownRefusal };
+// A library module's permissions that a guest never has and that Roles can't turn on for guests (plan section 6: "off,
+// and cannot be turned on"); the library routes refuse guests whatever Roles says, and with these off the module's data
+// routes do too. `remove_any` is only off by default there.
+const GUEST_LOCKED = ['view', 'add', 'download', 'share'];
+
+module.exports = { TYPES, LIMITS, MAX_BYTES, HEAD_BYTES, MAX_PIXELS, GUEST_LOCKED, STRUCTURED, claimRefusal, claimedType, mismatch, sniff, picturePixels, structureRefusal, markdownRefusal };

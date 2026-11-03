@@ -159,6 +159,10 @@ const {
   // is the one the nearest of them saw, so a client can't choose its own with X-Forwarded-For; 0 = no proxy, the
   // connection's own address. Not a whole number of 0 or more: 1, with a line on start.
   TRUST_PROXY_HOPS = '',
+  // How long a request's body may take to arrive once its headers have, in seconds (300, Node's own five minutes), on
+  // every route but a library upload, which may take two hours and cuts off one too slow itself. Not a number above 0:
+  // the default.
+  REQUEST_BODY_SECONDS = '',
   // A module's library files (documentation/plans/plan-attachments-vault.md, section 2): VAULT_DIR is the folder their
   // bytes go in, for every environment on the server (VAULT_DIR/<environment slug>/, or VAULT_DIR/_default/ on a
   // single-environment install); unset, DATA_DIR/vault, which no in-app backup carries. VAULT_MAX_GB is the most the
@@ -1699,6 +1703,23 @@ const trustProxyHops = (() => {
   return 1;
 })();
 app.set('trust proxy', trustProxyHops);
+// The server waits up to two hours for a request's body (listener.requestTimeout, below), for a library upload of 2 GB
+// on a slow link; that upload route cuts off one too slow itself (watchArrival), and a library file's small picture has
+// its own deadline. Every other route's body must have arrived REQUEST_BODY_SECONDS (300, as Node's own limit would have
+// it) after its headers, or the connection is closed, so nobody can hold any other route open by sending a byte now and
+// then (security QA round 2, round 2).
+const BODY_MS = (() => { const v = Number(REQUEST_BODY_SECONDS); return Math.round((Number.isFinite(v) && v > 0 ? v : 300) * 1000); })();
+const LIBRARY_UPLOAD = /^\/api\/modules\/[^/]+\/library\/?$/i;
+const LIBRARY_THUMB_UPLOAD = /^\/api\/modules\/[^/]+\/library\/[^/]+\/thumb\/?$/i;
+app.use((req, res, next) => {
+  if (req.complete || (req.method === 'POST' && LIBRARY_UPLOAD.test(req.path)) || (req.method === 'PUT' && LIBRARY_THUMB_UPLOAD.test(req.path))) return next();
+  const timer = setTimeout(() => { if (!req.complete) req.socket.destroy(); }, BODY_MS);
+  timer.unref();
+  const done = () => clearTimeout(timer);
+  req.once('end', done);
+  req.once('close', done);
+  next();
+});
 // Writes only from this origin. A SameSite=Lax cookie still goes along with a request from another origin on the same
 // site (on a hosted server every environment is *.BASE_DOMAIN, the console admin.BASE_DOMAIN), and a plain form or a
 // no-cors fetch needs no preflight. So a POST, PUT, PATCH or DELETE that carries a cookie is refused when the browser
@@ -1727,7 +1748,7 @@ app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEM
 const MODULE_FILE_UPLOAD = /^\/api\/modules\/[^/]+\/files\/[^/]+$/;
 // A module's library routes (a space's files) decide who may before any of the body is read, so this parser leaves
 // them alone; the one that takes JSON (a rename) parses its own small body after that.
-const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/;
+const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/i; // routes match whatever the case, so this does too
 app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && MODULE_FILE_UPLOAD.test(req.path)) && !LIBRARY_ROUTE.test(req.path) && Boolean(req.is('application/json')), verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const publicDir = path.join(__dirname, '..', 'public');
@@ -2331,6 +2352,12 @@ function gbText(bytes) {
   const gb = bytes / (1024 ** 3);
   return (Number.isInteger(gb) ? gb : Math.round(gb * 10) / 10).toString();
 }
+// A size for a sentence: "5 GB", "1.5 GB", in MB under a gigabyte ("512 MB") and in KB under a megabyte, never "0 GB".
+const sizeText = (bytes) => {
+  if (bytes >= 1024 ** 3) return `${gbText(bytes)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round((bytes / 1048576) * 10) / 10} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
 // Each refuses the one thing at its cap with a 403 and a plain sentence, leaving everything else running;
 // returns true (having already answered) when refused, so a caller just does `if (refuseX(res)) return;`.
 function refuseOverMembers(res) {
@@ -2344,7 +2371,7 @@ function refuseOverStorage(res) {
   if (cap === null) return false;
   const env = currentEnvironment();
   if (environmentStorageBytes(env.slug, env.dataDir) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` });
+  res.status(403).json({ error: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` });
   return true;
 }
 // Middleware form of refuseOverStorage, for the routes that write bytes to disk (module uploads, profile and
@@ -7948,7 +7975,6 @@ const LIBRARY_THUMB_BYTES = 300 * 1024;
 // ten seconds and the time the floor (VAULT_MIN_KB_PER_SECOND) gives its size, or it is cut off.
 const LIBRARY_THUMBS = { person: 2, environment: 8 };
 const thumbDeadlineMs = (bytes) => 10000 + Math.ceil((bytes / libraryMinRate) * 1000);
-const sizeText = (bytes) => (bytes >= 1024 ** 3 ? `${gbText(bytes)} GB` : `${Math.round((bytes / 1048576) * 10) / 10} MB`);
 const libraryKindSentence = 'That kind of file can\'t be added here. It takes pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown.';
 const librarySentence = (refusal) => (refusal === 'heic' ? 'HEIC pictures can\'t be added here. Save it as a JPEG.' : libraryKindSentence);
 // Why a PDF is not taken (server/pdf-scan.js), in one sentence.
@@ -8042,7 +8068,7 @@ function vaultLevels(ctx, keys) {
   return [
     { onDisk: used.spaces.get(ctx.spaceId) || 0, most: quota.space, field: 'space', value: keys.space, sentence: `This ${word('space')}'s ${ctx.name} is full (${sizeText(quota.space)}). Remove some files to add more.` },
     { onDisk: used.people.get(ctx.by) || 0, most: quota.person, field: 'person', value: keys.person, sentence: `You have used your ${sizeText(quota.person)} in ${ctx.name}. Remove some of your files to add more.` },
-    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` }] : []),
+    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` }] : []),
     { onDisk: vaultHostBytes(), most: vaultLimits.total, field: 'environment', value: keys.environment, sentence: 'The server\'s file storage is full. Ask the admin.' },
   ];
 }
@@ -8258,7 +8284,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     const group = vaultTypes.TYPES[type].group;
     let kept = { size: got.size, sha256: got.sha256, taken: null, camera: '' };
     // The whole file's check, in a worker (server/vault-scan.js): the main thread only waits for it.
-    if (group === 'image' || ['application/pdf', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'video/quicktime', 'video/webm', 'text/markdown'].includes(type)) {
+    if (group === 'image' || type === 'application/pdf' || vaultTypes.STRUCTURED.includes(type)) {
       const checked = await vaultScanner.scan({ file: part, type, keepPosition: req.query.keepPosition === '1' });
       if (checked.refuse) {
         dropPart();
@@ -8308,17 +8334,18 @@ function contentDisposition(kind, name) {
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 // The headers every library file is sent with: its stored type only (Markdown as plain text, never HTML), never sniffed,
-// never kept by a shared cache, never run as a page (a PDF is the one exception: a browser shows none in a sandboxed
-// document, so it may be framed by this site only).
+// never kept by a shared cache, never run as a page: `sandbox; default-src 'none'` on every type, a PDF too, since the
+// browser's own PDF viewer is not used (decision 18). A PDF is always sent as an attachment: until the app's own viewer
+// (step 3) fetches its bytes, nothing opens one in the browser at this site's origin.
 function libraryHeaders(type, name, kind) {
   return {
     'Content-Type': type === 'text/markdown' ? 'text/plain; charset=utf-8' : type,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': contentDisposition(kind, name),
+    'Content-Disposition': contentDisposition(type === 'application/pdf' ? 'attachment' : kind, name),
     'Cache-Control': 'private, no-store',
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': type === 'application/pdf' ? "default-src 'none'; frame-ancestors 'self'" : "sandbox; default-src 'none'",
+    'Content-Security-Policy': "sandbox; default-src 'none'",
   };
 }
 // Streams a file (or its thumbnail) with range requests (206, Content-Range, Accept-Ranges, 416, ETag, Last-Modified,
