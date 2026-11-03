@@ -1029,12 +1029,29 @@
   // A file opens in a file window over the page (the host's own, public/file-viewer.js; host.files.open). Previous and Next walk the list
   // as it is filtered now. When the window closes, focus goes back to what opened it. Only if the host can't open one is the file's details
   // sheet shown, so every file still goes somewhere.
-  let opener = null;
-  host.on('fileclosed', () => { if (opener && opener.isConnected) opener.focus({ preventScroll: true }); opener = null; });
+  // Each window remembers what opened it, by file id, so Esc on one returns to its own row. When that element is gone (the list drew again)
+  // or the window was closed with Close all, focus goes to the file's row, else the first row, never the page.
+  const openers = new Map();
+  const rowFocus = (id) => {
+    const item = itemEl(id) || $('body').querySelector('[data-id]');
+    return item ? item.querySelector('.sdk-open') || item.querySelector('button, input') : null;
+  };
+  host.on('fileclosed', (e) => {
+    const id = e && e.id;
+    const at = openers.get(id);
+    openers.delete(id);
+    const to = at && at.isConnected ? at : rowFocus(id);
+    if (to) to.focus({ preventScroll: true });
+  });
   function openFile(file, via = 'open') {
     if (host.files && typeof host.files.open === 'function') {
-      opener = root.activeElement || (document.activeElement !== document.body ? document.activeElement : null);
-      return host.files.open(host.objects.make('file', file.id), { list: filtered().map((f) => f.id), name: file.name }).catch(() => showFile(file, { opener: via }));
+      const at = root.activeElement || (document.activeElement !== document.body ? document.activeElement : null);
+      openers.set(file.id, at);
+      return host.files.open(host.objects.make('file', file.id), { list: filtered().map((f) => f.id), name: file.name }).then((opened) => {
+        // Refused at the cap: nothing opened, so nothing will close; focus stays where it was.
+        if (opened === false) openers.delete(file.id);
+        return opened;
+      }, () => { openers.delete(file.id); return showFile(file, { opener: via }); });
     }
     return showFile(file, { opener: via });
   }

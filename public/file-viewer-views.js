@@ -26,6 +26,9 @@ export const KINDS = {
 };
 export const kindOf = (f) => (f.group === 'image' ? 'picture' : f.group === 'audio' ? 'audio' : f.group === 'video' ? 'video' : f.type === 'application/pdf' ? 'pdf' : 'text');
 
+// The colour around a PDF's pages: the panel pulled toward the text colour, so white pages stand out from it in a light theme (1.5:1 and more) and a dark one.
+export const AROUND_PAGES = 'color-mix(in srgb, var(--text-primary) 22%, var(--surface-panel))';
+export const DOWNLOAD_ONLY_NO = 'This PDF can\'t be opened here, and your role can\'t download it.';
 export const DOWNLOAD_ONLY = 'This PDF can\'t be opened here. Download it.';
 
 // ---- small pieces -------------------------------------------------------------------------------------------------------------------
@@ -101,7 +104,7 @@ export async function probe(url) {
   } catch { return 'other'; }
 }
 function missingView(file, source) {
-  return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${source.module}, or ask the admin to restore the ${source.module} folder.`, actions: [] });
+  return Object.assign(viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${source.module}, or ask the admin to restore the ${source.module} folder.`, actions: [] }), { missing: true });
 }
 function downloadButton(file, source, primary = true) {
   if (!source.download) return [];
@@ -313,9 +316,9 @@ function pdfView(file, source, api) {
     level.querySelector('.fv-btn-word').textContent = st.fit === 'width' ? 'Fit width' : st.fit === 'page' ? 'Fit page' : `${Math.round(st.scale * 100)}%`;
   };
   // The theme's colours for around the pages and a link's focus ring, resolved from the tokens here.
-  const colour = (token) => {
+  const colour = (value) => {
     const probeEl = h('span');
-    probeEl.style.cssText = `position:absolute;visibility:hidden;color:var(${token})`;
+    probeEl.style.cssText = `position:absolute;visibility:hidden;color:${value}`;
     el.append(probeEl);
     const c = getComputedStyle(probeEl).color;
     probeEl.remove();
@@ -324,12 +327,12 @@ function pdfView(file, source, api) {
   const send = () => {
     if (sent || !ready || !bytes) return;
     sent = true;
-    post({ type: 'colors', page: colour('--surface-field'), focus: colour('--focus-ring') });
+    post({ type: 'colors', page: colour(AROUND_PAGES), focus: colour('var(--focus-ring)') });
     post({ type: 'open', data: bytes }, [bytes]);
     bytes = null;
   };
   const onMessage = (event) => {
-    if (event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') return;
+    if (event.source !== frame.contentWindow || event.origin !== 'null' || !event.data || typeof event.data !== 'object') return;
     const m = event.data;
     if (m.type === 'ready') { ready = true; send(); } else if (m.type === 'opened') {
       loading.el.remove();
@@ -390,6 +393,7 @@ function pdfView(file, source, api) {
 }
 
 export function downloadOnlyView(file, source) {
+  if (!source.download) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY_NO, text: `The ${source.module} could not check this file, so it is kept for download only.` });
   return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY, text: `The ${source.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: downloadButton(file, source) });
 }
 

@@ -297,8 +297,9 @@ async function main() {
     } finally { await tab.close(); }
 
     // The file windows (step 3): every type, the cap, Close all, Esc, focus, the phone's sheet, contrast.
-    const { viewerCases } = await import('./check-vault-viewer-cases.mjs');
+    const { viewerCases, viewerFixCases } = await import('./check-vault-viewer-cases.mjs');
     await viewerCases({ S, api, say, fail, browser, until, open, dataDir, trip });
+    await viewerFixCases({ S, api, say, fail, browser, until, open, trip });
 
     // (Last, because adding 300 files uses up each person's 30 uploads a minute.) A long list: 300 files, the Grid opens at once, and ticking one file does not draw them all again.
     {
