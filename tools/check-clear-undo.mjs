@@ -26,11 +26,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { ModuleHolds } = require('../server/module-holds.js');
 const { ModuleData } = require('../server/module-data.js');
+const { buildModule } = require('../server/module-build.js');
 
 let n = 0;
 let failed = 0;
@@ -365,6 +367,11 @@ try {
     assert.equal(second.status, 409);
     assert.match(second.json.error, /^.+ was just cleared\. You can undo that for [1-8] more seconds?, or clear it again after that\.$/);
     assert.ok(Number(second.headers.get('retry-after')) >= 1, 'with Retry-After');
+    // The sentence counts to undoUntil (what the toast shows), not to the end of the grace (QA N8).
+    const said = Number(/for (\d+) more second/.exec(second.json.error)[1]);
+    const retry = Number(second.headers.get('retry-after'));
+    assert.ok(said >= 1 && said <= UNDO, `the sentence says ${said} seconds; the toast has at most ${UNDO}`);
+    assert.ok(retry - said >= 4 && retry - said <= 6, `Retry-After (${retry}) is when the 5 s grace is over too, ${said} seconds later`);
     assert.ok(await fileThere(fid), 'the first hold keeps its file');
     const back = await restore('research', first.json.restoreToken);
     assert.deepEqual([back.status, back.json.restored, back.json.skipped], [200, before.length, 0], 'the first comes back whole');
@@ -420,18 +427,28 @@ try {
     assert.equal(await copies(), 0, 'and none come back when it is on again');
   });
 
-  await test('live: a module is cleared at most five times a minute; the sixth is a 429 with Retry-After (QA F2)', async () => {
+  await test('live: five clears a minute per module; one person at most three, so a moderator still has her turn (QA F2, N7)', async () => {
     const before = await list('calendar');
     assert.ok(before.length, 'the seed has events');
-    for (let i = 0; i < 5; i += 1) {
-      const cleared = await call('DELETE', data('calendar', ''), undefined, i % 2 ? 'sam' : 'mia');
-      assert.equal(cleared.status, 200, `clear ${i + 1}: ${JSON.stringify(cleared.json)}`);
-      assert.equal((await restore('calendar', cleared.json.restoreToken, i % 2 ? 'sam' : 'mia')).status, 200);
+    const cycle = async (as) => {
+      const cleared = await call('DELETE', data('calendar', ''), undefined, as);
+      if (cleared.status === 200) assert.equal((await restore('calendar', cleared.json.restoreToken, as)).status, 200);
+      return cleared;
+    };
+    for (let i = 0; i < 3; i += 1) {
+      const c = await cycle('sam');
+      assert.equal(c.status, 200, `sam clear ${i + 1}: ${JSON.stringify(c.json)}`);
     }
-    const sixth = await call('DELETE', data('calendar', ''), undefined, 'admin');
-    assert.equal(sixth.status, 429, 'everyone together, not per person');
-    assert.match(sixth.json.error, /^.+ was cleared too often just now\. Try again in \d+ seconds?\.$/);
-    assert.ok(Number(sixth.headers.get('retry-after')) >= 1);
+    const fourth = await cycle('sam');
+    assert.equal(fourth.status, 429, 'a person gets three of the five');
+    assert.match(fourth.json.error, /^.+ was cleared too often just now\. Try again in \d+ seconds?\.$/);
+    assert.ok(Number(fourth.headers.get('retry-after')) >= 1);
+    for (let i = 0; i < 2; i += 1) {
+      const c = await cycle('mia'); // moderates this trip: the last two are for her, the owner and the admin
+      assert.equal(c.status, 200, `the moderator still has her turn (${i + 1}): ${JSON.stringify(c.json)}`);
+    }
+    const sixth = await cycle('admin');
+    assert.equal(sixth.status, 429, 'five in all, everyone together');
     same(await list('calendar'), before);
   });
 
@@ -459,6 +476,85 @@ try {
     assert.equal(vault.status, 400);
     assert.match(vault.json.error, / keeps files, not module data, so Clear has nothing to remove\.$/);
     assert.deepEqual((await call('DELETE', data('research', ''))).json, { cleared: 0 }, 'nothing to clear: no hold, no token');
+  });
+
+  await test('live: a clear and its undo of a 3 MB module with 20 streams open does not stall the server (QA N1)', async () => {
+    await stopServer(server);
+    const file = path.join(dataDir, 'modules', 'todo', 'data', `space-${T}.json`);
+    const stored = {};
+    for (let i = 0; i < 1500; i += 1) {
+      stored[`task:big${i}`] = { value: { id: `big${i}`, title: `Task ${i}`, notes: 'x'.repeat(1900), remind: false, done: false, doneAt: null, createdAt: 1, links: [], autoDone: false }, version: 1, updatedAt: '2026-01-01T00:00:00.000Z', by: 'admin' };
+    }
+    fs.writeFileSync(file, JSON.stringify(stored));
+    assert.ok(fs.statSync(file).size > 3 * 1024 * 1024, 'over 3 MB');
+    server = await startServer(dataDir, port, 'fifth', env);
+    const stop = path.join(dataDir, 'stop-poll');
+    // Two clears and two undos (by `as`: a person may clear three times a minute) while a separate process asks /healthz as fast as it can; answers the slowest wait.
+    const cycles = async (as) => {
+      fs.rmSync(stop, { force: true });
+      const poller = spawn(process.execPath, ['-e', `
+        const fs = require('fs'); (async () => { let max = 0;
+        while (!fs.existsSync(process.argv[2])) { const t = performance.now(); await fetch(process.argv[1] + '/healthz').then((r) => r.text()); max = Math.max(max, performance.now() - t); await new Promise((r) => setTimeout(r, 5)); }
+        console.log(Math.round(max)); })();`, server.base, stop], { stdio: ['ignore', 'pipe', 'inherit'] });
+      let out = '';
+      poller.stdout.on('data', (d) => { out += d; });
+      await sleep(300);
+      try {
+        for (let i = 0; i < 2; i += 1) {
+          const cleared = await call('DELETE', data('todo', ''), undefined, as);
+          assert.equal(cleared.status, 200, JSON.stringify(cleared.json));
+          assert.equal(cleared.json.cleared, 1500);
+          const back = await restore('todo', cleared.json.restoreToken, as);
+          assert.deepEqual([back.status, back.json.restored], [200, 1500]);
+        }
+      } finally {
+        fs.writeFileSync(stop, '');
+        await new Promise((r) => poller.once('exit', r));
+      }
+      return Number(out.trim());
+    };
+    const alone = await cycles('admin'); // the same work with nobody listening, for this machine's own speed
+    const aborts = [];
+    for (let i = 0; i < 20; i += 1) {
+      const ac = new AbortController();
+      aborts.push(ac);
+      const r = await fetch(`${server.base}/api/modules/stream?space=${T}`, { headers: { cookie: jar(i % 2 ? 'sam' : 'admin'), accept: 'text/event-stream' }, signal: ac.signal });
+      assert.equal(r.status, 200);
+      (async () => { try { for await (const _ of r.body) { /* read and drop */ } } catch { /* closed */ } })();
+    }
+    await sleep(500);
+    const heard = await cycles('mia');
+    for (const ac of aborts) ac.abort();
+    console.log(`  /healthz slowest wait: ${heard} ms with 20 streams open, ${alone} ms with none`);
+    // 300 ms on a quiet machine; on a busy one, no worse than 2.5 times what the same work costs with nobody listening.
+    assert.ok(Number.isFinite(heard) && heard < Math.max(300, alone * 2.5), `/healthz waited up to ${heard} ms with 20 streams open (${alone} ms with none) through 2 clears and 2 undos of 1500 objects`);
+  });
+
+  await test('live: an update that turns the Planner off (a new permission) during a clear finishes the clear first: the Calendar copies are cleaned (QA N5)', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const put = await call('PUT', data('travel', `plan:n5${i}`), { value: { kind: 'other', id: `n5${i}`, title: `N5 plan ${i}`, date: '2026-10-2' + i, time: '10:00', place: '', category: 'other', done: false } });
+      assert.equal(put.status, 200, JSON.stringify(put.json));
+    }
+    const titles = new Set((await list('travel')).map((i) => i.value?.title).filter(Boolean));
+    const copies = async () => (await list('calendar')).filter((i) => titles.has(i.value?.title)).length;
+    assert.ok(await copies() > 0, 'the Planner\'s copies are on the Calendar');
+    const cleared = await call('DELETE', data('travel', ''));
+    assert.equal(cleared.status, 200, JSON.stringify(cleared.json));
+    assert.ok(await copies() > 0, 'a clear waiting for its undo leaves the copies');
+    const src = path.join(dataDir, 'planner-next');
+    fs.cpSync(path.join(process.cwd(), 'modules', 'travel'), src, { recursive: true });
+    const manifest = JSON.parse(fs.readFileSync(path.join(src, 'module.json'), 'utf8'));
+    manifest.version = '99.0.0';
+    manifest.permissions.push({ key: 'extra', label: 'Something new', default: { member: false, guest: false, moderator: false } });
+    fs.writeFileSync(path.join(src, 'module.json'), JSON.stringify(manifest));
+    const zip = buildModule(src).zip;
+    const r = await fetch(`${server.base}/api/modules`, { method: 'POST', headers: { 'content-type': 'application/zip', cookie: jar('admin') }, body: zip });
+    const out = await r.json();
+    assert.equal(r.status, 201, JSON.stringify(out));
+    assert.deepEqual([out.module.enabled, out.module.needsApproval], [false, true], 'the update waits for approval, so the Planner is off');
+    assert.equal(await copies(), 0, 'the clear was finished before it went off: its copies are gone now, not left behind');
+    assert.ok(!fs.existsSync(path.join(dataDir, 'modules', 'travel', 'trash', `space-${T}.json`)), 'and the hold');
+    fs.rmSync(src, { recursive: true, force: true });
   });
 } catch (err) {
   failed += 1;

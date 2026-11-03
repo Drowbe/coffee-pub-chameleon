@@ -1011,6 +1011,9 @@ class ModuleManager {
     // This environment's words (for the placeholders in a manifest's text) and a module's display name and icon (the
     // owner's, else the template's; null for the manifest's own), set by the environment's build (environment.js).
     this.wordsOf = () => null;
+    // Called with a module's id just before an install, update or rollback turns it off (it asks for something not yet approved),
+    // while it is still on: a Clear waiting for its Undo in it and in what needs it is finished first (server/environment.js).
+    this.beforeOff = () => {};
     this.displayOf = () => ({ name: null, icon: null, ownName: null, ownIcon: null, templateName: null, templateIcon: null });
     this.filled = new Map(); // "id@version|words" -> the manifest with its placeholders filled
     this.withPlaceholders = new WeakSet(); // the stored manifests that have any
@@ -1433,6 +1436,7 @@ class ModuleManager {
       fs.rmSync(staging, { recursive: true, force: true });
     }
 
+    if (existing?.enabled && this.hasPending(this.pendingFor(existing, manifest))) this.beforeOff(manifest.id);
     const now = new Date().toISOString();
     const entry = existing || {
       id: manifest.id, versions: [], enabled: false, allSpaces: false, spaces: [], approved: { permissions: [], hooks: [], refs: [], events: [], actions: [] }, installedAt: now,
@@ -1533,10 +1537,11 @@ class ModuleManager {
     const entry = this.get(id);
     if (!entry.versions.includes(version) || version === entry.version) throw new ModuleError('that version is not available');
     if (this.manifestOf(id, version)?.outdated) throw new ModuleError(`${this.shownName(this.manifestOf(id, version))} ${version} was built for an older version of ${productName()}, so it can't be rolled back to.`, 409);
-    entry.version = version;
-    entry.updatedAt = new Date().toISOString();
     const manifest = this.manifestOf(id, version);
     const pending = this.pendingFor(entry, manifest);
+    if (entry.enabled && this.hasPending(pending)) this.beforeOff(id);
+    entry.version = version;
+    entry.updatedAt = new Date().toISOString();
     if (this.hasPending(pending)) entry.enabled = false;
     this.save();
     return this.view(id);

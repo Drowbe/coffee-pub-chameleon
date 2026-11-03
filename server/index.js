@@ -7074,6 +7074,29 @@ function markerKindAt(moduleId, key) {
   if (!found) return null;
   return found.manifest.refs.produces.find((p) => p.marker && key.startsWith(p.key.replace('{id}', ''))) || null;
 }
+// The modules (enabled, as enabled() answers) approved to show a marker kind produced by a change's module.
+function markerConsumers(change, kind) {
+  return modules.enabledAll().filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind));
+}
+// The marker kinds one batch of changes touches, with the first change of each and who shows it: worked out once per batch (the batch
+// object is shared by every open stream's listener), not once per stream, so a big Clear or Undo with many streams open
+// costs the same as with one.
+const batchMarkers = new WeakMap();
+function markersOfBatch(batch) {
+  let got = batchMarkers.get(batch);
+  if (got) return got;
+  got = new Map(); // kind name -> first change
+  const producing = new Map(); // module id -> its marker kinds, or null
+  for (const c of batch.changes) {
+    if (!producing.has(c.module)) producing.set(c.module, modules.enabled(c.module)?.manifest.refs.produces.filter((p) => p.marker) || null);
+    const list = producing.get(c.module);
+    if (!list || !list.length) continue;
+    const kind = list.find((p) => c.key.startsWith(p.key.replace('{id}', '')));
+    if (kind && !got.has(kind.kind)) got.set(kind.kind, { change: c, kind, consumers: markerConsumers(c, kind) });
+  }
+  batchMarkers.set(batch, got);
+  return got;
+}
 // Today's date where the server is, as YYYY-MM-DD: a day marker before it is past.
 function todayIn(tz, now = Date.now()) {
   const got = {};
@@ -7610,7 +7633,7 @@ app.get('/api/bus/actions/status', busRoute((who, req) => {
 function overLimit(moduleId, by, kind) {
   const r = moduleLimits.take(moduleId, by || 'guest', kind);
   if (r.ok) return null;
-  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind + 's'} in a minute`, by === '*' ? null : by, null);
+  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind.startsWith('clear') ? 'clears' : kind + 's'} in a minute`, by === '*' ? null : by, null);
   return r;
 }
 const limitMessage = () => `This ${word('module')} is doing that too often. Try again in a moment.`;
@@ -9545,6 +9568,25 @@ function clearRefusal(ctx) {
   // A person clears their own data; guards that don't read still refuse it.
   return guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
 }
+// The clear budget (server/module-limits.js): five a minute for a module in an environment, but one person takes at most
+// three of them (clearPerson) and a member or guest, with the others like them, at most three (clearOrdinary), so the
+// last two are always there for an owner, admin or moderator of the space. A refusal gives back what it had counted.
+function clearBudget(ctx) {
+  const id = ctx.manifest.id;
+  const user = ctx.who.user;
+  const space = ctx.scopeKey.startsWith('space:') ? store.spaceById(ctx.scopeKey.slice(6)) : null;
+  const trusted = Boolean(user) && (hasOwnerRights(user) || (space ? chatModerator(ctx.who, space) : false));
+  const taken = [];
+  for (const [who, kind] of [[ctx.by, 'clearPerson'], ...(trusted ? [] : [['*', 'clearOrdinary']]), ['*', 'clear']]) {
+    const slow = overLimit(id, who, kind);
+    if (slow) {
+      for (const [w, k] of taken) moduleLimits.refund(id, w, k);
+      return slow;
+    }
+    taken.push([who, kind]);
+  }
+  return null;
+}
 app.delete('/api/modules/:id/data', (req, res) => {
   const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
@@ -9552,9 +9594,11 @@ app.delete('/api/modules/:id/data', (req, res) => {
   if (refused) return res.status(refused.status).json({ error: refused.error });
   const waiting = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
   if (waiting) {
-    const left = Math.max(1, Math.ceil((Date.parse(waiting.expiresAt) - Date.now()) / 1000));
+    // Retry-After is when the hold is over (the grace included); the sentence counts to undoUntil, the time the toast shows.
+    const retry = Math.max(1, Math.ceil((Date.parse(waiting.expiresAt) - Date.now()) / 1000));
+    const left = Math.ceil((Date.parse(waiting.undoUntil) - Date.now()) / 1000);
     const name = modules.shownName(ctx.manifest);
-    return void res.set('Retry-After', String(left)).status(409).json({ error: `${name} was just cleared. You can undo that for ${left} more ${left === 1 ? 'second' : 'seconds'}, or clear it again after that.` });
+    return void res.set('Retry-After', String(retry)).status(409).json({ error: left > 0 ? `${name} was just cleared. You can undo that for ${left} more ${left === 1 ? 'second' : 'seconds'}, or clear it again after that.` : `${name} was just cleared. You can clear it again in ${retry} ${retry === 1 ? 'second' : 'seconds'}.` });
   }
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
@@ -9563,7 +9607,7 @@ app.delete('/api/modules/:id/data', (req, res) => {
   const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
   if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
   if (!items.some((item) => !isBookkeeping(item.key))) return res.json({ cleared: 0 }); // no objects: nothing to clear
-  const often = overLimit(ctx.manifest.id, '*', 'clear');
+  const often = clearBudget(ctx);
   if (often) return void res.set('Retry-After', String(often.retrySeconds)).status(429).json({ error: `${modules.shownName(ctx.manifest)} was cleared too often just now. Try again in ${often.retrySeconds} ${often.retrySeconds === 1 ? 'second' : 'seconds'}.` });
   // Held first, then cleared: a stop between the two leaves the data where it was.
   const held = moduleHolds.hold(ctx.manifest.id, ctx.scopeKey, {
@@ -9771,6 +9815,31 @@ function eventIdOf(happened) {
   }
   return id;
 }
+// A batch's changes as the stream sends them to a viewer who has nothing hidden: written out once per batch.
+const batchTexts = new WeakMap();
+function changesText(batch) {
+  let text = batchTexts.get(batch);
+  if (text === undefined) {
+    text = JSON.stringify(batch.changes.map((c) => ({ key: c.key, ...('value' in c ? { value: c.value } : {}), version: c.version, deleted: c.deleted, by: c.by })));
+    batchTexts.set(batch, text);
+  }
+  return text;
+}
+// A viewer's permissions in a space (or none), worked out once per person for everything done in the same turn of the event
+// loop, by every open stream together: a big Clear or Undo asks for them for each stream and each kind, and they cannot change
+// in between. Dropped at the end of the turn.
+const permsTurns = new Map(); // environment -> "user|space" -> permissions
+function permsThisTurn(env, who, spaceId) {
+  let turn = permsTurns.get(env);
+  if (!turn) {
+    turn = new Map();
+    permsTurns.set(env, turn);
+    queueMicrotask(() => permsTurns.delete(env));
+  }
+  const k = `${who.user ? who.user.key : '-'}|${spaceId || ''}`;
+  if (!turn.has(k)) turn.set(k, modulePerms(who, spaceId));
+  return turn.get(k);
+}
 app.get('/api/modules/stream', (req, res) => {
   const env = currentEnvironment(); // captured once: the close handler below fires later, outside this request
   const who = moduleViewer(req);
@@ -9784,26 +9853,27 @@ app.get('/api/modules/stream', (req, res) => {
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
   const send = (v, type, happened, data) => sseWrite(res, `id: ${eventIdOf(happened)}\nevent: ${type}\ndata: ${JSON.stringify(v.view ? { ...data, view: v.view } : data)}\n\n`);
+  const permsHere = (spaceId) => permsThisTurn(env, who, spaceId);
   // Where a change belongs for this viewer in view `v`, or null if they may not see it there.
-  const place = (v, moduleId, scopeKey) => {
-    const found = modules.enabled(moduleId);
+  const place = (v, moduleId, scopeKey, known = null) => {
+    const found = known || modules.enabled(moduleId);
     if (!found) return null;
     const { manifest, entry } = found;
     if (scopeKey === 'environment') {
-      return who.user && moduleCan(manifest, modulePerms(who, null), 'read') ? { scope: 'environment', spaceId: null } : null;
+      return who.user && moduleCan(manifest, permsHere(null), 'read') ? { scope: 'environment', spaceId: null } : null;
     }
     if (scopeKey.startsWith('person:')) {
       // Someone's own data: told only to that person, on whatever page of theirs shows the module.
-      return who.user && scopeKey === `person:${who.user.key}` && moduleCan(manifest, modulePerms(who, null), 'read') ? { scope: 'person', spaceId: null } : null;
+      return who.user && scopeKey === `person:${who.user.key}` && moduleCan(manifest, permsHere(null), 'read') ? { scope: 'person', spaceId: null } : null;
     }
     if (!scopeKey.startsWith('space:')) return null;
     const r = store.spaceById(scopeKey.slice(6));
     if (!r) return null;
     if (v.space) {
-      return r.id === v.space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
+      return r.id === v.space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, permsHere(r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
     }
     const mine = who.user && r.members.includes(who.user.key) && modules.isOnIn(entry.id, r.id);
-    return mine && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
+    return mine && moduleCan(manifest, permsHere(r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
   };
   const onChange = listenIn(env, (change) => {
     for (const v of views) {
@@ -9825,7 +9895,15 @@ app.get('/api/modules/stream', (req, res) => {
       if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
       const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
       // A big batch comes without values (`reload: true`, server/module-data.js emitBatch): the page reads the data again.
-      send(v, 'changes', batch, { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), ...(batch.reload ? { reload: true } : {}), changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, ...('value' in h ? { value: h.value } : {}), version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
+      const head = { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), ...(batch.reload ? { reload: true } : {}) };
+      if (!hide.length) {
+        // Nothing hidden from this viewer: the batch's changes are written out once and shared by every stream that hears it.
+        const text = changesText(batch);
+        const body = JSON.stringify(v.view ? { ...head, changes: 0, ...at, view: v.view } : { ...head, changes: 0, ...at }).replace('"changes":0', () => `"changes":${text}`);
+        sseWrite(res, `id: ${eventIdOf(batch)}\nevent: changes\ndata: ${body}\n\n`);
+        continue;
+      }
+      send(v, 'changes', batch, { ...head, changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, ...('value' in h ? { value: h.value } : {}), version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
     }
   });
   const onFire = listenIn(env, (fire) => {
@@ -9883,26 +9961,21 @@ app.get('/api/modules/stream', (req, res) => {
   // An object of a marker kind was written or deleted where this viewer reads it (plan-calendar-markers.md): the
   // modules here approved to show that kind, and on and readable there, are named, and ask again. No object data goes.
   // A space's page hears its space only; a page without a space hears the environment and the viewer's own spaces.
-  const onMarkers = listenIn(env, (change) => {
+  const onMarkers = listenIn(env, (change, known) => {
     if (!change.scopeKey.startsWith('space:') && change.scopeKey !== 'environment') return;
-    const kind = markerKindAt(change.module, change.key);
+    const kind = known ? known.kind : markerKindAt(change.module, change.key);
     if (!kind) return;
+    const consumers = known ? known.consumers : markerConsumers(change, kind);
     for (const v of views) {
       const at = place(v, change.module, change.scopeKey);
       if (!at || (v.space && at.scope !== 'space')) continue;
-      const hearing = modules.enabledAll()
-        .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(v, m.manifest.id, change.scopeKey))
-        .map((m) => m.manifest.id);
+      const hearing = consumers.filter((m) => place(v, m.manifest.id, change.scopeKey, m)).map((m) => m.manifest.id);
       if (hearing.length) send(v, 'markers', change, { modules: hearing });
     }
   });
   // A batch tells the marker modules once per kind it touched.
   const onMarkersBatch = (batch) => {
-    const kinds = new Set();
-    for (const c of batch.changes) {
-      const kind = markerKindAt(c.module, c.key);
-      if (kind && !kinds.has(kind.kind)) { kinds.add(kind.kind); onMarkers(c); }
-    }
+    for (const known of markersOfBatch(batch).values()) onMarkers(known.change, known);
   };
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);

@@ -993,8 +993,10 @@ class Store {
     const ownIcon = own('moduleIcons');
     // An icon applies only while it can be drawn (displayIconIds); one that cannot now (its module uninstalled, its
     // entry taken off the icon list) is kept as the owner's, and reported as such, but reads the next one down.
-    const icons = this.displayIconIds();
-    const icon = [ownIcon, from(this.templateModuleIcons)].find((i) => i && icons.includes(i)) || null;
+    // The list of drawable icons is built only when there is an icon to check: a name is asked for far more often.
+    const wanted = [ownIcon, from(this.templateModuleIcons)];
+    const icons = wanted.some(Boolean) ? this.displayIconIds() : [];
+    const icon = wanted.find((i) => i && icons.includes(i)) || null;
     // templateName/templateIcon: what the template gives, whether or not the owner's own is set over it.
     return { name: ownName || from(this.templateModuleNames), icon, ownName, ownIcon, templateName: from(this.templateModuleNames), templateIcon: from(this.templateModuleIcons) };
   }
