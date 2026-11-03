@@ -6894,7 +6894,10 @@ app.get('/api/objects/search', (req, res) => {
   if (has === 'amount' && !who.user && !(scope === 'space' && store.spaceById(String(req.query.space || ''))?.guestsSeeHidden === true)) {
     return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can't see costs in this ${word('space')}.` });
   }
-  const cap = has ? SEARCH_CAP_PLACES : SEARCH_CAP;
+  // `kind=poll` (a kind name): only that kind, and up to 1,000 of them, like `has`: a module asking for one kind wants all of it.
+  const onlyKind = typeof req.query.kind === 'string' && /^[a-z][a-z0-9_-]{0,31}$/i.test(req.query.kind) ? req.query.kind : null;
+  if (req.query.kind !== undefined && req.query.kind !== '' && !onlyKind) return res.status(400).json({ error: 'kind is a kind name' });
+  const cap = has || onlyKind ? SEARCH_CAP_PLACES : SEARCH_CAP;
   // `in=<space id>` (with scope=environment): only the environment's objects marked for that space, and only for those who
   // belong to it (or own the environment).
   let inSpace = null;
@@ -6948,6 +6951,7 @@ app.get('/api/objects/search', (req, res) => {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
         const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
         const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
+          && !(onlyKind && summary.ref.kind !== onlyKind)
           && !(has === 'place' && !summary.place)
           && !(has === 'amount' && !isPriced(summary))
           && !(q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q));

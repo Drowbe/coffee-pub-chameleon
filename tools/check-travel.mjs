@@ -1394,14 +1394,14 @@ test('host.util.localWhen: a local day and time from a when, the clock as writte
 });
 
 test('host.util.markdown: the lines before a list are drawn before it, not after', () => {
-  assert.equal(sdkText.markdown('Body\n\nLinks:\n- A: https://a.example\nExternal source'), '<p>Body</p><p>Links:</p><ul><li>A: <a href="https://a.example" target="_blank" rel="noopener">https://a.example</a></li></ul><p>External source</p>');
+  assert.equal(sdkText.markdown('Body\n\nLinks:\n- A: https://a.example\nExternal source'), '<p>Body</p><p>Links:</p><ul><li>A: <a href="https://a.example" target="_blank" rel="noopener noreferrer">https://a.example</a></li></ul><p>External source</p>');
   assert.equal(sdkText.markdown('- one\n- two'), '<ul><li>one</li><li>two</li></ul>');
   assert.equal(sdkText.markdown('Para\n- a\nAfter'), '<p>Para</p><ul><li>a</li></ul><p>After</p>');
   assert.equal(sdkText.markdown('Pick:\n1. this\n2. that'), '<p>Pick:</p><ol><li>this</li><li>that</li></ol>');});
 test('host.util.markdown: an underscore in a link never makes italics', () => {
-  const link = (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`;
+  const link = (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`;
   assert.equal(sdkText.markdown('See https://en.wikipedia.org/wiki/Belem_Tower'), `<p>See ${link('https://en.wikipedia.org/wiki/Belem_Tower')}</p>`);
-  assert.equal(sdkText.markdown('[Belem](https://x.example/Bel%C3%A9m_Tower)'), '<p><a href="https://x.example/Bel%C3%A9m_Tower" target="_blank" rel="noopener">Belem</a></p>');
+  assert.equal(sdkText.markdown('[Belem](https://x.example/Bel%C3%A9m_Tower)'), '<p><a href="https://x.example/Bel%C3%A9m_Tower" target="_blank" rel="noopener noreferrer">Belem</a></p>');
   const two = sdkText.markdown('https://a.example/a_b and https://b.example/c_d');
   assert.equal(two, `<p>${link('https://a.example/a_b')} and ${link('https://b.example/c_d')}</p>`, 'two links on one line keep their href and target');
   assert.equal(sdkText.markdown('snake_case and a https://a.example/x_y'), `<p>snake_case and a ${link('https://a.example/x_y')}</p>`, 'a word with an underscore stays as written');

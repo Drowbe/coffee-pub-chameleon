@@ -183,7 +183,7 @@
     } else if (c.template === 'train') {
       put(el, { title: [item.operator, item.number].filter(Boolean).join(' ') || item.title, from: item.from, to: item.to, time: tt(item.time), arrival: arrive, platform: item.platform ? `Platform ${item.platform}` : '', seat: [item.carriage && `Coach ${item.carriage}`, item.seat && `Seat ${item.seat}`].filter(Boolean).join(' · '), duration, confirm: item.confirm });
     } else if (c.template === 'transit') {
-      const back = item.mode === 'car' && item.checkOut ? `Back ${dayShort(item.checkOut)}` : '';
+      const back = item.mode === 'car' && item.checkOut ? `Back ${[dayShort(item.checkOut), tt(item.checkOutTime)].filter(Boolean).join(' · ')}` : '';
       const to = [item.to || item.dropoff, back].filter(Boolean).join(' · ');
       put(el, { kicker: [c.kicker, item.operator].filter(Boolean).join(' · '), title: item.title, time: tt(item.time), to, confirm: item.confirm });
       const go = el.querySelector('.go');
@@ -1180,6 +1180,8 @@
       const [title, list] = parts('tpl-decisions');
       title.textContent = kind;
       list.replaceChildren();
+      // Soonest first, the most overdue at the top; undated last.
+      summaries.sort((a, b) => ((summaryWhen(a) || {}).day || '9999').localeCompare((summaryWhen(b) || {}).day || '9999'));
       for (const c of summaries) {
         const row = clone('tpl-decision');
         setIcon(row.querySelector('[data-icon]'), c.module && c.module.icon);
@@ -1282,6 +1284,7 @@
   // (host.space().guestsSeeHidden); the server keeps the amounts from them otherwise.
   const hideMoney = () => info.user.role === 'guest' && !(spaceOf() && spaceOf().guestsSeeHidden === true);
   const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || (!state.budgetOn && !hideMoney()));
+  let topNext = false;
   const viewSwitch = host.ui.viewSwitch({
     id: 'view',
     options: viewsNow(),
@@ -1289,6 +1292,7 @@
     onChange: (id) => {
       state.view = id;
       scrolled = state.view !== 'days';
+      topNext = true; // another view opens at its top, not where the last one was scrolled to
       redraw();
     },
   });
@@ -1455,13 +1459,14 @@
     }
     hydrate(root === document ? document.body : root);
     restoreInputs(kept);
-    if (scrolled) { scroller.scrollTop = top; if (state.view === 'days' && state.currentDay) markCurrent(state.currentDay); }
+    if (scrolled) { scroller.scrollTop = topNext ? 0 : top; if (state.view === 'days' && state.currentDay) markCurrent(state.currentDay); }
     else if (state.view === 'days') {
       scrolled = true;
       const today = $(`day-${ymd(new Date())}`) || $(`day-${plan.days()[0]}`);
       if (today) today.scrollIntoView({ inline: 'center', block: 'start' });
       markCurrent(today ? today.dataset.day : null);
     }
+    topNext = false;
     loadLinks().catch(() => {});
     refocusNewRow();
   }
@@ -2005,6 +2010,35 @@
     select.replaceChildren(option('', days.length ? 'Not set' : car ? 'Choose the pick-up day first' : 'Choose the check-in day first'), ...days.map(({ value, n }) => option(value, car ? `${dayShort(value)} · ${n} day${n === 1 ? '' : 's'}` : `${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`)));
     setVal('f-checkout', followDay(date, car && ed.checkOut === undefined ? '' : ed.checkOut, 1));
   }
+  // A rental car's Drop-off day, its length and its End time say one thing. A Drop-off day chosen sets the length from the End time
+  // (the End time on that day), or clears it when there is no End time; a length or End time typed moves the Drop-off day to the
+  // day it ends on (none when it ends the same day). `from` is what the person changed: 'drop' or 'length'.
+  function carAgree(from) {
+    const ed = state.editing;
+    const select = $('f-checkout');
+    if (!ed || ed.tile !== 'car' || !select || !$('f-time')) return;
+    const l = LENS.out;
+    const time = $(l.time).value;
+    const { date } = parsePlace($('f-date').value);
+    if (from === 'drop') {
+      const drop = select.value;
+      if (!drop || !date) return;
+      const end = $(l.end).value;
+      const n = Math.round((parseYmd(drop) - parseYmd(date)) / (24 * 60 * 60 * 1000));
+      const total = time && end ? n * 24 * 60 + minutesOfDay(end) - minutesOfDay(time) : 0;
+      setLength(l.hours, l.minutes, total > 0 && total <= MAX_MINUTES ? total : null);
+      if (!(total > 0 && total <= MAX_MINUTES)) $(l.end).value = '';
+      syncEnd(l);
+      showArrival();
+      return;
+    }
+    const len = lengthOf(l.hours, l.minutes);
+    if (!len || !time || !date) return;
+    const e = endOf(time, len);
+    const day = e && e.days >= 1 ? daysLater(date, e.days) : '';
+    ed.checkOut = day && [...select.options].some((o) => o.value === day) ? day : '';
+    select.value = ed.checkOut;
+  }
   // A journey's arrival on the ticket is shown as a day and a time, laid out as the departure is (#241): the day one of
   // arrivalDays around the leg's day (the same day first, the way it stays until a day is chosen: #242), and f-arrival, hidden,
   // holds what is stored (dated on a day, relative to the day it leaves while it has none).
@@ -2330,15 +2364,14 @@
   });
 
   // The time zones the browser knows, in a select, with the trip's own chosen (else the browser's).
-  const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (err) { return ''; } };
+  // The first choice, empty, is no zone for the trip: each person's copies are read in their own.
   function zoneSelect(select, value) {
     let names = [];
     try { names = Intl.supportedValuesOf('timeZone'); } catch (err) { names = []; }
-    const want = value || browserZone() || 'UTC';
-    if (!names.includes(want)) names = [want, ...names];
+    if (value && !names.includes(value)) names = [value, ...names];
     if (!names.includes('UTC')) names.push('UTC');
-    select.replaceChildren(...names.map((n) => option(n, n.replace(/_/g, ' '))));
-    select.value = want;
+    select.replaceChildren(option('', 'Each person\'s own time zone'), ...names.map((n) => option(n, n.replace(/_/g, ' '))));
+    select.value = value || '';
   }
 
   // `place` for a new item: `{ date }` a day, `{ after }` a joint on the line; none is the head of the line. `from` is the control
@@ -2786,7 +2819,10 @@
     try {
       if (ed.mode === 'trip') {
         // The name, Where and Notes are kept as stored (saveTrip merges); the form edits the dates and the currency.
-        const patch = { currency: $('f-currency').value.trim(), tz: $('f-tz').value };
+        const patch = { currency: $('f-currency').value.trim() };
+        // The zone is written only when the person changed it (blank: each person's own).
+        const tzChanged = $('f-tz').value !== ((plan.trip || {}).tz || '');
+        if (tzChanged) patch.tz = $('f-tz').value;
         // With phases the dates are the space's timeline, not the form's (the plan leaves them out of the write).
         if (!plan.phased()) {
           const start = $('f-start').value;
@@ -2799,7 +2835,12 @@
         await plan.saveTrip(patch);
         scrolled = false;
         plan.suggest().catch(() => {});
-        return closeEditor();
+        closeEditor();
+        if (tzChanged) {
+          const failed = await plan.redateCopies();
+          if (failed) host.ui.toast(`${failed} of the copies on the calendar could not be moved to the new time zone.`);
+        }
+        return;
       }
       const item = ed.id ? plan.list().find((i) => i.id === ed.id) : null;
       if (!ed.isLink && !ed.tile.startsWith('block:') && !ed.tile.startsWith('lane:') && !$('f-title').value.trim()) return fieldError('f-title', 'Give it a title.');
@@ -2852,7 +2893,14 @@
             fields.checkOut = $('f-checkout').value || null;
             if (fields.checkOut && !fields.date) return fail('Choose the day it is picked up.');
             if (fields.checkOut && fields.checkOut <= fields.date) return fail('Drop-off is on or before pick-up.');
-          } else fields.checkOut = null;
+            // The copy on the calendar ends on the Drop-off day at the End time (else at the pick-up time), and the length agrees.
+            fields.checkOutTime = fields.checkOut && fields.time && $(LENS.out.end).value ? $(LENS.out.end).value : null;
+            if (fields.checkOut && fields.time) {
+              const total = fields.checkOutTime ? Math.round((parseYmd(fields.checkOut) - parseYmd(fields.date)) / 864e5) * 1440 + minutesOfDay(fields.checkOutTime) - minutesOfDay(fields.time) : 0;
+              if (total > MAX_MINUTES) return fail('A length can be at most 7 days (168 hours).');
+              fields.minutes = total > 0 ? total : null;
+            }
+          } else { fields.checkOut = null; fields.checkOutTime = null; }
         } else if (t.kind === 'stay') {
           fields.checkOut = $('f-checkout').value || null;
           if (fields.checkOut && !fields.date) return fail('Choose the day it checks in.');
@@ -2928,6 +2976,7 @@
       if (!endMode()) break;
       if (e.target.id === l.end || (e.target.id === l.time && $(l.end).value && !lengthOf(l.hours, l.minutes))) endToLength(l);
     }
+    if (['f-time', 'f-hours', 'f-minutes', 'f-endTime'].includes(e.target.id)) carAgree('length');
     if (['f-time', 'f-hours', 'f-minutes', 'f-arrival-day', 'f-arrival-time', 'f-back-time', 'f-back-hours', 'f-back-minutes', 'f-back-arrival-day', 'f-back-arrival-time'].includes(e.target.id)) showArrival();
     if (['f-title', 'f-back-to', 'f-back-toCode'].includes(e.target.id) && $('f-back-title')) $('f-back-title').placeholder = backTitle();
   });
@@ -2936,6 +2985,7 @@
   $('editor').addEventListener('change', (e) => {
     // The check-out a person picks is theirs (an empty one too); until then it follows the check-in day.
     if (e.target.id === 'f-checkout' && state.editing) state.editing.checkOut = e.target.value;
+    if (e.target.id === 'f-checkout') carAgree('drop');
     if (e.target.id === 'f-date') checkoutOptions();
     // Another departure day, for either leg: the ticket's arrival moves by as many days, as a move on the plan does (an arrival
     // not yet chosen stays the same day as the departure). Off its days, it is kept relative to the day it left ("The next day");

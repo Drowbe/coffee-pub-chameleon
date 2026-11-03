@@ -187,6 +187,7 @@
     // A journey: how, and what a ticket for it says (a flight's airline and number, a train's operator and platform...).
     if (kind === 'journey') {
       item.mode = MODES.includes(raw.mode) ? raw.mode : 'other';
+      item.checkOutTime = MODES.includes(raw.mode) && raw.mode === 'car' && isTime(raw.checkOutTime) ? raw.checkOutTime : null; // a car's drop-off time
       item.operator = clip(raw.operator, 60); // the airline, the train company, the ferry line
       item.number = clip(raw.number, 20); // flight or train number
       item.fromCode = code(raw.fromCode, 5);
@@ -221,6 +222,7 @@
     if (kind !== 'link' && kind !== 'block' && kind !== 'lane' && !item.title) return null;
     if (kind === 'stay' && item.checkOut && item.date && item.checkOut < item.date) item.checkOut = null;
     if (kind === 'journey' && item.checkOut && (!item.date || item.checkOut <= item.date)) item.checkOut = null;
+    if (kind === 'journey' && !item.checkOut) item.checkOutTime = null;
     return item;
   }
 

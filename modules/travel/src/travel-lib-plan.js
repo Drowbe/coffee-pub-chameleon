@@ -206,6 +206,26 @@
       return withDates(trip);
     }
 
+    // The trip's time zone changed: each timed item is written again as it is, so the server re-dates its copy on the calendar in
+    // the new zone (a copy follows its item only when the item is written). Returns how many it could not write.
+    async function redateCopies() {
+      const todo = [...items.values()].filter(({ item }) => item && item.kind !== 'link' && item.date && item.time);
+      let failed = 0;
+      // Written as they are, a few at a time, with one redraw at the end (an edit each would redraw the plan for every item).
+      const next = async () => {
+        for (let cur = todo.shift(); cur; cur = todo.shift()) {
+          const { id, ...value } = cur.item;
+          try {
+            const saved = await host.storage.set(cur.key, value, { version: cur.version });
+            items.set(id, { item: cur.item, version: saved.version, key: cur.key });
+          } catch (err) { failed += 1; }
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, next));
+      changed();
+      return failed;
+    }
+
     // The main phase's end moved later to cover `day` through the host (host.phasesCover, the cover route): only the
     // end moves, and every later boundary with it. Nothing without phases, or on a host without the call.
     async function coverDay(day) {
@@ -474,6 +494,13 @@
       } catch (err) {
         found = [];
       }
+      // The search answers the newest 50, so the polls and tasks Decisions lists are asked for by kind (all of them).
+      const seen = new Set(found.filter((c) => c && c.ref).map((c) => objectKey(c.ref)));
+      for (const kind of ['poll', 'task']) {
+        try {
+          for (const c of await host.objects.search('', { kind })) if (c && c.ref && !seen.has(objectKey(c.ref))) { seen.add(objectKey(c.ref)); found.push(c); }
+        } catch (err) { /* the 50 stand */ }
+      }
       // Decisions: a poll still open, and a task not done with a due day before the trip starts (or already past).
       const first = (withDates(trip) || {}).start || tripDaysList[0] || '';
       waiting = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && c.done !== true
@@ -539,7 +566,7 @@
     }
 
     return {
-      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, coverDay, bands, phased, addItem, updateItem, removeItem, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
+      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, redateCopies, coverDay, bands, phased, addItem, updateItem, removeItem, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
       get trip() { return withDates(trip); },
       get suggestions() { return suggested; },
       get waiting() { return waiting; },

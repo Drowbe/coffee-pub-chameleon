@@ -16,6 +16,7 @@
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
+import { actionBar } from '/action-bar.js';
 import { api, accessKeyHeaders, showNote, word } from '/brand.js';
 import { fileView, infoView, viewState, stopMedia, KINDS, kindOf, size, when, h } from '/file-viewer-views.js';
 
@@ -277,31 +278,44 @@ function createManager(doc) {
     dlg.className = 'sdk-editor fv-rename';
     dlg.setAttribute('aria-labelledby', 'fv-rename-title');
     const ext = f.name.includes('.') ? `.${f.name.split('.').pop()}` : '';
-    dlg.innerHTML = '<form class="sdk-form" novalidate><h3 id="fv-rename-title">Rename the file</h3><label class="sdk-field"><span class="sdk-label">Name</span><input type="text" maxlength="120" autocomplete="off"><span class="sdk-hint"></span></label><div class="sdk-editor-actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="submit" class="btn btn-primary">Rename</button></div></form>';
+    dlg.innerHTML = '<form class="sdk-form" novalidate><h3 id="fv-rename-title">Rename the file</h3><label class="sdk-field"><span class="sdk-label">Name</span><input type="text" maxlength="120" autocomplete="off"><span class="sdk-hint"></span></label></form>';
     const form = dlg.querySelector('form');
     const input = dlg.querySelector('input');
     const hint = dlg.querySelector('.sdk-hint');
     input.value = f.name;
     hint.textContent = `Keep ${ext} at the end. A name can be 120 characters.`;
     const done = () => { dlg.close(); dlg.remove(); const back = w.dead ? null : (from && from.isConnected ? from : w.frame.el); if (back) back.focus({ preventScroll: true }); };
-    dlg.querySelector('[data-cancel]').addEventListener('click', done);
-    dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(); });
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = input.value.trim().replace(/[\\/\u0000-\u001f]/g, '').slice(0, 120);
-      if (!name) { input.setAttribute('aria-invalid', 'true'); hint.className = 'sdk-error'; hint.textContent = 'Give the file a name.'; return; }
-      try {
-        const res = await api('PATCH', libUrl(w.place, `/${enc(f.id)}`), { name });
-        if (res.file) w.files.set(f.id, res.file);
-        done();
-        if (!w.dead && w.id === f.id && res.file) { w.frame.setTitle(res.file.name, KINDS[kindOf(res.file)].icon); w.frame.setStatus({ text: statusOf(w, res.file) }); }
-        showNote(`Renamed to ${res.file ? res.file.name : name}`);
-      } catch (err) {
-        input.setAttribute('aria-invalid', 'true');
-        hint.className = 'sdk-error';
-        hint.textContent = err.message;
-      }
+    // The shared action bar: Rename is off until the name changed; Cancel and Escape ask first when it was edited.
+    const bar = actionBar({
+      label: 'Rename the file',
+      doc,
+      saveLabel: 'Rename',
+      submit: true,
+      dirty: () => input.value.trim() !== f.name,
+      onCancel: done,
+      onSave: async () => {
+        const name = input.value.trim().replace(/[\\/\u0000-\u001f]/g, '').slice(0, 120);
+        if (!name) { input.setAttribute('aria-invalid', 'true'); hint.className = 'sdk-error'; hint.textContent = 'Give the file a name.'; return false; }
+        try {
+          const res = await api('PATCH', libUrl(w.place, `/${enc(f.id)}`), { name });
+          if (res.file) w.files.set(f.id, res.file);
+          done();
+          if (!w.dead && w.id === f.id && res.file) { w.frame.setTitle(res.file.name, KINDS[kindOf(res.file)].icon); w.frame.setStatus({ text: statusOf(w, res.file) }); }
+          showNote(`Renamed to ${res.file ? res.file.name : name}`);
+          return true;
+        } catch (err) {
+          input.setAttribute('aria-invalid', 'true');
+          hint.className = 'sdk-error';
+          hint.textContent = err.message;
+          return false;
+        }
+      },
     });
+    form.append(bar.el);
+    bar.bindEscape(dlg);
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); bar.requestCancel(); });
+    input.addEventListener('input', () => bar.refresh());
+    form.addEventListener('submit', (e) => { e.preventDefault(); bar.save(); });
     doc.body.append(dlg);
     dlg.showModal();
     input.focus();

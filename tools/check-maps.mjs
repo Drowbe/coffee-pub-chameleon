@@ -464,7 +464,7 @@ test('host.objects.search passes in to the server', () => {
   const sdkText = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
   const hostText = fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8');
   assert.ok(sdkText.includes("...(o && o.in ? { in: String(o.in) } : {})"));
-  assert.ok(hostText.includes("async 'objects.search'({ q, scope: s, space, has, in: marked })"));
+  assert.ok(hostText.includes("async 'objects.search'({ q, scope: s, space, has, kind, in: marked })"));
   const src = hostText.slice(hostText.indexOf('function objectSearchParams('), hostText.indexOf('// --- end of the search'));
   const placeSrc = hostText.slice(hostText.indexOf('const SPACE_ID'), hostText.indexOf("\n  return { scope: 'space', space };\n}\n") + "\n  return { scope: 'space', space };\n}\n".length);
   const build = new Function(`${placeSrc}\n${src}\nreturn objectSearchParams;`)();

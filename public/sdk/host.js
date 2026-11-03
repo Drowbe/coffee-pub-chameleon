@@ -2710,7 +2710,7 @@
       // environment page { scope: 'spaces' } asks every space the viewer belongs to at once (each pointer carries its
       // space), and { has: 'place' } keeps only summaries with a place (up to 1,000 then, rather than 50).
       // { scope: 'environment', in: <space id> } finds the environment's objects marked for that space (plan-places-library.md).
-      search: (text, o) => call('objects.search', { q: text || '', ...opts(o), ...(o && o.has ? { has: String(o.has) } : {}), ...(o && o.in ? { in: String(o.in) } : {}) }),
+      search: (text, o) => call('objects.search', { q: text || '', ...opts(o), ...(o && o.has ? { has: String(o.has) } : {}), ...(o && o.kind ? { kind: String(o.kind) } : {}), ...(o && o.in ? { in: String(o.in) } : {}) }),
       // A window the host draws to choose another module's object: a search box (the person's own permissions, the same search as
       // search() above), the results as rows with each kind's icon, and on a phone a full-height sheet. Keyboard: type to search,
       // Up and Down move, Enter chooses, Escape or Close cancels. Resolves with the object's pointer (a ref), or with a list of
