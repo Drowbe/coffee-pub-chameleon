@@ -83,7 +83,7 @@ leaves the page rather than closing an open sheet.
   a file is the Vault's object, kind `file`; its viewer is drawn "inside the module's content area, one file at a time:
   a top row with **Back**, the name, previous and next, **Download** ... **Share** ...", and "the viewer full screen as
   a sheet" on a phone; `host.files.open(pointer)` opens it. This plan proposes that viewer becomes the Vault's read view
-  in the object window (question 13).
+  in the object window (question 13, decided a on 2026-11-03, so the approved Vault plan now says a window too).
 - [plan-places-and-maps](plan-places-and-maps.md) (draft, undecided): one module or two. Either way a place is an
   object of whichever module owns places, and Maps stores nothing; this plan works with both answers.
 - [plan-chat-links](plan-chat-links.md) and [plan-linked-objects](plan-linked-objects.md): a link chip in Chat or in
@@ -104,6 +104,13 @@ Thomas, 2026-10-30:
 4. **One reusable SDK experience for every module** (`host.*`), not per-module code. Every module, and an uploaded
    one, gets the same window by asking for it.
 5. **Phone experiences are designed for the phone,** not a shrunk desktop. A large share of use will be on phones.
+
+Thomas, 2026-11-03: question 13 is answered (a). The Vault's viewers (pictures, audio, video, Markdown, PDF) open in one
+of the app's windows, not a new browser window and not inside the Vault panel; the Vault panel lists, searches,
+filters, selects, adds and shares files. A link to a file from another module (a Planner stay's booking PDF, a
+Research note, Chat) opens the same viewer window over the canvas and does not bring the Vault forward. The
+consequences, also answered by Thomas on 2026-11-03, are questions 17 to 20 below and decision 20 of
+[plan-attachments-vault](plan-attachments-vault.md); only the title bar and toolbar contents stay open.
 
 Thomas, 2026-11-01: question 15 (the queue) is answered "after the phone foundations": step 1 waits for
 [plan-phone-experience](plan-phone-experience.md)'s steps 3 to 5, and the window is built on its shared sheet and history stack.
@@ -233,8 +240,11 @@ links; `domain` draws the viewer (the picture fitted, the `audio` or `video` ele
 `playsinline`, the PDF viewer layer laid over the window's content, Markdown read only); the toolbar row holds
 previous and next; the phone's bottom bar holds **Download** where allowed. **Edit** is **Rename** (the name, and
 nothing else). Share is the Vault's share link (`share` given by the module). Full screen stays the host's. This
-replaces the viewer "inside the module's content area" with **Back** in the approved Vault plan, which would change if
-Thomas agrees (question 13). `host.files.open(pointer)` becomes the window.
+replaces the viewer "inside the module's content area" with **Back** in the approved Vault plan, as Thomas decided on
+2026-11-03 (question 13a; decision 19 of the Vault plan). `host.files.open(pointer)` becomes the window, and so does
+a link to a file from any module: `host.objects.open` opens the same window over the canvas and does not bring the
+Vault forward (question 9a, which this agrees with for files). Until this plan's step 1 exists, the Vault's step 3
+may build the viewer on the existing window mode and move it here later (Vault plan, decision 20).
 
 ### Places and Maps
 
@@ -271,7 +281,7 @@ and feedback builds for the module steps.
 | 6 | **The Planner** on the window, `large`: a card opens read mode; `moreInto`, `tpl-card-more` and `state.expanded` go; read facts are today's More rows and the card's slots; edit is today's form; a person without edit can read every object. `CONTRACT.md` follows. | experience-design | 7, 8 |
 | 7 | **Calendar**, then **Research**, then **Places**, then **Polls**, one step each. | experience-design | 8 |
 | 8 | **Map pins** open their object's window. | experience-design | the Places and Maps decision |
-| 9 | **The Vault's viewer** as the `file` kind's window (with Vault step 3, or after it). | experience-design | 13 |
+| 9 | **The Vault's viewer** as the `file` kind's window (with Vault step 3, or after it; question 13 is decided, a). If Vault step 3 went first on the existing window mode, this step moves it onto the object window. | experience-design | the title bar and toolbar question (Vault plan question 6) |
 | 10 | **Open as a window**: the read window as a floating, non-modal window on the canvas. Not on a phone. | experience-design | 3 |
 | 11 | **A module in a sandboxed frame**: the frame lifted to the window's size (the editor's `editor.lift`), the read view's data sent over the bridge and drawn by the host. | experience-design | none beyond step 3 |
 | 12 | **Documentation**: [api-module-sdk](../api/api-module-sdk.md), [architecture-module-window](../architecture/architecture-module-window.md), each changed module's `CONTRACT.md` and user guide, the changelog. | content-manager | each step as it lands |
@@ -368,10 +378,10 @@ Each has options and the planner's suggestion, marked as such. The table above s
     own apps do. (b) A bottom action bar for Edit, Save and Cancel, for one-handed reach. (c) The title bar, plus a
     bottom bar only for one primary action a module names (the Vault's Download). *Suggestion: (c).* Blocks the phone
     parts of steps 1 and 3.
-13. **The Vault's viewer.** (a) It is the `file` kind's object window (this plan). (b) It stays inside the Vault's
-    content area with Back, as the approved Vault plan says, and only links from other modules open the window.
-    (b) gives files a second way of being seen. *Suggestion: (a),* changing the Vault plan's section 10. Blocks
-    step 9.
+13. **The Vault's viewer.** **Decided (a), Thomas, 2026-11-03:** the viewer is a window (not a new browser window, not
+    inside the Vault panel), and a link from another module opens the same window. The other options were (b) staying
+    inside the Vault's content area with Back and only links from other modules opening the window, which would have
+    given files a second way of being seen. The approved Vault plan's section 10 is changed to match.
 14. **The edit form before `host.ui.form`.** (a) Each module's existing form goes into the window now (its markup,
     as the editor window does). (b) Wait for unified layout slice 13 and build edit mode on `host.ui.form` only.
     (b) waits on the largest slice in that plan. *Suggestion: (a),* moving to `host.ui.form` when it exists. Blocks
@@ -383,3 +393,15 @@ Each has options and the planner's suggestion, marked as such. The table above s
 16. **The phone plan.** (a) Write `plan-phone-experience.md` next, with the scope above. (b) Fold phone rules into
     each feature's plan as they come. (b) is how the phone ended up as a shrunk desktop. *Suggestion: (a).* Blocks
     nothing here.
+17. **Viewer windows, several at once.** **Decided, Thomas, 2026-11-03:** several at once, not one reused; a cap of 4
+    (confirmed) with the sentence "Close a window to open another.", **Close all**, and one sheet
+    at a time on a phone. Opening a file that has a window brings it forward. This needs step 10's floating window to
+    exist for the object window; until then the existing window mode carries it (Vault plan decision 20).
+18. **Previous and next, when a file is opened from another module.** **Decided, Thomas, 2026-11-03:** they walk the
+    files linked where the window was opened from, else they are hidden; from the Vault's list they walk its list.
+    The title bar and toolbar split stays open until Thomas sees the prototype drawing (Vault plan question 6). Blocks
+    step 9.
+19. **The public share page.** **Decided, Thomas, 2026-11-03:** it keeps its own viewer inside the page and shares code
+    with the window.
+20. **The mechanism and the order.** **Decided, Thomas, 2026-11-03:** the existing window mode first (Vault step 3),
+    the general object window later (step 9 here moves it).
