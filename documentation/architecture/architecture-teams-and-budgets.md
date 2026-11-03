@@ -74,7 +74,7 @@ Thomas is on the Max plan. The plan covers three things, in this order of rank:
 
 This project yields to nothing. The other two use what is left. Thomas says they use roughly 25-30% of the plan in a week (2026-11-01). The starting ceiling was 65% of the weekly plan, which left a buffer. On 2026-11-03 Thomas raised it to **85%**.
 
-**Warnings.** The project manager tells Thomas at about 50% of the weekly plan, and again at about 60%. These are estimates; see below.
+**Warnings.** The project manager tells Thomas at about 70% of the weekly plan, and again at about 80%, both under the 85% ceiling. These are estimates; see below.
 
 **At the ceiling.** The project manager finishes what is running and starts nothing new. It lists what is waiting, with an estimate for each, and asks Thomas what to spend the rest on. Quality passes on work already built come first, because unreviewed work cannot be merged.
 
@@ -106,7 +106,7 @@ The meter used to be read from screenshots. Now a file carries it.
 - If the file is older than about 15 minutes, it is stale. The project manager does not trust it, says so, and falls back to Thomas's last screenshot and its own count.
 - If `seven_day.used_percentage` is at or above the weekly ceiling (85%), it launches nothing new, as under "At the ceiling" above.
 - If `five_hour.used_percentage` is high, it holds launches until the window resets, and tells Thomas when that will be. "High" is the project manager's call: a launch that would be cut off halfway wastes more than waiting does.
-- The warnings at about 50% and 60% still come from the weekly figure.
+- The warnings at about 70% and 80% still come from the weekly figure.
 
 **Setting it up for a person.** This is for whoever wants the file for their own account, on their own machine. The steps are written from the description of how Thomas's is made; the script is not in this repository, and these steps have not been run from this document.
 
@@ -149,3 +149,4 @@ The starting values above are those of 2026-11-01.
 - 2026-11-01 Thomas: approved as written; weekly plan budget added: other work 25-30% of the plan, this project first in rank; warn at 50% and 60%, ceiling 65%.
 - 2026-11-02 Thomas: yes to recording the rule that an unanswered question is asked again.
 - 2026-11-03 Thomas: the weekly ceiling is 85%, not 65%. A live usage file is read before agents are launched, and launches are held when the five-hour window is high. User-interface tweaks default to a try build, batched; issues are for ideas and bigger work; a shared piece makes it a feedback build; a new design goes to the Prototype first.
+- 2026-11-03: the weekly warnings moved from about 50% and 60% to about 70% and 80%, to sit under the 85% ceiling, as the project manager asked this wave; recorded from that instruction, not from a message of Thomas.

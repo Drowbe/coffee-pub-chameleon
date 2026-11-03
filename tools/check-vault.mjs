@@ -815,7 +815,7 @@ try {
   const up = await send(A, 'POST', '/api/modules', { cookie: admin, headers: { 'content-type': 'application/zip' }, body: shelfZip() });
   same(up.status, 201, `a module that declares library installs: ${up.text}`);
   const libFolder = await send(A, 'POST', '/api/modules', { cookie: admin, headers: { 'content-type': 'application/zip' }, body: shelfZip([{ key: 'maps', label: 'Maps', type: 'files', scope: 'environment', folder: 'library' }]) });
-  ok(libFolder.status === 400 && /not "versions" or "library"/.test(libFolder.json?.error), `a files setting may not name its folder library, where the records are: ${libFolder.text}`);
+  ok(libFolder.status === 400 && /and not "versions", "library", /.test(libFolder.json?.error), `a files setting may not name its folder library, where the records are: ${libFolder.text}`);
   same((await json('PATCH', '/api/modules/shelf', admin, { enabled: true, allSpaces: true })).status, 200, 'and turns on');
   const roles = (await send(A, 'GET', '/api/roles', { cookie: admin })).json.roles;
   same(['view', 'add', 'download', 'remove_any'].map((k) => roles.guest[`module.shelf.${k}`]), [false, false, false, false], 'its library permissions are off for guests, whatever the manifest asked');

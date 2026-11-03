@@ -58,7 +58,7 @@ const themeFile = require('./theme-file');
 const { productName } = require('./product-name');
 const templateFile = require('./template-file');
 const { EventEmitter } = require('events');
-const { ModuleData } = require('./module-data');
+const { ModuleData, isBookkeeping } = require('./module-data');
 const moduleGuards = require('./module-guards');
 const { ModuleHooks, HOST_SOURCE } = require('./module-hooks');
 const moduleNotices = require('./module-notices');
@@ -68,7 +68,7 @@ const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROF
 // The phase timeline rule (plan-one-bar.md, step 1), the one copy the pages use too.
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
-const { buildEnvironment, flushEnvironment } = require('./environment');
+const { buildEnvironment, flushEnvironment, setAsideEnvironment } = require('./environment');
 const { HostRegistry, HostError, cleanSlug, reservedSentence } = require('./host-registry');
 const { domainSettings } = require('./domains');
 const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, MigrationError, recordedParts, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
@@ -2274,7 +2274,7 @@ hostRouter.delete('/api/host/environments/:slug', requireHostAdmin, (req, res) =
     if (!hostRegistry.findEnvironment(req.params.slug)) throw new HostError('no such environment', 404);
     hostRegistry.removeEnvironment(req.params.slug);
     const env = environments.get(req.params.slug);
-    if (env) { flushEnvironment(env); environments.delete(req.params.slug); }
+    if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); }
     const from = path.join(DATA_DIR, 'environments', req.params.slug);
     if (fs.existsSync(from)) {
       const to = path.join(DATA_DIR, 'environments-deleted', `${req.params.slug}-${Date.now()}`);
@@ -2522,7 +2522,7 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
     const refusal = backupRefusal(files);
     if (refusal) return res.status(400).json({ error: refusal });
     const env = environments.get(req.params.slug);
-    if (env) { flushEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
+    if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
     const dir = path.join(DATA_DIR, 'environments', req.params.slug);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
@@ -4233,6 +4233,14 @@ app.patch('/api/modules/:id', requireOwner, (req, res) => {
     if (current && refuseModuleNotInPlan(res, current.id, current.name)) return;
   }
   // `allSpaces` and `spaces` are accepted and ignored (an enabled module is on in every space).
+  if (rest.enabled === false) {
+    // Turned off, with the modules that need it: a Clear waiting for its Undo in any of them is finished first, while the
+    // module is still on, so what other modules keep of its objects (their dated copies) goes as at the end of its time.
+    // Not when the update will refuse it (others need it and the caller did not say `force`).
+    const current = modules.list().find((m) => m.id === req.params.id);
+    const needing = current?.enabled ? modules.dependentsOf(req.params.id) : [];
+    if (current?.enabled && (!needing.length || rest.force === true)) for (const id of [req.params.id, ...needing]) moduleHolds.expireModule(id);
+  }
   if (Object.keys(rest).length) modules.update(req.params.id, rest, { spaceExists: (id) => !!store.spaceById(id) });
   else modules.get(req.params.id); // 404 for a module that is not installed
   store.applyModuleDisplay(req.params.id, display);
@@ -4447,11 +4455,16 @@ function finishHold(hold) {
 const libraryClearRefusal = (manifest) => `${modules.shownName(manifest)} keeps files, not ${word('module')} data, so Clear has nothing to remove.`;
 // Whether this viewer may clear everything the module holds in a space (DELETE .../data): its write permission, and the
 // guards' `clear` when it has one. For the canvas's Clear, which is offered only where it removes something: never for a
-// library module, and not while the module holds nothing in the space.
+// library module, not while the module holds no objects in the space (its bookkeeping keys aside), and not while an
+// earlier Clear there can still be undone (a second one is refused). Worked out when for-space is read: a page reads it
+// again after a 'changes' event.
 function mayClearHere(manifest, who, perms, spaceId) {
   if (manifest.library || !moduleCan(manifest, perms, 'write')) return false;
   if (!moduleGuards.mayClear(manifest.guards, guardWho({ who, perms, manifest }))) return false;
-  try { return moduleData.list(manifest.id, scopeKeyOf('space', { spaceId })).length > 0; } catch { return false; }
+  try {
+    const scopeKey = scopeKeyOf('space', { spaceId });
+    return !moduleHolds.peek(manifest.id, scopeKey) && moduleData.list(manifest.id, scopeKey).some((item) => !isBookkeeping(item.key));
+  } catch { return false; }
 }
 // The guards a data write here is held to. In a person's own data, which only they reach, only `exclusive` and the module's
 // own keys hold (checkPut's `personal`), and a delete or a clear is theirs.
@@ -7586,7 +7599,7 @@ app.get('/api/bus/actions/status', busRoute((who, req) => {
 function overLimit(moduleId, by, kind) {
   const r = moduleLimits.take(moduleId, by || 'guest', kind);
   if (r.ok) return null;
-  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind + 's'} in a minute`, by, null);
+  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind + 's'} in a minute`, by === '*' ? null : by, null);
   return r;
 }
 const limitMessage = () => `This ${word('module')} is doing that too often. Try again in a moment.`;
@@ -7818,7 +7831,7 @@ app.put('/api/ai', requireOwner, async (req, res) => {
     if (before.enabled && !after.enabled) {
       const off = modules.aiDependents();
       ai.rememberCascade(off.map((m) => m.id));
-      for (const m of off) modules.update(m.id, { enabled: false, force: true });
+      for (const m of off) { moduleHolds.expireModule(m.id); modules.update(m.id, { enabled: false, force: true }); } // a Clear waiting for its Undo is finished while the module is on
     } else if (!before.enabled && after.enabled) {
       for (const id of ai.takeCascade()) {
         try { if (modules.view(id) && !modules.enabled(id)) modules.update(id, { enabled: true }); } catch { /* left off: an owner can switch it on */ }
@@ -9337,7 +9350,7 @@ app.get('/api/modules/for-space', (req, res) => {
   res.json({
     modules: modules.enabledAll()
       .filter(({ manifest, entry }) => manifest.scope.includes('space') && manifest.surfaces.canvas && moduleSpaceAccess(entry, who, space) && moduleCan(manifest, perms, 'read'))
-      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id) })),
+      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id), undoSeconds: moduleHolds.seconds })),
     // The built-in modules' names and icons as this environment shows them (the canvas's Conference and Chat switches).
     builtin: BUILTIN_MODULES.map((b) => ({ id: b.id, ...shownModule(b), ...(b.description ? { description: fillWords(b.description) } : {}) })),
     // What this space opens with, or null when it has no list of its own. The environment's list is what a new space
@@ -9503,10 +9516,12 @@ app.put('/api/modules/:id/data/:key', (req, res) => {
     sendModuleConflict(err, res, ctx.hide);
   }
 });
-// Clear: everything the module holds in the scope, in one write, held for its Undo (server/module-holds.js) for 30 seconds:
-// the values leave at once, the files they name wait, and so does what the clear does to other modules. The answer's
-// restoreToken undoes it (POST .../data/restore) until undoUntil; a later Clear here first finishes this one for good.
-// The guards' `clear` decides who may (checkClear); a writer who can't see the hidden fields can't clear what holds any.
+// Clear: everything the module holds in the scope, in one write, held for its Undo (server/module-holds.js) for 30 seconds
+// (CLEAR_UNDO_SECONDS): the values leave at once, the files they name wait, and so does what the clear does to other
+// modules. The answer's restoreToken undoes it (POST .../data/restore) until undoUntil; another Clear here is refused (409)
+// while it waits. The guards' `clear` decides who may (checkClear); a writer who can't see the hidden fields can't clear
+// what holds any. A module is cleared at most five times a minute in an environment, by everyone together (429).
+// `cleared` and `restored` count objects: the module's bookkeeping keys ("_...", isBookkeeping) go and come back uncounted.
 function clearRefusal(ctx) {
   if (ctx.manifest.library) return { status: 400, error: libraryClearRefusal(ctx.manifest) };
   const guards = guardsAt(ctx);
@@ -9518,13 +9533,21 @@ app.delete('/api/modules/:id/data', (req, res) => {
   if (!ctx) return;
   const refused = clearRefusal(ctx);
   if (refused) return res.status(refused.status).json({ error: refused.error });
+  const waiting = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
+  if (waiting) {
+    const left = Math.max(1, Math.ceil((Date.parse(waiting.expiresAt) - Date.now()) / 1000));
+    const name = modules.shownName(ctx.manifest);
+    return void res.set('Retry-After', String(left)).status(409).json({ error: `${name} was just cleared. You can undo that for ${left} more ${left === 1 ? 'second' : 'seconds'}, or clear it again after that.` });
+  }
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
   // A writer who can't see the hidden fields can't remove what holds any.
   const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
   if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
-  if (!items.length) return res.json({ cleared: 0 });
+  if (!items.some((item) => !isBookkeeping(item.key))) return res.json({ cleared: 0 }); // no objects: nothing to clear
+  const often = overLimit(ctx.manifest.id, '*', 'clear');
+  if (often) return void res.set('Retry-After', String(often.retrySeconds)).status(429).json({ error: `${modules.shownName(ctx.manifest)} was cleared too often just now. Try again in ${often.retrySeconds} ${often.retrySeconds === 1 ? 'second' : 'seconds'}.` });
   // Held first, then cleared: a stop between the two leaves the data where it was.
   const held = moduleHolds.hold(ctx.manifest.id, ctx.scopeKey, {
     items: items.map(({ key, value, version, updatedAt, by }) => ({ key, value, version, updatedAt, by })),
@@ -9533,11 +9556,12 @@ app.delete('/api/modules/:id/data', (req, res) => {
     tz: typeof req.query.tz === 'string' ? req.query.tz : null,
   });
   moduleData.removeAll(ctx.manifest.id, ctx.scopeKey, { by: ctx.by });
-  res.json({ cleared: items.length, restoreToken: held.token, undoSeconds: held.seconds, undoUntil: held.undoUntil });
+  res.json({ cleared: items.filter((item) => !isBookkeeping(item.key)).length, restoreToken: held.token, undoSeconds: held.seconds, undoUntil: held.undoUntil });
 });
 // Undo of a Clear: puts back exactly what that clear held (each value with its writer and time, its files kept), in one
-// write and one 'changes' event, never held to the write limit. The same permission as the clear. A key that holds something
-// now keeps it and is named in `taken`; the rest come back. Answers { restored, skipped, taken }.
+// write and one 'changes' event; it counts as one save against the write limit. The same permission as the clear. A key
+// that holds something now keeps it and is named in `taken` (a bookkeeping key keeps it unnamed); the rest come back.
+// Answers { restored, skipped, taken }, counting objects only. A token that undoes nothing is a 410 that says why.
 app.post('/api/modules/:id/data/restore', (req, res) => {
   const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
@@ -9546,25 +9570,34 @@ app.post('/api/modules/:id/data/restore', (req, res) => {
   const token = req.body?.restoreToken;
   if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'Say which clear to undo: send the restoreToken its answer gave.' });
   const hold = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
-  if (!hold || hold.token !== token) return res.status(410).json({ error: 'The time to undo that clear is over.' });
+  if (!hold || hold.token !== token) return res.status(410).json({ error: UNDO_GONE[moduleHolds.why(ctx.manifest.id, ctx.scopeKey, token)] });
   const hiddenRefused = moduleGuards.hiddenClearRefusal(hold.items.map((item) => item.value), ctx.hide);
   if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+  const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
+  if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   let result;
   try {
     result = moduleData.restoreMany(ctx.manifest.id, ctx.scopeKey, hold.items, { by: ctx.by });
   } catch (err) {
+    moduleLimits.refund(ctx.manifest.id, ctx.by, 'write'); // nothing came back, so it was not a save
     if (err instanceof StoreError && err.status === 413) return res.status(413).json({ error: `${modules.shownName(ctx.manifest)}'s storage is full, so nothing came back. Remove something and press Undo again.` });
     throw err;
   }
-  moduleHolds.drop(ctx.manifest.id, ctx.scopeKey);
+  moduleHolds.drop(ctx.manifest.id, ctx.scopeKey, 'undone');
   // What did not come back is cleared for good: other modules hear of it (unless its key now holds the object they
   // follow) and its files go, as when a hold runs out.
   if (result.taken.length) {
     const left = new Set(result.taken);
     finishHold({ ...hold, items: hold.items.filter((item) => left.has(item.key)) });
   }
-  res.json({ restored: result.restored.length, skipped: result.taken.length, taken: result.taken.slice(0, 50) });
+  res.json({ restored: result.restored.filter((key) => !isBookkeeping(key)).length, skipped: result.taken.length, taken: result.taken.slice(0, 50) });
 });
+// Why a restoreToken undoes nothing (moduleHolds.why), as the 410 says it.
+const UNDO_GONE = {
+  undone: 'That clear was already undone.',
+  replaced: 'A later clear replaced it.',
+  over: 'The time to undo that clear is over.',
+};
 app.delete('/api/modules/:id/data/:key', (req, res) => {
   const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
@@ -9774,7 +9807,8 @@ app.get('/api/modules/stream', (req, res) => {
       const changed = modules.enabled(batch.module)?.manifest;
       if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
       const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
-      send(v, 'changes', batch, { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, value: h.value, version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
+      // A big batch comes without values (`reload: true`, server/module-data.js emitBatch): the page reads the data again.
+      send(v, 'changes', batch, { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), ...(batch.reload ? { reload: true } : {}), changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, ...('value' in h ? { value: h.value } : {}), version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
     }
   });
   const onFire = listenIn(env, (fire) => {

@@ -9,10 +9,12 @@ and the AI inbox; quality-assurance reviews the policy layer and its redaction a
 tokens, the OAuth pages and the MCP endpoint; content-manager documents.
 
 **Status:** draft for Thomas, first written 2026-11-02; fifteen decisions made on 2026-11-02 after the AI audit (below: four
-on the direction, then Thomas's answers to the open questions). Slice 1 has no open questions left and is ready to build.
+on the direction, then Thomas's answers to the open questions). Slice 1 has no open questions left.
 Slice 1, the prompt layer as this plan describes it (the prompt registry, the context builder, the policy layer, the
 provider adapters, the fake model and the golden checks, `AI_LOG_PROMPTS`, `AI_PROMPT_VERSIONS`, What AI may see), is
-not built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
+built (2026-11-03, commits `fe8628f` to `4865b54` and `a3149e7` on `claude/magical-feynman-xupgiq`, with the pages: the
+**AI used:** line, citations, What AI may see on Manage and in a space's Set up, and the use view), checked by tools
+against the fake model only; no real provider has answered it yet. Slice 2 onward is not built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
 and `bb5910f` (instructions and data in separate messages, the one permission rule, availability with a reason, the
 hosted address guard, fair refunds, the monthly calls cap; Chat's `/ai` takes only the current space's objects); what
 is built is described in [architecture-ai](../architecture/architecture-ai.md). From GitHub #382,

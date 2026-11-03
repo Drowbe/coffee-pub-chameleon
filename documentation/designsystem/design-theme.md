@@ -120,6 +120,8 @@ Anything else that needs an exception is added to the check's list with its reas
 
 **The Calendar's days.** Today and the chosen day are told apart. The chosen day is a solid accent fill with the on-accent text in the dark modes (`--cal-sel-bg`, `--cal-sel-text`) and a lighter fill (32% accent over the field) with the primary text in the light mode, so the brown is not the heaviest thing on the page. Today wears a 1px inset ring in both (`--cal-today-ring`) over its own fill. The focus ring on the chosen day is a double ring, the text colour outside and the on-fill colour inside, each 3 to 1 or more. A task still to do that is late is not dimmed like a past event: it takes `--text-danger`, which reads 4.5 to 1 on a raised step in the dark modes too.
 
+The Calendar's sizes and shares are tokens in the `calendar` block of `public/sdk/system.css`: `--cal-cell-h` (74px, a cell's least height), `--cal-chip-h` (18px, an event chip), `--cal-hover` and `--cal-press` (10% and 16% of the text colour over a cell), `--cal-today` (14% of the accent), `--cal-tint` (22%, an event's tone over its cell), `--cal-out` (0.55, a day outside the month), `--cal-bar` (3px, the kept bar), `--cal-ph-wash` (16%, a phase's wash) and `--cal-dim` (muted text on a fill). The chosen day is `--cal-sel-bg`, `--cal-sel-bg-hover` and `--cal-sel-text`, and today's ring is `--cal-today-ring`.
+
 ## Tints
 
 Eight named colours mark what a message or a module is from: a module's own colour (its manifest's `color`), and gold for the AI. They also mark a **phase**: each phase of a space's timeline wears one, by its place in the template's list. They are fixed, not part of a theme, and no theme sets them; each has a dark and a light value, tested on both. On a light page the darker value is used: under the stylesheet's light set (`data-theme-mode="light"`), or the environment's light default when the person has made no choice (`data-mode-shown="light"`, set by `public/theme-mode.js`).
@@ -209,6 +211,22 @@ The card a module draws for an object (the shared banded card, `.sdk-card-banded
 - **The icon is a solid circle** (`.sdk-card-icon`), not a tinted tile. The disc is the kind's colour at a fixed lightness, and the icon on it takes the page colour (`--surface-page`), dark in a dark theme and light in a light one. It is 36px in a banded head and 28px in a row (`.sdk-row`), set by `--card-icon`. Two tokens keep the contrast at 4.5:1: `--card-disc-l` for the disc (0.74 in dark mode, 0.5 in light) and `--card-kind-l` for the kind label (0.88 in dark mode, 0.38 in light). With no `--tint` the circle is neutral (`--text-muted`).
 - **Narrow cards.** The banded head is an inline-size container. Below 300px it puts the icon above the text, then the kind label, then the title, for every module, so the title keeps the card's whole width.
 - **Taps on a phone.** A small button or icon button keeps its look and gets a 44px hit area: `::after` grows the area past the box by `--btn-hit`, which counts the 1px border (`(--btn-h-small - 2px - 44px) / 2`). A module narrower than 720px does the same for its own controls (the Planner, see [architecture-modules](../architecture/architecture-modules.md)).
+
+The banded card's kind label and disc follow the light values (`--card-kind-l` 0.38, `--card-disc-l` 0.5) whenever the page is shown in light: under the stylesheet's light set (`data-theme-mode="light"`) and also when the environment's default is Light and the person has made no choice (`data-mode-shown="light"`). Before this the second case kept the dark values, and the kind labels were hard to read on a light card. `tools/check-light-default.mjs` checks it in a browser.
+
+## Icon buttons and danger text
+
+An icon-only button (`.sdk-icon-btn`) is a square the same height as a button of its size. On a touch screen (`@media (pointer: coarse)`) a small one (`.sdk-icon-btn.btn-small`) is at least 44px by 44px; the icon stays small. A module that draws such a button gets the rule with the SDK stylesheet.
+
+`--text-danger` is danger as text on a row or a chip, for an overdue date or an overdue task's marker. It is lighter than `--status-danger-text` in the dark modes (40% of the danger fill mixed into the text colour, against 70%), which reads 4.5 to 1 on the raised step where the other is 3.5 to 4.3, and the same as it in the light mode. Use `--text-danger` for danger text on a card or row, and `--status-danger-text` for danger text on the page.
+
+## The time field
+
+A time input (`host.ui.timeField`, [api-module-sdk](../api/api-module-sdk.md), "Time fields") is drawn as a text field in the Fields family, with tabular figures (`.sdk-timefield`), so "10:30 PM" and "22:30" line up in a column of them. On a touch screen it is at least 44px tall with 16px text. It is invalid (`aria-invalid`) the way any field is, and takes no colour of its own. The block is `timefield` in `public/sdk/host.css`.
+
+## The object picker
+
+The window that chooses another module's object (`host.objects.pick`, [api-module-sdk](../api/api-module-sdk.md), "Picking an object") is a dialog in the Dialogs family: 560px wide (`--dlg-w-form`), at most 640px tall, `--surface-panel` on a hairline, `--radius-large`, `--shadow-3`, with the Dialogs head, title and foot. Under the head is a search box and a status line (`.sdk-pick-status`, 12px `--text-muted`: searching, nothing found, could not search), then the results in a scrolling list of shared rows (`.sdk-row`, the kind's icon in a disc, the title, the subtitle and the module). The row the keys are on is `--fill-selected`; a ticked row (when several may be chosen) shows a check. At 640px and below it is a full-height sheet with 44px rows and a 16px search box, and rows are 44px on any touch screen. The block is `objectpick` in `public/sdk/system.css`.
 
 ## Muted text and Strong Coffee in light
 

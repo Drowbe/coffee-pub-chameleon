@@ -19,7 +19,13 @@ const PERSON_RE = /^[a-z0-9]{4,40}$/; // a person's key
 const LIMITS = {
   valueBytes: 60 * 1024, // one key's value, serialized
   moduleBytes: 5 * 1024 * 1024, // everything one module has stored
+  batchBytes: 256 * 1024, // a 'changes' event bigger than this goes without its values: a reload hint (`reload: true`)
 };
+
+// A module's own bookkeeping, not an object: a key that starts with "_" (the SDK's `_cursor:events`, a module's
+// `_moved:...`). A Clear takes it and its Undo puts it back, but neither counts it, and one written meanwhile keeps its
+// value without being named as taken.
+const isBookkeeping = (key) => typeof key === 'string' && key.startsWith('_');
 
 // The module folders under DATA_DIR/modules (a module's id each); the files beside them (registry.json, links.json...) are not.
 function moduleFolders(dir) {
@@ -214,6 +220,18 @@ class ModuleData extends EventEmitter {
     return { key, deleted: true, version: change.version };
   }
 
+  // One 'changes' event for many keys. Above LIMITS.batchBytes the values stay out and the event says `reload: true`:
+  // the keys and versions only, so a big clear or undo does not flood every open stream; a page reads the data again.
+  emitBatch(batch) {
+    let size = 0;
+    for (const c of batch.changes) {
+      size += c.key.length + 80 + (c.value === null || c.value === undefined ? 0 : JSON.stringify(c.value).length);
+      if (size > LIMITS.batchBytes) break;
+    }
+    if (size <= LIMITS.batchBytes) return this.emit('changes', batch);
+    this.emit('changes', { ...batch, reload: true, changes: batch.changes.map(({ value, ...rest }) => rest) });
+  }
+
   // Everything one module holds in one scope goes in one write (Clear, DELETE .../data): answers what was there, each
   // { key, value, version, updatedAt, by }. One 'changes' event names every key, so an open page draws once, not per key.
   removeAll(id, scopeKey, { by = '' } = {}) {
@@ -225,13 +243,14 @@ class ModuleData extends EventEmitter {
     const at = new Date().toISOString();
     const who = String(by).slice(0, 40);
     const changes = removed.map((e) => ({ module: id, scopeKey, key: e.key, value: null, version: e.version + 1, updatedAt: at, by: who, deleted: true }));
-    this.emit('changes', { module: id, scopeKey, by: who, cleared: true, changes });
+    this.emitBatch({ module: id, scopeKey, by: who, cleared: true, changes });
     return removed;
   }
 
   // Puts back what removeAll took (an Undo of Clear): each entry as it was, its value, its writer (`by`) and its time, at a
   // version past the delete's, in one write and one 'changes' event. A key that holds something now keeps it and is
-  // answered in `taken`. Held to the module's storage cap like any write (a 413 puts nothing back); never to a write limit.
+  // answered in `taken`, except the module's bookkeeping (isBookkeeping), which keeps what it holds now unnamed. Held to
+  // the module's storage cap like any write (a 413 puts nothing back).
   restoreMany(id, scopeKey, entries, { by = '' } = {}) {
     const map = this.load(id, scopeKey);
     const next = new Map(map);
@@ -239,7 +258,7 @@ class ModuleData extends EventEmitter {
     const taken = [];
     for (const e of entries) {
       if (!e || typeof e.key !== 'string' || !KEY_RE.test(e.key) || !('value' in e)) continue;
-      if (next.has(e.key)) { taken.push(e.key); continue; }
+      if (next.has(e.key)) { if (!isBookkeeping(e.key)) taken.push(e.key); continue; }
       next.set(e.key, { value: e.value, version: (Number(e.version) || 0) + 2, updatedAt: e.updatedAt || new Date().toISOString(), by: String(e.by || '').slice(0, 40) });
       restored.push(e.key);
     }
@@ -252,9 +271,9 @@ class ModuleData extends EventEmitter {
     this.persist(id, scopeKey, next);
     this.cache.set(`${id}|${scopeKey}`, next);
     const changes = restored.map((key) => ({ module: id, scopeKey, key, ...next.get(key), deleted: false }));
-    this.emit('changes', { module: id, scopeKey, by: String(by).slice(0, 40), restored: true, changes });
+    this.emitBatch({ module: id, scopeKey, by: String(by).slice(0, 40), restored: true, changes });
     return { restored, taken };
   }
 }
 
-module.exports = { ModuleData, moduleFolders, LIMITS: { ...LIMITS } };
+module.exports = { ModuleData, moduleFolders, isBookkeeping, LIMITS: { ...LIMITS } };
