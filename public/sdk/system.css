@@ -3099,6 +3099,73 @@ dialog.sdk-dialog-confirm:not([open]) { display: none; }
 }
 /* confirm:end */
 
+/* objectpick:start */
+/* The object picker (host.objects.pick, public/object-pick.js): a search box and rows in a dialog, 560px wide, a full-height sheet on a phone.
+   The shell, head, title and foot are the Dialogs block's (.sdk-dialog-head, .sdk-dialog-title, .sdk-dialog-foot); the rows are the shared .sdk-row.
+   The highlighted row (.active, the one Enter chooses) is a fill (--fill-selected); a ticked one (aria-selected, multiple) shows a check. */
+dialog.sdk-dialog-pick {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--dlg-w-form), 100vw - 32px);
+  max-width: none;
+  max-height: min(640px, var(--dlg-max-h));
+  height: 100%;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-large);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-14);
+  line-height: 20px;
+}
+dialog.sdk-dialog-pick:not([open]) { display: none; }
+dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
+.sdk-dialog-pick .sdk-dialog-close { position: relative; }
+.sdk-dialog-pick .sdk-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 var(--dlg-pad-x) var(--pad-dialog-y);
+}
+.sdk-pick-status { margin: 0; min-height: 16px; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
+.sdk-pick-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sdk-pick-row { cursor: pointer; flex: none; }
+.sdk-pick-row:hover { --s: var(--surface-field); background: var(--surface-field); }
+.sdk-pick-row.active, .sdk-pick-row.active:hover { background: var(--fill-selected); }
+.sdk-pick-row .sdk-card-icon { color: var(--kind-color, inherit); }
+.sdk-pick-tick { flex: none; width: 16px; text-align: center; color: var(--text-primary); visibility: hidden; }
+.sdk-pick-row[aria-selected="true"] .sdk-pick-tick { visibility: visible; }
+.sdk-dialog-pick .sdk-dialog-foot { margin: 0; padding: var(--pad-dialog-y) var(--dlg-pad-x) calc(var(--pad-dialog-y) + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 640px) {
+  dialog.sdk-dialog-pick { width: 100vw; max-height: none; height: 100dvh; border-radius: 0; border-width: 0; }
+  .sdk-dialog-pick .sdk-dialog-close::after { content: ""; position: absolute; inset: var(--btn-hit); }
+  .sdk-dialog-pick .sdk-dialog-foot > .btn { --btn-h: 44px; }
+  .sdk-pick-row { min-height: 44px; }
+  .sdk-dialog-pick .sdk-search > input { font-size: var(--text-16); min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .sdk-pick-row { min-height: 44px; }
+  .sdk-dialog-pick .sdk-search > input { font-size: var(--text-16); min-height: 44px; }
+}
+/* objectpick:end */
+
 /* ================= Journey bar: the status strip and its journey bar (design system step 30) =================
    The space's status strip (space.js, "the status strip"): the phase chip, the journey bar, the countdown, up to three facts and
    the attention chip. Source: public/design-system/proposed-journey.css, without the .ds-proposed prefix, the new names only, with the

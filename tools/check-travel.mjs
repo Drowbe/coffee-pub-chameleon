@@ -375,6 +375,7 @@ function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], 
   const handlers = { change: [] };
   const provided = {};
   const covered = []; // every day asked of host.phasesCover, in order
+  const links = new Map(); // planRef key -> the pointer keys it was last told it points at
   let clock = 0;
   const objectKey = (r) => [r.module, r.kind, r.id, r.scope, r.space || ''].join('|');
   const refuse = () => { if (readOnly) throw Object.assign(new Error('you may not change this'), { status: 403 }); };
@@ -418,10 +419,12 @@ function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], 
       resolve: async (refs) => refs.map((r) => summaries.find((c) => objectKey(c.ref) === objectKey(r)) || { error: 'gone' }),
       search: async () => search,
       make: (kind, id) => ({ module: 'travel', kind, id, scope: 'space' }),
+      // As the host: what each object points at, all of it, replaced by each call (the plan's setLinks).
+      setLinks: async (from, to) => { links.set(objectKey(from), to.map(objectKey)); },
     },
     actions: { provide: (h) => Object.assign(provided, h) },
   };
-  return { t, store, provided, covered, push: (e) => handlers.change.forEach((fn) => fn(e)) };
+  return { t, store, provided, covered, links, push: (e) => handlers.change.forEach((fn) => fn(e)) };
 }
 
 const run = async () => {
@@ -2222,5 +2225,57 @@ test('audit fixes: Decisions follow the contract, Move to unscheduled goes to Un
   const clear = manifest.permissions.find((p) => p.key === 'clear');
   assert.ok(clear && clear.default.moderator === true && clear.default.member === false && clear.default.guest === false, 'moderators by default, not members or guests');
 });
+
+// A stop at a Place records the link (setLinks); changing the Place replaces it; unlinking and deleting remove it.
+await (async () => {
+  const f = fakeHost();
+  const plan = lib.createPlan(f.t);
+  await plan.load();
+  await plan.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  const planKey = (id) => f.t.util.objectKey(f.t.objects.make('plan', id));
+  const placeRef = (id) => ({ module: 'places', kind: 'place', id, scope: 'space' });
+  const keyOf = (r) => f.t.util.objectKey(r);
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  // A stop with a typed name only: nothing linked, nothing told.
+  const plain = await plan.addItem({ kind: 'stop', type: 'restaurant', title: 'Dinner', place: 'Taberna', date: '2026-10-01' });
+  await tick();
+  assert.equal(plain.placeRef, null, 'a typed name alone links nothing');
+  assert.ok(!f.links.has(planKey(plain.id)), 'nothing is told for a stop with no Place');
+  // Linked on creation.
+  const a = await plan.addItem({ kind: 'stop', type: 'restaurant', title: 'Lunch', place: 'Ramiro', placeRef: placeRef('p1'), date: '2026-10-01' });
+  await tick();
+  assert.equal(keyOf(a.placeRef), keyOf(placeRef('p1')), 'the pointer is kept on the stop');
+  assert.equal(a.place, 'Ramiro', 'the typed name is kept beside the link');
+  assert.deepEqual(f.links.get(planKey(a.id)), [keyOf(placeRef('p1'))], 'the plan told the host what the stop points at');
+  // Linking an existing stop.
+  await plan.updateItem(plain.id, { placeRef: placeRef('p2') });
+  await tick();
+  assert.deepEqual(f.links.get(planKey(plain.id)), [keyOf(placeRef('p2'))], 'linking a stop later records it');
+  // Another Place replaces the first, never adds a second.
+  await plan.updateItem(a.id, { placeRef: placeRef('p3') });
+  await tick();
+  assert.deepEqual(f.links.get(planKey(a.id)), [keyOf(placeRef('p3'))], 'a new Place replaces the old link');
+  // Unlinking: the name stays, the link is told away.
+  const unlinked = await plan.updateItem(a.id, { placeRef: null });
+  await tick();
+  assert.equal(unlinked.placeRef, null);
+  assert.equal(unlinked.place, 'Ramiro', 'unlinking keeps the typed name');
+  assert.deepEqual(f.links.get(planKey(a.id)), [], 'unlinking tells the host the stop points at nothing');
+  // Other edits do not tell again.
+  f.links.delete(planKey(plain.id));
+  await plan.updateItem(plain.id, { notes: 'Window seat' });
+  await tick();
+  assert.ok(!f.links.has(planKey(plain.id)), 'an edit that leaves the Place alone sends nothing');
+  // Deleting the stop removes the link.
+  await plan.removeItem(plain.id);
+  await tick();
+  assert.deepEqual(f.links.get(planKey(plain.id)), [], 'deleting a linked stop removes its link');
+  // The pointer is cleaned on the way in: a stay or a note carries none, a bad one is dropped.
+  const stay = await plan.addItem({ kind: 'stay', title: 'Hotel', placeRef: placeRef('p1'), date: '2026-10-01' });
+  assert.ok(!stay.placeRef, 'only a stop is at a Place');
+  const bad = await plan.addItem({ kind: 'stop', title: 'Walk', placeRef: { module: 'places' }, date: '2026-10-02' });
+  assert.equal(bad.placeRef, null, 'a pointer with no kind or id is dropped');
+})();
+n += 1;
 
 console.log(`check-travel: OK (${n} checks)`);
