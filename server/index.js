@@ -5783,9 +5783,9 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     const summaries = aiSummaries(out.summaries, built.numbered);
     const used = aiPointers(out.used, built.numbered);
     const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
-    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, cut: out.cut });
+    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, numbered: built.numbered, leftOut: built.leftOut, cut: out.cut });
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
-    res.json({ text: out.text, summaries, used, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
+    res.json({ text: out.text, summaries, used, numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
     // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
@@ -7889,7 +7889,7 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built), { secrets: aiPolicy.secrets() });
     countAiCall();
     noteActivity(ctx.manifest.id, `asked the AI (${AI_TASK_WORDS[task]}, ${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
-    res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
+    res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
     sendAiError(err, res);

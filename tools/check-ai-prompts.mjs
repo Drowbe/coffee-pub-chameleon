@@ -18,7 +18,7 @@ import { startFakeModel } from './fake-model.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { Ai, AiError, CUT_NOTE, applyManagedFields } = require('../server/ai.js');
+const { Ai, AiError, applyManagedFields } = require('../server/ai.js');
 const { isPrivateAddress, assertAddressAllowed, request } = require('../server/ai-http.js');
 const { readObjects, TRAVEL_KINDS } = require('../server/object-format.js');
 const { parseSummaries } = require('../server/prompts/parse.js');
@@ -73,13 +73,13 @@ await test('ai-04: a cut-off answer keeps what is readable, drops the open block
   fake.next({ text });
   const r = await ask(setUp(), [], 'places?');
   assert.equal(r.cut, true);
-  assert.ok(r.text.includes(CUT_NOTE) && /Ask again/.test(r.text));
+  assert.ok(!/cut off|Ask again/.test(r.text), 'the page says it was cut, from `cut`; the text carries no note');
   assert.equal(r.summaries.length, 1);
   // The service says it ran out (finish_reason length), with nothing wrong in the text.
   fake.next({ text: 'A long answer that stops mid', finish: 'length' });
   const l = await ask(setUp(), [], 'long?');
   assert.equal(l.cut, true);
-  assert.ok(l.text.endsWith(CUT_NOTE));
+  assert.equal(l.text, 'A long answer that stops mid');
   // A structured answer cut off in the middle of its objects: the answer and the complete objects kept.
   const s = await ask(setUp(), [], 'CUTOFF please');
   assert.deepEqual([s.cut, s.summaries.map((x) => x.title)], [true, ['Tower']]);
