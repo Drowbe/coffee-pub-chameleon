@@ -16,6 +16,7 @@ import { api, markModuleRead, followTheme, word } from '/brand.js';
 import { mountModule, createFrameLift, openClearMenu, clearWithUndo, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
+import { fileWindowCount, closeAllFiles } from '/file-viewer.js';
 import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
 import { layoutOf, placeLayout, leftOutNote } from '/layouts.js';
@@ -1810,6 +1811,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
         items.push({ icon: 'fa-solid fa-broom', label: 'Clean up', onPick: () => cleanUp() });
       }
     }
+    // The file windows (public/file-viewer.js) are over the canvas, not modules of it: one entry closes them all (plan-attachments-vault.md, decision 20).
+    const filesOpen = fileWindowCount(canvasDoc());
+    if (filesOpen) items.push({ divider: true }, { heading: 'Open files' }, { icon: 'xmark', label: 'Close all', badge: filesOpen, onPick: () => closeAllFiles(canvasDoc()) });
     const extra = typeof menuItems === 'function' ? menuItems() : [];
     if (Array.isArray(extra) && extra.length) items.push({ divider: true }, ...extra);
     if (noteEl) items.push({ element: noteEl });
