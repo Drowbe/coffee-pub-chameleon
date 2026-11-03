@@ -34,6 +34,7 @@ const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const pdfViewer = require('./pdf-viewer');
+const { mountVaultShares } = require('./vault-share');
 const { watchArrival, slowSenders } = require('./arrival');
 const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
@@ -3257,6 +3258,10 @@ app.get('/theme.css', (req, res) => {
   const person = currentUser(req);
   res.send(themeCssLib.themeCss(env.store.activeThemeSets(), person?.themeMode || environmentThemeMode()));
 });
+
+// A library module's share links (server/vault-share.js): the signed-in routes that make and turn them off, and the
+// public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
+mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html') });
 
 app.use(express.static(publicDir, { index: false }));
 
@@ -8330,7 +8335,9 @@ function receiveUpload(req, part, declared, onHead, onSlow = () => {}, handle = 
 app.get('/api/modules/:id/library', (req, res) => {
   const ctx = libraryAccess(req, res, 'view');
   if (!ctx) return;
-  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => fileView(ctx, r));
+  // `shared` (in a share link that still opens) only for someone who may make share links.
+  const shared = ctx.can('share') ? vault.sharedFileIds(ctx.manifest.id, ctx.spaceId) : null;
+  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => (shared ? { ...fileView(ctx, r), shared: shared.has(r.id) } : fileView(ctx, r)));
   res.json({ files, usage: { bytes: vault.usage().spaces.get(ctx.spaceId) || 0, maxBytes: libraryQuotas(ctx.manifest).space } });
 });
 
