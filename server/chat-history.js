@@ -51,8 +51,11 @@ const copy = (m) => ({
   ...(m.kept && typeof m.kept === 'object' ? { kept: { ...m.kept } } : {}),
   ...(m.sent && typeof m.sent === 'object' ? { sent: JSON.parse(JSON.stringify(m.sent)) } : {}),
   ...(Array.isArray(m.used) ? { used: m.used.map((r) => ({ ...r })) } : {}),
+  ...(Array.isArray(m.numbered) ? { numbered: m.numbered.map((r) => ({ ...r })) } : {}),
+  ...(Array.isArray(m.leftOut) ? { leftOut: m.leftOut.map((l) => ({ ...l })) } : {}),
 });
 const QUOTE_MAX = 300;
+const MAX_NUMBERED = 100; // attached (12) plus the rollup's relevant and linked objects (30 + 20), and some over
 const MAX_LINK = 500; // a message's link, as Research keeps one (plan-chat-links.md)
 
 class ChatHistory {
@@ -211,7 +214,7 @@ class ChatHistory {
   // `command` (with `command` and, for a module's command, `module`) the echo of a command; `ai` an AI answer, with
   // `summaries` and `replyTo`. `link` (plan-chat-links.md): the ordinary message's link, found by the route with
   // findLink (server/chat-links.js), stored as `preview: { url }`.
-  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, cut }) {
+  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, numbered, leftOut, cut }) {
     const ai = kind === 'ai' || command === 'ai';
     const clean = cleanText(text, ai ? MAX_AI_TEXT : MAX_TEXT);
     if (!clean) return null;
@@ -229,6 +232,9 @@ class ChatHistory {
       if (typeof prompt === 'string' && /^[a-z]+@\d{1,4}$/.test(prompt)) message.prompt = prompt;
       if (sent && typeof sent === 'object' && !Array.isArray(sent)) message.sent = JSON.parse(JSON.stringify(sent));
       if (Array.isArray(used) && used.length) message.used = JSON.parse(JSON.stringify(used.slice(0, 50)));
+      // The pointer behind each number the answer may cite ([n] is numbered[n - 1]), and what was left out of the prompt.
+      if (Array.isArray(numbered) && numbered.length) message.numbered = JSON.parse(JSON.stringify(numbered.slice(0, MAX_NUMBERED)));
+      if (Array.isArray(leftOut) && leftOut.length) message.leftOut = JSON.parse(JSON.stringify(leftOut.slice(0, 20)));
       if (cut === true) message.cut = true;
     }
     if (!kind && typeof link === 'string' && link && link.length <= MAX_LINK) message.preview = { url: link };
