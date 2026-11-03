@@ -1172,7 +1172,7 @@
 }
 
 /* The parent of a corner count is the corner's frame. */
-:where(:has(> .sdk-badge-micro)) { position: relative; } /* no weight: a parent that is absolute or fixed already keeps that */
+/* removed */
 
 /* A phone: the look stays, the hit area is 44px. */
 @media (max-width: 640px) {
@@ -5877,9 +5877,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
    the host fills its place with it and pads it (--mf-inset, as the toolbar's sides), unless the manifest says
    "content": "flush" (the SDK puts that on the root as data-content). A module gives the slot, html and body no padding,
    margin or height of its own (tools/check-module-layout.mjs); its parts are 8px apart. */
-:root:has(> body > .sdk-slot),
-:root:has(> body > .sdk-slot) > body { height: 100%; margin: 0; }
-:root:has(> body > .sdk-slot) > body { display: flex; flex-direction: column; overflow: hidden; }
+body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
 .sdk-slot {
   position: relative;
   display: flex;
