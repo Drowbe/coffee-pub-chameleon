@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vault</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<!-- The host draws the title bar (Select, the "+" that is Add files), the toolbar (the List and Grid switch, Search files, Filters)
+     and the status line; this is the content slot. -->
+<div id="app" class="vt-app sdk-slot" hidden>
+  <div class="sdk-banner" id="banner" role="status" hidden><span class="sdk-banner-icon" id="banner-icon"></span><span class="sdk-banner-text" id="banner-text"></span></div>
+
+  <!-- Add files: the drop area, the files being sent, and the choices about them -->
+  <section class="vt-add" id="add" aria-label="Add files" hidden>
+    <div class="vt-add-head"><h3 class="vt-add-title" id="add-title">Add files</h3><button type="button" class="sdk-icon-btn btn-quiet btn-small" id="add-close" aria-label="Close" data-tip="Close"><span class="ic" data-icon="xmark"></span></button></div>
+    <div class="vt-drop" id="drop">
+      <span class="ic vt-drop-ic" id="drop-ic" data-icon="cloud-arrow-up"></span>
+      <p class="vt-drop-title" id="drop-title">Drop files here</p>
+      <p class="vt-drop-sub" id="drop-sub">or</p>
+      <button type="button" class="btn btn-primary" id="choose"><span class="ic" data-icon="plus"></span><span>Choose files</span></button>
+      <input type="file" id="picker" multiple hidden accept=".jpg,.jpeg,.png,.webp,.gif,.mp3,.ogg,.oga,.wav,.m4a,.mp4,.webm,.mov,.pdf,.md">
+    </div>
+    <ul class="vt-queue" id="queue" aria-label="Files being added" hidden></ul>
+    <p class="vt-accept">Pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown. Up to 25 MB for a picture, 200 MB audio, 2 GB video, 100 MB PDF, 1 MB Markdown.</p>
+    <label class="sdk-choice-row vt-where"><input type="checkbox" id="remove-where"><span class="sdk-choice-text"><span class="sdk-choice-label">Remove where it was taken</span><span class="sdk-choice-desc">For pictures. Your choice is remembered.</span></span></label>
+    <p class="vt-notice">Videos keep their details, which can include where they were taken.</p>
+    <p class="vt-line" id="add-line"></p>
+    <div class="sdk-meter vt-quota">
+      <div class="sdk-meter-head"><span class="sdk-meter-label" id="quota-label">Used</span><span class="sdk-meter-value" id="quota-value"></span></div>
+      <div class="sdk-progress sdk-progress-sm" id="quota-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span class="sdk-progress-fill" id="quota-fill"></span></div>
+    </div>
+  </section>
+
+  <p class="sdk-form-error" id="note" hidden></p>
+  <div class="vt-loading" id="loading" role="status">Loading files</div>
+  <div class="sdk-empty vt-empty" id="msg" hidden></div>
+  <main id="body" class="vt-body" hidden></main>
+
+  <div class="vt-dropover" id="dropover" hidden><span class="ic" data-icon="cloud-arrow-up"></span><p class="vt-drop-title" id="dropover-title">Drop to add</p><p class="vt-drop-sub" id="dropover-sub"></p></div>
+
+  <!-- Rename: an editor window -->
+  <dialog id="rename" class="sdk-editor">
+    <form id="rename-form" class="sdk-form" novalidate>
+      <h3>Rename the file</h3>
+      <label class="sdk-field"><span class="sdk-label">Name</span><input id="rename-name" type="text" maxlength="120" autocomplete="off"><span class="sdk-hint" id="rename-hint"></span></label>
+      <div class="sdk-editor-actions"><button type="button" class="btn" id="rename-cancel">Cancel</button><button type="submit" class="btn btn-primary">Rename</button></div>
+    </form>
+  </dialog>
+
+  <!-- A file's details: its facts, Download, and where it is used. Until the viewer windows open a file, this is what Open shows. -->
+  <dialog id="details" class="sdk-editor">
+    <div class="sdk-form" id="details-body">
+      <h3 id="details-title">File</h3>
+      <dl class="vt-facts" id="facts"></dl>
+      <p class="vt-fine" id="details-note"></p>
+      <div class="vt-uses" id="uses" hidden></div>
+      <div class="sdk-editor-actions"><button type="button" class="btn" id="details-close">Close</button><button type="button" class="btn btn-primary" id="details-download" hidden><span class="ic" data-icon="download"></span><span>Download</span></button></div>
+    </div>
+  </dialog>
+
+  <div class="vt-live" id="live" role="status" aria-live="polite"></div>
+</div>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>

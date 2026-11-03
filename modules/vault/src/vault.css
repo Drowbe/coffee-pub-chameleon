@@ -1,0 +1,123 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.ic { display: inline-flex; align-items: center; flex: none; }
+.ic svg { width: 1em; height: 1em; fill: currentColor; }
+
+/* Small muted words on a row or a card: a step stronger than --text-muted, which is under 4.5 to 1 on a tinted or chosen fill. */
+.vt-app { --vt-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); container: vault / inline-size; position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-height: 100%; }
+:is(.vt-row, .vt-card)[aria-selected="true"] :is(.vt-by, .vt-flags, .vt-card-line, .vt-card-sub, .vt-sub, .menu-btn) { color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); }
+.vt-body { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.vt-loading { color: var(--text-muted); font-size: var(--text-13); padding: var(--space-4) 0; }
+.vt-empty-in { min-height: 240px; justify-content: center; }
+.vt-mark { background: var(--fill-selected); color: inherit; border-radius: var(--radius-min); }
+.vt-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- the file's picture and its type tile ---- */
+.vt-thumb { position: relative; flex: none; display: flex; align-items: center; justify-content: center; width: 36px; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-small); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-16); }
+.vt-thumb > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.vt-play { position: absolute; inset: 0; z-index: 2; margin: auto; display: flex; align-items: center; justify-content: center; width: 40%; max-width: 44px; aspect-ratio: 1; min-width: 14px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--surface-page) 72%, transparent); color: var(--text-primary); font-size: var(--text-9); }
+
+/* ---- the List ---- */
+.vt-rows { display: flex; flex-direction: column; gap: var(--gap-card-rows); margin: 0; padding: 0; list-style: none; }
+.vt-row { --s: var(--mf-surface-row); }
+.vt-title { display: block; overflow: hidden; width: 100%; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.vt-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); }
+.vt-by { flex: none; display: flex; align-items: center; gap: var(--space-2); width: 96px; min-width: 0; font-size: var(--text-12); color: var(--vt-dim); }
+.vt-by-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-when { width: 72px; text-align: right; }
+.vt-flags { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 44px; color: var(--vt-dim); font-size: var(--text-12); }
+.vt-flag { display: inline-flex; align-items: center; gap: var(--space-1); }
+.vt-sub-narrow { display: none; }
+@container vault (max-width: 600px) {
+  .vt-by, .vt-when { display: none; }
+  .vt-sub-narrow { display: inline; }
+}
+@container vault (max-width: 420px) {
+  .vt-sub-kind { display: none; }
+  .vt-flags { min-width: 0; }
+  .vt-flags:empty { display: none; }
+  .vt-row .vt-sub { overflow: visible; white-space: normal; text-overflow: clip; }
+}
+
+/* ---- the Grid: a banded card with a one-line head ---- */
+.vt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); margin: 0; padding: 0; }
+@container vault (max-width: 480px) {
+  .vt-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+}
+.vt-card { min-width: 0; }
+.vt-stack { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-kind-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; font-size: var(--icon-16); color: color-mix(in srgb, var(--tint, var(--text-muted)) 70%, var(--text-primary)); }
+.vt-card-title { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: var(--text-14); line-height: 20px; }
+.vt-card-name { display: block; width: 100%; max-width: 100%; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-weight: var(--weight-medium); word-break: break-word; }
+.vt-card-name.vt-cut { display: flex; min-width: 0; }
+/* The head is as wide as its text (fitCuts in vault.js sets it), so the tail follows with no gap. */
+.vt-nm-head { flex: none; overflow: hidden; white-space: nowrap; }
+.vt-nm-tail { flex: none; white-space: pre; }
+.vt-card .vt-thumb { width: 100%; border-radius: var(--radius-small); font-size: var(--text-28); }
+.vt-card .vt-play { font-size: var(--text-14); }
+.vt-card-line { margin: 0; color: var(--vt-dim); font-size: var(--text-12); line-height: 16px; }
+.vt-card .vt-flags { justify-content: flex-start; min-width: 0; }
+.vt-card .vt-flags:empty { display: none; }
+/* Narrow: the picture first, the name under it; the tick and the more button sit on the picture */
+.vt-card-thumb { padding: 0; gap: 0; overflow: hidden; }
+.vt-card-thumb > .vt-thumb { width: 100%; border-radius: 0; }
+.vt-card-over { position: absolute; top: var(--space-1); right: var(--space-1); left: var(--space-1); display: flex; align-items: center; z-index: 3; pointer-events: none; }
+.vt-card-over > * { pointer-events: auto; }
+.vt-fill { flex: 1 1 auto; }
+.vt-card-over .sdk-icon-btn, .vt-card-over .vt-tick { background: color-mix(in srgb, var(--surface-panel) 84%, transparent); border-radius: var(--radius-small); }
+.vt-card-meta { display: flex; flex-direction: column; gap: var(--space-0); min-width: 0; padding: var(--space-2); }
+.vt-card-thumb .vt-card-name { display: block; font-size: var(--text-13); white-space: nowrap; }
+.vt-card-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-dim); font-size: var(--text-12); }
+.vt-card-thumb .vt-flags:empty { display: none; }
+.vt-tick { display: inline-flex; align-items: center; justify-content: center; }
+@container vault (max-width: 480px) {
+  .vt-card-sub { font-size: var(--text-11); }
+}
+@container vault (max-width: 420px) {
+  .vt-x-kind, .vt-x-by { display: none; }
+}
+
+/* ---- Add files ---- */
+.vt-add { display: flex; flex: none; flex-direction: column; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--edge-hairline); }
+.vt-add-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.vt-add-title { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.vt-drop { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-5) var(--space-4); border: 1px dashed var(--edge-field); border-radius: var(--radius-large); color: var(--text-muted); text-align: center; transition: background var(--motion-fast); }
+.vt-drop-ic { font-size: var(--icon-24); margin-bottom: var(--space-1); }
+.vt-drop-title { margin: 0; color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); }
+.vt-drop-sub { margin: 0; font-size: var(--text-13); }
+.vt-drop .btn { margin-top: var(--space-2); }
+.vt-drop.is-compact { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); }
+.vt-drop.is-compact .vt-drop-ic { margin: 0; }
+.vt-drop.is-compact .vt-drop-sub { display: none; }
+.vt-drop.is-compact .btn { margin: 0; }
+.vt-drop.is-over, .vt-drop.is-over .vt-drop-sub { color: var(--text-primary); }
+.vt-drop.is-over { border: 2px solid var(--focus-ring); background: var(--fill-selected); }
+.vt-drop.is-off { background: var(--surface-field); }
+.vt-accept, .vt-notice, .vt-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
+.vt-line { color: var(--text-primary); font-size: var(--text-13); }
+.vt-where { align-self: stretch; }
+.vt-queue { display: flex; flex-direction: column; gap: var(--gap-card-rows); margin: 0; padding: 0; list-style: none; }
+.vt-up-name { overflow: hidden; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.vt-up-line { display: block; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); overflow-wrap: anywhere; }
+.vt-up-bad { color: color-mix(in srgb, var(--status-danger-text) 75%, var(--text-primary)); }
+.vt-up .sdk-progress { margin-top: var(--space-1); }
+.vt-dropover { position: absolute; inset: var(--space-2); z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px dashed var(--focus-ring); border-radius: var(--radius-large); background: color-mix(in srgb, var(--surface-panel) 90%, transparent); color: var(--text-muted); pointer-events: none; text-align: center; padding: var(--space-4); }
+.vt-dropover .ic { font-size: var(--icon-24); }
+.vt-quota { margin-top: var(--space-1); }
+
+/* ---- a file's details, and where it is used ---- */
+.vt-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; font-size: var(--text-14); }
+.vt-facts dt { color: var(--text-muted); }
+.vt-facts dd { margin: 0; overflow-wrap: anywhere; }
+.vt-fine { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.vt-uses { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-uses-head { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
+.vt-uses-list { margin: 0; padding-left: var(--space-5); font-size: var(--text-14); }
+
+/* ---- coarse pointers and phones: 44px taps, 16px fields ---- */
+@media (pointer: coarse) {
+  .vt-app input[type="text"], .vt-app input[type="search"], #rename-name { font-size: var(--text-16); }
+}
+@media (max-width: 640px) {
+  #rename-name { font-size: var(--text-16); }
+}
