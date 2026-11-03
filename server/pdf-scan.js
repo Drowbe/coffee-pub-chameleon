@@ -19,12 +19,14 @@
 //   dictionary has /N, /First or /Extends, or says /Type /ObjStm) is decoded through its whole filter chain (Flate,
 //   LZW, ASCIIHex, ASCII85, RunLength, with PNG or TIFF predictors) within bounds and read the same way, and every name
 //   in it is looked at, inside strings too; one whose chain can't be decoded here, or whose dictionary names its filters
-//   by reference, or twice, or that was not ended by its own /Length and is cut short, is not checked and so not taken.
+//   by reference, or twice, or that was not ended by its own /Length and is cut short, is not checked (download only).
 //   A reader needs /N and /First to take objects out of a stream, whatever its /Type says.
 // - Every other stream's bytes (pictures, fonts, page contents) are not read as names, since compressed bytes would
 //   match by chance.
 // - The end: %%EOF and startxref (or a trailer) in the last kilobyte, and at least one object.
-// Answers null, { name, what } for what it holds, { refuse: 'damaged' } or { refuse: 'unchecked' }.
+// - Whether it is encrypted (an /Encrypt name): its strings and streams can't be read, so it is not judged.
+// Answers null, { name, what } for what it holds, { refuse: 'damaged' } or { refuse: 'unchecked' }. What it holds and a
+// damaged file are refused; a PDF it could not judge is kept as download only (decision 18; server/index.js).
 'use strict';
 
 const fs = require('fs');
@@ -47,7 +49,7 @@ const ACTIVE_NAMES = new Map([
   ['Rendition', 'files'], ['Movie', 'files'], ['Sound', 'files'], ['3D', 'files'],
 ]);
 
-// The budget. Past any of it the PDF is not checked, so not taken.
+// The budget. Past any of it the PDF is not checked, so it is kept as download only.
 const LIMITS = {
   objects: 4 * 1000 * 1000,
   streams: 1000 * 1000,
@@ -225,21 +227,31 @@ function namesIn(b, from, to) {
 
 // Every name in `b` (from `from` to `to`) wherever it stands, inside a string or a comment too: each "/" read as the start
 // of a name, so no string or comment can hide one. A reader takes each object of an object stream from its own offset,
-// so an object that opens a string the one before it never closes is still read as syntax there. Whether any refused
-// name, or a /URI that is not a web or email address, is in it (true or false).
+// so an object that opens a string the one before it never closes is still read as syntax there. A refused name, or a
+// /URI that is not a web or email address, found this way is found (step 3, decision 18: what the scan positively finds
+// is refused, never kept as download only): null or { name, what }. A /URI whose address is held elsewhere, by
+// reference, can't be judged: Unchecked.
 function anyNameIn(b, from, to) {
   for (let at = b.indexOf(0x2f, from); at >= 0 && at < to;) {
     lexName(b, at, to);
     const next = Math.max(T_END, at + 1);
-    if (T_VAL !== null && ACTIVE_NAMES.has(T_VAL)) return true;
+    if (T_VAL !== null && ACTIVE_NAMES.has(T_VAL)) return { name: T_VAL, what: ACTIVE_NAMES.get(T_VAL) };
     if (T_VAL === 'URI') {
       let kind = lex(b, next, to, true);
       while (kind === COMMENT) kind = lex(b, T_END, to, true);
-      if (kind === INT || (kind === STR && !webLink(T_VAL))) return true;
+      if (kind === STR && !webLink(T_VAL)) return { name: 'URI', what: 'opens' };
+      if (kind === INT) unchecked();
     }
     at = b.indexOf(0x2f, next);
   }
-  return false;
+  return null;
+}
+
+// Whether a link's address (its first bytes) is text a person could read: printable ASCII, tabs and line ends. In an
+// encrypted PDF every string is encrypted, so an address that is not is no address the scan can judge.
+function readableText(bytes) {
+  for (const c of bytes) if ((c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) || c > 0x7e) return false;
+  return true;
 }
 
 // --- filters -----------------------------------------------------------------------------------------------------------
@@ -728,12 +740,16 @@ function scanRange(ctx, from, to, depth) {
     closed = null;
     if (link) {
       link = false;
-      if (kind === STR && !webLink(T_VAL)) return { name: 'URI', what: 'opens' };
+      // An address that is readable text and not a web or email address is found at once. One that is not readable
+      // text is what an encrypted PDF's strings look like: whether the file is encrypted is known only once its
+      // trailer is read, so it is noted and judged at the end (run, below).
+      if (kind === STR && !webLink(T_VAL)) { if (readableText(T_VAL)) return { name: 'URI', what: 'opens' }; ctx.unreadableLink = true; }
       if (kind === INT) unchecked();
     }
     if (kind === NAME) {
       if (T_VAL !== null && ACTIVE_NAMES.has(T_VAL)) return { name: T_VAL, what: ACTIVE_NAMES.get(T_VAL) };
       if (T_VAL === 'URI') link = true;
+      if (T_VAL === 'Encrypt') ctx.encrypted = true;
       if (level === 1 && topDict) {
         if (afterKey) { keep({ n: T_VAL }); afterKey = false; } else {
           endValue();
@@ -861,19 +877,36 @@ function stream(ctx, b, base, i, entries, to, depth) {
     const found = namesIn(d, 0, d.length);
     if (found) return { found };
     // A name that reading did not see as one (inside what it read as a string) is one a reader taking each object from
-    // its own offset could: not judged.
-    if (anyNameIn(d, 0, d.length)) unchecked();
+    // its own offset could: found as well.
+    const inString = anyNameIn(d, 0, d.length);
+    if (inString) return { found: inString };
   }
   return { resume };
 }
 
+// What the scan answers (decision 18, step 3): a refused name or link it finds, first; then a damaged file (no %%EOF and
+// startxref or trailer in its last kilobyte, or no object); then what it could not judge, { refuse: 'unchecked' }: a
+// part it could not read within its bounds, or an encrypted PDF (its /Encrypt), whose strings and streams the scan
+// can't read. A link whose address is not readable text in a PDF that is not encrypted is a link to no web or email
+// address, so found, also when the scan then stopped at something it could not judge.
+const LINK_FOUND = { name: 'URI', what: 'opens' };
 function run(src) {
   if (src.size < 8 || src.read(0, 5).latin1Slice(0, 5) !== '%PDF-') return { refuse: 'damaged' };
-  const ctx = { src, size: src.size, count: { objects: 0, streams: 0, decoded: 0, out: 0 }, wins: [], lengths: null, scratch: null, sawObj: false };
-  const found = scanRange(ctx, 0, src.size, 0);
-  if (found) return found;
+  const ctx = { src, size: src.size, count: { objects: 0, streams: 0, decoded: 0, out: 0 }, wins: [], lengths: null, scratch: null, sawObj: false, encrypted: false, unreadableLink: false };
   const tail = src.read(Math.max(0, src.size - 1024), 1024);
-  if (!ctx.sawObj || tail.indexOf('%%EOF') < 0 || (tail.indexOf('startxref') < 0 && tail.indexOf(TRAILER) < 0)) return { refuse: 'damaged' };
+  const cutShort = tail.indexOf('%%EOF') < 0 || (tail.indexOf('startxref') < 0 && tail.indexOf(TRAILER) < 0);
+  let found;
+  try {
+    found = scanRange(ctx, 0, src.size, 0);
+  } catch (err) {
+    if (!(err instanceof Unchecked)) throw err;
+    if (ctx.unreadableLink && !ctx.encrypted) return LINK_FOUND;
+    return cutShort ? { refuse: 'damaged' } : { refuse: 'unchecked' };
+  }
+  if (found) return found;
+  if (ctx.unreadableLink && !ctx.encrypted) return LINK_FOUND;
+  if (!ctx.sawObj || cutShort) return { refuse: 'damaged' };
+  if (ctx.encrypted) return { refuse: 'unchecked' };
   return null;
 }
 function answer(fn) {

@@ -33,6 +33,7 @@ const { inspectHead } = require('./image-clean');
 const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
+const pdfViewer = require('./pdf-viewer');
 const { watchArrival, slowSenders } = require('./arrival');
 const { Ai, AiError, OVER_CAP, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
@@ -3211,6 +3212,14 @@ const visionDir = path.join(__dirname, '..', 'node_modules', '@mediapipe', 'task
 app.use('/lib/track-processors.mjs', express.static(path.join(trackProcessorsDist, 'index.mjs')));
 app.use('/lib/tasks-vision.mjs', express.static(path.join(visionDir, 'vision_bundle.mjs')));
 app.use('/lib/mediapipe-wasm', express.static(path.join(visionDir, 'wasm'), { maxAge: '30d' }));
+
+// The app's own PDF viewer (server/pdf-viewer.js): its document, which a page frames sandboxed and hands a PDF's bytes,
+// and the files it loads, which a null-origin frame loads as cross-origin (hence their CORS header). Nothing here reads
+// a session or a file: the bytes only ever come from the page that frames it.
+app.get(pdfViewer.VIEWER_PATH, (_req, res) => res.set(pdfViewer.VIEWER_HEADERS).send(pdfViewer.VIEWER_HTML));
+const viewerFileHeaders = { index: false, dotfiles: 'deny', setHeaders: (res) => res.set(pdfViewer.VIEWER_FILE_HEADERS) };
+app.use('/sdk/pdfjs', express.static(path.join(publicDir, 'sdk', 'pdfjs'), viewerFileHeaders), (_req, res) => res.status(404).type('text').send('not found'));
+for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req, res) => res.sendFile(path.join(publicDir, 'sdk', f), { headers: pdfViewer.VIEWER_FILE_HEADERS }));
 
 // A server-rendered stylesheet, not a static one: whatever theme colors an
 // admin has set (Manage > Settings > Theme), both its light and its dark set
@@ -7954,6 +7963,7 @@ app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
 // Uploads stream to a part file, counted as they arrive, and reserve their Content-Length against the space's, the
 // person's, the environment's (a hosted plan's storage cap) and the server's totals first; serving streams with ranges.
 const NO_SUCH_FILE = 'There is no such file.';
+const PDF_DOWNLOAD_ONLY = 'This PDF can\'t be opened here. Download it.';
 // A write that failed on the server's side: the detail goes to the log, never to the person (it can name a path).
 const LIBRARY_NOT_SAVED = 'The file could not be saved. Try again, or ask the admin if it keeps happening.';
 const vaultGb = (value, fallback) => {
@@ -8006,17 +8016,15 @@ const librarySentence = (refusal) => (refusal === 'heic' ? 'HEIC pictures can\'t
 const PDF_HOLDS = { scripts: 'scripts', opens: 'links that open programs or files', sends: 'a form that sends what is typed in it', files: 'files of its own' };
 const pdfSentence = (r) => {
   if (r.refuse === 'damaged') return 'That PDF is damaged or cut short.';
-  if (r.refuse === 'unchecked') return 'That PDF can\'t be checked for scripts, so it can\'t be added.';
   return `That PDF holds ${PDF_HOLDS[r.what] || 'active content'}, so it can't be added.`;
 };
 // The check of a file that is in (vault-scan-worker.js), its refusal in one sentence.
 const vaultScanner = createScanner({ seconds: (() => { const v = Number(VAULT_SCAN_SECONDS); return Number.isFinite(v) && v > 0 ? v : 5; })() });
 const scanSentence = (r, type) => {
-  if (r.code === 'unsafe') return type === 'application/pdf' ? 'We could not check that PDF safely. Try saving it again from the program that made it.' : 'We could not check that file safely. Try saving it again from the program that made it.';
+  if (r.code === 'unsafe') return 'We could not check that file safely. Try saving it again from the program that made it.'; // a PDF is kept as download only instead
   if (r.code === 'picture-damaged') return 'That picture is damaged or cut short.';
   if (r.code === 'picture-large') return 'That picture is too large to show.';
   if (r.code === 'pdf-damaged') return pdfSentence({ refuse: 'damaged' });
-  if (r.code === 'pdf-unchecked') return pdfSentence({ refuse: 'unchecked' });
   if (r.code === 'pdf-active') return pdfSentence({ what: r.what });
   if (r.code === 'damaged') return 'That file is damaged or cut short.';
   return libraryKindSentence;
@@ -8047,7 +8055,8 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user) };
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
-const fileView = (ctx, r) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length });
+// `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
+const fileView = (ctx, r) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}) });
 // The owner's lower quotas, when the module declares them as `number` settings for the environment: spaceMaxGb and
 // personMaxGb, in GB; 0 or unset leaves the server's.
 function libraryQuotas(manifest) {
@@ -8308,10 +8317,17 @@ app.post('/api/modules/:id/library', async (req, res) => {
     if (got.failed) { dropPart(); console.error(`A library upload could not be written: ${got.failed}`); return refuse(500, LIBRARY_NOT_SAVED); }
     const group = vaultTypes.TYPES[type].group;
     let kept = { size: got.size, sha256: got.sha256, taken: null, camera: '' };
+    let viewable = true;
     // The whole file's check, in a worker (server/vault-scan.js): the main thread only waits for it.
     if (group === 'image' || type === 'application/pdf' || vaultTypes.STRUCTURED.includes(type)) {
       const checked = await vaultScanner.scan({ file: part, type, keepPosition: req.query.keepPosition === '1' });
-      if (checked.refuse) {
+      // A PDF the scan could not judge (pdf-unchecked: encrypted, a part it can't read within its bounds) or could not
+      // finish (unsafe: over its time or memory) is kept as download only (decision 18): never sent inline, never shown.
+      // What it positively finds, and a damaged PDF, are still refused.
+      if (checked.refuse && type === 'application/pdf' && (checked.refuse.code === 'pdf-unchecked' || checked.refuse.code === 'unsafe')) {
+        if (checked.refuse.code === 'unsafe') console.error(`A library PDF could not be checked, so it is kept for download only: ${checked.refuse.reason}`);
+        viewable = false;
+      } else if (checked.refuse) {
         dropPart();
         fs.rmSync(`${part}.clean`, { force: true });
         if (checked.refuse.code === 'unsafe') console.error(`A library file could not be checked: ${checked.refuse.reason}`);
@@ -8333,7 +8349,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     // (Thomas, 2026-10-30: that overshoot is accepted).
     const fullNow = vaultFullOnDisk(ctx, keys, kept.size);
     if (fullNow) { dropPart(); return refuse(413, fullNow.error); }
-    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), thumb: null };
+    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null };
     if (flight.stopped) { dropPart(); return refuse(404, removedWhileArriving); }
     try {
       vault.commit(ctx.manifest.id, ctx.spaceId, part, record);
@@ -8360,8 +8376,9 @@ function contentDisposition(kind, name) {
 }
 // The headers every library file is sent with: its stored type only (Markdown as plain text, never HTML), never sniffed,
 // never kept by a shared cache, never run as a page: `sandbox; default-src 'none'` on every type, a PDF too, since the
-// browser's own PDF viewer is not used (decision 18). A PDF is always sent as an attachment: until the app's own viewer
-// (step 3) fetches its bytes, nothing opens one in the browser at this site's origin.
+// browser's own PDF viewer is not used (decision 18). A PDF is always sent as an attachment, also to the app's own
+// viewer (GET /viewer/pdf), which is handed its bytes by the page that fetched them: nothing opens one in the browser at
+// this site's origin.
 function libraryHeaders(type, name, kind) {
   return {
     'Content-Type': type === 'text/markdown' ? 'text/plain; charset=utf-8' : type,
@@ -8381,6 +8398,9 @@ function sendLibraryFile(req, res, thumb) {
   if (!ctx) return;
   const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
   if (!r || (thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
+  // A PDF kept as download only (decision 18) is sent only as a download (download=1, with `download`); asked for inline
+  // it answers 404, with the note the viewer shows, to someone who may see the file at all.
+  if (!thumb && !download && r.viewable === false) return res.status(404).json({ error: PDF_DOWNLOAD_ONLY });
   const file = vault.filePath(ctx.spaceId, r.id, thumb);
   let slot = null;
   if (!thumb) {

@@ -2328,11 +2328,17 @@
 
     // A library's files (a module that declares `library: true`, the Vault; plan-attachments-vault.md): the space's files, kept by the
     // server, each checked from its own bytes. All in the space the frame is in.
-    //   list()                       -> { files: [{ id, name, type, group, size, by, at, taken?, hasThumb, uses }], usage: { bytes, maxBytes } }
+    //   list()                       -> { files: [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable? }], usage: { bytes, maxBytes } }
+    //       `viewable: false` is only on a PDF kept as download only (the server could not check it): never open it in the
+    //       app, show "This PDF can't be opened here. Download it." with download(id). Every other file has no `viewable`.
     //   add(blob, { name, keepPosition, onProgress })  -> the file. `onProgress({ loaded, total })` while it is sent; the promise has `.cancel()`.
     //       A picture keeps where it was taken only when `keepPosition` is true. Rejects with the server's sentence (a type or limit refused).
     //   rename(id, name), remove(id), uses(id) -> { uses: [summary], hidden }, thumb(id, blob) (the small picture you made, of at most 300 KB)
-    //   url(id, { thumb, download }) the address; blob(id, { thumb }) -> a Blob of the file or its small picture
+    //   url(id, { thumb, download }) the address; blob(id, { thumb }) -> a Blob of the file or its small picture.
+    //       A PDF is never shown from its address (it is always sent as a download): blob(id) its bytes and hand them to
+    //       the app's PDF viewer (GET /viewer/pdf in a sandboxed frame; its protocol is at the top of
+    //       public/sdk/pdf-viewer.mjs) as { type: 'open', data: await blob.arrayBuffer() }. blob(id) of a download-only
+    //       PDF rejects with status 404: check `viewable` first.
     //   download(id)                 the host saves the file (a frame cannot start a download itself); needs `download`
     library: {
       list: () => call('library.list'),

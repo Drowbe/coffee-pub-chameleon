@@ -20,7 +20,12 @@
  * in, and with ten stalled readers and a slow one; a range deep in it; a 1 GB upload cut off leaves nothing.
  * Real files (tools/fixtures/vault/, made by ffmpeg, LibreOffice and ImageMagick) are taken; hostile PDFs are judged
  * in under a second each, through a worker, with the main thread kept free.
- * What can't be checked here: a browser's players seeking, and the PDF policy in a real browser (step 3, Verify).
+ * Step 3 (decision 18): the vendored pdf.js pinned by hash (part 0; the check fails on a changed, missing or unpinned
+ * file); a PDF the scan can't judge (encrypted, an object stream it can't read, a check out of time) kept as download
+ * only, `viewable: false`, its inline content 404 with the note and its download an attachment, while what the scan
+ * finds (a script, also in an encrypted PDF or an object stream's string) is still refused; GET /viewer/pdf's headers
+ * and CSP exactly as written, and its files' CORS headers. The viewer itself in a browser: tools/check-pdf-viewer.mjs.
+ * What can't be checked here: a browser's players seeking.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -45,6 +50,51 @@ const ok = (cond, msg) => { assert.ok(cond, msg); n += 1; };
 const same = (a, b, msg) => { assert.deepEqual(a, b, msg); n += 1; };
 const SPACE = 'abcd1234';
 const OTHER = 'wxyz9876';
+
+// --- part 0: the vendored pdf.js, pinned (plan step 3, decision 18) ----------------------------------------------------
+// The app trusts these files, so each one's SHA-256 is pinned here. They are pdfjs-dist 6.4.299's legacy build
+// (legacy/build/pdf.min.mjs and pdf.worker.min.mjs, byte for byte; released 2026-10-03; the npm tarball's integrity
+// sha512-AVl138zALtfaAPvADulE0PZThbYzCBS79nL4pOSL/6Sm/4AH5A21BD9VHt97OlCuzJuCpmeZtAtkinisF4Vb1g==) and its licence.
+// Updating pdf.js means replacing the files and these hashes together, on purpose. Nothing else may sit in the folder.
+const PDFJS_DIR = path.join(ROOT, 'public', 'sdk', 'pdfjs');
+const PDFJS_VERSION = '6.4.299';
+const PDFJS_PINNED = {
+  'pdf.min.mjs': 'bccc24ea711db8e44503629519904a5292d73b9daaa214bbe7cdcc282b0f4259',
+  'pdf.worker.min.mjs': '145d2dd3ab0c86151011dba95acfa2d5336e2accd59388ea43dbee0efddaaec6',
+  LICENSE: '0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594',
+};
+const sha256 = (bytes) => require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+// What in a folder differs from the pins: a file missing, changed, or not pinned at all.
+function pinMismatches(dir) {
+  const out = [];
+  const present = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+  for (const [f, hash] of Object.entries(PDFJS_PINNED)) {
+    if (!present.includes(f)) out.push(`${f} is missing`);
+    else if (sha256(fs.readFileSync(path.join(dir, f))) !== hash) out.push(`${f} is not the pinned file`);
+  }
+  for (const f of present) if (!(f in PDFJS_PINNED)) out.push(`${f} is not pinned`);
+  return out;
+}
+{
+  same(pinMismatches(PDFJS_DIR), [], `public/sdk/pdfjs/ holds pdf.js ${PDFJS_VERSION} exactly as pinned`);
+  ok(fs.readFileSync(path.join(PDFJS_DIR, 'pdf.min.mjs'), 'latin1').includes(`"${PDFJS_VERSION}"`), `and it is version ${PDFJS_VERSION}`);
+  ok(/Apache License\s+Version 2\.0/.test(fs.readFileSync(path.join(PDFJS_DIR, 'LICENSE'), 'utf8')), 'with its licence (Apache 2.0)');
+  // The check fails when a file is not the pinned one: a copy with one byte changed, one taken out, one added.
+  const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'check-vault-pdfjs-'));
+  for (const f of Object.keys(PDFJS_PINNED)) fs.copyFileSync(path.join(PDFJS_DIR, f), path.join(copy, f));
+  const worker = fs.readFileSync(path.join(copy, 'pdf.worker.min.mjs'));
+  worker[worker.length - 2] ^= 1;
+  fs.writeFileSync(path.join(copy, 'pdf.worker.min.mjs'), worker);
+  fs.rmSync(path.join(copy, 'LICENSE'));
+  fs.writeFileSync(path.join(copy, 'viewer.html'), '<script>1</script>');
+  same(pinMismatches(copy), ['pdf.worker.min.mjs is not the pinned file', 'LICENSE is missing', 'viewer.html is not pinned'], 'a changed, a missing and an unpinned file each fail the check');
+  fs.rmSync(copy, { recursive: true, force: true });
+  // The viewer loads only those two files, the worker first (so pdf.js parses in the frame and starts no worker), and
+  // never pdf.js's scripting sandbox.
+  const viewer = fs.readFileSync(path.join(ROOT, 'public', 'sdk', 'pdf-viewer.mjs'), 'utf8');
+  same([...viewer.matchAll(/^import\s.*?['"]([^'"]+)['"];?/gm)].map((m) => m[1]), ['./pdfjs/pdf.worker.min.mjs', './pdfjs/pdf.min.mjs'], 'the viewer imports the pinned worker, then pdf.js, and nothing else');
+  ok(!/import\(|sandbox\.m?js|scripting|new Worker|fetch\(|XMLHttpRequest|eval\(|new Function/.test(viewer.replace(/^\/\/.*$/gm, '')), 'and never loads more, starts a worker, fetches, or evaluates text');
+}
 
 // --- part 1: the store ------------------------------------------------------------------------------------------------
 {
@@ -413,7 +463,9 @@ const memoryLines = [];
     same(await scan(objStmPdf('8 0 R')), 'JavaScript', 'an object stream with its /Length by reference and an "endstream" inside: the script is found');
     same(await scan(objStmPdf('2')), 'refused:unchecked', 'with a /Length that is wrong, its data cut short at that "endstream": not checked');
     same(await scan(objStm('', { data: zlib.deflateSync(Buffer.from('4 0 << /Type /Page >>', 'latin1')).subarray(0, 10) }).toString('latin1').replace(/\/Length \d+/, '/Length 999999')), 'refused:unchecked', 'an object stream not ended by its own /Length, its Deflate data cut short: not checked');
-    same(await scan(objStm('6 0 (a) (see /JS here)')), 'refused:unchecked', 'a refused name inside an object stream\'s string, where a reader taking each object from its offset could read it as one: not checked');
+    same(await scan(objStm('6 0 (a) (see /JS here)')), 'JS', 'a refused name inside an object stream\'s string, where a reader taking each object from its offset could read it as one: found, so refused (step 3: never download only)');
+    same(await scan(objStm('6 0 (a) (see /URI (file:///x) here)')), 'URI', 'and a link to a file there');
+    same(await scan(objStm('6 0 (a) (see /URI 9 0 R here)')), 'refused:unchecked', 'a link there whose address is held elsewhere: not judged');
     // A string or a comment that holds an object's start is read again from there.
     same(await scan(pdfOf('/Title (x) /Subject (a 7 0 obj << /S /Launch /F (calc) >> endobj)')), 'Launch', 'an object inside a string is read');
     same(await scan(pdfOf('% 7 0 obj << /S /JavaScript >>\n')), 'JavaScript', 'and inside a comment');
@@ -432,6 +484,21 @@ const memoryLines = [];
   same(pdfScanFile(path.join(FIXTURES, 'import-data.pdf')), { name: 'ImportData', what: 'opens' }, 'the ImportData fixture is refused');
   same([pdfScan(pdfOf('/OpenAction << /S /GoTo /D [3 0 R /Fit] >>')), pdfScan(pdfOf('/OpenAction << /S /Named /N /NextPage >>'))], [null, null], 'going to a page and a named action pass');
   same(PDF_LIMITS.decodedStreams, 200, 'at most 200 object streams are decoded, as the plan says');
+  // Step 3 (decision 18): an encrypted PDF can't be judged (its strings and streams are encrypted), so it is not refused
+  // for that alone but answered unchecked, which the server keeps as download only. What the scan finds in one is still
+  // found: names are never encrypted, and a link that is readable text was not encrypted either.
+  {
+    const encrypted = (body = '') => Buffer.from(pdfOf(body).toString('latin1').replace('trailer << /Root 1 0 R >>', 'trailer << /Root 1 0 R /Encrypt 9 0 R /ID [<00> <00>] >>'), 'latin1');
+    same(await scan(encrypted()), 'refused:unchecked', 'an encrypted PDF is not judged');
+    same(await scan(encrypted('/OpenAction << /S /JavaScript /JS <a1b2c3> >>')), 'JavaScript', 'a script in an encrypted PDF is still found');
+    same(await scan(encrypted('/Names << /EmbeddedFiles 9 0 R >>')), 'EmbeddedFiles', 'and a file in it');
+    same(await scan(encrypted('/OpenAction << /S /URI /URI (javascript:alert\\(1\\)) >>')), 'URI', 'and a link that is readable text and not a web address');
+    same(await scan(encrypted('/OpenAction << /S /URI /URI <9f3a01c7e2> >>')), 'refused:unchecked', 'a link that is not readable text, as encrypted strings are: not judged');
+    same(await scan(pdfOf('/OpenAction << /S /URI /URI <9f3a01c7e2> >>')), 'URI', 'the same link in a PDF that is not encrypted is refused');
+    same(await scan(encrypted(PDF_WEB_LINK)), 'refused:unchecked', 'an encrypted PDF with a plain web link is not judged either');
+    same(await scan(Buffer.concat([objStm('', { data: Buffer.from('not compressed at all') }).subarray(0, -7)])), 'refused:damaged', 'a PDF cut short is damaged, also where it could not be judged');
+    same(await scan(Buffer.concat([pdfOf('/OpenAction << /S /URI /URI <9f3a01c7e2> >>').subarray(0, -6), Buffer.from(' 1 0 obj /', 'latin1'), Buffer.alloc(PDF_WINDOW + 70000, 0x61), Buffer.from(' endobj\n%%EOF\n')])), 'URI', 'a link to nowhere found before the scan stops at what it can\'t judge is still refused');
+  }
   // Read in windows (the plan's 1 MB, with an overlap), from the file: never read whole.
   {
     for (const [label, bytes, want] of [
@@ -853,7 +920,9 @@ try {
     ['a PDF with a file in it', 'carry.pdf', pdfOf('/Names << /EmbeddedFiles 9 0 R >>'), 'application/pdf', 400, /^That PDF holds files of its own, so it can't be added\.$/],
     ['a PDF with JavaScript in an object stream', 'hidden.pdf', objStm('6 0 << /S /JavaScript /JS (app.alert(1)) >>'), 'application/pdf', 400, /^That PDF holds scripts, so it can't be added\.$/],
     ['a PDF that is cut short', 'cut.pdf', pdfOf().subarray(0, 40), 'application/pdf', 400, /^That PDF is damaged or cut short\.$/],
-    ['a PDF whose object stream is too big to check', 'bomb.pdf', objStm('', { data: zlib.deflateSync(Buffer.alloc(17 * 1024 * 1024, 0x20)) }), 'application/pdf', 400, /^That PDF can't be checked for scripts, so it can't be added\.$/],
+    ['a PDF with a script in an object stream\'s string', 'hidden2.pdf', objStm('6 0 (a) (see /JS here)'), 'application/pdf', 400, /^That PDF holds scripts, so it can't be added\.$/],
+    ['an encrypted PDF with a script', 'locked-evil.pdf', Buffer.from(pdfOf('/OpenAction << /S /JavaScript /JS <a1b2> >>').toString('latin1').replace('trailer << /Root 1 0 R >>', 'trailer << /Root 1 0 R /Encrypt 9 0 R >>'), 'latin1'), 'application/pdf', 400, /^That PDF holds scripts, so it can't be added\.$/],
+    ['a PDF that can\'t be judged and is cut short', 'cut2.pdf', objStm('', { data: Buffer.from('not compressed at all') }).subarray(0, -7), 'application/pdf', 400, /^That PDF is damaged or cut short\.$/],
     ['an MP3 tag with no audio after it', 'tag.mp3', Buffer.concat([Buffer.from('ID3\x03\0\0\0\0\x02\x2c', 'latin1'), Buffer.alloc(300), Buffer.from('<script>1</script>'), Buffer.alloc(5000, 0x41)]), 'audio/mpeg', 400, /That kind of file/],
     ['a picture too large to draw', 'huge.png', pngOf(20000, 6000), 'image/png', 400, /^That picture is too large to show\.$/],
     ['a JPEG cut short', 'cut.jpg', jpegOf().subarray(0, 60), 'image/jpeg', 400, /^That picture is damaged or cut short\.$/],
@@ -864,6 +933,46 @@ try {
     ok(r.status === status && sentence.test(r.json?.error || ''), `${label} is refused (${status}): ${r.status} ${r.text}`);
   }
   same(filesUnder(spaceDir), before, 'nothing was kept for any of them, and no part was left');
+
+  // Step 3 (decision 18): a PDF the scan can't judge is kept as download only, `viewable: false`: never sent inline (404
+  // with the note), only as a download (attachment, with `download`). What the scan finds is still refused (above).
+  {
+    const encryptedPdf = Buffer.from(pdfOf(PDF_WEB_LINK).toString('latin1').replace('trailer << /Root 1 0 R >>', 'trailer << /Root 1 0 R /Encrypt 9 0 R >>'), 'latin1');
+    const NOTE = 'This PDF can\'t be opened here. Download it.';
+    const fileUrl = (f, q = '') => `/api/modules/shelf/library/${f.id}/content?space=${trip.id}${q}`;
+    const added = [];
+    for (const [label, name, bytes] of [
+      ['an object stream too big to check', 'bomb.pdf', objStm('', { data: zlib.deflateSync(Buffer.alloc(17 * 1024 * 1024, 0x20)) })],
+      ['an object stream that can\'t be inflated', 'odd.pdf', objStm('', { data: Buffer.from('not compressed at all') })],
+      ['an encrypted PDF', 'locked.pdf', encryptedPdf],
+    ]) {
+      const r = await add('kit', name, bytes, { type: 'application/pdf' });
+      same([r.status, r.json?.file?.viewable, r.json?.file?.type, r.json?.file?.name], [201, false, 'application/pdf', name], `${label} is kept as download only: ${r.text}`);
+      if (r.status !== 201) continue;
+      const f = r.json.file;
+      added.push(f);
+      same(JSON.parse(fs.readFileSync(path.join(A.dataDir, 'modules', 'shelf', 'library', `space-${trip.id}.json`), 'utf8'))[f.id].viewable, false, `${label}: its record says viewable: false`);
+      same(fs.readFileSync(path.join(spaceDir, `${f.id}.bin`)), bytes, `${label}: kept as sent`);
+      const inline = await send(A, 'GET', fileUrl(f), { cookie: people.sam.token });
+      same([inline.status, inline.json?.error, inline.headers['content-disposition'], inline.headers['content-type']], [404, NOTE, undefined, 'application/json; charset=utf-8'], `${label}: inline, 404 with the note, and none of its bytes`);
+      same((await send(A, 'GET', fileUrl(f), { cookie: people.sam.token, headers: { range: 'bytes=0-9' } })).status, 404, `${label}: a range of it inline too`);
+      const dl = await send(A, 'GET', fileUrl(f, '&download=1'), { cookie: people.sam.token });
+      const h = dl.headers;
+      same([dl.status, h['content-type'], h['content-disposition'], h['content-security-policy'], h['x-content-type-options'], h['cache-control'], h['cross-origin-resource-policy'], h['referrer-policy'], dl.bytes.equals(bytes)],
+        [200, 'application/pdf', `attachment; filename="${name}"; filename*=UTF-8''${name}`, "sandbox; default-src 'none'", 'nosniff', 'private, no-store', 'same-origin', 'no-referrer', true], `${label}: download=1 sends it whole, as an attachment, with every header`);
+      same((await send(A, 'GET', fileUrl(f, '&download=1'), { cookie: people.sam.token, headers: { range: 'bytes=0-4' } })).bytes.toString(), '%PDF-', `${label}: a range of the download`);
+      same((await send(A, 'GET', `/api/modules/shelf/library/${f.id}/thumb?space=${trip.id}`, { cookie: people.sam.token })).status, 404, `${label}: no small picture`);
+    }
+    const listed = (await send(A, 'GET', lib(), { cookie: people.sam.token })).json.files;
+    same(added.map((f) => listed.find((x) => x.id === f.id)?.viewable), added.map(() => false), 'the list says viewable: false for each');
+    ok(listed.filter((x) => x.type === 'application/pdf' && !added.some((f) => f.id === x.id)).every((x) => !('viewable' in x)), 'and no viewable key on a PDF that can be opened');
+    await json('PATCH', '/api/roles/member', admin, { 'module.shelf.download': false });
+    const noDl = await send(A, 'GET', fileUrl(added[0], '&download=1'), { cookie: people.sam.token });
+    same([noDl.status, noDl.json?.error], [404, 'There is no such file.'], 'without download, a download-only PDF is not sent at all');
+    await json('PATCH', '/api/roles/member', admin, { 'module.shelf.download': true });
+    same((await send(A, 'GET', fileUrl(added[0]), { cookie: people.lou.token })).json?.error, 'There is no such file.', 'someone outside the space reads only "There is no such file.", not the note');
+    for (const f of added) same((await send(A, 'DELETE', `/api/modules/shelf/library/${f.id}?space=${trip.id}`, { cookie: people.kit.token })).status, 200, `${f.name} is removed again`);
+  }
   same((await add('rae', '', pdfOf())).json?.error, 'Name the file in ?name=.', 'no name: 400');
   same((await add('rae', 'empty.pdf', Buffer.alloc(0))).status, 400, 'an empty body: 400');
   const chunked = await send(A, 'POST', lib('&name=a.pdf'), { cookie: people.rae.token, headers: { 'content-type': 'application/pdf', 'transfer-encoding': 'chunked' }, body: pdfOf() });
@@ -1015,7 +1124,7 @@ try {
         [200, f.type === 'text/markdown' ? 'text/plain; charset=utf-8' : f.type, 'nosniff', 'private, no-store', 'same-origin', 'no-referrer', 'bytes'], `${f.name}: its stored type and every header`);
       same(h['content-security-policy'], "sandbox; default-src 'none'", `${f.name}: the sandbox, a PDF too (security QA round 2, round 2)`);
       const kind = f.type === 'application/pdf' ? 'attachment' : 'inline';
-      ok(h['content-disposition'] === `${kind}; filename="${f.name}"; filename*=UTF-8''${encodeURIComponent(f.name)}` && h.etag && h['last-modified'], `${f.name}: ${kind} (a PDF always, until the app's own viewer), with its name, an ETag and Last-Modified`);
+      ok(h['content-disposition'] === `${kind}; filename="${f.name}"; filename*=UTF-8''${encodeURIComponent(f.name)}` && h.etag && h['last-modified'], `${f.name}: ${kind} (a PDF always, also for the app's own viewer, which is handed the bytes), with its name, an ETag and Last-Modified`);
       same(r.bytes.length, f.size, `${f.name}: whole`);
     }
     const md = await content(kept['text/markdown']);
@@ -1242,6 +1351,30 @@ try {
     const r = await send(A, 'POST', `/api/modules/shelf/LIBRARY?space=${trip.id}&name=a.pdf`, { headers: { 'content-type': 'application/json' }, body: big });
     same([r.status, r.json?.error], [401, 'Sign in first.'], 'POST /api/modules/shelf/LIBRARY with a large JSON body, signed out: 401 before the body is read');
   }
+  // --- the PDF viewer's route and its files (step 3, decision 18; server/pdf-viewer.js) -----------------------------
+  {
+    const VIEWER_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src blob: data:; font-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts";
+    for (const [who, cookie] of [['signed out', undefined], ['a member', people.sam.token]]) {
+      const r = await send(A, 'GET', '/viewer/pdf', { cookie, headers: { accept: 'text/html' } });
+      const h = r.headers;
+      same([r.status, h['content-type'], h['content-security-policy'], h['x-content-type-options'], h['cache-control'], h['cross-origin-resource-policy'], h['referrer-policy'], h['x-frame-options'], h['access-control-allow-origin'], h['set-cookie']],
+        [200, 'text/html; charset=utf-8', VIEWER_CSP, 'nosniff', 'private, no-store', 'same-origin', 'no-referrer', 'SAMEORIGIN', undefined, undefined], `GET /viewer/pdf, ${who}: the viewer's document, with its CSP exactly as written and the other headers`);
+      const html = r.bytes.toString();
+      ok(!/<script(?![^>]*\bsrc=)[^>]*>|<style|\son\w+=|style=/i.test(html), `${who}: no inline script, style or handler in it, which its CSP would refuse`);
+      same([...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]), ['/sdk/pdf-viewer.css', '/sdk/pdf-viewer.mjs'], `${who}: it loads only the viewer's own style and script`);
+    }
+    for (const f of ['/sdk/pdf-viewer.mjs', '/sdk/pdf-viewer.css', '/sdk/pdfjs/pdf.min.mjs', '/sdk/pdfjs/pdf.worker.min.mjs']) {
+      const r = await send(A, 'GET', f);
+      const h = r.headers;
+      same([r.status, h['access-control-allow-origin'], h['cross-origin-resource-policy'], h['x-content-type-options'], h['access-control-allow-credentials']], [200, '*', 'cross-origin', 'nosniff', undefined], `${f}: loadable by the null-origin frame (CORS *), never with credentials`);
+      ok(f.endsWith('.css') ? h['content-type'] === 'text/css; charset=utf-8' : h['content-type'] === 'text/javascript; charset=utf-8', `${f}: as ${h['content-type']}`);
+      if (f.startsWith('/sdk/pdfjs/')) same(sha256(r.bytes), PDFJS_PINNED[path.basename(f)], `${f}: the server sends the pinned bytes`);
+    }
+    same((await send(A, 'GET', '/sdk/pdfjs/viewer.html')).status, 404, 'nothing else under /sdk/pdfjs/');
+    const out = await send(A, 'GET', '/sdk/pdfjs/../host.js');
+    ok(out.headers['access-control-allow-origin'] === undefined, `and no path out of it carries the CORS header (${out.status})`);
+    same((await send(A, 'GET', '/sdk/host.js')).headers['access-control-allow-origin'], undefined, 'nor the SDK\'s other files');
+  }
   // --- end of server A ---
   await A.stop();
 
@@ -1273,6 +1406,25 @@ try {
     const uploaded = await slowUpload.answer;
     same(uploaded.status, 201, 'while a library upload sent over 4 seconds is still taken');
     await T.stop();
+  }
+
+  // --- a check that runs out of time (VAULT_SCAN_SECONDS): a PDF is kept as download only, anything else refused -------
+  {
+    const U = await startServer('u', { VAULT_SCAN_SECONDS: '0.001' });
+    servers.push(U);
+    const ujson = (method, urlPath, cookie, value) => send(U, method, urlPath, { cookie, headers: { 'content-type': 'application/json' }, body: Buffer.from(JSON.stringify(value)) });
+    const uAdmin = (await ujson('POST', '/api/login', null, { login: 'admin', password: 'testpass1234' })).json.token;
+    const sp = (await ujson('POST', '/api/spaces', uAdmin, { name: 'Quick' })).json.space;
+    same((await send(U, 'POST', '/api/modules', { cookie: uAdmin, headers: { 'content-type': 'application/zip' }, body: shelfZip() })).status, 201, 'a library module installs on the quick-scan server');
+    await ujson('PATCH', '/api/modules/shelf', uAdmin, { enabled: true, allSpaces: true });
+    const uadd = (name, body, type) => send(U, 'POST', `/api/modules/shelf/library?space=${sp.id}&name=${name}`, { cookie: uAdmin, headers: { 'content-type': type }, body });
+    const p = await uadd('plain.pdf', pdfOf(PDF_WEB_LINK), 'application/pdf');
+    same([p.status, p.json?.file?.viewable], [201, false], `a PDF whose check ran out of time is kept as download only: ${p.text}`);
+    same((await send(U, 'GET', `/api/modules/shelf/library/${p.json?.file?.id}/content?space=${sp.id}`, { cookie: uAdmin })).status, 404, 'and is not sent inline');
+    same((await send(U, 'GET', `/api/modules/shelf/library/${p.json?.file?.id}/content?space=${sp.id}&download=1`, { cookie: uAdmin })).headers['content-disposition']?.split(';')[0], 'attachment', 'only as a download');
+    const pic = await uadd('beach.jpg', jpegOf(), 'image/jpeg');
+    same([pic.status, pic.json?.error], [400, 'We could not check that file safely. Try saving it again from the program that made it.'], 'a picture whose check ran out of time is still refused');
+    await U.stop();
   }
 
   // --- a server with environments (BASE_DOMAIN): each environment's files are its own -------------------------------
