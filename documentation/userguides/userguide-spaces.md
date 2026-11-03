@@ -340,8 +340,9 @@ The tabs, with your environment's words for them:
   list with a note saying why ("(not installed)", "(turned off)", "(can't open on the canvas)"), so turning it back
   on restores it. **Stop using it** returns to the Workspace. After a first visit each person's own arrangement is
   remembered.
-- **Modules** (named for the environment's word): the modules that are on here, **Turn AI off in this space** (while
-  the server has an AI service), and a section for each module with its settings for this space. Every module that
+- **Modules** (named for the environment's word): the modules that are on here, **Turn AI off in this space** and
+  **What AI may see** (while the server has an AI service; owners only: tick **Same as the environment's choice** off to
+  set what goes to the AI for this space alone, as described in [Modules](userguide-modules.md), "The AI service"), and a section for each module with its settings for this space. Every module that
   is turned on is in every space; an owner turns one on or off on the **Modules** tab of Manage (see
   [Modules](userguide-modules.md)). A moderator sees the module settings only. A file a module holds is deleted at once,
   not on **Save**.

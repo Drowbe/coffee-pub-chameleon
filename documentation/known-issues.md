@@ -189,3 +189,13 @@ and only a role with **Remove photos other people added** may remove it or chang
 person added, by a request to the data route; the server does not refuse it.
 
 Workaround: give **Edit** in Research only to people who may be trusted with each other's notes.
+
+## The Vault checks for new files every 15 seconds
+
+The Vault module asks the server for its list every 15 seconds, and again when a link to a file changes. A file someone else adds, renames or removes can take up to 15 seconds to show. A file you add yourself shows at once. The project manager expects plan step 4 (linking) to end the wait; that is not built.
+
+Workaround: reload the Vault, or wait a moment.
+
+## An Undo refused after a restart says the time is over
+
+A Clear is held on the server for its Undo, and the hold survives a restart. What became of a recent Clear's token (undone, replaced by a later clear) is only remembered in memory. If the server restarts and a page then presses **Undo** on a token that was already undone or replaced, it is refused with "The time to undo that clear is over." rather than the true reason. Nothing is restored or lost by it.

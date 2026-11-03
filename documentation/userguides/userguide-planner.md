@@ -8,7 +8,7 @@ The Planner module plans one trip for a space, day by day. In an environment set
 
 1. On the Modules tab, choose **Install** beside Planner under **Available with this server**, then **Approve and enable**. It asks to add two permissions to the Roles tab, to link to other modules' objects and to ask other modules to do things.
 2. Once enabled it is on in every space; there is no switch per space.
-3. On the Roles tab, under **Module: Planner**, choose who can **See the trip** and who can **Plan the trip**. By default everyone can see it, members and moderators can plan, and guests can see but not plan.
+3. On the Roles tab, under **Module: Planner**, choose who can **See the trip** and who can **Plan the trip**. By default everyone can see it, members and moderators can plan, and guests can see but not plan. **Clear the whole trip** decides who may use **Clear** on the Planner's menu (see "Clear the whole plan" below); it is on for moderators and off for members, and an owner always may.
 4. Optionally, under the Planner's settings (**Module Configuration** on its card), turn off **Suggest flights from earlier trips**. It is on by default: "Fill a flight from the same flight number saved before on this server. Flights saved here also help others; turn this off to keep them out." Off, the flight form has no **Look up a flight** row, and nothing saved here is kept for others. See "Look up a flight" below.
 
 ## The plan
@@ -63,7 +63,8 @@ The same limit holds for a stay's check-out and a journey's arrival. When an obj
 - In the form, first say what it is. **What is it**, the one field at the top, shows the chosen kind's icon in its colour and its name. Click it, press Down or just start typing, and the list opens with the kinds in groups: **Getting there** (a **Flight**, **Train**, **Ferry**, **Bus**, **Car** (a rental), **Taxi**, **Ride share** or **Shuttle**), **Stay**, **Eat and drink** (a **Restaurant**, **Café** or **Bar**), **See and do** (a **Sight**, **Museum**, **Tour** or **Show**), **Markers** (see "Markers, extra days and empty days" below) and **Other** (a **Note**). Once you have chosen something in this browser, **Recent** comes first with your last few. Typing narrows the list as you go: "fl" leaves **Flight**, and a plain word works too ("plane" finds **Flight**, "coffee" finds **Café**); when nothing fits, the list says "Nothing matches"; kinds whose name starts with what you typed come first. If a marker type an owner has since removed is what an object was saved as, the field is empty and reads "Unknown kind"; saving keeps what it was unless you choose another kind. Up and Down move through the list, Enter or Tab chooses, and Escape closes the list and leaves the form open. In the narrow layout the list opens as a sheet over the lower half of the screen. A new object starts on the kind you chose last in this browser (**Sight** the first time), with this field focused so you can type at once; an object you open again starts on its own kind, and so does one added from a day's "..." or the **+** between days, with the cursor in **Title**. The fields you need then appear, named for what you chose:
   - A **flight**: **Departure day**, **Departure time**, **Flight time**, **Airline**, **Flight number**, **Departure airport** and **Arrival airport** (the codes), **Departs from** and **Arrives at**, **Departure terminal**, **Departure gate**, **Seat**, **Class** and **Arrival on the ticket**.
   - A **train**: the same departure day, time and **Travel time**, **Train company**, **Train number**, **Departs from**, **Arrives at**, **Platform**, **Coach**, **Seat**, **Class** and **Arrival on the ticket**. A **ferry** or **bus** has the departure day and time, the travel time, where it departs from and arrives at, **Seat** and **Arrival on the ticket**; a **shuttle** the same without those last two.
-  - A **car**: **Pick-up day**, **Pick-up time**, **Rental company**, and where you pick it up and drop it off. A **taxi** or **ride share**: **Pick-up time**, **Travel time**, **Pick up at** and **Drop off at**.
+  - A **car**: **Pick-up day**, **Pick-up time**, **Rental company**, **Drop-off day** and where you pick it up and drop it off. **Drop-off day** lists the days after pick-up with how many days the car is kept ("Oct 12 · 3 days"), and reads "Not set" until you choose one; before a pick-up day it says "Choose the pick-up day first". It agrees with **How long** and the end time: choosing a drop-off day sets the length from the end time (or clears it when there is no end time), and typing a length or an end time moves the drop-off day to the day it ends on. The Calendar's copy of a car ends on the drop-off day. A **taxi** or **ride share**: **Pick-up time**, **Travel time**, **Pick up at** and **Drop off at**.
+  - A stop (a sight, a meal and the like) has **Place**: type the name as before, or choose **Pick from Places** to link a place the space keeps (it then reads **Pick another**). A linked place shows as a chip on the card that opens it; a place that is gone, or that you may not see, is not shown as a link and the name you typed shows as before. **Save as a place** makes a place in Places from the name you typed, **Open in maps** shows it on the map, and **Unlink** keeps the name and drops the link. Nothing is linked until you **Save** the stop.
   - A **stay**: **Check in** (the day) and **Check-in time**, **Check out** (any date after check-in, even after the trip's last day) and **Check-out time**, the address, **Room** and guests.
   - A meal: its party size and the name it is booked under. A sight, museum, tour or show: its number of tickets (and a show its entry).
 
@@ -121,6 +122,16 @@ The Planner can fill in a flight from its number when someone on this server has
   - **Move to another day…** opens the list of days, grouped by phase, with an **Unscheduled** group ("Unscheduled", "Before the first day", "Between Oct 16 and Oct 17", "After the last day") and, last, **Pick a date…**, which opens a date field under the button; choose **Move** or press Enter to move it.
   - **Move to unscheduled** takes an object off its day. It is not offered for an object that has no day already.
 
+## Clear the whole plan
+
+The Planner's menu in its titlebar has **Clear**, in red, for people with **Clear the whole trip** (moderators and owners, unless the roles are changed). It is offered only while the plan holds something, and not while a clear can still be undone.
+
+1. Open the Planner's menu in its titlebar and choose **Clear**.
+2. The window reads "Clear <name>?", "Everything <name> holds here goes, for everyone. You can undo it for 30 seconds." Type the module's name to confirm, then choose **Clear**.
+3. A note reads "Cleared <name>." with **Undo**. Choose **Undo** within the time (30 seconds unless the server's operator set another) and everything comes back as it was, with who added it and when. After that it is gone for good, along with the files and Calendar copies that went with it.
+
+If something new was saved in the same place meanwhile, **Undo** keeps the new thing and says how many could not come back. Clearing the same module again before the time is over is refused with the seconds left.
+
 ## Move or clear a whole day
 
 A day's **⋮** menu has two entries for everything on the day at once. Only people who can plan the trip see them.
@@ -165,15 +176,23 @@ When the space has the Calendar on, every object on the plan with a date is on t
 
 ## Deleting something others use
 
-**Delete** asks you to click a second time. In the object's editor, when something else points at the object (a task, or its event on the Calendar), the button says so first, for example "Used by 1. Really delete?". **Delete** in the object's menu (the three dots) does not say this yet.
+**Delete** asks you to click a second time. In the object's editor and in its menu (the three dots), when something else points at the object (a task, or its event on the Calendar), the button says so first, for example "Used by 1. Really delete?".
 
 ## Bookings
 
 The **Bookings** view lists the stays and journeys in date order, each with its dates (a stay as a range from its check-in day to its check-out day, with how many nights; a round trip as one row with both days and the route both ways, such as "LHR ⇄ JFK"), where, and its booking reference, and an **Open** button to edit it: everything you need at the front desk or the airport, in one place.
 
+## Trip dates and time zone
+
+The trip's own form (**Edit dates**, or **Edit time zone and currency** when the space has phases, because then the dates are the phase bar's) has **Time zone**: "Where the trip is. Its copies on the calendar use it." Choose a zone from the list, or **Each person's own time zone** (the first choice, and the default) to read every time in the viewer's own zone. A trip with a zone shows the Calendar's copies of its timed stops in that zone. Changing it writes each timed stop again, so its Calendar copy moves; if some could not be written the form says how many.
+
+Time fields in the Planner and the Calendar follow the environment's clock setting (12 or 24 hours), not the browser's.
+
 ## Money
 
 **While Budget is on in the space, the Planner gives way to it.** The **Money** view and the **Spent** chip on the status strip are hidden, and Budget lists the Planner's priced bookings itself (see [Budget](userguide-budget.md), "Costs from other modules"). Nothing is deleted: the **Cost** and **Paid by** fields stay on each booking, and the view and the chip return when Budget is turned off.
+
+The view starts with **Total**, the sum of every cost on the trip, paid or not, and **Paid so far**, what has been paid ("€300 of €800 · €500 not paid yet"). The status line shows the same total. A guest sees **Money** only when an owner turned on **Guests can see costs and booking codes** in Set up.
 
 Give a stop, stay or journey a **Cost** and who **Paid by**. The people ticked under **Whose is it** share it; when nobody is ticked, everyone in the space does. Costs are worded in the budget's currency (chosen in **Set up**), else the trip's **Currency** from **Edit dates** (a space without phases), else the environment's. In the list, **Default (<the environment's currency>)** first, which follows Manage's setting, then the common currencies and all the others by name. A trip saved earlier with a code typed by hand (even in lower case, or one not on the list) still shows it. A round trip's cost is counted once. The **Money** view shows the total, what each person paid and their share, who is owed and who owes, and the fewest payments that settle everything ("Bob pays Ann 175.00"), then the list of costs. Odd cents are handed out, so nothing is lost.
 
@@ -187,7 +206,11 @@ Drag a stop, or any object, out of Planner by pressing its body (not its grip) a
 
 ## Decisions
 
-The **Decisions** view lists what is linked to the trip and still open, grouped by the kind of thing it is, each with an **Open** button.
+The **Decisions** view lists what is waiting on someone, grouped by the kind of thing it is: **Polls to vote on** (each with a **Vote** button), **Tasks due before the trip** (a task not done with a due day before the trip starts, or already past, with **Open**), then anything else linked to the trip that is not done. In each group the soonest is first and the most overdue at the top; undated ones come last. The view's tab reads "Decisions (3 open)" while there are any. With none, it reads "Nothing is waiting on anyone. Open polls and tasks due before the trip appear here." Polls and tasks are found by asking for every one, not only the newest 50.
+
+## Linked from
+
+An object's details (its card, opened) list **Linked from** when other modules' objects point at it, such as a task or a poll: the titles of what links to it, separated by commas. Deleting such an object says "Used by 2. Really delete?" first.
 
 ## When two people edit at once
 
