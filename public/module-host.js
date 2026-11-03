@@ -43,7 +43,7 @@ export function readTheme() {
 // stream: it hears the page's over postMessage (createStreamRelayClient; the page's side is relayStreamToFrame, below).
 const streamHub = createStreamHub();
 let frameRelay; // undefined: not asked yet; null: not in a window frame on the Workspace
-function joinStream(space, guest, onEvent) {
+export function joinStream(space, guest, onEvent) {
   if (frameRelay === undefined) {
     let inComposite = false;
     try {
@@ -885,20 +885,42 @@ export async function clearWithUndo(moduleId, query) {
 // something went where there was something); many at once ({ many: true }, a Clear or its Undo) always ask.
 export function followClearable(moduleId, { spaceId, guestToken = null }, apply, isClear = () => true) {
   let timer = 0;
+  let holdTimer = 0;
+  let holdFrom = 0; // when the last many-at-once change came (a Clear or its Undo); the undo time counts from it
+  let holdEnds = 0; // when that undo time and the server's grace are over, by this page's clock
+  const read = async () => {
+    let entry = null;
+    try {
+      const q = new URLSearchParams({ space: spaceId });
+      if (guestToken) q.set('guest', guestToken);
+      entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId) || null;
+      if (entry) apply(entry);
+    } catch { /* the flag stays as it was */ }
+    // While a Clear can be undone the server says there is nothing to clear; when that time ends the flag may be true (data
+    // written during it) and no change comes to say so. So ask once more then, and when the page comes back to the front.
+    if (holdFrom && entry) {
+      const seconds = Number(entry.undoSeconds) > 0 ? Number(entry.undoSeconds) : UNDO_SECONDS;
+      holdEnds = holdFrom + seconds * 1000 + HOLD_GRACE_MS;
+      holdFrom = 0;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => { holdEnds = 0; read(); }, Math.max(0, holdEnds - Date.now()));
+    }
+  };
+  if (spaceId && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && holdEnds && Date.now() >= holdEnds) { clearTimeout(holdTimer); holdEnds = 0; read(); }
+    });
+  }
   return ({ many = false, deleted = false } = {}) => {
     if (!spaceId) return;
+    if (many) { holdFrom = Date.now(); clearTimeout(holdTimer); holdEnds = 0; }
     if (!many && deleted !== isClear()) return;
     clearTimeout(timer);
-    timer = setTimeout(async () => {
-      try {
-        const q = new URLSearchParams({ space: spaceId });
-        if (guestToken) q.set('guest', guestToken);
-        const entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId);
-        if (entry) apply(entry);
-      } catch { /* the flag stays as it was */ }
-    }, 400);
+    timer = setTimeout(read, 400);
   };
 }
+// The wait after the undo time before the page asks again: the server keeps a hold 5 s past the undo time (module-holds.js, its grace), plus 1.5 s for the clocks.
+const HOLD_GRACE_MS = 6500;
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
 // elements the lifts set inert themselves (one inert before any lift stays so), the lifts up now, and one watch per
@@ -1436,8 +1458,11 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // Show an object in the module that owns it (the page decides how: the canvas, a page). `newTab`: the click asked for
     // a new tab (Ctrl or the middle button); a page that can (home's tiles) opens it in one, any other ignores it.
-    async 'objects.open'({ ref, newTab }) {
+    async 'objects.open'({ ref, newTab, list }) {
       if (!REF_SHAPE(ref)) throw Object.assign(new Error('that is not a valid reference'), { status: 400 });
+      // A file of a library opens in the file window over the page, not in the library's module (plan-attachments-vault.md,
+      // decision 19); `list` is the ids of the files linked where it was opened from, for Previous and Next.
+      if (ref.kind === 'file' && ref.scope === 'space') return handlers['files.open']({ ref, list });
       if (!onOpenRef) throw Object.assign(new Error('nothing here can open it'), { status: 400 });
       return Boolean(await onOpenRef(cleanPointer(ref), { newTab: newTab === true }));
     },
@@ -1491,7 +1516,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return Boolean(await onOpenPage(h, { newTab: newTab === true }));
     },
     // Tell the host what one of this module's objects points at (all of it: the list replaces the last).
-    async 'objects.setLinks'({ from, to, space }) {
+    async 'objects.setLinks'({ from, to, space, kind, op }) {
       if (!REF_SHAPE(from)) throw Object.assign(new Error('that is not a valid reference'), { status: 400 });
       // The object's own place, as any other write: a mount in a space speaks only for that space, and { space } must
       // be the pointer's. The server checks the viewer may change the module's data there.
@@ -1500,7 +1525,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         if (place.space !== from.space) throw Object.assign(new Error('that object is in another space'), { status: 400 });
       } else if (space !== undefined && space !== null && space !== '') throw Object.assign(new Error('that object is not in a space'), { status: 400 });
       const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
-      return api('POST', `/api/objects/links${q}`, { module: module.id, from: cleanPointer(from), to: (Array.isArray(to) ? to : []).filter(REF_SHAPE).slice(0, 20).map(cleanPointer) });
+      return api('POST', `/api/objects/links${q}`, { module: module.id, from: cleanPointer(from), to: (Array.isArray(to) ? to : []).filter(REF_SHAPE).slice(0, 20).map(cleanPointer), ...(typeof kind === 'string' && /^[a-z][a-z0-9_-]{0,31}$/i.test(kind) ? { kind } : {}), ...(op === 'add' || op === 'remove' ? { op } : {}) });
     },
     // What points at one of this module's objects ('to'), or what it points at ('from'): summaries.
     async 'objects.links'({ ref, dir }) {
@@ -1803,6 +1828,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
           return holder;
         },
         openRef: onOpenRef ? (r) => onOpenRef(cleanPointer(r), {}) : null,
+        join: (fn) => joinStream(spaceId, guestToken, fn),
       });
     },
     // Share links (public/share-sheet.js): the sheet and the list are drawn in this page, so Copy works; the module hears 'sharechanged'
@@ -2197,6 +2223,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // to show it, hear it, and ask again for what they show. No object data comes with it.
     if (type === 'markers') {
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('markers', {});
+      return;
+    }
+    // A library's file was added, renamed, removed or given a thumbnail (plan-attachments-vault.md, step 4): the library's own
+    // module and the modules approved to link to its files (the server names them) hear which one, and ask again for what they show.
+    if (type === 'library') {
+      if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('library', { op: d.op, id: d.id, module: d.module, spaceId: d.spaceId });
       return;
     }
     // Any module's environment setting may change the environment's facts (host.environment): every mount looks again.

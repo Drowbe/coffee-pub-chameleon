@@ -1250,6 +1250,30 @@
   // An "open this object" from the host can arrive before the module has said what to do with one.
   let pendingOpen = null;
 
+  // The values of an event that names keys only: ONE storage.list for the keys' common prefix, not a get for each. A key the
+  // list does not hold is gone (deleted). A list that fails is asked once more; if it fails again nothing is dropped silently:
+  // the person is told to reload, and null comes back (the module hears none of that event, never a part of it).
+  async function readKeysOnly(changes, scope, spaceId) {
+    const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
+    const need = changes.filter((c) => !c.deleted && c.value === undefined);
+    let prefix = need[0].key;
+    for (const c of need) while (!c.key.startsWith(prefix)) prefix = prefix.slice(0, -1);
+    let items = null;
+    for (let tries = 0; tries < 2 && !items; tries += 1) {
+      try { items = await call('storage.list', { prefix, ...opts(at) }); } catch (err) { items = null; }
+    }
+    if (!Array.isArray(items)) {
+      call('ui.toast', { text: 'Some changes did not load. Reload the page to see them.' }).catch(() => {});
+      return null;
+    }
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    return changes.map((c) => {
+      if (c.deleted || c.value !== undefined) return c;
+      const got = byKey.get(c.key);
+      return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
+    });
+  }
+
   function emit(event, data) {
     // The environment's facts changed (a picture map set, replaced or cleared): host.environment answers the new ones
     // before anyone listening hears it.
@@ -1264,20 +1288,7 @@
       const { changes = [], scope, spaceId } = data || {};
       const replay = (list) => list.forEach((c, i) => emit('change', { ...c, scope, spaceId, batch: { count: list.length, last: i === list.length - 1 } }));
       if (!changes.some((c) => !c.deleted && c.value === undefined)) { replay(changes); return; }
-      (async () => {
-        const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
-        const full = [];
-        for (let i = 0; i < changes.length; i += 20) {
-          full.push(...await Promise.all(changes.slice(i, i + 20).map(async (c) => {
-            if (c.deleted || c.value !== undefined) return c;
-            try {
-              const got = await call('storage.get', { key: c.key, ...opts(at) });
-              return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
-            } catch (err) { return null; }
-          })));
-        }
-        replay(full.filter(Boolean));
-      })();
+      readKeysOnly(changes, scope, spaceId).then((full) => { if (full) replay(full); });
       return;
     }
     for (const fn of listeners.get(event) || []) {
@@ -1324,6 +1335,24 @@
   // for 'environment'; its environment page may read across the viewer's spaces with 'spaces', and read and write
   // one of them with { space: <id> }; 'person' is the viewer's own. A module in a space reaches only that space.
   const opts = (o) => ({ scope: (o && o.scope) || 'context', ...(o && o.space ? { space: String(o.space) } : {}) });
+  // Library files (host.files.resolve, link, unlink; host.ui.fileChips). What one pointer's answer says about the file.
+  function fileFacts(ref, s) {
+    if (!s || s.error) return { ref, state: s && s.state === 'gone' ? 'removed' : 'hidden' };
+    if (s.missing) return { ref, name: String(s.title || ''), state: 'missing' };
+    return { ref, name: String(s.title || ''), group: s.group || '', type: s.type || '', size: Number(s.size) || 0, icon: s.icon || 'file', ...(s.viewable === false ? { viewable: false } : {}) };
+  }
+  async function resolveFiles(pointers) {
+    const list = (Array.isArray(pointers) ? pointers : [pointers]).map(cleanRef).filter((r) => r && r.kind === 'file');
+    if (!list.length) return [];
+    const got = await host.objects.resolve(list);
+    return list.map((ref, i) => fileFacts(ref, got[i]));
+  }
+  function fileLinks(object, pointers, op) {
+    const list = (Array.isArray(pointers) ? pointers : [pointers]).map(cleanRef).filter((r) => r && r.kind === 'file');
+    if (!list.length) return Promise.resolve({ links: 0 });
+    return host.objects.setLinks(object, list, { kind: 'file', op });
+  }
+  const fileSize = (bytes) => (bytes >= 1073741824 ? `${Math.round(bytes / 107374182.4) / 10} GB` : bytes >= 1048576 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
   // The names modules used before the product's rename, refused with the word to use instead (no module is translated).
   const OLD_WORDS = { server: 'scope "environment"', boxWidth: '{ space }', rooms: 'scope "spaces"' };
   function refuseOld(o, what) {
@@ -1939,6 +1968,72 @@
       // A Font Awesome icon ("circle-right", style "solid", "regular" or "brands") as inline SVG text, coloured by
       // the text colour, for a module that cannot load the icon font. Resolves to the SVG, or rejects if there is no such icon.
       icon: (name, style) => call('icons.svg', { name, style: style || 'solid' }),
+      // The files an object links to, drawn as the shared file chips (plan-attachments-vault.md, section 5; the Prototype's "In other modules"):
+      // a type icon, the name and the size; a click opens the file window over the canvas (host.objects.open with the other chips' ids as
+      // `list`, so Previous and Next walk them; one chip alone has none). A file that was removed reads "File removed", one whose bytes are
+      // gone "File missing", one this person may not see "Not available to you" (the last three are muted and not links).
+      //   host.ui.fileChips(container, pointers, { canEdit?, unlinkable?, live?, onOpen?(pointer), onRemoveLink?(pointer) }) -> { update(pointers), destroy() }
+      // `canEdit` adds Remove link beside a removed or missing file, which calls onRemoveLink(pointer) (the module unlinks it with
+      // host.files.unlink, updates its own list and calls update); with `unlinkable` as well, a file that is there gets Unlink too (an editor's
+      // list). The chips look again by themselves when a file is renamed or removed (the 'library' event) and when links change, until the
+      // container leaves the page; `live: false` turns that off. The container is cleared; pointers are checked, and only files are drawn.
+      fileChips: (container, pointers, o) => {
+        const opt = o || {};
+        let list = [];
+        let gen = 0;
+        let dead = false;
+        const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+        const icon = async (name) => { const span = make('span', 'ic sdk-file-chip-ic'); span.setAttribute('aria-hidden', 'true'); try { span.innerHTML = await menuIcon(name); } catch (err) { /* no icon */ } return span; };
+        async function draw() {
+          const mine = ++gen;
+          const facts = list.length ? await resolveFiles(list).catch(() => list.map((ref) => ({ ref, state: 'hidden' }))) : [];
+          if (dead || mine !== gen) return;
+          const there = facts.filter((f) => !f.state);
+          const ids = there.length > 1 ? there.map((f) => f.ref.id) : null;
+          const rows = [];
+          for (const f of facts) {
+            const wrap = make('span', 'sdk-file-chipwrap');
+            const state = f.state || 'ok';
+            const chip = make(state === 'ok' ? 'button' : 'span', 'sdk-chip-tag sdk-file-chip');
+            chip.dataset.state = state;
+            if (state === 'ok') {
+              chip.type = 'button';
+              chip.append(await icon(f.icon), make('span', 'sdk-file-chip-name', f.name), make('span', 'sdk-file-chip-size', fileSize(f.size)));
+              chip.setAttribute('aria-label', `${f.name}, ${fileSize(f.size)}. Open the file.`);
+              chip.addEventListener('click', () => { if (typeof opt.onOpen === 'function') opt.onOpen(f.ref); else host.objects.open(f.ref, ids ? { list: ids } : undefined).catch((err) => host.ui.toast(err.message)); });
+            } else if (state === 'removed') {
+              chip.append(await icon('file-circle-xmark'), make('span', 'sdk-file-chip-state', 'File removed'));
+            } else if (state === 'missing') {
+              chip.dataset.tone = 'warn';
+              chip.append(await icon('triangle-exclamation'), make('span', 'sdk-file-chip-name', f.name), make('span', 'sdk-file-chip-state', 'File missing'));
+            } else {
+              chip.append(await icon('lock'), make('span', 'sdk-file-chip-state', 'Not available to you'));
+            }
+            wrap.append(chip);
+            if (opt.canEdit === true && (state === 'removed' || state === 'missing' || (state === 'ok' && opt.unlinkable === true))) {
+              const remove = make('button', 'btn btn-small btn-quiet sdk-file-chip-remove', state === 'ok' ? 'Unlink' : 'Remove link');
+              remove.type = 'button';
+              if (state === 'ok') remove.setAttribute('aria-label', `Unlink ${f.name}`);
+              remove.addEventListener('click', () => { if (typeof opt.onRemoveLink === 'function') opt.onRemoveLink(f.ref); });
+              wrap.append(remove);
+            }
+            rows.push(wrap);
+          }
+          if (dead || mine !== gen) return;
+          container.classList.add('sdk-file-chips');
+          container.replaceChildren(...rows);
+        }
+        const set = (next) => { list = (Array.isArray(next) ? next : []).map(cleanRef).filter((r) => r && r.kind === 'file'); return draw(); };
+        const offs = [];
+        const again = () => {
+          if (dead) return;
+          if (!container.isConnected) { dead = true; for (const off of offs) off(); return; } // the module drew something else over it
+          if (list.length) draw();
+        };
+        if (opt.live !== false) offs.push(host.on('library', again), host.on('links', again));
+        set(pointers);
+        return { update: set, destroy: () => { dead = true; for (const off of offs) off(); container.replaceChildren(); } };
+      },
       // A short note that appears for a few seconds and goes: for an instant confirmation ("Saved in X.") or a small refusal. Never
       // draw one inline in the module. Resolves true; the text is cut to 200 characters.
       toast: (text) => call('ui.toast', { text: String(text ?? '') }).then(() => true),
@@ -2457,6 +2552,31 @@
     files: {
       url: (name, o) => call('files.url', { name, ...(o && o.folder ? { folder: o.folder } : {}) }),
       open: (pointer, o) => call('files.open', { ref: pointer, list: o && o.list, name: o && o.name }),
+      // Files of the space's library (the Vault; plan-attachments-vault.md, sections 4 and 5), for a module that links its objects to
+      // them. The module's manifest consumes the file kind (`"vault:file"` or `"*"`) and an owner approved it, as for any object; a
+      // module that was not approved is refused (403) and finds, resolves and links nothing. Nothing here names the library module.
+      //
+      //   pick({ multiple?, title? }) -> pointers[]   The object picker, kept to files: search, tick, Pick. Resolves the chosen
+      //                                               pointers ([] when the person cancels; at most one without `multiple`). Rejects with
+      //                                               "There is no Vault in this {space}." when no library is on here for this module.
+      //   link(object, pointers)   Add files to what the object points at (`object` from host.objects.make()), whatever else it points at.
+      //   unlink(object, pointers) Take them out. Both go through host.objects.setLinks, so "Where it is used" (the Vault's Remove
+      //                            question, host.library.uses) comes from them. The module keeps its own list of the pointers it shows.
+      //   resolve(pointers) -> [{ ref, name, group, type, size, icon, viewable?, state? }]  in the same order. `state` is 'removed' (the file is
+      //                            gone: its link stays and reads "File removed"), 'missing' (its bytes are gone: "File missing"),
+      //                            'hidden' ("Not available to you"); without it the file is there. Only `ref` and `state` for the last two.
+      //   open(pointer, { list })  (above) -- also what host.objects.open does for a file pointer.
+      pick: async (o) => {
+        const t = o && typeof o === 'object' ? o : {};
+        const kinds = await call('objects.kinds', {});
+        if (!Array.isArray(kinds) || !kinds.some((k) => k && k.kind === 'file')) throw Object.assign(new Error(`There is no Vault in this ${locale().words.space.one}.`), { status: 404 });
+        const got = await host.objects.pick({ kinds: ['file'], multiple: t.multiple === true, title: t.title === undefined ? 'Add a file' : String(t.title).slice(0, 120) });
+        const list = got === null || got === undefined ? [] : Array.isArray(got) ? got : [got];
+        return list.map(cleanRef).filter((r) => r && r.kind === 'file');
+      },
+      link: (object, pointers) => fileLinks(object, pointers, 'add'),
+      unlink: (object, pointers) => fileLinks(object, pointers, 'remove'),
+      resolve: (pointers) => resolveFiles(pointers),
     },
 
     // AI, asked of the server (declare the `ai` hook; the admin approves it like the others). The admin chooses the service and
@@ -2699,7 +2819,9 @@
       // Show an object in the module that owns it (it opens on the canvas, and it is asked to show the object). The
       // summary says whether it can: summary.open. `{ newTab: true }` for a click that asked for a new tab (Ctrl or Cmd,
       // the middle button): a page that can (home) opens it in one; any other shows it as usual.
-      open: (ref, o) => call('objects.open', { ref, newTab: Boolean(o && o.newTab) }),
+      // A pointer to a library file (kind `file`) opens the file window over the canvas instead, after the same check as host.files.open;
+      // `{ list }` is the ids of the files linked on the object it was opened from, so Previous and Next walk those (else they are hidden).
+      open: (ref, o) => call('objects.open', { ref, newTab: Boolean(o && o.newTab), ...(o && Array.isArray(o.list) ? { list: o.list.filter((id) => typeof id === 'string').slice(0, 2000) } : {}) }),
       // For a module that owns objects: called when someone asks to see one of them (host.objects.open from
       // another module): open it. The pointer is checked for shape and points at one of your own objects.
       onOpen: (fn) => {
@@ -2719,7 +2841,9 @@
       // at them. Only pointers are kept, and only what the viewer may see is ever shown.
       // `{ space }` says the object is in that space (a module's environment page linking one of a space's objects);
       // the pointer from make() already carries it, so it is only a check.
-      setLinks: (from, to, o) => call('objects.setLinks', { from, to, ...(o && o.space ? { space: String(o.space) } : {}) }),
+      // `{ kind: 'file' }` changes only the links to objects of that kind and leaves the rest as they are; with it `{ op: 'add' }` or
+      // `{ op: 'remove' }` adds `to` to those links or takes it out instead of replacing them (host.files.link and unlink do this).
+      setLinks: (from, to, o) => call('objects.setLinks', { from, to, ...(o && o.space ? { space: String(o.space) } : {}), ...(o && o.kind ? { kind: String(o.kind) } : {}), ...(o && (o.op === 'add' || o.op === 'remove') ? { op: o.op } : {}) }),
       // What points at one of your objects (its kind must have "backlinks": true in module.json), and what
       // one points at: summaries. The 'links' event says when to ask again.
       linksTo: (ref) => call('objects.links', { ref, dir: 'to' }),
@@ -3399,7 +3523,7 @@
     // 'toolbar' ({ id, value?, x? }) for a toolbar item (x: a button's left edge across the module, for a menu under it), 'nav' ({ id }) for one of the module's nav-bar tools,
     // 'change' ({ key, value, version, deleted, scope, spaceId, by })
     // whenever stored data changes, 'changes' ({ changes: [{ key, value, version, deleted, by }], cleared?, restored?, scope, spaceId, by })
-    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change' in one pass, with batch: { count, last }, so a module can draw on the last only), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
+    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change' in one pass, with batch: { count, last }, so a module can draw on the last only), 'library' ({ op: 'added'|'renamed'|'removed'|'thumb', id, module, spaceId }) when a library file changed (to the library module itself, e.g. the Vault, and to a module approved to link to its files; host.ui.fileChips already listens), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
     // 'moved' ({ mode }) after the host moved the module between docked and floating (the SDK reopens an open editor window itself),
     // 'environment' ({ pictureMap }) when the environment's facts changed (host.environment already answers the new ones),
     // 'phases' ({ phases, timeline }) when the dates on the space's timeline changed (a save in the sheet or Set up, or

@@ -32,8 +32,10 @@ const cleanRef = new Function(`${sdkSrc}\nreturn cleanRef;`)();
 
 let failed = 0;
 let n = 0;
+const pending = [];
 const test = (name, fn) => {
-  try { fn(); n += 1; } catch (err) { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); }
+  const bad = (err) => { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); };
+  try { const r = fn(); if (r && typeof r.then === 'function') pending.push(r.then(() => { n += 1; }, bad)); else n += 1; } catch (err) { bad(err); }
 };
 const base = { module: 'todo', kind: 'task', id: 'abc' };
 const inSpace = { ...base, scope: 'space', space: 'gq2zb7pq' };
@@ -707,5 +709,36 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
   assert.match(sdk.slice(at, sdk.indexOf('\n  });', at)), /info\.space\.budget = e\.budget \|\| null/, 'host.space().budget follows');
 });
 
+// A keys-only 'changes' event (a big Clear or Undo comes without values) is read with ONE storage.list for the keys' prefix; a read
+// that fails is asked once more, and nothing is dropped silently: after two failures none of the event is drawn and the person is told.
+{
+  const body = slice('public/sdk/host.js', 'async function readKeysOnly(changes, scope, spaceId) {', '\n  }\n');
+  const make = (call) => new Function('call', 'opts', `${body}\nreturn readKeysOnly;`)(call, (o) => o || {});
+  const keys = Array.from({ length: 1700 }, (_, i) => ({ key: `task:t${i}` }));
+  const store = keys.map((c, i) => ({ key: c.key, value: { n: i }, version: 1 }));
+  test('keys only: one storage.list for the prefix, values joined by key, a key not listed is deleted', async () => {
+    const calls = [];
+    const read = make(async (name, args) => { calls.push([name, args]); return store.slice(0, 1699); });
+    const full = await read(keys, 'space', 's1');
+    assert.equal(calls.length, 1, `${calls.length} calls`);
+    assert.equal(calls[0][0], 'storage.list');
+    assert.equal(calls[0][1].prefix, 'task:t');
+    assert.equal(full.length, 1700);
+    assert.deepEqual(full[5].value, { n: 5 });
+    assert.equal(full[1699].deleted, true);
+  });
+  test('keys only: a failed read is asked again once; two failures drop nothing silently (null, and the person is told)', async () => {
+    let tries = 0;
+    const once = make(async (name) => { if (name === 'storage.list' && ++tries === 1) throw new Error('network'); return store; });
+    const full = await once(keys, undefined, undefined);
+    assert.equal(tries, 2);
+    assert.equal(full.filter((c) => c.value).length, 1700, 'every object came, after the retry');
+    const told = [];
+    const failing = make(async (name, args) => { if (name === 'ui.toast') { told.push(args.text); return true; } throw new Error('down'); });
+    assert.equal(await failing(keys), null);
+    assert.match(told.join(' '), /Reload the page/);
+  });
+}
+await Promise.all(pending);
 if (failed) process.exit(1);
 console.log(`check-module-host: OK (${n} groups)`);

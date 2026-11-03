@@ -435,3 +435,48 @@ a {
   }
 }
 /* kind:end */
+
+/* The file chips (host.ui.fileChips; plan-attachments-vault.md, section 5): the Chips block's tag with a type icon, the name and the size.
+   A removed, missing or hidden file is a muted tag that is not pressed; Remove link sits beside the first two for someone who may edit. */
+.sdk-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sdk-file-chipwrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.sdk-file-chip {
+  max-width: 100%;
+}
+.sdk-file-chip-ic {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.sdk-file-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sdk-file-chip-size,
+.sdk-file-chip-state {
+  flex: none;
+  color: var(--text-muted);
+  font-style: normal;
+}
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-ic,
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-state {
+  color: var(--status-warn-text);
+}

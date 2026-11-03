@@ -257,7 +257,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (typing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-  if (t && t.closest && t.closest('.fv-pic.is-zoomed, .fv-md, .fv-pdf, button, [role="toolbar"]')) return;
+  if (t && t.closest && t.closest('.fv-pic.is-zoomed, .fv-md, .fv-pdf, [role="toolbar"]')) return;
   const files = openable();
   const i = files.findIndex((x) => x.id === at);
   if (e.key === 'ArrowLeft' && i > 0) { open(files[i - 1].id); e.preventDefault(); } else if (e.key === 'ArrowRight' && i >= 0 && i < files.length - 1) { open(files[i + 1].id); e.preventDefault(); }

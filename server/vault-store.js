@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { EventEmitter } = require('events');
 const { hashPassword, verifyPassword } = require('./auth');
 
 const FILE_ID_RE = /^[a-f0-9]{24}$/;
@@ -84,11 +85,13 @@ function writeAtomic(file, data) {
   }
 }
 
-class VaultStore {
+class VaultStore extends EventEmitter {
   // `bytesDir`: this environment's folder under VAULT_DIR. `modulesDir`: DATA_DIR/modules, where the records go.
   // `spaceExists` lets the start-up sweep find what belongs to deleted spaces; `budgetMs` bounds that sweep.
   // `onBytes(delta)` is told every change in the bytes kept, for a total across environments.
   constructor({ bytesDir, modulesDir, now = () => Date.now(), onBytes = () => {}, spaceExists = null, budgetMs = 10000 }) {
+    super();
+    this.setMaxListeners(0);
     this.spaceExists = spaceExists; // (space id) -> whether the space is still there; without it the sweep removes nothing for a space
     this.budgetMs = budgetMs;
     this.bytesDir = bytesDir;
@@ -185,6 +188,7 @@ class VaultStore {
       throw err;
     }
     this.count(spaceId, record.by, this.bytesOf(record));
+    this.tell(moduleId, spaceId, 'added', record.id);
     return record;
   }
 
@@ -197,7 +201,14 @@ class VaultStore {
     r.thumb = { type, size: bytes.length };
     this.save(moduleId, spaceId);
     this.count(spaceId, r.by, this.bytesOf(r) - before);
+    this.tell(moduleId, spaceId, 'thumb', fid);
     return r;
+  }
+
+  // Tell whoever listens that a file of a space was added, renamed, removed or given a thumbnail (the live stream sends it to
+  // the people who may read that library there). Only the ids go; a listener asks for what it may see.
+  tell(moduleId, spaceId, op, id) {
+    this.emit('change', { module: moduleId, spaceId, op, id });
   }
 
   rename(moduleId, spaceId, fid, name) {
@@ -205,6 +216,7 @@ class VaultStore {
     if (!r) throw new VaultError('no such file', 404);
     r.name = name;
     this.save(moduleId, spaceId);
+    this.tell(moduleId, spaceId, 'renamed', fid);
     return r;
   }
 
@@ -217,6 +229,7 @@ class VaultStore {
     this.dropFromShares(moduleId, spaceId, fid);
     for (const thumb of [false, true]) fs.rmSync(this.filePath(spaceId, fid, thumb), { force: true });
     this.count(spaceId, r.by, -this.bytesOf(r));
+    this.tell(moduleId, spaceId, 'removed', fid);
     return true;
   }
 

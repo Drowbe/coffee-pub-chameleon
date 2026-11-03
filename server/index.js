@@ -5746,7 +5746,7 @@ function aiObjectsIn(who, where) {
       let at;
       try { at = refScope(who, { provider: manifest.id, kind: produce.kind, scope: where.scope, space: where.space, skipConsumer: true }); } catch { continue; }
       const prefix = at.produce.key.replace('{id}', '');
-      for (const item of moduleData.list(manifest.id, at.scopeKey, prefix)) {
+      for (const item of objectRows(at, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
         pool.push(markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs));
       }
@@ -6693,9 +6693,47 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
     scopeKey = 'environment';
   }
   if (!moduleCan(manifest, perms, 'read')) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
+  // A library's files (the Vault) are never seen by a guest, whatever Roles says (plan-attachments-vault.md, section 4).
+  if (manifest.library && !who.user) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
   if (shutFromGuests(who, manifest, scope === 'space' ? String(space) : null)) throw Object.assign(refError(403, guestsShutRefusal(manifest)), { unseen: true });
   // `hide`: the provider's fields this viewer may not see there (hiddenFor), left out of every summary made from it.
   return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
+}
+
+// A library module's files are its objects of kind `file` (plan-attachments-vault.md, section 4): their records are in
+// DATA_DIR/modules/<id>/library/, not in the module's data, so every reader of "the objects of a kind" goes through these.
+const isFileKind = (manifest, produce) => Boolean(manifest.library) && produce.kind === 'file';
+// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records.
+function objectRows(at, prefix) {
+  if (isFileKind(at.manifest, at.produce)) {
+    if (at.ref.scope !== 'space') return [];
+    return vault.list(at.manifest.id, at.ref.space).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
+  }
+  return moduleData.list(at.manifest.id, at.scopeKey, prefix);
+}
+// One stored object's value (a library's record for a file), or null.
+function objectValue(at, id) {
+  if (isFileKind(at.manifest, at.produce)) return at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+  const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(id)));
+  return item ? item.value : null;
+}
+// The icon of a file by its type, and its short word, for a chip or a row.
+const FILE_ICONS = { image: 'file-image', audio: 'file-audio', video: 'file-video', document: 'file-lines' };
+const FILE_WORDS = { 'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WebP', 'image/gif': 'GIF', 'audio/mpeg': 'MP3', 'audio/ogg': 'OGG', 'audio/wav': 'WAV', 'audio/mp4': 'M4A', 'video/mp4': 'MP4', 'video/webm': 'WebM', 'video/quicktime': 'MOV', 'application/pdf': 'PDF', 'text/markdown': 'Markdown' };
+// What a file's summary adds to the usual: its icon and size, `missing` when the record is there and its bytes are not (a
+// restore without VAULT_DIR: "File missing"), `viewable: false` for a PDF kept as download only.
+function fileSummaryExtras(summary, value, ref) {
+  const type = typeof value?.type === 'string' ? value.type : '';
+  const size = Number.isFinite(value?.size) ? value.size : 0;
+  summary.icon = type === 'application/pdf' ? 'file-pdf' : FILE_ICONS[value?.group] || 'file';
+  summary.subtitle = [size ? sizeText(size) : '', FILE_WORDS[type] || ''].filter(Boolean).join(' · ');
+  summary.group = typeof value?.group === 'string' ? value.group : '';
+  summary.size = size;
+  summary.type = type;
+  if (value?.viewable === false) summary.viewable = false;
+  let there = true;
+  try { const f = ref.space && vault.filePath(ref.space, value.id); there = Boolean(f) && fs.existsSync(f); } catch { there = false; }
+  if (!there) summary.missing = true;
 }
 
 // The summary of one stored object: only the fields the producer named, trimmed and typed.
@@ -6774,6 +6812,7 @@ function objectSummary({ manifest, produce, ref, hide }, id, value, withText = f
   if (place && typeof place === 'object' && Number.isFinite(place.lat) && Number.isFinite(place.lng) && Math.abs(place.lat) <= 90 && Math.abs(place.lng) <= 180) {
     summary.place = { lat: place.lat, lng: place.lng, ...(typeof place.name === 'string' && place.name.trim() ? { name: place.name.replace(/\p{Cc}/gu, ' ').trim().slice(0, 120) } : {}) };
   }
+  if (isFileKind(manifest, produce)) fileSummaryExtras(summary, value, ref || {});
   return summary;
 }
 
@@ -6888,9 +6927,9 @@ function markPair(summary, index) {
 function resolveRef(who, ref, from, opts = {}) {
   if (!refShape(ref)) throw refError(400, 'that is not a valid reference');
   const at = refScope(who, { provider: ref.module, kind: ref.kind, scope: ref.scope, space: ref.space, from, ...opts });
-  const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(ref.id)));
-  if (!item || !item.value) throw refError(404, `that ${word('object')} is no longer there`);
-  return markPair(objectSummary(at, String(ref.id), item.value, opts.withText === true), moduleLinks.pairIndex());
+  const value = objectValue(at, ref.id);
+  if (!value) throw refError(404, isFileKind(at.manifest, at.produce) ? 'that file is no longer there' : `that ${word('object')} is no longer there`);
+  return markPair(objectSummary(at, String(ref.id), value, opts.withText === true), moduleLinks.pairIndex());
 }
 
 // The kinds the consumer may point at: every kind of every other enabled module it was approved for.
@@ -7006,7 +7045,7 @@ app.get('/api/objects/search', (req, res) => {
         continue; // not on for this scope, or not for this viewer
       }
       const prefix = at.produce.key.replace('{id}', '');
-      for (const item of moduleData.list(k.module, at.scopeKey, prefix)) {
+      for (const item of objectRows(at, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
         const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
         const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
@@ -7206,18 +7245,29 @@ app.post('/api/objects/links', (req, res) => {
     perms = modulePerms(who, null);
   }
   if (!moduleCan(found.manifest, perms, 'write')) return res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  // `kind`: replace only the links to objects of that kind (host.files.link keeps the object's other links as they are).
+  const only = req.body?.kind === undefined || req.body?.kind === null || req.body?.kind === '' ? null : String(req.body.kind);
+  if (only !== null && !/^[a-z][a-z0-9_-]{0,31}$/i.test(only)) return res.status(400).json({ error: `kind is a kind name` });
+  // `op`: 'add' or 'remove' (with a kind) changes only those links, whatever else the object points at; the default replaces them all.
+  const mode = req.body?.op === undefined || req.body?.op === null || req.body?.op === '' ? 'replace' : String(req.body.op);
+  if (!['replace', 'add', 'remove'].includes(mode) || (mode !== 'replace' && only === null)) return res.status(400).json({ error: 'op is add or remove, with a kind' });
   const tos = [];
+  const held = moduleLinks.from(from);
   for (const to of (Array.isArray(req.body?.to) ? req.body.to : []).slice(0, 20)) {
     if (to && to.scope === 'person') continue; // a shared link never points into someone's private data
+    if (only !== null && !(to && to.kind === only)) return res.status(400).json({ error: `every link must be to a ${only}` });
+    if (mode === 'remove') { if (refShape(to)) tos.push(to); continue; } // taking a link out needs no sight of what it pointed at
     try {
       resolveRef(who, to, asker);
       tos.push(to);
     } catch (err) {
       if (!err.status) throw err; // one that cannot be seen or is gone is left out
+      // A file that was linked and is now removed keeps its link, which reads "File removed" (plan-attachments-vault.md, decision 2).
+      if (err.status === 404 && refShape(to) && held.some((h) => objectKey(h) === objectKey(to)) && modules.enabled(to.module)?.manifest.library && to.kind === 'file') tos.push(to);
     }
   }
-  moduleLinks.set(from, tos, who.user?.key || 'guest');
-  res.json({ links: tos.length });
+  moduleLinks.set(from, tos, who.user?.key || 'guest', only, mode);
+  res.json({ links: mode === 'replace' ? tos.length : moduleLinks.from(from).filter((l) => l.kind === only).length });
 });
 
 // What points at an item (`dir=to`, for the module that owns it, if it shows backlinks) or what it
@@ -7252,6 +7302,9 @@ app.get('/api/objects/links', (req, res) => {
       summaries.push(dir === 'to' ? resolveRef(who, other, null, { skipConsumer: true }) : resolveRef(who, other, asker));
     } catch (err) {
       if (!err.status) throw err; // gone, or not for this viewer
+      // A link to a file that was removed is kept and said: the object it was on shows "File removed" (never for one this
+      // person could not have seen: those are left out, as above).
+      if (dir === 'from' && err.status === 404 && other.kind === 'file' && modules.enabled(other.module)?.manifest.library && !err.unseen) summaries.push({ ref: other, kind: 'file', title: 'File removed', removed: true, state: 'gone', icon: 'file-circle-xmark' });
     }
   }
   res.json({ summaries });
@@ -8626,7 +8679,10 @@ app.delete('/api/modules/:id/library/:fid', (req, res) => {
   if (!found) return;
   const { ctx, r, mayChange } = found;
   if (!mayChange) return res.status(403).json({ error: 'Only the person who added it, or someone who may remove other people\'s files, can remove it.' });
+  const holders = moduleLinks.to(fileRef(ctx, r.id));
   vault.remove(ctx.manifest.id, ctx.spaceId, r.id);
+  // The objects that link to it are told, so their chips read "File removed" at once; their links stay.
+  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))] });
   noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
   res.json({ ok: true });
 });
@@ -9993,6 +10049,20 @@ app.get('/api/modules/stream', (req, res) => {
       if (hearing.length) send(v, 'refchange', ev, { ref: ev.ref, change: ev.change, modules: hearing });
     }
   });
+  // A library's file was added, renamed, removed or given a thumbnail (plan-attachments-vault.md, step 4): told to the viewers who
+  // may read that library in that space, and to the modules there that are the library or approved to link to its files, which
+  // look again. Only ids and the kind of change go: no name, since a file's name is for those who may read the library.
+  const onLibrary = listenIn(env, (c) => {
+    if (!who.user) return;
+    const scopeKey = `space:${c.spaceId}`;
+    for (const v of views) {
+      const at = place(v, c.module, scopeKey);
+      if (!at) continue;
+      const hearing = [c.module, ...modules.enabledAll().filter((m) => m.manifest.id !== c.module && consumerMayLink(m, c.module, 'file') && place(v, m.manifest.id, scopeKey)).map((m) => m.manifest.id)];
+      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op: c.op, id: c.id, modules: hearing, scope: at.scope });
+    }
+  });
+  vault.on('change', onLibrary);
   moduleLinks.on('change', onLinks);
   objectSync.on('refchange', onRefChange);
   moduleBus.on('event', onBus);
@@ -10006,6 +10076,7 @@ app.get('/api/modules/stream', (req, res) => {
     moduleData.off('changes', onMarkersBatch);
     moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
+    vault.off('change', onLibrary);
     moduleLinks.off('change', onLinks);
     objectSync.off('refchange', onRefChange);
     moduleBus.off('event', onBus);
@@ -10049,15 +10120,23 @@ app.get('/api/modules/:id/events', (req, res) => {
     if (spaceIds || fire.module !== ctx.manifest.id || fire.scopeKey !== ctx.scopeKey) return;
     sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ key: fire.key, payload: fire.payload })}\n\n`);
   });
+  // A library module's page hears its own space's files change (the same event the shared stream carries).
+  const onLibrary = listenIn(env, (c) => {
+    if (c.module !== ctx.manifest.id || (ctx.who && !ctx.who.user)) return;
+    if (spaceIds ? !spaceIds.has(c.spaceId) : `space:${c.spaceId}` !== ctx.scopeKey) return;
+    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op: c.op, id: c.id })}\n\n`);
+  });
   moduleData.on('change', onChange);
   moduleData.on('changes', onChanges);
   moduleHooks.on('fire', onFire);
+  if (ctx.manifest.library) vault.on('change', onLibrary);
   const beat = setInterval(() => sseWrite(res, ': ping\n\n'), 25000);
   req.on('close', () => envContext.run(env, () => {
     clearInterval(beat);
     moduleData.off('change', onChange);
     moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
+    vault.off('change', onLibrary);
   }));
 });
 

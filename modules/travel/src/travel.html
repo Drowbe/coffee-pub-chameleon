@@ -274,6 +274,14 @@
       <div class="sdk-field sdk-full" role="radiogroup" aria-labelledby="f-paidBy-label"><span class="sdk-label" id="f-paidBy-label">Paid by</span><div class="sdk-people" id="f-paidBy"></div></div>
     </fieldset>
 
+    <fieldset class="sdk-section" id="f-files-section" data-types="flight train ferry bus car taxi rideshare shuttle hotel" hidden><legend class="sdk-section-title">Attachments</legend>
+      <div class="sdk-field sdk-full" role="group" aria-labelledby="f-files-label"><span class="sdk-label" id="f-files-label">Files</span>
+        <div id="f-files" class="f-files"></div>
+        <div><button class="btn btn-quiet" type="button" id="f-files-add"><span class="ic" data-icon="paperclip" aria-hidden="true"></span> Add file</button></div>
+        <span class="sdk-hint" id="f-files-hint"></span>
+      </div>
+    </fieldset>
+
     <label class="sdk-field sdk-full" data-types="lane block note flight train ferry bus car taxi rideshare shuttle hotel restaurant cafe bar sight museum attraction tour show"><span class="sdk-label">Notes</span><textarea id="f-notes" name="notes" rows="3" maxlength="8000"></textarea><span class="sdk-hint"></span></label>
 
     <fieldset class="sdk-section" data-types="flight train ferry bus car taxi rideshare shuttle hotel restaurant cafe bar sight museum attraction tour show"><legend class="sdk-section-title">Getting to this stop</legend>

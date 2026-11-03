@@ -1121,8 +1121,9 @@
   hydrate(root);
   await loadPeople();
   await refresh();
-  // Other people's changes arrive by asking again now and then (and when this page comes back into view): the server has no push for a
-  // library yet.
+  // Other people's changes arrive at once by the server's 'library' event (a file added, renamed, removed or given a thumbnail), and by
+  // asking again now and then as a fallback (and when this page comes back into view), in case an event was missed.
+  host.on('library', () => { if ($('app') && !running && !renaming) refresh({ quiet: true }); });
   const poll = setInterval(() => {
     if (!$('app')) return void clearInterval(poll);
     if (document.visibilityState === 'visible' && !running && !renaming) refresh({ quiet: true });
