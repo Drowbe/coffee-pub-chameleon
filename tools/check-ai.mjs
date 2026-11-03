@@ -382,8 +382,14 @@ await test('limits and refusals', async () => {
   await assert.rejects(ask(ai, 'ask', items, ''), (e) => e.status === 500 && /question must be/.test(e.message));
   await assert.rejects(ai.run('draft', {}), (e) => e.status === 500 && /no template draft/.test(e.message));
   reply = 'ok';
+  // An ask is sent only when its own estimate (its prompt and its answer's budget) fits in what is left: 60 tokens never do.
+  const before = sent.length;
+  await assert.rejects(ask(ai, 'ask', items, 'first?'), (e) => e instanceof AiError && e.status === 429 && e.refund);
+  assert.equal(sent.length, before, 'refused before it is sent');
+  ai.set({ monthlyTokens: 1e6 });
   await ask(ai, 'ask', items, 'first?');
-  await ask(ai, 'ask', items, 'second?'); // 100 tokens now, over 60
+  await ask(ai, 'ask', items, 'second?');
+  ai.set({ monthlyTokens: ai.usageView().tokens });
   await assert.rejects(ask(ai, 'ask', items, 'third?'), (e) => e instanceof AiError && e.status === 429);
   assert.equal(JSON.parse(prompts.render(prompts.template('ask'), inputsFor('ask', [{ title: 'a"b', text: 'x' }], 'why?')).messages[1].content).attached[0].title, 'a"b', 'data is JSON');
 });

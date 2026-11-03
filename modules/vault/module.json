@@ -1,7 +1,7 @@
 {
   "id": "vault",
   "name": "Vault",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "icon": "vault",
   "color": "blue",
   "description": "The files of a {space}: photos, audio, video, PDFs and notes, kept in one place, found again and linked from other tools.",

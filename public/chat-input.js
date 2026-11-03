@@ -813,7 +813,7 @@ export function aiNotice(reason, why = '', { guests = '', owner = '', space = ''
     // The server's own sentence for these (what it is about depends on the setting behind it).
     case 'member': case 'chat': case 'module': {
       const w = String(why || '').replace(/\s+/g, ' ').trim();
-      if (!w) return reason === 'module' ? 'AI is not on in this module.' : reason === 'chat' ? "AI can't be asked in the chat here." : "You aren't in this space, so you can't use AI there.";
+      if (!w) return reason === 'module' ? "Your role can't use AI here." : reason === 'chat' ? "AI can't be asked in the chat here." : `You aren't in this ${space}.`;
       const out = w[0].toUpperCase() + w.slice(1);
       return /[.!?]$/.test(out) ? out : `${out}.`;
     }
@@ -1593,17 +1593,17 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   // --- what an answer used, and the objects it names ---
   // A pointer is resolved as the reader (POST /api/objects/resolve), so a title shows only to someone who may see it. Asked
   // once for a few seconds, then again.
-  const refKey = (r) => `${r.module}|${r.kind}|${r.scope || ''}|${r.space || ''}|${r.id}`;
+  const pointerId = (r) => `${r.module}|${r.kind}|${r.scope || ''}|${r.space || ''}|${r.id}`;
   const refOk = (r) => Boolean(r && typeof r.module === 'string' && typeof r.kind === 'string' && r.id !== undefined && r.id !== null && r.id !== '');
   const resolved = new Map(); // key -> { at, summary: Promise<object|null> }
   function resolveRefs(refs) {
     const want = refs.filter(refOk);
-    const fresh = want.filter((r) => { const c = resolved.get(refKey(r)); return !c || Date.now() - c.at > 15000; });
+    const fresh = want.filter((r) => { const c = resolved.get(pointerId(r)); return !c || Date.now() - c.at > 15000; });
     if (fresh.length) {
       const batch = api('POST', '/api/objects/resolve', { from: 'assistant', refs: fresh.slice(0, 50) }).then((out) => out.summaries || []).catch(() => []);
-      fresh.slice(0, 50).forEach((r, i) => resolved.set(refKey(r), { at: Date.now(), summary: batch.then((list) => list[i] || null) }));
+      fresh.slice(0, 50).forEach((r, i) => resolved.set(pointerId(r), { at: Date.now(), summary: batch.then((list) => list[i] || null) }));
     }
-    return Promise.all(want.map((r) => resolved.get(refKey(r)).summary));
+    return Promise.all(want.map((r) => resolved.get(pointerId(r)).summary));
   }
   const kindLabel = (r) => { const k = String(r.kind || word('object')); return k[0].toUpperCase() + k.slice(1); };
   // One object as a link that opens it where it lives; its title once known. One the reader can't see, or that is gone, is

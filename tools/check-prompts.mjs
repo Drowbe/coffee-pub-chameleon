@@ -657,6 +657,11 @@ try {
     assert.deepEqual(r.json.sent.attached, [R('n1')]);
     assert.equal(r.json.message.prompt, 'ask@1', 'the stored answer names its template version');
     assert.deepEqual(r.json.message.sent, r.json.sent);
+    // The pointer behind every number [n] (numbered[n - 1]): the attached first, then the rollup's; kept on the answer too.
+    assert.ok(Array.isArray(r.json.numbered) && r.json.numbered.length >= 2, JSON.stringify(r.json.numbered));
+    assert.deepEqual(r.json.numbered[0], R('n1'));
+    assert.deepEqual(r.json.message.numbered, r.json.numbered);
+    assert.deepEqual(r.json.message.leftOut, r.json.leftOut, 'what was left out is kept with the answer');
     const body = JSON.stringify(fakeA.last().body);
     assert.ok(body.includes('TOPMATERIAL') && !body.includes('OTHERSPACE'));
     assert.ok(!body.includes('z'.repeat(20)), 'a guest link in an object is redacted');
@@ -736,14 +741,14 @@ try {
       await ask('kim', 'how big is one?');
       const estimate = Math.ceil(fakeA.last().body.messages.reduce((n, m) => n + m.content.length, 0) / 4) + ASK.budget.answer;
       const used = (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens;
-      // Room for one and a half: the first fits, the others would pass the cap with theirs.
+      // Enough left for one and a half: the first fits, the others would pass the cap with theirs.
       await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: used + Math.floor(estimate * 1.5) } });
       fakeA.clear();
       fakeA.next({ text: 'slow one', delayMs: 600 }).next({ text: 'slow two', delayMs: 600 }).next({ text: 'slow three', delayMs: 600 });
       const all = await Promise.all([ask('rita', 'first at once?'), ask('nora', 'second at once?'), ask('kim', 'third at once?')]);
       assert.deepEqual(all.map((r) => r.status).sort(), [200, 429, 429], all.map((r) => r.text).join(' '));
       assert.equal(fakeA.seen.length, 1, 'only the one that fits is sent');
-      // Room for less than one ask: refused before it is sent, and the turn given back.
+      // Less left than one ask needs: refused before it is sent, and the turn given back.
       await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens + 100 } });
       fakeA.clear();
       const r = await ask('kim', 'too big for what is left?');
@@ -792,19 +797,19 @@ try {
   });
 
   await test('server: an answer longer than a stored message is cut, marked and kept the same as it is returned', async () => {
-    const { CUT_NOTE, MAX_ANSWER_TEXT } = require('../server/ai.js');
+    const { MAX_ANSWER_TEXT } = require('../server/ai.js');
     const chatOf = async (who) => (await call('GET', `/api/spaces/${space.id}/chat`, { cookie: tok[who] })).json.messages;
     fakeA.next({ json: { answer: `${'B'.repeat(12000)} END`, objects: [], used: [] } });
     let r = await ask('hal', 'a long answer please?');
     assert.equal(r.status, 200, r.text);
-    assert.ok(r.json.cut && r.json.text.length <= MAX_ANSWER_TEXT && r.json.text.endsWith(CUT_NOTE), `${r.json.cut} ${r.json.text.length}`);
+    assert.ok(r.json.cut && r.json.text.length <= MAX_ANSWER_TEXT && !r.json.text.endsWith('END') && !/cut off/.test(r.json.text), `${r.json.cut} ${r.json.text.length}`);
     let stored = (await chatOf('hal')).find((m) => m.id === r.json.id);
     assert.deepEqual([stored.text, stored.cut], [r.json.text, true]);
     fakeA.next({ text: 'C'.repeat(7990), finish: 'length' });
     r = await ask('hal', 'cut for length?');
-    assert.ok(r.json.cut && r.json.text.endsWith(CUT_NOTE) && r.json.text.length <= MAX_ANSWER_TEXT, `${r.json.text.length}`);
+    assert.deepEqual([r.json.cut, r.json.text], [true, 'C'.repeat(7990)], 'cut for length: marked, the text as it came, no note');
     stored = (await chatOf('hal')).find((m) => m.id === r.json.id);
-    assert.deepEqual([stored.text, stored.cut], [r.json.text, true], 'kept with its note');
+    assert.deepEqual([stored.text, stored.cut], [r.json.text, true], 'kept marked');
   });
 
   await test('server: sign-in links and calendar feeds are redacted from the question and the history', async () => {
@@ -814,7 +819,7 @@ try {
     r = await ask('ivy', 'and again?');
     const body = JSON.stringify(fakeA.seen.map((x) => x.body));
     assert.ok(!body.includes('qtoken12345') && !body.includes('qfeed12345'), 'a token reached the model');
-    assert.ok(fakeA.last().body.messages.some((m) => m.role === 'user' && m.content.includes('/j/[removed]')), 'the earlier question in the history, redacted');
+    assert.ok(fakeA.last().body.messages.slice(2, -1).some((m) => m.content.includes('/j/[removed]')), 'the earlier question in the history, redacted');
   });
 
   await test('server: a structured answer that is a list or has no text answer is "gave no answer", never raw JSON or an empty 200', async () => {

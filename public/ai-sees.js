@@ -3,16 +3,16 @@
 // It can only narrow what a person's own rights already allow. The values are the server's `sees`:
 //   { attached, relevant, linked, history, chat, members: true|false, environment: 'never'|'attached'|'readable',
 //     modules: 'all' | [module ids] }
-import { word } from '/brand.js';
 
 export const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' });
 export const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members'];
 
+const KEY_SCOPE = 'environment'; // the server's key for the choice about objects outside any space
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const up = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // The rows, in this environment's words.
-export function seesRows() {
+export function seesRows(word) {
   const objects = word('object', { many: true });
   const space = word('space');
   return [
@@ -44,18 +44,18 @@ function sortedSees(v) {
 //   idPrefix  keeps the ids apart on a page that holds two;
 //   onChange  called with the value after a person changes anything.
 // `set(value, { locked })` shows a value; locked rows are shown but cannot be changed (a space following the environment).
-export function mountSees(box, { idPrefix = 'sees', onChange = null } = {}) {
+export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}) {
   let value = fullSees(null);
   let locked = false;
   let modules = []; // [{ id, name }]
   const id = (k) => `${idPrefix}-${k}`;
   const objects = word('object', { many: true });
 
-  box.innerHTML = `<div class="sdk-choice-list ai-sees-list" role="group" aria-label="What AI may see">${seesRows().map(([k, label, desc]) => `
+  box.innerHTML = `<div class="sdk-choice-list ai-sees-list" role="group" aria-label="What AI may see">${seesRows(word).map(([k, label, desc]) => `
       <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(label)}</span><span class="sdk-choice-desc">${esc(desc)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="${id(k)}" data-sees="${k}"></label>`).join('')}
     </div>
-    <label class="ai-sees-field" for="${id('environment')}"><span class="sdk-choice-label">${esc(up(objects))} from the ${esc(word('environment'))}, outside any ${esc(word('space'))}</span>
-      <select id="${id('environment')}" data-sees="environment">
+    <label class="ai-sees-field" for="${id(KEY_SCOPE)}"><span class="sdk-choice-label">${esc(up(objects))} from the ${esc(word('environment'))}, outside any ${esc(word('space'))}</span>
+      <select id="${id(KEY_SCOPE)}" data-sees="${KEY_SCOPE}">
         <option value="never">Never sent</option>
         <option value="attached">Only the ones a person picks</option>
         <option value="readable">Any the person may read</option>
@@ -71,7 +71,7 @@ export function mountSees(box, { idPrefix = 'sees', onChange = null } = {}) {
   const q = (sel) => box.querySelector(sel);
   const paint = () => {
     for (const k of SEES_SWITCHES) q(`[data-sees="${k}"]`).checked = value[k] === true;
-    q(`#${id('environment')}`).value = value.environment;
+    q(`#${id(KEY_SCOPE)}`).value = value[KEY_SCOPE];
     const some = Array.isArray(value.modules);
     q(`#${id('modules-all')}`).checked = !some;
     q(`#${id('modules-some')}`).checked = some;
@@ -83,7 +83,7 @@ export function mountSees(box, { idPrefix = 'sees', onChange = null } = {}) {
   const read = () => {
     const out = {};
     for (const k of SEES_SWITCHES) out[k] = q(`[data-sees="${k}"]`).checked;
-    out.environment = q(`#${id('environment')}`).value;
+    out[KEY_SCOPE] = q(`#${id(KEY_SCOPE)}`).value;
     out.modules = q(`#${id('modules-some')}`).checked ? [...box.querySelectorAll('[data-sees-module]')].filter((i) => i.checked).map((i) => i.dataset.seesModule) : 'all';
     return out;
   };

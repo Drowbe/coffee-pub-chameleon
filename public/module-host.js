@@ -1692,8 +1692,33 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     async 'library.blob'({ id, thumb }) {
       const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`), { headers: accessKeyHeaders() });
-      if (!res.ok) throw Object.assign(new Error(res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`), { status: res.status });
+      if (!res.ok) {
+        // The server's own sentence (a download-only PDF answers "This PDF can't be opened here. Download it."), else the plain one.
+        let said = '';
+        try { said = (await res.json()).error || ''; } catch { /* no body */ }
+        throw Object.assign(new Error(said || (res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`)), { status: res.status });
+      }
       return res.blob();
+    },
+    // Open a file of a library in a file window over the page (public/file-viewer.js): `ref` points at the file, `list` is the ids to walk with
+    // Previous and Next (the Vault's list as filtered). Focus comes back to this module when the window closes, and the module hears 'fileclosed'.
+    async 'files.open'({ ref, list, name }) {
+      if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
+      const holder = pageMode ? container : frame;
+      const { openFile } = await import('/file-viewer.js');
+      const ids = Array.isArray(list) ? list.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 2000) : null;
+      return openFile({
+        ref: cleanPointer(ref),
+        ids,
+        name: typeof name === 'string' ? name.slice(0, 200) : '',
+        doc: holder.ownerDocument,
+        returnFocus: () => {
+          try { holder.focus({ preventScroll: true }); } catch { /* not focusable */ }
+          send('fileclosed', { id: ref.id });
+          return holder;
+        },
+        openRef: onOpenRef ? (r) => onOpenRef(cleanPointer(r), {}) : null,
+      });
     },
     async 'library.download'({ id }) {
       const doc = (pageMode ? container : frame).ownerDocument;

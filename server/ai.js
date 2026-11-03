@@ -51,23 +51,21 @@ const MANAGED_PROVIDERS = ['openai', 'anthropic', 'compatible'];
 const TASKS = prompts.TASKS;
 const MAX_ITEMS = prompts.MAX_MATERIAL;
 const LOG_DAYS = 30;
-const CUT_NOTE = 'This answer was cut off because it ran long. Ask again, or ask for fewer things at a time, to get the rest.';
 // The longest answer text, with its cut-off note, that is returned and kept: what a stored AI message may hold.
 const MAX_ANSWER_TEXT = CHAT_LIMITS.MAX_AI_TEXT;
 const NO_ANSWER = 'The AI service gave no answer.';
 
-// An answer's text cut to fit MAX_ANSWER_TEXT with room for the note, never in the middle of a {{summary:N}} place or a
-// surrogate pair; `cut` says it was cut, and then the note is added.
+// An answer's text cut to fit MAX_ANSWER_TEXT, never in the middle of a {{summary:N}} place or a surrogate pair. `cut`: the
+// answer was cut (here, by the provider or mid-object); the page says so from it, so no note is added to the text.
 function fitAnswer(text, cut) {
   let t = String(text || '');
-  const room = MAX_ANSWER_TEXT - CUT_NOTE.length - 2;
-  if (t.length > room && (cut || t.length > MAX_ANSWER_TEXT)) {
-    t = t.slice(0, room);
+  if (t.length > MAX_ANSWER_TEXT) {
+    t = t.slice(0, MAX_ANSWER_TEXT);
     if (/[\uD800-\uDBFF]$/.test(t)) t = t.slice(0, -1);
     t = t.replace(/\{\{[^}]*$/, '').trimEnd();
     cut = true;
   }
-  return { text: cut ? `${t}\n\n${CUT_NOTE}`.trim() : t, cut: Boolean(cut) };
+  return { text: t, cut: Boolean(cut) };
 }
 const oneLine = (s, n) => String(s == null ? '' : s).replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const month = () => new Date().toISOString().slice(0, 7);
@@ -655,4 +653,4 @@ class Ai {
   }
 
 }
-module.exports = { Ai, AiError, OVER_CAP, CUT_NOTE, MAX_ANSWER_TEXT, NO_ANSWER, fitAnswer, sealKey, openKey, KEY_UNREADABLE, applyAiFields, applyManagedFields, managedOffer, listModelsFor, PROVIDERS, MANAGED_PROVIDERS, DEFAULT_MODELS, HOSTS, TASKS, MAX_ITEMS, LOG_FIELDS };
+module.exports = { Ai, AiError, OVER_CAP, MAX_ANSWER_TEXT, NO_ANSWER, fitAnswer, sealKey, openKey, KEY_UNREADABLE, applyAiFields, applyManagedFields, managedOffer, listModelsFor, PROVIDERS, MANAGED_PROVIDERS, DEFAULT_MODELS, HOSTS, TASKS, MAX_ITEMS, LOG_FIELDS };

@@ -1,0 +1,12 @@
+/* The app's own PDF viewer's frame (public/sdk/pdf-viewer.mjs). The page that frames it sends the theme's colours
+   ('colors'), as custom properties; until then the frame is transparent and shows the window behind it. */
+:root { --pv-around: transparent; --pv-focus: currentColor; --pv-gap: 12px; }
+html, body { margin: 0; padding: 0; background: var(--pv-around); }
+body { font-family: system-ui, sans-serif; line-height: 1.4; }
+#pages { display: flex; flex-direction: column; align-items: center; gap: var(--pv-gap); padding: var(--pv-gap); min-width: min-content; }
+.pv-page { position: relative; flex: none; }
+.pv-page canvas { display: block; }
+.pv-links { position: absolute; inset: 0; }
+.pv-link { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.pv-link:focus-visible { outline: 2px solid var(--pv-focus); outline-offset: 1px; }
+.pv-note { margin: 2em; text-align: center; }
