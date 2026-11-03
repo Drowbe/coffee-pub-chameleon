@@ -82,6 +82,8 @@ function blockedAddress(ip) {
     // benchmarking. None is a public page; a machine may still sit on one (a container on 192.0.2.0/24).
     if (p[0] === 192 && p[1] === 0 && (p[2] === 0 || p[2] === 2)) return true;
     if (p[0] === 192 && p[1] === 88 && p[2] === 99) return true;
+    // AS112 (192.31.196.0/24, 192.175.48.0/24) and AMT (192.52.193.0/24): special-purpose, never a page.
+    if (p[0] === 192 && ((p[1] === 31 && p[2] === 196) || (p[1] === 52 && p[2] === 193) || (p[1] === 175 && p[2] === 48))) return true;
     if (p[0] === 198 && (p[1] === 18 || p[1] === 19)) return true;
     if (p[0] === 198 && p[1] === 51 && p[2] === 100) return true;
     if (p[0] === 203 && p[1] === 0 && p[2] === 113) return true;
@@ -100,6 +102,8 @@ function blockedAddress(ip) {
     if (g[0] === 0x100 && zero(1, 4)) return true; // discard-only 100::/64
     if (g[0] === 0x2001 && g[1] < 0x200) return true; // 2001::/23: Teredo, ORCHID and other special use
     if (g[0] === 0x2001 && g[1] === 0xdb8) return true; // documentation
+    if (g[0] === 0x3fff && g[1] < 0x1000) return true; // documentation, 3fff::/20 (RFC 9637)
+    if (g[0] === 0x5f00) return true; // segment routing SIDs, 5f00::/16
     if (g[0] === 0x2002) return true; // 6to4, which carries an IPv4 address inside
     if ((g[0] & 0xfe00) === 0xfc00) return true; // unique local fc00::/7
     if ((g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0) return true; // link-local and the old site-local
@@ -133,14 +137,32 @@ function previewUrl(text) {
   return u && WEB_PORTS.includes(u.port) ? u : null;
 }
 
-async function publicAddresses(hostname) {
+// The addresses a name resolves to, all of them public, or a PreviewError. `deadline` (a time in milliseconds), when
+// given, bounds the lookup too: a resolver slower than that is the request taking too long (`tooLong`, its sentence).
+// `lookup` is dns.lookup, replaced only by tools/check-link-preview.mjs.
+async function publicAddresses(hostname, { deadline = 0, tooLong = 'that page took too long', lookup = dns.lookup } = {}) {
   if (net.isIP(hostname) === 4) {
     if (blockedAddress(hostname)) throw new PreviewError('that address is not allowed', 'blocked');
     return [hostname];
   }
   if (blockedName(hostname)) throw new PreviewError('that address is not allowed', 'blocked');
   let records;
-  try { records = await dns.lookup(hostname, { all: true, verbatim: true }); } catch { throw new PreviewError('that address could not be found', 'missing'); }
+  let timer = null;
+  try {
+    const asked = lookup(hostname, { all: true, verbatim: true }).catch(() => { throw new PreviewError('that address could not be found', 'missing'); });
+    if (!deadline) records = await asked;
+    else {
+      const late = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new PreviewError(tooLong, 'timeout')), Math.max(1, deadline - Date.now()));
+      });
+      asked.catch(() => {}); // a lookup that fails after the deadline is nobody's answer
+      records = await Promise.race([asked, late]);
+    }
+  } catch (err) {
+    throw err instanceof PreviewError ? err : new PreviewError('that address could not be found', 'missing');
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const addresses = records.map((r) => r.address);
   if (!addresses.length || addresses.some(blockedAddress)) throw new PreviewError('that address is not allowed', 'blocked');
   return addresses;
@@ -400,7 +422,7 @@ async function fetchPreview(text) {
   if (!current) throw new PreviewError(previewRefusal(text), 'blocked');
   const deadline = Date.now() + PREVIEW_DEADLINE_MS;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const addresses = await publicAddresses(current.hostname);
+    const addresses = await publicAddresses(current.hostname, { deadline });
     if (Date.now() >= deadline) throw new PreviewError('that page took too long', 'timeout');
     const res = await getOnce(current, addresses, MAX_BYTES, undefined, { deadline });
     const status = res.status || 0;
@@ -419,7 +441,7 @@ async function fetchPreview(text) {
     if (!type && !/<\s*(!doctype|html|head|title|meta)\b/i.test(body)) throw new PreviewError('that page is not text');
     const preview = readPreview(body, current.href);
     if (preview.image) {
-      try { await publicAddresses(new URL(preview.image).hostname); } catch { preview.image = ''; }
+      try { await publicAddresses(new URL(preview.image).hostname, { deadline }); } catch { preview.image = ''; }
     }
     return preview;
   }
@@ -459,7 +481,7 @@ async function fetchImage(text) {
   const asked = current.href;
   const deadline = Date.now() + PREVIEW_DEADLINE_MS;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const addresses = await publicAddresses(current.hostname);
+    const addresses = await publicAddresses(current.hostname, { deadline, tooLong: 'that picture took too long' });
     if (Date.now() >= deadline) throw new PreviewError('that picture took too long', 'timeout');
     const res = await getOnce(current, addresses, IMAGE_BYTES, 'image/webp,image/png,image/jpeg,image/gif', { deadline });
     const status = res.status || 0;
@@ -500,7 +522,7 @@ async function fetchCalendar(text) {
   if (!current) throw new PreviewError('that address is not allowed', 'blocked');
   const deadline = Date.now() + CALENDAR_TIMEOUT_MS;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const addresses = await publicAddresses(current.hostname);
+    const addresses = await publicAddresses(current.hostname, { deadline, tooLong: 'that calendar took too long' });
     if (Date.now() >= deadline) throw new PreviewError('that calendar took too long', 'timeout');
     const res = await getOnce(current, addresses, CALENDAR_BYTES, 'text/calendar, text/plain;q=0.5, */*;q=0.1', { timeoutMs: CALENDAR_TIMEOUT_MS, deadline });
     const status = res.status || 0;
@@ -522,5 +544,6 @@ async function fetchCalendar(text) {
   throw new PreviewError('that calendar was sent elsewhere too many times', 'redirects');
 }
 
-// getOnce is exported for tools/check-link-preview.mjs only (the request it sends, to an address already checked).
-module.exports = { PreviewError, blockedAddress, blockedName, previewUrl, PREVIEW_DEADLINE_MS, readPreview, fetchPreview, fetchImage, cachedImage, getOnce, fetchCalendar, calendarUrl, CALENDAR_BYTES, CALENDAR_TIMEOUT_MS };
+// getOnce and publicAddresses are exported for tools/check-link-preview.mjs too (the request it sends, to an address already
+// checked; a lookup held to the deadline).
+module.exports = { PreviewError, blockedAddress, blockedName, previewUrl, publicAddresses, PREVIEW_DEADLINE_MS, readPreview, fetchPreview, fetchImage, cachedImage, getOnce, fetchCalendar, calendarUrl, CALENDAR_BYTES, CALENDAR_TIMEOUT_MS };

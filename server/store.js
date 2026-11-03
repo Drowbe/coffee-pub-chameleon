@@ -2053,6 +2053,9 @@ class Store {
   // Permissions enabled modules add to the Roles grid (see ModuleManager.permissionList);
   // the server sets this once modules are loaded.
   extraPermissions = () => [];
+  // The permission keys a guest never has and Roles can't turn on for guests: a library module's (server/vault-types.js,
+  // GUEST_LOCKED); the server sets this once modules are loaded.
+  guestLocked = () => [];
   // Whether the server has a call service (LiveKit keys set); the server sets it. Without one nobody has the conference.
   callService = true;
 
@@ -2076,6 +2079,7 @@ class Store {
     const base = { ...ROLE_DEFAULTS[defaultsFor], ...Object.fromEntries(extras.map((p) => [p.key, Boolean(p.defaults?.[defaultsFor])])) };
     const set = { ...base };
     for (const [k, v] of Object.entries(this.data.settings.roles?.[role] || {})) if (k in base) set[k] = Boolean(v);
+    if (role === 'guest') for (const k of this.guestLocked()) if (k in set) set[k] = false;
     return set;
   }
 
@@ -2086,6 +2090,11 @@ class Store {
   setRolePermissions(role, patch) {
     if (OWNER_RIGHTS.includes(role)) throw new StoreError(`the ${this.word('owner')} has every permission, so that role can't be changed`);
     if (!EDITABLE_ROLES.includes(role)) throw new StoreError('no such role', 404);
+    if (role === 'guest') {
+      const locked = new Set(this.guestLocked());
+      const asked = this.allPermissions().find((p) => locked.has(p.key) && patch?.[p.key] === true);
+      if (asked) throw new StoreError(`${this.word('guest', { many: true, cap: true })} can never have "${words.fill(asked.label, this.resolvedWords())}".`);
+    }
     const mine = (this.data.settings.roles[role] ??= {});
     for (const p of this.allPermissions()) if (patch?.[p.key] !== undefined) mine[p.key] = Boolean(patch[p.key]);
     this.save();

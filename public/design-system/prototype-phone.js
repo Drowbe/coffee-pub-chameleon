@@ -56,7 +56,7 @@ presets.className = 'pp-jump';
 presets.setAttribute('role', 'group');
 presets.setAttribute('aria-label', 'Phone presets');
 const stage = D.createElement('div');
-stage.className = 'phf-stage';
+stage.className = 'phf-canvas';
 const measure = D.createElement('p');
 measure.className = 'phf-measure';
 measure.textContent = 'Safe areas: 47px at the top and 34px at the foot upright; sideways 47px at each side and 21px at the foot (a phone\'s own). With the keyboard up the screen is 336px shorter (200px sideways), and the bar and the call strip give their room to the field.';

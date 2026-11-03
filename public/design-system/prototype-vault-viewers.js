@@ -227,7 +227,7 @@ export function pdfView(f, api) {
 }
 
 // The info panel: what the record holds, and where the file is used.
-export function infoPanel(f, api) {
+export function infoView(f, api) {
   const box = h('aside', 'vt-info');
   box.setAttribute('aria-label', 'Information about this file');
   const head = h('div', 'vt-info-head');

@@ -243,13 +243,13 @@ export function keepTargets(actions, summary, { last = '', objectWord = '' } = {
     const named = kind ? entries.find((e) => Array.isArray(e.kinds) && e.kinds.includes(kind)) : null;
     const as = String((named || entries[0]).as || '').replace('{kind}', kind ? withArticle(kind) : objectWord).trim();
     const name = a.moduleName || a.module;
-    out.push({ id: a.action, action: a, field, module: a.module, moduleName: name, local: Boolean(a.local), legacy: false, named: Boolean(named), as, label: as ? `Add to ${name} as ${as}` : `Add to ${name}`, rank: placeRank({ named: Boolean(named), local: Boolean(a.local) }), span: namedKindCount(a), trip: travelEvent && namesTravel(a), note: a.takes.some((e) => Array.isArray(e && e.kinds) && e.kinds.includes('note')), i });
+    out.push({ id: a.action, action: a, field, module: a.module, moduleName: name, local: Boolean(a.local), askerOnly: Boolean(a.askerOnly), legacy: false, named: Boolean(named), as, label: as ? `Add to ${name} as ${as}` : `Add to ${name}`, rank: placeRank({ named: Boolean(named), local: Boolean(a.local) }), span: namedKindCount(a), trip: travelEvent && namesTravel(a), note: a.takes.some((e) => Array.isArray(e && e.kinds) && e.kinds.includes('note')), i });
   });
   const old = findKeepers(list.filter((a) => !Array.isArray(a.takes)));
   const keeper = keeperFor(summary, old);
   if (keeper) {
     const name = keeper.moduleName || keeper.module;
-    out.push({ id: keeper.action, action: keeper, field: '', module: keeper.module, moduleName: name, local: Boolean(keeper.local), legacy: true, named: keeper === old.suggestion, as: '', label: `Add to ${name}`, rank: placeRank({ legacy: true, typed: keeper === old.suggestion }), span: 0, note: false, i: list.indexOf(keeper) });
+    out.push({ id: keeper.action, action: keeper, field: '', module: keeper.module, moduleName: name, local: Boolean(keeper.local), askerOnly: Boolean(keeper.askerOnly), legacy: true, named: keeper === old.suggestion, as: '', label: `Add to ${name}`, rank: placeRank({ legacy: true, typed: keeper === old.suggestion }), span: 0, note: false, i: list.indexOf(keeper) });
   }
   out.sort(placeOrder);
   const at = last ? out.findIndex((t) => t.id === last) : -1;
@@ -560,7 +560,7 @@ const sentence = (s) => {
 // - 'queued' (waiting for the module to be open), 'adding' (a page has it now);
 // - for a form: 'starting' (not opened yet; still followed), 'closed' (it expired: the module is not open).
 // Pure, for the checks.
-export function requestOutcome(status, { moduleName = '', as = '', local = false } = {}) {
+export function requestOutcome(status, { moduleName = '', as = '', local = false, askerOnly = false } = {}) {
   const m = moduleName || 'It';
   if (!status || !status.status) return { result: 'sent', text: `Sent to ${m}.` };
   if (status.status === 'done') {
@@ -579,7 +579,7 @@ export function requestOutcome(status, { moduleName = '', as = '', local = false
   }
   if (status.status === 'expired') return { result: 'failed', text: `${m} couldn't add that.` };
   if (status.status === 'claimed') return { result: 'adding', text: `${m} is adding it.` };
-  return { result: 'queued', text: `Waiting: it is added when ${m} is next open.` };
+  return { result: 'queued', text: askerOnly ? `Waiting: it is added when you next open ${m}.` : `Waiting: it is added when ${m} is next open.` };
 }
 
 // Several requests' outcomes in one note: "Added 3 to Planner. 2 waiting: they are added when Planner is next open."
@@ -600,7 +600,11 @@ export function outcomesWords(outcomes, { moduleName = '' } = {}) {
   for (const [m, n] of byModule('opened')) parts.push(n === 1 ? `Opened in ${m}.` : `Opened ${n} in ${m}.`);
   for (const [m, n] of byModule('adding')) parts.push(`${m} is adding ${n === 1 ? 'it' : n}.`);
   for (const [m, n] of byModule('starting')) parts.push(`Waiting for ${m} to open ${n === 1 ? 'it' : 'them'}.`);
-  for (const [m, n] of byModule('queued')) parts.push(`${n} waiting: ${n === 1 ? 'it is' : 'they are'} added when ${m} is next open.`);
+  for (const mine of [false, true]) {
+    const counts = new Map();
+    for (const o of of('queued').filter((q) => Boolean(q.askerOnly) === mine)) counts.set(o.moduleName || moduleName || 'it', (counts.get(o.moduleName || moduleName || 'it') || 0) + 1);
+    for (const [m, n] of counts) parts.push(`${n} waiting: ${n === 1 ? 'it is' : 'they are'} added when ${mine ? `you next open ${m}` : `${m} is next open`}.`);
+  }
   const failed = of('failed');
   if (failed.length) parts.push(`${failed.length} couldn't be added. ${failed[0].text}`);
   for (const [m] of byModule('closed')) parts.push(`${m} isn't open.`);
@@ -753,7 +757,7 @@ export function routeLine(text, view) {
 // What the page says when the AI is not there for this person, in plain words, from the server's `reason` (GET .../ai:
 // 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'; '' when it is there). `words` are this environment's: its
 // word for guests, for the owner and for a space. A reason the page does not know says the server's own sentence, capitalised.
-export function aiNotice(reason, why = '', { guests = 'Guests', owner = 'owner', space = 'space' } = {}) {
+export function aiNotice(reason, why = '', { guests = '', owner = '', space = '' } = {}) {
   switch (reason) {
     case '': return '';
     case 'guest': return `${guests} cannot use AI.`;
@@ -1434,7 +1438,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
         keep.textContent = words[0];
         keep.setAttribute('aria-label', words[1]);
       }
-      if (o.result === 'queued') keep.title = `Waiting: it is added when ${t.moduleName} is next open`;
+      if (o.result === 'queued') keep.title = t.askerOnly ? `Waiting: it is added when you next open ${t.moduleName}` : `Waiting: it is added when ${t.moduleName} is next open`;
       if (out) view.moved = false; // the person saw where it went
       drawPlace();
       if (out && onKept) onKept(keep);
@@ -1565,7 +1569,7 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
         return null;
       }
     };
-    const outcomeOf = (status) => ({ ...requestOutcome(status, { moduleName: target.moduleName, as, local: target.local }), moduleName: target.moduleName });
+    const outcomeOf = (status) => ({ ...requestOutcome(status, { moduleName: target.moduleName, as, local: target.local, askerOnly: target.askerOnly }), moduleName: target.moduleName, askerOnly: Boolean(target.askerOnly) });
     let status = null;
     if (id && requestId && !guest()) {
       for (let i = 0; i < 10; i += 1) {

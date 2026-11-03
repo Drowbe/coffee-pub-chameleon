@@ -146,7 +146,7 @@ function unitChecks() {
   say2({ type: 'app:streamjoin', doc: 'd1', sub: 's4', space: null, guest: null });
   assert.equal(joined.length, 1, 'another space, another guest token or the page view: refused');
   assert.equal(toFrame.at(-1)[0].ok, false);
-  assert.equal(toFrame.at(-1)[0].error, 'this window may hear only the events of its own space');
+  assert.equal(toFrame.at(-1)[0].error, 'this window may hear only the events its page gave it');
   say2({ type: 'app:streamjoin', doc: 'd1', sub: 's5', space: 's1', guest: null }, {}, ORIGIN);
   say2({ type: 'app:streamjoin', doc: 'd1', sub: 's6', space: 's1', guest: null }, frameWin, 'http://evil.test');
   say2({ type: 'app:streamjoin', doc: 'bad doc!', sub: 's7', space: 's1', guest: null });

@@ -341,7 +341,8 @@ function cleanDated(kind, raw) {
   // A wall-clock kind may also name `endTime` (the check-out time), `minutes` (its length) and `zone` (where the zone its
   // times are written in is kept: { key, field }, a stored object of the module and the field holding the zone name). An
   // instant kind may name `tz`, the field a copy keeps that zone in.
-  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'endTime', 'minutes', 'zone', 'repeat'] : ['title', 'start', 'end', 'allDay', 'tz', 'repeat'];
+  // `skips` (with `repeat`): the stored field holding the days ('YYYY-MM-DD') of single occurrences taken out of the repeat.
+  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'endTime', 'minutes', 'zone', 'repeat', 'skips'] : ['title', 'start', 'end', 'allDay', 'tz', 'repeat', 'skips'];
   for (const key of Object.keys(raw)) {
     if (!allowed.includes(key)) throw new ModuleError(`module.json: refs "${kind}" dated.${key} is not used`);
   }
@@ -355,6 +356,8 @@ function cleanDated(kind, raw) {
   };
   const title = field('title', true);
   const repeat = field('repeat', false);
+  const skips = field('skips', false);
+  if (skips && !repeat) throw new ModuleError(`module.json: refs "${kind}" dated.skips needs dated.repeat`);
   if (wall) {
     const dated = { form: 'wall', title, day: field('day', true) };
     const time = field('time', false);
@@ -373,6 +376,7 @@ function cleanDated(kind, raw) {
       dated.zone = { key: z.key, field: z.field };
     }
     if (repeat) dated.repeat = repeat;
+    if (skips) dated.skips = skips;
     return dated;
   }
   const dated = { form: 'instant', title, start: field('start', true) };
@@ -383,6 +387,7 @@ function cleanDated(kind, raw) {
   if (allDay) dated.allDay = allDay;
   if (tz) dated.tz = tz;
   if (repeat) dated.repeat = repeat;
+  if (skips) dated.skips = skips;
   return dated;
 }
 
@@ -542,7 +547,11 @@ function cleanBus(rawEvents, rawActions, id, permissionKeys = []) {
     // Calendar's createEvent needs ["date"], and To-do's rules and Polls offer it only when they have a day to give.
     // Kept as declared either way; the bus does not refuse a request that leaves an optional field out.
     const needs = [...new Set((Array.isArray(p.needs) ? p.needs : []).filter((f) => ['place', 'date', 'text', 'subtitle'].includes(f)))];
-    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}) });
+    // `askerOnly`: what the action makes belongs to the person who asked (a photo in their name, from their upload), so only
+    // their own open page of the module takes the request, which waits until then; asking still needs write access.
+    if (p.askerOnly !== undefined && typeof p.askerOnly !== 'boolean') throw new ModuleError(`module.json: action "${name}" askerOnly must be true or false`);
+    if (p.askerOnly && p.local === true) throw new ModuleError(`module.json: action "${name}" is local, which is already for the asker only`);
+    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(p.askerOnly ? { askerOnly: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}) });
   }
   for (const c of Array.isArray(rawActions?.uses) ? rawActions.uses.slice(0, 20) : []) {
     if (typeof c !== 'string' || (c !== '*' && !BUS_USE_RE.test(c))) throw new ModuleError(`module.json: actions.uses "${c}" must be "*" or look like "module:action"`);

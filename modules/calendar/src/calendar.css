@@ -60,7 +60,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 
 .sdk-cal-event, .sdk-cal-agenda > button { user-select: none; }
 
-.note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30; margin: 0; padding: 8px 12px; border-radius: var(--radius-medium); background: var(--surface-field); border: 1px solid var(--edge-hairline); }
+.note { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 30; margin: 0; padding: 8px 12px; border-radius: var(--radius-medium); background: var(--surface-field); border: 1px solid var(--edge-hairline); }
 .note.bad { border-color: var(--status-danger-fill); }
 
 /* The day view: an all-day row, then a column of hours (as one day of the week). */

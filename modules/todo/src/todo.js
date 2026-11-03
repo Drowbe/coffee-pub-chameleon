@@ -15,6 +15,9 @@
   const word = host.util.word; // the environment's word for a level or role (host.locale().words)
 
   const $ = (id) => root.getElementById(id);
+  // The link search names an object in this environment's word.
+  $('f-link-search').placeholder = `Link ${word('object', { a: true })}: type to search`;
+  $('f-link-search').setAttribute('aria-label', `Search for ${word('object', { a: true })} to link`);
   // States: loading is the skeleton in #loading; a failure or a plain notice is the block in #msg (.sdk-empty: an icon, a heading, a line,
   // and Retry on a failure, data-kind="error").
   function showMsg(title, text, retry) {
@@ -188,7 +191,7 @@
     for (const item of await host.storage.list('task:')) remember('own', item);
     if (!inSpace && info.context.scope === 'environment') {
       try {
-        for (const r of await host.spaces()) spaceInfo.set(r.id, r);
+        for (const r of await host.spaces()) if (r.id !== 'lobby') spaceInfo.set(r.id, r); // the Lobby is not a trip: as in the Calendar
         for (const item of await host.storage.list('task:', { scope: 'spaces' })) remember('spaces', item, item.spaceId);
       } catch (err) {
         // just the environment's own list
@@ -539,6 +542,13 @@
   }
   $('f-where').addEventListener('change', () => showError(''));
 
+  // What a person who may not change a task reads instead of the form: when it is due, whether it is done, the notes.
+  function summaryHtml(t) {
+    const lines = [`<p class="sum-when">${t.done ? 'Done' : 'Open'}${t.due ? ` &middot; Due ${esc(parseYmd(t.due).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }))}` : ''}</p>`];
+    if (t.remind && t.due && !t.done) lines.push('<p>People are reminded at 9:00 that day.</p>');
+    if (t.notes) lines.push(`<p class="detail">${esc(t.notes)}</p>`);
+    return lines.join('');
+  }
   function openEditor(x, prefill) {
     if (!x && !canAdd()) return;
     const readOnly = x ? !writable(x) : false;
@@ -568,6 +578,11 @@
     $('f-done').checked = Boolean(t.done);
     $('f-by').textContent = x && t.by ? `Added by ${t.by}` : '';
     for (const id of ['f-title', 'f-notes', 'f-due', 'f-remind', 'f-done']) $(id).disabled = readOnly;
+    // A task the viewer may only look at: a summary, not a form of disabled fields.
+    $('f-fields').hidden = readOnly;
+    $('f-done-wrap').hidden = readOnly;
+    $('f-summary').hidden = !readOnly;
+    $('f-summary').innerHTML = readOnly ? summaryHtml(t) : '';
     duePicker.refresh(); // its Pick a date follows the field: disabled with it
     $('f-save').hidden = readOnly;
     $('f-delete').hidden = readOnly || !x;

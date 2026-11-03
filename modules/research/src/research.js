@@ -61,6 +61,9 @@
   const personal = Boolean(info.user && info.user.key !== 'guest'); // a guest has no profile, so nothing of their own
   const canEditSpace = host.can('edit');
   const canEdit = () => (view === 'my' ? personal : canEditSpace);
+  // Reading a link's page (a preview) takes edit in every view: in Mine, view is enough to keep one's own notes, not to
+  // have the server fetch pages (access.personWrite covers data and uploads only).
+  const canFetch = () => canEdit() && canEditSpace;
   // The titlebar reads its name as this environment shows it (host.info's: the display name, else its own), with no
   // count beside it (#191).
   host.setTitle(info.module.name);
@@ -365,7 +368,7 @@
   let peekChain = Promise.resolve();
   function peekLink(id) {
     const it = research.get(id);
-    if (!state.previews || !canEdit() || !it || it.kind !== 'link' || !it.url || it.image || state.peek.has(id) || state.warming.has(id)) return;
+    if (!state.previews || !canFetch() || !it || it.kind !== 'link' || !it.url || it.image || state.peek.has(id) || state.warming.has(id)) return;
     state.warming.add(id);
     peekChain = peekChain.then(async () => {
       const got = await host.preview.link(it.url);
@@ -380,7 +383,7 @@
   // Read the page again and replace the title, description and picture with what it says now.
   async function refreshLink(id) {
     const it = research.get(id);
-    if (!it || it.kind !== 'link' || !it.url || !canEdit()) return;
+    if (!it || it.kind !== 'link' || !it.url || !canFetch()) return;
     if (!state.previews) { told('Turn on Fetch link previews to read the page again.'); return; }
     try {
       const got = await host.preview.link(it.url);
@@ -585,7 +588,7 @@
   }
   async function pullPreview() {
     const e = state.editing;
-    if (!e || e.kind !== 'link' || !state.previews || !canEdit()) return clearPreview();
+    if (!e || e.kind !== 'link' || !state.previews || !canFetch()) return clearPreview();
     const url = cleanUrl($('f-url').value);
     if (!url) return clearPreview();
     if (url === previewFor) return;

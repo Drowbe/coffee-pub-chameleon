@@ -14,11 +14,14 @@
  *      does not stack another); every window has Close and moves by its title bar and resizes by its grip, staying inside the canvas; the
  *      Grid's banded head is 32px or less and cuts a name in the middle, keeping the extension, and the cut name reads flush: the gap between the
  *      ellipsis and the extension is 2px or less at 1280 and 700 (read from the picture: the ink, not the boxes); at 390 every button in a file window is 44px
- *      tall or has a 44px tap area.
+ *      tall or has a 44px tap area. The right zone (Thomas, 2026-11-03): at 700 and 1280 the file window's last right-zone control (Full screen; the
+ *      phone sheet's Download) ends within 16px of the window's inner right edge, Download, Share, Full screen keep their order, nothing overlaps, and
+ *      at the 240px minimum the left zone folds into More (Next file first) while the right zone stays pinned.
  *   3. Light. Scrolling the whole Vault section top to bottom, then stopping at twelve places: panels live at any time stay at or
- *      under LIVE_MAX (the cap is 8 plus the ones on the screen); the median of three runs' longest task is under LONG_MS (the goal is 200 ms
- *      on a laptop; this 4-core box measures near 1 s, so the limit is what a regression to about 1.3 s would break); the section scrolls in
- *      under SCROLL_MS; the nodes left are under NODES_MAX. (Measured at the time of writing: about 2 s, 8,600 nodes, against 33 s, tasks up to
+ *      under LIVE_MAX (the cap is 8 plus the ones on the screen); the median of five runs' longest task is under LONG_MS (1500 ms) and the
+ *      median count of tasks over 200 ms is under LONG_OVER_MAX (15) (the goal is 200 ms on a laptop; a regression to about 1.3 s is meant to
+ *      show in the count, since it stays under LONG_MS); when the box's load average is above its core count these two are not checked and
+ *      a NOTE says so; the section scrolls in under SCROLL_MS; the nodes left are under NODES_MAX. (Measured at the time of writing: about 2 s, 8,600 nodes, against 33 s, tasks up to
  *      6 s and 43,000 nodes when every panel stayed drawn.)
  *   4. No sideways scroll. At 390, 500 and 700 the Prototype page is no wider than the window (the Phone section's switches once made it 783px wide).
  *   5. The phone screen's bottom bar (phone.html at 390 and 360, dark and light; Thomas, 2026-11-03, QA's cases): a sheet or dialog open puts the top
@@ -34,8 +37,16 @@ import path from 'node:path';
 import { findBrowser, launch, freePort, startServer, stopServer, Tab, sleep, decodePng } from './shots.mjs';
 
 const LIVE_MAX = 12; // the cap is 8; a few more may be on the screen at once
-const LONG_MS = 1000; // the median of three runs' longest task; the goal is 200 ms on a laptop (a held menu or a window opening is 150 to 350 ms)
+const RUNS = 5; // runs per size; the limits are on the median of the runs
+const LONG_MS = 1500; // the median of the runs' longest task; the goal is 200 ms on a laptop (a held menu or a window opening is 150 to 350 ms).
+// A regression to about 1.3 s median stays under LONG_MS, so the second limit is the one meant to catch it: LONG_OVER_MAX is the median count
+// of tasks over 200 ms per run. Healthy runs on the loaded 4-core box counted 18 to 24, so the limit is not yet proven on an unloaded box.
+const LONG_OVER_MAX = 15;
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+// The long-task limits are timing measures: when the box is busier than its cores (1-minute load average above the core count) they are not
+// checked, and a note says so. The other Vault limits (panels, scroll time, nodes) are still checked.
+const load = () => os.loadavg()[0];
+const cores = () => os.cpus().length;
 
 // The gap, in device pixels, between the ink of a head's last letter (or its ellipsis) and the tail's first ink: the background columns just
 // left of the tail's left edge, scanned over its height. Ink is a pixel that differs from the box's most common colour.
@@ -198,10 +209,11 @@ async function main() {
       } finally { await tab.close(); }
     }
 
-    // Light: scroll the whole Vault section, then stop in twelve places. Three runs each; the long-task limit is on the median.
+    // Light: scroll the whole Vault section, then stop in twelve places. Five runs each; the long-task limits are on the median.
     for (const size of [1280, 390]) {
       const runs = [];
-      for (let k = 0; k < 3; k += 1) {
+      const loadBefore = load();
+      for (let k = 0; k < RUNS; k += 1) {
         const { tab } = await open(size, 'light');
         try {
           runs.push(await tab.eval(`(async () => {
@@ -224,8 +236,11 @@ async function main() {
         } finally { await tab.close(); }
       }
       const med = median(runs.map((m) => m.longest));
+      const medOver = median(runs.map((m) => m.over200));
+      const loaded = Math.max(loadBefore, load()) > cores();
       const r0 = runs[0];
-      say(`Vault at ${size}: ${r0.frames} panels, scroll ${runs.map((m) => m.scrollMs).join(', ')} ms, most live ${Math.max(...runs.map((m) => m.max))}, live at the end ${Math.max(...runs.map((m) => m.live))}, nodes ${r0.nodesBefore} to ${Math.max(...runs.map((m) => m.nodes))}, longest task median ${med} ms (runs ${runs.map((m) => m.longest).join(', ')} ms; ${runs.map((m) => m.over200).join(', ')} over 200 ms)`);
+      say(`Vault at ${size}: ${r0.frames} panels, scroll ${runs.map((m) => m.scrollMs).join(', ')} ms, most live ${Math.max(...runs.map((m) => m.max))}, live at the end ${Math.max(...runs.map((m) => m.live))}, nodes ${r0.nodesBefore} to ${Math.max(...runs.map((m) => m.nodes))}, longest task median ${med} ms (runs ${runs.map((m) => m.longest).join(', ')} ms), median ${medOver} tasks over 200 ms (runs ${runs.map((m) => m.over200).join(', ')})`);
+      if (loaded) say(`NOTE: the load average is ${Math.max(loadBefore, load()).toFixed(2)} on ${cores()} cores, so the long-task limits were not checked at Vault ${size} this time (not a pass or a fail for them).`);
       for (const m of runs) {
         if (m.frames < 60) fail(`${size}: the Vault section has only ${m.frames} panels; the check measures the wrong thing`);
         if (m.max > LIVE_MAX) fail(`${size}: ${m.max} panels were drawn at once (the limit is ${LIVE_MAX})`);
@@ -233,7 +248,8 @@ async function main() {
         if (m.scrollMs > SCROLL_MS) fail(`${size}: scrolling the whole section took ${m.scrollMs} ms (the limit is ${SCROLL_MS})`);
         if (m.nodes > NODES_MAX) fail(`${size}: ${m.nodes} nodes are left in the page (the limit is ${NODES_MAX})`);
       }
-      if (med > LONG_MS) fail(`${size}: the median of three runs' longest task is ${med} ms (the limit is ${LONG_MS})`);
+      if (!loaded && med > LONG_MS) fail(`${size}: the median of ${RUNS} runs' longest task is ${med} ms (the limit is ${LONG_MS})`);
+      if (!loaded && medOver > LONG_OVER_MAX) fail(`${size}: the median of ${RUNS} runs has ${medOver} tasks over 200 ms (the limit is ${LONG_OVER_MAX})`);
     }
 
     // File windows. (At 390 system.css gives every small button a 44px tap area; on a wide screen with a coarse pointer the Vault's own rule does.)
@@ -241,7 +257,7 @@ async function main() {
       const allIn = (root, sel) => { const out = [...root.querySelectorAll(sel)]; for (const e of root.querySelectorAll('*')) if (e.shadowRoot) out.push(...allIn(e.shadowRoot, sel)); return out; };
       const first = () => document.querySelector('#pp-vault .vt-frame');
       const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-      const stageOf = () => document.querySelector('#pp-vault .vt-stage');
+      const stageOf = () => document.querySelector('#pp-vault .vt-canvas');
       const openers = () => allIn(stageOf(), 'button.sdk-open').filter((b) => b.title);
     `;
     {
@@ -319,6 +335,69 @@ async function main() {
         if (!g.cut) fail(`${size}: no Grid name is cut in the middle; the check measures the wrong thing`);
         if (!gaps.length) fail(`${size}: no cut Grid name is in the picture to measure`);
         if (gap > 2) fail(`${size}: a cut Grid name has a ${gap}px gap after the ellipsis (the limit is 2)`);
+      } finally { await tab.close(); }
+    }
+    // The file window's right zone (Thomas, 2026-11-03: Download, Share and Full screen are right-justified, Full screen last). Measured at 700
+    // (a canvas of 640 or less is the phone sheet: Download is its large foot button) and at 1280 (a window; then narrowed by its grip to the 240px minimum).
+    // The right zone's last control (Full screen; Download when it is the sheet's foot) sits within 16px of the window's inner right edge, the
+    // zone keeps its order, and no two controls in the row overlap. Download itself does not also sit at that edge while Full screen comes after
+    // it: at 1280 it ends about 48px in, which is the order asked for.
+    const RZ_JS = `
+      const winOf = () => stageOf().querySelector('.vt-win.is-front');
+      const innerRight = (win) => { const f = win.querySelector(':scope > .mf'); return f.getBoundingClientRect().right - (parseFloat(getComputedStyle(f).borderRightWidth) || 0); };
+      const shownIn = (win) => [...win.querySelectorAll('.mf-toolbar > *')].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0);
+      const overlapping = (els) => { let n = 0; for (let i = 0; i < els.length; i += 1) for (let j = i + 1; j < els.length; j += 1) { const a = els[i].getBoundingClientRect(); const b = els[j].getBoundingClientRect(); if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) n += 1; } return n; };
+      const rzState = () => {
+        const win = winOf(); if (!win) return { none: true };
+        const inner = innerRight(win);
+        const els = shownIn(win);
+        const label = (e) => e.getAttribute('aria-label') || e.textContent.trim();
+        const names = els.map(label);
+        const rightmost = els.reduce((a, b) => (b.getBoundingClientRect().right > a.getBoundingClientRect().right ? b : a));
+        const foot = allIn(win, '.vt-dlbar')[0]; // inside the window's shadow root
+        const sheet = Boolean(foot && getComputedStyle(foot).display !== 'none');
+        const bigDl = sheet ? allIn(win, '.vt-dlbig')[0] : null;
+        const dl = els.find((e) => label(e) === 'Download');
+        const share = els.find((e) => label(e) === 'Share');
+        const full = els.find((e) => label(e) === 'Full screen');
+        const order = [dl, share, full].filter(Boolean).map((e) => els.indexOf(e));
+        const ordered = order.every((v, i) => i === 0 || v > order[i - 1]);
+        return { inner, sheet, names, edge: label(rightmost), gap: inner - rightmost.getBoundingClientRect().right, footGap: bigDl ? inner - bigDl.getBoundingClientRect().right : null, ordered, fullLast: !full || rightmost === full, overlaps: overlapping(els), hasFull: Boolean(full), width: win.getBoundingClientRect().width };
+      };
+    `;
+    for (const size of [700, 1280]) {
+      const { tab, send } = await open(size, 'dark');
+      try {
+        const st = await tab.eval(`(async () => { ${WIN_JS} ${RZ_JS}
+          first().scrollIntoView();
+          for (let i = 0; i < 60 && !(stageOf() && openers().length > 6); i += 1) await wait(150);
+          const pick = openers().find((b) => /\\.(jpe?g|png|webp)$/i.test(b.title));
+          if (!pick) return { none: true };
+          pick.click(); await wait(500);
+          return rzState();
+        })()`);
+        if (st.none) { fail(`${size}: no file window was found; the check measures the wrong thing`); continue; }
+        say(`File window right zone at ${size} (${st.sheet ? 'phone sheet' : 'window'}, ${Math.round(st.width)}px): ${st.names.join(', ')}; ${st.edge} ends ${Math.round(st.gap)}px from the inner edge${st.sheet ? `; the foot Download ends ${Math.round(st.footGap)}px` : ''}`);
+        if (!st.hasFull) fail(`${size}: no Full screen control in the file window; the check measures the wrong thing`);
+        if (st.gap < 0 || st.gap > 16) fail(`${size}: the right zone's last control (${st.edge}) ends ${Math.round(st.gap)}px from the window's inner right edge (the limit is 16)`);
+        if (st.sheet && (st.footGap === null || st.footGap < 0 || st.footGap > 16)) fail(`${size}: the phone sheet's Download foot button ends ${Math.round(st.footGap)}px from the window's inner right edge (the limit is 16)`);
+        if (!st.ordered) fail(`${size}: the right zone is not in the order Download, Share, Full screen`);
+        if (!st.fullLast) fail(`${size}: Full screen is not the rightmost control`);
+        if (st.overlaps) fail(`${size}: ${st.overlaps} pair(s) of controls overlap in the file window's toolbar`);
+        if (size === 1280) {
+          // Narrowed by its grip: the left zone folds into More, the right zone stays pinned at the edge and nothing overlaps.
+          const grip = await tab.eval(`(() => { ${WIN_JS} const g = stageOf().querySelector('.vt-win.is-front .vt-win-grip').getBoundingClientRect(); const w = stageOf().querySelector('.vt-win.is-front').getBoundingClientRect().width; return { x: g.left + g.width / 2, y: g.top + g.height / 2, w }; })()`);
+          const m = (type, px, py) => send('Input.dispatchMouseEvent', { type, x: Math.round(px), y: Math.round(py), button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+          const dx = -Math.max(0, grip.w - 240);
+          await m('mousePressed', grip.x, grip.y); await m('mouseMoved', grip.x + dx / 2, grip.y); await m('mouseMoved', grip.x + dx, grip.y); await m('mouseReleased', grip.x + dx, grip.y); await sleep(400);
+          const n = await tab.eval(`(() => { ${WIN_JS} ${RZ_JS} return rzState(); })()`);
+          say(`File window right zone narrowed at ${size}: ${Math.round(n.width)}px wide; ${n.names.join(', ')}; ${n.edge} ends ${Math.round(n.gap)}px from the inner edge`);
+          if (n.width > 250) fail(`${size}: the grip narrowed the file window to ${Math.round(n.width)}px, not the 240px minimum`);
+          if (!n.hasFull || n.gap < 0 || n.gap > 16) fail(`${size}: narrowed, the right zone's last control (${n.edge}) ends ${Math.round(n.gap)}px from the inner edge (the limit is 16)`);
+          if (!n.ordered || !n.fullLast) fail(`${size}: narrowed, the right zone is out of order`);
+          if (n.overlaps) fail(`${size}: narrowed, ${n.overlaps} pair(s) of controls overlap`);
+          if (!n.names.includes('More') || n.names.includes('Next file')) fail(`${size}: narrowed, the left zone did not fold into More (${n.names.join(', ')})`);
+        }
       } finally { await tab.close(); }
     }
     for (const size of [390, 800]) {

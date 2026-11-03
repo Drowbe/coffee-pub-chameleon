@@ -149,14 +149,6 @@ into each other. Reported by QA on 2026-10-14; not seen on a screen by the perso
 
 Workaround: the figures beside the chart ("Left", "Paid") are not affected; read them there.
 
-## In the Calendar, today and the selected day both look like an accent fill
-
-Since selected states became fills, not borders, the Calendar's day for today and the day you selected are both drawn
-with an accent fill (today with the accent's 28%, a selected day with about 22% over the card). They are easy to tell
-apart only side by side.
-
-Workaround: none.
-
 ## Places saved before a picture map keep their old positions
 
 When an owner sets a picture map, places already saved keep the real-world positions they had. They are not moved, so
@@ -188,3 +180,12 @@ Workaround: close or move the floating window first.
 Muted text on a plain surface now meets 4.5:1 in Strong Coffee's light mode, but three cases on tinted surfaces do not: the dates on phase-tinted chips (3.85:1), the counts on a poll's voted bar (3.78:1) and the struck-through titles of done objects (3.81:1).
 
 Workaround: none; use a dark theme if the text is hard to read.
+
+## Research's notes, links and answers have no owner on the server
+
+Research's server rules (its `guards`) hold a **photo** to the person who added it: someone else may change its caption,
+and only a role with **Remove photos other people added** may remove it or change more. A **note**, a **link** and an
+**answer** have no such rule (RS-01 in the health audit of Research). Anyone who may edit in Research can change or delete one that another
+person added, by a request to the data route; the server does not refuse it.
+
+Workaround: give **Edit** in Research only to people who may be trusted with each other's notes.

@@ -28,7 +28,7 @@ const stub = http.createServer((req, res) => {
   req.on('end', async () => {
     let j = {};
     try { j = JSON.parse(body); } catch { /* none */ }
-    const user = (j.messages || []).filter((m) => m.role === 'user').map((m) => m.content).join('\n');
+    const user = (j.messages || []).filter((m) => m.role !== 'system').map((m) => m.content).join('\n');
     if (req.url.endsWith('/models')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: [{ id: 'stub-model' }] })); }
     seen.push(user);
     if (/SLOWANSWER/.test(user)) await sleep(2500);
