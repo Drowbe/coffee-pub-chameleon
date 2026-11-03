@@ -1222,6 +1222,13 @@
     // before anyone listening hears it.
     if (event === 'environment' && info && data && typeof data === 'object') info.environment = { ...(info.environment || {}), pictureMap: data.pictureMap && typeof data.pictureMap === 'object' ? data.pictureMap : null };
     if (event === 'objectopen' && !(listeners.get(event) && listeners.get(event).size)) pendingOpen = data;
+    // Many keys at once (a Clear, its Undo): a module listening for 'changes' hears it once, to draw once; any other
+    // hears each key as its own 'change'.
+    if (event === 'changes' && !(listeners.get(event) && listeners.get(event).size)) {
+      const { changes = [], scope, spaceId } = data || {};
+      for (const c of changes) emit('change', { ...c, scope, spaceId });
+      return;
+    }
     for (const fn of listeners.get(event) || []) {
       try {
         fn(data);
@@ -3185,7 +3192,8 @@
     // 'standard' ({ id }) for Settings, Share or Print (host.standard.set runs your handler for it), 'printed' once the page is back after Print,
     // 'toolbar' ({ id, value?, x? }) for a toolbar item (x: a button's left edge across the module, for a menu under it), 'nav' ({ id }) for one of the module's nav-bar tools,
     // 'change' ({ key, value, version, deleted, scope, spaceId, by })
-    // whenever stored data changes, 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
+    // whenever stored data changes, 'changes' ({ changes: [{ key, value, version, deleted, by }], cleared?, restored?, scope, spaceId, by })
+    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change'), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
     // 'moved' ({ mode }) after the host moved the module between docked and floating (the SDK reopens an open editor window itself),
     // 'environment' ({ pictureMap }) when the environment's facts changed (host.environment already answers the new ones),
     // 'phases' ({ phases, timeline }) when the dates on the space's timeline changed (a save in the sheet or Set up, or

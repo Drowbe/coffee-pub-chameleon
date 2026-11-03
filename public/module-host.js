@@ -812,15 +812,16 @@ export function openConfirmMenu(trigger, { label, confirm, hint, icon = 'trash',
 // The titlebar "..." on an installed module (not the conference or the chat). `armed`: Clear was already picked from the
 // canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away. With a `name` it asks by the styled confirm and
 // the person types that name first (it wipes the module's data for everyone). `onClear` may resolve to an `undo` function (see
-// clearWithUndo): the page then shows "Cleared. Undo" for 30 seconds.
+// clearWithUndo): the page then shows "Cleared. Undo" until the server's undo time is over (undo.until), never longer.
 export function openClearMenu(trigger, onClear, { armed = false, name = '' } = {}) {
   if (!name) { openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed }); return; }
   const ask = async () => {
-    const ok = await confirmDialog({ title: `Clear ${name}?`, message: `Everything in it goes, for everyone. You can undo it for ${UNDO_SECONDS} seconds.`, action: 'Clear', kind: 'final', typed: name });
+    const ok = await confirmDialog({ title: `Clear ${name}?`, message: `Everything ${name} holds here goes, for everyone. You can undo it for ${UNDO_SECONDS} seconds.`, action: 'Clear', kind: 'final', typed: name });
     if (!ok) return;
     try {
       const undo = await onClear();
-      if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, UNDO_SECONDS * 1000);
+      if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, { until: undo.until });
+      else showNote(`${name} had nothing to clear.`);
     } catch (err) {
       openHostMenu(trigger, [{ label: (err && err.message) || 'It could not be cleared.', disabled: true }]);
     }
@@ -830,18 +831,25 @@ export function openClearMenu(trigger, onClear, { armed = false, name = '' } = {
 }
 const UNDO_SECONDS = 30;
 
-// Clears everything a module holds in a place (DELETE .../data) after taking a copy of it, and resolves to a function that puts the
-// copy back (a few at a time; it rejects when the module's own rules refuse a key). `query` is the place's query string.
+// Clears everything a module holds in a place (DELETE .../data). The server holds what went for its undo time (undoSeconds,
+// 30) and answers a restoreToken; this resolves to a function that asks the server to put it all back (POST .../data/restore),
+// which works even after this page is gone, as the server keeps the hold. The function resolves to the sentence to show, and
+// carries `until`, when the undo time is over by this page's clock. Resolves to null when there was nothing to clear.
+// `query` is the place's query string.
 export async function clearWithUndo(moduleId, query) {
   const base = `/api/modules/${encodeURIComponent(moduleId)}/data`;
-  let items = [];
-  try { items = (await api('GET', `${base}?${query}`)).items || []; } catch { items = []; }
-  await api('DELETE', `${base}?${query}`);
-  if (!items.length) return null;
-  return async () => {
-    // A few at a time: a long list is slow one by one, and a flood would meet the module's save limit (240 a minute).
-    for (let at = 0; at < items.length; at += 6) await Promise.all(items.slice(at, at + 6).map((item) => api('PUT', `${base}/${encodeURIComponent(item.key)}?${query}`, { value: item.value })));
+  const answer = await api('DELETE', `${base}?${query}`);
+  if (!answer || !answer.cleared || typeof answer.restoreToken !== 'string') return null;
+  const seconds = Number(answer.undoSeconds) > 0 ? Number(answer.undoSeconds) : UNDO_SECONDS;
+  const undo = async () => {
+    const back = await api('POST', `${base}/restore?${query}`, { restoreToken: answer.restoreToken });
+    const n = Number(back.restored) || 0;
+    const restored = `Restored ${n} ${n === 1 ? word('object') : word('object', { many: true })}.`;
+    const skipped = Number(back.skipped) || 0;
+    return skipped ? `${restored} ${skipped} could not come back: something new is in ${skipped === 1 ? 'its' : 'their'} place.` : restored;
   };
+  undo.until = Date.now() + seconds * 1000;
+  return undo;
 }
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
@@ -2078,6 +2086,8 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     if (type !== 'bus' && type !== 'action' && type !== 'refchange' && d.module !== module.id) return;
     const here = scope === 'space' ? 'space' : 'environment';
     if (type === 'change') send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
+    // Many keys at once (a Clear, its Undo): one event, which the SDK hands to a 'changes' listener once, else key by key.
+    else if (type === 'changes') send('changes', { changes: Array.isArray(d.changes) ? d.changes : [], cleared: d.cleared === true, restored: d.restored === true, by: d.by, scope: d.scope, spaceId: d.spaceId });
     else if (type === 'refchange') {
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('refchange', { ref: d.ref, change: d.change });
     }

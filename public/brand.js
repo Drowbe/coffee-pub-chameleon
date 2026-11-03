@@ -954,15 +954,18 @@ function placeToast(spec) {
     + (spec.onOpen ? `<button type="button" class="sdk-toast-body" data-toast-open>${head}</button>` : `<div class="sdk-toast-body">${head}</div>`)
     + `<div class="sdk-toast-end">${toastCloseHtml}</div>`
     + (spec.actions ? `<div class="sdk-toast-actions">${spec.actions}</div>` : '');
-  const t = { el, left: spec.ms, started: 0, timer: 0, held: false, gone: false };
+  // `until` (a time in ms): the toast goes then, held or not (an Undo that can't work after it); else after `ms` of its own clock.
+  const fixed = Number.isFinite(spec.until);
+  const t = { el, left: fixed ? Math.max(0, spec.until - Date.now()) : spec.ms, started: 0, timer: 0, held: false, gone: false };
   const start = () => {
+    if (fixed) t.left = Math.max(0, spec.until - Date.now());
     if (t.held || t.gone) return;
     t.started = Date.now();
     clearTimeout(t.timer);
     t.timer = setTimeout(() => closeToast(t), t.left);
   };
   const hold = () => {
-    if (t.gone) return;
+    if (t.gone || fixed) return;
     t.held = true;
     if (t.started) { t.left = Math.max(0, t.left - (Date.now() - t.started)); t.started = 0; }
     clearTimeout(t.timer);
@@ -1018,17 +1021,22 @@ export function showNote(text) {
   pushToast({ kind: 'info', icon: 'circle-info', title: t, ms: 4500 });
 }
 
-// A note with one button, "Undo", for `ms` milliseconds (Clear's 30 seconds). onUndo may fail: the note then says so.
-export function undoToast(text, onUndo, ms = 30000) {
+// A note with one button, "Undo", until `until` (a time in ms; Clear's 30 seconds from the server's answer): it goes then
+// whatever the pointer or the focus does, as Undo can't work after it. onUndo may resolve to the sentence to show
+// ("Restored 12 objects."); it may fail, and the note then says so. Undo is pressed once.
+export function undoToast(text, onUndo, { until = Date.now() + 30000 } = {}) {
+  let pressed = false;
   pushToast({
     kind: 'info',
     icon: 'rotate-left',
     title: String(text ?? '').slice(0, 200),
-    ms,
+    until,
     actions: '<button type="button" class="btn btn-primary btn-small" data-undo>Undo</button>',
     onClick: (e) => {
       if (!e.target.closest('[data-undo]')) return false;
-      Promise.resolve().then(onUndo).then(() => showNote('Brought back.'), (err) => noticeToast((err && err.message) || 'It could not be brought back.', { kind: 'danger' }));
+      if (pressed) return true;
+      pressed = true;
+      Promise.resolve().then(onUndo).then((said) => showNote(typeof said === 'string' && said ? said : 'Brought back.'), (err) => noticeToast((err && err.message) || 'It could not be brought back.', { kind: 'danger' }));
       return true;
     },
   });
