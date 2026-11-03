@@ -209,10 +209,13 @@ export function createStage() {
       list.push({ type: 'text', text: `${i + 1} of ${w.list.length}` });
     }
     list.push({ type: 'button', id: 'info', label: 'Info', icon: 'circle-info', kind: 'icon', on: w.info, tip: w.info ? 'Hide info' : 'Show info' });
+    // The right zone (the frame's end zone, as the Calendar's panel switch): Download, Share, Full screen, right-justified to the
+    // window's edge and pinned, so they never move into More; the left zone's controls are the ones that fold.
+    const end = (it) => ({ ...it, zone: 'end', pin: true });
     const usable = !f.missing && f.viewable !== false;
-    if (w.ctx.can('download') && !f.missing && !phone()) list.push({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' });
-    if (w.ctx.can('share') && !f.missing) list.push({ type: 'button', id: 'share', label: 'Share', icon: 'share-nodes', kind: 'secondary' });
-    if (usable) list.push({ type: 'button', id: 'full', label: 'Full screen', icon: 'expand', kind: 'icon' });
+    if (w.ctx.can('download') && !f.missing && !phone()) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
+    if (w.ctx.can('share') && !f.missing) list.push(end({ type: 'button', id: 'share', label: 'Share', icon: 'share-nodes', kind: 'secondary' }));
+    if (usable) list.push(end({ type: 'button', id: 'full', label: 'Full screen', icon: 'expand', kind: 'icon' }));
     return list;
   }
 
