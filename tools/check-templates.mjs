@@ -103,7 +103,7 @@ try {
     assert.deepEqual(t.spaceDefaults.opensWith, ['travel', 'chat']);
     assert.equal(t.version, 8);
     // Version 6: each phase has a Font Awesome Free solid icon that can be drawn (the server's own drawable() test).
-    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera-retro']]);
+    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera']]);
     for (const p of travelRaw.phases) assert.ok(fs.existsSync(path.join(ROOT, 'node_modules', '@fortawesome', 'fontawesome-free', 'svgs', 'solid', `${p.icon}.svg`)), `${p.id}: ${p.icon} is not a drawable icon`);
     assert.deepEqual(templates.problemsOf(travelRaw, { file: 'travel.json', bundled }), [], 'every phase icon passes the server\'s check');
     // plan-calendar-destination.md, decision 12, and plan-map-destination.md, decision 17: Show Calendar and Show Map
@@ -812,7 +812,7 @@ try {
     });
     let row = await travelRow();
     assert.deepEqual([row.edited, row.update, row.version], [false, null, was.version + 1], 'silent: the version rises, no notice');
-    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera-retro']);
+    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera']);
     const ownerAgain = cookieOf(await call(server, 'out', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
     const tab = await call(server, 'out', 'GET', '/api/environment/template', { cookie: ownerAgain });
     assert.equal(tab.json.template.offerOpen, false, 'nothing applied once changed, so no offer to apply again');

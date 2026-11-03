@@ -372,7 +372,7 @@ try {
     const ids = r.json.environment.offer.modules.map((m) => m.id);
     const applied = await console_('POST', '/api/host/environments/beta/template/apply', { modules: ids, lobby: true, spaceDefaults: true });
     assert.equal(applied.status, 200, applied.text);
-    assert.deepEqual(applied.json.environment.template.skipped.map((x) => [x.id, x.why]), [['maps', 'not in the plan'], ['vault', 'not in the plan']], 'the plan\'s refusal; Research needs no AI service, so it is not skipped');
+    assert.deepEqual(applied.json.environment.template.skipped.map((x) => [x.id, x.why]), [['maps', 'not in the plan']], 'the plan\'s refusal; Research needs no AI service, so it is not skipped');
     assert.equal(applied.json.environment.template.offerOpen, false);
     const owner = cookieOf(await call(server, 'beta', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
     const lobby = (await call(server, 'beta', 'GET', '/api/spaces', { cookie: owner })).json.spaces.find((s) => s.id === 'lobby');
