@@ -1,0 +1,130 @@
+/* The file windows and their viewers (public/file-viewer.js, public/file-viewer-views.js; plan-attachments-vault.md, step 3).
+   A window is the module frame's window variant (system.css) in a layer over the page; only what is the viewers' own is here. Colours, sizes
+   and layers are the theme's tokens. The public share page draws the same views (.fv-view and what is in it) in its own page. */
+
+/* the layer: over the floating modules, under menus and dialogs; it takes no clicks except on its windows */
+.fv-layer { position: fixed; inset: 0; z-index: var(--z-window); pointer-events: none; }
+.fv-win { position: absolute; display: flex; pointer-events: auto; }
+.fv-win > .mf { flex: 1 1 auto; width: 100%; height: 100%; outline: none; }
+.fv-win:not(.is-front) > .mf { box-shadow: var(--shadow-2); }
+.fv-win.is-front > .mf { box-shadow: var(--shadow-3); }
+.fv-win > .mf:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.fv-grip { position: absolute; right: 0; bottom: 0; z-index: 8; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--edge-hairline) 50%, var(--edge-hairline) 60%, transparent 60%, transparent 70%, var(--edge-hairline) 70%, var(--edge-hairline) 80%, transparent 80%); }
+.fv-win .mf-titlebar { touch-action: none; cursor: grab; }
+.fv-win .mf-titlebar button { cursor: pointer; }
+.fv-layer.dragging .fv-body { pointer-events: none; }
+
+/* inside: the file, and beside it or under it the Info */
+.mf-content:has(> .fv-body) { display: flex; flex-direction: column; overflow: hidden; }
+.fv-body { container: fvbody / inline-size; position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; background: var(--surface-panel); color: var(--text-primary); }
+.fv-main { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+.fv-view { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-field); }
+.fv-state { align-items: center; justify-content: center; background: var(--surface-panel); }
+.fv-state .sdk-empty > i[data-tone="warn"] { color: var(--status-warn-text); }
+.fv-btn-word { white-space: nowrap; }
+/* the frame's `.mf button { color: inherit }` would take the buttons' own colours; the views' buttons are the system's, so they keep them */
+.fv-body :is(.btn, .sdk-icon-btn) { color: var(--b-fg); }
+.fv-body :is(.btn, .sdk-icon-btn):is(:hover, :active) { color: var(--b-fg-h); }
+
+.fv-info { flex: none; box-sizing: border-box; width: 260px; overflow: auto; padding: var(--pad-card); border-left: 1px solid var(--edge-hairline); background: var(--surface-panel); display: flex; flex-direction: column; gap: var(--space-3); }
+.fv-info-head { display: flex; align-items: center; justify-content: space-between; }
+.fv-info-title, .fv-info-sub { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
+.fv-info-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); }
+.fv-info-list dt { color: var(--text-muted); }
+.fv-info-list dd { margin: 0; overflow-wrap: anywhere; }
+.fv-info-uses, .fv-info-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.fv-info-none { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.fv-uses { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-13); }
+.fv-uses span { color: var(--text-muted); }
+.fv-body .fv-use-link { padding: 0; border: 0; background: none; color: var(--text-link); font: inherit; font-weight: var(--weight-strong); text-align: left; text-decoration: underline; cursor: pointer; }
+.fv-use-link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* Info is a side panel while the window is wide, under the file while it is narrow */
+@container fvbody (max-width: 560px) {
+  .fv-main.has-info { flex-direction: column; }
+  .fv-main.has-info > .fv-info { width: auto; max-height: 48%; border-left: 0; border-top: 1px solid var(--edge-hairline); }
+}
+
+/* a picture */
+.fv-pic { align-items: center; justify-content: center; overflow: hidden; outline: none; }
+.fv-pic:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.fv-pic-wrap { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; width: 100%; min-height: 0; overflow: hidden; cursor: zoom-in; touch-action: none; }
+.fv-pic.is-zoomed .fv-pic-wrap { cursor: grab; }
+.fv-pic-wrap.is-dragging { cursor: grabbing; }
+.fv-pic-wrap > img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-drag: none; }
+.fv-zoombar { position: absolute; left: 50%; bottom: var(--space-3); z-index: 1; display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); transform: translateX(-50%); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 94%, transparent); box-shadow: var(--shadow-2); }
+.fv-zoombar[hidden] { display: none; }
+.fv-zoom-level { min-width: 56px; justify-content: center; }
+
+/* audio and video: the browser's own controls */
+.fv-audio { align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); background: var(--surface-panel); text-align: center; }
+.fv-audio-tile { display: flex; align-items: center; justify-content: center; width: 96px; aspect-ratio: 1; margin-bottom: var(--space-2); border-radius: var(--radius-large); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-40); }
+.fv-audio-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.fv-audio-meta { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.fv-audio > audio { width: min(480px, 100%); margin-top: var(--space-3); }
+.fv-video { align-items: center; justify-content: center; padding: var(--space-3); }
+.fv-video > video { display: block; width: 100%; max-height: 100%; border-radius: var(--radius-medium); background: var(--surface-page); }
+
+/* Markdown: the reading width */
+.fv-md-view { overflow: auto; align-items: center; background: var(--surface-panel); }
+.fv-md { box-sizing: border-box; width: min(var(--measure-reading), 100%); padding: var(--space-5) var(--space-4) var(--space-7); font-size: var(--text-14); line-height: 1.6; outline: none; overflow-wrap: anywhere; }
+.fv-md:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.fv-md > :first-child { margin-top: 0; }
+.fv-md h1 { margin: 0 0 var(--space-3); font-size: var(--text-22); line-height: var(--leading-title); }
+.fv-md h2 { margin: var(--space-5) 0 var(--space-2); font-size: var(--text-18); line-height: var(--leading-title); }
+.fv-md h3 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-16); }
+.fv-md p, .fv-md ul, .fv-md ol, .fv-md blockquote, .fv-md pre { margin: 0 0 var(--space-3); }
+.fv-md ul, .fv-md ol { padding-left: var(--space-6); }
+.fv-md blockquote { padding-left: var(--space-3); border-left: 3px solid var(--edge-hairline); color: var(--text-muted); }
+.fv-md code { padding: 0 var(--space-1); border-radius: var(--radius-min); background: var(--surface-field); font-size: var(--text-13); }
+.fv-md pre { overflow: auto; padding: var(--space-3); border-radius: var(--radius-medium); background: var(--surface-field); }
+.fv-md pre code { padding: 0; background: none; }
+.fv-md a { color: var(--text-link); }
+
+/* a PDF: our controls over the sandboxed frame */
+.fv-pdf { overflow: hidden; outline: none; }
+.fv-pdfbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
+.fv-pdfbar[hidden], .fv-pdf-search[hidden] { display: none; }
+.fv-pdfbar-group { display: flex; align-items: center; gap: var(--space-1); }
+.fv-pdfbar-fill { flex: 1 1 auto; }
+.fv-sep { align-self: stretch; width: 1px; margin: var(--space-1) var(--space-2); background: var(--edge-hairline); }
+.fv-pdf-page { width: 44px; height: var(--mf-ctl-h); text-align: center; }
+.fv-pdf-of { color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; }
+.fv-pdf-search { display: flex; flex: none; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
+.fv-pdf-search input { flex: 1 1 auto; min-width: 0; }
+.fv-pdf-count { color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; }
+.fv-pdf-stage { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.fv-pdf-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--surface-field); }
+.fv-pdf-frame[hidden] { display: none; }
+.fv-pdf-stage > .fv-state { flex: 1 1 auto; }
+@container fvbody (max-width: 420px) {
+  .fv-pdfbar-zoom > .sdk-icon-btn { display: none; }
+}
+.fv-sep:last-child { display: none; }
+.fv-spin { animation: fv-spin 1s linear infinite; }
+@keyframes fv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fv-spin { animation: none; } }
+
+.fv-dlbar { display: none; flex: none; padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.fv-dlbig { width: 100%; min-height: 48px; justify-content: center; }
+
+/* a phone (640px and narrower): the window is a full-screen sheet over everything, one at a time; Download is in the toolbar's menu and in the bar below */
+@media (max-width: 640px) {
+  .fv-layer { z-index: var(--z-page); }
+  .fv-win { inset: 0 !important; width: auto !important; height: auto !important; }
+  .fv-grip { display: none; }
+  .fv-dlbar { display: flex; }
+  .fv-win .mf-titlebar { cursor: default; }
+  .fv-win > .mf { border: 0; border-radius: 0; box-shadow: none !important; }
+}
+/* coarse pointers and phones: 44px taps (the tap area grows past the look), 16px fields */
+@media (pointer: coarse), (max-width: 640px) {
+  .fv-pdf-page { height: 44px; }
+  .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button { position: relative; }
+  .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button::after { content: ""; position: absolute; top: 50%; right: -2px; left: -2px; height: 44px; transform: translateY(-50%); }
+  .fv-pdfbar, .fv-pdf-search { padding-block: 7px; }
+  .fv-use-link { min-height: 44px; }
+  .fv-state .sdk-empty-actions .btn { --btn-h: 44px; min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .fv-body :is(input[type="text"], input[type="search"]), .fv-rename input { font-size: var(--text-16); }
+}

@@ -4,8 +4,7 @@
 // this page only draws them. It draws into the markup in vault.html and builds its rows and cards from the design system's pieces
 // (the Cards block: banded card and row), with its own classes only where the Vault needs them (vault.css).
 //
-// Opening a file is one seam: openFile(file). The viewer windows are step 3; until they exist it shows the file's details with
-// Download, so nothing is a dead end.
+// Opening a file is one seam: openFile(file), which asks the host for a file window (host.files.open).
 (async function () {
   'use strict';
 
@@ -853,11 +852,15 @@
   }
 
   // ---- Opening a file: the seam for the viewers (step 3) --------------------------------------------------------------------------------
-  // The viewer windows open a file from here (the same entry host.files.open will use). Until they exist, a file opens its details with
-  // Download, so every file still goes somewhere.
+  // A file opens in a file window over the page (the host's own, public/file-viewer.js; host.files.open). Previous and Next walk the list
+  // as it is filtered now. When the window closes, focus goes back to what opened it. Only if the host can't open one is the file's details
+  // sheet shown, so every file still goes somewhere.
+  let opener = null;
+  host.on('fileclosed', () => { if (opener && opener.isConnected) opener.focus({ preventScroll: true }); opener = null; });
   function openFile(file) {
-    if (host.files && typeof host.files.open === 'function' && host.objects && host.objects.make) {
-      return host.files.open(host.objects.make('file', file.id)).catch(() => showFile(file));
+    if (host.files && typeof host.files.open === 'function') {
+      opener = root.activeElement || (document.activeElement !== document.body ? document.activeElement : null);
+      return host.files.open(host.objects.make('file', file.id), { list: filtered().map((f) => f.id), name: file.name }).catch(() => showFile(file));
     }
     return showFile(file);
   }

@@ -4,7 +4,9 @@
 //      and both templates show the module under their own word.
 //   2. Live (headless Chromium, the screenshot seed): files added through the server and through the page's own Add files, the List and
 //      the Grid, search, Rename, Remove, Select, a member who may not change someone else's file, a member who may not add, and a phone's
-//      width (one column of rows with 44px height, the Grid three across).
+//      width (one column of rows with 44px height, the Grid three across); then the file windows (check-vault-viewer-cases.mjs): every type
+//      opened with real files, Previous and Next, Info, the cap of four, Close all, Esc and focus, Rename and Remove, the Layout menu on a
+//      space's canvas, a phone's one sheet and the contrast in both themes.
 // Usage: node tools/check-vault-module.mjs. With no Chromium the live part says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -42,6 +44,10 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
     if (!new RegExp(`\\b${name}:`).test(block)) fail(`the page calls host.library.${name}, which the SDK does not have`);
     if (!bridge.includes(`'library.${name}'`)) fail(`the page calls host.library.${name}, which the host's bridge does not answer`);
   }
+  if (!/\bopen:\s*\(pointer, o\) => call\('files\.open'/.test(sdk)) fail('the SDK has no host.files.open');
+  if (!bridge.includes("'files.open'")) fail("the host's bridge does not answer files.open");
+  for (const f of ['public/file-viewer.js', 'public/file-viewer-views.js', 'public/file-viewer.css']) if (!fs.existsSync(path.join(ROOT, f))) fail(`${f} is missing`);
+  if (!/sandbox', 'allow-scripts'\)/.test(read('public/file-viewer-views.js')) || /allow-same-origin/.test(read('public/file-viewer-views.js').replace(/\/\/.*$/gm, ''))) fail('the PDF frame must be sandbox="allow-scripts" and never allow-same-origin');
   const travel = JSON.parse(read('templates/travel.json'));
   const games = JSON.parse(read('templates/games.json'));
   if (travel.moduleNames.vault !== 'Documents' || !travel.modules.includes('vault')) fail('the travel template does not show the Vault as Documents');
@@ -198,6 +204,10 @@ async function main() {
       if (across !== 3) fail(`at 390px the Grid is ${across} across (three)`);
       say(`phone: rows ${h}px high, Grid ${across} across`);
     } finally { await tab.close(); }
+
+    // The file windows (step 3): every type, the cap, Close all, Esc, focus, the phone's sheet, contrast.
+    const { viewerCases } = await import('./check-vault-viewer-cases.mjs');
+    await viewerCases({ S, api, say, fail, browser, until, open, dataDir, trip });
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);
