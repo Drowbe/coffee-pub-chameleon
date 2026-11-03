@@ -11,6 +11,7 @@
 //     download(file)             start the download (omit when the person may not: no button is drawn)
 //     openLink(url)              a web or email link in a PDF or in Markdown was asked for (checked again here)
 //     module                     the word for the module ("Vault", "Documents"), for the sentences
+//     missingText                the line under "File missing" where the default (which names the module and the admin) does not fit
 //     markdown(text)             HTML for Markdown text (window.hostText.markdown)
 //     toast(text)                a short note
 //   }
@@ -104,7 +105,7 @@ export async function probe(url) {
   } catch { return 'other'; }
 }
 function missingView(file, source) {
-  return Object.assign(viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${source.module}, or ask the admin to restore the ${source.module} folder.`, actions: [] }), { missing: true });
+  return Object.assign(viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: source.missingText || `The file itself is not on the server. This can happen after a restore. Remove it from the ${source.module}, or ask the admin to restore the ${source.module} folder.`, actions: [] }), { missing: true });
 }
 function downloadButton(file, source, primary = true) {
   if (!source.download) return [];

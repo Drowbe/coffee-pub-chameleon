@@ -1805,6 +1805,22 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         openRef: onOpenRef ? (r) => onOpenRef(cleanPointer(r), {}) : null,
       });
     },
+    // Share links (public/share-sheet.js): the sheet and the list are drawn in this page, so Copy works; the module hears 'sharechanged'
+    // when a link is made, changed or turned off. The server checks the `share` permission on every call.
+    async 'library.share'({ ids }) {
+      const list = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 200);
+      if (!list.length) throw Object.assign(new Error('choose a file'), { status: 400 });
+      libraryUrl();
+      const holder = pageMode ? container : frame;
+      const { shareFiles } = await import('/share-sheet.js');
+      return shareFiles({ doc: holder.ownerDocument, place: { module: module.id, space: spaceId }, ids: list, onChange: () => send('sharechanged', {}), returnFocus: () => holder });
+    },
+    async 'library.shares'() {
+      libraryUrl();
+      const holder = pageMode ? container : frame;
+      const { shareLinks } = await import('/share-sheet.js');
+      return shareLinks({ doc: holder.ownerDocument, place: { module: module.id, space: spaceId }, onChange: () => send('sharechanged', {}), onChoose: () => send('sharechoose', {}), returnFocus: () => holder });
+    },
     async 'library.download'({ id }) {
       const doc = (pageMode ? container : frame).ownerDocument;
       const a = doc.createElement('a');

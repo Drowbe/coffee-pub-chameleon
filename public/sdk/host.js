@@ -2527,6 +2527,11 @@
     //       public/sdk/pdf-viewer.mjs) as { type: 'open', data: await blob.arrayBuffer() }. blob(id) of a download-only
     //       PDF rejects with status 404: check `viewable` first.
     //   download(id)                 the host saves the file (a frame cannot start a download itself); needs `download`
+    //   share([id])                  opens the share sheet over the page for these files (the person needs the `share` permission);
+    //       Make link shows the address once, with Copy. Resolves when the sheet is up; the module hears 'sharechanged' when a link
+    //       is made, changed or turned off, and asks list() again (each file then has `shared: true|false`, for people with `share`).
+    //   shares()                     opens the list of the space's share links over the page (Turn off, Edit, Choose files);
+    //       the module hears 'sharechoose' when the person presses Choose files there (start choosing files).
     library: {
       list: () => call('library.list'),
       add: (file, o) => {
@@ -2544,6 +2549,8 @@
       url: (id, o) => call('library.url', { id, thumb: Boolean(o && o.thumb), download: Boolean(o && o.download) }),
       blob: (id, o) => call('library.blob', { id, thumb: Boolean(o && o.thumb) }),
       download: (id) => call('library.download', { id }),
+      share: (ids) => call('library.share', { ids }),
+      shares: () => call('library.shares'),
     },
 
     // The module's settings, as chosen for this viewer here: { key: value }, with the module's own default for what

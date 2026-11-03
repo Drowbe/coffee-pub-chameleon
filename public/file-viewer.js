@@ -25,8 +25,8 @@ export const CAP_SENTENCE = 'Close a window to open another.';
 export const CAP_TITLE = 'Four windows are open';
 const SMALL_H = 300; // a window shorter than this has no Info: it would hide the file
 const PHONE = 640;
-// Share is step 5 (decision 12): the button is built and stays hidden until the share links exist.
-const SHARE_READY = false;
+// Share (decision 12, step 5): the button shows only where the person has the `share` permission, and opens the same sheet the Vault's Share does.
+const SHARE_READY = true;
 const enc = encodeURIComponent;
 
 const managers = new WeakMap();
@@ -276,7 +276,14 @@ function createManager(doc) {
       else if (e.id === 'next') go(w, 1);
       else if (e.id === 'info') { w.info = !w.info; drawInfo(w); w.frame.setToolbar(toolbar(w)); } else if (e.id === 'download' && f) download(w, f);
       else if (e.id === 'full') fullscreen(w);
+      else if (e.id === 'share' && f) share(w, f, e.el);
     }
+  }
+
+  // ---- Share: the sheet of public/share-sheet.js, over the window ----------------------------------------------------------------------
+  async function share(w, f, from) {
+    const { shareFiles } = await import('/share-sheet.js');
+    shareFiles({ doc, place: { module: w.place.module, space: w.place.space }, ids: [f.id], returnFocus: () => (w.dead ? null : from && from.isConnected ? from : w.frame.el) });
   }
 
   // ---- Rename and Remove: the same words as the Vault's list ------------------------------------------------------------------------------

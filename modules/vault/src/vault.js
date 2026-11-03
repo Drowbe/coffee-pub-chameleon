@@ -135,13 +135,14 @@
   const mayAdd = can('add');
   const mayDownload = can('download');
   const mayRemoveAny = can('remove_any');
+  const mayShare = can('share');
   const mayRemove = (f) => mayRemoveAny || f.by === me;
 
   const PAGE = 100; // files drawn at a time; more come as the list is scrolled
   const state = {
     files: [], usage: { bytes: 0, maxBytes: 0 },
     view: 'list', sort: 'new', query: '', types: new Set(), by: 'all', linked: new Set(),
-    selecting: false, sel: new Set(), adding: false, queue: [], loaded: false,
+    shared: false, selecting: false, sel: new Set(), adding: false, queue: [], loaded: false,
     people: new Map(), removeWhere: false, notice: null, dropping: false, limit: PAGE,
   };
 
@@ -195,6 +196,7 @@
     if (state.by === 'mine') out = out.filter((f) => f.by === me);
     else if (state.by !== 'all') out = out.filter((f) => f.by === state.by);
     if (state.linked.size === 1) out = out.filter((f) => (state.linked.has('linked') ? f.uses > 0 : !f.uses));
+    if (state.shared) out = out.filter((f) => f.shared === true);
     const q = state.query.trim().toLowerCase();
     if (q) out = out.filter((f) => matches(f, q));
     const cmp = (SORTS.find((s) => s[0] === state.sort) || SORTS[0])[2];
@@ -205,16 +207,17 @@
     if (state.types.size) parts.push([...state.types].map((g) => GROUP_WORD[g]).join(', '));
     if (state.by !== 'all') parts.push(state.by === 'mine' ? 'added by you' : `added by ${nameOf(state.by)}`);
     if (state.linked.size === 1) parts.push(state.linked.has('linked') ? 'linked' : 'not linked');
+    if (state.shared) parts.push('shared');
     if (state.query.trim()) parts.push(`matching "${state.query.trim()}"`);
     return parts.join(', ');
   }
   function clearFilters() {
-    state.types.clear(); state.by = 'all'; state.linked.clear(); state.query = ''; state.sort = 'new';
+    state.types.clear(); state.by = 'all'; state.linked.clear(); state.shared = false; state.query = ''; state.sort = 'new';
   }
 
   // ---- loading ------------------------------------------------------------------------------------------------------------------------
   let lastSig = '';
-  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses, durations[f.id] || 0]), state.usage]);
+  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses, f.shared === true, durations[f.id] || 0]), state.usage]);
   async function loadPeople() {
     try { for (const p of await host.people()) state.people.set(p.key, p.name); } catch { /* names are a nicety */ }
   }
@@ -351,6 +354,7 @@
       { type: 'chips', id: 'type', label: 'Type', options: ['image', 'audio', 'video', 'document'].map((g) => ({ id: g, label: GROUP_WORD[g], count: count((f) => f.group === g), on: state.types.has(g), default: false })) },
       { type: 'chips', id: 'by', label: 'Added by', single: true, value: state.by, options: [{ id: 'all', label: 'Everyone' }, { id: 'mine', label: 'Mine' }, ...others.map((k) => ({ id: k, label: nameOf(k) }))] },
       { type: 'chips', id: 'linked', label: 'Linked', options: [{ id: 'linked', label: 'Linked', count: count((f) => f.uses > 0), on: state.linked.has('linked'), default: false }, { id: 'unlinked', label: 'Not linked', on: state.linked.has('unlinked'), default: false }] },
+      ...(mayShare ? [{ type: 'chips', id: 'shared', label: 'Shared', options: [{ id: 'shared', label: 'Shared', count: count((f) => f.shared === true), on: state.shared, default: false }] }] : []),
     ];
   }
   function toolbarItems() {
@@ -364,6 +368,7 @@
         { type: 'text', text: n ? `${n} selected` : 'Choose files' },
         { type: 'button', id: 'all', label: n === filtered().length && n ? 'Choose none' : 'Choose all', icon: 'square-check' },
         ...(mayDownload ? [{ type: 'button', id: 'sel-download', label: 'Download', icon: 'download', disabled: !n }] : []),
+        ...(mayShare ? [{ type: 'button', id: 'sel-share', label: 'Share', icon: 'share-nodes', disabled: !n }] : []),
         { type: 'button', id: 'sel-remove', label: 'Remove', icon: 'trash', disabled: !removable, title: n && !removable ? 'Remove is only for files you added' : 'Remove' },
         search,
         ...filtersChips(),
@@ -387,7 +392,10 @@
   function chrome() {
     viewSwitch.set(state.view);
     host.toolbar.set(toolbarItems()).catch(() => {});
-    host.header.set(state.files.length && (mayDownload || state.files.some(mayRemove)) ? [{ id: 'select', icon: 'square-check', title: 'Select', on: state.selecting }] : []).catch(() => {});
+    const head = [];
+    if (state.files.length && (mayDownload || mayShare || state.files.some(mayRemove))) head.push({ id: 'select', icon: 'square-check', title: 'Select', on: state.selecting });
+    if (mayShare) head.push({ id: 'share-links', icon: 'share-nodes', title: 'Share links', overflow: true });
+    host.header.set(head).catch(() => {});
     host.add.set(mayAdd ? [{ id: 'add', label: 'Add files', icon: 'plus' }] : []).catch(() => {});
     host.status.set(statusItems()).catch(() => {});
   }
@@ -399,14 +407,23 @@
     else if (id === 'type' && typeof e.value === 'string') { if (e.on) state.types.add(e.value); else state.types.delete(e.value); refilter(); }
     else if (id === 'by' && typeof e.value === 'string') { state.by = e.value; refilter(); }
     else if (id === 'linked' && typeof e.value === 'string') { if (e.on) state.linked.add(e.value); else state.linked.delete(e.value); refilter(); }
+    else if (id === 'shared' && typeof e.value === 'string') { state.shared = Boolean(e.on); refilter(); }
     else if (id === 'done') endSelecting();
     else if (id === 'all') { const ids = filtered().map((f) => f.id); if (state.sel.size === ids.length) state.sel.clear(); else ids.forEach((i) => state.sel.add(i)); render(); }
     else if (id === 'sel-download') downloadMany(chosen());
+    else if (id === 'sel-share') shareFiles(chosen());
     else if (id === 'sel-remove') removeFiles(chosen(), endSelecting);
   });
-  host.on('header', (e) => { if (e.id === 'select') { if (state.selecting) endSelecting(); else { state.selecting = true; state.sel.clear(); render(); } } });
+  host.on('header', (e) => { if (e.id === 'share-links') { host.library.shares().catch(fail); return; } if (e.id === 'select') { if (state.selecting) endSelecting(); else { state.selecting = true; state.sel.clear(); render(); } } });
   host.on('add', (e) => { if (e.id === 'add' && mayAdd) { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); } });
   host.on('links', () => { refresh({ quiet: true }); });
+  // Share links (public/share-sheet.js): the sheet and the list open over the page; a link made, changed or turned off arrives as 'sharechanged'.
+  host.on('sharechanged', () => { refresh({ quiet: true }); });
+  host.on('sharechoose', () => { if (!state.selecting) { state.selecting = true; state.sel.clear(); render(); } });
+  function shareFiles(files) {
+    if (!files.length) return;
+    host.library.share(files.map((f) => f.id)).catch(fail);
+  }
   function refilter() { state.limit = PAGE; render(); }
   function endSelecting() { state.selecting = false; state.sel.clear(); render(); }
 
@@ -415,6 +432,7 @@
     // The handlers return nothing: the menu waits for what an item returns before it closes, and while it is open it takes Escape.
     const items = [{ id: 'open', label: 'Open', icon: 'eye', onClick: () => { openFile(f, 'menu'); } }];
     if (mayDownload) items.push({ id: 'download', label: 'Download', icon: 'download', onClick: () => { host.library.download(f.id).catch(fail); } });
+    if (mayShare) items.push({ id: 'share', label: 'Share', icon: 'share-nodes', onClick: () => { shareFiles([f]); } });
     if (mayRemove(f)) items.push({ id: 'rename', label: 'Rename', icon: 'pen-to-square', onClick: () => { renameFile(f); } });
     items.push({ id: 'uses', label: 'Where it is used', icon: 'link', hint: f.uses ? String(f.uses) : undefined, onClick: () => { showFile(f, { uses: true, opener: 'menu' }); } });
     if (mayRemove(f)) items.push({ separator: true }, { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onClick: () => { removeFiles([f]); } });
@@ -519,6 +537,13 @@
       s.title = `Linked from ${plural(f.uses, 'place')}`;
       s.setAttribute('aria-label', s.title);
       s.append(ic('link'), el('span', '', String(f.uses)));
+      box.append(s);
+    }
+    if (f.shared) {
+      const s = el('span', 'vt-flag');
+      s.title = 'Shared by a link';
+      s.setAttribute('aria-label', 'Shared by a link');
+      s.append(ic('share-nodes'));
       box.append(s);
     }
     return box;
