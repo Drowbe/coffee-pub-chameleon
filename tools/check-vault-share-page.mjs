@@ -249,8 +249,8 @@ async function main() {
       const { t, seen } = await publicTab(at(view));
       try {
         await t.waitFor('.sh-grid .sh-card');
-        const cards = await t.eval(COUNT('.sh-card'));
-        if (cards !== 6) fail(`the page shows ${cards} cards for six files`);
+        const tiles = await t.eval(COUNT('.sh-card'));
+        if (tiles !== 6) fail(`the page shows ${tiles} tiles for six files`);
         await sleep(600);
         await shot(t, 'grid-dark');
         const thumbs = await t.eval(`[...document.querySelectorAll('.sh-thumb img')].filter((i) => i.complete && i.naturalWidth > 0).length`);
@@ -357,7 +357,7 @@ async function main() {
         await t.click('button[type=submit]');
         await t.waitFor('.sh-grid .sh-card');
         const n = await t.eval(COUNT('.sh-card'));
-        if (n !== 2) fail(`the unlocked page shows ${n} cards`);
+        if (n !== 2) fail(`the unlocked page shows ${n} tiles`);
         // the picture's bytes come with the cookie
         await t.click('.sh-name', 'pic.png');
         const pic = await until(t, `(() => { const i = document.querySelector('.fv-pic img'); return i && i.complete ? i.naturalWidth : 0; })()`, (v) => v > 0);
