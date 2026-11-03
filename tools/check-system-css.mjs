@@ -168,7 +168,8 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   // journeyLayout (public/journey-layout.js): its place (--x, --w, --pin-x), its progress (--p), the tooltip's arrow, and today's
   // place in a band of the phases sheet (--at, phase-sheet.js).
   // The Pickers block's colour is data, set on one swatch or colour trigger by public/colour-pick.js from its palette (--sw).
-  const PER_ELEMENT = ['--x', '--w', '--p', '--pin-x', '--arrow-x', '--at', '--sw'];
+  // The banded card's --card-fill and --card-head-base are set on one box that sits on another surface (a card on a tinted area); no module has to.
+  const PER_ELEMENT = ['--x', '--w', '--p', '--pin-x', '--arrow-x', '--at', '--sw', '--card-fill', '--card-head-base'];
   const known = new Set([...defs.keys(), ...others.keys(), ...PER_ELEMENT]);
   for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
     if (!known.has(m[1])) fail(`system.css reads ${m[1]}, which is defined nowhere`);

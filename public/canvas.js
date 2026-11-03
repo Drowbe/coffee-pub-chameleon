@@ -13,7 +13,7 @@
 // See documentation/architecture/architecture-canvas.md.
 
 import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
+import { mountModule, createFrameLift, openClearMenu, clearWithUndo, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
 import { nav } from '/nav-bar.js';
@@ -1365,7 +1365,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (e.id === 'window') return setMode(id, 'float');
     if (e.id === 'dock') return setMode(id, 'dock');
     if (e.id === 'popout') return popOut(id);
-    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true });
+    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true, name: (opened.get(id) || mod).m.name || '' });
   }
 
   // Everything this module holds in this space. The conference and the chat are not modules, so they never get this.
@@ -1376,7 +1376,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (tz) q.set('tz', tz);
     } catch { /* the server falls back */ }
-    await api('DELETE', `/api/modules/${encodeURIComponent(mod.m.id)}/data?${q}`);
+    return clearWithUndo(mod.m.id, q.toString());
   }
 
   // The call moved to (or came back from) a window of its own. Module frames cannot
