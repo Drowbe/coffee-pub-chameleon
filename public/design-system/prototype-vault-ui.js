@@ -101,7 +101,7 @@ export function fileChip(f, { state = 'ok', canEdit = false, onOpen, onRemove } 
   if (state === 'ok' && kind) {
     c.dataset.tint = kind.tint;
     c.append(fa(kind.icon, 'vt-chip-ic'), h('span', 'vt-chip-name', f.name), h('span', 'vt-chip-size', size(f.size)));
-    c.setAttribute('aria-label', `${f.name}, ${size(f.size)}. Open it in the Vault.`);
+    c.setAttribute('aria-label', `${f.name}, ${size(f.size)}. Open the file.`);
   } else if (state === 'removed') {
     c.append(fa('file-circle-xmark', 'vt-chip-ic'), h('span', 'vt-chip-state', 'File removed'));
   } else if (state === 'missing') {
@@ -240,7 +240,14 @@ function pump() {
       live.add(box);
       if (window.scrollY !== y) window.scrollTo(0, y); // a menu opened and closed in a drawing moves focus, which can scroll the page
       trimLive();
-      if (typeof more === 'function') requestAnimationFrame(() => { if (live.has(box) && near.has(box)) { const y2 = window.scrollY; try { more(); } catch (e) { console.error(e); } if (window.scrollY !== y2) window.scrollTo(0, y2); } });
+      // What waits a frame (a menu held open, a window) runs in its own frame, and the next panel is drawn after it, so no frame holds two.
+      if (typeof more === 'function') {
+        requestAnimationFrame(() => {
+          if (live.has(box) && near.has(box)) { const y2 = window.scrollY; try { more(); } catch (e) { console.error(e); } if (window.scrollY !== y2) window.scrollTo(0, y2); }
+          if (queue.length) pump();
+        });
+        return;
+      }
     }
     if (queue.length) pump();
   });

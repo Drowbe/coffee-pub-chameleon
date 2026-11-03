@@ -10,6 +10,10 @@
  *      rule written for the phone screen's own page (phone.html) once hid the overflow of this page too.
  *   2. Pinned jump lists. Pressing a Vault "Jump to" button lands on the part; the pinned lists (.pp-dock) are still in view; a wheel
  *      up moves the page up; "Back to top" returns to 0.
+ *   4. File windows (Thomas, 2026-11-03): CAP_SENTENCE is the decided sentence; a fifth file at 1280 leaves four windows and one toast (a sixth
+ *      does not stack another); every window has Close and moves by its title bar and resizes by its grip, staying inside the canvas; the
+ *      Grid's banded head is 34px or less and cuts a name in the middle, keeping the extension; at 390 every button in a file window is 44px
+ *      tall or has a 44px tap area.
  *   3. Light. Scrolling the whole Vault section top to bottom, then stopping at twelve places: panels live at any time stay at or
  *      under LIVE_MAX (the cap is 8 plus the ones on the screen); no task runs longer than LONG_MS; the section scrolls in under
  *      SCROLL_MS; the nodes left are under NODES_MAX. (Measured at the time of writing: about 2 s, tasks up to 500 ms (1 s at 390), 8,600 nodes,
@@ -22,7 +26,7 @@ import path from 'node:path';
 import { findBrowser, launch, freePort, startServer, stopServer, Tab, sleep } from './shots.mjs';
 
 const LIVE_MAX = 12; // the cap is 8; a few more may be on the screen at once
-const LONG_MS = 1500; // the target is 200 ms on a laptop (a panel's draw is 150 to 500 ms; the first one on a slow box can be twice that)
+const LONG_MS = 800; // the target is 200 ms on a laptop; a held menu or a window opening is 150 to 350 ms, and none shares a frame with another panel's draw
 const SCROLL_MS = 10000; // the target is 5 s
 const NODES_MAX = 16000;
 const failures = [];
@@ -117,6 +121,101 @@ async function main() {
         if (m.scrollMs > SCROLL_MS) fail(`${size}: scrolling the whole section took ${m.scrollMs} ms (the limit is ${SCROLL_MS})`);
         if (m.longest > LONG_MS) fail(`${size}: a task ran ${m.longest} ms (the limit is ${LONG_MS})`);
         if (m.nodes > NODES_MAX) fail(`${size}: ${m.nodes} nodes are left in the page (the limit is ${NODES_MAX})`);
+      } finally { await tab.close(); }
+    }
+
+    // File windows. (At 390 system.css gives every small button a 44px tap area; on a wide screen with a coarse pointer the Vault's own rule does.)
+    const WIN_JS = `
+      const allIn = (root, sel) => { const out = [...root.querySelectorAll(sel)]; for (const e of root.querySelectorAll('*')) if (e.shadowRoot) out.push(...allIn(e.shadowRoot, sel)); return out; };
+      const first = () => document.querySelector('#pp-vault .vt-frame');
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const stageOf = () => document.querySelector('#pp-vault .vt-stage');
+      const openers = () => allIn(stageOf(), 'button.sdk-open').filter((b) => b.title);
+    `;
+    {
+      const { tab, send } = await open(1280, 'dark');
+      try {
+        await tab.eval(`(async () => { ${WIN_JS} first().scrollIntoView(); for (let i = 0; i < 60 && !(stageOf() && openers().length > 6); i += 1) await wait(150); })()`);
+        const cap = await tab.eval(`(async () => { ${WIN_JS} return (await import('/design-system/prototype-vault-window.js')).CAP_SENTENCE; })()`);
+        if (cap !== 'Close a window to open another.') fail(`CAP_SENTENCE is "${cap}", not the decided sentence`);
+        const r = await tab.eval(`(async () => { ${WIN_JS}
+          const bs = openers();
+          for (let i = 0; i < 5; i += 1) { bs[i].click(); await wait(200); }
+          const four = stageOf().querySelectorAll('.vt-win').length;
+          const toasts1 = stageOf().querySelectorAll('.vt-toast[data-only="cap"]').length;
+          const text = (stageOf().querySelector('.vt-toast[data-only="cap"]') || {}).textContent || '';
+          bs[5].click(); await wait(200);
+          const toasts2 = stageOf().querySelectorAll('.vt-toast[data-only="cap"]').length;
+          const noClose = [...stageOf().querySelectorAll('.vt-win')].filter((w) => !w.querySelector('.mf-titlebar [aria-label="Close"], .mf-titlebar [aria-label^="Close"]')).length;
+          return { four, toasts1, toasts2, text, noClose };
+        })()`);
+        if (r.four !== 4) fail(`1280: opening five files left ${r.four} windows, not 4`);
+        if (r.toasts1 !== 1 || !r.text.includes('Close a window to open another.')) fail(`1280: the fifth file gave ${r.toasts1} cap toast(s): "${r.text}"`);
+        if (r.toasts2 !== 1) fail(`1280: a sixth file stacked the cap toast (${r.toasts2})`);
+        if (r.noClose) fail(`1280: ${r.noClose} window(s) have no Close in the title bar`);
+        // Move by the title bar, resize by the grip, and stay inside the canvas.
+        const geo = async () => tab.eval(`(() => { ${WIN_JS} const w = stageOf().querySelector('.vt-win.is-front'); const s = stageOf().getBoundingClientRect(); const b = w.getBoundingClientRect(); const t = w.querySelector('.mf-titlebar').getBoundingClientRect(); const g = w.querySelector('.vt-win-grip').getBoundingClientRect(); return { sx: s.left, sy: s.top, sr: s.right, sb: s.bottom, x: b.left, y: b.top, r: b.right, bt: b.bottom, w: b.width, h: b.height, tx: t.left + 60, ty: t.top + t.height / 2, gx: g.left + g.width / 2, gy: g.top + g.height / 2 }; })()`);
+        await tab.eval(`(() => { ${WIN_JS} window.scrollTo(0, stageOf().getBoundingClientRect().top + scrollY - 20); })()`);
+        await sleep(400);
+        const drag = async (x, y, dx, dy) => {
+          const m = (type, px, py) => send('Input.dispatchMouseEvent', { type, x: Math.round(px), y: Math.round(py), button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+          await m('mousePressed', x, y); await m('mouseMoved', x + dx / 2, y + dy / 2); await m('mouseMoved', x + dx, y + dy); await m('mouseReleased', x + dx, y + dy); await sleep(250);
+        };
+        let a = await geo();
+        await drag(a.tx, a.ty, -40, -20);
+        let b = await geo();
+        if (Math.abs(b.x - a.x - -40) > 2 || Math.abs(b.y - a.y - -20) > 2) fail(`1280: dragging the title bar moved the window by ${Math.round(b.x - a.x)},${Math.round(b.y - a.y)}, not -40,-20`);
+        await drag(b.gx, b.gy, 50, 40);
+        const c = await geo();
+        if (Math.abs(c.w - b.w - 50) > 2 || Math.abs(c.h - b.h - 40) > 2) fail(`1280: dragging the grip resized the window by ${Math.round(c.w - b.w)},${Math.round(c.h - b.h)}, not 50,40`);
+        const d0 = await geo();
+        await drag(d0.tx, d0.ty, -3000, -3000);
+        const d = await geo();
+        if (d.x < d.sx - 1 || d.y < d.sy - 1 || d.r > d.sr + 1 || d.bt > d.sb + 1) fail(`1280: a window dragged far away left the canvas`);
+      } finally { await tab.close(); }
+    }
+    {
+      const { tab } = await open(1280, 'dark');
+      try {
+        const g = await tab.eval(`(async () => { ${WIN_JS}
+          const state = [...document.querySelectorAll('#pp-vault .pp-state')].find((x) => (x.querySelector('.pp-state-name') || {}).textContent === 'Grid, stacked head');
+          state.scrollIntoView();
+          const box = state.querySelector('.vt-frame');
+          let cards = [];
+          for (let i = 0; i < 60 && !cards.length; i += 1) { await wait(150); cards = allIn(box, '.vt-card:not(.vt-card-thumb) > .sdk-card-head'); }
+          const heads = cards.map((c) => Math.round(c.getBoundingClientRect().height));
+          const tails = allIn(box, '.vt-nm-tail').map((t) => t.textContent);
+          const cut = allIn(box, '.vt-nm-head').filter((x) => x.scrollWidth > x.clientWidth + 1).length;
+          return { n: cards.length, max: Math.max(0, ...heads), tails: tails.length, withDot: tails.filter((t) => t.includes('.')).length, cut };
+        })()`);
+        say(`Grid head at 1280: ${g.n} cards, tallest head ${g.max}px, ${g.cut} names cut in the middle`);
+        if (!g.n) fail('1280: no banded Grid cards found');
+        if (g.max > 34) fail(`1280: the Grid's banded head is ${g.max}px (the limit is 34)`);
+        if (g.tails !== g.n || g.withDot < g.n - 3) fail(`1280: ${g.withDot} of ${g.n} Grid names keep their extension when cut`);
+      } finally { await tab.close(); }
+    }
+    for (const size of [390, 800]) {
+      const { tab, send } = await open(size, 'light');
+      try {
+        if (size > 640) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }); // so (pointer: coarse) answers
+        if (size > 640 && !(await tab.eval("matchMedia('(pointer: coarse)').matches"))) fail(`${size}: (pointer: coarse) did not answer, so nothing was measured`);
+        const r = await tab.eval(`(async () => { ${WIN_JS}
+          first().scrollIntoView();
+          for (let i = 0; i < 60 && !(stageOf() && openers().length > 6); i += 1) await wait(150);
+          const small = []; let count = 0;
+          const scan = (tag) => { for (const w of stageOf().querySelectorAll('.vt-win')) for (const b of allIn(w, 'button')) { const r = b.getBoundingClientRect(); if (!r.height) continue; count += 1; const after = parseFloat(getComputedStyle(b, '::after').height) || 0; if (r.height < 43.5 && after < 43.5) small.push(tag + ': ' + (b.getAttribute('aria-label') || b.textContent || b.className).trim().slice(0, 30) + ' ' + Math.round(r.height)); } };
+          const pick = (re) => openers().find((b) => re.test(b.title));
+          pick(/\\.(jpe?g|png|webp)$/i).click(); await wait(500);
+          const info = allIn(stageOf(), '.vt-win button').find((b) => b.getAttribute('aria-label') === 'Info'); if (info) info.click(); await wait(300);
+          scan('picture');
+          pick(/\\.pdf$/i).click(); await wait(500);
+          const find = allIn(stageOf(), '.vt-win button').find((b) => /search/i.test(b.getAttribute('aria-label') || b.textContent)); if (find) find.click(); await wait(300);
+          scan('pdf');
+          return { small, wins: stageOf().querySelectorAll('.vt-win').length, buttons: count };
+        })()`);
+        if (r.wins < 1 || r.buttons < 15) fail(`${size}: the file window check found ${r.wins} window(s) and ${r.buttons} buttons; it measures the wrong thing`);
+        for (const x of [...new Set(r.small)]) fail(`${size}: a button in a file window is under 44px with no 44px tap area (${x})`);
+        say(`File windows at ${size}${size > 640 ? " (coarse pointer)" : ""}: ${r.buttons} buttons measured, ${new Set(r.small).size} short`);
       } finally { await tab.close(); }
     }
   } finally {

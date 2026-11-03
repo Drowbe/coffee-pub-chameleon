@@ -260,11 +260,20 @@ export function createVault(cfg = {}) {
   }
   const narrow = () => app.clientWidth > 0 && app.clientWidth <= 480;
   const ticks = () => st.selecting || T('select') === 'ticks';
-  function openButton(f, cls) {
-    const b = h('button', `sdk-open ${cls}`);
+  // A name that is too long for its line is cut in the middle, so the end (the extension) stays: "Vespa ri…p.mp4". The tooltip has the whole name.
+  function cutName(name) {
+    const dot = name.lastIndexOf('.');
+    const at = Math.max(1, dot > 0 ? Math.max(1, dot - 3) : name.length - 4);
+    const head = h('span', 'vt-nm-head'); head.append(mark(name.slice(0, at)));
+    const tail = h('span', 'vt-nm-tail'); tail.append(mark(name.slice(at)));
+    const frag = D.createDocumentFragment(); frag.append(head, tail);
+    return frag;
+  }
+  function openButton(f, cls, cut = false) {
+    const b = h('button', `sdk-open ${cls}${cut ? ' vt-cut' : ''}`);
     b.type = 'button';
     if (f.missing) b.disabled = false;
-    b.append(mark(f.name));
+    b.append(cut ? cutName(f.name) : mark(f.name));
     b.title = f.name;
     b.addEventListener('click', () => { if (st.selecting) { if (st.sel.has(f.id)) st.sel.delete(f.id); else st.sel.add(f.id); render(false); } else openFile(f.id, b); });
     return b;
@@ -334,7 +343,7 @@ export function createVault(cfg = {}) {
     ic.dataset.tint = k.tint; ic.title = k.word; ic.setAttribute('role', 'img'); ic.setAttribute('aria-label', k.word);
     ic.append(fa(k.icon));
     const title = h('h3', 'sdk-card-title vt-card-title');
-    const nameBtn = openButton(f, 'vt-card-name');
+    const nameBtn = openButton(f, 'vt-card-name', true);
     nameBtn.title = `${f.name} (${k.word})`;
     title.append(nameBtn);
     main.append(ic, title);
