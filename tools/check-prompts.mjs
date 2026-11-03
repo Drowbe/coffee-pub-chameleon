@@ -736,14 +736,14 @@ try {
       await ask('kim', 'how big is one?');
       const estimate = Math.ceil(fakeA.last().body.messages.reduce((n, m) => n + m.content.length, 0) / 4) + ASK.budget.answer;
       const used = (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens;
-      // Room for one and a half: the first fits, the others would pass the cap with theirs.
+      // Enough left for one and a half: the first fits, the others would pass the cap with theirs.
       await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: used + Math.floor(estimate * 1.5) } });
       fakeA.clear();
       fakeA.next({ text: 'slow one', delayMs: 600 }).next({ text: 'slow two', delayMs: 600 }).next({ text: 'slow three', delayMs: 600 });
       const all = await Promise.all([ask('rita', 'first at once?'), ask('nora', 'second at once?'), ask('kim', 'third at once?')]);
       assert.deepEqual(all.map((r) => r.status).sort(), [200, 429, 429], all.map((r) => r.text).join(' '));
       assert.equal(fakeA.seen.length, 1, 'only the one that fits is sent');
-      // Room for less than one ask: refused before it is sent, and the turn given back.
+      // Less left than one ask needs: refused before it is sent, and the turn given back.
       await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens + 100 } });
       fakeA.clear();
       const r = await ask('kim', 'too big for what is left?');
@@ -814,7 +814,7 @@ try {
     r = await ask('ivy', 'and again?');
     const body = JSON.stringify(fakeA.seen.map((x) => x.body));
     assert.ok(!body.includes('qtoken12345') && !body.includes('qfeed12345'), 'a token reached the model');
-    assert.ok(fakeA.last().body.messages.some((m) => m.role === 'user' && m.content.includes('/j/[removed]')), 'the earlier question in the history, redacted');
+    assert.ok(fakeA.last().body.messages.slice(2, -1).some((m) => m.content.includes('/j/[removed]')), 'the earlier question in the history, redacted');
   });
 
   await test('server: a structured answer that is a list or has no text answer is "gave no answer", never raw JSON or an empty 200', async () => {

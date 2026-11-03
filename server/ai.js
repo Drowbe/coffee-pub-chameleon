@@ -56,13 +56,13 @@ const CUT_NOTE = 'This answer was cut off because it ran long. Ask again, or ask
 const MAX_ANSWER_TEXT = CHAT_LIMITS.MAX_AI_TEXT;
 const NO_ANSWER = 'The AI service gave no answer.';
 
-// An answer's text cut to fit MAX_ANSWER_TEXT with room for the note, never in the middle of a {{summary:N}} place or a
+// An answer's text cut to fit MAX_ANSWER_TEXT, leaving enough for the note, never in the middle of a {{summary:N}} place or a
 // surrogate pair; `cut` says it was cut, and then the note is added.
 function fitAnswer(text, cut) {
   let t = String(text || '');
-  const room = MAX_ANSWER_TEXT - CUT_NOTE.length - 2;
-  if (t.length > room && (cut || t.length > MAX_ANSWER_TEXT)) {
-    t = t.slice(0, room);
+  const fits = MAX_ANSWER_TEXT - CUT_NOTE.length - 2;
+  if (t.length > fits && (cut || t.length > MAX_ANSWER_TEXT)) {
+    t = t.slice(0, fits);
     if (/[\uD800-\uDBFF]$/.test(t)) t = t.slice(0, -1);
     t = t.replace(/\{\{[^}]*$/, '').trimEnd();
     cut = true;
