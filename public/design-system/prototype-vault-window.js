@@ -3,7 +3,7 @@
 // The same window opens when another module links to a file, over the canvas, without bringing the Vault forward. Several can be open at once
 // (each file its own window, at most four); at phone width one at a time, a full-screen sheet, and a new file replaces the one shown.
 //
-// createStage draws the canvas: whatever is under (the Vault panel, a Planner card) and the windows over it. The window's title is the file's
+// createCanvas draws the canvas: whatever is under (the Vault panel, a Planner card) and the windows over it. The window's title is the file's
 // name; its toolbar is Previous, Next, where it is in the list, Info, Download, Share and Full screen (the host's). Esc closes the window that
 // has the focus, and the focus goes back to what opened it. A window moves by its title bar and resizes by its grip, as the Workspace's do (no keyboard moves
 // there either), and stays inside the canvas; at phone width it is a fixed sheet.
@@ -11,20 +11,20 @@ import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { KINDS } from './prototype-vault-data.js';
 import { D, h, fa, btn, size, when, who, inShadow, stopMedia } from './prototype-vault-ui.js';
-import { pictureView, audioView, videoView, markdownView, pdfView, viewState, infoPanel } from './prototype-vault-viewers.js';
+import { pictureView, audioView, videoView, markdownView, pdfView, viewState, infoView } from './prototype-vault-viewers.js';
 
 export const MAX_WINDOWS = 4;
 export const CAP_SENTENCE = 'Close a window to open another.';
 const PHONE = 640;
 
-export function createStage() {
-  const el = h('div', 'vt-stage');
-  const under = h('div', 'vt-stage-under');
-  const layer = h('div', 'vt-stage-layer');
-  const toasts = h('div', 'vt-toastlayer vt-stage-toasts');
+export function createCanvas() {
+  const el = h('div', 'vt-canvas');
+  const under = h('div', 'vt-canvas-under');
+  const layer = h('div', 'vt-canvas-layer');
+  const toasts = h('div', 'vt-toastlayer vt-canvas-toasts');
   toasts.setAttribute('aria-live', 'polite');
   // The canvas's own Layout menu, drawn small: Close all file windows. (In the product it is the space bar's Layout menu.)
-  const bar = h('div', 'vt-stage-bar');
+  const bar = h('div', 'vt-canvas-bar');
   const layout = btn('btn btn-small', { label: 'Layout', icon: 'table-cells-large' });
   layout.setAttribute('aria-haspopup', 'menu');
   layout.addEventListener('click', () => openHostMenu(layout, () => [{ label: wins.length ? `Close all file windows (${wins.length})` : 'No file windows open', icon: 'xmark', disabled: !wins.length, onPick: () => closeAll() }]));
@@ -240,7 +240,7 @@ export function createStage() {
     const old = w.main.querySelector('.vt-info');
     if (old) old.remove();
     w.main.classList.toggle('has-info', w.info);
-    if (w.info) w.main.append(infoPanel(cur(w), { info: (on) => { w.info = on; drawInfo(w); w.frame.setToolbar(toolbar(w)); } }));
+    if (w.info) w.main.append(infoView(cur(w), { info: (on) => { w.info = on; drawInfo(w); w.frame.setToolbar(toolbar(w)); } }));
   }
 
   function statusOf(w, f) {

@@ -29,6 +29,7 @@ const { ModuleSettings } = require('./module-settings');
 const { Ai } = require('./ai');
 const { ModuleUploads } = require('./module-uploads');
 const { VaultStore } = require('./vault-store');
+const { GUEST_LOCKED } = require('./vault-types');
 const { GeocodeCache } = require('./geocode');
 const { RegionCutJobs } = require('./region-cut');
 const { ModuleLimits } = require('./module-limits');
@@ -74,6 +75,8 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   const modules = new ModuleManager(dataDir);
   const moduleData = new ModuleData(modules.dir);
   store.extraPermissions = () => modules.permissionList(); // enabled modules' permissions join the Roles grid
+  // A library module's permissions that guests never have, whatever is stored for them (server/vault-types.js).
+  store.guestLocked = () => modules.enabledAll().filter(({ manifest }) => manifest.library).flatMap(({ manifest }) => GUEST_LOCKED.map((k) => `module.${manifest.id}.${k}`));
   // A manifest's text in this environment's words, and a module's display name and icon (server/store.js).
   modules.wordsOf = () => store.resolvedWords();
   modules.displayOf = (id) => store.moduleDisplay(id);

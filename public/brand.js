@@ -1198,9 +1198,10 @@ async function loadUpdateBadge() {
 }
 
 // The header icon for a space: the launch-link icon the space picked, or the
-// plain message icon when it has not picked one ('link' is the default).
+// folder when it has not picked one ('link' is the default). Never a chat bubble. The server also tries the template's
+// home icon first; the public branding does not carry it yet, so the page falls back to the folder.
 export function spaceCrumbIcon(space) {
-  return space?.linkIcon && space.linkIcon !== 'link' ? iconClasses(space.linkIcon) : 'fa-solid fa-message';
+  return space?.linkIcon && space.linkIcon !== 'link' ? iconClasses(space.linkIcon) : 'fa-solid fa-folder';
 }
 
 // The anchor's segments after the Spaces slot. Only the space page sets them (updateCrumb() in space.js: "› <space>",

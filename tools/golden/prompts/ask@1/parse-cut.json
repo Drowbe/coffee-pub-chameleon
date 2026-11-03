@@ -1,0 +1,30 @@
+{
+  "structured": {
+    "text": "Two places.",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Tower",
+        "content": "Old",
+        "basis": "general",
+        "kind": "sight"
+      }
+    ],
+    "used": [],
+    "cut": true
+  },
+  "text": {
+    "text": "Two places.\n\n{{summary:0}}",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Tower",
+        "content": "Old",
+        "basis": "general",
+        "kind": "sight"
+      }
+    ],
+    "used": [],
+    "cut": true
+  }
+}

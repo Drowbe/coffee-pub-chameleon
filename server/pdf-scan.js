@@ -1,42 +1,59 @@
 // Whether a library PDF holds what makes it run, open something outside it, send something or carry files
 // (documentation/plans/plan-attachments-vault.md, decision 9, and Thomas's rule of 2026-10-30: links to web pages and
 // fillable forms are taken, scripts and launches are not). It runs in a worker (server/vault-scan.js), never on the
-// server's main thread, and it is linear: one forward pass over the file with a tokenizer, no regular expression over
-// the file, no search that starts again from an earlier place, every search bounded by the part it looks in, and a
+// server's main thread, and it is linear: a forward pass over the file with a tokenizer, read in 1 MB windows (never
+// the whole file at once), no regular expression over the file, every search bounded by the part it looks in, and a
 // budget of objects, streams and decoded bytes on top of the worker's clock and memory limit.
 //
 // What it reads:
 // - The file's own syntax, token by token (names with their #xx escapes, strings with their escapes, comments), every
 //   object from its "N G obj". A name that makes a PDF act (ACTIVE_NAMES) anywhere in it is refused; so is a link (a
 //   /URI string) to anything but a web page or an email address.
-// - Each stream's dictionary, parsed as tokens, not searched. A stream a reader could take objects out of (an object
-//   stream: its dictionary has /N, /First or /Extends, or says /Type /ObjStm) is decoded through its whole filter chain
-//   (Flate, LZW, ASCIIHex, ASCII85, RunLength, with PNG or TIFF predictors) within bounds and read the same way; one
-//   whose chain can't be decoded here, or whose dictionary names its filters by reference, or twice, is not checked
-//   and so not taken. A reader needs /N and /First to take objects out of a stream, whatever its /Type says.
+// - A reader finds objects by their offsets, not by reading the file from the start, so wherever the scan does not read
+//   the bytes as syntax (a string, a comment, a stream's bytes) and they hold the start of an object ("N G obj") or a
+//   "trailer", they are read again as syntax from that start (security QA round 2, round 2: a stream a reader ends
+//   elsewhere hid a script).
+// - Each stream's dictionary, parsed as tokens, not searched. Its end is its /Length when "endstream" stands there; a
+//   /Length given by reference is read from that integer object, and one that can't be (missing, given twice, or not
+//   ending at "endstream") leaves the PDF unchecked. A stream a reader could take objects out of (an object stream: its
+//   dictionary has /N, /First or /Extends, or says /Type /ObjStm) is decoded through its whole filter chain (Flate,
+//   LZW, ASCIIHex, ASCII85, RunLength, with PNG or TIFF predictors) within bounds and read the same way, and every name
+//   in it is looked at, inside strings too; one whose chain can't be decoded here, or whose dictionary names its filters
+//   by reference, or twice, or that was not ended by its own /Length and is cut short, is not checked and so not taken.
+//   A reader needs /N and /First to take objects out of a stream, whatever its /Type says.
 // - Every other stream's bytes (pictures, fonts, page contents) are not read as names, since compressed bytes would
-//   match by chance; they are searched once for the start of an object ("N G obj") or a "trailer", which a damaged-file
-//   reader could find there, and read as syntax when they hold one.
+//   match by chance.
 // - The end: %%EOF and startxref (or a trailer) in the last kilobyte, and at least one object.
 // Answers null, { name, what } for what it holds, { refuse: 'damaged' } or { refuse: 'unchecked' }.
 'use strict';
 
+const fs = require('fs');
 const zlib = require('zlib');
 
 // The names that make a PDF act, and what kind of thing each is, for the sentence. /URI and /AcroForm are not here: a
-// link's address is looked at instead, and a form that does not send itself anywhere or run a script is a form.
+// link's address is looked at instead, and a form that does not send itself anywhere or run a script is a form. A file
+// carried inside is found by the key that points at its bytes (/EF, in a file specification), by associated files
+// (/AF) and by a portfolio (/Collection), not only by /Type /EmbeddedFile, which a reader does not need (security QA
+// round 2, round 2).
+// Actions decided conservatively while Thomas was away (2026-11-03): reading a file in (/ImportData) opens one, a form
+// reset (/ResetForm) acts like a script, and media and 3D actions or annotations (/Rendition, /Movie, /Sound, /3D) carry
+// files of their own. Not refused: plain links (/URI with a web or email address), going to a page (/GoTo), named
+// actions (/Named), /Thread, /Hide, /SetOCGState, /Trans, fillable forms (/AcroForm without the above).
 const ACTIVE_NAMES = new Map([
-  ['JavaScript', 'scripts'], ['JS', 'scripts'], ['AA', 'scripts'], ['XFA', 'scripts'],
-  ['Launch', 'opens'], ['GoToR', 'opens'], ['GoToE', 'opens'],
+  ['JavaScript', 'scripts'], ['JS', 'scripts'], ['AA', 'scripts'], ['XFA', 'scripts'], ['ResetForm', 'scripts'],
+  ['Launch', 'opens'], ['GoToR', 'opens'], ['GoToE', 'opens'], ['ImportData', 'opens'],
   ['SubmitForm', 'sends'],
-  ['EmbeddedFile', 'files'], ['EmbeddedFiles', 'files'], ['RichMedia', 'files'],
+  ['EmbeddedFile', 'files'], ['EmbeddedFiles', 'files'], ['RichMedia', 'files'], ['EF', 'files'], ['AF', 'files'], ['Collection', 'files'],
+  ['Rendition', 'files'], ['Movie', 'files'], ['Sound', 'files'], ['3D', 'files'],
 ]);
 
 // The budget. Past any of it the PDF is not checked, so not taken.
 const LIMITS = {
   objects: 4 * 1000 * 1000,
   streams: 1000 * 1000,
-  decodedStreams: 2000, // object streams decoded
+  decodedStreams: 200, // object streams decoded (the plan's 200)
+  rawStream: 32 * 1024 * 1024, // an object stream's own bytes, held to decode it
+  integerObjects: 500 * 1000, // integer objects kept to read a /Length given by reference
   streamOut: 16 * 1024 * 1024, // what one stream may decode to
   allOut: 64 * 1024 * 1024, // what they may decode to together
   filters: 8, // filters in one chain
@@ -55,10 +72,11 @@ for (const c of '()<>[]{}/%') CLS[c.charCodeAt(0)] = DELIM;
 const hexVal = (c) => (c >= 48 && c <= 57 ? c - 48 : c >= 65 && c <= 70 ? c - 55 : c >= 97 && c <= 102 ? c - 87 : -1);
 
 // --- the tokenizer ---------------------------------------------------------------------------------------------------
-// lex(b, i, to, keep) reads the token at or after `i` (whitespace and comments skipped) and answers its kind; T_END is
-// where it ends, T_VAL its value (a name's decoded text, or null past 64 characters; a keyword's text, '' when long;
-// with `keep`, a string's first bytes), T_INT an integer's value.
-const EOF = 0; const NAME = 1; const INT = 2; const REAL = 3; const STR = 4; const DOPEN = 5; const DCLOSE = 6; const AOPEN = 7; const ACLOSE = 8; const KW = 9; const OTHER = 10;
+// lex(b, i, to, keep) reads the token at or after `i` (whitespace skipped; a comment is a token of its own) and answers
+// its kind; T_START is where it starts, T_END where it ends, T_VAL its value (a name's decoded text, or null past 64
+// characters; a keyword's text, '' when long; with `keep`, a string's first bytes), T_INT an integer's value.
+const EOF = 0; const NAME = 1; const INT = 2; const REAL = 3; const STR = 4; const DOPEN = 5; const DCLOSE = 6; const AOPEN = 7; const ACLOSE = 8; const KW = 9; const OTHER = 10; const COMMENT = 11;
+let T_START = 0;
 let T_END = 0;
 let T_VAL = null;
 let T_INT = 0;
@@ -130,11 +148,14 @@ function lexHex(b, i, to, keep) {
 }
 
 function lex(b, i, to, keep) {
-  for (;;) {
-    while (i < to && CLS[b[i]] === WS) i += 1;
-    if (i >= to) { T_END = to; return EOF; }
-    if (b[i] !== 0x25) break;
-    while (i < to && b[i] !== 0x0a && b[i] !== 0x0d) i += 1; // a comment, to the end of its line
+  while (i < to && CLS[b[i]] === WS) i += 1;
+  T_START = i;
+  if (i >= to) { T_END = to; return EOF; }
+  if (b[i] === 0x25) { // a comment, to the end of its line
+    let j = i + 1;
+    while (j < to && b[j] !== 0x0a && b[j] !== 0x0d) j += 1;
+    T_END = j;
+    return COMMENT;
   }
   const c = b[i];
   if (c === 0x2f) return lexName(b, i, to);
@@ -180,8 +201,8 @@ function webLink(bytes) {
   return a.startsWith('http://') || a.startsWith('https://') || a.startsWith('mailto:');
 }
 
-// Reads `b` (from `from` to `to`) as PDF syntax for names and links only: the inside of an object stream, or of a stream
-// that holds the start of an object. Answers null or { name, what }; throws Unchecked.
+// Reads `b` (from `from` to `to`) as PDF syntax for names and links only: the inside of an object stream. Answers null
+// or { name, what }; throws Unchecked.
 function namesIn(b, from, to) {
   let i = from;
   let link = false;
@@ -189,6 +210,7 @@ function namesIn(b, from, to) {
     const kind = lex(b, i, to, link);
     if (kind === EOF) return null;
     i = T_END;
+    if (kind === COMMENT) continue;
     if (link) {
       link = false;
       if (kind === STR && !webLink(T_VAL)) return { name: 'URI', what: 'opens' };
@@ -199,6 +221,25 @@ function namesIn(b, from, to) {
       if (T_VAL === 'URI') link = true;
     }
   }
+}
+
+// Every name in `b` (from `from` to `to`) wherever it stands, inside a string or a comment too: each "/" read as the start
+// of a name, so no string or comment can hide one. A reader takes each object of an object stream from its own offset,
+// so an object that opens a string the one before it never closes is still read as syntax there. Whether any refused
+// name, or a /URI that is not a web or email address, is in it (true or false).
+function anyNameIn(b, from, to) {
+  for (let at = b.indexOf(0x2f, from); at >= 0 && at < to;) {
+    lexName(b, at, to);
+    const next = Math.max(T_END, at + 1);
+    if (T_VAL !== null && ACTIVE_NAMES.has(T_VAL)) return true;
+    if (T_VAL === 'URI') {
+      let kind = lex(b, next, to, true);
+      while (kind === COMMENT) kind = lex(b, T_END, to, true);
+      if (kind === INT || (kind === STR && !webLink(T_VAL))) return true;
+    }
+    at = b.indexOf(0x2f, next);
+  }
+  return false;
 }
 
 // --- filters -----------------------------------------------------------------------------------------------------------
@@ -213,10 +254,16 @@ class Out {
   done() { return this.b.subarray(0, this.n); }
 }
 
+// Whether the filter that ran last met its end of data (Flate's end, LZW's code 257, ASCIIHex's ">", ASCII85's "~>",
+// RunLength's 128) before the bytes ran out.
+let ENDED = false;
+
 function asciiHex(d, cap) {
   const o = new Out(cap, d.length / 2 + 1);
   let hi = -1;
-  for (let i = 0; i < d.length && d[i] !== 0x3e; i += 1) {
+  ENDED = false;
+  for (let i = 0; i < d.length; i += 1) {
+    if (d[i] === 0x3e) { ENDED = true; break; }
     const v = hexVal(d[i]);
     if (v < 0) { if (CLS[d[i]] === WS) continue; unchecked(); }
     if (hi < 0) hi = v; else { o.push(hi * 16 + v); hi = -1; }
@@ -231,10 +278,11 @@ function ascii85(d, cap) {
   while (i < d.length && CLS[d[i]] === WS) i += 1;
   if (d[i] === 0x3c && d[i + 1] === 0x7e) i += 2;
   const group = [];
+  ENDED = false;
   for (; i < d.length; i += 1) {
     const c = d[i];
     if (CLS[c] === WS) continue;
-    if (c === 0x7e) break; // ~>
+    if (c === 0x7e) { ENDED = true; break; } // ~>
     if (c === 0x7a && group.length === 0) { for (let k = 0; k < 4; k += 1) o.push(0); continue; }
     if (c < 0x21 || c > 0x75) unchecked();
     group.push(c - 0x21);
@@ -259,9 +307,10 @@ function ascii85(d, cap) {
 
 function runLength(d, cap) {
   const o = new Out(cap, d.length * 2);
+  ENDED = false;
   for (let i = 0; i < d.length;) {
     const L = d[i];
-    if (L === 128) break;
+    if (L === 128) { ENDED = true; break; }
     if (L < 128) {
       const e = Math.min(d.length, i + 2 + L);
       for (let k = i + 1; k < e; k += 1) o.push(d[k]);
@@ -288,6 +337,7 @@ function lzw(d, cap, early) {
   let bits = 0;
   let nbits = 0;
   let i = 0;
+  ENDED = false;
   const emit = (code) => {
     const L = len[code];
     o.fit(L);
@@ -301,7 +351,7 @@ function lzw(d, cap, early) {
     const code = (bits >>> (nbits - width)) & ((1 << width) - 1);
     nbits -= width;
     if (code === 256) { next = 258; width = 9; prev = -1; continue; }
-    if (code === 257) break;
+    if (code === 257) { ENDED = true; break; }
     if (prev < 0) { if (code > 255) unchecked(); emit(code); prev = code; continue; }
     let f;
     if (code < next) f = first[code]; else if (code === next) f = first[prev]; else unchecked();
@@ -355,22 +405,27 @@ function predict(d, parms, cap) {
 }
 
 const FILTERS = { FlateDecode: 'flate', Fl: 'flate', LZWDecode: 'lzw', LZW: 'lzw', ASCIIHexDecode: 'hex', AHx: 'hex', ASCII85Decode: 'a85', A85: 'a85', RunLengthDecode: 'rl', RL: 'rl' };
-function decodeOne(d, filter, parms, cap) {
+// One filter. With `whole`, its data must hold the filter's own end (a Flate stream that is not cut short, ...): where a
+// stream ends was not given by a /Length a reader would use the same way, so a reader could have more of it.
+function decodeOne(d, filter, parms, cap, whole = false) {
   // A predictor's numbers given by reference would be read by a reader and not here.
   for (const key of ['Predictor', 'Colors', 'BitsPerComponent', 'Columns', 'EarlyChange']) if (parms[key] !== undefined && !Number.isInteger(parms[key])) unchecked();
   if (filter === 'flate') {
     let out;
     try {
-      out = zlib.inflateSync(d, { maxOutputLength: cap, finishFlush: zlib.constants.Z_SYNC_FLUSH });
+      out = zlib.inflateSync(d, whole ? { maxOutputLength: cap } : { maxOutputLength: cap, finishFlush: zlib.constants.Z_SYNC_FLUSH });
     } catch {
       unchecked();
     }
     return predict(out, parms, cap);
   }
-  if (filter === 'lzw') return predict(lzw(d, cap, int(parms.EarlyChange, 1) ? 1 : 0), parms, cap);
-  if (filter === 'hex') return asciiHex(d, cap);
-  if (filter === 'a85') return ascii85(d, cap);
-  return runLength(d, cap);
+  let out;
+  if (filter === 'lzw') out = predict(lzw(d, cap, int(parms.EarlyChange, 1) ? 1 : 0), parms, cap);
+  else if (filter === 'hex') out = asciiHex(d, cap);
+  else if (filter === 'a85') out = ascii85(d, cap);
+  else out = runLength(d, cap);
+  if (whole && !ENDED) unchecked();
+  return out;
 }
 
 // --- a stream's dictionary -----------------------------------------------------------------------------------------------
@@ -412,38 +467,209 @@ function filterChain(entries) {
 }
 
 // --- the file ------------------------------------------------------------------------------------------------------------
+// The file is read in windows of WINDOW bytes, each overlapping the next by OVERLAP, so a scan never holds the whole file:
+// a token always lies whole inside the window it is read in, but for a string or a comment longer than a window, which
+// is followed to its end a window at a time (any other token that long is not checked). An object
+// stream's own bytes (at most LIMITS.rawStream) and what it decodes to are the only parts held whole.
+const WINDOW = 1024 * 1024;
+const OVERLAP = 64 * 1024;
+// How deep a part read again as syntax (below) may lie inside another one that was.
+const MAX_DEPTH = 4;
 const ENDSTREAM = Buffer.from('endstream', 'latin1');
+const ENDOBJ = Buffer.from('endobj', 'latin1');
 const OBJ = Buffer.from('obj', 'latin1');
 const TRAILER = Buffer.from('trailer', 'latin1');
 const isDigit = (c) => c >= 0x30 && c <= 0x39;
 
-// Whether the bytes of a stream that is not read as syntax hold the start of an object ("N G obj") or a trailer: one
-// search each, inside the stream only, and a look back of at most 48 bytes from each "obj".
-function holdsObject(d) {
-  if (d.indexOf(TRAILER) >= 0) return true;
-  for (let at = d.indexOf(OBJ); at >= 0; at = d.indexOf(OBJ, at + 3)) {
-    if (at + 3 < d.length && CLS[d[at + 3]] === 0) continue; // "object", not "obj"
-    let k = at - 1;
-    const stop = Math.max(0, at - 48);
-    while (k >= stop && CLS[d[k]] === WS) k -= 1;
-    let n = 0;
-    while (k >= stop && isDigit(d[k])) { k -= 1; n += 1; }
-    if (!n || k < stop || CLS[d[k]] !== WS) continue;
-    while (k >= stop && CLS[d[k]] === WS) k -= 1;
-    n = 0;
-    while (k >= stop && isDigit(d[k])) { k -= 1; n += 1; }
-    if (n) return true;
+// Where a scan's bytes come from: a Buffer (the checks), or an open file read with fs.readSync.
+function readInto(fd, buf, pos, len) {
+  let got = 0;
+  while (got < len) {
+    const r = fs.readSync(fd, buf, got, len - got, pos + got);
+    if (!r) break;
+    got += r;
   }
-  return false;
+  return buf.subarray(0, got);
+}
+function bufferSource(b) {
+  return { size: b.length, buffer: b, read: (pos, len) => b.subarray(pos, Math.min(b.length, pos + len)) };
+}
+function fileSource(fd, size) {
+  return { size, fd, read: (pos, len) => { const k = Math.max(0, Math.min(len, size - pos)); return readInto(fd, Buffer.allocUnsafe(k), pos, k); } };
+}
+// `len` bytes from `pos` (at most a window and its overlap): a view of a Buffer, or read into the scan's one scratch
+// buffer, good until the next call.
+function chunk(ctx, pos, len) {
+  len = Math.max(0, Math.min(len, WINDOW + OVERLAP, ctx.size - pos));
+  if (ctx.src.buffer) return ctx.src.buffer.subarray(pos, pos + len);
+  if (!ctx.scratch) ctx.scratch = Buffer.allocUnsafe(WINDOW + OVERLAP);
+  return readInto(ctx.src.fd, ctx.scratch, pos, len);
 }
 
-function scan(b) {
-  const n = b.length;
-  const count = { objects: 0, streams: 0, decoded: 0, out: 0 };
-  let sawObj = false;
+// The object id ("N G") just before the "obj" at `at`, looked back at most 48 bytes and never before `stop`:
+// { start, num, gen } or null.
+function idBefore(d, at, stop) {
+  stop = Math.max(stop, at - 48);
+  let k = at - 1;
+  while (k >= stop && CLS[d[k]] === WS) k -= 1;
+  let gen = 0;
+  let scale = 1;
+  let n = 0;
+  while (k >= stop && isDigit(d[k])) { gen += (d[k] - 0x30) * scale; scale *= 10; k -= 1; n += 1; }
+  if (!n || n > 10 || k < stop || CLS[d[k]] !== WS) return null;
+  while (k >= stop && CLS[d[k]] === WS) k -= 1;
+  let num = 0;
+  scale = 1;
+  n = 0;
+  while (k >= stop && isDigit(d[k])) { num += (d[k] - 0x30) * scale; scale *= 10; k -= 1; n += 1; }
+  if (!n || n > 15) return null;
+  return { start: k + 1, num, gen };
+}
+
+// The first place in `d` (from `from` to `to`) where a reader could start reading an object ("N G obj") or a trailer:
+// its index, or -1.
+function objectStart(whole, from, to) {
+  if (to - from < 7) return -1;
+  const d = whole.subarray(from, to); // every search ends at `to`
+  let first = d.indexOf(TRAILER);
+  for (let at = d.indexOf(OBJ); at >= 0 && (first < 0 || at < first); at = d.indexOf(OBJ, at + 3)) {
+    if (at + 3 < d.length && CLS[d[at + 3]] === 0) continue; // "object", not "obj"
+    const id = idBefore(d, at, 0);
+    if (id) { first = first < 0 ? id.start : Math.min(first, id.start); break; }
+  }
+  return first < 0 ? -1 : from + first;
+}
+// The same over the scan's bytes from `from` to `to`, a window at a time: an absolute position, or -1.
+function findObjectStart(ctx, from, to) {
+  if (ctx.src.buffer) return objectStart(ctx.src.buffer, from, to);
+  for (let p = from; p < to; p += WINDOW) {
+    const cs = Math.max(from, p - 64);
+    const d = chunk(ctx, cs, Math.min(to, p + WINDOW + 16) - cs);
+    const at = objectStart(d, 0, d.length);
+    if (at >= 0) return cs + at;
+  }
+  return -1;
+}
+// The first `needle` from `from` to `to`: an absolute position, or -1.
+function findIn(ctx, needle, from, to) {
+  if (ctx.src.buffer) { const at = ctx.src.buffer.subarray(from, to).indexOf(needle); return at >= 0 ? from + at : -1; }
+  for (let p = from; p < to; p += WINDOW) {
+    const d = chunk(ctx, p, Math.min(to - p, WINDOW + needle.length - 1));
+    const at = d.indexOf(needle);
+    if (at >= 0) return p + at;
+  }
+  return -1;
+}
+
+// Where a string or a comment that starts at `from` (its first byte `first`: "(", "<" or "%") and is longer than a window
+// ends, read a window at a time as the tokenizer would: after its closing ")" (nested ones and escapes counted) or ">",
+// at the end of its line, or at `to`.
+function endOfLong(ctx, first, from, to) {
+  let depth = 1;
+  let escaped = false;
+  for (let p = from + 1; p < to; p += WINDOW) {
+    const d = chunk(ctx, p, Math.min(to - p, WINDOW));
+    for (let k = 0; k < d.length; k += 1) {
+      const c = d[k];
+      if (first === 0x25) { if (c === 0x0a || c === 0x0d) return p + k; continue; }
+      if (first === 0x3c) { if (c === 0x3e) return p + k + 1; continue; }
+      if (escaped) { escaped = false; continue; }
+      if (c === 0x5c) escaped = true;
+      else if (c === 0x28) depth += 1;
+      else if (c === 0x29) { depth -= 1; if (!depth) return p + k + 1; }
+    }
+  }
+  return to;
+}
+
+// The integer objects ("N G obj <integer> endobj") of the whole file, for a stream whose /Length is a reference, found
+// by a search of the bytes that no string, comment or stream can hide one from: idKey(num, gen) -> the integer, or null when
+// that id is given more than once with different values or as something else too (a reader's cross-reference table
+// picks one, and the scan can't know which). Made the first time a reference needs it, in two searches.
+const idKey = (num, gen) => num * 65536 + gen;
+function integerObjects(ctx) {
+  if (ctx.lengths) return ctx.lengths;
+  const found = new Map();
+  const each = (fn) => {
+    for (let p = 0; p < ctx.size; p += WINDOW) {
+      const cs = Math.max(0, p - 64);
+      const d = chunk(ctx, cs, Math.min(ctx.size, p + WINDOW + 128) - cs);
+      const from = p - cs;
+      for (let at = d.indexOf(OBJ, from); at >= 0 && at < from + WINDOW; at = d.indexOf(OBJ, at + 3)) {
+        if (at + 3 < d.length && CLS[d[at + 3]] === 0) continue;
+        const id = idBefore(d, at, 0);
+        if (id && id.gen <= 65535) fn(idKey(id.num, id.gen), d, at + 3);
+      }
+    }
+  };
+  // Every id given as an integer, and how many times.
+  each((key, d, k) => {
+    const stop = Math.min(d.length, k + 64);
+    while (k < stop && CLS[d[k]] === WS) k += 1;
+    let v = 0;
+    let n = 0;
+    while (k < stop && isDigit(d[k])) { if (n < 15) v = v * 10 + d[k] - 0x30; k += 1; n += 1; }
+    if (!n || n > 15 || k >= stop || CLS[d[k]] !== WS) return;
+    while (k < stop && CLS[d[k]] === WS) k += 1;
+    if (k + 6 > d.length || !d.subarray(k, k + 6).equals(ENDOBJ) || (k + 6 < d.length && CLS[d[k + 6]] === 0)) return;
+    const had = found.get(key);
+    if (had === undefined) {
+      if (found.size >= LIMITS.integerObjects) unchecked();
+      found.set(key, { value: v, ints: 1, all: 0 });
+    } else { had.ints += 1; if (had.value !== v) had.value = null; }
+  });
+  // Every time each of those ids is given at all.
+  if (found.size) each((key) => { const had = found.get(key); if (had) had.all += 1; });
+  ctx.lengths = new Map();
+  for (const [key, f] of found) ctx.lengths.set(key, f.all === f.ints ? f.value : null);
+  return ctx.lengths;
+}
+
+// Where "endstream" stands at `p`, after at most 64 bytes of whitespace: its position, or -1.
+function endstreamAt(ctx, p, to) {
+  if (p > to) return -1;
+  const d = chunk(ctx, p, Math.min(to - p, 64 + ENDSTREAM.length));
+  let k = 0;
+  while (k < Math.min(d.length, 64) && CLS[d[k]] === WS) k += 1;
+  return k + ENDSTREAM.length <= d.length && d.subarray(k, k + ENDSTREAM.length).equals(ENDSTREAM) ? p + k : -1;
+}
+
+// A window for a scan `depth` deep, from `pos`, never past `to`. Each depth has its own buffer (for a file), used again
+// by every scan at that depth.
+function windowAt(ctx, depth, pos, to) {
+  let w = ctx.wins[depth];
+  if (!w) { w = { buf: ctx.src.buffer ? null : Buffer.allocUnsafe(WINDOW + OVERLAP), base: 0, b: null, last: true }; ctx.wins[depth] = w; }
+  const len = Math.max(0, Math.min(WINDOW + OVERLAP, to - pos));
+  w.base = pos;
+  w.b = ctx.src.buffer ? ctx.src.buffer.subarray(pos, pos + len) : readInto(ctx.src.fd, w.buf, pos, len);
+  w.last = pos + w.b.length >= to;
+  return w;
+}
+
+// Reads the bytes from `from` to `to` as PDF syntax, token by token: null or { name, what }; throws Unchecked. A part it
+// does not read as syntax (a string, a comment, a stream's bytes) that holds the start of an object is read again from
+// that start, one level deeper.
+function scanRange(ctx, from, to, depth) {
+  if (depth > MAX_DEPTH) unchecked();
+  const count = ctx.count;
+  let w = windowAt(ctx, depth, from, to);
+  let b = w.b;
   let i = 0;
+  // Reads on from `abs`: in this window while a token there still has OVERLAP bytes after it (or the window is the
+  // last), else from a new window that starts there (always, with `fresh`).
+  const move = (abs, fresh = false) => {
+    if (!fresh && abs >= w.base && abs <= w.base + b.length && (w.last || abs - w.base <= b.length - OVERLAP)) { i = abs - w.base; return; }
+    w = windowAt(ctx, depth, abs, to);
+    b = w.b;
+    i = 0;
+  };
+  // A string's or a comment's bytes (lo to hi in the window), read again from the first object that starts in them.
+  const inside = (lo, hi) => {
+    const at = objectStart(b, lo, hi);
+    return at >= 0 ? scanRange(ctx, w.base + at, w.base + hi, depth + 1) : null;
+  };
   // Where the tokens are: how deep, whether the outermost is a dictionary, and in it whether a key was just read.
-  let depth = 0;
+  let level = 0;
   let topDict = false;
   let afterKey = false;
   let entries = null; // the outermost dictionary's kept keys: key -> [value tokens, ...]
@@ -452,13 +678,13 @@ function scan(b) {
   let p1 = 0;
   let p2 = 0; // the kinds of the two tokens before
   let link = false;
-  const reset = () => { depth = 0; topDict = false; afterKey = false; entries = null; cap = null; };
+  const reset = () => { level = 0; topDict = false; afterKey = false; entries = null; cap = null; };
   const keep = (item) => {
     if (!cap) return;
     cap.size += 1;
     if (cap.size > LIMITS.captured) { cap.over = true; return; }
     const top = cap.stack[cap.stack.length - 1];
-    if (item.k === 'R' && top.length >= 2 && typeof top[top.length - 1] === 'number' && typeof top[top.length - 2] === 'number') { top.length -= 2; top.push({ r: true }); return; }
+    if (item.k === 'R' && top.length >= 2 && typeof top[top.length - 1] === 'number' && typeof top[top.length - 2] === 'number') { const r = [top[top.length - 2], top[top.length - 1]]; top.length -= 2; top.push({ r }); return; }
     top.push(item);
   };
   const endValue = () => {
@@ -468,10 +694,36 @@ function scan(b) {
     cap = null;
   };
 
-  while (i < n) {
-    const kind = lex(b, i, n, link);
+  for (;;) {
+    if (!w.last && i > b.length - OVERLAP) move(w.base + i);
+    if (i >= b.length) break;
+    const kind = lex(b, i, b.length, link);
+    // Whitespace to the window's end is skipped; a token that reaches it is read again from a window that starts with
+    // it. A string or a comment longer than a window is followed to its end a window at a time (longEnd); any other
+    // token that long is not checked.
+    let longEnd = -1;
+    if (!w.last && T_END >= b.length) {
+      if (kind === EOF) { move(w.base + b.length, true); continue; }
+      if (T_START !== 0) { move(w.base + T_START, true); continue; }
+      if (kind !== STR && kind !== COMMENT) unchecked();
+      longEnd = endOfLong(ctx, b[0], w.base, to);
+    }
     if (kind === EOF) break;
+    const start = T_START;
+    const startAbs = w.base + start;
     i = T_END;
+    // What the string or comment holds, read again from an object that starts in it.
+    const body = () => {
+      if (longEnd < 0) return inside(start + 1, i);
+      const at = findObjectStart(ctx, startAbs + 1, longEnd);
+      return at >= 0 ? scanRange(ctx, at, longEnd, depth + 1) : null;
+    };
+    if (kind === COMMENT) {
+      const r = body();
+      if (r) return r;
+      if (longEnd >= 0) move(longEnd, true);
+      continue;
+    }
     const wasClosed = closed;
     closed = null;
     if (link) {
@@ -482,7 +734,7 @@ function scan(b) {
     if (kind === NAME) {
       if (T_VAL !== null && ACTIVE_NAMES.has(T_VAL)) return { name: T_VAL, what: ACTIVE_NAMES.get(T_VAL) };
       if (T_VAL === 'URI') link = true;
-      if (depth === 1 && topDict) {
+      if (level === 1 && topDict) {
         if (afterKey) { keep({ n: T_VAL }); afterKey = false; } else {
           endValue();
           afterKey = true;
@@ -495,113 +747,156 @@ function scan(b) {
       } else keep({ n: T_VAL });
     } else if (kind === INT || kind === REAL) {
       keep(kind === INT ? T_INT : 0.5);
-      if (depth === 1) afterKey = false;
+      if (level === 1) afterKey = false;
     } else if (kind === STR) {
+      const r = body();
+      if (r) return r;
       keep({ s: true });
-      if (depth === 1) afterKey = false;
+      if (level === 1) afterKey = false;
+      if (longEnd >= 0) move(longEnd, true);
     } else if (kind === DOPEN || kind === AOPEN) {
-      if (depth === 0) { reset(); topDict = kind === DOPEN; if (topDict) entries = new Map(); } else {
+      if (level === 0) { reset(); topDict = kind === DOPEN; if (topDict) entries = new Map(); } else {
         if (cap) { const box = []; keep(kind === DOPEN ? { d: box } : { a: box }); if (!cap.over) cap.stack.push(box); }
-        if (depth === 1) afterKey = false;
+        if (level === 1) afterKey = false;
       }
-      depth += 1;
+      level += 1;
     } else if (kind === DCLOSE || kind === ACLOSE) {
-      if (depth > 0) depth -= 1;
-      if (depth >= 1 && cap && cap.stack.length > 1) cap.stack.pop();
-      if (depth === 0 && topDict) {
+      if (level > 0) level -= 1;
+      if (level >= 1 && cap && cap.stack.length > 1) cap.stack.pop();
+      if (level === 0 && topDict) {
         endValue();
         if (kind === DCLOSE) closed = entries;
         topDict = false;
         entries = null;
       }
     } else if (kind === KW) {
-      const w = T_VAL;
-      if (w === 'obj') {
+      const word = T_VAL;
+      if (word === 'obj') {
         if (p1 === INT && p2 === INT) {
-          sawObj = true;
+          ctx.sawObj = true;
           count.objects += 1;
           if (count.objects > LIMITS.objects) unchecked();
         }
         reset();
-      } else if (w === 'stream' && wasClosed) {
-        i = stream(b, i, wasClosed, count);
+      } else if (word === 'stream' && wasClosed) {
+        const r = stream(ctx, b, w.base, i, wasClosed, to, depth);
+        if (r.found) return r.found;
+        move(r.resume);
         reset();
-      } else if (w === 'endobj' || w === 'endstream' || w === 'trailer' || w === 'xref' || w === 'startxref') reset();
-      else { keep({ k: w }); if (depth === 1 && w !== 'R') afterKey = false; }
+      } else if (word === 'endobj' || word === 'endstream' || word === 'trailer' || word === 'xref' || word === 'startxref') reset();
+      else { keep({ k: word }); if (level === 1 && word !== 'R') afterKey = false; }
     }
     p2 = p1;
     p1 = kind;
-    if (stream.found) { const f = stream.found; stream.found = null; return f; }
   }
-  const tail = b.subarray(Math.max(0, n - 1024));
-  if (!sawObj || tail.indexOf('%%EOF') < 0 || (tail.indexOf('startxref') < 0 && tail.indexOf(TRAILER) < 0)) return { refuse: 'damaged' };
   return null;
 }
 
-// The stream whose keyword ends at `i`, with the dictionary before it: decoded and read when objects could be taken out
-// of it, else searched for the start of an object. Answers where reading goes on (its "endstream"); what it finds is
-// left in stream.found.
-function stream(b, i, entries, count) {
-  const n = b.length;
+// The stream whose keyword ends at `i` of the window `b` (which starts at `base`), with the dictionary before it. Where
+// it ends: at its /Length when "endstream" stands there; a /Length given by reference is read from that integer object
+// (integerObjects), and one that can't be, or that does not end at "endstream", leaves the PDF unchecked (security QA
+// round 2, round 2: a reader uses the referenced length while the first "endstream" stood inside the data); with no
+// /Length, or a direct one that does not end there, at the first "endstream". Its bytes, where they hold the start of
+// an object, are read again as syntax from there; an object stream is also decoded and read. Answers { resume } (where
+// its "endstream" is) or { found }.
+function stream(ctx, b, base, i, entries, to, depth) {
+  const count = ctx.count;
   count.streams += 1;
   if (count.streams > LIMITS.streams) unchecked();
   // The data starts on the next line.
   let s = i;
-  for (let k = i; k < Math.min(n, i + 256); k += 1) {
+  for (let k = i; k < Math.min(b.length, i + 256); k += 1) {
     if (b[k] === 0x0a) { s = k + 1; break; }
     if (b[k] === 0x0d) { s = b[k + 1] === 0x0a ? k + 2 : k + 1; break; }
   }
+  s += base;
   let end = -1;
   let resume = -1;
+  let byLength = false; // ended by a /Length given in the dictionary itself, which a reader reads the same way
   const lengthItems = entries.get('Length');
-  const L = lengthItems && lengthItems.length === 1 && lengthItems[0].length === 1 && typeof lengthItems[0][0] === 'number' ? lengthItems[0][0] : null;
-  if (L !== null && Number.isInteger(L) && L >= 0 && s + L <= n) {
-    let p = s + L;
-    const stop = Math.min(n, p + 64);
-    while (p < stop && CLS[b[p]] === WS) p += 1;
-    if (p + 9 <= n && b.latin1Slice(p, p + 9) === 'endstream') { end = s + L; resume = p; }
+  const L = lengthItems && lengthItems.length === 1 && lengthItems[0].length === 1 ? lengthItems[0][0] : null;
+  if (typeof L === 'number' && Number.isInteger(L) && L >= 0 && s + L <= to) {
+    const at = endstreamAt(ctx, s + L, to);
+    if (at >= 0) { end = s + L; resume = at; byLength = true; }
+  } else if (L && L.r) {
+    const v = Number.isInteger(L.r[0]) && Number.isInteger(L.r[1]) && L.r[0] >= 0 && L.r[1] >= 0 && L.r[1] <= 65535 ? integerObjects(ctx).get(idKey(L.r[0], L.r[1])) : undefined;
+    const at = Number.isInteger(v) && s + v <= to ? endstreamAt(ctx, s + v, to) : -1;
+    if (at < 0) unchecked();
+    end = s + v;
+    resume = at;
   }
   if (end < 0) {
-    const at = b.indexOf(ENDSTREAM, s);
-    if (at < 0) { end = n; resume = n; } else {
+    const at = findIn(ctx, ENDSTREAM, s, to);
+    if (at < 0) { end = to; resume = to; } else {
       end = at;
-      if (end > s && b[end - 1] === 0x0a) end -= 1;
-      if (end > s && b[end - 1] === 0x0d) end -= 1;
+      const before = chunk(ctx, Math.max(s, at - 2), at - Math.max(s, at - 2));
+      if (end > s && before[before.length - 1] === 0x0a) end -= 1;
+      if (end > s && before[before.length - 1 - (at - end)] === 0x0d) end -= 1;
       resume = at;
     }
   }
-  const data = b.subarray(s, end);
+  // Its bytes, where they hold the start of an object.
+  const at = findObjectStart(ctx, s, end);
+  if (at >= 0) {
+    const found = scanRange(ctx, at, end, depth + 1);
+    if (found) return { found };
+  }
   const typeList = entries.get('Type') || [];
   const objectStream = entries.has('N') || entries.has('First') || entries.has('Extends') || typeList.some((v) => v.some((x) => x && x.n === 'ObjStm'));
   if (objectStream) {
     count.decoded += 1;
     if (count.decoded > LIMITS.decodedStreams) unchecked();
-    let d = data;
-    for (const step of filterChain(entries)) {
+    if (end - s > LIMITS.rawStream) unchecked();
+    let d = ctx.src.read(s, end - s);
+    const chain = filterChain(entries);
+    // Not ended by its own /Length, a reader may take more of it: its first filter must end inside what the scan took.
+    if (!byLength && !chain.length) unchecked();
+    chain.forEach((step, k) => {
       const left = Math.min(LIMITS.streamOut, LIMITS.allOut - count.out);
       if (left <= 0) unchecked();
-      d = decodeOne(d, step.filter, step.parms, left);
-    }
+      d = decodeOne(d, step.filter, step.parms, left, !byLength && k === 0);
+    });
     count.out += d.length;
     if (count.out > LIMITS.allOut) unchecked();
-    stream.found = namesIn(d, 0, d.length);
-  } else if (holdsObject(data)) stream.found = namesIn(b, s, end);
-  return resume;
+    const found = namesIn(d, 0, d.length);
+    if (found) return { found };
+    // A name that reading did not see as one (inside what it read as a string) is one a reader taking each object from
+    // its own offset could: not judged.
+    if (anyNameIn(d, 0, d.length)) unchecked();
+  }
+  return { resume };
 }
-stream.found = null;
 
-// The scan of a whole PDF (a Buffer): null, { name, what } or { refuse: 'damaged' | 'unchecked' }.
-function pdfScan(b) {
-  stream.found = null;
+function run(src) {
+  if (src.size < 8 || src.read(0, 5).latin1Slice(0, 5) !== '%PDF-') return { refuse: 'damaged' };
+  const ctx = { src, size: src.size, count: { objects: 0, streams: 0, decoded: 0, out: 0 }, wins: [], lengths: null, scratch: null, sawObj: false };
+  const found = scanRange(ctx, 0, src.size, 0);
+  if (found) return found;
+  const tail = src.read(Math.max(0, src.size - 1024), 1024);
+  if (!ctx.sawObj || tail.indexOf('%%EOF') < 0 || (tail.indexOf('startxref') < 0 && tail.indexOf(TRAILER) < 0)) return { refuse: 'damaged' };
+  return null;
+}
+function answer(fn) {
   try {
-    if (b.length < 8 || b.latin1Slice(0, 5) !== '%PDF-') return { refuse: 'damaged' };
-    return scan(b);
+    return fn();
   } catch (err) {
     if (err instanceof Unchecked) return { refuse: 'unchecked' };
     throw err;
-  } finally {
-    stream.found = null;
   }
 }
 
-module.exports = { pdfScan, ACTIVE_NAMES, LIMITS };
+// The scan of a whole PDF held in a Buffer: null, { name, what } or { refuse: 'damaged' | 'unchecked' }.
+function pdfScan(b) {
+  return answer(() => run(bufferSource(b)));
+}
+// The same for a file, read a window at a time.
+function pdfScanFile(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    return answer(() => run(fileSource(fd, fs.fstatSync(fd).size)));
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+module.exports = { pdfScan, pdfScanFile, ACTIVE_NAMES, LIMITS, WINDOW };

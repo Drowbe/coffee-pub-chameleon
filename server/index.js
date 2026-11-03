@@ -34,7 +34,7 @@ const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const { watchArrival, slowSenders } = require('./arrival');
-const { Ai, AiError, OVER_CAP, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
+const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
 const { presenceView, belongsToSpace } = require('./presence-view');
 const { mergeCall, cleanAwayMessage } = require('./live');
@@ -44,6 +44,15 @@ const { fetchPreview, fetchImage, cachedImage, PreviewError, calendarUrl } = req
 const { findLink, readFields, CHAT_LINK_LIMITS } = require('./chat-links');
 const objectSync = require('./object-sync');
 const ics = require('./ics');
+const prompts = require('./prompts');
+const { createAiPolicy } = require('./ai-policy');
+const { createContextBuilder } = require('./ai-context');
+// AI_PROMPT_VERSIONS (rollback pins) and AI_LOG_PROMPTS (full prompts in the log), said once at start (plan-ai-integration.md,
+// decision 14). Full prompts are never logged on a hosted install (BASE_DOMAIN): server/ai.js ignores the variable there.
+for (const line of prompts.setPins(process.env)) console.warn(line);
+if (process.env.AI_LOG_PROMPTS === '1') {
+  console.warn(process.env.BASE_DOMAIN ? 'AI_LOG_PROMPTS is ignored on a hosted install (BASE_DOMAIN is set): prompts are not logged.' : 'AI_LOG_PROMPTS is on: every prompt sent to the AI service is written to this log, without the key.');
+}
 const themeFile = require('./theme-file');
 const { productName } = require('./product-name');
 const templateFile = require('./template-file');
@@ -159,6 +168,10 @@ const {
   // is the one the nearest of them saw, so a client can't choose its own with X-Forwarded-For; 0 = no proxy, the
   // connection's own address. Not a whole number of 0 or more: 1, with a line on start.
   TRUST_PROXY_HOPS = '',
+  // How long a request's body may take to arrive once its headers have, in seconds (300, Node's own five minutes), on
+  // every route but a library upload, which may take two hours and cuts off one too slow itself. Not a number above 0:
+  // the default.
+  REQUEST_BODY_SECONDS = '',
   // A module's library files (documentation/plans/plan-attachments-vault.md, section 2): VAULT_DIR is the folder their
   // bytes go in, for every environment on the server (VAULT_DIR/<environment slug>/, or VAULT_DIR/_default/ on a
   // single-environment install); unset, DATA_DIR/vault, which no in-app backup carries. VAULT_MAX_GB is the most the
@@ -1699,6 +1712,23 @@ const trustProxyHops = (() => {
   return 1;
 })();
 app.set('trust proxy', trustProxyHops);
+// The server waits up to two hours for a request's body (listener.requestTimeout, below), for a library upload of 2 GB
+// on a slow link; that upload route cuts off one too slow itself (watchArrival), and a library file's small picture has
+// its own deadline. Every other route's body must have arrived REQUEST_BODY_SECONDS (300, as Node's own limit would have
+// it) after its headers, or the connection is closed, so nobody can hold any other route open by sending a byte now and
+// then (security QA round 2, round 2).
+const BODY_MS = (() => { const v = Number(REQUEST_BODY_SECONDS); return Math.round((Number.isFinite(v) && v > 0 ? v : 300) * 1000); })();
+const LIBRARY_UPLOAD = /^\/api\/modules\/[^/]+\/library\/?$/i;
+const LIBRARY_THUMB_UPLOAD = /^\/api\/modules\/[^/]+\/library\/[^/]+\/thumb\/?$/i;
+app.use((req, res, next) => {
+  if (req.complete || (req.method === 'POST' && LIBRARY_UPLOAD.test(req.path)) || (req.method === 'PUT' && LIBRARY_THUMB_UPLOAD.test(req.path))) return next();
+  const timer = setTimeout(() => { if (!req.complete) req.socket.destroy(); }, BODY_MS);
+  timer.unref();
+  const done = () => clearTimeout(timer);
+  req.once('end', done);
+  req.once('close', done);
+  next();
+});
 // Writes only from this origin. A SameSite=Lax cookie still goes along with a request from another origin on the same
 // site (on a hosted server every environment is *.BASE_DOMAIN, the console admin.BASE_DOMAIN), and a plain form or a
 // no-cors fetch needs no preflight. So a POST, PUT, PATCH or DELETE that carries a cookie is refused when the browser
@@ -1727,7 +1757,7 @@ app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEM
 const MODULE_FILE_UPLOAD = /^\/api\/modules\/[^/]+\/files\/[^/]+$/;
 // A module's library routes (a space's files) decide who may before any of the body is read, so this parser leaves
 // them alone; the one that takes JSON (a rename) parses its own small body after that.
-const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/;
+const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/i; // routes match whatever the case, so this does too
 app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && MODULE_FILE_UPLOAD.test(req.path)) && !LIBRARY_ROUTE.test(req.path) && Boolean(req.is('application/json')), verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const publicDir = path.join(__dirname, '..', 'public');
@@ -2331,6 +2361,12 @@ function gbText(bytes) {
   const gb = bytes / (1024 ** 3);
   return (Number.isInteger(gb) ? gb : Math.round(gb * 10) / 10).toString();
 }
+// A size for a sentence: "5 GB", "1.5 GB", in MB under a gigabyte ("512 MB") and in KB under a megabyte, never "0 GB".
+const sizeText = (bytes) => {
+  if (bytes >= 1024 ** 3) return `${gbText(bytes)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round((bytes / 1048576) * 10) / 10} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
 // Each refuses the one thing at its cap with a 403 and a plain sentence, leaving everything else running;
 // returns true (having already answered) when refused, so a caller just does `if (refuseX(res)) return;`.
 function refuseOverMembers(res) {
@@ -2344,7 +2380,7 @@ function refuseOverStorage(res) {
   if (cap === null) return false;
   const env = currentEnvironment();
   if (environmentStorageBytes(env.slug, env.dataDir) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` });
+  res.status(403).json({ error: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` });
   return true;
 }
 // Middleware form of refuseOverStorage, for the routes that write bytes to disk (module uploads, profile and
@@ -2353,9 +2389,10 @@ function checkStorageCap(req, res, next) {
   if (!refuseOverStorage(res)) next();
 }
 // The sentence when this environment's plan allows no more AI calls this month, else ''.
-function aiCallsRefusal() {
+// `pending`: asks on their way, not yet counted (so two at once can't pass the cap together).
+function aiCallsRefusal(pending = 0) {
   const cap = planCap('aiCallsPerMonth');
-  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return '';
+  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) + pending < cap) return '';
   return `This ${word('environment')} has used its ${cap} AI calls for this month.`;
 }
 // 'all' (the default, and every self-hosted install) or a list of module ids. A module already on when a
@@ -5615,117 +5652,149 @@ app.post('/api/spaces/:id/chat/:messageId/keep', (req, res) => {
   res.json({ id: request.id, status: request.status, message: out.message });
 });
 
-// --- Chat /ai and commands (plan-one-input, #58) ----------------------------------------------------------------
-// Same people as #73 import: signed in, not a guest, not in a space with AI turned off, and allowed to chat in the space (the
-// role's `chat`). The retired Assistant's `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the
-// environment's `useAi` flag.
-function chatAiRefusal(who, space) {
-  if (!who.user) return `${word('guest', { many: true })} cannot use AI`;
-  if (space && space.aiOff) return `AI is turned off in this ${word('space')}`;
-  return '';
+// --- AI: the policy, the context and the doors (plan-ai-integration.md, slice 1) -----------------------------------------------
+// Every AI route and every availability route asks the one policy (server/ai-policy.js); the context is built by
+// server/ai-context.js through it; what is said to the model is the prompt registry's (server/prompts/); the request is the
+// provider adapters' (server/ai-providers.js), through ai.run, which keeps the usage and the call records.
+const aiPolicy = createAiPolicy({
+  store, ai, modules, word, limits: moduleLimits, hasOwnerRights,
+  resolveRef: (...args) => resolveRef(...args),
+  aiCallsRefusal: (pending) => aiCallsRefusal(pending),
+});
+// A person's role word in a space, as the AI is told it: owner, moderator (ticked for the space), else their role's.
+function aiRoleWord(user, space) {
+  if (hasOwnerRights(user)) return word('owner');
+  if (space && moderates(user, space)) return word('moderator');
+  return ['moderator', 'member', 'guest'].includes(user.role) ? word(user.role) : word('member');
 }
-
-function chatAiSpace(req, res, { needChat = false } = {}) {
-  const who = moduleViewer(req);
-  if (!who) { res.status(401).json({ error: 'sign in first' }); return null; }
-  if (!who.user) { res.status(403).json({ error: `${word('guest', { many: true })} cannot use AI` }); return null; }
-  const space = store.spaceById(req.params.id);
-  if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
-  const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
-  if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
-  // The question and its answer are kept in the person's chat, so a role that cannot chat here cannot ask (/ai only; a paste is not AI use).
-  if (needChat && !store.spacePermissions(who.user.key, space.id).chat) { res.status(403).json({ error: 'your role cannot do that' }); return null; }
-  return { who, space };
-}
-
-// Why AI cannot answer right now whoever asks -- not set up, a key this server can't read, or an allowance used up -- as
-// { status, why }, or null. The availability routes answer from this too, so a page can say so before a question is sent.
-function aiServiceRefusal() {
-  if (!ai.ready()) {
-    const v = ai.view();
-    if (v.keyUnreadable && v.enabled) return { status: 503, reason: 'not-set-up', why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
-    return { status: 503, reason: 'not-set-up', why: 'AI is not set up on this server' };
+// The summaries (no text) of every object `who` may read in one place ({ scope: 'space', space } or { scope: 'environment' }),
+// across every enabled module that shares a kind -- the pool the context builder picks the relevant objects from. A copy is
+// left out when its original is there too.
+function aiObjectsIn(who, where) {
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
+  for (const { manifest } of modules.enabledAll()) {
+    for (const produce of manifest.refs.produces) {
+      let at;
+      try { at = refScope(who, { provider: manifest.id, kind: produce.kind, scope: where.scope, space: where.space, skipConsumer: true }); } catch { continue; }
+      const prefix = at.produce.key.replace('{id}', '');
+      for (const item of moduleData.list(manifest.id, at.scopeKey, prefix)) {
+        if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
+        pool.push(markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs));
+      }
+    }
   }
-  if (ai.overCap()) return { status: 429, reason: 'allowance', why: OVER_CAP };
-  const calls = aiCallsRefusal();
-  if (calls) return { status: 429, reason: 'allowance', why: calls };
-  return null;
+  const seen = new Set(pool.map((s) => objectKey(s.ref)));
+  return pool.filter((s) => !(s.copy && seen.has(objectKey(s.twinOf))));
+}
+const aiContext = createContextBuilder({
+  store, chatHistory, moduleLinks, policy: aiPolicy, word, listObjects: aiObjectsIn, roleWordOf: aiRoleWord,
+  guestsIn: (space) => live.people(space.id).filter((p) => p.guest).map((p) => p.name),
+  serverZone: () => ics.serverZone(),
+  timelineOf: phaseRule.timelineOf,
+  templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
+});
+// The template's words a prompt uses.
+const aiWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space') });
+// What a call record and an answer keep of `sent`: the counts, never the pointers' content.
+const sentCounts = (sent) => ({ attached: sent.attached.length, relevant: sent.relevant, linked: sent.linked, history: sent.history, chat: sent.chat, members: sent.members });
+const aiUse = (who, spaceId, purpose, built) => ({ purpose, person: who.user.key, space: spaceId || undefined, environment: currentEnvironment().slug || undefined, counts: sentCounts(built.sent), leftOut: built.leftOut.length ? built.leftOut : undefined });
+// A refusal answered and recorded (never the question): the status and its one sentence.
+function refuseAi(res, r, { who, space, purpose }) {
+  ai.log({ purpose, person: who && who.user ? who.user.key : undefined, space: space ? space.id : undefined, environment: currentEnvironment().slug || undefined, outcome: 'refused', reason: r.reason });
+  if (r.retrySeconds) res.set('Retry-After', String(r.retrySeconds));
+  return res.status(r.status).json({ error: r.why });
+}
+// The question as sent, checked: { question } (cleaned, '' when none was sent) or { error } with its sentence. The route
+// refuses one over 1,000 characters rather than cutting it (ai-22).
+function aiQuestionOf(raw) {
+  if (raw !== undefined && raw !== null && typeof raw !== 'string') return { error: 'The question must be text.' };
+  const q = prompts.cleanQuestion(raw);
+  const n = [...q].length;
+  if (n > prompts.MAX_QUESTION) return { error: `A question is at most ${prompts.MAX_QUESTION.toLocaleString('en-US')} characters; this one is ${n.toLocaleString('en-US')}.` };
+  if (n && n < prompts.MIN_QUESTION) return { error: `Ask a question of at least ${prompts.MIN_QUESTION} characters.` };
+  return { question: q };
+}
+// The pointers sent as `refs` (Chat) or `objects` (a module): up to 12, each an object.
+const aiRefsOf = (raw) => (Array.isArray(raw) ? raw.slice(0, prompts.MAX_MATERIAL).filter((r) => r && typeof r === 'object' && !Array.isArray(r)) : []);
+// An answer's numbers ([n] in `used`, `sources` in its objects) as the pointers they stand for.
+const aiPointers = (numbers, numbered) => [...new Set((numbers || []).map((n) => numbered[n - 1]).filter(Boolean))];
+const aiSummaries = (summaries, numbered) => (summaries || []).map((c) => ({ ...c, sources: aiPointers(c.sources, numbered) }));
+// What a template is called in the activity list, in plain words.
+const AI_TASK_WORDS = { ask: 'a question', summarise: 'a summary', tags: 'tags' };
+function countAiCall() {
+  if (BASE_DOMAIN && hostRegistry) {
+    const slug = currentEnvironment().slug;
+    if (slug) hostRegistry.recordAiCall(slug);
+  }
+}
+function sendAiError(err, res) {
+  if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
+  throw err;
 }
 
-// One rule for every AI door: signed in (not a guest), AI on for the space, the role's `useAi`, then the service itself.
-// { status, reason, why } or null. `reason`: 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'.
-function aiRefusalFor(who, space) {
-  if (!who.user) return { status: 403, reason: 'guest', why: `${word('guest', { many: true })} cannot use AI` };
-  if (space && space.aiOff) return { status: 403, reason: 'space-off', why: `AI is turned off in this ${word('space')}` };
-  const perms = space ? store.spacePermissions(who.user.key, space.id) : store.roleSet(who.user.role);
-  if (!perms.useAi) return { status: 403, reason: 'role', why: 'your role may not use AI' };
-  return aiServiceRefusal();
-}
-
+// Chat's /ai, the Assistant view and host.chat.ask: who may ask here, before a question is typed.
 app.get('/api/spaces/:id/ai', (req, res) => {
-  const found = chatAiSpace(req, res, { needChat: true });
-  if (!found) return;
-  const down = aiRefusalFor(found.who, found.space);
-  if (down) return res.json({ available: false, why: down.why, reason: down.reason });
-  res.json({ available: true, why: '', reason: '' });
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const space = store.spaceById(req.params.id);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  res.json(aiPolicy.availability(who, space, 'chat'));
 });
 
-// Chat's own sentence for a person asking too often (the modules' one speaks of a module).
-const chatAiLimitMessage = () => 'You have asked the AI too many times in a minute. Try again in a moment.';
-
+// One question (template ask, purpose chat), with the asker's last turns here and the space's rollup. `refs`: up to 12 of
+// this space's objects (another space's are left out and said to be); `question`: 3 to 1,000 characters, or none with an
+// attached object (the template's default question); `tz`: the asker's time zone. Both kept as the asker's private messages
+// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`.
 app.post('/api/spaces/:id/ai', async (req, res) => {
-  const found = chatAiSpace(req, res, { needChat: true });
-  if (!found) return;
-  const down = aiRefusalFor(found.who, found.space);
-  if (down) return res.status(down.status).json({ error: down.why });
-  const me = found.who.user.key;
-  if (req.body?.question !== undefined && req.body?.question !== null && typeof req.body.question !== 'string') return res.status(400).json({ error: 'the question must be text' });
-  const question = String(req.body?.question || '').trim();
-  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : [];
-  // Only this space's own objects go to the AI: what is asked, and so the answer kept here, never draws on another space.
-  // (Not the person's own objects nor the environment's either: the answer is kept here and can be made public here.)
-  if (refs.some((ref) => !ref || ref.scope !== 'space' || ref.space !== found.space.id)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
-  const material = [];
-  const given = [];
-  for (const ref of refs) {
-    try {
-      const summary = resolveRef(found.who, ref, null, { withText: true, skipConsumer: true });
-      const bits = [summary.subtitle, summary.when ? `date: ${summary.when}` : '', summary.place && summary.place.name ? `place: ${summary.place.name}` : ''].filter(Boolean);
-      material.push({ title: summary.title, text: [summary.text, ...bits].filter(Boolean).join('\n') || summary.title });
-      given.push(summary.ref);
-    } catch {
-      // gone or invisible: left out
-    }
-  }
-  // A bad ask is refused before it is counted: only asks that are carried out use the person's turns (a minute's worth).
-  try { ai.validateAsk('ask', material.length, question); } catch (err) { return sendAiError(err, res); }
-  const limited = overLimit('chat', me, 'ai');
-  if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: chatAiLimitMessage() });
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const space = store.spaceById(req.params.id);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  const allowed = aiPolicy.check(who, space, 'chat');
+  if (!allowed.ok) return refuseAi(res, allowed, { who, space, purpose: 'chat' });
+  const asked = aiQuestionOf(req.body?.question);
+  if (asked.error) return res.status(400).json({ error: asked.error });
+  const refs = aiRefsOf(req.body?.refs);
+  if (!asked.question && !refs.length) return res.status(400).json({ error: 'Ask a question.' });
+  const template = prompts.template('ask');
+  const built = aiContext.build(who, space, { template, question: asked.question, refs, tz: req.body?.tz });
+  const question = asked.question || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
+  if (!question) return res.status(400).json({ error: `Ask a question: the ${word('object')} you chose can't be sent to the AI.`, leftOut: built.leftOut });
+  // A bad ask is refused before it is counted: only asks that are carried out use the person's turns.
+  const turn = aiPolicy.takeTurn(who);
+  if (!turn.ok) return refuseAi(res, turn, { who, space, purpose: 'chat' });
+  const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', material, question, { kinds: promptKinds() });
-    if (BASE_DOMAIN && hostRegistry) {
-      const slug = currentEnvironment().slug;
-      if (slug) hostRegistry.recordAiCall(slug);
-    }
-    const summaries = (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) }));
-    // Both kept as the asker's private messages (plan-chat-model.md). The author makes the answer public with
-    // PATCH .../chat/:messageId; nothing is posted to the chat here.
-    const asked = chatHistory.add(found.space.id, { by: me, who: found.who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
-    const answered = chatHistory.add(found.space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: asked ? asked.id : undefined });
-    noteActivity('chat', `asked the AI (${out.tokens} tokens)`, me, found.space.id);
-    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
+    const out = await ai.run('ask', { question, material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built));
+    countAiCall();
+    const summaries = aiSummaries(out.summaries, built.numbered);
+    const used = aiPointers(out.used, built.numbered);
+    const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
+    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, cut: out.cut });
+    noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
+    res.json({ text: out.text, summaries, used, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
-    if (err instanceof AiError && err.refund) moduleLimits.refund('chat', me, 'ai'); // failed before the service did any work: it does not count
+    if (err instanceof AiError && err.refund) aiPolicy.giveBack(who); // failed before the service did any work: it does not count
     sendAiError(err, res);
   }
 });
 
-// Paste import from Chat: the same checker as a module's objects/check, without naming a module.
+// Paste import from Chat (decision 12: not AI use): signed in, not a guest, in the space. { available, why }.
+function importSpaceOf(req, res) {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) { res.status(401).json({ error: 'Sign in first.' }); return null; }
+  const space = store.spaceById(req.params.id);
+  if (!space) { res.status(404).json({ error: `No such ${word('space')}.` }); return null; }
+  if (who.user && !(hasOwnerRights(who.user) || space.members.includes(who.user.key))) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
+  if (!who.user && !(who.guestSpace && who.guestSpace.id === space.id)) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
+  return { who, space };
+}
 app.get('/api/spaces/:id/objects/check', (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = importSpaceOf(req, res);
   if (!found) return;
-  const why = importRefusal({ who: found.who, spaceId: found.space.id });
+  const why = aiPolicy.importRefusal(found.who);
   res.json({ available: !why, why });
 });
 
@@ -6898,7 +6967,8 @@ app.get('/api/objects/format', (req, res) => {
     version: objectFormat.FORMAT_VERSION,
     fence: objectFormat.FENCE,
     fileSuffix: objectFormat.FILE_SUFFIX,
-    instructions: objectFormat.instructions(word('object'), { kinds: promptKinds() }),
+    // The paste template (server/prompts/paste.js): written for a person to paste into any AI, never sent to the in-app model.
+    instructions: prompts.pasteText({ kinds: promptKinds(), words: aiWords() }, { product: productName() }).text,
     schema: objectFormat.schema(),
   });
 });
@@ -7669,11 +7739,10 @@ app.get('/api/destinations/:id', (req, res) => {
 // returns text with any summaries the model wrote (each checked). A module's ask keeps nothing: no question, no answer, no object's text
 // (Chat's own /ai keeps the person's question and answer as private messages). The activity list gets who, which module and task, and
 // how many tokens.
-function sendAiError(err, res) {
-  if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
-  throw err;
-}
 app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage: ai.usageView(), dependents: modules.aiDependents() }));
+// The AI usage view (plan-ai-integration.md, "Observability"), for owners: this month's tokens and calls by template, person
+// and space, refusals by reason, errors and cut-short answers, and the last 50 call records (never any content).
+app.get('/api/ai/usage', requireOwner, (_req, res) => res.json(ai.usageReport()));
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
     await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });
@@ -7710,41 +7779,24 @@ app.put('/api/ai', requireOwner, async (req, res) => {
     sendAiError(err, res);
   }
 });
-// The sentence refusing a set of refs that holds an object from a space where this person may not use AI (the space's AI
-// is off, or their role there may not use it), or ''. A ref to a space that does not exist is left to resolveRef.
-function aiRefusedSpaceOf(who, refs) {
-  const spaces = new Set(refs.filter((ref) => ref && ref.scope === 'space' && typeof ref.space === 'string').map((ref) => ref.space));
-  for (const id of spaces) {
-    const space = store.spaceById(id);
-    if (!space) continue;
-    if (space.aiOff) return `one of those ${word('object', { many: true })} is in ${word('space', { a: true })} with AI turned off`;
-    if (who.user && !store.spacePermissions(who.user.key, space.id).useAi) return `one of those ${word('object', { many: true })} is in ${word('space', { a: true })} where your role may not use AI`;
-  }
-  return '';
-}
-// Whether AI is available to this person here (for a page to show or hide its buttons): { available, why? }.
-function aiAllowed(ctx) {
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  const down = aiRefusalFor(ctx.who, space);
-  return down ? { ok: false, why: down.why, reason: down.reason, status: down.status === 429 ? 429 : 403 } : { ok: true };
-}
+// Whether this person has the module's write access in the scope asked. access.personWrite opens a person's own data and
+// uploads only (moduleAccess's 'own'): asking the AI takes access.write in every scope.
+const aiModuleWrite = (ctx) => moduleCan(ctx.manifest, ctx.perms, 'write');
+// Whether AI is available to this person here, for a module's page to show or hide its buttons: the same check as the ask,
+// write access included, so a viewer who can only read is told so rather than refused later.
 app.get('/api/modules/:id/ai', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
-  const a = aiAllowed(ctx);
-  res.json({ available: a.ok, why: a.why || '', reason: a.reason || '' });
+  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
+  res.json(aiPolicy.availability(ctx.who, space, 'module', { write: aiModuleWrite(ctx) }));
 });
 
-// Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
-function importRefusal(ctx) {
-  if (!ctx.who.user) return `${word('guest', { many: true })} cannot bring in ${word('object', { many: true })}`;
-  // A pasted answer is not AI use (the plan's Q18): signed in, not a guest; the module's write access was checked by the caller.
-  return '';
-}
+// Whether this person may bring objects into this place with this module (decision 12: not AI use), and reading them out of
+// a paste or file. The module's write access is moduleAccess's.
 app.get('/api/modules/:id/objects/check', (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx) return;
-  const why = importRefusal(ctx);
+  const why = aiPolicy.importRefusal(ctx.who);
   res.json({ available: !why, why });
 });
 function objectsFileType(req, res, next) {
@@ -7759,9 +7811,9 @@ function objectsFileType(req, res, next) {
 const objectsFileText = express.text({ type: 'text/plain', limit: objectFormat.MAX_IMPORT_BYTES });
 const objectsFileRaw = express.raw({ type: 'application/octet-stream', limit: objectFormat.MAX_IMPORT_BYTES });
 app.post('/api/spaces/:id/objects/check', sameOriginOnly, objectsFileType, objectsFileText, objectsFileRaw, (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = importSpaceOf(req, res);
   if (!found) return;
-  const why = importRefusal({ who: found.who, spaceId: found.space.id });
+  const why = aiPolicy.importRefusal(found.who);
   if (why) return res.status(403).json({ error: why });
   const limited = overLimit('chat', found.who.user.key, 'check');
   if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: limitMessage() });
@@ -7777,7 +7829,7 @@ app.post('/api/spaces/:id/objects/check', sameOriginOnly, objectsFileType, objec
 app.post('/api/modules/:id/objects/check', sameOriginOnly, objectsFileType, objectsFileText, objectsFileRaw, (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx) return;
-  const why = importRefusal(ctx);
+  const why = aiPolicy.importRefusal(ctx.who);
   if (why) return res.status(403).json({ error: why });
   const limited = overLimit(ctx.manifest.id, ctx.by, 'check');
   if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: limitMessage() });
@@ -7790,51 +7842,44 @@ app.post('/api/modules/:id/objects/check', sameOriginOnly, objectsFileType, obje
     throw err;
   }
 });
+// A module's ask (templates ask, summarise and tags; purpose module): the rollup but no history (a module's ask is not a
+// conversation), and nothing kept but the call's record: no question, no answer, no object's text. `objects`: up to 12
+// pointers, only this space's (or, as the owner's setting allows, the environment's); `question` for ask, or none with an
+// object (the template's default question); `tz`: the asker's time zone.
 app.post('/api/modules/:id/ai', async (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
-  const allowed = aiAllowed(ctx);
-  if (!allowed.ok) return res.status(allowed.status || 403).json({ error: allowed.why });
+  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
+  const allowed = aiPolicy.check(ctx.who, space, 'module', { write: aiModuleWrite(ctx) });
+  if (!allowed.ok) return refuseAi(res, allowed, { who: ctx.who, space, purpose: 'module' });
   // Plan-names step 7: the objects to ask about are `objects`, no longer `items`; the old name is refused, not read.
   if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'items')) return res.status(400).json({ error: `items is an old name; send the ${word('object', { many: true })} to ask about as objects` });
-  const refs = Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : [];
-  // Only the objects of the space the module is asked in go to the AI.
-  if (ctx.spaceId && refs.some((ref) => ref && ref.scope === 'space' && ref.space !== ctx.spaceId)) return res.status(400).json({ error: `only ${word('object', { many: true })} from this ${word('space')} can be sent to the AI` });
-  // Asked outside a space (the environment's or the person's own page), an object from a space still goes only where AI may
-  // be used for this person in that space: never from a space with AI turned off, nor one where their role may not use AI.
-  const refused = aiRefusedSpaceOf(ctx.who, refs);
-  if (refused) return res.status(403).json({ error: refused });
-  // The objects are read as this person: only what they may see, and only kinds this module produces or was approved to link to.
-  const material = [];
-  const given = [];
-  for (const ref of refs) {
-    try {
-      const own = ref && ref.module === ctx.manifest.id;
-      const summary = resolveRef(ctx.who, ref, ctx.manifest.id, { withText: true, skipConsumer: own });
-      const bits = [summary.subtitle, summary.when ? `date: ${summary.when}` : '', summary.place && summary.place.name ? `place: ${summary.place.name}` : ''].filter(Boolean);
-      material.push({ title: summary.title, text: [summary.text, ...bits].filter(Boolean).join('\n') || summary.title });
-      given.push(summary.ref);
-    } catch {
-      // an object that is gone, or that this person may not see, is simply left out
-    }
-  }
   const task = String(req.body?.task || '');
-  // A bad ask is refused before it is counted, and one that fails before the service did any work is given back (AiError.refund).
-  try { ai.validateAsk(task, material.length, req.body?.question); } catch (err) { return sendAiError(err, res); }
-  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
+  if (!prompts.TASKS.includes(task)) return res.status(400).json({ error: 'That task is not offered; ask for ask, summarise or tags.' });
+  const template = prompts.template(task);
+  const asked = task === 'ask' ? aiQuestionOf(req.body?.question) : { question: '' };
+  if (asked.error) return res.status(400).json({ error: asked.error });
+  const refs = aiRefsOf(req.body?.objects);
+  if (task === 'ask' && !asked.question && !refs.length) return res.status(400).json({ error: 'Ask a question.' });
+  if (task !== 'ask' && !refs.length) return res.status(400).json({ error: `Choose something to work on.` });
+  const built = aiContext.build(ctx.who, space, { template, question: asked.question, refs, tz: req.body?.tz, history: false, from: ctx.manifest.id });
+  if (template.needsMaterial && !built.material.length) return res.status(400).json({ error: `None of those ${word('object', { many: true })} can be sent to the AI.`, leftOut: built.leftOut });
+  const question = task !== 'ask' ? '' : asked.question || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
+  if (task === 'ask' && !question) return res.status(400).json({ error: `Ask a question: the ${word('object')} you chose can't be sent to the AI.`, leftOut: built.leftOut });
+  const turn = aiPolicy.takeTurn(ctx.who);
+  if (!turn.ok) return refuseAi(res, turn, { who: ctx.who, space, purpose: 'module' });
+  const inputs = task === 'tags'
+    ? { material: built.material, words: aiWords() }
+    : task === 'summarise'
+      ? { material: built.material, context: built.context, kinds: promptKinds(), words: aiWords() }
+      : { question, material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
   try {
-    const out = await ai.run(task, material, req.body?.question, { kinds: promptKinds() });
-    // Counted on the registry entry regardless of provider (managed or the environment's own key) -- the plan's
-    // aiCallsPerMonth cap is about how much of the environment's own allowance is used, not who is paying for
-    // the tokens (plan-environments.md, "Phase 3"). ai.js keeps its own separate per-provider token accounting.
-    if (BASE_DOMAIN && hostRegistry) {
-      const slug = currentEnvironment().slug;
-      if (slug) hostRegistry.recordAiCall(slug);
-    }
-    noteActivity(ctx.manifest.id, `used AI to ${task} (${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
-    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), cut: out.cut, tokens: out.tokens });
+    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built));
+    countAiCall();
+    noteActivity(ctx.manifest.id, `asked the AI (${AI_TASK_WORDS[task]}, ${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
+    res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
-    if (err instanceof AiError && err.refund) moduleLimits.refund(ctx.manifest.id, ctx.by, 'ai'); // failed before the service did any work
+    if (err instanceof AiError && err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work
     sendAiError(err, res);
   }
 });
@@ -7973,7 +8018,6 @@ const LIBRARY_THUMB_BYTES = 300 * 1024;
 // ten seconds and the time the floor (VAULT_MIN_KB_PER_SECOND) gives its size, or it is cut off.
 const LIBRARY_THUMBS = { person: 2, environment: 8 };
 const thumbDeadlineMs = (bytes) => 10000 + Math.ceil((bytes / libraryMinRate) * 1000);
-const sizeText = (bytes) => (bytes >= 1024 ** 3 ? `${gbText(bytes)} GB` : `${Math.round((bytes / 1048576) * 10) / 10} MB`);
 const libraryKindSentence = 'That kind of file can\'t be added here. It takes pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown.';
 const librarySentence = (refusal) => (refusal === 'heic' ? 'HEIC pictures can\'t be added here. Save it as a JPEG.' : libraryKindSentence);
 // Why a PDF is not taken (server/pdf-scan.js), in one sentence.
@@ -8067,7 +8111,7 @@ function vaultLevels(ctx, keys) {
   return [
     { onDisk: used.spaces.get(ctx.spaceId) || 0, most: quota.space, field: 'space', value: keys.space, sentence: `This ${word('space')}'s ${ctx.name} is full (${sizeText(quota.space)}). Remove some files to add more.` },
     { onDisk: used.people.get(ctx.by) || 0, most: quota.person, field: 'person', value: keys.person, sentence: `You have used your ${sizeText(quota.person)} in ${ctx.name}. Remove some of your files to add more.` },
-    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` }] : []),
+    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` }] : []),
     { onDisk: vaultHostBytes(), most: vaultLimits.total, field: 'environment', value: keys.environment, sentence: 'The server\'s file storage is full. Ask the admin.' },
   ];
 }
@@ -8283,7 +8327,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     const group = vaultTypes.TYPES[type].group;
     let kept = { size: got.size, sha256: got.sha256, taken: null, camera: '' };
     // The whole file's check, in a worker (server/vault-scan.js): the main thread only waits for it.
-    if (group === 'image' || ['application/pdf', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'video/quicktime', 'video/webm', 'text/markdown'].includes(type)) {
+    if (group === 'image' || type === 'application/pdf' || vaultTypes.STRUCTURED.includes(type)) {
       const checked = await vaultScanner.scan({ file: part, type, keepPosition: req.query.keepPosition === '1' });
       if (checked.refuse) {
         dropPart();
@@ -8333,17 +8377,18 @@ function contentDisposition(kind, name) {
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 // The headers every library file is sent with: its stored type only (Markdown as plain text, never HTML), never sniffed,
-// never kept by a shared cache, never run as a page (a PDF is the one exception: a browser shows none in a sandboxed
-// document, so it may be framed by this site only).
+// never kept by a shared cache, never run as a page: `sandbox; default-src 'none'` on every type, a PDF too, since the
+// browser's own PDF viewer is not used (decision 18). A PDF is always sent as an attachment: until the app's own viewer
+// (step 3) fetches its bytes, nothing opens one in the browser at this site's origin.
 function libraryHeaders(type, name, kind) {
   return {
     'Content-Type': type === 'text/markdown' ? 'text/plain; charset=utf-8' : type,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': contentDisposition(kind, name),
+    'Content-Disposition': contentDisposition(type === 'application/pdf' ? 'attachment' : kind, name),
     'Cache-Control': 'private, no-store',
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': type === 'application/pdf' ? "default-src 'none'; frame-ancestors 'self'" : "sandbox; default-src 'none'",
+    'Content-Security-Policy': "sandbox; default-src 'none'",
   };
 }
 // Streams a file (or its thumbnail) with range requests (206, Content-Range, Accept-Ranges, 416, ETag, Last-Modified,
