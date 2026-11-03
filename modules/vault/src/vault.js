@@ -124,10 +124,11 @@
   const SPACE = word('space');
   host.setTitle(MODULE);
   const inSpace = info.context.scope === 'space';
+  const ASK_WORDS = `Ask ${word('owner', { a: true })} or ${word('moderator', { a: true })} if you need them.`;
   const me = (info.user && info.user.key) || '';
   const can = (key) => host.can(key);
   if (!inSpace || !can('view')) {
-    showMsg(inSpace ? `You can't see the files in this ${SPACE}.` : `Open the ${MODULE} inside ${word('space', { a: true })}.`, inSpace ? 'Ask an owner or a moderator if you need them.' : '', { icon: 'lock' });
+    showMsg(inSpace ? `You can't see the files in this ${SPACE}.` : `Open the ${MODULE} inside ${word('space', { a: true })}.`, inSpace ? ASK_WORDS : '', { icon: 'lock' });
     return;
   }
   const mayAdd = can('add');
@@ -138,7 +139,7 @@
   const state = {
     files: [], usage: { bytes: 0, maxBytes: 0 },
     view: 'list', sort: 'new', query: '', types: new Set(), by: 'all', linked: new Set(),
-    selecting: false, sel: new Set(), panel: false, queue: [], loaded: false,
+    selecting: false, sel: new Set(), adding: false, queue: [], loaded: false,
     people: new Map(), removeWhere: false, notice: null, dropping: false,
   };
 
@@ -191,7 +192,7 @@
       render();
     } catch (err) {
       if (quiet) return;
-      if (err.status === 403 || err.status === 404) showMsg(`You can't see the files in this ${SPACE}.`, 'Ask an owner or a moderator if you need them.', { icon: 'lock' });
+      if (err.status === 403 || err.status === 404) showMsg(`You can't see the files in this ${SPACE}.`, ASK_WORDS, { icon: 'lock' });
       else showMsg(`The ${MODULE} could not load`, err.message, { retry: () => refresh() });
     }
   }
@@ -366,7 +367,7 @@
     else if (id === 'sel-remove') removeFiles(chosen(), endSelecting);
   });
   host.on('header', (e) => { if (e.id === 'select') { if (state.selecting) endSelecting(); else { state.selecting = true; state.sel.clear(); render(); } } });
-  host.on('add', (e) => { if (e.id === 'add' && mayAdd) { state.panel = true; render(); setTimeout(() => $('choose').focus(), 0); } });
+  host.on('add', (e) => { if (e.id === 'add' && mayAdd) { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); } });
   host.on('links', () => { refresh({ quiet: true }); });
   function endSelecting() { state.selecting = false; state.sel.clear(); render(); }
 
@@ -504,8 +505,11 @@
       c.dataset.id = f.id; c.dataset.tint = k.tint;
       if (state.sel.has(f.id)) c.setAttribute('aria-selected', 'true');
       const over = el('div', 'vt-card-over');
-      if (ticks()) over.append(tick(f));
-      over.append(el('span', 'vt-fill'), menuButton(f));
+      if (ticks()) { const first = el('span', 'vt-over-chip'); first.append(tick(f)); over.append(first); }
+      over.append(el('span', 'vt-fill'));
+      const chip = el('span', 'vt-over-chip');
+      chip.append(menuButton(f));
+      over.append(chip);
       const meta = el('div', 'vt-card-meta');
       const subl = el('span', 'vt-card-sub');
       subl.append(el('span', 'vt-x-kind', `${k.word} · `), size(f.size), el('span', 'vt-x-by', ` · ${byWord(f)}`));
@@ -539,7 +543,7 @@
     const e = el('div', 'sdk-empty vt-empty-in');
     if (!state.files.length) {
       e.append(ic('folder-open'), el('p', 'sdk-empty-title', 'No files yet.'), el('p', 'sdk-empty-text', mayAdd ? `Add tickets, photos and documents for this ${SPACE}.` : `Nothing has been added to this ${SPACE} yet.`));
-      if (mayAdd) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.panel = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
+      if (mayAdd) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
     } else {
       e.append(ic('magnifying-glass'), el('p', 'sdk-empty-title', 'No files match.'));
       const b = button('btn', { label: 'Clear filters', icon: 'xmark' });
@@ -587,7 +591,7 @@
   function renderBanner() {
     const b = $('banner');
     let note = state.notice;
-    if (!note && !state.panel && capBytes()) {
+    if (!note && !state.adding && capBytes()) {
       if (isFull()) note = { kind: 'danger', text: fullSentence() };
       else if (usedBytes() / capBytes() >= 0.8) note = { kind: 'warn', text: `Almost full. Remove some files to add more: ${size(usedBytes())} of ${size(capBytes())} used in this ${SPACE}.` };
     }
@@ -607,7 +611,7 @@
   // ---- Add files -----------------------------------------------------------------------------------------------------------------------
   function renderAdd() {
     const p = $('add');
-    p.hidden = !(state.panel && mayAdd);
+    p.hidden = !(state.adding && mayAdd);
     if (p.hidden) return;
     const full = isFull();
     const drop = $('drop');
@@ -625,7 +629,7 @@
     $('quota-value').textContent = cap ? `${size(u)} of ${size(cap)}` : size(u);
     const pct = cap ? Math.min(100, (u / cap) * 100) : 0;
     $('quota-bar').setAttribute('aria-valuenow', String(Math.round(pct)));
-    $('quota-bar').setAttribute('aria-label', `Space used in this ${SPACE}`);
+    $('quota-bar').setAttribute('aria-label', `Used in this ${SPACE}`);
     $('quota-bar').classList.toggle('warn', pct >= 90);
     $('quota-fill').style.setProperty('--pct', `${pct}%`);
     const q = $('queue');
@@ -671,7 +675,7 @@
       const kind = (() => { const e = (f.name.split('.').pop() || '').toLowerCase(); return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(e) ? 'picture' : ['mp3', 'ogg', 'oga', 'wav', 'm4a'].includes(e) ? 'audio' : ['mp4', 'webm', 'mov'].includes(e) ? 'video' : e === 'pdf' ? 'pdf' : 'text'; })();
       state.queue.push({ file: f, name: f.name, size: f.size || 1, kind, status: 'queued', pct: 0, msg: '' });
     }
-    state.panel = true;
+    state.adding = true;
     render();
     pump();
   }
@@ -683,7 +687,7 @@
       send(it).finally(() => { running -= 1; pump(); });
     }
   }
-  // When every file of a batch has gone in, the panel says so and closes itself; one that was refused keeps it open to read.
+  // When every file of a batch has gone in, Add files says so and closes itself; one that was refused keeps it open to read.
   let closeTimer = 0;
   function finished() {
     if (!state.queue.length || !state.queue.every((x) => x.status === 'done')) return;
@@ -693,7 +697,7 @@
     closeTimer = setTimeout(() => {
       if (running || pending().length || !state.queue.every((x) => x.status === 'done')) return;
       state.queue = [];
-      state.panel = false;
+      state.adding = false;
       render();
     }, 2500);
   }
@@ -740,7 +744,7 @@
 
   $('choose').addEventListener('click', () => $('picker').click());
   $('picker').addEventListener('change', () => { const files = [...$('picker').files]; $('picker').value = ''; if (files.length) startFiles(files); });
-  $('add-close').addEventListener('click', () => { state.panel = false; render(); });
+  $('add-close').addEventListener('click', () => { state.adding = false; render(); });
   $('remove-where').addEventListener('change', () => { state.removeWhere = $('remove-where').checked; });
   // Dropping files on the module adds them.
   let depth = 0;
@@ -756,10 +760,10 @@
   });
   function showDropOver(on) {
     state.dropping = on;
-    $('dropover').hidden = !on || state.panel;
+    $('dropover').hidden = !on || state.adding;
     $('dropover-title').textContent = `Drop to add to the ${MODULE}`;
     $('dropover-sub').textContent = `Everyone in this ${SPACE} can see what you add.`;
-    if (state.panel) renderAdd();
+    if (state.adding) renderAdd();
   }
 
   // ---- Rename ----------------------------------------------------------------------------------------------------------------------------
@@ -899,6 +903,9 @@
   await refresh();
   // Other people's changes arrive by asking again now and then (and when this page comes back into view): the server has no push for a
   // library yet.
-  setInterval(() => { if (document.visibilityState === 'visible' && !running && !renaming) refresh({ quiet: true }); }, 15000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh({ quiet: true }); });
+  const poll = setInterval(() => {
+    if (!$('app')) return void clearInterval(poll);
+    if (document.visibilityState === 'visible' && !running && !renaming) refresh({ quiet: true });
+  }, 15000);
+  document.addEventListener('visibilitychange', () => { if ($('app') && document.visibilityState === 'visible') refresh({ quiet: true }); });
 })();

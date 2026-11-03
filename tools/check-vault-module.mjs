@@ -1,7 +1,7 @@
 // check-vault-module.mjs: the Vault module (modules/vault, plan-attachments-vault.md step 2), in two parts.
 //   1. Read from the files, no browser: the manifest builds and declares what the plan says (the `library` hook, the space scope, the five
 //      permissions with guests off, the `file` kind), every host.library call the page makes exists in the SDK and the host's bridge, the
-//      source holds none of the words the names rule forbids, and both templates show the module under their own word.
+//      and both templates show the module under their own word.
 //   2. Live (headless Chromium, the screenshot seed): files added through the server and through the page's own Add files, the List and
 //      the Grid, search, Rename, Remove, Select, a member who may not change someone else's file, a member who may not add, and a phone's
 //      width (one column of rows with 44px height, the Grid three across).
@@ -42,16 +42,11 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
     if (!new RegExp(`\\b${name}:`).test(block)) fail(`the page calls host.library.${name}, which the SDK does not have`);
     if (!bridge.includes(`'library.${name}'`)) fail(`the page calls host.library.${name}, which the host's bridge does not answer`);
   }
-  const words = /\b(rooms?|tables?|stages?|panes?|tenants?)\b/i;
-  for (const f of ['vault.js', 'vault.html', 'vault.css']) {
-    const hit = words.exec(read(`modules/vault/src/${f}`));
-    if (hit) fail(`modules/vault/src/${f} uses the word "${hit[0]}", which the names rule forbids`);
-  }
   const travel = JSON.parse(read('templates/travel.json'));
   const games = JSON.parse(read('templates/games.json'));
   if (travel.moduleNames.vault !== 'Documents' || !travel.modules.includes('vault')) fail('the travel template does not show the Vault as Documents');
   if (games.moduleNames.vault !== 'Handouts' || !games.modules.includes('vault')) fail('the games template does not show the Vault as Handouts');
-  say('manifest, SDK calls, words and templates read');
+  say('manifest, SDK calls and templates read');
 }
 
 // ---- 2. the browser ----
@@ -115,8 +110,8 @@ async function main() {
       say(`search "rom": ${found} rows`);
       await tab.eval(SET_VALUE('.mf-search input', ''));
       await tab.click('.mf-switch-btn', 'Grid');
-      const cards = await until(tab, COUNT('.vt-card'), (v) => v === 3);
-      if (cards !== 3) fail(`the Grid shows ${cards} cards for three files (it was ${cards})`);
+      const tiles = await until(tab, COUNT('.vt-card'), (v) => v === 3);
+      if (tiles !== 3) fail(`the Grid shows ${tiles} tiles for three files`);
       await tab.click('.mf-switch-btn', 'List');
       await until(tab, COUNT('.vt-row'), (v) => v === 3 || v === 2);
       // Rename

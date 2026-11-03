@@ -257,7 +257,7 @@ async function main() {
       const allIn = (root, sel) => { const out = [...root.querySelectorAll(sel)]; for (const e of root.querySelectorAll('*')) if (e.shadowRoot) out.push(...allIn(e.shadowRoot, sel)); return out; };
       const first = () => document.querySelector('#pp-vault .vt-frame');
       const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-      const stageOf = () => document.querySelector('#pp-vault .vt-stage');
+      const stageOf = () => document.querySelector('#pp-vault .vt-canvas');
       const openers = () => allIn(stageOf(), 'button.sdk-open').filter((b) => b.title);
     `;
     {

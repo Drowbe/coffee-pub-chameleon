@@ -1,7 +1,7 @@
 // The Prototype's Vault section, the third part (Thomas, 2026-11-02): the file chip and "File missing" in another module's card, the chooser,
 // sharing (the sheet, the list of links, the public /shared page), deleting and erasing, and the questions for Thomas.
 import { createModuleFrame } from '/module-frame.js';
-import { createStage } from './prototype-vault-window.js';
+import { createCanvas } from './prototype-vault-window.js';
 import { FILES, SHARES, byId, TOTAL_BYTES } from './prototype-vault-data.js';
 import { h, fa, btn, fileChip, WORDS, inShadow, lazy } from './prototype-vault-ui.js';
 import { TRIAL } from './prototype-vault-app.js';
@@ -26,7 +26,7 @@ function otherWindow(into, { name, note, w, h: hh, canEdit = true, level = 'h4',
   into.append(wrap);
   let stage = null;
   lazy(box, () => {
-    stage = createStage();
+    stage = createCanvas();
     box.append(stage.el);
     const open = (f, el, items, title) => {
       const list = items.filter((x) => x.file && (x.state || 'ok') === 'ok').map((x) => byId(x.file));
