@@ -352,6 +352,15 @@
       remember(String(e.key).slice(PLACE_PREFIX.length), e.deleted ? null : e.value, e.version);
       changed();
     });
+    // Many at once (a Clear, its Undo): kept in one pass, announced once. Keys only (a big event comes without values): read again.
+    host.on('changes', (e) => {
+      if (space ? !(e.scope === 'spaces' && String(e.spaceId) === space) : e.scope === 'spaces' || (e.scope || 'space') !== scope) return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => String(c.key).startsWith(PLACE_PREFIX));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key).slice(PLACE_PREFIX.length), c.deleted ? null : c.value, c.version);
+      changed();
+    });
 
     const list = () => [...byId.values()].map((x) => x.place).sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true })); // QA place 2 before QA place 10
     const get = (id) => (byId.get(id) || {}).place || null;
@@ -448,6 +457,14 @@
     host.on('change', (e) => {
       if (!String(e.key).startsWith(SAVED_PREFIX) || e.scope !== 'person') return;
       remember(String(e.key), e.deleted ? null : e.value);
+      changed();
+    });
+    host.on('changes', (e) => {
+      if (e.scope !== 'person') return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => String(c.key).startsWith(SAVED_PREFIX));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key), c.deleted ? null : c.value);
       changed();
     });
     const has = (ref) => byKey.has(bookmarkKey(ref));

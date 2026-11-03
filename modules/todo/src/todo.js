@@ -198,7 +198,8 @@
       }
     }
   }
-  host.on('change', (e) => {
+  // One change: kept, not drawn (the caller draws, once).
+  function applyChange(e) {
     if (!e.key.startsWith('task:')) return;
     const scope = e.scope === 'spaces' ? 'spaces' : 'own';
     const id = e.key.slice(5);
@@ -207,6 +208,19 @@
     if (editing && editing.key === keyOf(scope, id, e.spaceId) && e.by !== info.user.key) {
       showError('This task was just changed by someone else. Close and reopen it to see the change.');
     }
+  }
+  host.on('change', (e) => {
+    if (!e.key.startsWith('task:')) return;
+    applyChange(e);
+    render();
+  });
+  // Many at once (someone cleared the list, or put it back): kept in one pass and drawn once. If the event names keys only
+  // (a big one comes without values), the list is read again instead.
+  host.on('changes', (e) => {
+    const list = (Array.isArray(e.changes) ? e.changes : []).map((c) => ({ ...c, scope: e.scope, spaceId: e.spaceId })).filter((c) => String(c.key).startsWith('task:'));
+    if (!list.length) return;
+    if (list.some((c) => !c.deleted && c.value === undefined)) { load().then(render).catch(() => {}); return; }
+    for (const c of list) applyChange(c);
     render();
   });
 

@@ -224,10 +224,11 @@
       }
     }
   }
-  host.on('change', (e) => {
-    if (!e.key.startsWith('event:')) return;
-    if (e.scope === 'environment' && inSpace && !showsEnvironment) return; // not shown here: a part in a space
-    if (e.scope === 'spaces' && !spaceInfo.has(e.spaceId)) return; // the Lobby, or a space this page does not list
+  // One change: kept, not drawn (the caller draws, once). False when it is not for this page.
+  function applyChange(e) {
+    if (!e.key.startsWith('event:')) return false;
+    if (e.scope === 'environment' && inSpace && !showsEnvironment) return false; // not shown here: a part in a space
+    if (e.scope === 'spaces' && !spaceInfo.has(e.spaceId)) return false; // the Lobby, or a space this page does not list
     const scope = e.scope === 'spaces' ? 'spaces' : e.scope === 'environment' && inSpace ? 'environment' : 'here';
     const id = e.key.slice(6);
     if (e.deleted) { events.delete(keyOf(scope, id, e.spaceId)); pairInfo.delete(keyOf(scope, id, e.spaceId)); }
@@ -235,7 +236,19 @@
     if (editing && editing.scope === scope && editing.id === id && (scope !== 'spaces' || editing.spaceId === e.spaceId) && e.by !== info.user.key) {
       showError('This event was just changed by someone else. Close and reopen it to see the change.');
     }
-    render();
+    return true;
+  }
+  host.on('change', (e) => {
+    if (applyChange(e)) render();
+  });
+  // Many at once (a Clear, its Undo): kept in one pass and drawn once; keys only (a big event comes without values): read again.
+  host.on('changes', (e) => {
+    const list = (Array.isArray(e.changes) ? e.changes : []).map((c) => ({ ...c, scope: e.scope, spaceId: e.spaceId })).filter((c) => String(c.key).startsWith('event:'));
+    if (!list.length) return;
+    if (list.some((c) => !c.deleted && c.value === undefined)) { load().then(render).catch(() => {}); return; }
+    let any = false;
+    for (const c of list) any = applyChange(c) || any;
+    if (any) render();
   });
 
   // --- phases --------------------------------------------------------------
