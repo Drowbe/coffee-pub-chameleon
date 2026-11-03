@@ -38,5 +38,9 @@
   "travel": {
     "version": "0.15.61",
     "hash": "d4de1bcfd9238d93"
+  },
+  "vault": {
+    "version": "0.1.0",
+    "hash": "49e106d1c3062d82"
   }
 }

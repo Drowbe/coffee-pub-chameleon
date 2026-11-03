@@ -2326,6 +2326,33 @@
       url: (id, o) => call('uploads.url', { id, thumb: !!(o && o.thumb), scope: o && o.scope }),
     },
 
+    // A library's files (a module that declares `library: true`, the Vault; plan-attachments-vault.md): the space's files, kept by the
+    // server, each checked from its own bytes. All in the space the frame is in.
+    //   list()                       -> { files: [{ id, name, type, group, size, by, at, taken?, hasThumb, uses }], usage: { bytes, maxBytes } }
+    //   add(blob, { name, keepPosition, onProgress })  -> the file. `onProgress({ loaded, total })` while it is sent; the promise has `.cancel()`.
+    //       A picture keeps where it was taken only when `keepPosition` is true. Rejects with the server's sentence (a type or limit refused).
+    //   rename(id, name), remove(id), uses(id) -> { uses: [summary], hidden }, thumb(id, blob) (the small picture you made, of at most 300 KB)
+    //   url(id, { thumb, download }) the address; blob(id, { thumb }) -> a Blob of the file or its small picture
+    //   download(id)                 the host saves the file (a frame cannot start a download itself); needs `download`
+    library: {
+      list: () => call('library.list'),
+      add: (file, o) => {
+        const opts = o || {};
+        const token = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+        const off = typeof opts.onProgress === 'function' ? host.on('libraryprogress', (e) => { if (e && e.token === token) opts.onProgress({ loaded: e.loaded, total: e.total }); }) : null;
+        const out = call('library.add', { file, name: opts.name, keepPosition: Boolean(opts.keepPosition), token }).finally(() => { if (off) off(); });
+        out.cancel = () => { call('library.cancel', { token }).catch(() => {}); };
+        return out;
+      },
+      rename: (id, name) => call('library.rename', { id, name }),
+      remove: (id) => call('library.remove', { id }),
+      uses: (id) => call('library.uses', { id }),
+      thumb: (id, blob) => call('library.thumb', { id, file: blob }),
+      url: (id, o) => call('library.url', { id, thumb: Boolean(o && o.thumb), download: Boolean(o && o.download) }),
+      blob: (id, o) => call('library.blob', { id, thumb: Boolean(o && o.thumb) }),
+      download: (id) => call('library.download', { id }),
+    },
+
     // The module's settings, as chosen for this viewer here: { key: value }, with the module's own default for what
     // nobody has chosen. Declared in module.json (`settings`); the host draws the forms (an owner's for the environment, a
     // space's moderators' for a space, each person's own) and keeps the values. `onChange(fn)` calls fn(values) when any of

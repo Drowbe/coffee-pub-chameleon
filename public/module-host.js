@@ -1121,6 +1121,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     return `${base}${path}?${p}`;
   };
 
+  // The library routes (a module that declares `library: true`) are about one space: this frame's.
+  const libraryUploads = new Map();
+  const libraryUrl = (path = '', extra = {}) => {
+    if (scope !== 'space' || !spaceId) throw Object.assign(new Error(`This works inside ${word('space', { a: true })}.`), { status: 400 });
+    const p = new URLSearchParams({ space: spaceId });
+    for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null && v !== '') p.set(k, v);
+    return `${base}/library${path}?${p}`;
+  };
+
   // The place this module is in, for the bus routes: on a space's canvas it is in that space, a page in the environment.
   const busPlaceBody = () => (scope === 'space' ? { scope: 'space', space: spaceId } : { scope: 'environment' });
   const busGuest = () => (guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '');
@@ -1598,6 +1607,73 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // The address to show a picture from (an <img> in the page), or its thumbnail.
     async 'uploads.url'({ id, thumb, scope: s }) {
       return url(`/uploads/${encodeURIComponent(String(id ?? ''))}${thumb ? '/thumb' : ''}`, scopeOf(s));
+    },
+    // A library's files (a module that declares `library: true`): the space this frame is in, through the library routes. The bytes
+    // of an add go by XHR so the module hears how far they got ('libraryprogress'); a download is started here, because a sandboxed
+    // frame may not start one.
+    async 'library.list'() {
+      return api('GET', libraryUrl());
+    },
+    async 'library.add'({ file, name, keepPosition, token }) {
+      if (!(file instanceof Blob)) throw Object.assign(new Error('send a file'), { status: 400 });
+      const target = libraryUrl('', { name: String(name ?? file.name ?? '').slice(0, 200), keepPosition: keepPosition ? '1' : '' });
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', target);
+        for (const [k, v] of Object.entries(accessKeyHeaders())) xhr.setRequestHeader(k, v);
+        if (file.type) xhr.setRequestHeader('content-type', file.type);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) send('libraryprogress', { token, loaded: e.loaded, total: e.total }); };
+        const fail = (message, status) => { libraryUploads.delete(token); reject(Object.assign(new Error(message), { status })); };
+        xhr.onload = () => {
+          libraryUploads.delete(token);
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data.file);
+          else fail(data.error || `HTTP ${xhr.status}`, xhr.status);
+        };
+        xhr.onerror = () => fail('The file could not be sent. Check your connection and try again.', 0);
+        xhr.onabort = () => fail('Stopped.', 0);
+        if (token) libraryUploads.set(token, xhr);
+        xhr.send(file);
+      });
+    },
+    async 'library.cancel'({ token }) {
+      const xhr = libraryUploads.get(token);
+      if (xhr) xhr.abort();
+      return true;
+    },
+    async 'library.rename'({ id, name }) {
+      return (await api('PATCH', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}`), { name: String(name ?? '').slice(0, 200) })).file;
+    },
+    async 'library.remove'({ id }) {
+      return api('DELETE', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}`));
+    },
+    async 'library.uses'({ id }) {
+      return api('GET', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/uses`));
+    },
+    async 'library.thumb'({ id, file }) {
+      if (!(file instanceof Blob)) throw Object.assign(new Error('send a picture'), { status: 400 });
+      return (await api('PUT', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/thumb`), file, file.type)).file;
+    },
+    async 'library.url'({ id, thumb, download }) {
+      return libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`, download && !thumb ? { download: '1' } : {});
+    },
+    async 'library.blob'({ id, thumb }) {
+      const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`), { headers: accessKeyHeaders() });
+      if (!res.ok) throw Object.assign(new Error(res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`), { status: res.status });
+      return res.blob();
+    },
+    async 'library.download'({ id }) {
+      const doc = (pageMode ? container : frame).ownerDocument;
+      const a = doc.createElement('a');
+      a.href = libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/content`, { download: '1' });
+      a.download = '';
+      a.rel = 'noopener';
+      a.hidden = true;
+      doc.body.append(a);
+      a.click();
+      a.remove();
+      return true;
     },
     // Place search answered by the server (a module that declares `geocoder`): saved places first, then the chosen service.
     async 'geocode.search'({ q, lat, lon }) {
