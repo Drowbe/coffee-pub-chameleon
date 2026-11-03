@@ -1727,6 +1727,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // Previous and Next (the Vault's list as filtered). Focus comes back to this module when the window closes, and the module hears 'fileclosed'.
     async 'files.open'({ ref, list, name }) {
       if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
+      // A mount opens files of its own space only, and a module other than the library itself only if its manifest consumes that kind and
+      // an owner approved it (the server's resolve answers 403 otherwise; plan-attachments-vault.md, section 5).
+      if (scope !== 'space' || !spaceId || ref.space !== spaceId) throw Object.assign(new Error('that file is not in this space'), { status: 403 });
+      if (ref.module !== module.id) {
+        const [seen] = await api('POST', '/api/objects/resolve', { from: module.id, refs: [cleanPointer(ref)] }).then((r) => r.summaries || []);
+        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error('this module may not open files'), { status: 403 });
+      }
       const holder = pageMode ? container : frame;
       const { openFile } = await import('/file-viewer.js');
       const ids = Array.isArray(list) ? list.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 2000) : null;

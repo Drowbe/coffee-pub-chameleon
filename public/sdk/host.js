@@ -2426,7 +2426,8 @@
     // `open(pointer, { list, name })` opens a library file (the Vault's, a pointer of kind `file`) in a file window over the page (the
     // app's own viewer; several can be open, at most four). `list` is the ids of the files to walk with Previous and Next, in the order
     // to walk them (the Vault's list as filtered); without it the window has no Previous and Next. It answers true when a window
-    // opened or came forward, false at the cap (the person is told). When the window closes, focus returns to the module's frame
+    // opened or came forward, false at the cap (the person is told). It refuses (status 403) a pointer to a file in another space than this
+    // module's own, and a module that is not the library itself unless its manifest consumes the file kind and an owner approved it. When the window closes, focus returns to the module's frame
     // and the module hears the event 'fileclosed' ({ id }), so it can put focus back on what opened the file.
     files: {
       url: (name, o) => call('files.url', { name, ...(o && o.folder ? { folder: o.folder } : {}) }),

@@ -1012,10 +1012,11 @@ function showToast(n) {
 
 // A short note that goes away by itself (a module's "Saved in ...", host.ui.toast): a toast with a title only, never kept in the bell.
 // It is said aloud once (role=status) and goes after 4.5 s, or when it is closed.
-export function showNote(text) {
+export function showNote(text, body = '') {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!t) return;
-  pushToast({ kind: 'info', icon: 'circle-info', title: t, ms: 4500 });
+  const more = String(body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  pushToast({ kind: 'info', icon: 'circle-info', title: t, ...(more ? { text: more } : {}), ms: 4500 });
 }
 
 // A note with one button, "Undo", for `ms` milliseconds (Clear's 30 seconds). onUndo may fail: the note then says so.
