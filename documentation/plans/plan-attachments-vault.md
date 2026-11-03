@@ -7,7 +7,11 @@ quality-assurance reviews the store and the share links as security changes; con
 
 **Status:** approved 2026-10-30 (decisions 1 to 7 of 2026-10-29, GitHub #380, and decisions 8 to 15 of 2026-10-30).
 Step 1 is built (commits `bde9358` to `154819d`, on `claude/magical-feynman-xupgiq`); security QA round 1 failed and
-was fixed, round 2 is pending. Steps 2 to 8 are not built. Thomas decided the PDF rule (decision 16) and the hosted
+was fixed, and round 2's fixes for the server half are in. Step 2 (the Vault module, now 0.2.2) and step 3 (the file
+windows, `host.files.open`, the sandboxed PDF viewer and download-only PDFs) are built, checked by tools as reported by the builders (the file windows with live checks); see
+[userguide-vault](../userguides/userguide-vault.md). The page's **Remove where it was taken** ships off
+(a picture keeps where it was taken unless the person ticks it); Thomas has not yet answered the default (open question 1).
+Steps 4 and 5 are in progress; steps 6 to 8 are not built (the templates' words, step 7, are already in both templates). Thomas decided the PDF rule (decision 16) and the hosted
 total (decision 17) on 2026-10-31, and changed the PDF safety rule and the PDF viewer on 2026-11-01 (decision 18). On 2026-11-03 Thomas decided that the
 viewers open in one of the app's windows, not inside the Vault's content area (decision 19), and the same day, several at once with a cap of 4, on the existing window mode first (decision 20).
 Thomas calls it critical for post-trip sharing. One question is still his, the default for metadata removal; the

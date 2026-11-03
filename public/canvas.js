@@ -13,7 +13,7 @@
 // See documentation/architecture/architecture-canvas.md.
 
 import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, clearWithUndo, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
+import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
 import { fileWindowCount, closeAllFiles } from '/file-viewer.js';
@@ -927,6 +927,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       // A request for an action waits for the page of the module that carries it: open that module if it is on here.
       onOpenModule: (id) => { const target = available.find((x) => x.id === readId(id)); if (target && !opened.has(target.id)) openModule(target); },
       onChatAsk,
+      // The data changed (someone cleared it, or put it back): whether Clear is offered, and for how long Undo lasts, are asked again.
+      onChanges: followClearable(m.id, { spaceId, guestToken }, (entry) => { m.clear = entry.clear === true; m.undoSeconds = entry.undoSeconds; if (mod.frame) mod.frame.setTitlebar({}); }, () => m.clear === true),
       scope: 'space',
       spaceId,
       guestToken,
@@ -1366,7 +1368,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (e.id === 'window') return setMode(id, 'float');
     if (e.id === 'dock') return setMode(id, 'dock');
     if (e.id === 'popout') return popOut(id);
-    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true, name: (opened.get(id) || mod).m.name || '' });
+    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true, name: (opened.get(id) || mod).m.name || '', undoSeconds: (opened.get(id) || mod).m.undoSeconds });
   }
 
   // Everything this module holds in this space. The conference and the chat are not modules, so they never get this.

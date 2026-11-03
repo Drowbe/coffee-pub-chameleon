@@ -936,6 +936,9 @@ function closeToast(t) {
   if (t.gone) return;
   t.gone = true;
   clearTimeout(t.timer);
+  // Focus that was on the toast goes back to where it was before the toast took it (the Undo note), else it would fall to the page.
+  const back = t.returnTo;
+  if (back && back.isConnected && (t.el.contains(document.activeElement) || document.activeElement === document.body)) back.focus({ preventScroll: true });
   t.el.dataset.state = 'leaving';
   setTimeout(() => {
     t.el.remove();
@@ -982,6 +985,7 @@ function placeToast(spec) {
   });
   toastStack().prepend(el);
   start();
+  if (spec.onPlaced) spec.onPlaced(t);
   return t;
 }
 // Shows a toast, or queues it behind the three showing.
@@ -1022,23 +1026,59 @@ export function showNote(text, body = '') {
   pushToast({ kind: 'info', icon: 'circle-info', title: t, ...(more ? { text: more } : {}), ms: 4500 });
 }
 
-// A note with one button, "Undo", until `until` (a time in ms; Clear's 30 seconds from the server's answer): it goes then
+// A note with one button, "Undo", until `until` (a time in ms; Clear's undo time from the server's answer): it goes then
 // whatever the pointer or the focus does, as Undo can't work after it. onUndo may resolve to the sentence to show
-// ("Restored 12 objects."); it may fail, and the note then says so. Undo is pressed once.
+// ("Restored 12 objects."), and the note then gives way to it. It may fail: the note then stays, with the server's sentence
+// and Undo ready again, until `until`. Pressed twice quickly, it asks once. Focus moves to Undo as the note shows (a keyboard
+// user would otherwise tab through the whole page in the undo time) and goes back to where it was when the note goes.
 export function undoToast(text, onUndo, { until = Date.now() + 30000 } = {}) {
-  let pressed = false;
+  let busy = false;
+  let done = false;
+  let note = null;
+  const before = document.activeElement;
+  const typing = before && (before.isContentEditable || /^(input|textarea|select)$/i.test(before.tagName));
   pushToast({
     kind: 'info',
     icon: 'rotate-left',
     title: String(text ?? '').slice(0, 200),
     until,
     actions: '<button type="button" class="btn btn-primary btn-small" data-undo>Undo</button>',
+    onPlaced: (t) => {
+      note = t;
+      t.el.dataset.undo = '';
+      if (typing) return;
+      t.returnTo = before && before !== document.body ? before : null;
+      t.el.querySelector('[data-undo]')?.focus({ preventScroll: true });
+    },
     onClick: (e) => {
-      if (!e.target.closest('[data-undo]')) return false;
-      if (pressed) return true;
-      pressed = true;
-      Promise.resolve().then(onUndo).then((said) => showNote(typeof said === 'string' && said ? said : 'Brought back.'), (err) => noticeToast((err && err.message) || 'It could not be brought back.', { kind: 'danger' }));
-      return true;
+      const button = e.target.closest('[data-undo]');
+      if (!button) return false;
+      if (busy || done || !note) return false;
+      busy = true;
+      button.disabled = true;
+      Promise.resolve().then(onUndo).then(
+        (said) => {
+          done = true;
+          closeToast(note);
+          showNote(typeof said === 'string' && said ? said : 'Brought back.');
+        },
+        (err) => {
+          busy = false;
+          button.disabled = false;
+          let line = note.el.querySelector('[data-undo-error]');
+          if (!line) {
+            line = document.createElement('span');
+            line.className = 'sdk-toast-text';
+            line.setAttribute('data-undo-error', '');
+            line.setAttribute('role', 'alert');
+            note.el.querySelector('.sdk-toast-body').appendChild(line);
+          }
+          line.textContent = (err && err.message) || 'It could not be brought back.';
+          note.el.dataset.kind = 'warn';
+          button.focus({ preventScroll: true });
+        },
+      );
+      return false;
     },
   });
 }

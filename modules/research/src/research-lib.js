@@ -288,6 +288,15 @@
       remember(String(e.key), e.deleted ? null : e.value, e.version);
       changed();
     });
+    // Many at once (a Clear, its Undo): kept in one pass, announced once. Keys only (a big event comes without values): read again.
+    host.on('changes', (e) => {
+      if (e.scope === 'spaces' || (e.scope || 'space') !== scope) return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => KINDS.includes(split(c.key)[0]));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key), c.deleted ? null : c.value, c.version);
+      changed();
+    });
 
     const list = () => [...items.values()].map((x) => x.item);
     const get = (id) => (items.get(id) || {}).item || null;

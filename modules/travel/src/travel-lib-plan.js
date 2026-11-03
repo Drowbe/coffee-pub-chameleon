@@ -144,6 +144,24 @@
       if (!e.deleted && String(e.key).startsWith(OLD_PLAN_PREFIX)) moveOld({ key: e.key, value: e.value, version: e.version }).catch(() => {});
     });
 
+    // Many at once (someone cleared the plan, or put it back): kept in one pass, drawn once, the summaries asked once. Keys
+    // only (a big event comes without values): the plan is read again.
+    host.on('changes', (e) => {
+      if (e.scope === 'spaces') return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => c.key === TRIP_KEY || planIdOf(c.key) !== null);
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      let plans = false;
+      for (const c of list) {
+        remember(c.key, c.deleted ? null : c.value, c.version);
+        if (planIdOf(c.key) !== null) plans = true;
+      }
+      changed();
+      if (!plans) return;
+      resolveSummaries().catch(() => {});
+      for (const c of list) if (!c.deleted && String(c.key).startsWith(OLD_PLAN_PREFIX)) moveOld({ key: c.key, value: c.value, version: c.version }).catch(() => {});
+    });
+
     // The summaries of the objects other modules hold that this plan points at.
     // `all` asks again for every one (an object may have been changed or deleted where it lives), not just the new ones.
     async function resolveSummaries(all) {

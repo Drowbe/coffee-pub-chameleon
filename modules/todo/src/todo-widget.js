@@ -116,6 +116,12 @@
     clearTimeout(refreshing);
     refreshing = setTimeout(() => load().then(render).catch(() => {}), 300);
   });
+  // Many at once (a Clear, its Undo): one read after them, not one per key.
+  host.on('changes', (e) => {
+    if (!(Array.isArray(e.changes) ? e.changes : []).some((c) => String(c.key).startsWith('task:'))) return;
+    clearTimeout(refreshing);
+    refreshing = setTimeout(() => load().then(render).catch(() => {}), 300);
+  });
 
   async function start() {
     try {

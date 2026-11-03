@@ -1257,9 +1257,27 @@
     if (event === 'objectopen' && !(listeners.get(event) && listeners.get(event).size)) pendingOpen = data;
     // Many keys at once (a Clear, its Undo): a module listening for 'changes' hears it once, to draw once; any other
     // hears each key as its own 'change'.
+    // The replay is one pass, and each 'change' of it carries `batch` ({ count, last }) so a module that draws on each one can
+    // draw on the last only. An event that names keys only (a big one comes without values) has its values read first, a few
+    // at a time, so a 'change' always has its value.
     if (event === 'changes' && !(listeners.get(event) && listeners.get(event).size)) {
       const { changes = [], scope, spaceId } = data || {};
-      for (const c of changes) emit('change', { ...c, scope, spaceId });
+      const replay = (list) => list.forEach((c, i) => emit('change', { ...c, scope, spaceId, batch: { count: list.length, last: i === list.length - 1 } }));
+      if (!changes.some((c) => !c.deleted && c.value === undefined)) { replay(changes); return; }
+      (async () => {
+        const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
+        const full = [];
+        for (let i = 0; i < changes.length; i += 20) {
+          full.push(...await Promise.all(changes.slice(i, i + 20).map(async (c) => {
+            if (c.deleted || c.value !== undefined) return c;
+            try {
+              const got = await call('storage.get', { key: c.key, ...opts(at) });
+              return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
+            } catch (err) { return null; }
+          })));
+        }
+        replay(full.filter(Boolean));
+      })();
       return;
     }
     for (const fn of listeners.get(event) || []) {
@@ -3374,7 +3392,7 @@
     // 'toolbar' ({ id, value?, x? }) for a toolbar item (x: a button's left edge across the module, for a menu under it), 'nav' ({ id }) for one of the module's nav-bar tools,
     // 'change' ({ key, value, version, deleted, scope, spaceId, by })
     // whenever stored data changes, 'changes' ({ changes: [{ key, value, version, deleted, by }], cleared?, restored?, scope, spaceId, by })
-    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change'), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
+    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change' in one pass, with batch: { count, last }, so a module can draw on the last only), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
     // 'moved' ({ mode }) after the host moved the module between docked and floating (the SDK reopens an open editor window itself),
     // 'environment' ({ pictureMap }) when the environment's facts changed (host.environment already answers the new ones),
     // 'phases' ({ phases, timeline }) when the dates on the space's timeline changed (a save in the sheet or Set up, or

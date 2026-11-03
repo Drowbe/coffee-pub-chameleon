@@ -4742,6 +4742,12 @@ html[data-dialog-open] { overflow: hidden; }
   pointer-events: none;
 }
 .sdk-toasts > * { pointer-events: auto; }
+/* While an Undo note shows, the stack sits along the bottom edge, as on a phone: at the top right it covers the title bar's menu button of the module that was cleared. */
+.sdk-toasts:has(> .sdk-toast[data-undo]) {
+  top: auto;
+  bottom: var(--space-4);
+  flex-direction: column-reverse;
+}
 
 /* ---- The toast ---- */
 .sdk-toast {

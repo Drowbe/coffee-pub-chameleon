@@ -816,28 +816,46 @@ export function openConfirmMenu(trigger, { label, confirm, hint, icon = 'trash',
 // canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away. With a `name` it asks by the styled confirm and
 // the person types that name first (it wipes the module's data for everyone). `onClear` may resolve to an `undo` function (see
 // clearWithUndo): the page then shows "Cleared. Undo" until the server's undo time is over (undo.until), never longer.
-export function openClearMenu(trigger, onClear, { armed = false, name = '' } = {}) {
+export function openClearMenu(trigger, onClear, { armed = false, name = '', undoSeconds = 0 } = {}) {
   if (!name) { openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed }); return; }
+  const seconds = Number(undoSeconds) > 0 ? Math.round(Number(undoSeconds)) : UNDO_SECONDS;
   const ask = async () => {
-    const ok = await confirmDialog({ title: `Clear ${name}?`, message: `Everything ${name} holds here goes, for everyone. You can undo it for ${UNDO_SECONDS} seconds.`, action: 'Clear', kind: 'final', typed: name });
+    let undo = null;
+    // The Clear runs inside the dialog: a refusal (a second Clear while the first can still be undone, too many in a short
+    // time) is read where it was asked, and the dialog stays.
+    const ok = await confirmDialog({
+      title: `Clear ${name}?`,
+      message: `Everything ${name} holds here goes, for everyone. You can undo it for ${seconds} seconds, until you leave this page.`,
+      action: 'Clear',
+      kind: 'final',
+      typed: name,
+      run: async () => {
+        try { undo = await onClear(); } catch (err) { throw sayAsked(err, 'It could not be cleared.'); }
+      },
+    });
     if (!ok) return;
-    try {
-      const undo = await onClear();
-      if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, { until: undo.until });
-      else showNote(`${name} had nothing to clear.`);
-    } catch (err) {
-      openHostMenu(trigger, [{ label: (err && err.message) || 'It could not be cleared.', disabled: true }]);
-    }
+    if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, { until: undo.until });
+    else showNote(`${name} had nothing to clear.`);
   };
   if (armed) ask();
   else openHostMenu(trigger, [{ icon: 'trash', label: 'Clear', danger: true, onPick: ask }]);
 }
+// The undo time when the server did not say (its default).
 const UNDO_SECONDS = 30;
 
+// What a refused Clear or Undo says: the server's own sentence; after "too many" (429) it leads with "Try again in a moment."
+function sayAsked(err, fallback) {
+  const said = (err && err.serverSaid && err.message) || '';
+  if (err && err.status === 429) return Object.assign(new Error(said ? `Try again in a moment. ${said}` : 'Try again in a moment.'), { status: 429 });
+  return Object.assign(new Error(said || fallback), { status: err && err.status });
+}
+
 // Clears everything a module holds in a place (DELETE .../data). The server holds what went for its undo time (undoSeconds,
-// 30) and answers a restoreToken; this resolves to a function that asks the server to put it all back (POST .../data/restore),
-// which works even after this page is gone, as the server keeps the hold. The function resolves to the sentence to show, and
-// carries `until`, when the undo time is over by this page's clock. Resolves to null when there was nothing to clear.
+// 30 unless the server says) and answers a restoreToken; this resolves to a function that asks the server to put it all back
+// (POST .../data/restore). The token lives in this page only: the server keeps the hold, but after this page is closed or
+// reloaded there is no way to ask for the Undo, and the hold runs out. The function resolves to the sentence to show, and
+// carries `until`, when the undo time is over by this page's clock. A failed Undo (storage full, no network) throws the
+// server's sentence and may be asked again until `until`. Resolves to null when there was nothing to clear.
 // `query` is the place's query string.
 export async function clearWithUndo(moduleId, query) {
   const base = `/api/modules/${encodeURIComponent(moduleId)}/data`;
@@ -845,14 +863,41 @@ export async function clearWithUndo(moduleId, query) {
   if (!answer || !answer.cleared || typeof answer.restoreToken !== 'string') return null;
   const seconds = Number(answer.undoSeconds) > 0 ? Number(answer.undoSeconds) : UNDO_SECONDS;
   const undo = async () => {
-    const back = await api('POST', `${base}/restore?${query}`, { restoreToken: answer.restoreToken });
+    let back;
+    try {
+      back = await api('POST', `${base}/restore?${query}`, { restoreToken: answer.restoreToken });
+    } catch (err) {
+      throw sayAsked(err, 'It could not be brought back.');
+    }
     const n = Number(back.restored) || 0;
     const restored = `Restored ${n} ${n === 1 ? word('object') : word('object', { many: true })}.`;
-    const skipped = Number(back.skipped) || 0;
+    const skipped = Array.isArray(back.taken) && back.taken.length ? back.taken.length : Number(back.skipped) || 0;
     return skipped ? `${restored} ${skipped} could not come back: something new is in ${skipped === 1 ? 'its' : 'their'} place.` : restored;
   };
   undo.until = Date.now() + seconds * 1000;
   return undo;
+}
+
+// Keeps what the page knows of a module's Clear in step with the server: its `clear` (is there anything to clear, and may this
+// person) and `undoSeconds` come from GET /api/modules/for-space, read at load. Call the function this returns when the module's
+// data changed; it asks again once, after a short wait however many calls came, and hands the module's entry to `apply`.
+// A single change asks only when it could flip `clear` (something was added where there was nothing, `isClear()` false; or
+// something went where there was something); many at once ({ many: true }, a Clear or its Undo) always ask.
+export function followClearable(moduleId, { spaceId, guestToken = null }, apply, isClear = () => true) {
+  let timer = 0;
+  return ({ many = false, deleted = false } = {}) => {
+    if (!spaceId) return;
+    if (!many && deleted !== isClear()) return;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const q = new URLSearchParams({ space: spaceId });
+        if (guestToken) q.set('guest', guestToken);
+        const entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId);
+        if (entry) apply(entry);
+      } catch { /* the flag stays as it was */ }
+    }, 400);
+  };
 }
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
@@ -1134,7 +1179,7 @@ export function createFrameBands(frame, { send, box = null, statusLimit = undefi
 // window); the calls answer true. Wherever a module is drawn the host draws its bands; only a dashboard widget (no
 // header, toolbar, add or status given) answers false. `module.content` is the manifest's ("flush" or nothing). Returns
 // { destroy, send, deliver }. The module hears the same names the server uses (plan-names step 5c).
-export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null }) {
+export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null, onChanges = null }) {
   const base = `/api/modules/${encodeURIComponent(module.id)}`;
   let contextInfo = null;
   // A keyed page (public/keyed.js): the module's page about one person, opened with the access key and no
@@ -2142,10 +2187,14 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     if (type === 'settings' && d.scope === 'environment') recheckFacts();
     if (type !== 'bus' && type !== 'action' && type !== 'refchange' && d.module !== module.id) return;
     const here = scope === 'space' ? 'space' : 'environment';
-    if (type === 'change') send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
+    if (type === 'change') {
+      if (onChanges) onChanges({ deleted: d.deleted === true });
+      send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
     // Many keys at once (a Clear, its Undo): one event, which the SDK hands to a 'changes' listener once, else key by key.
-    else if (type === 'changes') send('changes', { changes: Array.isArray(d.changes) ? d.changes : [], cleared: d.cleared === true, restored: d.restored === true, by: d.by, scope: d.scope, spaceId: d.spaceId });
-    else if (type === 'refchange') {
+    } else if (type === 'changes') {
+      if (onChanges) onChanges({ many: true });
+      send('changes', { changes: Array.isArray(d.changes) ? d.changes : [], cleared: d.cleared === true, restored: d.restored === true, by: d.by, scope: d.scope, spaceId: d.spaceId });
+    } else if (type === 'refchange') {
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('refchange', { ref: d.ref, change: d.change });
     }
     else if (type === 'links') send('links', { ref: d.ref });

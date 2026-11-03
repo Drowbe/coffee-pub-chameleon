@@ -148,6 +148,15 @@
     remember(String(e.key).slice(COST_PREFIX.length), e.deleted ? null : e.value, e.version);
     if (state.loaded) render();
   });
+  // Many at once (a Clear, its Undo): kept in one pass, drawn once. Keys only (a big event comes without values): read again.
+  host.on('changes', (e) => {
+    if (e.scope === 'spaces' || e.scope === 'person' || e.scope === 'environment') return;
+    const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => String(c.key).startsWith(COST_PREFIX));
+    if (!list.length) return;
+    if (list.some((c) => !c.deleted && c.value === undefined)) { if (state.loaded) loadCosts().then(render).catch(() => {}); return; }
+    for (const c of list) remember(String(c.key).slice(COST_PREFIX.length), c.deleted ? null : c.value, c.version);
+    if (state.loaded) render();
+  });
   const pointer = (id) => host.objects.make('cost', id);
   async function saveCost(c, version) {
     const id = c.id && c.id !== 'new' ? c.id : host.util.id();

@@ -135,7 +135,8 @@
     }
   }
 
-  host.on('change', (e) => {
+  // One change: kept, not drawn. False when it is not a poll or a vote.
+  function applyChange(e) {
     const scope = e.scope === 'spaces' ? 'spaces' : 'own';
     if (e.key.startsWith('poll:')) {
       const key = pollKey(scope, e.key.slice(5), e.spaceId);
@@ -149,9 +150,21 @@
       if (e.deleted) forgetVote(scope, e.key, e.spaceId);
       else rememberVote(scope, { key: e.key, value: e.value }, e.spaceId);
     } else {
-      return;
+      return false;
     }
-    render();
+    return true;
+  }
+  host.on('change', (e) => {
+    if (applyChange(e)) render();
+  });
+  // Many at once (a Clear, its Undo): kept in one pass, drawn once. Keys only (a big event comes without values): read again.
+  host.on('changes', (e) => {
+    const list = (Array.isArray(e.changes) ? e.changes : []).map((c) => ({ ...c, scope: e.scope, spaceId: e.spaceId })).filter((c) => String(c.key).startsWith('poll:') || String(c.key).startsWith('vote:'));
+    if (!list.length) return;
+    if (list.some((c) => !c.deleted && c.value === undefined)) { load().then(render).catch(() => {}); return; }
+    let any = false;
+    for (const c of list) any = applyChange(c) || any;
+    if (any) render();
   });
 
   // --- what links to a poll, and being opened from a link ---------------------
