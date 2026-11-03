@@ -238,6 +238,10 @@ class VaultStore {
         gone += 1;
       }
     }
+    // Every space's folder goes too once nothing is left in it (another library module's files may still be there).
+    let folders = [];
+    try { folders = fs.readdirSync(this.bytesDir).filter((n) => /^space-[a-z0-9]{4,16}$/.test(n)); } catch { /* none */ }
+    for (const n of folders) { try { fs.rmdirSync(path.join(this.bytesDir, n)); } catch { /* not empty */ } }
     for (const key of [...this.cache.keys()]) if (key.startsWith(`${moduleId}|`)) this.cache.delete(key);
     fs.rmSync(path.join(this.modulesDir, moduleId, 'library'), { recursive: true, force: true });
     return gone;
