@@ -1,7 +1,7 @@
 {
   "assistant": {
-    "version": "0.1.25",
-    "hash": "dc69c171d1890b19"
+    "version": "0.1.26",
+    "hash": "2284c7a7f9a79d31"
   },
   "budget": {
     "version": "0.1.21",
@@ -24,8 +24,8 @@
     "hash": "d783fa9ea5365afc"
   },
   "research": {
-    "version": "0.4.29",
-    "hash": "fa14cc6d24599144"
+    "version": "0.4.30",
+    "hash": "027d7082905d41b4"
   },
   "stream": {
     "version": "0.1.15",

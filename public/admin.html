@@ -385,6 +385,16 @@
             <p class="hint" id="ai-usage-text"></p>
           </div>
         </section>
+        <section class="panel" id="ai-sees-panel" aria-labelledby="ai-sees-title">
+          <h2 id="ai-sees-title">What AI may see</h2>
+          <p class="hint" data-fill>What goes to the AI with a question. This only narrows it: the AI never sees what the person asking could not open. A {space} can set its own on its Set up.</p>
+          <div id="ai-sees-box"></div>
+          <div class="row"><button class="btn btn-primary" type="button" id="ai-sees-save">Save</button><button class="btn" type="button" id="ai-sees-reset">Back to the usual</button><span class="status" id="ai-sees-status" role="status"></span></div>
+        </section>
+        <section class="panel" id="ai-use-panel" aria-labelledby="ai-use-title">
+          <h2 id="ai-use-title">AI use this month</h2>
+          <div id="ai-use-box"><p class="hint">Loading...</p></div>
+        </section>
       </div>
 
       <!-- An installed module's tab, while it is on: its card, its settings (module-config.html's markup, drawn by

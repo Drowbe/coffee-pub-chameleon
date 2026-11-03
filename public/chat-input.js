@@ -754,6 +754,51 @@ export function routeLine(text, view) {
   if (v === 'assistant') return looksLikeImport(t) ? { run: 'import', view: 'assistant', line: t } : { run: 'ai', view: 'assistant', line: t };
   return { run: 'message', view: 'discussion', line: t };
 }
+// A question is at most this many characters (the server refuses more); counted as people count them.
+export const ASK_MAX = 1000;
+export function questionTooLong(question) {
+  const n = [...String(question || '')].length;
+  return n > ASK_MAX ? `A question is at most ${ASK_MAX.toLocaleString('en-US')} characters; this one is ${n.toLocaleString('en-US')}.` : '';
+}
+// The browser's time zone (IANA), sent with every ask so "today" is the asker's today.
+export function askZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
+}
+// The AI used: line of an answer, in parts a page draws. `sent` is what the server kept of the call ({ attached, relevant,
+// linked, history, chat, members, notSent, cut }), `leftOut` the call's own list. `w` is this environment's words:
+// { object, objects, space, owner, member, members, nameOf(moduleId) }. Answers { counts: [text], notSent: text, fit: text }.
+export function aiUsedParts(sent, leftOut, w) {
+  const s = sent && typeof sent === 'object' ? sent : {};
+  const n = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : 0);
+  const many = (c, one, more) => `${c} ${c === 1 ? one : more}`;
+  const counts = [];
+  if (n(s.relevant)) counts.push(many(n(s.relevant), `related ${w.object}`, `related ${w.objects}`));
+  if (n(s.linked)) counts.push(many(n(s.linked), `linked ${w.object}`, `linked ${w.objects}`));
+  if (n(s.history)) counts.push(many(n(s.history), 'earlier question', 'earlier questions'));
+  if (n(s.chat)) counts.push(many(n(s.chat), 'chat message', 'chat messages'));
+  if (n(s.members)) counts.push(many(n(s.members), w.member, w.members));
+  const bits = (Array.isArray(s.notSent) ? s.notSent : []).filter((x) => x && n(x.count)).map((x) => {
+    const c = n(x.count);
+    const from = x.module ? ` from ${x.moduleName || w.nameOf(x.module)}` : '';
+    const what = `${c} ${c === 1 ? w.object : w.objects}${from}`;
+    return x.why === 'other-space' ? `${what}, from another ${w.space}` : `${what}, kept out by the ${w.owner}'s setting`;
+  });
+  const fit = s.cut === true || (Array.isArray(leftOut) && leftOut.some((l) => l && (l.why === 'budget' || l.why === 'shortened')));
+  return { counts, notSent: bits.length ? `Not sent: ${bits.join('; ')}.` : '', fit: fit ? `Some ${w.objects} were left out to fit.` : '' };
+}
+// A text split at its citations, [1] or [2, 3]: pieces { text } and { cite: [n] }.
+export function citationParts(text) {
+  const out = [];
+  let last = 0;
+  const src = String(text || '');
+  for (const m of src.matchAll(/\[(\d+(?:\s*,\s*\d+)*)\]/g)) {
+    if (m.index > last) out.push({ text: src.slice(last, m.index) });
+    out.push({ cite: m[1].split(',').map((x) => Number(x)), raw: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last) });
+  return out;
+}
 // What the page says when the AI is not there for this person, in plain words, from the server's `reason` (GET .../ai:
 // 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'; '' when it is there). `words` are this environment's: its
 // word for guests, for the owner and for a space. A reason the page does not know says the server's own sentence, capitalised.
@@ -765,6 +810,13 @@ export function aiNotice(reason, why = '', { guests = '', owner = '', space = ''
     case 'role': return `Your role can't use AI here: ask the ${owner}.`;
     case 'not-set-up': return 'AI is not set up yet.';
     case 'allowance': return "This month's AI allowance is used up.";
+    // The server's own sentence for these (what it is about depends on the setting behind it).
+    case 'member': case 'chat': case 'module': {
+      const w = String(why || '').replace(/\s+/g, ' ').trim();
+      if (!w) return reason === 'module' ? 'AI is not on in this module.' : reason === 'chat' ? "AI can't be asked in the chat here." : "You aren't in this space, so you can't use AI there.";
+      const out = w[0].toUpperCase() + w.slice(1);
+      return /[.!?]$/.test(out) ? out : `${out}.`;
+    }
     default: {
       const w = String(why || '').replace(/\s+/g, ' ').trim();
       if (!w) return '';
@@ -945,7 +997,7 @@ export function keptNoticeTakes(entry, data) {
   return Boolean(cleanKept(data.kept));
 }
 
-export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepStoredLink, canvas, resizeChatInput, renderMarkup, frameMessage, addStored, openMenu, isShown = () => true, onAssistantNew = null, isHome = () => false, pictureBlob = async (entry) => entry.blob }) {
+export function attachChatInput({ $, api, word, openObject = null, getSpace, getMe, isGuest, keepStoredLink, canvas, resizeChatInput, renderMarkup, frameMessage, addStored, openMenu, isShown = () => true, onAssistantNew = null, isHome = () => false, pictureBlob = async (entry) => entry.blob }) {
   const input = () => $('chat-input');
   // The field's hint when nothing is typed, on one line: the full one when it fits the field, else a shorter one
   // A command's own hint is left alone. In the Assistant, plain words go to the AI (routeLine), and its hint says so.
@@ -1250,6 +1302,14 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
       body.innerHTML = renderMarkup(content);
       el.appendChild(body);
     }
+    const from = Array.isArray(summary.sources) ? summary.sources.filter(refOk).slice(0, 12) : [];
+    if (from.length) {
+      const src = document.createElement('p');
+      src.className = 'chat-object-meta chat-object-from';
+      src.append('From: ');
+      from.forEach((r, i) => { if (i) src.append(', '); src.append(objectLink(r)); });
+      el.appendChild(src);
+    }
     const meta = [];
     const place = summary.place && (summary.place.name || summary.place);
     if (place) meta.push(String(place));
@@ -1503,24 +1563,132 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   // An AI answer's body: its text with each {{summary:N}} drawn as a preview with Keep, for anyone who can keep (the
   // space's actions), the author or not. `question` is what Keep records as asked: the asker's question when it is
   // known (the author's page, or the public answer's quote).
-  function answerBody(text, summaries, question) {
+  // `meta` is what the stored answer keeps of the call: { sent, used, cut, leftOut, numbered }, drawn under it as the
+  // AI used: line, with each [n] in the words a link to the object it names.
+  function answerBody(text, summaries, question, meta = null) {
     const body = document.createElement('div');
     body.className = 'message-body text';
     const objects = Array.isArray(summaries) ? summaries : [];
+    const cites = citePointers(meta);
     if (!objects.length) {
       body.innerHTML = renderMarkup(String(text || ''));
-      return body;
-    }
-    body.classList.add('message-stack'); // words and cards a column apart (style.css)
-    for (const p of answerParts(text, objects.length)) {
-      if (p.summary !== undefined) body.appendChild(objectPreview(objects[p.summary], question || ''));
-      else {
-        const t = document.createElement('div');
-        t.innerHTML = renderMarkup(p.text);
-        body.appendChild(t);
+      linkCitations(body, cites);
+    } else {
+      body.classList.add('message-stack'); // words and cards a column apart (style.css)
+      for (const p of answerParts(text, objects.length)) {
+        if (p.summary !== undefined) body.appendChild(objectPreview(objects[p.summary], question || ''));
+        else {
+          const t = document.createElement('div');
+          t.innerHTML = renderMarkup(p.text);
+          linkCitations(t, cites);
+          body.appendChild(t);
+        }
       }
     }
+    const foot = usedBlock(meta);
+    if (foot) body.appendChild(foot);
     return body;
+  }
+
+  // --- what an answer used, and the objects it names ---
+  // A pointer is resolved as the reader (POST /api/objects/resolve), so a title shows only to someone who may see it. Asked
+  // once for a few seconds, then again.
+  const refKey = (r) => `${r.module}|${r.kind}|${r.scope || ''}|${r.space || ''}|${r.id}`;
+  const refOk = (r) => Boolean(r && typeof r.module === 'string' && typeof r.kind === 'string' && r.id !== undefined && r.id !== null && r.id !== '');
+  const resolved = new Map(); // key -> { at, summary: Promise<object|null> }
+  function resolveRefs(refs) {
+    const want = refs.filter(refOk);
+    const fresh = want.filter((r) => { const c = resolved.get(refKey(r)); return !c || Date.now() - c.at > 15000; });
+    if (fresh.length) {
+      const batch = api('POST', '/api/objects/resolve', { from: 'assistant', refs: fresh.slice(0, 50) }).then((out) => out.summaries || []).catch(() => []);
+      fresh.slice(0, 50).forEach((r, i) => resolved.set(refKey(r), { at: Date.now(), summary: batch.then((list) => list[i] || null) }));
+    }
+    return Promise.all(want.map((r) => resolved.get(refKey(r)).summary));
+  }
+  const kindLabel = (r) => { const k = String(r.kind || word('object')); return k[0].toUpperCase() + k.slice(1); };
+  // One object as a link that opens it where it lives; its title once known. One the reader can't see, or that is gone, is
+  // said in plain words and is not a link.
+  function objectLink(ref, { cite = '' } = {}) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cite ? 'message-cite' : 'message-ref';
+    b.textContent = cite || kindLabel(ref);
+    const label = (t) => { b.setAttribute('aria-label', cite ? `Open ${t}` : t); b.title = `Open ${t}`; };
+    label(kindLabel(ref));
+    b.addEventListener('click', () => { if (typeof openObject === 'function') openObject(ref); else canvas.openRef(ref); });
+    resolveRefs([ref]).then(([summary]) => {
+      if (!summary || summary.error) {
+        b.disabled = true;
+        b.classList.add('is-gone');
+        b.title = '';
+        if (!cite) b.textContent = summary && summary.state === 'hidden' ? `${word('object', { a: true, cap: true })} you can't see` : `${word('object', { a: true, cap: true })} that is gone`;
+        return;
+      }
+      const t = plainTitle(summary.title) || kindLabel(ref);
+      if (!cite) b.textContent = t;
+      label(t);
+    });
+    return b;
+  }
+  // The pointers [n] stand for: the attached ones come first in the numbering; `numbered`, when the answer holds it, is all.
+  function citePointers(meta) {
+    if (!meta) return [];
+    if (Array.isArray(meta.numbered) && meta.numbered.length) return meta.numbered;
+    return Array.isArray(meta.sent && meta.sent.attached) ? meta.sent.attached : [];
+  }
+  function linkCitations(root, pointers) {
+    if (!pointers.length) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && n.parentElement.closest('a, code, pre, button') ? NodeFilter.FILTER_REJECT : /\[\d/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const parts = citationParts(node.nodeValue);
+      if (!parts.some((p) => p.cite && p.cite.some((n) => refOk(pointers[n - 1])))) continue;
+      const frag = document.createDocumentFragment();
+      for (const p of parts) {
+        if (p.text !== undefined) { frag.append(p.text); continue; }
+        if (!p.cite.some((n) => refOk(pointers[n - 1]))) { frag.append(p.raw); continue; }
+        frag.append('[');
+        p.cite.forEach((n, i) => {
+          if (i) frag.append(', ');
+          if (refOk(pointers[n - 1])) frag.append(objectLink(pointers[n - 1], { cite: String(n) }));
+          else frag.append(String(n));
+        });
+        frag.append(']');
+      }
+      node.replaceWith(frag);
+    }
+  }
+  const usedWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space'), owner: word('owner'), member: word('member'), members: word('member', { many: true }), nameOf: (id) => { const m = canvas.list().find((x) => x.id === id); return m ? (m.displayName || m.name) : id; } });
+  // Under an answer: AI used: (the attached objects as links, then the counts of the rest), Not sent, left out to fit, and
+  // cut short. Null for a message that holds none of it (one stored before the server kept it).
+  function usedBlock(meta) {
+    if (!meta || !meta.sent) return null;
+    const parts = aiUsedParts(meta.sent, meta.leftOut, usedWords());
+    const wrap = document.createElement('div');
+    wrap.className = 'message-used';
+    const line = document.createElement('p');
+    line.className = 'message-used-line';
+    const lead = document.createElement('span');
+    lead.className = 'message-used-lead';
+    lead.textContent = 'AI used:';
+    line.append(lead);
+    const attached = (Array.isArray(meta.sent.attached) ? meta.sent.attached : []).filter(refOk);
+    const items = [];
+    for (const r of attached) items.push(objectLink(r));
+    for (const t of parts.counts) items.push(t);
+    if (!items.length) items.push('just your question');
+    items.forEach((it, i) => { line.append(i ? ', ' : ' ', it); });
+    line.append('.');
+    wrap.append(line);
+    for (const t of [parts.notSent, parts.fit, meta.cut ? 'The answer was cut short.' : '']) {
+      if (!t) continue;
+      const p = document.createElement('p');
+      p.className = 'message-used-note';
+      p.textContent = t;
+      wrap.append(p);
+    }
+    return wrap;
   }
 
   async function refreshActions() {
@@ -1732,10 +1900,12 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   }
 
   async function askAbout({ question, refs } = {}) {
+    // A module's ask: its words, or none with an object, when the server supplies the question (What should I know about it?).
     const q = String(question || '').trim();
-    if (!q) { setNote('Type a question first.'); return { ok: false }; }
+    const kept = (refs || []).filter((r) => r && r.module && r.id);
+    if (!q && !kept.length) { setNote('Type a question first.'); return { ok: false }; }
     const prev = aiContext;
-    aiContext = (refs || []).filter((r) => r && r.module && r.id).map((ref) => ({ ref }));
+    aiContext = kept.map((ref) => ({ ref }));
     setView('assistant'); // a module's question is answered where answers go
     paintContext();
     try {
@@ -1817,7 +1987,9 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
   async function runAi(question) {
     const id = spaceId();
     if (!id) { setNote(`AI is only in ${word('space', { a: true })}.`); return false; }
-    if (!String(question || '').trim()) { setNote('Type your question after /ai.', true); return false; }
+    if (!String(question || '').trim() && !aiContext.length) { setNote('Type your question after /ai.', true); return false; }
+    const tooLong = questionTooLong(question);
+    if (tooLong) { setNote(tooLong, true); return false; }
     if (aiBusy) { setNote('Still asking. Wait for the answer.'); return false; }
     // Known to be unavailable: look again once (it may have been set up since), then say why instead of sending.
     if (aiState.known && !aiState.available && !isGuest()) await checkAi(true);
@@ -1827,8 +1999,9 @@ export function attachChatInput({ $, api, word, getSpace, getMe, isGuest, keepSt
     setNote('Asking the AI...');
     try {
       const reply = await api('POST', `/api/spaces/${encodeURIComponent(id)}/ai`, {
-        question,
+        question: String(question || '').trim(),
         refs: aiContext.map((c) => c.ref).filter(Boolean),
+        tz: askZone(),
       });
       setNote('');
       // What was attached went with this question only.

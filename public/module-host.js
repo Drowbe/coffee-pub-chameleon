@@ -299,6 +299,8 @@ document.addEventListener('app:theme', () => {
 });
 let activeDrag = null; // { source, ref, layers, timer }
 
+// The browser's time zone (IANA), sent with every ask so the AI's "today" is the asker's.
+const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 const REF_SHAPE = (r) => r && typeof r.module === 'string' && typeof r.kind === 'string' && typeof r.id === 'string'
   && /^[a-z][a-z0-9-]{1,31}$/.test(r.module) && /^[a-z][a-z0-9-]{0,23}$/.test(r.kind) && /^[A-Za-z0-9_-]{1,64}$/.test(r.id)
   && (r.scope === 'environment' || r.scope === 'person' || (r.scope === 'space' && typeof r.space === 'string' && r.space.length <= 64));
@@ -1430,8 +1432,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       const name = String(action || '');
       if (name === 'assistant:askAssistant' || name === 'askAssistant') {
         if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
-        const q = String(input?.question || '').trim() || (input?.ref ? 'What should I know about this?' : '');
-        if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
+        // No question with an object is fine: the server asks its own default (What should I know about it?).
+        const q = String(input?.question || '').trim().slice(0, 1000);
+        if (!q && !input?.ref) throw Object.assign(new Error('Type a question.'), { status: 400 });
         const refs = input?.ref ? [input.ref] : [];
         await onChatAsk({ question: q, refs });
         return { id: 0, status: 'done', result: { ok: true } };
@@ -1556,7 +1559,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return api('GET', url('/ai', scopeOf()));
     },
     async 'ai.ask'({ task, question, objects }) {
-      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [] });
+      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [], tz: browserZone() });
     },
     // The signed-in person's own other calendars (a module that declares the `external` hook), read only: their events
     // between `from` and `to` (YYYY-MM-DD or ISO times), with the calendars they come from. A guest gets none.
@@ -1581,8 +1584,8 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     async 'chat.ask'({ question, refs }) {
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);
-      if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
       const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 12).map(cleanPointer);
+      if (!q && !list.length) throw Object.assign(new Error('Type a question.'), { status: 400 });
       return onChatAsk({ question: q, refs: list });
     },
     // Uploaded pictures (a module whose manifest declares `uploads`): kept per scope, checked and cleaned by the server.
