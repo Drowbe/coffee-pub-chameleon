@@ -740,9 +740,9 @@ test('the dialog opens where it is seen, the "+" is the viewer\'s, backlinks com
   const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
   const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
   // A phone shows one part at a time: the dialog is Places' own, so Places shows its part first (the "+" and a new place asked for).
-  assert.match(page, /const revealPanel = \(\) => \{ if \(asPart && host\.destination\) host\.destination\.set\(\{ reveal: 'panel' \}\)/);
-  assert.match(page, /host\.on\('add', \(e\) => \{ if \(e\.id === 'place' && canAdd\(\)\) \{ closeFound\(\); revealPanel\(\); openEditor\(null, null\); \} \}\);/);
-  assert.match(page, /closeFound\(\);\s*revealPanel\(\);\s*openEditor\(null, null, \{ title:/, 'newPlace (the map\'s ask) shows the part too');
+  assert.match(page, /const revealPart = \(\) => \{ if \(asPart && host\.destination\) host\.destination\.set\(\{ reveal: 'panel' \}\)/);
+  assert.match(page, /host\.on\('add', \(e\) => \{ if \(e\.id === 'place' && canAdd\(\)\) \{ closeFound\(\); revealPart\(\); openEditor\(null, null\); \} \}\);/);
+  assert.match(page, /closeFound\(\);\s*revealPart\(\);\s*openEditor\(null, null, \{ title:/, 'newPlace (the map\'s ask) shows the part too');
   // The map hides its "+" when this says no.
   const may = manifest.actions.provides.find((a) => a.name === 'mayAdd');
   assert.ok(may && may.local === true, 'mayAdd is a local action');

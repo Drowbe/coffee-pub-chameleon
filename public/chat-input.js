@@ -753,7 +753,7 @@ export function routeLine(text, view) {
 // What the page says when the AI is not there for this person, in plain words, from the server's `reason` (GET .../ai:
 // 'guest', 'space-off', 'role', 'not-set-up' or 'allowance'; '' when it is there). `words` are this environment's: its
 // word for guests, for the owner and for a space. A reason the page does not know says the server's own sentence, capitalised.
-export function aiNotice(reason, why = '', { guests = 'Guests', owner = 'owner', space = 'space' } = {}) {
+export function aiNotice(reason, why = '', { guests = '', owner = '', space = '' } = {}) {
   switch (reason) {
     case '': return '';
     case 'guest': return `${guests} cannot use AI.`;
