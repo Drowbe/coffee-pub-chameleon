@@ -1,6 +1,6 @@
 // The phone screen (phone.html), drawn inside the Prototype's phone frame (prototype-phone.js). Design-process only: nothing here ships
 // (Thomas, 2026-11-01; plan-phone-experience.md, "Navigation on a phone"). Built from the SDK's own pieces: the tab bar (.sdk-tabbar), the
-// module frame, the form standard (.sdk-form, .sdk-field), buttons, the menu's classes (.host-menu), avatars and badges. The module's content
+// module frame (the bottom bar is the tab bar with the call out of it, 2026-11-03: four places of the person's own and a switcher, More), the form standard (.sdk-form, .sdk-field), buttons, the menu's classes (.host-menu), avatars and badges. The module's content
 // is the real Planner (prototype-planner.js), not drawn again.
 import { createModuleFrame } from '/module-frame.js';
 import { createPlanner, PLANNER_VIEWS } from './prototype-planner.js';
@@ -13,20 +13,28 @@ const THEMES = ['strong-coffee', 'calming-teal', 'burnt-orange'];
 const S = {
   view: ['call', 'chat', 'module'].includes(q.get('view')) ? q.get('view') : 'chat',
   call: ['off', 'on', 'speaking', 'muted'].includes(q.get('call')) ? q.get('call') : 'off',
-  sheet: ['none', 'modules', 'object', 'edit', 'menu', 'actions', 'online', 'bar', 'leave'].includes(q.get('sheet')) ? q.get('sheet') : 'none',
+  sheet: ['none', 'more', 'pin', 'replace', 'states', 'object', 'edit', 'menu', 'actions', 'online', 'bar', 'leave'].includes(q.get('sheet')) ? q.get('sheet') : 'none',
+  bar: q.get('bar') === 'middle' ? 'middle' : 'end', // where the switcher sits: A at the end, B in the middle
+  glyph: q.get('glyph') === 'dots' ? 'dots' : 'lines', // B's glyph
+  pins: ['chat', 'planner', 'calendar', 'maps'], // this person's four (the template's to start: travel)
+  replace: { slot: 3 }, // what the Replace sheet is for: { slot } puts a module in a place, { mod } asks which place it takes
   kb: q.get('kb') === '1',
   module: 'planner',
 };
+const TEMPLATE_PINS = ['chat', 'planner', 'calendar', 'maps']; // travel's four (the template's default)
+const CHAT = { id: 'chat', name: 'Chat', icon: 'comments', unread: 2 };
 const MODULES = [
   { id: 'planner', name: 'Planner', icon: 'map-location-dot', unread: 0 },
   { id: 'places', name: 'Places', icon: 'location-dot', unread: 0 },
-  { id: 'maps', name: 'Maps', icon: 'map', unread: 0 },
+  { id: 'maps', name: 'Map', icon: 'map', unread: 0 },
   { id: 'calendar', name: 'Calendar', icon: 'calendar', unread: 1 },
   { id: 'todo', name: 'To-do', icon: 'list-check', unread: 3 },
   { id: 'budget', name: 'Budget', icon: 'wallet', unread: 0 },
   { id: 'polls', name: 'Polls', icon: 'square-poll-vertical', unread: 1 },
   { id: 'research', name: 'Research', icon: 'magnifying-glass', unread: 0 },
 ];
+const DEST = [CHAT, ...MODULES]; // every place the bar can hold
+const dest = (id) => DEST.find((d) => d.id === id);
 const PEOPLE = [
   { name: 'Mia Alvarez', ini: 'MA', me: true }, { name: 'Sam Okafor', ini: 'SO' }, { name: 'Ana Costa', ini: 'AC' }, { name: 'Ben Hart', ini: 'BH' },
 ];
@@ -66,6 +74,20 @@ let planner = null;
 let plannerHost = null;
 let plannerFrame = null;
 
+function callButton() {
+  const inCall = S.call !== 'off';
+  if (!inCall) {
+    const b = el('button', 'btn btn-primary ph-callbtn is-join', { type: 'button', 'aria-label': 'Join the call' }, [ico('phone'), el('span', '', { text: 'Join' })]);
+    b.addEventListener('click', () => say({ call: 'on', view: 'call' }));
+    return b;
+  }
+  const b = el('button', `btn ph-callbtn is-live${S.call === 'muted' ? ' is-muted' : ''}`, { type: 'button', 'aria-label': `In the call, 4 minutes${S.call === 'muted' ? ', you are muted' : ''}. Show the call`, 'aria-pressed': String(S.view === 'call') }, [
+    el('span', 'ph-dot', { 'aria-hidden': 'true' }), ico('phone'), el('span', 'ph-time', { text: '4:12' }),
+  ]);
+  b.addEventListener('click', () => say({ view: 'call' }));
+  return b;
+}
+
 function topBar() {
   const online = el('button', 'ph-online', { type: 'button', 'aria-label': '3 people online. Show who is online' }, [ico('user-group'), el('span', '', { text: '3' })]);
   online.addEventListener('click', () => say({ sheet: 'online' }));
@@ -74,7 +96,7 @@ function topBar() {
   menu.setAttribute('aria-expanded', String(S.sheet === 'menu'));
   menu.addEventListener('click', () => say({ sheet: S.sheet === 'menu' ? 'none' : 'menu' }));
   return el('header', 'ph-top', {}, [
-    el('h1', 'ph-space', { text: 'Lisbon in autumn' }), online, el('span', 'ph-grow'), menu,
+    el('h1', 'ph-space', { text: 'Lisbon in autumn' }), online, el('span', 'ph-grow'), callButton(), menu,
   ]);
 }
 
@@ -154,26 +176,39 @@ function strip() {
   return el('div', `ph-strip${talking ? ' is-speaking' : ''}${muted ? ' is-muted' : ''}`, { role: 'group', 'aria-label': 'The call' }, [who, mic, end]);
 }
 
-function bottomBar() {
-  const m = MODULES.find((x) => x.id === S.module);
-  const inCall = S.call !== 'off';
-  const tab = (id, icon, label, { current = false, count = 0, extra = '' } = {}) => {
-    const b = el('button', `sdk-tabbar-tab${extra ? ` ${extra}` : ''}`, { type: 'button', 'aria-current': current ? 'page' : false, 'data-tab': id });
-    const glyph = el('span', 'sdk-tabbar-glyph', {}, [ico(icon), count ? el('span', 'sdk-badge-micro', { 'aria-hidden': 'true', text: String(count) }) : null]);
-    b.append(glyph, el('span', 'sdk-tabbar-label', { text: label }));
+// The bottom bar: four places of the person's own and the switcher (More). The call is never a place in it (the top bar's phone opens it).
+// `o` forces a look for the Bar states drawing: o.pressed / o.focus name a place (or 'more'), o.here the place that is open, o.counts a count by place.
+function bottomBar(o = {}) {
+  const here = o.here !== undefined ? o.here : S.view === 'chat' ? 'chat' : S.view === 'module' ? S.module : null;
+  const pins = o.pins || S.pins;
+  const kind = o.bar || S.bar;
+  const count = (d) => (o.counts && d.id in o.counts ? o.counts[d.id] : d.unread);
+  const badge = (n) => (n ? el('span', 'sdk-badge-micro', { 'aria-hidden': 'true', text: n > 9 ? '9+' : String(n) }) : null);
+  const word = (n) => (n ? `, ${n} new` : '');
+  const look = (id) => `${o.pressed === id ? ' is-pressed' : ''}${o.focus === id ? ' is-focus' : ''}`;
+  const place = (d) => {
+    const n = count(d);
+    const b = el('button', `sdk-tabbar-tab${look(d.id)}`, { type: 'button', 'aria-current': here === d.id ? 'page' : false, 'data-tab': d.id, 'aria-label': `${d.name}${word(n)}` });
+    b.append(el('span', 'sdk-tabbar-glyph', {}, [ico(d.icon), badge(n)]), el('span', 'sdk-tabbar-label', { text: d.name }));
+    b.addEventListener('click', () => (d.id === 'chat' ? say({ view: 'chat', sheet: 'none' }) : say({ module: d.id, view: 'module', sheet: 'none' })));
     return b;
   };
-  const call = tab('call', 'phone', inCall ? 'Call' : 'Join', { current: S.view === 'call' && S.sheet !== 'modules', extra: inCall ? 'in-call' : '' });
-  if (!inCall) call.dataset.role = 'join';
-  if (S.call === 'on' || S.call === 'speaking') call.dataset.mic = 'live';
-  const chat = tab('chat', 'comments', 'Chat', { current: S.view === 'chat', count: 2 });
-  const mod = tab('module', m.icon, m.name, { current: S.view === 'module' });
-  const more = tab('modules', 'table-cells-large', 'Modules');
-  call.addEventListener('click', () => (inCall || S.view === 'call' ? say({ view: 'call' }) : say({ view: 'call' })));
-  chat.addEventListener('click', () => say({ view: 'chat' }));
-  mod.addEventListener('click', () => say({ view: 'module' }));
-  more.addEventListener('click', () => say({ sheet: 'modules' }));
-  return el('nav', 'sdk-tabbar ph-bar', { 'aria-label': 'Views' }, [call, chat, mod, more]);
+  const places = pins.map((id) => place(dest(id)));
+  const rest = DEST.filter((d) => !pins.includes(d.id));
+  const restNew = rest.reduce((n, d) => n + count(d), 0);
+  const offBar = here !== null && !pins.includes(here); // the open place is not one of the four: the switcher shows where you are
+  let more;
+  if (kind === 'middle') {
+    more = el('button', `ph-round${look('more')}`, { type: 'button', 'aria-label': `More${word(restNew)}`, 'aria-current': offBar ? 'page' : false, 'data-tab': 'more' });
+    more.append(el('span', 'ph-round-disc', {}, [ico(S.glyph === 'lines' ? 'bars' : 'ellipsis'), badge(restNew)]));
+    places.splice(2, 0, more);
+  } else {
+    more = el('button', `sdk-tabbar-tab${look('more')}`, { type: 'button', 'aria-current': offBar ? 'page' : false, 'data-tab': 'more', 'aria-label': `More${word(restNew)}` });
+    more.append(el('span', 'sdk-tabbar-glyph', {}, [ico('bars'), badge(restNew)]), el('span', 'sdk-tabbar-label', { text: 'More' }));
+    places.push(more);
+  }
+  more.addEventListener('click', () => say({ sheet: 'more' }));
+  return el(o.plain ? 'div' : 'nav', `sdk-tabbar ph-bar${kind === 'middle' ? ' ph-bar-middle' : ''}${o.safe ? ' ph-safe-demo' : ''}`, o.plain ? {} : { 'aria-label': 'Places' }, places);
 }
 
 // ---- sheets ----
@@ -184,20 +219,112 @@ function sheetShell(title, left, right, body) {
 }
 const closeSheet = () => say({ sheet: 'none' });
 
-function modulesSheet() {
+// More: the places that are not in the bar, big rows with their new counts. Edit is the way to pin one (the title bar's button and a row here).
+function row(d, tail) {
+  return [el('span', 'ph-row-icon', {}, [ico(d.icon)]), el('span', 'ph-row-name', { text: d.name }), d.unread ? el('span', 'sdk-badge', { text: String(d.unread), 'aria-label': `${d.unread} new` }) : null, ...tail];
+}
+function moreSheet() {
+  const edit = S.sheet === 'pin' || S.sheet === 'replace';
   const close = iconBtn('xmark', 'Close', 'btn-quiet');
   close.addEventListener('click', closeSheet);
-  const list = el('ul', 'ph-list');
-  for (const m of MODULES) {
-    const b = el('button', 'ph-row', { type: 'button', 'aria-current': m.id === S.module ? 'true' : false }, [
-      el('span', 'ph-row-icon', {}, [ico(m.icon)]), el('span', 'ph-row-name', { text: m.name }),
-      m.unread ? el('span', 'sdk-badge', { text: String(m.unread), 'aria-label': `${m.unread} new` }) : null,
-      m.id === S.module ? ico('check') : ico('chevron-right'),
-    ]);
-    b.addEventListener('click', () => say({ module: m.id, view: 'module', sheet: 'none' }));
-    list.append(el('li', '', {}, [b]));
+  const toggle = edit ? textBtn('Done', 'btn-primary') : textBtn('Edit', 'btn-quiet', 'thumbtack');
+  toggle.addEventListener('click', () => say({ sheet: edit ? 'more' : 'pin' }));
+  const body = el('div', 'ph-more');
+  if (!edit) {
+    const rest = DEST.filter((d) => !S.pins.includes(d.id));
+    const list = el('ul', 'ph-list');
+    for (const d of rest) {
+      const b = el('button', 'ph-row', { type: 'button' }, row(d, [ico('chevron-right')]));
+      b.addEventListener('click', () => say(d.id === 'chat' ? { view: 'chat', sheet: 'none' } : { module: d.id, view: 'module', sheet: 'none' }));
+      list.append(el('li', '', {}, [b]));
+    }
+    const pin = el('button', 'ph-row ph-row-quiet', { type: 'button' }, [el('span', 'ph-row-icon', {}, [ico('thumbtack')]), el('span', 'ph-row-name', { text: 'Change the four in your bar' }), ico('chevron-right')]);
+    pin.addEventListener('click', () => say({ sheet: 'pin' }));
+    body.append(el('p', 'ph-more-hint', { text: rest.length ? 'The other places in this space.' : 'Every place is in your bar.' }), list, el('ul', 'ph-list', {}, [el('li', '', {}, [pin])]));
+    return sheetShell('More', close, toggle, body);
   }
-  return sheetShell('Modules', close, el('span', 'ph-bar-end'), list);
+  // Edit: the four places first, each a tap to replace; then every place with a Pin button (the menu route; nothing to drag).
+  const slots = el('div', 'ph-slots', { role: 'group', 'aria-label': 'Your four places' });
+  S.pins.forEach((id, i) => {
+    const d = dest(id);
+    const b = el('button', 'ph-slot', { type: 'button', 'aria-label': `Place ${i + 1}, ${d.name}. Change it` }, [el('span', 'ph-slot-n', { text: String(i + 1), 'aria-hidden': 'true' }), ico(d.icon), el('span', 'ph-slot-name', { text: d.name }), el('span', 'ph-slot-change', { 'aria-hidden': 'true' }, [ico('arrows-rotate')])]);
+    b.addEventListener('click', () => say({ sheet: 'replace', replace: { slot: i } }));
+    slots.append(b);
+  });
+  const reset = textBtn('Use the space\'s four', 'btn-quiet', 'rotate-left');
+  reset.disabled = S.pins.join() === TEMPLATE_PINS.join();
+  reset.addEventListener('click', () => say({ pins: [...TEMPLATE_PINS] }));
+  const list = el('ul', 'ph-list');
+  for (const d of DEST) {
+    const at = S.pins.indexOf(d.id);
+    let tail;
+    if (at >= 0) tail = [el('span', 'ph-row-tag', { text: `Place ${at + 1}` })];
+    else {
+      const pin = el('button', 'btn ph-pin', { type: 'button', 'aria-label': `Pin ${d.name}` }, [ico('thumbtack'), el('span', '', { text: 'Pin' })]);
+      pin.addEventListener('click', () => say({ sheet: 'replace', replace: { mod: d.id } }));
+      tail = [pin];
+    }
+    list.append(el('li', `ph-row ph-row-static${at >= 0 ? ' is-pinned' : ''}`, {}, row(d, tail)));
+  }
+  body.append(
+    el('h3', 'ph-more-head', { text: 'Your bar' }), el('p', 'ph-more-hint', { text: 'Tap a place to change what it holds. The bar always holds four.' }), slots, el('div', 'ph-more-foot', {}, [reset]),
+    el('h3', 'ph-more-head', { text: 'All places' }), list,
+  );
+  return sheetShell('Your bar', close, toggle, body);
+}
+
+// The Replace sheet (a bottom sheet over Edit): either a place is chosen and it asks what goes in it, or a module is chosen and it asks which place it takes.
+function replaceLayer() {
+  const r = S.replace || { slot: 3 };
+  const rows = [];
+  let title;
+  const done = (pins) => say({ pins, sheet: 'pin' });
+  if (r.mod) {
+    const d = dest(r.mod);
+    title = `Pin ${d.name}. Which place does it take?`;
+    S.pins.forEach((id, i) => rows.push({ d: dest(id), tail: `Place ${i + 1}`, run: () => { const next = [...S.pins]; next[i] = r.mod; done(next); } }));
+  } else {
+    const at = r.slot;
+    title = `Place ${at + 1} holds ${dest(S.pins[at]).name}. Put what there?`;
+    for (const d of DEST) {
+      if (d.id === S.pins[at]) continue;
+      const from = S.pins.indexOf(d.id);
+      rows.push({ d, tail: from >= 0 ? `Swaps with place ${from + 1}` : '', run: () => { const next = [...S.pins]; if (from >= 0) next[from] = S.pins[at]; next[at] = d.id; done(next); } });
+    }
+  }
+  const scrim = el('div', 'ph-scrim'); scrim.addEventListener('click', () => say({ sheet: 'pin' }));
+  const list = el('div', 'ph-actions', { role: 'menu', 'aria-label': title });
+  for (const x of rows) {
+    const b = el('button', 'ph-action', { type: 'button', role: 'menuitem' }, [ico(x.d.icon), el('span', 'ph-action-name', { text: x.d.name }), x.tail ? el('span', 'ph-row-tag', { text: x.tail }) : null]);
+    b.addEventListener('click', x.run);
+    list.append(b);
+  }
+  const cancel = textBtn('Cancel', 'ph-action-cancel'); cancel.addEventListener('click', () => say({ sheet: 'pin' }));
+  return el('div', 'ph-sheet-layer', {}, [scrim, el('section', 'ph-bottom', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Replace a place' }, [el('h2', 'ph-bottom-title', { text: title }), list, cancel])]);
+}
+
+// Bar states: the bar drawn with each look forced on, for the eye (a finger cannot hold a state still).
+function statesSheet() {
+  const close = iconBtn('xmark', 'Close', 'btn-quiet');
+  close.addEventListener('click', closeSheet);
+  const one = (label, o) => {
+    const bar = bottomBar({ plain: true, ...o });
+    const box = el('div', 'ph-state', {}, [el('p', 'ph-state-label', { text: label }), bar]);
+    box.inert = true;
+    return box;
+  };
+  const kind = S.bar === 'middle' ? 'the round button' : 'More';
+  const body = el('div', 'ph-states', {}, [
+    one('Resting. Planner is open; Chat has 2 new.', { here: 'planner' }),
+    one('Pressed: a finger on Calendar.', { here: 'planner', pressed: 'calendar' }),
+    one('Focus: the keyboard on Calendar.', { here: 'planner', focus: 'calendar' }),
+    one(`Pressed: a finger on ${kind}.`, { here: 'planner', pressed: 'more' }),
+    one(`Focus: the keyboard on ${kind}.`, { here: 'planner', focus: 'more' }),
+    one('Chat is open; 12 new in Chat and in Calendar (9+).', { here: 'chat', counts: { chat: 12, calendar: 12 } }),
+    one('A place that is not one of the four is open (To-do): the switcher shows you are there.', { here: 'todo' }),
+    one('The safe area under the bar: 34px of the bar\'s own surface, the places above it.', { here: 'planner', safe: true }),
+  ]);
+  return sheetShell('Bar states', close, el('span', 'ph-bar-end'), body);
 }
 
 function objectSheet() {
@@ -260,8 +387,8 @@ function leaveSheet() {
   const scrim = el('div', 'ph-scrim'); scrim.addEventListener('click', closeSheet);
   const stay = textBtn('Stay', ''); stay.addEventListener('click', closeSheet);
   const leave = textBtn('Leave', 'btn-danger solid'); leave.addEventListener('click', () => say({ sheet: 'none', call: 'off' }));
-  return el('div', 'ph-sheet-layer', {}, [scrim, el('section', 'ph-bottom', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Leave the call?' }, [
-    el('h2', 'ph-bottom-title', { text: 'Leave the call?' }), el('p', 'ph-bottom-text', { text: 'You will leave the space and the call.' }), el('div', 'ph-bottom-foot', {}, [stay, leave])])]);
+  return el('div', 'ph-sheet-layer', {}, [scrim, el('section', 'ph-bottom', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Leave the space?' }, [
+    el('h2', 'ph-bottom-title', { text: 'Leave Lisbon in autumn?' }), el('p', 'ph-bottom-text', { text: S.call !== 'off' ? 'You will leave the space and the call.' : 'You will leave the space.' }), el('div', 'ph-bottom-foot', {}, [stay, leave])])]);
 }
 
 // The top bar's menu: the host's menu classes, held under the button.
@@ -272,7 +399,7 @@ function menuPop() {
   for (const it of items) {
     if (it.divider) { menu.append(el('div', 'host-menu-divider')); continue; }
     const b = el('button', `host-menu-item${it.danger ? ' danger' : ''}`, { type: 'button', role: 'menuitem' }, [ico(it.icon), el('span', 'host-menu-label', { text: it.label })]);
-    b.addEventListener('click', () => { if (it.label === 'Leave' && S.call !== 'off') say({ sheet: 'leave' }); else closeSheet(); });
+    b.addEventListener('click', () => { if (it.label === 'Leave') say({ sheet: 'leave' }); else closeSheet(); });
     menu.append(b);
   }
   return el('div', 'ph-sheet-layer ph-menu-layer', {}, [scrim, menu]);
@@ -292,7 +419,9 @@ function draw() {
   const view = el('main', 'ph-view', {}, [S.view === 'call' ? callView() : S.view === 'chat' ? chatView() : moduleView()]);
   if (S.sheet === 'bar') view.append(actionBar());
   const layers = [];
-  if (S.sheet === 'modules') layers.push(modulesSheet());
+  if (S.sheet === 'more' || S.sheet === 'pin' || S.sheet === 'replace') layers.push(moreSheet());
+  if (S.sheet === 'replace') layers.push(replaceLayer());
+  if (S.sheet === 'states') layers.push(statesSheet());
   if (S.sheet === 'object') layers.push(objectSheet());
   if (S.sheet === 'edit') layers.push(editSheet());
   if (S.sheet === 'actions') layers.push(actionsSheet());
@@ -306,7 +435,7 @@ function draw() {
     const f = S.sheet === 'edit' ? D.getElementById('ph-edit-name') : S.view === 'chat' && S.sheet === 'none' ? root.querySelector('.ph-compose-field') : null;
     if (f) { f.focus({ preventScroll: true }); f.scrollIntoView({ block: 'nearest' }); }
   }
-  if (S.sheet !== 'none' && S.sheet !== 'bar' && !S.kb) root.querySelector('.ph-sheet :is(button), .ph-bottom button, .ph-menu button')?.focus({ preventScroll: true });
+  if (S.sheet !== 'none' && S.sheet !== 'bar' && !S.kb) (root.querySelector('.ph-bottom button, .ph-menu button') || root.querySelector('.ph-sheet button'))?.focus({ preventScroll: true });
 }
 
 D.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet !== 'none') say({ sheet: 'none' }); });
