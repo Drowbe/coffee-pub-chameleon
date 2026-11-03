@@ -463,7 +463,8 @@ function filterChain(entries) {
 
 // --- the file ------------------------------------------------------------------------------------------------------------
 // The file is read in windows of WINDOW bytes, each overlapping the next by OVERLAP, so a scan never holds the whole file:
-// a token always lies whole inside the window it is read in (one longer than a window is not checked). An object
+// a token always lies whole inside the window it is read in, but for a string or a comment longer than a window, which
+// is followed to its end a window at a time (any other token that long is not checked). An object
 // stream's own bytes (at most LIMITS.rawStream) and what it decodes to are the only parts held whole.
 const WINDOW = 1024 * 1024;
 const OVERLAP = 64 * 1024;
@@ -553,6 +554,27 @@ function findIn(ctx, needle, from, to) {
     if (at >= 0) return p + at;
   }
   return -1;
+}
+
+// Where a string or a comment that starts at `from` (its first byte `first`: "(", "<" or "%") and is longer than a window
+// ends, read a window at a time as the tokenizer would: after its closing ")" (nested ones and escapes counted) or ">",
+// at the end of its line, or at `to`.
+function endOfLong(ctx, first, from, to) {
+  let depth = 1;
+  let escaped = false;
+  for (let p = from + 1; p < to; p += WINDOW) {
+    const d = chunk(ctx, p, Math.min(to - p, WINDOW));
+    for (let k = 0; k < d.length; k += 1) {
+      const c = d[k];
+      if (first === 0x25) { if (c === 0x0a || c === 0x0d) return p + k; continue; }
+      if (first === 0x3c) { if (c === 0x3e) return p + k + 1; continue; }
+      if (escaped) { escaped = false; continue; }
+      if (c === 0x5c) escaped = true;
+      else if (c === 0x28) depth += 1;
+      else if (c === 0x29) { depth -= 1; if (!depth) return p + k + 1; }
+    }
+  }
+  return to;
 }
 
 // The integer objects ("N G obj <integer> endobj") of the whole file, for a stream whose /Length is a reference, found
@@ -672,19 +694,29 @@ function scanRange(ctx, from, to, depth) {
     if (i >= b.length) break;
     const kind = lex(b, i, b.length, link);
     // Whitespace to the window's end is skipped; a token that reaches it is read again from a window that starts with
-    // it, and one longer than a window is not checked.
+    // it. A string or a comment longer than a window is followed to its end a window at a time (longEnd); any other
+    // token that long is not checked.
+    let longEnd = -1;
     if (!w.last && T_END >= b.length) {
       if (kind === EOF) { move(w.base + b.length, true); continue; }
-      if (T_START === 0) unchecked();
-      move(w.base + T_START, true);
-      continue;
+      if (T_START !== 0) { move(w.base + T_START, true); continue; }
+      if (kind !== STR && kind !== COMMENT) unchecked();
+      longEnd = endOfLong(ctx, b[0], w.base, to);
     }
     if (kind === EOF) break;
     const start = T_START;
+    const startAbs = w.base + start;
     i = T_END;
+    // What the string or comment holds, read again from an object that starts in it.
+    const body = () => {
+      if (longEnd < 0) return inside(start + 1, i);
+      const at = findObjectStart(ctx, startAbs + 1, longEnd);
+      return at >= 0 ? scanRange(ctx, at, longEnd, depth + 1) : null;
+    };
     if (kind === COMMENT) {
-      const r = inside(start + 1, i);
+      const r = body();
       if (r) return r;
+      if (longEnd >= 0) move(longEnd, true);
       continue;
     }
     const wasClosed = closed;
@@ -712,12 +744,11 @@ function scanRange(ctx, from, to, depth) {
       keep(kind === INT ? T_INT : 0.5);
       if (level === 1) afterKey = false;
     } else if (kind === STR) {
-      const value = T_VAL;
-      const r = inside(start + 1, i);
+      const r = body();
       if (r) return r;
-      T_VAL = value;
       keep({ s: true });
       if (level === 1) afterKey = false;
+      if (longEnd >= 0) move(longEnd, true);
     } else if (kind === DOPEN || kind === AOPEN) {
       if (level === 0) { reset(); topDict = kind === DOPEN; if (topDict) entries = new Map(); } else {
         if (cap) { const box = []; keep(kind === DOPEN ? { d: box } : { a: box }); if (!cap.over) cap.stack.push(box); }

@@ -384,7 +384,11 @@ const memoryLines = [];
       ['a long stream with a script after it', Buffer.concat([Buffer.from(`%PDF-1.7\n1 0 obj << /Length ${3 * PDF_WINDOW} >> stream\n`), Buffer.alloc(3 * PDF_WINDOW, 0x41), Buffer.from('\nendstream endobj\n2 0 obj << /S /Launch >> endobj\ntrailer << >>\n%%EOF\n')]), 'Launch'],
       ['a plain one of 5 MB', pdfSized(5 * 1024 * 1024), null],
       ['a 200 KB string across a window\'s edge, then a script', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj\n'), Buffer.alloc(PDF_WINDOW - 100 * 1024, 0x20), Buffer.from('('), Buffer.alloc(200 * 1024, 0x61), Buffer.from(') /JS (x) >> endobj\ntrailer << >>\n%%EOF\n')]), 'JS'],
-      ['a string longer than a window', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj (', 'latin1'), Buffer.alloc(PDF_WINDOW + 70000, 0x61), Buffer.from(') endobj\ntrailer << >>\n%%EOF\n')]), 'refused:unchecked'],
+      ['a string longer than a window, then a script', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj (a \\) (b) ', 'latin1'), Buffer.alloc(2 * PDF_WINDOW + 70000, 0x61), Buffer.from(') /AA 1 endobj\ntrailer << >>\n%%EOF\n')]), 'AA'],
+      ['a plain string of 2.5 MB', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj << /Pad (', 'latin1'), Buffer.alloc(2.5 * 1024 * 1024, 0x7a), Buffer.from(') >> endobj\ntrailer << >>\n%%EOF\n')]), null],
+      ['a string longer than a window holding an object', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj (', 'latin1'), Buffer.alloc(PDF_WINDOW + 70000, 0x61), Buffer.from(' 7 0 obj << /S /Launch >> endobj) endobj\ntrailer << >>\n%%EOF\n')]), 'Launch'],
+      ['a comment longer than a window holding an object', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj %', 'latin1'), Buffer.alloc(PDF_WINDOW + 70000, 0x61), Buffer.from(' 7 0 obj << /JS 1 >>\nendobj\ntrailer << >>\n%%EOF\n')]), 'JS'],
+      ['a name longer than a window', Buffer.concat([Buffer.from('%PDF-1.7\n1 0 obj /', 'latin1'), Buffer.alloc(PDF_WINDOW + 70000, 0x61), Buffer.from(' endobj\ntrailer << >>\n%%EOF\n')]), 'refused:unchecked'],
     ]) {
       const f = file(bytes);
       const r = pdfScanFile(f);
