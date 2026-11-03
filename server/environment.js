@@ -278,4 +278,12 @@ function flushEnvironment(env) {
   env.saveActivity();
 }
 
-module.exports = { buildEnvironment, flushEnvironment };
+// An environment set aside for good (deleted, or about to be replaced by a backup's files): what it owes the disk is
+// written, and the timers that would still act on its old data stop. A Clear waiting for its Undo is left on disk as it
+// is: the environment built next from that folder finishes it (server/module-holds.js, sweep).
+function setAsideEnvironment(env) {
+  flushEnvironment(env);
+  env.moduleHolds.stop();
+}
+
+module.exports = { buildEnvironment, flushEnvironment, setAsideEnvironment };

@@ -279,7 +279,7 @@ async function startServer(dataDir, port, seed, env = {}) {
   child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 150; i++) {
-    try { const r = await fetch(base + '/healthz'); if (r.ok) return { base, child }; } catch { /* not up yet */ }
+    try { const r = await fetch(base + '/healthz'); if (r.ok) return { base, child, log: () => log }; } catch { /* not up yet */ }
     if (child.exitCode !== null) break;
     await new Promise((r) => setTimeout(r, 200));
   }

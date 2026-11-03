@@ -7,7 +7,9 @@
 'use strict';
 
 const WINDOW_MS = 60 * 1000;
-const LIMITS = { write: 240, event: 60, action: 60, notify: 20, schedule: 60, search: 40, upload: 30, ai: 6, check: 20 };
+// `clear` is counted per module for everyone in the environment together (who: '*'): a Clear, of everything a module holds
+// in a scope. Its Undo needs that clear's token, once, so it is never more often than the clears.
+const LIMITS = { write: 240, event: 60, action: 60, notify: 20, schedule: 60, search: 40, upload: 30, ai: 6, check: 20, clear: 5 };
 
 class ModuleLimits {
   constructor() {

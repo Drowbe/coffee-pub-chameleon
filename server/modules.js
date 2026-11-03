@@ -133,6 +133,8 @@ const ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
 // Ids no module may take: 'ai' names the server-wide AI service (not a module) in `missing`/`aiDependents`, the same way a
 // module id would, so it must never also be a real one.
 const RESERVED_IDS = ['ai'];
+// The folders the host keeps inside DATA_DIR/modules/<id>/, which a module's file setting can't name.
+const RESERVED_FOLDERS = ['versions', 'library', 'data', 'uploads', 'trash'];
 const { cleanRows } = require('./setting-list');
 const VERSION_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
 
@@ -744,7 +746,8 @@ function cleanSettings(raw) {
       // only with a base domain; without one the declaration has no effect, since there is no separate host.
       if (def.scope !== 'environment') throw new ModuleError(`module.json: setting "${key}" is a file, so its scope must be "environment"`);
       const folder = r.folder === undefined ? 'files' : String(r.folder);
-      if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(folder) || folder === 'versions' || folder === 'library') throw new ModuleError(`module.json: setting "${key}" folder must be lowercase letters, digits and dashes (not "versions" or "library")`);
+      // The host's own folders beside it (its versions, data, uploads, a Clear's held data, a library's files) can't be named.
+      if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(folder) || RESERVED_FOLDERS.includes(folder)) throw new ModuleError(`module.json: setting "${key}" folder must be lowercase letters, digits and dashes, and not ${RESERVED_FOLDERS.map((f) => `"${f}"`).join(', ')}`);
       def.folder = folder;
       if (r.shared === 'host') def.shared = 'host';
       // `upload`: the owner may put a file here through the page (PUT /api/modules/:id/files/:folder), checked as `accept` says.
