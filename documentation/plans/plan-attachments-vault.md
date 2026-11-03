@@ -9,7 +9,7 @@ quality-assurance reviews the store and the share links as security changes; con
 Step 1 is built (commits `bde9358` to `154819d`, on `claude/magical-feynman-xupgiq`); security QA round 1 failed and
 was fixed, round 2 is pending. Steps 2 to 8 are not built. Thomas decided the PDF rule (decision 16) and the hosted
 total (decision 17) on 2026-10-31, and changed the PDF safety rule and the PDF viewer on 2026-11-01 (decision 18). On 2026-11-03 Thomas decided that the
-viewers open in one of the app's windows, not inside the Vault's content area (decision 19).
+viewers open in one of the app's windows, not inside the Vault's content area (decision 19), and the same day, several at once with a cap of 4, on the existing window mode first (decision 20).
 Thomas calls it critical for post-trip sharing. One question is still his, the default for metadata removal; the
 details of the PDF viewer are listed under What is not decided. This plan replaces the attachments plan of
 2026-10-15, which proposed a host attachments service with no module of its own; what stays of its four decisions is

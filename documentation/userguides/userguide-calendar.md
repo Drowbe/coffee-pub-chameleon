@@ -44,10 +44,10 @@ It holds the environment's own events and the events of every space where the Ca
 When an owner turns on **Show in the top bar** on the Calendar's configuration page (see [Manage](userguide-environment-settings.md), "Top bar"), **Global Calendar** is in the profile menu under your picture, with the Calendar's icon and the name your environment gives it after the word Global. It puts the Calendar and the To-do on one page: your events and tasks from the whole environment and every space you are in. In the narrow layout it is in the top bar's menu, after your spaces. It is separate from the **Calendar** tab of a single space (see "A space's calendar" below).
 
 1. Open your profile menu and choose **Global Calendar**. If you are in a space, it opens over the space: you are marked Away on the call until you go back, and **Back to <space>** returns you. Otherwise it is a page of its own.
-2. In the bar under the top bar, choose **Month**, **Week** or **Day**. **Day** is one column of hours with the all-day events above.
+2. In the bar under the top bar, the arrows and **Today** are at the left, with the period's title. Next to them choose **Month**, **Week** or **Day**. **Day** is one column of hours with the all-day events above.
 3. Click **Trips** (your environment's word for spaces) to choose whose events and tasks show: first the environment's own calendar, by the environment's name, then each of your spaces with its icon. The button says how many are on, such as "Trips (3 of 5)". With nothing on, the page says "Pick at least one in Trips." After the spaces come switches for tasks and polls, such as **Tasks due** and **Polls closing**; see "Tasks due and polls closing" below.
 4. Use the arrows and **Today** above the calendar to move around. Click a day to select it.
-5. On the right, choose **Agenda** for the events from the selected day onward, grouped by day, or **To-do** for the open tasks (see [To-do](userguide-todo.md)). With the To-do off, or not yours to see, only the Agenda shows. Here nothing is listed under the grid: the Agenda is the list, and in the narrow layout it is the **Agenda** tab.
+5. At the far right of the bar, choose **Agenda** for the events from the selected day onward, grouped by day, or **To-do** for the open tasks (see [To-do](userguide-todo.md)). With the To-do off, or not yours to see, only the Agenda shows. Here nothing is listed under the grid: the Agenda is the list, and in the narrow layout it is the **Agenda** tab.
 
 This browser remembers the view, what **Trips** shows and the tab on the right. In the narrow layout the page has three tabs at the bottom, **Calendar**, **Agenda** and **To-do**, and opens on **Day** until you pick another view.
 
@@ -103,7 +103,11 @@ An event can be dragged onto a task in the To-do module, or onto an open task th
 
 ## Events from a plan
 
-When the space also has the Planner, every object on the plan with a date is an event here too, and the two stay in step. Change its title, day or time here and the plan changes; change it on the plan and it changes here. Deleting such an event leaves the object on the plan, and it comes back here when its day changes. An event you add here stays on the Calendar only. See [Planner](userguide-planner.md), "On the Calendar".
+When the space also has the Planner, every object on the plan with a date is an event here too, and the two stay in step. Change its title, day or time here and the plan changes; change it on the plan and it changes here. An event you add here stays on the Calendar only.
+
+Such a copy is marked with the plan object's icon, and its tooltip and form say it is from the plan ("from the Itinerary"). A few things belong to the original, so the form shows them without letting you change them: how long it lasts and **All day**. Ticking **All day** never erases the original's time. A copy with a time is shown in the clock of the trip, as the plan wrote it, not in yours; when that is not your own clock, the event's tooltip says so ("Lisbon time").
+
+To take a copy off the Calendar, open it and choose **Hide**. The form first says "This hides it from the Calendar. The Itinerary keeps it. Hide it?" A hidden copy is gone for good: the object stays on the plan, and the Calendar does not make the copy again, even if the object's day changes. See [Planner](userguide-planner.md), "On the Calendar".
 
 ## Dropping something on the calendar
 
