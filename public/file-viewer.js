@@ -39,22 +39,21 @@ export function openFile(spec) {
   return managerFor(doc).open(spec);
 }
 
-let styled = null;
+// The stylesheet, once for each document (a window popped out of the page is a document of its own).
+const styled = new WeakMap();
 function loadStyles(doc) {
-  if (doc.querySelector('link[data-file-viewer]')) return Promise.resolve();
-  if (!styled) {
-    styled = new Promise((resolve) => {
-      const link = doc.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '/file-viewer.css';
-      link.dataset.fileViewer = '';
-      link.addEventListener('load', resolve);
-      link.addEventListener('error', resolve);
-      doc.head.append(link);
-      setTimeout(resolve, 1500);
-    });
-  }
-  return styled;
+  if (styled.has(doc)) return styled.get(doc);
+  const done = new Promise((resolve) => {
+    const link = doc.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/file-viewer.css';
+    link.addEventListener('load', resolve);
+    link.addEventListener('error', resolve);
+    doc.head.append(link);
+    setTimeout(resolve, 1500);
+  });
+  styled.set(doc, done);
+  return done;
 }
 
 function createManager(doc) {
@@ -161,7 +160,7 @@ function createManager(doc) {
     wins.splice(at, 1);
     w.dead = true;
     if (w.view) w.view.destroy();
-    if (w.infoPanel) w.infoPanel.destroy();
+    if (w.infoSide) w.infoSide.destroy();
     stopMedia(w.el);
     try { if (doc.fullscreenElement && w.el.contains(doc.fullscreenElement)) doc.exitFullscreen(); } catch { /* none */ }
     if (w.frame.destroy) w.frame.destroy();
@@ -173,8 +172,12 @@ function createManager(doc) {
     if (back && back.isConnected !== false && typeof back.focus === 'function') back.focus({ preventScroll: true });
     else if (!back && rest) rest.frame.el.focus({ preventScroll: true });
   }
-  function closeAll() {
+  // Close all: from a window's menu focus goes back to what opened the one in front; from the Layout menu the menu has the focus.
+  function closeAll({ focus = false } = {}) {
+    const back = focus && topWindow() ? topWindow().returnFocus : null;
     for (const w of [...wins].reverse()) close(w, { focus: false });
+    const to = back && back();
+    if (to && to.isConnected !== false && typeof to.focus === 'function') to.focus({ preventScroll: true });
   }
 
   // ---- what the person may do, and the words ----------------------------------------------------------------------------------------
@@ -215,7 +218,7 @@ function createManager(doc) {
     blob: (f) => blobOf(w, f),
     download: can(w, 'download') ? (f) => download(w, f) : null,
     openLink: (u) => { if (/^(https?:\/\/|mailto:)/i.test(u)) win.open(u, '_blank', 'noopener,noreferrer'); },
-    markdown: (t) => (win.hostText && win.hostText.markdown ? win.hostText.markdown(t) : ''),
+    markdown: (t) => { const text = win.hostText || window.hostText; return text && text.markdown ? text.markdown(t) : ''; },
   });
 
   // ---- the toolbar and the title bar's menu ----------------------------------------------------------------------------------------
@@ -257,8 +260,8 @@ function createManager(doc) {
     const f = w.files.get(w.id);
     if (e.area === 'titlebar') {
       if (e.id === 'close') close(w);
-      else if (e.id === 'closeall') closeAll();
-      else if (e.id === 'uses') { w.info = true; drawInfo(w); w.frame.setToolbar(toolbar(w)); if (w.infoPanel) w.infoPanel.focus(); } else if (e.id === 'rename' && f) rename(w, f, e.el);
+      else if (e.id === 'closeall') closeAll({ focus: true });
+      else if (e.id === 'uses') { w.info = true; drawInfo(w); w.frame.setToolbar(toolbar(w)); if (w.infoSide) w.infoSide.focus(); } else if (e.id === 'rename' && f) rename(w, f, e.el);
       else if (e.id === 'remove' && f) remove(w, f, e.el);
     } else if (e.area === 'toolbar') {
       if (e.id === 'prev') go(w, -1);
@@ -333,17 +336,17 @@ function createManager(doc) {
 
   // ---- Info -------------------------------------------------------------------------------------------------------------------------------
   function drawInfo(w) {
-    if (w.infoPanel) { w.infoPanel.destroy(); w.infoPanel.el.remove(); w.infoPanel = null; }
+    if (w.infoSide) { w.infoSide.destroy(); w.infoSide.el.remove(); w.infoSide = null; }
     const f = w.files.get(w.id);
     w.main.classList.toggle('has-info', Boolean(w.info && f));
     if (!w.info || !f) return;
-    w.infoPanel = infoView(f, {
+    w.infoSide = infoView(f, {
       who: whoIs(w),
       uses: (file) => api('GET', libUrl(w.place, `/${enc(file.id)}/uses`)),
       open: w.openRef ? (summary) => w.openRef(summary.ref) : null,
       onClose: () => { w.info = false; drawInfo(w); w.frame.setToolbar(toolbar(w)); },
     });
-    w.main.append(w.infoPanel.el);
+    w.main.append(w.infoSide.el);
   }
 
   // ---- showing a file in a window ------------------------------------------------------------------------------------------------------
@@ -361,7 +364,7 @@ function createManager(doc) {
     w.broken = true;
     if (w.view) w.view.destroy();
     w.view = null;
-    w.infoPanel = null;
+    w.infoSide = null;
     for (const bar of w.body.querySelectorAll('.fv-dlbar')) bar.remove();
     w.main.replaceChildren();
     w.info = false;
@@ -395,6 +398,7 @@ function createManager(doc) {
     w.main.replaceChildren();
     const source = sourceFor(w);
     const apiFor = {
+      win,
       replace: (view) => { if (w.dead || w.id !== id) return; w.broken = true; setBody(w, view); w.frame.setToolbar(toolbar(w)); },
       fullscreen: () => fullscreen(w),
       escape: () => { if (!doc.fullscreenElement) close(w); },

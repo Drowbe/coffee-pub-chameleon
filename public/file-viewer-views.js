@@ -290,16 +290,16 @@ function pdfView(file, source, api) {
   const sClose = iconBtn('xmark', 'Close search');
   searchBox.append(q, count, sPrev, sNext, sClose);
   searchBox.hidden = true;
-  const stage = h('div', 'fv-pdf-stage');
+  const holder = h('div', 'fv-pdf-holder');
   const frame = document.createElement('iframe');
   frame.className = 'fv-pdf-frame';
   frame.setAttribute('sandbox', 'allow-scripts'); // nothing else, ever: no allow-same-origin
   frame.title = `${file.name}, PDF`;
   frame.hidden = true;
-  stage.append(frame);
+  holder.append(frame);
   const loading = viewState({ busy: true, title: 'Opening…' });
-  stage.append(loading.el);
-  el.append(bar, searchBox, stage);
+  holder.append(loading.el);
+  el.append(bar, searchBox, holder);
   bar.hidden = true;
 
   let st = { page: 1, pages: 1, fit: 'width', scale: 1 };
@@ -351,7 +351,8 @@ function pdfView(file, source, api) {
       api.replace(errorView(file, source, typeof m.message === 'string' && m.message ? m.message : 'This PDF could not be opened here. Download it.'));
     }
   };
-  window.addEventListener('message', onMessage);
+  const home = api.win || window; // the window the file window is in (a pop-out has its own)
+  home.addEventListener('message', onMessage);
   frame.src = '/viewer/pdf';
   source.blob(file).then((blob) => blob.arrayBuffer()).then((buf) => { if (dead) return; bytes = buf; send(); }).catch((err) => {
     if (dead) return;
@@ -383,7 +384,7 @@ function pdfView(file, source, api) {
   sNext.addEventListener('click', () => run(false));
   return {
     el, fullTarget: el,
-    destroy() { dead = true; clearTimeout(timer); window.removeEventListener('message', onMessage); frame.src = 'about:blank'; frame.remove(); },
+    destroy() { dead = true; clearTimeout(timer); home.removeEventListener('message', onMessage); frame.src = 'about:blank'; frame.remove(); },
     focus() { if (!frame.hidden) frame.focus({ preventScroll: true }); else el.focus({ preventScroll: true }); },
   };
 }
@@ -392,7 +393,7 @@ export function downloadOnlyView(file, source) {
   return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY, text: `The ${source.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: downloadButton(file, source) });
 }
 
-// The view for a file. `api`: { replace(view) puts a state in its place (an error found while loading), fullscreen(), escape() }.
+// The view for a file. `api`: { win, replace(view) puts a state in its place (an error found while loading), fullscreen(), escape() }.
 export function fileView(file, source, api) {
   if (file.viewable === false) return downloadOnlyView(file, source);
   const kind = kindOf(file);

@@ -92,10 +92,10 @@
 .fv-pdf-search { display: flex; flex: none; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
 .fv-pdf-search input { flex: 1 1 auto; min-width: 0; }
 .fv-pdf-count { color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; }
-.fv-pdf-stage { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.fv-pdf-holder { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 .fv-pdf-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--surface-field); }
 .fv-pdf-frame[hidden] { display: none; }
-.fv-pdf-stage > .fv-state { flex: 1 1 auto; }
+.fv-pdf-holder > .fv-state { flex: 1 1 auto; }
 @container fvbody (max-width: 420px) {
   .fv-pdfbar-zoom > .sdk-icon-btn { display: none; }
 }
@@ -121,7 +121,7 @@
   .fv-pdf-page { height: 44px; }
   .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button { position: relative; }
   .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button::after { content: ""; position: absolute; top: 50%; right: -2px; left: -2px; height: 44px; transform: translateY(-50%); }
-  .fv-pdfbar, .fv-pdf-search { padding-block: 7px; }
+  .fv-pdfbar, .fv-pdf-search { padding-block: var(--space-2); }
   .fv-use-link { min-height: 44px; }
   .fv-state .sdk-empty-actions .btn { --btn-h: 44px; min-height: 44px; }
 }
