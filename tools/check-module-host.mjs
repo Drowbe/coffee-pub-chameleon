@@ -497,7 +497,7 @@ test('editor.lift: lifts a frame over the page, makes the rest inert and puts it
   assert.ok(handler.includes('if (!lift) return false;') && handler.includes('if (pageMode) return liftUp ?'), 'a module in the page answers false unless it is a composite\'s part (liftUp), and a mount with lift: false is answered false');
   assert.ok(src.includes("frame.addEventListener('load', () => releaseLift());"), 'the frame loading another document puts it back');
   assert.ok(/destroy\(\) \{\n\s+if \(!pageMode\) releaseLift\(\);/.test(src), 'destroy() puts it back');
-  assert.ok(src.includes('lift = true, onLift = null, liftUp = null }) {'), 'mountModule takes lift, onLift and liftUp');
+  assert.ok(src.includes('lift = true, onLift = null, liftUp = null, onChanges = null }) {'), 'mountModule takes lift, onLift, liftUp and onChanges');
   // The lift itself, run on a stand-in page: body > [header, main > [section > [bar, frame], other]].
   const pageStart = src.indexOf('const inertCount = new WeakMap();'); // the page-wide lift state, above mountModule
   const pageEnd = src.indexOf('// A module\'s bands in a frame (createModuleFrame', pageStart);

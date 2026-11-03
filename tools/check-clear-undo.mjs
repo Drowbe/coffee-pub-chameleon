@@ -92,6 +92,7 @@ await test('pages: Clear asks the server to undo, the toast ends at the server\'
   assert.ok(host.includes('undoToast(`Cleared ${name}.`, undo, { until: undo.until })'), 'the toast lasts that long');
   assert.ok(host.includes('You can undo it for ${seconds} seconds, until you leave this page.') && !host.includes('Everything in it goes'), 'the dialog says what goes and for how long Undo lasts, from the server');
   assert.ok(host.includes("else if (type === 'changes') {") && host.includes("send('changes', { changes:"), 'a batch goes to the module as one event');
+  for (const f of ['public/canvas.js', 'public/module.js']) assert.match(read(f), /^import \{[^}]*\bfollowClearable\b[^}]*\} from '\/module-host\.js';/m, `${f} imports followClearable`);
   const brand = read('public/brand.js');
   assert.ok(brand.includes('if (t.gone || fixed) return;'), 'a toast with an end time is not held by the pointer or the focus');
   assert.ok(brand.includes('if (busy || done || !note) return false;'), 'Undo is asked once at a time');

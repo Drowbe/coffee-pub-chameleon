@@ -13,7 +13,7 @@
 // See documentation/architecture/architecture-canvas.md.
 
 import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, clearWithUndo, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
+import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
 import { fileWindowCount, closeAllFiles } from '/file-viewer.js';
