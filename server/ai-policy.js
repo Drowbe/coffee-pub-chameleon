@@ -85,21 +85,55 @@ const moduleAllowed = (sees, moduleId) => sees.modules === 'all' || (Array.isArr
 const REDACTED_FIELDS = Object.freeze(['ref', 'module', 'open', 'paidBy', 'sharedBy', 'spaces', 'twins', 'twinOf', 'copy', 'icon', 'color', 'visit']);
 const SENT_FIELDS = Object.freeze(['kind', 'kindName', 'title', 'subtitle', 'when', 'end', 'allDay', 'done', 'category', 'amount', 'planned', 'place', 'text']);
 // Patterns taken out of any text sent: a link's secret query values (a guest link, the OBS access key, an invitation or a
-// sign-in token), a bearer header, and the shapes of the providers' keys.
+// sign-in token), a sign-in link's token (/j/<token>), a calendar feed's (/feed/<token>.ics), a bearer header, and the
+// shapes of the providers' keys.
 const SECRET_PATTERNS = Object.freeze([
   /([?&#](?:guest|s|token|key|invite|code|access_token|api_key|apikey|sig|signature)=)[^&\s#"'<>)]+/gi,
+  /(\/j\/)[A-Za-z0-9_-]{6,}/g,
+  /(\/feed\/)[A-Za-z0-9_-]{6,}(?=\.ics)/gi,
   /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/g,
   /\b(sk-(?:ant-)?)[A-Za-z0-9_-]{12,}/g,
 ]);
 const REMOVED = '[removed]';
 
-// A text with every known secret (`secrets`: exact values, such as this server's access key and its spaces' guest tokens)
-// and every secret-shaped value taken out.
+// A text with every known secret (`secrets`: exact values, such as this server's access key, its spaces' guest tokens and
+// its people's sign-in link tokens) and every secret-shaped value taken out.
 function redactText(text, secrets = []) {
   let out = String(text == null ? '' : text);
   for (const s of secrets) if (typeof s === 'string' && s.length >= 8) out = out.split(s).join(REMOVED);
   for (const re of SECRET_PATTERNS) out = out.replace(re, (_m, keep) => `${keep}${REMOVED}`);
   return out;
+}
+
+// --- An answer, before it is kept or shown ---------------------------------------------------------------------------------
+// A model's answer is Markdown for a page to draw; it is never HTML. Before it is stored or returned, its text and its
+// objects' text lose what a page could run or follow somewhere it should not: script, style and embedding elements with
+// what they hold, every other HTML tag, Markdown links to a javascript:, vbscript:, data: or file: address (the link's
+// words stay), and every secret a prompt may not carry (redactText: guest= values in a link and the rest). The page still
+// escapes what it draws.
+const RUNNABLE_BLOCK = /<(script|style|iframe|object|embed|noscript|template|svg|math)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const HTML_TAG = /<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?\/?>/g;
+const UNSAFE_SCHEME = '(?:javascript|vbscript|data|file)\\s*:';
+const UNSAFE_MD_LINK = new RegExp(`(!?)\\[([^\\]]*)\\]\\(\\s*<?\\s*${UNSAFE_SCHEME}(?:[^()\\s]|\\([^()]*\\))*[^)]*\\)`, 'gi');
+const UNSAFE_MD_REF = new RegExp(`^[ \\t]*\\[[^\\]]+\\]:[ \\t]*<?\\s*${UNSAFE_SCHEME}.*$`, 'gim');
+const UNSAFE_AUTOLINK = new RegExp(`<${UNSAFE_SCHEME}[^>]*>`, 'gi');
+function cleanAnswerText(text, secrets = []) {
+  let out = String(text == null ? '' : text);
+  out = out.replace(RUNNABLE_BLOCK, '').replace(UNSAFE_AUTOLINK, '').replace(HTML_TAG, '');
+  out = out.replace(UNSAFE_MD_LINK, (_m, _bang, words) => words).replace(UNSAFE_MD_REF, '');
+  return redactText(out, secrets);
+}
+// An object from an answer (cleanObject's shape) with every string in it cleaned the same way; a link's address only
+// redacted (cleanObject already keeps http and https ones only).
+function cleanAnswerObject(value, secrets = [], key = '') {
+  if (typeof value === 'string') return key === 'url' ? redactText(value, secrets) : cleanAnswerText(value, secrets);
+  if (Array.isArray(value)) return value.map((x) => cleanAnswerObject(x, secrets));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, x] of Object.entries(value)) if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') out[k] = cleanAnswerObject(x, secrets, k);
+    return out;
+  }
+  return value;
 }
 
 // A summary (server/index.js objectSummary) as a model may read it: only SENT_FIELDS, each text redacted.
@@ -195,11 +229,13 @@ function createAiPolicy(deps) {
     return effectiveSees(ai.config.sees, space && space.aiSees ? space.aiSees : null, enabled);
   }
 
-  // The exact secrets this server holds that no prompt may carry: the OBS access key, every space's guest token, the AI key.
+  // The exact secrets this server holds that no prompt may carry: the OBS access key, every space's guest token, every
+  // person's sign-in link token, the AI key.
   function secrets() {
     const out = [];
     try { out.push(store.streamKey); } catch { /* none */ }
     for (const s of store.spaces) if (s.guestToken) out.push(s.guestToken);
+    try { for (const u of store.users || []) if (u && u.linkToken) out.push(u.linkToken); } catch { /* none */ }
     try { const k = ai.key(); if (k) out.push(k); } catch { /* none */ }
     return out.filter((s) => typeof s === 'string' && s.length >= 8);
   }
@@ -239,6 +275,6 @@ function createAiPolicy(deps) {
 }
 
 module.exports = {
-  createAiPolicy, cleanSees, readSees, effectiveSees, moduleAllowed, redactText, redactSummary, sentences, PolicyError,
+  createAiPolicy, cleanSees, readSees, effectiveSees, moduleAllowed, redactText, redactSummary, cleanAnswerText, cleanAnswerObject, sentences, PolicyError,
   SEES_KEYS, SEES_SWITCHES, SEES_DEFAULTS, ENVIRONMENT_VALUES, REDACTED_FIELDS, SENT_FIELDS, SECRET_PATTERNS,
 };

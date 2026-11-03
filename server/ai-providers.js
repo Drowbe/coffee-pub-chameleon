@@ -123,13 +123,18 @@ function answerOf(provider, json, structured) {
   try { const v = JSON.parse(text); return { text, structured: v && typeof v === 'object' && !Array.isArray(v) ? v : undefined }; } catch { return { text, structured: undefined }; }
 }
 
-// A compatible service refusing the schema rather than the question: a 400 or 422 that names the response format or a
-// schema, or any 400/422 when it says nothing readable. Busy, down and the key are other failures.
+// A compatible service refusing the schema rather than the question: a 400 or 422 whose message names the response format,
+// the JSON schema or structured output. One that says nothing readable, or names something else, is not taken for it.
+// Busy, down and the key are other failures.
 function refusedSchema(res) {
   if (res.status !== 400 && res.status !== 422) return false;
   let message = '';
-  try { const j = JSON.parse(res.text); message = String(j?.error?.message || j?.message || j?.detail || ''); } catch { return true; }
-  return !message || /response_format|json_schema|schema|structured|unsupported|not supported|unknown (field|param)/i.test(message);
+  try {
+    const j = JSON.parse(res.text);
+    const m = j?.error?.message ?? j?.message ?? j?.detail ?? '';
+    message = typeof m === 'string' ? m : JSON.stringify(m);
+  } catch { return false; }
+  return /response_format|json_schema|schema|structured[ _-]?output/i.test(message);
 }
 
 async function send(c, url, headers, body, guard) {

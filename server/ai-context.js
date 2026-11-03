@@ -45,17 +45,31 @@ function todayIn(tz, fallback, now = Date.now()) {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday, timeZone: zone };
 }
 const addDays = (day, n) => { const d = new Date(`${day}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const dayOf = (when) => (typeof when === 'string' && /^\d{4}-\d{2}-\d{2}/.test(when) ? when.slice(0, 10) : '');
+// A date or time as text: a string as it is; a number as a time in milliseconds (a Polls closesAt) when it is one, else its
+// digits (a note's `date: 20261105`); anything else none. A model reads text, and a template's inputs take only text.
+function whenText(v) {
+  if (typeof v === 'string') return v;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '';
+  if (v >= 1e11 && v <= 8.64e15) return new Date(v).toISOString().slice(0, 16).replace('T', ' ');
+  return String(v);
+}
+const placeText = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' && typeof v.name === 'string' ? v.name : '');
+const dayOf = (when) => { const w = whenText(when); return /^\d{4}-\d{2}-\d{2}/.test(w) ? w.slice(0, 10) : ''; };
 
 // A summary (redacted by the policy) as a rollup object: no text.
 function rollupObject(n, s, extra = {}) {
-  return { n, ...(s.kindName || s.kind ? { kind: s.kindName || s.kind } : {}), title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}), ...(s.when ? { when: s.when } : {}), ...(s.end ? { end: s.end } : {}), ...(s.done ? { done: true } : {}), ...(s.place ? { place: s.place } : {}), ...extra };
+  const when = whenText(s.when);
+  const end = whenText(s.end);
+  const place = placeText(s.place);
+  return { n, ...(s.kindName || s.kind ? { kind: s.kindName || s.kind } : {}), title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}), ...(when ? { when } : {}), ...(end ? { end } : {}), ...(s.done ? { done: true } : {}), ...(place ? { place } : {}), ...extra };
 }
 
 // deps: { store, chatHistory, moduleLinks, policy, word, listObjects(who, { scope, space }) -> summaries, roleWordOf(user, space),
 // guestsIn(space) -> [names], serverZone() -> zone, now() -> ms, templatePhases() -> phases, timelineOf (public/phases.js) }.
 function createContextBuilder(deps) {
   const { chatHistory, moduleLinks, policy, word, listObjects, roleWordOf, guestsIn, serverZone, timelineOf, templatePhases } = deps;
+  // Whether the asker may read this space's chat now (an owner may; otherwise a member whose rights here have chatRead).
+  const canReadChat = deps.canReadChat || (() => false);
   const now = deps.now || Date.now;
 
   // The asker's own turns in this space, oldest first: [{ question, answer }]. A question is their private /ai message; its
@@ -135,15 +149,19 @@ function createContextBuilder(deps) {
         continue; // unreadable: left out, never named
       }
       const s = got.summary;
-      const text = [s.text, s.subtitle].filter(Boolean).join('\n').slice(0, MAX_ITEM_CHARS) || s.title;
-      material.push({ n: material.length + 1, ...(s.kindName || s.kind ? { kind: s.kindName || s.kind } : {}), title: s.title, ...(s.when ? { when: s.when } : {}), ...(s.place ? { place: s.place } : {}), text });
+      const title = typeof s.title === 'string' ? s.title : String(s.title ?? '');
+      const text = [s.text, s.subtitle].filter((x) => (typeof x === 'string' && x) || (typeof x === 'number' && Number.isFinite(x))).map(String).join('\n').slice(0, MAX_ITEM_CHARS) || title;
+      const kind = s.kindName || s.kind;
+      const when = whenText(s.when);
+      const place = placeText(s.place);
+      material.push({ n: material.length + 1, ...(typeof kind === 'string' && kind ? { kind } : {}), title, ...(when ? { when } : {}), ...(place ? { place } : {}), text });
       numbered.push(got.ref);
     }
     const attachedRefs = numbered.slice();
 
     // The relevant objects: the best by word match of the question (and the last turn), plus the dated ones in the next days.
     let history = [];
-    if (takes('history') && withHistory && sees.history && space) history = turnsOf(space.id, who.user.key).slice(-MAX_TURNS);
+    if (takes('history') && withHistory && sees.history && space) history = turnsOf(space.id, who.user.key).slice(-MAX_TURNS).map((t) => ({ question: policy.redact(t.question, secretList), answer: policy.redact(t.answer, secretList) }));
     let relevant = [];
     if (takes('context') && sees.relevant) {
       const pool = [];
@@ -188,9 +206,10 @@ function createContextBuilder(deps) {
       });
     }
 
-    // The chat: the space's last public messages (never a private one), only when the setting has it on.
+    // The chat: the space's last public messages (never a private one), only when the setting has it on and the asker may
+    // read the chat here.
     let chat = [];
-    if (takes('context') && sees.chat && space) {
+    if (takes('context') && sees.chat && space && canReadChat(who, space)) {
       chat = chatHistory.list(space.id, null).filter((m) => m.visibility !== 'private' && m.text).slice(-MAX_CHAT)
         .map((m) => ({ who: m.who, text: policy.redact(String(m.text).replace(/[ \t]*\{\{summary:\d+\}\}/g, '').slice(0, MAX_CHAT_TEXT), secretList), at: new Date(m.at).toISOString().slice(0, 16) }));
       while (chat.length && tokensOf(chat) > CHAT_TOKENS) { chat.shift(); note('chat', 'budget'); }
@@ -248,4 +267,4 @@ function createContextBuilder(deps) {
   return { build, turnsOf };
 }
 
-module.exports = { createContextBuilder, todayIn, wordsOf, tokensOf };
+module.exports = { createContextBuilder, todayIn, wordsOf, tokensOf, whenText };

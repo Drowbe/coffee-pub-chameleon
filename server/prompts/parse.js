@@ -164,12 +164,14 @@ function citedItems(text, count) {
   return [...used].sort((a, b) => a - b);
 }
 
-// A value with every null (and every empty string) taken out, as strict structured output writes an unknown field.
+// A value with every null (and every empty string) taken out, as strict structured output writes an unknown field. The keys
+// that would reach an object's prototype (__proto__, constructor, prototype) are never copied.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 function dropNulls(v) {
   if (Array.isArray(v)) return v.filter((x) => x !== null && x !== undefined).map(dropNulls);
   if (v && typeof v === 'object') {
     const out = {};
-    for (const [k, x] of Object.entries(v)) if (x !== null && x !== undefined && x !== '') out[k] = dropNulls(x);
+    for (const [k, x] of Object.entries(v)) if (!UNSAFE_KEYS.has(k) && x !== null && x !== undefined && x !== '') out[k] = dropNulls(x);
     return out;
   }
   return v;
@@ -220,7 +222,9 @@ function readAnswer(value, rawText, count, max = MAX_SUMMARIES) {
     if (doc) cut = true;
   }
   if (!doc) return null;
-  const inText = parseSummaries(String(typeof doc.answer === 'string' ? doc.answer : '').slice(0, MAX_ANSWER_CHARS), count, max);
+  const answer = typeof doc.answer === 'string' ? doc.answer : '';
+  if (answer.length > MAX_ANSWER_CHARS) cut = true; // cut to the longest answer read, and said to be
+  const inText = parseSummaries(answer.slice(0, MAX_ANSWER_CHARS), count, max);
   const summaries = inText.summaries.slice();
   for (const raw of Array.isArray(doc.objects) ? doc.objects : []) {
     if (summaries.length >= max) break;

@@ -5690,6 +5690,8 @@ function aiObjectsIn(who, where) {
 const aiContext = createContextBuilder({
   store, chatHistory, moduleLinks, policy: aiPolicy, word, listObjects: aiObjectsIn, roleWordOf: aiRoleWord,
   guestsIn: (space) => live.people(space.id).filter((p) => p.guest).map((p) => p.name),
+  // The chat part goes only to an asker who may read this chat now (chatAccess's rule: an owner, or a member with chatRead).
+  canReadChat: (who, space) => Boolean(who && who.user && (hasOwnerRights(who.user) || (space.members.includes(who.user.key) && store.spacePermissions(who.user.key, space.id).chatRead))),
   serverZone: () => ics.serverZone(),
   timelineOf: phaseRule.timelineOf,
   templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
@@ -5767,7 +5769,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', { question, material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built));
+    const out = await ai.run('ask', { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets() });
     countAiCall();
     const summaries = aiSummaries(out.summaries, built.numbered);
     const used = aiPointers(out.used, built.numbered);
@@ -5776,7 +5778,8 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
     res.json({ text: out.text, summaries, used, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
-    if (err instanceof AiError && err.refund) aiPolicy.giveBack(who); // failed before the service did any work: it does not count
+    // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
     sendAiError(err, res);
   }
 });
@@ -7872,14 +7875,14 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     ? { material: built.material, words: aiWords() }
     : task === 'summarise'
       ? { material: built.material, context: built.context, kinds: promptKinds(), words: aiWords() }
-      : { question, material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
+      : { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
   try {
-    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built));
+    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built), { secrets: aiPolicy.secrets() });
     countAiCall();
     noteActivity(ctx.manifest.id, `asked the AI (${AI_TASK_WORDS[task]}, ${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
     res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
-    if (err instanceof AiError && err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
     sendAiError(err, res);
   }
 });
