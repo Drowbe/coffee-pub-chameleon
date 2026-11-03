@@ -150,7 +150,11 @@ await test('rules: what a PUT and a DELETE answer, case by case', () => {
     ['a vote for a made-up voter', put('vote:q1:zzfake', { options: ['o1'] }, member), 403],
     ['a key that slips the pattern', put('vote:q1:sam:x', { options: ['o1'] }, member), 400],
     ['a key that slips the poll pattern', put('poll:q1:x', poll(), member), 400],
-    ['a key no rule is about', put('note:x', { anything: 1 }, member), 200],
+    ['a key no rule is about, in a module that keeps only its own (guards.only)', put('note:x', { anything: 1 }, member), 400],
+    ['a look-alike key: another case', put('Vote:q1:sam', { options: ['o1'] }, member), 400],
+    ['a look-alike key: all capitals', put('VOTE:q1:sam', { options: ['o1'] }, member), 400],
+    ['a look-alike key: a poll', put('Poll:q1', poll(), member), 400],
+    ['a look-alike key: another mark', put('vote.q1:sam', { options: ['o1'] }, member), 400],
     ['a vote on a poll closed by hand', put('vote:q2:sam', { options: ['o1'] }, member), 403],
     ['a vote on a poll past its time', put('vote:q3:sam', { options: ['o1'] }, member), 403],
     ['a vote on a poll that is not there', put('vote:qx:sam', { options: ['o1'] }, member), 404],
@@ -175,7 +179,8 @@ await test('rules: what a PUT and a DELETE answer, case by case', () => {
     ['someone else\'s poll deleted, by a manager', del('poll:q1', manager), 200],
     ['one\'s own poll deleted', del('poll:q1', person('mia', ['create'])), 200],
     ['someone else\'s vote deleted', del('vote:q1:mia', member, { options: ['o1'] }), 403],
-    ['someone else\'s vote deleted by the poll\'s starter', del('vote:q1:sam', person('mia', ['create']), { options: ['o1'] }), 200],
+    ['someone else\'s vote deleted by the poll\'s starter: only the voter removes a vote (Thomas, 2026-11-03)', del('vote:q1:sam', person('mia', ['create']), { options: ['o1'] }), 403],
+    ['someone else\'s vote on an open poll deleted by a manager', del('vote:q1:sam', manager, { options: ['o1'] }), 403],
     ['someone else\'s vote on a closed poll deleted by a manager: a closed poll is final', del('vote:q2:sam', manager, { options: ['o1'] }), 403],
     ['a vote on a closed poll deleted by its starter', del('vote:q2:sam', person('mia', ['create']), { options: ['o1'] }), 403],
     ['one\'s own vote taken back on an open poll', del('vote:q1:sam', member, { options: ['o1'] }), 200],
@@ -247,7 +252,7 @@ await test('hidden fields: hide and keepHidden', () => {
   assert.equal(guards.hiddenClearRefusal([{ title: 'x' }, v], H).status, 403);
   assert.equal(guards.hiddenClearRefusal([{ title: 'x' }], H), null);
   // Guards that don't read: hidden fields kept as far as they read; when they don't read in full, shut to guests (QA 4).
-  assert.deepEqual(guards.unreadableGuards({ hidden: ['cost', 'cost'], keys: 'bad' }), { invalid: true, clear: null, hidden: ['cost'], keys: [], exclusive: null });
+  assert.deepEqual(guards.unreadableGuards({ hidden: ['cost', 'cost'], keys: 'bad' }), { invalid: true, clear: null, hidden: ['cost'], keys: [], exclusive: null, only: false });
   assert.equal(guards.unreadableGuards({ keys: 'bad' }).shut, undefined, 'no hidden fields declared: nothing to shut');
   assert.equal(guards.unreadableGuards({ hidden: 'cost' }).shut, true, 'hidden not a list');
   assert.equal(guards.unreadableGuards({ hidden: ['cost', 'not ok'] }).shut, true, 'a hidden entry that does not read');
@@ -263,7 +268,7 @@ await test('fields: lists (of, unique, pick), votes and options (QA 1, 6, 8)', (
   const put = (key, value, who = voter, before = store[key] || null) => guards.checkPut(g, { key, before, value, who, read, now: 0 });
   const rows = [
     ['one choice', put('vote:q1:sam', { options: ['o1'] }), 200],
-    ['no choice', put('vote:q1:sam', { options: [] }), 200],
+    ['no choice: an empty required list is missing (QA round 2, 7)', put('vote:q1:sam', { options: [] }), 400],
     ['two on a poll of one', put('vote:q1:sam', { options: ['o1', 'o2'] }), 400],
     ['two on a poll of several', put('vote:q2:sam', { options: ['o1', 'o2'] }), 200],
     ['the same twice', put('vote:q2:sam', { options: ['o1', 'o1'] }), 400],
@@ -322,6 +327,73 @@ await test('exclusive ids and a rule\'s file (Research)', () => {
   assert.equal(status(put('photo:p2', { kind: 'photo', title: 'P', file: { id: 'f1' } }, sam, null)), 200, 'one\'s own file');
   assert.equal(guards.fileOf(g, 'photo:p1', store['photo:p1']), 'f1');
   assert.equal(guards.fileOf(g, 'note:p1', { file: { id: 'f1' } }), null, 'only a rule with `file` names one');
+});
+
+await test('settled fields, look-alike keys, a person\'s own data, files named anywhere, link pictures (QA round 2)', () => {
+  const g = clean(POLLS_GUARDS);
+  const person = (key, perms, owner = false) => ({ key, name: key, owner, can: (p) => perms.includes(p) });
+  const mia = person('mia', ['view', 'vote', 'create']);
+  const boss = person('boss', ['view', 'vote', 'create', 'manage_any']);
+  const poll = (extra = {}) => ({ id: 'q1', question: 'Where?', options: [{ id: 'o1', text: 'A' }, { id: 'o2', text: 'B' }], multi: false, addable: true, closed: false, closesAt: null, by: 'Mia', byKey: 'mia', ...extra });
+  const store = { 'poll:q1': poll(), 'vote:q1:sam': { options: ['o1'] }, 'poll:q2': poll({ id: 'q2' }), 'poll:q3': poll({ id: 'q3', closed: true }), 'vote:q3:sam': { options: ['o2'] } };
+  const read = (k) => store[k] || null;
+  const keys = () => Object.keys(store);
+  const put = (key, value, who = mia) => guards.checkPut(g, { key, before: store[key] || null, value, who, read, keys, now: 0 });
+  const status = (r) => (r.error ? r.status : 200);
+  // (a) Once any vote is in, the options can't be removed or renamed and multi can't change, by the starter or a manager;
+  // options may still be added, and anything else changed.
+  const rows = [
+    ['an option renamed with a vote in', put('poll:q1', poll({ options: [{ id: 'o1', text: 'RENAMED' }, { id: 'o2', text: 'B' }] })), 403],
+    ['an option removed with a vote in', put('poll:q1', poll({ options: [{ id: 'o1', text: 'A' }] })), 403],
+    ['multi turned on with a vote in', put('poll:q1', poll({ multi: true })), 403],
+    ['multi changed by a manager with a vote in', put('poll:q1', poll({ multi: true }), boss), 403],
+    ['multi left out where it was false', put('poll:q1', (({ multi, ...rest }) => rest)(poll())), 200],
+    ['an option added with a vote in', put('poll:q1', poll({ options: [...poll().options, { id: 'o3', text: 'C' }] })), 200],
+    ['the question changed with a vote in', put('poll:q1', poll({ question: 'Where, then?' })), 200],
+    ['reopened (Thomas: allowed)', put('poll:q3', poll({ id: 'q3', closed: false })), 200],
+    ['a closed poll renamed with a vote in', put('poll:q3', poll({ id: 'q3', closed: true, options: [{ id: 'o1', text: 'A' }, { id: 'o2', text: 'RENAMED' }] })), 403],
+    ['an option renamed with no vote in', put('poll:q2', poll({ id: 'q2', options: [{ id: 'o1', text: 'Renamed' }, { id: 'o2', text: 'B' }] })), 200],
+    ['multi changed with no vote in', put('poll:q2', poll({ id: 'q2', multi: true })), 200],
+  ];
+  for (const [what, answer, want] of rows) assert.equal(status(answer), want, `${what}: ${JSON.stringify(answer)}`);
+  assert.equal(put('poll:q1', poll({ multi: true })).error, 'That already has answers, so multi can\'t be changed.');
+  assert.equal(put('poll:q1', poll({ options: [{ id: 'o1', text: 'A' }] })).error, 'That already has answers, so options can only be added to.');
+  // The loophole (close, rename, reopen, delete a vote, close): the vote stays the voter's, closed or open.
+  assert.equal(guards.checkDelete(g, { key: 'vote:q3:sam', before: store['vote:q3:sam'], who: mia, read }).status, 403, 'the starter, closed');
+  assert.equal(guards.checkDelete(g, { key: 'vote:q1:sam', before: store['vote:q1:sam'], who: mia, read }).status, 403, 'the starter, open');
+  assert.equal(guards.checkDelete(g, { key: 'vote:q1:sam', before: store['vote:q1:sam'], who: person('sam', ['vote']), read }), null, 'the voter, open');
+  // The manifest's refusals.
+  for (const [raw, message] of [
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', settled: ['t'] }] }, /settled needs a rule whose "parent" is "a:\{x\}"/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', settled: [] }] }, /settled must be a list of 1 to 30 fields/],
+    [{ clear: 'owner', keys: [{ key: 'a:{x}', settled: ['t', 't'] }, { key: 'b:{x}', parent: 'a:{x}' }] }, /settled lists a field twice/],
+    [{ only: 'yes', exclusive: ['a:{x}', 'b:{x}'] }, /guards.only must be true or false/],
+    [{ only: true, hidden: ['x'] }, /guards.only needs guards.keys or guards.exclusive/],
+  ]) assert.throws(() => clean(raw), message, JSON.stringify(raw));
+  // (9) Look-alike keys are refused in a module without `only` too; a key unlike any rule's still goes in.
+  const r = JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'research', 'module.json'), 'utf8'));
+  const rg = guards.cleanGuards(r.guards, r.permissions.map((p) => p.key), ModuleError);
+  const sam = { ...person('sam', ['view', 'edit']), file: () => null };
+  const rput = (key, value, extra = {}) => guards.checkPut(rg, { key, before: null, value, who: sam, read: () => null, ...extra });
+  for (const key of ['Note:n1', 'NOTE:n1', 'note.n1', 'Photo:p1', 'link:a:b']) assert.equal(rput(key, { title: 'x' }).status, 400, key);
+  assert.equal(status(rput('note:n1', { title: 'x' })), 200);
+  assert.equal(status(rput('notes-index', { title: 'x' })), 200, 'a key unlike any of the module\'s');
+  // (11) In a person's own data `exclusive` and the key space hold; who-may rules don't (it is all theirs).
+  const mine = { 'note:n1': { kind: 'note' } };
+  assert.equal(rput('link:n1', { kind: 'link' }, { read: (k) => mine[k] || null, personal: true }).status, 409, 'a link under a note\'s id in Mine');
+  assert.equal(rput('Note:n2', { kind: 'note' }, { personal: true }).status, 400, 'a look-alike in Mine');
+  assert.equal(status(rput('photo:p9', { kind: 'photo', file: { id: 'not-checked' } }, { personal: true })), 200, 'a photo in Mine is the person\'s own');
+  // (3) A file is kept while any stored value names it, in any field or inside text.
+  assert.equal(guards.namesFile([{ title: 'x' }, { other: { deep: ['f1'] } }], 'f1'), true);
+  assert.equal(guards.namesFile([{ body: 'see /api/modules/research/uploads/f1' }], 'f1'), true);
+  assert.equal(guards.namesFile([{ title: 'x' }], 'f1'), false);
+  // (6) The link-image route takes an address only from the field the rule declares.
+  assert.equal(guards.linkImageOf(rg, 'link:l1', { image: 'https://e.org/a.png', url: 'https://e.org/' }), 'https://e.org/a.png');
+  assert.equal(guards.linkImageOf(rg, 'note:l1', { image: 'https://e.org/a.png' }), null, 'a note is not a link');
+  assert.equal(guards.linkImageOf(rg, 'link:l1', { url: 'https://e.org/a.png' }), null, 'another field of a link');
+  // (12) A guest can't remove what goes with an object when that holds hidden fields.
+  assert.equal(guards.hiddenDeleteRefusal({ title: 'x' }, ['cost'], [{ cost: 5 }]).error, 'What goes with it holds details guests can\'t see, so a guest can\'t remove it.');
+  assert.equal(guards.hiddenDeleteRefusal({ title: 'x' }, ['cost'], [{ title: 'y' }]), null);
 });
 
 // --- live, against the seed ----------------------------------------------------------------------------------------------
@@ -395,8 +467,10 @@ try {
     }
     assert.equal((await call('DELETE', data('polls', `vote:sam1:${ctx.sam}`), undefined, 'sam')).status, 200);
     assert.equal((await call('DELETE', data('polls', 'poll:sam1'), undefined, 'sam')).status, 200, 'his own poll deleted');
-    // Mia, who started q1, removes Sam's vote with it (the page deletes the votes first).
-    assert.equal((await call('DELETE', data('polls', `vote:q1:${ctx.sam}`), undefined, 'mia')).status, 200, 'the starter removes a vote on her poll');
+    // Mia, who started q1, can't remove Sam's vote (only the voter does, Thomas 2026-11-03); Sam takes his back.
+    const starter = await call('DELETE', data('polls', `vote:q1:${ctx.sam}`), undefined, 'mia');
+    assert.deepEqual([starter.status, starter.json.error], [403, 'That belongs to someone else, so you can\'t change it.'], 'the starter removing a vote on her poll');
+    assert.equal((await call('DELETE', data('polls', `vote:q1:${ctx.sam}`), undefined, 'sam')).status, 200, 'the voter takes his back');
   });
 
   await test('live: clearing a module is for whoever its guards say (PB-01, PB-02)', async () => {
@@ -687,6 +761,111 @@ try {
     const icon = await fetch(`${server.base}/api/icons/solid/pen`);
     assert.equal(icon.status, 200);
     assert.match(await icon.text(), /^<svg/);
+  });
+
+  await test('live: Send to Research of a picture waits for its sender\'s own page (QA round 2, 1)', async () => {
+    const listed = (await call('GET', `/api/spaces/${T}/actions`, undefined, 'sam')).json.actions.find((a) => a.action === 'research:savePhoto');
+    assert.equal(listed.askerOnly, true, 'Chat is told only the sender\'s page takes it');
+    const fileId = await upload('sam');
+    const sent = await call('POST', `/api/spaces/${T}/action`, { action: 'research:savePhoto', input: { object: { kind: 'image', title: 'beach.png', details: { upload: fileId, name: 'beach.png' } } } }, 'sam');
+    assert.equal(sent.status, 200, JSON.stringify(sent.json));
+    const pending = async (as) => (await call('GET', `/api/bus/actions/pending?module=research&scope=space&space=${T}`, undefined, as)).json.actions.map((a) => a.id);
+    assert.equal((await pending('mia')).includes(sent.json.id), false, 'Mia\'s open Research is not handed it');
+    assert.equal((await pending('admin')).includes(sent.json.id), false, 'nor the admin\'s');
+    assert.equal((await call('POST', '/api/bus/actions/claim', { module: 'research', id: sent.json.id, scope: 'space', space: T }, 'mia')).json.ok, false, 'Mia can\'t take it');
+    assert.equal((await call('POST', '/api/bus/actions/complete', { module: 'research', id: sent.json.id, scope: 'space', space: T, result: { ok: false, error: 'x' } }, 'mia')).json.ok, false, 'nor finish it');
+    assert.equal((await call('GET', `/api/spaces/${T}/action/${sent.json.id}`, undefined, 'sam')).json.status, 'pending', 'it still waits');
+    assert.ok((await pending('sam')).includes(sent.json.id), 'Sam\'s own page is handed it');
+    assert.equal((await call('POST', '/api/bus/actions/claim', { module: 'research', id: sent.json.id, scope: 'space', space: T }, 'sam')).json.ok, true);
+    const made = await call('PUT', data('research', 'photo:sent1'), { value: { kind: 'photo', title: 'beach.png', tags: [], date: '', at: '', text: '', sub: '', by: ctx.sam, file: { id: fileId, hasThumb: false } } }, 'sam');
+    assert.equal(made.status, 200, `the photo is made as savePhoto makes it: ${JSON.stringify(made.json)}`);
+    assert.equal((await call('POST', '/api/bus/actions/complete', { module: 'research', id: sent.json.id, scope: 'space', space: T, result: { ok: true } }, 'sam')).json.ok, true);
+    assert.ok((await filesHere()).includes(fileId), 'and the picture is kept');
+    assert.equal((await call('DELETE', data('research', 'photo:sent1'), undefined, 'sam')).status, 200);
+  });
+
+  await test('live: a poll with votes keeps its options and multi; only the voter removes a vote (QA round 2, 2 and 3)', async () => {
+    const p = { id: 'st1', question: 'Settled?', options: [{ id: 'o1', text: 'a' }, { id: 'o2', text: 'b' }], multi: false, addable: false, closed: false, closesAt: null };
+    const made = (await call('PUT', data('polls', 'poll:st1'), { value: p }, 'mia')).json.item.value;
+    assert.equal((await call('PUT', data('polls', `vote:st1:${ctx.sam}`), { value: { options: [] } }, 'sam')).status, 400, 'an empty vote');
+    assert.equal((await call('PUT', data('polls', `vote:st1:${ctx.sam}`), { value: { options: ['o1'] } }, 'sam')).status, 200);
+    const renamed = await call('PUT', data('polls', 'poll:st1'), { value: { ...made, options: [{ id: 'o1', text: 'RENAMED' }, { id: 'o2', text: 'b' }] } }, 'mia');
+    assert.deepEqual([renamed.status, renamed.json.error], [403, 'That already has answers, so options can only be added to.']);
+    assert.equal((await call('PUT', data('polls', 'poll:st1'), { value: { ...made, multi: true } })).status, 403, 'multi, by the admin');
+    assert.equal((await call('PUT', data('polls', 'poll:st1'), { value: { ...made, options: [made.options[0]] } }, 'mia')).status, 403, 'an option removed');
+    // Close, rename, reopen, remove the vote, close: every step that would change the result is refused.
+    const closed = (await call('PUT', data('polls', 'poll:st1'), { value: { ...made, closed: true } }, 'mia')).json.item.value;
+    assert.equal((await call('PUT', data('polls', 'poll:st1'), { value: { ...closed, options: [{ id: 'o1', text: 'RENAMED' }, closed.options[1]] } }, 'mia')).status, 403, 'renamed while closed');
+    const reopened = await call('PUT', data('polls', 'poll:st1'), { value: { ...closed, closed: false } }, 'mia');
+    assert.equal(reopened.status, 200, 'reopening is allowed');
+    assert.equal((await call('DELETE', data('polls', `vote:st1:${ctx.sam}`), undefined, 'mia')).status, 403, 'the starter removing the vote, reopened');
+    assert.equal((await call('DELETE', data('polls', `vote:st1:${ctx.sam}`))).status, 403, 'the admin too');
+    assert.deepEqual((await call('GET', data('polls', `vote:st1:${ctx.sam}`))).json.item.value.options, ['o1'], 'the vote is as cast');
+    // Look-alike keys and keys Polls doesn't keep (QA round 2, 9).
+    for (const key of [`Vote:st1:${ctx.mia}`, `VOTE:st1:${ctx.mia}`, 'Poll:st1', `vote.st1:${ctx.mia}`, 'note:x']) {
+      const r = await call('PUT', data('polls', key), { value: { options: ['o1'] } }, 'sam');
+      assert.deepEqual([r.status, r.json.error], [400, 'That key isn\'t one this module keeps.'], key);
+    }
+    assert.equal((await call('DELETE', data('polls', 'poll:st1'), undefined, 'mia')).status, 200, 'the poll removed takes the vote');
+    assert.equal((await call('GET', data('polls', `vote:st1:${ctx.sam}`))).status, 404);
+  });
+
+  await test('live: a file goes when nothing names it, and stays while anything does (QA round 2, 3 and 4)', async () => {
+    const photo = (file) => ({ kind: 'photo', title: 'P', tags: [], date: '', at: '', text: 'P', sub: '', file: { id: file, hasThumb: false } });
+    const [f1, f2] = [await upload('sam'), await upload('sam')];
+    assert.equal((await call('PUT', data('research', 'photo:sw1'), { value: photo(f1) }, 'sam')).status, 200);
+    const swapped = await call('PUT', data('research', 'photo:sw1'), { value: { ...photo(f2), by: ctx.sam } }, 'sam');
+    assert.equal(swapped.status, 200, JSON.stringify(swapped.json));
+    const files = await filesHere();
+    assert.deepEqual([files.includes(f1), files.includes(f2)], [false, true], 'the swapped-out file went, the new one stayed');
+    // A note that names the file (any field) keeps it when the last photo that used it goes.
+    assert.equal((await call('PUT', data('research', 'note:nf1'), { value: { kind: 'note', title: 'N', body: '', tags: [], date: '', at: '', text: '', sub: '', file: { id: f2 } } })).status, 200);
+    assert.equal((await call('DELETE', data('research', 'photo:sw1'), undefined, 'sam')).status, 200);
+    assert.ok((await filesHere()).includes(f2), 'kept: note:nf1 still names it');
+    assert.equal((await call('DELETE', data('research', 'note:nf1'))).status, 200);
+  });
+
+  await test('live: in Mine, access.personWrite opens data and uploads only; exclusive holds there (QA round 2, 5, 6, 11)', async () => {
+    assert.equal((await call('PATCH', '/api/roles/member', { 'module.research.edit': false })).status, 200);
+    try {
+      const mine = 'scope=person';
+      for (const [method, route, body] of [
+        ['POST', 'link-preview', { url: 'https://example.org/' }],
+        ['POST', 'ai', { task: 'ask', question: 'x' }],
+        ['POST', 'notify', { title: 'x', body: 'y' }],
+        ['POST', 'schedule', { key: 'x', at: Date.now() + 60000, title: 'x' }],
+      ]) {
+        const r = await call(method, `/api/modules/research/${route}?${mine}`, body, 'sam');
+        assert.deepEqual([r.status, r.json?.error], [403, 'your role can\'t do that in this module'], `${route} in Mine without edit`);
+      }
+      // Exclusive in Mine: a link can't take a note's id.
+      const note = { kind: 'note', title: 'Mine', body: '', tags: [], date: '', at: '', text: '', sub: '' };
+      assert.equal((await call('PUT', `/api/modules/research/data/note:ex1?${mine}`, { value: note }, 'sam')).status, 200);
+      const shadow = await call('PUT', `/api/modules/research/data/link:ex1?${mine}`, { value: { ...note, kind: 'link', url: 'https://example.org/' } }, 'sam');
+      assert.deepEqual([shadow.status, shadow.json.error], [409, 'Something else here already has that id, so this can\'t be saved under it.']);
+      assert.equal((await call('PUT', `/api/modules/research/data/Note:ex2?${mine}`, { value: note }, 'sam')).status, 400, 'a look-alike key in Mine');
+      assert.equal((await call('DELETE', `/api/modules/research/data/note:ex1?${mine}`, undefined, 'sam')).status, 200);
+    } finally {
+      await call('PATCH', '/api/roles/member', { 'module.research.edit': true });
+    }
+    // The link-image route takes an address only from a link's picture field.
+    const img = (url) => `/api/modules/research/link-image?${sp()}&url=${encodeURIComponent(url)}`;
+    const elsewhere = 'https://pictures.example.org/in-a-note.jpg';
+    assert.equal((await call('PUT', data('research', 'note:li1'), { value: { kind: 'note', title: 'N', body: elsewhere, tags: [], date: '', at: '', text: '', sub: '', image: elsewhere } }, 'sam')).status, 200);
+    const r = await call('GET', img(elsewhere), undefined, 'sam');
+    assert.deepEqual([r.status, r.json?.error], [404, 'That picture isn\'t on a link here.'], 'an address in a note is not a link\'s picture');
+    assert.equal((await call('DELETE', data('research', 'note:li1'), undefined, 'sam')).status, 200);
+  });
+
+  await test('live: a space\'s icon is its own, else the template\'s, never a chat bubble', async () => {
+    const spaces = (await call('GET', '/api/modules/research/spaces-data?info=1', undefined, 'sam')).json.spaces;
+    assert.ok(spaces.length, 'Sam has spaces');
+    for (const s of spaces) {
+      assert.notEqual(s.icon, 'message', `${s.name}`);
+      assert.ok(s.svg && s.svg.startsWith('<svg'), `${s.name} has its icon drawn`);
+    }
+    const plain = (await call('GET', `/api/spaces/${T}`)).json.space;
+    if (!plain.linkIcon || plain.linkIcon === 'link') assert.equal(spaces.find((s) => s.id === T).icon, 'suitcase-rolling', 'the travel template\'s icon');
   });
 
   await test('live: guards whose hidden fields can\'t be read keep the module\'s data from guests (QA 4)', async () => {

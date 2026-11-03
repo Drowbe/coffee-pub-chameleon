@@ -1003,7 +1003,7 @@
     // The original owns a copy's length and whether it is all day: shown, not changed, and said so.
     const owned = Boolean(copy) && !readOnly;
     for (const id of ['f-allday', 'f-end-date', 'f-end']) $(id).disabled = readOnly || owned;
-    const ownedWords = owned ? `Set by the ${copyName(copy)}` : '';
+    const ownedWords = owned ? `The length and All day are set by the ${copyName(copy)}.` : '';
     $('f-owned').textContent = ownedWords; // under All day and the end: the date picker keeps its own hint line under the field
     $('f-owned').hidden = !owned;
     $('f-time-wrap').querySelector('.sdk-hint').textContent = zone ? zoneNote(zone) : '';

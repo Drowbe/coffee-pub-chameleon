@@ -118,8 +118,7 @@ stay allowed:
 
 Anything else that needs an exception is added to the check's list with its reason, and Thomas decides.
 
-Two states can now share a look: in the Calendar, today and the selected day are both accent fills. See
-[known-issues](../known-issues.md).
+**The Calendar's days.** Today and the chosen day are told apart. The chosen day is a solid accent fill with the on-accent text in the dark modes (`--cal-sel-bg`, `--cal-sel-text`) and a lighter fill (32% accent over the field) with the primary text in the light mode, so the brown is not the heaviest thing on the page. Today wears a 1px inset ring in both (`--cal-today-ring`) over its own fill. The focus ring on the chosen day is a double ring, the text colour outside and the on-fill colour inside, each 3 to 1 or more. A task still to do that is late is not dimmed like a past event: it takes `--text-danger`, which reads 4.5 to 1 on a raised step in the dark modes too.
 
 ## Tints
 
@@ -139,6 +138,34 @@ Eight named colours mark what a message or a module is from: a module's own colo
 `data-tint="<name>"` on an element sets `--tint` to that token. A tint colours an icon and a thin edge only (a message's 3-pixel left edge and its portrait's icon, a module's icon in its titlebar and the Layout menu); text and backgrounds keep their usual tokens. The tokens are in `public/style.css` and in `/sdk/host.css`, so a module's page has them too.
 
 **Phase colours.** A phase has no colour of its own in a template. Its place in the template's list picks one of the eight, in this order: `blue`, `green`, `teal`, `purple`, `orange`, `pink`, `gold`, `red`, and round again after the eighth (`Phases.tintOf()` in `public/phases.js`). The same phase has the same colour in the status strip, the timeline sheet, Set up's phase rows and a module that draws `host.util.phaseTimeline()`'s bands (each band's `tint` names it). A phase's colour is a fill and a dot, never a coloured border (Thomas, 2026-10-14: "no colored borders"): a band is a wash of `var(--tint)` mixed into transparent (`color-mix(in srgb, var(--tint) 22%, transparent)` ahead of today, 12% behind it, and a stronger mix of 50% with `--header-bg` for today's band) inside a neutral `--border` edge; the dot beside the phase chip is solid `var(--tint)`; and in the timeline sheet a band has a 4px top edge in the tint with a 16% wash. The colour never carries the meaning alone: every band is named, and today's band says "now".
+
+## The map
+
+The Maps module draws the map from the theme's tokens, so a light theme gives a light map and a dark theme a dark one. The tokens are in `public/sdk/system.css`, and the module reads them to build its style (`modules/maps/src/maps-lib-d-style.js`). They follow the SDK's own names (`--text-primary`, `--surface-panel` and the tints), not the older `--bg` and `--text` of the table above.
+
+| Token | Use |
+|---|---|
+| `--map-land` | the land: dark, a hair off the panel (4% of the text colour over `--surface-panel`); light, the panel itself |
+| `--map-water` | water: the blue tint, 38% over the page (dark) or the panel (light) |
+| `--map-park`, `--map-wood` | parks and woods: the green tint over the land, 16% and 9% |
+| `--map-road-minor`, `--map-road-medium`, `--map-road-major` | roads, one ladder of the text colour over the land. Dark 20%, 30% and 42%; light 27%, 39% and 50% |
+| `--map-building` | buildings: 10% (dark) or 12% (light) of the text colour over the land |
+| `--map-label` | small place names: the text colour 40% over muted text |
+| `--map-boundary` | borders between countries and regions: muted text |
+
+**The guard.** A theme may set any of these badly, or have colours that put two of them together. So the Maps style moves every colour, last, until it holds a minimum against the land (`MAP_MIN` in `maps-lib-d-style.js`; the ratio is WCAG's, lighter plus 0.05 over darker plus 0.05). A colour that already holds is not touched.
+
+| Part | Minimum against the land |
+|---|---|
+| Place names | 4.5 to 1 (3 to 1 on water, where the halo is thin) |
+| Roads | minor 1.7, medium 2.3, major 3, and each class at least 1.1 times stronger than the one below |
+| Water | 1.5, and a blue of its own: a visible distance in hue from the land, whatever the land's tint |
+| Parks, woods, buildings | 1.15, 1.06 and 1.15 |
+| Boundary line | 2, as drawn |
+
+`tools/check-maps.mjs` holds every shipped theme to these. `tools/check-maps-live.mjs` checks the Maps and Places pair in a browser and says SKIPPED when there is no Chromium.
+
+**The pin.** A pin's body has a thin ring (`--pin-ring`, the text colour 60% over the panel) so it reads on any land. The selected pin's wider ring is an allowed exception to the rule on selected states below. At low zoom only the selected pin and the one under the pointer or focus show their names.
 
 ## Layout tokens of the bars
 

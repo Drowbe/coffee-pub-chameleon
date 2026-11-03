@@ -236,7 +236,7 @@ export function createStreamRelay({ win, frame, origin, allow, join }) {
     const space = typeof d.space === 'string' && d.space ? d.space : null;
     const guest = typeof d.guest === 'string' && d.guest ? d.guest : null;
     if (!space || space !== (may.space || null) || guest !== (may.guest || null) || subs.size >= MAX_FRAME_SUBS) {
-      return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: false, error: 'this window may hear only the events of its own space' });
+      return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: false, error: 'this window may hear only the events its page gave it' });
     }
     const mine = doc;
     const sub = d.sub;

@@ -14,7 +14,9 @@
  *      does not stack another); every window has Close and moves by its title bar and resizes by its grip, staying inside the canvas; the
  *      Grid's banded head is 32px or less and cuts a name in the middle, keeping the extension, and the cut name reads flush: the gap between the
  *      ellipsis and the extension is 2px or less at 1280 and 700 (read from the picture: the ink, not the boxes); at 390 every button in a file window is 44px
- *      tall or has a 44px tap area.
+ *      tall or has a 44px tap area. The right zone (Thomas, 2026-11-03): at 700 and 1280 the file window's last right-zone control (Full screen; the
+ *      phone sheet's Download) ends within 16px of the window's inner right edge, Download, Share, Full screen keep their order, nothing overlaps, and
+ *      at the 240px minimum the left zone folds into More (Next file first) while the right zone stays pinned.
  *   3. Light. Scrolling the whole Vault section top to bottom, then stopping at twelve places: panels live at any time stay at or
  *      under LIVE_MAX (the cap is 8 plus the ones on the screen); the median of three runs' longest task is under LONG_MS (the goal is 200 ms
  *      on a laptop; this 4-core box measures near 1 s, so the limit is what a regression to about 1.3 s would break); the section scrolls in
@@ -319,6 +321,69 @@ async function main() {
         if (!g.cut) fail(`${size}: no Grid name is cut in the middle; the check measures the wrong thing`);
         if (!gaps.length) fail(`${size}: no cut Grid name is in the picture to measure`);
         if (gap > 2) fail(`${size}: a cut Grid name has a ${gap}px gap after the ellipsis (the limit is 2)`);
+      } finally { await tab.close(); }
+    }
+    // The file window's right zone (Thomas, 2026-11-03: Download, Share and Full screen are right-justified, Full screen last). Measured at 700
+    // (a canvas of 640 or less is the phone sheet: Download is its large foot button) and at 1280 (a window; then narrowed by its grip to the 240px minimum).
+    // The right zone's last control (Full screen; Download when it is the sheet's foot) sits within 16px of the window's inner right edge, the
+    // zone keeps its order, and no two controls in the row overlap. Download itself does not also sit at that edge while Full screen comes after
+    // it: at 1280 it ends about 48px in, which is the order asked for.
+    const RZ_JS = `
+      const winOf = () => stageOf().querySelector('.vt-win.is-front');
+      const innerRight = (win) => { const f = win.querySelector(':scope > .mf'); return f.getBoundingClientRect().right - (parseFloat(getComputedStyle(f).borderRightWidth) || 0); };
+      const shownIn = (win) => [...win.querySelectorAll('.mf-toolbar > *')].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0);
+      const overlapping = (els) => { let n = 0; for (let i = 0; i < els.length; i += 1) for (let j = i + 1; j < els.length; j += 1) { const a = els[i].getBoundingClientRect(); const b = els[j].getBoundingClientRect(); if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) n += 1; } return n; };
+      const rzState = () => {
+        const win = winOf(); if (!win) return { none: true };
+        const inner = innerRight(win);
+        const els = shownIn(win);
+        const label = (e) => e.getAttribute('aria-label') || e.textContent.trim();
+        const names = els.map(label);
+        const rightmost = els.reduce((a, b) => (b.getBoundingClientRect().right > a.getBoundingClientRect().right ? b : a));
+        const foot = allIn(win, '.vt-dlbar')[0]; // inside the window's shadow root
+        const sheet = Boolean(foot && getComputedStyle(foot).display !== 'none');
+        const bigDl = sheet ? allIn(win, '.vt-dlbig')[0] : null;
+        const dl = els.find((e) => label(e) === 'Download');
+        const share = els.find((e) => label(e) === 'Share');
+        const full = els.find((e) => label(e) === 'Full screen');
+        const order = [dl, share, full].filter(Boolean).map((e) => els.indexOf(e));
+        const ordered = order.every((v, i) => i === 0 || v > order[i - 1]);
+        return { inner, sheet, names, edge: label(rightmost), gap: inner - rightmost.getBoundingClientRect().right, footGap: bigDl ? inner - bigDl.getBoundingClientRect().right : null, ordered, fullLast: !full || rightmost === full, overlaps: overlapping(els), hasFull: Boolean(full), width: win.getBoundingClientRect().width };
+      };
+    `;
+    for (const size of [700, 1280]) {
+      const { tab, send } = await open(size, 'dark');
+      try {
+        const st = await tab.eval(`(async () => { ${WIN_JS} ${RZ_JS}
+          first().scrollIntoView();
+          for (let i = 0; i < 60 && !(stageOf() && openers().length > 6); i += 1) await wait(150);
+          const pick = openers().find((b) => /\\.(jpe?g|png|webp)$/i.test(b.title));
+          if (!pick) return { none: true };
+          pick.click(); await wait(500);
+          return rzState();
+        })()`);
+        if (st.none) { fail(`${size}: no file window was found; the check measures the wrong thing`); continue; }
+        say(`File window right zone at ${size} (${st.sheet ? 'phone sheet' : 'window'}, ${Math.round(st.width)}px): ${st.names.join(', ')}; ${st.edge} ends ${Math.round(st.gap)}px from the inner edge${st.sheet ? `; the foot Download ends ${Math.round(st.footGap)}px` : ''}`);
+        if (!st.hasFull) fail(`${size}: no Full screen control in the file window; the check measures the wrong thing`);
+        if (st.gap < 0 || st.gap > 16) fail(`${size}: the right zone's last control (${st.edge}) ends ${Math.round(st.gap)}px from the window's inner right edge (the limit is 16)`);
+        if (st.sheet && (st.footGap === null || st.footGap < 0 || st.footGap > 16)) fail(`${size}: the phone sheet's Download foot button ends ${Math.round(st.footGap)}px from the window's inner right edge (the limit is 16)`);
+        if (!st.ordered) fail(`${size}: the right zone is not in the order Download, Share, Full screen`);
+        if (!st.fullLast) fail(`${size}: Full screen is not the rightmost control`);
+        if (st.overlaps) fail(`${size}: ${st.overlaps} pair(s) of controls overlap in the file window's toolbar`);
+        if (size === 1280) {
+          // Narrowed by its grip: the left zone folds into More, the right zone stays pinned at the edge and nothing overlaps.
+          const grip = await tab.eval(`(() => { ${WIN_JS} const g = stageOf().querySelector('.vt-win.is-front .vt-win-grip').getBoundingClientRect(); const w = stageOf().querySelector('.vt-win.is-front').getBoundingClientRect().width; return { x: g.left + g.width / 2, y: g.top + g.height / 2, w }; })()`);
+          const m = (type, px, py) => send('Input.dispatchMouseEvent', { type, x: Math.round(px), y: Math.round(py), button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+          const dx = -Math.max(0, grip.w - 240);
+          await m('mousePressed', grip.x, grip.y); await m('mouseMoved', grip.x + dx / 2, grip.y); await m('mouseMoved', grip.x + dx, grip.y); await m('mouseReleased', grip.x + dx, grip.y); await sleep(400);
+          const n = await tab.eval(`(() => { ${WIN_JS} ${RZ_JS} return rzState(); })()`);
+          say(`File window right zone narrowed at ${size}: ${Math.round(n.width)}px wide; ${n.names.join(', ')}; ${n.edge} ends ${Math.round(n.gap)}px from the inner edge`);
+          if (n.width > 250) fail(`${size}: the grip narrowed the file window to ${Math.round(n.width)}px, not the 240px minimum`);
+          if (!n.hasFull || n.gap < 0 || n.gap > 16) fail(`${size}: narrowed, the right zone's last control (${n.edge}) ends ${Math.round(n.gap)}px from the inner edge (the limit is 16)`);
+          if (!n.ordered || !n.fullLast) fail(`${size}: narrowed, the right zone is out of order`);
+          if (n.overlaps) fail(`${size}: narrowed, ${n.overlaps} pair(s) of controls overlap`);
+          if (!n.names.includes('More') || n.names.includes('Next file')) fail(`${size}: narrowed, the left zone did not fold into More (${n.names.join(', ')})`);
+        }
       } finally { await tab.close(); }
     }
     for (const size of [390, 800]) {

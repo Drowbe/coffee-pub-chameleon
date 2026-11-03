@@ -4341,8 +4341,11 @@ function moduleAccess(req, res, need) {
     return void res.status(403).json({ error: `${word('guest', { many: true })} can only use ${word('module', { a: true })} in ${word('space', { a: true })}` });
   }
   const perms = modulePerms(who, spaceId);
-  // Writing one's own data (scope person) takes the module's access.personWrite where it names one, else access.write.
-  if (!moduleCan(manifest, perms, need === 'write' && scope === 'person' && manifest.access?.personWrite ? 'personWrite' : need)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  // `own`: writing the module's data or uploads, which in a person's own data (scope person) takes the module's
+  // access.personWrite where it names one, else access.write. Everything else that needs `write` (the AI, link previews,
+  // notify, schedule) takes access.write in every scope.
+  const guard = need === 'own' ? (scope === 'person' && manifest.access?.personWrite ? 'personWrite' : 'write') : need;
+  if (!moduleCan(manifest, perms, guard)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
   if (shutFromGuests(who, manifest, spaceId)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
   return { manifest, entry, scope, spaceId, scopeKey: scopeKeyOf(scope, { spaceId, userKey: who.user?.key }), who, perms, by: who.user?.key || 'guest', hide: hiddenFor(who, manifest, spaceId) };
 }
@@ -4376,13 +4379,16 @@ function guardWho(ctx) {
     file: (id) => (ctx.manifest.uploads ? moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, id) : null),
   };
 }
-// The files a removed object named (its rule's `file`) go with it, unless another object here still names the same one.
+// The files removed objects named (their rule's `file`; `removed` is [{ key, value }], each as it was stored) go with them,
+// unless a value stored here still names the same file in any field (moduleGuards.namesFile). Called after the write,
+// so a photo whose file was swapped passes its old value here and its old file goes once nothing names it.
 function removeFilesOf(ctx, removed) {
   const guards = ctx.manifest.guards;
   if (!ctx.manifest.uploads || !guards?.keys?.some((r) => r.file)) return;
   const ids = new Set(removed.map(({ key, value }) => moduleGuards.fileOf(guards, key, value)).filter(Boolean));
   if (!ids.size) return;
-  for (const item of moduleData.list(ctx.manifest.id, ctx.scopeKey)) ids.delete(moduleGuards.fileOf(guards, item.key, item.value));
+  const stored = moduleData.list(ctx.manifest.id, ctx.scopeKey).map((item) => item.value);
+  for (const id of [...ids]) if (moduleGuards.namesFile(stored, id)) ids.delete(id);
   for (const id of ids) {
     try { moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, id); } catch (err) { console.error(`A removed object's file could not be removed: ${err.message}`); }
   }
@@ -4393,8 +4399,10 @@ function mayClearHere(manifest, who, perms) {
   if (!moduleCan(manifest, perms, 'write')) return false;
   return moduleGuards.mayClear(manifest.guards, guardWho({ who, perms, manifest }));
 }
-// The guards a data write here is held to: none in a person's own data, which only they reach.
-const guardsAt = (ctx) => (ctx.scope === 'person' ? null : ctx.manifest.guards);
+// The guards a data write here is held to. In a person's own data, which only they reach, only `exclusive` and the module's
+// own keys hold (checkPut's `personal`), and a delete or a clear is theirs.
+const guardsAt = (ctx) => ctx.manifest.guards;
+const personalAt = (ctx) => ctx.scope === 'person';
 const storedValue = (ctx) => (key) => {
   try { return moduleData.get(ctx.manifest.id, ctx.scopeKey, key)?.value ?? null; } catch { return null; }
 };
@@ -5834,6 +5842,8 @@ app.get('/api/spaces/:id/actions', (req, res) => {
         label: a.label,
         input: a.input,
         local: Boolean(a.local),
+        // Only the caller's own page of the module carries it out (what it makes is theirs), when they next open it.
+        ...(a.askerOnly ? { askerOnly: true } : {}),
         // What a request must carry (the Calendar's createEvent needs ["date"]), as GET /api/bus/actions says it.
         ...(a.needs ? { needs: a.needs } : {}),
         // What objects it takes (plan-object-handoff.md, "What modules declare"), when it says, each entry with whether
@@ -5885,6 +5895,9 @@ app.post('/api/spaces/:id/action', (req, res) => {
     scopeKey: provider.scopeKey,
     by: who.user?.key || 'guest',
     local: def.local,
+    // What it makes is the sender's (Research's savePhoto: a photo in their name, from their upload): only their own page
+    // takes it, so nobody else's page is refused it and the picture is never lost (QA round 2, failure 1).
+    askerOnly: def.askerOnly,
     // A view (Polls' draftPoll) opens a form on the person's own open page; Chat sends it only when the module is open,
     // so it is handed out for a minute and never waits for the module's next opening (BUS_LIMITS.openOnlyMs).
     openOnly: Boolean(def.local),
@@ -5980,8 +5993,11 @@ function moduleSpacesFor(req, res) {
   if (!moduleCan(manifest, modulePerms(who, null), 'read')) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
   return { manifest, who, spaces: readableSpacesOf(found, who) };
 }
+// A space's icon: its launch link's when one was chosen, else the template's home icon (a suitcase for trips), else a
+// neutral one. Never a chat bubble: a space is not a conversation.
+const SPACE_ICON = 'folder';
 const spaceSummary = (r) => {
-  const icon = r.linkIcon && r.linkIcon !== 'link' ? r.linkIcon : 'message';
+  const icon = r.linkIcon && r.linkIcon !== 'link' ? r.linkIcon : store.templateHomeIcon || SPACE_ICON;
   return { id: r.id, name: r.name, icon, svg: iconSvg(icon) };
 };
 
@@ -6991,7 +7007,9 @@ app.get('/api/modules/:id/markers', (req, res) => {
           if (!err.status) throw err;
           continue; // not on there, no scope of that kind, or not readable by this viewer
         }
-        for (const row of moduleData.list(producer.id, at.scopeKey, prefix)) {
+        for (const stored of moduleData.list(producer.id, at.scopeKey, prefix)) {
+          // Read without the fields this viewer may not see there (hiddenFor), its dates and title alike.
+          const row = hideItem(stored, at.hide);
           const id = row.key.slice(prefix.length);
           if (!REF_ID_RE.test(id) || !row.value || typeof row.value !== 'object') continue;
           if (kind.summary.done && row.value[kind.summary.done] === true) continue; // done: off the grid
@@ -7406,7 +7424,7 @@ app.post('/api/bus/actions/request', busRoute((who, req) => {
   const objectSpace = sc === 'environment' && takesOwnObject(providerId, def) ? actionObjectSpace(providerId, def, input) : null;
   if (objectSpace) busPlace(who, String(providerId), 'space', objectSpace, 'write');
   else if (!def.local) busPlace(who, String(providerId), sc, space, 'write');
-  const request = moduleBus.request({ from, provider: providerId, action: name, input: busInput(who, def.input, input, takerOf(who, provider.found.manifest, def, objectSpace || provider.spaceId)), scopeKey: provider.scopeKey, by: who.user?.key || 'guest', local: def.local, space: objectSpace });
+  const request = moduleBus.request({ from, provider: providerId, action: name, input: busInput(who, def.input, input, takerOf(who, provider.found.manifest, def, objectSpace || provider.spaceId)), scopeKey: provider.scopeKey, by: who.user?.key || 'guest', local: def.local, askerOnly: def.askerOnly, space: objectSpace });
   return { id: request.id, status: request.status };
 }));
 
@@ -7416,14 +7434,20 @@ app.get('/api/bus/actions/pending', busRoute((who, req) => {
   const scope = busScope(req.query.scope);
   const at = busPlace(who, id, scope, req.query.space, 'read');
   const canWrite = busMayDo(who, id, scope, req.query.space, null);
-  // A view (`local`) is for the person who asked, from their own page; anything else waits for a page that may make the
-  // change: in the object's space when the request names one, else here.
-  return { actions: moduleBus.pending(id, at.scopeKey).filter((a) => (a.local ? a.by === (who.user?.key || 'guest') : a.space ? busMayDo(who, id, scope, req.query.space, a) : canWrite)).map(publicAction) };
+  // A view (`local`) is for the person who asked, from their own page; so is a request whose result is theirs
+  // (`askerOnly`), which also takes write access. Anything else waits for a page that may make the change: in the
+  // object's space when the request names one, else here.
+  const me = who.user?.key || 'guest';
+  const mayTake = (a) => (a.local ? a.by === me : (!a.askerOnly || a.by === me) && (a.space ? busMayDo(who, id, scope, req.query.space, a) : canWrite));
+  return { actions: moduleBus.pending(id, at.scopeKey).filter(mayTake).map(publicAction) };
 }));
+// Someone else's request that only its asker's page may take (`askerOnly`): told no, as a request another page took is.
+const notTheAsker = (who, request) => Boolean(request && request.askerOnly && request.by !== (who.user?.key || 'guest'));
 app.post('/api/bus/actions/claim', busRoute((who, req) => {
   const { module: id, id: requestId, scope, space } = req.body || {};
   const at = busPlace(who, String(id || ''), busScope(scope), space, 'read');
   const waiting = moduleBus.actionById(Number(requestId));
+  if (notTheAsker(who, waiting)) return { ok: false };
   if (waiting && waiting.local) { if (waiting.by !== (who.user?.key || 'guest')) return { ok: false }; } else if (waiting && waiting.space && waiting.provider === id && waiting.scopeKey === at.scopeKey) busPlace(who, String(id || ''), 'space', waiting.space, 'write'); else busPlace(who, String(id || ''), busScope(scope), space, 'write');
   const request = moduleBus.claim(Number(requestId), id, at.scopeKey);
   return request ? { ok: true, action: publicAction(request) } : { ok: false };
@@ -7432,6 +7456,7 @@ app.post('/api/bus/actions/complete', busRoute((who, req) => {
   const { module: id, id: requestId, scope, space, result } = req.body || {};
   const at = busPlace(who, String(id || ''), busScope(scope), space, 'read');
   const done = moduleBus.actionById(Number(requestId));
+  if (notTheAsker(who, done)) return { ok: false };
   if (done && done.local) { if (done.by !== (who.user?.key || 'guest')) return { ok: false }; } else if (done && done.space && done.provider === id && done.scopeKey === at.scopeKey) busPlace(who, String(id || ''), 'space', done.space, 'write'); else busPlace(who, String(id || ''), busScope(scope), space, 'write');
   const clean = { ok: Boolean(result?.ok) };
   if (typeof result?.error === 'string') clean.error = result.error.slice(0, 200);
@@ -7869,7 +7894,7 @@ app.get('/api/modules/:id/uploads', (req, res) => {
   res.json({ files: moduleUploads.list(ctx.manifest.id, ctx.scopeKey).map(uploadView) });
 });
 app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   if (overLimit(ctx.manifest.id, ctx.by, 'upload')) return res.status(429).json({ error: limitMessage() });
   if (!Buffer.isBuffer(req.body)) return res.status(415).json({ error: 'send the picture itself, as a JPEG, PNG or WebP' });
@@ -7882,14 +7907,14 @@ app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res
 // What the start of a picture says about itself, for a page that will resize it (a resize loses the picture's own facts): send its
 // first ~256 KB. The answer goes only to the person who sent it.
 app.post('/api/modules/:id/uploads/inspect', express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: 300 * 1024 }), (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   if (overLimit(ctx.manifest.id, ctx.by, 'upload')) return res.status(429).json({ error: limitMessage() });
   if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(415).json({ error: 'send the start of the picture' });
   res.json(inspectHead(req.body));
 });
 app.put('/api/modules/:id/uploads/:fid/thumb', rawUpload, checkStorageCap, async (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   const meta = moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   if (!meta) return res.status(404).json({ error: 'no such file' });
@@ -7910,7 +7935,7 @@ function sendUpload(req, res, thumb) {
 app.get('/api/modules/:id/uploads/:fid', (req, res) => sendUpload(req, res, false));
 app.get('/api/modules/:id/uploads/:fid/thumb', (req, res) => sendUpload(req, res, true));
 app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   const meta = moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   if (!meta) return res.status(404).json({ error: 'no such file' });
@@ -8511,9 +8536,11 @@ function geocodeSetup(manifest) {
 // A link someone is adding: the server reads that page's title, description and image. Fetched only while the
 // module's linkPreviews setting resolves true (the manifest default applies when nothing is saved), because the request leaves this server for an address the person typed.
 // The picture from a link preview, fetched here and sent to the card. A browser asking the other site for it is often refused.
-// Only for a signed-in person, and only a picture this place already knows: one a stored value here names (a saved link's
-// picture), or one a link preview here offered in the last while (the editor shows it before the link is saved). So the
-// server never fetches an address only because someone asked it to.
+// Only for a signed-in person, and only a picture this place already knows: one a link here holds in the field the
+// module's guards declare for its picture (a rule's `linkImage`), or one a link preview here offered in the last while
+// (the editor shows it before the link is saved). A module that declares no such field has only the offered ones. This
+// narrows what is fetched; it doesn't make an address safe, since anyone who may write a link may name any picture: the
+// fetch's own guards (server/link-preview.js: public addresses, the web's ports, the deadline) are what hold.
 const OFFERED_IMAGE_MS = 30 * 60 * 1000;
 const OFFERED_IMAGE_MAX = 500;
 const offeredImages = new Map(); // `${environment slug} ${module} ${scopeKey} ${url}` -> when offered
@@ -8527,7 +8554,9 @@ function offerImage(ctx, url) {
 function imageKnownHere(ctx, url) {
   const at = offeredImages.get(`${currentEnvironment().slug || ''} ${ctx.manifest.id} ${ctx.scopeKey} ${url}`);
   if (at && Date.now() - at < OFFERED_IMAGE_MS) return true;
-  return moduleData.list(ctx.manifest.id, ctx.scopeKey).some((item) => item.value && typeof item.value === 'object' && Object.values(item.value).includes(url));
+  const guards = ctx.manifest.guards;
+  if (!guards?.keys?.some((r) => r.linkImage)) return false;
+  return moduleData.list(ctx.manifest.id, ctx.scopeKey).some((item) => moduleGuards.linkImageOf(guards, item.key, item.value) === url);
 }
 app.get('/api/modules/:id/link-image', async (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
@@ -9262,8 +9291,8 @@ app.get('/modules/:id', (req, res) => {
       const asked = new URL(req.originalUrl, 'http://same.origin');
       // A panel (not the main) is named, so the destination opens on it: #panel=<module id>, as a tile's heading does.
       // The main keeps the bare address, and with it the browser keeps the address's own #day= or #ref=.
-      const panel = widgetHref(req.params.id, dctx).slice(to.length);
-      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(panel) ? panel : ''}`);
+      const partHash = widgetHref(req.params.id, dctx).slice(to.length);
+      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(partHash) ? partHash : ''}`);
     }
   }
   // A module popped out of the Lobby that the Lobby doesn't allow: the sentence, not its page.
@@ -9363,7 +9392,7 @@ function sendModuleConflict(err, res, hide = []) {
   throw err;
 }
 app.put('/api/modules/:id/data/:key', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
@@ -9375,22 +9404,29 @@ app.put('/api/modules/:id/data/:key', (req, res) => {
     let value = moduleGuards.keepHidden(req.body?.value, had ? had.value : null, ctx.hide);
     const guards = guardsAt(ctx);
     if (guards) {
-      const checked = moduleGuards.checkPut(guards, { key: req.params.key, before: had ? had.value : null, value, who: guardWho(ctx), read: storedValue(ctx) });
+      const keys = () => moduleData.list(ctx.manifest.id, ctx.scopeKey).map((item) => item.key);
+      const checked = moduleGuards.checkPut(guards, { key: req.params.key, before: had ? had.value : null, value, who: guardWho(ctx), read: storedValue(ctx), keys, personal: personalAt(ctx) });
       if (checked.error) return res.status(checked.status).json({ error: checked.error });
       value = checked.value;
     }
     const item = moduleData.put(ctx.manifest.id, ctx.scopeKey, req.params.key, value, { expected: Number.isInteger(req.body?.version) ? req.body.version : null, by: ctx.by });
     objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had ? had.value : null, after: item.value, by: ctx.by, tz: req.body?.tz });
+    // A file swapped for another (a photo's picture): the old one goes when nothing stored here names it any more.
+    if (had && guards) {
+      const was = moduleGuards.fileOf(guards, req.params.key, had.value);
+      if (was && was !== moduleGuards.fileOf(guards, req.params.key, item.value)) removeFilesOf(ctx, [{ key: req.params.key, value: had.value }]);
+    }
     res.json({ item: hideItem(item, ctx.hide) });
   } catch (err) {
     sendModuleConflict(err, res, ctx.hide);
   }
 });
 app.delete('/api/modules/:id/data', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
   const guards = guardsAt(ctx);
-  const refused = guards ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
+  // A person clears their own data; guards that don't read still refuse it.
+  const refused = guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
   if (refused) return res.status(refused.status).json({ error: refused.error });
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
@@ -9410,7 +9446,7 @@ app.delete('/api/modules/:id/data', (req, res) => {
   }
 });
 app.delete('/api/modules/:id/data/:key', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
@@ -9418,18 +9454,20 @@ app.delete('/api/modules/:id/data/:key', (req, res) => {
     const expected = req.query.version !== undefined ? Number(req.query.version) : null;
     const had = moduleData.get(ctx.manifest.id, ctx.scopeKey, req.params.key);
     const guards = guardsAt(ctx);
-    const refused = guards ? moduleGuards.checkDelete(guards, { key: req.params.key, before: had ? had.value : null, who: guardWho(ctx), read: storedValue(ctx) }) : null;
+    // A person removes their own data; guards that don't read still refuse it.
+    const refused = guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkDelete(guards, { key: req.params.key, before: had ? had.value : null, who: guardWho(ctx), read: storedValue(ctx) }) : null;
     if (refused) return res.status(refused.status).json({ error: refused.error });
-    // A writer who can't see the hidden fields can't remove what holds any.
-    const hiddenRefused = had ? moduleGuards.hiddenDeleteRefusal(had.value, ctx.hide) : null;
+    // What belongs to it (a rule's `parent`: a poll's votes) goes with it, closed or not.
+    const all = had && guards ? moduleData.list(ctx.manifest.id, ctx.scopeKey) : [];
+    const children = new Set(moduleGuards.childrenOf(guards, req.params.key, all.map((item) => item.key)));
+    const childItems = all.filter((item) => children.has(item.key));
+    // A writer who can't see the hidden fields can't remove what holds any, nor what goes with it.
+    const hiddenRefused = had ? moduleGuards.hiddenDeleteRefusal(had.value, ctx.hide, childItems.map((item) => item.value)) : null;
     if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
     const removed = moduleData.remove(ctx.manifest.id, ctx.scopeKey, req.params.key, { expected: Number.isInteger(expected) ? expected : null, by: ctx.by });
     if (had) {
       objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
-      // What belongs to it (a rule's `parent`: a poll's votes) goes with it, closed or not.
-      const all = guards ? moduleData.list(ctx.manifest.id, ctx.scopeKey) : [];
-      const children = new Set(moduleGuards.childrenOf(guards, req.params.key, all.map((item) => item.key)));
-      for (const child of all.filter((item) => children.has(item.key))) {
+      for (const child of childItems) {
         moduleData.remove(ctx.manifest.id, ctx.scopeKey, child.key, { by: ctx.by });
         objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: child.key, before: child.value, after: null, by: ctx.by, tz: req.query.tz });
       }
@@ -9634,7 +9672,7 @@ app.get('/api/modules/stream', (req, res) => {
   });
   // A request for a module to do something: the providing module's frames are told; one claims it.
   const onAction = listenIn(env, (r) => {
-    if (r.local && r.by !== (who.user?.key || 'guest')) return; // a view is for the person who asked
+    if ((r.local || r.askerOnly) && r.by !== (who.user?.key || 'guest')) return; // a view, or what is the asker's, is for the person who asked
     for (const v of views) {
       const at = place(v, r.provider, r.scopeKey);
       if (at) send(v, 'action', r, { ...publicAction(r), provider: r.provider, scope: at.scope });

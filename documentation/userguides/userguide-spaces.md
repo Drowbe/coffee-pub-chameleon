@@ -324,6 +324,9 @@ The tabs, with your environment's words for them:
 - **Members** (named for the environment's word for members, such as **Planners**): who belongs to the space,
   **Allow guests**, then **Generate invite link** and the guest link (**Turn on**, **Copy**, **New link**, **Turn
   off**). Members and **Allow guests** are saved with **Save**. The links work at once and are not part of it.
+  Under **Guests**, **Guests can see costs and booking codes** is off unless an owner turns it on. Off, a guest of
+  this space never receives the amounts of Budget's costs or the Itinerary's booking codes, whatever the guest link
+  shows. Only owners and the admin can change it. It is saved with **Save**.
 - **Phases**: each phase's **Start** and **End** in rows, as in the phase sheet, then the **Budget** field. Saved with
   **Save**. Left out when the environment has no phases; then the **Budget** field is on the tab named for the space
   (an owner's), or on **First visit** (a moderator's).

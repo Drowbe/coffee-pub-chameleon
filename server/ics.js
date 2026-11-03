@@ -110,6 +110,11 @@ function readDated(value, dated, tz) {
   const v = value && typeof value === 'object' ? value : {};
   const title = typeof v[dated.title] === 'string' ? v[dated.title] : '';
   const repeat = dated.repeat ? readRepeat(v[dated.repeat]) : null;
+  // The days taken out of a repeat (`dated.skips`): real days, each once, in order, at most 400 (as the Calendar keeps).
+  if (repeat && dated.skips && Array.isArray(v[dated.skips])) {
+    const days = [...new Set(v[dated.skips].filter(validYmd))].sort().slice(-400);
+    if (days.length) repeat.skips = days;
+  }
   if (dated.form === 'wall') {
     const day = v[dated.day];
     if (!validYmd(day)) return null;
@@ -246,6 +251,8 @@ function buildCalendar({ name, tz, events, prodId = '-//Coffee Pub//Calendar fee
       if (ev.repeat) {
         const [, m, d] = ev.start.split('-').map(Number);
         lines.push(`RRULE:${rruleOf(ev.repeat, { day: d, month: m }, ev.repeat.until ? dateValue(ev.repeat.until) : null)}`);
+        // A single day taken out ("Delete this one" in the Calendar) is an exception (RFC 5545, 3.8.5.1).
+        if (ev.repeat.skips?.length) lines.push(`EXDATE;VALUE=DATE:${ev.repeat.skips.map(dateValue).join(',')}`);
       }
     } else if (ev.repeat) {
       // Wall-clock time in the server's zone, so it holds across a change to or from daylight saving time.
@@ -258,6 +265,8 @@ function buildCalendar({ name, tz, events, prodId = '-//Coffee Pub//Calendar fee
         until = utcStamp(instantOfWall(y, m, d, 23, 59, tz) + 59000);
       }
       lines.push(`RRULE:${rruleOf(ev.repeat, { day: p.day, month: p.month }, until)}`);
+      // Each day taken out, at the repeat's own wall-clock time in the same zone as DTSTART, so it matches that occurrence.
+      if (ev.repeat.skips?.length) lines.push(`EXDATE;TZID=${tzid}:${ev.repeat.skips.map((day) => `${dateValue(day)}T${pad(p.hour)}${pad(p.minute)}${pad(p.second)}`).join(',')}`);
     } else {
       lines.push(`DTSTART:${utcStamp(ev.start)}`);
       if (ev.end) lines.push(`DTEND:${utcStamp(ev.end)}`);

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { blockedAddress, blockedName, previewUrl, PREVIEW_DEADLINE_MS, readPreview, getOnce, fetchPreview, fetchImage, fetchCalendar } = require('../server/link-preview.js');
+const { blockedAddress, blockedName, previewUrl, publicAddresses, PREVIEW_DEADLINE_MS, readPreview, getOnce, fetchPreview, fetchImage, fetchCalendar } = require('../server/link-preview.js');
 const { version } = require('../package.json');
 
 let n = 0;
@@ -214,6 +214,9 @@ test('special-use ranges and the machine\'s own addresses are refused', () => {
     assert.equal(blockedAddress(ip), true, ip);
   }
   for (const ip of ['192.0.1.1', '192.0.3.1', '198.17.255.255', '198.20.0.1', '198.51.101.1', '203.0.114.1', '8.8.8.8']) assert.equal(blockedAddress(ip), false, ip);
+  // QA round 2, 10: the IPv6 documentation range 3fff::/20 (RFC 9637), segment routing 5f00::/16, AS112 and AMT.
+  for (const ip of ['3fff::1', '3fff:fff:ffff::1', '5f00::1', '5f00:ffff::1', '192.31.196.1', '192.52.193.1', '192.175.48.1', '::ffff:192.175.48.1']) assert.equal(blockedAddress(ip), true, ip);
+  for (const ip of ['3fff:1000::1', '5f01::1', '192.31.197.1', '192.52.192.1', '192.175.49.1']) assert.equal(blockedAddress(ip), false, ip);
   const os = require('node:os');
   const own = Object.values(os.networkInterfaces()).flat().filter(Boolean).map((a) => a.address);
   assert.ok(own.length, 'this machine has an address');
@@ -236,6 +239,21 @@ test('a preview reads only the web\'s own ports, and a picture on another port i
   }
   n += 1;
   console.log('ok an address that isn\'t allowed is refused before any lookup, in a plain sentence');
+}
+
+// A name whose lookup is slower than the deadline is given up at the deadline, in the request's own words (QA round 2, 11).
+{
+  const never = () => new Promise(() => {});
+  const started = Date.now();
+  await assert.rejects(publicAddresses('slow.example.org', { deadline: Date.now() + 300, lookup: never }),
+    (err) => err.name === 'PreviewError' && err.code === 'timeout' && err.message === 'that page took too long');
+  assert.ok(Date.now() - started < 1500, `given up at the deadline (${Date.now() - started} ms)`);
+  await assert.rejects(publicAddresses('slow.example.org', { deadline: Date.now() + 100, tooLong: 'that picture took too long', lookup: never }), (err) => err.message === 'that picture took too long');
+  await assert.rejects(publicAddresses('gone.example.org', { deadline: Date.now() + 5000, lookup: () => Promise.reject(new Error('ENOTFOUND')) }), (err) => err.code === 'missing' && err.message === 'that address could not be found');
+  await assert.rejects(publicAddresses('inside.example.org', { deadline: Date.now() + 5000, lookup: async () => [{ address: '10.0.0.1', family: 4 }] }), (err) => err.code === 'blocked');
+  assert.deepEqual(await publicAddresses('outside.example.org', { deadline: Date.now() + 5000, lookup: async () => [{ address: '8.8.8.8', family: 4 }] }), ['8.8.8.8']);
+  n += 1;
+  console.log('ok a lookup slower than the deadline is given up at it');
 }
 
 // A page that drips a byte now and then is given up at the deadline, and one that never answers says it took too long

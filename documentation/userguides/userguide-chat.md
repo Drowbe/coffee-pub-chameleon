@@ -47,7 +47,9 @@ Each answer has:
 
 To ask about something you already have, drag it onto Chat while `/ai` is in the box; the line under the box says how many objects the question will use. Research's **Research this** and a drop menu's **Ask the assistant** do the same for one object.
 
-Who can: anyone signed in, except guests, in a space where **Turn AI off in this space** is not ticked. The owner must have set up an AI service first; see [Assistant](userguide-assistant.md).
+Who can: anyone signed in, except guests, whose role has **Use AI in modules** (on for moderators and members unless an owner turned it off), in a space where **Turn AI off in this space** is not ticked, and who can chat there. The owner must have set up an AI service first; see [Assistant](userguide-assistant.md). When you can't, Chat says why before you type, in one sentence: guests can't use AI, AI is turned off in this space, your role may not use AI, AI is not set up on this server, or the server has used its AI allowance for the month.
+
+Only objects from this space go to the AI. Dragging in an object from another space is refused with "only objects from this space can be sent to the AI". Dropped objects show as chips under the box and go with one question. You can ask six times a minute; a question that fails before the AI service did any work is not counted.
 
 ## Private, public and shared
 

@@ -324,9 +324,9 @@
       return [
         { type: 'button', id: 'done', label: 'Done', icon: 'check' },
         { type: 'text', text: n ? `${n} selected` : 'Choose files' },
-        { type: 'button', id: 'all', label: n === filtered().length && n ? 'Choose none' : 'Choose all', icon: 'square-check', overflow: true },
-        ...(mayDownload ? [{ type: 'button', id: 'sel-download', label: 'Download', icon: 'download', disabled: !n, overflow: true }] : []),
-        { type: 'button', id: 'sel-remove', label: 'Remove', icon: 'trash', disabled: !removable, title: n && !removable ? 'Remove is only for files you added' : 'Remove', overflow: true },
+        { type: 'button', id: 'all', label: n === filtered().length && n ? 'Choose none' : 'Choose all', icon: 'square-check' },
+        ...(mayDownload ? [{ type: 'button', id: 'sel-download', label: 'Download', icon: 'download', disabled: !n }] : []),
+        { type: 'button', id: 'sel-remove', label: 'Remove', icon: 'trash', disabled: !removable, title: n && !removable ? 'Remove is only for files you added' : 'Remove' },
         search,
         ...filtersChips(),
       ];
@@ -678,10 +678,24 @@
   function pump() {
     while (running < maxRunning) {
       const it = pending()[0];
-      if (!it) return;
+      if (!it) { if (!running) finished(); return; }
       running += 1;
       send(it).finally(() => { running -= 1; pump(); });
     }
+  }
+  // When every file of a batch has gone in, the panel says so and closes itself; one that was refused keeps it open to read.
+  let closeTimer = 0;
+  function finished() {
+    if (!state.queue.length || !state.queue.every((x) => x.status === 'done')) return;
+    const n = state.queue.length;
+    host.ui.toast(n === 1 ? `${state.queue[0].name} added` : `${n} files added`);
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => {
+      if (running || pending().length || !state.queue.every((x) => x.status === 'done')) return;
+      state.queue = [];
+      state.panel = false;
+      render();
+    }, 2500);
   }
   async function send(it) {
     it.status = 'uploading';
