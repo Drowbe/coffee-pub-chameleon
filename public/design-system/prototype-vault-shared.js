@@ -82,7 +82,7 @@ export function sharedPage(kind = 'grid', { w = 1280, open = null, info = '' } =
     if (!download) page.append(h('p', 'vt-shared-foot', 'These files are for looking at. The person who shared them has not allowed downloads.'));
   };
   const viewOf = (f) => {
-    const api = { can: () => download, downloadButton: () => btn('btn btn-small btn-primary', { label: 'Download', icon: 'download' }), trial: { pdfSearch: false }, info: () => {} };
+    const api = { can: () => download, downloadButton: () => btn('btn btn-small btn-primary', { label: 'Download', icon: 'download' }), trial: { pdfSearch: false }, info: () => {}, ownFull: true };
     if (f.kind === 'picture') return pictureView(f, api);
     if (f.kind === 'audio') return audioView(f, api);
     if (f.kind === 'video') return videoView(f, api);
