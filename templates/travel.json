@@ -2,7 +2,7 @@
   "id": "travel",
   "name": "Travel",
   "description": "Plan trips together: the itinerary, places, maps, research and a calendar.",
-  "version": 7,
+  "version": 8,
   "words": { "space": { "one": "trip", "many": "trips" } },
   "icons": { "home": "suitcase-rolling" },
   "moduleNames": { "travel": "Itinerary", "vault": "Documents" },

@@ -19,7 +19,6 @@
 
 /* ---- the List ---- */
 .vt-rows { display: flex; flex-direction: column; gap: var(--gap-card-rows); margin: 0; padding: 0; list-style: none; }
-.vt-row { --s: var(--mf-surface-row); }
 .vt-title { display: block; overflow: hidden; width: 100%; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .vt-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); }
 .vt-by { flex: none; display: flex; align-items: center; gap: var(--space-2); width: 96px; min-width: 0; font-size: var(--text-12); color: var(--vt-dim); }
@@ -64,7 +63,7 @@
 .vt-card-over { position: absolute; top: var(--space-1); right: var(--space-1); left: var(--space-1); display: flex; align-items: center; z-index: 3; pointer-events: none; }
 .vt-card-over > * { pointer-events: auto; }
 .vt-fill { flex: 1 1 auto; }
-.vt-card-over .sdk-icon-btn, .vt-card-over .vt-tick { background: color-mix(in srgb, var(--surface-panel) 84%, transparent); border-radius: var(--radius-small); }
+.vt-over-chip { display: inline-flex; background: color-mix(in srgb, var(--surface-panel) 84%, transparent); border-radius: var(--radius-small); }
 .vt-card-meta { display: flex; flex-direction: column; gap: var(--space-0); min-width: 0; padding: var(--space-2); }
 .vt-card-thumb .vt-card-name { display: block; font-size: var(--text-13); white-space: nowrap; }
 .vt-card-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-dim); font-size: var(--text-12); }
@@ -115,10 +114,3 @@
 .vt-uses-head { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
 .vt-uses-list { margin: 0; padding-left: var(--space-5); font-size: var(--text-14); }
 
-/* ---- coarse pointers and phones: 44px taps, 16px fields ---- */
-@media (pointer: coarse) {
-  .vt-app input[type="text"], .vt-app input[type="search"], #rename-name { font-size: var(--text-16); }
-}
-@media (max-width: 640px) {
-  #rename-name { font-size: var(--text-16); }
-}
