@@ -5,9 +5,9 @@
   "version": 7,
   "words": { "space": { "one": "trip", "many": "trips" } },
   "icons": { "home": "suitcase-rolling" },
-  "moduleNames": { "travel": "Itinerary" },
+  "moduleNames": { "travel": "Itinerary", "vault": "Documents" },
   "moduleIcons": {},
-  "modules": ["travel", "places", "maps", "research", "calendar", "budget", "polls", "todo", "chat", "conference"],
+  "modules": ["travel", "places", "maps", "research", "vault", "calendar", "budget", "polls", "todo", "chat", "conference"],
   "settings": { "showCalendar": true, "showMap": true, "calendarFeeds": true, "otherCalendars": true },
   "lobby": { "name": "Home base", "description": "Everyone on every trip." },
   "phases": [

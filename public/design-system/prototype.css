@@ -60,3 +60,48 @@ body.pp-page { margin: 0; min-height: 100vh; background: var(--surface-page); co
 @media (max-width: 640px) {
   .pp-jump { padding-inline: var(--space-4); }
 }
+
+/* ---- Card icon colour (Thomas, 2026-11-03): five ways to colour the circle on a card head and a row, tried side by side. Nothing here ships.
+   The switch (prototype-cardicon.js) puts data-ci on <html> and on the Planner's page (inside its shadow root), and every circle on the page
+   follows; each sample below wears data-ci-fixed and keeps its own. The real rule is .sdk-card-icon in public/sdk/system.css (the Cards block);
+   the tokens here are the numbers each variant would add. ---- */
+:root {
+  --ci-1-l: 0.54; --ci-1-fg: white;                       /* 1 darker disc, white on it */
+  --ci-3-l: 0.74; --ci-3-gl: 0.1; --ci-3-gc: 0.04;     /* 3 dark brown: lightness and chroma of the glyph, the accent's hue */
+  --ci-4-mix: 24%;                                      /* 4 ring: how much of the kind colour fills the disc */
+}
+:root[data-theme-mode="light"] { --ci-1-l: 0.48; --ci-3-l: 0.59; }
+
+:is(html[data-ci="v1"], #app[data-ci="v1"]) .sdk-card-icon:not([data-ci-fixed] .sdk-card-icon),
+[data-ci-fixed="v1"] .sdk-card-icon { background: oklch(from var(--tint, var(--text-muted)) var(--ci-1-l) max(c, 0.12) h); color: var(--ci-1-fg); }
+:is(html[data-ci="v2"], #app[data-ci="v2"]) .sdk-card-icon:not([data-ci-fixed] .sdk-card-icon),
+[data-ci-fixed="v2"] .sdk-card-icon { color: var(--card-head-fill, var(--s, var(--surface-card))); }
+:is(html[data-ci="v3"], #app[data-ci="v3"]) .sdk-card-icon:not([data-ci-fixed] .sdk-card-icon),
+[data-ci-fixed="v3"] .sdk-card-icon { background: oklch(from var(--tint, var(--text-muted)) var(--ci-3-l) max(c, 0.12) h); color: oklch(from var(--accent-fill) var(--ci-3-gl) var(--ci-3-gc) h); }
+:is(html[data-ci="v4"], #app[data-ci="v4"]) .sdk-card-icon:not([data-ci-fixed] .sdk-card-icon),
+[data-ci-fixed="v4"] .sdk-card-icon {
+  background: color-mix(in srgb, oklch(from var(--tint, var(--text-muted)) var(--card-disc-l) max(c, 0.12) h) var(--ci-4-mix), var(--card-head-fill, var(--s, var(--surface-card))));
+  box-shadow: inset 0 0 0 2px oklch(from var(--tint, var(--text-muted)) var(--card-disc-l) max(c, 0.12) h);
+  color: oklch(from var(--tint, var(--text-muted)) var(--card-kind-l) max(c, 0.12) h);
+}
+
+.ci-section { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding-bottom: var(--space-5); border-bottom: 1px solid var(--edge-hairline); }
+.ci-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.ci-bar-label { color: var(--text-muted); font-size: var(--text-13); }
+.ci-variant { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.ci-variant-name { margin: 0; font-size: var(--text-14); font-weight: var(--weight-strong); }
+.ci-variant-note { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.ci-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
+.ci-cell { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.ci-cell > .sdk-card-banded { min-height: 0; }
+.ci-cell > .sdk-list > .sdk-row { padding-block: var(--space-1); }
+.ci-scroll { overflow-x: auto; max-width: 100%; }
+.ci-numbers { border-collapse: collapse; font-size: var(--text-12); font-variant-numeric: tabular-nums; }
+.ci-numbers th, .ci-numbers td { padding: var(--space-1) var(--space-2); border: 1px solid var(--edge-hairline); text-align: right; white-space: nowrap; }
+.ci-numbers th:first-child, .ci-numbers td:first-child { text-align: left; }
+.ci-numbers thead th { color: var(--text-muted); font-weight: var(--weight-strong); }
+.ci-numbers .ci-low { color: var(--status-danger-text, var(--text-primary)); font-weight: var(--weight-strong); }
+.ci-numbers tfoot td { font-weight: var(--weight-strong); }
+.ci-bar > .mf-switch { max-width: 100%; overflow-x: auto; }
+.ci-section { max-width: 100%; }
+@media (max-width: 640px) { .ci-section > :is(h2, p, .ci-bar, .ci-variant) { padding-inline: var(--space-4); } .ci-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }

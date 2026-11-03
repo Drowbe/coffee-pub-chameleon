@@ -48,7 +48,7 @@ trialSwitch('sort', 'Sorting (Q2)', [['filters', 'In Filters'], ['button', 'A bu
 trialSwitch('select', 'Choosing (Q3)', [['button', 'Select button'], ['ticks', 'Ticks always']]);
 trialSwitch('add', 'Add files (Q4)', [['panel', 'Panel in the module'], ['dialog', 'Dialog']]);
 trialSwitch('pdfSearch', 'PDF search (Q5)', [[true, 'Shown'], [false, 'Left out']]);
-trialSwitch('removeWhere', 'Remove where taken (Q6)', [['off', 'Off by default'], ['on', 'On by default']]);
+trialSwitch('removeWhere', 'Remove where taken (decided: off)', [['off', 'Off by default'], ['on', 'On by default']]);
 sec.append(trials);
 
 // ---- the sub jump list ----
