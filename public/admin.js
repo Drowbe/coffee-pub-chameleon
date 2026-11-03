@@ -1649,6 +1649,8 @@ async function loadAiSees() {
   } catch { $('ai-sees-block').hidden = true; }
 }
 $('ai-sees-save').addEventListener('click', async () => {
+  const problem = aiSees.problem();
+  if (problem) { say($('ai-sees-status'), problem, true); return; }
   say($('ai-sees-status'), 'saving...');
   try { await api('PUT', '/api/ai', { sees: aiSees.get() }); await loadAiSees(); say($('ai-sees-status'), 'saved'); } catch (err) { say($('ai-sees-status'), err.message, true); }
 });

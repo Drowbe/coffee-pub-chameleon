@@ -1988,6 +1988,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     const id = spaceId();
     if (!id) { setNote(`AI is only in ${word('space', { a: true })}.`); return false; }
     if (!String(question || '').trim() && !aiContext.length) { setNote('Type your question after /ai.', true); return false; }
+    const q0 = String(question || '').trim();
+    if (q0 && [...q0].length < 3) { setNote('Ask a question of at least 3 characters.', true); return false; }
     const tooLong = questionTooLong(question);
     if (tooLong) { setNote(tooLong, true); return false; }
     if (aiBusy) { setNote('Still asking. Wait for the answer.'); return false; }
@@ -2389,7 +2391,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     // The views (GitHub #203): which is showing, where a typed line goes, a message placed, Chat come into sight.
     view: () => view,
     setView,
-    routeLine: (text) => routeLine(text, view),
+    routeLine: (text) => (!String(text || '').trim() && view === 'assistant' && aiContext.length ? { run: 'ai', view, line: '' } : routeLine(text, view)),
     arrived,
     seen,
     refreshActions,
@@ -2397,6 +2399,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     // A pasted answer sent from the box (routeLine 'import'): true when its objects are shown.
     importText: (text) => checkObjects(text),
     // Words typed in the Assistant: asked of the AI. True when the answer came.
+    // The Assistant is showing and an object waits to go with the next question: an empty box may send (routeLine).
+    canAskEmpty: () => view === 'assistant' && aiContext.length > 0,
     ask: (text) => { setNote(''); if (view !== 'assistant') setView('assistant'); return runAi(text); },
     checkAi,
     note: setNote,

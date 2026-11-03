@@ -151,6 +151,8 @@
   // everywhere else, text still goes in with textContent. Used for an AI's replies and for chat messages, both text
   // nobody here wrote themselves.
   function markdown(text) {
+    // Text direction controls and zero-width characters can disguise words; none is shown.
+    text = String(text || '').replace(/[\u202A-\u202E\u2066-\u2069\u200B-\u200D\u2060\uFEFF]/g, '');
     // Code, links and bare addresses are set aside as placeholders while bold and italic are found, so an underscore or star
     // inside an address or an attribute (target="_blank", .../Belem_Tower) can never pair with another and become emphasis.
     const inline = (s) => {
@@ -158,9 +160,9 @@
       const keep = (html) => `\u0000${kept.push(html) - 1}\u0000`;
       const html = esc(String(s).replace(/\u0000/g, ''))
         .replace(/`([^`\n]+)`/g, (_, c) => keep(`<code>${c}</code>`))
-        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => keep(`<a href="${u}" target="_blank" rel="noopener">${t}</a>`))
+        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`))
         // A bare address the text didn't wrap in [text](...) itself: linked as it stands.
-        .replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)"'\u0000])/g, (_, lead, u) => lead + keep(`<a href="${u}" target="_blank" rel="noopener">${u}</a>`))
+        .replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)"'\u0000])/g, (_, lead, u) => lead + keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`))
         .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
         // _italic_ only at word edges, so snake_case stays as written.
