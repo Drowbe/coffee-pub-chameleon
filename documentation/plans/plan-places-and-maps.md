@@ -5,7 +5,9 @@ games template's maps are. experience-design builds the modules, the destination
 server-development builds the server's side (the destination rules, the layouts, the shared map folder, the templates
 and the checks); content-manager merges or keeps the two user guides once it lands.
 
-**Status:** draft, 2026-10-30, by product-planner. Nothing decided, nothing built. From GitHub #374, raised by Thomas on
+**Status:** draft, 2026-10-30, by product-planner. Nothing decided, and the merge into one module is not built. Separate
+fixes from the health audit of Maps and Places (MP-02 to MP-22) have landed (Maps 0.9.14, Places 0.12.18), including the
+map style as `--map-*` tokens that read on every theme; they do not decide this plan. From GitHub #374, raised by Thomas on
 2026-10-25: "Places and Maps may want to be one module." It brings in #293 (Maps should show Place category colours),
 #44 (a map of the trip), the games template (where a picture map is a battle map) and the travel template.
 

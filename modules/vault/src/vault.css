@@ -75,6 +75,7 @@
 }
 @container vault (max-width: 420px) {
   .vt-x-kind, .vt-x-by { display: none; }
+  .vt-card-thumb .vt-card-name { display: -webkit-box; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 }
 
 /* ---- Add files ---- */
@@ -96,7 +97,7 @@
 .vt-accept, .vt-notice, .vt-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
 .vt-line { color: var(--text-primary); font-size: var(--text-13); }
 .vt-where { align-self: stretch; }
-.vt-queue { display: flex; flex-direction: column; gap: var(--gap-card-rows); margin: 0; padding: 0; list-style: none; }
+.vt-queue { display: flex; flex-direction: column; gap: var(--gap-card-rows); max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
 .vt-up-name { overflow: hidden; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .vt-up-line { display: block; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); overflow-wrap: anywhere; }
 .vt-up-bad { color: color-mix(in srgb, var(--status-danger-text) 75%, var(--text-primary)); }

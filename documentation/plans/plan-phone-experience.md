@@ -7,7 +7,8 @@ modules and pages are made for it first; and the sessions that build it: experie
 checks in `tools/`, the phone emulation in `tools/shots.mjs`), quality-assurance (the audit and each step), content-manager
 (the architecture and API documents, the user guides, the changelog).
 
-**Status:** draft, 2026-10-30, by product-planner; still a draft. Proposes; Thomas decides. Nothing in the product
+**Status:** draft, 2026-10-30, by product-planner; still a draft. Proposes; Thomas decides. Decision 16 (2026-11-03): the
+phone's bottom bar is four module buttons and a switcher, and the call is in the top bar. Nothing in the product
 built. Step 1, the audit, was run by quality-assurance on 2026-10-31 with Playwright's emulation outside the
 repository, and its findings are in "The audit (step 1)". From Thomas, 2026-10-30, as
 relayed by the project manager: what we have been calling the "phone layout" is only a width breakpoint, and "a phone

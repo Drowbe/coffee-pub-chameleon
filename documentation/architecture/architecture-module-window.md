@@ -55,6 +55,8 @@ The frame has a variant for where it sits: `window` (edge, corner and shadow; a 
   1.5 seconds. It is not the space's status strip, which is the header's
   ([architecture-canvas](architecture-canvas.md), "The status strip").
 
+**Zones on a destination page.** A module never chooses where its toolbar items go. A host page that draws a toolbar of its own can give an item a `zone`: `start` or `end`. An item in the `end` zone is drawn after the search and **Filters**, at the row's far right, carries `mf-zone-end`, and with `pin: true` is never moved into **More**; giving any item a zone also keeps the items in the order the page gave them, instead of switches first. The Calendar destination uses this (`zones: true` in `public/destination.js`): on the left the date group (the Calendar's title, back, **Today**, forward), then the **Month | Week | Day** switch; at the far right the panel's switch (**Agenda | To-do**), with the shown panel's own items before it. **Filters** sits between, after the free space. `cleanToolbarItems` and `frameToolbar` in `public/module-chrome.js` keep a `zone` only on an item that carries a `send` function, which only a host page can give, and `tools/check-conformance.mjs` measures the zones.
+
 The rules for cleaning what a module sends, and for what each call becomes, are pure functions in
 `public/module-chrome.js` (`cleanAddEntries`, `addPlan`, `frameAdd`, `cleanToolbarItems`, `frameToolbar`,
 `cleanHeaderItems`, `titlebarActions`, `cleanStatusItems`, `statusFrame`), run by `tools/check-module-chrome.mjs`.

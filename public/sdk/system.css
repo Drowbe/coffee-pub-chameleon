@@ -1908,11 +1908,11 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-out: 0.55;
   --cal-bar: 3px; /* the kept bar */
   /* The chosen day: solid accent with the text on it in the dark modes; in the light mode a lighter fill (a state is a fill, never a
-     ring), so the brown is not the heaviest thing on the page. Today wears a ring. A phase's wash is lighter in the light mode, so chips stay readable. */
+     ring), so the brown is not the heaviest thing on the page. Today wears a ring in both. A phase's wash is lighter in the light mode, so chips stay readable. */
   --cal-sel-bg: var(--accent-fill);
   --cal-sel-bg-hover: var(--accent-fill-hover);
   --cal-sel-text: var(--text-on-accent);
-  --cal-today-ring: transparent;
+  --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 16%;
   /* Muted text on a fill (hover, today, another calendar's chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
   --cal-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary));
@@ -1992,6 +1992,8 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell:is(.is-selected, [aria-selected="true"]):hover { background: var(--cal-sel-bg-hover); }
 .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-n { color: var(--cal-sel-text); font-weight: var(--weight-strong); }
 .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) { --cal-focus: var(--cal-sel-text); }
+/* The focus ring on the chosen day: a double ring, the text colour outside (against the page) and the on-fill colour inside (against the fill), each 3 to 1 or more. */
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]):focus-visible { outline-color: var(--text-primary); box-shadow: inset 0 0 0 4px var(--cal-sel-text); }
 
 /* The day a link opened: the selected fill and a word. */
 .sdk-cal-cell.is-linked { background: var(--fill-selected); }

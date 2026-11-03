@@ -94,7 +94,7 @@
       ${list.map(({ x, start, end }) => {
         const r = x.spaceId ? spaces.get(x.spaceId) : null;
         return `<button type="button" class="item" data-event="${esc(x.spaceId || '')}|${esc(x.id)}" title="${esc(x.ev.title)}${r ? ' - ' + esc(r.name) : ''}">
-          <span class="ri"${r ? ` title="${esc(r.name)}"` : ''}>${r && r.svg ? r.svg : ''}</span><span class="when">${esc(x.ev.allDay ? whenText(x.ev, start, end, true) : shortTime(start))}</span><span class="what">${esc(x.ev.title)}</span><span class="go">${goIcon}</span></button>`;
+          <span class="ri"${r ? ` title="${esc(r.name)}"` : ''}>${r && r.svg ? r.svg : ''}</span><span class="when">${esc(x.ev.allDay ? whenText(x.ev, start, end, true) : shortTime(start))}</span><span class="what">${esc(x.ev.title)}${zoneOf(x.ev) ? `<small class="zone"> ${esc(zoneNote(zoneOf(x.ev)))}</small>` : ''}</span><span class="go">${goIcon}</span></button>`;
       }).join('')}</section>`).join('');
     fit();
   }
