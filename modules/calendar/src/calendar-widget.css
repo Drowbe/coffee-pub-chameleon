@@ -29,3 +29,4 @@ html, body { background: transparent; } /* the dashboard card is the background 
 .go svg { width: 100%; height: 100%; fill: currentColor; }
 .item:hover .go { color: var(--accent); }
 .ri { align-self: center; width: 16px; height: 16px; }
+.what .zone { color: var(--text-dim); font-size: var(--text-11); }

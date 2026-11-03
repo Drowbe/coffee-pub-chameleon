@@ -347,7 +347,7 @@
     const own = [...polls.values()].filter((x) => x.scope === 'own');
     const open = own.filter((x) => !isClosed(x.p)).length;
     syncToolbar();
-    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && open ? { ...f, label: `Open (${open})` } : f)));
+    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && open ? { ...f, count: open } : f)));
 
     let html = groupHtml(spaceInfo.size ? word('environment', { cap: true }) : '', own);
     for (const r of spaceInfo.values()) {
