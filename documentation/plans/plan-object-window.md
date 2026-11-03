@@ -109,7 +109,8 @@ Thomas, 2026-11-03: question 13 is answered (a). The Vault's viewers (pictures, 
 of the app's windows, not a new browser window and not inside the Vault panel; the Vault panel lists, searches,
 filters, selects, adds and shares files. A link to a file from another module (a Planner stay's booking PDF, a
 Research note, Chat) opens the same viewer window over the canvas and does not bring the Vault forward. The
-consequences are questions 17 to 20 below and questions 6 to 11 of [plan-attachments-vault](plan-attachments-vault.md).
+consequences, also answered by Thomas on 2026-11-03, are questions 17 to 20 below and decision 20 of
+[plan-attachments-vault](plan-attachments-vault.md); only the title bar and toolbar contents stay open.
 
 Thomas, 2026-11-01: question 15 (the queue) is answered "after the phone foundations": step 1 waits for
 [plan-phone-experience](plan-phone-experience.md)'s steps 3 to 5, and the window is built on its shared sheet and history stack.
@@ -243,7 +244,7 @@ replaces the viewer "inside the module's content area" with **Back** in the appr
 2026-11-03 (question 13a; decision 19 of the Vault plan). `host.files.open(pointer)` becomes the window, and so does
 a link to a file from any module: `host.objects.open` opens the same window over the canvas and does not bring the
 Vault forward (question 9a, which this agrees with for files). Until this plan's step 1 exists, the Vault's step 3
-may build the viewer on the existing window mode and move it here later (Vault plan, questions 10 and 11).
+may build the viewer on the existing window mode and move it here later (Vault plan, decision 20).
 
 ### Places and Maps
 
@@ -280,7 +281,7 @@ and feedback builds for the module steps.
 | 6 | **The Planner** on the window, `large`: a card opens read mode; `moreInto`, `tpl-card-more` and `state.expanded` go; read facts are today's More rows and the card's slots; edit is today's form; a person without edit can read every object. `CONTRACT.md` follows. | experience-design | 7, 8 |
 | 7 | **Calendar**, then **Research**, then **Places**, then **Polls**, one step each. | experience-design | 8 |
 | 8 | **Map pins** open their object's window. | experience-design | the Places and Maps decision |
-| 9 | **The Vault's viewer** as the `file` kind's window (with Vault step 3, or after it; question 13 is decided, a). If Vault step 3 went first on the existing window mode, this step moves it onto the object window. | experience-design | 17, 18, 19 (20 for the move) |
+| 9 | **The Vault's viewer** as the `file` kind's window (with Vault step 3, or after it; question 13 is decided, a). If Vault step 3 went first on the existing window mode, this step moves it onto the object window. | experience-design | the title bar and toolbar question (Vault plan question 6) |
 | 10 | **Open as a window**: the read window as a floating, non-modal window on the canvas. Not on a phone. | experience-design | 3 |
 | 11 | **A module in a sandboxed frame**: the frame lifted to the window's size (the editor's `editor.lift`), the read view's data sent over the bridge and drawn by the host. | experience-design | none beyond step 3 |
 | 12 | **Documentation**: [api-module-sdk](../api/api-module-sdk.md), [architecture-module-window](../architecture/architecture-module-window.md), each changed module's `CONTRACT.md` and user guide, the changelog. | content-manager | each step as it lands |
@@ -392,15 +393,15 @@ Each has options and the planner's suggestion, marked as such. The table above s
 16. **The phone plan.** (a) Write `plan-phone-experience.md` next, with the scope above. (b) Fold phone rules into
     each feature's plan as they come. (b) is how the phone ended up as a shrunk desktop. *Suggestion: (a).* Blocks
     nothing here.
-17. **One viewer window or several** (follows from 13). (a) One, reused: opening another file replaces the first. (b)
-    One per file, several at once. (c) One by default, with **Keep this open** in the menu. (b) needs the floating
-    window of step 10. *Suggestion: (a), then (c) with step 10.* Same as Vault plan question 6. Blocks step 9.
-18. **Previous and next, and the title bar, when a file is opened from another module.** There is no Vault list to
-    walk. (a) Hidden. (b) The files linked to the object it was opened from, when the opener gives them. (c) The
-    Vault's whole list. *Suggestion: (b) where given, else (a).* The toolbar and title bar split is Vault plan question
-    8. Blocks step 9.
-19. **The public share page** keeps its own viewer on its own page (no app window exists there); it should share the
-    viewer's code, not copy it. *Suggestion: yes.* Vault plan question 9. Blocks nothing here.
-20. **The mechanism and the order.** (a) The Vault's step 3 builds the viewer on the existing window mode now and step 9
-    here moves it to the object window. (b) Step 3 waits for this plan's step 1, which waits on the phone foundations.
-    *Suggestion: (a).* Vault plan questions 10 and 11. Blocks the Vault's step 3 only under (b).
+17. **Viewer windows, several at once.** **Decided, Thomas, 2026-11-03:** several at once, not one reused; a cap of 4
+    (suggested, not yet confirmed) with the sentence "Close a window to open another.", **Close all**, and one sheet
+    at a time on a phone. Opening a file that has a window brings it forward. This needs step 10's floating window to
+    exist for the object window; until then the existing window mode carries it (Vault plan decision 20).
+18. **Previous and next, when a file is opened from another module.** **Decided, Thomas, 2026-11-03:** they walk the
+    files linked where the window was opened from, else they are hidden; from the Vault's list they walk its list.
+    The title bar and toolbar split stays open until Thomas sees the prototype drawing (Vault plan question 6). Blocks
+    step 9.
+19. **The public share page.** **Decided, Thomas, 2026-11-03:** it keeps its own viewer inside the page and shares code
+    with the window.
+20. **The mechanism and the order.** **Decided, Thomas, 2026-11-03:** the existing window mode first (Vault step 3),
+    the general object window later (step 9 here moves it).

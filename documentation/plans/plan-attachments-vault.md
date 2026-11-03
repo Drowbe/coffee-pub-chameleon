@@ -382,8 +382,8 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
 - **Viewer (decision 19, 2026-11-03)**, in one of the app's windows (the app's window mode), not in the Vault's content
   area, not a new browser window, one file at a time. The Vault panel only lists, searches, filters, selects, adds and
   shares; **Open** on a row, a click on a thumbnail, or a link from another module opens the window. The window's title
-  is the file's name; its toolbar holds previous and next, **Download** where allowed, **Share** where allowed, and the
-  more button (what exactly goes in the title bar and what in the toolbar is open, question 8 below). The earlier
+  is the file's name; several windows can be open at once (decision 20); its toolbar holds previous and next, **Download** where allowed, **Share** where allowed, and the
+  more button (what exactly goes in the title bar and what in the toolbar is open, question 6 below). The earlier
   design, a viewer in the content area with **Back**, is replaced. In the window:
   - pictures: the `img`, fitted, with **Full screen**; a video or picture thumbnail is made in the page (decision 11), a
     PDF has none, only its type tile;
@@ -418,8 +418,8 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
 - **Empty states:** no files ("No files yet. Add tickets, photos and documents for this {space}." with **Add files**);
   nothing matches ("No files match." with **Clear filters**); no permission ("You can't see the files in this
   {space}."); a link chip whose file is gone ("File removed").
-- **Phone (640 pixels or narrower):** one column, the grid three across, the viewer window is a full screen sheet
-  (this stays under decision 19), **Download** as a large button.
+- **Phone (640 pixels or narrower):** one column, the grid three across, the viewer window is a full screen sheet,
+  one at a time (this stays under decisions 19 and 20; opening another file replaces the sheet's file), **Download** as a large button.
 - **New design-system pieces**, each added to the registry after Thomas agrees, before a module uses it: the file chip
   (icon, name, size, state), the file chooser sheet, the upload progress row, the media viewer frame, the share sheet.
   Icons: `vault`, `file-pdf`, `file-image`, `file-audio`, `file-video`, `file-lines`, `link`, `download`,
@@ -482,7 +482,7 @@ Each step can be built and checked on its own. A new or changed module gets a ve
 |---|---|---|---|---|
 | 1 | **Store, routes, quotas. Built** (commits `bde9358` to `154819d`; security QA round 1 failed and fixed, round 2 pending). `server/vault-store.js`, `server/vault-types.js`, the routes on `/api/modules/:id/library?space=`, the variables, the PDF rule (its "cannot judge" case changes in step 3, decision 18), the minimum upload speed, the 2 hour request timeout, space erase deleting files, `tools/check-vault.mjs` in `npm run check`. The Remove-where-it-was-taken option and its default wait for Thomas's answer | L | server-development | feedback build with a QA security review |
 | 2 | **The Vault module and its list.** `modules/vault` at 0.1.0: manifest and permissions, List and Grid, search, Filters, Add files with progress, Rename, Remove with "where it is used", Select, the status line, empty states, phone | M | experience-design | try build |
-| 3 | **Viewers, in a window (decision 19).** The viewer window that Open, a thumbnail and `host.files.open` all open (first on the existing window mode; whether it later moves to the general object window is question 11); pictures, audio, video with real controls, Markdown; the frame's `allow="fullscreen"`; previous and next; thumbnails made in the page. **The pdf.js viewer and the download-only state:** pdf.js vendored in `public/sdk/` with its licence file and a check (in `npm run check`) that the vendored file's hash is pinned; the sandboxed viewer frame and its route with its own CSP; page, zoom, search if cheap, Full screen from the host; server-side, the `unchecked` and `unsafe` scan answers for a PDF store it with `viewable: false` instead of refusing it, serve it only as an attachment, and show "This PDF can't be opened here. Download it." | L | experience-design (the viewer, the layer, the notes); server-development (the download-only state, the viewer route and its headers, the hash check) | try build for the viewers, a feedback build with a QA security review for the PDF viewer, then a browser pass by Thomas |
+| 3 | **Viewers, in a window (decision 19).** The viewer window that Open, a thumbnail and `host.files.open` all open (on the existing window mode first; it moves to the general object window later, decision 20); several windows at once with a cap of 4 and **Close all**, and the previous and next rule of decision 20; pictures, audio, video with real controls, Markdown; the frame's `allow="fullscreen"`; previous and next; thumbnails made in the page. **The pdf.js viewer and the download-only state:** pdf.js vendored in `public/sdk/` with its licence file and a check (in `npm run check`) that the vendored file's hash is pinned; the sandboxed viewer frame and its route with its own CSP; page, zoom, search if cheap, Full screen from the host; server-side, the `unchecked` and `unsafe` scan answers for a PDF store it with `viewable: false` instead of refusing it, serve it only as an attachment, and show "This PDF can't be opened here. Download it." | L | experience-design (the viewer, the layer, the notes); server-development (the download-only state, the viewer route and its headers, the hash check) | try build for the viewers, a feedback build with a QA security review for the PDF viewer, then a browser pass by Thomas |
 | 4 | **Linking SDK and one module.** `host.files.pick`, `.link`, `.resolve`, `.open`, `host.ui.fileChips` (resolving a file link must read the library records in `DATA_DIR/modules/<id>/library/`); "File removed"; the Planner links its stays and journeys to files (decision 2 of 2026-10-15's order) | M | experience-design | try build |
 | 5 | **External sharing.** Share records, the public routes, the password and its cookie, ends and Turn off, the `/shared/<token>` page and its viewers, the share sheet and list in the Vault | L | server-development (routes), experience-design (the page and sheet) | feedback build with a QA security review |
 | 6 | **Delete with the space, and backup.** The `space-erase.js` step and its check; uninstall removes files; "File missing"; the orphan sweep; `docker-compose.yml` and the guide's `VAULT_DIR` volume | S | server-development (content-manager for the guide) | try build |
@@ -590,6 +590,22 @@ Thomas decided these on 2026-10-30, answering the open questions. Numbers contin
     module's content area" with **Back** in section 10, and the "brings the Vault forward" wording in section 4. The
     phone keeps its full screen sheet.
 
+20. **Viewer windows, several at once (Thomas, 2026-11-03).** Answers to the questions that followed decision 19:
+    - **Several windows.** Opening a file opens a new viewer window; earlier ones stay, so a person can compare two
+      pictures or keep a PDF beside a map. Opening a file that already has a window brings that window forward instead
+      of opening a second. A cap of 4 windows is suggested by the planner and not yet confirmed: at the cap, opening a
+      fifth shows "Close a window to open another." and opens nothing. The window's menu has **Close all**. On a
+      phone, one window shows at a time as the full screen sheet (decision 19), and the cap does not apply to what is
+      seen, only one sheet; opening another file replaces the sheet's file.
+    - **Previous and next** walk the files linked where the window was opened from (a Planner stay's files, a Research
+      note's), when the opener gives them, else they are hidden. From the Vault's list they walk the Vault's list as
+      filtered.
+    - **Mechanism and order.** Step 3 builds the viewer on the existing window mode first; the general object window
+      of [plan-object-window](plan-object-window.md) is the later target (its step 9), and the viewer's content does
+      not change in that move.
+    - **The public share page** keeps its own viewer inside the page (section 7), sharing the viewer's code with the
+      window, not a copy.
+
 Kept from the earlier decisions: viewers have real controls (play, pause, seek, volume, full screen). The host provides
 full screen because it doesn't work in the sandboxed module frame (section 10).
 
@@ -607,31 +623,8 @@ full screen because it doesn't work in the sandboxed module frame (section 10).
    security QA. Blocks step 3.
 4. **A damaged PDF** (no end marker, no objects). It stays refused; whether it too becomes download only is for Thomas.
 5. **Whether search ships in the first viewer** (decision 18: "if cheap"). To be answered when the viewer is sized.
-6. **One viewer window or several** (decision 19). (a) One window, reused: opening another file replaces what it shows.
-   (b) One window per file, several at once, so a person can compare two pictures or keep a PDF open beside a map. (c)
-   One by default; the window's menu has **Keep this open**, which makes the next file open in a new window. (a) is
-   simplest and right on a phone, which shows one sheet; (b) needs the floating window and its stacking rules, and
-   means closing many windows. *Suggestion: (a) for now,* and (c) when the floating window exists. Blocks step 3.
-7. **Previous and next when a file is opened from elsewhere** (decision 19). From the Vault's list they walk the list as
-   filtered. From a Planner stay or a Chat link there is no list. (a) Hidden when opened from elsewhere. (b) Walk the
-   Vault's whole list in its default order. (c) Walk the files linked to the object it was opened from (the stay's
-   documents). (a) is the least surprising; (c) is the most useful but needs the opener to pass its set. *Suggestion:
-   (c) where the opener gives a set, else (a);* never (b), because the Vault's order means nothing to the person who
-   came from a stay. Blocks step 3.
-8. **What the window's title bar and toolbar hold** (decision 19). Suggested split: the title bar has the file's name,
-   Close and the more button (Rename, Where it is used, Remove, each only where allowed); the toolbar has previous and
-   next, **Download**, **Share**, and Full screen. Whether Rename and Remove belong in a viewer at all, or only in the
-   list, is Thomas's. *Suggestion: Download, Share and previous/next in the toolbar; Rename, Where it is used and
-   Remove in the more button.* Blocks step 3.
-9. **The public share page** (section 7) keeps its own viewer on its own page, since a person with a link has no app
-   window to open. Confirm this and that it shares the viewer code with the window, not a copy. *Suggestion: yes to
-   both.* Blocks step 5, not step 3.
-10. **Sequencing.** (a) Step 3 builds the viewer window on the existing window mode now, and moves it to the general
-    object window (object-window step 9) later. (b) Wait for the object window, which waits on the phone foundations
-    (2026-11-01), so step 3 is delayed. (a) means one move later, and the viewer's own content does not change in that
-    move; (b) holds back the Vault's most wanted feature. *Suggestion: (a).* Blocks step 3.
-11. **The mechanism.** The existing window mode (what modules already open in) or the general object window of
-    [plan-object-window](plan-object-window.md), where the Vault's `file` kind registers `read`, `domain` and a
-    toolbar. The object window gives the address (`#object=`), back, Share and the phone sheet for free; the existing
-    mode exists today. Decision 19 is the same under both. *Suggestion: the existing mode first (question 10a), the
-    object window as the target.* Blocks step 3 only if question 10 is (b).
+6. **What the viewer window's title bar and toolbar hold** (decision 19). Stays open until Thomas sees the prototype
+   drawing. Suggested split: the title bar has the file's name, Close and the more button (Rename, Where it is used,
+   Remove, each only where allowed); the toolbar has previous and next, **Download**, **Share** and Full screen.
+   Whether Rename and Remove belong in a viewer at all, or only in the list, is Thomas's. *Suggestion: Download, Share
+   and previous/next in the toolbar; Rename, Where it is used and Remove in the more button.* Blocks step 3.
