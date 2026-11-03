@@ -155,6 +155,8 @@ const ROUND_OK = [
   { file: 'modules/budget/src/budget.css', sel: '.mark', why: 'a 24px icon disc' },
   { file: 'modules/budget/src/budget.css', sel: '.avatar', why: 'a person\'s 26px initials' },
   { file: 'modules/calendar/src/calendar-widget.css', sel: '.mini-day.has::after', why: 'a 5px dot' },
+  { file: 'public/design-system/prototype-phone.css', sel: '.ph .ph-round-disc', why: 'the Prototype\'s round More button: a 40px disc (the bar\'s switcher, option B)' },
+  { file: 'public/design-system/prototype-phone.css', sel: '.ph-callbtn .ph-dot', why: 'the Prototype\'s live dot on the call button: an 8px disc' },
   { file: 'modules/maps/src/maps.css', sel: '.pin-badge', why: 'a 16px disc on a pin' },
   { file: 'modules/maps/src/maps.css', sel: '.pin.cluster .pin-body', why: 'a 38px cluster circle' },
   { file: 'modules/maps/src/maps.css', sel: '.pin[data-scope="person"]::after', why: 'a 12px person mark' },
