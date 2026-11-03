@@ -27,8 +27,8 @@ function plain(into, { name, note, w, h: hh, frame, after, level = 'h4' }) {
     hold.append(f.el);
     f.hold = hold;
     box.append(hold);
-    if (after) after(f, box);
-  });
+    return after ? () => after(f, box) : undefined;
+  }, () => { out.f = null; });
   return out;
 }
 
@@ -184,11 +184,11 @@ const Q = [
   ['A damaged PDF: refused or download only?', 'Plan "What is not decided" 4. Both rows are drawn.', 'Refused, with "This PDF looks damaged. Save it again and try once more.": a download-only file that cannot be read helps nobody.', 'set "Add files"'],
   ['Guests: none, or read-only?', 'The plan says a guest has no access, cannot be given any, and the server answers 404. The task asked for a read-only guest too. Both are drawn.', 'None, as the plan and the security review decided: a guest in a space then never learns a file exists.', 'set "What a person may do"'],
   ['Filters beyond the plan', 'The plan has Type, Added by (Everyone, Mine) and Linked. I added the other people by name, Added (this week, this month, earlier) and Shared (only for people who can share), as you asked for date and shared.', 'Keep Added by with names, Added, and Shared for people who can share.', 'set "Search and Filters"'],
-  ['Words with the template\'s name', 'The plan\'s "This trip\'s Vault is full" does not read with Documents or Handouts (plural). I wrote "No room left in this trip\'s Vault (5 GB). Remove some files to add more." so one sentence fits every name; the empty state for games asks for maps, pictures and handouts.', 'Approve the new sentence and the games empty state.', 'the Template words switch'],
-  ['The room left, shown', 'Not in the plan: a meter in the Add files panel and an "Almost full" note in the status line at 80%, and a banner. The plan has only the status line text.', 'Keep the meter in the panel and the note in the status line; skip the banner except when full.', 'sets "Empty, and the room left" and "Add files"'],
+  ['Words with the template\'s name', 'The plan\'s "This trip\'s Vault is full" does not read with Documents or Handouts (plural). I wrote "This trip\'s Vault is full (5 GB). Remove some files to add more." with the template\'s name for the Vault; the empty state for games asks for maps, pictures and handouts.', 'Approve the new sentence and the games empty state.', 'the Template words switch'],
+  ['What is left, shown', 'Not in the plan: a meter in the Add files panel and an "Almost full" note in the status line at 80%, and a banner. The plan has only the status line text.', 'Keep the meter in the panel and the note in the status line; skip the banner except when full.', 'sets "Empty, and what is left" and "Add files"'],
   ['Ended share links: gone, or kept in the list?', 'The plan says a link turns off by itself at its end and does not say whether the list keeps it. Drawn kept, muted, with Remove from the list.', 'Kept for 30 days, so the maker can see it ended and how often it was opened.', 'set "Sharing outside"'],
   ['Public page: a "Download all"?', 'The plan has Download per file, no archives anywhere. A zip would need the server to build archives, which the plan refuses.', 'No Download all in the first version.', 'set "The public page"'],
-  ['Words that are new', 'Four sentences the plan does not give: a PDF with a script, a slow upload, a damaged PDF, and "No room left". Also the labels on the share sheet and list, the viewer\'s and the chooser\'s buttons.', 'Read them on the page and change any you dislike; they are plain and short on purpose.', 'sets "Add files" and "Sharing outside"'],
+  ['Words that are new', 'Four sentences the plan does not give: a PDF with a script, a slow upload, a damaged PDF, and "This trip\'s Vault is full". Also the labels on the share sheet and list, the viewer\'s and the chooser\'s buttons.', 'Read them on the page and change any you dislike; they are plain and short on purpose.', 'sets "Add files" and "Sharing outside"'],
 ];
 
 export function buildQuestions({ set }) {

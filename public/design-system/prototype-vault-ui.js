@@ -187,15 +187,76 @@ export function runDeferred() {
   window.scrollTo(0, y); // opening a menu and closing it moves focus, which can scroll the page
 }
 
-// Seventy-odd panels each laid out in a page that is laid out again for every one of them is slow, so a panel is drawn when it comes near the
-// screen (a placeholder of its own height keeps the page's length). ?vtall=1 draws every panel at once (for measuring the whole section).
-export const ALL = new URLSearchParams(location.search).get('vtall') === '1';
-const watcher = !ALL && 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
-  for (const e of entries) if (e.isIntersecting) { watcher.unobserve(e.target); const b = e.target.__draw; e.target.__draw = null; if (b) { e.target.classList.remove('is-pending'); b(); } }
-}, { rootMargin: '1200px 0px' }) : null;
-export function lazy(box, draw) {
+// Seventy-odd panels each laid out in a page that is laid out again for every one of them is slow, and drawn all at once they hold tens of thousands of
+// nodes, so a panel is drawn only when it is near the screen (one a frame, so no task runs long) and released when it is far away: its media
+// stopped, its timers and observers dropped, its nodes removed, its height kept so the page keeps its length. At most MAX_LIVE are drawn at a
+// time (more only when more are on the screen). The IntersectionObserver is the only thing watching the scroll; nothing runs in a scroll handler.
+export const MAX_LIVE = 8;
+const live = new Set(); // drawn panels
+const near = new Set(); // panels in or near the screen
+const queue = [];
+let pumping = false;
+let quiet = 0;
+export const liveCount = () => live.size;
+
+// Stop every audio and video under a node, shadow roots included, and let go of what they loaded.
+export function stopMedia(root) {
+  const walk = (node) => {
+    for (const el of node.querySelectorAll('*')) {
+      if (el.shadowRoot) walk(el.shadowRoot);
+      if (el.localName === 'audio' || el.localName === 'video') { try { el.pause(); el.removeAttribute('src'); el.load(); } catch { /* gone already */ } }
+    }
+  };
+  walk(root);
+}
+
+function release(box) {
+  const rec = box.__lazy;
+  if (!rec || !live.has(box)) return;
+  live.delete(box);
+  box.style.minHeight = `${box.offsetHeight}px`;
+  stopMedia(box);
+  try { if (rec.release) rec.release(); } catch (e) { console.error(e); }
+  box.replaceChildren();
+  box.classList.add('is-pending');
+}
+function trimLive() {
+  if (live.size <= MAX_LIVE) return;
+  const mid = window.innerHeight / 2;
+  const far = [...live].filter((b) => !near.has(b)).map((b) => { const r = b.getBoundingClientRect(); return [Math.abs((r.top + r.bottom) / 2 - mid), b]; }).sort((a, b) => b[0] - a[0]);
+  for (const [, b] of far) { if (live.size <= MAX_LIVE) break; release(b); }
+}
+function pump() {
+  if (pumping) return;
+  pumping = true;
+  requestAnimationFrame(() => {
+    pumping = false;
+    const box = queue.shift();
+    if (box && near.has(box) && !live.has(box) && box.__lazy) {
+      const y = window.scrollY;
+      const more = box.__lazy.draw();
+      box.classList.remove('is-pending');
+      box.style.minHeight = '';
+      live.add(box);
+      if (window.scrollY !== y) window.scrollTo(0, y); // a menu opened and closed in a drawing moves focus, which can scroll the page
+      trimLive();
+      if (typeof more === 'function') requestAnimationFrame(() => { if (live.has(box) && near.has(box)) { const y2 = window.scrollY; try { more(); } catch (e) { console.error(e); } if (window.scrollY !== y2) window.scrollTo(0, y2); } });
+    }
+    if (queue.length) pump();
+  });
+}
+const watcher = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting) { near.add(e.target); if (!live.has(e.target) && !queue.includes(e.target)) queue.push(e.target); } else near.delete(e.target);
+  }
+  // Panels are drawn once the scrolling has stopped for a moment, so passing a panel by costs nothing.
+  clearTimeout(quiet);
+  quiet = setTimeout(pump, 120);
+}, { rootMargin: '500px 0px' }) : null;
+// draw() fills the box and may return a function for what can wait a frame (a menu held open); release() drops what the drawing holds.
+export function lazy(box, draw, release) {
   if (!watcher) { defer(draw); return; }
   box.classList.add('is-pending');
-  box.__draw = draw;
+  box.__lazy = { draw, release };
   watcher.observe(box);
 }

@@ -222,10 +222,12 @@ export function artFull(file) {
 }
 
 // ---- sound: a short tune, 8-bit mono, made in the page ----
-let wavUrl = '';
-export function sampleAudio() {
-  if (wavUrl) return wavUrl;
-  const rate = 8000, secs = 12, len = rate * secs;
+const wavUrls = new Map();
+// One clip per length, so the player's length is the file's length (a long file is a lower rate, to stay small).
+export function sampleAudio(secs = 12) {
+  secs = Math.max(1, Math.round(secs));
+  if (wavUrls.has(secs)) return wavUrls.get(secs);
+  const rate = secs > 120 ? 2000 : 8000, len = rate * secs;
   const buf = new Uint8Array(44 + len);
   const dv = new DataView(buf.buffer);
   const put = (o, s) => { for (let i = 0; i < s.length; i += 1) buf[o + i] = s.charCodeAt(i); };
@@ -237,8 +239,9 @@ export function sampleAudio() {
     const env = Math.min(1, local * 30) * Math.exp(-local * 3);
     buf[44 + i] = 128 + Math.round(70 * env * Math.sin(2 * Math.PI * notes[idx] * t));
   }
-  wavUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  return wavUrl;
+  const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  wavUrls.set(secs, url);
+  return url;
 }
 
 // ---- video: a 5 second, 256 by 144 clip of soft moving colour (VP8, 10 KB, prototype-vault-clip.webm beside this file) ----

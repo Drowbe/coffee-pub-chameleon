@@ -71,6 +71,15 @@ export function pictureView(f, api) {
   return view;
 }
 
+// Only one sound or video plays at a time, and the ones that are not playing hold no data (preload none; a paused one is let go).
+let playing = null;
+function oneAtATime(el) {
+  el.addEventListener('play', () => {
+    if (playing && playing !== el && playing.isConnected !== false) { try { playing.pause(); } catch { /* gone */ } }
+    playing = el;
+  });
+}
+
 export function audioView(f) {
   const view = h('div', 'vt-view vt-audio');
   const tile = h('span', 'vt-audio-tile');
@@ -78,8 +87,9 @@ export function audioView(f) {
   tile.append(fa('file-audio'));
   const player = h('audio');
   player.controls = true;
-  player.preload = 'metadata';
-  player.src = sampleAudio();
+  player.preload = 'none';
+  oneAtATime(player);
+  player.src = sampleAudio(f.dur || 12);
   player.setAttribute('aria-label', f.name);
   view.append(tile, h('p', 'vt-audio-name', f.name), h('p', 'vt-audio-meta', `${clock(f.dur)} · ${size(f.size)}`), player);
   return view;
@@ -97,7 +107,8 @@ export function videoView(f, api) {
   const v = h('video');
   v.controls = true;
   v.playsInline = true;
-  v.preload = 'metadata';
+  v.preload = 'none';
+  oneAtATime(v);
   v.poster = art(f, 640, 360);
   v.setAttribute('aria-label', f.name);
   sampleVideo().then((u) => { if (u) v.src = u; });

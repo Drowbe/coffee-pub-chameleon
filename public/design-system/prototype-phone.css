@@ -27,7 +27,7 @@
 .phf-measure { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
 
 /* ================= the screen (phone.html) ================= */
-html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body); }
+html:has(> body.ph-body), body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body); }
 .ph-body * { box-sizing: border-box; }
 /* The safe areas, as a phone gives them (47px at the top and 34px at the foot upright; sideways 47px at each side and 21px at the foot, none at the top).
    Product: env(safe-area-inset-*) already fills --safe-*; nothing to move. */

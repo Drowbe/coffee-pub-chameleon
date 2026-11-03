@@ -6,7 +6,7 @@
 // prototype-vault-app.js, the viewers, the dialogs, the public page in their own files; the styles in prototype-vault.css.
 import { createVault, TRIAL, redrawAll } from './prototype-vault-app.js';
 import { GB } from './prototype-vault-data.js';
-import { D, h, btn, heldMenu, lazy, runDeferred, ALL } from './prototype-vault-ui.js';
+import { D, h, fa, btn, heldMenu, lazy, runDeferred } from './prototype-vault-ui.js';
 import { buildAddAndViewers, buildNarrowAndPermissions } from './prototype-vault-sets.js';
 import { buildOther, buildShare, buildDelete, buildQuestions } from './prototype-vault-more.js';
 
@@ -90,8 +90,8 @@ function state(into, { name, note, w, h: hh, cfg, after, level = 'h4' }) {
     const api = createVault(cfg || {});
     out.api = api;
     box.append(api.el);
-    if (after) after(api, box);
-  });
+    return after ? () => after(api, box) : undefined;
+  }, () => { if (out.api && out.api.destroy) out.api.destroy(); out.api = null; });
   return out;
 }
 const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); return p; };
@@ -103,7 +103,7 @@ const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); retu
 }
 // ================= 2. List and Grid =================
 {
-  const s = set('views', 'List and Grid', 'The List is one row a file: the picture or a type icon, the name, the type and size in quiet words, who added it and when, the links and share marks, the more button. The Grid is a card a file in the stacked head with the circle icon (the Cards block): the type in the kind\'s colour above the name, the picture below. Both are the pieces named in plan section 10. Below 480px of module width the grid is three across, thumbnails with the name under (the second drawing), because the stacked head has no room.');
+  const s = set('views', 'List and Grid', 'The List is one row a file: the picture or a type icon, the name, the type and size in quiet words, who added it and when, the links and share marks, the more button. The Grid is a card a file in the stacked head with the circle icon (the Cards block): the type in the kind\'s colour above the name, the picture below. Both are the pieces named in plan section 10. Below 480px of module width the grid is three across, thumbnails with the name under (the second drawing), because the stacked head has no space.');
   const p = pair(s);
   state(p, { name: 'List', note: 'Newest first, as it opens.', cfg: { role: 'member', state: { view: 'list' } } });
   state(p, { name: 'Grid, stacked head', note: 'The card of the Cards block: a circle icon, the kind label above the name, the picture, one line of facts.', cfg: { role: 'member', state: { view: 'grid' }, trial: { gridCard: 'banded' } } });
@@ -115,7 +115,7 @@ const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); retu
 {
   const s = set('select', 'Choosing several', 'The title bar action Select turns it on; the toolbar becomes Done, the count and Choose all, Download, Share and Remove (the frame folds them into More when it is narrow). Remove is off while the choice holds a file somebody else added. Q3 asks whether ticks should always show instead.');
   const p = pair(s);
-  state(p, { name: 'List, three chosen', cfg: { role: 'member', state: { view: 'list', selecting: true, sel: ['f02', 'f05', 'f10'] } } });
+  state(p, { name: 'List, three chosen, one is not yours', cfg: { role: 'member', state: { view: 'list', selecting: true, sel: ['f02', 'f05', 'f01'] } } });
   state(p, { name: 'Grid, two chosen', cfg: { role: 'moderator', state: { view: 'grid', selecting: true, sel: ['f09', 'f12'] } } });
   state(p, { name: 'Ticks always shown (the other way)', note: 'No Select button needed; the tick is on every row and card, and a click on a row still opens it.', cfg: { role: 'member', state: { view: 'list' }, trial: { select: 'ticks' } } });
 }
@@ -141,16 +141,16 @@ const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); retu
 }
 // ================= 6. empty and quota =================
 {
-  const s = set('empty', 'Empty, and the room left', 'The empty state says what to do and has Add files. The status line is the count and the room ("42 files · 1.2 GB of 5 GB"); it turns to a warning at 80% and says Full at the limit.');
+  const s = set('empty', 'Empty, and what is left', 'The empty state says what to do and has Add files. The status line is the count and what is left ("42 files · 1.2 GB of 5 GB"); it turns to a warning at 80% and says Full at the limit.');
   const p = pair(s);
   state(p, { name: 'No files yet', cfg: { role: 'member', empty: true, state: { usedBytes: 0 } } });
   state(p, { name: 'No files yet, and a member who cannot add', cfg: { role: 'member-noadd', empty: true, state: { usedBytes: 0 } } });
   const p2 = pair(s);
-  state(p2, { name: 'Almost full', note: '4.4 GB of 5 GB: the status line warns, the banner says what to do.', cfg: { role: 'member', state: { usedBytes: 4.4 * GB, notice: { kind: 'warn', text: 'Almost full. Remove some files to make room: 4.4 GB of 5 GB used in this trip.' } } } });
+  state(p2, { name: 'Almost full', note: '4.4 GB of 5 GB: the status line warns, the banner says what to do.', cfg: { role: 'member', state: { usedBytes: 4.4 * GB, notice: { kind: 'warn', text: 'Almost full. Remove some files to add more: 4.4 GB of 5 GB used in this trip.' } } } });
   const p3 = pair(s);
   state(p3, { name: 'The travel template\'s word: Documents', note: 'A template shows its own name for the module (Documents for trips) and every sentence uses it and the space word.', cfg: { role: 'member', empty: true, state: { usedBytes: 0 }, trial: { words: 'documents' } } });
   state(p3, { name: 'The games template\'s word: Handouts', note: 'Handouts for campaigns; the empty state asks for maps, pictures and handouts.', cfg: { role: 'member', empty: true, state: { usedBytes: 0 }, trial: { words: 'handouts' } } });
-  state(p2, { name: 'Full', note: '5 GB of 5 GB: adding is off and says why.', cfg: { role: 'member', state: { usedBytes: 5 * GB, capBytes: 5 * GB, panel: true, notice: { kind: 'danger', text: "No room left in this trip's Vault (5 GB). Remove some files to add more." } } } });
+  state(p2, { name: 'Full', note: '5 GB of 5 GB: adding is off and says why.', cfg: { role: 'member', state: { usedBytes: 5 * GB, capBytes: 5 * GB, panel: true, notice: { kind: 'danger', text: "This trip's Vault is full (5 GB). Remove some files to add more." } } } });
 }
 
 const helpers = { set, state, pair };
@@ -161,8 +161,8 @@ buildDelete(helpers);
 buildNarrowAndPermissions(helpers);
 buildQuestions(helpers);
 main.append(sec);
-requestAnimationFrame(() => { runDeferred(); D.documentElement.dataset.vtBuilt = ALL ? 'all' : 'lazy'; });
-// the page's jump list gets its Vault button (the page's list is the Phone script's)
+requestAnimationFrame(() => { runDeferred(); });
+// The page's jump lists stay pinned under the top bar (a dock), so any part of the page, and the top, is one press away after a jump.
 const pageJump = D.querySelector('nav.pp-jump[aria-label="Jump to a section of the page"]');
 if (pageJump) {
   const b = h('button', 'btn btn-small', 'Vault');
@@ -170,4 +170,26 @@ if (pageJump) {
   b.addEventListener('click', () => D.getElementById('pp-vault-name')?.scrollIntoView({ block: 'start' }));
   pageJump.append(b);
 }
-
+{
+  const dock = h('div', 'pp-dock');
+  const top = h('button', 'btn btn-small pp-dock-top');
+  top.type = 'button';
+  top.append(fa('arrow-up'), h('span', '', 'Back to top'));
+  top.addEventListener('click', () => window.scrollTo({ top: 0 }));
+  const rows = h('div', 'pp-dock-rows');
+  if (pageJump) rows.append(pageJump);
+  rows.append(jump);
+  dock.append(top, rows);
+  const bar = D.querySelector('.pp-top');
+  if (bar) bar.after(dock); else D.body.prepend(dock);
+  // Where a jump lands: below the top bar and the dock (read from their heights when they change, not on scroll).
+  const sync = () => {
+    const t = bar ? bar.offsetHeight : 0;
+    dock.style.top = `${t}px`;
+    D.documentElement.style.setProperty('--pp-stick', `${t + dock.offsetHeight + 8}px`);
+  };
+  const ro = new ResizeObserver(sync);
+  ro.observe(dock);
+  if (bar) ro.observe(bar);
+  sync();
+}

@@ -18,7 +18,7 @@
 .vt-set { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
 .vt-set-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
 .vt-set > .pp-state-note { margin-top: calc(-1 * var(--space-3)); }
-.vt-frame { position: relative; }
+.vt-frame { position: relative; contain: layout style; }
 .vt-frame.is-pending { min-height: calc(var(--vt-h, 640px) + 2 * var(--space-5)); }
 .vt-hold { position: relative; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); }
 .vt-hold > .vt-held-menu { position: absolute; z-index: 5; }
@@ -82,6 +82,10 @@ button.sdk-open { font: inherit; color: inherit; }
 }
 @container vault (max-width: 420px) {
   .vt-sub-kind { display: none; }
+  /* the name keeps the width; the line under it wraps to two lines (size, then who and when) rather than cut the person */
+  .vt-flags { min-width: 0; }
+  .vt-flags:empty { display: none; }
+  .vt-row .vt-sub { overflow: visible; white-space: normal; text-overflow: clip; }
 }
 
 /* ---- the Grid (to system.css: .sdk-file-grid, .sdk-file-card on .sdk-card-banded) ---- */
@@ -91,6 +95,8 @@ button.sdk-open { font: inherit; color: inherit; }
 }
 .vt-card { min-width: 0; }
 .vt-card-name { display: -webkit-box; margin: 0; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; text-align: left; font: inherit; color: inherit; word-break: break-word; }
+/* the stacked head holds two name lines whatever the name, so the pictures line up across a row */
+.vt-card:not(.vt-card-thumb) .vt-card-name { min-height: 2lh; }
 .vt-card .sdk-card-body { display: flex; flex-direction: column; gap: var(--space-2); }
 .vt-card .vt-thumb { width: 100%; border-radius: var(--radius-small); font-size: var(--text-28); }
 .vt-card .vt-tile { font-size: var(--text-28); }
@@ -178,7 +184,8 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-uses { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-13); }
 .vt-uses span { color: var(--text-muted); }
 @container vault (max-width: 560px) {
-  .vt-vbody.has-info > .vt-info { position: absolute; inset: auto 0 0 0; z-index: 2; width: auto; max-height: 58%; border-left: 0; border-top: 1px solid var(--edge-hairline); box-shadow: var(--shadow-3); border-radius: var(--radius-large) var(--radius-large) 0 0; }
+  .vt-vbody.has-info { flex-direction: column; }
+  .vt-vbody.has-info > .vt-info { position: relative; z-index: 2; width: auto; max-height: 58%; border-left: 0; border-top: 1px solid var(--edge-hairline); box-shadow: var(--shadow-3); border-radius: var(--radius-large) var(--radius-large) 0 0; }
 }
 /* a picture */
 .vt-pic { align-items: center; justify-content: center; overflow: hidden; }
@@ -317,3 +324,12 @@ dialog.vt-sheet[open] { opacity: 1; transform: none; }
   .vt-scroll { padding: var(--space-2); }
   .vt-vbar { padding-inline: var(--space-2); }
 }
+
+/* ---- the page's pinned jump lists (a dock under the top bar) and where a jump lands ---- */
+html { scroll-padding-top: var(--pp-stick, 120px); }
+.pp-dock { position: sticky; z-index: calc(var(--z-dialog, 50) - 1); display: flex; align-items: flex-start; gap: var(--space-2); box-sizing: border-box; padding: var(--space-1) var(--space-4); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.pp-dock-top { flex: none; }
+.pp-dock-rows { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.pp-dock .pp-jump { flex-wrap: nowrap; padding-inline: 0; overflow-x: auto; scrollbar-width: thin; }
+.pp-dock .pp-jump > * { flex: none; }
+@media (max-width: 560px) { .pp-dock { padding-inline: var(--space-2); } .pp-dock-top span { display: none; } }

@@ -10,7 +10,7 @@ const up = (name, mb, kind, status, extra = {}) => ({ name, size: Math.round(mb 
 export function buildAddAndViewers({ set, state, pair }) {
   // ================= Add files =================
   {
-    const s = set('add', 'Add files', 'The "+" in the title bar is Add files. It opens a panel at the top of the module (or a dialog: Q4): a drop zone and Choose files (several at once; on a phone the photo library and camera), the option for pictures, the notice for video, "Everyone in this trip can see what you add.", the room left, and a row for each file with its progress or its refusal. Dropping files on the module shows the drop outline over it.');
+    const s = set('add', 'Add files', 'The "+" in the title bar is Add files. It opens a panel at the top of the module (or a dialog: Q4): a drop zone and Choose files (several at once; on a phone the photo library and camera), the option for pictures, the notice for video, "Everyone in this trip can see what you add.", what is left, and a row for each file with its progress or its refusal. Dropping files on the module shows the drop outline over it.');
     const p = pair(s);
     state(p, { name: 'The panel', note: 'Open, nothing sent yet. The option and the notice are the plan\'s decision 10; its default is Q7.', cfg: { role: 'member', state: { panel: true } }, h: 720 });
     state(p, { name: 'Dropping files on the module', note: 'The outline covers the module while files are dragged over it, and says where they go.', cfg: { role: 'member', state: { dropping: true } } });
@@ -31,8 +31,8 @@ export function buildAddAndViewers({ set, state, pair }) {
       up('Insurance, encrypted.pdf', 3.4, 'pdf', 'done', { pct: 100, msg: "Added · 3.4 MB · Download only: this PDF can't be opened here." }),
     ] } }, h: 800 });
     const p4 = pair(s);
-    state(p4, { name: 'No room: the space, the person, the server', note: 'Each over-limit sentence is the plan\'s, with the template\'s word for the Vault (Q11). The drop zone turns off when the space is full.', cfg: { role: 'member', state: { panel: true, usedBytes: 5 * GB, notice: { kind: 'danger', text: "No room left in this trip's Vault (5 GB). Remove some files to add more." }, queue: [
-      up('Cooking class, full.mp4', 330, 'video', 'refused', { msg: "No room left in this trip's Vault (5 GB). Remove some files to add more." }),
+    state(p4, { name: 'Full: the space, the person, the server', note: 'Each over-limit sentence is the plan\'s, with the template\'s word for the Vault (Q11). The drop zone turns off when the space is full.', cfg: { role: 'member', state: { panel: true, usedBytes: 5 * GB, notice: { kind: 'danger', text: "This trip's Vault is full (5 GB). Remove some files to add more." }, queue: [
+      up('Cooking class, full.mp4', 330, 'video', 'refused', { msg: "This trip's Vault is full (5 GB). Remove some files to add more." }),
       up('Dinner toast, again.mp4', 60, 'video', 'refused', { msg: 'You have used your 2 GB in the Vault. Remove some of your files to add more.' }),
       up('Rome walk, long.mp4', 90, 'video', 'refused', { msg: "The server's file storage is full. Ask the admin." }),
     ] } }, h: 800 });

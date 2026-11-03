@@ -8,6 +8,7 @@ import { openHostMenu } from '/host-menu.js';
 import { FILES, KINDS, PEOPLE, USES, QUOTA, TOTAL_BYTES, NOW, MB, GB, byId } from './prototype-vault-data.js';
 import { D, h, fa, btn, iconBtn, WORDS, size, when, clock, who, plural, circleIcon, thumb, personDot, inShadow } from './prototype-vault-ui.js';
 import { pictureView, audioView, videoView, markdownView, pdfView, viewState, infoPanel } from './prototype-vault-viewers.js';
+import { stopMedia } from './prototype-vault-ui.js';
 import { liveOpen, heldDialog, removeSheet, renameSheet, usesSheet, shareSheet, shareListSheet, sheet, cancelBtn, okBtn, turnOffShareSheet } from './prototype-vault-dialogs.js';
 
 // What each role may do (plan, section 6): view, add, download, remove_any, share. A guest has none of them.
@@ -94,6 +95,7 @@ export function createVault(cfg = {}) {
   const nFilters = () => st.types.size + (st.by !== 'all' ? 1 : 0) + (st.when !== 'any' ? 1 : 0) + (st.shared.size === 1 ? 1 : 0) + (st.linked.size === 1 ? 1 : 0) + (T('sort') === 'filters' && st.sort !== 'new' ? 1 : 0);
   const clearFilters = () => { st.types.clear(); st.by = 'all'; st.when = 'any'; st.shared.clear(); st.linked.clear(); st.query = ''; if (T('sort') === 'filters') st.sort = 'new'; };
   const used = () => (st.usedBytes !== null ? st.usedBytes : pool().reduce((a, f) => a + f.size, 0));
+  const REMOVE_WHY = 'Remove is only for files you added';
   const canRemove = (f) => Boolean(perm.remove_any) || f.by === me;
   const can = (what) => Boolean(perm[what]);
 
@@ -179,7 +181,7 @@ export function createVault(cfg = {}) {
         { type: 'button', id: 'all', label: n === filtered().length ? 'Choose none' : 'Choose all', icon: 'square-check', kind: 'secondary' },
         ...(can('download') ? [{ type: 'button', id: 'sel-download', label: 'Download', icon: 'download', kind: 'secondary', disabled: !n }] : []),
         ...(can('share') ? [{ type: 'button', id: 'sel-share', label: 'Share', icon: 'share-nodes', kind: 'secondary', disabled: !n }] : []),
-        { type: 'button', id: 'sel-remove', label: 'Remove', icon: 'trash', kind: 'secondary', disabled: !mayRemove },
+        { type: 'button', id: 'sel-remove', label: 'Remove', icon: 'trash', kind: 'secondary', disabled: !mayRemove, ...(n && !mayRemove ? { tip: REMOVE_WHY } : {}) },
       ];
     }
     const sortName = (SORTS.find((s) => s[0] === st.sort) || SORTS[0])[1];
@@ -208,8 +210,9 @@ export function createVault(cfg = {}) {
     const count = f ? `${shown} of ${plural(list.length, 'file')}` : plural(list.length, 'file');
     const text = `${count} · ${u === 0 ? '0 GB' : size(u)} of ${size(cap)}${f ? ` · ${f}` : ''}`;
     const items = [];
-    if (u >= cap) items.push({ text: 'Full', icon: 'triangle-exclamation', tone: 'danger', title: `No room left in this ${W().space}'s ${W().module}` });
+    if (u >= cap) items.push({ text: 'Full', icon: 'triangle-exclamation', tone: 'danger', title: `This ${W().space}'s ${W().module} is full` });
     else if (u / cap >= 0.8) items.push({ text: 'Almost full', icon: 'triangle-exclamation', tone: 'warn' });
+    if (st.selecting && st.sel.size && !pool().filter((x) => st.sel.has(x.id)).every(canRemove)) items.push({ text: REMOVE_WHY, icon: 'circle-info', title: REMOVE_WHY });
     return { text, items };
   }
 
@@ -409,7 +412,7 @@ export function createVault(cfg = {}) {
     const choose = btn('btn btn-primary', { label: 'Choose files', icon: 'plus' });
     choose.disabled = full;
     choose.addEventListener('click', () => input.click());
-    drop.append(fa(full ? 'ban' : 'cloud-arrow-up', 'vt-drop-ic'), h('p', 'vt-drop-title', full ? `No room left in this ${W().space}'s ${W().module}` : st.dropping ? 'Drop to add them' : 'Drop files here'), full ? h('p', 'vt-drop-sub', 'Remove some files to add more.') : h('p', 'vt-drop-sub', 'or'), full ? h('span') : choose, input);
+    drop.append(fa(full ? 'ban' : 'cloud-arrow-up', 'vt-drop-ic'), h('p', 'vt-drop-title', full ? `This ${W().space}'s ${W().module} is full` : st.dropping ? 'Drop to add them' : 'Drop files here'), full ? h('p', 'vt-drop-sub', 'Remove some files to add more.') : h('p', 'vt-drop-sub', 'or'), full ? h('span') : choose, input);
     p.append(drop);
     if (st.queue.length) { const ul = h('ul', 'sdk-card-list vt-queue'); ul.setAttribute('aria-label', 'Files being added'); for (const it of st.queue) ul.append(uploadRow(it)); p.append(ul); }
     p.append(h('p', 'vt-accept', 'Pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown. Up to 25 MB for a picture, 200 MB audio, 2 GB video, 100 MB PDF, 1 MB Markdown.'));
@@ -437,7 +440,7 @@ export function createVault(cfg = {}) {
       if (/\.heic$/i.test(f.name)) { it.status = 'refused'; it.msg = 'Save it as a JPEG.'; }
       else if (!ALLOWED.test(f.name)) { it.status = 'refused'; it.msg = TYPE_REFUSAL; }
       else if (f.size > LIMIT[kind][0]) { it.status = 'refused'; it.msg = `That file is over the ${LIMIT[kind][1]} limit for ${LIMIT[kind][2]}.`; }
-      else if (used() + f.size > st.capBytes) { it.status = 'refused'; it.msg = `No room left in this ${W().space}'s ${W().module} (${size(st.capBytes)}). Remove some files to add more.`; }
+      else if (used() + f.size > st.capBytes) { it.status = 'refused'; it.msg = `This ${W().space}'s ${W().module} is full (${size(st.capBytes)}). Remove some files to add more.`; }
       st.queue.push(it);
       if (it.status === 'refused') continue;
       it.status = 'uploading';
@@ -583,7 +586,8 @@ export function createVault(cfg = {}) {
   app.addEventListener('dragover', (e) => { if (can('add')) e.preventDefault(); });
   app.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; st.dropping = false; if (can('add') && e.dataTransfer.files.length) { st.panel = true; startFiles([...e.dataTransfer.files]); } else render(false); });
 
-  new ResizeObserver(() => { if (narrow() !== renderedNarrow && !st.open) render(false); }).observe(app);
+  const ro = new ResizeObserver(() => { if (narrow() !== renderedNarrow && !st.open) render(false); });
+  ro.observe(app);
   frame = createModuleFrame({
     title: W().module, icon: W().icon, tint: 'blue', titlebar: titlebar(), toolbar: toolbar(), content: inShadow(app), flush: true, status: status(), onAction,
   });
@@ -593,6 +597,13 @@ export function createVault(cfg = {}) {
   render();
   if (cfg.toast) toast(cfg.toast[0], cfg.toast[1], cfg.toast[2], cfg.toast[3], true);
   const api = { el: hold, app, frame, st, render, perm, pool, filtered, fileMenu, filtersEntry, fileMenuFor: (id) => fileMenu(byId(id)), set(patch) { Object.assign(st, patch); render(); }, openFile, startFiles, toast };
+  // Let go of everything this panel holds (the section draws a panel only near the screen and releases it when it is far away).
+  api.destroy = () => {
+    ro.disconnect();
+    for (const it of st.queue) if (it.timer) clearInterval(it.timer);
+    stopMedia(api.el);
+    instances.delete(api);
+  };
   instances.add(api);
   return api;
 }
