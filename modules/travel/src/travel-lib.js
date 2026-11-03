@@ -110,6 +110,24 @@
   // One stored item, made safe and complete; null when it cannot be an item at all. `date` is null for an idea
   // that has no day yet. A `link` item points at another module's object (`ref`) and takes its day from that
   // object's summary unless it has its own.
+  // Files of the space's library (the Vault) that a stay or a journey is linked to: pointers, never copies, at most MAX_FILES, each once.
+  // The files themselves are read from the library when a card or the editor shows them (host.ui.fileChips).
+  const MAX_FILES = 10;
+  function cleanFiles(list) {
+    const out = [];
+    const seen = new Set();
+    for (const r of Array.isArray(list) ? list : []) {
+      if (!r || typeof r.module !== 'string' || r.kind !== 'file' || typeof r.id !== 'string' || r.scope !== 'space' || typeof r.space !== 'string') continue;
+      if (!/^[a-z][a-z0-9-]{1,31}$/.test(r.module) || !/^[A-Za-z0-9_-]{1,64}$/.test(r.id) || r.space.length > 64) continue;
+      const k = `${r.module}|${r.id}|${r.space}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ module: r.module, kind: 'file', id: r.id, scope: 'space', space: r.space });
+      if (out.length >= MAX_FILES) break;
+    }
+    return out;
+  }
+
   function cleanItem(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const kind = KINDS.includes(raw.kind) ? raw.kind : 'stop';
@@ -217,6 +235,10 @@
       // here: they are set aside only where its outbound is found (outboundOf), so a leg whose outbound is gone keeps them.
       const legOf = typeof raw.legOf === 'string' ? clip(raw.legOf, 40) : '';
       item.legOf = legOf && legOf !== item.id && item.mode !== 'car' ? legOf : null;
+    }
+    if (kind === 'stay' || kind === 'journey') {
+      const files = cleanFiles(raw.files);
+      if (files.length) item.files = files; // only when there are some, so an object with none is stored as it always was
     }
     if ((kind === 'block' || kind === 'lane') && !item.type) return null;
     if (kind !== 'link' && kind !== 'block' && kind !== 'lane' && !item.title) return null;

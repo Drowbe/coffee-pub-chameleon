@@ -227,6 +227,7 @@
       hide(el.querySelector('[data-action="remove-link"]'), !broken || !canEdit);
     }
     placeChipInto(el, item);
+    filesInto(el, item, span);
     ownersInto(el, item);
     moreInto(el, item);
     roundTripInto(el, item);
@@ -2269,7 +2270,7 @@
     const ed = state.editing;
     if (!form || !ed) return '';
     const fields = [...form.querySelectorAll('input, select, textarea')].map((el, i) => `${el.id || el.name || i}${el.type === 'radio' ? `:${el.value}` : ''}=${el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value}`);
-    return `${ed.tile}|${chosenMode()}|${ed.placeRef ? host.util.objectKey(ed.placeRef) : ''}|${fields.join('\n')}`;
+    return `${ed.tile}|${chosenMode()}|${ed.placeRef ? host.util.objectKey(ed.placeRef) : ''}|${(ed.files || []).map(host.util.objectKey).join()}|${fields.join('\n')}`;
   };
   const editorOpened = () => { if (state.editing) state.editing.opened = formSnapshot(); };
   const editorDirty = () => Boolean(state.editing && state.editing.opened !== undefined && formSnapshot() !== state.editing.opened);
@@ -2283,6 +2284,61 @@
     if (ed.date) { const day = root.querySelector(`.sdk-day[data-day="${CSS.escape(ed.date)}"] [data-action="day-menu"]`); if (day) return day; }
     return null;
   };
+  // --- the files a stay or a journey is linked to (plan-attachments-vault.md, step 4) ---
+  // The editor holds the pointers in state.editing.files until Save; the plan then tells the host (host.files.link and unlink). The row is
+  // shown when the space has a library this module may link to files of, or when the object already has files (so they can be seen and unlinked).
+  let filesAvailable;
+  async function filesAsk() {
+    if (filesAvailable !== undefined) return filesAvailable;
+    try { filesAvailable = Boolean(host.files && host.files.pick && (await host.objects.kinds()).some((k) => k.kind === 'file')); } catch (err) { filesAvailable = false; }
+    return filesAvailable;
+  }
+  let editorChips = null;
+  function filesDraw() {
+    const ed = state.editing;
+    const box = $('f-files');
+    if (!ed || !box) return;
+    if (editorChips) editorChips.destroy();
+    editorChips = host.ui.fileChips(box, ed.files, { canEdit: true, unlinkable: true, live: false, onRemoveLink: (ref) => { ed.files = ed.files.filter((r) => host.util.objectKey(r) !== host.util.objectKey(ref)); filesDraw(); } });
+    const full = ed.files.length >= MAX_FILES;
+    $('f-files-add').disabled = full;
+    $('f-files-hint').textContent = full ? `A ${ed.tile === 'hotel' ? 'stay' : 'journey'} can have up to ${MAX_FILES} files.` : '';
+  }
+  async function filesInit() {
+    const ed = state.editing;
+    const section = $('f-files-section');
+    if (!ed || !section) return;
+    filesDraw();
+    const ok = await filesAsk();
+    if (state.editing !== ed || !section.isConnected) return;
+    section.hidden = !(ok || ed.files.length);
+    $('f-files-add').hidden = !ok;
+  }
+  $('editor').addEventListener('click', async (e) => {
+    const add = e.target.closest && e.target.closest('#f-files-add');
+    if (!add) return;
+    const ed = state.editing;
+    if (!ed) return;
+    add.disabled = true;
+    try {
+      const picked = await host.files.pick({ multiple: true });
+      if (state.editing !== ed) return;
+      const have = new Set(ed.files.map(host.util.objectKey));
+      for (const r of picked) if (!have.has(host.util.objectKey(r)) && ed.files.length < MAX_FILES) { ed.files.push(r); have.add(host.util.objectKey(r)); }
+    } catch (err) {
+      host.ui.toast(err.message);
+    }
+    filesDraw();
+  });
+  // A stay's or a journey's files on its card: the shared chips; one whose file was removed or is gone says so, with Remove link for
+  // someone who may edit. They look again by themselves when a file is renamed or removed.
+  function filesInto(el, item, span) {
+    if ((item.kind !== 'stay' && item.kind !== 'journey') || !item.files || !item.files.length || span === 'middle' || span === 'end') return;
+    const box = document.createElement('div');
+    box.className = 'card-files';
+    (el.querySelector('.sdk-card-body') || el).append(box);
+    host.ui.fileChips(box, item.files, { canEdit, onRemoveLink: (ref) => { plan.removeFile(item.id, ref).catch((err) => host.ui.toast(err.message)); } });
+  }
   // --- the stop's Place (plan-places-and-maps.md): the name typed stays valid on its own; a Place from Places can be linked to it ---
   // The editor holds the link in state.editing.placeRef until Save; the plan records it (setLinks) when the stop is saved, and removes it
   // when it is unlinked or the stop goes. Save as a place makes a Place from the typed name (the Places action addPlace, when a module offers it).
@@ -2379,7 +2435,7 @@
   function openEditor(mode, item, place, from) {
     if (!canEdit) return;
     const isLink = Boolean(item && item.kind === 'link');
-    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined };
+    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined, files: item && item.files ? [...item.files] : [] };
     state.editingFrom = { el: from || null, id: item ? item.id : null, date: place && place.date ? place.date : null };
     // The plan's own form is the medium window; an item's the large one (the SDK sets the size once, so it is switched here).
     $('editor').classList.toggle('sdk-editor-large', mode !== 'trip');
@@ -2456,6 +2512,7 @@
       seedLookup('back');
       showArrival();
       $('f-by').textContent = item && item.by ? `Added by ${item.by}` : '';
+      filesInit();
     }
     hydrate($('editor'));
     editorOpened();
@@ -2878,6 +2935,7 @@
         // falls back to the type's label on its own.
         if ((t.kind === 'lane' || t.kind === 'block') && !common.title) common.title = markerType(t.type).label;
         fields = { ...common, ...t, time: shown('f-time') ? $('f-time').value || null : t.kind === 'stay' && item ? item.time : null, minutes: ['block:meet-up', 'block:leave-by'].includes(ed.tile) || ed.tile.startsWith('lane:') ? null : lengthOf('f-hours', 'f-minutes') };
+        if (t.kind === 'stay' || t.kind === 'journey') fields.files = ed.files || [];
         if (t.kind === 'journey') {
           for (const f of ['operator', 'number', 'from', 'to', 'pickup', 'dropoff', 'terminal', 'platform', 'carriage', 'seat', 'travelClass']) fields[f] = get(`f-${f}`);
           fields.number = numberToSave(fields.mode, fields.number); // "wn 2483" is kept as "WN 2483"
