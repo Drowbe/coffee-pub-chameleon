@@ -448,14 +448,14 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
     { id: 'prev', icon: 'chevron-left', title: 'Previous', send: noop, zone: 'start' },
     { type: 'tabs', id: 'mode', value: 'month', options: [{ id: 'month', label: 'Month' }], send: noop, zone: 'start' },
     { type: 'chips', id: 'f', label: 'Show', options: [{ id: 'a', label: 'A' }], send: noop },
-    { type: 'tabs', id: 'panel', value: 'a', options: [{ id: 'a', label: 'Agenda' }, { id: 'b', label: 'To-do', count: 4 }], send: noop, zone: 'end', pin: true },
+    { type: 'tabs', id: 'part', value: 'a', options: [{ id: 'a', label: 'Agenda' }, { id: 'b', label: 'To-do', count: 4 }], send: noop, zone: 'end', pin: true },
   ]);
   const zrow = R.frameToolbar(zoned);
-  assert.deepEqual(zrow.map((e) => e.id || e.type), ['title', 'prev', 'mode', 'filters', 'panel'], 'the date group, the mode, the Filters button, then the right zone');
+  assert.deepEqual(zrow.map((e) => e.id || e.type), ['title', 'prev', 'mode', 'filters', 'part'], 'the date group, the mode, the Filters button, then the right zone');
   assert.equal(zrow[4].zone, 'end');
   assert.equal(zrow[4].pin, true);
   assert.equal(zrow[4].options[1].count, 4, 'a switch choice keeps its count, which stays when its words fold');
-  const stranger = R.cleanToolbarItems([{ type: 'tabs', id: 'panel', value: 'a', options: [{ id: 'a', label: 'A' }], zone: 'end', pin: true }]);
+  const stranger = R.cleanToolbarItems([{ type: 'tabs', id: 'part', value: 'a', options: [{ id: 'a', label: 'A' }], zone: 'end', pin: true }]);
   assert.equal(stranger[0].zone, undefined, 'a module cannot put itself in the right zone');
   assert.equal(stranger[0].pin, undefined);
   assert.deepEqual(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` })), 6).length, 6, 'a page may keep more status items than the default');

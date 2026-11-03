@@ -125,16 +125,16 @@ async function main() {
       const panel = sw.find((e) => e.querySelector('[data-key^="switch:dest-panel:"]'));
       const date = vis(tb.querySelectorAll('.mf-tb-title, [data-key^="btn:main~"]'));
       const more = tb.querySelector('.mf-more');
-      return { tb: box(tb), mode: mode && box(mode), panel: panel && box(panel), dateRight: date.length ? Math.max(...date.map((e) => box(e).r)) : null, dateLeft: date.length ? Math.min(...date.map((e) => box(e).l)) : null, filters: tb.querySelector('.mf-filters') && box(tb.querySelector('.mf-filters')), moreShown: Boolean(more && more.offsetParent), over: tb.scrollWidth > tb.clientWidth + 1, panelMoved: Boolean(panel && panel.classList.contains('is-moved')) };
+      return { tb: box(tb), mode: mode && box(mode), side: panel && box(panel), dateRight: date.length ? Math.max(...date.map((e) => box(e).r)) : null, dateLeft: date.length ? Math.min(...date.map((e) => box(e).l)) : null, filters: tb.querySelector('.mf-filters') && box(tb.querySelector('.mf-filters')), moreShown: Boolean(more && more.offsetParent), over: tb.scrollWidth > tb.clientWidth + 1, panelMoved: Boolean(panel && panel.classList.contains('is-moved')) };
     })()`;
     const judgeRow = (name, row) => {
-      ok(row && row.panel, `${name}: the Agenda / To-do switch is in the row`);
-      if (!row || !row.panel) return;
-      ok(Math.abs(row.tb.r - 12 - row.panel.r) <= 1.5, `${name}: the panel switch's right edge is on the row's inset from its end`, `${Math.round(row.tb.r - row.panel.r)} px from the end`);
-      ok(row.mode && row.mode.r <= row.panel.l, `${name}: the Month / Week / Day switch is left of the panel switch`);
+      ok(row && row.side, `${name}: the Agenda / To-do switch is in the row`);
+      if (!row || !row.side) return;
+      ok(Math.abs(row.tb.r - 12 - row.side.r) <= 1.5, `${name}: the panel switch's right edge is on the row's inset from its end`, `${Math.round(row.tb.r - row.side.r)} px from the end`);
+      ok(row.mode && row.mode.r <= row.side.l, `${name}: the Month / Week / Day switch is left of the panel switch`);
       if (row.dateRight !== null && row.mode) ok(row.dateRight <= row.mode.l + 0.5, `${name}: the date group is left of the Month / Week / Day switch`, `${row.dateRight} vs ${row.mode.l}`);
-      else ok(row.moreShown, `${name}: the date group is in More when it has no room`);
-      if (row.filters) ok(row.filters.r <= row.panel.l + 0.5, `${name}: the Filters button is left of the panel switch`);
+      else ok(row.moreShown, `${name}: the date group is in More when it does not fit`);
+      if (row.filters) ok(row.filters.r <= row.side.l + 0.5, `${name}: the Filters button is left of the panel switch`);
       ok(!row.over, `${name}: nothing in the row is cut`);
     };
     {
@@ -150,7 +150,7 @@ async function main() {
       try {
         await tab.eval(`(async () => { const f = document.createElement('iframe'); f.id = 'cal'; f.src = ${JSON.stringify(space)}; f.style.cssText = 'width:${w}px;height:700px;border:0'; document.body.style.margin = '0'; document.body.append(f); await new Promise((r) => f.addEventListener('load', r)); return 1; })()`);
         let row = null;
-        for (let i = 0; i < 80 && !(row && row.panel); i++) { await sleep(250); row = await tab.eval(`(() => { const d = document.getElementById('cal').contentDocument; if (!d.querySelector('#dest-frame .mf-toolbar [data-key^="switch:dest-panel:"]')) return null; return (${ROW.replace(/document\./g, 'd.')}); })()`).catch(() => null); }
+        for (let i = 0; i < 80 && !(row && row.side); i++) { await sleep(250); row = await tab.eval(`(() => { const d = document.getElementById('cal').contentDocument; if (!d.querySelector('#dest-frame .mf-toolbar [data-key^="switch:dest-panel:"]')) return null; return (${ROW.replace(/document\./g, 'd.')}); })()`).catch(() => null); }
         await sleep(1200);
         row = await tab.eval(`(() => { const d = document.getElementById('cal').contentDocument; return (${ROW.replace(/document\./g, 'd.')}); })()`);
         judgeRow(`${w} px window`, row);

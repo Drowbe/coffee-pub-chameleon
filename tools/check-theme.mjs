@@ -270,7 +270,7 @@ test("the theme editor's fields: a row for every optional key in the same order,
   assert.ok(list, 'THEME_OPTIONAL_FIELDS');
   const rows = [...list[1].matchAll(/\['([\w-]+)', '([\w-]+)'\]/g)].map((m) => m.slice(1));
   assert.deepEqual(rows.map((r) => r[1]), THEME_OPTIONAL, 'the editor has a field for every optional key, in the same order');
-  for (const [id] of rows) assert.ok(new RegExp(`<label>[^<]+<input id="${id}" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="${id}"><span class="sdk-choice-text">Auto</span></label>`).test(html), `${id} row with its Auto box`);
+  for (const [id] of rows) assert.ok(new RegExp(`<label>(?:<span data-word="module" data-word-form="cap"></span>)?[^<]+<input id="${id}" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="${id}"><span class="sdk-choice-text">Auto</span></label>`).test(html), `${id} row with its Auto box`);
 });
 
 test("the theme editor's contrast panel: the pairs it lists, a warning for each under 4.5 (text) or 3 (a mark), and the Auto-fix for the text on the accent", () => {

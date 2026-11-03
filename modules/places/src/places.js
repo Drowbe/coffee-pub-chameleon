@@ -420,7 +420,7 @@
   const ADD_PLACE = { id: 'place', label: 'Add a place', icon: 'location-dot' };
   // The dialog opens in this part. Where the parts are tabs (a phone) and the map's tab is the one showing, this part is hidden and the
   // dialog would open there, unseen and holding the page: show this part first. Harmless where both parts are on the screen.
-  const revealPanel = () => { if (asPart && host.destination) host.destination.set({ reveal: 'panel' }).catch(() => {}); };
+  const revealPart = () => { if (asPart && host.destination) host.destination.set({ reveal: 'panel' }).catch(() => {}); };
   let addAsked = null;
   function syncChrome() {
     if (asPart) {
@@ -448,7 +448,7 @@
     host.status.set(items).catch(() => {});
   }
   // Add a place is the "+" in the titlebar: it opens the dialog (its Position field takes pasted coordinates or a map link).
-  host.on('add', (e) => { if (e.id === 'place' && canAdd()) { closeFound(); revealPanel(); openEditor(null, null); } });
+  host.on('add', (e) => { if (e.id === 'place' && canAdd()) { closeFound(); revealPart(); openEditor(null, null); } });
 
   function render() {
     syncChrome();
@@ -1610,7 +1610,7 @@
         const has = (x) => x !== undefined && x !== null && x !== '';
         const point = has(i.lat) && has(i.lng) && geo.inRange(Number(i.lat), Number(i.lng)) ? { lat: geo.round6(Number(i.lat)), lng: geo.round6(Number(i.lng)) } : null;
         closeFound();
-        revealPanel();
+        revealPart();
         openEditor(null, null, { title: geo.oneLine(i.title, 120), point, address: geo.oneLine(i.address, 200), notes: String(i.notes || '').slice(0, 1000), origin: geo.oneLine(i.origin, 60) });
         return {};
       },

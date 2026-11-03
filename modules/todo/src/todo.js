@@ -15,6 +15,9 @@
   const word = host.util.word; // the environment's word for a level or role (host.locale().words)
 
   const $ = (id) => root.getElementById(id);
+  // The link search names an object in this environment's word.
+  $('f-link-search').placeholder = `Link ${word('object', { a: true })}: type to search`;
+  $('f-link-search').setAttribute('aria-label', `Search for ${word('object', { a: true })} to link`);
   // States: loading is the skeleton in #loading; a failure or a plain notice is the block in #msg (.sdk-empty: an icon, a heading, a line,
   // and Retry on a failure, data-kind="error").
   function showMsg(title, text, retry) {

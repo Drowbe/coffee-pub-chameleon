@@ -309,7 +309,10 @@ function mirrorOut(ref, produce, scopeKey, before, after, zone, by) {
 
 // A twin's edit writes the sender. A twin with no pair is left alone. Deleting the twin detaches the pair, which
 // stays as the record that it is hidden (it is never made again), and leaves the sender as it was. A repeating twin stays paired; the sender follows its first start.
-function mirrorIn(ref, produce, scopeKey, after, zone, by) {
+// The zone the copy's times are read in: the trip's, else the one the copy keeps (`dated.tz`, as stored before this write,
+// else as written), and only then the writer's. A flight at 7:40 in Lisbon stays 7:40 when someone in another zone edits
+// its copy; the writer's browser zone is the last resort, for a copy that keeps none.
+function mirrorIn(ref, produce, scopeKey, after, zone, by, before = null) {
   if (produce.mirror !== 'in' || produce.dated?.form !== 'instant' || !deps.pairTo) return;
   if (after == null) {
     const pair = deps.pairTo(ref);
@@ -324,7 +327,8 @@ function mirrorIn(ref, produce, scopeKey, after, zone, by) {
   if (!senderScope) return;
   const current = deps.read(pair.from.module, senderScope, twinKey(sender, pair.from.id));
   if (!current) return;
-  const wrote = tripZone(pair.from.module, sender, senderScope) || zone;
+  const kept = (v) => (produce.dated.tz && v && typeof v === 'object' ? acceptZone(v[produce.dated.tz]) : null);
+  const wrote = tripZone(pair.from.module, sender, senderScope) || kept(before) || kept(after) || zone;
   const next = changed(current, fieldsForSender(readInstant(after, produce.dated), wrote, sender.dated, current));
   const sent = next || current;
   if (next) deps.write(pair.from.module, senderScope, twinKey(sender, pair.from.id), next, by);
@@ -363,7 +367,7 @@ function afterWrite({ module, scopeKey, key, before, after, by, tz }) {
     bus.emit('refchange', { ref, change: 'updated', holders });
   }
   try { mirrorOut(ref, found.produce, scopeKey, before, after, zone, by); } catch (err) { if (!err || err.status !== 413) throw err; }
-  try { mirrorIn(ref, found.produce, scopeKey, after, zone, by); } catch (err) { if (!err || err.status !== 413) throw err; }
+  try { mirrorIn(ref, found.produce, scopeKey, after, zone, by, before); } catch (err) { if (!err || err.status !== 413) throw err; }
 }
 
 // Dated objects already stored, with no pair yet, get their twin once the kind says it sends them. Running it again

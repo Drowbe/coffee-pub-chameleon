@@ -166,6 +166,23 @@ try {
     assert.equal(hidden.find((s) => s.title === 'Fado night').twins, undefined, 'a hidden copy is not a copy that exists');
   });
 
+  await test('a trip with no zone: an edit of the copy is read in the zone the copy keeps, not the editor\'s', async () => {
+    const other = (await as('POST', '/api/spaces', { name: 'Anywhere' })).json.space.id;
+    const q2 = `scope=space&space=${other}`;
+    const put2 = (module, key, value, tz) => as('PUT', `/api/modules/${module}/data/${encodeURIComponent(key)}?${q2}`, { value, ...(tz ? { tz } : {}) });
+    assert.equal((await put2('travel', 'trip:main', { title: 'Anywhere', start: '2026-10-18', end: '2026-10-23' })).status, 200, 'no tz');
+    assert.equal((await put2('travel', 'plan:early', { kind: 'journey', mode: 'flight', title: 'Early flight', date: '2026-10-18', time: '07:40', minutes: 60 }, 'Europe/Lisbon')).status, 200);
+    const pair = links().find((l) => l.pair === 'active' && l.from.module === 'travel' && l.from.id === 'early' && l.from.space === other);
+    assert.ok(pair, 'a copy was made');
+    const key = `/api/modules/calendar/data/${encodeURIComponent(`event:${pair.to.id}`)}?${q2}`;
+    const copy = (await as('GET', key)).json.item.value;
+    assert.equal(copy.tz, 'Europe/Lisbon', 'the copy keeps the zone it was written in');
+    // Someone in Tokyo renames the copy; the time is the same instant.
+    assert.equal((await put2('calendar', `event:${pair.to.id}`, { ...copy, title: 'Early flight, renamed' }, 'Asia/Tokyo')).status, 200);
+    const plan = (await as('GET', `/api/modules/travel/data/plan%3Aearly?${q2}`)).json.item.value;
+    assert.deepEqual([plan.title, plan.time], ['Early flight, renamed', '07:40'], 'still 07:40, not Tokyo\'s 15:40');
+  });
+
   await test('the panel\'s address opens on the panel: /modules/todo goes to the destination with #panel=todo', async () => {
     assert.equal((await as('PATCH', '/api/settings', { showCalendar: true })).status, 200);
     const r = await as('GET', '/modules/todo');

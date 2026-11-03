@@ -226,6 +226,23 @@ await test('ics: a timed weekly repeat keeps its wall-clock time across the chan
   assert.ok(utc.out.includes('BEGIN:VTIMEZONE\r\nTZID:UTC\r\nBEGIN:STANDARD\r\n'));
 });
 
+await test('ics: a repeat\'s days taken out ("Delete this one", dated.skips) are its exceptions (EXDATE)', () => {
+  const allDay = one({ allDay: true, start: `${Y}-03-04`, repeat: { every: 'week', until: null, skips: [`${Y}-03-11`, `${Y}-03-25`] } }).event;
+  assert.deepEqual([prop(allDay, 'EXDATE').params.VALUE, prop(allDay, 'EXDATE').value], ['DATE', `${Y}0311,${Y}0325`]);
+  // A timed repeat: each day at the repeat's own wall-clock time, in the zone DTSTART is in.
+  const timed = one({ start: Date.parse(`${Y}-10-20T22:00:00Z`), repeat: { every: 'week', until: null, skips: [`${Y}-11-10`] } }).event;
+  assert.deepEqual([prop(timed, 'EXDATE').params.TZID, prop(timed, 'EXDATE').value], [NY, `${Y}1110T180000`], 'after the change to standard time, still 18:00');
+  assert.equal(prop(one({ allDay: true, start: `${Y}-03-04`, repeat: { every: 'week', until: null } }).event, 'EXDATE'), null, 'none taken out: no EXDATE');
+  // Read from the stored field the kind names: real days only, each once, in order.
+  const dated = { form: 'instant', title: 'title', start: 'start', allDay: 'allDay', repeat: 'repeat', skips: 'skips' };
+  const read = ics.readDated({ title: 'A', start: `${Y}-03-04`, allDay: true, repeat: { every: 'week' }, skips: [`${Y}-03-25`, `${Y}-03-11`, `${Y}-03-11`, `${Y}-02-30`, 'soon', 5] }, dated, NY);
+  assert.deepEqual(read.repeat.skips, [`${Y}-03-11`, `${Y}-03-25`]);
+  assert.equal(ics.readDated({ title: 'A', start: `${Y}-03-04`, allDay: true, skips: [`${Y}-03-11`] }, dated, NY).repeat, null, 'no repeat: nothing to take out');
+  // The bundled Calendar names its field.
+  const calendar = JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'calendar', 'module.json'), 'utf8'));
+  assert.equal(calendar.refs.produces.find((p) => p.kind === 'event').dated.skips, 'skips');
+});
+
 await test('ics: reading a dated object, either shape, and leaving out what is long past', () => {
   const instant = { form: 'instant', title: 'title', start: 'start', end: 'end', allDay: 'allDay', repeat: 'repeat' };
   const wall = { form: 'wall', title: 'title', day: 'date', time: 'time', endDay: 'checkOut' };
@@ -252,6 +269,8 @@ await test('manifest: "feed" only on a dated kind and only true or false; "dated
   assert.deepEqual([kept.feed, kept.dated], [true, { form: 'instant', title: 'title', start: 'start', allDay: 'allDay', repeat: 'repeat' }]);
   assert.equal('feed' in cleanManifest(manifest({ feed: false, dated: { title: 'title', start: 'start' } }), files).refs.produces[0], false);
   assert.equal(cleanManifest(manifest({ dated: { title: 'title', day: 'date', repeat: 'again' } }), files).refs.produces[0].dated.repeat, 'again');
+  assert.equal(cleanManifest(manifest({ dated: { title: 'title', start: 'start', repeat: 'repeat', skips: 'skips' } }), files).refs.produces[0].dated.skips, 'skips');
+  assert.throws(() => cleanManifest(manifest({ dated: { title: 'title', start: 'start', skips: 'skips' } }), files), { message: 'module.json: refs "event" dated.skips needs dated.repeat' });
 });
 
 // --- the pages (step 3) ------------------------------------------------------------------------------------------------
@@ -739,13 +758,14 @@ try {
     assert.deepEqual([waiting.sharing, waiting.sharingReasons], [true, { calendarFeeds: null, publishedCalendar: null, otherCalendars: { hooks: ['external'], reason: 'Approve Calendar\'s update in Manage > Modules first.' } }]);
     assert.equal((await call('PATCH', '/api/modules/calendar', { cookie: admin, body: { enabled: true, allSpaces: true } })).status, 200);
     assert.deepEqual((await moduleRow('calendar')).sharingReasons, { calendarFeeds: null, publishedCalendar: null, otherCalendars: null }, 'approved: nothing waits');
-    await put('calendar', 'event:c1', { title: 'Weekly game', start: `${Y}-03-04T23:00:00.000Z`, end: `${Y}-03-05T02:00:00.000Z`, allDay: false, desc: 'Bring dice.', remind: null, repeat: { every: 'week', until: `${Y}-06-30` }, by: 'admin' }, spaceA);
+    await put('calendar', 'event:c1', { title: 'Weekly game', start: `${Y}-03-04T23:00:00.000Z`, end: `${Y}-03-05T02:00:00.000Z`, allDay: false, desc: 'Bring dice.', remind: null, repeat: { every: 'week', until: `${Y}-06-30` }, skips: [`${Y}-03-18`], by: 'admin' }, spaceA);
     const url = (await call('POST', '/api/me/feed', { cookie: carolC, body: {} })).json.url;
     const r = await read(url);
     assert.equal(r.status, 200);
     const game = rfcEvents(r.text).find((e) => text(e, 'SUMMARY') === 'Weekly game');
     assert.ok(game, 'the Calendar\'s event is in the feed');
     assert.match(prop(game, 'RRULE').value, /^FREQ=WEEKLY;UNTIL=/);
+    assert.match(prop(game, 'EXDATE').value, new RegExp(`^${Y}0318T\\d{6}$`), 'the week taken out is an exception');
     assert.ok(text(game, 'DESCRIPTION').includes('Bring dice.'));
     assert.ok(!rfcEvents(r.text).some((e) => text(e, 'SUMMARY') === 'Session in A'), 'a module turned off is not read');
     assert.equal((await call('PATCH', '/api/modules/calendar', { cookie: admin, body: { enabled: false } })).status, 200);
