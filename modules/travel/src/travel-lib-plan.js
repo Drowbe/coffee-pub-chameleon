@@ -97,6 +97,18 @@
     const planRef = (id) => host.objects.make('plan', id);
     // The one thing an item points at: a link's object, or the Place a stop is at.
     const linkOf = (item) => item.ref || item.placeRef || null;
+    // The files a stay or a journey is linked to (item.files, pointers into the space's library): the plan tells the host (host.files.link
+    // and unlink, which change only the links to files), so the Vault's "Where it is used" and its Remove question come from real link
+    // records. Fire and forget, as setLink: a person who may not write is refused, and the card shows its files all the same.
+    function tellFiles(id, before, after) {
+      if (!host.files || typeof host.files.link !== 'function') return;
+      const had = new Set(before.map(objectKey));
+      const has = new Set(after.map(objectKey));
+      const add = after.filter((r) => !had.has(objectKey(r)));
+      const drop = before.filter((r) => !has.has(objectKey(r)));
+      if (add.length) host.files.link(planRef(id), add).catch(() => {});
+      if (drop.length) host.files.unlink(planRef(id), drop).catch(() => {});
+    }
     function setLink(id, ref) {
       if (!host.objects || typeof host.objects.setLinks !== 'function') return Promise.resolve(false);
       return host.objects.setLinks(planRef(id), ref ? [ref] : []).then(() => true).catch(() => false);
@@ -278,6 +290,7 @@
       items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
       changed();
       if (linkOf(item)) { setLink(id, linkOf(item)); resolveSummaries().catch(() => {}); }
+      if (item.files && item.files.length) tellFiles(id, [], item.files);
       try {
         await stretchFor(item);
       } catch (err) {
@@ -356,6 +369,7 @@
         items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
         changed();
         if ((linkOf(cur.item) ? objectKey(linkOf(cur.item)) : '') !== (linkOf(item) ? objectKey(linkOf(item)) : '')) { setLink(id, linkOf(item)); if (linkOf(item)) resolveSummaries().catch(() => {}); }
+        if ((cur.item.files || []).map(objectKey).join() !== (item.files || []).map(objectKey).join()) tellFiles(id, cur.item.files || [], item.files || []);
         await stretchFor(item);
         return item;
       } catch (err) {
@@ -369,6 +383,14 @@
         }
         throw err;
       }
+    }
+
+    // Take one file off a stay or a journey (Remove link on a chip whose file was removed): its pointer goes from the object and its link record.
+    async function removeFile(id, ref) {
+      const cur = items.get(id);
+      if (!cur) return null;
+      const keep = (cur.item.files || []).filter((r) => objectKey(r) !== objectKey(ref));
+      return updateItem(id, { files: keep });
     }
 
     async function removeItem(id) {
@@ -584,7 +606,7 @@
     }
 
     return {
-      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, redateCopies, coverDay, bands, phased, addItem, updateItem, removeItem, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
+      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, redateCopies, coverDay, bands, phased, addItem, updateItem, removeItem, removeFile, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
       get trip() { return withDates(trip); },
       get suggestions() { return suggested; },
       get waiting() { return waiting; },

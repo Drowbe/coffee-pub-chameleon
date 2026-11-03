@@ -3,10 +3,12 @@
 // 'window') in a layer over the page, never inside the Vault's panel and never in a new browser window. The Vault's list opens one
 // (host.files.open), and so will any module that links to a file.
 //
-//   openFile({ ref, ids, doc, name, returnFocus, openRef })   open the file `ref` points at (a pointer: { module, kind: 'file', id, scope: 'space',
+//   openFile({ ref, ids, doc, name, returnFocus, openRef, join })   open the file `ref` points at (a pointer: { module, kind: 'file', id, scope: 'space',
 //                                    space }). `ids`: the files to walk with Previous and Next (the Vault's list as filtered, or the files linked
 //                                    where it was opened from), else none. `returnFocus()`: where focus goes when the window closes.
-//                                    `openRef(pointer)`: shows another module's object (a link in Info).
+//                                    `openRef(pointer)`: shows another module's object (a link in Info). `join(fn)`: listens to the page's
+//                                    module stream (module-host.js joinStream) and answers a stop function; with it a window follows the
+//                                    library live: a rename shows in its title at once, a removal turns it into "File removed".
 //   closeAllFiles(doc), fileWindowCount(doc)   Close all (the Layout menu's), and how many are open.
 //
 // Several windows at once, at most MAX_WINDOWS; opening a file that already has a window brings it forward; at the cap, "Close a window to
@@ -65,6 +67,7 @@ function createManager(doc) {
   let z = 10;
   let layer = null;
   const pending = new Set();
+  const listening = new Map(); // "<module>/<space>" -> stop(), while a window of that library is open
   const people = new Map();
   let peopleAsked = 0;
 
@@ -173,6 +176,8 @@ function createManager(doc) {
     try { if (doc.fullscreenElement && w.el.contains(doc.fullscreenElement)) doc.exitFullscreen(); } catch { /* none */ }
     if (w.frame.destroy) w.frame.destroy();
     w.el.remove();
+    const heard = `${w.place.module}/${w.place.space}`;
+    if (listening.has(heard) && !wins.some((x) => `${x.place.module}/${x.place.space}` === heard)) { try { listening.get(heard)(); } catch { /* gone */ } listening.delete(heard); }
     const rest = topWindow();
     if (rest) front(rest);
     if (!focus) return;
@@ -484,7 +489,47 @@ function createManager(doc) {
     }
   }
 
-  // spec: { ref, ids, name, returnFocus, openRef }
+  // ---- following the library live (the push event, plan step 4) ---------------------------------------------------------------------
+  // A file of the library was renamed or removed: read the list again once (a burst of changes is one read) and bring each window of
+  // that library up to date. A window whose file is gone becomes "File removed"; a renamed one shows its new name.
+  const refreshing = new Map();
+  function refresh(place) {
+    const key = `${place.module}/${place.space}`;
+    if (refreshing.has(key)) return;
+    refreshing.set(key, win.setTimeout(async () => {
+      refreshing.delete(key);
+      const mine = wins.filter((w) => w.place.module === place.module && w.place.space === place.space && w.cx);
+      if (!mine.length) return;
+      let list;
+      try { list = await api('GET', libUrl(place)); } catch { return; } // the Vault's poll or the next event asks again
+      for (const w of mine) {
+        if (w.dead) continue;
+        const before = w.files.get(w.id);
+        w.files = new Map(list.files.map((f) => [f.id, f]));
+        const f = w.files.get(w.id);
+        if (!f) { if (before) show(w, w.id); continue; }
+        if (before && f.name !== before.name) {
+          w.frame.setTitle(f.name, KINDS[kindOf(f)].icon);
+          const t = w.frame.el.querySelector('.mf-titlebar-title');
+          if (t) t.title = f.name;
+          w.frame.setStatus({ text: statusOf(w, f) });
+        }
+        w.frame.setToolbar(toolbar(w));
+        if (w.info) drawInfo(w);
+      }
+    }, 120));
+  }
+  function listen(place, join) {
+    const key = `${place.module}/${place.space}`;
+    if (listening.has(key) || typeof join !== 'function') return;
+    try {
+      listening.set(key, join((type, d) => {
+        if (type === 'library' && d && d.module === place.module && d.spaceId === place.space && (d.op === 'renamed' || d.op === 'removed')) refresh(place);
+      }));
+    } catch { /* the Vault's poll is the fallback */ }
+  }
+
+  // spec: { ref, ids, name, returnFocus, openRef, join }
   async function open(spec) {
     const ref = spec.ref;
     const place = { module: ref.module, space: ref.space };
@@ -507,6 +552,7 @@ function createManager(doc) {
     if (phone() && wins.length) {
       // One at a time on a phone: a new file replaces the one shown.
       const w = wins[0];
+      listen(place, spec.join);
       Object.assign(w, { place, ids: spec.ids || null, returnFocus: spec.returnFocus, openRef: spec.openRef, files: new Map(), cx: null });
       w.frame.setTitle(spec.name || 'Opening…', 'file');
       w.frame.setStatus({ text: '' });
@@ -522,6 +568,7 @@ function createManager(doc) {
       return false;
     }
     ensureLayer();
+    listen(place, spec.join);
     const w = { place, id: ref.id, ids: spec.ids || null, files: new Map(), cx: null, info: false, z: 0, returnFocus: spec.returnFocus, openRef: spec.openRef, dead: false, broken: false };
     w.el = h('div', 'fv-win');
     w.main = h('div', 'fv-main');

@@ -36,11 +36,11 @@
     "hash": "517caa1b88397cf1"
   },
   "travel": {
-    "version": "0.16.2",
-    "hash": "37e7fda2af6b5fb4"
+    "version": "0.16.3",
+    "hash": "5901bde0ee307f8c"
   },
   "vault": {
-    "version": "0.3.0",
-    "hash": "8441781b2f3789c5"
+    "version": "0.3.1",
+    "hash": "b2f5c82da42bf9ab"
   }
 }
