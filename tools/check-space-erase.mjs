@@ -58,7 +58,10 @@ function leftovers(dir, id) {
     // A library module's file: its bytes in the vault folder, its record beside the module's data (server/vault-store.js).
     const part = env.vault.newPart(id);
     fs.writeFileSync(part, Buffer.from('%PDF-1.4 ticket'));
-    env.vault.commit(MOD, id, part, { id: env.vault.newId(), name: 'ticket.pdf', type: 'application/pdf', group: 'document', size: 15, by: ann.key, at: new Date().toISOString(), thumb: null });
+    const libId = env.vault.newId();
+    env.vault.commit(MOD, id, part, { id: libId, name: 'ticket.pdf', type: 'application/pdf', group: 'document', size: 15, by: ann.key, at: new Date().toISOString(), thumb: null });
+    env.vault.putThumb(MOD, id, libId, Buffer.from('tiny'), 'image/png'); // its small picture
+    env.vault.createShare(MOD, id, { name: 'For the family', files: [libId], by: ann.key }); // and a share link: space-<id>.shares.json
     env.moduleLinks.set({ module: MOD, kind: 'note', id: '1', scope: 'space', space: id }, [{ module: 'other', kind: 'note', id: '2', scope: 'space', space: id }], ann.key);
     env.moduleBus.publish({ module: MOD, name: 'changed', ref: null, data: null, scopeKey: `space:${id}`, by: ann.key });
     env.moduleBus.request({ from: MOD, provider: 'other', action: 'add', input: {}, scopeKey: `space:${id}`, by: ann.key, space: id });
@@ -81,6 +84,17 @@ function leftovers(dir, id) {
   };
   fill(gone);
   fill(kept);
+  // A space with a hundred files, so a big one is erased whole (bytes, thumbnails, records, quota).
+  for (let i = 0; i < 100; i += 1) {
+    const part = env.vault.newPart(gone);
+    fs.writeFileSync(part, Buffer.alloc(100, i));
+    const id = env.vault.newId();
+    env.vault.commit(MOD, gone, part, { id, name: `f${i}.pdf`, type: 'application/pdf', group: 'document', size: 100, by: i % 2 ? ann.key : bo.key, at: new Date().toISOString(), thumb: null });
+    if (i % 10 === 0) env.vault.putThumb(MOD, gone, id, Buffer.from('tn'), 'image/png');
+  }
+  const keptBytes = env.vault.usage().spaces.get(kept);
+  assert.ok(fs.existsSync(env.vault.sharesFile(MOD, gone)) && env.vault.usage().spaces.get(gone) > 10000, 'the space has files, thumbnails and a share file before it is deleted');
+  const totalBefore = env.vault.usage().all;
   flushEnvironment(env);
   assert.ok(leftovers(dir, gone).length >= 12, `the space has files on disk before it is deleted (${leftovers(dir, gone).length})`);
 
@@ -98,10 +112,17 @@ function leftovers(dir, id) {
   assert.throws(() => eraseSpace(env, 'nosuch1'), (e) => e.status === 404, 'a space that is not there is a 404');
 
   const done = eraseSpace(env, gone);
-  assert.ok(done['module files'] === 1 && done['library files'] === 1 && done['module links'] >= 1 && done['module requests'] >= 2, JSON.stringify(done));
+  assert.ok(done['module files'] === 1 && done['library files'] === 101 && done['module links'] >= 1 && done['module requests'] >= 2, JSON.stringify(done));
   flushEnvironment(env);
   assert.equal(store.spaceById(gone), null, 'the space is gone');
   assert.deepEqual(leftovers(dir, gone), [], 'nothing under the data folder names the deleted space');
+  assert.equal(done['library files'], 101, 'all 101 library files of the space were counted as gone');
+  assert.ok(!fs.existsSync(env.vault.spaceDir(gone)) && !fs.existsSync(env.vault.sharesFile(MOD, gone)) && !fs.existsSync(env.vault.recordFile(MOD, gone)), 'its bytes folder, share file and records are gone');
+  assert.equal(env.vault.usage().spaces.get(gone), undefined, 'the quota no longer counts the space');
+  assert.equal(env.vault.usage().all, keptBytes, 'the total counts only the space that is left');
+  assert.ok(env.vault.usage().all < totalBefore && env.vault.usage().people.get(bo.key) === undefined, 'and each person\'s total fell with it');
+  assert.equal(new (require('../server/vault-store.js').VaultStore)({ bytesDir: env.vault.bytesDir, modulesDir: env.vault.modulesDir }).usage().all, keptBytes, 'counted again from disk, the same');
+  assert.ok(fs.existsSync(env.vault.sharesFile(MOD, kept)), 'the other space keeps its share link');
   assert.ok(env.moduleData.get(MOD, `space:${kept}`, 'a'), 'the other space keeps its module data');
   assert.equal(env.moduleUploads.list(MOD, `space:${kept}`).length, 1, 'and its files');
   assert.equal(env.vault.list(MOD, kept).length, 1, 'and its library file');
