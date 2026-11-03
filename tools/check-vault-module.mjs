@@ -282,12 +282,30 @@ async function main() {
       say(`batch of ${batch}: ${added} Added, ${ends.length - added - bad} with Try again`);
     } finally { await tab.close(); }
 
-    // A long list: 300 files, the Grid opens at once, and ticking one file does not draw them all again.
+    // A phone: rows 44px or more high, the Grid three across.
+    tab = await open(390, 'mia');
+    try {
+      const h = await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const e = r.querySelector('.vt-row'); if (e) return Math.round(e.getBoundingClientRect().height); } return 0; })()`);
+      if (h < 44) fail(`at 390px a row is ${h}px high (44 or more)`);
+      await tab.click('.mf-switch-btn', 'Grid');
+      await until(tab, COUNT('.vt-card'), (v) => v >= 3);
+      const across = await tab.eval(`(() => { ${ROOTS} const xs = new Set(); for (const r of roots) for (const e of r.querySelectorAll('.vt-card')) xs.add(Math.round(e.getBoundingClientRect().left)); return xs.size; })()`);
+      if (across !== 3) fail(`at 390px the Grid is ${across} across (three)`);
+      say(`phone: rows ${h}px high, Grid ${across} across`);
+      await tab.click('.mf-switch-btn', 'List'); // the choice is kept, and the next window starts as a List
+      await sleep(800);
+    } finally { await tab.close(); }
+
+    // The file windows (step 3): every type, the cap, Close all, Esc, focus, the phone's sheet, contrast.
+    const { viewerCases } = await import('./check-vault-viewer-cases.mjs');
+    await viewerCases({ S, api, say, fail, browser, until, open, dataDir, trip });
+
+    // (Last, because adding 300 files uses up each person's 30 uploads a minute.) A long list: 300 files, the Grid opens at once, and ticking one file does not draw them all again.
     {
-      const who = ['mia', 'sam'];
+      const who = ['mia', 'sam', 'admin']; // the host takes 30 uploads a minute from each person
       for (let i = 0; i < 300; i += 1) {
         for (let tries = 0; tries < 40; tries += 1) {
-          const r = await put(who[i % 2], `Long list ${String(i).padStart(3, '0')}.md`, MD, 'text/markdown');
+          const r = await put(who[i % 3], `Long list ${String(i).padStart(3, '0')}.md`, MD, 'text/markdown');
           if (r.status === 201) break;
           if (r.status !== 429) throw new Error(`could not add file ${i}: ${r.status} ${JSON.stringify(r.json)}`);
           await sleep(3000);
@@ -308,21 +326,6 @@ async function main() {
       } finally { await tab.close(); }
     }
 
-    // A phone: rows 44px or more high, the Grid three across.
-    tab = await open(390, 'mia');
-    try {
-      const h = await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const e = r.querySelector('.vt-row'); if (e) return Math.round(e.getBoundingClientRect().height); } return 0; })()`);
-      if (h < 44) fail(`at 390px a row is ${h}px high (44 or more)`);
-      await tab.click('.mf-switch-btn', 'Grid');
-      await until(tab, COUNT('.vt-card'), (v) => v >= 3);
-      const across = await tab.eval(`(() => { ${ROOTS} const xs = new Set(); for (const r of roots) for (const e of r.querySelectorAll('.vt-card')) xs.add(Math.round(e.getBoundingClientRect().left)); return xs.size; })()`);
-      if (across !== 3) fail(`at 390px the Grid is ${across} across (three)`);
-      say(`phone: rows ${h}px high, Grid ${across} across`);
-    } finally { await tab.close(); }
-
-    // The file windows (step 3): every type, the cap, Close all, Esc, focus, the phone's sheet, contrast.
-    const { viewerCases } = await import('./check-vault-viewer-cases.mjs');
-    await viewerCases({ S, api, say, fail, browser, until, open, dataDir, trip });
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);
