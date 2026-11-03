@@ -6,6 +6,7 @@
 
 import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, undoToast } from '/brand.js';
 import { confirmDialog } from '/confirm.js';
+import { pickObjects } from '/object-pick.js';
 import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
@@ -1403,6 +1404,28 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     async 'ui.confirm'(o) {
       return confirmDialog(o);
     },
+    // The object picker (host.objects.pick): a window the page draws, searching with this module's own permissions (the same search as
+    // 'objects.search'). Resolves with a pointer, a list of them (multiple), or null when the person cancels.
+    async 'objects.pick'({ modules, kinds, title, multiple, scope: s, space }) {
+      const kindList = await handlers['objects.kinds']().catch(() => []);
+      return pickObjects(
+        { title: title || `Pick ${word('object', { a: true })}`, multiple: multiple === true, modules, kinds },
+        {
+          // The server answers at most 50 objects, newest first, and cannot yet keep to one module or kind. With a filter and no words
+          // typed, the objects that have a place (up to 1,000) are asked for as well, so a list of Places is not cut to what is dated.
+          // Once the server filters by module and kind this second ask goes.
+          search: async (q) => {
+            const found = await handlers['objects.search']({ q, scope: s, space });
+            if (q || !((modules && modules.length) || (kinds && kinds.length))) return found;
+            const more = await handlers['objects.search']({ q, scope: s, space, has: 'place' }).catch(() => []);
+            const keyOf = (r) => [r.module, r.kind, r.id, r.scope, r.space || ''].join('|');
+            const seen = new Set(found.map((x) => x && x.ref && keyOf(x.ref)));
+            return [...found, ...more.filter((x) => x && x.ref && !seen.has(keyOf(x.ref)))];
+          },
+          kinds: kindList,
+        },
+      );
+    },
     // A Font Awesome icon as inline SVG, for a module in a sandboxed frame that cannot load the icon font.
     async 'icons.svg'({ name, style }) {
       const n = String(name ?? '');
@@ -1700,8 +1723,33 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     async 'library.blob'({ id, thumb }) {
       const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`), { headers: accessKeyHeaders() });
-      if (!res.ok) throw Object.assign(new Error(res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`), { status: res.status });
+      if (!res.ok) {
+        // The server's own sentence (a download-only PDF answers "This PDF can't be opened here. Download it."), else the plain one.
+        let said = '';
+        try { said = (await res.json()).error || ''; } catch { /* no body */ }
+        throw Object.assign(new Error(said || (res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`)), { status: res.status });
+      }
       return res.blob();
+    },
+    // Open a file of a library in a file window over the page (public/file-viewer.js): `ref` points at the file, `list` is the ids to walk with
+    // Previous and Next (the Vault's list as filtered). Focus comes back to this module when the window closes, and the module hears 'fileclosed'.
+    async 'files.open'({ ref, list, name }) {
+      if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
+      const holder = pageMode ? container : frame;
+      const { openFile } = await import('/file-viewer.js');
+      const ids = Array.isArray(list) ? list.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 2000) : null;
+      return openFile({
+        ref: cleanPointer(ref),
+        ids,
+        name: typeof name === 'string' ? name.slice(0, 200) : '',
+        doc: holder.ownerDocument,
+        returnFocus: () => {
+          try { holder.focus({ preventScroll: true }); } catch { /* not focusable */ }
+          send('fileclosed', { id: ref.id });
+          return holder;
+        },
+        openRef: onOpenRef ? (r) => onOpenRef(cleanPointer(r), {}) : null,
+      });
     },
     async 'library.download'({ id }) {
       const doc = (pageMode ? container : frame).ownerDocument;

@@ -8621,13 +8621,27 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
 }
 
 @media (pointer: coarse) {
-  .message .message-ref:not(:disabled),
-  .message .message-cite:not(:disabled) {
+  .message .message-ref:not(:disabled) {
     display: inline-flex;
     align-items: center;
     min-width: 44px;
     min-height: 44px;
     justify-content: center;
+  }
+
+  /* A number in an answer stays as small as its words; the 44px tap area is an invisible ::after. */
+  .message .message-cite:not(:disabled) {
+    position: relative;
+  }
+
+  .message .message-cite:not(:disabled)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -8654,4 +8668,11 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
 
 .ai-sees-module-list {
   margin: var(--space-1) 0 0 var(--space-4);
+}
+
+/* The meter sits under the use block's heading now, with no rule of its own above it. */
+#ai-use-block .ai-usage {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }

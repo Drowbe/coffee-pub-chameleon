@@ -379,21 +379,20 @@
             </label>
           </div>
           <div class="row"><button class="btn btn-primary" type="button" id="ai-save">Save</button><span class="status" id="ai-status" role="status"></span></div>
+        </section>
+        <section class="panel" id="ai-use-block" aria-labelledby="ai-use-title">
+          <h2 id="ai-use-title">AI use this month</h2>
           <div class="ai-usage" id="ai-usage" hidden>
-            <h3>Used this month</h3>
             <div class="sdk-progress" role="progressbar" aria-label="Monthly allowance used" aria-valuemin="0" aria-valuemax="100" id="ai-meter"><span class="sdk-progress-fill" id="ai-meter-fill"></span></div>
             <p class="hint" id="ai-usage-text"></p>
           </div>
+          <div id="ai-use-box"><p class="hint">Loading...</p></div>
         </section>
         <section class="panel" id="ai-sees-block" aria-labelledby="ai-sees-title">
           <h2 id="ai-sees-title">What AI may see</h2>
           <p class="hint" data-fill>What goes to the AI with a question. This only narrows it: the AI never sees what the person asking could not open. A {space} can set its own on its Set up.</p>
           <div id="ai-sees-box"></div>
           <div class="row"><button class="btn btn-primary" type="button" id="ai-sees-save">Save</button><button class="btn" type="button" id="ai-sees-reset">Back to the usual</button><span class="status" id="ai-sees-status" role="status"></span></div>
-        </section>
-        <section class="panel" id="ai-use-block" aria-labelledby="ai-use-title">
-          <h2 id="ai-use-title">AI use this month</h2>
-          <div id="ai-use-box"><p class="hint">Loading...</p></div>
         </section>
       </div>
 

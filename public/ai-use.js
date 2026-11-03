@@ -60,7 +60,7 @@ export function drawAiUse(box, report, { people = [], spaces = [] } = {}) {
     when(c.at),
     c.person ? personName(c.person) : '',
     c.space ? spaceName(c.space) : '',
-    templateWord(c.template),
+    c.template ? templateWord(c.template) : '\u2013',
     `${OUTCOME_WORDS[c.outcome] || c.outcome || ''}${c.outcome === 'refused' && c.reason ? `: ${reasonWord(c.reason)}` : c.outcome === 'error' ? `: ${errorWord(c.error)}` : ''}${c.cut ? ', cut short' : ''}`,
     num((c.tokensIn || 0) + (c.tokensOut || 0)),
     c.ms ? `${(c.ms / 1000).toFixed(1)} s` : '',

@@ -166,6 +166,11 @@
     if (kind === 'block') item.type = typeof raw.type === 'string' && /^[a-z][a-z0-9-]{0,29}$/.test(raw.type) ? raw.type : '';
     // Details that belong to one kind of item, all optional. A stop: what it is, and for a meal or an event who and how many.
     if (kind === 'stop') {
+      // The Place this stop is at, when it is one the space keeps (a pointer; `place` stays the name the person typed).
+      const pr = raw.placeRef;
+      item.placeRef = pr && typeof pr.module === 'string' && typeof pr.kind === 'string' && typeof pr.id === 'string'
+        ? { module: pr.module.slice(0, 40), kind: pr.kind.slice(0, 40), id: pr.id.slice(0, 80), scope: pr.scope === 'space' ? 'space' : 'environment', ...(pr.scope === 'space' && pr.space ? { space: String(pr.space).slice(0, 64) } : {}) }
+        : null;
       item.type = STOP_TYPES.includes(raw.type) ? raw.type : null;
       item.partySize = count(raw.partySize, 99);
       item.reservationName = clip(raw.reservationName, 60);

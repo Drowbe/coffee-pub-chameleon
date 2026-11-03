@@ -77,7 +77,7 @@ export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}
     q(`#${id('modules-some')}`).checked = some;
     const list = q(`#${id('module-list')}`);
     list.hidden = !some;
-    list.innerHTML = modules.map((m) => `<label class="sdk-choice-row"><input type="checkbox" class="sdk-switch" role="switch" data-sees-module="${esc(m.id)}"${some && value.modules.includes(m.id) ? ' checked' : ''}><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(m.name)}</span></span></label>`).join('') || '<p class="hint">None on yet.</p>';
+    list.innerHTML = (some && !value.modules.length ? '<p class="hint" role="status">Pick at least one, or choose All of them.</p>' : '') + modules.map((m) => `<label class="sdk-choice-row"><input type="checkbox" class="sdk-switch" role="switch" data-sees-module="${esc(m.id)}"${some && value.modules.includes(m.id) ? ' checked' : ''}><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(m.name)}</span></span></label>`).join('') || '<p class="hint">None on yet.</p>';
     for (const el of box.querySelectorAll('input, select')) el.disabled = locked;
   };
   const read = () => {
@@ -97,6 +97,8 @@ export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}
   return {
     set(v, { locked: lock = false } = {}) { value = fullSees(v); locked = lock; paint(); },
     get: () => fullSees(value),
+    // A plain sentence when the choice cannot be saved: "Only these" with none ticked.
+    problem: () => (Array.isArray(value.modules) && !value.modules.length ? 'Pick at least one, or choose All of them.' : ''),
     setModules(list) { modules = (list || []).map((m) => ({ id: m.id, name: m.displayName || m.name || m.id })); paint(); },
   };
 }

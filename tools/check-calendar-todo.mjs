@@ -209,7 +209,7 @@ async function main() {
         ok(/inset/.test(todayRing) && !/^rgba\(0, 0, 0, 0\)/.test(todayRing), `${mode}: today wears a visible ring`, todayRing);
         // the Filters list leaves the Lobby out
         const filterWords = await tab.eval(`(async () => { const b = document.querySelector('#dest-frame .mf-toolbar .mf-filters button, #dest-frame .mf-toolbar .mf-filters'); b.click(); await new Promise((r) => setTimeout(r, 600)); const t = [...document.querySelectorAll('.sdk-menu, [role="menu"]')].map((m) => m.textContent).join(' | '); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return t; })()`);
-        ok(/Collaborator|Lisbon|Kyoto|Tasks due/.test(filterWords), `${mode}: the Filters list opened`, filterWords.slice(0, 120));
+        ok(/Lisbon|Kyoto|Tasks due/.test(filterWords), `${mode}: the Filters list opened`, filterWords.slice(0, 120));
         ok(!/Lobby/.test(filterWords), `${mode}: the Filters list leaves the Lobby out`, filterWords.slice(0, 160));
         // the To-do panel: the overdue date, and the status bar keeping "overdue"
         await tab.click('[data-key="switch:dest-panel:panel:todo"]');

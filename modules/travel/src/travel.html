@@ -243,6 +243,18 @@
     </fieldset>
 
     <fieldset class="sdk-section" data-types="restaurant cafe bar sight museum attraction tour show"><legend class="sdk-section-title">Where and who</legend>
+      <div class="sdk-field sdk-full" id="f-place-field" role="group" aria-labelledby="f-place-label">
+        <span class="sdk-label" id="f-place-label">Place</span>
+        <input id="f-place" name="place" maxlength="120" autocomplete="off" aria-labelledby="f-place-label" aria-describedby="f-place-hint">
+        <span class="sdk-hint" id="f-place-hint" role="status"></span>
+        <div class="tv-place-linked" id="f-place-linked" hidden><span class="sdk-chip-tag" data-tone="custom"><span class="ic" data-icon="location-dot"></span><span data-slot="title"></span></span></div>
+        <div class="tv-place-actions">
+          <button class="btn" type="button" id="f-place-pick">Pick from Places</button>
+          <button class="btn" type="button" id="f-place-save" hidden>Save as a place</button>
+          <button class="btn" type="button" id="f-place-open" hidden>Open in maps</button>
+          <button class="btn btn-quiet" type="button" id="f-place-unlink" hidden>Unlink</button>
+        </div>
+      </div>
       <label class="sdk-field sdk-full"><span class="sdk-label">Address</span><input id="f-address-stop" name="address" maxlength="200"><span class="sdk-hint"></span></label>
       <div class="sdk-form-row">
         <label class="sdk-field sdk-m" data-types="restaurant cafe bar"><span class="sdk-label">Party size</span><input id="f-partySize" name="partySize" type="number" min="1"><span class="sdk-hint"></span></label>
