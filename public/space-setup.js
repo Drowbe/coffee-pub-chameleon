@@ -537,7 +537,7 @@ export function createSpaceSetup(deps) {
   function wireAiSees() {
     const box = q('#setup-ai-sees-box');
     if (!box) return;
-    state.sees = mountSees(box, { idPrefix: 'setup-ai-sees', onChange: (v) => { state.draft.aiSees = v; refresh(); } });
+    state.sees = mountSees(box, { word, idPrefix: 'setup-ai-sees', onChange: (v) => { state.draft.aiSees = v; refresh(); } });
     q('#setup-ai-sees-follow').addEventListener('change', (event) => {
       state.draft.aiSees = event.target.checked ? null : fullSees(state.envSees);
       paintAiSees();

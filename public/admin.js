@@ -1640,13 +1640,13 @@ function aiEntry({ link = false } = {}) {
 const aiForm = mountAiForm({ get: '/api/ai', put: '/api/ai', models: '/api/ai/models', source: true, cap: true, usage: true, onSave: () => loadModules() });
 let aiFormLoaded = false;
 // What AI may see, and this month's use, on the same tab (the owner's; ai-sees.js, ai-use.js).
-const aiSees = mountSees($('ai-sees-box'), { idPrefix: 'ai-sees' });
+const aiSees = mountSees($('ai-sees-box'), { word, idPrefix: 'ai-sees' });
 async function loadAiSees() {
   try {
     const { ai } = await api('GET', '/api/ai');
     aiSees.setModules(installedModules.filter((m) => m.enabled));
     aiSees.set(ai.sees);
-  } catch { $('ai-sees-panel').hidden = true; }
+  } catch { $('ai-sees-block').hidden = true; }
 }
 $('ai-sees-save').addEventListener('click', async () => {
   say($('ai-sees-status'), 'saving...');
