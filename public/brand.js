@@ -1018,6 +1018,22 @@ export function showNote(text) {
   pushToast({ kind: 'info', icon: 'circle-info', title: t, ms: 4500 });
 }
 
+// A note with one button, "Undo", for `ms` milliseconds (Clear's 30 seconds). onUndo may fail: the note then says so.
+export function undoToast(text, onUndo, ms = 30000) {
+  pushToast({
+    kind: 'info',
+    icon: 'rotate-left',
+    title: String(text ?? '').slice(0, 200),
+    ms,
+    actions: '<button type="button" class="btn btn-primary btn-small" data-undo>Undo</button>',
+    onClick: (e) => {
+      if (!e.target.closest('[data-undo]')) return false;
+      Promise.resolve().then(onUndo).then(() => showNote('Brought back.'), (err) => noticeToast((err && err.message) || 'It could not be brought back.', { kind: 'danger' }));
+      return true;
+    },
+  });
+}
+
 // A guest's page (a guest link, /guest/<token>, or a module it popped out, ?guest=): no account, so /api/me is not asked.
 const isGuestPage = () => location.pathname.startsWith('/guest/') || new URLSearchParams(location.search).has('guest');
 // GET /api/me, asked once per page and shared (the header's switch, the owner's banner): the answer, null for no

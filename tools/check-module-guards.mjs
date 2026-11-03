@@ -731,7 +731,7 @@ try {
       const over = await asGuest('PUT', data('travel', 'plan:a1'), { value: 'gone' });
       assert.deepEqual([over.status, over.json.error], [403, 'That holds details guests can\'t see, so it can only be changed, not replaced.']);
       const clear = await asGuest('DELETE', data('travel', ''));
-      assert.deepEqual([clear.status, clear.json.error], [403, 'Some of it holds details guests can\'t see, so a guest can\'t clear everything.']);
+      assert.deepEqual([clear.status, clear.json.error], [403, 'Your role can\'t clear everything in this module.']); // the Planner's own clear permission (moderators) refuses a guest first; the hidden-details refusal is the second wall
       const after = (await call('GET', data('travel', 'plan:a1'))).json.item.value;
       assert.deepEqual([after.cost, after.confirm], [612, 'QX81ZP'], 'nothing was lost');
       // What holds nothing hidden is the guest's to remove, as before.
@@ -836,7 +836,8 @@ try {
         ['POST', 'schedule', { key: 'x', at: Date.now() + 60000, title: 'x' }],
       ]) {
         const r = await call(method, `/api/modules/research/${route}?${mine}`, body, 'sam');
-        assert.deepEqual([r.status, r.json?.error], [403, 'your role can\'t do that in this module'], `${route} in Mine without edit`);
+        // The AI's door is the policy's (server/ai-policy.js), in its own capitalised sentence.
+        assert.deepEqual([r.status, r.json?.error], [403, route === 'ai' ? 'Your role can\'t do that in this module.' : 'your role can\'t do that in this module'], `${route} in Mine without edit`);
       }
       // Exclusive in Mine: a link can't take a note's id.
       const note = { kind: 'note', title: 'Mine', body: '', tags: [], date: '', at: '', text: '', sub: '' };

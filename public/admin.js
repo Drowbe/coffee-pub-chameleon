@@ -10,6 +10,8 @@ import { rowTabs } from '/page-tabs.js';
 import { moduleConfigMarkup, drawModuleConfig } from '/module-config.js';
 import { nav } from '/nav-bar.js';
 import { mountAiForm } from '/ai-form.js';
+import { mountSees } from '/ai-sees.js';
+import { drawAiUse } from '/ai-use.js';
 
 const $ = (id) => document.getElementById(id);
 const userCards = new Map(); // key -> the user's card element
@@ -1637,6 +1639,26 @@ function aiEntry({ link = false } = {}) {
 // Its setup, loaded the first time its tab opens; a save draws the entry again (a service set up can be turned on).
 const aiForm = mountAiForm({ get: '/api/ai', put: '/api/ai', models: '/api/ai/models', source: true, cap: true, usage: true, onSave: () => loadModules() });
 let aiFormLoaded = false;
+// What AI may see, and this month's use, on the same tab (the owner's; ai-sees.js, ai-use.js).
+const aiSees = mountSees($('ai-sees-box'), { idPrefix: 'ai-sees' });
+async function loadAiSees() {
+  try {
+    const { ai } = await api('GET', '/api/ai');
+    aiSees.setModules(installedModules.filter((m) => m.enabled));
+    aiSees.set(ai.sees);
+  } catch { $('ai-sees-panel').hidden = true; }
+}
+$('ai-sees-save').addEventListener('click', async () => {
+  say($('ai-sees-status'), 'saving...');
+  try { await api('PUT', '/api/ai', { sees: aiSees.get() }); await loadAiSees(); say($('ai-sees-status'), 'saved'); } catch (err) { say($('ai-sees-status'), err.message, true); }
+});
+$('ai-sees-reset').addEventListener('click', async () => {
+  say($('ai-sees-status'), 'saving...');
+  try { await api('PUT', '/api/ai', { sees: null }); await loadAiSees(); say($('ai-sees-status'), 'back to the usual'); } catch (err) { say($('ai-sees-status'), err.message, true); }
+});
+async function loadAiUse() {
+  try { drawAiUse($('ai-use-box'), await api('GET', '/api/ai/usage'), { people: users, spaces }); } catch (err) { $('ai-use-box').innerHTML = `<p class="hint">${escapeHtml(err.message || 'The use could not be loaded.')}</p>`; }
+}
 // Turned on and off with its switch (#264), like every module.
 $('tab-modules').addEventListener('change', async (event) => {
   const input = event.target.closest('[data-ai-toggle]');
@@ -1933,6 +1955,8 @@ function drawModuleTab() {
   if (modulePart === 'ai') {
     $('ai-tab-card').replaceChildren(aiEntry());
     if (!aiFormLoaded) { aiFormLoaded = true; aiForm.load(); }
+    loadAiSees();
+    loadAiUse();
     return;
   }
   const m = installedModules.find((x) => x.id === modulePart);

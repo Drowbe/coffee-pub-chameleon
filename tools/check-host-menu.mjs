@@ -176,7 +176,7 @@ test('a module\'s title bar: Dock, Window and Pop out are in its "..."', () => {
   assert.ok(ways.includes('out.popout = true;'), 'Open in its own window');
   assert.ok(ways.includes('out.clear = !compositeOf(mod.m) && mod.m.clear === true;'), 'Clear, not a composite\'s, and only where the server says this person may');
   assert.ok(ways.includes("if (e.id === 'window') return setMode(id, 'float');") && ways.includes("if (e.id === 'dock') return setMode(id, 'dock');") && ways.includes("if (e.id === 'popout') return popOut(id);"), 'each does what it says');
-  assert.ok(ways.includes("if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true });"), 'Clear still asks first');
+  assert.ok(ways.includes("if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true, name: (opened.get(id) || mod).m.name || '' });"), 'Clear still asks first');
   // The frame's menu: the module's own actions, a line, the standard actions, a line, the destructive ones last.
   assert.ok(frameJs.includes("{ id: 'dock', label: 'Dock as a panel', icon: 'table-columns', tip: 'Dock beside the video', off: true },"));
   assert.ok(frameJs.includes("{ id: 'window', label: 'Open as a window', icon: 'window-restore', regular: true, tip: 'Float over the call' },"));

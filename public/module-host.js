@@ -4,7 +4,7 @@
 // back into the frame. Used by a module's own page (module.js), the dashboard (dashboard.js) and a
 // space's canvas (canvas.js).
 
-import { api, accessKeyHeaders, word, words, withinSpacePage, showNote } from '/brand.js';
+import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, undoToast } from '/brand.js';
 import { confirmDialog } from '/confirm.js';
 import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
@@ -299,6 +299,8 @@ document.addEventListener('app:theme', () => {
 });
 let activeDrag = null; // { source, ref, layers, timer }
 
+// The browser's time zone (IANA), sent with every ask so the AI's "today" is the asker's.
+const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 const REF_SHAPE = (r) => r && typeof r.module === 'string' && typeof r.kind === 'string' && typeof r.id === 'string'
   && /^[a-z][a-z0-9-]{1,31}$/.test(r.module) && /^[a-z][a-z0-9-]{0,23}$/.test(r.kind) && /^[A-Za-z0-9_-]{1,64}$/.test(r.id)
   && (r.scope === 'environment' || r.scope === 'person' || (r.scope === 'space' && typeof r.space === 'string' && r.space.length <= 64));
@@ -808,9 +810,38 @@ export function openConfirmMenu(trigger, { label, confirm, hint, icon = 'trash',
 }
 
 // The titlebar "..." on an installed module (not the conference or the chat). `armed`: Clear was already picked from the
-// canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away.
-export function openClearMenu(trigger, onClear, { armed = false } = {}) {
-  openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed });
+// canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away. With a `name` it asks by the styled confirm and
+// the person types that name first (it wipes the module's data for everyone). `onClear` may resolve to an `undo` function (see
+// clearWithUndo): the page then shows "Cleared. Undo" for 30 seconds.
+export function openClearMenu(trigger, onClear, { armed = false, name = '' } = {}) {
+  if (!name) { openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed }); return; }
+  const ask = async () => {
+    const ok = await confirmDialog({ title: `Clear ${name}?`, message: `Everything in it goes, for everyone. You can undo it for ${UNDO_SECONDS} seconds.`, action: 'Clear', kind: 'final', typed: name });
+    if (!ok) return;
+    try {
+      const undo = await onClear();
+      if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, UNDO_SECONDS * 1000);
+    } catch (err) {
+      openHostMenu(trigger, [{ label: (err && err.message) || 'It could not be cleared.', disabled: true }]);
+    }
+  };
+  if (armed) ask();
+  else openHostMenu(trigger, [{ icon: 'trash', label: 'Clear', danger: true, onPick: ask }]);
+}
+const UNDO_SECONDS = 30;
+
+// Clears everything a module holds in a place (DELETE .../data) after taking a copy of it, and resolves to a function that puts the
+// copy back (a few at a time; it rejects when the module's own rules refuse a key). `query` is the place's query string.
+export async function clearWithUndo(moduleId, query) {
+  const base = `/api/modules/${encodeURIComponent(moduleId)}/data`;
+  let items = [];
+  try { items = (await api('GET', `${base}?${query}`)).items || []; } catch { items = []; }
+  await api('DELETE', `${base}?${query}`);
+  if (!items.length) return null;
+  return async () => {
+    // A few at a time: a long list is slow one by one, and a flood would meet the module's save limit (240 a minute).
+    for (let at = 0; at < items.length; at += 6) await Promise.all(items.slice(at, at + 6).map((item) => api('PUT', `${base}/${encodeURIComponent(item.key)}?${query}`, { value: item.value })));
+  };
 }
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
@@ -1430,8 +1461,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       const name = String(action || '');
       if (name === 'assistant:askAssistant' || name === 'askAssistant') {
         if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
-        const q = String(input?.question || '').trim() || (input?.ref ? 'What should I know about this?' : '');
-        if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
+        // No question with an object is fine: the server asks its own default (What should I know about it?).
+        const q = String(input?.question || '').trim().slice(0, 1000);
+        if (!q && !input?.ref) throw Object.assign(new Error('Type a question.'), { status: 400 });
         const refs = input?.ref ? [input.ref] : [];
         await onChatAsk({ question: q, refs });
         return { id: 0, status: 'done', result: { ok: true } };
@@ -1556,7 +1588,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return api('GET', url('/ai', scopeOf()));
     },
     async 'ai.ask'({ task, question, objects }) {
-      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [] });
+      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [], tz: browserZone() });
     },
     // The signed-in person's own other calendars (a module that declares the `external` hook), read only: their events
     // between `from` and `to` (YYYY-MM-DD or ISO times), with the calendars they come from. A guest gets none.
@@ -1581,8 +1613,8 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     async 'chat.ask'({ question, refs }) {
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);
-      if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
       const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 12).map(cleanPointer);
+      if (!q && !list.length) throw Object.assign(new Error('Type a question.'), { status: 400 });
       return onChatAsk({ question: q, refs: list });
     },
     // Uploaded pictures (a module whose manifest declares `uploads`): kept per scope, checked and cleaned by the server.

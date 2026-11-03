@@ -338,7 +338,7 @@ try {
     const mods = (await call('GET', '/api/modules', { cookie: owner2 })).json.modules;
     assert.equal(mods.find((m) => m.id === 'assistant').enabled, true, 'the Assistant is still on');
     const asked = await call('POST', `/api/modules/assistant/ai?scope=space&space=${one2}`, { cookie: owner2, body: { task: 'ask', question: 'hello there', objects: [] } });
-    assert.deepEqual([asked.status, asked.json], [403, { error: "the AI key can't be read on this server; an owner needs to enter it again" }]);
+    assert.deepEqual([asked.status, asked.json], [503, { error: "The saved AI key can't be read on this server; an owner needs to enter it again." }]);
     assert.deepEqual(await call('POST', '/api/ai/models', { cookie: owner2, body: { provider: 'compatible', address: aiAddress } }).then((r) => [r.status, r.json]), [400, { error: sentence }]);
     // Entering the key again: it answers.
     const again = await call('PUT', '/api/ai', { cookie: owner2, body: { key: 'sk-entered-again', model: 'stand-in-model' } });

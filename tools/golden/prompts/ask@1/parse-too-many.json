@@ -1,0 +1,276 @@
+{
+  "structured": {
+    "text": "Lots.",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Place 1",
+        "content": "About Place 1.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 2",
+        "content": "About Place 2.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 3",
+        "content": "About Place 3.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 4",
+        "content": "About Place 4.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 5",
+        "content": "About Place 5.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 6",
+        "content": "About Place 6.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 7",
+        "content": "About Place 7.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 8",
+        "content": "About Place 8.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 9",
+        "content": "About Place 9.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 10",
+        "content": "About Place 10.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 11",
+        "content": "About Place 11.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 12",
+        "content": "About Place 12.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 13",
+        "content": "About Place 13.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 14",
+        "content": "About Place 14.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 15",
+        "content": "About Place 15.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 16",
+        "content": "About Place 16.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 17",
+        "content": "About Place 17.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 18",
+        "content": "About Place 18.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 19",
+        "content": "About Place 19.",
+        "basis": "general",
+        "kind": "sight"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 20",
+        "content": "About Place 20.",
+        "basis": "general",
+        "kind": "sight"
+      }
+    ],
+    "used": [],
+    "cut": false
+  },
+  "text": {
+    "text": "Lots.\n\n{{summary:0}}\n{{summary:1}}\n{{summary:2}}\n{{summary:3}}\n{{summary:4}}\n{{summary:5}}\n{{summary:6}}\n{{summary:7}}\n{{summary:8}}\n{{summary:9}}\n{{summary:10}}\n{{summary:11}}\n{{summary:12}}\n{{summary:13}}\n{{summary:14}}\n{{summary:15}}\n{{summary:16}}\n{{summary:17}}\n{{summary:18}}\n{{summary:19}}",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Place 1",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 2",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 3",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 4",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 5",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 6",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 7",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 8",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 9",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 10",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 11",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 12",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 13",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 14",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 15",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 16",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 17",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 18",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 19",
+        "content": "x",
+        "basis": "items"
+      },
+      {
+        "icon": "landmark",
+        "title": "Place 20",
+        "content": "x",
+        "basis": "items"
+      }
+    ],
+    "used": [],
+    "cut": false
+  }
+}

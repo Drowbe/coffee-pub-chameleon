@@ -7,7 +7,7 @@
 //                                          (add &guest=<token> for a guest)
 // (A module page opened over a call also carries from=space&spaceName=<the space's name>, for its Back link.)
 import { loadBranding, api, wireOverlayBack, renderTopbar, markModuleRead, word } from '/brand.js';
-import { mountModule, openClearMenu, askCanvasToOpen, sameSiteOpener } from '/module-host.js';
+import { mountModule, openClearMenu, clearWithUndo, askCanvasToOpen, sameSiteOpener } from '/module-host.js';
 import { moduleTint } from '/module-tint.js';
 import { compositesOn, compositesToAsk } from '/composites.js';
 import { createModuleFrame } from '/module-frame.js';
@@ -185,7 +185,7 @@ async function clearModuleData() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz) q.set('tz', tz);
   } catch { /* the server falls back */ }
-  await api('DELETE', `/api/modules/${encodeURIComponent(id)}/data?${q}`);
+  return clearWithUndo(id, q.toString());
 }
 
 // The module's own page has no ways to show it (it is not on a canvas, and it is the page); in a space it has Clear.
@@ -213,7 +213,7 @@ function popoutStandard(mod) {
 function pageAction(mod, e, mounted) {
   if (e.id === 'close') { window.close(); return; }
   if (!e.standard) { if (mounted) mounted.bandEvent(e); return; }
-  if (e.id === 'clear' && e.el) { openClearMenu(e.el, () => clearModuleData(), { armed: true }); return; }
+  if (e.id === 'clear' && e.el) { openClearMenu(e.el, () => clearModuleData(), { armed: true, name: mod.name || '' }); return; }
   const host = openerCanvas();
   if (!host || (e.id !== 'dock' && e.id !== 'window')) return;
   host.open(mod.id, e.id === 'dock' ? 'dock' : 'float');

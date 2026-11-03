@@ -99,11 +99,11 @@ try {
     assert.equal(t.verbs, null, 'Travel sets no verb (addendum 4, decision 3): it reads the default');
     assert.equal('verbs' in travelRaw, false, 'travel.json has no verbs entry');
     assert.deepEqual(t.modules, ['travel', 'places', 'maps', 'research', 'vault', 'calendar', 'budget', 'polls', 'todo', 'chat', 'conference']);
-    assert.deepEqual([t.moduleNames.travel, t.icons.home, t.lobby.name, t.lobby.description, t.spaceDefaults.profile], ['Itinerary', 'suitcase-rolling', 'Home base', 'Everyone on every trip.', 'participants']);
+    assert.deepEqual([t.moduleNames.travel, t.moduleNames.vault, t.icons.home, t.lobby.name, t.lobby.description, t.spaceDefaults.profile], ['Itinerary', 'Documents', 'suitcase-rolling', 'Home base', 'Everyone on every trip.', 'participants']);
     assert.deepEqual(t.spaceDefaults.opensWith, ['travel', 'chat']);
     assert.equal(t.version, 8);
     // Version 6: each phase has a Font Awesome Free solid icon that can be drawn (the server's own drawable() test).
-    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera']]);
+    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera-retro']]);
     for (const p of travelRaw.phases) assert.ok(fs.existsSync(path.join(ROOT, 'node_modules', '@fortawesome', 'fontawesome-free', 'svgs', 'solid', `${p.icon}.svg`)), `${p.id}: ${p.icon} is not a drawable icon`);
     assert.deepEqual(templates.problemsOf(travelRaw, { file: 'travel.json', bundled }), [], 'every phase icon passes the server\'s check');
     // plan-calendar-destination.md, decision 12, and plan-map-destination.md, decision 17: Show Calendar and Show Map
@@ -812,7 +812,7 @@ try {
     });
     let row = await travelRow();
     assert.deepEqual([row.edited, row.update, row.version], [false, null, was.version + 1], 'silent: the version rises, no notice');
-    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera']);
+    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera-retro']);
     const ownerAgain = cookieOf(await call(server, 'out', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
     const tab = await call(server, 'out', 'GET', '/api/environment/template', { cookie: ownerAgain });
     assert.equal(tab.json.template.offerOpen, false, 'nothing applied once changed, so no offer to apply again');

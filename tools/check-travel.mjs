@@ -1320,7 +1320,7 @@ test('the page: with phases there is no plan form (the dates are the bar\'s, the
   assert.ok(html.includes('id="f-start"') && html.includes('id="f-end"'), 'First day and Last day stay for a space without phases');
   assert.ok(!html.includes('id="f-destination"') && !html.includes('id="f-phase-note"'), 'Where is no longer asked');
   assert.ok(!/id="tpl-editor-trip"[\s\S]*?id="f-notes"[\s\S]*?<template id="tpl-editor2"/.test(html), 'nor Notes, in the plan form');
-  assert.match(js, /if \(canEdit && !plan\.phased\(\)\) items\.push\(\{ id: 'edit-trip'/, 'no pencil with phases');
+  assert.match(js, /if \(canEdit\) items\.push\(\{ id: 'edit-trip'/, 'the pencil is there with phases too: the time zone is the trip\'s own');
   assert.match(js, /function planCurrency\(\)/, 'the budget\'s currency wins');
   assert.match(js, /if \(!plan\.phased\(\)\) \{\s*const start = \$\('f-start'\)\.value;/, 'the form\'s dates are only read without phases');
   assert.ok(!js.includes('fillTripPhases'));
@@ -1715,7 +1715,7 @@ test('Unscheduled is the default phase: the first group of the list, and the edi
   const js = fs.readFileSync(new URL('../modules/travel/src/travel.js', import.meta.url), 'utf8');
   assert.ok(js.includes("[{ id: null, label: 'Unscheduled' }, ...bands]"), 'the Unscheduled group comes before the phases');
   assert.ok(!/phaseOf\([^)]*today/.test(js), 'the list does not read today\'s phase');
-  assert.ok(js.includes("const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map(") && js.includes("if (groups.length === 1 && p.id === null) group.querySelector('h3').hidden = true;"), 'Unscheduled alone: its group heading is hidden (the area already says it); with phases beside it, every group keeps its heading');
+  assert.ok(js.includes("const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map(") && js.includes("if (p.id === null) group.querySelector('h3').hidden = true;"), 'Unscheduled alone: its group heading is hidden (the area already says it); with phases beside it, every group keeps its heading');
   assert.ok(js.includes("[{ id: '', label: 'Unscheduled' }, ...phases]") && js.includes("select.value = item && item.phase && phases.some((p) => p.id === item.phase) ? item.phase : '';"), 'the editor\'s Phase starts on Unscheduled');
 });
 
@@ -1989,10 +1989,10 @@ test('a day that follows another until one is chosen: the arrival day and the ch
   assert.deepEqual(lib.checkoutDays(''), []);
   // The page: the check-out follows the check-in day until the person picks one; a pick (an empty one too) is kept.
   const js = read('travel.js');
-  assert.ok(js.includes("setVal('f-checkout', followDay(date, ed.checkOut, 1));"));
+  assert.ok(js.includes("setVal('f-checkout', followDay(date, car && ed.checkOut === undefined ? '' : ed.checkOut, 1));"));
   assert.ok(js.includes("if (e.target.id === 'f-checkout' && state.editing) state.editing.checkOut = e.target.value;"));
   assert.ok(js.includes("if (e.target.id === 'f-date') checkoutOptions();"));
-  assert.ok(js.includes("checkOut: item && item.kind === 'stay' ? item.checkOut || '' : undefined"), 'an existing stay keeps its own check-out, or its none');
+  assert.ok(js.includes("checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined"), 'an existing stay keeps its own check-out, or its none');
   assert.ok(!js.includes('checkoutMin'), 'the old min on a date input is gone');
   assert.ok(js.includes("`${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`"), 'each day says how many nights');
 });
@@ -2190,6 +2190,37 @@ test('every phase start and end is a marker of its own, and only the main phase\
   assert.ok(!js.includes('--ph2') && !read('travel-lib-cards.css').includes('--ph2'), 'no blended tints');
   assert.ok(js.includes('y.ends.length - x.ends.length'), 'the ending marker comes first on a joint');
   assert.ok(js.includes('function numberedDays(days)') && js.includes("`Day ${dayNumber(day, days)} of ${numberedDays(days).length}` : ''"), 'a day outside the main phase has no number');
+});
+
+test('audit fixes: a trip keeps its time zone, a rental car its drop-off day, Money counts every cost', () => {
+  assert.equal(lib.cleanTrip({ start: '2026-10-01', tz: 'Europe/Lisbon' }).tz, 'Europe/Lisbon', 'the trip keeps its zone');
+  assert.equal(lib.cleanTrip({ start: '2026-10-01', tz: 'Not/AZone' }).tz, undefined, 'an unknown zone is dropped');
+  assert.equal(lib.cleanTrip({ start: '2026-10-01' }).tz, undefined, 'no zone stays unset');
+  const car = lib.cleanItem({ id: 'c', kind: 'journey', mode: 'car', title: 'Hire car', date: '2026-10-02', checkOut: '2026-10-05' });
+  assert.equal(car.checkOut, '2026-10-05', 'a car has its drop-off day');
+  assert.equal(lib.cleanItem({ id: 'c', kind: 'journey', mode: 'car', title: 'x', date: '2026-10-02', checkOut: '2026-10-02' }).checkOut, null, 'not on or before the pick-up day');
+  assert.equal(lib.cleanItem({ id: 'f', kind: 'journey', mode: 'flight', title: 'x', date: '2026-10-02', checkOut: '2026-10-05' }).checkOut, null, 'only a car has one');
+  assert.ok(lib.coverDaysOf(car).includes('2026-10-05'), 'the plan covers the drop-off day');
+  const costs = [{ id: 'a', cost: 100, paidBy: 'u1', owners: [] }, { id: 'b', cost: 50.5, paidBy: '', owners: [] }];
+  const b = lib.balances(costs, ['u1', 'u2']);
+  assert.equal(b.total, 100, 'total is what was paid');
+  assert.equal(b.planned, 150.5, 'planned counts every cost');
+  const main = read('travel.js');
+  assert.ok(main.includes('`Total ${money(b.planned)}`'), 'Money heads with the planned total');
+});
+
+test('audit fixes: Decisions follow the contract, Move to unscheduled goes to Unscheduled, the module has no card base of its own', () => {
+  const main = read('travel.js');
+  assert.ok(main.includes("poll: 'Polls to vote on', task: 'Tasks due before the trip'"), 'the contract\'s two groups');
+  assert.ok(read('travel-lib-plan.js').includes("c.kind === 'poll' || (c.kind === 'task'"), 'open polls and tasks due before the trip');
+  assert.ok(main.includes("label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => attempt(() => plan.moveTo(id, null, 1e6))"), 'off the day into the Unscheduled area');
+  assert.ok(!read('travel-lib-cards.css').includes('--card-head-base'), 'the shared banded card is the base');
+  assert.ok(main.includes('host.objects.linksToAll') && main.includes("rows.push(['Linked from'"), 'one batched request, and Linked from is shown');
+  assert.ok(main.includes("if (p.id === null) group.querySelector('h3').hidden = true;"), 'the default group has no heading repeating Unscheduled');
+  const manifest = JSON.parse(read('../module.json'));
+  assert.equal(manifest.guards.clear, 'clear', 'only who holds the clear permission may clear everything');
+  const clear = manifest.permissions.find((p) => p.key === 'clear');
+  assert.ok(clear && clear.default.moderator === true && clear.default.member === false && clear.default.guest === false, 'moderators by default, not members or guests');
 });
 
 console.log(`check-travel: OK (${n} checks)`);

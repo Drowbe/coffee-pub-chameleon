@@ -300,7 +300,7 @@ try {
   await test('a switched template is never applied on its own at a restart; switching back offers only what is missing', async () => {
     assert.equal((await as('PATCH', '/api/settings', { template: 'travel' })).status, 200);
     // A space's "AI off" is refused before the restart and must still be after it (it was dropped on load once).
-    const aiOffSentence = { error: 'AI is turned off in this trip' }; // travel's word for a space
+    const aiOffSentence = { error: 'AI is turned off in this trip.' }; // travel's word for a space
     assert.equal((await as('PATCH', `/api/spaces/${side}`, { aiOff: true })).status, 200);
     assert.deepEqual(await as('POST', `/api/spaces/${side}/ai`, { question: 'hello there' }).then((x) => [x.status, x.json]), [403, aiOffSentence]);
     await server.stop();
@@ -352,7 +352,7 @@ try {
   const console_ = (method, url, body) => call(server, 'admin', method, url, { cookie: host, body });
 
   await test('hosted: the host switches an environment made with no template; the plan\'s refusal is in the offer and recorded', async () => {
-    const made = await console_('POST', '/api/host/environments', { slug: 'beta', name: 'Beta', plan: { modules: ['travel', 'places', 'research', 'calendar', 'budget', 'polls', 'todo', 'stream'] }, owner: { login: 'owner', password: 'owner-password-1' } });
+    const made = await console_('POST', '/api/host/environments', { slug: 'beta', name: 'Beta', plan: { modules: ['travel', 'places', 'research', 'vault', 'calendar', 'budget', 'polls', 'todo', 'stream'] }, owner: { login: 'owner', password: 'owner-password-1' } });
     assert.equal(made.status, 201, made.text);
     assert.deepEqual(await console_('PATCH', '/api/host/environments/beta', { template: 'nope' }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called nope.' }]);
     assert.deepEqual(await console_('PATCH', '/api/host/environments/nope', { template: 'travel' }).then((r) => [r.status, r.json]), [404, { error: 'no such environment' }]);
