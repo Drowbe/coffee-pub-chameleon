@@ -836,7 +836,8 @@ try {
         ['POST', 'schedule', { key: 'x', at: Date.now() + 60000, title: 'x' }],
       ]) {
         const r = await call(method, `/api/modules/research/${route}?${mine}`, body, 'sam');
-        assert.deepEqual([r.status, r.json?.error], [403, 'your role can\'t do that in this module'], `${route} in Mine without edit`);
+        // The AI's door is the policy's (server/ai-policy.js), in its own capitalised sentence.
+        assert.deepEqual([r.status, r.json?.error], [403, route === 'ai' ? 'Your role can\'t do that in this module.' : 'your role can\'t do that in this module'], `${route} in Mine without edit`);
       }
       // Exclusive in Mine: a link can't take a note's id.
       const note = { kind: 'note', title: 'Mine', body: '', tags: [], date: '', at: '', text: '', sub: '' };

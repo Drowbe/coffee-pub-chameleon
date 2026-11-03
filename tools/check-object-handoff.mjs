@@ -23,7 +23,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const PRODUCT = 'Testname';
 process.env.PRODUCT_NAME = PRODUCT;
-const { KINDS, TRAVEL_KINDS, cleanHandoff, takersOf, kindsTaken, instructions } = require('../server/object-format.js');
+const { KINDS, TRAVEL_KINDS, cleanHandoff, takersOf, kindsTaken } = require('../server/object-format.js');
+const prompts = require('../server/prompts');
+const { productName } = require('../server/product-name.js');
+// The copied instructions: the registry's paste template (server/prompts/paste.js), as GET /api/objects/format renders it.
+const instructions = (noun, { kinds = TRAVEL_KINDS } = {}) => prompts.pasteText({ kinds, words: { object: noun, objects: `${noun}s`, space: 'space' } }, { product: productName() }).text;
 const { buildModule } = require('../server/module-build.js');
 
 let n = 0;

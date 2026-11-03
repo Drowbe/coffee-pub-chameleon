@@ -1,0 +1,21 @@
+{
+  "structured": {
+    "tags": [
+      "old town",
+      "food",
+      "fado",
+      "a",
+      "b",
+      "c"
+    ],
+    "cut": false
+  },
+  "text": {
+    "tags": [
+      "hotels",
+      "near station",
+      "food"
+    ],
+    "cut": false
+  }
+}

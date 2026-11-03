@@ -18,6 +18,7 @@ const { LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
 const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEFAULT_ICONS, sameList } = require('./default-lists');
 // The phase timeline rule, the one copy the pages use too (plan-one-bar.md, step 1).
 const phaseRule = require('../public/phases.js');
+const aiPolicy = require('./ai-policy');
 
 // Image slots. Participant: what the video box shows when the camera is
 // off, plus optional overlays drawn on top while they talk, are muted, are
@@ -196,7 +197,7 @@ const ROLE_PERMISSIONS = [
   { key: 'canMute', label: 'Mute other people', group: 'Moderation' },
   { key: 'canKick', label: 'Kick other people', group: 'Moderation' },
   { key: 'canInvite', label: "Manage {a space}'s {guest} link", group: 'Moderation' },
-  { key: 'useAi', label: 'Use AI in {modules} (needs an AI service set up)', group: 'AI' },
+  { key: 'useAi', label: 'Use AI (needs an AI service set up)', group: 'AI' },
   { key: 'image_profile', label: 'Profile photo', group: 'Images' },
   { key: 'image_background', label: 'Call background', group: 'Images' },
   { key: 'image_playerOffline', label: 'Participant: Offline', group: 'Images' },
@@ -770,6 +771,8 @@ class Store {
       ...(cleanLayoutId(r.defaultLayout) ? { defaultLayout: r.defaultLayout } : {}),
       // AI turned off in this space, whatever a role may do (updateSpace); absent while AI is allowed here.
       ...(r.aiOff === true ? { aiOff: true } : {}),
+      // What AI may see in this space, its owner's own choice (server/ai-policy.js); absent means the environment's choice.
+      ...(r.aiSees && typeof r.aiSees === 'object' && !Array.isArray(r.aiSees) ? { aiSees: aiPolicy.readSees(r.aiSees) } : {}),
       // Left out of the environment's published calendar (plan-space-calendars.md, section 2); absent means in it.
       ...(r.publishCalendar === false ? { publishCalendar: false } : {}),
       // The space's guests see the fields modules keep from guests (a module's guards.hidden: the Planner's costs and
@@ -1775,6 +1778,14 @@ class Store {
       draft.members = [...new Set(patch.members.filter((k) => typeof k === 'string' && this.userByKey(k)))];
     }
     if (patch.aiOff !== undefined) draft.aiOff = patch.aiOff === true; // this space does not use AI, whatever a role may do
+    // What AI may see here (plan-ai-integration.md, "What AI may see"): an object of the setting's keys, or null to go back
+    // to the environment's choice. A bad key or value is refused with the policy's sentence.
+    if (patch.aiSees !== undefined) {
+      if (patch.aiSees === null) delete draft.aiSees;
+      else {
+        try { draft.aiSees = aiPolicy.cleanSees(patch.aiSees); } catch (err) { throw new StoreError(err.message, 400); }
+      }
+    }
     // In the published calendar (plan-space-calendars.md, section 2): true is the default and is stored as nothing. The
     // Lobby is never in it (it has no members of its own), so it takes no switch.
     if (patch.publishCalendar !== undefined) {
@@ -1877,6 +1888,7 @@ class Store {
     if (!('publishCalendar' in draft)) delete space.publishCalendar;
     if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;
+    if (!('aiSees' in draft)) delete space.aiSees;
     // Someone taken off the member list loses their address for this space, as removeMember does.
     for (const u of this.data.users) if (!space.members.includes(u.key)) this.dropSpaceCalendarFeed(u, id);
     this.save();

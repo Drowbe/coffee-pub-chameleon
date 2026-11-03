@@ -926,7 +926,7 @@ if (!failed) {
     same((await call('DELETE', `${L}/messages?${g(lobbyToken)}&type=chat&scope=everyone`, guestIp)).status, 403, "a guest can't clear");
     same((await call('PATCH', `${L}/${keep.id}?${g(lobbyToken)}`, { ...guestIp, body: { visibility: 'private' } })).status, 403, "a guest can't change who sees a message");
     const ai = await call('POST', `/api/spaces/lobby/ai?${g(lobbyToken)}`, { ...guestIp, body: { question: 'hi' } });
-    same([ai.status, ai.json.error], [403, 'guests cannot use AI'], 'the Assistant is for members');
+    same([ai.status, ai.json.error], [403, "Guests can't use AI."], 'the Assistant is for members');
 
     // --- a guest link turned off, regenerated, or guests turned off ends the stream at once ---------------------------
     const offAt = Date.now();

@@ -300,7 +300,7 @@ try {
   await test('a switched template is never applied on its own at a restart; switching back offers only what is missing', async () => {
     assert.equal((await as('PATCH', '/api/settings', { template: 'travel' })).status, 200);
     // A space's "AI off" is refused before the restart and must still be after it (it was dropped on load once).
-    const aiOffSentence = { error: 'AI is turned off in this trip' }; // travel's word for a space
+    const aiOffSentence = { error: 'AI is turned off in this trip.' }; // travel's word for a space
     assert.equal((await as('PATCH', `/api/spaces/${side}`, { aiOff: true })).status, 200);
     assert.deepEqual(await as('POST', `/api/spaces/${side}/ai`, { question: 'hello there' }).then((x) => [x.status, x.json]), [403, aiOffSentence]);
     await server.stop();
