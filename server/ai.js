@@ -71,10 +71,16 @@ function cleanWorkspace(raw) {
   return w;
 }
 
+// `refund`: the ask failed before the service did (or billed) any work -- nothing was sent, the connection failed before an
+// answer began, or the service itself said it was busy or down (429, 5xx) or refused the key -- so the route gives the
+// person's turn back. Any other failure after the service answered counts, as an answered ask does.
+// `tokens`: what the service said the failed ask used, recorded all the same (Ai.run).
 class AiError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, { refund = false, tokens = 0 } = {}) {
     super(message);
     this.status = status;
+    this.refund = refund;
+    this.tokens = tokens;
   }
 }
 
@@ -82,8 +88,14 @@ class AiError extends Error {
 // environment's own (Ai.set, its custom slot) and the host's managed service (HostRegistry.setManagedAi): same
 // rules, since the same four fields mean the same thing in both places. `key` is replaced only when a
 // non-empty string is sent (a page that shows "set" sends nothing); `clearKey` removes it.
+// A typed key goes into a request header, so it must be one line of plain characters: one with a line break or another
+// control character is refused when it is typed, never saved to fail later.
+function checkTypedKey(key) {
+  if (typeof key === 'string' && /[\u0000-\u001f\u007f]/.test(key.trim())) throw new AiError('a key is one line of text, without line breaks or tabs');
+}
 function applyAiFields(current, patch) {
   const p = patch && typeof patch === 'object' ? patch : {};
+  checkTypedKey(p.key);
   const next = { provider: current.provider, address: current.address, model: current.model, key: current.key, workspace: current.workspace || '' };
   if (p.provider !== undefined) {
     if (!PROVIDERS.includes(p.provider)) throw new AiError('choose none, an OpenAI-compatible service or Anthropic');
@@ -121,6 +133,7 @@ function applyAiFields(current, patch) {
 function applyManagedFields(provider, current, patch) {
   if (!MANAGED_PROVIDERS.includes(provider)) throw new AiError('choose openai, anthropic or compatible');
   const p = patch && typeof patch === 'object' ? patch : {};
+  checkTypedKey(p.key);
   const next = { model: current.model || '', key: current.key || '', ...(provider === 'compatible' ? { address: current.address || '' } : {}), ...(provider === 'anthropic' ? { workspace: current.workspace || '' } : {}) };
   if (provider === 'compatible' && p.address !== undefined) {
     const a = String(p.address || '').trim();
@@ -162,6 +175,7 @@ function managedOffer(provider, slot, envKey) {
 // address or what it answered.
 async function listModelsFor({ provider, address, key, workspace }, hosts = HOSTS, guard = null) {
   if (!['openai', 'anthropic', 'compatible'].includes(provider)) throw new AiError('choose a service first');
+  checkTypedKey(key);
   let base = hosts[provider];
   if (provider === 'compatible') {
     const a = String(address || '').trim();
@@ -466,6 +480,7 @@ class Ai {
   // bad ask without it using up the person's turn at the rate limit.
   validateAsk(task, count, question) {
     if (!TASKS.includes(task)) throw new AiError('that task is not offered');
+    if (question !== undefined && question !== null && typeof question !== 'string') throw new AiError('the question must be text');
     if (!count && task !== 'ask') throw new AiError('choose something to work on'); // a question needs no material
     if (task === 'ask' && oneLine(question, MAX_QUESTION).length < 3) throw new AiError('ask a question');
   }
@@ -476,14 +491,22 @@ class Ai {
   // `kinds`: the kinds the environment's modules take, for the objects rule (kindsTaken in server/object-format.js).
   async run(task, items, question, { kinds } = {}) {
     if (!TASKS.includes(task)) throw new AiError('that task is not offered');
-    if (this.config.enabled && this.effective().keyUnreadable) throw new AiError(KEY_UNREADABLE, 503);
-    if (!this.ready()) throw new AiError('AI is not set up on this server', 503);
-    if (this.overCap()) throw new AiError(OVER_CAP, 429);
+    // Refused before anything is sent: the turn is given back.
+    if (this.config.enabled && this.effective().keyUnreadable) throw new AiError(KEY_UNREADABLE, 503, { refund: true });
+    if (!this.ready()) throw new AiError('AI is not set up on this server', 503, { refund: true });
+    if (this.overCap()) throw new AiError(OVER_CAP, 429, { refund: true });
     const list = (Array.isArray(items) ? items : []).slice(0, MAX_ITEMS);
-    this.validateAsk(task, list.length, question);
+    try { this.validateAsk(task, list.length, question); } catch (err) { err.refund = true; throw err; }
     const q = oneLine(question, MAX_QUESTION);
     const { system, messages } = buildPrompt(task, list, q, kinds);
-    const out = await this.complete(system, messages);
+    let out;
+    try {
+      out = await this.complete(system, messages);
+    } catch (err) {
+      // A failed ask the service reported tokens for (a blank answer, say) is still counted against the month's allowance.
+      if (err instanceof AiError && err.tokens > 0) this.record(task, err.tokens);
+      throw err;
+    }
     this.record(task, out.tokens);
     if (task === 'tags') return { tags: parseTags(out.text), text: '', cut: false, tokens: out.tokens, used: [] };
     const parsed = parseSummaries(out.text.trim().slice(0, 16000), list.length);
@@ -564,7 +587,10 @@ class Ai {
       if (!(err instanceof AiNetError)) throw err;
       // Never the key or the prompt. The detail (a timeout, a DNS failure, a refused address) goes to the log; the person gets a sentence.
       console.warn(`[ai] ${c.provider}/${c.model}: request failed (${err.code}: ${oneLine(err.message, 200)})`);
-      throw new AiError(err.code === 'timeout' ? 'The AI service took too long to answer. Try again in a moment.' : err.code === 'toolarge' ? 'The AI service sent back too much.' : 'The AI service did not answer. Try again in a moment.', 502);
+      // Given back only when nothing reached the service (a refused address) or the connection failed before it began
+      // answering; a timeout or an over-long answer may have been worked on, and billed, so it counts.
+      const refund = err.code === 'blocked' || (err.code === 'network' && !err.answered);
+      throw new AiError(err.code === 'timeout' ? 'The AI service took too long to answer. Try again in a moment.' : err.code === 'toolarge' ? 'The AI service sent back too much.' : 'The AI service did not answer. Try again in a moment.', 502, { refund });
     }
     if (res.status < 200 || res.status >= 300) {
       // The service's own reason, if it gave one as JSON, goes to the log in full (never the key or the prompt) and not to the page.
@@ -582,15 +608,19 @@ class Ai {
             : res.status >= 500 ? 'The AI service had a problem. Try again in a moment.'
               : 'The AI service could not answer.',
         502,
+        // Busy, down or the key refused: the service did no work. Any other refusal (a content filter, say) counts.
+        { refund: res.status === 429 || res.status >= 500 || res.status === 401 || res.status === 403 },
       );
     }
     let json;
     try { json = JSON.parse(res.text); } catch { throw new AiError('The AI service answered something unreadable.', 502); }
+    if (!json || typeof json !== 'object') throw new AiError('The AI service answered something unreadable.', 502);
+    const u = json.usage && typeof json.usage === 'object' ? json.usage : {};
+    const reported = isAnthropic ? (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) : Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
+    const tokens = Number.isFinite(reported) && reported > 0 ? Math.min(reported, 1e9) : 0;
     const text = isAnthropic ? (Array.isArray(json.content) ? json.content.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '') : json.choices && json.choices[0] && json.choices[0].message ? json.choices[0].message.content : '';
-    if (typeof text !== 'string' || !text.trim()) throw new AiError('The AI service gave no answer.', 502);
+    if (typeof text !== 'string' || !text.trim()) throw new AiError('The AI service gave no answer.', 502, { tokens });
     const cut = isAnthropic ? json.stop_reason === 'max_tokens' : Boolean(json.choices && json.choices[0] && json.choices[0].finish_reason === 'length');
-    const u = json.usage || {};
-    const tokens = isAnthropic ? (u.input_tokens || 0) + (u.output_tokens || 0) : u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0);
     return { text, cut, tokens: Number.isFinite(tokens) && tokens > 0 ? tokens : Math.ceil((system.length + messages.join('').length + text.length) / 4) };
   }
 }

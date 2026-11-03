@@ -191,7 +191,79 @@ function unitChecks() {
   assert.deepEqual(parent.posted.at(-1)[0], { type: 'app:streamleave', sub: '*', doc }, 'going: says so');
   leave();
   assert.deepEqual(parent.posted.at(-1)[0], { type: 'app:streamleave', sub: ask[0].sub, doc });
-  say('module-stream.js: the plan, the move between connections, a refusal and the relay hold');
+
+  // '*' is not a name a frame may join under (leaving '*' leaves everything).
+  const joinedBefore = joined.length;
+  const stop2 = createStreamRelay({ win: pageWin, frame, origin: ORIGIN, allow: () => ({ space: 's1', guest: null }), join: relayHub.join });
+  say2({ type: 'app:streamjoin', doc: 'd9', sub: '*', space: 's1', guest: null });
+  assert.equal(joined.length, joinedBefore, "'*' as a join: refused");
+  assert.equal(toFrame.at(-1)[0].ok, false);
+  stop2();
+
+  // The frame moved to another window (the call popped out): on its next load the relay listens there, and says hello.
+  {
+    const winA = listeners({});
+    const winB = listeners({});
+    const posted = [];
+    const fw = { postMessage: (m) => posted.push(m) };
+    const loads = [];
+    const movable = { contentWindow: fw, ownerDocument: { defaultView: winA }, addEventListener: (t, fn) => { if (t === 'load') loads.push(fn); }, removeEventListener: () => {} };
+    const got = [];
+    const stop3 = createStreamRelay({ win: winA, frame: movable, origin: ORIGIN, allow: () => ({ space: 's1', guest: null }), join: (s, g, fn) => { got.push(s); return () => {}; } });
+    movable.ownerDocument = { defaultView: winB };
+    for (const fn of loads) fn();
+    assert.equal(posted.at(-1).type, 'app:streamhello', 'loaded in another window: hello again');
+    for (const fn of [...winB.handlers]) fn({ data: { type: 'app:streamjoin', doc: 'dm', sub: 's1', space: 's1', guest: null }, source: fw, origin: ORIGIN });
+    assert.deepEqual(got, ['s1'], 'and a join that arrives in the new window is heard');
+    assert.equal(winA.handlers.length, 0, 'the old window is no longer listened to');
+    stop3();
+    assert.equal(winB.handlers.length, 0);
+  }
+
+  // A popped-out call: the frame's parent is the popped-out window, and the canvas's script (in the page that opened it)
+  // posts the relay's answers, so they come from parent.opener. Heard while the opener is this site's, never another's.
+  {
+    const mainWin = { location: { origin: ORIGIN } };
+    const popWin = { opener: mainWin, posted: [], postMessage(m, o) { this.posted.push([m, o]); } };
+    const fself = { handlers: {}, addEventListener(t, fn) { (this.handlers[t] ||= []).push(fn); } };
+    timers = [];
+    const c2 = createStreamRelayClient({ parent: popWin, self: fself, origin: ORIGIN, schedule, cancel });
+    const got = [];
+    c2.join('s1', null, (t, d) => got.push(d.key));
+    const a = popWin.posted.at(-1)[0];
+    const t2 = (data, source) => { for (const fn of fself.handlers.message) fn({ data, source, origin: ORIGIN }); };
+    t2({ type: 'app:streamjoined', doc: a.doc, sub: a.sub, ok: true }, mainWin);
+    t2({ type: 'app:streamevent', doc: a.doc, sub: a.sub, event: 'change', data: { key: 'from-opener' } }, mainWin);
+    t2({ type: 'app:streamevent', doc: a.doc, sub: a.sub, event: 'change', data: { key: 'from-stranger' } }, {});
+    assert.deepEqual(got, ['from-opener'], 'the popped-out page\'s opener is heard, a stranger is not');
+    const foreign = { get location() { throw new Error('cross-origin'); } };
+    popWin.opener = foreign;
+    t2({ type: 'app:streamevent', doc: a.doc, sub: a.sub, event: 'change', data: { key: 'from-foreign-opener' } }, foreign);
+    assert.deepEqual(got, ['from-opener'], 'an opener of another site is not heard');
+  }
+
+  // The page never answers: after the last ask, the join is carried by the frame's own stream, and leaving lets it go.
+  {
+    const quiet = { posted: [], postMessage(m) { this.posted.push(m); } };
+    const fself = { handlers: {}, addEventListener(t, fn) { (this.handlers[t] ||= []).push(fn); } };
+    timers = [];
+    const own = [];
+    const c3 = createStreamRelayClient({ parent: quiet, self: fself, origin: ORIGIN, schedule, cancel, fallback: (space, guest, fn) => { const o = { space, guest, fn, left: false }; own.push(o); return () => { o.left = true; }; } });
+    const got = [];
+    const leave3 = c3.join('s1', null, (t, d) => got.push(d.key));
+    for (let i = 0; i < 10 && !own.length; i += 1) { const t = timers.filter((x) => x.fn).at(-1); if (!t) break; const f = t.fn; t.fn = null; f(); }
+    assert.equal(own.length, 1, 'no answer from the page: the frame opens its own stream');
+    assert.ok(quiet.posted.filter((m) => m.type === 'app:streamjoin').length >= 2, 'it asked more than once first');
+    assert.equal(own[0].space, 's1');
+    own[0].fn('change', { key: 'own' });
+    assert.deepEqual(got, ['own'], 'and hears it');
+    const asks = quiet.posted.length;
+    for (const fn of fself.handlers.message) fn({ data: { type: 'app:streamhello' }, source: quiet, origin: ORIGIN });
+    assert.equal(quiet.posted.length, asks, 'a join on its own stream is not asked of the page again');
+    leave3();
+    assert.equal(own[0].left, true, 'leaving lets its own stream go');
+  }
+  say('module-stream.js: the plan, the move between connections, a refusal and the relay (popped out, and with no answer) hold');
 }
 
 // --- B. the server's combined stream -----------------------------------------------------------------------------------
@@ -243,6 +315,29 @@ async function serverChecks(S, jar, api) {
   assert.equal(lone.status, 200, 'page without a space: the page view, as before');
   for (const s of [both, spaceOnly, pageOnly, lone]) s.close();
   say('server: ?space=<id>&page=1 carries both views, the page\'s labelled, with the same ids as the streams of their own');
+
+  // A backlink gained, lost and gained again: each `links` event has an id of its own, so the page hands on every one
+  // (the stored pointer is never emitted as it is: the same object twice would get one id, and the second be dropped).
+  const linksStream = rawStream(S.base, `/api/modules/stream?space=${S.ctx.trip}`, jar('mia'));
+  await sleep(300);
+  const put = (mod, key, value) => api('mia', 'PUT', `/api/modules/${mod}/data/${encodeURIComponent(key)}?scope=space&space=${S.ctx.trip}`, { value });
+  for (const r of [await put('calendar', 'event:streamlink1', { title: 'Link one', start: '2026-11-20' }), await put('calendar', 'event:streamlink2', { title: 'Link two', start: '2026-11-21' }), await put('todo', 'task:streamlink', { title: 'Linked task' })]) assert.equal(r.status, 200, JSON.stringify(r.json));
+  const from = { module: 'todo', kind: 'task', scope: 'space', space: S.ctx.trip, id: 'streamlink' };
+  const e1 = { module: 'calendar', kind: 'event', scope: 'space', space: S.ctx.trip, id: 'streamlink1' };
+  const e2 = { ...e1, id: 'streamlink2' };
+  for (const to of [[e1], [e2], [e1]]) {
+    const r = await api('mia', 'POST', '/api/objects/links', { module: 'todo', from, to });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal(r.json.links, 1, 'the link was made');
+    await sleep(200);
+  }
+  await sleep(300);
+  linksStream.close();
+  const linkEvents = linksStream.events.filter((e) => e.event === 'links' && e.data.ref.module === 'calendar');
+  assert.equal(linkEvents.length, 5, `e1 gained, e1 lost and e2 gained, e2 lost and e1 gained: ${linkEvents.map((e) => e.data.ref.id).join(', ')}`);
+  const ids = linksStream.events.filter((e) => e.event === 'links').map((e) => e.id);
+  assert.equal(new Set(ids).size, ids.length, `every links event has an id of its own (${ids.join(', ')})`);
+  say('server: a backlink gained, lost and gained again sends a links event each time, each with its own id');
 }
 
 // The browser's own count of the event streams a tab holds open: every EventSource request (the page's and its frames', which
@@ -376,6 +471,38 @@ async function main() {
         const seen = await until(tab, ROWS(null, '.place-row'), (v) => Array.isArray(v) && v.some((x) => x.includes(title)), 5000);
         if (!seen.ok) failures.push('a place sam saved did not reach the standalone Map page within 5 s');
       } finally { net.stop(); await tab.close(); }
+    }
+
+    // 6. The call popped out: the Map window now sits in the popped-out window (its frame's parent), while the canvas's
+    // script still runs in the page that opened it. A change still reaches it.
+    {
+      const tab = new Tab(browser.cdp, S.ctx);
+      await tab.open(1280, 'light', true);
+      try {
+        await driveScreen(tab, { id: 'workspace', as: 'mia', url: '/#join={trip}' }, S.base, S.cookies, S.ctx);
+        await until(tab, ROWS('/map', '.place-row'), (v) => Array.isArray(v) && v.length > 0, LOAD_MS);
+        let clicked = false;
+        try { await tab.click('#popout'); clicked = true; } catch { /* not on this screen */ }
+        if (!clicked) failures.push('no Pop out button (#popout) on the Workspace; the popped-out call was not measured');
+        else {
+          const POP_ROWS = `(() => { const w = window.open('', 'app-popout'); if (!w || !w.document) return null;
+            const f = [...w.document.querySelectorAll('iframe.composite-frame')].find((x) => { try { return x.contentWindow.location.pathname === '/map'; } catch { return false; } });
+            if (!f || !f.contentDocument) return null; const roots = [f.contentDocument];
+            (function walk(r) { for (const x of r.querySelectorAll('*')) if (x.shadowRoot) { roots.push(x.shadowRoot); walk(x.shadowRoot); } })(f.contentDocument);
+            return roots.flatMap((r) => [...r.querySelectorAll('.place-row')].map((e) => e.textContent.replace(/\\s+/g, ' ').trim())); })()`;
+          const drawn = await until(tab, POP_ROWS, (v) => Array.isArray(v) && v.length > 0, LOAD_MS);
+          if (!drawn.ok) failures.push('the Map window in the popped-out call did not draw its place list');
+          else {
+            await sleep(1500); // the frame has joined the page's stream by now
+            const title = 'Stream check popout pier';
+            await api('sam', 'PUT', `/api/modules/places/data/${encodeURIComponent('place:streamcheck3')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.69, lng: -9.2 } } });
+            const t0 = Date.now();
+            const seen = await until(tab, POP_ROWS, (v) => Array.isArray(v) && v.some((x) => x.includes(title)), 5000);
+            say(`popped-out call: ${seen.ok ? `the Map window heard a new place after ${((Date.now() - t0) / 1000).toFixed(1)} s` : 'the Map window never heard the new place'}`);
+            if (!seen.ok) failures.push('a place sam saved did not reach the Map window in the popped-out call within 5 s');
+          }
+        }
+      } finally { await tab.close(); }
     }
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }

@@ -56,7 +56,10 @@ class ModuleLinks extends EventEmitter {
     if (same) return [];
     this.items = [...kept, ...added, ...pairs];
     this.save();
-    const changed = [plain(from), ...before.map((l) => l.to), ...added.map((l) => l.to)];
+    // Fresh copies, never the stored pointers: the stream gives each emitted object its own event id (index.js,
+    // eventIdOf), so emitting a stored `l.to` twice (linked, unlinked, linked again) would give two events one id and
+    // the page would drop the second as already heard.
+    const changed = [plain(from), ...before.map((l) => plain(l.to)), ...added.map((l) => plain(l.to))];
     this.emit('change', { refs: changed });
     return changed;
   }

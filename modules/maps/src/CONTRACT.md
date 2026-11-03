@@ -80,19 +80,21 @@ The colours are map tokens (`--map-*`, in `public/sdk/system.css`, the dark valu
 | Layer | Token | Dark | Light |
 |---|---|---|---|
 | background, `earth` | `--map-land` | `--text-primary` 4% over `--surface-panel` | `--surface-panel` |
-| `landcover` | `--map-wood` | `--tint-green` 8% over the land | same |
-| `landuse` (parks, woods) | `--map-park` | `--tint-green` 14% over the land | same |
-| `water`, waterways | `--map-water` | `--tint-blue` 34% over `--surface-page` | `--tint-blue` 30% over `--surface-panel` |
-| `roads` paths and minor | `--map-road-minor` | `--text-primary` 20% over the land | 14% |
-| `roads` medium | `--map-road-medium` | 30% | 24% |
-| `roads` major and highways | `--map-road-major` | 42% | 34% |
-| `buildings` (from zoom 15) | `--map-building` | `--text-primary` 10% over the land | 9% |
+| `landcover` | `--map-wood` | `--tint-green` 9% over the land | same |
+| `landuse` (parks, woods) | `--map-park` | `--tint-green` 16% over the land | same |
+| `water`, waterways | `--map-water` | `--tint-blue` 38% over `--surface-page` | `--tint-blue` 38% over `--surface-panel` |
+| `roads` paths and minor | `--map-road-minor` | `--text-primary` 20% over the land | 27% |
+| `roads` medium | `--map-road-medium` | 30% | 39% |
+| `roads` major and highways | `--map-road-major` | 42% | 50% |
+| `buildings` (from zoom 15) | `--map-building` | `--text-primary` 10% over the land | 12% |
 | `boundaries` | `--map-boundary` | `--text-muted`, dashed, country and region level only | same |
-| `places` small labels | `--map-label` | `--text-primary` 40% over `--text-muted` | `--text-muted` |
-| `places` cities and regions | `--text-primary` and `--text-muted` | halo: the land | same |
+| `places` small labels | `--map-label` | `--text-primary` 40% over `--text-muted` | same |
+| `places` cities and regions | `--text-primary` and `--text-muted` (the style's own, not tokens) | halo: the land, 2 px | same |
 | `pois` | not drawn: the pins are the points of interest | | |
 
-What `check-maps` holds: the water is at least 1.5 to 1 from the land and has a hue of its own, the roads step up from minor to medium to major in both themes (each at least 1.7 to 1 from the land in dark), parks are green and not the accent, small labels reach 4.5 to 1, and nothing draws a neighbourhood's boundary.
+The map reads on every theme: whatever the tokens give, the style clamps them last (`guardMap` in `maps-lib-d-style.js`, its minimums in `MAP_MIN`). Each colour is nudged toward the text colour (else black or white) until it holds its minimum against the land, and a colour that already holds is not touched: place names 4.5 to 1 on the land (and 3 to 1 on the water where both can hold), a major road 3, a medium road 2.3, a minor road 1.7 (each road class at least 1.1 times the one below), water 1.5 from the land and with a blue of its own, a park 1.15, a wood 1.06, a building 1.15, and a border as drawn (70% opacity) 2. Names have a 2 px halo in the land colour.
+
+What `check-maps` holds: those minimums on every shipped theme (Strong Coffee, Cream, Calming Teal, Burnt Orange), dark and light, from the real `--map-*` lines of `system.css`, and also with no tokens, with every token set to the land or the page, and on 400 random themes. Parks are green and not the accent, and nothing draws a neighbourhood's boundary.
 
 No sprite or icon font is needed. Labels use one Latin glyph set at first (see the plan). Fewer layers than a general basemap on purpose: it keeps the file small to read and the map calm behind the pins.
 
