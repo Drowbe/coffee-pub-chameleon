@@ -1607,7 +1607,8 @@
    mode, 0.5 in light. The kind label beside it uses --card-kind-l, 0.88 in dark mode and 0.38 in light (11px text needs 4.5:1 on the card).
    The box (--card-icon) is the circle: 36px in a banded head, 28px in a row. */
 :root { --card-kind-l: 0.88; --card-disc-l: 0.74; }
-:root[data-theme-mode="light"] { --card-kind-l: 0.38; --card-disc-l: 0.5; }
+:root[data-theme-mode="light"],
+:root[data-mode-shown="light"]:not([data-theme-mode="dark"]) { --card-kind-l: 0.38; --card-disc-l: 0.5; }
 .sdk-card-icon {
   flex: none;
   display: inline-flex;
