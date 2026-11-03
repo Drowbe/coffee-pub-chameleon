@@ -40,6 +40,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { buildModule } = require('../server/module-build.js');
 const { VaultStore, cleanName, nameForType, extensionOf } = require('../server/vault-store.js');
+const { verifyPassword } = require('../server/auth.js');
 const types = require('../server/vault-types.js');
 const { pdfScan, pdfScanFile, ACTIVE_NAMES, LIMITS: PDF_LIMITS, WINDOW: PDF_WINDOW } = require('../server/pdf-scan.js');
 const { createScanner } = require('../server/vault-scan.js');
@@ -228,7 +229,7 @@ function pinMismatches(dir) {
     same(again.findShareByToken('vault', made.token)?.share.id, made.share.id, 'its token finds it');
     same([again.findShareByToken('vault', `${made.token.slice(0, -1)}${made.token.endsWith('A') ? 'B' : 'A'}`), again.findShareByToken('vault', 'short'), again.findShareByToken('vault', null)], [null, null, null], 'a wrong token finds nothing');
     const found = again.findShareByToken('vault', made.token).share;
-    same([again.sharePasswordOk(found, 'open sesame'), again.sharePasswordOk(found, 'nope')], [true, false], 'its password is checked against the hash');
+    same([verifyPassword('open sesame', found.passwordHash), verifyPassword('nope', found.passwordHash)], [true, false], 'its password is checked against the hash');
     for (const [label, opts, msg] of [
       ['no name', { name: ' ', files: [fid] }, /name/],
       ['no end', { name: 'x', files: [fid], days: 0 }, /1, 7 or 30 days/],

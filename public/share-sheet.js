@@ -168,22 +168,22 @@ export async function shareFiles({ doc = document, place, ids, onChange, returnF
   const pwLabel = h('span', 'sdk-label', 'Password ');
   pwLabel.append(h('span', 'sdk-optional', 'optional'));
   const pw = h('input');
-  pw.type = 'password'; pw.autocomplete = 'new-password'; pw.maxLength = 200;
-  pwField.append(pwLabel, pw, h('span', 'sdk-hint', 'People need it to open the link. Tell them another way.'));
+  pw.type = 'password'; pw.autocomplete = 'new-password'; pw.maxLength = 200; pw.minLength = 8;
+  pwField.append(pwLabel, pw, h('span', 'sdk-hint', 'At least 8 characters. People need it to open the link. Tell them another way.'));
 
   form.append(nameField, endField, pwField);
   let dlIn = null;
   if (mayDownload) {
     const row = h('label', 'sdk-choice-row');
     const text = h('span', 'sdk-choice-text');
-    text.append(h('span', 'sdk-choice-label', 'Allow download'), h('span', 'sdk-choice-desc', 'People can download the files. Without download, people can still save what they see on screen.'));
+    text.append(h('span', 'sdk-choice-label', 'Allow download'), h('span', 'sdk-choice-desc', 'People can download the files. Without download, people can still save what they see on screen, and a PDF can be downloaded.'));
     dlIn = h('input', 'sdk-switch');
     dlIn.type = 'checkbox';
     dlIn.setAttribute('role', 'switch');
     row.append(text, dlIn);
     form.append(row);
   } else {
-    form.append(h('p', 'sdk-hint', 'People can look at the files but not download them. Your role can\'t allow downloads. They can still save what they see on screen.'));
+    form.append(h('p', 'sdk-hint', 'People can look at the files but not download them. Your role can\'t allow downloads. They can still save what they see on screen, and a PDF can be downloaded.'));
   }
   const failure = h('p', 'sdk-form-error');
   failure.hidden = true;

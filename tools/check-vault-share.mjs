@@ -24,6 +24,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIX = path.join(ROOT, 'tools', 'fixtures', 'vault');
@@ -95,7 +96,7 @@ let failed = false;
 const servers = [];
 try {
   // --- server S ----------------------------------------------------------------------------------------------------
-  let S = await startServer('s', {});
+  let S = await startServer('s', { SHARE_UNLOCKS_PER_MINUTE: '100000' });
   servers.push(S);
   const json = (method, urlPath, cookie, value, o = {}) => send(S, method, urlPath, { cookie, ...o, headers: { ...JSONH, ...(o.headers || {}) }, body: bodyOf(value) });
   const login = async (who, password) => { const r = await json('POST', '/api/login', null, { login: who, password }); assert.equal(r.status, 200, `${who} signs in: ${r.text}`); return r.json.token; };
@@ -164,6 +165,9 @@ try {
     ['another space\'s file', { ...goodBody, files: [pic.id, oslo.id] }, 404, 'There is no such file.'],
     ['a file id that is a path', { ...goodBody, files: ['../../etc/passwd'] }, 404, 'There is no such file.'],
     ['over 500 files', { ...goodBody, files: Array.from({ length: 501 }, (_, i) => i.toString(16).padStart(24, '0')) }, 400, 'A share link holds at most 500 files.'],
+    ['a name that is not text', { ...goodBody, name: 42 }, 400, 'Give the share link a name.'],
+    ['a name that is a list', { ...goodBody, name: ['x'] }, 400, 'Give the share link a name.'],
+    ['a password under 8 characters', { ...goodBody, password: 'short12' }, 400, 'A password needs at least 8 characters.'],
     ['a password that is not text', { ...goodBody, password: 1234 }, 400, 'A password is text.'],
     ['a password over 200 characters', { ...goodBody, password: 'x'.repeat(201) }, 400, 'That password is too long.'],
     ['download that is not on or off', { ...goodBody, download: 'yes' }, 400, 'Allow download is on or off.'],
@@ -361,20 +365,44 @@ try {
   // Per address across links: twenty wrong tries from one address, then it waits for every link.
   const A_IP = '10.0.4.1';
   const many = [];
-  for (let i = 0; i < 4; i += 1) many.push((await make(people.ola.token, { name: `L${i}`, files: [pic.id], days: 1, password: 'pw' })).json.token);
-  await Promise.all(many.map(async (tok) => { for (let i = 0; i < 5; i += 1) await unlock(tok, 'x', A_IP); }));
-  same((await unlock(D, 'open sesame', A_IP)).json, TOO_MANY, 'twenty wrong tries from one address, across links: it waits for every link');
-  // Unlocking a link that doesn't open takes about as long as a wrong password (a hash is made either way).
-  const tWrong = (await unlock(D, 'not it', '10.0.5.1')).ms;
-  const tUnknown = (await unlock(unknown, 'not it', '10.0.5.2')).ms;
+  for (let i = 0; i < 4; i += 1) many.push((await make(people.ola.token, { name: `L${i}`, files: [pic.id], days: 1, password: 'password1' })).json.token);
+  const statuses = [];
+  await Promise.all(many.map(async (tok) => { for (let i = 0; i < 5; i += 1) statuses.push((await unlock(tok, 'x', A_IP)).status); }));
+  const lastTry = await unlock(D, 'open sesame', A_IP);
+  same([lastTry.status, lastTry.json], [429, TOO_MANY], `twenty wrong tries from one address, across links: it waits for every link (statuses ${statuses.join(' ')})`);
+  // Unlocking a link that doesn't open: 404, counted as a miss, no password hashed.
   same((await unlock(unknown, 'x', '10.0.5.3')).json, ENDED, 'unlocking an unknown link: 404 "This link has ended."');
-  ok(tUnknown >= tWrong / 3, `and it takes about as long as a wrong password (${tUnknown} ms against ${tWrong} ms)`);
-  // Lookups of links that don't open: a hundred from one address, then every link waits for it.
+  // The password check never blocks the server: while several unlocks hash at once, a plain request is still answered
+  // quickly (medians over several samples, so one slow moment decides nothing).
+  const median = (xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+  const sample = async (count) => { const out = []; for (let i = 0; i < count; i += 1) out.push((await pub(unknown, '', { ip: `10.0.5.${100 + (i % 100)}` })).ms); return out; };
+  const idle = median(await sample(7));
+  const busy = Promise.all(Array.from({ length: 8 }, (_, i) => unlock(D, 'not it', `10.0.5.${10 + i}`)));
+  const during = median(await sample(7));
+  const busyDone = await busy;
+  same(busyDone.map((r) => r.status), Array(8).fill(401), 'eight wrong passwords at once: all 401');
+  ok(during < idle + 250, `and meanwhile a plain request is answered (median ${during} ms, ${idle} ms when idle)`);
+  // A valid unlock cookie skips every limit: this address has used up its tries, and the cookie still opens the link.
+  const C_IP = '10.0.5.50';
+  const cookieOk = await unlock(D, 'open sesame', C_IP);
+  const cj = `share_unlock=${cookieOk.setCookies[0].split(';')[0].split('=')[1]}`;
+  for (let i = 0; i < 6; i += 1) await unlock(D, 'wrong again', C_IP);
+  same((await unlock(D, 'open sesame', C_IP)).status, 429, 'an address out of tries is held up');
+  same([(await pub(D, '', { ip: C_IP, cookies: cj })).status, (await unlock(D, 'anything', C_IP, { cookies: cj })).json], [200, { ok: true }], 'but with a valid unlock cookie it still opens the link, limits skipped');
+  // Lookups of links that don't open: a hundred from one address, then more of them wait; links that do open don't.
   const M_IP = '10.0.6.1';
   for (let i = 0; i < 100; i += 1) await pub(crypto.randomBytes(32).toString('base64url'), '', { ip: M_IP });
-  const blocked = await pub(T, '', { ip: M_IP });
-  same([blocked.status, blocked.json], [429, TOO_MANY], 'a hundred lookups of links that don\'t open from one address: then even a good link waits (429)');
+  const blocked = await pub(crypto.randomBytes(32).toString('base64url'), '', { ip: M_IP });
+  same([blocked.status, blocked.json], [429, TOO_MANY], 'a hundred lookups of links that don\'t open from one address: more of them wait (429)');
+  same((await pub(T, '', { ip: M_IP })).status, 200, 'but a link that opens is not held up by them');
   same((await pub(T, '', { ip: '10.0.6.2' })).status, 200, 'other addresses are not held up');
+  // A try counted against a link can't be pushed out by other keys (the per-link window has no bound; the others do).
+  const { Window } = createRequire(import.meta.url)('../server/vault-share.js');
+  const win = new Window(900000, 5);
+  const unbounded = new Window(900000, Infinity);
+  win.add('link'); unbounded.add('link');
+  for (let i = 0; i < 50; i += 1) { win.add(`other${i}`); unbounded.add(`other${i}`); }
+  same([win.count('link'), unbounded.count('link')], [0, 1], 'a bounded window forgets its oldest key; the per-link one (unbounded) keeps its count');
 
   // --- changing, Turn off, removal ---------------------------------------------------------------------------------
   const sid = view.json.share.id;
@@ -406,11 +434,61 @@ try {
   const lines = act.json.activity.filter((a) => a.module === 'vault').map((a) => a.text || a.what || a.action || JSON.stringify(a));
   ok(lines.some((l) => l.includes('made a share link')) && lines.some((l) => l.includes('turned off a share link')) && !JSON.stringify(act.json).includes('Rome photos'), `activity: "made a share link", "turned off a share link", no names: ${lines.slice(0, 3).join(' | ')}`);
 
-  // The Vault turned off: its links stop answering; on again, they come back.
+  // The maker ends it: a link opens only while its maker exists, is in the space, and may share (and download, for a download link).
+  const kim = (await json('POST', '/api/users', admin, { login: 'kim', displayName: '\u202Egpj.exe Kim', role: 'member', password: 'memberpass1234' })).json.user;
+  await json('PATCH', `/api/spaces/${trip.id}`, admin, { members: [...members, kim.key] });
+  same((await json('PATCH', `/api/users/${kim.key}/spaces/${trip.id}`, admin, { permissions: { moderator: true } })).status, 200, 'kim moderates the trip');
+  const kimToken = await login('kim', 'memberpass1234');
+  const kimLink = await make(kimToken, { name: 'Kim\'s', files: [md.id], days: 7 });
+  same(kimLink.status, 201, 'kim makes a link');
+  const kimList = await pub(kimLink.json.token, '', { ip: '10.0.10.1' });
+  ok(kimList.status === 200 && !/[\u202E\u200E\u200F]/.test(kimList.json.by) && kimList.json.by === 'gpj.exe', `the maker's first name goes through the name cleaner: ${JSON.stringify(kimList.json.by)}`);
+  await json('PATCH', `/api/spaces/${trip.id}`, admin, { members });
+  same((await pub(kimLink.json.token, '', { ip: '10.0.10.1' })).json, ENDED, 'a maker no longer in the space: the link has ended');
+  same((await pub(kimLink.json.token, `/files/${md.id}/content`, { ip: '10.0.10.1' })).json, ENDED, 'and its files');
+  await json('PATCH', `/api/spaces/${trip.id}`, admin, { members: [...members, kim.key] });
+  same((await pub(kimLink.json.token, '', { ip: '10.0.10.1' })).status, 200, 'back in the space, it opens again');
+  same((await send(S, 'DELETE', `/api/users/${kim.key}`, { cookie: admin })).status, 200, 'kim is deleted');
+  same((await pub(kimLink.json.token, '', { ip: '10.0.10.1' })).json, ENDED, 'a maker who no longer exists: the link has ended');
+  await json('PATCH', `/api/spaces/${trip.id}`, admin, { members });
+  // Pat is a plain member, so Roles decides what they may do (the moderators' space role grants everything).
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': true, 'module.vault.download': true })).status, 200, 'Roles: members may share and download');
+  const moView = await make(people.pat.token, { name: 'Pat view', files: [md.id], days: 7 });
+  const moDl = await make(people.pat.token, { name: 'Pat download', files: [md.id], days: 7, download: true });
+  same([moView.status, moDl.status], [201, 201], 'a member makes a view-only and a download link');
+  same((await json('PATCH', shares(trip.id, moDl.json.share.id), people.pat.token, { files: [md.id, pic.id] })).status, 200, 'its maker, who may download, changes the files of the download link');
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.download': false })).status, 200, 'Roles: members may not download');
+  const noDl = await json('PATCH', shares(trip.id, moDl.json.share.id), people.pat.token, { files: [md.id] });
+  same([noDl.status, noDl.json], [403, { error: 'Your role can\'t download from Vault, so you can\'t change the files of a link that allows it.' }], 'changing the files of a download link without download: 403');
+  same((await json('PATCH', shares(trip.id, moDl.json.share.id), people.pat.token, { name: 'Renamed' })).status, 200, 'but its name may change');
+  same((await json('PATCH', shares(trip.id, moView.json.share.id), people.pat.token, { files: [md.id, pic.id] })).status, 200, 'and a view-only link\'s files may');
+  same((await pub(moDl.json.token, '', { ip: '10.0.10.2' })).json, ENDED, 'a download link whose maker lost download: the link has ended');
+  same((await pub(moView.json.token, '', { ip: '10.0.10.2' })).status, 200, 'a view-only link still opens');
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': false })).status, 200, 'Roles: members may not share');
+  same((await pub(moView.json.token, '', { ip: '10.0.10.2' })).json, ENDED, 'a maker who lost share: the link has ended');
+  same((await pub(moView.json.token, `/files/${md.id}/content`, { ip: '10.0.10.2' })).json, ENDED, 'and its files');
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': true, 'module.vault.download': true })).status, 200, 'Roles back');
+  same((await pub(moView.json.token, '', { ip: '10.0.10.2' })).status, 200, 'and it opens again');
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': false, 'module.vault.download': true })).status, 200, 'Roles: members may not share, as at the start');
+  for (const id of [moView, moDl]) await send(S, 'DELETE', shares(trip.id, id.json.share.id), { cookie: admin });
+  const nm = await json('PATCH', shares(trip.id, view.json.share.id), people.mo.token, { name: 7 });
+  const fresh = await make(people.mo.token, { name: 'Name test', files: [md.id], days: 1 });
+  same([(await json('PATCH', shares(trip.id, fresh.json.share.id), people.mo.token, { name: 7 })).status, (await json('PATCH', shares(trip.id, fresh.json.share.id), people.mo.token, { name: null })).json], [400, { error: 'Give the share link a name.' }], 'a name that is not text on a change: 400');
+  void nm;
+
+  // The Vault turned off: its links end for good (their records are deleted), even with the files kept.
+  const offLink = await make(admin, { name: 'Off test', files: [md.id], days: 7 });
+  ok(fs.existsSync(sharesFile), 'before it is turned off, the space has a share links file');
   same((await json('PATCH', '/api/modules/vault', admin, { enabled: false })).status, 200, 'the Vault is turned off');
   same((await pub(adminMade.json.token, '', { ip: '10.0.8.1' })).json, ENDED, 'its links answer as ended');
+  ok(!fs.existsSync(sharesFile), 'and the share links file is deleted');
   same((await json('PATCH', '/api/modules/vault', admin, { enabled: true, allSpaces: true })).status, 200, 'and on again');
-  same((await pub(adminMade.json.token, '', { ip: '10.0.8.1' })).status, 200, 'they open again');
+  same([(await pub(adminMade.json.token, '', { ip: '10.0.8.1' })).json, (await pub(offLink.json.token, '', { ip: '10.0.8.1' })).json], [ENDED, ENDED], 'no old link comes back');
+  same((await send(S, 'GET', shares(trip.id), { cookie: admin })).json, { shares: [] }, 'the list is empty');
+  same((await send(S, 'GET', lib(trip.id), { cookie: admin })).json.files.length, 5, 'the files are kept');
+
+  const endLink = await make(admin, { name: 'Ends soon', files: [md.id], days: 30 });
+  same(endLink.status, 201, 'a link to end by the clock');
 
   // The cap: 200 links in a space.
   const have = (await send(S, 'GET', shares(trip.id), { cookie: admin })).json.shares.length;
@@ -421,15 +499,15 @@ try {
   // Ended: a restart with the clock past a link's end (its end moved back in the file).
   await S.stop();
   const file = JSON.parse(fs.readFileSync(sharesFile, 'utf8'));
-  file[adminMade.json.share.id].ends = new Date(Date.now() - 1000).toISOString();
+  file[endLink.json.share.id].ends = new Date(Date.now() - 1000).toISOString();
   fs.writeFileSync(sharesFile, JSON.stringify(file));
-  S = await startServer('s', {});
+  S = await startServer('s', { SHARE_UNLOCKS_PER_MINUTE: '100000' });
   servers.push(S);
   admin = await login('admin', 'testpass1234');
-  const endedR = await pub(adminMade.json.token, '', { ip: '10.0.9.1' });
+  const endedR = await pub(endLink.json.token, '', { ip: '10.0.9.1' });
   same([endedR.status, endedR.json], [404, ENDED], 'a link past its end: 404 "This link has ended.", as an unknown one');
-  same((await pub(adminMade.json.token, `/files/${md.id}/content`, { ip: '10.0.9.1' })).json, ENDED, 'and its files');
-  ok(!(await send(S, 'GET', shares(trip.id), { cookie: admin })).json.shares.some((s) => s.id === adminMade.json.share.id), 'it is gone from the list');
+  same((await pub(endLink.json.token, `/files/${md.id}/content`, { ip: '10.0.9.1' })).json, ENDED, 'and its files');
+  ok(!(await send(S, 'GET', shares(trip.id), { cookie: admin })).json.shares.some((s) => s.id === endLink.json.share.id), 'it is gone from the list');
   const keep = await make(admin, { name: 'one more', files: [pic.id], days: 30 });
   same(keep.status, 201, 'so another can be made');
 
@@ -444,7 +522,7 @@ try {
   // --- server H: environments (BASE_DOMAIN) --------------------------------------------------------------------------
   {
     const BASE = 'share.test';
-    const H = await startServer('h', { BASE_DOMAIN: BASE, ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' });
+    const H = await startServer('h', { SHARE_UNLOCKS_PER_MINUTE: '3', BASE_DOMAIN: BASE, ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' });
     servers.push(H);
     const at = (sub) => `${sub ? `${sub}.` : ''}${BASE}:${H.port}`;
     const hsend = (method, sub, urlPath, o = {}) => send(H, method, urlPath, { ...o, host: at(sub) });
@@ -463,27 +541,39 @@ try {
       const space = (await hjson('POST', slug, '/api/spaces', { name: 'Trip' }, { cookie: owner })).json.space;
       const up = await hsend('POST', slug, `/api/modules/vault/library?space=${space.id}&name=a.md`, { cookie: owner, headers: { 'content-type': 'text/markdown' }, body: Buffer.from(`# ${slug}\n`) });
       same(up.status, 201, `a file in ${slug}: ${up.text}`);
-      const sh = await hjson('POST', slug, `/api/modules/vault/library/shares?space=${space.id}`, { name: 'x', files: [up.json.file.id], days: 1, password: 'pw' }, { cookie: owner });
+      const sh = await hjson('POST', slug, `/api/modules/vault/library/shares?space=${space.id}`, { name: 'x', files: [up.json.file.id], days: 1, password: 'password1' }, { cookie: owner });
       same(sh.status, 201, `a link in ${slug}`);
       envs[slug] = { owner, space, file: up.json.file, token: sh.json.token };
     }
     const a = envs.aaa;
     same((await hsend('GET', 'aaa', `/api/shared/${a.token}`, { ip: '10.1.0.1' })).json, LOCKED, 'a link opens on its own environment\'s host');
-    const un = await hjson('POST', 'aaa', `/api/shared/${a.token}/unlock`, { password: 'pw' }, { ip: '10.1.0.1' });
+    const un = await hjson('POST', 'aaa', `/api/shared/${a.token}/unlock`, { password: 'password1' }, { ip: '10.1.0.1' });
     same(un.status, 200, 'and unlocks there');
     const hjar = un.setCookies[0].split(';')[0];
     same((await hsend('GET', 'aaa', `/api/shared/${a.token}`, { ip: '10.1.0.1', cookies: hjar })).status, 200, 'and lists there');
     same((await hsend('GET', 'bbb', `/api/shared/${a.token}`, { ip: '10.1.0.1', cookies: hjar })).json, ENDED, 'on another environment\'s host it has ended, cookie or not');
-    same((await hjson('POST', 'bbb', `/api/shared/${a.token}/unlock`, { password: 'pw' }, { ip: '10.1.0.2' })).json, ENDED, 'and can\'t be unlocked there');
+    same((await hjson('POST', 'bbb', `/api/shared/${a.token}/unlock`, { password: 'password1' }, { ip: '10.1.0.2' })).json, ENDED, 'and can\'t be unlocked there');
     same((await hsend('GET', 'bbb', `/api/shared/${a.token}/files/${a.file.id}/content`, { ip: '10.1.0.1', cookies: hjar })).json, ENDED, 'nor its file read there');
     // bbb's own cookie, made for bbb's link, opens nothing of aaa's (signed with bbb's secret over bbb's link).
-    const unB = await hjson('POST', 'bbb', `/api/shared/${envs.bbb.token}/unlock`, { password: 'pw' }, { ip: '10.1.0.3' });
+    const unB = await hjson('POST', 'bbb', `/api/shared/${envs.bbb.token}/unlock`, { password: 'password1' }, { ip: '10.1.0.3' });
     const bValue = unB.setCookies[0].split(';')[0].split('=')[1];
     same((await hsend('GET', 'aaa', `/api/shared/${a.token}`, { ip: '10.1.0.3', cookies: `share_unlock=${bValue}` })).json, LOCKED, 'another environment\'s cookie opens nothing');
+    // The environment's unlock rate (SHARE_UNLOCKS_PER_MINUTE=3 here): aaa has used 1; two more wrong ones from other
+    // addresses and the fourth waits, while bbb is not held up by aaa's.
+    const rates = [];
+    for (const ip of ['10.1.1.1', '10.1.1.2', '10.1.1.3']) rates.push((await hjson('POST', 'aaa', `/api/shared/${a.token}/unlock`, { password: 'nope nope' }, { ip })).status);
+    same(rates, [401, 401, 429], `the environment's unlocks per minute are capped (statuses ${rates.join(' ')})`);
+    same((await hjson('POST', 'bbb', `/api/shared/${envs.bbb.token}/unlock`, { password: 'password1' }, { ip: '10.1.1.4' })).status, 200, 'and another environment is not held up by it');
     for (const host of ['', 'admin', 'nope']) {
       const r = await hsend('GET', host, `/api/shared/${a.token}`, { ip: '10.1.0.4' });
       ok(r.status === 404 && !r.text.includes('Trip'), `the ${host || 'product'} host: 404, nothing about the link`);
     }
+    // Uninstalling with the files kept still ends the links for good.
+    const listShareFiles = (dir) => { const out = []; for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const f = path.join(dir, e.name); if (e.isDirectory()) out.push(...listShareFiles(f)); else if (e.name.endsWith('.shares.json')) out.push(f); } return out; };
+    ok(listShareFiles(H.dataDir).length === 2, 'both environments have a share links file');
+    const hostAsAaa = (await hjson('POST', 'aaa', '/api/login', { login: 'host', password: 'hostpass1234' })).json.token;
+    same((await hsend('DELETE', 'aaa', '/api/modules/vault?keepData=1', { cookie: hostAsAaa })).status, 200, 'the Vault is uninstalled in aaa with its files kept');
+    ok(listShareFiles(H.dataDir).length === 1, 'and aaa\'s share links file is gone, bbb\'s is not');
   }
 } catch (err) {
   failed = true;

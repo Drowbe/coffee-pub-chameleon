@@ -37,6 +37,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { cleanName } = require('./vault-store');
 
 const ENDED = 'This link has ended.';
 const LOCKED = 'This link needs its password.';
@@ -55,6 +56,11 @@ const WINDOW_MS = 15 * 60 * 1000;
 // address across links. Lookups of links that don't open: a hundred per address in fifteen minutes.
 const TRIES = { linkAddress: 5, link: 30, address: 20, misses: 100 };
 const STREAMS_PER_ADDRESS = 12;
+// Password checks on the public path run on libuv's threads, never blocking: at most this many at once across the
+// server, this many waiting, and this many unlocks a minute for one environment.
+const SCRYPT_AT_ONCE = 2;
+const SCRYPT_WAITING = 50;
+const UNLOCKS_PER_MINUTE = Math.max(1, Number(process.env.SHARE_UNLOCKS_PER_MINUTE) || 60);
 
 // The page's own headers: no framing, no referrer, not indexed, not kept, and a CSP with this site's own files only (its
 // scripts, styles, fonts and the share's pictures and media; /viewer/pdf framed for a PDF; nothing from anywhere else).
@@ -78,9 +84,10 @@ const API_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
 };
 
-// Counts in a fifteen-minute window, bounded however many keys come: past 10000 the oldest go.
+// Counts in a window, bounded however many keys come: past `max` the oldest go. A window whose keys can't be made up by
+// a stranger (the links that exist) takes Infinity, so nobody can push its counts out.
 class Window {
-  constructor(ms) { this.ms = ms; this.hits = new Map(); }
+  constructor(ms, max = 10000) { this.ms = ms; this.max = max; this.hits = new Map(); }
   count(key) {
     const e = this.hits.get(key);
     if (!e || Date.now() - e.first > this.ms) return 0;
@@ -90,7 +97,7 @@ class Window {
     const now = Date.now();
     const e = this.hits.get(key);
     if (!e || now - e.first > this.ms) { this.hits.delete(key); this.hits.set(key, { first: now, n: 1 }); } else e.n += 1;
-    if (this.hits.size > 10000) for (const k of this.hits.keys()) { if (this.hits.size <= 10000) break; this.hits.delete(k); }
+    if (this.hits.size > this.max) for (const k of this.hits.keys()) { if (this.hits.size <= this.max) break; this.hits.delete(k); }
     return this.hits.get(key).n;
   }
   clear(key) { this.hits.delete(key); }
@@ -103,16 +110,40 @@ class Window {
   }
 }
 
-// A hash made for nothing, so an unlock of a link that doesn't open takes as long as a wrong password.
-let dummyHash = null;
+// scrypt as server/auth.js makes it, off the main thread and queued: true or false, or null when too many wait.
+const scryptQueue = [];
+let scryptRunning = 0;
+function checkPassword(password, stored) {
+  return new Promise((resolve) => {
+    const [kind, salt, hash] = String(stored).split('$');
+    if (kind !== 'scrypt' || !salt || !hash) return resolve(false);
+    if (scryptQueue.length >= SCRYPT_WAITING) return resolve(null);
+    scryptQueue.push({ password, salt, hash, resolve });
+    pump();
+  });
+}
+function pump() {
+  while (scryptRunning < SCRYPT_AT_ONCE && scryptQueue.length) {
+    const job = scryptQueue.shift();
+    scryptRunning += 1;
+    crypto.scrypt(String(job.password), job.salt, 32, (err, key) => {
+      scryptRunning -= 1;
+      const expected = Buffer.from(job.hash, 'hex');
+      job.resolve(!err && key.length === expected.length && crypto.timingSafeEqual(key, expected));
+      pump();
+    });
+  }
+}
 
 function mountVaultShares(app, deps) {
-  const { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf, sharePage } = deps;
-  const tries = new Window(WINDOW_MS);
+  const { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf, sharePage, makerCan } = deps;
+  const tries = new Window(WINDOW_MS); // wrong passwords per address, and per link and address
+  const linkTries = new Window(WINDOW_MS, Infinity); // per link: its keys are the links that exist, so it can't be pushed out
+  const unlocks = new Window(60 * 1000); // unlocks a minute per environment
   const misses = new Window(WINDOW_MS);
   const streams = new Map(); // "<slug>|<address>" -> open streams
   setInterval(() => {
-    for (const w of [tries, misses]) for (const [k, e] of w.hits) if (Date.now() - e.first > w.ms) w.hits.delete(k);
+    for (const w of [tries, linkTries, unlocks, misses]) for (const [k, e] of w.hits) if (Date.now() - e.first > w.ms) w.hits.delete(k);
   }, 60000).unref();
 
   // --- signed in: make, list, change and turn off ------------------------------------------------------------------
@@ -160,6 +191,7 @@ function mountVaultShares(app, deps) {
     if (!s) return res.status(404).json({ error: NO_SUCH_SHARE });
     if (s.by !== ctx.by && !ctx.owner) return res.status(403).json({ error: `Only the person who made this share link, or ${word('owner', { a: true })}, can change it.` });
     const b = body(req);
+    if (b.files !== undefined && s.download && !ctx.can('download')) return res.status(403).json({ error: `Your role can't download from ${ctx.name}, so you can't change the files of a link that allows it.` });
     try {
       res.json({ share: vault.updateShare(ctx.manifest.id, ctx.spaceId, s.id, { name: b.name, files: b.files }) });
     } catch (err) {
@@ -191,6 +223,8 @@ function mountVaultShares(app, deps) {
     if (!found) return null;
     const on = modules.enabled(found.moduleId);
     if (!on || !on.manifest.library || !modules.isOnIn(found.moduleId, found.spaceId) || !store.spaceById(found.spaceId)) return null;
+    // The link is its maker's: it ends when they are gone, out of the space, or no longer allowed to share (or to download).
+    if (!makerCan(found.share.by, found.spaceId, found.moduleId, found.share.download ? ['share', 'download'] : ['share'])) return null;
     return { ...found, manifest: on.manifest };
   }
 
@@ -209,17 +243,19 @@ function mountVaultShares(app, deps) {
     return want.length === got.length && crypto.timingSafeEqual(want, got);
   }
 
-  // Each public route: the headers, then the address's misses, then the token, its end and the password, before anything.
+  // A link that doesn't open: counted against the address, answered as ended.
+  function missed(res, addr) {
+    if (misses.count(addr) >= TRIES.misses) return res.status(429).set('Retry-After', String(misses.left(addr))).json({ error: TOO_MANY });
+    misses.add(addr);
+    return res.status(404).json({ error: ENDED, ended: true });
+  }
+
+  // Each public route: the headers, then the token (its end, its maker and the Vault), then the password. Misses are
+  // counted only for links that don't open; a link that does open is never held up by them.
   function sharedAccess(req, res, { needUnlock = true } = {}) {
     res.set(API_HEADERS);
-    const addr = address(req);
-    if (misses.count(addr) >= TRIES.misses) { res.status(429).set('Retry-After', String(misses.left(addr))).json({ error: TOO_MANY }); return null; }
     const found = openShare(req.params.token);
-    if (!found) {
-      misses.add(addr);
-      res.status(404).json({ error: ENDED, ended: true });
-      return null;
-    }
+    if (!found) { missed(res, address(req)); return null; }
     if (needUnlock && !unlocked(req, found)) { res.status(401).json({ error: LOCKED, password: true }); return null; }
     return found;
   }
@@ -227,7 +263,7 @@ function mountVaultShares(app, deps) {
   // Only `firstName` of the maker reaches the page (the plan's "Shared by <first name>"); a maker who left shows none.
   const firstName = (key) => {
     const u = store.userByKey(key);
-    return u ? String(u.displayName || '').trim().split(/\s+/)[0] || null : null;
+    return u ? cleanName(String(u.displayName || '').trim().split(/\s+/)[0]) || null : null;
   };
 
   const sendPage = (req, res) => {
@@ -264,28 +300,31 @@ function mountVaultShares(app, deps) {
     res.set(API_HEADERS);
     const addr = address(req);
     const found = openShare(req.params.token);
-    const link = found ? `${slugOf()}|${found.moduleId}|${found.share.id}` : null;
-    const keys = [[addr, TRIES.address], ...(link ? [[`${link}|${addr}`, TRIES.linkAddress], [link, TRIES.link]] : [])];
-    if (misses.count(addr) >= TRIES.misses) return res.status(429).set('Retry-After', String(misses.left(addr))).json({ error: TOO_MANY });
-    const over = keys.find(([k, most]) => tries.count(k) >= most);
-    if (over) return res.status(429).set('Retry-After', String(tries.left(over[0]))).json({ error: TOO_MANY });
-    if (found && !found.share.passwordHash) return res.json({ ok: true });
+    if (!found) return missed(res, addr);
+    // Nothing to check: no password, or the cookie already says it was right. No limit applies.
+    if (!found.share.passwordHash || unlocked(req, found)) return res.json({ ok: true });
+    const link = `${slugOf()}|${found.moduleId}|${found.share.id}`;
+    const keys = [[tries, addr, TRIES.address], [tries, `${link}|${addr}`, TRIES.linkAddress], [linkTries, link, TRIES.link]];
+    const over = keys.find(([w, k, most]) => w.count(k) >= most);
+    if (over) return res.status(429).set('Retry-After', String(over[0].left(over[1]))).json({ error: TOO_MANY });
+    const env = slugOf();
+    if (unlocks.count(env) >= UNLOCKS_PER_MINUTE) return res.status(429).set('Retry-After', String(unlocks.left(env))).json({ error: TOO_MANY });
     const password = typeof req.body?.password === 'string' ? req.body.password.slice(0, 200) : '';
     // Counted before the check, so tries sent at once can't all pass the limit; a right one is taken back below.
+    unlocks.add(env);
     let most = 0; // the wait grows with this address's own tries, never with other people's
-    for (const [k] of keys) { const n = tries.add(k); if (k !== link) most = Math.max(most, n); }
+    for (const [w, k] of keys) { const n = w.add(k); if (w !== linkTries) most = Math.max(most, n); }
     // A growing wait after the first wrong tries: 0, 0, 0.5, 1, 2, 4 s ... at most 8.
     const wait = most > 2 ? Math.min(8000, 500 * 2 ** (most - 3)) : 0;
     if (wait) await new Promise((r) => setTimeout(r, wait));
-    if (!dummyHash) dummyHash = auth.hashPassword(crypto.randomBytes(16).toString('hex'));
-    const right = found ? vault.sharePasswordOk(found.share, password) : (auth.verifyPassword(password, dummyHash), false);
-    if (!found) { misses.add(addr); return res.status(404).json({ error: ENDED, ended: true }); }
+    const right = await checkPassword(password, found.share.passwordHash);
+    if (right === null) return res.status(429).set('Retry-After', '5').json({ error: TOO_MANY });
     // The link may have ended or been turned off while waiting.
     const still = openShare(req.params.token);
     if (!still || still.share.id !== found.share.id) return res.status(404).json({ error: ENDED, ended: true });
     if (!right) return res.status(401).json({ error: WRONG_PASSWORD });
     tries.clear(`${link}|${addr}`); // a right password clears its link and address, and takes its try back from the others
-    tries.sub(link);
+    linkTries.sub(link);
     tries.sub(addr);
     const exp = Math.min(Date.now() + UNLOCK_MS, Date.parse(found.share.ends));
     res.cookie(COOKIE, `${exp}.${cookieMac(found, exp)}`, { httpOnly: true, sameSite: 'strict', secure: auth.isSecure(req), path: `/api/shared/${req.params.token}`, maxAge: Math.max(0, exp - Date.now()) });
@@ -335,4 +374,4 @@ function mountVaultShares(app, deps) {
   app.use('/api/shared', (req, res) => res.status(404).set(API_HEADERS).json({ error: ENDED, ended: true }));
 }
 
-module.exports = { mountVaultShares, COOKIE, PAGE_CSP, PAGE_HEADERS, TRIES };
+module.exports = { mountVaultShares, Window, COOKIE, PAGE_CSP, PAGE_HEADERS, TRIES, UNLOCKS_PER_MINUTE };

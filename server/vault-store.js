@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
-const { hashPassword, verifyPassword } = require('./auth');
+const { hashPassword } = require('./auth');
 
 const FILE_ID_RE = /^[a-f0-9]{24}$/;
 const SPACE_RE = /^[a-z0-9]{4,16}$/;
@@ -33,6 +33,7 @@ const SHARE_ID_RE = /^[a-f0-9]{18}$/;
 const SHARE_DAYS = [1, 7, 30];
 const SHARES_MAX = 200; // share links in one space
 const SHARE_FILES_MAX = 500; // files in one share link
+const SHARE_PASSWORD_MIN = 8;
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
 class VaultError extends Error {
@@ -269,7 +270,7 @@ class VaultStore extends EventEmitter {
   // A new share link for files of the space: { share (its view), token } -- the token only here, never again.
   // `days` is 1, 7 or 30 (plan decision 15); `password` optional; every file must be one of the space's.
   createShare(moduleId, spaceId, { name, files, by, days = 7, download = false, password = '' }) {
-    const clean = cleanName(name);
+    const clean = typeof name === 'string' ? cleanName(name) : '';
     if (!clean) throw new VaultError('Give the share link a name.');
     if (!SHARE_DAYS.includes(days)) throw new VaultError('A share link ends after 1, 7 or 30 days.');
     const list = [...new Set(Array.isArray(files) ? files.map(String) : [])];
@@ -277,6 +278,7 @@ class VaultStore extends EventEmitter {
     if (list.length > SHARE_FILES_MAX) throw new VaultError(`A share link holds at most ${SHARE_FILES_MAX} files.`);
     if (list.some((fid) => !this.get(moduleId, spaceId, fid))) throw new VaultError('There is no such file.', 404);
     if (typeof password !== 'string' || password.length > 200) throw new VaultError('That password is too long.');
+    if (password && password.length < SHARE_PASSWORD_MIN) throw new VaultError(`A password needs at least ${SHARE_PASSWORD_MIN} characters.`);
     const map = this.shareMap(moduleId, spaceId);
     if (map.size >= SHARES_MAX) throw new VaultError(`There are already ${SHARES_MAX} share links here. Turn some off first.`, 409);
     const token = crypto.randomBytes(32).toString('base64url');
@@ -320,7 +322,7 @@ class VaultStore extends EventEmitter {
     let nextName = s.name;
     let nextFiles = s.files;
     if (name !== undefined) {
-      nextName = cleanName(name);
+      nextName = typeof name === 'string' ? cleanName(name) : '';
       if (!nextName) throw new VaultError('Give the share link a name.');
     }
     if (files !== undefined) {
@@ -390,11 +392,6 @@ class VaultStore extends EventEmitter {
     return found;
   }
 
-  // Whether `password` opens the share (true when it has none).
-  sharePasswordOk(share, password) {
-    return !share.passwordHash || verifyPassword(String(password || ''), share.passwordHash);
-  }
-
   // The spaces a module has share links in.
   shareSpacesOf(moduleId) {
     let names = [];
@@ -413,6 +410,19 @@ class VaultStore extends EventEmitter {
       changed = true;
     }
     if (changed) this.saveShares(moduleId, spaceId);
+  }
+
+  // The Vault turned off or uninstalled ends its links for good, whether or not the files are kept: every space's share
+  // links file goes (turned on again, the files return but no old link does).
+  dropSharesOf(moduleId) {
+    if (!MODULE_RE.test(String(moduleId))) return 0;
+    let gone = 0;
+    for (const spaceId of this.shareSpacesOf(moduleId)) {
+      gone += this.shareMap(moduleId, spaceId).size;
+      fs.rmSync(this.sharesFile(moduleId, spaceId), { force: true });
+    }
+    for (const key of [...this.shareCache.keys()]) if (key.startsWith(`${moduleId}|`)) this.shareCache.delete(key);
+    return gone;
   }
 
   // A deleted space takes its files: the space's bytes folder and every module's records for it. Answers how many files went.

@@ -124,7 +124,9 @@ test('nothing is left of the old translation (WIRE_SCOPE, toSdk, toWire)', () =>
       const at = host.indexOf(`async ${call}(spec)`);
       assert.match(host.slice(at, host.indexOf('\n    },', at)), /scopeOf\(spec\?\.scope, spec\?\.space\)[^\n]*space: undefined/, `${call} passes { space } and keeps it out of the body`);
     }
-    assert.ok(host.includes("async 'objects.setLinks'({ from, to, space })"), 'setLinks takes { space }');
+    assert.ok(host.includes("async 'objects.setLinks'({ from, to, space, kind, op })"), 'setLinks takes { space } (and the optional kind and op)');
+    const setLinks = host.slice(host.indexOf("async 'objects.setLinks'"), host.indexOf("async 'objects.links'"));
+    assert.match(setLinks, /scopeOf\('space', space === undefined/, 'setLinks checks the given { space } against the pointer\'s');
     const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
     assert.ok(sdk.includes("const opts = (o) => ({ scope: (o && o.scope) || 'context', ...(o && o.space ? { space: String(o.space) } : {}) });"), 'the SDK passes { space }');
   });

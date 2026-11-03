@@ -3265,7 +3265,7 @@ app.get('/theme.css', (req, res) => {
 
 // A library module's share links (server/vault-share.js): the signed-in routes that make and turn them off, and the
 // public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
-mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html') });
+mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html'), makerCan: shareMakerCan });
 
 app.use(express.static(publicDir, { index: false }));
 
@@ -4250,8 +4250,11 @@ app.patch('/api/modules/:id', requireOwner, (req, res) => {
     const needing = current?.enabled ? modules.dependentsOf(req.params.id) : [];
     if (current?.enabled && (!needing.length || rest.force === true)) for (const id of [req.params.id, ...needing]) moduleHolds.expireModule(id);
   }
+  const wasOn = rest.enabled === false && modules.list().find((m) => m.id === req.params.id)?.enabled;
   if (Object.keys(rest).length) modules.update(req.params.id, rest, { spaceExists: (id) => !!store.spaceById(id) });
   else modules.get(req.params.id); // 404 for a module that is not installed
+  // A library module turned off ends its share links for good (turned on again, its files return but no old link does).
+  if (wasOn && !modules.enabled(req.params.id)) vault.dropSharesOf(req.params.id);
   store.applyModuleDisplay(req.params.id, display);
   res.json({ module: modules.view(req.params.id) });
 });
@@ -4270,6 +4273,7 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
   // How many files the module holds: gone with its data, or kept (they stay on the disk and still count against storage).
   const libraryFiles = modules.view(req.params.id)?.library ? vault.summary(req.params.id).files : 0;
   if (req.query.keepData === '0') vault.forgetModule(req.params.id);
+  else vault.dropSharesOf(req.params.id); // kept files, but their links end for good
   modules.uninstall(req.params.id, { keepData: req.query.keepData !== '0' });
   moduleData.forget(req.params.id);
   if (req.query.keepData === '0') {
@@ -8217,6 +8221,16 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   const can = (key) => Boolean(perms[`module.${manifest.id}.${key}`]);
   if (need && !can(need)) return refuse(403, `Your role can't do that in ${name}.`);
   return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user) };
+}
+// Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
+// permission in `keys` of the module there. The public routes ask this on every open.
+function shareMakerCan(userKey, spaceId, moduleId, keys) {
+  const user = store.userByKey(userKey);
+  const space = store.spaceById(spaceId);
+  if (!user || !space) return false;
+  if (!(hasOwnerRights(user) || space.members.includes(user.key))) return false;
+  const perms = store.spacePermissions(user.key, spaceId);
+  return keys.every((k) => Boolean(perms[`module.${moduleId}.${k}`]));
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
 // `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
