@@ -126,6 +126,7 @@ const SKIP = [
   /^public\/lib\//, /^public\/models\//, /^public\/maps-glyphs\//, /^tools\/\.wiki-build\//,
   /^modules\/maps\/src\/maps-lib-a-maplibre\./, /^modules\/maps\/src\/maps-lib-b-pmtiles\./,
   /^tools\/check-names-allow\.json$/, /(^|\/)node_modules\//,
+  /^public\/sdk\/pdfjs\//, // vendored third-party pdf.js (generated, minified): not our code, so not scanned
   /^server\/airports\.json$/, // third-party data (mwgg/Airports, built by tools/build-airports.mjs): airport names, not code
 ];
 function walk(rel, out = []) {

@@ -281,6 +281,12 @@ a {
 .tv-dow-hint { display: block; min-height: 14px; color: var(--accent); font-size: var(--text-11); font-weight: var(--weight-strong); }
 /* datepicker:end */
 
+/* timefield:start -- the time field (host.ui.timeField): the input is a text field that shows the environment's clock; the box is the Fields
+   block of system.css. Digits keep one width so the time does not shift while it is changed; on a touch screen it is 44px tall, 16px text. */
+.sdk-timefield { font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { .sdk-timefield { min-height: 44px; font-size: var(--text-16); } }
+/* timefield:end */
+
 /* kind:start -- the kind picker (host.ui.kindPicker): one row, --bar-control-h tall, with the chosen kind's icon on a
    tinted chip in its colour (--kind-color, set per kind by the script), the field that names it and filters as you type,
    and a chevron. The list (ul.sdk-kind-list, role listbox) is placed by the script: fixed under the field, inside an open

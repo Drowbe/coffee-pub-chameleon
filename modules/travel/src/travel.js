@@ -226,6 +226,7 @@
       hide(el.querySelector('[data-action="open"]'), broken || !summary || !summary.open);
       hide(el.querySelector('[data-action="remove-link"]'), !broken || !canEdit);
     }
+    placeChipInto(el, item);
     ownersInto(el, item);
     moreInto(el, item);
     roundTripInto(el, item);
@@ -233,6 +234,27 @@
     // A part with nothing shown in it takes no room: a line of chips, then the body (the card is then its band alone).
     for (const box of [...el.querySelectorAll('.chips2'), ...el.querySelectorAll('.sdk-card-body > .main'), el.querySelector(':scope > .sdk-card-body')]) if (box) hide(box, ![...box.children].some((k) => !k.hidden));
     return el;
+  }
+
+  // A stop at a Place from Places: the place as a chip on its card that opens it (the card's own "open" action, by the pointer it carries).
+  // A place that is gone, or that this person may not see, is not drawn as a link; the name the person typed shows as before.
+  function placeChipInto(el, item) {
+    if (item.kind !== 'stop' || !item.placeRef) return;
+    const summary = plan.summaries.get(host.util.objectKey(item.placeRef));
+    if (summary && linkState(summary)) return;
+    const text = (summary && summary.title) || item.place || 'Place';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'sdk-chip-tag place-chip';
+    chip.dataset.tone = 'custom';
+    chip.dataset.action = 'open';
+    chip.dataset.ref = JSON.stringify(item.placeRef);
+    chip.innerHTML = '<span class="ic" data-icon="location-dot"></span><span class="place-chip-text"></span>';
+    chip.querySelector('.place-chip-text').textContent = text;
+    chip.setAttribute('aria-label', `Open ${text}`);
+    let box = el.querySelector('.chips2');
+    if (!box) { box = document.createElement('div'); box.className = 'chips2'; (el.querySelector('.sdk-card-body') || el).append(box); }
+    box.prepend(chip);
   }
 
   // A leg of a round trip: a line under its card with the other leg's day ("Round trip · Return Fri, Oct 9"), and on a return placed
@@ -2213,7 +2235,7 @@
     const ed = state.editing;
     if (!form || !ed) return '';
     const fields = [...form.querySelectorAll('input, select, textarea')].map((el, i) => `${el.id || el.name || i}${el.type === 'radio' ? `:${el.value}` : ''}=${el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value}`);
-    return `${ed.tile}|${chosenMode()}|${fields.join('\n')}`;
+    return `${ed.tile}|${chosenMode()}|${ed.placeRef ? host.util.objectKey(ed.placeRef) : ''}|${fields.join('\n')}`;
   };
   const editorOpened = () => { if (state.editing) state.editing.opened = formSnapshot(); };
   const editorDirty = () => Boolean(state.editing && state.editing.opened !== undefined && formSnapshot() !== state.editing.opened);
@@ -2227,6 +2249,79 @@
     if (ed.date) { const day = root.querySelector(`.sdk-day[data-day="${CSS.escape(ed.date)}"] [data-action="day-menu"]`); if (day) return day; }
     return null;
   };
+  // --- the stop's Place (plan-places-and-maps.md): the name typed stays valid on its own; a Place from Places can be linked to it ---
+  // The editor holds the link in state.editing.placeRef until Save; the plan records it (setLinks) when the stop is saved, and removes it
+  // when it is unlinked or the stop goes. Save as a place makes a Place from the typed name (the Places action addPlace, when a module offers it).
+  let placeAction;
+  async function addPlaceAction() {
+    if (placeAction !== undefined) return placeAction;
+    try { placeAction = (await host.actions.list()).find((a) => a.name === 'addPlace' && a.input && a.input.title) || null; } catch (err) { placeAction = null; }
+    return placeAction;
+  }
+  function placeFieldSync() {
+    const ed = state.editing;
+    if (!ed || !$('f-place')) return;
+    const linked = Boolean(ed.placeRef);
+    const summary = linked ? plan.summaries.get(host.util.objectKey(ed.placeRef)) : null;
+    const gone = Boolean(linkState(summary));
+    hide($('f-place-linked'), !linked);
+    fill($('f-place-linked'), { title: gone ? 'A place you cannot open' : (summary && summary.title) || ed.placeTitle || $('f-place').value || 'Place' });
+    hide($('f-place-open'), !linked || gone);
+    hide($('f-place-unlink'), !linked);
+    hide($('f-place-save'), linked || !$('f-place').value.trim() || !ed.canSavePlace);
+    $('f-place-pick').textContent = linked ? 'Pick another' : 'Pick from Places';
+  }
+  function placeFieldInit(item) {
+    const ed = state.editing;
+    if (!ed || !$('f-place')) return;
+    ed.placeRef = item && item.placeRef ? item.placeRef : null;
+    ed.placeTitle = '';
+    ed.canSavePlace = false;
+    setVal('f-place', item ? item.place : '');
+    const say = (text) => { $('f-place-hint').textContent = text || ''; };
+    placeFieldSync();
+    if (ed.placeRef && !plan.summaries.has(host.util.objectKey(ed.placeRef))) plan.refreshSummaries().then(placeFieldSync).catch(() => {});
+    addPlaceAction().then((a) => { if (state.editing === ed) { ed.canSavePlace = Boolean(a); placeFieldSync(); } });
+    $('f-place').addEventListener('input', () => { say(''); placeFieldSync(); });
+    $('f-place-pick').addEventListener('click', () => attempt(async () => {
+      say('');
+      const picked = await host.objects.pick({ modules: ['places'], kinds: ['place'], title: 'Pick a place' });
+      if (!picked || state.editing !== ed) return;
+      const ref = await sharedRef(picked);
+      const summary = await host.objects.resolve(ref);
+      if (state.editing !== ed) return;
+      ed.placeRef = ref;
+      ed.placeTitle = summary && !summary.error ? summary.title : '';
+      if (summary && !summary.error) {
+        plan.summaries.set(host.util.objectKey(ref), summary);
+        $('f-place').value = summary.title;
+        if (summary.subtitle && !$('f-address-stop').value.trim()) $('f-address-stop').value = summary.subtitle;
+      }
+      placeFieldSync();
+      $('f-place-pick').focus();
+    }));
+    $('f-place-save').addEventListener('click', () => attempt(async () => {
+      const add = await addPlaceAction();
+      const name = $('f-place').value.trim();
+      if (!add || !name) return;
+      say('Saving...');
+      $('f-place-save').disabled = true;
+      try {
+        const address = $('f-address-stop').value.trim();
+        const out = await host.actions.request(add.action, { title: name, ...(address ? { address } : {}) }, { wait: true });
+        if (state.editing !== ed) return;
+        if (out.status === 'done' && out.result && out.result.ok !== false && out.result.ref) {
+          ed.placeRef = out.result.ref;
+          ed.placeTitle = name;
+          say('Saved as a place.');
+        } else say('Places did not answer. Open Places, then try again.');
+      } finally { $('f-place-save').disabled = false; }
+      placeFieldSync();
+    }));
+    $('f-place-open').addEventListener('click', () => { if (ed.placeRef) host.objects.open(ed.placeRef).catch((err) => say(err.message)); });
+    $('f-place-unlink').addEventListener('click', () => { ed.placeRef = null; ed.placeTitle = ''; say('Unlinked. The name stays.'); placeFieldSync(); $('f-place').focus(); });
+  }
+
   const editor = host.ui.editor($('editor'), {
     size: 'large',
     isDirty: editorDirty,
@@ -2276,6 +2371,8 @@
       // The kind: an existing object's own, the one the day's "..." or a joint's + chose, else the last kind chosen in this
       // browser (the picker remembers), else Sight. Where is set first, since it decides a marker's block or lane.
       const preset = item ? tileOf(item) || 'sight' : place && place.tile;
+      // The times follow the environment's clock (12 or 24 hours), not the browser's own; the stored value stays "HH:MM".
+      for (const tid of ['f-time', 'f-endTime', 'f-checkOutTime', 'f-arrival-time', 'f-back-time', 'f-back-endTime', 'f-back-arrival-time']) if ($(tid)) host.ui.timeField($(tid));
       dayField($('f-date'));
       dayField($('f-back-date'));
       dayField($('f-checkout'), { checkout: true });
@@ -2310,6 +2407,7 @@
       setVal('f-gate-show', v.gate);
       setVal('f-address', v.address);
       setVal('f-address-stop', v.address);
+      placeFieldInit(item);
       setVal('f-confirm', v.confirm);
       $('f-notes').value = v.notes || '';
       $('f-cost').value = v.cost || '';
@@ -2765,6 +2863,8 @@
           fields.guests = num('f-guests');
           fields.confirm = get('f-confirm');
         } else if (t.kind === 'stop') {
+          fields.place = get('f-place');
+          fields.placeRef = ed.placeRef || null;
           fields.address = get('f-address-stop');
           fields.partySize = num('f-partySize');
           fields.reservationName = get('f-reservationName');

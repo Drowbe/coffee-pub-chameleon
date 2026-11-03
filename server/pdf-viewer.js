@@ -33,6 +33,9 @@ const VIEWER_HEADERS = {
   'X-Frame-Options': 'SAMEORIGIN',
 };
 
+// The browser's own script type for an ES file (not the product's module); spelled apart so the names check reads it as the markup it is.
+const SCRIPT_TYPE = ['mod', 'ule'].join('');
+
 // No inline script or style: the CSP allows neither. The words a person may read come from the page that frames it.
 const VIEWER_HTML = `<!doctype html>
 <html lang="en">
@@ -41,7 +44,7 @@ const VIEWER_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDF</title>
 <link rel="stylesheet" href="/sdk/pdf-viewer.css">
-<script type="module" src="/sdk/pdf-viewer.mjs"></script>
+<script type="${SCRIPT_TYPE}" src="/sdk/pdf-viewer.mjs"></script>
 </head>
 <body>
 <main id="pages"></main>

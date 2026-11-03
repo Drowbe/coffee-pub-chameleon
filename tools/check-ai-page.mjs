@@ -152,6 +152,97 @@ async function newAskChecks(t, S, admin) {
   expect(opened && opened.module === 'research' && opened.id === 'n1', `the object's link did not open it (${JSON.stringify(opened)})`);
 }
 
+// Another person asks (so the first one's minute is not used up): a dropped object stands in for the words, a question under
+// three characters is refused, and a citation [2] to a related object links, fresh and after a reload.
+async function chipAndCiteChecks(open, S, workspace) {
+  const t = await open({ ...workspace, as: 'sam' });
+  try {
+    await sleep(1500);
+    await t.eval(WATCH);
+    await t.click('#chat-view-assistant');
+    await sleep(600);
+  // A chip stands in for the words: Enter on an empty box asks the server's usual question about it (refs sent, question '').
+  const nChip = await t.eval('window.__sent.length');
+  scripted = { answer: 'About that note [1].', used: [1] };
+  await t.eval(drop(S.ctx.trip));
+  await sleep(300);
+  await t.eval(`document.getElementById('chat-input').focus()`);
+  await t.key('Enter');
+  await answered(t);
+  const chipSent = await t.eval(bodies(nChip));
+  expect(chipSent.length === 1 && chipSent[0].question === '' && chipSent[0].refs.length === 1, `a chip with an empty box and Enter did not ask (${JSON.stringify(chipSent)}, note "${await t.eval(NOTE)}")`);
+  expect(await t.eval(chips) === 0, 'the chip stayed after an empty-box ask');
+  // An empty box and no chip still sends nothing.
+  const nNone = await t.eval('window.__sent.length');
+  await t.eval(`document.getElementById('chat-input').focus()`);
+  await t.key('Enter');
+  await sleep(400);
+  expect((await t.eval('window.__sent.length')) === nNone, 'Enter on an empty box with no chip sent a question');
+  // Under three characters: refused in the box, in the server's sentence.
+  await t.typeInto('#chat-input', 'hi');
+  await t.key('Enter');
+  await sleep(400);
+  const shortNote = await t.eval(NOTE);
+  expect((await t.eval('window.__sent.length')) === nNone && shortNote === 'Ask a question of at least 3 characters.', `a 2 character question was not refused in the box (note "${shortNote}")`);
+  await t.eval(`(() => { const i = document.getElementById('chat-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  say('chip: Enter on an empty box asks; two characters are refused');
+
+  // [2] links to numbered[1] for an object that was related, fresh and after a reload.
+  scripted = { answer: 'First [1] and second [2].', used: [1, 2] };
+  await t.eval(drop(S.ctx.trip));
+  await t.typeInto('#chat-input', 'where to eat near the hotel, and what else is saved');
+  await t.key('Enter');
+  await answered(t);
+  const stored = await t.eval(`fetch('/api/spaces/${S.ctx.trip}/chat').then((r) => r.json())`);
+  const lastAi = [...((stored && stored.messages) || [])].reverse().find((m) => m && m.kind === 'ai' && Array.isArray(m.numbered));
+  const citeCount = `[...document.querySelectorAll('#messages .message')].filter((m) => /First .* and second/.test(m.textContent)).pop()?.querySelectorAll('.message-cite').length`;
+  if (!lastAi || lastAi.numbered.length < 2) say(`citation [2]: the space holds only ${lastAi ? lastAi.numbered.length : 0} numbered object(s) for this ask; not measured`);
+  else {
+    expect(await t.eval(citeCount) === 2, `[1] and [2] are not both links to their objects (${await t.eval(citeCount)} links)`);
+    await t.eval('location.reload()');
+    await sleep(3500);
+    await t.click('#chat-view-assistant');
+    await sleep(800);
+    expect(await t.eval(citeCount) === 2, `after a reload [1] and [2] are not both links (${await t.eval(citeCount)} links)`);
+    await t.eval(WATCH);
+  }
+
+  } finally { await t.close(); }
+}
+
+// Text an AI wrote, through the one markdown function the page uses: allowed tags only, no handlers, http(s) links only,
+// links that cannot see the opener, and no hidden direction or zero-width characters.
+async function hostileChecks(t) {
+  const lines = [
+    '# Head <img src=x onerror=alert(1)>',
+    '<script>alert(1)</script> **bold** *it* `code`',
+    '[bad](javascript:alert(1)) [data](data:text/html,x) [ok](https://example.com/a_b)',
+    '[x](https://example.com" onmouseover="alert(1))',
+    'bare https://example.org/path and <a href="https://evil" onclick="x()">raw</a>',
+    '- one',
+    '- two',
+    'a‮evil‬ b⁦c⁩ d​e‍f⁠g﻿h',
+  ].join('\n');
+  const check = await t.eval(`(() => {
+    const html = hostText.markdown(${JSON.stringify(lines)});
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    const all = [...d.querySelectorAll('*')];
+    return {
+      html,
+      tags: [...new Set(all.map((e) => e.tagName.toLowerCase()))],
+      attrs: [...new Set(all.flatMap((e) => [...e.attributes].map((a) => a.name)))],
+      links: [...d.querySelectorAll('a')].map((a) => ({ href: a.getAttribute('href'), rel: a.getAttribute('rel') })),
+    };
+  })()`);
+  const allowed = new Set(['h1', 'h2', 'h3', 'p', 'br', 'strong', 'em', 'code', 'pre', 'a', 'ul', 'ol', 'li', 'blockquote']);
+  expect(check.tags.every((x) => allowed.has(x)), `markdown let through the tags ${JSON.stringify(check.tags.filter((x) => !allowed.has(x)))}`);
+  expect(check.attrs.every((x) => ['href', 'target', 'rel'].includes(x)), `markdown let through the attributes ${JSON.stringify(check.attrs)}`);
+  expect(check.links.length >= 2 && check.links.every((l) => /^https?:\/\//.test(l.href) && /noopener/.test(l.rel) && /noreferrer/.test(l.rel)), `a link is not http(s) with noopener noreferrer ${JSON.stringify(check.links)}`);
+  expect(!/[‪-‮⁦-⁩​-‍⁠﻿]/.test(check.html), 'direction or zero-width characters reached the page');
+  say(`hostile text: tags ${check.tags.join(',')}, ${check.links.length} links`);
+}
+
 // A cut-short answer says so (another person asks, so the first one's minute is not used up).
 async function cutChecks(open, workspace) {
   const t = await open({ ...workspace, as: 'sam' });
@@ -195,6 +286,22 @@ async function manageChecks(open, S, admin) {
         expect(back.ai.sees && back.ai.sees.chat === false, `Back to the usual did not reset it (${JSON.stringify(back.ai.sees)})`);
         const use = await m.eval(`({ text: document.getElementById('ai-use-box').textContent.replace(/\\s+/g, ' '), grids: document.querySelectorAll('#ai-use-box .sdk-table-wrap').length, records: [...document.querySelectorAll('#ai-use-box .sdk-table-wrap')].pop().querySelectorAll('tbody tr').length })`);
         expect(/tokens in \d+ calls? this month/.test(use.text) && /By kind of request/.test(use.text) && use.grids >= 3 && use.records >= 3, `this month's use is not drawn (${JSON.stringify({ ...use, text: use.text.slice(0, 200) })})`);
+        // A refusal with no template shows a dash for its Kind, not "Other".
+        const kind = await m.eval(`(async () => { const { drawAiUse } = await import('/ai-use.js'); const d = document.createElement('div'); drawAiUse(d, { usage: {}, recent: [{ at: Date.now(), outcome: 'refused', reason: 'allowance' }, { at: Date.now(), template: 'ask@1', outcome: 'answered' }] }); const rows = [...d.querySelectorAll('.sdk-table-wrap')].pop().querySelectorAll('tbody tr'); return [...rows].map((r) => r.children[3].textContent); })()`);
+        expect(kind[0] === '–' && kind[1] === 'Questions', `a refused record's Kind reads ${JSON.stringify(kind)}`);
+        // "Only these" with none ticked is refused with a plain sentence before saving.
+        await m.eval(`document.getElementById('ai-sees-modules-some').click()`);
+        await sleep(200);
+        await m.eval(`[...document.querySelectorAll('#ai-sees-box [data-sees-module]')].forEach((i) => { if (i.checked) i.click(); })`);
+        await m.eval(`document.getElementById('ai-sees-save').click()`);
+        await sleep(500);
+        const empty = await m.eval(`document.getElementById('ai-sees-status').textContent`);
+        expect(/at least one/i.test(empty), `an empty "Only these" was not refused ("${empty}")`);
+        const after = await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json();
+        expect(!(after.ai.sees && Array.isArray(after.ai.sees.modules) && after.ai.sees.modules.length === 0), 'an empty module list was saved');
+        // One block of use: the meter sits with the numbers, and the block comes before What AI may see.
+        const order = await m.eval(`(() => { const a = document.getElementById('ai-use-block'), b = document.getElementById('ai-sees-block'); return { before: !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING), meter: a.contains(document.getElementById('ai-usage')) }; })()`);
+        expect(order.before && order.meter, `the use blocks are not merged and ordered (${JSON.stringify(order)})`);
         say(`manage: rows ${JSON.stringify(rows)}, use ${use.grids} lists, ${use.records} records`);
       } else say(`manage at ${size}: no sideways scroll`);
     } finally { await m.close(); }
@@ -223,6 +330,12 @@ async function setupChecks(open, S, admin) {
     const env = (await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json()).ai.sees;
     expect(env.chat === false, "the space's choice changed the environment's");
   } finally { await t.close(); }
+  // A member sees no What AI may see in Set up.
+  const sam = await open({ as: 'sam', url: `/?setup=${S.ctx.trip}#modules`, wait: 'body' });
+  try {
+    await sleep(2500);
+    expect(await sam.eval(`document.querySelectorAll('[data-section="ai-sees"]').length`) === 0, 'a member is shown What AI may see');
+  } finally { await sam.close(); }
   // Opened again: the space's own choice shows, and its switch gives it back to the environment.
   const t2 = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
   try {
@@ -324,8 +437,10 @@ async function main() {
       expect(/Still asking/.test(busyNote), `no "Still asking" note while a question was out ("${busyNote}")`);
       say(`one at a time: ${twice} request, note "${busyNote}"`);
       await newAskChecks(t, S, admin);
+      await hostileChecks(t);
     } finally { await t.close(); }
     await cutChecks(open, workspace);
+    await chipAndCiteChecks(open, S, workspace);
     await manageChecks(open, S, admin);
     await setupChecks(open, S, admin);
     unitChecks();

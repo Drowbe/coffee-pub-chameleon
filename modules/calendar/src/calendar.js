@@ -832,6 +832,10 @@
     host.ui.datePicker($('f-until'), { range: span, clearable: true }),
   ];
 
+  // The times follow the environment's clock (12 or 24 hours), not the browser's own; .value stays "HH:MM".
+  host.ui.timeField($('f-time'));
+  host.ui.timeField($('f-end'));
+
   // The form opens in the SDK's editor window (host.ui.editor): a modal <dialog> over everything, sized to the form, a
   // sheet on a phone; the date pickers open inside it. Escape and its Close button ask "Discard your changes?" when the
   // form differs from what it opened with (isDirty), and so does Cancel (editor.cancel); Save and Delete close it at once. On close, focus goes back

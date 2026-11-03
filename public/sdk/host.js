@@ -151,6 +151,8 @@
   // everywhere else, text still goes in with textContent. Used for an AI's replies and for chat messages, both text
   // nobody here wrote themselves.
   function markdown(text) {
+    // Text direction controls and zero-width characters can disguise words; none is shown.
+    text = String(text || '').replace(/[\u202A-\u202E\u2066-\u2069\u200B-\u200D\u2060\uFEFF]/g, '');
     // Code, links and bare addresses are set aside as placeholders while bold and italic are found, so an underscore or star
     // inside an address or an attribute (target="_blank", .../Belem_Tower) can never pair with another and become emphasis.
     const inline = (s) => {
@@ -158,9 +160,9 @@
       const keep = (html) => `\u0000${kept.push(html) - 1}\u0000`;
       const html = esc(String(s).replace(/\u0000/g, ''))
         .replace(/`([^`\n]+)`/g, (_, c) => keep(`<code>${c}</code>`))
-        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => keep(`<a href="${u}" target="_blank" rel="noopener">${t}</a>`))
+        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`))
         // A bare address the text didn't wrap in [text](...) itself: linked as it stands.
-        .replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)"'\u0000])/g, (_, lead, u) => lead + keep(`<a href="${u}" target="_blank" rel="noopener">${u}</a>`))
+        .replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)"'\u0000])/g, (_, lead, u) => lead + keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`))
         .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
         // _italic_ only at word edges, so snake_case stays as written.
@@ -303,6 +305,37 @@
     s = s.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ');
     if (o && o.line) return s.replace(/\s+/g, ' ').trim();
     return s.split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // A time of day typed by a person, read as "HH:MM" (24 hours), or '' when it is not one. "1030", "10:30", "10.30", "10:30 pm", "10p",
+  // "7", "22:30" all read. With no am or pm, a 24-hour clock takes the hour as given; a 12-hour clock takes 0 and 13 to 23 as given,
+  // and 1 to 12 in the half of the day `prev` ("HH:MM", what the field held) was in (noon for 12, the morning for the rest, when it held nothing).
+  function parseClockText(text, clock, prev) {
+    const t = String(text ?? '').trim();
+    const m = /^(\d{1,2})\s*(?:[:.h]\s*(\d{2}))?\s*(?:([ap])\.?\s*m?\.?)?$/i.exec(t) || /^(\d{1,2})(\d{2})\s*(?:([ap])\.?\s*m?\.?)?$/i.exec(t);
+    if (!m) return '';
+    let h = Number(m[1]);
+    const min = m[2] === undefined ? 0 : Number(m[2]);
+    const half = m[3] ? m[3].toLowerCase() : '';
+    if (min > 59) return '';
+    if (half) {
+      if (h < 1 || h > 12) return '';
+      h = (h % 12) + (half === 'p' ? 12 : 0);
+    } else if (h > 23) {
+      return '';
+    } else if (clock !== '24' && h >= 1 && h <= 12) {
+      const pm = /^\d{2}:/.test(prev || '') ? Number(prev.slice(0, 2)) >= 12 : h === 12;
+      h = (h % 12) + (pm ? 12 : 0);
+    }
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  }
+  // "HH:MM" as the field shows it: "10:30 PM" on a 12-hour clock, "22:30" on a 24-hour one; '' stays ''.
+  function clockText(hhmm, clock) {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(hhmm || ''));
+    if (!m) return '';
+    if (clock === '24') return hhmm;
+    const h = Number(m[1]);
+    return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
   }
 
   // A local date and time from a `when` (the objects format's: "2026-11-14T12:50", "2026-11-14", or "12:50" when the day is
@@ -2103,6 +2136,127 @@
           destroy: () => { select.removeEventListener('change', changed); if (watch) watch.disconnect(); picker.destroy(); box.remove(); select.hidden = false; },
         };
       },
+      // A time field that follows the environment's clock (host.locale().clock: 12 or 24 hours) instead of the browser's own, on an
+      // <input type="time"> the module already has. The input becomes a text field that shows "10:30 PM" or "22:30" and reads what is
+      // typed ("1030", "10:30 pm", "7p", "22:30"); input.value stays "HH:MM" in 24 hours ('' when empty), set or read, so a module's
+      // stored values and code do not change. Up and Down move by `step` minutes (5; PageUp and PageDown by an hour), Enter and leaving
+      // the field accept what was typed, Escape puts back the last good time (and only then; with nothing to put back it goes on to
+      // close the window around it). Text that is not a time is '' and aria-invalid; a time outside min or max is aria-invalid too.
+      // `input` and `change` fire once per accepted time, never per typed letter. 44px tall and 16px on a touch screen.
+      // The accessible name is the field's <label> (kept live) or `label`.
+      //   timeField(input, { label?, min?, max?, step?, onChange? }) -> { value, set(hhmm), min, max, focus(), refresh(), destroy() }
+      // `refresh()` redraws the shown time (call it if the clock setting changes while a form is open). Anything but an input throws
+      // "host.ui.timeField needs an <input>".
+      timeField: (input, o) => {
+        if (!input || input.nodeType !== 1 || input.tagName !== 'INPUT') throw new Error('host.ui.timeField needs an <input>');
+        const options = o || {};
+        const native = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        const clean = (v) => { const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(v ?? '').trim()); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? `${m[1].padStart(2, '0')}:${m[2]}` : ''; };
+        let min = clean(options.min !== undefined ? options.min : input.getAttribute('min'));
+        let max = clean(options.max !== undefined ? options.max : input.getAttribute('max'));
+        const step = Number.isFinite(options.step) && options.step >= 1 ? Math.min(Math.round(options.step), 720) : 5;
+        let value = clean(native.get.call(input));
+        let bad = false;
+        let internal = false;
+        const clock = () => (locale().clock === '24' ? '24' : '12');
+        input.removeAttribute('min');
+        input.removeAttribute('max');
+        input.type = 'text';
+        input.classList.add('sdk-timefield');
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.setAttribute('autocapitalize', 'off');
+        if (options.label) input.setAttribute('aria-label', String(options.label));
+        else if (!input.closest('label') && !(input.labels && input.labels.length) && !input.getAttribute('aria-label') && !input.getAttribute('aria-labelledby')) input.setAttribute('aria-label', 'Time');
+        const show = () => {
+          input.placeholder = clock() === '24' ? 'HH:MM' : 'h:mm AM';
+          native.set.call(input, clockText(value, clock()));
+        };
+        const judge = () => {
+          const out = Boolean(value) && ((min && value < min) || (max && value > max));
+          if (bad || out) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+          input.setCustomValidity(bad ? 'Type a time, like 10:30' : out ? 'That time is outside the allowed hours' : '');
+        };
+        const fire = () => {
+          internal = true;
+          try {
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          } finally { internal = false; }
+          if (typeof options.onChange === 'function') options.onChange(value);
+        };
+        // Accept what is in the field: a time, or '' (empty is allowed; text that is not a time is '' and flagged).
+        const commit = () => {
+          const text = native.get.call(input).trim();
+          const next = text ? parseClockText(text, clock(), value) : '';
+          bad = Boolean(text) && !next;
+          const changed = next !== value;
+          value = next;
+          if (!bad) show();
+          judge();
+          if (changed) fire();
+        };
+        const minutesOf = (v) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
+        const nudge = (by) => {
+          commit();
+          const from = value ? minutesOf(value) : min ? minutesOf(min) - by : 12 * 60 - by;
+          const t = (((from + by) % 1440) + 1440) % 1440;
+          value = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+          bad = false;
+          show();
+          judge();
+          fire();
+        };
+        const onInput = (e) => { if (!internal) e.stopImmediatePropagation(); }; // typing is not a change until it is accepted
+        const onChange = (e) => { if (!internal) { e.stopImmediatePropagation(); commit(); } };
+        const onKey = (e) => {
+          if (input.disabled || input.readOnly) return;
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge((e.key === 'ArrowUp' ? 1 : -1) * step); } else if (e.key === 'PageUp' || e.key === 'PageDown') { e.preventDefault(); nudge(e.key === 'PageUp' ? 60 : -60); } else if (e.key === 'Enter') commit();
+          else if (e.key === 'Escape') {
+            if (native.get.call(input) === clockText(value, clock()) && !bad) return; // nothing to put back: Escape goes on (closes the window)
+            e.preventDefault();
+            e.stopPropagation();
+            bad = false;
+            show();
+            judge();
+          }
+        };
+        const onBlur = () => commit();
+        input.addEventListener('input', onInput, true);
+        input.addEventListener('change', onChange, true);
+        input.addEventListener('keydown', onKey);
+        input.addEventListener('blur', onBlur);
+        // The module sets and reads input.value as it did on a time input: "HH:MM" in, "HH:MM" out.
+        Object.defineProperty(input, 'value', {
+          configurable: true,
+          get: () => value,
+          set: (v) => { value = clean(v); bad = false; show(); judge(); },
+        });
+        show();
+        judge();
+        return {
+          get value() { return value; },
+          set: (v) => { input.value = v; },
+          get min() { return min; },
+          set min(v) { min = clean(v); judge(); },
+          get max() { return max; },
+          set max(v) { max = clean(v); judge(); },
+          focus: () => input.focus(),
+          refresh: show,
+          destroy: () => {
+            input.removeEventListener('input', onInput, true);
+            input.removeEventListener('change', onChange, true);
+            input.removeEventListener('keydown', onKey);
+            input.removeEventListener('blur', onBlur);
+            delete input.value;
+            input.type = 'time';
+            native.set.call(input, value);
+            input.classList.remove('sdk-timefield');
+            input.removeAttribute('aria-invalid');
+            input.setCustomValidity('');
+          },
+        };
+      },
       // A view or filter switch, drawn in the toolbar (see host.toolbar.set) -- its most common tool, so
       // this is the one built for every module rather than each writing its own diffing and event wiring.
       // { id, options: [{ id, label?, icon?, regular?, iconOnly? }], value, onChange }: an option needs a
@@ -2557,6 +2711,26 @@
       // space), and { has: 'place' } keeps only summaries with a place (up to 1,000 then, rather than 50).
       // { scope: 'environment', in: <space id> } finds the environment's objects marked for that space (plan-places-library.md).
       search: (text, o) => call('objects.search', { q: text || '', ...opts(o), ...(o && o.has ? { has: String(o.has) } : {}), ...(o && o.in ? { in: String(o.in) } : {}) }),
+      // A window the host draws to choose another module's object: a search box (the person's own permissions, the same search as
+      // search() above), the results as rows with each kind's icon, and on a phone a full-height sheet. Keyboard: type to search,
+      // Up and Down move, Enter chooses, Escape or Close cancels. Resolves with the object's pointer (a ref), or with a list of
+      // pointers when `multiple` is true (chosen with ticks, then the Pick button), or null when the person cancels.
+      //   pick({ modules?, kinds?, scope?, space?, title?, multiple? }) -> ref | ref[] | null
+      //   modules: ['places'] keeps only those modules' objects; kinds: ['place'] only those kinds ("kind" or "module:kind");
+      //   scope and space are search()'s; title is the window's name (default "Pick an object", in the environment's word for it).
+      // It does not store anything. Keep the ref (host.objects.setLinks if it should be linked) and resolve() it for its title.
+      pick: (o) => {
+        const t = o && typeof o === 'object' ? o : {};
+        refuseOld(t, 'host.objects.pick');
+        const list = (v, what) => {
+          if (v === undefined || v === null) return [];
+          if (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || !x)) throw Object.assign(new Error(`host.objects.pick: ${what} is a list of names`), { status: 400 });
+          return v.slice(0, 20);
+        };
+        try {
+          return call('objects.pick', { modules: list(t.modules, 'modules'), kinds: list(t.kinds, 'kinds'), title: t.title === undefined ? '' : String(t.title).slice(0, 120), multiple: t.multiple === true, ...opts(t) });
+        } catch (err) { return Promise.reject(err); }
+      },
       // The costs other modules hold in this space (the summaries that carry an `amount` or a `planned` amount: title, when, amount, planned?, paidBy?,
       // sharedBy? (none: everyone), module, ref), as the person may read them: { summaries, withheld }. `withheld` is how many
       // priced objects were left out because the person may not read their module (a number, never a title or figure). Read
@@ -3308,7 +3482,7 @@
       const id = ++seq;
       pending.set(id, { resolve, reject });
       global.parent.postMessage({ host: 1, tk: secret, id, method, params }, '*');
-      if (method === 'ui.confirm') return; // a question waits as long as the person takes
+      if (method === 'ui.confirm' || method === 'objects.pick') return; // a question waits as long as the person takes
       setTimeout(() => {
         if (!pending.delete(id)) return;
         reject(new Error('the host did not answer'));
@@ -3359,7 +3533,7 @@
   // `esc`, `markdown`, `plain`, `localWhen` and `detailLines` need no per-module env, so the call page (which loads this file directly for the modules
   // it hosts in the page, not as a module itself) can use the very same rendering Chat and every module share,
   // rather than a second copy. See host.util.markdown above for what this covers.
-  global.hostText = { esc, markdown, plain: plainText, localWhen, detailLines };
+  global.hostText = { esc, markdown, plain: plainText, localWhen, detailLines, parseClockText, clockText };
   // The currency list likewise, for Manage's Currency (a page, not a module): the same choices a module's currencySelect makes.
   global.hostCurrency = {
     fill: fillCurrencySelect,
