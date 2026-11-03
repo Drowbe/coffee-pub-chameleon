@@ -6,6 +6,7 @@
 //   <bytes folder>/space-<space id>/<file id>.thumb   its small picture, made by the page
 //   <bytes folder>/space-<space id>/.part-<random>    an upload still arriving (or cut off by a restart)
 //   DATA_DIR/modules/<module id>/library/space-<space id>.json   the records: { <file id>: record }, so a backup carries them
+//   DATA_DIR/modules/<module id>/library/space-<space id>.shares.json   its share links (hashes only), beside them
 // The bytes folder is VAULT_DIR/<environment slug> (index.js decides it; DATA_DIR/vault by default, outside the in-app
 // backups). Nothing a person sends names a path: a space id and a file id are checked against their patterns, and a
 // file's own name lives only in its record. Every write of a record or a thumbnail goes to a temp file first and is
@@ -19,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { hashPassword, verifyPassword } = require('./auth');
 
 const FILE_ID_RE = /^[a-f0-9]{24}$/;
 const SPACE_RE = /^[a-z0-9]{4,16}$/;
@@ -26,6 +28,11 @@ const MODULE_RE = /^[a-z][a-z0-9-]{1,31}$/;
 const PART_PREFIX = '.part-';
 const NAME_MAX = 120;
 const ORPHAN_MS = 7 * 24 * 60 * 60 * 1000;
+const SHARE_ID_RE = /^[a-f0-9]{18}$/;
+const SHARE_DAYS = [1, 7, 30];
+const SHARES_MAX = 200; // share links in one space
+const SHARE_FILES_MAX = 500; // files in one share link
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
 class VaultError extends Error {
   constructor(message, status = 400) {
@@ -86,6 +93,7 @@ class VaultStore {
     this.now = now;
     this.onBytes = onBytes;
     this.cache = new Map(); // "<module>|<space>" -> Map(file id -> record)
+    this.shareCache = new Map(); // "<module>|<space>" -> Map(share id -> share)
     this.totals = null; // { all, spaces: Map(space -> bytes), people: Map(key -> bytes), files } once counted
     this.swept = this.sweep();
   }
@@ -203,9 +211,121 @@ class VaultStore {
     if (!r) return false;
     this.records(moduleId, spaceId).delete(fid);
     this.save(moduleId, spaceId);
+    this.dropFromShares(moduleId, spaceId, fid);
     for (const thumb of [false, true]) fs.rmSync(this.filePath(spaceId, fid, thumb), { force: true });
     this.count(spaceId, r.by, -this.bytesOf(r));
     return true;
+  }
+
+  // --- share links (plan section 7; the public routes are step 5) ---------------------------------------------------
+  // Kept beside the records, in DATA_DIR/modules/<id>/library/space-<space id>.shares.json, never in the module's data, so
+  // no data route (which reads only DATA_DIR/modules/<id>/data/) and no `access.read` reader can see them. A share:
+  // { id, name, files, by, at, ends, download, passwordHash?, tokenHash, opened }. The token (32 random bytes) is given
+  // to its maker once and only its SHA-256 is kept; a password only as scrypt (server/auth.js).
+  sharesFile(moduleId, spaceId) {
+    return this.recordFile(moduleId, spaceId).replace(/\.json$/, '.shares.json');
+  }
+
+  shareMap(moduleId, spaceId) {
+    const key = `${moduleId}|${spaceId}`;
+    let map = this.shareCache.get(key);
+    if (map) return map;
+    map = new Map();
+    let raw = null;
+    try { raw = JSON.parse(fs.readFileSync(this.sharesFile(moduleId, spaceId), 'utf8')); } catch (err) { if (err instanceof VaultError) throw err; }
+    if (raw && typeof raw === 'object') for (const [id, s] of Object.entries(raw)) if (SHARE_ID_RE.test(id) && s && typeof s === 'object' && /^[a-f0-9]{64}$/.test(String(s.tokenHash))) map.set(id, s);
+    this.shareCache.set(key, map);
+    return map;
+  }
+
+  saveShares(moduleId, spaceId) {
+    const map = this.shareMap(moduleId, spaceId);
+    const file = this.sharesFile(moduleId, spaceId);
+    if (!map.size) return void fs.rmSync(file, { force: true });
+    writeAtomic(file, JSON.stringify(Object.fromEntries(map)));
+  }
+
+  // A share without what is secret, for its maker and owners: { id, name, files, by, at, ends, download, hasPassword, opened }.
+  shareView(s) {
+    return { id: s.id, name: s.name, files: [...s.files], by: s.by, at: s.at, ends: s.ends, download: Boolean(s.download), hasPassword: Boolean(s.passwordHash), opened: Number(s.opened) || 0 };
+  }
+
+  // A new share link for files of the space: { share (its view), token } -- the token only here, never again.
+  // `days` is 1, 7 or 30 (plan decision 15); `password` optional; every file must be one of the space's.
+  createShare(moduleId, spaceId, { name, files, by, days = 7, download = false, password = '' }) {
+    const clean = cleanName(name);
+    if (!clean) throw new VaultError('Give the share link a name.');
+    if (!SHARE_DAYS.includes(days)) throw new VaultError('A share link ends after 1, 7 or 30 days.');
+    const list = [...new Set(Array.isArray(files) ? files.map(String) : [])];
+    if (!list.length) throw new VaultError('Choose the files to share.');
+    if (list.length > SHARE_FILES_MAX) throw new VaultError(`A share link holds at most ${SHARE_FILES_MAX} files.`);
+    if (list.some((fid) => !this.get(moduleId, spaceId, fid))) throw new VaultError('There is no such file.', 404);
+    if (typeof password !== 'string' || password.length > 200) throw new VaultError('That password is too long.');
+    const map = this.shareMap(moduleId, spaceId);
+    if (map.size >= SHARES_MAX) throw new VaultError(`There are already ${SHARES_MAX} share links here. Turn some off first.`, 409);
+    const token = crypto.randomBytes(32).toString('base64url');
+    const at = this.now();
+    const share = { id: crypto.randomBytes(9).toString('hex'), name: clean, files: list, by: String(by), at: new Date(at).toISOString(), ends: new Date(at + days * 86400000).toISOString(), download: Boolean(download), ...(password ? { passwordHash: hashPassword(password) } : {}), tokenHash: sha256(token), opened: 0 };
+    map.set(share.id, share);
+    try {
+      this.saveShares(moduleId, spaceId);
+    } catch (err) {
+      map.delete(share.id);
+      throw err;
+    }
+    return { share: this.shareView(share), token };
+  }
+
+  listShares(moduleId, spaceId) {
+    return [...this.shareMap(moduleId, spaceId).values()].map((s) => this.shareView(s)).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  // Turn a share link off: true when there was one.
+  revokeShare(moduleId, spaceId, id) {
+    const map = this.shareMap(moduleId, spaceId);
+    if (!map.delete(String(id))) return false;
+    this.saveShares(moduleId, spaceId);
+    return true;
+  }
+
+  // The share a token opens, among a module's spaces: { spaceId, share } (the stored record), or null for a wrong, ended
+  // or emptied one. Every share's hash is compared in constant time, so how long it takes says nothing about the token.
+  findShareByToken(moduleId, token) {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+    const want = Buffer.from(sha256(token), 'hex');
+    let found = null;
+    for (const spaceId of this.shareSpacesOf(moduleId)) {
+      for (const s of this.shareMap(moduleId, spaceId).values()) {
+        if (crypto.timingSafeEqual(want, Buffer.from(s.tokenHash, 'hex')) && !found) found = { spaceId, share: s };
+      }
+    }
+    if (!found || Date.parse(found.share.ends) <= this.now() || !found.share.files.length) return null;
+    return found;
+  }
+
+  // Whether `password` opens the share (true when it has none).
+  sharePasswordOk(share, password) {
+    return !share.passwordHash || verifyPassword(String(password || ''), share.passwordHash);
+  }
+
+  // The spaces a module has share links in.
+  shareSpacesOf(moduleId) {
+    let names = [];
+    try { names = fs.readdirSync(path.join(this.modulesDir, moduleId, 'library')); } catch { /* none */ }
+    return names.map((n) => /^space-([a-z0-9]{4,16})\.shares\.json$/.exec(n)?.[1]).filter(Boolean);
+  }
+
+  // A file removed is taken out of every share of its space; a share left with no file ends.
+  dropFromShares(moduleId, spaceId, fid) {
+    const map = this.shareMap(moduleId, spaceId);
+    let changed = false;
+    for (const [id, s] of map) {
+      if (!s.files.includes(fid)) continue;
+      s.files = s.files.filter((f) => f !== fid);
+      if (!s.files.length) map.delete(id);
+      changed = true;
+    }
+    if (changed) this.saveShares(moduleId, spaceId);
   }
 
   // A deleted space takes its files: the space's bytes folder and every module's records for it. Answers how many files went.
@@ -213,6 +333,8 @@ class VaultStore {
     if (!SPACE_RE.test(String(spaceId))) return 0;
     let gone = 0;
     for (const moduleId of this.libraryModules()) {
+      fs.rmSync(this.sharesFile(moduleId, spaceId), { force: true }); // and its share links
+      this.shareCache.delete(`${moduleId}|${spaceId}`);
       const file = this.recordFile(moduleId, spaceId);
       if (!fs.existsSync(file)) { this.cache.delete(`${moduleId}|${spaceId}`); continue; }
       const map = this.records(moduleId, spaceId);
@@ -243,6 +365,7 @@ class VaultStore {
     try { folders = fs.readdirSync(this.bytesDir).filter((n) => /^space-[a-z0-9]{4,16}$/.test(n)); } catch { /* none */ }
     for (const n of folders) { try { fs.rmdirSync(path.join(this.bytesDir, n)); } catch { /* not empty */ } }
     for (const key of [...this.cache.keys()]) if (key.startsWith(`${moduleId}|`)) this.cache.delete(key);
+    for (const key of [...this.shareCache.keys()]) if (key.startsWith(`${moduleId}|`)) this.shareCache.delete(key); // its share links go with the folder
     fs.rmSync(path.join(this.modulesDir, moduleId, 'library'), { recursive: true, force: true });
     return gone;
   }
