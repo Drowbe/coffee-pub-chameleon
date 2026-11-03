@@ -6,7 +6,9 @@ on a phone; and the sessions that build it: experience-design (`public/sdk/host.
 module's page), server-development (the checks in `tools/`; no server route changes are planned), quality-assurance
 (each step), content-manager (the API and architecture documents, the user guides, the changelog).
 
-**Status:** draft, 2026-10-30, by product-planner. Nothing built. The direction is Thomas's, 2026-10-30, as relayed by
+**Status:** draft, 2026-10-30, by product-planner. Nothing built. On 2026-11-03 Thomas decided questions 13 (the Vault's
+viewer is a window) and 17 to 20 (several viewer windows at once with a cap of 4, previous and next, the public share
+page, the existing window mode first); the title bar and toolbar split stays open. The direction is Thomas's, 2026-10-30, as relayed by
 the project manager: cards show a summary; to see everything, a card (any module's object) opens in a read-only window,
 the shared module frame window, with an **Edit** action in the window's title bar that switches it to editing; this is
 one reusable SDK experience for every module (`host.*`), not per-module code. And, the same day: phone experiences must

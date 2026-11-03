@@ -10,8 +10,12 @@ tokens, the OAuth pages and the MCP endpoint; content-manager documents.
 
 **Status:** draft for Thomas, first written 2026-11-02; fifteen decisions made on 2026-11-02 after the AI audit (below: four
 on the direction, then Thomas's answers to the open questions). Slice 1 has no open questions left and is ready to build.
-Slice 1, the prompt layer, is planned here and not built. The cheap must-fixes from the audit landed in `4eccbae`,
-outside this plan (see "Being built now"). From GitHub #382,
+Slice 1, the prompt layer as this plan describes it (the prompt registry, the context builder, the policy layer, the
+provider adapters, the fake model and the golden checks, `AI_LOG_PROMPTS`, `AI_PROMPT_VERSIONS`, What AI may see), is
+not built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
+and `bb5910f` (instructions and data in separate messages, the one permission rule, availability with a reason, the
+hosted address guard, fair refunds, the monthly calls cap; Chat's `/ai` takes only the current space's objects); what
+is built is described in [architecture-ai](../architecture/architecture-ai.md). From GitHub #382,
 raised by Thomas on 2026-11-02: today "a person pastes our custom prompt into the client, copies the JSON it returns,
 and pastes that into the app. It works anywhere but is manual, error-prone and one-way", and inside the app "a prompt
 goes out and JSON comes back that we parse". Thomas wants "a better process for both. Ideally ChatGPT (or Claude) could
