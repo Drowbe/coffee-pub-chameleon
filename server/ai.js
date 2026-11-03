@@ -18,7 +18,8 @@ const { encryptSecret, decryptSecret } = require('./auth');
 const { assertAddressAllowed, guardFrom, AiNetError } = require('./ai-http');
 const { AiError, HOSTS, DEFAULT_MODELS, ADDRESS_UNUSABLE, checkTypedKey, listModelsFor, complete } = require('./ai-providers');
 const prompts = require('./prompts');
-const { cleanSees, readSees, PolicyError, SEES_DEFAULTS } = require('./ai-policy');
+const { cleanSees, readSees, PolicyError, SEES_DEFAULTS, cleanAnswerText, cleanAnswerObject } = require('./ai-policy');
+const { CHAT_LIMITS } = require('./chat-history');
 
 // A key kept at rest is encrypted (AES-256-GCM, server/auth.js's encryptSecret: 'aesgcm$...'). The sentence shown
 // when a saved one can't be read with this server's key -- data restored onto a different host, say, which has a
@@ -51,7 +52,23 @@ const TASKS = prompts.TASKS;
 const MAX_ITEMS = prompts.MAX_MATERIAL;
 const LOG_DAYS = 30;
 const CUT_NOTE = 'This answer was cut off because it ran long. Ask again, or ask for fewer things at a time, to get the rest.';
+// The longest answer text, with its cut-off note, that is returned and kept: what a stored AI message may hold.
+const MAX_ANSWER_TEXT = CHAT_LIMITS.MAX_AI_TEXT;
+const NO_ANSWER = 'The AI service gave no answer.';
 
+// An answer's text cut to fit MAX_ANSWER_TEXT with room for the note, never in the middle of a {{summary:N}} place or a
+// surrogate pair; `cut` says it was cut, and then the note is added.
+function fitAnswer(text, cut) {
+  let t = String(text || '');
+  const room = MAX_ANSWER_TEXT - CUT_NOTE.length - 2;
+  if (t.length > room && (cut || t.length > MAX_ANSWER_TEXT)) {
+    t = t.slice(0, room);
+    if (/[\uD800-\uDBFF]$/.test(t)) t = t.slice(0, -1);
+    t = t.replace(/\{\{[^}]*$/, '').trimEnd();
+    cut = true;
+  }
+  return { text: cut ? `${t}\n\n${CUT_NOTE}`.trim() : t, cut: Boolean(cut) };
+}
 const oneLine = (s, n) => String(s == null ? '' : s).replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const month = () => new Date().toISOString().slice(0, 7);
 const OVER_CAP = 'This server has used its AI allowance for the month.';
@@ -410,10 +427,13 @@ class Ai {
     if (this.usage.month !== month()) this.usage = emptyUsage();
   }
 
-  // Over the month's allowance, counting what asks on their way have reserved (ai-29).
-  overCap() {
+  // Over the month's allowance, counting what asks on their way have reserved (ai-29) and, when given, the estimate of the
+  // ask about to be sent: an ask is sent only when it fits beside those already on their way.
+  overCap(estimate = 0) {
     this.rollMonth();
-    return this.config.monthlyTokens > 0 && this.usage.tokens + this.reserved >= this.config.monthlyTokens;
+    if (!(this.config.monthlyTokens > 0)) return false;
+    const used = this.usage.tokens + this.reserved;
+    return estimate > 0 ? used + estimate > this.config.monthlyTokens : used >= this.config.monthlyTokens;
   }
 
   // How many asks are on their way (the host's calls cap counts them, so two at once can't pass it together).
@@ -521,7 +541,8 @@ class Ai {
   // `inputs`: the template's typed inputs (from the context builder); `use`: { purpose, person, space, environment, counts,
   // leftOut } for the usage and the record. Answers { text, summaries, used, tags, cut, finish, tokens, prompt, mode } (`used`
   // and `sources` as numbers; the route maps them to pointers). Throws AiError: `refund` when the service did no work.
-  async run(templateId, inputs, use = {}) {
+  // `secrets`: the exact values no answer may carry back (the policy's secrets()), taken out of the answer with the rest.
+  async run(templateId, inputs, use = {}, { secrets = [] } = {}) {
     const t = prompts.template(templateId);
     const name = prompts.nameOf(t);
     const started = Date.now();
@@ -536,10 +557,13 @@ class Ai {
     const structuredRendered = prompts.render(t, inputs, { structured: true });
     const textRendered = prompts.render(t, inputs, { structured: false });
     if (this.env && this.env.AI_LOG_PROMPTS === '1' && !this.hosted) {
-      // Full prompts only on purpose, never on a hosted install: the rendered messages (already redacted), never the key.
+      // Full prompts only on purpose, never on a hosted install, never the key: the rendered messages, whose objects, chat,
+      // history and question the routes and the context builder have already redacted (server/ai-policy.js redactText).
       console.log(`[ai] prompt ${name} (${mode}): ${JSON.stringify((mode === 'structured' ? structuredRendered : textRendered).messages)}`);
     }
     const estimate = Math.ceil(textRendered.messages.reduce((n, m) => n + m.content.length, 0) / 4) + t.budget.answer;
+    // The allowance with this ask in it: refused (and given back) when it would not fit beside those on their way.
+    if (this.overCap(estimate)) throw refused(new AiError(OVER_CAP, 429, { refund: true }), 'allowance');
     const release = this.reserve(estimate);
     const record = { ...base, provider: c.provider, model: c.model };
     let out;
@@ -555,13 +579,30 @@ class Ai {
     }
     release();
     if (out.schemaRefused && c.provider === 'compatible') { this.config.schemaRefused = fingerprint(c); try { this.saveConfig(); } catch { /* remembered for this run */ } }
+    else if (out.mode === 'structured' && this.config.schemaRefused) { delete this.config.schemaRefused; try { this.saveConfig(); } catch { /* forgotten for this run */ } }
     const total = out.tokens.in + out.tokens.out;
-    this.record({ task: t.id, template: name, person: use.person, space: use.space }, total);
+    const usage = { task: t.id, template: name, person: use.person, space: use.space };
+    this.record(usage, total);
     const parsed = prompts.parse(t, out, inputs);
-    this.log({ ...record, model: out.model || c.model, outcome: 'answered', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, cut: parsed.cut || undefined, leftOut: use.leftOut });
-    if (t.output === 'tags') return { tags: parsed.tags, text: '', summaries: [], used: [], cut: parsed.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
-    const cut = Boolean(parsed.cut);
-    return { text: cut ? `${parsed.text}\n\n${CUT_NOTE}`.trim() : parsed.text, summaries: parsed.summaries, used: parsed.used, cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
+    const answered = (extra) => this.log({ ...record, model: out.model || c.model, outcome: 'answered', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, leftOut: use.leftOut, ...extra });
+    if (t.output === 'tags') {
+      answered({ cut: parsed.cut || undefined });
+      return { tags: parsed.tags, text: '', summaries: [], used: [], cut: parsed.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
+    }
+    // What a page could run or follow, and every secret, taken out of the answer and its objects before it is kept or shown.
+    const summaries = (parsed.summaries || []).map((sm) => cleanAnswerObject(sm, secrets));
+    let body = cleanAnswerText(parsed.text, secrets).replace(/\n{3,}/g, '\n\n').trim();
+    // Objects with no words around them: their places in the text, so the answer is kept and drawn like any other.
+    if (!body && summaries.length) body = summaries.map((_, i) => `{{summary:${i}}}`).join('\n');
+    // No text and no objects (a list or a number where the answer goes, an empty answer): the service gave no answer. Its
+    // tokens still count against the allowance, as a blank answer's do; it is not an answered call.
+    if (!body) {
+      this.log({ ...record, model: out.model || c.model, outcome: 'error', error: 'empty', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started });
+      throw new AiError(NO_ANSWER, 502, { tokens: total, kind: 'empty' });
+    }
+    const fitted = fitAnswer(body, parsed.cut);
+    answered({ cut: fitted.cut || undefined });
+    return { text: fitted.text, summaries, used: parsed.used, cut: fitted.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
   }
 
   // The models a service offers, from its own list, for the admin's choice: [{ id, name }]. Uses the typed key
@@ -614,4 +655,4 @@ class Ai {
   }
 
 }
-module.exports = { Ai, AiError, OVER_CAP, CUT_NOTE, sealKey, openKey, KEY_UNREADABLE, applyAiFields, applyManagedFields, managedOffer, listModelsFor, PROVIDERS, MANAGED_PROVIDERS, DEFAULT_MODELS, HOSTS, TASKS, MAX_ITEMS, LOG_FIELDS };
+module.exports = { Ai, AiError, OVER_CAP, CUT_NOTE, MAX_ANSWER_TEXT, NO_ANSWER, fitAnswer, sealKey, openKey, KEY_UNREADABLE, applyAiFields, applyManagedFields, managedOffer, listModelsFor, PROVIDERS, MANAGED_PROVIDERS, DEFAULT_MODELS, HOSTS, TASKS, MAX_ITEMS, LOG_FIELDS };

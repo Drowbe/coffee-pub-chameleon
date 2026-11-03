@@ -159,7 +159,8 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   }
   // The Buttons block's per-button properties (--b-*, --btn-h) are meant to be set on one button by a rule that lays it out.
   // The Chips block's tone and icon colour are set on one chip by the module that knows its colour (a category, a calendar, a tag). An avatar's size and the surface behind it are set by the place that draws it.
-  const PER_BUTTON = /^--(b-(bg|bg-h|bg-a|fg|fg-h|bd)|btn-h|btn-gap|btn-pad-x|chip-tone|chip-glyph|av|av-font|av-surface)$/;
+  // `--s` is the surface a box sits on, set on one box by the rule that knows it (system.css does so on every block that reads it; a module row may too).
+  const PER_BUTTON = /^--(b-(bg|bg-h|bg-a|fg|fg-h|bd)|btn-h|btn-gap|btn-pad-x|chip-tone|chip-glyph|av|av-font|av-surface|s)$/;
   for (const f of files) for (const m of read(f).replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(--[a-z0-9-]+)\s*:/g)) if (!PER_BUTTON.test(m[1])) note(m[1], f);
   for (const f of ['server/theme-css.js', 'public/theme-colour.js']) for (const m of read(f).matchAll(/'(--[a-z0-9-]+)'/g)) note(m[1], f);
   for (const n of defs.keys()) if (others.has(n)) fail(`${n} is defined in system.css and in ${others.get(n)}`);

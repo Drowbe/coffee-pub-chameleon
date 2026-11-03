@@ -1659,7 +1659,7 @@ function branding() {
   const s = store.settings;
   // The template's ordered phases, for the phase chip (plan-one-bar.md, step 3); [] with no template or none in it.
   const phases = (Array.isArray(store.templatePhases) ? store.templatePhases : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
-  return { environmentName: s.environmentName, productName: PRODUCT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
+  return { environmentName: s.environmentName, productName: PRODUCT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
 }
 
 function initials(name) {
@@ -5690,6 +5690,8 @@ function aiObjectsIn(who, where) {
 const aiContext = createContextBuilder({
   store, chatHistory, moduleLinks, policy: aiPolicy, word, listObjects: aiObjectsIn, roleWordOf: aiRoleWord,
   guestsIn: (space) => live.people(space.id).filter((p) => p.guest).map((p) => p.name),
+  // The chat part goes only to an asker who may read this chat now (chatAccess's rule: an owner, or a member with chatRead).
+  canReadChat: (who, space) => Boolean(who && who.user && (hasOwnerRights(who.user) || (space.members.includes(who.user.key) && store.spacePermissions(who.user.key, space.id).chatRead))),
   serverZone: () => ics.serverZone(),
   timelineOf: phaseRule.timelineOf,
   templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
@@ -5767,7 +5769,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', { question, material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built));
+    const out = await ai.run('ask', { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets() });
     countAiCall();
     const summaries = aiSummaries(out.summaries, built.numbered);
     const used = aiPointers(out.used, built.numbered);
@@ -5776,7 +5778,8 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
     res.json({ text: out.text, summaries, used, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
-    if (err instanceof AiError && err.refund) aiPolicy.giveBack(who); // failed before the service did any work: it does not count
+    // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
     sendAiError(err, res);
   }
 });
@@ -7872,14 +7875,14 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     ? { material: built.material, words: aiWords() }
     : task === 'summarise'
       ? { material: built.material, context: built.context, kinds: promptKinds(), words: aiWords() }
-      : { question, material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
+      : { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
   try {
-    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built));
+    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built), { secrets: aiPolicy.secrets() });
     countAiCall();
     noteActivity(ctx.manifest.id, `asked the AI (${AI_TASK_WORDS[task]}, ${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
     res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
-    if (err instanceof AiError && err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
     sendAiError(err, res);
   }
 });

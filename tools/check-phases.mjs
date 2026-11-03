@@ -562,7 +562,7 @@ try {
     assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'no template: an empty list, not missing');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, [], 'the same through /api/config');
     assert.equal((await asAdmin('PATCH', '/api/settings', { template: 'travel' })).status, 200);
-    const ICONS = { planning: 'clipboard-list', booking: 'ticket', buffer: 'hourglass-half', 'pre-trip': 'suitcase-rolling', trip: 'plane', 'post-trip': 'camera-retro' };
+    const ICONS = { planning: 'clipboard-list', booking: 'ticket', buffer: 'hourglass-half', 'pre-trip': 'suitcase-rolling', trip: 'plane', 'post-trip': 'camera' };
     const expected = TRAVEL.map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), icon: ICONS[p.id] }));
     assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, expected, 'the travel template\'s phases, in order, main marked, with no restart');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, expected);

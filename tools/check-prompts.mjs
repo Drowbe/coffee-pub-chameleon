@@ -37,6 +37,18 @@ const phaseRule = require('../public/phases.js');
 
 const arg = process.argv.find((a) => a.startsWith('--update'));
 const UPDATE = arg ? (arg.includes('=') ? arg.split('=')[1] : true) : false;
+// A version whose golden files are committed has shipped: --update=<version> may only rewrite one that has not. Outside a
+// repository (a copy), a version with golden files at all counts as shipped.
+if (typeof UPDATE === 'string') {
+  const { spawnSync } = await import('node:child_process');
+  const dir = path.join('tools', 'golden', 'prompts', UPDATE);
+  const listed = spawnSync('git', ['ls-files', '--', dir], { cwd: ROOT, encoding: 'utf8' });
+  const shipped = listed.status === 0 ? listed.stdout.trim() !== '' : fs.existsSync(path.join(ROOT, dir));
+  if (shipped) {
+    console.error(`check-prompts: ${UPDATE} has shipped (its golden files are committed), so they can't be rewritten. A change to what a template renders or parses is a new version.`);
+    process.exit(1);
+  }
+}
 let n = 0;
 const failures = [];
 const test = async (name, fn) => {
@@ -210,10 +222,10 @@ await test('scripted answers are read back as their golden files say, both ways'
 
 // --- the context builder, with stand-ins -------------------------------------------------------------------------------------
 // A small world: users, a space or two, objects by module and scope, who may read what, chat messages and links.
-function world({ sees = {}, spaceSees = null, aiOff = false } = {}) {
+function world({ sees = {}, spaceSees = null, aiOff = false, noChatRead = [], extra = [] } = {}) {
   const users = {
     own: { key: 'own', displayName: 'Olive', role: 'owner' },
-    pat: { key: 'pat', displayName: 'Pat', role: 'member' },
+    pat: { key: 'pat', displayName: 'Pat', role: 'member', linkToken: 'linktokenSECRET5678' },
     sam: { key: 'sam', displayName: 'Sam', role: 'member' },
     noread: { key: 'noread', displayName: 'Nell', role: 'member' },
   };
@@ -234,9 +246,10 @@ function world({ sees = {}, spaceSees = null, aiOff = false } = {}) {
     { ref: ref('research', 'note', 'm1', 'person'), title: 'My own note', text: 'Personal.' },
   ];
   for (let i = 0; i < 25; i += 1) objects.push({ ref: ref('research', 'note', `x${i}`), title: `Dinner option ${i}`, text: `Option ${i}` });
+  for (const o of extra) objects.push({ ...o, ref: ref(...o.ref) });
   const key = (r) => `${r.module}|${r.kind}|${r.scope}|${r.space || ''}|${r.id}`;
   const canRead = (who, o) => !(o.ref.module === 'places' && who.user.key === 'noread');
-  const summaryOf = (o, withText) => ({ ref: o.ref, kind: o.ref.kind, kindName: o.ref.kind[0].toUpperCase() + o.ref.kind.slice(1), module: { id: o.ref.module, name: o.ref.module }, open: true, title: o.title, ...(o.when ? { when: o.when } : {}), ...(o.paidBy ? { paidBy: o.paidBy } : {}), ...(o.spaces ? { spaces: o.spaces } : {}), ...(withText && o.text ? { text: o.text } : {}) });
+  const summaryOf = (o, withText) => ({ ref: o.ref, kind: o.ref.kind, kindName: o.ref.kind[0].toUpperCase() + o.ref.kind.slice(1), module: { id: o.ref.module, name: o.ref.module }, open: true, title: o.title, ...(o.when ? { when: o.when } : {}), ...(o.subtitle !== undefined ? { subtitle: o.subtitle } : {}), ...(o.place !== undefined ? { place: o.place } : {}), ...(o.paidBy ? { paidBy: o.paidBy } : {}), ...(o.spaces ? { spaces: o.spaces } : {}), ...(withText && o.text ? { text: o.text } : {}) });
   const resolveRef = (who, r, _from, { withText } = {}) => {
     const o = objects.find((x) => key(x.ref) === key(r));
     if (!o || !canRead(who, o)) throw Object.assign(new Error('no'), { status: 404 });
@@ -246,9 +259,9 @@ function world({ sees = {}, spaceSees = null, aiOff = false } = {}) {
   const links = [{ from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'n2') }, { from: ref('research', 'note', 'n1'), to: ref('places', 'place', 'p1') }, { from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'o1', 'space', 's2') }];
   const ai = { ready: () => true, view: () => ({}), overCap: () => false, inFlight: () => 0, config: { sees }, key: () => 'sk-ai-key-SECRET-1234567' };
   const store = {
-    spaces, streamKey: 'streamkeySECRET99999',
+    spaces, streamKey: 'streamkeySECRET99999', users: Object.values(users),
     userByKey: (k) => users[k] || null,
-    spacePermissions: (k) => ({ useAi: k !== 'nouse', chat: true }),
+    spacePermissions: (k) => ({ useAi: k !== 'nouse', chat: true, chatRead: !noChatRead.includes(k) }),
     roleSet: () => ({ useAi: true, chat: true }),
   };
   const word = (w, o = {}) => { const map = { space: ['space', 'spaces'], object: ['object', 'objects'], guest: ['guest', 'guests'], owner: ['owner', 'owners'], member: ['member', 'members'], moderator: ['moderator', 'moderators'], module: ['module', 'modules'], environment: ['environment', 'environments'] }; const s = map[w][o.many ? 1 : 0]; return o.cap ? s[0].toUpperCase() + s.slice(1) : o.a ? `a ${s}` : s; };
@@ -263,6 +276,7 @@ function world({ sees = {}, spaceSees = null, aiOff = false } = {}) {
     moduleLinks: { from: (r) => links.filter((l) => key(l.from) === key(r)).map((l) => l.to), to: (r) => links.filter((l) => key(l.to) === key(r)).map((l) => l.from) },
     listObjects: (who, where) => objects.filter((o) => o.ref.scope === where.scope && (where.scope !== 'space' || o.ref.space === where.space) && canRead(who, o)).map((o) => summaryOf(o, false)),
     roleWordOf: (u) => (u.role === 'owner' ? 'owner' : 'member'),
+    canReadChat: (who, space) => who.user.role === 'owner' || (space.members.includes(who.user.key) && store.spacePermissions(who.user.key, space.id).chatRead),
     guestsIn: () => ['Gus'],
     serverZone: () => 'UTC',
     now: () => Date.parse('2026-11-12T10:00:00Z'),
@@ -412,6 +426,124 @@ await test('AI_PROMPT_VERSIONS pins a kept version and ignores, with one line, o
   assert.deepEqual(prompts.pinsFrom({}).lines, []);
 });
 
+// The fields that never reach a model, pinned here rather than read from the policy: moving one to SENT_FIELDS fails.
+const REDACTED_PINNED = ['ref', 'module', 'open', 'paidBy', 'sharedBy', 'spaces', 'twins', 'twinOf', 'copy', 'icon', 'color', 'visit'];
+await test('the redacted fields are exactly the pinned list, and none of them is sent', () => {
+  assert.deepEqual([...policyLib.REDACTED_FIELDS].sort(), [...REDACTED_PINNED].sort(), 'REDACTED_FIELDS changed: a field that never reaches a model is a decision, not a refactor');
+  for (const f of REDACTED_PINNED) assert.ok(!policyLib.SENT_FIELDS.includes(f), `${f} is both redacted and sent`);
+  const all = Object.fromEntries([...REDACTED_PINNED, ...policyLib.SENT_FIELDS].map((f) => [f, f === 'place' ? { name: 'P' } : 'v']));
+  const red = policyLib.redactSummary(all, []);
+  for (const f of REDACTED_PINNED) assert.ok(!(f in red), `${f} sent`);
+});
+
+await test('an object whose date is a number (a poll closesAt, a note date: 20261105, a task due: 5) is sent as text and renders', () => {
+  const closes = Date.parse('2026-11-13T18:00:00Z');
+  const w = world({ extra: [
+    { ref: ['polls', 'poll', 'q1'], title: 'Where to eat?', when: closes, text: 'Vote.' },
+    { ref: ['research', 'note', 'd1'], title: 'Numeric date', when: 20261105, subtitle: 7, text: 'x' },
+    { ref: ['todo', 'task', 'd2'], title: 'Numeric due', when: 5, place: { name: 'Alfama' } },
+  ] });
+  const built = w.builder.build(w.who('pat'), w.spaces[0], { template: ASK, question: 'Where to eat?', refs: [w.ref('polls', 'poll', 'q1'), w.ref('research', 'note', 'd1'), w.ref('todo', 'task', 'd2')] });
+  assert.deepEqual(built.material.map((m) => m.when), ['2026-11-13 18:00', '20261105', '5']);
+  assert.equal(built.material[1].text, 'x\n7');
+  assert.equal(built.material[2].place, 'Alfama');
+  for (const m of built.material) for (const k of ['when', 'place', 'kind', 'title', 'text']) assert.ok(m[k] === undefined || typeof m[k] === 'string', `${k} is text`);
+  prompts.render(ASK, { ...ASK_FIXTURES['one-object'], material: built.material, context: built.context }, { structured: true });
+  for (const t of ['summarise', 'tags']) {
+    const tpl = prompts.template(t);
+    const inputs = Object.fromEntries(tpl.inputs.map((k) => [k, k === 'material' ? built.material : FIXTURES[t]['one-object'][k]]));
+    prompts.render(tpl, inputs, { structured: true });
+  }
+  // As a relevant object too (dated in the next days by its number).
+  const rel = w.builder.build(w.who('pat'), w.spaces[0], { template: ASK, question: 'anything soon?' });
+  assert.ok((rel.context.relevant || []).some((r) => r.title === 'Where to eat?' && r.when === '2026-11-13 18:00'), JSON.stringify(rel.context.relevant));
+});
+
+await test('the chat part goes only to an asker who may read the chat (chatRead), owners always', () => {
+  for (const asker of ['sam', 'own', 'pat']) {
+    const w = world({ sees: { chat: true }, noChatRead: ['sam', 'own'] });
+    w.say('s1', { by: 'pat', who: 'Pat', text: 'CHATSECRET dinner at eight' });
+    const built = w.builder.build(w.who(asker), w.spaces[0], { template: ASK, question: 'dinner?' });
+    const has = /CHATSECRET/.test(JSON.stringify(built.context));
+    assert.equal(has, asker !== 'sam', `${asker}: chat ${has ? 'sent' : 'not sent'}`);
+  }
+});
+
+await test('sign-in links, calendar feeds and people\'s link tokens are redacted from objects, chat and history', () => {
+  assert.equal(policyLib.redactText('go https://x.example/j/AbC123xyz_- now'), 'go https://x.example/j/[removed] now');
+  assert.equal(policyLib.redactText('feed https://x.example/feed/tok3n12345.ics here'), 'feed https://x.example/feed/[removed].ics here');
+  const w = world({ sees: { chat: true }, extra: [{ ref: ['research', 'note', 'k1'], title: 'Links', text: 'mine linktokenSECRET5678 and https://h/j/abcdefghij and https://h/feed/abcdefgh12.ics' }] });
+  assert.ok(w.policy.secrets().includes('linktokenSECRET5678'), 'a person\'s link token is a secret');
+  w.say('s1', { by: 'sam', who: 'Sam', text: 'chat https://h/j/chattoken99 linktokenSECRET5678' });
+  w.turn('s1', 'pat', 'earlier https://h/j/histtoken77 and linktokenSECRET5678?', 'answer https://h/feed/histfeed123.ics');
+  const built = w.builder.build(w.who('pat'), w.spaces[0], { template: ASK, question: 'links?', refs: [w.ref('research', 'note', 'k1')] });
+  const text = allText(built);
+  for (const bad of ['linktokenSECRET5678', 'abcdefghij', 'abcdefgh12', 'chattoken99', 'histtoken77', 'histfeed123']) assert.ok(!text.includes(bad), bad);
+  assert.ok(/\/j\/\[removed\]/.test(text) && /\/feed\/\[removed\]\.ics/.test(text));
+});
+
+await test('AI_PROMPT_VERSIONS ignores names that are not templates (constructor@1, toString@1, valueOf@1), with one line each', () => {
+  const got = prompts.pinsFrom({ AI_PROMPT_VERSIONS: 'constructor@1,toString@1 valueOf@1,hasOwnProperty@1' });
+  assert.deepEqual(got.pins, {});
+  assert.equal(got.lines.length, 4, got.lines.join('\n'));
+  for (const line of got.lines) assert.match(line, /is not a prompt version this server keeps; it is ignored\.$/);
+  assert.throws(() => prompts.template('constructor'), /no template constructor/);
+});
+
+await test('a structured answer that is a list, has no text answer, or names __proto__ is no answer, never raw JSON', () => {
+  const inputs = FIXTURES.ask['one-object'];
+  for (const raw of ['["array"]', '123', '"just a string"', 'null']) {
+    const r = prompts.parse(ASK, { text: raw, structured: undefined, finish: 'stop', mode: 'structured' }, inputs);
+    assert.deepEqual([r.text, r.summaries.length], ['', 0], raw);
+  }
+  assert.equal(prompts.parse(ASK, { text: '{"answer":123}', structured: { answer: 123 }, finish: 'stop', mode: 'structured' }, inputs).text, '');
+  const proto = JSON.parse('{"answer":"x","objects":[{"__proto__":{"title":"PROTO","content":"polluted"},"icon":"note","basis":"general"},{"constructor":{"title":"C"},"title":"Real","content":"c","icon":"note","basis":"general"}],"used":[]}');
+  const p = prompts.parse(ASK, { text: JSON.stringify(proto), structured: proto, finish: 'stop', mode: 'structured' }, inputs);
+  assert.deepEqual(p.summaries.map((x) => x.title), ['Real'], 'an object made only of __proto__ is not one');
+  assert.equal(({}).title, undefined);
+  // An answer over the longest read is cut and said to be.
+  const big = { answer: 'A'.repeat(20000), objects: [], used: [] };
+  assert.equal(prompts.parse(ASK, { text: JSON.stringify(big), structured: big, finish: 'stop', mode: 'structured' }, inputs).cut, true);
+  assert.equal(prompts.parse(ASK, { text: 'B'.repeat(20000), finish: 'stop', mode: 'text' }, inputs).cut, true);
+});
+
+await test('the address guard blocks ::ffff:0:0/96; a schema refusal is only one that names the schema', () => {
+  const { isPrivateAddress } = require('../server/ai-http.js');
+  for (const ip of ['::ffff:0:7f00:1', '::ffff:0:127.0.0.1', '::ffff:0:a00:1', '::ffff:0:808:808']) assert.equal(isPrivateAddress(ip), true, ip);
+  assert.equal(isPrivateAddress('2606:4700:4700::1111'), false);
+  const { refusedSchema } = require('../server/ai-providers.js');
+  assert.equal(refusedSchema({ status: 400, text: '' }), false, 'empty body');
+  assert.equal(refusedSchema({ status: 422, text: 'not json' }), false, 'unreadable body');
+  assert.equal(refusedSchema({ status: 400, text: '{"error":{"message":"bad request"}}' }), false, 'another refusal');
+  assert.equal(refusedSchema({ status: 400, text: '{"error":{"message":"unsupported parameter: temperature"}}' }), false, 'names something else');
+  assert.equal(refusedSchema({ status: 400, text: '{"error":{"message":"response_format json_schema is not supported"}}' }), true);
+  assert.equal(refusedSchema({ status: 422, text: '{"detail":"structured output is not available"}' }), true);
+  assert.equal(refusedSchema({ status: 500, text: '{"error":{"message":"schema"}}' }), false);
+});
+
+await test('an answer\'s text and objects lose script, HTML, javascript: links and guest tokens before they are kept', () => {
+  const { cleanAnswerText, cleanAnswerObject } = policyLib;
+  const t = cleanAnswerText('<script>alert(1)</script>Hi <img src=x onerror=alert(1)> [click](javascript:alert(1)) ![p](data:image/png;base64,AA) <b>b</b> 1 < 2 > 0 [ok](https://a.example/?guest=abcdef12&x=1) <https://ok.example/> {{summary:0}}');
+  assert.ok(!/<script|onerror|javascript:|data:|<b>|abcdef12/i.test(t), t);
+  assert.ok(t.includes('click') && t.includes('1 < 2 > 0') && t.includes('[ok](https://a.example/?guest=[removed]&x=1)') && t.includes('<https://ok.example/>') && t.includes('{{summary:0}}'), t);
+  const o = cleanAnswerObject({ title: '<b>T</b>', content: '[x](javascript:alert(1))', links: [{ title: 'L', url: 'https://ok.example/?guest=abcdefgh' }], sources: [1] });
+  assert.deepEqual(o, { title: 'T', content: 'x', links: [{ title: 'L', url: 'https://ok.example/?guest=[removed]' }], sources: [1] });
+});
+
+await test('--update=<version> refuses a version that has shipped', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'check-prompts.mjs'), '--update=ask@1'], { cwd: ROOT, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /ask@1 has shipped .*can't be rewritten/, r.stderr);
+});
+
+await test('check-names passes on server/prompts/', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'check-names.mjs'), '--list=role'], { cwd: ROOT, encoding: 'utf8', timeout: 120000 });
+  const lines = `${r.stdout}\n${r.stderr}`.split('\n').filter((l) => /server\/prompts\//.test(l));
+  assert.deepEqual(lines, [], lines.join('\n'));
+});
+
 await test('AI_LOG_PROMPTS writes the prompt (never the key) only off a host', async () => {
   const fake = await startFakeModel();
   const logged = [];
@@ -460,14 +592,14 @@ try {
   const owner = await login('admin', 'testpass1234');
   const mk = async (name) => (await call('POST', '/api/users', { cookie: owner, body: { login: name, displayName: name[0].toUpperCase() + name.slice(1), role: 'member', password: 'memberpass1234' } })).json.user;
   const people = {};
-  for (const name of ['pat', 'mo', 'rita', 'nora', 'cleo', 'dan', 'eve']) people[name] = await mk(name);
+  for (const name of ['pat', 'mo', 'rita', 'nora', 'cleo', 'dan', 'eve', 'fay', 'gil', 'hal', 'ivy', 'jon', 'kim']) people[name] = await mk(name);
   const space = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Lisbon', members: Object.values(people).map((u) => u.key) } })).json.space;
   const other = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Porto', members: [people.pat.key] } })).json.space;
   await call('PATCH', `/api/users/${people.mo.key}/spaces/${space.id}`, { cookie: owner, body: { permissions: { moderator: true } } });
   const tok = {};
   for (const name of Object.keys(people)) tok[name] = await login(name, 'memberpass1234');
   tok.owner = owner;
-  for (const id of ['research', 'todo']) {
+  for (const id of ['research', 'todo', 'polls']) {
     await call('POST', `/api/modules/bundled/${id}/install`, { cookie: owner, body: {} });
     assert.equal((await call('PATCH', `/api/modules/${id}`, { cookie: owner, body: { enabled: true, allSpaces: true } })).status, 200);
   }
@@ -597,13 +729,115 @@ try {
     await call('PUT', '/api/ai', { cookie: owner, body: { sees: null } });
   });
 
-  await test('server: two asks at once can\'t pass the allowance together', async () => {
-    await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens + 100 } });
-    fakeA.next({ text: 'slow one', delayMs: 600 }).next({ text: 'slow two', delayMs: 600 });
-    const [a, b] = await Promise.all([ask('rita', 'first at once?'), ask('nora', 'second at once?')]);
-    assert.deepEqual([a.status, b.status].sort(), [200, 429], `${a.text} ${b.text}`);
-    await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: 0 } });
+  await test('server: asks at once can\'t pass the allowance together; each ask\'s own estimate counts', async () => {
+    try {
+      // The estimate of one ask like these: its prompt (about four characters to a token) plus the answer's budget.
+      fakeA.clear();
+      await ask('kim', 'how big is one?');
+      const estimate = Math.ceil(fakeA.last().body.messages.reduce((n, m) => n + m.content.length, 0) / 4) + ASK.budget.answer;
+      const used = (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens;
+      // Room for one and a half: the first fits, the others would pass the cap with theirs.
+      await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: used + Math.floor(estimate * 1.5) } });
+      fakeA.clear();
+      fakeA.next({ text: 'slow one', delayMs: 600 }).next({ text: 'slow two', delayMs: 600 }).next({ text: 'slow three', delayMs: 600 });
+      const all = await Promise.all([ask('rita', 'first at once?'), ask('nora', 'second at once?'), ask('kim', 'third at once?')]);
+      assert.deepEqual(all.map((r) => r.status).sort(), [200, 429, 429], all.map((r) => r.text).join(' '));
+      assert.equal(fakeA.seen.length, 1, 'only the one that fits is sent');
+      // Room for less than one ask: refused before it is sent, and the turn given back.
+      await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: (await call('GET', '/api/ai', { cookie: owner })).json.usage.tokens + 100 } });
+      fakeA.clear();
+      const r = await ask('kim', 'too big for what is left?');
+      assert.deepEqual([r.status, fakeA.seen.length], [429, 0], r.text);
+    } finally {
+      await call('PUT', '/api/ai', { cookie: owner, body: { monthlyTokens: 0 } });
+      fakeA.clear();
+    }
+  });
+
+  await test('server: an attached object whose date is a number (Polls closesAt, a note date, a task due) answers 200', async () => {
+    assert.equal((await put('note:num', { title: 'Numeric date', text: 'x', date: 20261105 })).status, 200);
+    assert.equal((await put('task:num', { title: 'Numeric due', due: 5 }, `scope=space&space=${space.id}`, owner, 'todo')).status, 200);
+    const poll = await put('poll:p1', { question: 'Where to eat?', options: [{ id: 'a', text: 'Fish' }, { id: 'b', text: 'Meat' }], closesAt: Date.now() + 864e5 }, `scope=space&space=${space.id}`, owner, 'polls');
+    assert.equal(poll.status, 200, poll.text);
     fakeA.clear();
+    for (const ref of [{ module: 'polls', kind: 'poll', scope: 'space', space: space.id, id: 'p1' }, R('num'), { module: 'todo', kind: 'task', scope: 'space', space: space.id, id: 'num' }]) {
+      const r = await ask('fay', '', { refs: [ref] });
+      assert.equal(r.status, 200, `${ref.module}: ${r.text}`);
+      assert.deepEqual(r.json.sent.attached, [ref]);
+    }
+    const doc = JSON.parse(fakeA.last().body.messages[1].content);
+    assert.deepEqual([doc.attached[0].title, doc.attached[0].when], ['Numeric due', '5']);
+    const t = await call('POST', `/api/modules/research/ai?scope=space&space=${space.id}`, { cookie: tok.fay, body: { task: 'tags', objects: [R('num')] } });
+    assert.equal(t.status, 200, t.text);
+  });
+
+  await test('server: with chatRead off, the chat is not in the prompt even when What AI may see has it on; an owner\'s is', async () => {
+    try {
+      await call('PUT', '/api/ai', { cookie: owner, body: { sees: { chat: true } } });
+      assert.equal((await call('POST', `/api/spaces/${space.id}/chat`, { cookie: owner, body: { text: 'CHATSECRET dinner at eight' } })).status < 300, true);
+      await call('PATCH', '/api/roles/member', { cookie: owner, body: { chat: true, chatRead: false } });
+      fakeA.clear();
+      let r = await ask('gil', 'Where is dinner?');
+      assert.equal(r.status, 200, r.text);
+      assert.ok(!JSON.stringify(fakeA.last().body).includes('CHATSECRET'), 'chat sent to an asker who can\'t read it');
+      r = await call('POST', `/api/modules/research/ai?scope=space&space=${space.id}`, { cookie: tok.gil, body: { task: 'ask', question: 'Where is dinner?', objects: [] } });
+      assert.equal(r.status, 200, r.text);
+      assert.ok(!JSON.stringify(fakeA.last().body).includes('CHATSECRET'), 'nor through a module');
+      r = await ask('owner', 'Where is dinner?');
+      assert.ok(JSON.stringify(fakeA.last().body).includes('CHATSECRET'), 'an owner reads the chat');
+    } finally {
+      await call('PATCH', '/api/roles/member', { cookie: owner, body: { chat: true, chatRead: true } });
+      await call('PUT', '/api/ai', { cookie: owner, body: { sees: null } });
+    }
+  });
+
+  await test('server: an answer longer than a stored message is cut, marked and kept the same as it is returned', async () => {
+    const { CUT_NOTE, MAX_ANSWER_TEXT } = require('../server/ai.js');
+    const chatOf = async (who) => (await call('GET', `/api/spaces/${space.id}/chat`, { cookie: tok[who] })).json.messages;
+    fakeA.next({ json: { answer: `${'B'.repeat(12000)} END`, objects: [], used: [] } });
+    let r = await ask('hal', 'a long answer please?');
+    assert.equal(r.status, 200, r.text);
+    assert.ok(r.json.cut && r.json.text.length <= MAX_ANSWER_TEXT && r.json.text.endsWith(CUT_NOTE), `${r.json.cut} ${r.json.text.length}`);
+    let stored = (await chatOf('hal')).find((m) => m.id === r.json.id);
+    assert.deepEqual([stored.text, stored.cut], [r.json.text, true]);
+    fakeA.next({ text: 'C'.repeat(7990), finish: 'length' });
+    r = await ask('hal', 'cut for length?');
+    assert.ok(r.json.cut && r.json.text.endsWith(CUT_NOTE) && r.json.text.length <= MAX_ANSWER_TEXT, `${r.json.text.length}`);
+    stored = (await chatOf('hal')).find((m) => m.id === r.json.id);
+    assert.deepEqual([stored.text, stored.cut], [r.json.text, true], 'kept with its note');
+  });
+
+  await test('server: sign-in links and calendar feeds are redacted from the question and the history', async () => {
+    fakeA.clear();
+    let r = await ask('ivy', 'see https://h.example/j/qtoken12345 and https://h.example/feed/qfeed12345.ics?');
+    assert.equal(r.status, 200, r.text);
+    r = await ask('ivy', 'and again?');
+    const body = JSON.stringify(fakeA.seen.map((x) => x.body));
+    assert.ok(!body.includes('qtoken12345') && !body.includes('qfeed12345'), 'a token reached the model');
+    assert.ok(fakeA.last().body.messages.some((m) => m.role === 'user' && m.content.includes('/j/[removed]')), 'the earlier question in the history, redacted');
+  });
+
+  await test('server: a structured answer that is a list or has no text answer is "gave no answer", never raw JSON or an empty 200', async () => {
+    const before = (await call('GET', `/api/spaces/${space.id}/chat`, { cookie: tok.jon })).json.messages.length;
+    for (const json of [['array'], { answer: 123 }, { answer: '', objects: 'no', used: 'x' }]) {
+      fakeA.next({ json });
+      const r = await ask('jon', 'an answer that is not one?');
+      assert.deepEqual([r.status, r.json.error], [502, 'The AI service gave no answer.'], JSON.stringify(json));
+    }
+    assert.equal((await call('GET', `/api/spaces/${space.id}/chat`, { cookie: tok.jon })).json.messages.length, before, 'nothing kept, not even the question');
+    const rec = fs.readFileSync(path.join(dataDir, 'ai-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).at(-1);
+    assert.deepEqual([rec.outcome, rec.error], ['error', 'empty']);
+  });
+
+  await test('server: an answer\'s script, HTML, javascript: links and guest tokens are taken out before it is kept or shown', async () => {
+    fakeA.next({ json: JSON.parse('{"answer":"<script>alert(1)</script>Look <img src=x onerror=alert(1)> [click](javascript:alert(1)) at https://h.example/s/1?guest=leakedguest99","objects":[{"__proto__":{"title":"PROTO"},"icon":"note","basis":"general"},{"title":"<b>Real</b>","content":"[x](javascript:alert(1))","icon":"note","basis":"general","links":[{"url":"https://ok.example/?guest=leakedguest98","title":"t"}]}],"used":[]}') });
+    const r = await ask('jon', 'a hostile answer?');
+    assert.equal(r.status, 200, r.text);
+    const out = JSON.stringify([r.json.text, r.json.summaries]);
+    assert.ok(!/<script|onerror|javascript:|leakedguest|PROTO|<b>/i.test(out), out);
+    assert.deepEqual(r.json.summaries.map((x) => [x.title, x.links[0].url]), [['Real', 'https://ok.example/?guest=[removed]']]);
+    const stored = (await call('GET', `/api/spaces/${space.id}/chat`, { cookie: tok.jon })).json.messages.find((m) => m.id === r.json.id);
+    assert.ok(!/<script|onerror|javascript:|leakedguest/i.test(JSON.stringify(stored)), 'kept clean');
   });
 
   await test('server: records and usage hold no key, question or material; usage by template, person and space', async () => {
@@ -650,6 +884,7 @@ try {
     fakeB.clear();
     await ask('nora', 'new model?');
     assert.ok(fakeB.last().body.response_format, 'a changed setting tries the schema again');
+    assert.ok(!('schemaRefused' in JSON.parse(fs.readFileSync(path.join(dataDir, 'ai.json'), 'utf8'))), 'a structured answer forgets the refusal');
   });
 } finally {
   child.kill('SIGTERM');

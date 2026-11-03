@@ -8,7 +8,7 @@
 'use strict';
 
 const { checkInputs, cleanData, cleanQuestion, InputError, MIN_QUESTION, MAX_QUESTION, MAX_MATERIAL, MAX_TURNS } = require('./inputs');
-const { parseSummaries, parseTags, citedItems, readAnswer, MAX_SUMMARIES } = require('./parse');
+const { parseSummaries, parseTags, citedItems, readAnswer, MAX_SUMMARIES, MAX_ANSWER_CHARS } = require('./parse');
 
 // Each template's kept versions, newest first: the current one and, once there is one, the one before it.
 const KEPT = {
@@ -32,7 +32,8 @@ function pinsFrom(env = process.env) {
   if (!raw) return { pins, lines };
   for (const part of raw.split(/[\s,]+/).filter(Boolean)) {
     const m = /^([a-z]+)@(\d{1,4})$/.exec(part);
-    const kept = m && KEPT[m[1]] ? KEPT[m[1]].find((t) => t.version === Number(m[2])) : null;
+    // Own keys only: constructor@1, toString@1 and the like name no template.
+    const kept = m && Object.hasOwn(KEPT, m[1]) ? KEPT[m[1]].find((t) => t.version === Number(m[2])) : null;
     if (!kept) { lines.push(`AI_PROMPT_VERSIONS: ${part} is not a prompt version this server keeps; it is ignored.`); continue; }
     pins[m[1]] = kept.version;
     if (kept !== KEPT[m[1]][0]) lines.push(`AI_PROMPT_VERSIONS: ${m[1]} is pinned to its earlier version, ${part}.`);
@@ -49,7 +50,7 @@ function setPins(env) {
 
 // The template in use for `id`: the pinned version, else the newest.
 function template(id) {
-  const kept = KEPT[id];
+  const kept = Object.hasOwn(KEPT, id) ? KEPT[id] : null;
   if (!kept) throw new InputError(`no template ${id}`);
   const pinned = PINS.pins[id];
   return (pinned && kept.find((t) => t.version === pinned)) || kept[0];
@@ -98,9 +99,16 @@ function parse(t, answer, inputs) {
   if (answer && (answer.structured || answer.mode === 'structured')) {
     const read = readAnswer(answer.structured, text, count, MAX_SUMMARIES);
     if (read) return { ...read, summaries: narrow(read.summaries, inputs.kinds), cut: Boolean(read.cut || cutByLength) };
+    // JSON that is not the contract's object (a list, a number, a string) is no answer, never shown raw.
+    if (!(answer.structured && typeof answer.structured === 'object')) {
+      let value;
+      try { value = JSON.parse(text); } catch { value = undefined; }
+      if (value !== undefined && (value === null || typeof value !== 'object' || Array.isArray(value))) return { text: '', summaries: [], used: [], cut: cutByLength };
+    }
   }
-  const parsed = parseSummaries(text.trim().slice(0, 16000), count);
-  return { text: parsed.text, summaries: narrow(parsed.summaries, inputs.kinds), used: citedItems(text, count), cut: Boolean(parsed.cut || cutByLength) };
+  const trimmed = text.trim();
+  const parsed = parseSummaries(trimmed.slice(0, MAX_ANSWER_CHARS), count);
+  return { text: parsed.text, summaries: narrow(parsed.summaries, inputs.kinds), used: citedItems(text, count), cut: Boolean(parsed.cut || cutByLength || trimmed.length > MAX_ANSWER_CHARS) };
 }
 
 // Objects narrowed to the kinds the environment's modules take: a kind no module takes is dropped, with its details; the
