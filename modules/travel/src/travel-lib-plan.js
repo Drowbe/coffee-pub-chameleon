@@ -106,12 +106,16 @@
       const has = new Set(after.map(objectKey));
       const add = after.filter((r) => !had.has(objectKey(r)));
       const drop = before.filter((r) => !has.has(objectKey(r)));
-      if (add.length) host.files.link(planRef(id), add).catch(() => {});
-      if (drop.length) host.files.unlink(planRef(id), drop).catch(() => {});
+      // A refusal is said in a short sentence, not swallowed: the file would look attached but be unrecorded.
+      const sorry = () => { if (host.ui && typeof host.ui.toast === 'function') host.ui.toast("Couldn't save the file links."); };
+      if (add.length) host.files.link(planRef(id), add).catch(sorry);
+      if (drop.length && typeof host.files.unlink === 'function') host.files.unlink(planRef(id), drop).catch(sorry);
     }
-    function setLink(id, ref) {
+    // setLinks replaces everything the object points at, so the item's files are sent with its Place or link, or they would be dropped.
+    function setLink(id, ref, files) {
       if (!host.objects || typeof host.objects.setLinks !== 'function') return Promise.resolve(false);
-      return host.objects.setLinks(planRef(id), ref ? [ref] : []).then(() => true).catch(() => false);
+      const keep = (files || []).filter((f) => !ref || objectKey(f) !== objectKey(ref));
+      return host.objects.setLinks(planRef(id), [...(ref ? [ref] : []), ...keep]).then(() => true).catch(() => false);
     }
     // Plans made before the plan told the host: once per browser and change, tell it for every item that points at something. What was
     // told is kept here ({ id: pointer key }) so a page load asks only about what changed.
@@ -128,7 +132,7 @@
       let changed = false;
       for (const i of todo) {
         if (told[i.id] === now[i.id]) continue;
-        if (await setLink(i.id, linkOf(i))) { told[i.id] = now[i.id]; changed = true; }
+        if (await setLink(i.id, linkOf(i), i.files)) { told[i.id] = now[i.id]; changed = true; }
       }
       if (changed) { try { localStorage.setItem(key, JSON.stringify(told)); } catch (err) { /* not kept */ } }
     }
@@ -289,7 +293,7 @@
       const saved = await host.storage.set(PLAN_PREFIX + id, value, {});
       items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
       changed();
-      if (linkOf(item)) { setLink(id, linkOf(item)); resolveSummaries().catch(() => {}); }
+      if (linkOf(item)) { setLink(id, linkOf(item), item.files); resolveSummaries().catch(() => {}); }
       if (item.files && item.files.length) tellFiles(id, [], item.files);
       try {
         await stretchFor(item);
@@ -368,7 +372,7 @@
         if (moving) await host.storage.delete(cur.key).catch(() => {});
         items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
         changed();
-        if ((linkOf(cur.item) ? objectKey(linkOf(cur.item)) : '') !== (linkOf(item) ? objectKey(linkOf(item)) : '')) { setLink(id, linkOf(item)); if (linkOf(item)) resolveSummaries().catch(() => {}); }
+        if ((linkOf(cur.item) ? objectKey(linkOf(cur.item)) : '') !== (linkOf(item) ? objectKey(linkOf(item)) : '')) { setLink(id, linkOf(item), item.files); if (linkOf(item)) resolveSummaries().catch(() => {}); }
         if ((cur.item.files || []).map(objectKey).join() !== (item.files || []).map(objectKey).join()) tellFiles(id, cur.item.files || [], item.files || []);
         await stretchFor(item);
         return item;
@@ -399,7 +403,8 @@
       await host.storage.delete(cur.key || PLAN_PREFIX + id);
       items.delete(id);
       changed();
-      if (linkOf(cur.item)) setLink(id, null);
+      if (linkOf(cur.item)) setLink(id, null, []);
+      else if ((cur.item.files || []).length) tellFiles(id, cur.item.files, []);
     }
 
     // A round trip: the outbound, then the return pointing at it. A car cannot be one.

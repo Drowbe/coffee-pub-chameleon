@@ -1812,7 +1812,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       if (scope !== 'space' || !spaceId || ref.space !== spaceId) throw Object.assign(new Error('that file is not in this space'), { status: 403 });
       if (ref.module !== module.id) {
         const [seen] = await api('POST', '/api/objects/resolve', { from: module.id, refs: [cleanPointer(ref)] }).then((r) => r.summaries || []);
-        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error('this module may not open files'), { status: 403 });
+        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error((seen && seen.status === 403 && seen.error) || 'this module may not open files'), { status: 403 });
       }
       const holder = pageMode ? container : frame;
       const { openFile } = await import('/file-viewer.js');

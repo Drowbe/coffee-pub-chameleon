@@ -370,11 +370,14 @@ await (async () => {
 
 // --- the plan, against a small stand-in for the SDK -------------------------------------------------------------
 
-function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], space = null, today = null } = {}) {
+function fakeHost({ failFilesAtStart = false, summaries = [], search = [], readOnly = false, phases = [], space = null, today = null } = {}) {
   const store = new Map(); // key -> { value, version }
   const handlers = { change: [] };
   const provided = {};
   const covered = []; // every day asked of host.phasesCover, in order
+  const fileLinks = new Map(); // planRef key -> the file pointer keys it is linked to
+  const toasts = [];
+  let failFiles = failFilesAtStart;
   const links = new Map(); // planRef key -> the pointer keys it was last told it points at
   let clock = 0;
   const objectKey = (r) => [r.module, r.kind, r.id, r.scope, r.space || ''].join('|');
@@ -422,9 +425,15 @@ function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], 
       // As the host: what each object points at, all of it, replaced by each call (the plan's setLinks).
       setLinks: async (from, to) => { links.set(objectKey(from), to.map(objectKey)); },
     },
+    // As the SDK: link and unlink change only the links to files; `failFiles` makes them refuse.
+    files: {
+      link: async (from, ptrs) => { if (failFiles) throw new Error('refused'); const k = objectKey(from); fileLinks.set(k, [...new Set([...(fileLinks.get(k) || []), ...ptrs.map(objectKey)])]); },
+      unlink: async (from, ptrs) => { if (failFiles) throw new Error('refused'); const k = objectKey(from); fileLinks.set(k, (fileLinks.get(k) || []).filter((x) => !ptrs.map(objectKey).includes(x))); },
+    },
+    ui: { toast: (text) => toasts.push(text) },
     actions: { provide: (h) => Object.assign(provided, h) },
   };
-  return { t, store, provided, covered, links, push: (e) => handlers.change.forEach((fn) => fn(e)) };
+  return { t, store, provided, covered, links, fileLinks, toasts, push: (e) => handlers.change.forEach((fn) => fn(e)) };
 }
 
 const run = async () => {
@@ -2277,5 +2286,44 @@ await (async () => {
   assert.equal(bad.placeRef, null, 'a pointer with no kind or id is dropped');
 })();
 n += 1;
+
+// Files on a stay: linking is told to the host, deleting the stay unlinks them (no phantom use), a refusal is said in a sentence.
+await (async () => {
+  const f = fakeHost();
+  const plan = lib.createPlan(f.t);
+  await plan.load();
+  await plan.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  const planKey = (id) => f.t.util.objectKey(f.t.objects.make('plan', id));
+  const fileRef = (id) => ({ module: 'vault', kind: 'file', id, scope: 'space', space: 's1' });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const stay = await plan.addItem({ kind: 'stay', title: 'Hotel', date: '2026-10-01', files: [fileRef('f1'), fileRef('f2')] });
+  await tick();
+  assert.equal(f.fileLinks.get(planKey(stay.id)).length, 2, 'a stay\'s files are linked');
+  await plan.removeFile(stay.id, fileRef('f1'));
+  await tick();
+  assert.equal(f.fileLinks.get(planKey(stay.id)).length, 1, 'removing one file unlinks it');
+  await plan.removeItem(stay.id);
+  await tick();
+  assert.deepEqual(f.fileLinks.get(planKey(stay.id)), [], 'deleting a stay unlinks its files');
+  assert.deepEqual(f.toasts, [], 'nothing said when it worked');
+  const g = fakeHost({ failFilesAtStart: true });
+  const plan2 = lib.createPlan(g.t);
+  await plan2.load();
+  await plan2.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  await plan2.addItem({ kind: 'stay', title: 'Inn', date: '2026-10-01', files: [fileRef('f9')] });
+  await tick();
+  assert.deepEqual(g.toasts, ["Couldn't save the file links."], 'a refused link is said in a short sentence');
+})();
+n += 1;
+
+// A file pointer: another space's refuses with a toast instead of opening; a 403 from the server keeps its sentence.
+test('file pointers: refuse another space, pass the server sentence', () => {
+  const canvas = fs.readFileSync(new URL('../public/canvas.js', import.meta.url), 'utf8');
+  const mh = fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8');
+  const fn = canvas.slice(canvas.indexOf('function openRef(ref)'), canvas.indexOf('function answerOpenRef'));
+  assert.ok(/ref\.kind === 'file' && ref\.scope === 'space' && !\(spaceId && ref\.space === spaceId\)\) \{\s*noticeToast\([^;]*\);\s*return false;/.test(fn), 'a file of another space refuses with a toast');
+  assert.ok(fn.indexOf('noticeToast') < fn.indexOf('openFile('), 'the refusal comes before the file window');
+  assert.ok(mh.includes("seen.status === 403 && seen.error) || 'this module may not open files'"), 'the server\'s 403 sentence is passed on');
+});
 
 console.log(`check-travel: OK (${n} checks)`);

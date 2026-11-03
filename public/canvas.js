@@ -12,7 +12,7 @@
 // when it is popped out: they open in whichever window the canvas is in.
 // See documentation/architecture/architecture-canvas.md.
 
-import { api, markModuleRead, followTheme, word } from '/brand.js';
+import { api, markModuleRead, followTheme, word, noticeToast } from '/brand.js';
 import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame, joinStream } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
@@ -1249,7 +1249,11 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   function openRef(ref) {
     // A file of the space's library (a link from Chat or another tool) opens in the file window over the canvas; the library's module
     // is not brought forward (plan-attachments-vault.md, decision 19). Previous and Next appear only when the opener gives a list.
-    if (ref.kind === 'file' && ref.scope === 'space' && spaceId && ref.space === spaceId) {
+    if (ref.kind === 'file' && ref.scope === 'space' && !(spaceId && ref.space === spaceId)) {
+      noticeToast(`That file is in another ${word('space')}. Open it there.`, { kind: 'danger' });
+      return false;
+    }
+    if (ref.kind === 'file' && ref.scope === 'space') {
       Promise.resolve(openFile({ ref: { module: ref.module, kind: 'file', id: ref.id, scope: 'space', space: ref.space }, ids: null, doc: document, openRef, join: (fn) => joinStream(spaceId, guestToken, fn) })).catch(() => {});
       return true;
     }
