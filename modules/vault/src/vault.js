@@ -84,12 +84,14 @@
   };
   const kindOf = (f) => (f.group === 'image' ? 'picture' : f.group === 'audio' ? 'audio' : f.group === 'video' ? 'video' : f.type === 'application/pdf' ? 'pdf' : 'text');
   const GROUP_WORD = { image: 'Pictures', audio: 'Audio', video: 'Video', document: 'Documents' };
+  // IMG_2 comes before IMG_10: numbers in a name are read as numbers.
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   const SORTS = [
     ['new', 'Newest first', (a, b) => (b.at > a.at ? 1 : -1)],
     ['old', 'Oldest first', (a, b) => (a.at > b.at ? 1 : -1)],
-    ['name', 'Name, A to Z', (a, b) => a.name.localeCompare(b.name)],
+    ['name', 'Name, A to Z', (a, b) => byName(a, b)],
     ['big', 'Largest first', (a, b) => b.size - a.size],
-    ['kind', 'Type', (a, b) => kindOf(a).localeCompare(kindOf(b)) || a.name.localeCompare(b.name)],
+    ['kind', 'Type', (a, b) => kindOf(a).localeCompare(kindOf(b)) || byName(a, b)],
   ];
 
   // ---- start -------------------------------------------------------------------------------------------------------------------------
@@ -136,12 +138,52 @@
   const mayRemoveAny = can('remove_any');
   const mayRemove = (f) => mayRemoveAny || f.by === me;
 
+  const PAGE = 100; // files drawn at a time; more come as the list is scrolled
   const state = {
     files: [], usage: { bytes: 0, maxBytes: 0 },
     view: 'list', sort: 'new', query: '', types: new Set(), by: 'all', linked: new Set(),
     selecting: false, sel: new Set(), adding: false, queue: [], loaded: false,
-    people: new Map(), removeWhere: false, notice: null, dropping: false,
+    people: new Map(), removeWhere: false, notice: null, dropping: false, limit: PAGE,
   };
+
+  // What a person chose here stays with them (their own data, not the space's): the List or Grid and Remove where it was taken.
+  // Off (the position is kept) until they say otherwise.
+  const PREFS = 'prefs';
+  async function loadPrefs() {
+    try {
+      const r = await host.storage.get(PREFS, { scope: 'person' });
+      if (r && r.value && typeof r.value === 'object') {
+        if (r.value.view === 'grid' || r.value.view === 'list') state.view = r.value.view;
+        state.removeWhere = r.value.removeWhere === true;
+      }
+    } catch { /* not kept: the defaults stand */ }
+  }
+  function savePrefs() { host.storage.set(PREFS, { view: state.view, removeWhere: state.removeWhere }, { scope: 'person' }).catch(() => {}); }
+  // A video's length, read when its small picture is made. The server's record has no length, so the space keeps them here, by file id.
+  let durations = {};
+  let durVersion;
+  async function loadDurations() {
+    try {
+      const r = await host.storage.get('durations');
+      if (r && r.value && typeof r.value === 'object') { durations = r.value; durVersion = r.version; }
+    } catch { /* no lengths: the chip is left off */ }
+  }
+  async function saveDuration(id, seconds) {
+    for (let again = 0; again < 3; again += 1) {
+      const next = {};
+      for (const f of state.files) if (durations[f.id]) next[f.id] = durations[f.id];
+      next[id] = Math.max(1, Math.round(seconds));
+      try {
+        const saved = await host.storage.set('durations', next, durVersion === undefined ? undefined : { version: durVersion });
+        durations = next; durVersion = saved && saved.version;
+        return;
+      } catch (err) {
+        if (!err || err.status !== 409) return;
+        await loadDurations();
+      }
+    }
+  }
+  const lengthWord = (sec) => { const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; };
 
   const nameOf = (key) => (state.people.get(key) || (key === me && info.user ? info.user.displayName : '') || 'someone who left');
   const byWord = (f) => (f.by === me ? 'You' : nameOf(f.by));
@@ -173,13 +215,13 @@
 
   // ---- loading ------------------------------------------------------------------------------------------------------------------------
   let lastSig = '';
-  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses]), state.usage]);
+  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses, durations[f.id] || 0]), state.usage]);
   async function loadPeople() {
     try { for (const p of await host.people()) state.people.set(p.key, p.name); } catch { /* names are a nicety */ }
   }
   async function refresh({ quiet = false } = {}) {
     try {
-      const res = await host.library.list();
+      const [res] = await Promise.all([host.library.list(), loadDurations()]);
       state.files = Array.isArray(res.files) ? res.files : [];
       state.usage = res.usage || state.usage;
       for (const id of [...state.sel]) if (!state.files.some((f) => f.id === id)) state.sel.delete(id);
@@ -235,9 +277,12 @@
   }, { rootMargin: '300px' }) : null;
 
   // A picture's or a video's small picture, made here before the file is sent on (decision 11): at most 400 px, a JPEG under 300 KB.
+  // Gives { blob, duration } (the length in seconds, for a video), or null. A video is read from the server's address for it: the
+  // page's policy refuses a blob address for media.
   async function makeThumb(file, kind, id) {
     const MAX = 400;
     let source;
+    let duration = 0;
     let release = () => {};
     if (kind === 'picture') {
       try {
@@ -247,32 +292,24 @@
         return null;
       }
     } else {
-      // The bytes the person chose (a blob address), or, where the page's policy refuses those for media, the file as the server now has it.
-      const sources = [URL.createObjectURL(file)];
       const video = document.createElement('video');
       video.muted = true;
       video.preload = 'auto';
       video.playsInline = true;
-      release = () => { video.removeAttribute('src'); video.load(); for (const u of sources) if (u.startsWith('blob:')) URL.revokeObjectURL(u); };
-      const tryOne = (src, ms) => new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('slow')), ms);
-        video.onerror = () => { clearTimeout(t); reject(new Error('bad')); };
-        video.onloadeddata = () => {
-          const at = Math.min(1, (video.duration || 2) / 10);
-          video.onseeked = () => { clearTimeout(t); resolve(); };
-          video.currentTime = at;
-        };
-        video.src = src;
-      });
+      release = () => { video.removeAttribute('src'); video.load(); };
       try {
-        try {
-          await tryOne(sources[0], 2500);
-        } catch (first) {
-          if (!id) throw first;
-          const addr = await host.library.url(id);
-          sources.push(addr);
-          await tryOne(addr, 10000);
-        }
+        const addr = await host.library.url(id);
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('slow')), 10000);
+          video.onerror = () => { clearTimeout(t); reject(new Error('bad')); };
+          video.onloadeddata = () => {
+            if (Number.isFinite(video.duration)) duration = video.duration;
+            const at = Math.min(1, (video.duration || 2) / 10);
+            video.onseeked = () => { clearTimeout(t); resolve(); };
+            video.currentTime = at;
+          };
+          video.src = addr;
+        });
       } catch {
         release();
         return null;
@@ -290,7 +327,7 @@
     release();
     for (const q of [0.82, 0.65, 0.45]) {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', q));
-      if (blob && blob.size <= 300 * 1024) return blob;
+      if (blob && blob.size <= 300 * 1024) return { blob, duration };
     }
     return null;
   }
@@ -303,12 +340,13 @@
 
   // ---- the host's bands: the toolbar, the title bar, the "+", the status line ---------------------------------------------------
   const VIEW_OPTIONS = [{ id: 'list', label: 'List', icon: 'list' }, { id: 'grid', label: 'Grid', icon: 'grip' }];
-  const viewSwitch = host.ui.viewSwitch({ id: 'view', options: VIEW_OPTIONS, value: state.view, onChange: (v) => { state.view = v === 'grid' ? 'grid' : 'list'; render(); } });
+  await loadPrefs();
+  const viewSwitch = host.ui.viewSwitch({ id: 'view', options: VIEW_OPTIONS, value: state.view, onChange: (v) => { state.view = v === 'grid' ? 'grid' : 'list'; state.limit = PAGE; savePrefs(); render(); } });
   function chosen() { return state.files.filter((f) => state.sel.has(f.id)); }
   function filtersChips() {
     const all = state.files;
     const count = (fn) => all.filter(fn).length;
-    const others = [...new Set(all.map((f) => f.by))].filter((k) => k !== me).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+    const others = [...new Set(all.map((f) => f.by))].filter((k) => k !== me).sort((a, b) => nameOf(a).localeCompare(nameOf(b), undefined, { numeric: true }));
     return [
       { type: 'chips', id: 'sort', label: 'Sort by', single: true, value: state.sort, options: SORTS.map(([id, label]) => ({ id, label })) },
       { type: 'chips', id: 'type', label: 'Type', options: ['image', 'audio', 'video', 'document'].map((g) => ({ id: g, label: GROUP_WORD[g], count: count((f) => f.group === g), on: state.types.has(g), default: false })) },
@@ -332,14 +370,15 @@
         ...filtersChips(),
       ];
     }
-    return [search, ...filtersChips()];
+    const sortWord = (SORTS.find((x) => x[0] === state.sort) || SORTS[0])[1];
+    return [{ type: 'text', text: sortWord }, search, ...filtersChips()];
   }
   function statusItems() {
     const total = state.files.length;
     const shown = filtered().length;
     const f = filterWords();
     const words = `${f ? `${shown} of ${plural(total, 'file')}` : plural(total, 'file')} · ${size(usedBytes())}${capBytes() ? ` of ${size(capBytes())}` : ''}`;
-    const items = [{ text: words, icon: 'vault' }];
+    const items = [{ text: words, icon: 'vault', title: `This ${SPACE}'s ${MODULE}` }];
     if (f) items.push({ text: f.length > 56 ? `${f.slice(0, 55)}…` : f, title: f });
     if (isFull()) items.push({ text: 'Full', icon: 'triangle-exclamation', title: fullSentence() });
     else if (capBytes() && usedBytes() / capBytes() >= 0.8) items.push({ text: 'Almost full', icon: 'triangle-exclamation' });
@@ -356,11 +395,11 @@
 
   host.on('toolbar', (e) => {
     const id = e.id;
-    if (id === 'find') { if (typeof e.value === 'string' && e.value !== state.query) { state.query = e.value; render(); } }
-    else if (id === 'sort' && typeof e.value === 'string') { state.sort = SORTS.some((s) => s[0] === e.value) ? e.value : 'new'; render(); }
-    else if (id === 'type' && typeof e.value === 'string') { if (e.on) state.types.add(e.value); else state.types.delete(e.value); render(); }
-    else if (id === 'by' && typeof e.value === 'string') { state.by = e.value; render(); }
-    else if (id === 'linked' && typeof e.value === 'string') { if (e.on) state.linked.add(e.value); else state.linked.delete(e.value); render(); }
+    if (id === 'find') { if (typeof e.value === 'string' && e.value !== state.query) { state.query = e.value; refilter(); } }
+    else if (id === 'sort' && typeof e.value === 'string') { state.sort = SORTS.some((s) => s[0] === e.value) ? e.value : 'new'; refilter(); }
+    else if (id === 'type' && typeof e.value === 'string') { if (e.on) state.types.add(e.value); else state.types.delete(e.value); refilter(); }
+    else if (id === 'by' && typeof e.value === 'string') { state.by = e.value; refilter(); }
+    else if (id === 'linked' && typeof e.value === 'string') { if (e.on) state.linked.add(e.value); else state.linked.delete(e.value); refilter(); }
     else if (id === 'done') endSelecting();
     else if (id === 'all') { const ids = filtered().map((f) => f.id); if (state.sel.size === ids.length) state.sel.clear(); else ids.forEach((i) => state.sel.add(i)); render(); }
     else if (id === 'sel-download') downloadMany(chosen());
@@ -369,15 +408,17 @@
   host.on('header', (e) => { if (e.id === 'select') { if (state.selecting) endSelecting(); else { state.selecting = true; state.sel.clear(); render(); } } });
   host.on('add', (e) => { if (e.id === 'add' && mayAdd) { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); } });
   host.on('links', () => { refresh({ quiet: true }); });
+  function refilter() { state.limit = PAGE; render(); }
   function endSelecting() { state.selecting = false; state.sel.clear(); render(); }
 
   // ---- the menus ----------------------------------------------------------------------------------------------------------------------
   function fileMenu(f) {
-    const items = [{ id: 'open', label: 'Open', icon: 'eye', onClick: () => openFile(f) }];
-    if (mayDownload) items.push({ id: 'download', label: 'Download', icon: 'download', onClick: () => host.library.download(f.id).catch(fail) });
-    if (mayRemove(f)) items.push({ id: 'rename', label: 'Rename', icon: 'pen-to-square', onClick: () => renameFile(f) });
-    items.push({ id: 'uses', label: 'Where it is used', icon: 'link', hint: f.uses ? String(f.uses) : undefined, onClick: () => showFile(f, { uses: true }) });
-    if (mayRemove(f)) items.push({ separator: true }, { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onClick: () => removeFiles([f]) });
+    // The handlers return nothing: the menu waits for what an item returns before it closes, and while it is open it takes Escape.
+    const items = [{ id: 'open', label: 'Open', icon: 'eye', onClick: () => { openFile(f, 'menu'); } }];
+    if (mayDownload) items.push({ id: 'download', label: 'Download', icon: 'download', onClick: () => { host.library.download(f.id).catch(fail); } });
+    if (mayRemove(f)) items.push({ id: 'rename', label: 'Rename', icon: 'pen-to-square', onClick: () => { renameFile(f); } });
+    items.push({ id: 'uses', label: 'Where it is used', icon: 'link', hint: f.uses ? String(f.uses) : undefined, onClick: () => { showFile(f, { uses: true, opener: 'menu' }); } });
+    if (mayRemove(f)) items.push({ separator: true }, { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onClick: () => { removeFiles([f]); } });
     return items;
   }
   function fail(err) { host.ui.toast(err && err.message ? err.message : 'That did not work. Try again.'); }
@@ -392,11 +433,23 @@
     frag.append(name.slice(0, i), el('mark', 'vt-mark', name.slice(i, i + q.length)), name.slice(i + q.length));
     return frag;
   };
+  const itemEl = (id) => { for (const e of $('body').querySelectorAll('[data-id]')) if (e.dataset.id === id) return e; return null; };
+  // Choosing one file changes that file's row or card and the toolbar, not the whole list, so a long list stays quick and the keyboard stays put.
+  function pick(id, on) {
+    if (on) state.sel.add(id); else state.sel.delete(id);
+    const item = itemEl(id);
+    if (item) {
+      if (on) item.setAttribute('aria-selected', 'true'); else item.removeAttribute('aria-selected');
+      const cb = item.querySelector('.vt-tick input');
+      if (cb) cb.checked = on;
+    }
+    chrome();
+  }
   function tick(f) {
     const lab = el('label', 'sdk-row-tick vt-tick');
     const cb = el('input');
     cb.type = 'checkbox'; cb.checked = state.sel.has(f.id); cb.setAttribute('aria-label', `Choose ${f.name}`);
-    cb.addEventListener('change', () => { if (cb.checked) state.sel.add(f.id); else state.sel.delete(f.id); render(); });
+    cb.addEventListener('change', () => pick(f.id, cb.checked));
     lab.append(cb);
     return lab;
   }
@@ -410,20 +463,36 @@
     const frag = document.createDocumentFragment(); frag.append(head, tail);
     return frag;
   }
-  function fitCuts() {
+  // Every name is measured first, then every cut is written, so the page is laid out once however many cards there are.
+  let measure = null;
+  function fitCuts(within) {
     const app = $('body');
     if (!app.clientWidth) return;
-    for (const b of app.querySelectorAll('.vt-cut')) {
+    const cuts = [...(within || app).querySelectorAll('.vt-cut')];
+    if (!cuts.length) return;
+    const head0 = cuts[0].querySelector('.vt-nm-head');
+    if (!head0) return;
+    if (!measure) measure = document.createElement('canvas').getContext('2d');
+    const hs = getComputedStyle(head0);
+    measure.font = `${hs.fontStyle} ${hs.fontWeight} ${hs.fontSize} ${hs.fontFamily}`;
+    const cs = getComputedStyle(cuts[0]);
+    const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const jobs = [];
+    for (const b of cuts) {
       const head = b.querySelector('.vt-nm-head'); const tail = b.querySelector('.vt-nm-tail');
-      if (!head || !tail) continue;
-      const start = head.dataset.start;
-      const cs = getComputedStyle(b);
-      const left = b.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - tail.getBoundingClientRect().width;
-      const fits = (s) => { head.replaceChildren(mark(s)); return head.getBoundingClientRect().width <= left; };
-      if (fits(start)) continue;
-      let lo = 0; let hi = start.length - 1;
-      while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fits(`${start.slice(0, mid)}…`)) lo = mid; else hi = mid - 1; }
-      head.replaceChildren(mark(`${start.slice(0, lo)}…`));
+      if (head && tail) jobs.push({ head, start: head.dataset.start, left: b.clientWidth - pad - tail.getBoundingClientRect().width - 1 });
+    }
+    const wide = (t) => measure.measureText(t).width;
+    for (const j of jobs) {
+      if (wide(j.start) <= j.left) { j.text = j.start; continue; }
+      let lo = 0; let hi = j.start.length - 1;
+      while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (wide(`${j.start.slice(0, mid)}…`) <= j.left) lo = mid; else hi = mid - 1; }
+      j.text = `${j.start.slice(0, lo)}…`;
+    }
+    for (const j of jobs) {
+      if (j.head.dataset.shown === j.text || (j.head.dataset.shown === undefined && j.text === j.start)) continue;
+      j.head.dataset.shown = j.text;
+      j.head.replaceChildren(mark(j.text));
     }
   }
   function openButton(f, cls, cut = false) {
@@ -432,7 +501,7 @@
     b.append(cut ? cutName(f.name) : mark(f.name));
     b.title = f.name;
     b.addEventListener('click', () => {
-      if (state.selecting) { if (state.sel.has(f.id)) state.sel.delete(f.id); else state.sel.add(f.id); render(); } else openFile(f);
+      if (state.selecting) pick(f.id, !state.sel.has(f.id)); else openFile(f, 'open');
     });
     return b;
   }
@@ -464,7 +533,7 @@
       box.dataset.thumb = f.id;
       if (thumbs.has(f.id)) { const img = document.createElement('img'); img.alt = ''; img.src = thumbs.get(f.id); box.append(img); } else if (seen) seen.observe(box);
       box.append(ic(k.icon, 'vt-tile'));
-      if (f.group === 'video') { const play = el('span', 'vt-play'); play.append(ic('play')); box.append(play); }
+      if (f.group === 'video') { const play = el('span', 'vt-play'); play.append(ic('play')); box.append(play); if (durations[f.id]) box.append(el('span', 'vt-len', lengthWord(durations[f.id]))); }
     } else {
       box.classList.add('vt-bare');
       box.append(ic(k.icon, 'vt-tile'));
@@ -542,12 +611,12 @@
   function emptyEl() {
     const e = el('div', 'sdk-empty vt-empty-in');
     if (!state.files.length) {
-      e.append(ic('folder-open'), el('p', 'sdk-empty-title', 'No files yet.'), el('p', 'sdk-empty-text', mayAdd ? `Add tickets, photos and documents for this ${SPACE}.` : `Nothing has been added to this ${SPACE} yet.`));
+      e.append(ic('folder-open'), el('p', 'sdk-empty-title', `Nothing in ${MODULE} yet.`), el('p', 'sdk-empty-text', mayAdd ? `Add pictures, audio, video and documents for this ${SPACE}.` : `Nothing has been added to this ${SPACE}'s ${MODULE} yet.`));
       if (mayAdd) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
     } else {
       e.append(ic('magnifying-glass'), el('p', 'sdk-empty-title', 'No files match.'));
       const b = button('btn', { label: 'Clear filters', icon: 'xmark' });
-      b.addEventListener('click', () => { clearFilters(); render(); });
+      b.addEventListener('click', () => { clearFilters(); refilter(); });
       e.append(b);
     }
     return e;
@@ -563,28 +632,68 @@
     return null;
   }
   let renderedNarrow = false;
+  // Only the first files are drawn; the rest are added as the person scrolls to the end (or presses Show more), so a long list opens at once.
+  let paged = null; // { list, box, make, more }
+  const moreSeen = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) showMore(); }, { rootMargin: '400px' }) : null;
+  function showMore() {
+    if (!paged) return;
+    const from = paged.box.children.length;
+    const next = paged.list.slice(from, from + PAGE);
+    if (!next.length) return;
+    if (paged.more) moreSeen && moreSeen.unobserve(paged.more);
+    const page = document.createDocumentFragment();
+    for (const f of next) page.append(paged.make(f));
+    paged.box.append(page);
+    state.limit = paged.box.children.length;
+    fitCuts(paged.box);
+    drawMore();
+  }
+  function drawMore() {
+    if (!paged) return;
+    const left = paged.list.length - paged.box.children.length;
+    if (paged.more) { moreSeen && moreSeen.unobserve(paged.more); paged.more.remove(); paged.more = null; }
+    if (left <= 0) return;
+    const wrap = el('div', 'vt-more');
+    const b = button('btn', { label: `Show ${Math.min(PAGE, left)} more (${left} left)` });
+    b.addEventListener('click', showMore);
+    wrap.append(b);
+    $('body').append(wrap);
+    paged.more = wrap;
+    if (moreSeen) moreSeen.observe(wrap);
+  }
   function renderBody() {
     renderedNarrow = narrow();
     const body = $('body');
     const scroller = scrollerOf($('app'));
     const scrollTop = scroller ? scroller.scrollTop : 0;
+    if (paged && paged.more && moreSeen) moreSeen.unobserve(paged.more);
+    paged = null;
     body.replaceChildren();
     body.dataset.view = state.view;
     const list = filtered();
+    const shown = list.slice(0, Math.max(PAGE, state.limit));
     if (!list.length) body.append(emptyEl());
     else if (state.view === 'list') {
       const ul = el('ul', 'sdk-card-list vt-rows');
       ul.setAttribute('aria-label', 'Files');
-      for (const f of list) ul.append(rowEl(f));
+      const frag = document.createDocumentFragment();
+      for (const f of shown) frag.append(rowEl(f));
+      ul.append(frag);
       body.append(ul);
+      paged = { list, box: ul, make: rowEl, more: null };
     } else {
       const g = el('div', 'vt-grid');
       g.setAttribute('role', 'list');
-      for (const f of list) { const c = cardEl(f); c.setAttribute('role', 'listitem'); g.append(c); }
+      const make = (f) => { const c = cardEl(f); c.setAttribute('role', 'listitem'); return c; };
+      const frag = document.createDocumentFragment();
+      for (const f of shown) frag.append(make(f));
+      g.append(frag);
       body.append(g);
+      paged = { list, box: g, make, more: null };
     }
     body.hidden = false;
     $('loading').hidden = true;
+    drawMore();
     if (scroller) scroller.scrollTop = scrollTop;
     fitCuts();
   }
@@ -593,7 +702,7 @@
     let note = state.notice;
     if (!note && !state.adding && capBytes()) {
       if (isFull()) note = { kind: 'danger', text: fullSentence() };
-      else if (usedBytes() / capBytes() >= 0.8) note = { kind: 'warn', text: `Almost full. Remove some files to add more: ${size(usedBytes())} of ${size(capBytes())} used in this ${SPACE}.` };
+      else if (usedBytes() / capBytes() >= 0.8) note = { kind: 'warn', text: `Almost full. Remove some files to add more: ${size(usedBytes())} of ${size(capBytes())} of this ${SPACE}'s ${MODULE} used.` };
     }
     b.hidden = !note;
     if (!note) return;
@@ -601,11 +710,28 @@
     $('banner-icon').replaceChildren(ic(note.kind === 'ok' ? 'check' : 'triangle-exclamation'));
     $('banner-text').textContent = note.text;
   }
+  // Where the keyboard is in the list (a name, a tick or a More button, by file), so a redraw puts it back.
+  function focusKey() {
+    const a = root.activeElement;
+    if (!a || !$('body').contains(a)) return null;
+    const item = a.closest('[data-id]');
+    if (!item) return null;
+    const kind = a.matches('.vt-tick input') ? '.vt-tick input' : a.matches('.menu-btn') ? '.menu-btn' : a.matches('.sdk-open') ? '.sdk-open' : null;
+    return kind ? { id: item.dataset.id, kind } : null;
+  }
+  function putFocusBack(k) {
+    if (!k) return;
+    const item = itemEl(k.id);
+    const target = item && item.querySelector(k.kind);
+    if (target) { try { target.focus({ preventScroll: true }); } catch { /* not focusable */ } }
+  }
   function render() {
+    const kept = focusKey();
     renderBody();
     renderBanner();
     renderAdd();
     chrome();
+    putFocusBack(kept);
   }
 
   // ---- Add files -----------------------------------------------------------------------------------------------------------------------
@@ -634,7 +760,9 @@
     $('quota-fill').style.setProperty('--pct', `${pct}%`);
     const q = $('queue');
     q.hidden = !state.queue.length;
+    const keptAt = q.contains(root.activeElement) ? [...q.children].findIndex((r) => r.contains(root.activeElement)) : -1;
     q.replaceChildren(...state.queue.map(uploadRow));
+    if (keptAt >= 0 && q.children.length) { const b = q.children[Math.min(keptAt, q.children.length - 1)].querySelector('button:last-of-type'); if (b) b.focus(); }
   }
   function uploadRow(it) {
     const li = el('li', 'sdk-row vt-up');
@@ -646,7 +774,7 @@
     const main = el('span', 'sdk-row-main');
     main.append(el('span', 'vt-up-name', it.name));
     const line = el('span', `vt-up-line${it.status === 'refused' ? ' vt-up-bad' : ''}`);
-    line.textContent = it.status === 'uploading' ? `Adding · ${Math.round(it.pct)}% · ${size((it.size * it.pct) / 100)} of ${size(it.size)}` : it.status === 'queued' ? 'Waiting' : it.status === 'done' ? `Added · ${size(it.size)}` : it.msg;
+    line.textContent = it.status === 'uploading' ? `Adding · ${Math.round(it.pct)}% · ${size((it.size * it.pct) / 100)} of ${size(it.size)}` : it.status === 'queued' ? (it.waiting ? 'Waiting a moment' : 'Waiting') : it.status === 'done' ? `Added · ${size(it.size)}` : it.msg;
     main.append(line);
     if (it.status === 'uploading') {
       const bar = el('div', 'sdk-progress sdk-progress-sm');
@@ -656,12 +784,18 @@
       main.append(bar);
     }
     li.append(lead, main);
+    if (it.status === 'refused' && it.retry && it.file) {
+      const again = button('btn btn-small', { label: 'Try again', aria: `Try adding ${it.name} again` });
+      again.addEventListener('click', () => { it.status = 'queued'; it.waiting = false; it.tries = 0; it.retry = false; it.msg = ''; renderAdd(); pump(); });
+      li.append(again);
+    }
     const end = button('sdk-icon-btn btn-quiet btn-small', { icon: 'xmark', aria: it.status === 'uploading' || it.status === 'queued' ? `Stop adding ${it.name}` : `Clear ${it.name} from the list`, tip: it.status === 'uploading' || it.status === 'queued' ? 'Stop adding' : 'Clear' });
     end.addEventListener('click', () => {
-      if (it.status === 'uploading' && it.job) it.job.cancel();
+      if (it.status === 'uploading' && it.job) { it.job.cancel(); stoppedAt(it); }
       if (it.status === 'queued') it.status = 'stopped';
       state.queue = state.queue.filter((x) => x !== it);
       renderAdd();
+      if (!state.queue.length && !running) { const c = $('choose'); if (c && !c.disabled) c.focus(); }
     });
     li.append(end);
     return li;
@@ -669,17 +803,27 @@
   const pending = () => state.queue.filter((x) => x.status === 'queued');
   let running = 0;
   const maxRunning = 2; // the server takes two at once from one person
+  // The host lets one person add 30 files a minute. A file it turns away waits, and the rest wait with it, then they go again.
+  let holding = false;
+  let holdTimer = 0;
+  function hold(ms) {
+    holding = true;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { holding = false; pump(); }, ms);
+  }
+  const MAX_TRIES = 8;
   function startFiles(files) {
     state.notice = null;
     for (const f of files) {
       const kind = (() => { const e = (f.name.split('.').pop() || '').toLowerCase(); return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(e) ? 'picture' : ['mp3', 'ogg', 'oga', 'wav', 'm4a'].includes(e) ? 'audio' : ['mp4', 'webm', 'mov'].includes(e) ? 'video' : e === 'pdf' ? 'pdf' : 'text'; })();
-      state.queue.push({ file: f, name: f.name, size: f.size || 1, kind, status: 'queued', pct: 0, msg: '' });
+      state.queue.push({ file: f, name: f.name, size: f.size || 1, kind, status: 'queued', pct: 0, msg: '', tries: 0, waiting: false, retry: false });
     }
     state.adding = true;
     render();
     pump();
   }
   function pump() {
+    if (holding) return;
     while (running < maxRunning) {
       const it = pending()[0];
       if (!it) { if (!running) finished(); return; }
@@ -701,8 +845,27 @@
       render();
     }, 2500);
   }
+  // A video's small picture goes up after the file; when the host says too often, it is tried again a little later.
+  async function sendThumb(rec, blob, tries = 0) {
+    try {
+      const updated = await host.library.thumb(rec.id, blob);
+      const mine = state.files.find((x) => x.id === rec.id);
+      if (mine && updated) { mine.hasThumb = true; thumbs.set(rec.id, URL.createObjectURL(blob)); lastSig = ''; render(); }
+    } catch (err) {
+      if (err && err.status === 429 && tries < 3) setTimeout(() => sendThumb(rec, blob, tries + 1), 15000);
+    }
+  }
+  // Stopped while the last bytes were going: the file may have been kept. Look again, and say so.
+  function stoppedAt() {
+    const before = state.files.length;
+    setTimeout(async () => {
+      await refresh({ quiet: true });
+      if (state.files.length > before) host.ui.toast('Added before it could stop.');
+    }, 1500);
+  }
   async function send(it) {
     it.status = 'uploading';
+    it.waiting = false;
     renderAdd();
     try {
       it.job = host.library.add(it.file, { name: it.name, keepPosition: !state.removeWhere, onProgress: ({ loaded, total }) => { it.pct = total ? Math.min(99, (loaded / total) * 100) : 0; paintProgress(it); } });
@@ -713,22 +876,30 @@
       state.usage = { ...state.usage, bytes: usedBytes() + (rec.size || 0) };
       lastSig = '';
       render();
+      if (!state.queue.includes(it)) host.ui.toast('Added before it could stop.');
       if ((rec.group === 'image' || rec.group === 'video') && it.file) {
-        makeThumb(it.file, kindOf(rec), rec.id).then(async (blob) => {
-          if (!blob) return;
-          const updated = await host.library.thumb(rec.id, blob);
-          const mine = state.files.find((x) => x.id === rec.id);
-          if (mine && updated) { mine.hasThumb = true; thumbs.set(rec.id, URL.createObjectURL(blob)); lastSig = ''; render(); }
+        makeThumb(it.file, kindOf(rec), rec.id).then((made) => {
+          if (!made) return;
+          if (made.duration) saveDuration(rec.id, made.duration).then(() => { lastSig = ''; render(); });
+          return sendThumb(rec, made.blob);
         }).catch(() => {});
       }
     } catch (err) {
       if (!state.queue.includes(it)) return; // stopped by the person
+      if (err && err.status === 429 && it.tries < MAX_TRIES) {
+        it.tries += 1;
+        it.status = 'queued'; it.waiting = true; it.pct = 0;
+        hold(it.tries < 3 ? 8000 : 15000);
+        renderAdd();
+        return;
+      }
       it.status = 'refused';
-      it.msg = err.message || 'That file could not be added.';
-      if (err.status === 413 && /full|used your/i.test(it.msg)) refresh({ quiet: true });
+      it.retry = !err || !err.status || err.status === 429 || err.status >= 500;
+      it.msg = err && err.status === 429 ? 'Too many files at once. Try again in a moment.' : (err && err.message) || 'That file could not be added.';
+      if (err && err.status === 413 && /full|used your/i.test(it.msg)) refresh({ quiet: true });
       renderAdd();
     } finally {
-      it.file = null;
+      if (it.status === 'done' || (it.status === 'refused' && !it.retry)) it.file = null;
       it.job = null;
       announce(it.status === 'done' ? `${it.name} added` : it.status === 'refused' ? `${it.name} was not added. ${it.msg}` : '');
     }
@@ -738,14 +909,17 @@
     const rows = $('queue').children;
     const i = state.queue.indexOf(it);
     if (i < 0 || !rows[i]) return;
-    rows[i].replaceWith(uploadRow(it));
+    const again = uploadRow(it);
+    const had = rows[i].contains(root.activeElement);
+    rows[i].replaceWith(again);
+    if (had) { const b = again.querySelector('button'); if (b) b.focus(); }
   }
   function announce(text) { if (text) $('live').textContent = text; }
 
   $('choose').addEventListener('click', () => $('picker').click());
   $('picker').addEventListener('change', () => { const files = [...$('picker').files]; $('picker').value = ''; if (files.length) startFiles(files); });
   $('add-close').addEventListener('click', () => { state.adding = false; render(); });
-  $('remove-where').addEventListener('change', () => { state.removeWhere = $('remove-where').checked; });
+  $('remove-where').addEventListener('change', () => { state.removeWhere = $('remove-where').checked; savePrefs(); });
   // Dropping files on the module adds them.
   let depth = 0;
   const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -818,7 +992,7 @@
     } else if (unknown) {
       lines.push('Some of them are linked from other tools. The links will show File removed.');
     }
-    lines.push(files.length === 1 ? `It is removed for everyone in this ${SPACE}. This can't be undone.` : `They are removed for everyone in this ${SPACE}. This can't be undone.`);
+    lines.push(files.length === 1 ? `It is removed from the ${MODULE} for everyone in this ${SPACE}. This can't be undone.` : `They are removed from the ${MODULE} for everyone in this ${SPACE}. This can't be undone.`);
     const ok = await host.ui.confirm({ title: files.length === 1 ? `Remove "${files[0].name.length > 60 ? `${files[0].name.slice(0, 59)}…` : files[0].name}"?` : `Remove ${files.length} files?`, message: lines.join('\n\n'), action: 'Remove', kind: 'destructive' });
     if (!ok) return;
     let gone = 0;
@@ -855,15 +1029,15 @@
   // ---- Opening a file: the seam for the viewers (step 3) --------------------------------------------------------------------------------
   // The viewer windows open a file from here (the same entry host.files.open will use). Until they exist, a file opens its details with
   // Download, so every file still goes somewhere.
-  function openFile(file) {
+  function openFile(file, opener = 'open') {
     if (host.files && typeof host.files.open === 'function' && host.objects && host.objects.make) {
-      return host.files.open(host.objects.make('file', file.id)).catch(() => showFile(file));
+      return host.files.open(host.objects.make('file', file.id)).catch(() => showFile(file, { opener }));
     }
-    return showFile(file);
+    return showFile(file, { opener });
   }
   let showing = null;
   const detailsEditor = host.ui.editor($('details'), { size: 'small', onClose: () => { showing = null; } });
-  async function showFile(f, { uses = false } = {}) {
+  async function showFile(f, { uses = false, opener = 'menu' } = {}) {
     showing = f;
     const k = KINDS[kindOf(f)];
     $('details-title').textContent = f.name;
@@ -879,14 +1053,15 @@
     const box = $('uses');
     box.hidden = true;
     box.replaceChildren();
-    detailsEditor.open({ focus: mayDownload ? dl : $('details-close'), returnTo: () => root.querySelector(`[data-menu="${f.id}"]`) });
+    // Escape goes back to what opened it: the name, or the More button.
+    detailsEditor.open({ focus: mayDownload ? dl : $('details-close'), returnTo: () => { const item = itemEl(f.id); return item && item.querySelector(opener === 'open' ? '.sdk-open' : '.menu-btn'); } });
     if (!uses && !f.uses) return;
     try {
       const res = await host.library.uses(f.id);
       if (showing !== f) return;
       box.hidden = false;
       const head = el('h4', 'vt-uses-head', 'Where it is used');
-      if (!res.uses.length && !res.hidden) { box.replaceChildren(head, el('p', 'vt-fine', `Nothing links to this file yet. Link it from a booking or a note in another tool.`)); return; }
+      if (!res.uses.length && !res.hidden) { box.replaceChildren(head, el('p', 'vt-fine', `Nothing in this ${SPACE} links to this file yet. Link it from a booking or a note in another tool.`)); return; }
       const ul = el('ul', 'vt-uses-list');
       for (const x of res.uses) ul.append(el('li', '', `${x.title}${x.moduleName ? ` (${x.moduleName})` : ''}`));
       box.replaceChildren(head, ul);

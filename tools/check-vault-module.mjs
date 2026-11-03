@@ -25,7 +25,9 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   const { manifest } = buildModule(path.join(ROOT, 'modules', 'vault'));
   if (manifest.id !== 'vault') fail('the module is not called vault');
   if (manifest.library !== true) fail('the manifest does not declare library: true');
-  if (manifest.scope.join() !== 'space') fail(`the Vault's scope is ${manifest.scope.join()}, not space`);
+  if (manifest.scope.join() !== 'space,person') fail(`the Vault's scope is ${manifest.scope.join()}, not space,person (the person's own choices are kept in their own data)`);
+  if (manifest.access?.personWrite !== 'view') fail('the Vault does not let anyone who may view keep their own choices (access.personWrite: view)');
+  if (/ticket/i.test(manifest.description)) fail('the Vault description names tickets');
   const perms = Object.fromEntries(manifest.permissions.map((p) => [p.key, p.default]));
   for (const k of ['view', 'add', 'download', 'remove_any', 'share']) {
     if (!perms[k]) fail(`the permission ${k} is missing`);
@@ -46,6 +48,15 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   const games = JSON.parse(read('templates/games.json'));
   if (travel.moduleNames.vault !== 'Documents' || !travel.modules.includes('vault')) fail('the travel template does not show the Vault as Documents');
   if (games.moduleNames.vault !== 'Handouts' || !games.modules.includes('vault')) fail('the games template does not show the Vault as Handouts');
+  // What the page promises it keeps: the sentence "Your choice is remembered." needs a write to the person's own data and a read of it.
+  const html = read('modules/vault/src/vault.html');
+  if (/Your choice is remembered/.test(html) && !(/host\.storage\.set\([^)]*scope: 'person'/.test(js) && /host\.storage\.get\([^)]*scope: 'person'/.test(js))) fail('the page says "Your choice is remembered." but does not store and read it per person');
+  if (/ticket/i.test(js + html)) fail('the page names tickets');
+  // fitCuts measures every name first and writes after: no measuring after the first write (that is a layout per card).
+  const fit = js.slice(js.indexOf('function fitCuts('), js.indexOf('function openButton('));
+  if (fit.lastIndexOf('getBoundingClientRect') > fit.indexOf('replaceChildren') || /getBoundingClientRect[^;]*;[^]*getComputedStyle/.test(fit.slice(fit.indexOf('for (const j of jobs)')))) fail('fitCuts reads layout after it has written (a read-after-write loop)');
+  if (!/numeric: true/.test(js)) fail('names are not sorted with numbers read as numbers');
+  if (!/Nothing in \$\{MODULE\}/.test(js)) fail("the empty state does not use the module's shown name");
   say('manifest, SDK calls and templates read');
 }
 
@@ -81,21 +92,32 @@ async function main() {
     const trip = S.ctx.trip;
     const put = (who, name, bytes, type) => api('POST', `/api/modules/vault/library?space=${trip}&name=${encodeURIComponent(name)}`, bytes, who, type);
     const names = async (who = 'mia') => ((await api('GET', `/api/modules/vault/library?space=${trip}`, undefined, who)).json?.files || []).map((f) => f.name).sort();
-    for (const [name, bytes, type] of [['Rome map.png', PNG, 'image/png'], ['Hotel Roma booking.pdf', PDF, 'application/pdf'], ['Day one.md', MD, 'text/markdown']]) {
-      const r = await put('mia', name, bytes, type);
-      if (r.status !== 201) throw new Error(`could not add ${name}: ${r.status} ${JSON.stringify(r.json)}`);
-    }
     browser = await launch(bin);
-    const open = async (size, as) => {
+    const open = async (size, as, wait = ROWS, touch = false) => {
       const tab = new Tab(browser.cdp, S.ctx);
       await tab.open(size, 'dark', false);
+      if (touch) { const sx = (m, p) => tab.cdp.send(m, p, tab.sid); await sx('Emulation.setDeviceMetricsOverride', { width: size, height: 800, deviceScaleFactor: 2, mobile: true }); await sx('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }); }
       const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
-      await driveScreen(tab, { id: 'vault', as, url: '/modules/vault?space={trip}&popout=1', wait: ROWS }, S.base, S.cookies, S.ctx);
+      await driveScreen(tab, { id: 'vault', as, url: '/modules/vault?space={trip}&popout=1', wait }, S.base, S.cookies, S.ctx);
       await sleep(600);
       return tab;
     };
     const until = async (tab, expr, want, ms = 6000) => { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await tab.eval(expr); if (want(v)) return v; await sleep(150); } return v; };
 
+
+    // An empty space says so in the template's word (Documents in the travel template).
+    {
+      const t = await open(1000, 'mia', '#module-frame >>> .vt-empty-in');
+      try {
+        const words = await t.eval(TEXT('.vt-empty-in'));
+        if (!/Documents/.test(words)) fail(`the empty state says "${words.replace(/\n/g, ' ')}", without the module's shown name (Documents)`);
+        say(`empty state: ${words.replace(/\n+/g, ' ')}`);
+      } finally { await t.close(); }
+    }
+    for (const [name, bytes, type] of [['Rome map.png', PNG, 'image/png'], ['Hotel Roma booking.pdf', PDF, 'application/pdf'], ['Day one.md', MD, 'text/markdown']]) {
+      const r = await put('mia', name, bytes, type);
+      if (r.status !== 201) throw new Error(`could not add ${name}: ${r.status} ${JSON.stringify(r.json)}`);
+    }
     // The List, search, the Grid, Rename, Remove, Select (a moderator).
     let tab = await open(1000, 'mia');
     try {
@@ -186,6 +208,99 @@ async function main() {
       if (await tab.eval(COUNT('button[aria-label="Add files"]'))) fail('a member who may not add is shown Add files');
       say('a member who may not add: no Add files');
     } finally { await tab.close(); await api('PATCH', '/api/roles/member', { 'module.vault.add': true }, 'admin'); }
+
+    // What a person chose stays with them: Remove where it was taken (ticked, then the page opened again) and the Grid.
+    const ACTIVE = (sel) => `(() => { ${ROOTS} for (const r of roots) { const a = r.activeElement; if (a && a.matches && a.matches(${JSON.stringify(sel)})) return (a.closest('[data-id]') || {dataset:{}}).dataset.id || true; } return false; })()`;
+    const SPACE_KEY = async (tab, key, code) => { for (const type of ['keyDown', 'keyUp']) await tab.cdp.send('Input.dispatchKeyEvent', { type, key, code, text: type === 'keyDown' ? key : undefined, windowsVirtualKeyCode: key === ' ' ? 32 : 0 }, tab.sid); };
+    tab = await open(1000, 'mia');
+    try {
+      await tab.click('.mf-switch-btn', 'Grid');
+      await until(tab, COUNT('.vt-card'), (v) => v >= 1);
+      await tab.eval(PRESS('button[aria-label="Add files"]'));
+      await tab.waitFor('#module-frame >>> #remove-where');
+      if (await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const e = r.querySelector('#remove-where'); if (e) return e.checked; } return null; })()`)) fail('Remove where it was taken is on before anyone chose it (it is off by default)');
+      await tab.eval(PRESS('#remove-where'));
+      await sleep(800);
+    } finally { await tab.close(); }
+    tab = await open(1000, 'mia', '#module-frame >>> .vt-card');
+    try {
+      await tab.eval(PRESS('button[aria-label="Add files"]'));
+      await tab.waitFor('#module-frame >>> #remove-where');
+      const remembered = await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const e = r.querySelector('#remove-where'); if (e) return e.checked; } return null; })()`);
+      if (remembered !== true) fail('Remove where it was taken was not remembered after the page was opened again');
+      const grid = await tab.eval(COUNT('.vt-card'));
+      if (!grid) fail('the Grid was not remembered after the page was opened again');
+      say(`remembered per person: Remove where it was taken ${remembered}, Grid ${grid ? 'on' : 'off'}`);
+      await tab.eval(PRESS('#remove-where'));
+      await tab.click('.mf-switch-btn', 'List');
+      await sleep(800);
+    } finally { await tab.close(); }
+
+    // The keyboard: Space on a ticked row in Select mode leaves the keyboard on that control.
+    tab = await open(1000, 'mia');
+    try {
+      for (let again = 0; again < 4 && !(await tab.eval(COUNT('.vt-tick'))); again += 1) { await sleep(500); await tab.eval(PRESS('button[aria-label="Select"]')); await sleep(700); }
+      await tab.waitFor('#module-frame >>> .vt-tick');
+      const id = await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const e = r.querySelector('.vt-tick input'); if (e) { e.focus(); return e.closest('[data-id]').dataset.id; } } return null; })()`);
+      await SPACE_KEY(tab, ' ', 'Space');
+      await until(tab, TEXT('.mf-toolbar'), (v) => /1 selected/.test(v));
+      const kept = await tab.eval(ACTIVE('.vt-tick input'));
+      if (kept !== id) fail(`after Space on a Select row the keyboard is on ${kept === false ? 'nothing in the module' : 'another control'}, not on the control it was on`);
+      say('Select: Space keeps the keyboard on the same row');
+    } finally { await tab.close(); }
+
+    // A touch screen: the small icon buttons are 44px.
+    tab = await open(390, 'mia', ROWS, true);
+    try {
+      const coarse = await tab.eval(`matchMedia('(pointer: coarse)').matches`);
+      if (!coarse) fail('the touch screen was not emulated (pointer: coarse is false)');
+      await tab.eval(PRESS('button[aria-label="Add files"]'));
+      await tab.waitFor('#module-frame >>> #add-close');
+      const small = await tab.eval(`(() => { ${ROOTS} const out = []; for (const r of roots) for (const e of r.querySelectorAll('.vt-row .menu-btn, #add-close')) { const b = e.getBoundingClientRect(); if (b.width && (b.width < 43.5 || b.height < 43.5)) out.push((e.id || e.className.split(' ')[0]) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height)); } return out.join(', '); })()`);
+      if (small) fail(`on a touch screen these buttons are under 44px: ${small}`);
+      say(`touch: More and Close buttons are 44px (${coarse ? 'coarse' : 'fine'} pointer)`);
+    } finally { await tab.close(); }
+
+    // A batch of more than 30 files: the host takes 30 a minute from one person. Every row ends Added, or has Try again.
+    tab = await open(1000, 'sam');
+    try {
+      await tab.eval(PRESS('button[aria-label="Add files"]'));
+      await tab.waitFor('#module-frame >>> #picker');
+      const batch = await tab.eval(`(() => { ${ROOTS} for (const r of roots) { const i = r.querySelector('#picker'); if (i) { const dt = new DataTransfer(); for (let n = 0; n < 34; n++) dt.items.add(new File(['# note ' + n + '\\n'], 'Batch note ' + n + '.md', { type: 'text/markdown' })); i.files = dt.files; const count = i.files.length; i.dispatchEvent(new Event('change', { bubbles: true })); return count; } } return 0; })()`);
+      const settled = await until(tab, `(() => { ${ROOTS} for (const r of roots) { const q = r.querySelector('#queue'); if (q && q.children.length) return [...q.children].map((li) => li.dataset.status + (li.querySelector('button.btn') ? '+retry' : '')).join(); } return ''; })()`, (v) => v && v.split(',').every((x) => x === 'done' || x === 'refused+retry'), 150000);
+      const ends = String(settled || '').split(',');
+      const bad = ends.filter((x) => x !== 'done' && x !== 'refused+retry').length;
+      const added = ends.filter((x) => x === 'done').length;
+      if (!bad && ends.length === 0) fail('the batch queue is empty');
+      if (bad) fail(`in a batch of ${batch}, ${bad} rows ended neither Added nor with Try again (${[...new Set(ends)].join(' ')})`);
+      say(`batch of ${batch}: ${added} Added, ${ends.length - added - bad} with Try again`);
+    } finally { await tab.close(); }
+
+    // A long list: 300 files, the Grid opens at once, and ticking one file does not draw them all again.
+    {
+      const who = ['mia', 'sam'];
+      for (let i = 0; i < 300; i += 1) {
+        for (let tries = 0; tries < 40; tries += 1) {
+          const r = await put(who[i % 2], `Long list ${String(i).padStart(3, '0')}.md`, MD, 'text/markdown');
+          if (r.status === 201) break;
+          if (r.status !== 429) throw new Error(`could not add file ${i}: ${r.status} ${JSON.stringify(r.json)}`);
+          await sleep(3000);
+        }
+      }
+      tab = await open(1000, 'mia');
+      try {
+        const t0 = Date.now();
+        await tab.click('.mf-switch-btn', 'Grid');
+        await until(tab, COUNT('.vt-card'), (v) => v >= 1, 20000);
+        const took = Date.now() - t0;
+        const drawn = await tab.eval(COUNT('.vt-card'));
+        if (took > 1500) fail(`with 300 files the Grid took ${took} ms to appear (1500 at most)`);
+        if (drawn > 120) fail(`with 300 files ${drawn} cards were drawn at once (a page of 100 at a time)`);
+        say(`300 files: Grid in ${took} ms, ${drawn} cards drawn`);
+        await tab.click('.mf-switch-btn', 'List');
+        await until(tab, COUNT('.vt-row'), (v) => v >= 1);
+      } finally { await tab.close(); }
+    }
 
     // A phone: rows 44px or more high, the Grid three across.
     tab = await open(390, 'mia');

@@ -24,11 +24,11 @@
       <button type="button" class="btn btn-primary" id="choose"><span class="ic" data-icon="plus"></span><span>Choose files</span></button>
       <input type="file" id="picker" multiple hidden accept=".jpg,.jpeg,.png,.webp,.gif,.mp3,.ogg,.oga,.wav,.m4a,.mp4,.webm,.mov,.pdf,.md">
     </div>
+    <ul class="vt-queue" id="queue" aria-label="Files being added" hidden></ul>
+    <p class="vt-accept">Pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown. Up to 25 MB for a picture, 200 MB audio, 2 GB video, 100 MB PDF, 1 MB Markdown.</p>
     <label class="sdk-choice-row vt-where"><input type="checkbox" id="remove-where"><span class="sdk-choice-text"><span class="sdk-choice-label">Remove where it was taken</span><span class="sdk-choice-desc">For pictures. Your choice is remembered.</span></span></label>
     <p class="vt-notice">Videos keep their details, which can include where they were taken.</p>
     <p class="vt-line" id="add-line"></p>
-    <ul class="vt-queue" id="queue" aria-label="Files being added" hidden></ul>
-    <p class="vt-accept">Pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown. Up to 25 MB for a picture, 200 MB audio, 2 GB video, 100 MB PDF, 1 MB Markdown.</p>
     <div class="sdk-meter vt-quota">
       <div class="sdk-meter-head"><span class="sdk-meter-label" id="quota-label">Used</span><span class="sdk-meter-value" id="quota-value"></span></div>
       <div class="sdk-progress sdk-progress-sm" id="quota-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span class="sdk-progress-fill" id="quota-fill"></span></div>
