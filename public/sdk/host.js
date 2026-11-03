@@ -1250,6 +1250,30 @@
   // An "open this object" from the host can arrive before the module has said what to do with one.
   let pendingOpen = null;
 
+  // The values of an event that names keys only: ONE storage.list for the keys' common prefix, not a get for each. A key the
+  // list does not hold is gone (deleted). A list that fails is asked once more; if it fails again nothing is dropped silently:
+  // the person is told to reload, and null comes back (the module hears none of that event, never a part of it).
+  async function readKeysOnly(changes, scope, spaceId) {
+    const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
+    const need = changes.filter((c) => !c.deleted && c.value === undefined);
+    let prefix = need[0].key;
+    for (const c of need) while (!c.key.startsWith(prefix)) prefix = prefix.slice(0, -1);
+    let items = null;
+    for (let tries = 0; tries < 2 && !items; tries += 1) {
+      try { items = await call('storage.list', { prefix, ...opts(at) }); } catch (err) { items = null; }
+    }
+    if (!Array.isArray(items)) {
+      call('ui.toast', { text: 'Some changes did not load. Reload the page to see them.' }).catch(() => {});
+      return null;
+    }
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    return changes.map((c) => {
+      if (c.deleted || c.value !== undefined) return c;
+      const got = byKey.get(c.key);
+      return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
+    });
+  }
+
   function emit(event, data) {
     // The environment's facts changed (a picture map set, replaced or cleared): host.environment answers the new ones
     // before anyone listening hears it.
@@ -1264,20 +1288,7 @@
       const { changes = [], scope, spaceId } = data || {};
       const replay = (list) => list.forEach((c, i) => emit('change', { ...c, scope, spaceId, batch: { count: list.length, last: i === list.length - 1 } }));
       if (!changes.some((c) => !c.deleted && c.value === undefined)) { replay(changes); return; }
-      (async () => {
-        const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
-        const full = [];
-        for (let i = 0; i < changes.length; i += 20) {
-          full.push(...await Promise.all(changes.slice(i, i + 20).map(async (c) => {
-            if (c.deleted || c.value !== undefined) return c;
-            try {
-              const got = await call('storage.get', { key: c.key, ...opts(at) });
-              return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
-            } catch (err) { return null; }
-          })));
-        }
-        replay(full.filter(Boolean));
-      })();
+      readKeysOnly(changes, scope, spaceId).then((full) => { if (full) replay(full); });
       return;
     }
     for (const fn of listeners.get(event) || []) {

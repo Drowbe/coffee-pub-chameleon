@@ -5336,7 +5336,7 @@ body.conference-window {
    /sdk/system.css; this holds the place and the parts that are not a menu's. */
 .host-menu {
   position: fixed;
-  z-index: var(--z-menu); /* above a floating module (the layer is 25), under a page opened over the call (30) */
+  z-index: calc(var(--z-toast) + 1); /* the topmost thing while it is open: over a floating module, a page over the call and a toast (an Undo note stays at the screen's edge, where a long menu reaches) */
 }
 
 .host-menu-item .sdk-badge {

@@ -885,20 +885,42 @@ export async function clearWithUndo(moduleId, query) {
 // something went where there was something); many at once ({ many: true }, a Clear or its Undo) always ask.
 export function followClearable(moduleId, { spaceId, guestToken = null }, apply, isClear = () => true) {
   let timer = 0;
+  let holdTimer = 0;
+  let holdFrom = 0; // when the last many-at-once change came (a Clear or its Undo); the undo time counts from it
+  let holdEnds = 0; // when that undo time and the server's grace are over, by this page's clock
+  const read = async () => {
+    let entry = null;
+    try {
+      const q = new URLSearchParams({ space: spaceId });
+      if (guestToken) q.set('guest', guestToken);
+      entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId) || null;
+      if (entry) apply(entry);
+    } catch { /* the flag stays as it was */ }
+    // While a Clear can be undone the server says there is nothing to clear; when that time ends the flag may be true (data
+    // written during it) and no change comes to say so. So ask once more then, and when the page comes back to the front.
+    if (holdFrom && entry) {
+      const seconds = Number(entry.undoSeconds) > 0 ? Number(entry.undoSeconds) : UNDO_SECONDS;
+      holdEnds = holdFrom + seconds * 1000 + HOLD_GRACE_MS;
+      holdFrom = 0;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => { holdEnds = 0; read(); }, Math.max(0, holdEnds - Date.now()));
+    }
+  };
+  if (spaceId && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && holdEnds && Date.now() >= holdEnds) { clearTimeout(holdTimer); holdEnds = 0; read(); }
+    });
+  }
   return ({ many = false, deleted = false } = {}) => {
     if (!spaceId) return;
+    if (many) { holdFrom = Date.now(); clearTimeout(holdTimer); holdEnds = 0; }
     if (!many && deleted !== isClear()) return;
     clearTimeout(timer);
-    timer = setTimeout(async () => {
-      try {
-        const q = new URLSearchParams({ space: spaceId });
-        if (guestToken) q.set('guest', guestToken);
-        const entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId);
-        if (entry) apply(entry);
-      } catch { /* the flag stays as it was */ }
-    }, 400);
+    timer = setTimeout(read, 400);
   };
 }
+// The wait after the undo time before the page asks again: the server keeps a hold 5 s past the undo time (module-holds.js, its grace), plus 1.5 s for the clocks.
+const HOLD_GRACE_MS = 6500;
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
 // elements the lifts set inert themselves (one inert before any lift stays so), the lifts up now, and one watch per

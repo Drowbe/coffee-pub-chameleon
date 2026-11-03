@@ -932,6 +932,26 @@ function toastStack() {
   }
   return layer;
 }
+// On a phone the stack sits along the bottom edge, over the page's own bottom bars: the tab bar and the chat's composer. It is
+// lifted to stand on whichever of them reaches highest (measured where they are drawn, so the safe area and a taller composer
+// count), and put back when there are none (the stylesheet's own place). Asked again while a toast shows, as a bar comes and goes.
+const TOAST_AVOID = '.sdk-tabbar, #chat-bar';
+let toastLiftTimer = 0;
+function liftToasts() {
+  const layer = document.getElementById('toast-layer');
+  if (!layer) return;
+  const live = [...layer.children].some((e) => e.dataset.state !== 'leaving');
+  let top = window.innerHeight;
+  if (live && window.innerWidth <= 640) {
+    for (const el of document.querySelectorAll(TOAST_AVOID)) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && r.bottom > window.innerHeight / 2) top = Math.min(top, r.top);
+    }
+  }
+  const lift = window.innerHeight - top;
+  if (lift > 0) layer.style.bottom = `${Math.round(lift + 8)}px`; else layer.style.removeProperty('bottom');
+  if (!live) { clearInterval(toastLiftTimer); toastLiftTimer = 0; }
+}
 function closeToast(t) {
   if (t.gone) return;
   t.gone = true;
@@ -984,6 +1004,8 @@ function placeToast(spec) {
     else if (spec.onOpen && e.target.closest('[data-toast-open]')) { spec.onOpen(); closeToast(t); }
   });
   toastStack().prepend(el);
+  liftToasts();
+  if (!toastLiftTimer) { toastLiftTimer = setInterval(liftToasts, 300); window.addEventListener('resize', liftToasts); }
   start();
   if (spec.onPlaced) spec.onPlaced(t);
   return t;

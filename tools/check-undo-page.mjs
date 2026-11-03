@@ -30,7 +30,7 @@ const test = async (name, fn) => {
   try { await fn(); n += 1; } catch (err) { failed += 1; console.error(`FAIL ${name}\n${err.stack || err}`); }
 };
 
-const SECONDS = 20;
+const SECONDS = 8; // the server's undo time here (CLEAR_UNDO_SECONDS): short, so a case can wait a hold out
 const WIDTH = Number(process.env.UNDO_PAGE_WIDTH) || 1280;
 const MODE = process.env.UNDO_PAGE_MODE === 'light' ? 'light' : 'dark';
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-undo-page-'));
@@ -150,8 +150,9 @@ try {
   // --- Clear offered once there is data ---------------------------------------------------------------------------------
   await test('a module that was empty when the page loaded offers Clear once it has data (for-space is read again after a change)', async () => {
     const id = 'budget';
-    await call('DELETE', `/api/modules/${id}/data?${sp}`); // emptied (the server holds it for its undo time)
+    await call('DELETE', `/api/modules/${id}/data?${sp}`); // emptied (the server holds it for its undo time: nothing to clear while it waits)
     assert.equal((await forSpace(id)).clear, false, `${id} is empty now`);
+    await sleep(SECONDS * 1000 + 5000 + 1500); // the hold ends; the module stays empty
     const tab = await open(`/modules/${id}?space=${T}`);
     await tab.waitFor('#module-frame');
     await sleep(1200);
@@ -166,6 +167,57 @@ try {
     assert.equal(seen, 'function');
     const after = await menu();
     assert.ok(after.some((t) => /^Clear/.test(t)), `Clear offered once it has data: ${after}`);
+  });
+  // --- the hold ends with data written during it -----------------------------------------------------------------------
+  await test('hold ends with data written during it: Clear appears without a reload', async () => {
+    const id = 'budget'; // it has the cost the case above added
+    const tab = await open(`/modules/${id}?space=${T}`);
+    await tab.waitFor('#module-frame');
+    await sleep(1500);
+    const menu = async () => { if (!(await tab.eval(`Boolean(document.querySelector('.mf-titlebar .mf-titlebar-menu:not([hidden])'))`))) return []; await tab.click('.mf-titlebar .mf-titlebar-menu'); await sleep(300); const t = await tab.eval(`[...document.querySelectorAll('.host-menu-item, [role="menuitem"]')].map((e) => e.textContent.trim())`); await tab.key('Escape'); return t; };
+    assert.ok((await menu()).some((t) => /^Clear/.test(t)), 'Clear is offered while the module has data');
+    const cleared = await call('DELETE', `/api/modules/${id}/data?${sp}`);
+    assert.equal(cleared.status, 200, JSON.stringify(cleared.json));
+    await sleep(1200);
+    assert.equal((await call('PUT', `/api/modules/${id}/data/cost:during1?${sp}`, { value: { id: 'during1', title: 'During the hold', amount: 5, category: 'food', date: '2026-10-21', paidBy: 'admin' } })).status, 200);
+    await sleep(1200);
+    assert.equal((await forSpace(id)).clear, false, 'nothing to clear while the hold waits');
+    assert.ok(!(await menu()).some((t) => /^Clear/.test(t)), 'no Clear while the hold waits');
+    await sleep(SECONDS * 1000 + 5000 + 1500); // the hold ends, and the page asks again (its undo time and a grace after the Clear)
+    assert.equal((await forSpace(id)).clear, true, 'the server offers Clear now');
+    const after = await menu();
+    assert.ok(after.some((t) => /^Clear/.test(t)), `Clear offered when the hold ended, with no reload: ${after}`);
+  });
+
+  // --- the Undo note and the page's bottom bars ---------------------------------------------------------------------------
+  // At 390 the note stands above the chat's composer and the tab bar; at 1280 an open menu is over it. Run again at each width
+  // (UNDO_PAGE_WIDTH); the workspace is where the bars are.
+  await test('Undo note: no overlap with the composer, the tab bar or an open menu on the workspace', async () => {
+    const tab = await open('/#join=' + T);
+    await tab.waitFor('button.sdk-strip-fact[data-module=budget]');
+    await sleep(2500);
+    await tab.eval(`(async () => { const b = await import('/brand.js'); b.undoToast('Cleared Polls.', async () => 'x', { until: Date.now() + 15000 }); return true; })()`);
+    await tab.waitFor('.sdk-toast [data-undo]');
+    await sleep(700);
+    const boxes = () => tab.eval(`(() => { const r = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 ? { l: b.left, t: b.top, r: b.right, b: b.bottom } : null; }; const toast = r(document.querySelector('.sdk-toast[data-undo]')); const out = { toast, view: innerHeight }; for (const [k, s] of [['composer', '#chat-bar'], ['tabbar', '.sdk-tabbar'], ['menu', '.host-menu']]) { const e = document.querySelector(s); out[k] = e ? r(e) : null; } return out; })()`);
+    const hit = (a, b) => a && b && !(a.r <= b.l || a.l >= b.r || a.b <= b.t || a.t >= b.b);
+    const phone = WIDTH <= 640;
+    const o = await boxes();
+    if (phone) {
+      assert.ok(o.tabbar, 'the tab bar is drawn on a phone');
+      assert.equal(hit(o.toast, o.tabbar), false, `the note ${JSON.stringify(o.toast)} is clear of the tab bar ${JSON.stringify(o.tabbar)}`);
+      if (o.composer) assert.equal(hit(o.toast, o.composer), false, `the note is clear of the composer ${JSON.stringify(o.composer)}`);
+    } else {
+      assert.equal(hit(o.toast, o.composer), false, 'the note is clear of the composer');
+      // The Layout menu (the header's button) opens over the note: it is the top thing where they meet.
+      await tab.click('#modules-toggle').catch(() => {});
+      await sleep(500);
+      const m = await boxes();
+      if (m.menu && hit(m.toast, m.menu)) {
+        const top = await tab.eval(`(() => { const t = document.querySelector('.sdk-toast[data-undo]').getBoundingClientRect(); const m = document.querySelector('.host-menu').getBoundingClientRect(); const x = (Math.max(t.left, m.left) + Math.min(t.right, m.right)) / 2; const y = (Math.max(t.top, m.top) + Math.min(t.bottom, m.bottom)) / 2; const el = document.elementFromPoint(x, y); return Boolean(el && el.closest('.host-menu')); })()`);
+        assert.equal(top, true, 'where the open menu and the note meet, the menu is on top');
+      }
+    }
   });
 } catch (err) {
   failed += 1;
