@@ -593,7 +593,7 @@ Thomas decided these on 2026-10-30, answering the open questions. Numbers contin
 20. **Viewer windows, several at once (Thomas, 2026-11-03).** Answers to the questions that followed decision 19:
     - **Several windows.** Opening a file opens a new viewer window; earlier ones stay, so a person can compare two
       pictures or keep a PDF beside a map. Opening a file that already has a window brings that window forward instead
-      of opening a second. A cap of 4 windows is suggested by the planner and not yet confirmed: at the cap, opening a
+      of opening a second. The cap is 4 windows (confirmed by Thomas, 2026-11-03): at the cap, opening a
       fifth shows "Close a window to open another." and opens nothing. The window's menu has **Close all**. On a
       phone, one window shows at a time as the full screen sheet (decision 19), and the cap does not apply to what is
       seen, only one sheet; opening another file replaces the sheet's file.

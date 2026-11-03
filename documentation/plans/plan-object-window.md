@@ -394,7 +394,7 @@ Each has options and the planner's suggestion, marked as such. The table above s
     each feature's plan as they come. (b) is how the phone ended up as a shrunk desktop. *Suggestion: (a).* Blocks
     nothing here.
 17. **Viewer windows, several at once.** **Decided, Thomas, 2026-11-03:** several at once, not one reused; a cap of 4
-    (suggested, not yet confirmed) with the sentence "Close a window to open another.", **Close all**, and one sheet
+    (confirmed) with the sentence "Close a window to open another.", **Close all**, and one sheet
     at a time on a phone. Opening a file that has a window brings it forward. This needs step 10's floating window to
     exist for the object window; until then the existing window mode carries it (Vault plan decision 20).
 18. **Previous and next, when a file is opened from another module.** **Decided, Thomas, 2026-11-03:** they walk the
