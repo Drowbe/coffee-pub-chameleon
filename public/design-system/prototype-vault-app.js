@@ -261,13 +261,31 @@ export function createVault(cfg = {}) {
   const narrow = () => app.clientWidth > 0 && app.clientWidth <= 480;
   const ticks = () => st.selecting || T('select') === 'ticks';
   // A name that is too long for its line is cut in the middle, so the end (the extension) stays: "Vespa ri…p.mp4". The tooltip has the whole name.
+  // The head holds the start; fitCuts sets its text to the longest start and an ellipsis that fit the space the tail leaves. The head is only as wide
+  // as that text, so the tail sits right after the ellipsis (a CSS ellipsis would leave a gap of up to a letter).
   function cutName(name) {
     const dot = name.lastIndexOf('.');
     const at = Math.max(1, dot > 0 ? Math.max(1, dot - 3) : name.length - 4);
-    const head = h('span', 'vt-nm-head'); head.append(mark(name.slice(0, at)));
+    const head = h('span', 'vt-nm-head'); head.dataset.start = name.slice(0, at); head.append(mark(name.slice(0, at)));
     const tail = h('span', 'vt-nm-tail'); tail.append(mark(name.slice(at)));
     const frag = D.createDocumentFragment(); frag.append(head, tail);
     return frag;
+  }
+  // Cuts every middle-cut name to the space its tail leaves. A name that fits is left whole. Runs after each draw and when the module changes size.
+  function fitCuts() {
+    if (!app.clientWidth) return; // not laid out (a panel the section has not drawn near the screen); the size change runs it
+    for (const btn of app.querySelectorAll('.vt-cut')) {
+      const head = btn.querySelector('.vt-nm-head'); const tail = btn.querySelector('.vt-nm-tail');
+      if (!head || !tail) continue;
+      const start = head.dataset.start;
+      const cs = getComputedStyle(btn);
+      const left = btn.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - tail.getBoundingClientRect().width;
+      const fits = (s) => { head.replaceChildren(mark(s)); return head.getBoundingClientRect().width <= left; };
+      if (fits(start)) continue;
+      let lo = 0; let hi = start.length - 1; // the longest start that fits with an ellipsis after it
+      while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fits(`${start.slice(0, mid)}…`)) lo = mid; else hi = mid - 1; }
+      head.replaceChildren(mark(`${start.slice(0, lo)}…`));
+    }
   }
   function openButton(f, cls, cut = false) {
     const b = h('button', `sdk-open ${cls}${cut ? ' vt-cut' : ''}`);
@@ -521,6 +539,7 @@ export function createVault(cfg = {}) {
     }
     if (st.dropping && !st.panel) { const o = h('div', 'vt-dropover'); o.append(fa('cloud-arrow-up'), h('p', 'vt-drop-title', `Drop to add to the ${W().module}`), h('p', 'vt-drop-sub', `Everyone in this ${W().space} can see what you add.`)); app.append(o); }
     app.append(layer);
+    fitCuts();
     if (frame) {
       frame.setTitle(W().module, W().icon);
       frame.setTitlebar(titlebar());
@@ -545,7 +564,7 @@ export function createVault(cfg = {}) {
   app.addEventListener('dragover', (e) => { if (can('add')) e.preventDefault(); });
   app.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; st.dropping = false; if (can('add') && e.dataTransfer.files.length) { st.panel = true; startFiles([...e.dataTransfer.files]); } else render(false); });
 
-  const ro = new ResizeObserver(() => { if (narrow() !== renderedNarrow) render(false); });
+  const ro = new ResizeObserver(() => { if (narrow() !== renderedNarrow) render(false); else fitCuts(); });
   ro.observe(app);
   frame = createModuleFrame({
     title: W().module, icon: W().icon, tint: 'blue', titlebar: titlebar(), toolbar: toolbar(), content: inShadow(app), flush: true, status: status(), onAction,

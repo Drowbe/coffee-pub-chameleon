@@ -102,8 +102,9 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-kind-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; font-size: var(--icon-16); color: color-mix(in srgb, var(--tint, var(--text-muted)) 70%, var(--text-primary)); }
 .vt-card:not(.vt-card-thumb) .sdk-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: var(--text-14); line-height: 20px; }
 .vt-card:not(.vt-card-thumb) .vt-card-name { display: block; width: 100%; max-width: 100%; -webkit-line-clamp: unset; line-clamp: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
-.vt-card:not(.vt-card-thumb) .vt-card-name.vt-cut { display: flex; min-width: 0; text-overflow: clip; }
-.vt-nm-head { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-card:not(.vt-card-thumb) .vt-card-name.vt-cut { display: flex; min-width: 0; }
+/* The head is as wide as its text (prototype-vault-app.js fitCuts sets the text), so the tail follows it with no gap. */
+.vt-nm-head { flex: none; overflow: hidden; white-space: nowrap; }
 .vt-nm-tail { flex: none; white-space: pre; }
 .vt-card .sdk-card-body { display: flex; flex-direction: column; gap: var(--space-2); }
 .vt-card .vt-thumb { width: 100%; border-radius: var(--radius-small); font-size: var(--text-28); }
