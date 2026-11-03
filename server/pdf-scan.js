@@ -35,11 +35,16 @@ const zlib = require('zlib');
 // carried inside is found by the key that points at its bytes (/EF, in a file specification), by associated files
 // (/AF) and by a portfolio (/Collection), not only by /Type /EmbeddedFile, which a reader does not need (security QA
 // round 2, round 2).
+// Actions decided conservatively while Thomas was away (2026-11-03): reading a file in (/ImportData) opens one, a form
+// reset (/ResetForm) acts like a script, and media and 3D actions or annotations (/Rendition, /Movie, /Sound, /3D) carry
+// files of their own. Not refused: plain links (/URI with a web or email address), going to a page (/GoTo), named
+// actions (/Named), /Thread, /Hide, /SetOCGState, /Trans, fillable forms (/AcroForm without the above).
 const ACTIVE_NAMES = new Map([
-  ['JavaScript', 'scripts'], ['JS', 'scripts'], ['AA', 'scripts'], ['XFA', 'scripts'],
-  ['Launch', 'opens'], ['GoToR', 'opens'], ['GoToE', 'opens'],
+  ['JavaScript', 'scripts'], ['JS', 'scripts'], ['AA', 'scripts'], ['XFA', 'scripts'], ['ResetForm', 'scripts'],
+  ['Launch', 'opens'], ['GoToR', 'opens'], ['GoToE', 'opens'], ['ImportData', 'opens'],
   ['SubmitForm', 'sends'],
   ['EmbeddedFile', 'files'], ['EmbeddedFiles', 'files'], ['RichMedia', 'files'], ['EF', 'files'], ['AF', 'files'], ['Collection', 'files'],
+  ['Rendition', 'files'], ['Movie', 'files'], ['Sound', 'files'], ['3D', 'files'],
 ]);
 
 // The budget. Past any of it the PDF is not checked, so not taken.

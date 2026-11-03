@@ -120,7 +120,55 @@ const OTHER = 'wxyz9876';
   same([again.list('vault', OTHER).length, fs.existsSync(again.filePath(OTHER, f2)), again.usage().people.get('sam1')], [0, false, undefined], 'bytes, record and usage gone');
   ok(!fs.existsSync(path.join(modulesDir, 'vault', 'library', `space-${OTHER}.json`)), 'an empty record file is removed');
   same(again.remove('vault', OTHER, f2), false, 'removing twice is nothing');
+  // Share links (plan section 7; step 5 builds the public routes): beside the records, only hashes kept.
+  {
+    const crypto = require('node:crypto');
+    const sharesFile = path.join(modulesDir, 'vault', 'library', `space-${SPACE}.shares.json`);
+    const made = again.createShare('vault', SPACE, { name: 'Rome photos', files: [fid], by: 'pat1', days: 7, password: 'open sesame' });
+    ok(/^[A-Za-z0-9_-]{43}$/.test(made.token) && made.share.hasPassword && made.share.files[0] === fid, 'a share link: a 32-byte token, given once');
+    const onDisk = fs.readFileSync(sharesFile, 'utf8');
+    ok(!onDisk.includes(made.token) && !onDisk.includes('open sesame') && onDisk.includes(crypto.createHash('sha256').update(made.token).digest('hex')) && /scrypt\$/.test(onDisk), 'kept in space-<id>.shares.json with only the token\'s SHA-256 and the password\'s scrypt hash');
+    same(fs.readdirSync(path.dirname(sharesFile)).filter((f) => f.endsWith('.tmp')), [], 'written by a rename');
+    ok(!Object.keys(again.listShares('vault', SPACE)[0]).some((k) => /hash/i.test(k)), 'the list shows no hash');
+    same(again.findShareByToken('vault', made.token)?.share.id, made.share.id, 'its token finds it');
+    same([again.findShareByToken('vault', `${made.token.slice(0, -1)}${made.token.endsWith('A') ? 'B' : 'A'}`), again.findShareByToken('vault', 'short'), again.findShareByToken('vault', null)], [null, null, null], 'a wrong token finds nothing');
+    const found = again.findShareByToken('vault', made.token).share;
+    same([again.sharePasswordOk(found, 'open sesame'), again.sharePasswordOk(found, 'nope')], [true, false], 'its password is checked against the hash');
+    for (const [label, opts, msg] of [
+      ['no name', { name: ' ', files: [fid] }, /name/],
+      ['no end', { name: 'x', files: [fid], days: 0 }, /1, 7 or 30 days/],
+      ['no files', { name: 'x', files: [] }, /Choose the files/],
+      ['a file of another space', { name: 'x', files: ['f'.repeat(24)] }, /no such file/],
+      ['too many files', { name: 'x', files: Array.from({ length: 501 }, (_, k) => k.toString(16).padStart(24, '0')) }, /at most 500/],
+    ]) assert.throws(() => again.createShare('vault', SPACE, { by: 'pat1', ...opts }), msg, `refused: ${label}`);
+    n += 5;
+    const ended = new VaultStore({ bytesDir, modulesDir, now: () => Date.now() + 8 * 86400000 });
+    same(ended.findShareByToken('vault', made.token), null, 'an ended share link finds nothing');
+    same(again.revokeShare('vault', SPACE, made.share.id), true, 'turned off');
+    same([again.findShareByToken('vault', made.token), fs.existsSync(sharesFile)], [null, false], 'it finds nothing, and the empty file goes');
+    const second = again.createShare('vault', SPACE, { name: 'Again', files: [fid], by: 'pat1' });
+    ok(fs.existsSync(sharesFile) && again.spacesOf('vault').every((sp) => sp !== `${SPACE}.shares`), 'a share file is never read as a space\'s records');
+    same(second.share.ends.slice(0, 10), new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), '7 days by default');
+  }
+  const sharesLeft = path.join(modulesDir, 'vault', 'library', `space-${SPACE}.shares.json`);
   same(again.forgetSpace(SPACE), 1, 'a deleted space takes its file');
+  ok(!fs.existsSync(sharesLeft), 'and its share links');
+  {
+    const p3 = again.newPart(OTHER);
+    fs.writeFileSync(p3, 'y');
+    const f3 = again.newId();
+    again.commit('vault', OTHER, p3, { id: f3, name: 'b.md', type: 'text/markdown', group: 'document', size: 1, by: 'sam1', at: '2026-10-30T12:00:00.000Z', thumb: null });
+    const s3 = again.createShare('vault', OTHER, { name: 'One', files: [f3], by: 'sam1' });
+    again.remove('vault', OTHER, f3);
+    same([again.listShares('vault', OTHER), again.findShareByToken('vault', s3.token)], [[], null], 'a share left with no file when its file is removed ends');
+    const p4 = again.newPart(OTHER);
+    fs.writeFileSync(p4, 'z');
+    const f4 = again.newId();
+    again.commit('vault', OTHER, p4, { id: f4, name: 'c.md', type: 'text/markdown', group: 'document', size: 1, by: 'sam1', at: '2026-10-30T12:00:00.000Z', thumb: null });
+    const s4 = again.createShare('vault', OTHER, { name: 'Two', files: [f4], by: 'sam1' });
+    again.forgetModule('vault');
+    same([fs.existsSync(path.join(modulesDir, 'vault', 'library', `space-${OTHER}.shares.json`)), again.findShareByToken('vault', s4.token)], [false, null], 'a module uninstalled with its data takes its share links');
+  }
   ok(!fs.existsSync(path.join(bytesDir, `space-${SPACE}`)) && !fs.existsSync(recFile), 'its folder and records are gone');
   same(again.usage().all, 0, 'and nothing is counted');
   fs.rmSync(base, { recursive: true, force: true });
@@ -376,6 +424,13 @@ const memoryLines = [];
   same(await scan(pdfOf('/AF [4 0 R]')), 'AF', 'associated files (/AF) are refused');
   same(await scan(pdfOf('/Collection << /View /D >>')), 'Collection', 'and a portfolio');
   same(['EF', 'AF', 'Collection'].map((k) => ACTIVE_NAMES.get(k)), ['files', 'files', 'files'], 'each as files of its own');
+  // Every action that runs, opens, sends, carries or plays something is refused (decided conservatively, 2026-11-03);
+  // going to a page and named actions are not.
+  for (const [action, what] of [['JavaScript', 'scripts'], ['ResetForm', 'scripts'], ['SubmitForm', 'sends'], ['ImportData', 'opens'], ['Launch', 'opens'], ['GoToR', 'opens'], ['GoToE', 'opens'], ['Rendition', 'files'], ['Movie', 'files'], ['Sound', 'files'], ['RichMedia', 'files'], ['3D', 'files']]) {
+    same(pdfScan(pdfOf(`/OpenAction << /Type /Action /S /${action} /F (x) >>`)), { name: action, what }, `/S /${action} on opening is refused as ${what}`);
+  }
+  same(pdfScanFile(path.join(FIXTURES, 'import-data.pdf')), { name: 'ImportData', what: 'opens' }, 'the ImportData fixture is refused');
+  same([pdfScan(pdfOf('/OpenAction << /S /GoTo /D [3 0 R /Fit] >>')), pdfScan(pdfOf('/OpenAction << /S /Named /N /NextPage >>'))], [null, null], 'going to a page and a named action pass');
   same(PDF_LIMITS.decodedStreams, 200, 'at most 200 object streams are decoded, as the plan says');
   // Read in windows (the plan's 1 MB, with an overlap), from the file: never read whole.
   {
@@ -702,6 +757,15 @@ try {
   same((await send(A, 'GET', '/api/roles', { cookie: admin })).json.roles.guest['module.shelf.view'], false, 'so Roles still shows it off');
   same((await json('PATCH', '/api/roles/guest', admin, { 'module.shelf.remove_any': true, 'module.shelf.view': false })).status, 200, 'remove_any is only off by default for guests, and off may always be sent');
   await json('PATCH', '/api/roles/guest', admin, { 'module.shelf.remove_any': false });
+  // Share links are kept beside the records, where no data route reads (plan section 7, decided 2026-11-03).
+  {
+    const planted = path.join(A.dataDir, 'modules', 'shelf', 'library', `space-${trip.id}.shares.json`);
+    fs.mkdirSync(path.dirname(planted), { recursive: true });
+    fs.writeFileSync(planted, JSON.stringify({ aaaaaaaaaaaaaaaaaa: { id: 'aaaaaaaaaaaaaaaaaa', tokenHash: 'b'.repeat(64), files: [] } }));
+    const asMember = await send(A, 'GET', `/api/modules/shelf/data?scope=space&space=${trip.id}`, { cookie: people.pat.token });
+    ok(asMember.status === 200 && !asMember.text.includes('tokenHash'), `a member reading the module's data sees no share link: ${asMember.status}`);
+    fs.rmSync(planted);
+  }
   for (const q of ['', `/space-x`]) {
     const r = await send(A, 'GET', `/api/modules/shelf/data${q}?scope=space&space=${trip.id}&guest=${guestToken}`);
     same(r.status, 403, `a guest pass on the module's data route${q ? ' (one key)' : ''}: 403`);
