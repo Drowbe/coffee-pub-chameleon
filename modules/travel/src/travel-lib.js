@@ -194,6 +194,8 @@
       item.travelClass = clip(raw.travelClass, 30);
       item.pickup = clip(raw.pickup, 120); // a car: where it is collected and where it goes back
       item.dropoff = clip(raw.dropoff, 120);
+      // A rental car is kept for days: the day it goes back (checkOut), after the day it is collected. No other journey has one.
+      if (item.mode !== 'car') item.checkOut = null;
       // When it arrives as the ticket says, in the local time where it lands (plan-object-handoff.md, decision 11): beside the
       // length, so a journey across time zones shows both its arrival and its time in the air right. Not for a car.
       item.arrives = item.mode === 'car' ? null : ticketWhen(raw.arrives);
@@ -213,6 +215,7 @@
     if ((kind === 'block' || kind === 'lane') && !item.type) return null;
     if (kind !== 'link' && kind !== 'block' && kind !== 'lane' && !item.title) return null;
     if (kind === 'stay' && item.checkOut && item.date && item.checkOut < item.date) item.checkOut = null;
+    if (kind === 'journey' && item.checkOut && (!item.date || item.checkOut <= item.date)) item.checkOut = null;
     return item;
   }
 
@@ -335,7 +338,7 @@
     for (const i of [...picked].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || (a.order || 0) - (b.order || 0))) {
       const date = daysLater(i.date, delta);
       const patch = { date };
-      if (i.kind === 'stay' && isYmd(i.checkOut)) patch.checkOut = daysLater(i.checkOut, delta);
+      if ((i.kind === 'stay' || i.kind === 'journey') && isYmd(i.checkOut)) patch.checkOut = daysLater(i.checkOut, delta);
       if (!i.time) {
         const last = next.has(date) ? next.get(date) : Math.max(0, ...staying.filter((o) => o.date === date && !o.time).map((o) => o.order || 0));
         const hasStaying = staying.some((o) => o.date === date && !o.time);
@@ -453,6 +456,11 @@
     return Math.round((parseYmd(item.checkOut) - parseYmd(item.date)) / DAY_MS);
   }
 
+  // A time zone name the browser's own list knows ('Europe/Lisbon'), else ''.
+  function zoneName(v) {
+    if (typeof v !== 'string' || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(v.trim()) || v.length > 60) return '';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: v.trim() }); return v.trim(); } catch (err) { return ''; }
+  }
   // The trip itself: a heading, where, and its dates. `start` and `end` are the plan's own first and last day, kept
   // only for a space whose template has no phases; with phases the main phase's band gives them (tripSpan) and they
   // are left out of what is written. A stored `phases` is never read. `v: 2` is this shape. An empty title means the
@@ -462,7 +470,9 @@
     const start = isYmd(r.start) ? r.start : null;
     const end = isYmd(r.end) && start && r.end >= start ? r.end : start;
     const currency = typeof r.currency === 'string' && /^[A-Za-z]{3}$/.test(r.currency.trim()) ? r.currency.trim().toUpperCase() : '';
-    return { title: clip(r.title, 80), destination: clip(r.destination, 80), start, end, notes: clip(r.notes, 2000), currency, by: clip(r.by, 40), v: 2 };
+    // The trip's own time zone (an IANA name such as Europe/Lisbon), which its Calendar copy is dated in; '' follows each viewer.
+    const tz = zoneName(r.tz);
+    return { title: clip(r.title, 80), destination: clip(r.destination, 80), start, end, notes: clip(r.notes, 2000), currency, ...(tz ? { tz } : {}), by: clip(r.by, 40), v: 2 };
   }
 
   // The main phase's band of a timeline (host.util.phaseTimeline), or null without one.
@@ -659,14 +669,16 @@
 
   // Who owes what. An item with a cost was paid by one person and is shared by the people it belongs to (all the
   // travellers when it belongs to nobody). Returns each person's paid, share and net (positive: owed money), the total,
-  // and the fewest payments that settle it. Amounts are in the trip's one currency, rounded to cents.
+  // and the fewest payments that settle it. `total` counts what someone paid; `planned` every cost, paid or not. Amounts are in the trip's one currency, rounded to cents.
   const cents = (n) => Math.round(n * 100);
   function balances(items, travellers) {
     const keys = travellers.slice();
     const paid = {};
     const share = {};
     let total = 0;
+    let planned = 0;
     for (const item of items) {
+      if (item.cost) planned += cents(item.cost);
       if (!item.cost || !item.paidBy) continue;
       const among = (item.owners.length ? item.owners : keys).filter(Boolean);
       if (!among.length) continue;
@@ -693,7 +705,7 @@
       if (owing[i][1] === 0) i += 1;
       if (owed[j][1] === 0) j += 1;
     }
-    const out = { total: total / 100, paid: {}, share: {}, net: {}, payments };
+    const out = { total: total / 100, planned: planned / 100, paid: {}, share: {}, net: {}, payments };
     for (const k of people) { out.paid[k] = (paid[k] || 0) / 100; out.share[k] = (share[k] || 0) / 100; out.net[k] = net[k] / 100; }
     return out;
   }
@@ -819,6 +831,7 @@
     if (!pool.length) return null;
     const endOf = (i) => {
       if (i.kind === 'stay') return { day: i.checkOut || i.date, time: i.checkOutTime || '' };
+      if (i.checkOut) return { day: i.checkOut, time: '' }; // a rental car's drop-off
       const a = arrivalOf(i);
       if (a) return { day: a.day, time: a.time };
       return { day: i.date, time: i.time || '' };

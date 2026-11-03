@@ -10,6 +10,7 @@
     let trip = null;
     let tripVersion = null;
     let suggested = [];
+    let waiting = []; // other modules' open polls and tasks due before the trip (the Decisions view)
     const listeners = new Set();
     const changed = () => { for (const fn of listeners) fn(); };
 
@@ -465,13 +466,17 @@
     // by the host) is never offered: that would be the plan's own item coming back.
     async function suggest() {
       const tripDaysList = days();
-      if (!tripDaysList.length) { suggested = []; changed(); return suggested; }
       let found = [];
       try {
         found = await host.objects.search('');
       } catch (err) {
         found = [];
       }
+      // Decisions: a poll still open, and a task not done with a due day before the trip starts (or already past).
+      const first = (withDates(trip) || {}).start || tripDaysList[0] || '';
+      waiting = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && c.done !== true
+        && (c.kind === 'poll' || (c.kind === 'task' && first && (summaryWhen(c) || {}).day && summaryWhen(c).day < first)));
+      if (!tripDaysList.length) { suggested = []; changed(); return suggested; }
       const pinned = new Set(list().filter((i) => i.ref).map((i) => objectKey(i.ref)));
       suggested = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && !pinned.has(objectKey(c.ref)) && tripDaysList.includes((summaryWhen(c) || {}).day));
       changed();
@@ -535,6 +540,7 @@
       refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, coverDay, bands, phased, addItem, updateItem, removeItem, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
       get trip() { return withDates(trip); },
       get suggestions() { return suggested; },
+      get waiting() { return waiting; },
       versionOf: (id) => (items.get(id) || {}).version,
       subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     };
