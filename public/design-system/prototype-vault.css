@@ -25,6 +25,8 @@
 .vt-hold > .mf { width: 100%; height: var(--vt-h, 640px); position: relative; }
 .vt-host { display: contents; }
 .vt-frame[data-w="360"] { --vt-w: 360px; }
+.vt-frame[data-w="390"] { --vt-w: 390px; }
+.vt-frame[data-h="640"] { --vt-h: 640px; }
 .vt-frame[data-w="480"] { --vt-w: 480px; }
 .vt-frame[data-w="820"] { --vt-w: 820px; }
 .vt-frame[data-h="480"] { --vt-h: 480px; }
@@ -33,7 +35,7 @@
 .vt-frame[data-h="800"] { --vt-h: 800px; }
 .vt-pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); min-width: 0; }
 .vt-pair > .pp-state { flex: 1 1 360px; }
-.vt-pair > .pp-state:has(.vt-frame[data-w="360"]), .vt-pair > .pp-state:has(.vt-frame[data-w="480"]) { flex: 0 0 auto; max-width: 100%; }
+.vt-pair > .pp-state:has(.vt-frame[data-w="360"]), .vt-pair > .pp-state:has(.vt-frame[data-w="390"]), .vt-pair > .pp-state:has(.vt-frame[data-w="480"]) { flex: 0 0 auto; max-width: 100%; }
 .vt-qs { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); max-width: 90ch; }
 .vt-qs li { color: var(--text-primary); }
 .vt-qs b { font-weight: var(--weight-strong); }
@@ -95,8 +97,11 @@ button.sdk-open { font: inherit; color: inherit; }
 }
 .vt-card { min-width: 0; }
 .vt-card-name { display: -webkit-box; margin: 0; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; text-align: left; font: inherit; color: inherit; word-break: break-word; }
-/* the stacked head holds two name lines whatever the name, so the pictures line up across a row */
-.vt-card:not(.vt-card-thumb) .vt-card-name { min-height: 2lh; }
+/* The head is one line (Thomas, 2026-11-03): a small kind icon, the name on one line cut with an ellipsis, the more button; about 40px. A file thumbnail card, so it leaves the banded head's stacked icon and kind word. */
+.vt-card:not(.vt-card-thumb) > .sdk-card-head > .sdk-card-main { display: flex; align-items: center; gap: var(--space-2); }
+.vt-kind-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; font-size: var(--icon-16); color: color-mix(in srgb, var(--tint, var(--text-muted)) 70%, var(--text-primary)); }
+.vt-card:not(.vt-card-thumb) .sdk-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: var(--text-14); line-height: 20px; }
+.vt-card:not(.vt-card-thumb) .vt-card-name { display: block; width: 100%; max-width: 100%; -webkit-line-clamp: unset; line-clamp: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
 .vt-card .sdk-card-body { display: flex; flex-direction: column; gap: var(--space-2); }
 .vt-card .vt-thumb { width: 100%; border-radius: var(--radius-small); font-size: var(--text-28); }
 .vt-card .vt-tile { font-size: var(--text-28); }
@@ -157,23 +162,20 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-toastlayer { position: absolute; inset: auto var(--space-3) var(--space-3); z-index: 4; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); pointer-events: none; }
 .vt-toast { pointer-events: auto; }
 
-/* ---- the viewer (to system.css: the media viewer frame, the piece the plan names) ---- */
+/* ---- the viewer window (to system.css: the media viewer window, the piece the plan names) ----
+   A file opens in a window of the canvas: the module frame's window variant, placed over whatever is on the canvas. The shared page keeps
+   .vt-viewer, .vt-vbar and .vt-vbody (its viewer sits in the page). */
 .vt-viewer { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; outline: none; }
 .vt-vbar { display: flex; flex: none; align-items: center; gap: var(--space-2); box-sizing: border-box; min-height: 44px; padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
 .vt-vname { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: var(--text-14); font-weight: var(--weight-strong); text-overflow: ellipsis; white-space: nowrap; }
 .vt-vpos { flex: none; color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vt-vbar > .sdk-icon-btn, .vt-vbar > .btn { flex: none; }
 .vt-vbody { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
-.vt-vbody.info-under { flex-direction: column; }
+.vt-wbody { container: vault / inline-size; position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; background: var(--surface-panel); color: var(--text-primary); }
+.vt-wmain { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
 .vt-view { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-field); }
 .vt-state { align-items: center; justify-content: center; background: var(--surface-panel); }
-@container vault (max-width: 560px) {
-  .vt-vbar .vt-btn-word { display: none; }
-  .vt-vbar .vt-opt-share, .vt-vpos { display: none; }
-  .vt-vbar > .btn { padding-inline: var(--space-3); }
-}
 .vt-info { flex: none; box-sizing: border-box; width: 260px; overflow: auto; padding: var(--pad-card); border-left: 1px solid var(--edge-hairline); background: var(--surface-panel); display: flex; flex-direction: column; gap: var(--space-3); }
-.vt-vbody.info-under > .vt-info { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid var(--edge-hairline); }
 .vt-info-head { display: flex; align-items: center; justify-content: space-between; }
 .vt-info-title, .vt-info-sub { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
 .vt-info-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); }
@@ -183,9 +185,32 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-info-none { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
 .vt-uses { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-13); }
 .vt-uses span { color: var(--text-muted); }
+/* Info: a side panel while the window is wide, under the file when it is narrow */
 @container vault (max-width: 560px) {
-  .vt-vbody.has-info { flex-direction: column; }
-  .vt-vbody.has-info > .vt-info { position: relative; z-index: 2; width: auto; max-height: 58%; border-left: 0; border-top: 1px solid var(--edge-hairline); box-shadow: var(--shadow-3); border-radius: var(--radius-large) var(--radius-large) 0 0; }
+  .vt-wmain.has-info { flex-direction: column; }
+  .vt-wmain.has-info > .vt-info { width: auto; max-height: 48%; border-left: 0; border-top: 1px solid var(--edge-hairline); }
+}
+/* the canvas the windows sit on, and the windows */
+.vt-stage { container: vtstage / inline-size; position: relative; box-sizing: border-box; width: min(var(--vt-w, 100%), 100%); height: var(--vt-h, 640px); overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
+.vt-stage-under { position: absolute; inset: var(--space-3) auto var(--space-3) var(--space-3); width: min(380px, calc(100% - 2 * var(--space-3))); }
+.vt-stage-under > .vt-hold, .vt-stage-under > .vt-hold > .mf { width: 100%; height: 100%; }
+.vt-stage-layer { position: absolute; inset: 0; pointer-events: none; }
+.vt-stage-bar { position: absolute; top: var(--space-2); right: var(--space-3); z-index: 2; }
+.vt-stage-toasts { z-index: 200; }
+.vt-win { position: absolute; display: flex; pointer-events: auto; }
+.vt-win > .mf { flex: 1 1 auto; width: 100%; height: 100%; outline: none; }
+.vt-win:not(.is-front) > .mf { box-shadow: var(--shadow-2); }
+.vt-win.is-front > .mf { box-shadow: var(--shadow-3); }
+.vt-win > .mf:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.vt-dlbar { display: none; flex: none; padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.vt-dlbig { width: 100%; min-height: 48px; justify-content: center; }
+/* a phone (640px and narrower): the window is a full-screen sheet, one at a time, with Download as a large button at the foot */
+@container vtstage (max-width: 640px) {
+  .vt-stage-under { inset: 0; width: auto; }
+  .vt-stage-bar { display: none; }
+  .vt-win { inset: 0 !important; width: auto !important; height: auto !important; }
+  .vt-win > .mf { border: 0; border-radius: 0; box-shadow: none !important; }
+  .vt-dlbar { display: flex; }
 }
 /* a picture */
 .vt-pic { align-items: center; justify-content: center; overflow: hidden; }
@@ -195,10 +220,6 @@ button.sdk-open { font: inherit; color: inherit; }
 .vt-pic-wrap > img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-drag: none; }
 .vt-zoombar { position: absolute; left: 50%; bottom: var(--space-3); z-index: 1; display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); transform: translateX(-50%); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 94%, transparent); box-shadow: var(--shadow-2); }
 .vt-zoom-level { min-width: 56px; justify-content: center; }
-.vt-edge { position: absolute; top: 50%; z-index: 1; transform: translateY(-50%); border: 1px solid var(--edge-hairline); background: color-mix(in srgb, var(--surface-panel) 90%, transparent); }
-.vt-edge-prev { left: var(--space-2); }
-.vt-edge-next { right: var(--space-2); }
-.vt-edge:disabled { visibility: hidden; }
 /* audio and video */
 .vt-audio { align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); background: var(--surface-panel); text-align: center; }
 .vt-audio-tile { display: flex; align-items: center; justify-content: center; width: 96px; aspect-ratio: 1; margin-bottom: var(--space-2); border-radius: var(--radius-large); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-40); }

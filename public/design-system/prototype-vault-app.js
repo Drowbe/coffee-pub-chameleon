@@ -7,7 +7,6 @@ import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { FILES, KINDS, PEOPLE, USES, QUOTA, TOTAL_BYTES, NOW, MB, GB, byId } from './prototype-vault-data.js';
 import { D, h, fa, btn, iconBtn, WORDS, size, when, clock, who, plural, circleIcon, thumb, personDot, inShadow } from './prototype-vault-ui.js';
-import { pictureView, audioView, videoView, markdownView, pdfView, viewState, infoPanel } from './prototype-vault-viewers.js';
 import { stopMedia } from './prototype-vault-ui.js';
 import { liveOpen, heldDialog, removeSheet, renameSheet, usesSheet, shareSheet, shareListSheet, sheet, cancelBtn, okBtn, turnOffShareSheet } from './prototype-vault-dialogs.js';
 
@@ -23,7 +22,7 @@ export const ROLES = {
   'guest-view': { label: 'Guest who may look (option)', me: 'guest', view: 1 },
 };
 // The choices the plan leaves open, drawn both ways. The section's switches change these, and every Vault is drawn again.
-export const TRIAL = { words: 'vault', gridCard: 'banded', sort: 'filters', select: 'button', add: 'panel', info: 'panel', pdfSearch: true, removeWhere: 'off', pdfDamaged: 'refused' };
+export const TRIAL = { words: 'vault', gridCard: 'banded', sort: 'filters', select: 'button', add: 'panel', pdfSearch: true, removeWhere: 'off', pdfDamaged: 'refused' };
 export const instances = new Set();
 export const redrawAll = () => { for (const v of instances) v.render(); };
 
@@ -45,7 +44,7 @@ export function createVault(cfg = {}) {
   const perm = ROLES[role];
   const st = {
     view: 'list', sort: 'new', query: '', types: new Set(), by: 'all', when: 'any', shared: new Set(), linked: new Set(),
-    selecting: false, sel: new Set(), open: null, info: false, panel: false, queue: [], dropping: false,
+    selecting: false, sel: new Set(), panel: false, queue: [], dropping: false,
     removed: new Set(), added: [], renamed: new Map(), notice: null, pdfOff: false, usedBytes: null, capBytes: QUOTA.space, ...cfg.state,
   };
   st.removed = new Set((cfg.state && cfg.state.removed) || []);
@@ -121,7 +120,7 @@ export function createVault(cfg = {}) {
   function fileMenu(f) {
     const uses = USES[f.id] ? USES[f.id].list.length + USES[f.id].hidden : 0;
     const items = [];
-    if (!f.missing) items.push({ label: 'Open', icon: 'eye', onPick: () => openFile(f.id) });
+    if (!f.missing) items.push({ label: 'Open', icon: 'eye', onPick: () => openFile(f.id, app.querySelector(`[data-menu="${f.id}"]`)) });
     if (can('download') && !f.missing) items.push({ label: 'Download', icon: 'download', onPick: () => toast('Download started', f.name, 'ok', 'download') });
     if (canRemove(f) && !f.missing) items.push({ label: 'Rename', icon: 'pen-to-square', onPick: () => rename(f) });
     if (can('share') && !f.missing) items.push({ label: 'Share', icon: 'share-nodes', onPick: () => shareFiles([f]) });
@@ -138,11 +137,11 @@ export function createVault(cfg = {}) {
       if (ok && name) { st.renamed.set(f.id, name); toast('Renamed', name, 'ok', 'pen-to-square'); render(false); }
     });
   }
-  function removeFiles(files) {
+  function removeFiles(files, done) {
     ask(removeSheet(W(), files)).then((ok) => {
       if (!ok) return;
+      if (done) done();
       for (const f of files) { st.removed.add(f.id); st.sel.delete(f.id); }
-      if (st.open && files.some((f) => f.id === st.open)) st.open = null;
       toast(files.length === 1 ? 'File removed' : `${files.length} files removed`, files.length === 1 ? files[0].name : '', 'ok', 'trash');
       render();
     });
@@ -170,7 +169,7 @@ export function createVault(cfg = {}) {
     return { type: 'filters', id: 'filters', label: 'Filters', groups };
   }
   function toolbar() {
-    if (!perm.view || st.open) return [];
+    if (!perm.view) return [];
     if (st.selecting) {
       const n = st.sel.size;
       const chosen = pool().filter((f) => st.sel.has(f.id));
@@ -218,7 +217,7 @@ export function createVault(cfg = {}) {
 
   function onAction(e) {
     if (e.area === 'titlebar') {
-      if (e.id === 'add') { st.panel = !st.panel || T('add') === 'dialog'; st.open = null; render(); }
+      if (e.id === 'add') { st.panel = !st.panel || T('add') === 'dialog'; render(); }
       else if (e.id === 'select') { st.selecting = !st.selecting; st.sel.clear(); render(); }
       return;
     }
@@ -267,7 +266,7 @@ export function createVault(cfg = {}) {
     if (f.missing) b.disabled = false;
     b.append(mark(f.name));
     b.title = f.name;
-    b.addEventListener('click', () => { if (st.selecting) { if (st.sel.has(f.id)) st.sel.delete(f.id); else st.sel.add(f.id); render(false); } else openFile(f.id); });
+    b.addEventListener('click', () => { if (st.selecting) { if (st.sel.has(f.id)) st.sel.delete(f.id); else st.sel.add(f.id); render(false); } else openFile(f.id, b); });
     return b;
   }
   function menuButton(f) {
@@ -330,10 +329,15 @@ export function createVault(cfg = {}) {
     const head = h('header', 'sdk-card-head');
     if (ticks()) head.append(tick(f));
     const main = h('div', 'sdk-card-main');
-    const ic = circleIcon(f);
+    // One line (Thomas, 2026-11-03): a small type icon in the kind's colour, the name cut with an ellipsis, the more button. The kind word is in the tooltip and the label.
+    const ic = h('span', 'vt-kind-mini');
+    ic.dataset.tint = k.tint; ic.title = k.word; ic.setAttribute('role', 'img'); ic.setAttribute('aria-label', k.word);
+    ic.append(fa(k.icon));
     const title = h('h3', 'sdk-card-title vt-card-title');
-    title.append(openButton(f, 'vt-card-name'));
-    main.append(ic, h('span', 'sdk-card-sub sdk-tint-text', k.word), title);
+    const nameBtn = openButton(f, 'vt-card-name');
+    nameBtn.title = `${f.name} (${k.word})`;
+    title.append(nameBtn);
+    main.append(ic, title);
     head.append(main, menuButton(f));
     const body = h('div', 'sdk-card-body');
     const meta = h('p', 'vt-card-line');
@@ -457,67 +461,16 @@ export function createVault(cfg = {}) {
     render(false);
   }
 
-  // ---- the viewer ----
-  function openFile(id) { st.open = id; st.selecting = false; st.sel.clear(); render(); const b = app.querySelector('.vt-vbar [data-back]'); if (b) b.focus({ preventScroll: true }); }
-  const closeViewer = () => { const id = st.open; st.open = null; render(); const r = app.querySelector(`[data-id="${id}"] .sdk-open`); if (r) r.focus({ preventScroll: true }); };
-  function viewFor(f) {
-    const api = { can, downloadButton, trial: { pdfSearch: T('pdfSearch') }, info: (on) => { st.info = on; render(false); } };
-    if (f.missing) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: 'File missing', text: `The file itself is not on the server. This can happen after a restore. Remove it from the ${W().module}, or ask the admin to restore the ${W().module} folder.`, actions: canRemove(f) ? [(() => { const b = btn('btn btn-danger', { label: 'Remove', icon: 'trash' }); b.addEventListener('click', () => removeFiles([f])); return b; })()] : [] });
-    if (f.kind === 'picture') return pictureView(f, api);
-    if (f.kind === 'audio') return audioView(f, api);
-    if (f.kind === 'video') return videoView(f, api);
-    if (f.kind === 'text') return markdownView(f, api);
-    if (f.viewable === false || st.pdfOff) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", text: `The ${W().module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: can('download') ? [downloadButton(f, true)] : [] });
-    return pdfView(f, api);
-  }
-  function viewerEl() {
+  // ---- the viewer: a window of the canvas (prototype-vault-window.js), never inside the panel ----
+  // What the window asks of the module: what the person may do, and the removing of a missing file.
+  const winCtx = { can, canRemove, remove: (f, done) => removeFiles([f], done), share: (f) => shareFiles([f]), words: { get module() { return W().module; } }, get pdfSearch() { return T('pdfSearch'); } };
+  function openFile(id, opener, extra = {}) {
+    if (!cfg.stage) return;
     const list = filtered();
-    const f = pool().find((x) => x.id === st.open) || list[0];
-    const at = list.findIndex((x) => x.id === f.id);
-    const w = h('div', 'vt-viewer');
-    w.tabIndex = -1;
-    const bar = h('div', 'vt-vbar');
-    const back = btn('btn btn-small vt-back', { label: 'Back', icon: 'arrow-left' });
-    back.dataset.back = '';
-    back.addEventListener('click', closeViewer);
-    const name = h('h3', 'vt-vname', f.name); name.title = f.name;
-    const pos = h('span', 'vt-vpos', at >= 0 ? `${at + 1} of ${list.length}` : '');
-    const prev = iconBtn('chevron-left', 'Previous file'), next = iconBtn('chevron-right', 'Next file');
-    prev.disabled = at <= 0; next.disabled = at < 0 || at >= list.length - 1;
-    prev.addEventListener('click', () => openFile(list[at - 1].id));
-    next.addEventListener('click', () => openFile(list[at + 1].id));
-    const dl = can('download') && !f.missing ? downloadButton(f) : null;
-    if (dl) dl.classList.add('vt-opt');
-    const sh = can('share') && !f.missing ? btn('btn btn-small vt-opt vt-opt-share', { label: 'Share', icon: 'share-nodes' }) : null;
-    if (sh) sh.addEventListener('click', () => shareFiles([f]));
-    const info = iconBtn('circle-info', st.info ? 'Hide info' : 'Show info');
-    info.setAttribute('aria-pressed', String(st.info));
-    info.addEventListener('click', () => { st.info = !st.info; render(false); });
-    const more = iconBtn('ellipsis-vertical', `More for ${f.name}`);
-    more.setAttribute('aria-haspopup', 'menu');
-    more.addEventListener('click', () => openHostMenu(more, () => fileMenu(f).filter((i) => i.label !== 'Open' && (app.clientWidth <= 560 || !['Download', 'Share'].includes(i.label)))));
-    more.dataset.menu = f.id;
-    bar.append(back, name, pos, prev, next, ...[dl, sh].filter(Boolean), info, more);
-    const body = h('div', `vt-vbody${st.info ? ` has-info info-${T('info')}` : ''}`);
-    const shown = viewFor(f);
-    body.append(shown);
-    if (f.kind === 'picture' && !f.missing) {
-      for (const [dir, icon, label] of [[-1, 'chevron-left', 'Previous file'], [1, 'chevron-right', 'Next file']]) {
-        const e = iconBtn(icon, label, `vt-edge vt-edge-${dir < 0 ? 'prev' : 'next'}`);
-        e.disabled = at + dir < 0 || at + dir >= list.length;
-        e.addEventListener('click', () => openFile(list[at + dir].id));
-        shown.append(e);
-      }
-    }
-    if (st.info) body.append(infoPanel(f, { info: (on) => { st.info = on; render(false); } }));
-    w.append(bar, body);
-    w.addEventListener('keydown', (e) => {
-      if (e.target.closest('input, audio, video, textarea')) return;
-      if (e.key === 'Escape' && !D.fullscreenElement) { closeViewer(); e.stopPropagation(); }
-      else if (e.key === 'ArrowLeft' && !e.target.closest('.vt-pic.is-zoomed') && at > 0) { openFile(list[at - 1].id); }
-      else if (e.key === 'ArrowRight' && !e.target.closest('.vt-pic.is-zoomed') && at >= 0 && at < list.length - 1) { openFile(list[at + 1].id); }
-    });
-    return w;
+    const f = pool().find((x) => x.id === id);
+    if (!f) return;
+    const back = () => app.querySelector(`[data-id="${id}"] .sdk-open`) || app.querySelector('.sdk-open');
+    cfg.stage.open({ id, list: list.some((x) => x.id === id) ? list : [f], ctx: winCtx, returnFocus: opener ? () => (opener.isConnected ? opener : back()) : back, ...extra });
   }
 
   // ---- the whole content ----
@@ -530,11 +483,8 @@ export function createVault(cfg = {}) {
     app.textContent = '';
     app.dataset.view = st.view;
     app.dataset.card = T('gridCard');
-    app.dataset.mode = st.open ? 'viewer' : 'files';
     if (!perm.view) {
       app.append(noPermEl());
-    } else if (st.open) {
-      app.append(viewerEl());
     } else {
       if (st.notice && !st.panel) {
         const b = h('div', 'sdk-banner vt-banner'); b.dataset.kind = st.notice.kind; b.setAttribute('role', 'status');
@@ -566,7 +516,7 @@ export function createVault(cfg = {}) {
       frame.setTitle(W().module, W().icon);
       frame.setTitlebar(titlebar());
       frame.setToolbar(toolbar());
-      frame.setStatus(st.open ? { text: '' } : perm.view ? status() : { text: '' });
+      frame.setStatus(perm.view ? status() : { text: '' });
       if (st.panel && T('add') === 'dialog' && can('add') && !st._dlg) {
         st._dlg = true;
         const s = sheet({ title: 'Add files', width: 'form' });
@@ -586,7 +536,7 @@ export function createVault(cfg = {}) {
   app.addEventListener('dragover', (e) => { if (can('add')) e.preventDefault(); });
   app.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; st.dropping = false; if (can('add') && e.dataTransfer.files.length) { st.panel = true; startFiles([...e.dataTransfer.files]); } else render(false); });
 
-  const ro = new ResizeObserver(() => { if (narrow() !== renderedNarrow && !st.open) render(false); });
+  const ro = new ResizeObserver(() => { if (narrow() !== renderedNarrow) render(false); });
   ro.observe(app);
   frame = createModuleFrame({
     title: W().module, icon: W().icon, tint: 'blue', titlebar: titlebar(), toolbar: toolbar(), content: inShadow(app), flush: true, status: status(), onAction,

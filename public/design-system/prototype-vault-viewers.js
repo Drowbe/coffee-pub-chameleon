@@ -1,4 +1,5 @@
-// The Prototype's Vault viewers (Thomas, 2026-11-02; design-process only): a picture (zoom, pan, full screen), audio and video with the browser's
+// The Prototype's Vault viewers (Thomas, 2026-11-02; design-process only; they sit in a window since 2026-11-03, prototype-vault-window.js, whose toolbar
+// has Full screen: the page of the public share keeps its own, api.ownFull): a picture (zoom, pan), audio and video with the browser's
 // own controls, Markdown through the SDK's own renderer, the PDF viewer (drawn: pdf.js is not shipped on this page), a PDF kept as download
 // only, a file the browser cannot play, a file whose bytes are missing, and the info panel. Each returns the view the module's viewer shows
 // under its top row.
@@ -50,7 +51,8 @@ export function pictureView(f, api) {
   const bar = h('div', 'vt-zoombar');
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', 'Zoom');
-  bar.append(out, level, inn, full);
+  bar.append(out, level, inn);
+  if (api.ownFull) bar.append(full);
   view.append(wrap, bar);
   wrap.addEventListener('wheel', (e) => { e.preventDefault(); set(z + (e.deltaY < 0 ? 0.25 : -0.25)); }, { passive: false });
   wrap.addEventListener('dblclick', () => set(z > 1 ? 1 : 2));
@@ -179,7 +181,7 @@ export function pdfView(f, api) {
   searchBox.hidden = true;
   const left = h('div', 'vt-pdfbar-group'); left.append(prev, num, total, next);
   const mid = h('div', 'vt-pdfbar-group vt-pdfbar-zoom'); mid.append(out, level, inn);
-  const right = h('div', 'vt-pdfbar-group'); if (api.trial.pdfSearch) right.append(find); right.append(full);
+  const right = h('div', 'vt-pdfbar-group'); if (api.trial.pdfSearch) right.append(find); if (api.ownFull) right.append(full);
   bar.append(left, sep(), mid, h('span', 'vt-pdfbar-fill'), right);
   const scroller = h('div', 'vt-pdf-pages');
   scroller.tabIndex = 0;

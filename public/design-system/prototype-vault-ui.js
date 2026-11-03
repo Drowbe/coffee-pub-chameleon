@@ -110,7 +110,7 @@ export function fileChip(f, { state = 'ok', canEdit = false, onOpen, onRemove } 
   } else if (state === 'hidden') {
     c.append(fa('lock', 'vt-chip-ic'), h('span', 'vt-chip-state', 'Not available to you'));
   }
-  if (onOpen && state === 'ok') c.addEventListener('click', () => onOpen(f));
+  if (onOpen && state === 'ok') c.addEventListener('click', () => onOpen(f, c));
   wrap.append(c);
   if (canEdit && (state === 'removed' || state === 'missing')) {
     const r = btn('btn btn-small btn-quiet vt-chip-remove', { label: 'Remove link', icon: 'link-slash' });

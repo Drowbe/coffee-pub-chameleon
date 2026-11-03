@@ -5,6 +5,7 @@
 // pairs side by side), and the questions for Thomas are listed at the end. The pieces are in prototype-vault-ui.js, the module in
 // prototype-vault-app.js, the viewers, the dialogs, the public page in their own files; the styles in prototype-vault.css.
 import { createVault, TRIAL, redrawAll } from './prototype-vault-app.js';
+import { createStage } from './prototype-vault-window.js';
 import { GB } from './prototype-vault-data.js';
 import { D, h, fa, btn, heldMenu, lazy, runDeferred } from './prototype-vault-ui.js';
 import { buildAddAndViewers, buildNarrowAndPermissions } from './prototype-vault-sets.js';
@@ -16,7 +17,7 @@ sec.id = 'pp-vault';
 sec.setAttribute('aria-labelledby', 'pp-vault-name');
 const title = h('h2', 'pp-group-name', 'Vault: the module, every state');
 title.id = 'pp-vault-name';
-sec.append(title, h('p', 'pp-state-note', 'The Vault (plan-attachments-vault.md) in the real module frame, with a made-up trip to Rome: forty-two files, all types. The server half is built; this is the screen and the pieces to lock before the module. Try the first panel for real (search, Filters, Select, the menus, Add files with the picker or a drop, the viewers). Where the plan is silent the two ways are drawn side by side or on the switches below; the questions for Thomas are listed at the end. Narrow the page width above: the Vault answers to its own width, not the page\'s.'));
+sec.append(title, h('p', 'pp-state-note', 'The Vault (plan-attachments-vault.md) in the real module frame, with a made-up trip to Rome: forty-two files, all types. The server half is built; this is the screen and the pieces to lock before the module. Try the first panel for real (search, Filters, Select, the menus, Add files with the picker or a drop, the file windows). Where the plan is silent the two ways are drawn side by side or on the switches below; the questions for Thomas are listed at the end. Narrow the page width above: the Vault answers to its own width, not the page\'s.'));
 
 // ---- the switches for what the plan leaves open (every Vault below is drawn again) ----
 const trials = h('div', 'vt-trials');
@@ -46,9 +47,8 @@ trialSwitch('words', 'Template words', [['vault', 'Vault'], ['documents', 'Docum
 trialSwitch('sort', 'Sorting (Q2)', [['filters', 'In Filters'], ['button', 'A button']]);
 trialSwitch('select', 'Choosing (Q3)', [['button', 'Select button'], ['ticks', 'Ticks always']]);
 trialSwitch('add', 'Add files (Q4)', [['panel', 'Panel in the module'], ['dialog', 'Dialog']]);
-trialSwitch('info', 'Info in the viewer (Q5)', [['panel', 'Side panel'], ['under', 'Under the file']]);
-trialSwitch('pdfSearch', 'PDF search (Q6)', [[true, 'Shown'], [false, 'Left out']]);
-trialSwitch('removeWhere', 'Remove where taken (Q7)', [['off', 'Off by default'], ['on', 'On by default']]);
+trialSwitch('pdfSearch', 'PDF search (Q5)', [[true, 'Shown'], [false, 'Left out']]);
+trialSwitch('removeWhere', 'Remove where taken (Q6)', [['off', 'Off by default'], ['on', 'On by default']]);
 sec.append(trials);
 
 // ---- the sub jump list ----
@@ -75,7 +75,7 @@ function set(id, name, note) {
 }
 
 // One state: its name and note, the frame (or a plain picture) on the canvas colour, then whatever is held open in it.
-function state(into, { name, note, w, h: hh, cfg, after, level = 'h4' }) {
+function state(into, { name, note, w, h: hh, cfg, after, level = 'h4', window: withWindow, win }) {
   const wrap = h('section', 'pp-state');
   const head = h(level, 'pp-state-name', name);
   wrap.append(head);
@@ -85,21 +85,24 @@ function state(into, { name, note, w, h: hh, cfg, after, level = 'h4' }) {
   if (hh) box.dataset.h = String(hh);
   wrap.append(box);
   into.append(wrap);
-  const out = { api: null, box, wrap };
+  const out = { api: null, box, wrap, stage: null };
   lazy(box, () => {
-    const api = createVault(cfg || {});
+    // A file opens in a window of the canvas, so a Vault that can open one sits on a drawn canvas (the stage).
+    const stage = withWindow || win ? createStage() : null;
+    const api = createVault({ ...(cfg || {}), stage });
     out.api = api;
-    box.append(api.el);
-    return after ? () => after(api, box) : undefined;
-  }, () => { if (out.api && out.api.destroy) out.api.destroy(); out.api = null; });
+    out.stage = stage;
+    if (stage) { box.append(stage.el); stage.under.append(api.el); } else box.append(api.el);
+    return after || win ? () => { if (win) win(api, stage); if (after) after(api, box, stage); } : undefined;
+  }, () => { if (out.stage) out.stage.destroy(); if (out.api && out.api.destroy) out.api.destroy(); out.api = null; out.stage = null; });
   return out;
 }
 const pair = (parent) => { const p = h('div', 'vt-pair'); parent.append(p); return p; };
 
 // ================= 1. try it =================
 {
-  const s = set('try', 'The Vault, to try', 'Real: the toolbar is the frame\'s (View switch, the sort in words, Search files, Filters), the "+" is Add files, Select is in the title bar, Share and Settings are the standard actions. Click a file to open it, with Back, Previous and Next. Choose files or drop real files on it: the type and size rules run as the server\'s do and a file is "sent" over a moment. Everything is made up; nothing is stored.');
-  state(s, { name: 'The Vault as a member (Lee) sees it', cfg: { role: 'member' }, level: 'h4' });
+  const s = set('try', 'The Vault, to try', 'Real: the toolbar is the frame\'s (View switch, the sort in words, Search files, Filters), the "+" is Add files, Select is in the title bar, Share and Settings are the standard actions. Click a file to open it in a window over the canvas (open several: each its own window); Layout, at the top right of the canvas, has Close all file windows. Choose files or drop real files on it: the type and size rules run as the server\'s do and a file is "sent" over a moment. Everything is made up; nothing is stored.');
+  state(s, { name: 'The Vault as a member (Lee) sees it', cfg: { role: 'member' }, window: true, h: 720, level: 'h4' });
 }
 // ================= 2. List and Grid =================
 {
