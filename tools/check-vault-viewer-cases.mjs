@@ -60,7 +60,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     if (!(pic > 0)) fail('a picture does not load in its window');
     const tools = await buttons(tab);
     for (const want of ['Previous', 'Next', 'Info', 'Download', 'Full screen']) if (!tools.includes(want)) fail(`the picture window's toolbar has ${tools.join(', ')}, not ${want}`);
-    if (tools.includes('Share')) fail('Share is shown before the share links exist (step 5)');
+    // Share is built (step 5): it is shown only where the person may share (this tab's person may; others' menus are checked in the role cases).
     const pos = ((await text(tab, '.mf-toolbar')) || '').replace(/\s+/g, ' ');
     if (!/\d+ of \d+/.test(pos)) fail(`the toolbar says "${pos}", not where the file is in the list ("n of N")`);
     const zoomed = await (async () => { await tab.eval(`document.querySelector('.fv-win.is-front .fv-zoombar button[aria-label="Zoom in"]').click()`); return text(tab, '.fv-zoom-level'); })();

@@ -13,7 +13,7 @@
 .sh-card.is-gone { color: var(--text-muted); }
 .sh-thumb { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-small); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-28); }
 .sh-thumb > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
-.sh-play { position: absolute; right: var(--space-2); bottom: var(--space-2); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-round); background: color-mix(in srgb, var(--surface-page) 80%, transparent); color: var(--text-primary); font-size: var(--text-12); }
+.sh-play { position: absolute; right: var(--space-2); bottom: var(--space-2); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--surface-page) 80%, transparent); color: var(--text-primary); font-size: var(--text-12); }
 .sh-meta { display: flex; flex-direction: column; gap: var(--space-0); min-width: 0; }
 .sh-name { display: block; width: 100%; margin: 0; padding: 0; overflow: hidden; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: var(--text-14); font-weight: var(--weight-medium); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .sh-name:disabled { color: var(--text-muted); cursor: default; }

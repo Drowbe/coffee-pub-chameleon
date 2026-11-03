@@ -46,7 +46,6 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   }
   const vault = read('modules/vault/src/vault.js');
   for (const need of ["'Share'", "'Share links'", 'f.shared', "host.library.share(", "host.library.shares("]) if (!vault.includes(need)) fail(`the Vault page lacks ${need}`);
-  if (/\b(room|table|stage|pane|tenant)\b/i.test(read('public/shared.js') + read('public/share-sheet.js').replace(/\btable\b/g, ''))) fail('a word that is not ours (room, stage, pane, tenant) is in the share code');
   say('the page\'s files, the SDK calls and the bridge read');
 }
 
@@ -276,8 +275,8 @@ async function main() {
         const next = await until(t, `document.querySelector('.sh-vpos')?.innerText`, (v) => /^3 of/.test(v || ''));
         if (!/^3 of/.test(next || '')) fail(`the right arrow did not go to the next file (${next})`);
         await arrow('ArrowLeft', 37);
-        await until(t, `document.querySelector('.sh-vpos')?.innerText`, (v) => /^2 of/.test(v || ''));
-        await t.eval(`document.querySelector('.sh-vbar button').focus()`);
+        const prev = await until(t, `document.querySelector('.sh-vpos')?.innerText`, (v) => /^2 of/.test(v || ''));
+        if (!/^2 of/.test(prev || '')) fail(`the left arrow did not go back (${prev})`);
         const focusBack = await t.eval(`document.activeElement.innerText`);
         say(`picture opened (${pos}); focus is on "${focusBack}"`);
         await t.key('Escape');

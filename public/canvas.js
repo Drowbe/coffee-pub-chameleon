@@ -13,10 +13,10 @@
 // See documentation/architecture/architecture-canvas.md.
 
 import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame } from '/module-host.js';
+import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame, joinStream } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
-import { fileWindowCount, closeAllFiles } from '/file-viewer.js';
+import { fileWindowCount, closeAllFiles, openFile } from '/file-viewer.js';
 import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
 import { layoutOf, placeLayout, leftOutNote } from '/layouts.js';
@@ -1247,6 +1247,12 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   // module is one of its parts) and hand it the pointer, which its own code turns into showing the item. the host
   // knows nothing about the item.
   function openRef(ref) {
+    // A file of the space's library (a link from Chat or another tool) opens in the file window over the canvas; the library's module
+    // is not brought forward (plan-attachments-vault.md, decision 19). Previous and Next appear only when the opener gives a list.
+    if (ref.kind === 'file' && ref.scope === 'space' && spaceId && ref.space === spaceId) {
+      Promise.resolve(openFile({ ref: { module: ref.module, kind: 'file', id: ref.id, scope: 'space', space: ref.space }, ids: null, doc: document, openRef, join: (fn) => joinStream(spaceId, guestToken, fn) })).catch(() => {});
+      return true;
+    }
     const m = available.find((x) => x.id === readId(ref.module));
     if (!m) return false;
     if (!opened.has(m.id)) openModule(m);

@@ -369,3 +369,7 @@
 /* a stop's linked Place, as a chip that opens it */
 .place-chip { max-width: 100%; }
 .place-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The files a stay or a journey is linked to (host.ui.fileChips): a line of chips under the card's facts. */
+.card-files { margin-top: var(--space-2); }
+.f-files { margin-bottom: var(--space-2); }
