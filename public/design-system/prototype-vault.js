@@ -5,7 +5,7 @@
 // pairs side by side), and the questions for Thomas are listed at the end. The pieces are in prototype-vault-ui.js, the module in
 // prototype-vault-app.js, the viewers, the dialogs, the public page in their own files; the styles in prototype-vault.css.
 import { createVault, TRIAL, redrawAll } from './prototype-vault-app.js';
-import { createStage } from './prototype-vault-window.js';
+import { createCanvas } from './prototype-vault-window.js';
 import { GB } from './prototype-vault-data.js';
 import { D, h, fa, btn, heldMenu, lazy, runDeferred } from './prototype-vault-ui.js';
 import { buildAddAndViewers, buildNarrowAndPermissions } from './prototype-vault-sets.js';
@@ -88,7 +88,7 @@ function state(into, { name, note, w, h: hh, cfg, after, level = 'h4', window: w
   const out = { api: null, box, wrap, stage: null };
   lazy(box, () => {
     // A file opens in a window of the canvas, so a Vault that can open one sits on a drawn canvas (the stage).
-    const stage = withWindow || win ? createStage() : null;
+    const stage = withWindow || win ? createCanvas() : null;
     const api = createVault({ ...(cfg || {}), stage });
     out.api = api;
     out.stage = stage;

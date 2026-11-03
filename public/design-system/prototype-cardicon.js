@@ -1,4 +1,4 @@
-// The Prototype's "Card icon colour" comparison (Thomas, 2026-11-03): five ways to colour the circle on a card head and a row.
+// The Prototype's "Icon colour" comparison (Thomas, 2026-11-03): five ways to colour the circle on a card head and a row.
 // Draws the samples (each wears data-ci-fixed and keeps its own variant), the switch that restyles every circle on the page (data-ci on <html>
 // and on the Planner's page in its shadow root; also ?ci=v0..v4), and the numbers: glyph against disc, and disc against its surface,
 // measured from the colours the browser draws, for the theme and mode chosen at the top. The rules are in prototype.css; nothing here ships.
@@ -50,14 +50,14 @@ if (!VARIANTS.some((v) => v.id === state.ci)) state.ci = 'v0';
 const main = D.getElementById('pp-main');
 const sec = el('section', 'ci-section');
 sec.setAttribute('aria-labelledby', 'ci-title');
-const h = el('h2', 'pp-group-name', 'Card icon colour');
+const h = el('h2', 'pp-group-name', 'Icon colour');
 h.id = 'ci-title';
-const note = el('p', 'pp-state-note', 'The black glyph on a colour disc reads hard. Five tries, each shown below on eight kinds, at 36px (a card head) and 28px (a row), in the theme and mode chosen at the top. The switch restyles every card on this page, the Planner\'s too. Nothing here is in the product yet.');
+const note = el('p', 'pp-state-note', 'The black glyph on a colour disc reads hard. Five tries, each shown below on eight kinds, at 36px (a head) and 28px (a row), in the theme and mode chosen at the top. The switch restyles every one on this page, the Planner\'s too. Nothing here is in the product yet.');
 const bar = el('div', 'ci-bar');
-const barLabel = el('span', 'ci-bar-label', 'Every card on the page:');
+const barLabel = el('span', 'ci-bar-label', 'Every icon on the page:');
 const sw = el('div', 'mf-switch');
 sw.setAttribute('role', 'radiogroup');
-sw.setAttribute('aria-label', 'Card icon colour');
+sw.setAttribute('aria-label', 'Icon colour');
 bar.append(barLabel, sw);
 
 function drawSwitch() {
@@ -97,7 +97,7 @@ for (const v of VARIANTS) {
 
 // ---- the numbers ----
 const nh = el('h3', 'ci-variant-name', 'Contrast, measured');
-const nn = el('p', 'ci-variant-note', 'Read from the colours drawn now. Glyph on disc: the icon against the disc (aim 4.5 or more; 3 is the least for an icon). Disc on surface: the disc, or the ring for 4, against the card head it sits on and the row it sits in, the lower of the two (3 or more to read as a colour dot). A number under its aim is marked with "!".');
+const nn = el('p', 'ci-variant-note', 'Read from the colours drawn now. Glyph on disc: the icon against the disc (aim 4.5 or more; 3 is the least for an icon). Disc on surface: the disc, or the ring for 4, against the head it sits on and the row it sits in, the lower of the two (3 or more to read as a colour dot). A number under its aim is marked with "!".');
 const wrap = el('div', 'ci-scroll');
 const tbl = el('table', 'ci-numbers');
 wrap.append(tbl);
