@@ -12,7 +12,7 @@ export function buildAddAndViewers({ set, state, pair }) {
   {
     const s = set('add', 'Add files', 'The "+" in the title bar is Add files. It opens a panel at the top of the module (or a dialog: Q4): a drop zone and Choose files (several at once; on a phone the photo library and camera), the option for pictures, the notice for video, "Everyone in this trip can see what you add.", what is left, and a row for each file with its progress or its refusal. Dropping files on the module shows the drop outline over it.');
     const p = pair(s);
-    state(p, { name: 'The panel', note: 'Open, nothing sent yet. The option and the notice are the plan\'s decision 10; its default is Q6.', cfg: { role: 'member', state: { panel: true } }, h: 720 });
+    state(p, { name: 'The panel', note: 'Open, nothing sent yet. The option and the notice are the plan\'s decision 10; Thomas decided the option is off by default (2026-11-03): a picture keeps its position unless the person turns it on.', cfg: { role: 'member', state: { panel: true } }, h: 720 });
     state(p, { name: 'Dropping files on the module', note: 'The outline covers the module while files are dragged over it, and says where they go.', cfg: { role: 'member', state: { dropping: true } } });
     const p2 = pair(s);
     state(p2, { name: 'The drop zone, files over it', cfg: { role: 'member', state: { panel: true, dropping: true } }, h: 720 });
