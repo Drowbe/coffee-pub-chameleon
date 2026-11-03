@@ -205,7 +205,18 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     await menuOf(tab);
     await pickMenu(tab, 'Rename');
     await until(tab, `!!document.querySelector('dialog.fv-rename input')`, Boolean);
-    await tab.eval(`(() => { const i = document.querySelector('dialog.fv-rename input'); i.value = 'Notes renamed'; document.querySelector('dialog.fv-rename form').requestSubmit(); })()`);
+    // Rename is off until the name changes; Escape with an edited name asks "Discard changes?" and Keep editing goes back.
+    const SAVE = `document.querySelector('dialog.fv-rename .action-bar-save')`;
+    if (!(await tab.eval(`${SAVE}.disabled`))) fail('Rename was on before the name changed');
+    const typeName = (v) => tab.eval(`(() => { const i = document.querySelector('dialog.fv-rename input'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await typeName('Notes renamed');
+    if (await tab.eval(`${SAVE}.disabled`)) fail('Rename stayed off after the name changed');
+    await tab.key('Escape');
+    const discard = await until(tab, `(() => { const a = document.querySelector('dialog.fv-rename .action-bar-ask'); return a && !a.hidden ? a.innerText : ''; })()`, Boolean);
+    if (!/Discard changes\?/.test(discard)) fail(`Escape with an edited name showed "${discard}"`);
+    await tab.click('dialog.fv-rename .action-bar-keep');
+    if (!(await tab.eval(`!!document.querySelector('dialog.fv-rename')`))) fail('Keep editing closed the Rename dialog');
+    await tab.eval(`document.querySelector('dialog.fv-rename form').requestSubmit()`);
     const renamed = await until(tab, FRONT, (v) => /Notes renamed/.test(v));
     if (!/Notes renamed/.test(renamed)) fail(`Rename left the window's title "${renamed}"`);
     if (!(await names()).includes('Notes renamed.md')) fail('Rename from the window did not reach the server');

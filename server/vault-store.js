@@ -280,7 +280,78 @@ class VaultStore {
   }
 
   listShares(moduleId, spaceId) {
+    this.dropEndedShares(moduleId, spaceId);
     return [...this.shareMap(moduleId, spaceId).values()].map((s) => this.shareView(s)).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  // A share link past its end opens nothing and can't be made to again, so it goes (plan section 7, "by itself at its
+  // end"): from the list, and so from the 200 a space may hold.
+  dropEndedShares(moduleId, spaceId) {
+    const map = this.shareMap(moduleId, spaceId);
+    let changed = false;
+    for (const [id, s] of map) if (!(Date.parse(s.ends) > this.now())) { map.delete(id); changed = true; }
+    if (changed) this.saveShares(moduleId, spaceId);
+  }
+
+  // The stored share by its id, or null.
+  getShare(moduleId, spaceId, id) {
+    if (!SHARE_ID_RE.test(String(id))) return null;
+    return this.shareMap(moduleId, spaceId).get(String(id)) || null;
+  }
+
+  // A share's name or its set of files changed (its maker or an owner, plan section 7): answers its view. Every file
+  // must be one of the space's; a set may not be emptied (Turn off ends a link).
+  updateShare(moduleId, spaceId, id, { name, files } = {}) {
+    const s = this.getShare(moduleId, spaceId, id);
+    if (!s || !(Date.parse(s.ends) > this.now())) throw new VaultError('There is no such share link.', 404);
+    let nextName = s.name;
+    let nextFiles = s.files;
+    if (name !== undefined) {
+      nextName = cleanName(name);
+      if (!nextName) throw new VaultError('Give the share link a name.');
+    }
+    if (files !== undefined) {
+      nextFiles = [...new Set(Array.isArray(files) ? files.map(String) : [])];
+      if (!nextFiles.length) throw new VaultError('Choose the files to share.');
+      if (nextFiles.length > SHARE_FILES_MAX) throw new VaultError(`A share link holds at most ${SHARE_FILES_MAX} files.`);
+      if (nextFiles.some((fid) => !this.get(moduleId, spaceId, fid))) throw new VaultError('There is no such file.', 404);
+    }
+    const before = { name: s.name, files: s.files };
+    s.name = nextName;
+    s.files = nextFiles;
+    try {
+      this.saveShares(moduleId, spaceId);
+    } catch (err) {
+      Object.assign(s, before);
+      throw err;
+    }
+    return this.shareView(s);
+  }
+
+  // One more opening of a share link (its maker sees the count; no address or person is kept).
+  noteShareOpened(moduleId, spaceId, id) {
+    const s = this.getShare(moduleId, spaceId, id);
+    if (!s) return;
+    s.opened = (Number(s.opened) || 0) + 1;
+    // Written a few seconds later, once for a burst of openings; the count in memory is what the maker reads. A space
+    // forgotten meanwhile reads back as having no links, so nothing comes back.
+    const key = `${moduleId}|${spaceId}`;
+    this.openedPending = this.openedPending || new Set();
+    if (this.openedPending.has(key)) return;
+    this.openedPending.add(key);
+    setTimeout(() => {
+      this.openedPending.delete(key);
+      if (!this.shareCache.has(key)) return;
+      try { this.saveShares(moduleId, spaceId); } catch { /* a count is not worth an error */ }
+    }, 5000).unref();
+  }
+
+  // The ids of the space's files in a share link that still opens, for the "Shared" mark in the list.
+  sharedFileIds(moduleId, spaceId) {
+    const out = new Set();
+    const now = this.now();
+    for (const s of this.shareMap(moduleId, spaceId).values()) if (Date.parse(s.ends) > now) for (const fid of s.files) out.add(fid);
+    return out;
   }
 
   // Turn a share link off: true when there was one.
