@@ -915,7 +915,7 @@ try {
   assert.equal((await call('GET', `/api/spaces/${S}/ai`, { cookie: pat })).json.available, true);
   await call('PATCH', `/api/spaces/${S}`, { cookie: owner, body: { aiOff: true } });
   const off = await call('POST', `/api/spaces/${S}/ai`, { cookie: pat, body: { question: 'Off?' } });
-  assert.deepEqual([off.status, off.json.error], [403, 'AI is turned off in this space']);
+  assert.deepEqual([off.status, off.json.error], [403, 'AI is turned off in this space.']);
   await call('PATCH', `/api/spaces/${S}`, { cookie: owner, body: { aiOff: false } });
   n += 1;
 

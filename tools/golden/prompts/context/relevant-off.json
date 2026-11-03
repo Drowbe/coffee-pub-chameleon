@@ -1,0 +1,139 @@
+{
+  "context": {
+    "space": {
+      "name": "Lisbon",
+      "word": "space",
+      "objectWord": "object"
+    },
+    "today": {
+      "date": "2026-11-12",
+      "weekday": "Thursday",
+      "timeZone": "Europe/Lisbon"
+    },
+    "phases": [
+      {
+        "name": "Planning"
+      },
+      {
+        "name": "The trip",
+        "start": "2026-11-10",
+        "end": "2026-11-14",
+        "current": true
+      },
+      {
+        "name": "After",
+        "start": "2026-11-15"
+      }
+    ],
+    "asker": {
+      "name": "Pat",
+      "role": "member"
+    },
+    "linked": [
+      {
+        "n": 4,
+        "kind": "Note",
+        "title": "Fado night tickets",
+        "linkedTo": 1
+      }
+    ]
+  },
+  "material": [
+    {
+      "n": 1,
+      "kind": "Note",
+      "title": "Dinner ideas",
+      "text": "Fish near Alfama. Guest link https://x.example/s/1?guest=[removed] and key sk-ant-[removed]"
+    },
+    {
+      "n": 2,
+      "kind": "Place",
+      "title": "Secret bar",
+      "text": "Only for readers of Places."
+    },
+    {
+      "n": 3,
+      "kind": "Task",
+      "title": "Renew passports",
+      "text": "Before any trip."
+    }
+  ],
+  "history": [
+    {
+      "question": "earlier question",
+      "answer": "earlier answer"
+    }
+  ],
+  "numbered": [
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "n1"
+    },
+    {
+      "module": "places",
+      "kind": "place",
+      "scope": "space",
+      "space": "s1",
+      "id": "p1"
+    },
+    {
+      "module": "todo",
+      "kind": "task",
+      "scope": "environment",
+      "id": "t1"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "n2"
+    }
+  ],
+  "leftOut": [
+    {
+      "part": "attached",
+      "why": "other-space",
+      "count": 2
+    }
+  ],
+  "sent": {
+    "attached": [
+      {
+        "module": "research",
+        "kind": "note",
+        "scope": "space",
+        "space": "s1",
+        "id": "n1"
+      },
+      {
+        "module": "places",
+        "kind": "place",
+        "scope": "space",
+        "space": "s1",
+        "id": "p1"
+      },
+      {
+        "module": "todo",
+        "kind": "task",
+        "scope": "environment",
+        "id": "t1"
+      }
+    ],
+    "relevant": 0,
+    "linked": 1,
+    "history": 1,
+    "chat": 0,
+    "members": 0,
+    "notSent": [
+      {
+        "why": "other-space",
+        "module": "research",
+        "count": 2
+      }
+    ]
+  }
+}

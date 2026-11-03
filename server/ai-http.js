@@ -20,8 +20,8 @@ class AiNetError extends Error {
 const blocked = new net.BlockList();
 for (const [net4, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]]) blocked.addSubnet(net4, bits, 'ipv4');
 // ::/96 (unspecified and the old IPv4-compatible form, ::7f00:1), local NAT64 64:ff9b:1::/48 and Teredo 2001::/32 can all
-// reach a private IPv4 address, so they are refused whole.
-for (const [net6, bits] of [['::', 96], ['::1', 128], ['64:ff9b:1::', 48], ['2001::', 32], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32], ['100::', 64]]) blocked.addSubnet(net6, bits, 'ipv6');
+// reach a private IPv4 address, so they are refused whole; so is the IPv4-translated form ::ffff:0:0:0/96 (::ffff:0:7f00:1).
+for (const [net6, bits] of [['::', 96], ['::1', 128], ['::ffff:0:0:0', 96], ['64:ff9b:1::', 48], ['2001::', 32], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32], ['100::', 64]]) blocked.addSubnet(net6, bits, 'ipv6');
 
 // The IPv4 address inside an IPv6 one that carries it (::ffff:a.b.c.d, 64:ff9b::/96, 6to4 2002::/16), or ''.
 function embeddedV4(ip) {

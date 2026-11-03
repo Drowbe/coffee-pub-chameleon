@@ -314,108 +314,8 @@ function cleanHandoff(raw) {
   return kept;
 }
 
-const listWords = (list, last = 'or') => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} ${last} ${list[list.length - 1]}`);
-
-// The example in the prompt. Every value is a placeholder in <angle brackets>, never a real-looking one: a model that copies the example
-// writes an object whose title is still a placeholder, and the reader drops it (isPlaceholder, in cleanObject). A flight's when
-// flights are taken, else a plain object.
-const FLIGHT_EXAMPLE = '{"icon":"plane","kind":"flight","title":"<title>","content":"<notes; plain prose, or simple Markdown>","date":"<YYYY-MM-DD>","details":{"airline":"<airline>","number":"<number>","from":{"code":"<code>","name":"<name>"},"to":{"code":"<code>","name":"<name>"},"departs":"<YYYY-MM-DDTHH:MM>","arrives":"<YYYY-MM-DDTHH:MM>","reference":"<reference>"},"tags":["<tag>"],"place":{"name":"<name>"},"links":[{"title":"<title>","url":"<url>"}]}';
-function promptExample(kinds, withProvenance) {
-  const example = kinds.includes('flight')
-    ? FLIGHT_EXAMPLE
-    : `{"icon":"note",${kinds.length ? `"kind":"${kinds[0]}",` : ''}"title":"<title>","content":"<the text to keep; plain prose, or simple Markdown (headings, **bold**, *italic*, lists, links) if that reads better>","date":"<YYYY-MM-DD>","tags":["<tag>"],"place":{"name":"<name>"},"links":[{"title":"<title>","url":"<url>"}]}`;
-  return withProvenance ? `${example.slice(0, -1)},"basis":"<basis>","sources":[<numbers>]}` : example;
-}
-
-// What a details field needs said beside its name in the prompt. A `when` is explained once, in the dates line.
-const FIELD_NOTES = { 'flight.minutes': 'time in the air', 'car.from': 'pick-up', 'car.to': 'drop-off', 'car.departs': 'pick-up', 'car.arrives': 'drop-off', 'restaurant.name': "the booking's name", 'cafe.name': "the booking's name", 'bar.name': "the booking's name" };
-const TYPE_NOTES = { flag: 'true or false', options: '2 to 10 short answers' };
-const KIND_NOTES = { hotel: 'any stay: hotel, rental, hostel' };
-
-// One line per kind, or per run of kinds with the same fields ("restaurant, cafe, bar: ..."), for the kinds listed. The
-// first line with a from and a to says how a place is written.
-function detailsLines(kinds) {
-  const lines = [];
-  let pointsSaid = false;
-  const empty = kinds.filter((k) => !Object.keys(DETAILS[k]).length);
-  const groups = [];
-  for (const k of kinds.filter((x) => Object.keys(DETAILS[x]).length)) {
-    const last = groups[groups.length - 1];
-    if (last && JSON.stringify(DETAILS[last[0]]) === JSON.stringify(DETAILS[k])) last.push(k);
-    else groups.push([k]);
-  }
-  for (const group of groups) {
-    const fields = DETAILS[group[0]];
-    const both = fields.from === 'point' && fields.to === 'point';
-    const words = [];
-    let merged = false;
-    for (const [name, type] of Object.entries(fields)) {
-      const note = FIELD_NOTES[`${group[0]}.${name}`] || TYPE_NOTES[type.split(':')[0]];
-      if (both && name === 'from' && !pointsSaid) {
-        pointsSaid = true;
-        merged = true;
-        words.push(`from and to ({"code","name"}${note ? `; ${note} and ${FIELD_NOTES[`${group[0]}.to`]}` : ''})`);
-      } else if (!(merged && name === 'to')) {
-        words.push(note ? `${name} (${note})` : name);
-      }
-    }
-    lines.push(`- ${group.map((k) => (KIND_NOTES[k] ? `${k} (${KIND_NOTES[k]})` : k)).join(', ')}: ${words.join(', ')}`);
-  }
-  if (empty.length) {
-    const link = empty.includes('link');
-    lines.push(`- ${listWords(empty, 'and')}: no details${link ? `; ${empty.length > 1 ? "a link's" : 'its'} address goes in "links"` : ''}.`);
-  }
-  return lines;
-}
-
-// The rule for the objects block, shared by the copied instructions (instructions) and the /ai rule (server/ai.js), so they
-// cannot drift (plan-object-handoff.md, "The prompt"). `kinds`: the kinds to list (kindsTaken), each with its details.
-// `withProvenance`: the /ai answer's "basis" and "sources"; it also cannot stop to ask for a date, so it says which it needs.
-function objectRule({ fence, noun, max, withProvenance, kinds = TRAVEL_KINDS }) {
-  const listed = KINDS.filter((k) => kinds.includes(k));
-  const travel = listed.some((k) => TRAVEL_KINDS.includes(k));
-  const hasDetails = listed.some((k) => Object.keys(DETAILS[k]).length);
-  const lines = [
-    `single fenced block (exactly one, never one per ${noun}), at most ${max}:`,
-    `\`\`\`${fence}`,
-    `[${promptExample(listed, withProvenance)}]`,
-    '\`\`\`',
-    'Text in <angle brackets> is a placeholder: write a real value, never the brackets.',
-    `One ${noun} per thing.${travel ? ` A whole itinerary is one ${noun} for each flight, train, stay, meal, visit and event, in the order they happen; a return flight is its own ${noun}.` : ''} Never fold several into one ${noun}'s text.`,
-  ];
-  if (listed.length) lines.push(`Set "kind" to what the ${noun} is: ${listWords(listed)}. Leave it out only when none fits.`);
-  // A booking at a set time is still its travel kind, so it lands in the trip's plan rather than the calendar.
-  const travelListed = listed.filter((k) => TRAVEL_KINDS.includes(k));
-  if (travelListed.length && listed.includes('event')) {
-    lines.push(`For a booking or a stop on a trip, use its own kind (${listWords(travelListed)}) rather than "event", even when it happens at a set time; use "event" only for anything else on a day, such as an appointment or a party.`);
-  }
-  const missing = withProvenance
-    ? 'If something happens on a day you were not told, leave its date out and say in your answer which dates you still need.'
-    : 'If something happens on a day you were not told, ask me for the date before you write the block; if I do not know, leave the date out.';
-  lines.push(`Dates and times: copy them from what I gave you; never guess a date or a year. ${missing} ${hasDetails
-    ? 'Write a date as YYYY-MM-DD and a date with a time as YYYY-MM-DDTHH:MM, 24-hour, in the local time where it happens, with no time zone. If you know only the time, write HH:MM. Put the day in "date" as well.'
-    : 'Write a date as YYYY-MM-DD.'}`);
-  if (listed.length) {
-    lines.push(hasDetails
-      ? `"details" holds what a booking or plan says. Every field is optional; leave out what you do not know, and write nothing in "content" that is already in "details":`
-      : 'These kinds take no "details":');
-    lines.push(...detailsLines(listed));
-  }
-  const tail = withProvenance
-    ? `"basis" says where the ${noun} comes from: "general" (your own knowledge), "items" (the material) or "both". "sources" are the item numbers you used.`
-    : 'Keep each title under 80 characters and each content under 6000. Links must start with http:// or https://.';
-  // The example's placeholders are not values to copy.
-  const leave = hasDetails
-    ? 'Leave out tags, place and links when you have nothing for them, and content when "details" says it all.'
-    : 'Leave out tags, place and links when you have nothing for them.';
-  lines.push(`The icon is one of: ${ICONS.join(', ')}. ${tail} ${leave} Add no fields other than these.`);
-  return lines.join('\n');
-}
-
-// The copied instructions for another AI (GET /api/objects/format). `kinds`: the kinds the environment's modules take.
-function instructions(noun, { kinds } = {}) {
-  return `I keep my plans and research in ${productName()}. When I ask you to find or plan something, answer as you normally would, then put every thing worth keeping in one JSON array inside one ${objectRule({ fence: FENCE, noun, max: MAX_IMPORT_OBJECTS, withProvenance: false, kinds })}\nIf I ask for a file instead, write one JSON file named <something>${FILE_SUFFIX} holding {"format":"objects","formatVersion":1,"objects":[...]}, with the same ${word('object', { many: true })} in that one list. Do not write a separate file or a separate fenced block for each ${noun}.`;
-}
+// The objects rule and the copied instructions that describe this format to a model live in the prompt registry
+// (server/prompts/object-rule.js and server/prompts/paste.js).
 
 // A day and a 24-hour clock as a pattern. An impossible day such as 2026-02-30 still passes; the reader drops it.
 const SCHEMA_DAY = '\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])';
@@ -671,8 +571,6 @@ module.exports = {
   cleanHandoff,
   takersOf,
   kindsTaken,
-  objectRule,
-  instructions,
   schema,
   readObjects,
   decodeBytes,

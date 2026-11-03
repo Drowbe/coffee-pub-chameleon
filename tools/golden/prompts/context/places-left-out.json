@@ -1,0 +1,324 @@
+{
+  "context": {
+    "space": {
+      "name": "Lisbon",
+      "word": "space",
+      "objectWord": "object"
+    },
+    "today": {
+      "date": "2026-11-12",
+      "weekday": "Thursday",
+      "timeZone": "Europe/Lisbon"
+    },
+    "phases": [
+      {
+        "name": "Planning"
+      },
+      {
+        "name": "The trip",
+        "start": "2026-11-10",
+        "end": "2026-11-14",
+        "current": true
+      },
+      {
+        "name": "After",
+        "start": "2026-11-15"
+      }
+    ],
+    "asker": {
+      "name": "Pat",
+      "role": "member"
+    },
+    "relevant": [
+      {
+        "n": 3,
+        "kind": "Note",
+        "title": "Dinner option 0"
+      },
+      {
+        "n": 4,
+        "kind": "Note",
+        "title": "Dinner option 1"
+      },
+      {
+        "n": 5,
+        "kind": "Note",
+        "title": "Dinner option 10"
+      },
+      {
+        "n": 6,
+        "kind": "Note",
+        "title": "Dinner option 11"
+      },
+      {
+        "n": 7,
+        "kind": "Note",
+        "title": "Dinner option 12"
+      },
+      {
+        "n": 8,
+        "kind": "Note",
+        "title": "Dinner option 13"
+      },
+      {
+        "n": 9,
+        "kind": "Note",
+        "title": "Dinner option 14"
+      },
+      {
+        "n": 10,
+        "kind": "Note",
+        "title": "Dinner option 15"
+      },
+      {
+        "n": 11,
+        "kind": "Note",
+        "title": "Dinner option 16"
+      },
+      {
+        "n": 12,
+        "kind": "Note",
+        "title": "Dinner option 17"
+      },
+      {
+        "n": 13,
+        "kind": "Note",
+        "title": "Dinner option 18"
+      },
+      {
+        "n": 14,
+        "kind": "Note",
+        "title": "Dinner option 19"
+      },
+      {
+        "n": 15,
+        "kind": "Note",
+        "title": "Dinner option 2"
+      },
+      {
+        "n": 16,
+        "kind": "Note",
+        "title": "Dinner option 20"
+      },
+      {
+        "n": 17,
+        "kind": "Note",
+        "title": "Dinner option 21"
+      },
+      {
+        "n": 18,
+        "kind": "Event",
+        "title": "Museum visit",
+        "when": "2026-11-14"
+      }
+    ],
+    "linked": [
+      {
+        "n": 19,
+        "kind": "Note",
+        "title": "Fado night tickets",
+        "linkedTo": 1
+      }
+    ]
+  },
+  "material": [
+    {
+      "n": 1,
+      "kind": "Note",
+      "title": "Dinner ideas",
+      "text": "Fish near Alfama. Guest link https://x.example/s/1?guest=[removed] and key sk-ant-[removed]"
+    },
+    {
+      "n": 2,
+      "kind": "Task",
+      "title": "Renew passports",
+      "text": "Before any trip."
+    }
+  ],
+  "history": [
+    {
+      "question": "earlier question",
+      "answer": "earlier answer"
+    }
+  ],
+  "numbered": [
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "n1"
+    },
+    {
+      "module": "todo",
+      "kind": "task",
+      "scope": "environment",
+      "id": "t1"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x0"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x1"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x10"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x11"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x12"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x13"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x14"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x15"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x16"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x17"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x18"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x19"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x2"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x20"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "x21"
+    },
+    {
+      "module": "calendar",
+      "kind": "event",
+      "scope": "space",
+      "space": "s1",
+      "id": "e1"
+    },
+    {
+      "module": "research",
+      "kind": "note",
+      "scope": "space",
+      "space": "s1",
+      "id": "n2"
+    }
+  ],
+  "leftOut": [
+    {
+      "part": "attached",
+      "why": "setting",
+      "count": 1
+    },
+    {
+      "part": "attached",
+      "why": "other-space",
+      "count": 2
+    }
+  ],
+  "sent": {
+    "attached": [
+      {
+        "module": "research",
+        "kind": "note",
+        "scope": "space",
+        "space": "s1",
+        "id": "n1"
+      },
+      {
+        "module": "todo",
+        "kind": "task",
+        "scope": "environment",
+        "id": "t1"
+      }
+    ],
+    "relevant": 16,
+    "linked": 1,
+    "history": 1,
+    "chat": 0,
+    "members": 0,
+    "notSent": [
+      {
+        "why": "setting",
+        "module": "places",
+        "count": 1
+      },
+      {
+        "why": "other-space",
+        "module": "research",
+        "count": 2
+      }
+    ]
+  }
+}

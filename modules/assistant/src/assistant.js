@@ -22,10 +22,9 @@
     host.actions.provide({
       askAssistant: async (input) => {
         const i = input || {};
-        const question = typeof i.question === 'string' && i.question.trim()
-          ? i.question.trim().slice(0, 1000)
-          : (i.ref ? 'What should I know about this?' : '');
-        if (!question) return {};
+        // No question with an object: the server asks its own default.
+        const question = typeof i.question === 'string' ? i.question.trim().slice(0, 1000) : '';
+        if (!question && !i.ref) return {};
         await host.chat.ask({ question, refs: i.ref ? [i.ref] : [] });
         return {};
       },

@@ -2302,7 +2302,8 @@
     },
 
     // Ask in Chat on a space's canvas: posts a private /ai question (the reply shows only to the person who asked).
-    // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`.
+    // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`. With a ref and no
+    // question (`question: ''`) the server asks its own: What should I know about <the object's title>?
     //   available()  -> { available }   false off a space's canvas (a module's own page), where ask rejects: hide the button there.
     chat: {
       available: () => call('chat.available', {}),
@@ -2914,8 +2915,8 @@
       request: async (action, input, o) => {
         const name = String(action || '');
         if (name === 'assistant:askAssistant' || name === 'askAssistant') {
-          const q = String(input?.question || '').trim() || (input?.ref ? 'What should I know about this?' : '');
-          if (!q) throw new Error('Type a question.');
+          const q = String(input?.question || '').trim();
+          if (!q && !input?.ref) throw new Error('Type a question.');
           await call('chat.ask', { question: q, refs: input?.ref ? [input.ref] : [] });
           return { status: 'done', id: 0, result: { ok: true } };
         }

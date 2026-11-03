@@ -11,7 +11,24 @@ import http from 'node:http';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-const { Ai, AiError, applyManagedFields, buildPrompt, parseSummaries, cleanSummary, parseTags, citedItems, ICONS, KINDS, MAX_SUMMARIES } = createRequire(import.meta.url)('../server/ai.js');
+const require = createRequire(import.meta.url);
+const { Ai, AiError, applyManagedFields } = require('../server/ai.js');
+const { ICONS, KINDS, TRAVEL_KINDS } = require('../server/object-format.js');
+const { parseSummaries, cleanSummary, parseTags, citedItems, MAX_SUMMARIES } = require('../server/prompts/parse.js');
+const prompts = require('../server/prompts');
+
+// A template's inputs for objects given as { title, text } (what the context builder makes, without a rollup).
+const WORDS = { object: 'object', objects: 'objects', space: 'space' };
+const inputsFor = (task, list = [], question, kinds = TRAVEL_KINDS) => {
+  const material = list.map((it, i) => ({ n: i + 1, title: it.title, text: it.text }));
+  if (task === 'tags') return { material, words: WORDS };
+  if (task === 'summarise') return { material, context: {}, kinds, words: WORDS };
+  return { question, material, context: {}, history: [], kinds, words: WORDS };
+};
+// ai.run as the routes call it.
+const ask = (ai, task, list, question, kinds) => ai.run(task, inputsFor(task, list, question, kinds), { purpose: 'module', person: 'p1' });
+// The system part a template renders, for prompt-then-parse (a service without structured output) or structured.
+const systemOf = (task, kinds, structured = false) => prompts.render(prompts.template(task), inputsFor(task, [], task === 'ask' ? 'Why?' : undefined, kinds), { structured }).messages[0].content;
 
 let n = 0;
 const test = async (name, fn) => { await fn(); n += 1; };
@@ -55,7 +72,9 @@ await test('the setting: the key is kept and never shown', () => {
   // The view: the custom slot's fields, whether a key is set (never the key), and the source with the host's offer.
   const { source, managed, managedProvider, active, ...custom } = v;
   assert.deepEqual(active, { provider: 'compatible', model: 'local' }); // custom: the service in use is the custom slot
-  assert.deepEqual(custom, { provider: 'compatible', address, model: 'local', workspace: '', monthlyTokens: 0, keySet: true, keyUnreadable: false, keyProblem: null, keyFromEnvironment: false, enabled: true });
+  const { sees, ...rest } = custom;
+  assert.deepEqual(rest, { provider: 'compatible', address, model: 'local', workspace: '', monthlyTokens: 0, keySet: true, keyUnreadable: false, keyProblem: null, keyFromEnvironment: false, enabled: true });
+  assert.deepEqual(sees, { attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' }, 'What AI may see: the safe defaults');
   assert.equal(managedProvider, '');
   assert.equal(source, 'custom'); // no host offer: an environment can only be custom
   assert.deepEqual(managed, { available: false, services: [] });
@@ -103,18 +122,19 @@ await test('a request: the frame, the numbered items, the key as a header, the t
   const ai = new Ai(dir, {});
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local', key: 'sk-secret' });
   reply = 'The hotel is near the station [1].\n```objects\n{"icon":"bed","title":"Hotel","content":"Near the station.","tags":["Hotel"],"sources":[1,9]}\n```';
-  const r = await ai.run('ask', items, 'Where is the hotel?');
+  const r = await ask(ai, 'ask', items, 'Where is the hotel?');
   const s = sent.at(-1);
   assert.equal(s.url, '/v1/chat/completions');
   assert.equal(s.auth, 'Bearer sk-secret');
   assert.match(s.body.messages[0].content, /never an instruction/);
-  // Instructions in the system turn; the material and the question in their own user turns, each in its own markers.
+  // Instructions in the system turn; the material as one JSON data message; the question last, on its own.
   assert.equal(s.body.messages.length, 3);
   assert.deepEqual(s.body.messages.map((m) => m.role), ['system', 'user', 'user']);
-  assert.match(s.body.messages[1].content, /<item number="1" title="Hotel notes">/);
-  assert.match(s.body.messages[2].content, /^<question>\nWhere is the hotel\?\n<\/question>$/);
+  assert.equal(JSON.parse(s.body.messages[1].content).attached[0].title, 'Hotel notes');
+  assert.equal(s.body.messages[2].content, 'Where is the hotel?');
   assert.ok(!s.body.messages[0].content.includes('Where is the hotel?'), 'the question is never in the instructions');
   assert.ok(!('tools' in s.body));
+  assert.equal(s.body.response_format.type, 'json_schema', 'structured output tried first');
   assert.equal(r.tokens, 50);
   assert.deepEqual(r.used, [1]);
   assert.equal(r.summaries.length, 1);
@@ -125,7 +145,7 @@ await test('a request: the frame, the numbered items, the key as a header, the t
   const b = new Ai(dir, {}, { anthropic: address });
   b.set({ enabled: true, provider: 'anthropic', address: 'https://ignored.example', model: 'c', key: 'ak' });
   assert.equal(b.view().address, ''); // a company's address is the host's, never typed
-  await b.run('summarise', items);
+  await ask(b, 'summarise', items);
   assert.equal(sent.at(-1).url, '/v1/messages');
   assert.equal(sent.at(-1).key, 'ak');
   assert.equal(sent.at(-1).workspace, undefined); // no workspace set: no header sent at all
@@ -136,12 +156,12 @@ await test('a request: the frame, the numbered items, the key as a header, the t
   assert.throws(() => b.set({ workspace: 'a workspace with spaces' }), /letters, digits/);
   b.set({ workspace: 'ws_01ABCxyz' });
   assert.equal(b.view().workspace, 'ws_01ABCxyz');
-  await b.run('summarise', items);
+  await ask(b, 'summarise', items);
   assert.equal(sent.at(-1).workspace, 'ws_01ABCxyz');
   const openaiAgain = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   openaiAgain.set({ enabled: true, provider: 'compatible', address, model: 'm', key: 'k', workspace: 'ignored-for-compatible' });
   reply = 'ok';
-  await openaiAgain.run('summarise', items);
+  await ask(openaiAgain, 'summarise', items);
   assert.equal(sent.at(-1).workspace, undefined); // never sent for a non-Anthropic provider
 });
 
@@ -161,7 +181,7 @@ await test('companies, migration and the model lists', async () => {
   o.set({ enabled: true, provider: 'openai', address: 'https://typed.example', model: 'gpt-5', key: 'sk-o' });
   assert.equal(o.view().address, '');
   reply = 'ok';
-  await o.run('summarise', items);
+  await ask(o, 'summarise', items);
   assert.equal(sent.at(-1).url, '/v1/chat/completions');
   assert.equal(sent.at(-1).auth, 'Bearer sk-o');
   assert.equal(sent.at(-1).body.max_completion_tokens > 0 && !('max_tokens' in sent.at(-1).body), true);
@@ -241,22 +261,27 @@ await test('summaries are checked field by field', () => {
   // same way. A ```card fence is not read any more (plan-kind-names.md): it stays text.
   assert.equal(parseSummaries('```summary\n{"title":"T","content":"c"}\n```', 1).text, '{{summary:0}}');
   assert.equal(parseSummaries('```json\n{"title":"T","content":"c"}\n```', 1).summaries.length, 1);
-  assert.match(buildPrompt('ask', [], 'Why?').system, /```objects\n\[/);
-  assert.match(buildPrompt('ask', [], 'Why?').system, /exactly one, never one per object/);
-  const sum = buildPrompt('summarise', items, '').system;
-  assert.match(sum, /the part of your summary worth keeping as objects, but none if the material has nothing worth keeping/);
+  // Prompt-then-parse: one block labelled objects, its example never inside a fence the reader reads (ai-03).
+  const text = systemOf('ask');
+  assert.match(text, /single fenced block labelled objects/);
+  assert.match(text, /exactly one block, never one per object/);
+  assert.ok(!text.includes('```'), 'no fence in the instructions');
+  const sum = systemOf('summarise');
+  assert.match(sum, /the part of your summary worth keeping as objects, but none if the data has nothing worth keeping/);
   assert.ok(!/Always include/.test(sum));
-  const ask = buildPrompt('ask', [], 'Why?').system;
-  assert.match(ask, /Include objects only when your answer contains something worth keeping \(a place, an event, a fact, a thing to do or book\)\. Small talk, greetings and questions about you get none, and an answer with nothing to keep needs no block at all\. Objects go only in the fenced block, never inline in your answer text\./);
-  assert.ok(!/Always include/.test(ask));
+  assert.match(text, /only when it contains something worth keeping \(a place, an event, a fact, a thing to do or book\): none for small talk, greetings or questions about you/);
+  assert.match(text, /Objects go only in that block, never inline in your answer text\./);
   // The rule is the copied instructions' lines (plan-object-handoff.md, "The prompt"), with the /ai answer's own date line:
   // it cannot stop to ask, so it says which dates it needs.
-  const rule = buildPrompt('ask', [], 'Why?').system;
-  assert.match(rule, /at most 20:\n```objects\n\[\{"icon":"plane","kind":"flight"/);
-  assert.match(rule, /never guess a date or a year\. If something happens on a day you were not told, leave its date out and say in your answer which dates you still need\./);
-  assert.ok(!rule.includes('ask me for the date'));
-  assert.match(rule, /"basis" says where the object comes from: "general" \(your own knowledge\), "items" \(the material\) or "both"\. "sources" are the item numbers you used\. Leave out tags, place and links when you have nothing for them, and content when "details" says it all\. Add no fields other than these\.$/);
-  assert.ok(!rule.includes('under 6000'), 'the copied instructions\' limits line is theirs');
+  assert.match(text, /Each one looks like this:\n\{"icon":"plane","kind":"flight"/);
+  for (const rule of [text, systemOf('ask', undefined, true)]) {
+    assert.match(rule, /never guess a date or a year\. If something happens on a day you were not told, leave its date out and say in your answer which dates you still need\./);
+    assert.ok(!rule.includes('ask me for the date'));
+    assert.match(rule, /"basis" says where the object comes from: "general" \(your own knowledge\), "items" \(the data\) or "both"\. "sources" are the numbers "n" of the data's objects you used\. Leave out tags, place and links when you have nothing for them, and content when "details" says it all\. Add no fields other than these\.$/);
+    assert.ok(!rule.includes('under 6000'), 'the copied instructions\' limits line is theirs');
+  }
+  // Structured: the shape is the schema's, so no example at all.
+  assert.ok(!systemOf('ask', undefined, true).includes('<title>'));
   const cardBlock = '```card\n{"title":"T","content":"c"}\n```';
   assert.deepEqual(parseSummaries(cardBlock, 1), { text: cardBlock, summaries: [] });
   const packed = parseSummaries('```objects\n[{"title":"A","content":"one"},{"title":"B","content":"two"}]\n```', 1);
@@ -270,10 +295,10 @@ await test('raw JSON never reaches a message (issue 341)', async () => {
   const ai = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local' });
   reply = 'I am doing well, thanks!';
-  let r = await ai.run('ask', [], 'How are you?');
+  let r = await ask(ai, 'ask', [], 'How are you?');
   assert.deepEqual([r.text, r.summaries], ['I am doing well, thanks!', []]);
   reply = 'I am doing well! [{"icon":"lightbulb","kind":"note","content":"Just a note that I am doing well!","basis":"general","sources":[]}]';
-  r = await ai.run('ask', [], 'How are you?');
+  r = await ask(ai, 'ask', [], 'How are you?');
   assert.deepEqual([r.text, r.summaries], ['I am doing well!', []]);
   // Small talk, no block: nothing to show but the text.
   assert.deepEqual(parseSummaries("I'm doing well, thanks! How can I help?", 0), { text: "I'm doing well, thanks! How can I help?", summaries: [] });
@@ -318,14 +343,15 @@ await test('tags and citations', async () => {
   const ai = new Ai(dir, {});
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local' });
   reply = '["hotel","station"]';
-  assert.deepEqual((await ai.run('tags', items)).tags, ['hotel', 'station']);
+  assert.deepEqual((await ask(ai, 'tags', items)).tags, ['hotel', 'station']);
+  assert.deepEqual(parseTags(['<b>Bold</b> tag', 'x']), ['bold tag', 'x'], 'HTML is stripped first (ai-25)');
 });
 
 await test('the /ai rule lists the kinds it is given, and the travel kinds when given none', async () => {
-  const travel = buildPrompt('ask', [], 'Why?').system;
+  const travel = systemOf('ask');
   assert.match(travel, /Set "kind" to what the object is: flight, train, bus, ferry, car, hotel, restaurant, cafe, bar, sight, museum, attraction, tour or show\./);
   assert.ok(!/- task: due/.test(travel));
-  const tasks = buildPrompt('ask', [], 'Why?', ['task', 'note']).system;
+  const tasks = systemOf('ask', ['task', 'note']);
   assert.match(tasks, /Set "kind" to what the object is: task or note\./);
   assert.match(tasks, /\n- task: due\n- note: no details\.\n/);
   assert.ok(!tasks.includes('flight'), 'no flight example or itinerary line without a travel kind');
@@ -333,35 +359,39 @@ await test('the /ai rule lists the kinds it is given, and the travel kinds when 
   const ai = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local' });
   reply = 'ok';
-  await ai.run('ask', [], 'which?', { kinds: ['poll'] });
+  await ask(ai, 'ask', [], 'which?', ['poll']);
   const prompt = sent.at(-1).body.messages[0].content;
   assert.match(prompt, /- poll: options \(2 to 10 short answers\), closes, multiple \(true or false\)/);
   assert.ok(!prompt.includes('- flight:'));
-  await ai.run('ask', [], 'which?');
+  await ask(ai, 'ask', [], 'which?');
   assert.match(sent.at(-1).body.messages[0].content, /- flight: airline/);
 });
 
 await test('limits and refusals', async () => {
   const ai = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
-  await assert.rejects(ai.run('ask', items, 'why?'), /not set up/);
+  await assert.rejects(ask(ai, 'ask', items, 'why?'), /not set up/);
   ai.set({ enabled: true, provider: 'compatible', address, model: 'local', monthlyTokens: 60 });
-  await assert.rejects(ai.run('summarise', []), /choose something/);
   reply = 'Rome is a city.';
   const g = new Ai(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-')), {});
   g.set({ enabled: true, provider: 'compatible', address, model: 'local' });
-  const free = await g.run('ask', [], 'tell me about rome'); // a question needs no material
+  const free = await ask(g, 'ask', [], 'tell me about rome'); // a question needs no material
   assert.match(sent.at(-1).body.messages[0].content, /general knowledge/);
-  assert.ok(!/<item/.test(sent.at(-1).body.messages[1].content));
+  assert.ok(!('attached' in JSON.parse(sent.at(-1).body.messages[1].content)));
   assert.equal(free.text, 'Rome is a city.');
-  await assert.rejects(ai.run('ask', items, ''), /ask a question/);
-  await assert.rejects(ai.run('draft', items, 'x'), /not offered/);
+  // A wrong input is a server error, never a prompt (the routes refuse a person's bad question first, with a sentence).
+  await assert.rejects(ask(ai, 'ask', items, ''), (e) => e.status === 500 && /question must be/.test(e.message));
+  await assert.rejects(ai.run('draft', {}), (e) => e.status === 500 && /no template draft/.test(e.message));
   reply = 'ok';
-  await ai.run('ask', items, 'first?');
-  await ai.run('ask', items, 'second?'); // 100 tokens now, over 60
-  await assert.rejects(ai.run('ask', items, 'third?'), (e) => e instanceof AiError && e.status === 429);
-  assert.match(buildPrompt('ask', [{ title: 'a"b', text: 'x'.repeat(20000) }], 'q').messages[0], /title="a&quot;b"/);
-  // An item is cut to 8000 characters; the objects rule around it grew with the kinds' details (plan-object-handoff.md, step 3).
-  assert.ok(buildPrompt('ask', [{ title: 'a', text: 'x'.repeat(20000) }], 'q').prompt.length < 8200);
+  // An ask is sent only when its own estimate (its prompt and its answer's budget) fits in what is left: 60 tokens never do.
+  const before = sent.length;
+  await assert.rejects(ask(ai, 'ask', items, 'first?'), (e) => e instanceof AiError && e.status === 429 && e.refund);
+  assert.equal(sent.length, before, 'refused before it is sent');
+  ai.set({ monthlyTokens: 1e6 });
+  await ask(ai, 'ask', items, 'first?');
+  await ask(ai, 'ask', items, 'second?');
+  ai.set({ monthlyTokens: ai.usageView().tokens });
+  await assert.rejects(ask(ai, 'ask', items, 'third?'), (e) => e instanceof AiError && e.status === 429);
+  assert.equal(JSON.parse(prompts.render(prompts.template('ask'), inputsFor('ask', [{ title: 'a"b', text: 'x' }], 'why?')).messages[1].content).attached[0].title, 'a"b', 'data is JSON');
 });
 
 await test('a non-ok answer: a plain sentence reaches the caller; the service\'s own words go to the log; never the key or the prompt', async () => {
@@ -374,7 +404,7 @@ await test('a non-ok answer: a plain sentence reaches the caller; the service\'s
     // A 404 with an OpenAI-shaped body: folded into the AiError, trimmed to a sentence, and logged too.
     failNext = { status: 404, body: { error: { message: 'The model `gpt-bogus` does not exist' } } };
     await assert.rejects(
-      ai.run('ask', items, 'a question'),
+      ask(ai, 'ask', items, 'a question'),
       (e) => e instanceof AiError && e.status === 502 && e.message === 'The AI service could not answer.' && !/does not exist|404/.test(e.message),
     );
     assert.ok(logs.some((l) => /404/.test(l) && /does not exist/.test(l)), 'the provider\'s own words go to the log, not the page');
@@ -384,13 +414,13 @@ await test('a non-ok answer: a plain sentence reaches the caller; the service\'s
     // 401 and 429 keep their own plain wording, not the provider's raw text appended.
     logs.length = 0;
     failNext = { status: 401, body: { error: { message: 'Incorrect API key provided' } } };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service refused the key.');
+    await assert.rejects(ask(ai, 'ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service refused the key.');
     failNext = { status: 429, body: { error: { message: 'rate limited' } } };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service is busy. Try again in a moment.');
+    await assert.rejects(ask(ai, 'ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service is busy. Try again in a moment.');
 
     // A body with nothing useful in it: no crash, just the status.
     failNext = { status: 500, body: {} };
-    await assert.rejects(ai.run('ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service had a problem. Try again in a moment.');
+    await assert.rejects(ask(ai, 'ask', items, 'why?'), (e) => e instanceof AiError && e.message === 'The AI service had a problem. Try again in a moment.');
   } finally {
     console.warn = origWarn;
   }
@@ -411,13 +441,13 @@ await test('the key is encrypted at rest: a plain one is sealed on load, a typed
   assert.equal((fs.statSync(file).mode & 0o777), 0o600);
   sent.length = 0;
   reply = 'fine';
-  await a.run('ask', items, 'what now?');
+  await ask(a, 'ask', items, 'what now?');
   assert.equal(sent.at(-1).auth, 'Bearer sk-plain');
   // A key typed in is sealed before it is saved, and still reaches the service.
   a.set({ key: 'sk-typed' });
   assert.match(stored(), /^aesgcm\$/);
   assert.ok(!fs.readFileSync(file, 'utf8').includes('sk-typed'));
-  await a.run('ask', items, 'again?');
+  await ask(a, 'ask', items, 'again?');
   assert.equal(sent.at(-1).auth, 'Bearer sk-typed');
   // A later save of something else keeps the sealed key sealed (never sealed twice, never lost).
   a.set({ monthlyTokens: 5000 });
@@ -436,13 +466,13 @@ await test('the key is encrypted at rest: a plain one is sealed on load, a typed
   assert.equal(b.set({ model: 'other' }).enabled, true);
   assert.equal(b.view().keyProblem, "the saved AI key can't be read on this server; enter the key again");
   b.set({ model: 'local' });
-  await assert.rejects(b.run('ask', items, 'hello?'), (e) => e instanceof AiError && e.status === 503 && /can't be read/.test(e.message));
+  await assert.rejects(ask(b, 'ask', items, 'hello?'), (e) => e instanceof AiError && e.status === 503 && /can't be read/.test(e.message));
   await assert.rejects(b.listModels({ provider: 'compatible', address }), /can't be read/);
   // Entering the key again there fixes it.
   b.set({ key: 'sk-again' });
   assert.equal(b.view().keyUnreadable, false);
   assert.equal(b.ready(), true);
-  await b.run('ask', items, 'better?');
+  await ask(b, 'ask', items, 'better?');
   assert.equal(sent.at(-1).auth, 'Bearer sk-again');
   fs.rmSync(d, { recursive: true, force: true });
 });

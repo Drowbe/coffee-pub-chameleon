@@ -49,6 +49,8 @@ const copy = (m) => ({
   ...(Array.isArray(m.summaries) ? { summaries: m.summaries.map((s) => ({ ...s })) } : {}),
   ...(m.preview && typeof m.preview === 'object' ? { preview: { ...m.preview } } : {}),
   ...(m.kept && typeof m.kept === 'object' ? { kept: { ...m.kept } } : {}),
+  ...(m.sent && typeof m.sent === 'object' ? { sent: JSON.parse(JSON.stringify(m.sent)) } : {}),
+  ...(Array.isArray(m.used) ? { used: m.used.map((r) => ({ ...r })) } : {}),
 });
 const QUOTE_MAX = 300;
 const MAX_LINK = 500; // a message's link, as Research keeps one (plan-chat-links.md)
@@ -209,7 +211,7 @@ class ChatHistory {
   // `command` (with `command` and, for a module's command, `module`) the echo of a command; `ai` an AI answer, with
   // `summaries` and `replyTo`. `link` (plan-chat-links.md): the ordinary message's link, found by the route with
   // findLink (server/chat-links.js), stored as `preview: { url }`.
-  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link }) {
+  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, cut }) {
     const ai = kind === 'ai' || command === 'ai';
     const clean = cleanText(text, ai ? MAX_AI_TEXT : MAX_TEXT);
     if (!clean) return null;
@@ -221,6 +223,14 @@ class ChatHistory {
     if (typeof module === 'string' && module) message.module = module.slice(0, 32);
     if (kind === 'ai' && Array.isArray(summaries) && summaries.length) message.summaries = summaries.slice(0, MAX_SUMMARIES);
     if (typeof replyTo === 'string' && ID_RE.test(replyTo)) message.replyTo = replyTo;
+    // An AI answer's provenance (plan-ai-integration.md): the template version that made it, what was sent (counts and the
+    // attached pointers, never content), the pointers it drew on, and whether it was cut short.
+    if (kind === 'ai') {
+      if (typeof prompt === 'string' && /^[a-z]+@\d{1,4}$/.test(prompt)) message.prompt = prompt;
+      if (sent && typeof sent === 'object' && !Array.isArray(sent)) message.sent = JSON.parse(JSON.stringify(sent));
+      if (Array.isArray(used) && used.length) message.used = JSON.parse(JSON.stringify(used.slice(0, 50)));
+      if (cut === true) message.cut = true;
+    }
     if (!kind && typeof link === 'string' && link && link.length <= MAX_LINK) message.preview = { url: link };
     if (!this.spaces[spaceId]) this.spaces[spaceId] = [];
     const list = this.spaces[spaceId];

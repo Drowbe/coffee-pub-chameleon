@@ -1,7 +1,7 @@
 {
   "id": "assistant",
   "name": "Assistant",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "icon": "wand-magic-sparkles",
   "description": "Chat's Assistant view: your commands, the AI's answers and what you bring in. This {module} has no window of its own.",
   "author": "Coffee Pub",

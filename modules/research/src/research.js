@@ -467,9 +467,8 @@
         label: 'Research this',
         icon: 'wand-magic-sparkles',
         onClick: () => {
-          const title = it.title || KIND_LABEL[it.kind] || 'this';
           host.chat.ask({
-            question: `What should I know about ${title}?`,
+            question: '',
             refs: [research.refOf(it.kind, it.id)],
           }).catch((err) => say(err.message || 'The AI could not answer.', 4000));
         },

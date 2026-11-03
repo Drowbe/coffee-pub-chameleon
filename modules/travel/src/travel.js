@@ -183,7 +183,8 @@
     } else if (c.template === 'train') {
       put(el, { title: [item.operator, item.number].filter(Boolean).join(' ') || item.title, from: item.from, to: item.to, time: tt(item.time), arrival: arrive, platform: item.platform ? `Platform ${item.platform}` : '', seat: [item.carriage && `Coach ${item.carriage}`, item.seat && `Seat ${item.seat}`].filter(Boolean).join(' · '), duration, confirm: item.confirm });
     } else if (c.template === 'transit') {
-      const to = item.to || item.dropoff || '';
+      const back = item.mode === 'car' && item.checkOut ? `Back ${dayShort(item.checkOut)}` : '';
+      const to = [item.to || item.dropoff, back].filter(Boolean).join(' · ');
       put(el, { kicker: [c.kicker, item.operator].filter(Boolean).join(' · '), title: item.title, time: tt(item.time), to, confirm: item.confirm });
       const go = el.querySelector('.go');
       if (go && !item.time && !to && !item.confirm) go.hidden = true;
@@ -276,6 +277,8 @@
     add('Guests', words(item.guests, 'guest', 'guests'), 'guests');
     add('Reservation', item.reservationName, 'reservationName');
     add('Address', item.address, 'address');
+    const linkedFrom = state.links.get(item.id);
+    if (linkedFrom && linkedFrom.length) rows.push(['Linked from', linkedFrom.map((l) => l.title).filter(Boolean).join(', ')]);
     if (item.cost) rows.push(['Cost', `${host.util.money(item.cost, planCurrency())}${item.estimate ? ` · estimated ${host.util.money(item.estimate, planCurrency())}` : ''}${item.paidBy ? ` · paid by ${nameOf(item.paidBy)}` : ''}`]);
     else if (item.estimate) rows.push(['Cost', `~${host.util.money(item.estimate, planCurrency())} estimated`]);
     if (!rows.length) return;
@@ -1119,21 +1122,32 @@
 
   // --- the other views ---------------------------------------------------------------------------------------
 
+  // What is waiting on someone: the polls still open and the tasks due before the trip (the space's own, as the Planner's search
+  // finds them), then anything else that is linked to the trip and not done. Each once.
   function openDecisions() {
-    return state.tripLinks.filter((c) => c.done !== true);
+    const seen = new Set();
+    return [...plan.waiting, ...state.tripLinks.filter((c) => c.done !== true)].filter((c) => {
+      const k = host.util.objectKey(c.ref);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
+  const DECISION_GROUPS = { poll: 'Polls to vote on', task: 'Tasks due before the trip' };
   function renderDecisions() {
     const body = $('body');
     body.replaceChildren();
     const groups = new Map();
+    for (const first of Object.values(DECISION_GROUPS)) groups.set(first, []); // polls, then tasks, then whatever else is linked
     for (const c of openDecisions()) {
-      const k = c.kindName || (c.module && c.module.name) || 'Other';
+      const k = DECISION_GROUPS[c.kind] || c.kindName || (c.module && c.module.name) || 'Other';
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(c);
     }
+    for (const [k, list] of groups) if (!list.length) groups.delete(k);
     if (!groups.size) {
       const empty = clone('tpl-day-empty');
-      empty.textContent = 'Nothing is waiting on anyone. Things linked to this trip that are still open appear here.';
+      empty.textContent = 'Nothing is waiting on anyone. Open polls and tasks due before the trip appear here.';
       const ul = document.createElement('ul');
       ul.className = 'decisions';
       ul.append(empty);
@@ -1151,7 +1165,7 @@
         const when = w ? `${parseYmd(w.day).toLocaleDateString([], { month: 'short', day: 'numeric' })}${w.time ? ' ' + tt(w.time) : ''}` : '';
         fill(row, { title: c.title, sub: [when, c.subtitle].filter(Boolean).join(' · ') });
         const btn = row.querySelector('[data-action="open"]');
-        btn.textContent = 'Open';
+        btn.textContent = c.kind === 'poll' ? 'Vote' : 'Open';
         btn.dataset.ref = JSON.stringify(c.ref);
         hide(btn, !c.open);
         list.append(row);
@@ -1214,7 +1228,8 @@
     if (!costs.length) return nothing(body, 'Nothing has a cost yet. Give a stop, stay or journey a cost and who paid, and it is shared out here.');
     const keys = state.people.map((p) => p.key);
     const b = balances(costs, keys);
-    const totals = section(body, `Total ${money(b.total)}`);
+    const totals = section(body, `Total ${money(b.planned)}`);
+    row(totals, { icon: 'coins', title: 'Paid so far', sub: b.planned > b.total ? `${money(b.total)} of ${money(b.planned)} · ${money(Math.round((b.planned - b.total) * 100) / 100)} not paid yet` : money(b.total) });
     for (const k of Object.keys(b.net)) {
       const n = b.net[k];
       row(totals, { icon: 'user', title: nameOf(k), sub: `paid ${money(b.paid[k])} · share ${money(b.share[k])} · ${n > 0 ? `is owed ${money(n)}` : n < 0 ? `owes ${money(-n)}` : 'all square'}` });
@@ -1259,8 +1274,8 @@
   function syncHeader() {
     const items = [];
     if (state.view === 'days') items.push({ id: 'toggle-empty', icon: 'eye-slash', title: state.hideEmpty ? 'Show empty days' : 'Hide empty days', on: state.hideEmpty });
-    // With phases the dates are the bar's and the currency is the budget's (Set up): nothing left to edit here.
-    if (canEdit && !plan.phased()) items.push({ id: 'edit-trip', icon: 'pen', title: 'Edit dates' });
+    // With phases the dates are the bar's and the currency is the budget's (Set up): the time zone is left to edit here.
+    if (canEdit) items.push({ id: 'edit-trip', icon: 'pen', title: plan.phased() ? 'Edit time zone and currency' : 'Edit dates, time zone and currency' });
     const sig = JSON.stringify(items);
     if (sig === headerSig) return;
     headerSig = sig;
@@ -1303,13 +1318,14 @@
       for (const item of items) undatedRow(ul, item);
       box.append(ul);
     } else {
-      // "Unscheduled" is the default phase: first, for an object with no phase of its own. Not a phase of the plan.
-      // Alone, that group's heading would only repeat the area's own "Unscheduled", so it has none; with phases beside it, every group has one.
+      // "Unscheduled" is the default phase: first, for an object with no phase of its own. Not a phase of the plan. Its group has no
+      // heading of its own, alone or beside phases: the area's own "Unscheduled" above it already says it, and the phases' groups
+      // follow with theirs.
       const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map((p) => ({ p, mine: items.filter((item) => phaseOf(item, bands) === p.id) })).filter((g) => g.mine.length);
       for (const { p, mine } of groups) {
         const group = clone('tpl-undated-group');
         fill(group, { label: p.label });
-        if (groups.length === 1 && p.id === null) group.querySelector('h3').hidden = true;
+        if (p.id === null) group.querySelector('h3').hidden = true;
         const ul = group.querySelector('ul');
         for (const item of mine) undatedRow(ul, item);
         box.append(group);
@@ -1376,7 +1392,7 @@
         if (list.length) items.push({ text: `${list.filter((i) => i.confirm).length} of ${list.length} booked` });
       } else if (state.view === 'money') {
         const costs = costItems(plan.list());
-        if (costs.length) items.push({ text: `Total ${money(balances(costs, state.people.map((p) => p.key)).total)}` }, { text: words(costs.length, 'cost', 'costs') });
+        if (costs.length) items.push({ text: `Total ${money(balances(costs, state.people.map((p) => p.key)).planned)}` }, { text: words(costs.length, 'cost', 'costs') });
       }
     }
     host.status.set(items).catch(() => {});
@@ -1521,19 +1537,25 @@
   // What other modules link to each item and to the trip (only asked for what is shown, and once).
   const asked = new Set();
   async function loadLinks() {
-    if (!host.objects || !host.objects.linksTo) return;
-    let changed = false;
-    if (!asked.has('trip')) {
-      asked.add('trip');
-      try { state.tripLinks = await host.objects.linksTo(tripRef()); changed = true; } catch (err) { state.tripLinks = []; }
-    }
-    for (const item of plan.list().slice(0, 60)) {
+    if (!host.objects || !host.objects.linksToAll) return;
+    // One request for the trip and every object not asked about yet (the server answers at most 200 at a time).
+    const fresh = [];
+    if (!asked.has('trip')) { asked.add('trip'); fresh.push({ key: 'trip', ref: tripRef() }); }
+    for (const item of plan.list()) {
       if (asked.has(item.id)) continue;
       asked.add(item.id);
-      try {
-        const summaries = await host.objects.linksTo(planRef(item.id));
-        if (summaries.length) { state.links.set(item.id, summaries); changed = true; }
-      } catch (err) { /* nothing links to it */ }
+      fresh.push({ key: item.id, ref: planRef(item.id) });
+    }
+    let changed = false;
+    for (let at = 0; at < fresh.length; at += 200) {
+      const chunk = fresh.slice(at, at + 200);
+      let found = [];
+      try { found = await host.objects.linksToAll(chunk.map((f) => f.ref)); } catch (err) { /* nothing links to them */ }
+      const byKey = new Map(found.map((f) => [host.util.objectKey(f.ref), f.summaries || []]));
+      for (const f of chunk) {
+        const summaries = byKey.get(host.util.objectKey(f.ref)) || [];
+        if (f.key === 'trip') { state.tripLinks = summaries; changed = true; } else if (summaries.length) { state.links.set(f.key, summaries); changed = true; }
+      }
     }
     if (changed) redraw();
   }
@@ -1584,12 +1606,7 @@
         { id: 'later', label: timedNow ? '30 minutes later' : 'Move down', icon: 'arrow-down', tip: timedNow ? 'Changes the time, half an hour later. It stays on the same day.' : 'Swaps places with the one below it. It stays on the same day.', onClick: () => attempt(() => plan.nudgeItem(id, 1)) },
         { id: 'move-to', label: 'Move to another day…', icon: 'calendar-days', tip: 'Choose another day, or unscheduled', onClick: () => setTimeout(() => openMoveTo(id, button), 0) }, // after this menu has closed and given focus back
         typeRows.length ? { id: 'type', label: 'Change type', icon: 'tag', items: typeRows } : null,
-        plan.jointOf(item) === null ? { id: 'to-line', label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => {
-          // Off its day, onto the line at the joint before that day: near where it was, no longer decided.
-          const days = plan.days();
-          const after = days[days.indexOf(plan.dayOf(item)) - 1] || '';
-          attempt(() => plan.moveToJoint(id, after, 1e6));
-        } } : null,
+        plan.jointOf(item) === null ? { id: 'to-line', label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => attempt(() => plan.moveTo(id, null, 1e6)) } : null, // off its day, into the Unscheduled area
         item.kind === 'link' ? { id: 'follow', label: item.follow ? 'Stop following its result' : 'Follow its result', icon: 'bell', onClick: () => attempt(() => plan.updateItem(id, { follow: !item.follow })) } : null,
         { id: 'delete', label: isBlock ? 'Remove' : 'Delete', icon: 'trash', danger: true, onClick: () => setTimeout(() => askDelete(id, button, isBlock), 0) },
       ],
@@ -1649,7 +1666,7 @@
       id: `delete-${id}`,
       anchor,
       items: [
-        { id: 'sure', label: block ? 'Really remove?' : 'Really delete?', icon: 'trash', danger: true, onClick: () => attempt(() => plan.removeItem(id)) },
+        { id: 'sure', label: block ? 'Really remove?' : ((state.links.get(id) || []).length ? `Used by ${state.links.get(id).length}. Really delete?` : 'Really delete?'), icon: 'trash', danger: true, onClick: () => attempt(() => plan.removeItem(id)) },
         { id: 'cancel', label: 'Cancel', icon: 'xmark', onClick: () => {} },
       ],
     });
@@ -1962,8 +1979,9 @@
     if (!select || !ed) return;
     const { date } = parsePlace($('f-date').value);
     const days = checkoutDays(date);
-    select.replaceChildren(option('', days.length ? 'Not set' : 'Choose the check-in day first'), ...days.map(({ value, n }) => option(value, `${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`)));
-    setVal('f-checkout', followDay(date, ed.checkOut, 1));
+    const car = ed.tile === 'car'; // a rental car: the drop-off day, in days, and none until one is chosen
+    select.replaceChildren(option('', days.length ? 'Not set' : car ? 'Choose the pick-up day first' : 'Choose the check-in day first'), ...days.map(({ value, n }) => option(value, car ? `${dayShort(value)} · ${n} day${n === 1 ? '' : 's'}` : `${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`)));
+    setVal('f-checkout', followDay(date, car && ed.checkOut === undefined ? '' : ed.checkOut, 1));
   }
   // A journey's arrival on the ticket is shown as a day and a time, laid out as the departure is (#241): the day one of
   // arrivalDays around the leg's day (the same day first, the way it stays until a day is chosen: #242), and f-arrival, hidden,
@@ -2076,11 +2094,11 @@
     ferry: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
     bus: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
     shuttle: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
-    car: { date: 'Pick-up day', time: 'Pick-up time', operator: 'Rental company' },
+    car: { date: 'Pick-up day', time: 'Pick-up time', operator: 'Rental company', checkout: 'Drop-off day' },
     taxi: { time: 'Pick-up time', length: 'Travel time', from: 'Pick up at', to: 'Drop off at' },
     rideshare: { time: 'Pick-up time', length: 'Travel time', from: 'Pick up at', to: 'Drop off at' },
   };
-  const FIELD_DEFAULTS = { date: 'When', time: 'Start time', length: 'How long', operator: 'Company', number: 'Number', from: 'From', to: 'To' };
+  const FIELD_DEFAULTS = { checkout: 'Check out', date: 'When', time: 'Start time', length: 'How long', operator: 'Company', number: 'Number', from: 'From', to: 'To' };
   // The people of the space as chips (a tick box each) for "Whose is it", and as chips with a radio each for "Paid by".
   function personChip(type, name, value, checked, text) {
     const label = document.createElement('label');
@@ -2134,7 +2152,8 @@
     if (marker && tileAt(kindOf(tile), $('f-date').value) !== tile) return applyType(tileAt(kindOf(tile), $('f-date').value));
     // The same fields in each kind's own words (a stay's day is its check-in, a flight's time its departure).
     const labels = { ...FIELD_DEFAULTS, ...(FIELD_WORDS[key] || {}) };
-    for (const [name, id] of [['date', 'f-date-label'], ['time', 'f-time-label'], ['length', 'f-minutes-label'], ['operator', 'f-operator-label'], ['number', 'f-number-label'], ['from', 'f-from-label'], ['to', 'f-to-label'], ['time', 'f-back-time-label'], ['length', 'f-back-minutes-label'], ['number', 'f-back-number-label'], ['from', 'f-back-from-label'], ['to', 'f-back-to-label']]) if ($(id)) $(id).textContent = labels[name];
+    for (const [name, id] of [['date', 'f-date-label'], ['time', 'f-time-label'], ['length', 'f-minutes-label'], ['operator', 'f-operator-label'], ['number', 'f-number-label'], ['from', 'f-from-label'], ['to', 'f-to-label'], ['checkout', 'f-checkout-label'], ['time', 'f-back-time-label'], ['length', 'f-back-minutes-label'], ['number', 'f-back-number-label'], ['from', 'f-back-from-label'], ['to', 'f-back-to-label']]) if ($(id)) $(id).textContent = labels[name];
+    if ($('f-checkout') && ed.tile) checkoutOptions();
     roundTripShown();
     showArrival();
     if (key === 'flight') seedLookup('out');
@@ -2215,12 +2234,24 @@
     onClose: () => { if (kindField) kindField.close(); kindField = null; $('editor').replaceChildren(); state.editing = null; },
   });
 
+  // The time zones the browser knows, in a select, with the trip's own chosen (else the browser's).
+  const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (err) { return ''; } };
+  function zoneSelect(select, value) {
+    let names = [];
+    try { names = Intl.supportedValuesOf('timeZone'); } catch (err) { names = []; }
+    const want = value || browserZone() || 'UTC';
+    if (!names.includes(want)) names = [want, ...names];
+    if (!names.includes('UTC')) names.push('UTC');
+    select.replaceChildren(...names.map((n) => option(n, n.replace(/_/g, ' '))));
+    select.value = want;
+  }
+
   // `place` for a new item: `{ date }` a day, `{ after }` a joint on the line; none is the head of the line. `from` is the control
   // that opened the form (focus goes back to it on close).
   function openEditor(mode, item, place, from) {
     if (!canEdit) return;
     const isLink = Boolean(item && item.kind === 'link');
-    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && item.kind === 'stay' ? item.checkOut || '' : undefined };
+    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined };
     state.editingFrom = { el: from || null, id: item ? item.id : null, date: place && place.date ? place.date : null };
     // The plan's own form is the medium window; an item's the large one (the SDK sets the size once, so it is switched here).
     $('editor').classList.toggle('sdk-editor-large', mode !== 'trip');
@@ -2229,7 +2260,9 @@
     $('f-error').hidden = true;
     if (mode === 'trip') {
       const t = plan.trip || {};
-      $('editor-title').textContent = 'The dates';
+      $('editor-title').textContent = plan.phased() ? 'The trip' : 'The dates';
+      for (const f of $('form').querySelectorAll('[data-dates]')) f.hidden = plan.phased();
+      zoneSelect($('f-tz'), t.tz);
       $('f-start').value = t.start || '';
       $('f-end').value = t.end || '';
       host.ui.datePicker($('f-start'), { clearable: true });
@@ -2655,7 +2688,7 @@
     try {
       if (ed.mode === 'trip') {
         // The name, Where and Notes are kept as stored (saveTrip merges); the form edits the dates and the currency.
-        const patch = { currency: $('f-currency').value.trim() };
+        const patch = { currency: $('f-currency').value.trim(), tz: $('f-tz').value };
         // With phases the dates are the space's timeline, not the form's (the plan leaves them out of the write).
         if (!plan.phased()) {
           const start = $('f-start').value;
@@ -2717,6 +2750,11 @@
           if (fields.arrives && !arrivalFits(fields.date, fields.time, fields.arrives)) return fail('The arrival on the ticket can be at most 7 days after it leaves, and at most a day before.');
           // The editor always saves the main leg as a first leg (a return whose outbound is gone becomes a one-way journey).
           fields.legOf = null;
+          if (fields.mode === 'car') {
+            fields.checkOut = $('f-checkout').value || null;
+            if (fields.checkOut && !fields.date) return fail('Choose the day it is picked up.');
+            if (fields.checkOut && fields.checkOut <= fields.date) return fail('Drop-off is on or before pick-up.');
+          } else fields.checkOut = null;
         } else if (t.kind === 'stay') {
           fields.checkOut = $('f-checkout').value || null;
           if (fields.checkOut && !fields.date) return fail('Choose the day it checks in.');

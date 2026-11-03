@@ -1,0 +1,40 @@
+{
+  "structured": {
+    "text": "See the tower [1].",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Tower",
+        "content": "About Tower.",
+        "basis": "general",
+        "kind": "sight",
+        "sources": [
+          1
+        ]
+      }
+    ],
+    "used": [
+      1
+    ],
+    "cut": false
+  },
+  "text": {
+    "text": "See the tower [1].\n\n{{summary:0}}",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Tower",
+        "content": "About Tower.",
+        "basis": "general",
+        "kind": "sight",
+        "sources": [
+          1
+        ]
+      }
+    ],
+    "used": [
+      1
+    ],
+    "cut": false
+  }
+}

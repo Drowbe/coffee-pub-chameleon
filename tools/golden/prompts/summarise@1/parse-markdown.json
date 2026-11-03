@@ -1,0 +1,14 @@
+{
+  "structured": {
+    "text": "## Day 3\n\n- **Morning:** Belém\n- Afternoon: rest\n\n```js\nconst a = 1;\n```",
+    "summaries": [],
+    "used": [],
+    "cut": false
+  },
+  "text": {
+    "text": "## Day 3\n\n- **Morning:** Belém\n- Afternoon: rest\n\n```js\nconst a = 1;\n```",
+    "summaries": [],
+    "used": [],
+    "cut": false
+  }
+}

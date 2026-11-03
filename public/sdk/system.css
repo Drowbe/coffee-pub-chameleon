@@ -2360,7 +2360,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 
 /* ---- the card, when current: the selected fill, opaque. Nothing else changes. ---- */
 .sdk-day { --s: var(--day-step, var(--surface-card)); --chip-surface: var(--s); } /* a page may put the card on another step (--day-step) */
-.sdk-day.is-current { background: color-mix(in srgb, var(--wash-ink) var(--wash-pick), var(--s)); }
+.sdk-day.is-current { background: color-mix(in srgb, var(--wash-ink) calc(var(--wash-pick) * 0.5), var(--s)); } /* half the pick wash: a whole day is a large area, and in Cream light a full one read as a grey slab (1.28:1 on the page) */
 .sdk-day.is-drop { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-day .sdk-card-list { margin-top: var(--space-1); }
 
@@ -2431,7 +2431,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-daychip:hover { background: var(--chip-fill-hover); }
 .sdk-daychip:active { background: var(--chip-fill-active); }
 .sdk-daychip:focus-visible { outline: 2px solid var(--day-focus, var(--focus-ring)); outline-offset: -2px; }
-.sdk-daychip:is(.is-current, [aria-current="true"]) { background: var(--fill-selected); color: var(--day-now); }
+.sdk-daychip:is(.is-current, [aria-current="true"]) { background: color-mix(in srgb, var(--wash-ink) calc(var(--wash-selected) * 0.6), transparent); color: var(--day-now); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) > b { color: var(--day-now); }
 .sdk-daychip:is(.is-current, [aria-current="true"]):hover { background: color-mix(in srgb, var(--wash-ink) 36%, transparent); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) { --day-focus: var(--day-now); }

@@ -1,0 +1,64 @@
+{
+  "context": {
+    "today": {
+      "date": "2026-11-12",
+      "weekday": "Thursday",
+      "timeZone": "Europe/Lisbon"
+    },
+    "asker": {
+      "name": "Pat",
+      "role": "member"
+    }
+  },
+  "material": [
+    {
+      "n": 1,
+      "kind": "Task",
+      "title": "Renew passports",
+      "text": "Before any trip."
+    }
+  ],
+  "history": [],
+  "numbered": [
+    {
+      "module": "todo",
+      "kind": "task",
+      "scope": "environment",
+      "id": "t1"
+    }
+  ],
+  "leftOut": [
+    {
+      "part": "attached",
+      "why": "other-space",
+      "count": 4
+    }
+  ],
+  "sent": {
+    "attached": [
+      {
+        "module": "todo",
+        "kind": "task",
+        "scope": "environment",
+        "id": "t1"
+      }
+    ],
+    "relevant": 0,
+    "linked": 0,
+    "history": 0,
+    "chat": 0,
+    "members": 0,
+    "notSent": [
+      {
+        "why": "other-space",
+        "module": "research",
+        "count": 3
+      },
+      {
+        "why": "other-space",
+        "module": "places",
+        "count": 1
+      }
+    ]
+  }
+}
