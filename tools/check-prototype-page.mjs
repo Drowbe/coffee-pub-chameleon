@@ -18,6 +18,12 @@
  *      under LIVE_MAX (the cap is 8 plus the ones on the screen); no task runs longer than LONG_MS; the section scrolls in under
  *      SCROLL_MS; the nodes left are under NODES_MAX. (Measured at the time of writing: about 2 s, tasks up to 500 ms (1 s at 390), 8,600 nodes,
  *      against 33 s, tasks up to 6 s and 43,000 nodes when every panel stayed drawn.)
+ *   4. No sideways scroll. At 390, 500 and 700 the Prototype page is no wider than the window (the Phone section's switches once made it 783px wide).
+ *   5. The phone screen's bottom bar (phone.html at 390 and 360, dark and light; Thomas, 2026-11-03, QA's cases): a sheet or dialog open puts the top
+ *      bar, view, strip and bar out of reach (inert) and the focus inside it; Esc steps back one level (Replace to Edit the four to More to none) and the
+ *      focus returns to the control that opened each, never the page; a sheet's title is at least the body's size; the space's name is not cut in the
+ *      call; every bar and strip control is 56 by 56 or more; a place's count is gone while it is open; the Prototype's Switcher starts at Both and the
+ *      two frames share the pins.
  * Usage: node tools/check-prototype-page.mjs
  */
 import fs from 'node:fs';
@@ -66,6 +72,7 @@ async function main() {
         try {
           const o = await tab.eval(`({ h: document.scrollingElement.scrollHeight, c: document.scrollingElement.clientHeight, ox: getComputedStyle(document.documentElement).overflowY, ob: getComputedStyle(document.body).overflowY })`);
           if (!(o.h > o.c)) fail(`${label}: the page is not taller than the window (${o.h} against ${o.c})`);
+          if (size <= 700) { const sw = await tab.eval('document.documentElement.scrollWidth'); if (sw > size) fail(`${label}: the page scrolls sideways (${sw}px wide in a ${size}px window)`); }
           if (o.ox === 'hidden' || o.ob === 'hidden') fail(`${label}: the page's overflow is hidden (html ${o.ox}, body ${o.ob}), so it cannot scroll`);
           await wheel(600);
           if ((await y(tab)) <= 0) fail(`${label}: a mouse wheel does not scroll the page`);
@@ -91,6 +98,86 @@ async function main() {
           }
         } finally { await tab.close(); }
       }
+    }
+
+    // The phone screen's bottom bar, in the compact shape.
+    for (const size of [390, 360]) {
+      for (const mode of ['dark', 'light']) {
+        const label = `phone ${size} ${mode}`;
+        const tab = new Tab(browser.cdp, {});
+        await tab.open(size, mode);
+        const send = (m, p) => browser.cdp.send(m, p, tab.sid);
+        try {
+          await send('Page.navigate', { url: `${server.base}/design-system/phone.html?theme=strong-coffee&mode=${mode}${mode === 'light' ? '&light=cream' : ''}&call=on&view=module&sheet=none&bar=middle` });
+          for (let i = 0; i < 60; i += 1) { if (await tab.eval(`!!document.querySelector('.ph-bar')`)) break; await sleep(150); }
+          await sleep(400);
+          const r = await tab.eval(`(async () => {
+            const out = []; const D = document; const $ = (s) => D.querySelector(s);
+            const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+            const click = async (s) => { const e = $(s); if (!e) { out.push('no ' + s); return; } e.focus(); e.click(); await wait(60); };
+            const esc = async () => { D.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(60); };
+            const active = () => { const a = D.activeElement; return a ? (a.dataset.key || a.dataset.tab || a.getAttribute('aria-label') || a.tagName) : 'none'; };
+            const inside = (s) => !!D.activeElement && !!D.activeElement.closest(s);
+            const inertAll = () => ['.ph-top', '.ph-view', '.ph-strip', '.ph-bar'].every((s) => !$(s) || $(s).inert);
+            // controls and the space's name
+            for (const e of D.querySelectorAll('.ph-bar .sdk-tabbar-tab, .ph-bar .ph-round, .ph-strip button')) { const b = e.getBoundingClientRect(); if (b.width < 55.5 || b.height < 55.5) out.push('control ' + (e.dataset.tab || e.getAttribute('aria-label')) + ' is ' + Math.round(b.width) + 'x' + Math.round(b.height)); }
+            for (const call of ['on', 'muted']) { /* the name, in the call */ }
+            const sp = $('.ph-space'); if (sp.scrollWidth > sp.clientWidth) out.push('the space name is cut (' + sp.scrollWidth + ' over ' + sp.clientWidth + ')'); if (sp.title !== sp.textContent) out.push('the space name has no title');
+            const chatTab = $('[data-tab="chat"]'); chatTab.focus(); chatTab.click(); await wait(60);
+            if ($('[data-tab="chat"] .sdk-badge-micro')) out.push('Chat shows a count while it is open');
+            if (D.activeElement === D.body) out.push('focus fell to the page after a tap on a place');
+            $('[data-tab="planner"]').click(); await wait(60);
+            // More, Edit the four, Replace
+            await click('[data-tab="more"]');
+            if (!inertAll()) out.push('the page is not inert under More'); if (!inside('.ph-sheet')) out.push('focus is not in More: ' + active());
+            const title = getComputedStyle($('.ph-sheet-title')).fontSize; if (parseFloat(title) < parseFloat(getComputedStyle(D.body).fontSize)) out.push('the sheet title is ' + title);
+            await click('[data-key="toggle"]');
+            if ($('.ph-sheet-title').textContent !== 'Edit the four') out.push('the sheet is titled ' + $('.ph-sheet-title').textContent);
+            await click('[data-key="slot-3"]');
+            if (!$('.ph-bottom')) out.push('Replace did not open'); else {
+              if (!$('.ph-sheet').inert) out.push('Edit the four is not inert under Replace'); if (!inside('.ph-bottom')) out.push('focus is not in Replace: ' + active());
+              const t = getComputedStyle($('.ph-bottom-title')); if (parseFloat(t.fontSize) < 16 || parseFloat(t.fontSize) < parseFloat(getComputedStyle(D.body).fontSize)) out.push('the Replace title is ' + t.fontSize + ', not a title');
+            }
+            await esc();
+            if (!$('.ph-sheet') || $('.ph-bottom')) out.push('Esc in Replace did not leave Edit the four open'); else if (active() !== 'slot-3') out.push('after Esc in Replace focus is on ' + active() + ', not the place');
+            await esc();
+            if (!$('.ph-sheet') || $('.ph-sheet-title').textContent !== 'More') out.push('the second Esc did not return to More'); else if (active() !== 'toggle') out.push('after Esc in Edit the four focus is on ' + active());
+            await esc();
+            if ($('.ph-sheet')) out.push('the third Esc did not close More'); if (D.activeElement === D.body || active() !== 'more') out.push('after More closes focus is on ' + active());
+            // the menu, Leave and Stay; Online
+            await click('[data-key="menu"]'); if (!inertAll()) out.push('the page is not inert under the menu');
+            await click('.host-menu-item.danger'); if (!$('[role="alertdialog"]')) out.push('Leave? did not open');
+            { const t = getComputedStyle($('.ph-bottom-title')); if (parseFloat(t.fontSize) < 16) out.push('the Leave title is ' + t.fontSize); }
+            await click('.ph-bottom-foot .btn:not(.solid)'); if (active() !== 'menu') out.push('after Stay focus is on ' + active());
+            await click('[data-key="online"]'); await esc(); if (active() !== 'online') out.push('after Online closes focus is on ' + active());
+            return out;
+          })()`);
+          for (const m of r) fail(`${label}: ${m}`);
+        } finally { await tab.close(); }
+      }
+    }
+
+    // The Prototype: Switcher starts at Both; the pins follow into the other frame.
+    {
+      const { tab } = await open(1280, 'dark');
+      try {
+        const m = await tab.eval(`(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          const fr = [...document.querySelectorAll('iframe.phf-screen')];
+          if (fr.length !== 2) return 'the Phone section shows ' + fr.length + ' screens, not 2 (Both)';
+          for (let i = 0; i < 40 && !fr.every((f) => f.contentDocument && f.contentDocument.querySelector('.ph-bar')); i += 1) await wait(150);
+          const a = fr[0].contentDocument; const b = fr[1].contentDocument;
+          a.querySelector('[data-tab="more"]').click(); await wait(200);
+          a.querySelector('[data-key="toggle"]').click(); await wait(100);
+          a.querySelector('[data-key="slot-3"]').click(); await wait(100);
+          a.querySelector('[data-key="pick-budget"]').click(); await wait(300);
+          const names = (d) => [...d.querySelectorAll('.ph-bar [data-tab]:not([data-tab="more"])')].map((x) => x.dataset.tab).join();
+          if (names(a) !== names(b)) return 'the two frames differ after a pin: ' + names(a) + ' and ' + names(b);
+          if (!names(b).includes('budget')) return 'the pin did not reach the bar: ' + names(b);
+          return '';
+        })()`);
+        if (m) fail(`Both: ${m}`);
+      } finally { await tab.close(); }
     }
 
     // Light: scroll the whole Vault section, then stop in twelve places.

@@ -36,8 +36,10 @@ const MODULES = [
 const DEST = [CHAT, ...MODULES]; // every place the bar can hold
 const dest = (id) => DEST.find((d) => d.id === id);
 const PEOPLE = [
-  { name: 'Mia Alvarez', ini: 'MA', me: true }, { name: 'Sam Okafor', ini: 'SO' }, { name: 'Ana Costa', ini: 'AC' }, { name: 'Ben Hart', ini: 'BH' },
-];
+  { name: 'Mia Alvarez', ini: 'MA', me: true }, { name: 'Sam Okafor', ini: 'SO' }, { name: 'Ana Costa', ini: 'AC' },
+]; // the three online in the space (the Online badge, the Online list, and the call when you are in it); Ben Hart is away
+const ONLINE = PEOPLE.length;
+const CALL_TIME = '4:12';
 
 const el = (tag, cls, attrs = {}, kids = []) => {
   const e = D.createElement(tag);
@@ -47,10 +49,30 @@ const el = (tag, cls, attrs = {}, kids = []) => {
   return e;
 };
 const ico = (name, regular = false) => el('i', `fa-${regular ? 'regular' : 'solid'} fa-${name} fa-fw`, { 'aria-hidden': 'true' });
-const iconBtn = (name, label, cls = '') => { const b = el('button', `sdk-icon-btn ${cls}`.trim(), { type: 'button', 'aria-label': label, title: label }); b.append(ico(name)); return b; };
-const textBtn = (label, cls = '', icon = null) => { const b = el('button', `btn ${cls}`.trim(), { type: 'button' }); if (icon) b.append(ico(icon)); b.append(el('span', '', { text: label })); return b; };
+const iconBtn = (name, label, cls = '', key = null) => { const b = el('button', `sdk-icon-btn ${cls}`.trim(), { type: 'button', 'aria-label': label, title: label, 'data-key': key }); b.append(ico(name)); return b; };
+const textBtn = (label, cls = '', icon = null, key = null) => { const b = el('button', `btn ${cls}`.trim(), { type: 'button', 'data-key': key }); if (icon) b.append(ico(icon)); b.append(el('span', '', { text: label })); return b; };
 const avatar = (p, size = 24) => el('span', `sdk-avatar sdk-avatar-${size}`, { 'aria-hidden': 'true' }, [el('span', 'sdk-avatar-ini', { text: p.ini })]);
-const say = (patch) => { Object.assign(S, patch); draw(); parent.postMessage({ ph: 'set', patch }, '*'); };
+// Focus. A sheet is a level (More 1, Edit the four 2, Replace 3; every other sheet or dialog 1). Opening a level remembers the control that opened it;
+// leaving it (Esc, Close, Stay, a tap on a place) puts the focus back on that control, so the keyboard never falls to the page.
+const LEVEL = { none: 0, more: 1, pin: 2, replace: 3 };
+const level = (s) => (s in LEVEL ? LEVEL[s] : 1);
+const BACK = { replace: 'pin', pin: 'more' }; // Esc steps back one level; any other sheet closes
+const openers = []; // openers[n]: the key of the control that opened level n + 1
+let trigger = null; // the control last pressed
+let drawn = 'none'; // the sheet the last draw showed
+const keyOf = (e) => (e ? e.dataset.key || (e.dataset.tab && `tab:${e.dataset.tab}`) || e.getAttribute('aria-label') || null : null);
+const find = (key) => (key ? [...root.querySelectorAll('button, input, textarea, [tabindex]')].find((e) => keyOf(e) === key && !e.closest('[inert]')) : null);
+D.addEventListener('click', (e) => { trigger = e.target.closest ? e.target.closest('button') : null; }, true);
+const say = (patch) => {
+  if ('sheet' in patch && patch.sheet !== S.sheet) {
+    const from = level(S.sheet); const to = level(patch.sheet);
+    const t = trigger && root.contains(trigger) ? trigger : D.activeElement;
+    if (to > from) openers[from] = keyOf(t) || openers[from];
+  }
+  Object.assign(S, patch);
+  draw();
+  parent.postMessage({ ph: 'set', patch }, '*');
+};
 
 // ---- theme and size ----
 function theme(t) {
@@ -77,51 +99,59 @@ let plannerFrame = null;
 function callButton() {
   const inCall = S.call !== 'off';
   if (!inCall) {
-    const b = el('button', 'btn btn-primary ph-callbtn is-join', { type: 'button', 'aria-label': 'Join the call' }, [ico('phone'), el('span', '', { text: 'Join' })]);
+    const b = el('button', 'btn btn-primary ph-callbtn is-join', { type: 'button', 'aria-label': 'Join the call', 'data-key': 'call' }, [ico('phone'), el('span', '', { text: 'Join' })]);
     b.addEventListener('click', () => say({ call: 'on', view: 'call' }));
     return b;
   }
-  const b = el('button', `btn ph-callbtn is-live${S.call === 'muted' ? ' is-muted' : ''}`, { type: 'button', 'aria-label': `In the call, 4 minutes${S.call === 'muted' ? ', you are muted' : ''}. Show the call`, 'aria-pressed': String(S.view === 'call') }, [
-    el('span', 'ph-dot', { 'aria-hidden': 'true' }), ico('phone'), el('span', 'ph-time', { text: '4:12' }),
+  const b = el('button', `btn ph-callbtn is-live${S.call === 'muted' ? ' is-muted' : ''}`, { type: 'button', 'aria-label': `In the call, 4 minutes${S.call === 'muted' ? ', you are muted' : ''}. Show the call`, 'aria-pressed': String(S.view === 'call'), 'data-key': 'call' }, [
+    el('span', 'ph-dot', { 'aria-hidden': 'true' }), ico('phone'), el('span', 'ph-time', { 'aria-hidden': 'true', text: CALL_TIME }),
   ]);
   b.addEventListener('click', () => say({ view: 'call' }));
   return b;
 }
 
 function topBar() {
-  const online = el('button', 'ph-online', { type: 'button', 'aria-label': '3 people online. Show who is online' }, [ico('user-group'), el('span', '', { text: '3' })]);
+  const online = el('button', 'ph-online', { type: 'button', 'aria-label': `${ONLINE} people online. Show who is online`, 'data-key': 'online' }, [ico('user-group'), el('span', '', { text: String(ONLINE) })]);
   online.addEventListener('click', () => say({ sheet: 'online' }));
-  const menu = iconBtn('ellipsis-vertical', 'Menu', 'btn-quiet');
+  const menu = iconBtn('ellipsis-vertical', 'Menu', 'btn-quiet', 'menu');
   menu.setAttribute('aria-haspopup', 'menu');
   menu.setAttribute('aria-expanded', String(S.sheet === 'menu'));
   menu.addEventListener('click', () => say({ sheet: S.sheet === 'menu' ? 'none' : 'menu' }));
   return el('header', 'ph-top', {}, [
-    el('h1', 'ph-space', { text: 'Lisbon in autumn' }), online, el('span', 'ph-grow'), callButton(), menu,
+    el('h1', 'ph-space', { text: 'Lisbon in autumn', title: 'Lisbon in autumn' }), online, el('span', 'ph-grow'), callButton(), menu,
   ]);
+}
+
+// The microphone: muted is the quiet state (a slashed icon on the selected fill); red belongs to Hang up alone, so two red buttons never sit together.
+function micBtn(muted, key) {
+  const b = iconBtn(muted ? 'microphone-slash' : 'microphone', muted ? 'Unmute' : 'Mute', muted ? 'ph-mic-off' : '', key);
+  b.setAttribute('aria-pressed', String(muted));
+  return b;
 }
 
 function callView() {
   if (S.call === 'off') {
-    const join = textBtn('Join the call', 'btn-primary', 'phone');
+    const join = textBtn('Join the call', 'btn-primary', 'phone', 'join');
     join.addEventListener('click', () => say({ call: 'on' }));
-    return el('section', 'ph-call', { 'aria-label': 'Call' }, [el('div', 'sdk-empty', {}, [ico('video'), el('p', 'sdk-empty-title', { text: 'You are not in the call' }), el('p', 'sdk-empty-text', { text: '3 people are in it.' }), el('div', 'sdk-empty-actions', {}, [join])])]);
+    return el('section', 'ph-call', { 'aria-label': 'Call' }, [el('div', 'sdk-empty', {}, [ico('video'), el('p', 'sdk-empty-title', { text: 'You are not in the call' }), el('p', 'sdk-empty-text', { text: `${ONLINE - 1} people are in it.` }), el('div', 'sdk-empty-actions', {}, [join])])]);
   }
   const tiles = el('div', 'ph-tiles');
   PEOPLE.forEach((p, i) => {
     const speaking = (S.call === 'speaking' && i === 1);
-    const muted = (p.me && S.call === 'muted') || i === 3;
+    const muted = (p.me && S.call === 'muted') || i === 2;
     tiles.append(el('div', `ph-tile${speaking ? ' is-speaking' : ''}`, { 'aria-label': `${p.name}${speaking ? ', talking' : ''}${muted ? ', muted' : ''}` }, [
       avatar(p, 64),
       el('span', 'ph-tile-name', {}, [muted ? ico('microphone-slash') : null, el('span', '', { text: p.me ? 'You' : p.name })]),
     ]));
   });
-  const mic = iconBtn(S.call === 'muted' ? 'microphone-slash' : 'microphone', S.call === 'muted' ? 'Unmute' : 'Mute', S.call === 'muted' ? 'btn-danger' : '');
+  const mic = micBtn(S.call === 'muted', 'call-mic');
   mic.addEventListener('click', () => say({ call: S.call === 'muted' ? 'on' : 'muted' }));
-  const cam = iconBtn('video', 'Turn the camera off');
-  const spk = iconBtn('volume-high', 'Speaker');
-  const end = iconBtn('phone-slash', 'Hang up', 'btn-danger solid');
+  const cam = iconBtn('video', 'Turn the camera off', '', 'call-cam');
+  const spk = iconBtn('volume-high', 'Speaker', '', 'call-speaker');
+  const end = iconBtn('phone-slash', 'Hang up', 'btn-danger solid', 'call-end');
   end.addEventListener('click', () => say({ call: 'off' }));
-  return el('section', 'ph-call', { 'aria-label': 'Call' }, [tiles, el('div', 'ph-controls', {}, [mic, cam, spk, end])]);
+  const head = el('p', 'ph-call-head', {}, [el('strong', '', { text: `${ONLINE} people in the call` }), el('span', 'ph-muted', { text: CALL_TIME })]);
+  return el('section', 'ph-call', { 'aria-label': 'Call' }, [head, tiles, el('div', 'ph-controls', {}, [mic, cam, spk, end])]);
 }
 
 const MESSAGES = [
@@ -164,14 +194,14 @@ function moduleView() {
 function strip() {
   const talking = S.call === 'speaking';
   const muted = S.call === 'muted';
-  const who = el('button', 'ph-strip-who', { type: 'button', 'aria-label': 'Show the call' }, [
+  const who = el('button', 'ph-strip-who', { type: 'button', 'aria-label': 'Show the call', 'data-key': 'strip-who' }, [
     talking ? avatar(PEOPLE[1], 24) : ico(muted ? 'microphone-slash' : 'phone'),
-    el('span', 'ph-strip-words', {}, [el('strong', '', { text: talking ? 'Sam Okafor' : 'In the call' }), el('span', 'ph-muted', { text: talking ? 'is talking' : muted ? 'you are muted' : '00:04' })]),
+    el('span', 'ph-strip-words', {}, [el('strong', '', { text: talking ? 'Sam Okafor' : 'In the call' }), el('span', 'ph-muted', { text: talking ? 'is talking' : muted ? 'you are muted' : '' }), el('span', 'ph-muted ph-strip-time', { text: CALL_TIME })]),
   ]);
   who.addEventListener('click', () => say({ view: 'call' }));
-  const mic = iconBtn(muted ? 'microphone-slash' : 'microphone', muted ? 'Unmute' : 'Mute', muted ? 'btn-danger' : '');
+  const mic = micBtn(muted, 'strip-mic');
   mic.addEventListener('click', () => say({ call: muted ? 'on' : 'muted' }));
-  const end = iconBtn('phone-slash', 'Hang up', 'btn-danger solid');
+  const end = iconBtn('phone-slash', 'Hang up', 'btn-danger solid', 'strip-end');
   end.addEventListener('click', () => say({ call: 'off' }));
   return el('div', `ph-strip${talking ? ' is-speaking' : ''}${muted ? ' is-muted' : ''}`, { role: 'group', 'aria-label': 'The call' }, [who, mic, end]);
 }
@@ -182,7 +212,7 @@ function bottomBar(o = {}) {
   const here = o.here !== undefined ? o.here : S.view === 'chat' ? 'chat' : S.view === 'module' ? S.module : null;
   const pins = o.pins || S.pins;
   const kind = o.bar || S.bar;
-  const count = (d) => (o.counts && d.id in o.counts ? o.counts[d.id] : d.unread);
+  const count = (d) => (o.counts && d.id in o.counts ? o.counts[d.id] : here === d.id ? 0 : d.unread); // the place that is open has nothing new
   const badge = (n) => (n ? el('span', 'sdk-badge-micro', { 'aria-hidden': 'true', text: n > 9 ? '9+' : String(n) }) : null);
   const word = (n) => (n ? `, ${n} new` : '');
   const look = (id) => `${o.pressed === id ? ' is-pressed' : ''}${o.focus === id ? ' is-focus' : ''}`;
@@ -220,34 +250,36 @@ function sheetShell(title, left, right, body) {
 const closeSheet = () => say({ sheet: 'none' });
 
 // More: the places that are not in the bar, big rows with their new counts. Edit is the way to pin one (the title bar's button and a row here).
+const openId = () => (S.view === 'chat' ? 'chat' : S.view === 'module' ? S.module : null);
 function row(d, tail) {
-  return [el('span', 'ph-row-icon', {}, [ico(d.icon)]), el('span', 'ph-row-name', { text: d.name }), d.unread ? el('span', 'sdk-badge', { text: String(d.unread), 'aria-label': `${d.unread} new` }) : null, ...tail];
+  const n = openId() === d.id ? 0 : d.unread;
+  return [el('span', 'ph-row-icon', {}, [ico(d.icon)]), el('span', 'ph-row-name', { text: d.name }), n ? el('span', 'sdk-badge', { text: String(n), 'aria-label': `${n} new` }) : null, ...tail];
 }
 function moreSheet() {
   const edit = S.sheet === 'pin' || S.sheet === 'replace';
-  const close = iconBtn('xmark', 'Close', 'btn-quiet');
+  const close = iconBtn('xmark', 'Close', 'btn-quiet', 'close');
   close.addEventListener('click', closeSheet);
-  const toggle = edit ? textBtn('Done', 'btn-primary') : textBtn('Edit', 'btn-quiet', 'thumbtack');
+  const toggle = edit ? textBtn('Done', 'btn-primary', null, 'toggle') : textBtn('Edit the four', 'btn-quiet', 'thumbtack', 'toggle');
   toggle.addEventListener('click', () => say({ sheet: edit ? 'more' : 'pin' }));
   const body = el('div', 'ph-more');
   if (!edit) {
     const rest = DEST.filter((d) => !S.pins.includes(d.id));
     const list = el('ul', 'ph-list');
     for (const d of rest) {
-      const b = el('button', 'ph-row', { type: 'button' }, row(d, [ico('chevron-right')]));
+      const b = el('button', 'ph-row', { type: 'button', 'data-key': `row-${d.id}` }, row(d, [ico('chevron-right')]));
       b.addEventListener('click', () => say(d.id === 'chat' ? { view: 'chat', sheet: 'none' } : { module: d.id, view: 'module', sheet: 'none' }));
       list.append(el('li', '', {}, [b]));
     }
-    const pin = el('button', 'ph-row ph-row-quiet', { type: 'button' }, [el('span', 'ph-row-icon', {}, [ico('thumbtack')]), el('span', 'ph-row-name', { text: 'Change the four in your bar' }), ico('chevron-right')]);
+    const pin = el('button', 'ph-row ph-row-quiet', { type: 'button', 'data-key': 'edit-row' }, [el('span', 'ph-row-icon', {}, [ico('thumbtack')]), el('span', 'ph-row-name', { text: 'Edit the four' }), ico('chevron-right')]);
     pin.addEventListener('click', () => say({ sheet: 'pin' }));
     body.append(el('p', 'ph-more-hint', { text: rest.length ? 'The other places in this space.' : 'Every place is in your bar.' }), list, el('ul', 'ph-list', {}, [el('li', '', {}, [pin])]));
     return sheetShell('More', close, toggle, body);
   }
-  // Edit: the four places first, each a tap to replace; then every place with a Pin button (the menu route; nothing to drag).
+  // Edit the four: the four in the bar's order first, each a tap to replace; then the others with a Pin button (the menu route; nothing to drag).
   const slots = el('div', 'ph-slots', { role: 'group', 'aria-label': 'Your four places' });
   S.pins.forEach((id, i) => {
     const d = dest(id);
-    const b = el('button', 'ph-slot', { type: 'button', 'aria-label': `Place ${i + 1}, ${d.name}. Change it` }, [el('span', 'ph-slot-n', { text: String(i + 1), 'aria-hidden': 'true' }), ico(d.icon), el('span', 'ph-slot-name', { text: d.name }), el('span', 'ph-slot-change', { 'aria-hidden': 'true' }, [ico('arrows-rotate')])]);
+    const b = el('button', 'ph-slot', { type: 'button', 'aria-label': `Place ${i + 1}, ${d.name}. Change it`, 'data-key': `slot-${i}` }, [el('span', 'ph-slot-n', { text: String(i + 1), 'aria-hidden': 'true' }), ico(d.icon), el('span', 'ph-slot-name', { text: d.name }), el('span', 'ph-slot-change', { 'aria-hidden': 'true' }, [ico('arrows-rotate')])]);
     b.addEventListener('click', () => say({ sheet: 'replace', replace: { slot: i } }));
     slots.append(b);
   });
@@ -255,22 +287,22 @@ function moreSheet() {
   reset.disabled = S.pins.join() === TEMPLATE_PINS.join();
   reset.addEventListener('click', () => say({ pins: [...TEMPLATE_PINS] }));
   const list = el('ul', 'ph-list');
-  for (const d of DEST) {
+  for (const d of [...S.pins.map(dest), ...DEST.filter((x) => !S.pins.includes(x.id))]) { // the four in the bar's order, then the rest
     const at = S.pins.indexOf(d.id);
     let tail;
     if (at >= 0) tail = [el('span', 'ph-row-tag', { text: `Place ${at + 1}` })];
     else {
-      const pin = el('button', 'btn ph-pin', { type: 'button', 'aria-label': `Pin ${d.name}` }, [ico('thumbtack'), el('span', '', { text: 'Pin' })]);
+      const pin = el('button', 'btn ph-pin', { type: 'button', 'aria-label': `Pin ${d.name}`, 'data-key': `pin-${d.id}` }, [ico('thumbtack'), el('span', '', { text: 'Pin' })]);
       pin.addEventListener('click', () => say({ sheet: 'replace', replace: { mod: d.id } }));
       tail = [pin];
     }
     list.append(el('li', `ph-row ph-row-static${at >= 0 ? ' is-pinned' : ''}`, {}, row(d, tail)));
   }
   body.append(
-    el('h3', 'ph-more-head', { text: 'Your bar' }), el('p', 'ph-more-hint', { text: 'Tap a place to change what it holds. The bar always holds four.' }), slots, el('div', 'ph-more-foot', {}, [reset]),
+    el('h3', 'ph-more-head', { text: 'Your four, in the bar\'s order' }), el('p', 'ph-more-hint', { text: 'Tap a place to change what it holds. The bar always holds four.' }), slots, el('div', 'ph-more-foot', {}, [reset]),
     el('h3', 'ph-more-head', { text: 'All places' }), list,
   );
-  return sheetShell('Your bar', close, toggle, body);
+  return sheetShell('Edit the four', close, toggle, body);
 }
 
 // The Replace sheet (a bottom sheet over Edit): either a place is chosen and it asks what goes in it, or a module is chosen and it asks which place it takes.
@@ -295,17 +327,17 @@ function replaceLayer() {
   const scrim = el('div', 'ph-scrim'); scrim.addEventListener('click', () => say({ sheet: 'pin' }));
   const list = el('div', 'ph-actions', { role: 'menu', 'aria-label': title });
   for (const x of rows) {
-    const b = el('button', 'ph-action', { type: 'button', role: 'menuitem' }, [ico(x.d.icon), el('span', 'ph-action-name', { text: x.d.name }), x.tail ? el('span', 'ph-row-tag', { text: x.tail }) : null]);
+    const b = el('button', 'ph-action', { type: 'button', role: 'menuitem', 'data-key': `pick-${x.d.id}` }, [ico(x.d.icon), el('span', 'ph-action-name', { text: x.d.name }), x.tail ? el('span', 'ph-row-tag', { text: x.tail }) : null]);
     b.addEventListener('click', x.run);
     list.append(b);
   }
-  const cancel = textBtn('Cancel', 'ph-action-cancel'); cancel.addEventListener('click', () => say({ sheet: 'pin' }));
-  return el('div', 'ph-sheet-layer', {}, [scrim, el('section', 'ph-bottom', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Replace a place' }, [el('h2', 'ph-bottom-title', { text: title }), list, cancel])]);
+  const cancel = textBtn('Cancel', 'ph-action-cancel', null, 'cancel'); cancel.addEventListener('click', () => say({ sheet: 'pin' }));
+  return el('div', 'ph-sheet-layer', {}, [scrim, el('section', 'ph-bottom', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [el('h2', 'ph-bottom-title', { text: title }), list, cancel])]);
 }
 
 // Bar states: the bar drawn with each look forced on, for the eye (a finger cannot hold a state still).
 function statesSheet() {
-  const close = iconBtn('xmark', 'Close', 'btn-quiet');
+  const close = iconBtn('xmark', 'Close', 'btn-quiet', 'close');
   close.addEventListener('click', closeSheet);
   const one = (label, o) => {
     const bar = bottomBar({ plain: true, ...o });
@@ -320,7 +352,8 @@ function statesSheet() {
     one('Focus: the keyboard on Calendar.', { here: 'planner', focus: 'calendar' }),
     one(`Pressed: a finger on ${kind}.`, { here: 'planner', pressed: 'more' }),
     one(`Focus: the keyboard on ${kind}.`, { here: 'planner', focus: 'more' }),
-    one('Chat is open; 12 new in Chat and in Calendar (9+).', { here: 'chat', counts: { chat: 12, calendar: 12 } }),
+    one('Planner is open; 12 new in Chat and in Calendar (9+).', { here: 'planner', counts: { chat: 12, calendar: 12 } }),
+    one('Chat is open: it shows no count.', { here: 'chat' }),
     one('A place that is not one of the four is open (To-do): the switcher shows you are there.', { here: 'todo' }),
     one('The safe area under the bar: 34px of the bar\'s own surface, the places above it.', { here: 'planner', safe: true }),
   ]);
@@ -412,14 +445,15 @@ function actionBar() {
 }
 
 // ---- the screen ----
-function draw() {
+function draw(quiet = false) {
   const keep = { chat: root.querySelector('.ph-compose-field')?.value };
+  const was = keyOf(root.contains(D.activeElement) ? D.activeElement : null);
   root.className = `ph${S.kb ? ' kb' : ''}${S.call !== 'off' ? ' in-call' : ''}`;
   if (S.sheet === 'bar') S.view = 'module';
   const view = el('main', 'ph-view', {}, [S.view === 'call' ? callView() : S.view === 'chat' ? chatView() : moduleView()]);
   if (S.sheet === 'bar') view.append(actionBar());
   const layers = [];
-  if (S.sheet === 'more' || S.sheet === 'pin' || S.sheet === 'replace') layers.push(moreSheet());
+  if (S.sheet === 'more' || S.sheet === 'pin' || S.sheet === 'replace') { const m = moreSheet(); if (S.sheet === 'replace') m.inert = true; layers.push(m); }
   if (S.sheet === 'replace') layers.push(replaceLayer());
   if (S.sheet === 'states') layers.push(statesSheet());
   if (S.sheet === 'object') layers.push(objectSheet());
@@ -429,21 +463,34 @@ function draw() {
   if (S.sheet === 'leave') layers.push(leaveSheet());
   if (S.sheet === 'menu') layers.push(menuPop());
   // The module's own view moves the planner's frame out of the old view: keep it by re-parenting through append.
-  root.replaceChildren(topBar(), view, S.call !== 'off' && S.view !== 'call' ? strip() : el('span', 'ph-none'), bottomBar(), ...layers);
+  const page = [topBar(), view, S.call !== 'off' && S.view !== 'call' ? strip() : el('span', 'ph-none'), bottomBar()];
+  if (S.sheet !== 'none' && S.sheet !== 'bar') for (const e of page) e.inert = true; // a sheet or dialog is open: nothing behind it takes focus or a tap
+  root.replaceChildren(...page, ...layers);
   if (keep.chat) { const f = root.querySelector('.ph-compose-field'); if (f) f.value = keep.chat; }
   if (S.kb) {
     const f = S.sheet === 'edit' ? D.getElementById('ph-edit-name') : S.view === 'chat' && S.sheet === 'none' ? root.querySelector('.ph-compose-field') : null;
     if (f) { f.focus({ preventScroll: true }); f.scrollIntoView({ block: 'nearest' }); }
   }
-  if (S.sheet !== 'none' && S.sheet !== 'bar' && !S.kb) (root.querySelector('.ph-bottom button, .ph-menu button') || root.querySelector('.ph-sheet button'))?.focus({ preventScroll: true });
+  const first = () => (root.querySelector('.ph-bottom button, .ph-menu button') || root.querySelector('.ph-sheet:not([inert]) button'));
+  const before = drawn; drawn = S.sheet;
+  if (quiet || S.kb) return;
+  const from = level(before); const to = level(S.sheet);
+  let target = null;
+  if (before !== S.sheet && to < from) { // back out of a level: the control that opened it
+    target = find(openers[to]);
+    openers.length = to;
+    if (!target) target = first() || root.querySelector('.sdk-tabbar [aria-current="page"], .sdk-tabbar [data-tab]');
+  } else if (before !== S.sheet) target = S.sheet !== 'none' && S.sheet !== 'bar' ? first() : find(was);
+  else target = find(was);
+  target?.focus({ preventScroll: true });
 }
 
-D.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet !== 'none') say({ sheet: 'none' }); });
+D.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet !== 'none' && !e.defaultPrevented) say({ sheet: BACK[S.sheet] || 'none' }); }); // one level back
 addEventListener('message', (e) => {
   const d = e.data;
   if (!d || typeof d !== 'object') return;
   if (d.ph === 'theme') theme(d);
-  if (d.ph === 'state') { Object.assign(S, d.state); draw(); shape(); }
+  if (d.ph === 'state') { Object.assign(S, d.state); draw(true); shape(); } // the other frame follows without taking the focus
 });
 theme({ theme: q.get('theme'), mode: q.get('mode'), light: q.get('light') });
 shape();

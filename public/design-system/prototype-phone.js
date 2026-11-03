@@ -32,7 +32,7 @@ const PRESETS = [
   ['Bottom sheet', { sheet: 'actions', kb: '0' }],
   ['Action bar', { call: 'on', sheet: 'bar', kb: '0' }],
 ];
-const state = { device: '390', call: 'off', view: 'module', sheet: 'none', kb: '0', module: 'planner', bar: 'end', glyph: 'lines' };
+const state = { device: '390', call: 'off', view: 'module', sheet: 'none', kb: '0', module: 'planner', bar: 'both', glyph: 'lines' };
 const KEYS = ['device', 'call', 'view', 'sheet', 'kb', 'bar', 'glyph'];
 const q = new URLSearchParams(location.search);
 for (const k of KEYS) if (q.get(`ph${k}`)) state[k] = q.get(`ph${k}`);
@@ -72,11 +72,12 @@ const ql = D.createElement('ol');
 ql.className = 'phf-qlist';
 for (const [ask, rec] of [
   ['Does the round button (B) carry the word More under it?', 'No. It has its name for a screen reader; a word under a small disc would crowd the four.'],
-  ['Which glyph, three lines or three dots?', 'Three lines in both A and B. The top bar\'s Menu is already three dots, and A\'s icon is decided as three lines, so the two never look alike.'],
+  ['For B, which glyph in the round button, three lines or three dots?', 'Three lines. The top bar\'s Menu is already three dots, so the two never look alike. (A\'s icon is decided: three lines.)'],
   ['Does More show the new count of the places that are not in the bar?', 'Yes, the total (drawn: 4, from To-do and Polls). Without it a new To-do is invisible while the bar holds Chat, Planner, Calendar and Map.'],
   ['When the open module is not one of the four, does the switcher show you are there?', 'Yes (drawn in Bar states: the open look on More). Otherwise no place in the bar is marked and the person is lost.'],
-  ['Can Chat leave the four?', 'Yes. Every place is free to pin, as Thomas said each person re-pins their own four; Chat\'s count then rides on More.'],
-  ['Where is a person\'s four kept?', 'Per person for the whole environment. A space that lacks a pinned module shows the next place of the template\'s four in its slot, so the bar is always four.'],
+  ['The round button\'s size and place (plan question 29), if B is kept: 44px inset in the bar, or 48px raised above its top edge?', '44px inset (drawn). A raised button cannot collide with the call strip or the keyboard-up bar.'],
+  ['Where is a person\'s four remembered (plan question 28)? (a) in the browser, per space; (b) on the account; (c) the browser first, the account later.', '(b) for members and owners, the template\'s four for guests, because people re-pin on one phone and expect the same on the next. (c) if Thomas wants no server work now.'],
+  ['A pinned module that is off in the space you are in: what takes its place?', 'The first module of the template\'s four that is not already in the bar, as the plan does for the template\'s own four (question 27), so the bar still holds four.'],
   ['Sideways, does B keep the round button?', 'Yes, in the middle of the rail, a 56px target like the rest.'],
 ]) {
   const li = D.createElement('li');
@@ -138,7 +139,7 @@ for (const [label, patch] of PRESETS) {
 
 const theme = () => ({ ph: 'theme', theme: D.documentElement.dataset.ppTheme || 'strong-coffee', mode: D.documentElement.dataset.themeMode || 'dark', light: D.documentElement.dataset.ppLight || '' });
 function post(msg, only, list) { for (const f of list || frames) if (f.contentWindow && (!only || f === only)) f.contentWindow.postMessage(msg, '*'); }
-function pushState(only) { post({ ph: 'state', state: { call: state.call, view: state.view, sheet: state.sheet, kb: state.kb === '1', module: state.module } }, only); }
+function pushState(only) { post({ ph: 'state', state: { call: state.call, view: state.view, sheet: state.sheet, kb: state.kb === '1', module: state.module, ...(state.pins ? { pins: state.pins, replace: state.replace } : {}) } }, only); }
 
 function device(dev, up, bar, caption) {
   const wrap = D.createElement('figure');
@@ -210,7 +211,7 @@ addEventListener('message', (e) => {
   if (e.data.ph === 'ready') { const f = frames.find((x) => x.contentWindow === e.source); post(theme(), f); pushState(f); }
   if (e.data.ph === 'set') {
     const p = {};
-    for (const k of ['call', 'view', 'sheet', 'module']) if (k in e.data.patch) p[k] = e.data.patch[k];
+    for (const k of ['call', 'view', 'sheet', 'module', 'pins', 'replace']) if (k in e.data.patch) p[k] = e.data.patch[k]; // the pins follow into the other frame in Both
     Object.assign(state, p);
     for (const f of Object.values(switches)) f();
     const u = new URL(location.href); for (const k of ['call', 'view', 'sheet']) u.searchParams.set(`ph${k}`, state[k]); history.replaceState(null, '', u);
