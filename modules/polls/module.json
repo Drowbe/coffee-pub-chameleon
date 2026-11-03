@@ -1,7 +1,7 @@
 {
   "id": "polls",
   "name": "Polls",
-  "version": "1.15.25",
+  "version": "1.15.26",
   "icon": "square-poll-vertical",
   "color": "purple",
   "description": "Quick polls and votes for the whole {environment} and for each {space}, with live results.",
@@ -94,6 +94,7 @@
   },
   "guards": {
     "clear": "manage_any",
+    "only": true,
     "keys": [
       {
         "key": "poll:{id}",
@@ -109,6 +110,7 @@
           ]
         },
         "closed": { "flag": "closed", "at": "closesAt" },
+        "settled": ["multi", { "field": "options", "append": true }],
         "fields": {
           "options": { "type": "array", "required": true, "maxLength": 20, "of": "object", "unique": "id" },
           "multi": { "type": "boolean" },

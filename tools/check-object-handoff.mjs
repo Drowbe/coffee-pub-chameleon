@@ -147,7 +147,13 @@ await test('the bundled Research, To-do, Calendar and Polls declare what they ta
   assert.equal(providesOf(research, 'saveNote').input.object, 'object?', 'the flat fields still work');
   assert.deepEqual(providesOf(research, 'saveLink').takes, [{ kinds: ['link'], as: 'a link' }]);
   assert.equal(providesOf(research, 'saveLink').input.url, 'text', 'Chat\'s link keeper is found by its url, as before');
-  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, takes: [{ kinds: ['image'], as: 'an image' }] });
+  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, askerOnly: true, takes: [{ kinds: ['image'], as: 'an image' }] });
+  // `askerOnly` (QA round 2, failure 1): true or false, and not with `local`, which is already for the asker only.
+  const withAction = (a) => cleanManifest({ id: 'asker', name: 'Asker', version: '1.0.0', scope: ['space'], surfaces: { page: { entry: 'page.html' } }, actions: { provides: [{ name: 'make', input: {}, ...a }] } }, new Set(['page.html']));
+  assert.equal(withAction({ askerOnly: true }).actions.provides[0].askerOnly, true);
+  assert.equal('askerOnly' in withAction({ askerOnly: false }).actions.provides[0], false);
+  assert.throws(() => withAction({ askerOnly: 'yes' }), { message: 'module.json: action "make" askerOnly must be true or false' });
+  assert.throws(() => withAction({ askerOnly: true, local: true }), { message: 'module.json: action "make" is local, which is already for the asker only' });
   const todo = await bundled('todo');
   assert.deepEqual(providesOf(todo, 'createTask').takes, [{ kinds: ['task', '*', 'text'], as: 'a task' }]);
   assert.deepEqual(providesOf(todo, 'createTask').input, { title: 'string', notes: 'text?', ref: 'ref?', due: 'date?', object: 'object?' });

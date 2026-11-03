@@ -11,14 +11,20 @@
 //                                          `guestsSeeHidden`), nor the published calendar. A guest's write keeps them as they
 //                                          were, and a guest can't remove, replace with a non-object, or clear what holds any.
 //     "exclusive": ["note:{id}", ...],     keys that share their {name} parts: while one is stored the others can't be
-//                                          written (409), so two kinds of object never have the same id.
+//                                          written (409), so two kinds of object never have the same id. Held in a
+//                                          person's own data too.
+//     "only": true,                        the module keeps only keys its rules and `exclusive` name: any other is refused
+//                                          (400). Without it a key no rule names is stored as before, except one that looks
+//                                          like a rule's ("Vote:q1", "vote.q1" beside "vote:{poll}:{person}"), refused too.
 //     "keys": [ {                          rules for the keys that match `key`; the first that matches is used
 //       "key": "vote:{poll}:{person}",     a stored key: letters and the like, with {name} parts (no ":" or "/" in a part).
 //                                          {person} is a person's key: only that person may write it.
 //       "personName": "name",              with {person}: this field is set to the writer's own name by the server
 //       "parent": "poll:{poll}",           with "parentOpen": true, the key is written only while that object is there
-//       "parentOpen": true,                and not closed (the parent's rule says what closed means); its managers
-//                                          (who may delete it) may still delete this key, closed or not
+//       "parentOpen": true,                and not closed (the parent's rule says what closed means). While it is open its
+//                                          managers (who may delete it) may delete this key too, except a {person} key,
+//                                          which only that person removes; once it is closed nobody does. The server
+//                                          removes these keys with the object.
 //       "owner": "byKey",                  the field naming who added the object, a person's key: set by the server when
 //                                          left out, never changed after, and naming someone else only for a manager
 //       "ownerName": "by",                 with owner: the field with their name, set by the server for the person adding it
@@ -36,9 +42,16 @@
 //       "closed": { "flag": "closed", "at": "closesAt" },  closed: the flag is true, or the time (ms) in `at` has passed
 //       "file": "file",                    the field holding { id } of a file uploaded to the module in the same place: a
 //                                          new or changed one must be there and added by the writer (or an owner); the
-//                                          server removes the file with the object
+//                                          server removes the file with the object, and the old one when it is swapped,
+//                                          unless a stored value there still names it (in any field)
+//       "linkImage": "image",              the field holding the address of a link's picture: the only stored field the
+//                                          link-image route takes an address from
+//       "settled": ["multi", { "field": "options", "append": true }]  fields that can't change once anything belongs to
+//                                          the object (a key whose rule's `parent` names it: a poll's votes), by anyone;
+//                                          an "append" one may only gain entries at its end
 //       "fields": { "planned": { "type": "number", "null": true, "above": 0, "below": 1e12 } }  the shape of the value:
-//                                          type, null, required; above, below, min, max on a number; maxLength on text or a
+//                                          type, null, required (an empty list is missing); above, below, min, max on a
+//                                          number; maxLength on text or a
 //                                          list; on a list "of" (each entry's type), "unique" (true: no entry twice; a field
 //                                          name: each entry an object whose text there is given and never twice), and with
 //                                          a parent "pick": { "from": "options", "id": "id", "many": "multi" } (each entry
@@ -82,7 +95,9 @@ function cleanGuards(raw, permissionKeys, Err) {
     if (typeof value !== 'string' || !FIELD_RE.test(value)) fail(`${where} must name a stored field: a letter, then letters, digits or _.`);
     return value;
   };
-  const out = { clear: null, hidden: [], keys: [], exclusive: null };
+  const out = { clear: null, hidden: [], keys: [], exclusive: null, only: false };
+  if (raw.only !== undefined && typeof raw.only !== 'boolean') fail('guards.only must be true or false.');
+  if (raw.only) out.only = true;
 
   if (raw.hidden !== undefined) {
     if (!Array.isArray(raw.hidden) || raw.hidden.length > MAX_FIELDS) fail(`guards.hidden must be a list of at most ${MAX_FIELDS} stored fields.`);
@@ -154,6 +169,17 @@ function cleanGuards(raw, permissionKeys, Err) {
         if (r.parentOpen) rule.parentOpen = true;
       } else if (r.parentOpen !== undefined) fail(`${at}.parentOpen needs a "parent".`);
       if (r.file !== undefined) rule.file = field(r.file, `${at}.file`);
+      if (r.linkImage !== undefined) rule.linkImage = field(r.linkImage, `${at}.linkImage`);
+      if (r.settled !== undefined) {
+        if (!Array.isArray(r.settled) || !r.settled.length || r.settled.length > MAX_FIELDS) fail(`${at}.settled must be a list of 1 to ${MAX_FIELDS} fields.`);
+        rule.settled = r.settled.map((m) => {
+          const entry = typeof m === 'string' ? { field: field(m, `each ${at}.settled entry`) } : isObject(m) ? { field: field(m.field, `${at}.settled field`) } : fail(`each ${at}.settled entry must be a field, or an object with a "field".`);
+          if (isObject(m) && m.append !== undefined && typeof m.append !== 'boolean') fail(`${at}.settled "${entry.field}" append must be true or false.`);
+          if (isObject(m) && m.append) entry.append = true;
+          return entry;
+        });
+        if (new Set(rule.settled.map((x) => x.field)).size !== rule.settled.length) fail(`${at}.settled lists a field twice.`);
+      }
       if (r.fields !== undefined) {
         if (!isObject(r.fields) || Object.keys(r.fields).length > MAX_FIELDS) fail(`${at}.fields must be an object of at most ${MAX_FIELDS} fields.`);
         rule.fields = {};
@@ -195,6 +221,7 @@ function cleanGuards(raw, permissionKeys, Err) {
       out.keys.push(rule);
     });
     for (const [i, rule] of out.keys.entries()) {
+      if (rule.settled && !out.keys.some((x) => x.parent && shapeOf(x.parent) === shapeOf(rule.key))) fail(`guards.keys[${i}].settled needs a rule whose "parent" is "${rule.key}".`);
       if (!rule.parentOpen) continue;
       const parentRule = out.keys.find((x) => shapeOf(x.key) === shapeOf(rule.parent));
       if (!parentRule || !parentRule.closed) fail(`guards.keys[${i}].parentOpen needs a rule for "${rule.parent}" that says when it is "closed".`);
@@ -216,6 +243,7 @@ function cleanGuards(raw, permissionKeys, Err) {
       out.exclusive.push(key);
     }
   }
+  if (out.only && !out.keys.length && !out.exclusive) fail('guards.only needs guards.keys or guards.exclusive: the keys the module keeps.');
   if (!out.keys.length && !out.hidden.length && !out.clear && !out.exclusive) return null;
   return out;
 }
@@ -227,7 +255,7 @@ function unreadableGuards(raw) {
   const list = isObject(raw) ? raw.hidden : undefined;
   const readable = list === undefined || (Array.isArray(list) && list.every((f) => typeof f === 'string' && FIELD_RE.test(f)));
   const hidden = Array.isArray(list) ? [...new Set(list.filter((f) => typeof f === 'string' && FIELD_RE.test(f)))] : [];
-  return { invalid: true, clear: null, hidden, keys: [], exclusive: null, ...(readable ? {} : { shut: true }) };
+  return { invalid: true, clear: null, hidden, keys: [], exclusive: null, only: false, ...(readable ? {} : { shut: true }) };
 }
 
 // --- matching ----------------------------------------------------------------------------------------------------------
@@ -258,6 +286,19 @@ function ruleFor(guards, key) {
 }
 // The fixed start of a pattern, before its first {name} part ("vote:" for "vote:{poll}:{person}").
 const literalPrefix = (pattern) => pattern.split('{')[0];
+// The first word of a key or pattern, in lower case: its letters and digits up to the first other character ("vote" for
+// "Vote:q1", "vote.q1" and "vote:{poll}:{person}").
+const headOf = (text) => /^[A-Za-z0-9]*/.exec(String(text))[0].toLowerCase();
+// Why a key no rule matches can't be stored, or null when it can: the module keeps only its own keys (`only`), or the key
+// starts as a rule's does, or looks like it whatever the case or the mark after its first word ("vote:q1:mia:x",
+// "Vote:q1:mia", "vote.q1"), so nothing slips past a rule by its shape.
+function keySpaceRefusal(guards, key) {
+  const patterns = [...(guards?.keys || []).map((r) => r.key), ...(guards?.exclusive || [])];
+  if (!patterns.length || patterns.some((p) => matchKey(p, key))) return null;
+  const head = headOf(key);
+  const looksLike = patterns.some((p) => String(key).toLowerCase().startsWith(literalPrefix(p).toLowerCase()) || (head && head === headOf(p)));
+  return guards.only || looksLike ? refuse(400, `That key isn't one this ${word('module')} keeps.`) : null;
+}
 const fillKey = (pattern, params) => pattern.replace(PART_RE, (_, name) => params[name]);
 
 function deepEqual(a, b) {
@@ -273,6 +314,12 @@ function deepEqual(a, b) {
 
 // Nothing there: left out, null, '' or an empty list (a page that writes '' where it once left a field out changes nothing).
 const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+
+// The same value, where left out, null, '', [] and false all read as nothing (a page that writes `multi: false` where it
+// once left it out changes nothing).
+const sameValue = (a, b) => deepEqual(a, b) || ((isEmpty(a) || a === false) && (isEmpty(b) || b === false));
+// A list that only gained entries at its end.
+const appended = (was, is) => Array.isArray(is) && (isEmpty(was) || (Array.isArray(was) && is.length >= was.length && was.every((x, i) => deepEqual(x, is[i]))));
 
 // Closed by its flag, or by its time (milliseconds) having passed.
 function closedNow(closed, value, now = Date.now()) {
@@ -307,7 +354,7 @@ const ENTRY_WORDS = { number: 'numbers', string: 'text', boolean: 'true or false
 function fieldProblem(fields, value, parent = null) {
   for (const [name, spec] of Object.entries(fields || {})) {
     const v = value[name];
-    if (v === undefined) { if (spec.required) return `${name} is needed.`; continue; }
+    if (v === undefined || (spec.required && Array.isArray(v) && !v.length)) { if (spec.required) return `${name} is needed.`; continue; }
     if (v === null) { if (spec.null && !spec.required) continue; return fieldSentence(name, spec); }
     if (!typeIs(spec.type, v)) return fieldSentence(name, spec);
     if (spec.type === 'number' && ((spec.above !== undefined && !(v > spec.above)) || (spec.below !== undefined && !(v < spec.below)) || (spec.min !== undefined && v < spec.min) || (spec.max !== undefined && v > spec.max))) return fieldSentence(name, spec);
@@ -349,8 +396,10 @@ function mayDelete(rule, before, who) {
   return mine || !rule.others?.delete || who.can(rule.others.delete);
 }
 
-// What to store for a PUT, or a refusal.
-function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
+// What to store for a PUT, or a refusal. `keys()`: every key stored in the same place (for a rule's `settled`).
+// `personal`: a person's own data (scope person), which only they reach: held to `exclusive` and the module's keys only,
+// not to the rules about who may do what.
+function checkPut(guards, { key, before, value, who, read, keys = () => [], personal = false, now = Date.now() }) {
   if (guards?.invalid) return refuse(403, `This ${word('module')}'s rules can't be read, so nothing in it can be changed. Ask the ${word('admin')} to update it.`);
   // Another kind of object with the same id already there (guards.exclusive): refused, so neither hides the other.
   for (const pattern of guards?.exclusive || []) {
@@ -360,9 +409,8 @@ function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
     break;
   }
   const found = ruleFor(guards, key);
-  // A key that starts as a rule's key does but is not one ("vote:q1:mia:x" beside "vote:{poll}:{person}") is refused,
-  // so nothing slips past a rule by its shape.
-  if (!found) return (guards?.keys || []).some((r) => String(key).startsWith(literalPrefix(r.key))) ? refuse(400, `That key isn't one this ${word('module')} keeps.`) : { value };
+  if (!found) return keySpaceRefusal(guards, key) || { value };
+  if (personal) return { value };
   const { rule, params } = found;
   if (!who.key && (rule.person || rule.owner)) return guestRefusal();
   if (rule.person || rule.owner || rule.fields || rule.file) {
@@ -438,6 +486,15 @@ function checkPut(guards, { key, before, value, who, read, now = Date.now() }) {
     const problem = fieldProblem(rule.fields, next, parent);
     if (problem) return refuse(400, problem);
   }
+  // Once anything belongs to it (a poll's votes), its settled fields stay as they are, for everyone (Thomas, 2026-11-03):
+  // what was answered can't be changed under the answers, closed, reopened or not.
+  if (rule.settled && isObject(before)) {
+    const moved = rule.settled.filter((s) => !sameValue(before[s.field], next[s.field]) && !(s.append && appended(before[s.field], next[s.field])));
+    if (moved.length && childrenOf(guards, key, keys()).length) {
+      const s = moved[0];
+      return refuse(403, s.append ? `That already has answers, so ${s.field} can only be added to.` : `That already has answers, so ${s.field} can't be changed.`);
+    }
+  }
   return { value: next };
 }
 
@@ -453,11 +510,13 @@ function checkDelete(guards, { key, before, who, read, now = Date.now() }) {
     const parent = parentKey ? read(parentKey) : null;
     const parentRule = parentKey ? ruleFor(guards, parentKey)?.rule : null;
     // Once the object it belongs to is closed it is final: nobody removes it on its own (Thomas, 2026-11-02); it goes only
-    // with that object, which the server removes it with (childrenOf). While open, whoever may remove that object may
-    // remove this too.
+    // with that object, which the server removes it with (childrenOf). A person's own key (a vote) is removed only by that
+    // person, while it is open (Thomas, 2026-11-03); anything else that belongs to it, while open, by whoever may remove
+    // that object too.
     if (parent && rule.parentOpen && closedNow(parentRule?.closed, parent, now)) return closedRefusal();
-    if (parent && parentRule && mayDelete(parentRule, parent, who)) return null;
-    if (rule.person && params.person !== who.key) return theirsRefusal();
+    if (rule.person) {
+      if (params.person !== who.key) return theirsRefusal();
+    } else if (parent && parentRule && mayDelete(parentRule, parent, who)) return null;
   }
   if (rule.owner) {
     if (rule.need && !who.can(rule.need)) return roleRefusal();
@@ -504,8 +563,10 @@ const holdsHidden = (value, fields) => Boolean(fields && fields.length && isObje
 function hiddenPutRefusal(value, before, fields) {
   return !isObject(value) && holdsHidden(before, fields) ? refuse(403, `That holds details ${word('guest', { many: true })} can't see, so it can only be changed, not replaced.`) : null;
 }
-function hiddenDeleteRefusal(before, fields) {
-  return holdsHidden(before, fields) ? refuse(403, `That holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't remove it.`) : null;
+// `children`: the stored values the server removes with it (childrenOf), held to the same.
+function hiddenDeleteRefusal(before, fields, children = []) {
+  if (holdsHidden(before, fields)) return refuse(403, `That holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't remove it.`);
+  return children.some((v) => holdsHidden(v, fields)) ? refuse(403, `What goes with it holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't remove it.`) : null;
 }
 function hiddenClearRefusal(values, fields) {
   return values.some((v) => holdsHidden(v, fields)) ? refuse(403, `Some of it holds details ${word('guest', { many: true })} can't see, so a ${word('guest')} can't clear everything.`) : null;
@@ -529,4 +590,17 @@ function fileOf(guards, key, value) {
   return isObject(ref) && typeof ref.id === 'string' && ref.id ? ref.id : null;
 }
 
-module.exports = { cleanGuards, unreadableGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, holdsHidden, hiddenPutRefusal, hiddenDeleteRefusal, hiddenClearRefusal, childrenOf, fileOf, deepEqual, fieldProblem };
+// Whether any stored value (of `values`) names the file `id` anywhere, in any field or inside text (a picture's address
+// in a note): what keeps a file when an object that named it goes, as the upload sweep checks (server/environment.js).
+function namesFile(values, id) {
+  return Boolean(id) && JSON.stringify(values).includes(id);
+}
+
+// The address of a link's picture a stored value holds under its rule's `linkImage`, or null.
+function linkImageOf(guards, key, value) {
+  const rule = ruleFor(guards, key)?.rule;
+  const url = rule && rule.linkImage && isObject(value) ? value[rule.linkImage] : null;
+  return typeof url === 'string' && url ? url : null;
+}
+
+module.exports = { cleanGuards, unreadableGuards, matchKey, ruleFor, closedNow, checkPut, checkDelete, checkClear, mayClear, hide, keepHidden, holdsHidden, hiddenPutRefusal, hiddenDeleteRefusal, hiddenClearRefusal, childrenOf, fileOf, namesFile, linkImageOf, keySpaceRefusal, deepEqual, fieldProblem };
