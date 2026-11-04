@@ -45,7 +45,12 @@ const stub = http.createServer((req, res) => {
     // A scripted answer, once: { answer, used, cut }, as the structured contract holds it.
     const script = scripted; scripted = null;
     const content = script ? JSON.stringify({ answer: script.answer, objects: [], used: script.used || [] }) : 'A plain stub answer.';
-    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content }, finish_reason: script && script.cut ? 'length' : 'stop' }], usage: { total_tokens: 10 } }));
+    // Offered the tools (the read tools and `answer`), a service answers a scripted answer by calling `answer`, as a real one does.
+    const hasAnswerTool = Array.isArray(j.tools) && j.tools.some((x) => x && x.function && x.function.name === 'answer');
+    const message = script && hasAnswerTool
+      ? { role: 'assistant', content: null, tool_calls: [{ id: 'call_stub', type: 'function', function: { name: 'answer', arguments: content } }] }
+      : { role: 'assistant', content };
+    res.end(JSON.stringify({ choices: [{ message, finish_reason: script && script.cut ? 'length' : message.tool_calls ? 'tool_calls' : 'stop' }], usage: { total_tokens: 10 } }));
   });
 });
 await new Promise((r) => stub.listen(0, '127.0.0.1', r));
