@@ -1859,6 +1859,20 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       a.remove();
       return true;
     },
+    // Print a stored file (a picture or a PDF) through the browser's print dialog, drawn from this page. The bytes are asked for with the
+    // download flag, so the server asks for the same right as library.download.
+    async 'library.print'({ id }) {
+      const doc = (pageMode ? container : frame).ownerDocument;
+      const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/content`, { download: '1' }), { headers: accessKeyHeaders() });
+      if (!res.ok) {
+        let said = '';
+        try { said = (await res.json()).error || ''; } catch { /* no body */ }
+        throw Object.assign(new Error(said || (res.status === 403 ? 'Your role can\'t print this file.' : res.status === 404 ? 'There is no such file.' : 'That did not print. Try again.')), { status: res.status });
+      }
+      const blob = await res.blob();
+      const { printBlob } = await import('/file-viewer.js');
+      return printBlob(doc, blob, blob.type);
+    },
     // Place search answered by the server (a module that declares `geocoder`): saved places first, then the chosen service.
     async 'geocode.search'({ q, lat, lon }) {
       return api('GET', url('/geocode', scopeOf(), { q: String(q ?? '').slice(0, 200), lat, lon }));

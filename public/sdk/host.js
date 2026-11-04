@@ -2669,6 +2669,8 @@
       url: (id, o) => call('library.url', { id, thumb: Boolean(o && o.thumb), download: Boolean(o && o.download) }),
       blob: (id, o) => call('library.blob', { id, thumb: Boolean(o && o.thumb) }),
       download: (id) => call('library.download', { id }),
+      // Opens the browser's print dialog for a picture or a PDF (Save as PDF is there too); needs the same right as download. Other kinds are refused.
+      print: (id) => call('library.print', { id }),
       share: (ids) => call('library.share', { ids }),
       shares: () => call('library.shares'),
     },
