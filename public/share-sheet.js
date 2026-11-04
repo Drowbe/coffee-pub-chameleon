@@ -318,11 +318,13 @@ export async function shareLinks({ doc = document, place, onChange, returnFocus,
           edit.addEventListener('click', () => editLink(s, edit));
           row.append(edit);
         }
-        const off = btn('btn btn-small', { label: 'Turn off', icon: 'link-slash', aria: `Turn off ${s.name}` });
-        off.type = 'button';
-        off.addEventListener('click', () => turnOff(s, off));
-        row.append(off);
-        cardBody.append(row);
+        if (s.canTurnOff) {
+          const off = btn('btn btn-small', { label: 'Turn off', icon: 'link-slash', aria: `Turn off ${s.name}` });
+          off.type = 'button';
+          off.addEventListener('click', () => turnOff(s, off));
+          row.append(off);
+        }
+        if (row.childElementCount) cardBody.append(row);
       }
       li.append(head, cardBody);
       ul.append(li);

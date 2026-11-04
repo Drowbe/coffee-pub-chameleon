@@ -8,7 +8,7 @@
 //   POST   /api/modules/:id/library/shares?space=          { name, files: [fid], days: 1|7|30, download?: bool, password?: string }
 //                                                           201 { share, token, url: "/shared/<token>" }  (the token only here, once)
 //   PATCH  /api/modules/:id/library/shares/:sid?space=     { name?, files? }  its maker or an owner; 200 { share }
-//   DELETE /api/modules/:id/library/shares/:sid?space=     Turn off; 200 { ok: true }
+//   DELETE /api/modules/:id/library/shares/:sid?space=     Turn off (its maker, an owner or a moderator of the space); 200 { ok: true }
 //   share: { id, name, files: [fid], by: <person key>, at, ends, download, hasPassword, opened }  (`opened`: how many times
 //   its list was read; no address or person is kept). GET /api/modules/:id/library adds `shared: true|false` to each file
 //   for someone with `share` only.
@@ -162,10 +162,13 @@ function mountVaultShares(app, deps) {
   const smallJson = express.json({ limit: '64kb' });
   const body = (req) => (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {});
 
+  const mayTurnOff = (ctx, s) => s.by === ctx.by || ctx.owner || ctx.moderator;
+
   app.get('/api/modules/:id/library/shares', (req, res) => {
     const ctx = libraryAccess(req, res, 'share');
     if (!ctx) return;
-    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId) });
+    // `canTurnOff`: this person may turn that link off (its maker, an owner or this space's moderator).
+    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId).map((s) => ({ ...s, canTurnOff: mayTurnOff(ctx, s) })) });
   });
 
   app.post('/api/modules/:id/library/shares', shareAccess, smallJson, (req, res) => {
@@ -202,6 +205,9 @@ function mountVaultShares(app, deps) {
   app.delete('/api/modules/:id/library/shares/:sid', (req, res) => {
     const ctx = libraryAccess(req, res, 'share');
     if (!ctx) return;
+    const s = vault.getShare(ctx.manifest.id, ctx.spaceId, req.params.sid);
+    if (!s) return res.status(404).json({ error: NO_SUCH_SHARE });
+    if (!mayTurnOff(ctx, s)) return res.status(403).json({ error: `Only the person who made this share link, ${word('owner', { a: true })} or a ${word('moderator')} of this ${word('space')} can turn it off.` });
     if (!vault.revokeShare(ctx.manifest.id, ctx.spaceId, req.params.sid)) return res.status(404).json({ error: NO_SUCH_SHARE });
     noteActivity(ctx.manifest.id, 'turned off a share link', ctx.by, `space:${ctx.spaceId}`);
     res.json({ ok: true });

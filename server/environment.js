@@ -190,7 +190,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
     const w = vault.swept;
     const found = [
       [w.parts, 'unfinished upload'], [w.orphans, 'file with no record', 'files with no record'], [w.missing, 'record whose file is missing', 'records whose files are missing'],
-      [w.folders, 'empty or leftover folder'], [w.spaces, 'deleted space still holding files', 'deleted spaces still holding files'],
+      [w.folders, 'empty or leftover folder'], [w.spaces, `deleted ${store.word('space')} still holding files`, `deleted ${store.word('space', { many: true })} still holding files`],
     ].filter(([n]) => n).map(([n, one, many]) => `${n} ${n === 1 ? one : (many || `${one}s`)}`);
     if (found.length) log(`Library sweep of ${vaultDir || path.join(dataDir, 'vault')}: ${found.join(', ')}${w.partial ? ' (stopped early; the rest on the next start)' : ''}.`);
   }

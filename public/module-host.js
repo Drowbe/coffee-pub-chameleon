@@ -1809,10 +1809,10 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
       // A mount opens files of its own space only, and a module other than the library itself only if its manifest consumes that kind and
       // an owner approved it (the server's resolve answers 403 otherwise; plan-attachments-vault.md, section 5).
-      if (scope !== 'space' || !spaceId || ref.space !== spaceId) throw Object.assign(new Error('that file is not in this space'), { status: 403 });
+      if (scope !== 'space' || !spaceId || ref.space !== spaceId) throw Object.assign(new Error(`that file is not in this ${word('space')}`), { status: 403 });
       if (ref.module !== module.id) {
         const [seen] = await api('POST', '/api/objects/resolve', { from: module.id, refs: [cleanPointer(ref)] }).then((r) => r.summaries || []);
-        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error((seen && seen.status === 403 && seen.error) || 'this module may not open files'), { status: 403 });
+        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error((seen && seen.status === 403 && seen.error) || `this ${word('module')} may not open files`), { status: 403 });
       }
       const holder = pageMode ? container : frame;
       const { openFile } = await import('/file-viewer.js');

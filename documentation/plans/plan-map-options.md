@@ -5,7 +5,8 @@ experience-design draws the Prototype, then builds the map themes' tokens, the M
 panel; server-development builds the theme's default field in `/theme.css` and extends `tools/check-maps.mjs`;
 quality-assurance checks the map reads on every theme; content-manager documents.
 
-**Status:** Draft, 2026-11-03. This plan proposes; Thomas decides. Where it came from: a map in a dark app theme is hard
+**Status:** Approved for Prototype step 0 only (Thomas, 2026-11-04); steps 1 to 4 wait until he has seen the Prototype.
+Drafted 2026-11-03. Where it came from: a map in a dark app theme is hard
 to read, and Thomas asked about a light version of the map. His direction, 2026-11-03: "we disconnect the map from
 themes and create specific themes for the map experience. We can default it for a theme, but the user can click the
 "..." menu and open map options for the space. We will want to add more to that at some point anyway, right? Like
@@ -44,9 +45,15 @@ Related: [plan-maps](plan-maps.md) (the themed style, "a light theme gets a ligh
    theme can give a default.
 2. **The choice is each person's own, not the space's** (Thomas, 2026-11-03). It needs no permission: anyone who can see
    the map can choose how it looks to them. A default set for a space is left as a possible later question (open
-   question 6).
+   question 2).
 3. **It is chosen from the module's "..." menu, in Map options** (Thomas, 2026-11-03), a panel with room for more
    options later, such as which details to show.
+4. **Light and Dark ship first, plus Theme default** (Thomas, 2026-11-04). Theme default, today's mixed map, stays a
+   choice beside them.
+5. **The shipped dark app themes default to the Light map** (Thomas, 2026-11-04); a new theme defaults to Theme default.
+6. **A guest's choice is kept in the browser** (Thomas, 2026-11-04), so the panel works the same for a guest.
+7. **The choice is per person** (Thomas, 2026-11-04, as already decided in 2).
+8. **A panel, not a menu flyout** (Thomas, 2026-11-04), for room for later sections.
 
 ## The contract
 
@@ -56,7 +63,7 @@ A map theme is a named set of the `--map-*` colours, fixed and not mixed from th
 mixes toward: its own ink, blue and green (`--map-ink`, `--map-blue`, `--map-green`). It is tokens only, in
 `public/sdk/system.css` beside today's `--map-*` block, under a selector on the element that holds the map:
 
-- `[data-map-theme="light"]` and `[data-map-theme="dark"]`: the two first map themes (open question 1).
+- `[data-map-theme="light"]` and `[data-map-theme="dark"]`: the two first map themes (decision 4).
 - No attribute: today's tokens, mixed from the app theme. This is **Theme default** when the app theme names no map
   theme of its own.
 
@@ -82,7 +89,7 @@ chosen nothing. The theme editor shows it as one choice, **Map**, under the set'
 - Maps' `module.json` adds `person` to `scope` and `"personWrite": "view"` to `access`, and its version goes up.
 - The choice is the person's in every space of the environment, and on the Map layout, Global Map and the module's own
   page alike.
-- A guest has no personal data on the server; see open question 4.
+- A guest has no personal data on the server; the choice is kept in the browser (decision 6).
 - On a change in another tab (the `change` event for `options`), the map switches.
 
 ### Map options
@@ -128,7 +135,7 @@ chosen nothing. The theme editor shows it as one choice, **Map**, under the set'
 - Step 1: `tools/check-maps.mjs` (checked by a tool): each map theme holds `MAP_MIN` untouched by the clamp (a map theme is
   the same under every app theme, so once each).
 - Step 2: in headless Chromium, the entry is in the "..." menu, the panel saves `options` in person scope, a reload keeps
-  it, a second tab follows, a guest gets what open question 4 decides. Drawing the map needs WebGL and a map file: the
+  it, a second tab follows, a guest's choice is kept in the browser and survives a reload. Drawing the map needs WebGL and a map file: the
   colours as drawn are verified only in a real browser (`tools/check-maps-live.mjs` where WebGL is there), and that must
   be said in the report.
 - Step 3: `/theme.css` carries `--map-default` only for the fixed words; an unknown word is refused on save and import.
@@ -147,17 +154,13 @@ chosen nothing. The theme editor shows it as one choice, **Map**, under the set'
 
 ## Open questions
 
-1. **Which map themes ship first?** Recommendation: Light and Dark, beside Theme default. Ideas for later: Muted (grey, so
-   pins stand out), Parchment (warm, for a game's world), High contrast.
-2. **Do the shipped dark app themes default to the Light map?** That would answer the complaint for everyone without a
-   choice. Recommendation: yes for the shipped dark sets; a new theme defaults to Theme default.
-3. **Does Theme default (today's mixed map) stay a choice once Light and Dark exist?** Recommendation: yes; it is what an
-   owner's own theme colours give, and removing it is a step back for a custom theme.
-4. **What does a guest get?** Guests have no personal data on the server. Recommendation: the choice kept in the browser
-   for a guest (local storage), so the panel works the same; the other option is no Map options for guests.
-5. **One choice per environment, or across all of a person's environments?** Person scope is per environment.
-   Recommendation: per environment, as built; across environments would need a profile field on the host.
-6. **A default set for a space, later?** An owner or moderator could set a space's default, which a person's own choice
-   overrides. Recommendation: not now; revisit only if a group asks for one look.
-7. **Is the panel a panel or a menu flyout?** A flyout under "..." (Map theme, then the three choices) is less to build
-   but has no room for later sections. Recommendation: the panel, as Thomas described.
+Questions 1 to 4 and 7 of the draft were decided on 2026-11-04 (decisions 4 to 8). Two stay open, with a recommendation each.
+
+1. **One choice per environment, or across all of a person's environments?** Person scope is per environment.
+   Recommendation: per environment, as built; across environments would need a profile field on the host. Does not block
+   the Prototype or steps 1 to 3.
+2. **A default set for a space, later?** An owner or moderator could set a space's default, which a person's own choice
+   overrides. Recommendation: no, not now; revisit only if a group asks for one look.
+
+Ideas for later map themes, not planned: Muted (grey, so pins stand out), Parchment (warm, for a game's world), High
+contrast.

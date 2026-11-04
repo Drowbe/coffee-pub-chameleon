@@ -8220,7 +8220,7 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   const perms = modulePerms(who, space.id);
   const can = (key) => Boolean(perms[`module.${manifest.id}.${key}`]);
   if (need && !can(need)) return refuse(403, `Your role can't do that in ${name}.`);
-  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user) };
+  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space) };
 }
 // Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
 // permission in `keys` of the module there. The public routes ask this on every open.

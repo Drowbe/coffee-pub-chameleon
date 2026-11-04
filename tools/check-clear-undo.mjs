@@ -108,7 +108,7 @@ await test('holds: a hold file that can\'t be read is logged and set aside on st
     const names = fs.readdirSync(path.join(dir, 'travel', 'trash')).sort();
     assert.deepEqual(names, ['environment.json.bad', 'notes.txt', 'space-abcd1234.json.bad'], 'both set aside; a file without a hold\'s name left alone');
     assert.equal(logged.length, 2);
-    assert.match(logged.find((l) => l.includes('space-abcd1234')), /^A held clear of travel \(space-abcd1234\.json\) could not be read, so it was set aside as space-abcd1234\.json\.bad\. What it took does not come back, and any files it named are left where they are\.$/);
+    assert.match(logged.find((l) => l.includes('space-abcd1234')), /^A held clear of travel \(space-abcd1234\.json\) could not be read, so it was renamed space-abcd1234\.json\.bad\. What it took does not come back, and any files it named are left where they are\.$/);
     assert.equal(h.peek('travel', 'space:abcd1234'), null);
     // stop(): an environment set aside (deleted, or replaced by a backup) never finishes a hold with its old data.
     h.onExpire = () => assert.fail('a stopped hold is not finished');
@@ -459,7 +459,7 @@ try {
     await stopServer(server);
     server = await startServer(dataDir, port, 'fourth', env);
     assert.ok(!fs.existsSync(file) && fs.existsSync(`${file}.bad`), 'renamed .bad');
-    assert.match(server.log(), new RegExp(`A held clear of todo \\(space-${T}\\.json\\) could not be read, so it was set aside`));
+    assert.match(server.log(), new RegExp(`A held clear of todo \\(space-${T}\\.json\\) could not be read, so it was renamed`));
     const cleared = await call('DELETE', data('todo', ''));
     assert.equal(cleared.status, 200, 'the module clears as before');
     assert.equal((await restore('todo', cleared.json.restoreToken)).status, 200);
