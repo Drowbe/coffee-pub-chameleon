@@ -836,6 +836,8 @@
     holdTimer = setTimeout(() => { holding = false; pump(); }, ms);
   }
   const MAX_TRIES = 8;
+  // How long the server asked to wait (Retry-After, in seconds); the old fixed wait only when it said nothing.
+  const waitMs = (err, fallback) => (err && err.retryAfter > 0 ? Math.min(err.retryAfter, 120) * 1000 : fallback);
   function startFiles(files) {
     state.notice = null;
     for (const f of files) {
@@ -875,7 +877,7 @@
       const mine = state.files.find((x) => x.id === rec.id);
       if (mine && updated) { mine.hasThumb = true; thumbs.set(rec.id, URL.createObjectURL(blob)); lastSig = ''; render(); }
     } catch (err) {
-      if (err && err.status === 429 && tries < 3) setTimeout(() => sendThumb(rec, blob, tries + 1), 15000);
+      if (err && err.status === 429 && tries < 3) setTimeout(() => sendThumb(rec, blob, tries + 1), waitMs(err, 15000));
     }
   }
   // Stopped while the last bytes were going: the file may have been kept. Look again, and say so.
@@ -912,13 +914,13 @@
       if (err && err.status === 429 && it.tries < MAX_TRIES) {
         it.tries += 1;
         it.status = 'queued'; it.waiting = true; it.pct = 0;
-        hold(it.tries < 3 ? 8000 : 15000);
+        hold(waitMs(err, it.tries < 3 ? 8000 : 15000));
         renderAdd();
         return;
       }
       it.status = 'refused';
       it.retry = !err || !err.status || err.status === 429 || err.status >= 500;
-      it.msg = err && err.status === 429 ? 'Too many files at once. Try again in a moment.' : (err && err.message) || 'That file could not be added.';
+      it.msg = (err && err.message) || 'That file could not be added.'; // the server's own sentence, also for a 429
       if (err && err.status === 413 && /full|used your/i.test(it.msg)) refresh({ quiet: true });
       renderAdd();
     } finally {

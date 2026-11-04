@@ -69,6 +69,8 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   if (!/!w\.missing && f\.viewable !== false\) list\.push\(end\(\{ type: 'button', id: 'download'/.test(read('public/file-viewer.js'))) fail('a download-only PDF has two Download buttons');
   if (!/\.vt-up-line\.vt-up-bad \{[^}]*white-space: normal/.test(read('modules/vault/src/vault.css'))) fail('a long refusal line in the queue is not wrapped');
   if (!/\.fv-main\.has-info \.fv-zoombar \{ position: static/.test(read('public/file-viewer.css'))) fail('the zoom bar overlaps the picture when Info is open');
+  if (/Too many files at once/.test(js) || !/waitMs\(err, /.test(js) || !/retryAfter/.test(js)) fail('the page does not wait the server\'s Retry-After and show its sentence');
+  if (!/retryAfter/.test(bridge) || !/retryAfter/.test(sdk)) fail('Retry-After of a 429 does not reach the module (err.retryAfter)');
   if (/ticket/i.test(js + html)) fail('the page names tickets');
   // fitCuts measures every name first and writes after: no measuring after the first write (that is a layout per card).
   const fit = js.slice(js.indexOf('function fitCuts('), js.indexOf('function openButton('));

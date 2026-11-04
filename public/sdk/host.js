@@ -3676,6 +3676,7 @@
           const err = new Error(m.error.message || 'failed');
           err.status = m.error.status;
           err.current = m.error.current;
+          if (m.error.retryAfter) err.retryAfter = m.error.retryAfter; // a 429's Retry-After, in seconds
           p.reject(err);
         } else {
           p.resolve(m.result);

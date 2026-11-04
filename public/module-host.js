@@ -1758,7 +1758,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         for (const [k, v] of Object.entries(accessKeyHeaders())) xhr.setRequestHeader(k, v);
         if (file.type) xhr.setRequestHeader('content-type', file.type);
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) send('libraryprogress', { token, loaded: e.loaded, total: e.total }); };
-        const fail = (message, status) => { libraryUploads.delete(token); reject(Object.assign(new Error(message), { status })); };
+        const fail = (message, status) => { libraryUploads.delete(token); reject(Object.assign(new Error(message), { status, ...(status === 429 ? { retryAfter: Number(xhr.getResponseHeader('Retry-After')) || 0 } : {}) })); };
         xhr.onload = () => {
           libraryUploads.delete(token);
           let data = {};
@@ -2190,7 +2190,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     try {
       reply(m.id, { result: await handler(m.params || {}) });
     } catch (err) {
-      reply(m.id, { error: { message: err.message, status: err.status, current: err.current } });
+      reply(m.id, { error: { message: err.message, status: err.status, current: err.current, retryAfter: err.retryAfter } });
     }
   }
   // A frame's messages arrive in the window it lives in, which is not this one
