@@ -2323,7 +2323,7 @@ test('file pointers: refuse another space, pass the server sentence', () => {
   const fn = canvas.slice(canvas.indexOf('function openRef(ref)'), canvas.indexOf('function answerOpenRef'));
   assert.ok(/ref\.kind === 'file' && ref\.scope === 'space' && !\(spaceId && ref\.space === spaceId\)\) \{\s*noticeToast\([^;]*\);\s*return false;/.test(fn), 'a file of another space refuses with a toast');
   assert.ok(fn.indexOf('noticeToast') < fn.indexOf('openFile('), 'the refusal comes before the file window');
-  assert.ok(mh.includes("seen.status === 403 && seen.error) || 'this module may not open files'"), 'the server\'s 403 sentence is passed on');
+  assert.ok(mh.includes("seen.status === 403 && seen.error) || `this ${word('module')} may not open files`"), 'the server\'s 403 sentence is passed on');
 });
 
 console.log(`check-travel: OK (${n} checks)`);
