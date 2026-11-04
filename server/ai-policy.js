@@ -70,10 +70,14 @@ function readSees(raw) {
   return out;
 }
 
-// The effective setting: the defaults, then the environment's choice, then the space's own (when it has one). A module id
+// The effective setting: the defaults, then the environment's choice, then the space's own (when it has one; `lookup` is the
+// environment's AND the space's). A module id
 // no longer enabled is dropped (`enabledIds`).
 function effectiveSees(envSees, spaceSees, enabledIds) {
-  const out = { ...SEES_DEFAULTS, ...readSees(envSees), ...(spaceSees ? readSees(spaceSees) : {}) };
+  const env = { ...SEES_DEFAULTS, ...readSees(envSees) };
+  const out = { ...env, ...(spaceSees ? readSees(spaceSees) : {}) };
+  // Decision 18: a space's own setting only narrows the look-ups. It can turn them off, never back on over the environment.
+  out.lookup = env.lookup && out.lookup;
   if (Array.isArray(out.modules)) out.modules = out.modules.filter((id) => !enabledIds || enabledIds.includes(id));
   return out;
 }
