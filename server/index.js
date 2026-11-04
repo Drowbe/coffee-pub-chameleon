@@ -7690,10 +7690,30 @@ app.get('/api/bus/actions/status', busRoute((who, req) => {
 function overLimit(moduleId, by, kind) {
   const r = moduleLimits.take(moduleId, by || 'guest', kind);
   if (r.ok) return null;
-  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind.startsWith('clear') ? 'clears' : kind + 's'} in a minute`, by === '*' ? null : by, null);
+  lastLimited = { moduleId, retrySeconds: r.retrySeconds };
+  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind.startsWith('clear') ? 'clears' : kind.startsWith('library') ? 'files' : kind + 's'} in a minute`, by === '*' ? null : by, null);
   return r;
 }
-const limitMessage = () => `This ${word('module')} is doing that too often. Try again in a moment.`;
+// The Vault's budget: a file or a small picture counts for the person and for the environment together; refused by either,
+// the person's count is given back. Returns the refusal or null.
+function overLibraryLimit(ctx, kind) {
+  const mine = overLimit(ctx.manifest.id, ctx.by, kind);
+  if (mine) return mine;
+  const all = overLimit(ctx.manifest.id, '*', 'libraryAll');
+  if (all) moduleLimits.refund(ctx.manifest.id, ctx.by, kind);
+  return all;
+}
+// The sentence for the refusal overLimit just made (it is always built straight after, in the same turn): the module's own
+// name and what to do, with the seconds to wait.
+let lastLimited = null;
+function limitMessage() {
+  const l = lastLimited;
+  lastLimited = null;
+  const found = l && modules.enabled(l.moduleId);
+  const name = found ? modules.shownName(found.manifest) : `This ${word('module')}`;
+  const secs = l ? l.retrySeconds : 0;
+  return secs ? `${name} is busy. Wait ${secs} ${secs === 1 ? 'second' : 'seconds'} and it will carry on.` : `${name} is busy. Wait a moment and it will carry on.`;
+}
 app.get('/api/modules/activity', requireOwner, (_req, res) => {
   res.json({
     activity: moduleActivity.slice(-100).reverse().map((a) => ({ ...a, moduleName: store.moduleDisplay(a.module).name || modules.enabled(a.module)?.manifest.name || a.module, byName: store.userByKey(a.by)?.displayName || (a.by === 'guest' ? word('guest', { a: true }) : a.by) })),
@@ -8457,7 +8477,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
   const claimed = vaultTypes.claimedType(name, sentType);
   if (claimed && declared > vaultTypes.LIMITS[vaultTypes.TYPES[claimed].limit].bytes) return refuse(413, overTypeLimit(claimed));
   if (declared > vaultTypes.MAX_BYTES) return refuse(413, `That file is over the ${sizeText(vaultTypes.MAX_BYTES)} limit for video.`);
-  const limited = overLimit(ctx.manifest.id, ctx.by, 'upload');
+  const limited = overLibraryLimit(ctx, 'library');
   if (limited) return refuse(429, limitMessage(), { 'Retry-After': String(limited.retrySeconds) });
   const keys = libraryKeys(ctx);
   const slow = slowRefusal(keys);
@@ -8624,8 +8644,8 @@ app.put('/api/modules/:id/library/:fid/thumb', async (req, res) => {
   const declared = Number(req.headers['content-length']);
   if (!declared) return refuse(400, 'There is no picture in that.');
   if (declared > LIBRARY_THUMB_BYTES) return refuse(413, 'That small picture is over 300 KB.');
-  const limited = overLimit(ctx.manifest.id, ctx.by, 'upload');
-  if (limited) return refuse(429, limitMessage());
+  const limited = overLibraryLimit(ctx, 'libraryThumb');
+  if (limited) return refuse(429, limitMessage(), { 'Retry-After': String(limited.retrySeconds) });
   const keys = libraryKeys(ctx);
   const slow = slowRefusal(keys);
   if (slow) return refuse(429, slow.error, { 'Retry-After': String(slow.retry) });

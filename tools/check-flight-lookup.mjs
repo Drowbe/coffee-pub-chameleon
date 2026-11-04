@@ -733,7 +733,7 @@ try {
     let r;
     for (let i = 0; i < 41; i += 1) r = await lookup(single, '', sam, 'number=WN2483&date=2026-11-21', inSpace);
     expect(r, 429, 'the 41st lookup in a minute');
-    assert.equal(r.json.error, 'This module is doing that too often. Try again in a moment.');
+    assert.match(r.json.error, /^.+ is busy\. Wait \d+ seconds? and it will carry on\.$/);
     expect(await lookup(single, '', pat, 'number=WN2483&date=2026-11-21', inSpace), 200, 'someone else is not slowed');
   });
 

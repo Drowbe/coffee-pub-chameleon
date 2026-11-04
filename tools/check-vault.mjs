@@ -1127,14 +1127,36 @@ try {
     const r = await send(A, 'POST', `/api/modules/shelf/library?space=${trip.id}&name=late.mp4`, { cookie: people.kit.token, headers: { 'content-type': 'video/mp4' }, body: mp4Of(15 * MB) });
     ok(r.status === 429 && /^You have sent a lot in the last minute\. Wait \d+ seconds and try again\.$/.test(r.json?.error) && Number(r.headers['retry-after']) > 0, `over VAULT_MB_PER_MINUTE: 429 with Retry-After (${r.status} ${r.text})`);
   }
-  // The module's own upload limit: 30 a minute for one person.
+  // The library's own budget (apart from the module's 30 a minute for picture uploads): a bulk drop of 60 small pictures, each with
+  // its small picture, is all taken; reading small pictures is not counted against it; and past 400 files a minute for one
+  // person the answer names the module and says how long to wait.
   {
+    const added = [];
+    let refused = 0;
+    for (let i = 0; i < 60; i += 1) {
+      const r = await add('rae', `burst${i}.gif`, gifOf(), { type: 'image/gif' });
+      if (r.status === 201) added.push(r.json.file); else refused += 1;
+    }
+    same([added.length, refused], [60, 0], 'a burst of 60 small pictures: all taken');
+    let thumbsPut = 0; let thumbsRead = 0;
+    for (const f of added) {
+      const put = await send(A, 'PUT', `/api/modules/shelf/library/${f.id}/thumb?space=${trip.id}`, { cookie: people.rae.token, headers: { 'content-type': 'image/png' }, body: pngOf(2, 2) });
+      if (put.status === 200) thumbsPut += 1;
+    }
+    for (let round = 0; round < 3; round += 1) for (const f of added) {
+      const got = await send(A, 'GET', `/api/modules/shelf/library/${f.id}/thumb?space=${trip.id}`, { cookie: people.rae.token });
+      if (got.status === 200) thumbsRead += 1;
+    }
+    same([thumbsPut, thumbsRead], [60, 180], '60 small pictures sent and read 180 times: none limited by the uploads');
     let got = null;
-    for (let i = 0; i < 32 && !got; i += 1) {
+    for (let i = 60; i < 420 && !got; i += 1) {
       const r = await add('rae', `g${i}.gif`, gifOf(), { type: 'image/gif' });
       if (r.status === 429) got = r;
     }
-    same(got?.json?.error, 'This module is doing that too often. Try again in a moment.', 'the module upload limit (30 a minute) holds, and says so plainly');
+    ok(got && /^Shelf is busy\. Wait \d+ seconds? and it will carry on\.$/.test(got.json?.error || ''), `past the person's 400 files a minute: 429 naming the module (${got?.status} ${got?.text})`);
+    const wait = Number(got?.headers['retry-after']);
+    ok(wait >= 1 && wait <= 60 && got.json.error.includes(`Wait ${wait} second`), `Retry-After (${wait}) matches the sentence`);
+    same((await send(A, 'GET', `/api/modules/shelf/library/${added[0].id}/thumb?space=${trip.id}`, { cookie: people.rae.token })).status, 200, 'and a small picture is still read at once');
   }
   same(partsUnder(A.vaultDir), [], 'no part file is left after any of it');
 
