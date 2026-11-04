@@ -131,6 +131,18 @@ await test('each generated schema is plain and OpenAI-strict, accepts its own ex
   assert.equal(checkToolInput(due, { task: { module: 'todo', kind: 'task', id: 'x' }, date: '2026-05-12' }).ok, false);
 });
 
+await test('an empty optional text is absent; a wrong pointer number names the kind', () => {
+  const due = catalog.tools.find((t) => t.name === 'todo__setTaskDue');
+  const day = catalog.tools.find((t) => t.name === 'travel__addToDay');
+  assert.deepEqual(checkToolInput(day, { object: 1, date: '' }), { ok: true, input: { object: 1 } });
+  assert.deepEqual(checkToolInput(day, { object: 1, date: '   ' }), { ok: true, input: { object: 1 } });
+  assert.equal(checkToolInput(due, { task: 1, date: '' }).error, 'date must be a date, YYYY-MM-DD.', 'an empty required one is wrong, not absent');
+  assert.equal(checkToolInput(due, { task: 0, date: '2026-05-12' }).error, 'task must be the number n of a task shown in this question.');
+  const link = catalog.tools.find((t) => t.name === 'todo__linkTask');
+  assert.equal(checkToolInput(link, { task: 1, target: 'x' }).error, 'target must be the number n of an object shown in this question.');
+  assert.equal(checkToolInput(link, { task: 1, target: '' }).error, 'target must be the number n of an object shown in this question.', 'an empty required one is still wrong, not absent');
+});
+
 await test('impossible dates and bad datetimes are refused, as search_objects refuses an impossible day', () => {
   const due = catalog.tools.find((t) => t.name === 'todo__setTaskDue');
   assert.equal(checkToolInput(due, { task: 1, date: '2026-05-12' }).ok, true);

@@ -132,18 +132,24 @@ function checkToolInput(tool, value) {
   for (const key of Object.keys(properties)) if (needed(key) && (value[key] === undefined || value[key] === null)) return { ok: false, error: `${key} is needed.` };
   const input = {};
   for (const [key, s] of Object.entries(properties)) {
-    const v = value[key];
+    let v = value[key];
+    // An optional text left empty is the same as left out (a model fills every field in strict form).
+    if (!needed(key) && typeof v === 'string' && !v.trim()) v = undefined;
     if (v === undefined || v === null) continue;
     const type = Array.isArray(s.type) ? s.type.find((x) => x !== 'null') : s.type;
     if (type === 'integer') {
-      if (!Number.isInteger(v) || v < s.minimum) return { ok: false, error: `${key} must be the number n of ${word('object', { a: true })} shown in this question.` };
+      if (!Number.isInteger(v) || v < s.minimum) {
+        const base = baseOf((tool.input || {})[key] ?? '');
+        const kind = base.startsWith('ref:') ? base.split(':')[2] : '';
+        return { ok: false, error: `${key} must be the number n of ${kind ? `${article(kind)} ${kind}` : word('object', { a: true })} shown in this question.` };
+      }
     } else if (type === 'number') {
       if (typeof v !== 'number' || !Number.isFinite(v)) return { ok: false, error: `${key} must be a number.` };
     } else if (type === 'boolean') {
       if (typeof v !== 'boolean') return { ok: false, error: `${key} must be true or false.` };
     } else {
       if (typeof v !== 'string') return { ok: false, error: `${key} must be text.` };
-      if (s.pattern && dayText(v) !== v) return { ok: false, error: `${key} must be a date, YYYY-MM-DD.` };
+      if (s.pattern && (!v || dayText(v) !== v)) return { ok: false, error: `${key} must be a date, YYYY-MM-DD.` };
       if (s.format === 'date-time' && !dateTimeOk(v)) return { ok: false, error: `${key} must be a date and time, like 2026-05-12T10:00.` };
       if ([...v].length > (s.maxLength || Infinity)) return { ok: false, error: `${key} is at most ${s.maxLength} characters.` };
       if (s.minLength && !v.trim()) return { ok: false, error: `${key} is needed.` };
