@@ -454,6 +454,8 @@ await host.library.share([file.id]);                         // opens the share 
 await host.library.shares();                                 // opens the list of the space's share links over the page
 ```
 
+Any host call the server refuses for being too fast (429), a library call included, rejects with `err.status === 429`, the server's sentence in `err.message` (for the Vault, "<Vault> is busy. Wait N seconds and it will carry on.") and `err.retryAfter`, the seconds the server said to wait (from its `Retry-After` header; absent when it said nothing). A bulk add should wait that long, not a fixed time, before it tries again. The budgets are in [api-modules](api-modules.md), "Limits".
+
 - `missing: true` is a file whose record is there and whose bytes are gone (a restore without `VAULT_DIR`); The server answers a request for its bytes with 404 and "File missing. Its content is gone from the server; remove it from the list." (read as code at the route; not run through `host.library.blob`). `shared: true` is a file in a share link that still opens, and only people with `share` get the field.
 - `share(ids)` and `shares()` are drawn by the host in the page (so Copy works; a frame may not use the clipboard) and resolve when the sheet is up. Your module hears `sharechanged` when a link is made, changed or turned off (call `list()` again), and `sharechoose` when the person presses **Choose files** in the list of links (start choosing files). The sentences are the server's; see [api-modules](api-modules.md), "Share links".
 
@@ -573,6 +575,8 @@ An entry is one of three things:
 Limits: a label is up to 40 characters; at most 8 top-level entries, 12 leaves in a category and 40 leaves in all. The host drops the rest without refusing the call. With exactly one leaf and no category, the **+** runs it at once and its label is the tooltip ("Add event"). With more, the **+** (tooltip "Add") opens the host's menu, where a category's leaves fly out beside its row (and drill in in the narrow layout, with a **Back** entry). A pick arrives as the `add` event `{ id }`, and a category itself sends nothing. An empty list takes the **+** away: send one for a person who may not add, since what "may add" means is the module's own permission. Call it again whenever what can be added changes.
 
 It resolves `true` when the host drew it (a window's title bar, popped out too, a module's own page, a destination's page, or the composite's title bar for a part shown as a layout on a space's canvas, where the part hides its own add buttons) and `false` only for a dashboard widget, which has no title bar; keep your own add button there.
+
+`host.add.focus()` puts the keyboard on the **+**. Call it when a panel your module opened from the **+** closes, so Escape does not drop focus to the page (the Vault does this when **Add files** closes). It resolves `true` when the button took focus and `false` where there is none (a dashboard widget, or a button that is disabled); on `false`, put focus somewhere sensible in your own page.
 
 ### The status line (`host.status.set`)
 

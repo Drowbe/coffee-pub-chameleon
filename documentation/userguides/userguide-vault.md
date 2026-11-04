@@ -36,9 +36,13 @@ A file someone else adds, renames or removes appears at once, without reloading.
 2. Drop the files in the area, or choose **Choose files**. You can add several; they go one after another, each with a bar that shows how far it has got. **Try again** repeats one that failed, and the cross beside a file stops it or clears it from the list.
 3. Optionally tick **Remove where it was taken** before you add pictures. It is off by default, so a picture keeps the place it was taken; tick it to take that place out of the picture. Your choice is remembered, for you only. Videos keep their details, which can include where they were taken, and the Vault says so.
 
+Press **Esc** to close **Add files**; the keyboard goes back to the **+** that opened it.
+
 What it takes: pictures (JPEG, PNG, WebP and GIF, up to 25 MB), audio (MP3, OGG, WAV and M4A, up to 200 MB), video (MP4, WebM and MOV, up to 2 GB), PDF (up to 100 MB) and Markdown (up to 1 MB). The Vault looks inside each file, not at its name, so a file whose name says one thing and whose contents say another is refused. It refuses what it does not take, such as SVG, web pages, Office files and programs; HEIC pictures are refused with "Save it as a JPEG."
 
 Everyone in the space can see what you add. There is no private file.
+
+**Adding many at once.** A person can add 400 files and their small pictures in a minute, and one environment 1,500 together, so a drop of a few hundred files goes through. If the Vault is told to wait ("<Vault> is busy. Wait N seconds and it will carry on.", or "You have sent a lot in the last minute. Wait N seconds and try again."), it waits as long as the server asked (up to two minutes) and tries that file again, up to eight times, before it shows a failure. A file that fails shows the server's own sentence, and **Try again** repeats it.
 
 **Limits.** A space can hold a set amount and each person can add a set amount in all (an owner can lower either on the Vault's settings, **Most one space may hold, in GB** and **Most one person may add, in GB**, and the server has its own). When one is reached, the Vault says which and asks you to remove some files. It also asks you to wait when you have sent a lot in the last minute, or when other uploads are still running, and it cuts off an upload that stops moving for a minute.
 
@@ -49,12 +53,14 @@ Everyone in the space can see what you add. There is no private file.
 Choose the **More** button on a file's row or card. You see **Open**, **Download**, **Rename**, **Where it is used** and **Remove**.
 
 - **Rename** opens a small window. Keep the ending (such as `.pdf`) as it is; a name can be 120 characters.
-- **Remove** asks first. It says where the file is used, and that the places that link to it will show "File removed". Removing a file takes it from the Vault for everyone in the space and cannot be undone. It also takes the file out of any share link, and a share link left with no file ends.
+- **Remove** asks first. It says where the file is used, and that the places that link to it will show "File removed". The question ends: "It is removed from the Vault for everyone in this space, and from any share link it is in. A link left with no file ends. This can't be undone." (the Vault's and the space's names are your environment's words). After it is removed, the keyboard stays in the list, on the file next to it, or on the empty list's button, not at the top of the page.
 - You can rename and remove files you added. Renaming or removing someone else's needs **Remove files other people added**.
 
 ## Select several files
 
 Choose **Select** in the title bar to tick files. The toolbar then shows how many you chose, **Choose all** (or **Choose none**), **Download** and **Remove**, and **Done** leaves selecting. **Remove** is greyed out if you ticked a file you may not remove, and the status line says "Remove is only for files you added". Several downloads go one at a time, as your browser allows.
+
+On a phone, or on any touch screen, the Vault's own small buttons (**More**, the cross beside an uploading file, **Close** on **Add files**) are 44 pixels, so they are easy to press.
 
 ## Open a file
 

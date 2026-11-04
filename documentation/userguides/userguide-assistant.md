@@ -10,7 +10,7 @@ The AI is asked from Chat now, in its **Assistant** tab or with `/ai`; see [Chat
 2. Optional: to limit who may use `/ai` by role, choose **Install** beside Assistant on the Modules tab, then **Approve and enable**. A module that is enabled is on in every space.
 3. On the Roles tab, under Module: Assistant, **Use the assistant** no longer decides who may use `/ai`. **Use AI in modules**, under AI, does, for `/ai` and for AI inside other modules (Research's **Suggest tags**) alike. It starts on for moderators and members. Guests never can, and nobody can in a space where **Turn AI off in this space** is ticked.
 
-4. Optional: on the AI configuration page, choose what goes to the AI with a question (**What AI may see**) and read **AI use this month**. Both are described in [Modules](userguide-modules.md), "The AI service". By default the AI is sent the objects a person attaches, related and linked objects, and the person's own earlier questions, never the chat or the list of people, and never another space's objects.
+4. Optional: on the AI configuration page, choose what goes to the AI with a question (**What AI may see**) and read **AI use this month**. Both are described in [Modules](userguide-modules.md), "The AI service". By default the AI is sent the objects a person attaches, related and linked objects, and the person's own earlier questions, and may look this space's objects up while it answers (only those the person could open), never the chat or the list of people, and never another space's objects.
 
 Without the Assistant installed, `/ai` works the same way for anyone signed in whose role may use AI, wherever AI is not turned off.
 
