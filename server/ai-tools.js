@@ -19,7 +19,7 @@
 const prompts = require('./prompts');
 const { cleanData } = require('./prompts/inputs');
 const toolRegistry = require('./prompts/tools');
-const { moduleAllowed, redactText } = require('./ai-policy');
+const { moduleAllowed, redactText, redactSummary } = require('./ai-policy');
 const { wordsOf, whenText } = require('./ai-context');
 const { AiError, completeRound, FETCH_MS } = require('./ai-providers');
 
@@ -112,8 +112,10 @@ function createAiTools(deps) {
         }
         let score = 0;
         if (input.words) {
-          const title = `${s.title || ''} ${s.subtitle || ''}`.toLowerCase();
-          const hay = new Set(wordsOf(`${s.title} ${s.subtitle || ''} ${s.kindName || ''} ${s.category || ''} ${placeText(s.place)}`));
+          // Matched on what the model may read, never on the raw text: a secret in a title can't be found by searching for it.
+          const r = redactSummary(s, secretList);
+          const title = `${r.title || ''} ${r.subtitle || ''}`.toLowerCase();
+          const hay = new Set(wordsOf(`${r.title} ${r.subtitle || ''} ${r.kindName || ''} ${r.category || ''} ${placeText(r.place)}`));
           score = asked.filter((w) => hay.has(w)).length + (phrase && title.includes(phrase) ? 1 : 0);
           if (!score) continue;
         }
