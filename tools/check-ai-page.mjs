@@ -18,6 +18,7 @@
  *
  *   node tools/check-ai-page.mjs        (no Chromium: SKIPPED, exit 0; that is a skip, never a pass)
  */
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -300,7 +301,9 @@ async function cutChecks(open, workspace) {
 
 // Manage's AI service tab: What AI may see, and this month's use.
 async function manageChecks(open, S, admin) {
-  for (const size of [1280, 390]) {
+  // AI_PAGE_SIZE limits which widths this runs at; the width it measures against is always the one it opened.
+  const only = Number(process.env.AI_PAGE_SIZE);
+  for (const size of only ? [only] : [1280, 390]) {
     const m = await open({ as: 'admin', url: '/admin#modules/ai', wait: '#ai-sees-box' }, size);
     try {
       await sleep(2200);
@@ -350,9 +353,11 @@ async function manageChecks(open, S, admin) {
 
 // A space's Set up: What AI may see follows the environment, until its switch is turned off.
 async function setupChecks(open, S, admin) {
+  const seesShown = async (tab) => { for (let i = 0; i < 40; i += 1) { if (await tab.eval(`document.querySelector('[data-section="ai-sees"]')?.getClientRects().length > 0`)) return; await sleep(250); } };
   const t = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
   try {
-    await sleep(2500);
+    await sleep(1500);
+    await seesShown(t);
     const at = await t.eval(`({ shown: document.querySelector('[data-section="ai-sees"]').getClientRects().length > 0, follow: document.getElementById('setup-ai-sees-follow').checked, locked: [...document.querySelectorAll('#setup-ai-sees-box input')].every((i) => i.disabled) })`);
     expect(at.shown && at.follow && at.locked, `Set up does not show What AI may see as the environment's choice (${JSON.stringify(at)})`);
     await t.eval(`document.querySelector('[data-section="ai-sees"]').scrollIntoView()`);
@@ -380,7 +385,8 @@ async function setupChecks(open, S, admin) {
   // Opened again: the space's own choice shows, and its switch gives it back to the environment.
   const t2 = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
   try {
-    await sleep(2500);
+    await sleep(1500);
+    await seesShown(t2);
     const own = await t2.eval(`({ follow: document.getElementById('setup-ai-sees-follow').checked, chat: document.getElementById('setup-ai-sees-chat').checked })`);
     expect(!own.follow && own.chat, `Set up did not show the space's own choice again (${JSON.stringify(own)})`);
     await t2.eval(`document.getElementById('setup-ai-sees-follow').click()`);
@@ -390,6 +396,52 @@ async function setupChecks(open, S, admin) {
     expect(!back.aiSees, `following the environment again did not clear the space's own (${JSON.stringify(back.aiSees)})`);
     say('set up: follows the environment, saves its own, follows again');
   } finally { await t2.close(); }
+  // With look-ups off for the whole environment, the space's switch is shown off and locked, with the reason, even on its own.
+  const jsonPut = (url, method, body) => fetch(`${S.base}${url}`, { method, headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify(body) });
+  assert.equal((await jsonPut('/api/ai', 'PUT', { sees: { lookup: false } })).status, 200);
+  const t3 = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
+  try {
+    await sleep(1500);
+    await seesShown(t3);
+    const read = `(() => { const i = document.getElementById('setup-ai-sees-lookup'); return { on: i.checked, disabled: i.disabled, reason: i.closest('label').textContent.replace(/\\s+/g, ' '), chatDisabled: document.getElementById('setup-ai-sees-chat').disabled }; })()`;
+    let got = await t3.eval(read);
+    expect(!got.on && got.disabled && /Off for the whole /.test(got.reason), `following an environment with look-ups off: the switch is not off, locked and explained (${JSON.stringify(got)})`);
+    await t3.eval(`document.getElementById('setup-ai-sees-follow').click()`);
+    await sleep(300);
+    got = await t3.eval(read);
+    expect(!got.on && got.disabled && !got.chatDisabled && /Off for the whole /.test(got.reason), `a space's own settings can turn look-ups back on over the environment's off (${JSON.stringify(got)})`);
+    await t3.eval(`document.querySelector('[data-section="ai-sees"]').scrollIntoView()`);
+    await snap(t3, 'setup-sees-lookup-locked');
+    say('set up: look-ups off for the whole environment show off, locked and explained');
+  } finally { await t3.close(); await jsonPut('/api/ai', 'PUT', { sees: null }); }
+}
+
+// A shared AI answer reaches another person's open page with its citations, with no reload.
+async function sharedAnswerChecks(open, S, admin, workspace) {
+  const post = (url, method, body) => fetch(`${S.base}${url}`, { method, headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify(body) });
+  const sam = await open({ ...workspace, as: 'sam' });
+  try {
+    await sleep(1500);
+    scripted = { answer: 'Shared find [1].', used: [1] };
+    const asked = await post(`/api/spaces/${S.ctx.trip}/ai`, 'POST', { question: 'What is in the shared note?', refs: [{ module: 'research', kind: 'note', scope: 'space', space: S.ctx.trip, id: 'n1' }] });
+    const answer = await asked.json();
+    expect(asked.status === 200 && answer.id, `could not ask for the shared-answer check (${asked.status})`);
+    const cites = `[...document.querySelectorAll('#messages .message')].filter((m) => /Shared find/.test(m.textContent)).pop()?.querySelectorAll('.message-cite').length`;
+    expect((await sam.eval(cites)) == null, 'a private answer was on another person\'s page');
+    for (const round of ['shared', 'shared again after being made private']) {
+      expect((await post(`/api/spaces/${S.ctx.trip}/chat/${answer.id}`, 'PATCH', { visibility: 'public' })).status === 200, `could not share (${round})`);
+      let n;
+      for (let i = 0; i < 30 && !n; i += 1) { await sleep(300); n = await sam.eval(cites); }
+      expect(n === 1, `${round}: the shared answer did not reach the other page with its citation link (${n})`);
+      expect(await sam.eval(`[...document.querySelectorAll('#messages .message')].filter((m) => /Shared find/.test(m.textContent)).pop()?.querySelector('.message-used') !== null`), `${round}: the "AI used" line is missing`);
+      if (round === 'shared') {
+        await post(`/api/spaces/${S.ctx.trip}/chat/${answer.id}`, 'PATCH', { visibility: 'private' });
+        await sleep(1200);
+        expect((await sam.eval(cites)) == null, 'the answer stayed on the other page after it was made private');
+      }
+    }
+    say('shared answer: the other page draws its citations and "AI used" without a reload, also when shared again');
+  } finally { await sam.close(); }
 }
 
 async function main() {
@@ -410,9 +462,9 @@ async function main() {
     // Using AI needs the role's Use AI; give members theirs whatever the default is.
     const role = await fetch(`${S.base}/api/roles/member`, { method: 'PATCH', headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify({ useAi: true }) });
     expect(role.status === 200, `could not give members Use AI (${role.status})`);
-    const open = async (screen, size = 1280) => {
+    const open = async (screen, size = Number(process.env.AI_PAGE_SIZE) || 1280) => {
       const tab = new Tab(browser.cdp, S.ctx);
-      await tab.open(Number(process.env.AI_PAGE_SIZE) || size, process.env.AI_PAGE_MODE === 'light' ? 'light' : 'dark', screen.call === true);
+      await tab.open(size, process.env.AI_PAGE_MODE === 'light' ? 'light' : 'dark', screen.call === true);
       const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
       await driveScreen(tab, screen, S.base, S.cookies, S.ctx);
       return tab;
@@ -485,6 +537,7 @@ async function main() {
     await lookupChecks(open, S, workspace);
     await manageChecks(open, S, admin);
     await setupChecks(open, S, admin);
+    await sharedAnswerChecks(open, S, admin, workspace);
     unitChecks();
 
     // The AI not set up: the Assistant says so first.
