@@ -394,8 +394,8 @@ function pdfView(file, source, api) {
 }
 
 export function downloadOnlyView(file, source) {
-  if (!source.download) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY_NO, text: `The ${source.module} could not check this file, so it is kept for download only.` });
-  return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY, text: `The ${source.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: downloadButton(file, source) });
+  if (!source.download) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY_NO, text: `${source.module} could not check this file, so it is kept for download only.` });
+  return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: DOWNLOAD_ONLY, text: `${source.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: downloadButton(file, source) });
 }
 
 // The view for a file. `api`: { win, replace(view) puts a state in its place (an error found while loading), fullscreen(), escape() }.

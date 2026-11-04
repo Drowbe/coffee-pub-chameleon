@@ -53,6 +53,11 @@
 .fv-pic-wrap > img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-drag: none; }
 .fv-zoombar { position: absolute; left: 50%; bottom: var(--space-3); z-index: 1; display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); transform: translateX(-50%); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 94%, transparent); box-shadow: var(--shadow-2); }
 .fv-zoombar[hidden] { display: none; }
+/* With Info open, or in a very small window, the bar sits under the picture instead of over it */
+.fv-main.has-info .fv-zoombar { position: static; flex: none; align-self: center; margin: var(--space-2) 0; transform: none; }
+@container fvbody (max-width: 420px) {
+  .fv-zoombar { position: static; flex: none; align-self: center; margin: var(--space-2) 0; transform: none; }
+}
 .fv-zoom-level { min-width: 56px; justify-content: center; }
 
 /* audio and video: the browser's own controls */
@@ -122,6 +127,7 @@
   .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button { position: relative; }
   .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) button::after { content: ""; position: absolute; top: 50%; right: -2px; left: -2px; height: 44px; transform: translateY(-50%); }
   .fv-pdfbar, .fv-pdf-search { padding-block: var(--space-2); }
+  .fv-body :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search, .fv-info-head) :is(.btn, .sdk-icon-btn) { --btn-h: 44px; }
   .fv-use-link { min-height: 44px; }
   .fv-state .sdk-empty-actions .btn { --btn-h: 44px; min-height: 44px; }
 }

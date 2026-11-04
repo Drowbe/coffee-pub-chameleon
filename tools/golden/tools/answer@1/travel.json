@@ -1,0 +1,8 @@
+{
+  "name": "answer@1",
+  "description": "Give your answer to the question. Always finish by calling this, once.",
+  "schema": {
+    "contract": "the template's output contract"
+  },
+  "result": null
+}

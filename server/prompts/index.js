@@ -12,7 +12,7 @@ const { parseSummaries, parseTags, citedItems, readAnswer, MAX_SUMMARIES, MAX_AN
 
 // Each template's kept versions, newest first: the current one and, once there is one, the one before it.
 const KEPT = {
-  ask: [require('./ask').template],
+  ask: require('./ask').templates,
   summarise: [require('./summarise').template],
   tags: [require('./tags').template],
   paste: [require('./paste').template],
@@ -62,18 +62,21 @@ const allTemplates = () => IDS.flatMap((id) => KEPT[id]);
 // A template's messages for the providers: [{ role: 'system' | 'user' | 'assistant', content }], instructions in the one system
 // message, then the data document as one user message holding JSON, then the history as alternating user and assistant
 // messages, then the question as the last user message. `structured`: the provider takes the output contract's schema, so
-// the system part says so and `schema` comes with it. Answers { name, messages, schema, maxTokens, structured }.
-function render(t, inputs, { structured = false } = {}) {
+// the system part says so and `schema` comes with it. `tools`: the read tools are offered with it (a template that takes them,
+// `t.tools`, says so in its system part; one that doesn't renders as without). Answers
+// { name, messages, schema, maxTokens, structured, tools }.
+function render(t, inputs, { structured = false, tools = false } = {}) {
   if (!t || !t.system) throw new InputError('that template is not rendered for a model');
   checkInputs(t, inputs);
-  const messages = [{ role: 'system', content: t.system(inputs, { structured }) }];
+  const withTools = Boolean(tools && t.tools);
+  const messages = [{ role: 'system', content: t.system(inputs, { structured, tools: withTools }) }];
   messages.push({ role: 'user', content: JSON.stringify(cleanData(t.data(inputs))) });
   for (const turn of inputs.history || []) {
     messages.push({ role: 'user', content: turn.question });
     messages.push({ role: 'assistant', content: turn.answer });
   }
   if (inputs.question !== undefined) messages.push({ role: 'user', content: inputs.question });
-  return { name: nameOf(t), messages, schema: structured ? t.schema(inputs) : null, maxTokens: t.budget.answer, structured };
+  return { name: nameOf(t), messages, schema: structured ? t.schema(inputs) : null, maxTokens: t.budget.answer, structured, tools: withTools };
 }
 
 // How many numbered objects a template's inputs hold (attached, then the rollup's relevant and linked): what `used` and
@@ -86,7 +89,8 @@ function numbered(inputs) {
 // An answer read against its template. `answer`: { text, structured?, finish } from an adapter. For ask and summarise:
 // { text, summaries, used, cut }; for tags: { tags, cut }. A structured answer is read as JSON; a text answer (or a structured
 // one that does not read) by prompt-then-parse. `cut`: the provider stopped for length, or the answer stops mid-object.
-function parse(t, answer, inputs) {
+// `count`: how many numbers were given out, when the read tools gave out more than the inputs hold (server/ai-tools.js).
+function parse(t, answer, inputs, { count: given } = {}) {
   const finish = answer && answer.finish;
   const cutByLength = finish === 'length';
   if (t.output === 'tags') {
@@ -94,7 +98,7 @@ function parse(t, answer, inputs) {
     const tags = parseTags(s && Array.isArray(s.tags) ? s.tags : (answer && answer.text) || '');
     return { tags, cut: cutByLength };
   }
-  const count = numbered(inputs);
+  const count = Number.isInteger(given) && given >= 0 ? given : numbered(inputs);
   const text = String((answer && answer.text) || '');
   if (answer && (answer.structured || answer.mode === 'structured')) {
     const read = readAnswer(answer.structured, text, count, MAX_SUMMARIES);

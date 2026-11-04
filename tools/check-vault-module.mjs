@@ -56,7 +56,21 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   if (games.moduleNames.vault !== 'Handouts' || !games.modules.includes('vault')) fail('the games template does not show the Vault as Handouts');
   // What the page promises it keeps: the sentence "Your choice is remembered." needs a write to the person's own data and a read of it.
   const html = read('modules/vault/src/vault.html');
-  if (/Your choice is remembered/.test(html) && !(/host\.storage\.set\([^)]*scope: 'person'/.test(js) && /host\.storage\.get\([^)]*scope: 'person'/.test(js))) fail('the page says "Your choice is remembered." but does not store and read it per person');
+  if (/Your choice is remembered/.test(html) && !(/host\.storage\.set\([^)]*scope: 'person'/.test(js) && /host\.storage\.list\([^)]*scope: 'person'/.test(js))) fail('the page says "Your choice is remembered." but does not store and read it per person');
+  // Feedback build from the hands-on QA: focus after Remove, Esc on Add files, the words of Remove, no 404 noise, one Download.
+  if (/host\.storage\.get\(/.test(js)) fail('the page reads its prefs and durations with storage.list, so an absent key is not a 404 in the console');
+  if (!/addEventListener\('keydown'[^\n]*Escape[^\n]*closeAdd\(\)/.test(js)) fail('Esc does not close Add files');
+  if (!/host\.add\.focus\(\)/.test(js) || !/focus: \(\) => call\('add\.focus'/.test(sdk) || !bridge.includes("'add.focus'")) fail('closing Add files does not return focus to the "+" (host.add.focus)');
+  if (!/const settle = /.test(js) || !/neighbouring file/.test(js)) fail('Remove does not put focus on a neighbouring file or the list');
+  if (!/any share link it is in\. A link left with no file ends\./.test(js) || !/any share link it is in\. A link left with no file ends\./.test(read('public/file-viewer.js'))) fail('the Remove confirm (Vault and file window) does not say the file leaves its share links and a link left with no file ends');
+  if (/mayAdd && !state\.adding\) \{ const b = button\('btn btn-primary'/.test(js) === false) fail('the empty state shows a second Add files button while the panel is open');
+  const views = read('public/file-viewer-views.js');
+  if (/`The \$\{source\.module\}/.test(views)) fail('the download-only sentence says "The" before the module name');
+  if (!/!w\.missing && f\.viewable !== false\) list\.push\(end\(\{ type: 'button', id: 'download'/.test(read('public/file-viewer.js'))) fail('a download-only PDF has two Download buttons');
+  if (!/\.vt-up-line\.vt-up-bad \{[^}]*white-space: normal/.test(read('modules/vault/src/vault.css'))) fail('a long refusal line in the queue is not wrapped');
+  if (!/\.fv-main\.has-info \.fv-zoombar \{ position: static/.test(read('public/file-viewer.css'))) fail('the zoom bar overlaps the picture when Info is open');
+  if (/Too many files at once/.test(js) || !/waitMs\(err, /.test(js) || !/retryAfter/.test(js)) fail('the page does not wait the server\'s Retry-After and show its sentence');
+  if (!/retryAfter/.test(bridge) || !/retryAfter/.test(sdk)) fail('Retry-After of a 429 does not reach the module (err.retryAfter)');
   if (/ticket/i.test(js + html)) fail('the page names tickets');
   // fitCuts measures every name first and writes after: no measuring after the first write (that is a layout per card).
   const fit = js.slice(js.indexOf('function fitCuts('), js.indexOf('function openButton('));

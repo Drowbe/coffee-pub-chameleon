@@ -19,10 +19,12 @@
 const { word } = require('./words');
 
 // --- What AI may see -----------------------------------------------------------------------------------------------------
-const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members'];
+// `lookup` (slice 2): whether the in-app AI is offered its read tools (search_objects, read_object) in Chat's /ai and the
+// Assistant view; what a tool may return is still narrowed by `modules`, `environment` and the current space.
+const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members', 'lookup'];
 const SEES_KEYS = [...SEES_SWITCHES, 'environment', 'modules'];
 const ENVIRONMENT_VALUES = ['never', 'attached', 'readable'];
-const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' });
+const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, lookup: true, environment: 'attached', modules: 'all' });
 const MODULE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 class PolicyError extends Error {
@@ -68,10 +70,14 @@ function readSees(raw) {
   return out;
 }
 
-// The effective setting: the defaults, then the environment's choice, then the space's own (when it has one). A module id
+// The effective setting: the defaults, then the environment's choice, then the space's own (when it has one; `lookup` is the
+// environment's AND the space's). A module id
 // no longer enabled is dropped (`enabledIds`).
 function effectiveSees(envSees, spaceSees, enabledIds) {
-  const out = { ...SEES_DEFAULTS, ...readSees(envSees), ...(spaceSees ? readSees(spaceSees) : {}) };
+  const env = { ...SEES_DEFAULTS, ...readSees(envSees) };
+  const out = { ...env, ...(spaceSees ? readSees(spaceSees) : {}) };
+  // Decision 18: a space's own setting only narrows the look-ups. It can turn them off, never back on over the environment.
+  out.lookup = env.lookup && out.lookup;
   if (Array.isArray(out.modules)) out.modules = out.modules.filter((id) => !enabledIds || enabledIds.includes(id));
   return out;
 }
@@ -240,7 +246,8 @@ function createAiPolicy(deps) {
     return out.filter((s) => typeof s === 'string' && s.length >= 8);
   }
 
-  // One object, admitted or not, for one part of the context (`part`: attached, relevant or linked). Answers
+  // One object, admitted or not, for one part of the context (`part`: attached, relevant, linked, or lookup for what a read
+  // tool returns, server/ai-tools.js). Answers
   // { ok: true, summary } (redacted; with its text when `withText`) or { ok: false, why, module? }: `why` is 'other-space' (an
   // object of another space, or of a person: never sent, whatever the setting), 'setting' (the owner's setting keeps it out)
   // or 'unreadable' (gone, or the person can't read it now: left out and never named). `from`: the module asking (purpose

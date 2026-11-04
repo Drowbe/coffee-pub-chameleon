@@ -151,7 +151,7 @@
   const PREFS = 'prefs';
   async function loadPrefs() {
     try {
-      const r = await host.storage.get(PREFS, { scope: 'person' });
+      const r = (await host.storage.list(PREFS, { scope: 'person' })).find((i) => i.key === PREFS);
       if (r && r.value && typeof r.value === 'object') {
         if (r.value.view === 'grid' || r.value.view === 'list') state.view = r.value.view;
         state.removeWhere = r.value.removeWhere === true;
@@ -164,7 +164,7 @@
   let durVersion;
   async function loadDurations() {
     try {
-      const r = await host.storage.get('durations');
+      const r = (await host.storage.list('durations')).find((i) => i.key === 'durations');
       if (r && r.value && typeof r.value === 'object') { durations = r.value; durVersion = r.version; }
     } catch { /* no lengths: the chip is left off */ }
   }
@@ -636,7 +636,7 @@
     const e = el('div', 'sdk-empty vt-empty-in');
     if (!state.files.length) {
       e.append(ic('folder-open'), el('p', 'sdk-empty-title', `Nothing in ${MODULE} yet.`), el('p', 'sdk-empty-text', mayAdd ? `Add pictures, audio, video and documents for this ${SPACE}.` : `Nothing has been added to this ${SPACE}'s ${MODULE} yet.`));
-      if (mayAdd) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
+      if (mayAdd && !state.adding) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
     } else {
       e.append(ic('magnifying-glass'), el('p', 'sdk-empty-title', 'No files match.'));
       const b = button('btn', { label: 'Clear filters', icon: 'xmark' });
@@ -836,6 +836,8 @@
     holdTimer = setTimeout(() => { holding = false; pump(); }, ms);
   }
   const MAX_TRIES = 8;
+  // How long the server asked to wait (Retry-After, in seconds); the old fixed wait only when it said nothing.
+  const waitMs = (err, fallback) => (err && err.retryAfter > 0 ? Math.min(err.retryAfter, 120) * 1000 : fallback);
   function startFiles(files) {
     state.notice = null;
     for (const f of files) {
@@ -865,9 +867,8 @@
     closeTimer = setTimeout(() => {
       if (running || pending().length || !state.queue.every((x) => x.status === 'done')) return;
       state.queue = [];
-      state.adding = false;
-      render();
-    }, 2500);
+      if ($('add').contains(root.activeElement)) closeAdd(); else { state.adding = false; render(); }
+    }, 1200);
   }
   // A video's small picture goes up after the file; when the host says too often, it is tried again a little later.
   async function sendThumb(rec, blob, tries = 0) {
@@ -876,7 +877,7 @@
       const mine = state.files.find((x) => x.id === rec.id);
       if (mine && updated) { mine.hasThumb = true; thumbs.set(rec.id, URL.createObjectURL(blob)); lastSig = ''; render(); }
     } catch (err) {
-      if (err && err.status === 429 && tries < 3) setTimeout(() => sendThumb(rec, blob, tries + 1), 15000);
+      if (err && err.status === 429 && tries < 3) setTimeout(() => sendThumb(rec, blob, tries + 1), waitMs(err, 15000));
     }
   }
   // Stopped while the last bytes were going: the file may have been kept. Look again, and say so.
@@ -913,13 +914,13 @@
       if (err && err.status === 429 && it.tries < MAX_TRIES) {
         it.tries += 1;
         it.status = 'queued'; it.waiting = true; it.pct = 0;
-        hold(it.tries < 3 ? 8000 : 15000);
+        hold(waitMs(err, it.tries < 3 ? 8000 : 15000));
         renderAdd();
         return;
       }
       it.status = 'refused';
       it.retry = !err || !err.status || err.status === 429 || err.status >= 500;
-      it.msg = err && err.status === 429 ? 'Too many files at once. Try again in a moment.' : (err && err.message) || 'That file could not be added.';
+      it.msg = (err && err.message) || 'That file could not be added.'; // the server's own sentence, also for a 429
       if (err && err.status === 413 && /full|used your/i.test(it.msg)) refresh({ quiet: true });
       renderAdd();
     } finally {
@@ -942,7 +943,14 @@
 
   $('choose').addEventListener('click', () => $('picker').click());
   $('picker').addEventListener('change', () => { const files = [...$('picker').files]; $('picker').value = ''; if (files.length) startFiles(files); });
-  $('add-close').addEventListener('click', () => { state.adding = false; render(); });
+  // Closing Add files puts the keyboard back on the "+" that opened it (the host's), never the page.
+  function closeAdd() {
+    state.adding = false; render();
+    const back = host.add && typeof host.add.focus === 'function' ? host.add.focus() : Promise.resolve(false);
+    back.then((ok) => { if (!ok) { const b = $('body'); b.tabIndex = -1; b.focus({ preventScroll: true }); } }, () => {});
+  }
+  $('add-close').addEventListener('click', closeAdd);
+  $('add').addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); closeAdd(); } });
   $('remove-where').addEventListener('change', () => { state.removeWhere = $('remove-where').checked; savePrefs(); });
   // Dropping files on the module adds them.
   let depth = 0;
@@ -1016,9 +1024,12 @@
     } else if (unknown) {
       lines.push('Some of them are linked from other tools. The links will show File removed.');
     }
-    lines.push(files.length === 1 ? `It is removed from the ${MODULE} for everyone in this ${SPACE}. This can't be undone.` : `They are removed from the ${MODULE} for everyone in this ${SPACE}. This can't be undone.`);
+    lines.push(files.length === 1 ? `It is removed from the ${MODULE} for everyone in this ${SPACE}, and from any share link it is in. A link left with no file ends. This can't be undone.` : `They are removed from the ${MODULE} for everyone in this ${SPACE}, and from any share link they are in. A link left with no file ends. This can't be undone.`);
     const ok = await host.ui.confirm({ title: files.length === 1 ? `Remove "${files[0].name.length > 60 ? `${files[0].name.slice(0, 59)}…` : files[0].name}"?` : `Remove ${files.length} files?`, message: lines.join('\n\n'), action: 'Remove', kind: 'destructive' });
     if (!ok) return;
+    const order = filtered().map((x) => x.id);
+    const gonePos = Math.min(...files.map((x) => order.indexOf(x.id)).filter((i) => i >= 0), order.length);
+    const leaving = new Set(files.map((x) => x.id));
     let gone = 0;
     let failure = null;
     for (const f of files) {
@@ -1038,6 +1049,17 @@
     refresh({ quiet: true });
     if (gone) host.ui.toast(gone === 1 ? 'File removed' : `${gone} files removed`);
     if (failure) fail(failure);
+    // The menu or the card that held focus is gone: it goes to the neighbouring file, else the list, never the page.
+    const settle = () => {
+      const a = root.activeElement;
+      if (a && a !== document.body && a.isConnected && $('body').contains(a)) return;
+      const next = order.slice(gonePos + 1).find((id) => !leaving.has(id) && itemEl(id)) || order.slice(0, gonePos).reverse().find((id) => !leaving.has(id) && itemEl(id));
+      const to = next ? itemEl(next).querySelector('.sdk-open') : $('body').querySelector('.sdk-empty button');
+      if (to) to.focus({ preventScroll: true });
+      else { $('body').tabIndex = -1; $('body').focus({ preventScroll: true }); }
+    };
+    setTimeout(settle, 0);
+    setTimeout(settle, 120);
   }
 
   // ---- Download ---------------------------------------------------------------------------------------------------------------------

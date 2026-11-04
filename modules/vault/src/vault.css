@@ -105,6 +105,7 @@
 .vt-queue { display: flex; flex-direction: column; gap: var(--gap-card-rows); max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
 .vt-up-name { overflow: hidden; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .vt-up-line { display: block; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); overflow-wrap: anywhere; }
+.vt-up-line.vt-up-bad { white-space: normal; overflow: visible; text-overflow: clip; }
 .vt-up-bad { color: color-mix(in srgb, var(--status-danger-text) 75%, var(--text-primary)); }
 .vt-up .sdk-progress { margin-top: var(--space-1); }
 .vt-dropover { position: absolute; inset: var(--space-2); z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px dashed var(--focus-ring); border-radius: var(--radius-large); background: color-mix(in srgb, var(--surface-panel) 90%, transparent); color: var(--text-muted); pointer-events: none; text-align: center; padding: var(--space-4); }
@@ -120,3 +121,8 @@
 .vt-uses-head { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
 .vt-uses-list { margin: 0; padding-left: var(--space-5); font-size: var(--text-14); }
 
+
+/* Touch and narrow: the Vault's own small buttons are 44px targets (the name is the whole row or card: its cover is the target). */
+@media (pointer: coarse), (max-width: 640px) {
+  .vt-app :is(.menu-btn, .vt-up .btn, .vt-up .sdk-icon-btn, #add-close, .vt-more .btn) { --btn-h: 44px; }
+}

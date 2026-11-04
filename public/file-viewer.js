@@ -254,7 +254,7 @@ function createManager(doc) {
     if (f && !w.small) list.push({ type: 'button', id: 'info', label: 'Info', icon: 'circle-info', kind: 'icon', on: w.info, tip: w.info ? 'Hide info' : 'Show info' });
     const end = (it) => ({ ...it, zone: 'end', pin: true });
     if (f) {
-      if (can(w, 'download') && !phone() && !w.missing) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
+      if (can(w, 'download') && !phone() && !w.missing && f.viewable !== false) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
       if (SHARE_READY && can(w, 'share')) list.push(end({ type: 'button', id: 'share', label: 'Share', icon: 'share-nodes', kind: 'secondary' }));
       if (f.viewable !== false && !w.broken) list.push(end({ type: 'button', id: 'full', label: 'Full screen', icon: 'expand', kind: 'icon' }));
     }
@@ -351,7 +351,7 @@ function createManager(doc) {
       const list = found.uses.map((x) => `${x.title}${(x.module && x.module.name) || x.moduleName ? ` (${(x.module && x.module.name) || x.moduleName})` : ''}`).join(', ');
       lines.push(`Used in ${found.uses.length + found.hidden}: ${list}${found.hidden ? `${list ? ', and ' : ''}${found.hidden} you can't see` : ''}. The links will show File removed.`);
     } else if (unknown) lines.push('It is linked from other tools. The links will show File removed.');
-    lines.push(`It is removed for everyone in this ${word('space')}. This can't be undone.`);
+    lines.push(`It is removed for everyone in this ${word('space')}, and from any share link it is in. A link left with no file ends. This can't be undone.`);
     const name = f.name.length > 60 ? `${f.name.slice(0, 59)}…` : f.name;
     const ok = await confirmDialog({ title: `Remove "${name}"?`, message: lines.join('\n\n'), action: 'Remove', kind: 'destructive' }, doc);
     if (from && from.isConnected && !ok) from.focus({ preventScroll: true });
@@ -364,7 +364,11 @@ function createManager(doc) {
     w.files.delete(f.id);
     showNote('File removed');
     const ids = walk(w);
-    if (ids.length) show(w, ids[Math.min(Math.max(ids.indexOf(f.id), 0), ids.length - 1)] || ids[0]); else close(w);
+    if (ids.length) {
+      show(w, ids[Math.min(Math.max(ids.indexOf(f.id), 0), ids.length - 1)] || ids[0]);
+      // The menu and the confirm that held focus are gone: it goes to the next file's window, never the page.
+      setTimeout(() => { if (!w.dead) w.frame.el.focus({ preventScroll: true }); }, 0);
+    } else close(w);
   }
 
   // ---- Info -------------------------------------------------------------------------------------------------------------------------------
