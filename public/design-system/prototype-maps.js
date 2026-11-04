@@ -198,14 +198,14 @@ addEventListener('message', (e) => {
 }
 // ================= 6. questions =================
 {
-  const s = set('questions', 'Questions for Thomas', 'Only what the plan leaves open or what the drawing found. Each has a recommendation.');
+  const s = set('questions', 'Decided, and one still open', 'Thomas decided the first, second, third and fifth; they are drawn as decided. The fourth is still open, with its recommendation.');
   const ol = h('ol', 'mp-qlist');
   for (const [ask, rec] of [
-    ['The region names (LISBOA) are the app\'s muted text today. On a light map in a dark app that is under 4.5 to 1, so the clamp would move it. Give each map theme its own muted colour (--map-muted, drawn here)?', 'Yes. It is one more token beside the plan\'s three (ink, blue, green), and it lets every map theme hold the minimums with nothing moved.'],
-    ['The pins take the app\'s colours today. A plain pin still reads on every map (its ring), but the selected pin is filled with the app\'s text colour: on a light map in a dark app that is a pale disc on pale land (1.1 to 1, its teal edge 2 to 1). Take the pins\' edge from the map instead (the switch above)?', 'Yes, the map\'s colours (drawn first): a pin\'s edge is the land and its ring the map\'s ink, and the selected pin is filled with the map\'s ink, so a pin looks the same on a given map whatever the app theme, and every pin is 3 to 1 or more on the land. Switch to App colours to see today\'s, with its numbers.'],
-    ['Theme default shows what it gives ("Light, from the theme"). Keep that line, or the word alone?', 'Keep it: without it, Theme default and Light look like two different choices when, under a dark theme, they are the same map.'],
+    ['The region names (LISBOA) are the app\'s muted text today. On a light map in a dark app that is under 4.5 to 1, so the clamp would move it. Give each map theme its own muted colour (--map-muted, drawn here)?', 'Decided: yes. It is one more token beside the plan\'s three (ink, blue, green), and it lets every map theme hold the minimums with nothing moved.'],
+    ['The pins take the app\'s colours today. A plain pin still reads on every map (its ring), but the selected pin is filled with the app\'s text colour: on a light map in a dark app that is a pale disc on pale land (1.1 to 1, its teal edge 2 to 1). Take the pins\' edge from the map instead (the switch above)?', 'Decided: yes, the map\'s colours (drawn first): a pin\'s edge is the land and its ring the map\'s ink, and the selected pin is filled with the map\'s ink, so a pin looks the same on a given map whatever the app theme, and every pin is 3 to 1 or more on the land. Switch to App colours to see today\'s, with its numbers.'],
+    ['Theme default shows what it gives ("Light, from the theme"). Keep that line, or the word alone?', 'Decided: keep it. Without it, Theme default and Light look like two different choices when, under a dark theme, they are the same map.'],
     ['The plan puts the map theme on the whole module (#app). Then the panel\'s Theme default swatch cannot show the app theme\'s own map. Put it on the map alone (#map) instead, as drawn?', 'Yes: the pins and the place names are on the map and follow it; the panel and the search results are not and keep the app theme; the module reads the map\'s colours from the map.'],
-    ['Should the panel tell a guest their choice is kept only in this browser?', 'No: it behaves the same for them, and one more line is noise.'],
+    ['Should the panel tell a guest their choice is kept only in this browser?', 'Decided: no note. It behaves the same for them, and one more line is noise.'],
   ]) {
     const li = h('li');
     li.append(h('strong', '', ask), h('span', '', ` Recommendation: ${rec}`));

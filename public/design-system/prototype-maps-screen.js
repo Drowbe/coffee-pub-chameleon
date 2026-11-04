@@ -371,6 +371,17 @@ function layout() {
   const k = Math.max(r.width / W0, r.height / H0);
   const ox = (r.width - W0 * k) / 2; const oy = (r.height - H0 * k) / 2;
   for (const e of [...names.children, ...pins.children]) { e.style.left = `${ox + Number(e.dataset.x) * k}px`; e.style.top = `${oy + Number(e.dataset.y) * k}px`; }
+  // The cut can leave a name or a pin's chip past the map's edge: move it in so it sits whole inside (the map library keeps a name inside its tile the same way).
+  const pad = 4;
+  for (const e of [...names.children, ...pins.children]) {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    for (const n of [e, ...e.querySelectorAll('*')]) { const b = n.getBoundingClientRect(); if (!b.width || !b.height) continue; x0 = Math.min(x0, b.left); y0 = Math.min(y0, b.top); x1 = Math.max(x1, b.right); y1 = Math.max(y1, b.bottom); }
+    if (x0 === Infinity) continue;
+    const dx = Math.max(r.left + pad - x0, 0) + Math.min(r.right - pad - x1, 0);
+    const dy = Math.max(r.top + pad - y0, 0) + Math.min(r.bottom - pad - y1, 0);
+    if (dx) e.style.left = `${parseFloat(e.style.left) + dx}px`;
+    if (dy) e.style.top = `${parseFloat(e.style.top) + dy}px`;
+  }
   app.classList.toggle('narrow', r.width < 720);
   app.classList.toggle('mo-tight', r.width < 480); // the panel goes across the map's width (to maps.js)
 }
