@@ -35,7 +35,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [Planner](userguides/userguide-planner.md) -- planning a trip day by day, with phases (the Itinerary in the Travel template).
 - [Budget](userguides/userguide-budget.md) -- costs planned and paid, the space's target, the burndown and settling up.
 - [Research](userguides/userguide-research.md) -- notes, links and photos a group finds while it plans.
-- [Vault](userguides/userguide-vault.md) -- a space's files: adding, finding and opening photos, audio, video, PDFs and notes.
+- [Vault](userguides/userguide-vault.md) -- a space's files: adding, finding, opening, linking from other tools and sharing photos, audio, video, PDFs and notes.
 - [Places](userguides/userguide-places.md) and [Maps](userguides/userguide-maps.md) -- saved places, the map, and a
   picture map for an invented world.
 - [Assistant](userguides/userguide-assistant.md) -- the AI behind `/ai`, and bringing in research from another AI.

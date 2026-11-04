@@ -127,10 +127,10 @@ The Planner can fill in a flight from its number when someone on this server has
 The Planner's menu in its titlebar has **Clear**, in red, for people with **Clear the whole trip** (moderators and owners, unless the roles are changed). It is offered only while the plan holds something, and not while a clear can still be undone.
 
 1. Open the Planner's menu in its titlebar and choose **Clear**.
-2. The window reads "Clear <name>?", "Everything <name> holds here goes, for everyone. You can undo it for 30 seconds." Type the module's name to confirm, then choose **Clear**.
-3. A note reads "Cleared <name>." with **Undo**. Choose **Undo** within the time (30 seconds unless the server's operator set another) and everything comes back as it was, with who added it and when. After that it is gone for good, along with the files and Calendar copies that went with it.
+2. The window reads "Clear <name>?", "Everything <name> holds here goes, for everyone. You can undo it for 30 seconds, until you leave this page." Type the module's name to confirm, then choose **Clear**.
+3. A note reads "Cleared <name>." with **Undo**. Choose **Undo** within the time (30 seconds unless the server's operator set another) and everything comes back as it was, with who added it and when. After that it is gone for good, along with the files and Calendar copies that went with it. The **Undo** note belongs to the page you cleared from: if you close or reload it, the note is gone and so is the chance to undo.
 
-If something new was saved in the same place meanwhile, **Undo** keeps the new thing and says how many could not come back. Clearing the same module again before the time is over is refused with the seconds left.
+If something new was saved in the same place meanwhile, **Undo** keeps the new thing and says how many could not come back. Clearing the same module again before the time is over is refused with the seconds left. A module can be cleared only a few times a minute, and one person only three of those; past that the dialog stays open and says "was cleared too often just now", with the seconds to wait.
 
 ## Move or clear a whole day
 
@@ -173,6 +173,21 @@ When the space has the Calendar on, every object on the plan with a date is on t
 - Delete the event on the Calendar and the object stays on the plan with its date. Give it another day and it is back on the Calendar.
 - An event added on the Calendar stays on the Calendar only.
 - An object that already had a date before this came in appears on the Calendar the next time the server starts, once. If it has a time, the time is read in the server's time zone.
+
+## Attach files to a stay or a journey
+
+A stay, and a flight, train, ferry, bus, rental car, taxi, ride share or shuttle, can carry files kept in the space's [Vault](userguide-vault.md): the booking confirmation, a ticket as a PDF, a photo of the room. The files stay in the Vault; the Planner links to them, so nothing is copied.
+
+**Who can:** anyone who can edit the Planner, when the Vault is on in the space and the Planner is approved to link to its files (an owner does this when enabling the Planner). Without the Vault the **Attachments** row is hidden, unless the stay or journey already has files, which can then be seen and unlinked.
+
+1. Open the stay or journey to edit it, and find **Attachments**.
+2. Choose **Add file**. A window lists the space's files with a search box; tick one or several, then choose **Pick**.
+3. The files show as chips with their type, name and size. Choose **Unlink** beside a chip to take a file off. **Add file** is disabled at 10 files ("A stay can have up to 10 files." or "A journey can have up to 10 files.").
+4. Choose **Save**. The files are linked when you save, not before.
+
+On the card, the files show as chips under the facts. Choose a chip to open the file in a window over the canvas, with **Previous** and **Next** to walk that stay's or journey's files when it has several. A chip reads **File removed** when someone removed the file from the Vault, **File missing** when its content is gone from the server, and **Not available to you** when you may not see it. For the first two, anyone who can edit sees **Remove link** to take the chip off. The chips change by themselves when someone renames or removes a file, without a reload.
+
+In the Vault, the file's **Where it is used** names the stay or journey, and removing the file asks first.
 
 ## Deleting something others use
 

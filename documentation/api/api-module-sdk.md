@@ -122,6 +122,20 @@ host.on('change', (e) => {
 
 Any change to stored data in the scopes the frame can see is pushed to it, including changes the frame made itself. Read the current state with `list` once at start, then apply `change` events.
 
+**Many keys at once.** A Clear and its Undo change every key of a module together, so they arrive as one `changes` event:
+
+```js
+host.on('changes', (e) => {
+  // e = { changes: [{ key, value, version, deleted, by }], cleared, restored, by, scope, spaceId }
+});
+```
+
+- A module that listens for `changes` hears the whole batch once and can keep every entry, then draw once. A module that does not listen hears each entry as a `change`, in one pass, with `batch: { count, last }` on each so it can draw on the last only.
+- A batch whose values would be bigger than 256 KB arrives with no `value` on its entries, only the key, version and `deleted`. For a module with no `changes` listener the SDK first reads the values with one `storage.list` of the keys' common prefix (asked once more if it fails; if that fails too the person sees "Some changes did not load. Reload the page to see them." and the module hears none of that event). A module with a `changes` listener must check for an entry that is not `deleted` and has no `value`, and read the data again with `list`. These bundled modules listen for it: Budget, Calendar, Places, Polls, Research, To-do and the Planner (read as code).
+- `cleared` is true for a Clear and `restored` for an Undo. The server's contract is in [api-modules](api-modules.md), "The `changes` event".
+
+**Library files.** `host.on('library', ({ op, id, module, spaceId }) => ...)` fires when a file of the space's library was added, renamed, removed or given a small picture (`op` is `added`, `renamed`, `removed` or `thumb`). The library module itself hears it, and so does a module approved to link to the library's files. It carries ids only; ask `host.library.list()` or `host.files.resolve` again for what to show. `host.ui.fileChips` already listens.
+
 ### Reminders and notifications (hooks)
 
 These need the `schedule` and `notify` hooks in the manifest.
@@ -212,12 +226,18 @@ const kinds = await host.objects.kinds();               // [{ module, moduleName
 
 // Show an object in the module that owns it. The module opens on the canvas (or its page) and it is handed the pointer.
 await host.objects.open(summary.ref);                   // only useful when summary.open is true
+// A pointer to a library file (kind 'file') opens the file window over the canvas instead (as host.files.open); { list } is the ids of the
+// files linked where it was opened from, so Previous and Next walk those (without it they are hidden).
+await host.objects.open(fileRef, { list: [idA, idB] });
 host.objects.onOpen((ref) => { /* you own ref: show it (select it, scroll to it, open it) */ });
 
 // Tell Collaborator what one of your objects points at (the whole list, replacing the last), so what is pointed at can ask.
 await host.objects.setLinks(host.objects.make('task', id), [refA, refB]);
 // From an environment page, for one of a space's objects: the pointer already carries the space; { space } is only a check.
 await host.objects.setLinks(host.objects.make('task', id, { scope: 'space', space }), [refA], { space });
+// With { kind }, only the links to objects of that kind are replaced and the rest stay; with { kind, op: 'add' | 'remove' } the list is added to those
+// links or taken out of them. At most 20 targets. host.files.link and unlink do exactly this for kind 'file'.
+await host.objects.setLinks(object, fileRefs, { kind: 'file', op: 'add' });
 // What points at one of your objects (kind has "backlinks": true), and what one points at: summaries.
 const from = await host.objects.linksTo(ref);
 const to = await host.objects.linksFrom(ref);
@@ -415,12 +435,12 @@ const r = await host.ai.ask({ task: 'ask', question: 'Where is the hotel?', obje
 
 Tasks are `summarise`, `ask` and `tags` (`ask` needs no objects (the old `items` is refused): with none it answers from the model's own knowledge, and with some it uses them as context and says which parts came from them; `summarise` and `tags` need objects and use only them; each summary carries `basis`: `general`, `items` or `both`) (`tags` returns `r.tags`, up to 6 words). The server reads the objects as the person asking (only what they may see; up to 12, each up to 8 KB of `text`), sends them as numbered data that the prompt tells the model is never an instruction, gives the model no tools, and returns its text. The page sends the person's time zone with every `host.ai.ask`, so "today" in the prompt is theirs; a module does not pass it. What else goes with the question is the owner's choice, **What AI may see**: the space's phases and dates, objects that match the question, objects linked to the ones you pass, and optionally the chat and the members. A module's ask has no earlier questions. The answer carries `used` (pointers to the objects the model cited), `numbered`, `cut` (true when it ran out of room: there is no note in `text`, so say it from `cut`), `sent` and `leftOut` (what went and what was kept out or cut). Asked for several distinct things, the model is told to write one summary per thing (up to 20 in one answer) rather than fold them into prose. Where the model writes a summary in a fenced block (```` objects ````, which the model is asked for, or, for a model that labels its block loosely, ```` summary ````, ```` json ```` or no language), the server checks each field (an icon from a fixed list, a title of 80 characters, content of 6000 characters — plain prose or simple Markdown, rendered with `host.util.markdown` — up to 5 one-word tags, an optional `kind` naming an everyday sort of thing the summary plainly is — `flight`, `train`, `bus`, `ferry`, `car`, `hotel`, `restaurant`, `cafe`, `bar`, `sight`, `museum`, `tour`, `show`, or left out for a plain one — a place with an in-range position, a real date, up to 5 `http` or `https` links, sources only among the objects given) and returns it as a summary; a block that is not a valid summary stays as ordinary text. The checker is the same one that reads objects brought in from another AI (see "Bringing objects in"). `kind` is ordinary domain language, not a module's own names: a module that recognises one (Planner's `acceptSuggestion`, for one) may act on it, and one that does not simply ignores it. Draw a marker `{{summary:N}}` only where N is a real index into `summaries`. Nothing is stored by the server: not the question, not the answer. It records the call (who, which module and task, the template, the token count and how long it took), never the text. Errors are plain messages: not set up, your role may not use AI, AI is off in this space, the monthly allowance is used, the service did not answer. A person is limited to six AI requests a minute, all AI together.
 
-### Files (`host.library`, `host.files.open`)
+### Files (`host.library`, `host.files`, `host.ui.fileChips`)
 
 A module that declares `"library": true` (the Vault) keeps the space's files, each checked from its own bytes; see [api-modules](api-modules.md), "Library routes". All of it is for the space the frame is in, and every call rejects with the server's sentence.
 
 ```js
-const { files, usage } = await host.library.list();          // [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable? }], { bytes, maxBytes }
+const { files, usage } = await host.library.list();          // [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable?, missing?, shared? }], { bytes, maxBytes }
 const job = host.library.add(blob, { name: 'ticket.pdf', keepPosition: false, onProgress: ({ loaded, total }) => {} });
 const file = await job;                                       // job.cancel() stops it
 await host.library.rename(file.id, 'Ticket, Lisbon.pdf');
@@ -430,7 +450,12 @@ await host.library.thumb(file.id, smallPicture);             // the small pictur
 const address = await host.library.url(file.id, { thumb: false, download: false });
 const bytes = await host.library.blob(file.id);              // a Blob of the file (or { thumb: true } its small picture)
 await host.library.download(file.id);                        // the host saves it; needs the download permission
+await host.library.share([file.id]);                         // opens the share sheet over the page; needs the share permission
+await host.library.shares();                                 // opens the list of the space's share links over the page
 ```
+
+- `missing: true` is a file whose record is there and whose bytes are gone (a restore without `VAULT_DIR`); The server answers a request for its bytes with 404 and "File missing. Its content is gone from the server; remove it from the list." (read as code at the route; not run through `host.library.blob`). `shared: true` is a file in a share link that still opens, and only people with `share` get the field.
+- `share(ids)` and `shares()` are drawn by the host in the page (so Copy works; a frame may not use the clipboard) and resolve when the sheet is up. Your module hears `sharechanged` when a link is made, changed or turned off (call `list()` again), and `sharechoose` when the person presses **Choose files** in the list of links (start choosing files). The sentences are the server's; see [api-modules](api-modules.md), "Share links".
 
 - `add` keeps where a picture was taken only when `keepPosition` is true. The promise has `.cancel()`, and rejects with a sentence when a type or a limit refuses the file.
 - `viewable: false` is only on a PDF the server could not check, which is kept for download only. Never open it: show "This PDF can't be opened here. Download it." with `download(id)`. `blob(id)` of one rejects with status 404.
@@ -438,8 +463,27 @@ await host.library.download(file.id);                        // the host saves i
 
 `host.files.open(pointer, { list, name })` opens a library file in a file window over the page, drawn by the host. `pointer` is the file's pointer (`{ module, kind: 'file', id, scope: 'space', space }`); `list` is the ids of the files to walk with **Previous** and **Next**, in the order to walk them (the Vault passes its list as filtered); without it the window has no Previous and Next; `name` is a name to show while the file loads. It resolves to `true` when a window opened or came forward, and `false` at the cap of four windows (the person is told: "Close a window to open another."); opening a file that already has a window brings it forward. When the window closes, focus returns to your frame and your module hears the event `fileclosed` (`host.on('fileclosed', ({ id }) => ...)`), so it can put focus back on what opened the file. **Close all** in the Layout menu, under **Open files**, closes every file window.
 
+- A file window follows the library live: a rename shows in its title at once, and a removal turns it into "File removed".
 - It works on a space's canvas only, and only for a file of the space the module is in; a file of another space rejects with status 403 "that file is not in this space"; anything that is not a file pointer, with 400.
 - The Vault opens its own files. Any other module may open a Vault file only if its manifest consumes the kind (`"refs": { "consumes": ["vault:file"] }`, or `"*"`) and an owner approved it when enabling the module; otherwise it rejects with status 403 "this module may not open files".
+
+### Linking files from your objects (`host.files`, `host.ui.fileChips`)
+
+A module that wants to attach library files to its own objects consumes the file kind (`"refs": { "consumes": ["vault:file"] }`, or `"*"`) and an owner approves it when enabling the module, as for any object. A module that was not approved is refused with status 403 and finds, resolves and links nothing. Nothing here names the library module, and a module with no library on in its space can still ask.
+
+```js
+const picked = await host.files.pick({ multiple: true, title: 'Add a file' });  // pointers; [] when the person cancels
+await host.files.link(host.objects.make('stay', id), picked);     // adds them to what the object points at, whatever else it points at
+await host.files.unlink(host.objects.make('stay', id), [picked[0]]);
+const facts = await host.files.resolve(pointers);                  // [{ ref, name, group, type, size, icon, viewable?, state? }], in order
+const chips = host.ui.fileChips(container, pointers, { canEdit: true });  // { update(pointers), destroy() }
+```
+
+- `pick({ multiple?, title? })` is `host.objects.pick` kept to files: search, tick, **Pick**. At most one pointer without `multiple`. The title is "Add a file" by default and is cut to 120 characters. It rejects with status 404 "There is no Vault in this <space>." when no library is on here for your module.
+- `link` and `unlink` go through `host.objects.setLinks` with `kind: 'file'` and `op: 'add'` or `'remove'`, so the library's **Where it is used** and its Remove question come from real link records. They change only the links to files. Keep your own list of the pointers you show (the Planner stores them in the object as `files`); only a pointer to a file is accepted, and a call with none resolves `{ links: 0 }`. A module that replaces an object's whole link list with `setLinks` must send its files again, or they are dropped.
+- `resolve(pointers)` answers in the same order. `state` is `'removed'` (the file is gone; its link stays and reads "File removed"), `'missing'` (its bytes are gone: "File missing"; only `ref`, `name` and `state`) or `'hidden'` (this person may not see it: "Not available to you"; only `ref` and `state`). Without a `state` the file is there.
+- `host.ui.fileChips(container, pointers, { canEdit?, unlinkable?, live?, onOpen?, onRemoveLink? })` draws the shared file chips (a type icon, the name and the size). The container is cleared. A click opens the file window over the canvas (`host.objects.open` with the other chips' ids as `list`, so Previous and Next walk them; one chip alone has none), or calls `onOpen(pointer)`. A removed, missing or hidden file is a muted tag that is not pressed. `canEdit: true` adds **Remove link** beside a removed or missing file, which calls `onRemoveLink(pointer)`; unlink with `host.files.unlink`, update your own list and call `update`. With `unlinkable: true` as well, a file that is there gets **Unlink** too (an editor's list). The chips look again by themselves when a file is renamed or removed and when links change, until the container leaves the page; `live: false` turns that off. `update(pointers)` draws a new list and `destroy()` stops listening and empties the container. The look is in [design-theme](../designsystem/design-theme.md), "File chips".
+- The Planner is the first module to use them: a stay or a journey holds up to 10 files.
 
 ### Uploaded pictures
 
