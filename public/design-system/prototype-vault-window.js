@@ -232,7 +232,7 @@ export function createCanvas() {
     if (f.kind === 'audio') return audioView(f, api);
     if (f.kind === 'video') return videoView(f, api);
     if (f.kind === 'text') return markdownView(f, api);
-    if (f.viewable === false) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", text: `The ${ctx.words.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: ctx.can('download') ? [dl(f, true)] : [] });
+    if (f.viewable === false) return viewState({ icon: 'file-circle-exclamation', tone: 'warn', title: "This PDF can't be opened here. Download it.", text: `${ctx.words.module} could not check this file, so it is kept for download only. Your own PDF reader opens it.`, actions: ctx.can('download') ? [dl(f, true)] : [] });
     return pdfView(f, api);
   }
 

@@ -1947,6 +1947,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       drawAddSlot();
       return true;
     },
+    // The "+" takes the keyboard (host.add.focus); false where it is not drawn.
+    async 'add.focus'() {
+      const b = frame && frame.el && frame.el.querySelector('.mf-add-btn');
+      if (!b || b.disabled) return false;
+      b.focus({ preventScroll: true });
+      return true;
+    },
     // The status bar (host.status.set). False where there is none (a destination's part, a dashboard widget).
     async 'status.set'({ items }) {
       if (!bands) return false;

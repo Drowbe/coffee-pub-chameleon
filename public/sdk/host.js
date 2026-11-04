@@ -3351,6 +3351,8 @@
     // Detect it with `if (host.add)`.
     add: {
       set: (entries) => call('add.set', { entries }),
+      // Puts the keyboard on the "+" (after a panel the module opened from it closes with Escape). Resolves false where there is none.
+      focus: () => call('add.focus', {}),
     },
 
     // The status bar: one slim read-only line at the bottom of the module's window, for counts and what is selected.
