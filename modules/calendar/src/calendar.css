@@ -94,6 +94,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 /* The week fills the calendar's height when nothing is listed under it (the destination's calendar); a docked week is a list. */
 .body > .sdk-cal-grid.sdk-cal-week { min-height: 100%; }
 .sdk-cal-compact .body > .sdk-cal-grid.sdk-cal-week { min-height: 0; }
+/* While the calendar measures its own content for the page (tell(), calendar.js), the week is as tall as its days. */
+.app.is-measuring .body > .sdk-cal-grid.sdk-cal-week { min-height: 0; }
 
 /* A copy of another module's object (the Itinerary's): its module's icon before the title, in the muted colour. */
 .mi.copy-mark svg { fill: var(--text-muted); }

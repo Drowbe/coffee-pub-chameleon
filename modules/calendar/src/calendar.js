@@ -1508,10 +1508,14 @@
       const app = $('app');
       const body = $('body');
       if (!app || !body || app.hidden || document.querySelector('dialog[open]')) return;
-      // The lowest edge of what is last, margins included (down the last element of the last, as far as it goes).
+      // The lowest edge of what is last, margins included (down the last element of the last, as far as it goes). Measured
+      // with nothing filling the calendar's height (`is-measuring`, calendar.css): the week fills it, and where the page sizes
+      // the part from this answer, a filled week would answer the height it was given, plus a little, every time.
+      app.classList.add('is-measuring');
       let edge = 0;
       for (let el = body.lastElementChild; el; el = el.lastElementChild) edge = Math.max(edge, el.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(el).marginBottom) || 0));
       const tail = edge ? edge - body.getBoundingClientRect().top + body.scrollTop : 0;
+      app.classList.remove('is-measuring');
       const h = Math.ceil(app.offsetHeight - body.offsetHeight + Math.max(tail, 0)) + 2;
       if (h === told) return;
       told = h;

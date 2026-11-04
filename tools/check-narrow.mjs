@@ -16,6 +16,8 @@
 //   6. Banded cards (every module's, the shared head in public/sdk/system.css): in a card under 300px wide (Itinerary at 260
 //      px) the kind label is above the title and the icon above both; a plain head (Polls at 260 px) whose title wraps keeps
 //      4px between its text and the band's edges.
+//   7. Budget's Costs in a thin column (240 and 200 px): no word of a cost's title is broken across lines (the amounts beside it
+//      once left the title a letter wide).
 // Usage: node tools/check-narrow.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -45,6 +47,18 @@ const TITLES = `(() => { ${ROOTS}
     const saved = h.innerHTML; const text = h.textContent;
     h.replaceChildren(...text.split(/(\\s+)/).map((w) => { if (/^\\s*$/.test(w)) return document.createTextNode(w); const s = document.createElement('span'); s.textContent = w; return s; }));
     for (const s of h.querySelectorAll('span')) if (s.getClientRects().length > 1) out.push({ title: text.trim(), word: s.textContent, width: Math.round(h.clientWidth) });
+    h.innerHTML = saved; }
+  return out; })()`;
+
+// Budget's cost titles: each word that is drawn on more than one line (a word only splits when it is longer than the line).
+const COSTS = `(() => { ${ROOTS}
+  const out = [];
+  for (const r of roots) for (const h of r.querySelectorAll('#view-costs .cost-row .title')) {
+    if (!h.getClientRects().length) continue;
+    const saved = h.innerHTML; const text = h.textContent; let word = '';
+    h.replaceChildren(...text.split(/(\\s+)/).map((w) => { if (/^\\s*$/.test(w)) return document.createTextNode(w); const s = document.createElement('span'); s.textContent = w; return s; }));
+    for (const s of h.querySelectorAll('span')) if (!word && s.getClientRects().length > 1) word = s.textContent;
+    out.push({ title: text.trim(), word, width: Math.round(h.clientWidth) });
     h.innerHTML = saved; }
   return out; })()`;
 
@@ -182,6 +196,15 @@ async function main() {
     if (!wrapped.length) failures.push('Banded cards at 260px: no poll question wrapped to two lines, so nothing was measured');
     for (const x of wrapped) if (x.top < 4 || x.bottom < 4) failures.push(`Poll "${x.title}" (${x.width}px): ${x.top}px above and ${x.bottom}px below its two-line title, under 4px`);
     say(`Polls 260px: ${wrapped.map((x) => `${x.top}/${x.bottom}px`).join(', ') || 'none wrapped'} between a wrapped title and the band's edges`);
+
+    // 7. Budget's Costs in a thin column (docked at about 200px): no word of a cost's title is broken across lines (the amounts
+    //    beside the title once left it a letter wide, one letter per line).
+    for (const size of [240, 200]) {
+      const got = (await view(browser, S, size, 'dark', costs, COSTS)) || [];
+      if (!got.length) failures.push(`Budget's Costs at ${size}px: no cost was shown, so nothing was measured`);
+      for (const x of got.filter((c) => c.word)) failures.push(`Budget's Costs at ${size}px: the word "${x.word}" of "${x.title}" is broken across lines (title ${x.width}px wide)`);
+      say(`Budget's Costs ${size}px: ${got.length} costs, ${got.filter((c) => c.word).length} broken words, narrowest title ${Math.min(...got.map((c) => c.width))}px`);
+    }
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);
