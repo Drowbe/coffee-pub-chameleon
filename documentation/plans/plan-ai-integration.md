@@ -14,12 +14,15 @@ Slice 1, the prompt layer as this plan describes it (the prompt registry, the co
 provider adapters, the fake model and the golden checks, `AI_LOG_PROMPTS`, `AI_PROMPT_VERSIONS`, What AI may see), is
 built (2026-11-03, commits `fe8628f` to `4865b54` and `a3149e7` on `claude/magical-feynman-xupgiq`, with the pages: the
 **AI used:** line, citations, What AI may see on Manage and in a space's Set up, and the use view), checked by tools
-against the fake model only; no real provider has answered it yet. Slice 2 (the first tools) is a draft for Thomas,
-written 2026-11-04 at his request, AI integration being his top priority: read tools in Chat's `/ai` first, then
-proposals for the modules' actions, and a real-provider test of slice 1 before either. Thomas answered its eight
-questions (S1 to S8) on 2026-11-04, every one with the option this plan suggested (decisions 16 to 23 below). Steps 8 to
-10, 12 and 13 are ready to build; step 11 waits on Thomas supplying a provider key and a spending limit (step 12 may
-start now). Nothing of slice 2 is built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
+against the fake model only; no real provider has answered it yet. Slice 2 (the first tools) was written 2026-11-04 at
+Thomas's request, AI integration being his top priority: read tools in Chat's `/ai` first, then proposals for the
+modules' actions, and a real-provider test before either. Thomas answered its eight questions (S1 to S8) on 2026-11-04,
+every one with the option this plan suggested (decisions 16 to 23 below). Steps 8, 9, 10 and 12 are built, merged to main
+on 2026-11-04 in PR 390 after security review, and tested only against the fake model: the tool registry, the look-up
+loop in Chat's `/ai` (`search_objects`, `read_object` and `answer`), the look-up switch and the "looked up N" line, and
+the catalog of write tools made from the manifests. The changes made in the build are listed under Slice 2. Step 11, the
+real-provider test of slices 1 and 2, is next; it waits on Thomas supplying a provider key and a spending limit. Step 13,
+proposals on the answer with Keep and Drop, is not built and waits on step 11. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
 and `bb5910f` (instructions and data in separate messages, the one permission rule, availability with a reason, the
 hosted address guard, fair refunds, the monthly calls cap; Chat's `/ai` takes only the current space's objects); what
 is built is described in [architecture-ai](../architecture/architecture-ai.md). From GitHub #382,
@@ -705,7 +708,8 @@ LM Studio) with tools.
 
 ### Before step 1: slice 1 against a real provider
 
-Do this first. Slice 2's loop sits on slice 1's adapters, and no real model has answered slice 1 yet.
+This is step 11 in the list below, and it is next. Slice 2's loop sits on slice 1's adapters, and no real model has
+answered slice 1 or the read tools yet.
 
 **What Thomas supplies:**
 
@@ -935,31 +939,47 @@ Each step is built, checked, reviewed and committed before the next starts.
 
 ### Slice 2: the first tools
 
-S1 to S8 are decided (decisions 16 to 23). Steps 8 to 10, 12 and 13 are ready to build. Step 11 waits on Thomas supplying
-a provider key and a spending limit; step 12 may start now.
+S1 to S8 are decided (decisions 16 to 23). Steps 8, 9, 10 and 12 are built (2026-11-04, PR 390), tested only against the
+fake model. Step 11 is next and waits on Thomas supplying a provider key and a spending limit. Step 13 is not built and
+waits on step 11.
 
-**First, slice 1 against a real provider (small),** which needs no decision and can start now: Thomas runs the test
-script above with a key, and quality-assurance writes up the results. It runs beside steps 8 and 10.
-
-8. **The fake model's tool calls and the tool registry (small).** server-development: scripted tool calls in both
+8. **Built 2026-11-04 (small).** The fake model's tool calls and the tool registry. server-development: scripted tool calls in both
    shapes, a service refusing tools, TOOLLOOP, TOOLBAD and TOOLUNKNOWN; `server/prompts/tools/` with the two read tools'
    descriptions and schemas and their golden files.
-9. **The loop and the two read tools in Chat's `/ai` (large).** server-development, after step 8: `server/ai-tools.js`,
+9. **Built 2026-11-04 (large). The loop and the two read tools in Chat's `/ai`.** server-development, after step 8: `server/ai-tools.js`,
    the adapters' tool requests and tool results for OpenAI, Anthropic and `compatible` (with its fall-back), the `answer`
    tool as the end, numbers for objects, `admit` with part `lookup`, the limits, per-round reserve and settle, the
    record's new fields, `sent.lookup`, the `lookup` key in `sees` and `aiSees`. Security work: the larger tier builds it,
    and quality-assurance reviews it as a security change before it is committed.
-10. **What a person sees of look-ups (small).** experience-design, beside step 9 once this contract's fields stand:
+10. **Built 2026-11-04 (small). What a person sees of look-ups.** experience-design, beside step 9 once this contract's fields stand:
     the **AI used:** line's "looked up N <objects>", the waiting words, the `lookup` switch on Manage and Set up.
-11. **Step 1 against a real provider (small).** Waits on Thomas supplying a provider key and a spending limit. Thomas with quality-assurance, after steps 9 and 10: the test script's
-    steps 2 to 5 again, plus questions that need a look-up ("what does the ferry note say?"), and the records' rounds
-    and tokens read. content-manager then documents slice 2's step 1.
-12. **Write tools from the manifests (medium).** server-development, beside steps 9 to 11 once S7 is answered:
-    `description`, `effect` and `ai` in `cleanBus`, the generated catalog and schemas, `GET /api/ai/catalog`,
-    `tools/check-catalog.mjs`, the bundled modules' descriptions, each module a patch bump.
-13. **Proposals on the answer (medium).** server-development, after steps 11 and 12: write calls become proposals, the
-    Keep and Drop route, the bus request on Keep. experience-design: the proposal lines with Keep and Drop.
+11. **NEXT: the real-provider test of slices 1 and 2 (small).** Waits on Thomas supplying a provider key and a spending
+    limit. Thomas with quality-assurance, after steps 9 and 10 (both built): the test script's steps 2 to 5 again, plus
+    questions that need a look-up ("what does the ferry note say?"), and the records' rounds and tokens read. Slice 1's
+    part of the script runs first, as the "Before step 1" section above says. content-manager then documents slice 2's
+    read tools' real-service results.
+12. **Built 2026-11-04 (medium). Write tools from the manifests.** server-development: `description`, `effect` and `ai` in
+    `cleanBus`, the generated catalog and schemas, `GET /api/ai/catalog`, `tools/check-catalog.mjs`, the bundled
+    modules' descriptions, each module a patch bump.
+13. **Not built (medium). Proposals on the answer,** waits on step 11. server-development: write calls become proposals,
+    the Keep and Drop route, the bus request on Keep. experience-design: the proposal lines with Keep and Drop.
     quality-assurance reviews it as a security change; content-manager documents it.
+
+### What the build changed from this plan
+
+Made when steps 8, 9, 10 and 12 were built (2026-11-04, PR 390). These are the build's choices, not decisions Thomas made
+in the list above; he may overrule any of them.
+
+- **`ask@2` is added beside `ask@1`,** not in its place. The registry keeps both, and `ask@1` is the rollback that also
+  turns the look-ups off.
+- **The look-up switch is the environment's and the space's together.** The effective `lookup` is on only when both are
+  on. A space can turn look-ups off for itself, and cannot turn them on when the environment has them off.
+- **`effect` takes only `write` or `destructive`,** the two values this plan named.
+- **Shared answers.** A reader who is not the asker sees only the pointers they may open, and the chat-visibility event
+  carries no pointers, so the page fetches the answer again for each reader.
+- **The waiting note.** "Looking things up..." shows after 6 seconds whatever the `lookup` switch says.
+- **The availability route is unchanged.** `GET /api/spaces/:id/ai` still answers the same way; a look-up does not change
+  what the ask box says before a question is typed.
 
 ### Later slices (from the options, not ordered)
 
@@ -1062,8 +1082,8 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
 5. **Who may connect an outside AI.** (a) Anyone signed in, not a guest; (b) a new role permission ("Connect an AI
    app"), owners always; (c) reuse `useAi`. Lean: (b); `useAi` is about spending the environment's allowance, which an
    outside client does not. Blocks step 15.
-6. **Destructive actions.** (a) Never in the catalog; (b) in it, always confirmed one by one. Lean: (a) for now. Blocks
-   step 12.
+6. **Destructive actions.** (a) Never in the catalog; (b) in it, always confirmed one by one. Lean: (a) for now. Step 12
+   is built with destructive actions kept out, so this blocks nothing now.
 7. **The switches for outside access.** (a) A server environment variable, default off, plus an owner's switch; (b) the
    owner's switch only. Lean: (a). Blocks step 15.
 8. **What the internal AI may read.** Partly answered 2026-11-02: the current space only, never another (decision 4),
@@ -1107,4 +1127,4 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
 
 Nothing blocks slice 1: every question for its steps is answered (12 to 21 and 23), and 22 and 24 have working
 leans that block no step. Slice 2's own questions, S1 to S8, were answered on 2026-11-04 (decisions 16 to 23) and
-block nothing; step 11 waits only on a provider key and a spending limit from Thomas. Questions 3, 4, 5, 7, 10 and 11 block step 15 onward; 1 blocks step 17; 6 blocks step 12; 2 blocks nothing now.
+block nothing; step 11 waits only on a provider key and a spending limit from Thomas. Questions 3, 4, 5, 7, 10 and 11 block step 15 onward; 1 blocks step 17; 2 blocks nothing now; 6 blocks nothing now, since step 12 is built without destructive actions.
