@@ -333,16 +333,42 @@ same access from the sandboxed frame, as `host.uploads.url` does for pictures).
 - **Stored** in the Vault's space data as `{ id, name, files, by, at, ends, download, passwordHash?, tokenHash, opened }`.
   The token is 32 random bytes; only its SHA-256 is kept, so a stolen data file opens no link. The password is hashed with
   scrypt as account passwords are (`server/auth.js`).
-- **Turned off** at any time from the list of share links (**Turn off**), and by itself at its end. A space deleted, the
-  Vault turned off in the space, or every file in it removed, ends it too.
+- **Turned off** at any time from the list of share links (**Turn off**), and by itself at its end. A space deleted or
+  every file in it removed ends it too.
+- **Ending for good (Thomas, 2026-11-04).** A link ends for good when the Vault is turned off or uninstalled, even when the
+  files are kept: every space's share links are deleted (`dropSharesOf` in `server/vault-store.js`), and turned on again,
+  the files return but no old link does.
+- **A link is its maker's (Thomas, 2026-11-04).** A link also ends when its maker no longer exists, is out of the space
+  (unless an owner or the admin), or no longer has `share` in the Vault there, and for a download link no longer has
+  `download` either. The public routes ask this on every open (`shareMakerCan` in `server/index.js`, passed to
+  `server/vault-share.js` as `makerCan`). If the maker gets the permission back, the link opens again while it has not
+  ended.
+- **Who may Turn off (Thomas, 2026-11-04):** its maker, an owner, and a moderator of the space (the admin counts as an
+  owner). Changing a link (name, files) stays with its maker and an owner only.
 - **The address:** `/shared/<token>`. Public routes, no session: `GET /api/shared/:token` (the share's name, its files'
   names, types and sizes, whether download is on, when it ends), `POST /api/shared/:token/unlock` `{ password }`, and
   `GET /api/shared/:token/files/:fid/content` (ranges; `?download=1` only when allowed) and `.../thumb`. Each checks the
   token, the end, the password cookie and that the file is in the set, before anything else. A file outside the set,
   another space's file, and every other route answer 404.
-- **Password:** a right password sets a signed cookie for that path only (`Path=/shared/<token>`, `HttpOnly`,
-  `SameSite=Strict`, one hour). Five wrong tries in fifteen minutes per link and address answer 429 "Too many tries. Wait a
-  few minutes."
+- **Password (Thomas, 2026-11-04):** at least 8 characters, at most 200 ("A password needs at least 8 characters.").
+  A right password sets a signed cookie for that path only (`Path=/api/shared/<token>`, which replaces
+  `/shared/<token>`: the page sends nothing itself, its `fetch()` calls to `/api/shared/<token>/...` carry the cookie;
+  `HttpOnly`, `SameSite=Strict`, `Secure` on https, one hour or to the link's end if sooner).
+- **Limits, as built (`server/vault-share.js`, Thomas 2026-11-04):**
+  - Wrong passwords: five per link and address in fifteen minutes, thirty per link from anywhere, twenty per address
+    across links; each answers 429 "Too many tries. Wait a few minutes." with `Retry-After`. The wait before an answer
+    grows with that address's own tries (0, 0, 0.5, 1, 2, 4 seconds, at most 8). A right password clears the link and
+    address count and takes its try back from the others.
+  - Per-address misses (a hundred in fifteen minutes) apply only to links that don't open (unknown, ended, turned off,
+    its maker no longer allowed). A link that opens is never held up by them.
+  - A valid unlock cookie skips every limit: a link already unlocked, or one with no password, answers `{ ok: true }` to
+    an unlock without counting a try.
+  - Password checks run in an async scrypt queue, never on the main thread: 2 at a time across the server, 50 waiting;
+    past that, 429 with `Retry-After: 5`.
+  - Per-environment unlocks per minute: 60 by default, set by `SHARE_UNLOCKS_PER_MINUTE`; past it, 429 with `Retry-After`.
+  - The per-link tries (thirty) are not evictable: their keys are the links that exist, so a stranger cannot push their
+    counts out; the other counts are bounded (10000 keys) and drop the oldest.
+  - Open streams: twelve per address ("Too many files are open at once. Close some and try again.", 429).
 - **What a person outside sees:** a plain page in the environment's theme with the share's name, "Shared by <first
   name> · Ends 12 November", and its files in a grid with the same viewers as the Vault. No space name, no people, no
   chat, no modules, no sign-in prompt, no other link. **Download** shows only when allowed. A gone or ended link: "This
@@ -351,6 +377,13 @@ same access from the sandboxed frame, as `host.uploads.url` does for pictures).
   a strict CSP with no outside sources.
 - **What view-only means, said plainly on the sheet:** "Without download, people can still save what they see on
   screen." A browser can always keep a picture it shows or a video it plays; view-only only takes the button away.
+  **A PDF on a view-only link can still be downloaded (Thomas, 2026-11-04).** The viewer is pdf.js, which was given the
+  bytes, so a person can save them; the sheet says so, next to the line above. The server still refuses `?download=1`
+  on a view-only link; the PDF reaches the viewer as bytes the page fetched.
+- **Deployment note: a reverse proxy and `TRUST_PROXY_HOPS`.** Every per-address limit above reads `req.ip`. Sharing
+  needs the server behind a reverse proxy with `TRUST_PROXY_HOPS` set to the number of proxies in front of it, or `0` if
+  it is exposed directly, because the limits trust `X-Forwarded-For`: with the wrong number, a stranger can write the
+  address the limits count, or every visitor shares the proxy's. Unset, the server assumes one proxy.
 - **The maker sees** each link's name, files, end, whether it has a password, and how many times it was opened.
 
 ### 8. Deleting
@@ -471,8 +504,9 @@ How a trip's photos and tickets are shared afterwards, as the plan expects it to
 - **Metadata:** the person adding files chooses (decision 10, section 10 "Adding"). Taken time and camera are read into
   the record for pictures either way. Audio and video are kept as sent, which can include where a video was taken, and
   the notice under Add files says so.
-- **Rate limits:** the module `upload` limit, `VAULT_MB_PER_MINUTE`, two uploads at once per person, five password tries
-  per link and address in fifteen minutes, and the existing request limits on share routes.
+- **Rate limits:** the module `upload` limit, `VAULT_MB_PER_MINUTE`, two uploads at once per person, the share
+  limits of section 7 (password tries, misses, unlocks per minute, the scrypt queue, open streams), and the existing
+  request limits on share routes.
 - **SSRF: none.** The server never fetches an address for the Vault: there is no "add from a link". The Drive store is its
   own plan.
 - **Share tokens** hashed at rest, compared in constant time, 32 bytes, never in logs.
