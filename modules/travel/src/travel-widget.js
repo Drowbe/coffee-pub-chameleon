@@ -123,6 +123,12 @@
     clearTimeout(refreshing);
     refreshing = setTimeout(() => load().then(render).catch(() => {}), 300);
   });
+  // Many at once (a Clear, its Undo): one read after them, not one per key.
+  host.on('changes', (e) => {
+    if (!(Array.isArray(e.changes) ? e.changes : []).some((c) => c.key === TRIP_KEY || planIdOf(String(c.key)) !== null)) return;
+    clearTimeout(refreshing);
+    refreshing = setTimeout(() => load().then(render).catch(() => {}), 300);
+  });
 
   try {
     await load();

@@ -34,6 +34,7 @@
 // budgetEntryProblem, budgetWanted) touch no
 // document, so tools/check-nav.mjs runs them in node; the page hands the panel what it needs (createSpaceSetup's `deps`).
 import { actionBar } from './action-bar.js';
+import { mountSees, fullSees, sameSees } from './ai-sees.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
 
 // The tabs, in the order shown, by rights.
@@ -67,7 +68,7 @@ export const FIELD_TAB = Object.freeze({
   members: 'members', allowGuests: 'members',
   phases: 'phases',
   opensWith: 'opens-with', defaultLayout: 'opens-with',
-  aiOff: 'modules',
+  aiOff: 'modules', aiSees: 'modules',
 });
 // A module's settings, in the save's lists and its words, are `module:<id>`; they live on the modules tab.
 // The tab the budget is on: the phases tab (every role with a Set up has it), else, when the template has no phases, the
@@ -132,6 +133,7 @@ const sameBudget = (a, b) => JSON.stringify(budgetSent(a)) === JSON.stringify(bu
 // Opens with are independent (plan-layout-views.md, step 5): each goes only when it changed, never one for the other.
 // `defaultLayout` is 'calendar', 'map' or a shared layout's id; the Workspace (null, or 'workspace') goes as null. The
 // members are a set (their order is no change). {} when nothing changed.
+const sameAiSees = (a, b) => (a ? (b ? sameSees(a, b) : false) : !b);
 const layoutOrNull = (v) => (typeof v === 'string' && v && v !== 'workspace' ? v : null);
 export function setupPatch(before = {}, after = {}) {
   const patch = {};
@@ -144,8 +146,11 @@ export function setupPatch(before = {}, after = {}) {
   if (typeof after.publishCalendar === 'boolean' && after.publishCalendar !== (before.publishCalendar !== false)) patch.publishCalendar = after.publishCalendar;
   if (Array.isArray(after.members) && !sameSet(after.members, Array.isArray(before.members) ? before.members : [])) patch.members = [...after.members];
   if (typeof after.allowGuests === 'boolean' && after.allowGuests !== (before.allowGuests !== false)) patch.allowGuests = after.allowGuests;
+  if (typeof after.guestsSeeHidden === 'boolean' && after.guestsSeeHidden !== (before.guestsSeeHidden === true)) patch.guestsSeeHidden = after.guestsSeeHidden;
   if (after.phases && typeof after.phases === 'object' && !sameDates(after.phases, datesCopy(before.phases))) patch.phases = datesCopy(after.phases);
   if (typeof after.aiOff === 'boolean' && after.aiOff !== (before.aiOff === true)) patch.aiOff = after.aiOff;
+  // What AI may see: null follows the environment's choice; else the space's own, whole.
+  if (after.aiSees !== undefined && !sameAiSees(after.aiSees, before.aiSees)) patch.aiSees = after.aiSees ? fullSees(after.aiSees) : null;
   if (after.budget !== undefined && !sameBudget(after.budget, before.budget)) patch.budget = budgetSent(after.budget);
   const wasLayout = layoutOrNull(before.defaultLayout);
   const nowLayout = after.defaultLayout === undefined ? wasLayout : layoutOrNull(after.defaultLayout);
@@ -167,7 +172,7 @@ export function dirtyTabs(patch = {}, { image = false, modules = false, tabs: ha
 
 // Which field of a refused PATCH the server's sentence is about (store.updateSpace's sentences), else its first.
 const PROBLEM_FIELDS = [
-  [/budget|currenc/i, 'budget'], [/\bAI\b/, 'aiOff'], [/icon/i, 'linkIcon'], [/publish/i, 'publishCalendar'], [/link/i, 'link'], [/member/i, 'members'], [/guest/i, 'allowGuests'],
+  [/budget|currenc/i, 'budget'], [/may see/i, 'aiSees'], [/\bAI\b/, 'aiOff'], [/icon/i, 'linkIcon'], [/publish/i, 'publishCalendar'], [/link/i, 'link'], [/member/i, 'members'], [/guest/i, 'allowGuests'],
   [/opens with/i, 'opensWith'], [/layout|first visit/i, 'defaultLayout'], [/profile/i, 'profile'], [/phase|date|\b(starts?|ends?)\b/i, 'phases'],
 ];
 export function problemField(patch = {}, problem = '') {
@@ -182,7 +187,7 @@ export function problemField(patch = {}, problem = '') {
 // the members ("the players") and Allow guests, which are role words, and each module's settings by its name.
 const FIELD_WORDS = {
   name: 'the name', description: 'the description', profile: 'the faces in the call', link: 'the launch link', linkIcon: 'the link icon',
-  publishCalendar: 'the published calendar', opensWith: 'Opens with', phases: 'the phase dates', aiOff: 'Turn AI off',
+  publishCalendar: 'the published calendar', opensWith: 'Opens with', phases: 'the phase dates', aiOff: 'Turn AI off', aiSees: 'What AI may see',
   defaultLayout: 'the first visit', image: 'the picture', imageRemoved: 'the picture', budget: 'the budget',
 };
 export function setupSaidWords({ saved = [], failed = null, problem = '' } = {}, { setUp = 'Set up', words = {} } = {}) {
@@ -212,14 +217,16 @@ function beforeOf(space = {}) {
     publishCalendar: space.publishCalendar !== false,
     members: Array.isArray(space.members) ? [...space.members] : [],
     allowGuests: space.allowGuests !== false,
+    guestsSeeHidden: space.guestsSeeHidden === true,
     opensWith: listOrNull(space.opensWith),
     defaultLayout: space.defaultLayout || null,
     phases: datesCopy(space.phases),
     aiOff: space.aiOff === true,
+    aiSees: space.aiSees && typeof space.aiSees === 'object' ? fullSees(space.aiSees) : null,
     budget: budgetText(space.budget),
   };
 }
-const copyOf = (b) => ({ ...b, members: [...b.members], opensWith: b.opensWith ? [...b.opensWith] : null, phases: datesCopy(b.phases), budget: { ...b.budget } });
+const copyOf = (b) => ({ ...b, members: [...b.members], opensWith: b.opensWith ? [...b.opensWith] : null, phases: datesCopy(b.phases), budget: { ...b.budget }, aiSees: b.aiSees ? { ...b.aiSees, modules: Array.isArray(b.aiSees.modules) ? [...b.aiSees.modules] : b.aiSees.modules } : null });
 // After a step of the save went through: each field it sent is now what the server answered, in both `before` and the
 // draft, so a value the server normalized (a link stored as https://example.com/ for https://example.com) is no
 // change and leaves no dot. The fields it did not send stay as they were. Answers { before, draft }, new objects.
@@ -329,7 +336,8 @@ export function createSpaceSetup(deps) {
     parts.push(sectionHtml('members', `<span id="setup-members-heading">${esc(membersWord(true))}</span>`, space.isLobby
       ? `<p class="hint">Everyone belongs to the ${esc(space.name || 'Lobby')}.</p>`
       : `<div class="setup-members" id="setup-members" role="group" aria-labelledby="setup-members-heading"></div><p class="hint">Who is in this ${esc(spaceWord())}. Saved with Save.</p>`));
-    parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>`));
+    parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>
+        <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(guests)} can see costs and booking codes</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-guests-see-hidden"></label><p class="hint">Off keeps amounts and booking codes from ${esc(guests.toLowerCase())}. Only ${esc(word('owner', { many: true }))} can change this. Saved with Save.</p>`));
     parts.push(sectionHtml('links', 'Links', `
         <p class="hint setup-links-hint">These work at once; they are not part of Save.</p>
         <h4 class="setup-subheading">Invite to sign up</h4>
@@ -421,6 +429,7 @@ export function createSpaceSetup(deps) {
     if (state.owner) {
       parts.push(sectionHtml('module-list', esc(modulesWord(true)), `${space.isLobby ? `<p class="hint">${esc(space.name || 'The Lobby')} keeps only chat, the call and ${esc(modulesWord())} made for it.</p>` : ''}<ul class="setup-module-list" id="setup-module-list"><li class="hint">Loading…</li></ul><p class="hint">Every ${esc(word('module'))} that is turned on is in every ${esc(spaceWord())}. Turn one on or off on the ${esc(modulesWord(true))} tab of Manage.</p>`));
       parts.push(sectionHtml('ai', '<i class="fa-solid fa-wand-magic-sparkles fa-fw" aria-hidden="true"></i> AI', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Turn AI off in this ${esc(spaceWord())}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-off"></label><p class="hint">${esc(modulesWord(true))} here can use the server's AI service to summarise and answer questions. Turned off, nobody here can, whatever the roles allow. Saved with Save.</p>`, { hidden: true }));
+      parts.push(sectionHtml('ai-sees', 'What AI may see', `<p class="hint">What goes to the AI with a question in this ${esc(spaceWord())}. This only narrows it: the AI never sees what the person asking could not open. Saved with Save.</p><label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label" id="setup-ai-sees-follow-label">Same as the ${esc(word('environment'))}'s choice</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-sees-follow"></label><div id="setup-ai-sees-box"></div>`, { hidden: true }));
     }
     parts.push(sectionHtml('module-settings', `${esc(word('module', { cap: true }))} settings`, `<p class="hint">What each ${esc(word('module'))} does in this ${esc(spaceWord())}. Saved with Save; deleting a file happens at once.</p><div class="setup-module-settings" id="setup-module-settings"><p class="hint">Loading…</p></div>`));
     return parts.join('');
@@ -507,6 +516,8 @@ export function createSpaceSetup(deps) {
     if (cal) cal.checked = draft.publishCalendar;
     const guests = q('#setup-allow-guests');
     if (guests) guests.checked = draft.allowGuests;
+    const seeHidden = q('#setup-guests-see-hidden');
+    if (seeHidden) seeHidden.checked = draft.guestsSeeHidden;
     paintPicture();
     paintIcons();
     paintMembers();
@@ -515,10 +526,30 @@ export function createSpaceSetup(deps) {
     if (q('#setup-opens-with')) paintOpensWith();
     const ai = q('#setup-ai-off');
     if (ai) ai.checked = draft.aiOff;
+    paintAiSees();
     paintBudgetSection();
     paintBudget();
     paintPhases();
     if (opts.nameInput && state.owner) opts.nameInput.value = draft.name;
+  }
+
+  // What AI may see (ai-sees.js): the space's own, or, with the switch on, the environment's choice shown and not changeable.
+  function wireAiSees() {
+    const box = q('#setup-ai-sees-box');
+    if (!box) return;
+    state.sees = mountSees(box, { word, idPrefix: 'setup-ai-sees', onChange: (v) => { state.draft.aiSees = v; refresh(); } });
+    q('#setup-ai-sees-follow').addEventListener('change', (event) => {
+      state.draft.aiSees = event.target.checked ? null : fullSees(state.envSees);
+      paintAiSees();
+      refresh();
+    });
+  }
+  function paintAiSees() {
+    if (!state.sees) return;
+    const follow = state.draft.aiSees === null || state.draft.aiSees === undefined;
+    q('#setup-ai-sees-follow').checked = follow;
+    state.sees.setModules((state.installed || []).filter((m) => m.enabled && Array.isArray(m.scope) && m.scope.includes('space')));
+    state.sees.set(follow ? state.envSees : state.draft.aiSees, { locked: follow });
   }
 
   function paintPicture() {
@@ -919,6 +950,8 @@ export function createSpaceSetup(deps) {
     if (cal) cal.addEventListener('change', () => { state.draft.publishCalendar = cal.checked; });
     const guests = q('#setup-allow-guests');
     if (guests) guests.addEventListener('change', () => { state.draft.allowGuests = guests.checked; paintGuestLink(); });
+    const seeHidden = q('#setup-guests-see-hidden');
+    if (seeHidden) seeHidden.addEventListener('change', () => { state.draft.guestsSeeHidden = seeHidden.checked; });
     const members = q('#setup-members');
     if (members) members.addEventListener('change', (event) => {
       if (event.target.type !== 'checkbox') return;
@@ -993,6 +1026,7 @@ export function createSpaceSetup(deps) {
     if (stop) stop.addEventListener('click', () => stopUsingLayout());
     const ai = q('#setup-ai-off');
     if (ai) ai.addEventListener('change', () => { state.draft.aiOff = ai.checked; });
+    wireAiSees();
     const list = q('#setup-opens-with');
     if (list) list.addEventListener('change', (event) => {
       if (event.target.type !== 'checkbox') return;
@@ -1091,6 +1125,10 @@ export function createSpaceSetup(deps) {
     // Turn AI off is for a server that has an AI service set up (as the old page's).
     const aiSection = q('[data-section="ai"]');
     if (aiSection) aiSection.hidden = !ai || !ai.active || ai.active.provider === 'none';
+    const seesSection = q('[data-section="ai-sees"]');
+    if (seesSection) seesSection.hidden = !ai || !ai.active || ai.active.provider === 'none';
+    state.envSees = fullSees(ai && ai.sees);
+    paintAiSees();
     refresh();
     if (!space.isLobby) loadCalendarSwitch(space);
   }
@@ -1245,7 +1283,7 @@ export function createSpaceSetup(deps) {
     name: '#setup-name', description: '#setup-description', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
     publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', budget: '#setup-budget-amount',
     opensWith: '#setup-opens-with input', defaultLayout: '#setup-first-visit input:checked', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
-    phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off',
+    phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
   };
   // The fields in this environment's words: the members, Allow guests, and each module's settings by its name.
   function fieldWords() {

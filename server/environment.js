@@ -19,6 +19,7 @@ const { EventEmitter } = require('events');
 const { Store, randomToken } = require('./store');
 const { ModuleManager } = require('./modules');
 const { ModuleData } = require('./module-data');
+const { ModuleHolds, HOLD_SECONDS } = require('./module-holds');
 const { ModuleHooks } = require('./module-hooks');
 const { ChatHistory } = require('./chat-history');
 const { Attention } = require('./attention');
@@ -29,6 +30,7 @@ const { ModuleSettings } = require('./module-settings');
 const { Ai } = require('./ai');
 const { ModuleUploads } = require('./module-uploads');
 const { VaultStore } = require('./vault-store');
+const { GUEST_LOCKED } = require('./vault-types');
 const { GeocodeCache } = require('./geocode');
 const { RegionCutJobs } = require('./region-cut');
 const { ModuleLimits } = require('./module-limits');
@@ -65,7 +67,7 @@ function moduleCan(manifest, perms, need) {
 // that does not need it) the AI key is kept as it was given. `vaultDir` is the folder this environment's library files
 // (server/vault-store.js) keep their bytes in: index.js names it under VAULT_DIR; without it (a test), <dataDir>/vault.
 // `onVaultBytes(delta)` is told every change in what they keep (index.js's total for VAULT_MAX_GB).
-function buildEnvironment(dataDir, { slug = null, admin = null, log = console.log, managed = () => null, secretsKey = null, vaultDir = null, onVaultBytes = () => {} } = {}) {
+function buildEnvironment(dataDir, { slug = null, admin = null, log = console.log, managed = () => null, secretsKey = null, vaultDir = null, onVaultBytes = () => {}, vaultSweepMs = 10000 } = {}) {
   // The Names migration (documentation/plans/plan-names.md, "The migration") runs before Store reads app.json, so
   // every service below reads this environment's data in its current shape. Throws a MigrationError naming the
   // file when a part cannot finish, and nothing is built.
@@ -73,9 +75,14 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   const store = new Store(dataDir);
   const modules = new ModuleManager(dataDir);
   const moduleData = new ModuleData(modules.dir);
+  // What a Clear took, held for its Undo (server/module-holds.js); index.js sets runIn and onExpire.
+  const moduleHolds = new ModuleHolds(modules.dir, { holdSeconds: undoSeconds(process.env.CLEAR_UNDO_SECONDS) });
   store.extraPermissions = () => modules.permissionList(); // enabled modules' permissions join the Roles grid
+  // A library module's permissions that guests never have, whatever is stored for them (server/vault-types.js).
+  store.guestLocked = () => modules.enabledAll().filter(({ manifest }) => manifest.library).flatMap(({ manifest }) => GUEST_LOCKED.map((k) => `module.${manifest.id}.${k}`));
   // A manifest's text in this environment's words, and a module's display name and icon (server/store.js).
   modules.wordsOf = () => store.resolvedWords();
+  modules.beforeOff = (id) => { for (const m of [id, ...modules.dependentsOf(id)]) moduleHolds.expireModule(m); };
   modules.displayOf = (id) => store.moduleDisplay(id);
   store.moduleIconIds = () => Object.entries(modules.registry.modules).map(([id, e]) => modules.storedManifestOf(id, e.version)?.icon).filter(Boolean);
 
@@ -177,8 +184,16 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   const moduleUploads = new ModuleUploads(modules.dir);
   // A space's library files: their bytes in the vault folder, their records beside the module's data.
-  const vault = new VaultStore({ bytesDir: vaultDir || path.join(dataDir, 'vault'), modulesDir: modules.dir, onBytes: onVaultBytes });
-  if (vault.swept.parts || vault.swept.orphans) log(`Removed ${vault.swept.parts} unfinished upload${vault.swept.parts === 1 ? '' : 's'} and ${vault.swept.orphans} file${vault.swept.orphans === 1 ? '' : 's'} with no record from ${vaultDir || path.join(dataDir, 'vault')}.`);
+  const vault = new VaultStore({ bytesDir: vaultDir || path.join(dataDir, 'vault'), modulesDir: modules.dir, onBytes: onVaultBytes, spaceExists: (id) => Boolean(store.spaceById(id)), budgetMs: vaultSweepMs });
+  // Once, with counts, only when something was found.
+  {
+    const w = vault.swept;
+    const found = [
+      [w.parts, 'unfinished upload'], [w.orphans, 'file with no record', 'files with no record'], [w.missing, 'record whose file is missing', 'records whose files are missing'],
+      [w.folders, 'empty or leftover folder'], [w.spaces, `deleted ${store.word('space')} still holding files`, `deleted ${store.word('space', { many: true })} still holding files`],
+    ].filter(([n]) => n).map(([n, one, many]) => `${n} ${n === 1 ? one : (many || `${one}s`)}`);
+    if (found.length) log(`Library sweep of ${vaultDir || path.join(dataDir, 'vault')}: ${found.join(', ')}${w.partial ? ' (stopped early; the rest on the next start)' : ''}.`);
+  }
   const geocodeCache = new GeocodeCache(modules.dir);
   const regionCutJobs = new RegionCutJobs(dataDir);
 
@@ -215,6 +230,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
     if (!activityTimer) { activityTimer = setTimeout(saveActivity, 5000); if (activityTimer.unref) activityTimer.unref(); }
   }
   moduleData.on('change', (c) => noteActivity(c.module, `${c.deleted ? 'deleted' : 'saved'} ${c.key}`, c.by, c.scopeKey));
+  moduleData.on('changes', (c) => noteActivity(c.module, `${c.restored ? 'put back' : 'cleared'} ${c.changes.length} ${c.changes.length === 1 ? 'key' : 'keys'}`, c.by, c.scopeKey));
   moduleBus.on('event', (e) => noteActivity(e.module, `published the event ${e.name}`, e.by, e.scopeKey));
   moduleBus.on('action', (a) => noteActivity(a.from, `asked ${a.provider} to ${a.action}`, a.by, a.scopeKey));
   // The upload sweep (plan-object-handoff.md, "Send to...", pictures): Chat uploads a picture into the target module's
@@ -231,6 +247,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
           const meta = moduleUploads.meta(a.provider, a.scopeKey, fid);
           if (!meta || meta.by !== a.by) continue;
           if (JSON.stringify(moduleData.list(a.provider, a.scopeKey)).includes(fid)) continue;
+          if (moduleHolds.holdsFile(a.provider, a.scopeKey, fid)) continue; // a Clear's Undo may still bring it back
           if (moduleUploads.remove(a.provider, a.scopeKey, fid)) noteActivity(a.provider, `removed a picture sent to it that was never added (${meta.name || fid})`, a.by, a.scopeKey);
         } catch {
           // a place that no longer reads: the file stays, as any upload does
@@ -248,10 +265,16 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   return {
     slug, dataDir,
-    store, modules, moduleData, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
+    store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
     geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, invites, inviteEvents, themeEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
     moduleActivity, noteActivity, saveActivity, externalCalendars,
   };
+}
+
+// How long a Clear can be undone, in seconds (CLEAR_UNDO_SECONDS): a whole number from 1 to 600, else 30.
+function undoSeconds(raw) {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 600 ? n : HOLD_SECONDS;
 }
 
 // Every write this environment might still owe the disk, at shutdown or when it is set aside (suspended, or
@@ -264,4 +287,12 @@ function flushEnvironment(env) {
   env.saveActivity();
 }
 
-module.exports = { buildEnvironment, flushEnvironment };
+// An environment set aside for good (deleted, or about to be replaced by a backup's files): what it owes the disk is
+// written, and the timers that would still act on its old data stop. A Clear waiting for its Undo is left on disk as it
+// is: the environment built next from that folder finishes it (server/module-holds.js, sweep).
+function setAsideEnvironment(env) {
+  flushEnvironment(env);
+  env.moduleHolds.stop();
+}
+
+module.exports = { buildEnvironment, flushEnvironment, setAsideEnvironment };

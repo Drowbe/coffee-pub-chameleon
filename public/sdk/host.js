@@ -151,13 +151,27 @@
   // everywhere else, text still goes in with textContent. Used for an AI's replies and for chat messages, both text
   // nobody here wrote themselves.
   function markdown(text) {
-    const inline = (s) => esc(s)
-      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-      // A bare address the text didn't wrap in [text](...) itself: linked as it stands.
-      .replace(/(^|[\s(])(https?:\/\/[^\s<]+[^\s<.,;:!?)"'])/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(?:\*|_)([^*_\n]+)(?:\*|_)/g, '<em>$1</em>');
+    // Text direction controls and zero-width characters can disguise words; none is shown.
+    text = String(text || '').replace(/[\u202A-\u202E\u2066-\u2069\u200B-\u200D\u2060\uFEFF]/g, '');
+    // Code, links and bare addresses are set aside as placeholders while bold and italic are found, so an underscore or star
+    // inside an address or an attribute (target="_blank", .../Belem_Tower) can never pair with another and become emphasis.
+    const inline = (s) => {
+      const kept = [];
+      const keep = (html) => `\u0000${kept.push(html) - 1}\u0000`;
+      const html = esc(String(s).replace(/\u0000/g, ''))
+        .replace(/`([^`\n]+)`/g, (_, c) => keep(`<code>${c}</code>`))
+        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`))
+        // A bare address the text didn't wrap in [text](...) itself: linked as it stands.
+        .replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)"'\u0000])/g, (_, lead, u) => lead + keep(`<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`))
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+        // _italic_ only at word edges, so snake_case stays as written.
+        .replace(/(^|[^\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu, '$1<em>$2</em>')
+        ;
+      let out = html;
+      for (let i = 0; i < 3 && out.includes('\u0000'); i++) out = out.replace(/\u0000(\d+)\u0000/g, (_, n) => kept[Number(n)]);
+      return out;
+    };
     const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
     const out = [];
     let para = [];
@@ -291,6 +305,37 @@
     s = s.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ');
     if (o && o.line) return s.replace(/\s+/g, ' ').trim();
     return s.split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // A time of day typed by a person, read as "HH:MM" (24 hours), or '' when it is not one. "1030", "10:30", "10.30", "10:30 pm", "10p",
+  // "7", "22:30" all read. With no am or pm, a 24-hour clock takes the hour as given; a 12-hour clock takes 0 and 13 to 23 as given,
+  // and 1 to 12 in the half of the day `prev` ("HH:MM", what the field held) was in (noon for 12, the morning for the rest, when it held nothing).
+  function parseClockText(text, clock, prev) {
+    const t = String(text ?? '').trim();
+    const m = /^(\d{1,2})\s*(?:[:.h]\s*(\d{2}))?\s*(?:([ap])\.?\s*m?\.?)?$/i.exec(t) || /^(\d{1,2})(\d{2})\s*(?:([ap])\.?\s*m?\.?)?$/i.exec(t);
+    if (!m) return '';
+    let h = Number(m[1]);
+    const min = m[2] === undefined ? 0 : Number(m[2]);
+    const half = m[3] ? m[3].toLowerCase() : '';
+    if (min > 59) return '';
+    if (half) {
+      if (h < 1 || h > 12) return '';
+      h = (h % 12) + (half === 'p' ? 12 : 0);
+    } else if (h > 23) {
+      return '';
+    } else if (clock !== '24' && h >= 1 && h <= 12) {
+      const pm = /^\d{2}:/.test(prev || '') ? Number(prev.slice(0, 2)) >= 12 : h === 12;
+      h = (h % 12) + (pm ? 12 : 0);
+    }
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  }
+  // "HH:MM" as the field shows it: "10:30 PM" on a 12-hour clock, "22:30" on a 24-hour one; '' stays ''.
+  function clockText(hhmm, clock) {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(hhmm || ''));
+    if (!m) return '';
+    if (clock === '24') return hhmm;
+    const h = Number(m[1]);
+    return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
   }
 
   // A local date and time from a `when` (the objects format's: "2026-11-14T12:50", "2026-11-14", or "12:50" when the day is
@@ -1205,11 +1250,47 @@
   // An "open this object" from the host can arrive before the module has said what to do with one.
   let pendingOpen = null;
 
+  // The values of an event that names keys only: ONE storage.list for the keys' common prefix, not a get for each. A key the
+  // list does not hold is gone (deleted). A list that fails is asked once more; if it fails again nothing is dropped silently:
+  // the person is told to reload, and null comes back (the module hears none of that event, never a part of it).
+  async function readKeysOnly(changes, scope, spaceId) {
+    const at = scope === 'spaces' && spaceId ? { scope, space: spaceId } : scope ? { scope } : undefined;
+    const need = changes.filter((c) => !c.deleted && c.value === undefined);
+    let prefix = need[0].key;
+    for (const c of need) while (!c.key.startsWith(prefix)) prefix = prefix.slice(0, -1);
+    let items = null;
+    for (let tries = 0; tries < 2 && !items; tries += 1) {
+      try { items = await call('storage.list', { prefix, ...opts(at) }); } catch (err) { items = null; }
+    }
+    if (!Array.isArray(items)) {
+      call('ui.toast', { text: 'Some changes did not load. Reload the page to see them.' }).catch(() => {});
+      return null;
+    }
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    return changes.map((c) => {
+      if (c.deleted || c.value !== undefined) return c;
+      const got = byKey.get(c.key);
+      return got ? { ...c, value: got.value, version: got.version } : { ...c, deleted: true };
+    });
+  }
+
   function emit(event, data) {
     // The environment's facts changed (a picture map set, replaced or cleared): host.environment answers the new ones
     // before anyone listening hears it.
     if (event === 'environment' && info && data && typeof data === 'object') info.environment = { ...(info.environment || {}), pictureMap: data.pictureMap && typeof data.pictureMap === 'object' ? data.pictureMap : null };
     if (event === 'objectopen' && !(listeners.get(event) && listeners.get(event).size)) pendingOpen = data;
+    // Many keys at once (a Clear, its Undo): a module listening for 'changes' hears it once, to draw once; any other
+    // hears each key as its own 'change'.
+    // The replay is one pass, and each 'change' of it carries `batch` ({ count, last }) so a module that draws on each one can
+    // draw on the last only. An event that names keys only (a big one comes without values) has its values read first, a few
+    // at a time, so a 'change' always has its value.
+    if (event === 'changes' && !(listeners.get(event) && listeners.get(event).size)) {
+      const { changes = [], scope, spaceId } = data || {};
+      const replay = (list) => list.forEach((c, i) => emit('change', { ...c, scope, spaceId, batch: { count: list.length, last: i === list.length - 1 } }));
+      if (!changes.some((c) => !c.deleted && c.value === undefined)) { replay(changes); return; }
+      readKeysOnly(changes, scope, spaceId).then((full) => { if (full) replay(full); });
+      return;
+    }
     for (const fn of listeners.get(event) || []) {
       try {
         fn(data);
@@ -1254,6 +1335,24 @@
   // for 'environment'; its environment page may read across the viewer's spaces with 'spaces', and read and write
   // one of them with { space: <id> }; 'person' is the viewer's own. A module in a space reaches only that space.
   const opts = (o) => ({ scope: (o && o.scope) || 'context', ...(o && o.space ? { space: String(o.space) } : {}) });
+  // Library files (host.files.resolve, link, unlink; host.ui.fileChips). What one pointer's answer says about the file.
+  function fileFacts(ref, s) {
+    if (!s || s.error) return { ref, state: s && s.state === 'gone' ? 'removed' : 'hidden' };
+    if (s.missing) return { ref, name: String(s.title || ''), state: 'missing' };
+    return { ref, name: String(s.title || ''), group: s.group || '', type: s.type || '', size: Number(s.size) || 0, icon: s.icon || 'file', ...(s.viewable === false ? { viewable: false } : {}) };
+  }
+  async function resolveFiles(pointers) {
+    const list = (Array.isArray(pointers) ? pointers : [pointers]).map(cleanRef).filter((r) => r && r.kind === 'file');
+    if (!list.length) return [];
+    const got = await host.objects.resolve(list);
+    return list.map((ref, i) => fileFacts(ref, got[i]));
+  }
+  function fileLinks(object, pointers, op) {
+    const list = (Array.isArray(pointers) ? pointers : [pointers]).map(cleanRef).filter((r) => r && r.kind === 'file');
+    if (!list.length) return Promise.resolve({ links: 0 });
+    return host.objects.setLinks(object, list, { kind: 'file', op });
+  }
+  const fileSize = (bytes) => (bytes >= 1073741824 ? `${Math.round(bytes / 107374182.4) / 10} GB` : bytes >= 1048576 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
   // The names modules used before the product's rename, refused with the word to use instead (no module is translated).
   const OLD_WORDS = { server: 'scope "environment"', boxWidth: '{ space }', rooms: 'scope "spaces"' };
   function refuseOld(o, what) {
@@ -1869,6 +1968,72 @@
       // A Font Awesome icon ("circle-right", style "solid", "regular" or "brands") as inline SVG text, coloured by
       // the text colour, for a module that cannot load the icon font. Resolves to the SVG, or rejects if there is no such icon.
       icon: (name, style) => call('icons.svg', { name, style: style || 'solid' }),
+      // The files an object links to, drawn as the shared file chips (plan-attachments-vault.md, section 5; the Prototype's "In other modules"):
+      // a type icon, the name and the size; a click opens the file window over the canvas (host.objects.open with the other chips' ids as
+      // `list`, so Previous and Next walk them; one chip alone has none). A file that was removed reads "File removed", one whose bytes are
+      // gone "File missing", one this person may not see "Not available to you" (the last three are muted and not links).
+      //   host.ui.fileChips(container, pointers, { canEdit?, unlinkable?, live?, onOpen?(pointer), onRemoveLink?(pointer) }) -> { update(pointers), destroy() }
+      // `canEdit` adds Remove link beside a removed or missing file, which calls onRemoveLink(pointer) (the module unlinks it with
+      // host.files.unlink, updates its own list and calls update); with `unlinkable` as well, a file that is there gets Unlink too (an editor's
+      // list). The chips look again by themselves when a file is renamed or removed (the 'library' event) and when links change, until the
+      // container leaves the page; `live: false` turns that off. The container is cleared; pointers are checked, and only files are drawn.
+      fileChips: (container, pointers, o) => {
+        const opt = o || {};
+        let list = [];
+        let gen = 0;
+        let dead = false;
+        const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+        const icon = async (name) => { const span = make('span', 'ic sdk-file-chip-ic'); span.setAttribute('aria-hidden', 'true'); try { span.innerHTML = await menuIcon(name); } catch (err) { /* no icon */ } return span; };
+        async function draw() {
+          const mine = ++gen;
+          const facts = list.length ? await resolveFiles(list).catch(() => list.map((ref) => ({ ref, state: 'hidden' }))) : [];
+          if (dead || mine !== gen) return;
+          const there = facts.filter((f) => !f.state);
+          const ids = there.length > 1 ? there.map((f) => f.ref.id) : null;
+          const rows = [];
+          for (const f of facts) {
+            const wrap = make('span', 'sdk-file-chipwrap');
+            const state = f.state || 'ok';
+            const chip = make(state === 'ok' ? 'button' : 'span', 'sdk-chip-tag sdk-file-chip');
+            chip.dataset.state = state;
+            if (state === 'ok') {
+              chip.type = 'button';
+              chip.append(await icon(f.icon), make('span', 'sdk-file-chip-name', f.name), make('span', 'sdk-file-chip-size', fileSize(f.size)));
+              chip.setAttribute('aria-label', `${f.name}, ${fileSize(f.size)}. Open the file.`);
+              chip.addEventListener('click', () => { if (typeof opt.onOpen === 'function') opt.onOpen(f.ref); else host.objects.open(f.ref, ids ? { list: ids } : undefined).catch((err) => host.ui.toast(err.message)); });
+            } else if (state === 'removed') {
+              chip.append(await icon('file-circle-xmark'), make('span', 'sdk-file-chip-state', 'File removed'));
+            } else if (state === 'missing') {
+              chip.dataset.tone = 'warn';
+              chip.append(await icon('triangle-exclamation'), make('span', 'sdk-file-chip-name', f.name), make('span', 'sdk-file-chip-state', 'File missing'));
+            } else {
+              chip.append(await icon('lock'), make('span', 'sdk-file-chip-state', 'Not available to you'));
+            }
+            wrap.append(chip);
+            if (opt.canEdit === true && (state === 'removed' || state === 'missing' || (state === 'ok' && opt.unlinkable === true))) {
+              const remove = make('button', 'btn btn-small btn-quiet sdk-file-chip-remove', state === 'ok' ? 'Unlink' : 'Remove link');
+              remove.type = 'button';
+              if (state === 'ok') remove.setAttribute('aria-label', `Unlink ${f.name}`);
+              remove.addEventListener('click', () => { if (typeof opt.onRemoveLink === 'function') opt.onRemoveLink(f.ref); });
+              wrap.append(remove);
+            }
+            rows.push(wrap);
+          }
+          if (dead || mine !== gen) return;
+          container.classList.add('sdk-file-chips');
+          container.replaceChildren(...rows);
+        }
+        const set = (next) => { list = (Array.isArray(next) ? next : []).map(cleanRef).filter((r) => r && r.kind === 'file'); return draw(); };
+        const offs = [];
+        const again = () => {
+          if (dead) return;
+          if (!container.isConnected) { dead = true; for (const off of offs) off(); return; } // the module drew something else over it
+          if (list.length) draw();
+        };
+        if (opt.live !== false) offs.push(host.on('library', again), host.on('links', again));
+        set(pointers);
+        return { update: set, destroy: () => { dead = true; for (const off of offs) off(); container.replaceChildren(); } };
+      },
       // A short note that appears for a few seconds and goes: for an instant confirmation ("Saved in X.") or a small refusal. Never
       // draw one inline in the module. Resolves true; the text is cut to 200 characters.
       toast: (text) => call('ui.toast', { text: String(text ?? '') }).then(() => true),
@@ -2091,6 +2256,127 @@
           destroy: () => { select.removeEventListener('change', changed); if (watch) watch.disconnect(); picker.destroy(); box.remove(); select.hidden = false; },
         };
       },
+      // A time field that follows the environment's clock (host.locale().clock: 12 or 24 hours) instead of the browser's own, on an
+      // <input type="time"> the module already has. The input becomes a text field that shows "10:30 PM" or "22:30" and reads what is
+      // typed ("1030", "10:30 pm", "7p", "22:30"); input.value stays "HH:MM" in 24 hours ('' when empty), set or read, so a module's
+      // stored values and code do not change. Up and Down move by `step` minutes (5; PageUp and PageDown by an hour), Enter and leaving
+      // the field accept what was typed, Escape puts back the last good time (and only then; with nothing to put back it goes on to
+      // close the window around it). Text that is not a time is '' and aria-invalid; a time outside min or max is aria-invalid too.
+      // `input` and `change` fire once per accepted time, never per typed letter. 44px tall and 16px on a touch screen.
+      // The accessible name is the field's <label> (kept live) or `label`.
+      //   timeField(input, { label?, min?, max?, step?, onChange? }) -> { value, set(hhmm), min, max, focus(), refresh(), destroy() }
+      // `refresh()` redraws the shown time (call it if the clock setting changes while a form is open). Anything but an input throws
+      // "host.ui.timeField needs an <input>".
+      timeField: (input, o) => {
+        if (!input || input.nodeType !== 1 || input.tagName !== 'INPUT') throw new Error('host.ui.timeField needs an <input>');
+        const options = o || {};
+        const native = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        const clean = (v) => { const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(v ?? '').trim()); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? `${m[1].padStart(2, '0')}:${m[2]}` : ''; };
+        let min = clean(options.min !== undefined ? options.min : input.getAttribute('min'));
+        let max = clean(options.max !== undefined ? options.max : input.getAttribute('max'));
+        const step = Number.isFinite(options.step) && options.step >= 1 ? Math.min(Math.round(options.step), 720) : 5;
+        let value = clean(native.get.call(input));
+        let bad = false;
+        let internal = false;
+        const clock = () => (locale().clock === '24' ? '24' : '12');
+        input.removeAttribute('min');
+        input.removeAttribute('max');
+        input.type = 'text';
+        input.classList.add('sdk-timefield');
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.setAttribute('autocapitalize', 'off');
+        if (options.label) input.setAttribute('aria-label', String(options.label));
+        else if (!input.closest('label') && !(input.labels && input.labels.length) && !input.getAttribute('aria-label') && !input.getAttribute('aria-labelledby')) input.setAttribute('aria-label', 'Time');
+        const show = () => {
+          input.placeholder = clock() === '24' ? 'HH:MM' : 'h:mm AM';
+          native.set.call(input, clockText(value, clock()));
+        };
+        const judge = () => {
+          const out = Boolean(value) && ((min && value < min) || (max && value > max));
+          if (bad || out) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+          input.setCustomValidity(bad ? 'Type a time, like 10:30' : out ? 'That time is outside the allowed hours' : '');
+        };
+        const fire = () => {
+          internal = true;
+          try {
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          } finally { internal = false; }
+          if (typeof options.onChange === 'function') options.onChange(value);
+        };
+        // Accept what is in the field: a time, or '' (empty is allowed; text that is not a time is '' and flagged).
+        const commit = () => {
+          const text = native.get.call(input).trim();
+          const next = text ? parseClockText(text, clock(), value) : '';
+          bad = Boolean(text) && !next;
+          const changed = next !== value;
+          value = next;
+          if (!bad) show();
+          judge();
+          if (changed) fire();
+        };
+        const minutesOf = (v) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
+        const nudge = (by) => {
+          commit();
+          const from = value ? minutesOf(value) : min ? minutesOf(min) - by : 12 * 60 - by;
+          const t = (((from + by) % 1440) + 1440) % 1440;
+          value = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+          bad = false;
+          show();
+          judge();
+          fire();
+        };
+        const onInput = (e) => { if (!internal) e.stopImmediatePropagation(); }; // typing is not a change until it is accepted
+        const onChange = (e) => { if (!internal) { e.stopImmediatePropagation(); commit(); } };
+        const onKey = (e) => {
+          if (input.disabled || input.readOnly) return;
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge((e.key === 'ArrowUp' ? 1 : -1) * step); } else if (e.key === 'PageUp' || e.key === 'PageDown') { e.preventDefault(); nudge(e.key === 'PageUp' ? 60 : -60); } else if (e.key === 'Enter') commit();
+          else if (e.key === 'Escape') {
+            if (native.get.call(input) === clockText(value, clock()) && !bad) return; // nothing to put back: Escape goes on (closes the window)
+            e.preventDefault();
+            e.stopPropagation();
+            bad = false;
+            show();
+            judge();
+          }
+        };
+        const onBlur = () => commit();
+        input.addEventListener('input', onInput, true);
+        input.addEventListener('change', onChange, true);
+        input.addEventListener('keydown', onKey);
+        input.addEventListener('blur', onBlur);
+        // The module sets and reads input.value as it did on a time input: "HH:MM" in, "HH:MM" out.
+        Object.defineProperty(input, 'value', {
+          configurable: true,
+          get: () => value,
+          set: (v) => { value = clean(v); bad = false; show(); judge(); },
+        });
+        show();
+        judge();
+        return {
+          get value() { return value; },
+          set: (v) => { input.value = v; },
+          get min() { return min; },
+          set min(v) { min = clean(v); judge(); },
+          get max() { return max; },
+          set max(v) { max = clean(v); judge(); },
+          focus: () => input.focus(),
+          refresh: show,
+          destroy: () => {
+            input.removeEventListener('input', onInput, true);
+            input.removeEventListener('change', onChange, true);
+            input.removeEventListener('keydown', onKey);
+            input.removeEventListener('blur', onBlur);
+            delete input.value;
+            input.type = 'time';
+            native.set.call(input, value);
+            input.classList.remove('sdk-timefield');
+            input.removeAttribute('aria-invalid');
+            input.setCustomValidity('');
+          },
+        };
+      },
       // A view or filter switch, drawn in the toolbar (see host.toolbar.set) -- its most common tool, so
       // this is the one built for every module rather than each writing its own diffing and event wiring.
       // { id, options: [{ id, label?, icon?, regular?, iconOnly? }], value, onChange }: an option needs a
@@ -2192,7 +2478,8 @@
       // set(key, value, { version }) -- pass the version you read to detect a
       // change made since; a conflict rejects with error.status 409 and
       // error.current holding what is stored now.
-      set: (key, value, o) => call('storage.set', { key, value, version: o && o.version, ...opts(o) }),
+      // `tz`: the time zone the value's clock times are in (an IANA name), when it is not the person's own.
+      set: (key, value, o) => call('storage.set', { key, value, version: o && o.version, ...(o && typeof o.tz === 'string' ? { tz: o.tz } : {}), ...opts(o) }),
       delete: (key, o) => call('storage.delete', { key, version: o && o.version, ...opts(o) }),
       list: (prefix, o) => call('storage.list', { prefix: prefix || '', ...opts(o) }),
     },
@@ -2256,8 +2543,40 @@
     // range requests included, for a module running in the page (a frame cannot fetch).
     // `url(name, { folder })`: pass the setting's folder too when two of the module's folders could hold the same name
     // (Maps' picture map is in `image-map`, its map data in `map-tiles`).
+    // `open(pointer, { list, name })` opens a library file (the Vault's, a pointer of kind `file`) in a file window over the page (the
+    // app's own viewer; several can be open, at most four). `list` is the ids of the files to walk with Previous and Next, in the order
+    // to walk them (the Vault's list as filtered); without it the window has no Previous and Next. It answers true when a window
+    // opened or came forward, false at the cap (the person is told). It refuses (status 403) a pointer to a file in another space than this
+    // module's own, and a module that is not the library itself unless its manifest consumes the file kind and an owner approved it. When the window closes, focus returns to the module's frame
+    // and the module hears the event 'fileclosed' ({ id }), so it can put focus back on what opened the file.
     files: {
       url: (name, o) => call('files.url', { name, ...(o && o.folder ? { folder: o.folder } : {}) }),
+      open: (pointer, o) => call('files.open', { ref: pointer, list: o && o.list, name: o && o.name }),
+      // Files of the space's library (the Vault; plan-attachments-vault.md, sections 4 and 5), for a module that links its objects to
+      // them. The module's manifest consumes the file kind (`"vault:file"` or `"*"`) and an owner approved it, as for any object; a
+      // module that was not approved is refused (403) and finds, resolves and links nothing. Nothing here names the library module.
+      //
+      //   pick({ multiple?, title? }) -> pointers[]   The object picker, kept to files: search, tick, Pick. Resolves the chosen
+      //                                               pointers ([] when the person cancels; at most one without `multiple`). Rejects with
+      //                                               "There is no Vault in this {space}." when no library is on here for this module.
+      //   link(object, pointers)   Add files to what the object points at (`object` from host.objects.make()), whatever else it points at.
+      //   unlink(object, pointers) Take them out. Both go through host.objects.setLinks, so "Where it is used" (the Vault's Remove
+      //                            question, host.library.uses) comes from them. The module keeps its own list of the pointers it shows.
+      //   resolve(pointers) -> [{ ref, name, group, type, size, icon, viewable?, state? }]  in the same order. `state` is 'removed' (the file is
+      //                            gone: its link stays and reads "File removed"), 'missing' (its bytes are gone: "File missing"),
+      //                            'hidden' ("Not available to you"); without it the file is there. Only `ref` and `state` for the last two.
+      //   open(pointer, { list })  (above) -- also what host.objects.open does for a file pointer.
+      pick: async (o) => {
+        const t = o && typeof o === 'object' ? o : {};
+        const kinds = await call('objects.kinds', {});
+        if (!Array.isArray(kinds) || !kinds.some((k) => k && k.kind === 'file')) throw Object.assign(new Error(`There is no Vault in this ${locale().words.space.one}.`), { status: 404 });
+        const got = await host.objects.pick({ kinds: ['file'], multiple: t.multiple === true, title: t.title === undefined ? 'Add a file' : String(t.title).slice(0, 120) });
+        const list = got === null || got === undefined ? [] : Array.isArray(got) ? got : [got];
+        return list.map(cleanRef).filter((r) => r && r.kind === 'file');
+      },
+      link: (object, pointers) => fileLinks(object, pointers, 'add'),
+      unlink: (object, pointers) => fileLinks(object, pointers, 'remove'),
+      resolve: (pointers) => resolveFiles(pointers),
     },
 
     // AI, asked of the server (declare the `ai` hook; the admin approves it like the others). The admin chooses the service and
@@ -2289,8 +2608,11 @@
     },
 
     // Ask in Chat on a space's canvas: posts a private /ai question (the reply shows only to the person who asked).
-    // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`.
+    // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`. With a ref and no
+    // question (`question: ''`) the server asks its own: What should I know about <the object's title>?
+    //   available()  -> { available }   false off a space's canvas (a module's own page), where ask rejects: hide the button there.
     chat: {
+      available: () => call('chat.available', {}),
       ask: (o) => call('chat.ask', { question: o && o.question, refs: o && o.refs }),
     },
 
@@ -2309,6 +2631,46 @@
       list: (o) => call('uploads.list', { scope: o && o.scope }),
       remove: (id, o) => call('uploads.remove', { id, scope: o && o.scope }),
       url: (id, o) => call('uploads.url', { id, thumb: !!(o && o.thumb), scope: o && o.scope }),
+    },
+
+    // A library's files (a module that declares `library: true`, the Vault; plan-attachments-vault.md): the space's files, kept by the
+    // server, each checked from its own bytes. All in the space the frame is in.
+    //   list()                       -> { files: [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable? }], usage: { bytes, maxBytes } }
+    //       `viewable: false` is only on a PDF kept as download only (the server could not check it): never open it in the
+    //       app, show "This PDF can't be opened here. Download it." with download(id). Every other file has no `viewable`.
+    //   add(blob, { name, keepPosition, onProgress })  -> the file. `onProgress({ loaded, total })` while it is sent; the promise has `.cancel()`.
+    //       A picture keeps where it was taken only when `keepPosition` is true. Rejects with the server's sentence (a type or limit refused).
+    //   rename(id, name), remove(id), uses(id) -> { uses: [summary], hidden }, thumb(id, blob) (the small picture you made, of at most 300 KB)
+    //   url(id, { thumb, download }) the address; blob(id, { thumb }) -> a Blob of the file or its small picture.
+    //       A PDF is never shown from its address (it is always sent as a download): blob(id) its bytes and hand them to
+    //       the app's PDF viewer (GET /viewer/pdf in a sandboxed frame; its protocol is at the top of
+    //       public/sdk/pdf-viewer.mjs) as { type: 'open', data: await blob.arrayBuffer() }. blob(id) of a download-only
+    //       PDF rejects with status 404: check `viewable` first.
+    //   download(id)                 the host saves the file (a frame cannot start a download itself); needs `download`
+    //   share([id])                  opens the share sheet over the page for these files (the person needs the `share` permission);
+    //       Make link shows the address once, with Copy. Resolves when the sheet is up; the module hears 'sharechanged' when a link
+    //       is made, changed or turned off, and asks list() again (each file then has `shared: true|false`, for people with `share`).
+    //   shares()                     opens the list of the space's share links over the page (Turn off, Edit, Choose files);
+    //       the module hears 'sharechoose' when the person presses Choose files there (start choosing files).
+    library: {
+      list: () => call('library.list'),
+      add: (file, o) => {
+        const opts = o || {};
+        const token = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+        const off = typeof opts.onProgress === 'function' ? host.on('libraryprogress', (e) => { if (e && e.token === token) opts.onProgress({ loaded: e.loaded, total: e.total }); }) : null;
+        const out = call('library.add', { file, name: opts.name, keepPosition: Boolean(opts.keepPosition), token }).finally(() => { if (off) off(); });
+        out.cancel = () => { call('library.cancel', { token }).catch(() => {}); };
+        return out;
+      },
+      rename: (id, name) => call('library.rename', { id, name }),
+      remove: (id) => call('library.remove', { id }),
+      uses: (id) => call('library.uses', { id }),
+      thumb: (id, blob) => call('library.thumb', { id, file: blob }),
+      url: (id, o) => call('library.url', { id, thumb: Boolean(o && o.thumb), download: Boolean(o && o.download) }),
+      blob: (id, o) => call('library.blob', { id, thumb: Boolean(o && o.thumb) }),
+      download: (id) => call('library.download', { id }),
+      share: (ids) => call('library.share', { ids }),
+      shares: () => call('library.shares'),
     },
 
     // The module's settings, as chosen for this viewer here: { key: value }, with the module's own default for what
@@ -2457,7 +2819,9 @@
       // Show an object in the module that owns it (it opens on the canvas, and it is asked to show the object). The
       // summary says whether it can: summary.open. `{ newTab: true }` for a click that asked for a new tab (Ctrl or Cmd,
       // the middle button): a page that can (home) opens it in one; any other shows it as usual.
-      open: (ref, o) => call('objects.open', { ref, newTab: Boolean(o && o.newTab) }),
+      // A pointer to a library file (kind `file`) opens the file window over the canvas instead, after the same check as host.files.open;
+      // `{ list }` is the ids of the files linked on the object it was opened from, so Previous and Next walk those (else they are hidden).
+      open: (ref, o) => call('objects.open', { ref, newTab: Boolean(o && o.newTab), ...(o && Array.isArray(o.list) ? { list: o.list.filter((id) => typeof id === 'string').slice(0, 2000) } : {}) }),
       // For a module that owns objects: called when someone asks to see one of them (host.objects.open from
       // another module): open it. The pointer is checked for shape and points at one of your own objects.
       onOpen: (fn) => {
@@ -2477,11 +2841,15 @@
       // at them. Only pointers are kept, and only what the viewer may see is ever shown.
       // `{ space }` says the object is in that space (a module's environment page linking one of a space's objects);
       // the pointer from make() already carries it, so it is only a check.
-      setLinks: (from, to, o) => call('objects.setLinks', { from, to, ...(o && o.space ? { space: String(o.space) } : {}) }),
+      // `{ kind: 'file' }` changes only the links to objects of that kind and leaves the rest as they are; with it `{ op: 'add' }` or
+      // `{ op: 'remove' }` adds `to` to those links or takes it out instead of replacing them (host.files.link and unlink do this).
+      setLinks: (from, to, o) => call('objects.setLinks', { from, to, ...(o && o.space ? { space: String(o.space) } : {}), ...(o && o.kind ? { kind: String(o.kind) } : {}), ...(o && (o.op === 'add' || o.op === 'remove') ? { op: o.op } : {}) }),
       // What points at one of your objects (its kind must have "backlinks": true in module.json), and what
       // one points at: summaries. The 'links' event says when to ask again.
       linksTo: (ref) => call('objects.links', { ref, dir: 'to' }),
       linksFrom: (ref) => call('objects.links', { ref, dir: 'from' }),
+      // What points at each of several of this module's objects, in one request: [{ ref, summaries }] (only those something points at).
+      linksToAll: (refs) => call('objects.linksToAll', { refs }),
       // Other modules' objects that show on a calendar as markers (a kind marked "marker": true beside "dated" in its
       // module.json): a task due on a day, a poll's closing time. Read through the kinds this module consumes (as
       // approved), in this module's place: in a space, that space's; on the environment's page, the environment's and
@@ -2499,7 +2867,27 @@
       // environment page { scope: 'spaces' } asks every space the viewer belongs to at once (each pointer carries its
       // space), and { has: 'place' } keeps only summaries with a place (up to 1,000 then, rather than 50).
       // { scope: 'environment', in: <space id> } finds the environment's objects marked for that space (plan-places-library.md).
-      search: (text, o) => call('objects.search', { q: text || '', ...opts(o), ...(o && o.has ? { has: String(o.has) } : {}), ...(o && o.in ? { in: String(o.in) } : {}) }),
+      search: (text, o) => call('objects.search', { q: text || '', ...opts(o), ...(o && o.has ? { has: String(o.has) } : {}), ...(o && o.kind ? { kind: String(o.kind) } : {}), ...(o && o.in ? { in: String(o.in) } : {}) }),
+      // A window the host draws to choose another module's object: a search box (the person's own permissions, the same search as
+      // search() above), the results as rows with each kind's icon, and on a phone a full-height sheet. Keyboard: type to search,
+      // Up and Down move, Enter chooses, Escape or Close cancels. Resolves with the object's pointer (a ref), or with a list of
+      // pointers when `multiple` is true (chosen with ticks, then the Pick button), or null when the person cancels.
+      //   pick({ modules?, kinds?, scope?, space?, title?, multiple? }) -> ref | ref[] | null
+      //   modules: ['places'] keeps only those modules' objects; kinds: ['place'] only those kinds ("kind" or "module:kind");
+      //   scope and space are search()'s; title is the window's name (default "Pick an object", in the environment's word for it).
+      // It does not store anything. Keep the ref (host.objects.setLinks if it should be linked) and resolve() it for its title.
+      pick: (o) => {
+        const t = o && typeof o === 'object' ? o : {};
+        refuseOld(t, 'host.objects.pick');
+        const list = (v, what) => {
+          if (v === undefined || v === null) return [];
+          if (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || !x)) throw Object.assign(new Error(`host.objects.pick: ${what} is a list of names`), { status: 400 });
+          return v.slice(0, 20);
+        };
+        try {
+          return call('objects.pick', { modules: list(t.modules, 'modules'), kinds: list(t.kinds, 'kinds'), title: t.title === undefined ? '' : String(t.title).slice(0, 120), multiple: t.multiple === true, ...opts(t) });
+        } catch (err) { return Promise.reject(err); }
+      },
       // The costs other modules hold in this space (the summaries that carry an `amount` or a `planned` amount: title, when, amount, planned?, paidBy?,
       // sharedBy? (none: everyone), module, ref), as the person may read them: { summaries, withheld }. `withheld` is how many
       // priced objects were left out because the person may not read their module (a number, never a title or figure). Read
@@ -2731,8 +3119,18 @@
         const CURSOR = '_cursor:events';
         let cursor = null;
         let chain = Promise.resolve();
+        let waiting = 0; // events queued and not yet handled: the cursor is written once the batch is done, not after each one
+        const writeCursor = async () => {
+          try {
+            await host.storage.set(CURSOR, { id: cursor });
+          } catch (err) {
+            // read-only here: the cursor is kept for this visit only
+          }
+        };
         const deliver = (e) => {
+          waiting += 1;
           chain = chain.then(async () => {
+            waiting -= 1;
             if (cursor !== null && e.id <= cursor) return;
             try {
               await handler(e);
@@ -2740,18 +3138,15 @@
               console.error(err);
             }
             cursor = e.id;
-            try {
-              await host.storage.set(CURSOR, { id: cursor });
-            } catch (err) {
-              // read-only here: the cursor is kept for this visit only
-            }
+            if (waiting === 0) await writeCursor();
           });
         };
         const off = host.on('bus', deliver);
         (async () => {
           let saved = null;
           try {
-            const item = await host.storage.get(CURSOR);
+            // Asked as a list, not a get: a first visit has no cursor yet, and a get of a missing key is a 404 in the console.
+            const item = (await host.storage.list(CURSOR)).find((i) => i.key === CURSOR);
             saved = item && item.value && item.value.id;
           } catch (err) {
             saved = null;
@@ -2759,11 +3154,7 @@
           const r = await call('events.since', { after: saved == null ? 'now' : saved });
           if (saved == null) {
             if (cursor === null || cursor < r.latest) cursor = r.latest;
-            try {
-              await host.storage.set(CURSOR, { id: cursor });
-            } catch (err) {
-              // read-only here
-            }
+            await writeCursor();
           } else if (cursor === null || cursor < saved) {
             cursor = saved;
           }
@@ -2861,8 +3252,8 @@
       request: async (action, input, o) => {
         const name = String(action || '');
         if (name === 'assistant:askAssistant' || name === 'askAssistant') {
-          const q = String(input?.question || '').trim() || (input?.ref ? 'What should I know about this?' : '');
-          if (!q) throw new Error('Type a question.');
+          const q = String(input?.question || '').trim();
+          if (!q && !input?.ref) throw new Error('Type a question.');
           await call('chat.ask', { question: q, refs: input?.ref ? [input.ref] : [] });
           return { status: 'done', id: 0, result: { ok: true } };
         }
@@ -3131,7 +3522,8 @@
     // 'standard' ({ id }) for Settings, Share or Print (host.standard.set runs your handler for it), 'printed' once the page is back after Print,
     // 'toolbar' ({ id, value?, x? }) for a toolbar item (x: a button's left edge across the module, for a menu under it), 'nav' ({ id }) for one of the module's nav-bar tools,
     // 'change' ({ key, value, version, deleted, scope, spaceId, by })
-    // whenever stored data changes, 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
+    // whenever stored data changes, 'changes' ({ changes: [{ key, value, version, deleted, by }], cleared?, restored?, scope, spaceId, by })
+    // when many keys changed at once (a Clear, its Undo; without a 'changes' listener each comes as a 'change' in one pass, with batch: { count, last }, so a module can draw on the last only), 'library' ({ op: 'added'|'renamed'|'removed'|'thumb', id, module, spaceId }) when a library file changed (to the library module itself, e.g. the Vault, and to a module approved to link to its files; host.ui.fileChips already listens), 'markers' when another module's marker objects changed (host.objects.markers), 'schedule' ({ key, payload }) when a schedule fires, 'theme' (the new theme),
     // 'moved' ({ mode }) after the host moved the module between docked and floating (the SDK reopens an open editor window itself),
     // 'environment' ({ pictureMap }) when the environment's facts changed (host.environment already answers the new ones),
     // 'phases' ({ phases, timeline }) when the dates on the space's timeline changed (a save in the sheet or Set up, or
@@ -3248,7 +3640,7 @@
       const id = ++seq;
       pending.set(id, { resolve, reject });
       global.parent.postMessage({ host: 1, tk: secret, id, method, params }, '*');
-      if (method === 'ui.confirm') return; // a question waits as long as the person takes
+      if (method === 'ui.confirm' || method === 'objects.pick') return; // a question waits as long as the person takes
       setTimeout(() => {
         if (!pending.delete(id)) return;
         reject(new Error('the host did not answer'));
@@ -3299,7 +3691,7 @@
   // `esc`, `markdown`, `plain`, `localWhen` and `detailLines` need no per-module env, so the call page (which loads this file directly for the modules
   // it hosts in the page, not as a module itself) can use the very same rendering Chat and every module share,
   // rather than a second copy. See host.util.markdown above for what this covers.
-  global.hostText = { esc, markdown, plain: plainText, localWhen, detailLines };
+  global.hostText = { esc, markdown, plain: plainText, localWhen, detailLines, parseClockText, clockText };
   // The currency list likewise, for Manage's Currency (a page, not a module): the same choices a module's currencySelect makes.
   global.hostCurrency = {
     fill: fillCurrencySelect,

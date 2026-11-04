@@ -93,8 +93,10 @@ await test('pages: the Calendar draws markers as chips, by the filter, in every 
   assert.match(js, /return `\$\{past \? 'Closed' : 'Closes'\}\$\{x\.ev\.allDay \? '' : ` \$\{timeText\(start\)\}`\}: \$\{x\.ev\.title\}`;/);
   assert.match(js, /const said = x\.due \? \(past \? 'Overdue' : 'Due'\) : past \? 'Closed' : 'Closes';/, 'a list row says it the same way');
   assert.match(js, /const markerPast = \(x\) => \(x\.ev\.allDay \? x\.ev\.start < ymd\(new Date\(\)\) : x\.ev\.start <= Date\.now\(\)\);/);
-  assert.match(js, /class="sdk-cal-event sdk-bar-kept is-marker\$\{past \? ' is-past' : ''\}/, 'a chip with the kept bar, dimmed once past');
-  assert.match(js, /class="sdk-row sdk-bar-kept is-marker\$\{past \? ' is-past' : ''\}/, 'and a row');
+  // A closed poll is dimmed once past; an overdue task is not dimmed but takes the danger tone (is-overdue, readable text).
+  assert.match(js, /class="sdk-cal-event sdk-bar-kept is-marker\$\{past \? \(x\.due \? ' is-overdue' : ' is-past'\) : ''\}/, 'a chip with the kept bar, dimmed once past, or the danger tone when it is a task that is late');
+  assert.match(js, /class="sdk-row sdk-bar-kept is-marker\$\{past \? \(x\.due \? ' is-overdue' : ' is-past'\) : ''\}/, 'and a row');
+  assert.match(read('public/sdk/system.css'), /\.sdk-cal-event\.sdk-bar-kept\.is-marker\.is-overdue/, 'an overdue marker is in the danger tone, not dimmed');
   assert.match(read('public/sdk/system.css'), /:is\(\.sdk-cal-event, \.sdk-cal-agenda \.sdk-row\)\.is-past \{ opacity: var\(--cal-out\); \}/, 'past ones at 55% (the Calendar block)');
   // The module's tint on the edge and icon only (design-theme.md, "Tints"), from the eight, as the host sends it.
   assert.match(js, /const tint = TINTS\.includes\(m\.module\.color\) \? m\.module\.color : null;/);
@@ -134,7 +136,7 @@ await test('pages: the Calendar draws markers as chips, by the filter, in every 
 });
 
 // --- a real server -----------------------------------------------------------------------------------------------------
-function writeModule(dir, id, refs, { scope = ['environment', 'space'], color } = {}) {
+function writeModule(dir, id, refs, { scope = ['environment', 'space'], color, guards } = {}) {
   const root = path.join(dir, id);
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });
   fs.writeFileSync(path.join(root, 'module.json'), JSON.stringify({
@@ -146,12 +148,13 @@ function writeModule(dir, id, refs, { scope = ['environment', 'space'], color } 
     ],
     access: { read: 'view', write: 'edit' },
     refs,
+    ...(guards ? { guards } : {}),
   }, null, 2));
   fs.writeFileSync(path.join(root, 'src', `${id}.html`), '<!DOCTYPE html><html><head><style>/*__CSS__*/</style></head><body><script>/*__JS__*/</script></body></html>');
   fs.writeFileSync(path.join(root, 'src', `${id}.css`), '');
   fs.writeFileSync(path.join(root, 'src', `${id}.js`), '');
 }
-const STAND_INS = ['mk-tasks', 'mk-polls', 'mk-calendar', 'mk-tasks-only', 'mk-unapproved'];
+const STAND_INS = ['mk-tasks', 'mk-polls', 'mk-calendar', 'mk-tasks-only', 'mk-unapproved', 'mk-secret'];
 function appCopy(name) {
   const root = path.join(base, name);
   fs.mkdirSync(path.join(root, 'modules'), { recursive: true });
@@ -173,6 +176,11 @@ function appCopy(name) {
     dated: { title: 'title', start: 'start', allDay: 'allDay' }, mirror: 'in', create: { id: '{id}', by: '{by}' },
   }], consumes: ['*'] });
   writeModule(mods, 'mk-tasks-only', { consumes: ['mk-tasks:task'] });
+  // A marker kind whose title is kept from guests (guards.hidden): a guest's marker is read without it.
+  writeModule(mods, 'mk-secret', { produces: [{
+    kind: 'plan', name: 'Plan', open: true, key: 'plan:{id}', summary: { title: 'title', when: 'due' },
+    dated: { title: 'title', day: 'due' }, marker: true,
+  }] }, { guards: { hidden: ['title'] } });
   writeModule(mods, 'mk-unapproved', {});
   return root;
 }
@@ -350,6 +358,16 @@ try {
     assert.equal((await call('GET', `/api/modules/mk-calendar/markers?scope=space&space=${spaceB}&${OCT}&guest=${guestToken}`)).status, 403);
     assert.equal((await call('GET', `/api/modules/mk-calendar/markers?${OCT}&guest=${guestToken}`)).status, 403);
     assert.equal((await call('GET', `/api/modules/mk-calendar/markers?${OCT}`)).status, 401, 'signed out');
+  });
+
+  await test('server: a guest\'s markers are read without the fields kept from guests (QA round 2, 12)', async () => {
+    await put('mk-secret', 'plan:s1', { title: 'Surprise party', due: `${Y}-12-05` }, spaceA);
+    const DEC = `from=${Y}-12-01&to=${Y}-12-31`;
+    assert.deepEqual(titles(await markers(aliceC, `scope=space&space=${spaceA}&${DEC}`)), ['Surprise party'], 'a member sees the title');
+    const guest = await call('GET', `/api/modules/mk-calendar/markers?scope=space&space=${spaceA}&${DEC}&guest=${guestToken}`);
+    assert.equal(guest.status, 200, guest.text);
+    assert.deepEqual(titles(guest), ['Untitled'], 'a guest does not');
+    assert.doesNotMatch(guest.text, /Surprise/);
   });
 
   await test('server: a consumer without approval is refused; one approved for tasks sees tasks only', async () => {

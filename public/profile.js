@@ -6,7 +6,7 @@ import { renderModuleSettings } from '/module-settings.js';
 import { pickBackground } from '/background-picker.js';
 import '/slot-paste.js'; // paste a picture into any image slot
 import { confirmDialog } from '/confirm.js';
-import { loadBranding, api, wireOverlayBack, renderTopbar, renderPageBar, hasOwnerRights, isAdminAccount, roleLabel, word, applyWords, maskPassword } from '/brand.js';
+import { loadBranding, api, wireOverlayBack, renderTopbar, renderPageBar, hasOwnerRights, isAdminAccount, roleLabel, word, applyWords, maskPassword, spaceIconId } from '/brand.js';
 import { formatHotkey, comboFromEvent } from '/hotkeys.js';
 import { mountEnrolment, mountDisable } from '/mfa-enrol.js';
 
@@ -595,7 +595,7 @@ function renderAddressRows(rows, editing, place, whyAll = '') {
     if (list.children[i + 1] !== row) list.insertBefore(row, list.children[i + 1] || null);
     row.querySelector('.address-name').textContent = name;
     const iconEl = row.querySelector('.address-icon');
-    iconEl.className = `fa-solid fa-${ICON_ID.test(icon || '') ? icon : 'message'} fa-fw address-icon`;
+    iconEl.className = `fa-solid fa-${ICON_ID.test(icon || '') ? icon : 'folder'} fa-fw address-icon`;
     const parts = spaceParts(row);
     parts.make.setAttribute('aria-label', `Make an address for ${name}`);
     parts.renew.setAttribute('aria-label', `New address for ${name}`);
@@ -623,7 +623,7 @@ function renderFeed(editing) {
   if (editing) {
     // Someone else's, for an owner: each address on or off and when it was last read, with Turn off. Never the address.
     const theirs = user.calendarFeed || { on: false, made: null, readAt: null };
-    const spaces = Object.entries(user.spaces || {}).filter(([id]) => spacesById.has(id)).map(([id, s]) => ({ id, name: spacesById.get(id).name, icon: spacesById.get(id).linkIcon && spacesById.get(id).linkIcon !== 'link' ? spacesById.get(id).linkIcon : 'message', address: s.calendarFeed || { on: false } }));
+    const spaces = Object.entries(user.spaces || {}).filter(([id]) => spacesById.has(id)).map(([id, s]) => ({ id, name: spacesById.get(id).name, icon: spaceIconId(spacesById.get(id)), address: s.calendarFeed || { on: false } }));
     const holds = theirs.on || spaces.some((s) => s.address.on);
     section.hidden = !(feedsAllowed || holds);
     if (section.hidden) return;

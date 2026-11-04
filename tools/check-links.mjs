@@ -27,7 +27,7 @@ const test = async (name, fn) => {
 function startServer(dataDir) {
   const child = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: dataDir, TZ: 'UTC', ADMIN_PASSWORD: 'admin-password-1' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: dataDir, TZ: 'UTC', ADMIN_PASSWORD: 'admin-password-1', CLEAR_UNDO_SECONDS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';
@@ -399,10 +399,10 @@ try {
     assert.equal(sender.value.time, '15:00');
   });
 
-  await test('an end day is written only for a whole-day twin', async () => {
+  await test('a stay with a time ends at its check-out; a whole-day stay ends on its check-out day', async () => {
     assert.equal((await putOut('span', { title: 'Stay', date: '2026-06-15', time: '09:30', checkOut: '2026-06-18' }, 'UTC')).status, 200);
     const timed = await twinOf('span');
-    assert.equal(timed.item.value.end, undefined);
+    assert.equal(timed.item.value.end, '2026-06-18T09:30:00.000Z', 'no check-out time: the start\'s clock time');
     assert.equal((await putOut('span', { title: 'Stay', date: '2026-06-15', checkOut: '2026-06-18' }, 'UTC')).status, 200);
     const whole = await twinOf('span');
     assert.equal(whole.item.value.allDay, true);
@@ -424,8 +424,9 @@ try {
     const tokyo = await twinOf('tokyo');
     const asDay = { ...tokyo.item.value, allDay: true, start: '2026-06-15', end: null };
     assert.equal((await as('PUT', `/api/modules/sync-in/data/mark:${tokyo.pair.to.id}?scope=space&space=${space}`, { value: asDay, tz: 'Asia/Tokyo' })).status, 200);
-    assert.equal((await getOut('tokyo')).value.time ?? null, null);
+    assert.equal((await getOut('tokyo')).value.time, '09:30', 'All day on a copy does not erase the object\'s time');
     assert.equal((await getOut('tokyo')).value.date, '2026-06-15');
+    assert.equal((await twinOf('tokyo')).item.value.allDay, false, 'the copy says what the object says again');
   });
 
   await test('a receiver\'s own object makes no sender, a repeating twin keeps its pair, and setLinks leaves the pair', async () => {
@@ -476,18 +477,21 @@ try {
     assert.equal((await putOut('detach', { title: 'Detach', date: '2026-06-15', time: '11:00' }, 'UTC')).status, 200);
     assert.equal(pairOf('detach')[0].pair, 'detached', 'a new time on the same day does not make a new twin');
     assert.equal((await putOut('detach', { title: 'Detach', date: '2026-06-20', time: '11:00' }, 'UTC')).status, 200);
-    const again = await twinOf('detach');
-    assert.notEqual(again.pair.to.id, detached.pair.to.id);
-    assert.equal(again.item.value.start, '2026-06-20T11:00:00.000Z');
+    assert.equal(pairOf('detach').length, 1, 'moving the object does not bring the hidden copy back');
+    assert.equal(pairOf('detach')[0].pair, 'detached');
+    assert.equal((await getIn(detached.pair.to.id)).status, 404);
   });
 
-  await test('clearing a module removes every key in that scope, and a dated twin goes with it', async () => {
+  await test('clearing a module removes every key in that scope, and a dated twin goes with it once its Undo time is over', async () => {
     assert.equal((await putOut('wipe', { title: 'Wipe', date: '2026-06-15' }, 'UTC')).status, 200);
     const twin = await twinOf('wipe');
     const cleared = await as('DELETE', `/api/modules/sync-out/data?scope=space&space=${space}&tz=UTC`);
     assert.equal(cleared.status, 200, cleared.text);
     assert.ok(cleared.json.cleared >= 1);
     assert.equal((await as('GET', `/api/modules/sync-out/data?scope=space&space=${space}`)).json.items.length, 0);
+    // The clear is held for its Undo (CLEAR_UNDO_SECONDS, 1 here, and 5 seconds' grace): the twin waits with it, then goes.
+    assert.equal((await getIn(twin.pair.to.id)).status, 200, 'kept while the clear can be undone');
+    for (let i = 0; i < 40 && (await getIn(twin.pair.to.id)).status !== 404; i += 1) await new Promise((r) => setTimeout(r, 250));
     assert.equal((await getIn(twin.pair.to.id)).status, 404);
     assert.equal(pairOf('wipe').filter((l) => l.pair === 'active').length, 0);
     assert.equal((await as('GET', '/api/modules/sync-out/data/note:mine?scope=person')).status, 200, 'another scope is left as it is');

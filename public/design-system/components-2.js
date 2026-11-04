@@ -107,6 +107,19 @@ window.DS_FAMILIES = window.DS_FAMILIES || [];
     ],
   });
 
+  // ---- The object picker ----
+  const pickRow = (icon, title, sub, meta, active, tick) => `<div class="sdk-row sdk-pick-row${active ? ' active' : ''}" role="option" aria-selected="${tick ? 'true' : 'false'}"><span class="sdk-card-icon">${fa(icon)}</span><span class="sdk-row-main"><span class="sdk-row-title">${title}</span><span class="sdk-row-sub">${sub}</span></span><span class="sdk-row-meta">${meta}</span></div>`;
+  const pickWindow = (rows, status, foot) => `<dialog class="sdk-dialog-pick" open aria-label="Pick a place" style="position:static;margin:0;height:auto"><div class="sdk-dialog-head"><h2 class="sdk-dialog-title">Pick a place</h2><button type="button" class="sdk-icon-btn btn-quiet btn-small sdk-dialog-close" aria-label="Close">${fa('xmark')}</button></div><div class="sdk-dialog-body"><div class="sdk-search">${fa('magnifying-glass')}<input type="search" placeholder="Search" aria-label="Search"></div><p class="sdk-pick-status" role="status">${status}</p><div class="sdk-pick-list" role="listbox" aria-label="Pick a place">${rows}</div></div><div class="sdk-dialog-foot">${foot}</div></dialog>`;
+  F.push({
+    id: 'objectpick', group: 'Containers', name: 'Object picker',
+    desc: 'The window <code>host.objects.pick</code> opens (public/object-pick.js): <code>dialog.sdk-dialog-pick</code> with a search box (<code>.sdk-search</code>), the results as <code>.sdk-row.sdk-pick-row</code> with the kind\'s icon, the title, the subtitle and the kind, and Cancel (and Pick, when several can be chosen). The highlighted row, the one Enter chooses, is a <code>--fill-selected</code> fill. 560px wide; a full-height sheet on a phone. A click outside is the answer "nothing chosen".',
+    variants: [
+      { n: 'One choice', ctx: 'app', sel: 'dialog.sdk-dialog-pick', static: true, html: pickWindow(pickRow('location-dot', 'Cafe A Brasileira', 'Rua Garrett 120', 'Place', true) + pickRow('location-dot', 'Cais da Ribeira', 'Cais da Ribeira', 'Place', false), '2 found', '<button type="button" class="btn">Cancel</button>') },
+      { n: 'Several, one ticked', ctx: 'app', sel: '.sdk-pick-list', static: true, html: pickWindow(pickRow('location-dot', 'Cafe A Brasileira', 'Rua Garrett 120', 'Place', false, true) + pickRow('location-dot', 'Cais da Ribeira', 'Cais da Ribeira', 'Place', true), '2 found', '<button type="button" class="btn">Cancel</button><button type="button" class="btn btn-primary">Pick</button>') },
+      { n: 'Nothing found', ctx: 'app', sel: '.sdk-pick-status', static: true, html: pickWindow('', 'Nothing found.', '<button type="button" class="btn">Cancel</button>') },
+    ],
+  });
+
   // ---- The module panel (createModuleFrame) ----
   F.push({
     id: 'moduleframe', group: 'Containers', name: 'Module window: title bar, toolbar, content and status bar',

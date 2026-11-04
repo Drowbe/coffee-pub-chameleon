@@ -183,7 +183,8 @@
     } else if (c.template === 'train') {
       put(el, { title: [item.operator, item.number].filter(Boolean).join(' ') || item.title, from: item.from, to: item.to, time: tt(item.time), arrival: arrive, platform: item.platform ? `Platform ${item.platform}` : '', seat: [item.carriage && `Coach ${item.carriage}`, item.seat && `Seat ${item.seat}`].filter(Boolean).join(' · '), duration, confirm: item.confirm });
     } else if (c.template === 'transit') {
-      const to = item.to || item.dropoff || '';
+      const back = item.mode === 'car' && item.checkOut ? `Back ${[dayShort(item.checkOut), tt(item.checkOutTime)].filter(Boolean).join(' · ')}` : '';
+      const to = [item.to || item.dropoff, back].filter(Boolean).join(' · ');
       put(el, { kicker: [c.kicker, item.operator].filter(Boolean).join(' · '), title: item.title, time: tt(item.time), to, confirm: item.confirm });
       const go = el.querySelector('.go');
       if (go && !item.time && !to && !item.confirm) go.hidden = true;
@@ -225,6 +226,8 @@
       hide(el.querySelector('[data-action="open"]'), broken || !summary || !summary.open);
       hide(el.querySelector('[data-action="remove-link"]'), !broken || !canEdit);
     }
+    placeChipInto(el, item);
+    filesInto(el, item, span);
     ownersInto(el, item);
     moreInto(el, item);
     roundTripInto(el, item);
@@ -232,6 +235,27 @@
     // A part with nothing shown in it takes no room: a line of chips, then the body (the card is then its band alone).
     for (const box of [...el.querySelectorAll('.chips2'), ...el.querySelectorAll('.sdk-card-body > .main'), el.querySelector(':scope > .sdk-card-body')]) if (box) hide(box, ![...box.children].some((k) => !k.hidden));
     return el;
+  }
+
+  // A stop at a Place from Places: the place as a chip on its card that opens it (the card's own "open" action, by the pointer it carries).
+  // A place that is gone, or that this person may not see, is not drawn as a link; the name the person typed shows as before.
+  function placeChipInto(el, item) {
+    if (item.kind !== 'stop' || !item.placeRef) return;
+    const summary = plan.summaries.get(host.util.objectKey(item.placeRef));
+    if (summary && linkState(summary)) return;
+    const text = (summary && summary.title) || item.place || 'Place';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'sdk-chip-tag place-chip';
+    chip.dataset.tone = 'custom';
+    chip.dataset.action = 'open';
+    chip.dataset.ref = JSON.stringify(item.placeRef);
+    chip.innerHTML = '<span class="ic" data-icon="location-dot"></span><span class="place-chip-text"></span>';
+    chip.querySelector('.place-chip-text').textContent = text;
+    chip.setAttribute('aria-label', `Open ${text}`);
+    let box = el.querySelector('.chips2');
+    if (!box) { box = document.createElement('div'); box.className = 'chips2'; (el.querySelector('.sdk-card-body') || el).append(box); }
+    box.prepend(chip);
   }
 
   // A leg of a round trip: a line under its card with the other leg's day ("Round trip · Return Fri, Oct 9"), and on a return placed
@@ -276,6 +300,8 @@
     add('Guests', words(item.guests, 'guest', 'guests'), 'guests');
     add('Reservation', item.reservationName, 'reservationName');
     add('Address', item.address, 'address');
+    const linkedFrom = state.links.get(item.id);
+    if (linkedFrom && linkedFrom.length) rows.push(['Linked from', linkedFrom.map((l) => l.title).filter(Boolean).join(', ')]);
     if (item.cost) rows.push(['Cost', `${host.util.money(item.cost, planCurrency())}${item.estimate ? ` · estimated ${host.util.money(item.estimate, planCurrency())}` : ''}${item.paidBy ? ` · paid by ${nameOf(item.paidBy)}` : ''}`]);
     else if (item.estimate) rows.push(['Cost', `~${host.util.money(item.estimate, planCurrency())} estimated`]);
     if (!rows.length) return;
@@ -1119,21 +1145,32 @@
 
   // --- the other views ---------------------------------------------------------------------------------------
 
+  // What is waiting on someone: the polls still open and the tasks due before the trip (the space's own, as the Planner's search
+  // finds them), then anything else that is linked to the trip and not done. Each once.
   function openDecisions() {
-    return state.tripLinks.filter((c) => c.done !== true);
+    const seen = new Set();
+    return [...plan.waiting, ...state.tripLinks.filter((c) => c.done !== true)].filter((c) => {
+      const k = host.util.objectKey(c.ref);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
+  const DECISION_GROUPS = { poll: 'Polls to vote on', task: 'Tasks due before the trip' };
   function renderDecisions() {
     const body = $('body');
     body.replaceChildren();
     const groups = new Map();
+    for (const first of Object.values(DECISION_GROUPS)) groups.set(first, []); // polls, then tasks, then whatever else is linked
     for (const c of openDecisions()) {
-      const k = c.kindName || (c.module && c.module.name) || 'Other';
+      const k = DECISION_GROUPS[c.kind] || c.kindName || (c.module && c.module.name) || 'Other';
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(c);
     }
+    for (const [k, list] of groups) if (!list.length) groups.delete(k);
     if (!groups.size) {
       const empty = clone('tpl-day-empty');
-      empty.textContent = 'Nothing is waiting on anyone. Things linked to this trip that are still open appear here.';
+      empty.textContent = 'Nothing is waiting on anyone. Open polls and tasks due before the trip appear here.';
       const ul = document.createElement('ul');
       ul.className = 'decisions';
       ul.append(empty);
@@ -1144,6 +1181,8 @@
       const [title, list] = parts('tpl-decisions');
       title.textContent = kind;
       list.replaceChildren();
+      // Soonest first, the most overdue at the top; undated last.
+      summaries.sort((a, b) => ((summaryWhen(a) || {}).day || '9999').localeCompare((summaryWhen(b) || {}).day || '9999'));
       for (const c of summaries) {
         const row = clone('tpl-decision');
         setIcon(row.querySelector('[data-icon]'), c.module && c.module.icon);
@@ -1151,7 +1190,7 @@
         const when = w ? `${parseYmd(w.day).toLocaleDateString([], { month: 'short', day: 'numeric' })}${w.time ? ' ' + tt(w.time) : ''}` : '';
         fill(row, { title: c.title, sub: [when, c.subtitle].filter(Boolean).join(' · ') });
         const btn = row.querySelector('[data-action="open"]');
-        btn.textContent = 'Open';
+        btn.textContent = c.kind === 'poll' ? 'Vote' : 'Open';
         btn.dataset.ref = JSON.stringify(c.ref);
         hide(btn, !c.open);
         list.append(row);
@@ -1214,7 +1253,8 @@
     if (!costs.length) return nothing(body, 'Nothing has a cost yet. Give a stop, stay or journey a cost and who paid, and it is shared out here.');
     const keys = state.people.map((p) => p.key);
     const b = balances(costs, keys);
-    const totals = section(body, `Total ${money(b.total)}`);
+    const totals = section(body, `Total ${money(b.planned)}`);
+    row(totals, { icon: 'coins', title: 'Paid so far', sub: b.planned > b.total ? `${money(b.total)} of ${money(b.planned)} · ${money(Math.round((b.planned - b.total) * 100) / 100)} not paid yet` : money(b.total) });
     for (const k of Object.keys(b.net)) {
       const n = b.net[k];
       row(totals, { icon: 'user', title: nameOf(k), sub: `paid ${money(b.paid[k])} · share ${money(b.share[k])} · ${n > 0 ? `is owed ${money(n)}` : n < 0 ? `owes ${money(-n)}` : 'all square'}` });
@@ -1241,7 +1281,11 @@
   ];
   // With Budget on in this space its Overview and Costs carry the money, so the Money view steps aside (the bookings keep their
   // cost fields). Found by the `budget` flag of another module that is on here, never by name; asked on load, on focus and every 30 s.
-  const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || !state.budgetOn);
+  // A guest gets the Money view only where an owner turned on "Guests can see costs and booking codes" in Set up
+  // (host.space().guestsSeeHidden); the server keeps the amounts from them otherwise.
+  const hideMoney = () => info.user.role === 'guest' && !(spaceOf() && spaceOf().guestsSeeHidden === true);
+  const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || (!state.budgetOn && !hideMoney()));
+  let topNext = false;
   const viewSwitch = host.ui.viewSwitch({
     id: 'view',
     options: viewsNow(),
@@ -1249,6 +1293,7 @@
     onChange: (id) => {
       state.view = id;
       scrolled = state.view !== 'days';
+      topNext = true; // another view opens at its top, not where the last one was scrolled to
       redraw();
     },
   });
@@ -1256,8 +1301,8 @@
   function syncHeader() {
     const items = [];
     if (state.view === 'days') items.push({ id: 'toggle-empty', icon: 'eye-slash', title: state.hideEmpty ? 'Show empty days' : 'Hide empty days', on: state.hideEmpty });
-    // With phases the dates are the bar's and the currency is the budget's (Set up): nothing left to edit here.
-    if (canEdit && !plan.phased()) items.push({ id: 'edit-trip', icon: 'pen', title: 'Edit dates' });
+    // With phases the dates are the bar's and the currency is the budget's (Set up): the time zone is left to edit here.
+    if (canEdit) items.push({ id: 'edit-trip', icon: 'pen', title: plan.phased() ? 'Edit time zone and currency' : 'Edit dates, time zone and currency' });
     const sig = JSON.stringify(items);
     if (sig === headerSig) return;
     headerSig = sig;
@@ -1300,13 +1345,14 @@
       for (const item of items) undatedRow(ul, item);
       box.append(ul);
     } else {
-      // "Unscheduled" is the default phase: first, for an object with no phase of its own. Not a phase of the plan.
-      // Alone, that group's heading would only repeat the area's own "Unscheduled", so it has none; with phases beside it, every group has one.
+      // "Unscheduled" is the default phase: first, for an object with no phase of its own. Not a phase of the plan. Its group has no
+      // heading of its own, alone or beside phases: the area's own "Unscheduled" above it already says it, and the phases' groups
+      // follow with theirs.
       const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map((p) => ({ p, mine: items.filter((item) => phaseOf(item, bands) === p.id) })).filter((g) => g.mine.length);
       for (const { p, mine } of groups) {
         const group = clone('tpl-undated-group');
         fill(group, { label: p.label });
-        if (groups.length === 1 && p.id === null) group.querySelector('h3').hidden = true;
+        if (p.id === null) group.querySelector('h3').hidden = true;
         const ul = group.querySelector('ul');
         for (const item of mine) undatedRow(ul, item);
         box.append(group);
@@ -1339,7 +1385,7 @@
     const sig = JSON.stringify(items);
     if (sig !== toolbarSig) { toolbarSig = sig; host.toolbar.set(items).catch(() => { toolbarSig = ''; }); }
     const openCount = openDecisions().length;
-    if (state.budgetOn && state.view === 'money') state.view = 'days';
+    if (state.view === 'money' && !viewsNow().some((v) => v.id === 'money')) state.view = 'days';
     viewSwitch.set(state.view, viewsNow().map((v) => (v.id === 'decisions' && openCount ? { ...v, label: `Decisions (${openCount} open)` } : v)));
     syncHeader();
     syncStatus();
@@ -1373,7 +1419,7 @@
         if (list.length) items.push({ text: `${list.filter((i) => i.confirm).length} of ${list.length} booked` });
       } else if (state.view === 'money') {
         const costs = costItems(plan.list());
-        if (costs.length) items.push({ text: `Total ${money(balances(costs, state.people.map((p) => p.key)).total)}` }, { text: words(costs.length, 'cost', 'costs') });
+        if (costs.length) items.push({ text: `Total ${money(balances(costs, state.people.map((p) => p.key)).planned)}` }, { text: words(costs.length, 'cost', 'costs') });
       }
     }
     host.status.set(items).catch(() => {});
@@ -1414,13 +1460,14 @@
     }
     hydrate(root === document ? document.body : root);
     restoreInputs(kept);
-    if (scrolled) { scroller.scrollTop = top; if (state.view === 'days' && state.currentDay) markCurrent(state.currentDay); }
+    if (scrolled) { scroller.scrollTop = topNext ? 0 : top; if (state.view === 'days' && state.currentDay) markCurrent(state.currentDay); }
     else if (state.view === 'days') {
       scrolled = true;
       const today = $(`day-${ymd(new Date())}`) || $(`day-${plan.days()[0]}`);
       if (today) today.scrollIntoView({ inline: 'center', block: 'start' });
       markCurrent(today ? today.dataset.day : null);
     }
+    topNext = false;
     loadLinks().catch(() => {});
     refocusNewRow();
   }
@@ -1518,19 +1565,25 @@
   // What other modules link to each item and to the trip (only asked for what is shown, and once).
   const asked = new Set();
   async function loadLinks() {
-    if (!host.objects || !host.objects.linksTo) return;
-    let changed = false;
-    if (!asked.has('trip')) {
-      asked.add('trip');
-      try { state.tripLinks = await host.objects.linksTo(tripRef()); changed = true; } catch (err) { state.tripLinks = []; }
-    }
-    for (const item of plan.list().slice(0, 60)) {
+    if (!host.objects || !host.objects.linksToAll) return;
+    // One request for the trip and every object not asked about yet (the server answers at most 200 at a time).
+    const fresh = [];
+    if (!asked.has('trip')) { asked.add('trip'); fresh.push({ key: 'trip', ref: tripRef() }); }
+    for (const item of plan.list()) {
       if (asked.has(item.id)) continue;
       asked.add(item.id);
-      try {
-        const summaries = await host.objects.linksTo(planRef(item.id));
-        if (summaries.length) { state.links.set(item.id, summaries); changed = true; }
-      } catch (err) { /* nothing links to it */ }
+      fresh.push({ key: item.id, ref: planRef(item.id) });
+    }
+    let changed = false;
+    for (let at = 0; at < fresh.length; at += 200) {
+      const chunk = fresh.slice(at, at + 200);
+      let found = [];
+      try { found = await host.objects.linksToAll(chunk.map((f) => f.ref)); } catch (err) { /* nothing links to them */ }
+      const byKey = new Map(found.map((f) => [host.util.objectKey(f.ref), f.summaries || []]));
+      for (const f of chunk) {
+        const summaries = byKey.get(host.util.objectKey(f.ref)) || [];
+        if (f.key === 'trip') { state.tripLinks = summaries; changed = true; } else if (summaries.length) { state.links.set(f.key, summaries); changed = true; }
+      }
     }
     if (changed) redraw();
   }
@@ -1581,12 +1634,7 @@
         { id: 'later', label: timedNow ? '30 minutes later' : 'Move down', icon: 'arrow-down', tip: timedNow ? 'Changes the time, half an hour later. It stays on the same day.' : 'Swaps places with the one below it. It stays on the same day.', onClick: () => attempt(() => plan.nudgeItem(id, 1)) },
         { id: 'move-to', label: 'Move to another day…', icon: 'calendar-days', tip: 'Choose another day, or unscheduled', onClick: () => setTimeout(() => openMoveTo(id, button), 0) }, // after this menu has closed and given focus back
         typeRows.length ? { id: 'type', label: 'Change type', icon: 'tag', items: typeRows } : null,
-        plan.jointOf(item) === null ? { id: 'to-line', label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => {
-          // Off its day, onto the line at the joint before that day: near where it was, no longer decided.
-          const days = plan.days();
-          const after = days[days.indexOf(plan.dayOf(item)) - 1] || '';
-          attempt(() => plan.moveToJoint(id, after, 1e6));
-        } } : null,
+        plan.jointOf(item) === null ? { id: 'to-line', label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => attempt(() => plan.moveTo(id, null, 1e6)) } : null, // off its day, into the Unscheduled area
         item.kind === 'link' ? { id: 'follow', label: item.follow ? 'Stop following its result' : 'Follow its result', icon: 'bell', onClick: () => attempt(() => plan.updateItem(id, { follow: !item.follow })) } : null,
         { id: 'delete', label: isBlock ? 'Remove' : 'Delete', icon: 'trash', danger: true, onClick: () => setTimeout(() => askDelete(id, button, isBlock), 0) },
       ],
@@ -1646,7 +1694,7 @@
       id: `delete-${id}`,
       anchor,
       items: [
-        { id: 'sure', label: block ? 'Really remove?' : 'Really delete?', icon: 'trash', danger: true, onClick: () => attempt(() => plan.removeItem(id)) },
+        { id: 'sure', label: block ? 'Really remove?' : ((state.links.get(id) || []).length ? `Used by ${state.links.get(id).length}. Really delete?` : 'Really delete?'), icon: 'trash', danger: true, onClick: () => attempt(() => plan.removeItem(id)) },
         { id: 'cancel', label: 'Cancel', icon: 'xmark', onClick: () => {} },
       ],
     });
@@ -1959,8 +2007,38 @@
     if (!select || !ed) return;
     const { date } = parsePlace($('f-date').value);
     const days = checkoutDays(date);
-    select.replaceChildren(option('', days.length ? 'Not set' : 'Choose the check-in day first'), ...days.map(({ value, n }) => option(value, `${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`)));
-    setVal('f-checkout', followDay(date, ed.checkOut, 1));
+    const car = ed.tile === 'car'; // a rental car: the drop-off day, in days, and none until one is chosen
+    select.replaceChildren(option('', days.length ? 'Not set' : car ? 'Choose the pick-up day first' : 'Choose the check-in day first'), ...days.map(({ value, n }) => option(value, car ? `${dayShort(value)} · ${n} day${n === 1 ? '' : 's'}` : `${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`)));
+    setVal('f-checkout', followDay(date, car && ed.checkOut === undefined ? '' : ed.checkOut, 1));
+  }
+  // A rental car's Drop-off day, its length and its End time say one thing. A Drop-off day chosen sets the length from the End time
+  // (the End time on that day), or clears it when there is no End time; a length or End time typed moves the Drop-off day to the
+  // day it ends on (none when it ends the same day). `from` is what the person changed: 'drop' or 'length'.
+  function carAgree(from) {
+    const ed = state.editing;
+    const select = $('f-checkout');
+    if (!ed || ed.tile !== 'car' || !select || !$('f-time')) return;
+    const l = LENS.out;
+    const time = $(l.time).value;
+    const { date } = parsePlace($('f-date').value);
+    if (from === 'drop') {
+      const drop = select.value;
+      if (!drop || !date) return;
+      const end = $(l.end).value;
+      const n = Math.round((parseYmd(drop) - parseYmd(date)) / (24 * 60 * 60 * 1000));
+      const total = time && end ? n * 24 * 60 + minutesOfDay(end) - minutesOfDay(time) : 0;
+      setLength(l.hours, l.minutes, total > 0 && total <= MAX_MINUTES ? total : null);
+      if (!(total > 0 && total <= MAX_MINUTES)) $(l.end).value = '';
+      syncEnd(l);
+      showArrival();
+      return;
+    }
+    const len = lengthOf(l.hours, l.minutes);
+    if (!len || !time || !date) return;
+    const e = endOf(time, len);
+    const day = e && e.days >= 1 ? daysLater(date, e.days) : '';
+    ed.checkOut = day && [...select.options].some((o) => o.value === day) ? day : '';
+    select.value = ed.checkOut;
   }
   // A journey's arrival on the ticket is shown as a day and a time, laid out as the departure is (#241): the day one of
   // arrivalDays around the leg's day (the same day first, the way it stays until a day is chosen: #242), and f-arrival, hidden,
@@ -2073,11 +2151,11 @@
     ferry: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
     bus: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
     shuttle: { date: 'Departure day', time: 'Departure time', length: 'Travel time', from: 'Departs from', to: 'Arrives at' },
-    car: { date: 'Pick-up day', time: 'Pick-up time', operator: 'Rental company' },
+    car: { date: 'Pick-up day', time: 'Pick-up time', operator: 'Rental company', checkout: 'Drop-off day' },
     taxi: { time: 'Pick-up time', length: 'Travel time', from: 'Pick up at', to: 'Drop off at' },
     rideshare: { time: 'Pick-up time', length: 'Travel time', from: 'Pick up at', to: 'Drop off at' },
   };
-  const FIELD_DEFAULTS = { date: 'When', time: 'Start time', length: 'How long', operator: 'Company', number: 'Number', from: 'From', to: 'To' };
+  const FIELD_DEFAULTS = { checkout: 'Check out', date: 'When', time: 'Start time', length: 'How long', operator: 'Company', number: 'Number', from: 'From', to: 'To' };
   // The people of the space as chips (a tick box each) for "Whose is it", and as chips with a radio each for "Paid by".
   function personChip(type, name, value, checked, text) {
     const label = document.createElement('label');
@@ -2131,7 +2209,8 @@
     if (marker && tileAt(kindOf(tile), $('f-date').value) !== tile) return applyType(tileAt(kindOf(tile), $('f-date').value));
     // The same fields in each kind's own words (a stay's day is its check-in, a flight's time its departure).
     const labels = { ...FIELD_DEFAULTS, ...(FIELD_WORDS[key] || {}) };
-    for (const [name, id] of [['date', 'f-date-label'], ['time', 'f-time-label'], ['length', 'f-minutes-label'], ['operator', 'f-operator-label'], ['number', 'f-number-label'], ['from', 'f-from-label'], ['to', 'f-to-label'], ['time', 'f-back-time-label'], ['length', 'f-back-minutes-label'], ['number', 'f-back-number-label'], ['from', 'f-back-from-label'], ['to', 'f-back-to-label']]) if ($(id)) $(id).textContent = labels[name];
+    for (const [name, id] of [['date', 'f-date-label'], ['time', 'f-time-label'], ['length', 'f-minutes-label'], ['operator', 'f-operator-label'], ['number', 'f-number-label'], ['from', 'f-from-label'], ['to', 'f-to-label'], ['checkout', 'f-checkout-label'], ['time', 'f-back-time-label'], ['length', 'f-back-minutes-label'], ['number', 'f-back-number-label'], ['from', 'f-back-from-label'], ['to', 'f-back-to-label']]) if ($(id)) $(id).textContent = labels[name];
+    if ($('f-checkout') && ed.tile) checkoutOptions();
     roundTripShown();
     showArrival();
     if (key === 'flight') seedLookup('out');
@@ -2191,7 +2270,7 @@
     const ed = state.editing;
     if (!form || !ed) return '';
     const fields = [...form.querySelectorAll('input, select, textarea')].map((el, i) => `${el.id || el.name || i}${el.type === 'radio' ? `:${el.value}` : ''}=${el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value}`);
-    return `${ed.tile}|${chosenMode()}|${fields.join('\n')}`;
+    return `${ed.tile}|${chosenMode()}|${ed.placeRef ? host.util.objectKey(ed.placeRef) : ''}|${(ed.files || []).map(host.util.objectKey).join()}|${fields.join('\n')}`;
   };
   const editorOpened = () => { if (state.editing) state.editing.opened = formSnapshot(); };
   const editorDirty = () => Boolean(state.editing && state.editing.opened !== undefined && formSnapshot() !== state.editing.opened);
@@ -2205,6 +2284,134 @@
     if (ed.date) { const day = root.querySelector(`.sdk-day[data-day="${CSS.escape(ed.date)}"] [data-action="day-menu"]`); if (day) return day; }
     return null;
   };
+  // --- the files a stay or a journey is linked to (plan-attachments-vault.md, step 4) ---
+  // The editor holds the pointers in state.editing.files until Save; the plan then tells the host (host.files.link and unlink). The row is
+  // shown when the space has a library this module may link to files of, or when the object already has files (so they can be seen and unlinked).
+  let filesAvailable;
+  async function filesAsk() {
+    if (filesAvailable !== undefined) return filesAvailable;
+    try { filesAvailable = Boolean(host.files && host.files.pick && (await host.objects.kinds()).some((k) => k.kind === 'file')); } catch (err) { filesAvailable = false; }
+    return filesAvailable;
+  }
+  let editorChips = null;
+  function filesDraw() {
+    const ed = state.editing;
+    const box = $('f-files');
+    if (!ed || !box) return;
+    if (editorChips) editorChips.destroy();
+    editorChips = host.ui.fileChips(box, ed.files, { canEdit: true, unlinkable: true, live: false, onRemoveLink: (ref) => { ed.files = ed.files.filter((r) => host.util.objectKey(r) !== host.util.objectKey(ref)); filesDraw(); } });
+    const full = ed.files.length >= MAX_FILES;
+    $('f-files-add').disabled = full;
+    $('f-files-hint').textContent = full ? `A ${ed.tile === 'hotel' ? 'stay' : 'journey'} can have up to ${MAX_FILES} files.` : '';
+  }
+  async function filesInit() {
+    const ed = state.editing;
+    const section = $('f-files-section');
+    if (!ed || !section) return;
+    filesDraw();
+    const ok = await filesAsk();
+    if (state.editing !== ed || !section.isConnected) return;
+    section.hidden = !(ok || ed.files.length);
+    $('f-files-add').hidden = !ok;
+  }
+  $('editor').addEventListener('click', async (e) => {
+    const add = e.target.closest && e.target.closest('#f-files-add');
+    if (!add) return;
+    const ed = state.editing;
+    if (!ed) return;
+    add.disabled = true;
+    try {
+      const picked = await host.files.pick({ multiple: true });
+      if (state.editing !== ed) return;
+      const have = new Set(ed.files.map(host.util.objectKey));
+      for (const r of picked) if (!have.has(host.util.objectKey(r)) && ed.files.length < MAX_FILES) { ed.files.push(r); have.add(host.util.objectKey(r)); }
+    } catch (err) {
+      host.ui.toast(err.message);
+    }
+    filesDraw();
+  });
+  // A stay's or a journey's files on its card: the shared chips; one whose file was removed or is gone says so, with Remove link for
+  // someone who may edit. They look again by themselves when a file is renamed or removed.
+  function filesInto(el, item, span) {
+    if ((item.kind !== 'stay' && item.kind !== 'journey') || !item.files || !item.files.length || span === 'middle' || span === 'end') return;
+    const box = document.createElement('div');
+    box.className = 'card-files';
+    (el.querySelector('.sdk-card-body') || el).append(box);
+    host.ui.fileChips(box, item.files, { canEdit, onRemoveLink: (ref) => { plan.removeFile(item.id, ref).catch((err) => host.ui.toast(err.message)); } });
+  }
+  // --- the stop's Place (plan-places-and-maps.md): the name typed stays valid on its own; a Place from Places can be linked to it ---
+  // The editor holds the link in state.editing.placeRef until Save; the plan records it (setLinks) when the stop is saved, and removes it
+  // when it is unlinked or the stop goes. Save as a place makes a Place from the typed name (the Places action addPlace, when a module offers it).
+  let placeAction;
+  async function addPlaceAction() {
+    if (placeAction !== undefined) return placeAction;
+    try { placeAction = (await host.actions.list()).find((a) => a.name === 'addPlace' && a.input && a.input.title) || null; } catch (err) { placeAction = null; }
+    return placeAction;
+  }
+  function placeFieldSync() {
+    const ed = state.editing;
+    if (!ed || !$('f-place')) return;
+    const linked = Boolean(ed.placeRef);
+    const summary = linked ? plan.summaries.get(host.util.objectKey(ed.placeRef)) : null;
+    const gone = Boolean(linkState(summary));
+    hide($('f-place-linked'), !linked);
+    fill($('f-place-linked'), { title: gone ? 'A place you cannot open' : (summary && summary.title) || ed.placeTitle || $('f-place').value || 'Place' });
+    hide($('f-place-open'), !linked || gone);
+    hide($('f-place-unlink'), !linked);
+    hide($('f-place-save'), linked || !$('f-place').value.trim() || !ed.canSavePlace);
+    $('f-place-pick').textContent = linked ? 'Pick another' : 'Pick from Places';
+  }
+  function placeFieldInit(item) {
+    const ed = state.editing;
+    if (!ed || !$('f-place')) return;
+    ed.placeRef = item && item.placeRef ? item.placeRef : null;
+    ed.placeTitle = '';
+    ed.canSavePlace = false;
+    setVal('f-place', item ? item.place : '');
+    const say = (text) => { $('f-place-hint').textContent = text || ''; };
+    placeFieldSync();
+    if (ed.placeRef && !plan.summaries.has(host.util.objectKey(ed.placeRef))) plan.refreshSummaries().then(placeFieldSync).catch(() => {});
+    addPlaceAction().then((a) => { if (state.editing === ed) { ed.canSavePlace = Boolean(a); placeFieldSync(); } });
+    $('f-place').addEventListener('input', () => { say(''); placeFieldSync(); });
+    $('f-place-pick').addEventListener('click', () => attempt(async () => {
+      say('');
+      const picked = await host.objects.pick({ modules: ['places'], kinds: ['place'], title: 'Pick a place' });
+      if (!picked || state.editing !== ed) return;
+      const ref = await sharedRef(picked);
+      const summary = await host.objects.resolve(ref);
+      if (state.editing !== ed) return;
+      ed.placeRef = ref;
+      ed.placeTitle = summary && !summary.error ? summary.title : '';
+      if (summary && !summary.error) {
+        plan.summaries.set(host.util.objectKey(ref), summary);
+        $('f-place').value = summary.title;
+        if (summary.subtitle && !$('f-address-stop').value.trim()) $('f-address-stop').value = summary.subtitle;
+      }
+      placeFieldSync();
+      $('f-place-pick').focus();
+    }));
+    $('f-place-save').addEventListener('click', () => attempt(async () => {
+      const add = await addPlaceAction();
+      const name = $('f-place').value.trim();
+      if (!add || !name) return;
+      say('Saving...');
+      $('f-place-save').disabled = true;
+      try {
+        const address = $('f-address-stop').value.trim();
+        const out = await host.actions.request(add.action, { title: name, ...(address ? { address } : {}) }, { wait: true });
+        if (state.editing !== ed) return;
+        if (out.status === 'done' && out.result && out.result.ok !== false && out.result.ref) {
+          ed.placeRef = out.result.ref;
+          ed.placeTitle = name;
+          say('Saved as a place.');
+        } else say('Places did not answer. Open Places, then try again.');
+      } finally { $('f-place-save').disabled = false; }
+      placeFieldSync();
+    }));
+    $('f-place-open').addEventListener('click', () => { if (ed.placeRef) host.objects.open(ed.placeRef).catch((err) => say(err.message)); });
+    $('f-place-unlink').addEventListener('click', () => { ed.placeRef = null; ed.placeTitle = ''; say('Unlinked. The name stays.'); placeFieldSync(); $('f-place').focus(); });
+  }
+
   const editor = host.ui.editor($('editor'), {
     size: 'large',
     isDirty: editorDirty,
@@ -2212,12 +2419,23 @@
     onClose: () => { if (kindField) kindField.close(); kindField = null; $('editor').replaceChildren(); state.editing = null; },
   });
 
+  // The time zones the browser knows, in a select, with the trip's own chosen (else the browser's).
+  // The first choice, empty, is no zone for the trip: each person's copies are read in their own.
+  function zoneSelect(select, value) {
+    let names = [];
+    try { names = Intl.supportedValuesOf('timeZone'); } catch (err) { names = []; }
+    if (value && !names.includes(value)) names = [value, ...names];
+    if (!names.includes('UTC')) names.push('UTC');
+    select.replaceChildren(option('', 'Each person\'s own time zone'), ...names.map((n) => option(n, n.replace(/_/g, ' '))));
+    select.value = value || '';
+  }
+
   // `place` for a new item: `{ date }` a day, `{ after }` a joint on the line; none is the head of the line. `from` is the control
   // that opened the form (focus goes back to it on close).
   function openEditor(mode, item, place, from) {
     if (!canEdit) return;
     const isLink = Boolean(item && item.kind === 'link');
-    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && item.kind === 'stay' ? item.checkOut || '' : undefined };
+    state.editing = { mode, id: item ? item.id : null, place: place || null, version: item ? plan.versionOf(item.id) : null, tile: 'sight', isLink, unplaced: Boolean(item && item.kind === 'block' && !item.date), checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined, files: item && item.files ? [...item.files] : [] };
     state.editingFrom = { el: from || null, id: item ? item.id : null, date: place && place.date ? place.date : null };
     // The plan's own form is the medium window; an item's the large one (the SDK sets the size once, so it is switched here).
     $('editor').classList.toggle('sdk-editor-large', mode !== 'trip');
@@ -2226,7 +2444,9 @@
     $('f-error').hidden = true;
     if (mode === 'trip') {
       const t = plan.trip || {};
-      $('editor-title').textContent = 'The dates';
+      $('editor-title').textContent = plan.phased() ? 'The trip' : 'The dates';
+      for (const f of $('form').querySelectorAll('[data-dates]')) f.hidden = plan.phased();
+      zoneSelect($('f-tz'), t.tz);
       $('f-start').value = t.start || '';
       $('f-end').value = t.end || '';
       host.ui.datePicker($('f-start'), { clearable: true });
@@ -2240,6 +2460,8 @@
       // The kind: an existing object's own, the one the day's "..." or a joint's + chose, else the last kind chosen in this
       // browser (the picker remembers), else Sight. Where is set first, since it decides a marker's block or lane.
       const preset = item ? tileOf(item) || 'sight' : place && place.tile;
+      // The times follow the environment's clock (12 or 24 hours), not the browser's own; the stored value stays "HH:MM".
+      for (const tid of ['f-time', 'f-endTime', 'f-checkOutTime', 'f-arrival-time', 'f-back-time', 'f-back-endTime', 'f-back-arrival-time']) if ($(tid)) host.ui.timeField($(tid));
       dayField($('f-date'));
       dayField($('f-back-date'));
       dayField($('f-checkout'), { checkout: true });
@@ -2274,6 +2496,7 @@
       setVal('f-gate-show', v.gate);
       setVal('f-address', v.address);
       setVal('f-address-stop', v.address);
+      placeFieldInit(item);
       setVal('f-confirm', v.confirm);
       $('f-notes').value = v.notes || '';
       $('f-cost').value = v.cost || '';
@@ -2289,6 +2512,7 @@
       seedLookup('back');
       showArrival();
       $('f-by').textContent = item && item.by ? `Added by ${item.by}` : '';
+      filesInit();
     }
     hydrate($('editor'));
     editorOpened();
@@ -2653,6 +2877,9 @@
       if (ed.mode === 'trip') {
         // The name, Where and Notes are kept as stored (saveTrip merges); the form edits the dates and the currency.
         const patch = { currency: $('f-currency').value.trim() };
+        // The zone is written only when the person changed it (blank: each person's own).
+        const tzChanged = $('f-tz').value !== ((plan.trip || {}).tz || '');
+        if (tzChanged) patch.tz = $('f-tz').value;
         // With phases the dates are the space's timeline, not the form's (the plan leaves them out of the write).
         if (!plan.phased()) {
           const start = $('f-start').value;
@@ -2665,7 +2892,12 @@
         await plan.saveTrip(patch);
         scrolled = false;
         plan.suggest().catch(() => {});
-        return closeEditor();
+        closeEditor();
+        if (tzChanged) {
+          const failed = await plan.redateCopies();
+          if (failed) host.ui.toast(`${failed} of the copies on the calendar could not be moved to the new time zone.`);
+        }
+        return;
       }
       const item = ed.id ? plan.list().find((i) => i.id === ed.id) : null;
       if (!ed.isLink && !ed.tile.startsWith('block:') && !ed.tile.startsWith('lane:') && !$('f-title').value.trim()) return fieldError('f-title', 'Give it a title.');
@@ -2703,6 +2935,7 @@
         // falls back to the type's label on its own.
         if ((t.kind === 'lane' || t.kind === 'block') && !common.title) common.title = markerType(t.type).label;
         fields = { ...common, ...t, time: shown('f-time') ? $('f-time').value || null : t.kind === 'stay' && item ? item.time : null, minutes: ['block:meet-up', 'block:leave-by'].includes(ed.tile) || ed.tile.startsWith('lane:') ? null : lengthOf('f-hours', 'f-minutes') };
+        if (t.kind === 'stay' || t.kind === 'journey') fields.files = ed.files || [];
         if (t.kind === 'journey') {
           for (const f of ['operator', 'number', 'from', 'to', 'pickup', 'dropoff', 'terminal', 'platform', 'carriage', 'seat', 'travelClass']) fields[f] = get(`f-${f}`);
           fields.number = numberToSave(fields.mode, fields.number); // "wn 2483" is kept as "WN 2483"
@@ -2714,6 +2947,18 @@
           if (fields.arrives && !arrivalFits(fields.date, fields.time, fields.arrives)) return fail('The arrival on the ticket can be at most 7 days after it leaves, and at most a day before.');
           // The editor always saves the main leg as a first leg (a return whose outbound is gone becomes a one-way journey).
           fields.legOf = null;
+          if (fields.mode === 'car') {
+            fields.checkOut = $('f-checkout').value || null;
+            if (fields.checkOut && !fields.date) return fail('Choose the day it is picked up.');
+            if (fields.checkOut && fields.checkOut <= fields.date) return fail('Drop-off is on or before pick-up.');
+            // The copy on the calendar ends on the Drop-off day at the End time (else at the pick-up time), and the length agrees.
+            fields.checkOutTime = fields.checkOut && fields.time && $(LENS.out.end).value ? $(LENS.out.end).value : null;
+            if (fields.checkOut && fields.time) {
+              const total = fields.checkOutTime ? Math.round((parseYmd(fields.checkOut) - parseYmd(fields.date)) / 864e5) * 1440 + minutesOfDay(fields.checkOutTime) - minutesOfDay(fields.time) : 0;
+              if (total > MAX_MINUTES) return fail('A length can be at most 7 days (168 hours).');
+              fields.minutes = total > 0 ? total : null;
+            }
+          } else { fields.checkOut = null; fields.checkOutTime = null; }
         } else if (t.kind === 'stay') {
           fields.checkOut = $('f-checkout').value || null;
           if (fields.checkOut && !fields.date) return fail('Choose the day it checks in.');
@@ -2724,6 +2969,8 @@
           fields.guests = num('f-guests');
           fields.confirm = get('f-confirm');
         } else if (t.kind === 'stop') {
+          fields.place = get('f-place');
+          fields.placeRef = ed.placeRef || null;
           fields.address = get('f-address-stop');
           fields.partySize = num('f-partySize');
           fields.reservationName = get('f-reservationName');
@@ -2787,6 +3034,7 @@
       if (!endMode()) break;
       if (e.target.id === l.end || (e.target.id === l.time && $(l.end).value && !lengthOf(l.hours, l.minutes))) endToLength(l);
     }
+    if (['f-time', 'f-hours', 'f-minutes', 'f-endTime'].includes(e.target.id)) carAgree('length');
     if (['f-time', 'f-hours', 'f-minutes', 'f-arrival-day', 'f-arrival-time', 'f-back-time', 'f-back-hours', 'f-back-minutes', 'f-back-arrival-day', 'f-back-arrival-time'].includes(e.target.id)) showArrival();
     if (['f-title', 'f-back-to', 'f-back-toCode'].includes(e.target.id) && $('f-back-title')) $('f-back-title').placeholder = backTitle();
   });
@@ -2795,6 +3043,7 @@
   $('editor').addEventListener('change', (e) => {
     // The check-out a person picks is theirs (an empty one too); until then it follows the check-in day.
     if (e.target.id === 'f-checkout' && state.editing) state.editing.checkOut = e.target.value;
+    if (e.target.id === 'f-checkout') carAgree('drop');
     if (e.target.id === 'f-date') checkoutOptions();
     // Another departure day, for either leg: the ticket's arrival moves by as many days, as a move on the plan does (an arrival
     // not yet chosen stays the same day as the departure). Off its days, it is kept relative to the day it left ("The next day");

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" data-theme-mode="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Design system: the map screen</title>
+  <!-- One drawing of the Prototype's Maps section (prototype-maps.js draws this page in an iframe, so each drawing has its own app theme and
+       is a real viewport of its width: the product's own @media rules apply). Design-process only; nothing here ships.
+       Address: map-screen.html?theme=<id>&mode=<dark|light>&map=<default|light|dark>&scene=<map|menu|options|later|picture|guest>&edge=<app|map> -->
+  <link rel="stylesheet" href="../fa/css/all.min.css">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../sdk/system.css">
+  <link rel="stylesheet" href="themes/strong-coffee.css" id="ms-theme-css">
+  <link rel="stylesheet" href="prototype-maps.css">
+</head>
+<body class="ms-body">
+  <div class="ms-root" id="ms-root"></div>
+  <script src="sources.js"></script>
+  <script src="/sdk/host.js" data-host-sdk></script>
+  <script type="module" src="prototype-maps-screen.js"></script>
+</body>
+</html>

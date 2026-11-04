@@ -477,7 +477,7 @@ if (!/const FOLDS = \['chips', 'switch',/.test(frameJs) || !/\.mf-fold-switch \.
 if (!/if \(iconic\(b\)\) b\.dataset\.tip = name;/.test(frameJs)) fail('public/module-frame.js: a folded choice\'s word is its tooltip');
 if (!/observer = new win\.ResizeObserver\(later\);/.test(frameJs)) fail('public/module-frame.js: the row is fitted again as it changes size');
 if (!/label: s\(o\?\.label, TOOLBAR_LIMITS\.label\), icon: icon\(o\?\.icon\)/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: cleanToolbarItems must keep a tabs option\'s icon');
-if (!/if \(i\.type === 'tabs'\) start\.push\(\{ type: 'switch', id: i\.id, label: 'View', value: i\.value, options: i\.options\.map/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: a tabs item is the frame\'s switch, its options (and icons) kept');
+if (!/if \(i\.type === 'tabs'\) place\(\{ type: 'switch', id: i\.id, label: 'View', value: i\.value, options: i\.options\.map/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: a tabs item is the frame\'s switch, its options (and icons) kept');
 const destination = read('public/destination.js');
 // The destination's view switch and panel switch are tabs items of its one toolbar row (the frame draws and fits them).
 if ((destination.match(/type: 'tabs'/g) || []).length < 2 || !/bands\.toolbar\(\[/.test(destination)) fail('public/destination.js: the view switch and the panel switch must be tabs items of the page\'s toolbar row (its frame)');

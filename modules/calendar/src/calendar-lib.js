@@ -18,10 +18,60 @@
   // --- dates ---------------------------------------------------------------
 
   const pad = (n) => String(n).padStart(2, '0');
+  const ymdOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const endOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-  function startOf(ev) {
-    return ev.allDay ? parseYmd(ev.start) : new Date(ev.start);
+  // --- a copy's own time zone ------------------------------------------------------------------------------------------
+  // An Itinerary copy is stored as an instant with `tz`, the zone of the trip's own clock (null for a whole day). Seen from a
+  // zone whose offset differs, it is drawn and placed (the day, the hour) as written in the trip's zone, as if this browser were
+  // there, and says so ("Lisbon time"). Nothing else has a `tz`, and one in the viewer's own offset needs no note.
+  const zoneFormats = new Map();
+  const zoneOk = (tz) => {
+    if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
+    if (zoneFormats.has(tz)) return zoneFormats.get(tz) !== null;
+    try {
+      zoneFormats.set(tz, new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+    } catch (err) {
+      zoneFormats.set(tz, null);
+      return false;
+    }
+    return true;
+  };
+  // The wall clock of an instant in `tz`, as a local Date (so every getter reads the trip's clock).
+  function wallIn(date, tz) {
+    const get = {};
+    for (const p of zoneFormats.get(tz).formatToParts(date)) get[p.type] = Number(p.value);
+    return new Date(get.year, get.month - 1, get.day, get.hour === 24 ? 0 : get.hour, get.minute);
   }
+  // Minutes east of UTC that a local-as-wall Date stands for, against the instant it was read from.
+  const zoneShift = (date, tz) => wallIn(date, tz).getTime() - new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes()).getTime();
+  // The zone to show an event in: its own, when it is a timed copy whose clock differs from this browser's at that moment; else ''.
+  function zoneOf(ev) {
+    if (!ev || ev.allDay || !zoneOk(ev.tz)) return '';
+    const d = new Date(ev.start);
+    if (Number.isNaN(d.getTime())) return '';
+    return zoneShift(d, ev.tz) === 0 ? '' : ev.tz;
+  }
+  const zoneNote = (tz) => `${String(tz).split('/').pop().replace(/_/g, ' ')} time`;
+  // The instant of a day and a clock time ("YYYY-MM-DD", "HH:MM") read in `tz`, else in this browser's zone.
+  function instantFrom(day, time, tz) {
+    const local = new Date(`${day}T${time}`);
+    if (!tz || !zoneOk(tz) || Number.isNaN(local.getTime())) return local;
+    // The wall clock reads like the instant moved by the zone's offset: find that instant, twice for a clock change.
+    let guess = local;
+    for (let i = 0; i < 2; i += 1) guess = new Date(guess.getTime() - (wallIn(guess, tz).getTime() - local.getTime()));
+    return guess;
+  }
+  // A moment of the event as the screen reads it (start or end): shifted into the copy's zone when it is shown there.
+  const readAt = (ev, value) => {
+    const d = new Date(value);
+    const tz = zoneOf(ev);
+    return tz ? wallIn(d, tz) : d;
+  };
+  function startOf(ev) {
+    return ev.allDay ? parseYmd(ev.start) : readAt(ev, ev.start);
+  }
+  // The same, as the real instant (what has passed is judged on this).
+  const instantOfStart = (ev) => (ev.allDay ? parseYmd(ev.start) : new Date(ev.start));
   // Times on the server's clock (host.util.hour12, read each time: the lib is inlined after the page's own code, so nothing
   // here may be called during the page's start-up); 12-hour where there is no host (the checks).
   const timeText = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: typeof host === 'undefined' || !host.util || !host.util.hour12 ? true : host.util.hour12() });
@@ -84,6 +134,7 @@
     const first = startOf(ev);
     if (!ev.repeat) return first >= from && first < to ? [first] : [];
     const every = ev.repeat.every;
+    const skips = Array.isArray(ev.skips) ? ev.skips : null; // days of single occurrences taken out ("Delete this one")
     const until = ev.repeat.until ? endOfDay(parseYmd(ev.repeat.until)) : null;
     let i = 0;
     if (from > first) {
@@ -96,7 +147,7 @@
     for (let n = 0; n < 1500; n += 1, i += 1) {
       const at = occurrenceAt(first, every, i);
       if (at >= to || (until && at > until)) break;
-      if (at >= from) out.push(at);
+      if (at >= from && !(skips && skips.includes(ymdOf(at)))) out.push(at);
     }
     return out;
   }

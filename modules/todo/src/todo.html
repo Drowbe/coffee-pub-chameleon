@@ -11,6 +11,7 @@
 <body>
 <div id="app" class="app sdk-slot" hidden>
   <p class="sdk-form-error" id="note" hidden></p>
+  <div class="undo" id="undo" role="status" hidden><span id="undo-text"></span><button type="button" class="btn btn-small btn-quiet" id="undo-btn">Undo</button></div>
   <main id="body" class="body"></main>
 
   <dialog id="editor" class="sdk-editor">
@@ -18,20 +19,23 @@
       <h3 id="editor-title">New task</h3>
       <label class="sdk-field" id="f-where-wrap" hidden><span class="sdk-label">Where</span><select id="f-where"></select><span class="sdk-hint"></span></label>
       <div class="sdk-hint" id="f-readonly" hidden></div>
+      <div class="summary" id="f-summary" hidden></div>
+      <div class="sdk-form fields" id="f-fields">
       <label class="sdk-field"><span class="sdk-label">Task</span><input id="f-title" type="text" maxlength="200" required><span class="sdk-hint"></span></label>
       <label class="sdk-field"><span class="sdk-label">Notes</span><textarea id="f-notes" rows="3" maxlength="1000"></textarea><span class="sdk-hint"></span></label>
       <div class="sdk-form-row">
         <div class="sdk-field sdk-m" role="group" aria-labelledby="f-due-label"><span class="sdk-label" id="f-due-label">Due</span><input id="f-due" type="date" aria-labelledby="f-due-label"><span class="sdk-hint"></span></div>
       </div>
       <div class="sdk-choice-list" id="f-remind-wrap"><label class="sdk-choice-row"><input id="f-remind" type="checkbox"><span>Remind people at 9:00 that day</span></label></div>
+      </div>
       <div class="sdk-field" id="f-links-wrap" role="group" aria-labelledby="f-links-label">
         <span class="sdk-label" id="f-links-label">Linked</span>
         <div id="f-links" class="links"></div>
-        <input id="f-link-search" type="text" maxlength="100" placeholder="Link an event or poll: type to search" aria-label="Search events and polls to link">
+        <input id="f-link-search" type="text" maxlength="100">
         <div id="f-link-results" class="results"></div>
       </div>
       <div id="f-rules"></div>
-      <div class="sdk-choice-list"><label class="sdk-choice-row"><input id="f-done" type="checkbox"><span>Done</span></label></div>
+      <div class="sdk-choice-list" id="f-done-wrap"><label class="sdk-choice-row"><input id="f-done" type="checkbox"><span>Done</span></label></div>
       <div class="sdk-hint" id="f-by"></div>
       <div class="sdk-form-error" id="f-error" role="alert" hidden></div>
       <div class="sdk-editor-actions">

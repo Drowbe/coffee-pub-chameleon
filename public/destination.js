@@ -26,6 +26,7 @@ import { mountModule, createDestination, askCanvasToOpen, sameSiteOpener, create
 import { createModuleFrame } from '/module-frame.js';
 import { hashPanel } from '/primary-nav.js';
 import { dropRepeatedAdds } from '/module-chrome.js';
+import { moduleTint } from '/module-tint.js';
 
 const $ = (id) => document.getElementById(id);
 const destId = decodeURIComponent(location.pathname.split('/')[1] || '').toLowerCase(); // /CALENDAR is /calendar
@@ -68,16 +69,22 @@ const KINDS = {
     phoneView: 'day',
     // Month, Week or Day as "Open on" says; the Agenda (`list`) and an old stored Month + list (`both`) open on Month here.
     firstView: (values) => (values && ['month', 'week', 'day'].includes(values.defaultView) ? values.defaultView : 'month'),
+    // "Open on: Agenda" opens the calendar's own Agenda panel (the Agenda is a panel here, not a view of the calendar).
+    openPanel: (values) => (values && values.defaultView === 'list' ? 'calendar' : null),
     external: true,
     markers: true,
+    // The row's zones (Thomas, 2026-11-02): on the left the date group (the calendar's own title, back, Today, forward), then
+    // the Month / Week / Day switch; at the far right, never moved into More, the panel's switch (Agenda / To-do) with the
+    // shown panel's own items before it. The Filters button sits between, after the free space.
+    zones: true,
   },
   map: {
     views: [],
     mine: true,
     search: {
       label: 'Find a place',
-      placeholder: 'Find a place, or paste coordinates or a map link',
-      filterOnly: 'Filter places, or paste coordinates or a map link',
+      placeholder: 'Find a place',
+      filterOnly: 'Filter places',
     },
     searchSetUp: (values) => Boolean(values && values.searchProvider && values.searchProvider !== 'none'),
     initial: { q: '', find: 0, selected: null },
@@ -194,20 +201,29 @@ async function start() {
   }
   // Never shown over a call (?from=space in the space page's frame), where others may see the screen, nor in a space.
   if (kind.external && !spaceId && !withinSpacePage()) await loadExternals();
+  let settings = null; // the main part's own settings (the calendar's "Open on"), once asked for
+  const askSettings = async () => {
+    try {
+      settings = (await api('GET', withGuest(`/api/modules/${encodeURIComponent(d.main.module.id)}/settings/values?${placeQuery()}`))).values || {};
+    } catch {
+      settings = {};
+    }
+    return settings;
+  };
   if (kind.views.some((v) => v.id === saved.view)) view = saved.view;
   else if (kind.views.length && onPhone()) view = kind.phoneView;
   else if (kind.views.length) {
-    let values = {};
-    try {
-      values = (await api('GET', withGuest(`/api/modules/${encodeURIComponent(d.main.module.id)}/settings/values?${placeQuery()}`))).values || {};
-    } catch {
-      // the default view, then
-    }
-    view = kind.firstView(values);
+    view = kind.firstView(await askSettings());
   }
   const keyOf = (p) => (p.part === 'main' ? 'main' : `panel:${p.module.id}`);
   const panelKeys = (d.panels || []).map(keyOf);
   panel = panelKeys.includes(saved.panel) ? saved.panel : panelKeys[0] || '';
+  // "Open on: Agenda" (the calendar's setting) opens the Agenda panel beside the calendar, whatever panel was left open last; a
+  // link to a panel (#panel=) still wins (takeHash). On a phone the parts are tabs and the main part's view stays first.
+  if (kind.openPanel && !onPhone()) {
+    const wanted = kind.openPanel(settings || await askSettings());
+    if (wanted && panelKeys.includes(`panel:${wanted}`)) panel = `panel:${wanted}`;
+  }
   tab = saved.tab === 'main' || panelKeys.includes(saved.tab) ? saved.tab : 'main';
 
   hub = createDestination(destId, { ...(kind.initial || {}), ...(view ? { view } : {}), ...filterState(), phone: onPhone() });
@@ -229,7 +245,7 @@ async function start() {
   });
   // Without WebGL a map part shows only its notice: the panel takes the page's width (plan-map-destination, "States").
   if (kind.needsWebgl && !webglWorks()) document.body.classList.add('dest-no-webgl');
-  drawFrame(d);
+  drawFrame(d, await mainModuleTint());
   drawTabs(d);
   stackedQuery.addEventListener('change', drawRow);
   if (kind.search) loadSearchWords(d);
@@ -255,6 +271,21 @@ async function start() {
   // Opened at a place: a day (#day=, from home's tile) for the main part, or an object (#ref=).
   takeHash();
   window.addEventListener('hashchange', takeHash);
+}
+
+// The title bar's icon wears the main module's tint, as on its own page (/modules/<id>): the manifest's colour, else a stable
+// pick from its id. The colour comes from the modules list a guest cannot read: then the pick from the id alone.
+async function mainModuleTint() {
+  const id = d.main.module.id;
+  if (!guestToken) {
+    try {
+      const found = (await api('GET', '/api/modules/nav')).modules.find((m) => m.id === id);
+      if (found) return moduleTint(id, found.color || null);
+    } catch {
+      // the pick from the id, then
+    }
+  }
+  return moduleTint(id, null);
 }
 
 // The place this page's own calls name: the space it is a view of, else the environment.
@@ -374,11 +405,12 @@ function mountPart(part, container, key) {
 // row; the parts; its status bar. In a composite's frame it has neither title bar nor status bar: the composite's window
 // on the Workspace holds them (sendChrome). The panel is in a frame of its own with only a row, which shows while the
 // panel is stacked under the main part (drawRow).
-function drawFrame(d) {
+function drawFrame(d, mainTint = null) {
   page = createModuleFrame({
     title: d.name,
     icon: d.icon,
     variant: 'page',
+    tint: mainTint,
     bands: { titlebar: !inComposite, status: !inComposite },
     titlebar: { standard: { dock: false, window: false, popout: false, clear: false } },
     flush: true,
@@ -387,7 +419,7 @@ function drawFrame(d) {
   });
   page.el.id = 'dest-frame';
   // Every row item carries its own send (drawRow); the "+" and the icons go to their part.
-  bands = createFrameBands(page, { send: (event, data) => {
+  bands = createFrameBands(page, { statusLimit: 6, send: (event, data) => {
     if (event === 'add' && data?.id) pickAdd(data.id);
     else if (event === 'header' && data?.id) pickHeader(data.id);
   } });
@@ -500,7 +532,8 @@ function drawRow() {
     type: 'tabs',
     id: 'dest-panel',
     value: panel,
-    // Each panel with its module's icon (as the phone's tabs have): icons only while the row is too narrow.
+    // Each panel with its module's icon (as the phone's tabs have): icons only while the row is too narrow, then the row's
+    // other things go into More before this does (it is pinned).
     options: panels.map((p) => ({ id: p.key, label: p.part.label, icon: /^[a-z0-9-]{1,40}$/.test(p.part.module.icon || '') ? p.part.module.icon : 'puzzle-piece' })),
     send: ({ value }) => {
       if (!value || value === panel) return;
@@ -509,8 +542,22 @@ function drawRow() {
       layout();
     },
   }] : [];
-  const panelItems = [...panelSwitch, ...(shownPanel ? partItems(shownPanel) : [])];
   const stacked = !phone && panels.length > 0 && (stackedQuery.matches || document.body.classList.contains('dest-no-webgl'));
+  if (kind.zones) {
+    // The panel's switch is always in the main row's right zone, whatever the width; while the panel is stacked its own items
+    // are the panel's row, at its top, where they act.
+    const shownItems = shownPanel ? partItems(shownPanel) : [];
+    const zone = (items, z, pin) => items.map((i) => ({ ...i, zone: z, ...(pin ? { pin: true } : {}) }));
+    bands.toolbar([
+      ...(onMain && main ? zone(partItems(main), 'start') : []),
+      ...own.map((i) => (i.type === 'tabs' ? { ...i, zone: 'start' } : i)),
+      ...(stacked ? [] : zone(shownItems, 'end')),
+      ...zone(panelSwitch, 'end', true),
+    ]);
+    sideBands.toolbar(stacked ? zone(shownItems, 'start') : []);
+    return;
+  }
+  const panelItems = [...panelSwitch, ...(shownPanel ? partItems(shownPanel) : [])];
   bands.toolbar([...(onMain && main ? partItems(main) : []), ...own, ...(stacked ? [] : panelItems)]);
   sideBands.toolbar(stacked ? panelItems : []);
 }
@@ -557,7 +604,7 @@ function layout() {
 // The "+": each part's entries in the parts' order (the main, then the panels), their ids as "<part's place>.<id>" so a
 // pick finds its part; a part with more than one entry, beside another with some, is a category named by the part (its
 // flyout). One leaf in all: the "+" runs it at once. The icons likewise, "<part's place>.<id>". The status: the main part's
-// items, then the panel's shown (the status bar keeps the first four). On the page they are drawn in its frame's title bar
+// items, then the panel's shown (the status bar keeps the first six here: the calendar's two and the To-do's four). On the page they are drawn in its frame's title bar
 // and status bar; in a composite's frame they are handed up to the composite's window on the Workspace.
 // The same add offered by two parts (the Map's "Add a place" and its Places panel's) is one entry, the first part's.
 function chromeAdds() {

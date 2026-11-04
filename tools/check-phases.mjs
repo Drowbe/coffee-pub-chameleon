@@ -562,7 +562,7 @@ try {
     assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'no template: an empty list, not missing');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, [], 'the same through /api/config');
     assert.equal((await asAdmin('PATCH', '/api/settings', { template: 'travel' })).status, 200);
-    const ICONS = { planning: 'clipboard-list', booking: 'ticket', buffer: 'hourglass-half', 'pre-trip': 'suitcase-rolling', trip: 'plane', 'post-trip': 'camera-retro' };
+    const ICONS = { planning: 'clipboard-list', booking: 'ticket', buffer: 'hourglass-half', 'pre-trip': 'suitcase-rolling', trip: 'plane', 'post-trip': 'camera' };
     const expected = TRAVEL.map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), icon: ICONS[p.id] }));
     assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, expected, 'the travel template\'s phases, in order, main marked, with no restart');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, expected);
@@ -680,7 +680,7 @@ try {
   await test('the module context\'s space carries phases, for a member too', async () => {
     const ctx = await asMember('GET', `/api/modules/todo/context?scope=space&space=${trip.id}`);
     assert.equal(ctx.status, 200, ctx.text);
-    assert.deepEqual(ctx.json.space, { id: trip.id, name: 'Lisbon', createdAt: trip.createdAt, phases: stored().phases, budget: null }, 'no budget target set: null (#216)');
+    assert.deepEqual(ctx.json.space, { id: trip.id, name: 'Lisbon', createdAt: trip.createdAt, phases: stored().phases, budget: null, guestsSeeHidden: false }, 'no budget target set: null (#216)');
     assert.deepEqual(ctx.json.phases.map((p) => p.id), ['planning', 'booking', 'buffer', 'pre-trip', 'trip', 'post-trip'], 'the template\'s phases, as before');
   });
 

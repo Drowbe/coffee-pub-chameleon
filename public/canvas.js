@@ -12,10 +12,11 @@
 // when it is popped out: they open in whichever window the canvas is in.
 // See documentation/architecture/architecture-canvas.md.
 
-import { api, markModuleRead, followTheme, word } from '/brand.js';
-import { mountModule, createFrameLift, openClearMenu, registerDragRelay, createFrameBands } from '/module-host.js';
+import { api, markModuleRead, followTheme, word, noticeToast } from '/brand.js';
+import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame, joinStream } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
+import { fileWindowCount, closeAllFiles, openFile } from '/file-viewer.js';
 import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
 import { layoutOf, placeLayout, leftOutNote } from '/layouts.js';
@@ -829,9 +830,13 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const c = compositeOf(mod.m);
     const hostWin = frame.ownerDocument.defaultView || window;
     const post = (data) => { try { frame.contentWindow?.postMessage(data, hostWin.location.origin); } catch { /* the page is not there */ } };
+    // The page in the frame opens no event stream of its own: it hears this page's (module-host.js, relayStreamToFrame),
+    // for this space and this guest only, until the window closes.
+    const unstream = relayStreamToFrame(frame, { win: hostWin, allow: () => ({ space: spaceId || null, guest: guestToken || null }) });
     let opener = null; // the "+" or icon the person used: focus goes back to it when the editor window closes
     // The parts' "+" and title bar icons drawn in this window's frame (createFrameBands), a pick posted back to the page.
     const bands = createFrameBands(mod.frame, {
+      statusLimit: 6, // the calendar's items and the shown panel's (4 open, 1 overdue, Showing all) all fit
       send: (event, data) => {
         opener = { el: frame.ownerDocument.activeElement, at: Date.now() };
         if (event === 'add' && data?.id) post({ type: 'app:compositeadd', id: data.id });
@@ -892,10 +897,11 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       beginDragForTest() {},
       ptrForTest() {},
     };
-    // Closing lets the "+", the status bar and the page's messages go too.
+    // Closing lets the "+", the status bar, the page's messages and the events it heard from this page's stream go too.
     const close = mount.destroy;
     mount.destroy = () => {
       hostWin.removeEventListener('message', onChrome);
+      unstream();
       bands.destroy();
       close();
     };
@@ -921,6 +927,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       // A request for an action waits for the page of the module that carries it: open that module if it is on here.
       onOpenModule: (id) => { const target = available.find((x) => x.id === readId(id)); if (target && !opened.has(target.id)) openModule(target); },
       onChatAsk,
+      // The data changed (someone cleared it, or put it back): whether Clear is offered, and for how long Undo lasts, are asked again.
+      onChanges: followClearable(m.id, { spaceId, guestToken }, (entry) => { m.clear = entry.clear === true; m.undoSeconds = entry.undoSeconds; if (mod.frame) mod.frame.setTitlebar({}); }, () => m.clear === true),
       scope: 'space',
       spaceId,
       guestToken,
@@ -1239,6 +1247,16 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   // module is one of its parts) and hand it the pointer, which its own code turns into showing the item. the host
   // knows nothing about the item.
   function openRef(ref) {
+    // A file of the space's library (a link from Chat or another tool) opens in the file window over the canvas; the library's module
+    // is not brought forward (plan-attachments-vault.md, decision 19). Previous and Next appear only when the opener gives a list.
+    if (ref.kind === 'file' && ref.scope === 'space' && !(spaceId && ref.space === spaceId)) {
+      noticeToast(`That file is in another ${word('space')}. Open it there.`, { kind: 'danger' });
+      return false;
+    }
+    if (ref.kind === 'file' && ref.scope === 'space') {
+      Promise.resolve(openFile({ ref: { module: ref.module, kind: 'file', id: ref.id, scope: 'space', space: ref.space }, ids: null, doc: document, openRef, join: (fn) => joinStream(spaceId, guestToken, fn) })).catch(() => {});
+      return true;
+    }
     const m = available.find((x) => x.id === readId(ref.module));
     if (!m) return false;
     if (!opened.has(m.id)) openModule(m);
@@ -1340,7 +1358,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const out = { dock: false, window: false, popout: false, clear: false };
     const mod = opened.get(id);
     if (!mod) return out;
-    out.clear = !compositeOf(mod.m);
+    out.clear = !compositeOf(mod.m) && mod.m.clear === true; // only where the server says this person may (for-space `clear`)
     if (isNarrow()) return out;
     if (mod.mode === 'dock' && supports(mod, 'float')) out.window = true;
     if (mod.mode === 'float' && supports(mod, 'dock')) {
@@ -1360,7 +1378,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (e.id === 'window') return setMode(id, 'float');
     if (e.id === 'dock') return setMode(id, 'dock');
     if (e.id === 'popout') return popOut(id);
-    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true });
+    if (e.id === 'clear' && e.el) openClearMenu(e.el, () => clearModuleData(opened.get(id) || mod), { armed: true, name: (opened.get(id) || mod).m.name || '', undoSeconds: (opened.get(id) || mod).m.undoSeconds });
   }
 
   // Everything this module holds in this space. The conference and the chat are not modules, so they never get this.
@@ -1371,7 +1389,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (tz) q.set('tz', tz);
     } catch { /* the server falls back */ }
-    await api('DELETE', `/api/modules/${encodeURIComponent(mod.m.id)}/data?${q}`);
+    return clearWithUndo(mod.m.id, q.toString());
   }
 
   // The call moved to (or came back from) a window of its own. Module frames cannot
@@ -1805,6 +1823,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
         items.push({ icon: 'fa-solid fa-broom', label: 'Clean up', onPick: () => cleanUp() });
       }
     }
+    // The file windows (public/file-viewer.js) are over the canvas, not modules of it: one entry closes them all (plan-attachments-vault.md, decision 20).
+    const filesOpen = fileWindowCount(canvasDoc());
+    if (filesOpen) items.push({ divider: true }, { heading: 'Open files' }, { icon: 'xmark', label: 'Close all', badge: filesOpen, onPick: () => closeAllFiles(canvasDoc()) });
     const extra = typeof menuItems === 'function' ? menuItems() : [];
     if (Array.isArray(extra) && extra.length) items.push({ divider: true }, ...extra);
     if (noteEl) items.push({ element: noteEl });

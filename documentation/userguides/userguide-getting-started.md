@@ -35,6 +35,8 @@ image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator
      Support on**.
    - `collaborator.<domain>` to scheme http, NAS LAN address, port `3000`.
 
+**Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data) and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`; the example is `/share/appdata/coffee-pub-collaborator-vault`). The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are commented examples in the compose file ([Vault](userguide-vault.md), "Notes for the person running the server").
+
 Camera access requires HTTPS, which the proxy provides. Players need nothing but a browser. LiveKit
 1.12 or newer is required; the compose file pulls the latest release. With no LiveKit, **Manage** > **Modules** shows
 "Voice and video are not set up on this server" on the Conference card, with its switch off.
@@ -108,7 +110,7 @@ In Container Station, pull the new image for the `collaborator` application
 (`ghcr.io/drowbe/coffee-pub-collaborator`) and recreate it. Users, images and settings live in the
 folder the volume names (`/share/appdata/coffee-pub-collaborator` on a new install).
 
-Take a copy of that data folder before you update. An update can bring the data up to date for the
+Take a copy of that data folder, and of the Vault's folder (`/app/vault`), before you update. An update can bring the data up to date for the
 new version, and an older version then refuses to open it rather than misread it: going back to an older
 image means putting back that copy as well.
 
@@ -150,7 +152,7 @@ To switch environments on, with the server already running as above:
 It defaults to `1`, the Nginx Proxy Manager in the compose file. Sign-in and guest limits count by the address the
 nearest proxy saw, so nobody can choose their own with a made-up header. Two in a row (say Cloudflare, then Nginx Proxy
 Manager) is `2`; reached directly with no proxy, `0`. A value that is not a whole number logs a line and uses `1`. If
-the count is wrong, every visitor can look like the proxy's own address and share one limit. Four more switches are in
+the count is wrong, every visitor can look like the proxy's own address and share one limit. The Vault's public share links depend on it most: their limit on wrong passwords counts by this address, so set it to the real number of proxies, and to `0` when the container is exposed directly. `SHARE_UNLOCKS_PER_MINUTE` (60) caps how many password checks the environment does a minute. Four more switches are in
 the compose file, commented, and the defaults are usually right: `LIVE_STREAMS_PER_PERSON` (50, the live streams
 one signed-in person may hold open, about one a browser tab), `LIVE_STREAMS_PER_GUEST_LINK` (25, for one guest link in
 all; one address gets 40% of it) and `GUEST_CHAT_POSTS_PER_MINUTE` (20, the messages one guest link may post a minute;
@@ -279,7 +281,7 @@ A host admin does this from the host console's **Environments** tab. Each enviro
 **Backup** and **Restore backup**.
 
 To back one up, click **Backup** on its card. The browser saves the whole environment as a zip named
-`<slug>-<date>.zip`: every setting, account, space, picture and module's data. The flight schedule the
+`<slug>-<date>.zip`: every setting, account, space, picture and module's data. It does not carry the Vault's files (their records are in the zip, their content is not): back up the Vault's folder with the data folder, and a restore without it shows those files as **File missing** until someone removes them. The flight schedule the
 Planner's lookup learns is the host's, shared by every environment, so it is not in the zip; it lives in
 `flight-schedule.json` beside `host.json`, and the console's **Host** tab can forget a flight or clear it
 (see "The flight schedule" in [Modules](userguide-modules.md)).
@@ -322,6 +324,6 @@ The app itself has nothing that is specific to a NAS. To run both services on a 
 computer, use the same `docker-compose.yml` under Docker Desktop, forward the same ports on your
 router, and point the two hostnames at your public address.
 
-Moving a server with environments: copy the whole data folder, set the same `BASE_DOMAIN` (and the DNS and
+Moving a server with environments: copy the whole data folder and the Vault's folder, set the same `BASE_DOMAIN` (and the DNS and
 certificate from "Environments: one server, several groups"), then start it. Without `BASE_DOMAIN` it will not
 start; see above.

@@ -4,12 +4,14 @@
 // back into the frame. Used by a module's own page (module.js), the dashboard (dashboard.js) and a
 // space's canvas (canvas.js).
 
-import { api, accessKeyHeaders, word, words, withinSpacePage, showNote } from '/brand.js';
+import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, undoToast } from '/brand.js';
 import { confirmDialog } from '/confirm.js';
+import { pickObjects } from '/object-pick.js';
 import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
 import { shareDialog, printFrame } from '/module-actions.js';
+import { createStreamHub, createStreamRelay, createStreamRelayClient } from '/module-stream.js';
 
 // The design tokens a module's frame receives (see design-theme.md).
 const THEME_TOKENS = [
@@ -34,40 +36,31 @@ export function readTheme() {
   return theme;
 }
 
-// One live stream per page (and space) is shared by every module frame on it. Browsers allow only a
-// few long-lived connections to one site, so a stream per module would starve everything else once
-// a handful of modules were open. See GET /api/modules/stream in server/index.js.
-const streams = new Map(); // "<space>|<guest>" -> { source, subs }
-function joinStream(space, guest, onEvent) {
-  const key = `${space || ''}|${guest || ''}`;
-  let s = streams.get(key);
-  if (!s) {
-    const p = new URLSearchParams();
-    if (space) p.set('space', space);
-    if (guest) p.set('guest', guest);
-    const source = new EventSource(`/api/modules/stream?${p}`);
-    s = { source, subs: new Set() };
-    for (const type of ['change', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external']) {
-      source.addEventListener(type, (ev) => {
-        let data;
-        try {
-          data = JSON.parse(ev.data);
-        } catch {
-          return; // ignore a malformed event
-        }
-        for (const fn of s.subs) fn(type, data);
-      });
+// One event stream per page is shared by every module mount on it (public/module-stream.js: the page's own view and
+// one space's ride one connection). Browsers allow only a few long-lived connections to one site (six over HTTP/1.1),
+// so a stream per module, or per window frame, starves everything else. See GET /api/modules/stream in server/index.js.
+// A destination's page in a window frame on a space's Workspace (canvas.js marks that frame data-composite) opens no
+// stream: it hears the page's over postMessage (createStreamRelayClient; the page's side is relayStreamToFrame, below).
+const streamHub = createStreamHub();
+let frameRelay; // undefined: not asked yet; null: not in a window frame on the Workspace
+export function joinStream(space, guest, onEvent) {
+  if (frameRelay === undefined) {
+    let inComposite = false;
+    try {
+      inComposite = window.self !== window.top && Boolean(window.frameElement && window.frameElement.hasAttribute('data-composite'));
+    } catch {
+      inComposite = false;
     }
-    streams.set(key, s);
+    // A join the page never answers falls back to this frame's own stream (the hub), so live updates never stop.
+    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin, fallback: (space, guest, fn) => streamHub.join(space, guest, fn) }) : null;
   }
-  s.subs.add(onEvent);
-  return () => {
-    s.subs.delete(onEvent);
-    if (!s.subs.size) {
-      s.source.close();
-      streams.delete(key);
-    }
-  };
+  return (frameRelay || streamHub).join(space, guest, onEvent);
+}
+// The page's side of the relay, for one window frame on the Workspace (canvas.js, compositeMount): the frame may hear
+// only `allow()`'s view ({ space, guest }: the space and guest token the frame was made for). `win` is the window the
+// frame is in (not this one when the call has been popped out). Answers stop(), for when the window closes.
+export function relayStreamToFrame(frame, { win = window, allow }) {
+  return createStreamRelay({ win, frame, origin: win.location.origin, allow, join: (space, guest, fn) => streamHub.join(space, guest, fn) });
 }
 
 // --- watching one person's media (host.media.watch) ----------------------------------------------
@@ -307,6 +300,8 @@ document.addEventListener('app:theme', () => {
 });
 let activeDrag = null; // { source, ref, layers, timer }
 
+// The browser's time zone (IANA), sent with every ask so the AI's "today" is the asker's.
+const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 const REF_SHAPE = (r) => r && typeof r.module === 'string' && typeof r.kind === 'string' && typeof r.id === 'string'
   && /^[a-z][a-z0-9-]{1,31}$/.test(r.module) && /^[a-z][a-z0-9-]{0,23}$/.test(r.kind) && /^[A-Za-z0-9_-]{1,64}$/.test(r.id)
   && (r.scope === 'environment' || r.scope === 'person' || (r.scope === 'space' && typeof r.space === 'string' && r.space.length <= 64));
@@ -378,7 +373,7 @@ function placeOf(requested, space, mount) {
 // private objects, from anywhere. `scope: 'spaces'` (a module's environment page only, never a space or a keyed page)
 // asks every space the viewer belongs to at once, each pointer with its space; `has: 'place'` keeps only summaries
 // with a place (plan-map-destination, "SDK and the host"). Otherwise the place is placeOf's.
-function objectSearchParams(moduleId, { q, scope: s, space, has, in: marked } = {}, mount) {
+function objectSearchParams(moduleId, { q, scope: s, space, has, kind, in: marked } = {}, mount) {
   const fail = (message) => { throw Object.assign(new Error(message), { status: 400 }); };
   let sc;
   if (s === 'person') sc = { scope: 'person', space: null };
@@ -391,6 +386,8 @@ function objectSearchParams(moduleId, { q, scope: s, space, has, in: marked } = 
   const p = new URLSearchParams({ from: moduleId, q: String(q || '').slice(0, 100), scope: sc.scope });
   if (sc.scope === 'space') p.set('space', sc.space);
   if (has === 'place' || has === 'amount') p.set('has', has);
+  // `kind`: one kind of object only (all of them, up to 1,000), so a module need not page the newest 50 for the few it wants.
+  if (typeof kind === 'string' && kind) p.set('kind', kind.slice(0, 32));
   // `in`: a space's id, with scope 'environment': the environment's objects marked for that space (the server checks the rest).
   if (typeof marked === 'string' && marked) p.set('in', marked.slice(0, 64));
   return p;
@@ -421,6 +418,10 @@ const DESTINATION_FIELDS = {
   selected: (v) => (v === null ? null : REF_SHAPE(v) ? cleanPointer(v) : undefined),
   // A part asking the page to bring a part into view (on a phone, its tab): the map's "Show in list".
   reveal: (v) => (v === 'main' || v === 'panel' ? v : undefined),
+  // The map says whether it is drawn (a map file in use, a device that can draw it), so the list beside it says "On the map" only
+  // when that is true; the list says its places changed (a counter), so the map reads them again at once.
+  mapOn: (v) => (typeof v === 'boolean' ? v : undefined),
+  changed: (v) => (Number.isSafeInteger(v) && v >= 0 ? v : undefined),
   // The kinds of markers the calendar has shown (plan-calendar-markers.md), for the page's filter: up to 20 of
   // { id: '<module>:<kind>', label, icon, tint }, the label at most 40 characters, the icon a Font Awesome name, the
   // tint one of the eight or none.
@@ -441,7 +442,7 @@ const DESTINATION_FIELDS = {
 // The page's own fields (the view, the filter, the search, `phone`) are set only by the page.
 const DESTINATIONS = {
   calendar: { main: ['day', 'from', 'to', 'markerKinds'] },
-  map: { main: ['selected', 'reveal'], panel: ['selected', 'reveal'] },
+  map: { main: ['selected', 'reveal', 'mapOn'], panel: ['selected', 'reveal', 'changed'] },
 };
 const DESTINATION_PARTS = ['main', 'panel'];
 export function createDestination(id, initial = {}) {
@@ -812,10 +813,114 @@ export function openConfirmMenu(trigger, { label, confirm, hint, icon = 'trash',
 }
 
 // The titlebar "..." on an installed module (not the conference or the chat). `armed`: Clear was already picked from the
-// canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away.
-export function openClearMenu(trigger, onClear, { armed = false } = {}) {
-  openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed });
+// canvas's longer "..." (canvas.js, moduleMenuItems), so it asks straight away. With a `name` it asks by the styled confirm and
+// the person types that name first (it wipes the module's data for everyone). `onClear` may resolve to an `undo` function (see
+// clearWithUndo): the page then shows "Cleared. Undo" until the server's undo time is over (undo.until), never longer.
+export function openClearMenu(trigger, onClear, { armed = false, name = '', undoSeconds = 0 } = {}) {
+  if (!name) { openConfirmMenu(trigger, { label: 'Clear', confirm: 'Clear everything and start again?', onConfirm: onClear, armed }); return; }
+  const seconds = Number(undoSeconds) > 0 ? Math.round(Number(undoSeconds)) : UNDO_SECONDS;
+  const ask = async () => {
+    let undo = null;
+    // The Clear runs inside the dialog: a refusal (a second Clear while the first can still be undone, too many in a short
+    // time) is read where it was asked, and the dialog stays.
+    const ok = await confirmDialog({
+      title: `Clear ${name}?`,
+      message: `Everything ${name} holds here goes, for everyone. You can undo it for ${seconds} seconds, until you leave this page.`,
+      action: 'Clear',
+      kind: 'final',
+      typed: name,
+      run: async () => {
+        try { undo = await onClear(); } catch (err) { throw sayAsked(err, 'It could not be cleared.'); }
+      },
+    });
+    if (!ok) return;
+    if (typeof undo === 'function') undoToast(`Cleared ${name}.`, undo, { until: undo.until });
+    else showNote(`${name} had nothing to clear.`);
+  };
+  if (armed) ask();
+  else openHostMenu(trigger, [{ icon: 'trash', label: 'Clear', danger: true, onPick: ask }]);
 }
+// The undo time when the server did not say (its default).
+const UNDO_SECONDS = 30;
+
+// What a refused Clear or Undo says: the server's own sentence; after "too many" (429) it leads with "Try again in a moment."
+function sayAsked(err, fallback) {
+  const said = (err && err.serverSaid && err.message) || '';
+  if (err && err.status === 429) return Object.assign(new Error(said ? `Try again in a moment. ${said}` : 'Try again in a moment.'), { status: 429 });
+  return Object.assign(new Error(said || fallback), { status: err && err.status });
+}
+
+// Clears everything a module holds in a place (DELETE .../data). The server holds what went for its undo time (undoSeconds,
+// 30 unless the server says) and answers a restoreToken; this resolves to a function that asks the server to put it all back
+// (POST .../data/restore). The token lives in this page only: the server keeps the hold, but after this page is closed or
+// reloaded there is no way to ask for the Undo, and the hold runs out. The function resolves to the sentence to show, and
+// carries `until`, when the undo time is over by this page's clock. A failed Undo (storage full, no network) throws the
+// server's sentence and may be asked again until `until`. Resolves to null when there was nothing to clear.
+// `query` is the place's query string.
+export async function clearWithUndo(moduleId, query) {
+  const base = `/api/modules/${encodeURIComponent(moduleId)}/data`;
+  const answer = await api('DELETE', `${base}?${query}`);
+  if (!answer || !answer.cleared || typeof answer.restoreToken !== 'string') return null;
+  const seconds = Number(answer.undoSeconds) > 0 ? Number(answer.undoSeconds) : UNDO_SECONDS;
+  const undo = async () => {
+    let back;
+    try {
+      back = await api('POST', `${base}/restore?${query}`, { restoreToken: answer.restoreToken });
+    } catch (err) {
+      throw sayAsked(err, 'It could not be brought back.');
+    }
+    const n = Number(back.restored) || 0;
+    const restored = `Restored ${n} ${n === 1 ? word('object') : word('object', { many: true })}.`;
+    const skipped = Array.isArray(back.taken) && back.taken.length ? back.taken.length : Number(back.skipped) || 0;
+    return skipped ? `${restored} ${skipped} could not come back: something new is in ${skipped === 1 ? 'its' : 'their'} place.` : restored;
+  };
+  undo.until = Date.now() + seconds * 1000;
+  return undo;
+}
+
+// Keeps what the page knows of a module's Clear in step with the server: its `clear` (is there anything to clear, and may this
+// person) and `undoSeconds` come from GET /api/modules/for-space, read at load. Call the function this returns when the module's
+// data changed; it asks again once, after a short wait however many calls came, and hands the module's entry to `apply`.
+// A single change asks only when it could flip `clear` (something was added where there was nothing, `isClear()` false; or
+// something went where there was something); many at once ({ many: true }, a Clear or its Undo) always ask.
+export function followClearable(moduleId, { spaceId, guestToken = null }, apply, isClear = () => true) {
+  let timer = 0;
+  let holdTimer = 0;
+  let holdFrom = 0; // when the last many-at-once change came (a Clear or its Undo); the undo time counts from it
+  let holdEnds = 0; // when that undo time and the server's grace are over, by this page's clock
+  const read = async () => {
+    let entry = null;
+    try {
+      const q = new URLSearchParams({ space: spaceId });
+      if (guestToken) q.set('guest', guestToken);
+      entry = ((await api('GET', `/api/modules/for-space?${q}`)).modules || []).find((m) => m.id === moduleId) || null;
+      if (entry) apply(entry);
+    } catch { /* the flag stays as it was */ }
+    // While a Clear can be undone the server says there is nothing to clear; when that time ends the flag may be true (data
+    // written during it) and no change comes to say so. So ask once more then, and when the page comes back to the front.
+    if (holdFrom && entry) {
+      const seconds = Number(entry.undoSeconds) > 0 ? Number(entry.undoSeconds) : UNDO_SECONDS;
+      holdEnds = holdFrom + seconds * 1000 + HOLD_GRACE_MS;
+      holdFrom = 0;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => { holdEnds = 0; read(); }, Math.max(0, holdEnds - Date.now()));
+    }
+  };
+  if (spaceId && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && holdEnds && Date.now() >= holdEnds) { clearTimeout(holdTimer); holdEnds = 0; read(); }
+    });
+  }
+  return ({ many = false, deleted = false } = {}) => {
+    if (!spaceId) return;
+    if (many) { holdFrom = Date.now(); clearTimeout(holdTimer); holdEnds = 0; }
+    if (!many && deleted !== isClear()) return;
+    clearTimeout(timer);
+    timer = setTimeout(read, 400);
+  };
+}
+// The wait after the undo time before the page asks again: the server keeps a hold 5 s past the undo time (module-holds.js, its grace), plus 1.5 s for the clocks.
+const HOLD_GRACE_MS = 6500;
 
 // The lifts (editor.lift, in mountModule below), for the page as a whole: how many lifts hold each element inert, which
 // elements the lifts set inert themselves (one inert before any lift stays so), the lifts up now, and one watch per
@@ -1006,7 +1111,7 @@ export function createFrameLift(frame, { mount, tell, onLift = null, takeOpener 
 // Used by mountModule, by canvas.js for a composite and by destination.js for its page.
 // Returns { add(entries), header(items), toolbar(items) -> the cleaned items, status(items) -> true, standard(spec),
 // share(result) -> true, print({ iframe, height }) -> a promise, event(e), destroy() }.
-export function createFrameBands(frame, { send, box = null }) {
+export function createFrameBands(frame, { send, box = null, statusLimit = undefined }) {
   const win = frame.el.ownerDocument.defaultView || window;
   let header = [];
   let toolbar = [];
@@ -1055,7 +1160,7 @@ export function createFrameBands(frame, { send, box = null }) {
       return toolbar;
     },
     status(items) {
-      const clean = cleanStatusItems(items);
+      const clean = cleanStatusItems(items, statusLimit);
       const key = statusKey(clean);
       if (key === statusLast) return true;
       statusLast = key;
@@ -1096,7 +1201,7 @@ export function createFrameBands(frame, { send, box = null }) {
 // window); the calls answer true. Wherever a module is drawn the host draws its bands; only a dashboard widget (no
 // header, toolbar, add or status given) answers false. `module.content` is the manifest's ("flush" or nothing). Returns
 // { destroy, send, deliver }. The module hears the same names the server uses (plan-names step 5c).
-export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null }) {
+export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null, onChanges = null }) {
   const base = `/api/modules/${encodeURIComponent(module.id)}`;
   let contextInfo = null;
   // A keyed page (public/keyed.js): the module's page about one person, opened with the access key and no
@@ -1123,6 +1228,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     const p = q(sc);
     for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null && v !== '') p.set(k, v);
     return `${base}${path}?${p}`;
+  };
+
+  // The library routes (a module that declares `library: true`) are about one space: this frame's.
+  const libraryUploads = new Map();
+  const libraryUrl = (path = '', extra = {}) => {
+    if (scope !== 'space' || !spaceId) throw Object.assign(new Error(`This works inside ${word('space', { a: true })}.`), { status: 400 });
+    const p = new URLSearchParams({ space: spaceId });
+    for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null && v !== '') p.set(k, v);
+    return `${base}/library${path}?${p}`;
   };
 
   // The place this module is in, for the bus routes: on a space's canvas it is in that space, a page in the environment.
@@ -1312,9 +1426,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         throw err;
       }
     },
-    async 'storage.set'({ key, value, version, scope: s, space }) {
+    async 'storage.set'({ key, value, version, scope: s, space, tz: given }) {
+      // The zone the value's clock times are read in: this browser's, or the one the module names (the Calendar, saving a copy of
+      // an Itinerary object, names the trip's own, so the object's time is not moved by where the person is).
       let tz = '';
       try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* the server falls back */ }
+      if (typeof given === 'string' && /^[A-Za-z0-9_+\-/]{1,64}$/.test(given)) tz = given;
       return (await api('PUT', url(`/data/${encodeURIComponent(key)}`, scopeOf(s, space)), { value, version, tz })).item;
     },
     async 'storage.delete'({ key, version, scope: s, space }) {
@@ -1341,8 +1458,11 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // Show an object in the module that owns it (the page decides how: the canvas, a page). `newTab`: the click asked for
     // a new tab (Ctrl or the middle button); a page that can (home's tiles) opens it in one, any other ignores it.
-    async 'objects.open'({ ref, newTab }) {
+    async 'objects.open'({ ref, newTab, list }) {
       if (!REF_SHAPE(ref)) throw Object.assign(new Error('that is not a valid reference'), { status: 400 });
+      // A file of a library opens in the file window over the page, not in the library's module (plan-attachments-vault.md,
+      // decision 19); `list` is the ids of the files linked where it was opened from, for Previous and Next.
+      if (ref.kind === 'file' && ref.scope === 'space') return handlers['files.open']({ ref, list });
       if (!onOpenRef) throw Object.assign(new Error('nothing here can open it'), { status: 400 });
       return Boolean(await onOpenRef(cleanPointer(ref), { newTab: newTab === true }));
     },
@@ -1355,6 +1475,28 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // A question for the person (host.ui.confirm): the styled confirm over the page. true for the action, false for anything else.
     async 'ui.confirm'(o) {
       return confirmDialog(o);
+    },
+    // The object picker (host.objects.pick): a window the page draws, searching with this module's own permissions (the same search as
+    // 'objects.search'). Resolves with a pointer, a list of them (multiple), or null when the person cancels.
+    async 'objects.pick'({ modules, kinds, title, multiple, scope: s, space }) {
+      const kindList = await handlers['objects.kinds']().catch(() => []);
+      return pickObjects(
+        { title: title || `Pick ${word('object', { a: true })}`, multiple: multiple === true, modules, kinds },
+        {
+          // The server answers at most 50 objects, newest first, and cannot yet keep to one module or kind. With a filter and no words
+          // typed, the objects that have a place (up to 1,000) are asked for as well, so a list of Places is not cut to what is dated.
+          // Once the server filters by module and kind this second ask goes.
+          search: async (q) => {
+            const found = await handlers['objects.search']({ q, scope: s, space });
+            if (q || !((modules && modules.length) || (kinds && kinds.length))) return found;
+            const more = await handlers['objects.search']({ q, scope: s, space, has: 'place' }).catch(() => []);
+            const keyOf = (r) => [r.module, r.kind, r.id, r.scope, r.space || ''].join('|');
+            const seen = new Set(found.map((x) => x && x.ref && keyOf(x.ref)));
+            return [...found, ...more.filter((x) => x && x.ref && !seen.has(keyOf(x.ref)))];
+          },
+          kinds: kindList,
+        },
+      );
     },
     // A Font Awesome icon as inline SVG, for a module in a sandboxed frame that cannot load the icon font.
     async 'icons.svg'({ name, style }) {
@@ -1374,7 +1516,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return Boolean(await onOpenPage(h, { newTab: newTab === true }));
     },
     // Tell the host what one of this module's objects points at (all of it: the list replaces the last).
-    async 'objects.setLinks'({ from, to, space }) {
+    async 'objects.setLinks'({ from, to, space, kind, op }) {
       if (!REF_SHAPE(from)) throw Object.assign(new Error('that is not a valid reference'), { status: 400 });
       // The object's own place, as any other write: a mount in a space speaks only for that space, and { space } must
       // be the pointer's. The server checks the viewer may change the module's data there.
@@ -1383,7 +1525,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         if (place.space !== from.space) throw Object.assign(new Error('that object is in another space'), { status: 400 });
       } else if (space !== undefined && space !== null && space !== '') throw Object.assign(new Error('that object is not in a space'), { status: 400 });
       const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
-      return api('POST', `/api/objects/links${q}`, { module: module.id, from: cleanPointer(from), to: (Array.isArray(to) ? to : []).filter(REF_SHAPE).slice(0, 20).map(cleanPointer) });
+      return api('POST', `/api/objects/links${q}`, { module: module.id, from: cleanPointer(from), to: (Array.isArray(to) ? to : []).filter(REF_SHAPE).slice(0, 20).map(cleanPointer), ...(typeof kind === 'string' && /^[a-z][a-z0-9_-]{0,31}$/i.test(kind) ? { kind } : {}), ...(op === 'add' || op === 'remove' ? { op } : {}) });
     },
     // What points at one of this module's objects ('to'), or what it points at ('from'): summaries.
     async 'objects.links'({ ref, dir }) {
@@ -1391,6 +1533,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       const p = new URLSearchParams({ from: module.id, ref: JSON.stringify(cleanPointer(ref)), dir: dir === 'from' ? 'from' : 'to' });
       if (guestToken) p.set('guest', guestToken);
       return (await api('GET', `/api/objects/links?${p}`)).summaries;
+    },
+    // What points at each of several of this module's objects, in one request: [{ ref, summaries }], only those something points at.
+    async 'objects.linksToAll'({ refs }) {
+      const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 200).map(cleanPointer);
+      if (!list.length) return [];
+      const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
+      return (await api('POST', `/api/objects/links/batch${q}`, { module: module.id, refs: list })).links;
     },
     // Events and actions between modules (see the SDK's host.events and host.actions). Always in this
     // module's own place, and always on its behalf: the server checks what it declared and was approved for.
@@ -1415,8 +1564,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       const name = String(action || '');
       if (name === 'assistant:askAssistant' || name === 'askAssistant') {
         if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
-        const q = String(input?.question || '').trim() || (input?.ref ? 'What should I know about this?' : '');
-        if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
+        // No question with an object is fine: the server asks its own default (What should I know about it?).
+        const q = String(input?.question || '').trim().slice(0, 1000);
+        if (!q && !input?.ref) throw Object.assign(new Error('Type a question.'), { status: 400 });
         const refs = input?.ref ? [input.ref] : [];
         await onChatAsk({ question: q, refs });
         return { id: 0, status: 'done', result: { ok: true } };
@@ -1451,8 +1601,8 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // `scope: 'spaces'` (an environment page only) asks every space the viewer belongs to at once, each pointer with its
     // space; `has: 'place'` keeps only summaries with a place (plan-map-destination, "SDK and the host").
-    async 'objects.search'({ q, scope: s, space, has, in: marked }) {
-      const p = objectSearchParams(module.id, { q, scope: s, space, has, in: marked }, { scope, spaceId, moduleScopes: module.scope, keyed: Boolean(keyed) });
+    async 'objects.search'({ q, scope: s, space, has, kind, in: marked }) {
+      const p = objectSearchParams(module.id, { q, scope: s, space, has, kind, in: marked }, { scope, spaceId, moduleScopes: module.scope, keyed: Boolean(keyed) });
       if (guestToken) p.set('guest', guestToken);
       return (await api('GET', `/api/objects/search?${p}`)).summaries;
     },
@@ -1541,7 +1691,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return api('GET', url('/ai', scopeOf()));
     },
     async 'ai.ask'({ task, question, objects }) {
-      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [] });
+      return api('POST', url('/ai', scopeOf()), { task: String(task ?? ''), question: String(question ?? '').slice(0, 1000), objects: Array.isArray(objects) ? objects.slice(0, 12) : [], tz: browserZone() });
     },
     // The signed-in person's own other calendars (a module that declares the `external` hook), read only: their events
     // between `from` and `to` (YYYY-MM-DD or ISO times), with the calendars they come from. A guest gets none.
@@ -1559,11 +1709,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return (await api('GET', url('/markers', scopeOf(), { from: when(from), to: when(to) }))).markers;
     },
     // Ask in this space's Chat (host.chat.ask). Only the canvas host provides it.
+    // Whether host.chat.ask can work here: only on a space's canvas, where Chat is.
+    async 'chat.available'() {
+      return { available: typeof onChatAsk === 'function' };
+    },
     async 'chat.ask'({ question, refs }) {
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);
-      if (!q) throw Object.assign(new Error('Type a question.'), { status: 400 });
       const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 12).map(cleanPointer);
+      if (!q && !list.length) throw Object.assign(new Error('Type a question.'), { status: 400 });
       return onChatAsk({ question: q, refs: list });
     },
     // Uploaded pictures (a module whose manifest declares `uploads`): kept per scope, checked and cleaned by the server.
@@ -1588,6 +1742,122 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // The address to show a picture from (an <img> in the page), or its thumbnail.
     async 'uploads.url'({ id, thumb, scope: s }) {
       return url(`/uploads/${encodeURIComponent(String(id ?? ''))}${thumb ? '/thumb' : ''}`, scopeOf(s));
+    },
+    // A library's files (a module that declares `library: true`): the space this frame is in, through the library routes. The bytes
+    // of an add go by XHR so the module hears how far they got ('libraryprogress'); a download is started here, because a sandboxed
+    // frame may not start one.
+    async 'library.list'() {
+      return api('GET', libraryUrl());
+    },
+    async 'library.add'({ file, name, keepPosition, token }) {
+      if (!(file instanceof Blob)) throw Object.assign(new Error('send a file'), { status: 400 });
+      const target = libraryUrl('', { name: String(name ?? file.name ?? '').slice(0, 200), keepPosition: keepPosition ? '1' : '' });
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', target);
+        for (const [k, v] of Object.entries(accessKeyHeaders())) xhr.setRequestHeader(k, v);
+        if (file.type) xhr.setRequestHeader('content-type', file.type);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) send('libraryprogress', { token, loaded: e.loaded, total: e.total }); };
+        const fail = (message, status) => { libraryUploads.delete(token); reject(Object.assign(new Error(message), { status })); };
+        xhr.onload = () => {
+          libraryUploads.delete(token);
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data.file);
+          else fail(data.error || `HTTP ${xhr.status}`, xhr.status);
+        };
+        xhr.onerror = () => fail('The file could not be sent. Check your connection and try again.', 0);
+        xhr.onabort = () => fail('Stopped.', 0);
+        if (token) libraryUploads.set(token, xhr);
+        xhr.send(file);
+      });
+    },
+    async 'library.cancel'({ token }) {
+      const xhr = libraryUploads.get(token);
+      if (xhr) xhr.abort();
+      return true;
+    },
+    async 'library.rename'({ id, name }) {
+      return (await api('PATCH', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}`), { name: String(name ?? '').slice(0, 200) })).file;
+    },
+    async 'library.remove'({ id }) {
+      return api('DELETE', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}`));
+    },
+    async 'library.uses'({ id }) {
+      return api('GET', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/uses`));
+    },
+    async 'library.thumb'({ id, file }) {
+      if (!(file instanceof Blob)) throw Object.assign(new Error('send a picture'), { status: 400 });
+      return (await api('PUT', libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/thumb`), file, file.type)).file;
+    },
+    async 'library.url'({ id, thumb, download }) {
+      return libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`, download && !thumb ? { download: '1' } : {});
+    },
+    async 'library.blob'({ id, thumb }) {
+      const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/${thumb ? 'thumb' : 'content'}`), { headers: accessKeyHeaders() });
+      if (!res.ok) {
+        // The server's own sentence (a download-only PDF answers "This PDF can't be opened here. Download it."), else the plain one.
+        let said = '';
+        try { said = (await res.json()).error || ''; } catch { /* no body */ }
+        throw Object.assign(new Error(said || (res.status === 404 ? 'There is no such file.' : `HTTP ${res.status}`)), { status: res.status });
+      }
+      return res.blob();
+    },
+    // Open a file of a library in a file window over the page (public/file-viewer.js): `ref` points at the file, `list` is the ids to walk with
+    // Previous and Next (the Vault's list as filtered). Focus comes back to this module when the window closes, and the module hears 'fileclosed'.
+    async 'files.open'({ ref, list, name }) {
+      if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
+      // A mount opens files of its own space only, and a module other than the library itself only if its manifest consumes that kind and
+      // an owner approved it (the server's resolve answers 403 otherwise; plan-attachments-vault.md, section 5).
+      if (scope !== 'space' || !spaceId || ref.space !== spaceId) throw Object.assign(new Error(`that file is not in this ${word('space')}`), { status: 403 });
+      if (ref.module !== module.id) {
+        const [seen] = await api('POST', '/api/objects/resolve', { from: module.id, refs: [cleanPointer(ref)] }).then((r) => r.summaries || []);
+        if (!seen || seen.status === 400 || seen.status === 403) throw Object.assign(new Error((seen && seen.status === 403 && seen.error) || `this ${word('module')} may not open files`), { status: 403 });
+      }
+      const holder = pageMode ? container : frame;
+      const { openFile } = await import('/file-viewer.js');
+      const ids = Array.isArray(list) ? list.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 2000) : null;
+      return openFile({
+        ref: cleanPointer(ref),
+        ids,
+        name: typeof name === 'string' ? name.slice(0, 200) : '',
+        doc: holder.ownerDocument,
+        returnFocus: () => {
+          try { holder.focus({ preventScroll: true }); } catch { /* not focusable */ }
+          send('fileclosed', { id: ref.id });
+          return holder;
+        },
+        openRef: onOpenRef ? (r) => onOpenRef(cleanPointer(r), {}) : null,
+        join: (fn) => joinStream(spaceId, guestToken, fn),
+      });
+    },
+    // Share links (public/share-sheet.js): the sheet and the list are drawn in this page, so Copy works; the module hears 'sharechanged'
+    // when a link is made, changed or turned off. The server checks the `share` permission on every call.
+    async 'library.share'({ ids }) {
+      const list = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 200);
+      if (!list.length) throw Object.assign(new Error('choose a file'), { status: 400 });
+      libraryUrl();
+      const holder = pageMode ? container : frame;
+      const { shareFiles } = await import('/share-sheet.js');
+      return shareFiles({ doc: holder.ownerDocument, place: { module: module.id, space: spaceId }, ids: list, onChange: () => send('sharechanged', {}), returnFocus: () => holder });
+    },
+    async 'library.shares'() {
+      libraryUrl();
+      const holder = pageMode ? container : frame;
+      const { shareLinks } = await import('/share-sheet.js');
+      return shareLinks({ doc: holder.ownerDocument, place: { module: module.id, space: spaceId }, onChange: () => send('sharechanged', {}), onChoose: () => send('sharechoose', {}), returnFocus: () => holder });
+    },
+    async 'library.download'({ id }) {
+      const doc = (pageMode ? container : frame).ownerDocument;
+      const a = doc.createElement('a');
+      a.href = libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/content`, { download: '1' });
+      a.download = '';
+      a.rel = 'noopener';
+      a.hidden = true;
+      doc.body.append(a);
+      a.click();
+      a.remove();
+      return true;
     },
     // Place search answered by the server (a module that declares `geocoder`): saved places first, then the chosen service.
     async 'geocode.search'({ q, lat, lon }) {
@@ -1955,12 +2225,24 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('markers', {});
       return;
     }
+    // A library's file was added, renamed, removed or given a thumbnail (plan-attachments-vault.md, step 4): the library's own
+    // module and the modules approved to link to its files (the server names them) hear which one, and ask again for what they show.
+    if (type === 'library') {
+      if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('library', { op: d.op, id: d.id, module: d.module, spaceId: d.spaceId });
+      return;
+    }
     // Any module's environment setting may change the environment's facts (host.environment): every mount looks again.
     if (type === 'settings' && d.scope === 'environment') recheckFacts();
     if (type !== 'bus' && type !== 'action' && type !== 'refchange' && d.module !== module.id) return;
     const here = scope === 'space' ? 'space' : 'environment';
-    if (type === 'change') send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
-    else if (type === 'refchange') {
+    if (type === 'change') {
+      if (onChanges) onChanges({ deleted: d.deleted === true });
+      send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
+    // Many keys at once (a Clear, its Undo): one event, which the SDK hands to a 'changes' listener once, else key by key.
+    } else if (type === 'changes') {
+      if (onChanges) onChanges({ many: true });
+      send('changes', { changes: Array.isArray(d.changes) ? d.changes : [], cleared: d.cleared === true, restored: d.restored === true, by: d.by, scope: d.scope, spaceId: d.spaceId });
+    } else if (type === 'refchange') {
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('refchange', { ref: d.ref, change: d.change });
     }
     else if (type === 'links') send('links', { ref: d.ref });

@@ -1146,7 +1146,15 @@ test('the space bar\'s lists draw above the modules and under a page opened over
   assert.ok(menu > zNum(z('.module-layer')), '--z-menu is above the floating modules\' layer');
   assert.ok(menu < Number(z('.page-overlay')), '--z-menu is under a page opened over the call');
   assert.ok(zNum(z('.topbar')) < zNum(z('.module-layer')), 'the header stays under a module dragged over it when nothing is open');
-  for (const sel of ['.host-menu', '.module-chooser-list', '.who-here-list']) assert.equal(z(sel), 'var(--z-menu)', `${sel} is at the menus' level`);
+  // The space bar's own lists sit at the menus' level (under a page opened over the call). The page's shared menu is also opened from
+  // inside a page, a dialog and a popover, and an Undo toast must never hide a long one, so while it is open it is the topmost thing:
+  // one above the toast layer, and so above the floating modules (--z-menu), a page over the call and a dialog.
+  for (const sel of ['.module-chooser-list', '.who-here-list']) assert.equal(z(sel), 'var(--z-menu)', `${sel} is at the menus' level`);
+  assert.match(z('.host-menu'), /^calc\(var\(--z-toast\) \+ 1\)$/, '.host-menu is one above the toast layer');
+  const toast = zNum('var(--z-toast)');
+  for (const [name, v] of [['the floating modules\' layer', zNum(z('.module-layer'))], ['a page opened over the call', Number(z('.page-overlay'))], ['the menus\' level', menu], ['a dialog', zNum('var(--z-dialog)')], ['a popover', zNum('var(--z-popover)')]]) {
+    assert.ok(toast + 1 > v, `.host-menu (${toast + 1}) is above ${name} (${v})`);
+  }
   const lift = css.match(/\n\.topbar:has\(([^)]*\)[^{]*)\)\s*\{([^}]*)\}/);
   assert.ok(lift, 'the header rises while one of its lists is open (.topbar:has(...))');
   for (const list of ['.module-chooser-list:not([hidden])', '.who-here-list:not([hidden])']) assert.ok(lift[1].includes(list), `the header rises while ${list} is open`);
@@ -1718,7 +1726,7 @@ test('home tiles: an object opens where its tile\'s heading goes (the destinatio
   assert.match(hostSrc, /onOpenRef\(cleanPointer\(ref\), \{ newTab: newTab === true \}\)/);
   assert.match(hostSrc, /onOpenPage\(h, \{ newTab: newTab === true \}\)/);
   const sdk = fs.readFileSync(path.join(ROOT, 'public/sdk/host.js'), 'utf8');
-  assert.match(sdk, /open: \(ref, o\) => call\('objects\.open', \{ ref, newTab: Boolean\(o && o\.newTab\) \}\)/);
+  assert.match(sdk, /open: \(ref, o\) => call\('objects\.open', \{ ref, newTab: Boolean\(o && o\.newTab\), \.\.\.\(o && Array\.isArray\(o\.list\)/); // o.list: the file window's other files
   assert.match(sdk, /open: \(hash, o\) => call\('page\.open', \{ hash, newTab: Boolean\(o && o\.newTab\) \}\)/);
   // The two tiles ask for a new tab on Ctrl, Cmd, Shift or the middle button, for a day, an event and a task.
   for (const [id, sel] of [['calendar', 'data-event'], ['todo', 'data-task']]) {
@@ -2288,8 +2296,21 @@ test('the sheet: one row per phase with native date inputs, Skip and Add dates, 
 const setupCopy = path.join(tmp, 'space-setup.mjs');
 fs.mkdirSync(tmp, { recursive: true });
 fs.copyFileSync(path.join(ROOT, 'public/space-setup.js'), setupCopy);
-fs.copyFileSync(path.join(ROOT, 'public/action-bar.js'), path.join(tmp, 'action-bar.js')); // the panel imports it
-fs.copyFileSync(path.join(ROOT, 'public/phase-sheet.js'), path.join(tmp, 'phase-sheet.js')); // and the sheet's row helpers
+// Every file the panel imports from beside it (action-bar.js, phase-sheet.js, ai-sees.js...), and what those import, so a
+// new import never breaks the copy.
+{
+  const copied = new Set();
+  const copyImports = (file) => {
+    for (const m of fs.readFileSync(path.join(ROOT, 'public', file), 'utf8').matchAll(/^import\s[^;]*?from\s+'\.\/([\w.-]+\.js)'/gm)) {
+      if (copied.has(m[1])) continue;
+      copied.add(m[1]);
+      fs.copyFileSync(path.join(ROOT, 'public', m[1]), path.join(tmp, m[1]));
+      copyImports(m[1]);
+    }
+  };
+  copyImports('space-setup.js');
+  assert.ok(['action-bar.js', 'phase-sheet.js', 'ai-sees.js'].every((f) => copied.has(f)), 'the panel\'s imports are copied with it');
+}
 const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 

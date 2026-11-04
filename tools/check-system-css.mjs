@@ -159,7 +159,8 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   }
   // The Buttons block's per-button properties (--b-*, --btn-h) are meant to be set on one button by a rule that lays it out.
   // The Chips block's tone and icon colour are set on one chip by the module that knows its colour (a category, a calendar, a tag). An avatar's size and the surface behind it are set by the place that draws it.
-  const PER_BUTTON = /^--(b-(bg|bg-h|bg-a|fg|fg-h|bd)|btn-h|btn-gap|btn-pad-x|chip-tone|chip-glyph|av|av-font|av-surface)$/;
+  // `--s` is the surface a box sits on, set on one box by the rule that knows it (system.css does so on every block that reads it; a module row may too).
+  const PER_BUTTON = /^--(b-(bg|bg-h|bg-a|fg|fg-h|bd)|btn-h|btn-gap|btn-pad-x|chip-tone|chip-glyph|av|av-font|av-surface|s)$/;
   for (const f of files) for (const m of read(f).replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(--[a-z0-9-]+)\s*:/g)) if (!PER_BUTTON.test(m[1])) note(m[1], f);
   for (const f of ['server/theme-css.js', 'public/theme-colour.js']) for (const m of read(f).matchAll(/'(--[a-z0-9-]+)'/g)) note(m[1], f);
   for (const n of defs.keys()) if (others.has(n)) fail(`${n} is defined in system.css and in ${others.get(n)}`);
@@ -168,7 +169,8 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   // journeyLayout (public/journey-layout.js): its place (--x, --w, --pin-x), its progress (--p), the tooltip's arrow, and today's
   // place in a band of the phases sheet (--at, phase-sheet.js).
   // The Pickers block's colour is data, set on one swatch or colour trigger by public/colour-pick.js from its palette (--sw).
-  const PER_ELEMENT = ['--x', '--w', '--p', '--pin-x', '--arrow-x', '--at', '--sw'];
+  // The banded card's --card-fill and --card-head-base are set on one box that sits on another surface (a card on a tinted area); no module has to.
+  const PER_ELEMENT = ['--x', '--w', '--p', '--pin-x', '--arrow-x', '--at', '--sw', '--card-fill', '--card-head-base'];
   const known = new Set([...defs.keys(), ...others.keys(), ...PER_ELEMENT]);
   for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
     if (!known.has(m[1])) fail(`system.css reads ${m[1]}, which is defined nowhere`);

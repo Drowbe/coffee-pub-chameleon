@@ -14,7 +14,7 @@ const { ModuleManager, LIMITS: MODULE_LIMITS, compareVersions, oldNameIn, pendin
 const { buildModule, bundledModules, zipFiles } = require('./module-build');
 const { fillManifest } = require('./modules');
 const templates = require('./templates');
-const { ModuleLinks } = require('./module-links');
+const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
 const { ChatHistory } = require('./chat-history');
@@ -33,6 +33,8 @@ const { inspectHead } = require('./image-clean');
 const { cleanName, nameForType, folderBytes } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
+const pdfViewer = require('./pdf-viewer');
+const { mountVaultShares } = require('./vault-share');
 const { watchArrival, slowSenders } = require('./arrival');
 const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
@@ -44,11 +46,21 @@ const { fetchPreview, fetchImage, cachedImage, PreviewError, calendarUrl } = req
 const { findLink, readFields, CHAT_LINK_LIMITS } = require('./chat-links');
 const objectSync = require('./object-sync');
 const ics = require('./ics');
+const prompts = require('./prompts');
+const { createAiPolicy } = require('./ai-policy');
+const { createContextBuilder } = require('./ai-context');
+// AI_PROMPT_VERSIONS (rollback pins) and AI_LOG_PROMPTS (full prompts in the log), said once at start (plan-ai-integration.md,
+// decision 14). Full prompts are never logged on a hosted install (BASE_DOMAIN): server/ai.js ignores the variable there.
+for (const line of prompts.setPins(process.env)) console.warn(line);
+if (process.env.AI_LOG_PROMPTS === '1') {
+  console.warn(process.env.BASE_DOMAIN ? 'AI_LOG_PROMPTS is ignored on a hosted install (BASE_DOMAIN is set): prompts are not logged.' : 'AI_LOG_PROMPTS is on: every prompt sent to the AI service is written to this log, without the key.');
+}
 const themeFile = require('./theme-file');
 const { productName } = require('./product-name');
 const templateFile = require('./template-file');
 const { EventEmitter } = require('events');
-const { ModuleData } = require('./module-data');
+const { ModuleData, isBookkeeping } = require('./module-data');
+const moduleGuards = require('./module-guards');
 const { ModuleHooks, HOST_SOURCE } = require('./module-hooks');
 const moduleNotices = require('./module-notices');
 const themeCssLib = require('./theme-css');
@@ -57,7 +69,7 @@ const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROF
 // The phase timeline rule (plan-one-bar.md, step 1), the one copy the pages use too.
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
-const { buildEnvironment, flushEnvironment } = require('./environment');
+const { buildEnvironment, flushEnvironment, setAsideEnvironment } = require('./environment');
 const { HostRegistry, HostError, cleanSlug, reservedSentence } = require('./host-registry');
 const { domainSettings } = require('./domains');
 const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, MigrationError, recordedParts, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
@@ -158,6 +170,10 @@ const {
   // is the one the nearest of them saw, so a client can't choose its own with X-Forwarded-For; 0 = no proxy, the
   // connection's own address. Not a whole number of 0 or more: 1, with a line on start.
   TRUST_PROXY_HOPS = '',
+  // How long a request's body may take to arrive once its headers have, in seconds (300, Node's own five minutes), on
+  // every route but a library upload, which may take two hours and cuts off one too slow itself. Not a number above 0:
+  // the default.
+  REQUEST_BODY_SECONDS = '',
   // A module's library files (documentation/plans/plan-attachments-vault.md, section 2): VAULT_DIR is the folder their
   // bytes go in, for every environment on the server (VAULT_DIR/<environment slug>/, or VAULT_DIR/_default/ on a
   // single-environment install); unset, DATA_DIR/vault, which no in-app backup carries. VAULT_MAX_GB is the most the
@@ -169,6 +185,9 @@ const {
   // recording's structure read, each in a worker thread with a memory limit; one that takes longer is stopped and the
   // file refused as one that could not be checked safely.
   VAULT_SCAN_SECONDS = '',
+  // The check on start that tidies the library (bytes with no record, records with no bytes, leftovers of deleted spaces)
+  // stops after VAULT_SWEEP_SECONDS (10) and finishes on the next start.
+  VAULT_SWEEP_SECONDS = '',
   VAULT_DIR = '',
   VAULT_MAX_GB = '',
   VAULT_SPACE_MAX_GB = '',
@@ -316,6 +335,7 @@ const { word, fill: fillWords } = require('./words');
 require('./words').useCurrent(() => envContext.getStore()?.store.resolvedWords() || null);
 const modules = proxyFor('modules');
 const moduleData = proxyFor('moduleData');
+const moduleHolds = proxyFor('moduleHolds');
 const moduleHooks = proxyFor('moduleHooks');
 const chatHistory = proxyFor('chatHistory');
 const attention = proxyFor('attention');
@@ -576,12 +596,17 @@ function envSlot(provider) {
 function managedSlot(provider) {
   const saved = hostRegistry ? hostRegistry.managedAi[provider] : null;
   const env = envSlot(provider);
+  const address = provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '';
+  // The environment's key belongs to the environment's address (AI_ADDRESS): once a host admin saves another address for
+  // the compatible service, that key is never sent there; a key has to be saved with the new address.
+  const trim = (a) => String(a || '').trim().replace(/\/$/, '');
+  const envKeyHere = provider !== 'compatible' || trim(address) === trim(env.address);
   return {
     model: (saved && saved.model) || env.model || '',
     key: (saved && saved.key) || '',
-    address: provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '',
+    address,
     workspace: provider === 'anthropic' ? ((saved && saved.workspace) || env.workspace || '') : '',
-    envKey: env.key,
+    envKey: envKeyHere ? env.key : '',
   };
 }
 // The host's managed AI offer, every company at once, as an Ai instance reads it: real values, including keys,
@@ -661,6 +686,7 @@ function environmentFor(slug) {
       managed: managedAi,
       secretsKey: secretsKeyBuf,
       vaultDir: vaultFolderOf(slug),
+      vaultSweepMs: (() => { const v = Number(VAULT_SWEEP_SECONDS); return Math.round((Number.isFinite(v) && v > 0 ? v : 10) * 1000); })(),
       onVaultBytes: (delta) => {
         if (vaultHost.bytes !== null) vaultHost.bytes += delta;
         if (hostRegistry && slug) hostRegistry.addStorageUsage(slug, delta);
@@ -673,6 +699,9 @@ function environmentFor(slug) {
   refusals.delete(key);
   // A fired schedule is told from a timer, outside any request: its listeners run in this environment.
   env.moduleHooks.runIn = (fn) => envContext.run(env, fn);
+  // So is a Clear whose Undo time ran out (server/module-holds.js): finishHold runs in this environment.
+  env.moduleHolds.runIn = (fn) => envContext.run(env, fn);
+  env.moduleHolds.onExpire = (hold) => finishHold(hold);
   // A display icon may also be a built-in module's own icon (store.displayIconIds), beside the installed modules' ones.
   const installedIcons = env.store.moduleIconIds;
   env.store.moduleIconIds = () => [...installedIcons(), ...BUILTIN_MODULES.map((b) => b.icon)];
@@ -1640,7 +1669,7 @@ function branding() {
   const s = store.settings;
   // The template's ordered phases, for the phase chip (plan-one-bar.md, step 3); [] with no template or none in it.
   const phases = (Array.isArray(store.templatePhases) ? store.templatePhases : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
-  return { environmentName: s.environmentName, productName: PRODUCT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
+  return { environmentName: s.environmentName, productName: PRODUCT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
 }
 
 function initials(name) {
@@ -1693,6 +1722,23 @@ const trustProxyHops = (() => {
   return 1;
 })();
 app.set('trust proxy', trustProxyHops);
+// The server waits up to two hours for a request's body (listener.requestTimeout, below), for a library upload of 2 GB
+// on a slow link; that upload route cuts off one too slow itself (watchArrival), and a library file's small picture has
+// its own deadline. Every other route's body must have arrived REQUEST_BODY_SECONDS (300, as Node's own limit would have
+// it) after its headers, or the connection is closed, so nobody can hold any other route open by sending a byte now and
+// then (security QA round 2, round 2).
+const BODY_MS = (() => { const v = Number(REQUEST_BODY_SECONDS); return Math.round((Number.isFinite(v) && v > 0 ? v : 300) * 1000); })();
+const LIBRARY_UPLOAD = /^\/api\/modules\/[^/]+\/library\/?$/i;
+const LIBRARY_THUMB_UPLOAD = /^\/api\/modules\/[^/]+\/library\/[^/]+\/thumb\/?$/i;
+app.use((req, res, next) => {
+  if (req.complete || (req.method === 'POST' && LIBRARY_UPLOAD.test(req.path)) || (req.method === 'PUT' && LIBRARY_THUMB_UPLOAD.test(req.path))) return next();
+  const timer = setTimeout(() => { if (!req.complete) req.socket.destroy(); }, BODY_MS);
+  timer.unref();
+  const done = () => clearTimeout(timer);
+  req.once('end', done);
+  req.once('close', done);
+  next();
+});
 // Writes only from this origin. A SameSite=Lax cookie still goes along with a request from another origin on the same
 // site (on a hosted server every environment is *.BASE_DOMAIN, the console admin.BASE_DOMAIN), and a plain form or a
 // no-cors fetch needs no preflight. So a POST, PUT, PATCH or DELETE that carries a cookie is refused when the browser
@@ -1721,7 +1767,7 @@ app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEM
 const MODULE_FILE_UPLOAD = /^\/api\/modules\/[^/]+\/files\/[^/]+$/;
 // A module's library routes (a space's files) decide who may before any of the body is read, so this parser leaves
 // them alone; the one that takes JSON (a rename) parses its own small body after that.
-const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/;
+const LIBRARY_ROUTE = /^\/api\/modules\/[^/]+\/library(?:\/|$)/i; // routes match whatever the case, so this does too
 app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && MODULE_FILE_UPLOAD.test(req.path)) && !LIBRARY_ROUTE.test(req.path) && Boolean(req.is('application/json')), verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const publicDir = path.join(__dirname, '..', 'public');
@@ -1901,7 +1947,7 @@ function environmentUsage(slug) {
     logRefusalOnce(slug);
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
-  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: env.ai.usageView?.().callsThisMonth ?? null, spaces: env.store.spaces.length };
+  return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -2233,7 +2279,7 @@ hostRouter.delete('/api/host/environments/:slug', requireHostAdmin, (req, res) =
     if (!hostRegistry.findEnvironment(req.params.slug)) throw new HostError('no such environment', 404);
     hostRegistry.removeEnvironment(req.params.slug);
     const env = environments.get(req.params.slug);
-    if (env) { flushEnvironment(env); environments.delete(req.params.slug); }
+    if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); }
     const from = path.join(DATA_DIR, 'environments', req.params.slug);
     if (fs.existsSync(from)) {
       const to = path.join(DATA_DIR, 'environments-deleted', `${req.params.slug}-${Date.now()}`);
@@ -2325,6 +2371,12 @@ function gbText(bytes) {
   const gb = bytes / (1024 ** 3);
   return (Number.isInteger(gb) ? gb : Math.round(gb * 10) / 10).toString();
 }
+// A size for a sentence: "5 GB", "1.5 GB", in MB under a gigabyte ("512 MB") and in KB under a megabyte, never "0 GB".
+const sizeText = (bytes) => {
+  if (bytes >= 1024 ** 3) return `${gbText(bytes)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round((bytes / 1048576) * 10) / 10} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
 // Each refuses the one thing at its cap with a 403 and a plain sentence, leaving everything else running;
 // returns true (having already answered) when refused, so a caller just does `if (refuseX(res)) return;`.
 function refuseOverMembers(res) {
@@ -2338,7 +2390,7 @@ function refuseOverStorage(res) {
   if (cap === null) return false;
   const env = currentEnvironment();
   if (environmentStorageBytes(env.slug, env.dataDir) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` });
+  res.status(403).json({ error: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` });
   return true;
 }
 // Middleware form of refuseOverStorage, for the routes that write bytes to disk (module uploads, profile and
@@ -2346,11 +2398,12 @@ function refuseOverStorage(res) {
 function checkStorageCap(req, res, next) {
   if (!refuseOverStorage(res)) next();
 }
-function refuseOverAiCalls(res) {
+// The sentence when this environment's plan allows no more AI calls this month, else ''.
+// `pending`: asks on their way, not yet counted (so two at once can't pass the cap together).
+function aiCallsRefusal(pending = 0) {
   const cap = planCap('aiCallsPerMonth');
-  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) < cap) return false;
-  res.status(403).json({ error: `This ${word('environment')} has used its ${cap} AI calls for this month.` });
-  return true;
+  if (cap === null || hostRegistry.aiCallsThisMonth(currentEnvironment().slug) + pending < cap) return '';
+  return `This ${word('environment')} has used its ${cap} AI calls for this month.`;
 }
 // 'all' (the default, and every self-hosted install) or a list of module ids. A module already on when a
 // plan shrinks under it is untouched here -- this only gates turning one on, never keeps one already running.
@@ -2474,7 +2527,7 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
     const refusal = backupRefusal(files);
     if (refusal) return res.status(400).json({ error: refusal });
     const env = environments.get(req.params.slug);
-    if (env) { flushEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
+    if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
     const dir = path.join(DATA_DIR, 'environments', req.params.slug);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
@@ -2556,7 +2609,9 @@ hostRouter.post('/api/host/ai/models', requireHostAdmin, async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');
     const slot = managedSlot(provider);
-    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || slot.envKey || slot.key;
+    // A saved key (or the one from the environment) goes only to the address it belongs to: another address needs a key typed with it.
+    const sameAddress = provider !== 'compatible' || req.body?.address === undefined || String(req.body.address).trim().replace(/\/$/, '') === slot.address;
+    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.envKey || slot.key : '');
     const workspace = typeof req.body?.workspace === 'string' ? req.body.workspace : slot.workspace;
     res.json({ models: await listModelsFor({ provider, address: req.body?.address ?? slot.address, key, workspace }) });
   } catch (err) {
@@ -2822,7 +2877,7 @@ function redirectToHost(req, res, status, newHost) {
 }
 // The paths the product host lets through beside / and the use pages: what those pages load and ask.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
-const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/environments', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
@@ -3177,6 +3232,14 @@ app.use('/lib/track-processors.mjs', express.static(path.join(trackProcessorsDis
 app.use('/lib/tasks-vision.mjs', express.static(path.join(visionDir, 'vision_bundle.mjs')));
 app.use('/lib/mediapipe-wasm', express.static(path.join(visionDir, 'wasm'), { maxAge: '30d' }));
 
+// The app's own PDF viewer (server/pdf-viewer.js): its document, which a page frames sandboxed and hands a PDF's bytes,
+// and the files it loads, which a null-origin frame loads as cross-origin (hence their CORS header). Nothing here reads
+// a session or a file: the bytes only ever come from the page that frames it.
+app.get(pdfViewer.VIEWER_PATH, (_req, res) => res.set(pdfViewer.VIEWER_HEADERS).send(pdfViewer.VIEWER_HTML));
+const viewerFileHeaders = { index: false, dotfiles: 'deny', setHeaders: (res) => res.set(pdfViewer.VIEWER_FILE_HEADERS) };
+app.use('/sdk/pdfjs', express.static(path.join(publicDir, 'sdk', 'pdfjs'), viewerFileHeaders), (_req, res) => res.status(404).type('text').send('not found'));
+for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req, res) => res.sendFile(path.join(publicDir, 'sdk', f), { headers: pdfViewer.VIEWER_FILE_HEADERS }));
+
 // A server-rendered stylesheet, not a static one: whatever theme colors an
 // admin has set (Manage > Settings > Theme), both its light and its dark set
 // (server/theme-css.js), as :root overrides -- linked
@@ -3199,6 +3262,10 @@ app.get('/theme.css', (req, res) => {
   const person = currentUser(req);
   res.send(themeCssLib.themeCss(env.store.activeThemeSets(), person?.themeMode || environmentThemeMode()));
 });
+
+// A library module's share links (server/vault-share.js): the signed-in routes that make and turn them off, and the
+// public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
+mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html'), makerCan: shareMakerCan });
 
 app.use(express.static(publicDir, { index: false }));
 
@@ -4119,7 +4186,7 @@ function sharingOf(view, bundledById = new Map(bundledModules(BUNDLED_DIR).map((
 }
 app.get('/api/modules', requireOwner, (_req, res) => {
   const bundledById = new Map(bundledModules(BUNDLED_DIR).map((b) => [b.id, b]));
-  res.json({ modules: modules.list().map((m) => ({ ...m, ...sharingOf(m, bundledById) })), builtin: BUILTIN_MODULES.map((b) => builtinView(b)), bundled: bundledList(), limits: { zipBytes: MODULE_LIMITS.zipBytes } });
+  res.json({ modules: modules.list().map((m) => ({ ...m, ...sharingOf(m, bundledById), ...(m.library ? { libraryFiles: vault.summary(m.id).files, libraryBytes: vault.summary(m.id).bytes } : {}) })), builtin: BUILTIN_MODULES.map((b) => builtinView(b)), bundled: bundledList(), limits: { zipBytes: MODULE_LIMITS.zipBytes } });
 });
 app.post('/api/modules/bundled/:id/install', requireOwner, async (req, res) => {
   const id = req.params.id;
@@ -4175,8 +4242,19 @@ app.patch('/api/modules/:id', requireOwner, (req, res) => {
     if (current && refuseModuleNotInPlan(res, current.id, current.name)) return;
   }
   // `allSpaces` and `spaces` are accepted and ignored (an enabled module is on in every space).
+  if (rest.enabled === false) {
+    // Turned off, with the modules that need it: a Clear waiting for its Undo in any of them is finished first, while the
+    // module is still on, so what other modules keep of its objects (their dated copies) goes as at the end of its time.
+    // Not when the update will refuse it (others need it and the caller did not say `force`).
+    const current = modules.list().find((m) => m.id === req.params.id);
+    const needing = current?.enabled ? modules.dependentsOf(req.params.id) : [];
+    if (current?.enabled && (!needing.length || rest.force === true)) for (const id of [req.params.id, ...needing]) moduleHolds.expireModule(id);
+  }
+  const wasOn = rest.enabled === false && modules.list().find((m) => m.id === req.params.id)?.enabled;
   if (Object.keys(rest).length) modules.update(req.params.id, rest, { spaceExists: (id) => !!store.spaceById(id) });
   else modules.get(req.params.id); // 404 for a module that is not installed
+  // A library module turned off ends its share links for good (turned on again, its files return but no old link does).
+  if (wasOn && !modules.enabled(req.params.id)) vault.dropSharesOf(req.params.id);
   store.applyModuleDisplay(req.params.id, display);
   res.json({ module: modules.view(req.params.id) });
 });
@@ -4191,7 +4269,11 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
   // A library module's uploads still arriving or being checked are stopped and never kept, so nothing comes back after
   // it goes; its files go with its data: their bytes under VAULT_DIR, and what the server keeps of their records.
   stopLibraryUploads(req.params.id);
+  moduleHolds.expireModule(req.params.id); // a Clear waiting for its Undo is finished now
+  // How many files the module holds: gone with its data, or kept (they stay on the disk and still count against storage).
+  const libraryFiles = modules.view(req.params.id)?.library ? vault.summary(req.params.id).files : 0;
   if (req.query.keepData === '0') vault.forgetModule(req.params.id);
+  else vault.dropSharesOf(req.params.id); // kept files, but their links end for good
   modules.uninstall(req.params.id, { keepData: req.query.keepData !== '0' });
   moduleData.forget(req.params.id);
   if (req.query.keepData === '0') {
@@ -4204,7 +4286,7 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
     facts.forgetModule(req.params.id);
     store.applyModuleDisplay(req.params.id, { name: null, icon: null }); // its display name and icon go with its data
   }
-  res.json({ ok: true });
+  res.json({ ok: true, ...(libraryFiles ? (req.query.keepData === '0' ? { filesRemoved: libraryFiles } : { filesKept: libraryFiles }) : {}) });
 });
 
 // --- module runtime -------------------------------------------------------
@@ -4285,7 +4367,8 @@ function moduleAccess(req, res, need) {
   // the permission, so there is no space, person or fine-grained access.read to check beyond that.
   if (who.keyed) {
     if (need !== 'read' || !manifest.surfaces.keyed) return void res.status(403).json({ error: `the access key only reads ${word('module', { a: true })} with a keyed page` });
-    return { manifest, entry, scope: 'environment', spaceId: null, scopeKey: 'environment', who, perms: {}, by: 'keyed' };
+    if (shutFromGuests(who, manifest, null)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
+    return { manifest, entry, scope: 'environment', spaceId: null, scopeKey: 'environment', who, perms: {}, by: 'keyed', hide: hiddenFor(who, manifest, null) };
   }
   const scope = askedScope(req.query.scope, res, ['environment', 'space', 'person']);
   if (!scope) return;
@@ -4305,9 +4388,106 @@ function moduleAccess(req, res, need) {
     return void res.status(403).json({ error: `${word('guest', { many: true })} can only use ${word('module', { a: true })} in ${word('space', { a: true })}` });
   }
   const perms = modulePerms(who, spaceId);
-  if (!moduleCan(manifest, perms, need)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
-  return { manifest, entry, scope, spaceId, scopeKey: scopeKeyOf(scope, { spaceId, userKey: who.user?.key }), who, perms, by: who.user?.key || 'guest' };
+  // `own`: writing the module's data or uploads, which in a person's own data (scope person) takes the module's
+  // access.personWrite where it names one, else access.write. Everything else that needs `write` (the AI, link previews,
+  // notify, schedule) takes access.write in every scope.
+  const guard = need === 'own' ? (scope === 'person' && manifest.access?.personWrite ? 'personWrite' : 'write') : need;
+  if (!moduleCan(manifest, perms, guard)) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  if (shutFromGuests(who, manifest, spaceId)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
+  return { manifest, entry, scope, spaceId, scopeKey: scopeKeyOf(scope, { spaceId, userKey: who.user?.key }), who, perms, by: who.user?.key || 'guest', hide: hiddenFor(who, manifest, spaceId) };
 }
+
+// The fields of a module's stored values this viewer may not receive here (the module's guards.hidden,
+// server/module-guards.js): everyone who is not signed in (a space's guests, the access key), unless an owner opened them
+// in that space (its `guestsSeeHidden`). [] for anyone else.
+function hiddenFor(who, manifest, spaceId) {
+  const fields = manifest.guards?.hidden;
+  if (!fields || !fields.length || who.user) return [];
+  return spaceId && store.spaceById(spaceId)?.guestsSeeHidden === true ? [] : fields;
+}
+// Whether this viewer gets none of the module's data at all: guards whose hidden fields can't be read (guards.shut,
+// server/module-guards.js unreadableGuards) keep everything from whoever hiddenFor would keep those fields from.
+function shutFromGuests(who, manifest, spaceId) {
+  if (!manifest.guards?.shut || who.user) return false;
+  return !(spaceId && store.spaceById(spaceId)?.guestsSeeHidden === true);
+}
+const guestsShutRefusal = (manifest) => `${modules.shownName(manifest)}'s rules can't be read, so ${word('guest', { many: true })} can't see what it holds. Ask the ${word('admin')} to update it.`;
+const hideItem = (item, fields) => (item && fields && fields.length ? { ...item, value: moduleGuards.hide(item.value, fields) } : item);
+// Who is writing, as server/module-guards.js asks: their key (null for a guest), their name, whether they have the
+// environment's owner rights, the module's permissions they hold where the write is, and file(id): who added that file
+// to the module in the same place ({ by }), or null when it is not there.
+function guardWho(ctx) {
+  const user = ctx.who.user;
+  return {
+    key: user ? user.key : null,
+    name: user ? user.displayName : '',
+    owner: Boolean(user) && hasOwnerRights(user),
+    can: (p) => Boolean(ctx.perms[`module.${ctx.manifest.id}.${p}`]),
+    file: (id) => (ctx.manifest.uploads ? moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, id) : null),
+  };
+}
+// The files removed objects named (their rule's `file`; `removed` is [{ key, value }], each as it was stored) go with them,
+// unless a value stored here still names the same file in any field (moduleGuards.namesFile). Called after the write,
+// so a photo whose file was swapped passes its old value here and its old file goes once nothing names it.
+function removeFilesOf(ctx, removed) {
+  const guards = ctx.manifest.guards;
+  if (!ctx.manifest.uploads || !guards?.keys?.some((r) => r.file)) return;
+  const ids = new Set(removed.map(({ key, value }) => moduleGuards.fileOf(guards, key, value)).filter(Boolean));
+  if (!ids.size) return;
+  const stored = moduleData.list(ctx.manifest.id, ctx.scopeKey).map((item) => item.value);
+  for (const id of [...ids]) if (moduleGuards.namesFile(stored, id)) ids.delete(id);
+  for (const id of ids) {
+    try { moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, id); } catch (err) { console.error(`A removed object's file could not be removed: ${err.message}`); }
+  }
+}
+// The upload ids a module's stored values name (their rule's `file`), for a Clear's hold: those files wait with it.
+function filesNamedBy(manifest, items) {
+  const guards = manifest.guards;
+  if (!manifest.uploads || !guards?.keys?.some((r) => r.file)) return [];
+  return [...new Set(items.map(({ key, value }) => moduleGuards.fileOf(guards, key, value)).filter(Boolean))];
+}
+// A Clear whose Undo time is over (server/module-holds.js, onExpire): what it waited to do now happens. Other modules hear
+// that each of its objects went (their dated copies, the pointers that hold them: objectSync.afterWrite), except for a
+// key that holds something again (that object is the one they follow now), and the files its objects named go, unless a
+// value stored there names one now.
+function finishHold(hold) {
+  for (const item of hold.items) {
+    try {
+      if (moduleData.get(hold.module, hold.scopeKey, item.key)) continue;
+      objectSync.afterWrite({ module: hold.module, scopeKey: hold.scopeKey, key: item.key, before: item.value, after: null, by: hold.by, tz: hold.tz });
+    } catch (err) {
+      console.error(`A cleared object's copies could not be updated: ${err.message}`);
+    }
+  }
+  if (!hold.files.length) return;
+  const stored = moduleData.list(hold.module, hold.scopeKey).map((item) => item.value);
+  for (const fid of hold.files) {
+    if (moduleGuards.namesFile(stored, fid)) continue;
+    try { moduleUploads.remove(hold.module, hold.scopeKey, fid); } catch (err) { console.error(`A cleared object's file could not be removed: ${err.message}`); }
+  }
+}
+// What Clear refuses for a library module (the Vault): its files are not module data, so it has nothing to clear.
+const libraryClearRefusal = (manifest) => `${modules.shownName(manifest)} keeps files, not ${word('module')} data, so Clear has nothing to remove.`;
+// Whether this viewer may clear everything the module holds in a space (DELETE .../data): its write permission, and the
+// guards' `clear` when it has one. For the canvas's Clear, which is offered only where it removes something: never for a
+// library module, not while the module holds no objects in the space (its bookkeeping keys aside), and not while an
+// earlier Clear there can still be undone (a second one is refused). Worked out when for-space is read: a page reads it
+// again after a 'changes' event.
+function mayClearHere(manifest, who, perms, spaceId) {
+  if (manifest.library || !moduleCan(manifest, perms, 'write')) return false;
+  if (!moduleGuards.mayClear(manifest.guards, guardWho({ who, perms, manifest }))) return false;
+  try {
+    const scopeKey = scopeKeyOf('space', { spaceId });
+    return !moduleHolds.peek(manifest.id, scopeKey) && moduleData.list(manifest.id, scopeKey).some((item) => !isBookkeeping(item.key));
+  } catch { return false; }
+}
+// The guards a data write here is held to. In a person's own data, which only they reach, only `exclusive` and the module's
+// own keys hold (checkPut's `personal`), and a delete or a clear is theirs.
+const guardsAt = (ctx) => ctx.manifest.guards;
+const personalAt = (ctx) => ctx.scope === 'person';
+const storedValue = (ctx) => (key) => {
+  try { return moduleData.get(ctx.manifest.id, ctx.scopeKey, key)?.value ?? null; } catch { return null; }
+};
 
 // --- attention (documentation/plans/plan-space-status-strip.md, "Attention, the contract") ---------------------
 // What needs this person's action in a space, as each module last reported it (server/attention.js): kept per space,
@@ -5544,108 +5724,152 @@ app.post('/api/spaces/:id/chat/:messageId/keep', (req, res) => {
   res.json({ id: request.id, status: request.status, message: out.message });
 });
 
-// --- Chat /ai and commands (plan-one-input, #58) ----------------------------------------------------------------
-// Same people as #73 import: signed in, not a guest, not in a space with AI turned off. The retired Assistant's
-// `use` permission no longer counts (plan-chat-model.md, decision 12), nor does the environment's `useAi` flag.
-function chatAiRefusal(who, space) {
-  if (!who.user) return `${word('guest', { many: true })} cannot use AI`;
-  if (space && space.aiOff) return `AI is turned off in this ${word('space')}`;
-  return '';
+// --- AI: the policy, the context and the doors (plan-ai-integration.md, slice 1) -----------------------------------------------
+// Every AI route and every availability route asks the one policy (server/ai-policy.js); the context is built by
+// server/ai-context.js through it; what is said to the model is the prompt registry's (server/prompts/); the request is the
+// provider adapters' (server/ai-providers.js), through ai.run, which keeps the usage and the call records.
+const aiPolicy = createAiPolicy({
+  store, ai, modules, word, limits: moduleLimits, hasOwnerRights,
+  resolveRef: (...args) => resolveRef(...args),
+  aiCallsRefusal: (pending) => aiCallsRefusal(pending),
+});
+// A person's role word in a space, as the AI is told it: owner, moderator (ticked for the space), else their role's.
+function aiRoleWord(user, space) {
+  if (hasOwnerRights(user)) return word('owner');
+  if (space && moderates(user, space)) return word('moderator');
+  return ['moderator', 'member', 'guest'].includes(user.role) ? word(user.role) : word('member');
 }
-
-function chatAiSpace(req, res) {
-  const who = moduleViewer(req);
-  if (!who) { res.status(401).json({ error: 'sign in first' }); return null; }
-  if (!who.user) { res.status(403).json({ error: `${word('guest', { many: true })} cannot use AI` }); return null; }
-  const space = store.spaceById(req.params.id);
-  if (!space) { res.status(404).json({ error: `no such ${word('space')}` }); return null; }
-  const allowed = hasOwnerRights(who.user) || space.members.includes(who.user.key);
-  if (!allowed) { res.status(403).json({ error: `you are not in that ${word('space')}` }); return null; }
-  return { who, space };
-}
-
-app.get('/api/spaces/:id/ai', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.json({ available: false, why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.json({ available: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.json({ available: false, why: 'AI is not set up on this server' });
-  res.json({ available: true, why: '' });
-});
-
-app.get('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (req.query.user) return res.status(403).json({ error: 'that thread is not yours' });
-  // The caller's private /ai questions and answers from the one chat store, in the old thread shape.
-  res.json({ entries: chatHistory.aiThread(found.space.id, found.who.user.key) });
-});
-
-app.delete('/api/spaces/:id/ai/thread', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  chatHistory.removeAiThread(found.space.id, found.who.user.key);
-  res.json({ ok: true });
-});
-
-app.delete('/api/spaces/:id/ai/thread/:entryId', (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  if (!/^[a-f0-9]{12}$/.test(req.params.entryId)) return res.status(404).json({ error: 'no such message' });
-  const gone = chatHistory.removeAiEntry(found.space.id, found.who.user.key, req.params.entryId);
-  if (!gone) return res.status(404).json({ error: 'no such message' });
-  res.json({ ok: true });
-});
-
-app.post('/api/spaces/:id/ai', async (req, res) => {
-  const found = chatAiSpace(req, res);
-  if (!found) return;
-  const why = chatAiRefusal(found.who, found.space);
-  if (why) return res.status(403).json({ error: why });
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return res.status(503).json({ error: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` });
-  if (!ai.ready()) return res.status(503).json({ error: 'AI is not set up on this server' });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit('chat', found.who.user.key, 'ai')) return res.status(429).json({ error: limitMessage() });
-  const question = String(req.body?.question || '').trim();
-  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 12) : (Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : []);
-  const material = [];
-  const given = [];
-  for (const ref of refs) {
-    try {
-      const summary = resolveRef(found.who, ref, null, { withText: true, skipConsumer: true });
-      const bits = [summary.subtitle, summary.when ? `date: ${summary.when}` : '', summary.place && summary.place.name ? `place: ${summary.place.name}` : ''].filter(Boolean);
-      material.push({ title: summary.title, text: [summary.text, ...bits].filter(Boolean).join('\n') || summary.title });
-      given.push(summary.ref);
-    } catch {
-      // gone or invisible: left out
+// The summaries (no text) of every object `who` may read in one place ({ scope: 'space', space } or { scope: 'environment' }),
+// across every enabled module that shares a kind -- the pool the context builder picks the relevant objects from. A copy is
+// left out when its original is there too.
+function aiObjectsIn(who, where) {
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
+  for (const { manifest } of modules.enabledAll()) {
+    for (const produce of manifest.refs.produces) {
+      let at;
+      try { at = refScope(who, { provider: manifest.id, kind: produce.kind, scope: where.scope, space: where.space, skipConsumer: true }); } catch { continue; }
+      const prefix = at.produce.key.replace('{id}', '');
+      for (const item of objectRows(at, prefix)) {
+        if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
+        pool.push(markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs));
+      }
     }
   }
+  const seen = new Set(pool.map((s) => objectKey(s.ref)));
+  return pool.filter((s) => !(s.copy && seen.has(objectKey(s.twinOf))));
+}
+const aiContext = createContextBuilder({
+  store, chatHistory, moduleLinks, policy: aiPolicy, word, listObjects: aiObjectsIn, roleWordOf: aiRoleWord,
+  guestsIn: (space) => live.people(space.id).filter((p) => p.guest).map((p) => p.name),
+  // The chat part goes only to an asker who may read this chat now (chatAccess's rule: an owner, or a member with chatRead).
+  canReadChat: (who, space) => Boolean(who && who.user && (hasOwnerRights(who.user) || (space.members.includes(who.user.key) && store.spacePermissions(who.user.key, space.id).chatRead))),
+  serverZone: () => ics.serverZone(),
+  timelineOf: phaseRule.timelineOf,
+  templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
+});
+// The template's words a prompt uses.
+const aiWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space') });
+// What a call record and an answer keep of `sent`: the counts, never the pointers' content.
+const sentCounts = (sent) => ({ attached: sent.attached.length, relevant: sent.relevant, linked: sent.linked, history: sent.history, chat: sent.chat, members: sent.members });
+const aiUse = (who, spaceId, purpose, built) => ({ purpose, person: who.user.key, space: spaceId || undefined, environment: currentEnvironment().slug || undefined, counts: sentCounts(built.sent), leftOut: built.leftOut.length ? built.leftOut : undefined });
+// A refusal answered and recorded (never the question): the status and its one sentence.
+function refuseAi(res, r, { who, space, purpose }) {
+  ai.log({ purpose, person: who && who.user ? who.user.key : undefined, space: space ? space.id : undefined, environment: currentEnvironment().slug || undefined, outcome: 'refused', reason: r.reason });
+  if (r.retrySeconds) res.set('Retry-After', String(r.retrySeconds));
+  return res.status(r.status).json({ error: r.why });
+}
+// The question as sent, checked: { question } (cleaned, '' when none was sent) or { error } with its sentence. The route
+// refuses one over 1,000 characters rather than cutting it (ai-22).
+function aiQuestionOf(raw) {
+  if (raw !== undefined && raw !== null && typeof raw !== 'string') return { error: 'The question must be text.' };
+  const q = prompts.cleanQuestion(raw);
+  const n = [...q].length;
+  if (n > prompts.MAX_QUESTION) return { error: `A question is at most ${prompts.MAX_QUESTION.toLocaleString('en-US')} characters; this one is ${n.toLocaleString('en-US')}.` };
+  if (n && n < prompts.MIN_QUESTION) return { error: `Ask a question of at least ${prompts.MIN_QUESTION} characters.` };
+  return { question: q };
+}
+// The pointers sent as `refs` (Chat) or `objects` (a module): up to 12, each an object.
+const aiRefsOf = (raw) => (Array.isArray(raw) ? raw.slice(0, prompts.MAX_MATERIAL).filter((r) => r && typeof r === 'object' && !Array.isArray(r)) : []);
+// An answer's numbers ([n] in `used`, `sources` in its objects) as the pointers they stand for.
+const aiPointers = (numbers, numbered) => [...new Set((numbers || []).map((n) => numbered[n - 1]).filter(Boolean))];
+const aiSummaries = (summaries, numbered) => (summaries || []).map((c) => ({ ...c, sources: aiPointers(c.sources, numbered) }));
+// What a template is called in the activity list, in plain words.
+const AI_TASK_WORDS = { ask: 'a question', summarise: 'a summary', tags: 'tags' };
+function countAiCall() {
+  if (BASE_DOMAIN && hostRegistry) {
+    const slug = currentEnvironment().slug;
+    if (slug) hostRegistry.recordAiCall(slug);
+  }
+}
+function sendAiError(err, res) {
+  if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
+  throw err;
+}
+
+// Chat's /ai, the Assistant view and host.chat.ask: who may ask here, before a question is typed.
+app.get('/api/spaces/:id/ai', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const space = store.spaceById(req.params.id);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  res.json(aiPolicy.availability(who, space, 'chat'));
+});
+
+// One question (template ask, purpose chat), with the asker's last turns here and the space's rollup. `refs`: up to 12 of
+// this space's objects (another space's are left out and said to be); `question`: 3 to 1,000 characters, or none with an
+// attached object (the template's default question); `tz`: the asker's time zone. Both kept as the asker's private messages
+// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`.
+app.post('/api/spaces/:id/ai', async (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const space = store.spaceById(req.params.id);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  const allowed = aiPolicy.check(who, space, 'chat');
+  if (!allowed.ok) return refuseAi(res, allowed, { who, space, purpose: 'chat' });
+  const asked = aiQuestionOf(req.body?.question);
+  if (asked.error) return res.status(400).json({ error: asked.error });
+  const refs = aiRefsOf(req.body?.refs);
+  if (!asked.question && !refs.length) return res.status(400).json({ error: 'Ask a question.' });
+  const template = prompts.template('ask');
+  const built = aiContext.build(who, space, { template, question: asked.question, refs, tz: req.body?.tz });
+  const question = asked.question || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
+  if (!question) return res.status(400).json({ error: `Ask a question: the ${word('object')} you chose can't be sent to the AI.`, leftOut: built.leftOut });
+  // A bad ask is refused before it is counted: only asks that are carried out use the person's turns.
+  const turn = aiPolicy.takeTurn(who);
+  if (!turn.ok) return refuseAi(res, turn, { who, space, purpose: 'chat' });
+  const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', material, question, { kinds: promptKinds() });
-    if (BASE_DOMAIN && hostRegistry) {
-      const slug = currentEnvironment().slug;
-      if (slug) hostRegistry.recordAiCall(slug);
-    }
-    const summaries = (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) }));
-    // Both kept as the asker's private messages (plan-chat-model.md). `share` is accepted and ignored: the author makes
-    // the answer public with PATCH .../chat/:messageId, and nothing is posted to the chat here.
-    const me = found.who.user.key;
-    const asked = chatHistory.add(found.space.id, { by: me, who: found.who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
-    const answered = chatHistory.add(found.space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: asked ? asked.id : undefined });
-    noteActivity('chat', `asked the AI (${out.tokens} tokens)`, me, found.space.id);
-    res.json({ text: out.text, summaries, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens, shared: false, at: answered && answered.at, id: answered && answered.id, questionId: asked && asked.id, question: asked, message: answered });
+    const out = await ai.run('ask', { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets() });
+    countAiCall();
+    const summaries = aiSummaries(out.summaries, built.numbered);
+    const used = aiPointers(out.used, built.numbered);
+    const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
+    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, numbered: built.numbered, leftOut: built.leftOut, cut: out.cut });
+    noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
+    res.json({ text: out.text, summaries, used, numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
+    // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
     sendAiError(err, res);
   }
 });
 
-// Paste import from Chat: the same checker as a module's objects/check, without naming a module.
+// Paste import from Chat (decision 12: not AI use): signed in, not a guest, in the space. { available, why }.
+function importSpaceOf(req, res) {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) { res.status(401).json({ error: 'Sign in first.' }); return null; }
+  const space = store.spaceById(req.params.id);
+  if (!space) { res.status(404).json({ error: `No such ${word('space')}.` }); return null; }
+  if (who.user && !(hasOwnerRights(who.user) || space.members.includes(who.user.key))) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
+  if (!who.user && !(who.guestSpace && who.guestSpace.id === space.id)) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
+  return { who, space };
+}
 app.get('/api/spaces/:id/objects/check', (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = importSpaceOf(req, res);
   if (!found) return;
-  const why = importRefusal({ who: found.who, spaceId: found.space.id });
+  const why = aiPolicy.importRefusal(found.who);
   res.json({ available: !why, why });
 });
 
@@ -5735,6 +5959,8 @@ app.get('/api/spaces/:id/actions', (req, res) => {
         label: a.label,
         input: a.input,
         local: Boolean(a.local),
+        // Only the caller's own page of the module carries it out (what it makes is theirs), when they next open it.
+        ...(a.askerOnly ? { askerOnly: true } : {}),
         // What a request must carry (the Calendar's createEvent needs ["date"]), as GET /api/bus/actions says it.
         ...(a.needs ? { needs: a.needs } : {}),
         // What objects it takes (plan-object-handoff.md, "What modules declare"), when it says, each entry with whether
@@ -5786,6 +6012,9 @@ app.post('/api/spaces/:id/action', (req, res) => {
     scopeKey: provider.scopeKey,
     by: who.user?.key || 'guest',
     local: def.local,
+    // What it makes is the sender's (Research's savePhoto: a photo in their name, from their upload): only their own page
+    // takes it, so nobody else's page is refused it and the picture is never lost (QA round 2, failure 1).
+    askerOnly: def.askerOnly,
     // A view (Polls' draftPoll) opens a form on the person's own open page; Chat sends it only when the module is open,
     // so it is handed out for a minute and never waits for the module's next opening (BUS_LIMITS.openOnlyMs).
     openOnly: Boolean(def.local),
@@ -5857,8 +6086,9 @@ function faSvg(style, name) {
 }
 
 // A Font Awesome icon as inline SVG, by style and name, for a module's widget in a sandboxed frame (which cannot
-// load the icon font). Anyone signed in may ask; only the free set's own files are ever read.
-app.get('/api/icons/:style/:name', requireUser, (req, res) => {
+// load the icon font). Anyone may ask, signed in or not, as for the icon font itself (/fa/css, /fa/webfonts), so a
+// space's guests, whose pages carry no session, get their icons too.
+app.get('/api/icons/:style/:name', (req, res) => {
   const { style, name } = req.params;
   if (!['solid', 'regular', 'brands'].includes(style) || !/^[a-z0-9-]{1,40}$/.test(name)) return res.status(400).json({ error: 'no such icon' });
   const svg = faSvg(style, name);
@@ -5880,8 +6110,11 @@ function moduleSpacesFor(req, res) {
   if (!moduleCan(manifest, modulePerms(who, null), 'read')) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
   return { manifest, who, spaces: readableSpacesOf(found, who) };
 }
+// A space's icon: its launch link's when one was chosen, else the template's home icon (a suitcase for trips), else a
+// neutral one. Never a chat bubble: a space is not a conversation.
+const SPACE_ICON = 'folder';
 const spaceSummary = (r) => {
-  const icon = r.linkIcon && r.linkIcon !== 'link' ? r.linkIcon : 'message';
+  const icon = r.linkIcon && r.linkIcon !== 'link' ? r.linkIcon : store.templateHomeIcon || SPACE_ICON;
   return { id: r.id, name: r.name, icon, svg: iconSvg(icon) };
 };
 
@@ -5970,7 +6203,7 @@ function spaceAddressWhy(user, space) {
 // are left out; at most 2000, the latest kept. `destinationFor(module id)`: the Calendar destination's path when the link
 // should go there, else null for the module's own page. `nameSpaces`: whether each description starts with the space's
 // (or the environment's) name.
-function readFeed(req, sources, { destinationFor, nameSpaces }) {
+function readFeed(req, sources, { destinationFor, nameSpaces, published = false }) {
   const tz = ics.serverZone();
   const base = baseUrl(req);
   const host = new URL(base).hostname;
@@ -5978,11 +6211,16 @@ function readFeed(req, sources, { destinationFor, nameSpaces }) {
   const now = Date.now();
   const out = [];
   for (const { manifest, kinds, places } of sources) {
+    // The published calendar is read with nobody's rights: every field kept from guests (guards.hidden) is left out of what
+    // it reads, its dates and words alike; a module whose hidden fields can't be read is left out altogether.
+    if (published && manifest.guards?.shut) continue;
+    const hidden = published ? manifest.guards?.hidden || [] : [];
     const destination = destinationFor(manifest.id);
     for (const kind of kinds) {
       const prefix = kind.key.replace('{id}', '');
       for (const { scopeKey, space } of places) {
-        for (const row of moduleData.list(manifest.id, scopeKey, prefix)) {
+        for (const stored of moduleData.list(manifest.id, scopeKey, prefix)) {
+          const row = hidden.length ? { ...stored, value: moduleGuards.hide(stored.value, hidden) } : stored;
           const id = row.key.slice(prefix.length);
           if (!REF_ID_RE.test(id)) continue;
           const read = ics.readDated(row.value, kind.dated, tz);
@@ -6043,7 +6281,7 @@ function publishedFeedEvents(req) {
         ...(found.manifest.scope.includes('space') ? store.spaces.filter((r) => !r.isLobby && r.publishCalendar !== false && modules.isOnIn(found.entry.id, r.id)).map(spacePlace) : []),
       ],
     }));
-  return readFeed(req, sources, { destinationFor: (id) => destinationPathOf(id, ctx), nameSpaces: true });
+  return readFeed(req, sources, { destinationFor: (id) => destinationPathOf(id, ctx), nameSpaces: true, published: true });
 }
 
 // Profile's Calendar feed section: whether the person may make an address, and theirs if they have one.
@@ -6459,7 +6697,47 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
     scopeKey = 'environment';
   }
   if (!moduleCan(manifest, perms, 'read')) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
-  return { manifest, produce, scopeKey, ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
+  // A library's files (the Vault) are never seen by a guest, whatever Roles says (plan-attachments-vault.md, section 4).
+  if (manifest.library && !who.user) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
+  if (shutFromGuests(who, manifest, scope === 'space' ? String(space) : null)) throw Object.assign(refError(403, guestsShutRefusal(manifest)), { unseen: true });
+  // `hide`: the provider's fields this viewer may not see there (hiddenFor), left out of every summary made from it.
+  return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
+}
+
+// A library module's files are its objects of kind `file` (plan-attachments-vault.md, section 4): their records are in
+// DATA_DIR/modules/<id>/library/, not in the module's data, so every reader of "the objects of a kind" goes through these.
+const isFileKind = (manifest, produce) => Boolean(manifest.library) && produce.kind === 'file';
+// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records.
+function objectRows(at, prefix) {
+  if (isFileKind(at.manifest, at.produce)) {
+    if (at.ref.scope !== 'space') return [];
+    return vault.list(at.manifest.id, at.ref.space).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
+  }
+  return moduleData.list(at.manifest.id, at.scopeKey, prefix);
+}
+// One stored object's value (a library's record for a file), or null.
+function objectValue(at, id) {
+  if (isFileKind(at.manifest, at.produce)) return at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+  const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(id)));
+  return item ? item.value : null;
+}
+// The icon of a file by its type, and its short word, for a chip or a row.
+const FILE_ICONS = { image: 'file-image', audio: 'file-audio', video: 'file-video', document: 'file-lines' };
+const FILE_WORDS = { 'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WebP', 'image/gif': 'GIF', 'audio/mpeg': 'MP3', 'audio/ogg': 'OGG', 'audio/wav': 'WAV', 'audio/mp4': 'M4A', 'video/mp4': 'MP4', 'video/webm': 'WebM', 'video/quicktime': 'MOV', 'application/pdf': 'PDF', 'text/markdown': 'Markdown' };
+// What a file's summary adds to the usual: its icon and size, `missing` when the record is there and its bytes are not (a
+// restore without VAULT_DIR: "File missing"), `viewable: false` for a PDF kept as download only.
+function fileSummaryExtras(summary, value, ref) {
+  const type = typeof value?.type === 'string' ? value.type : '';
+  const size = Number.isFinite(value?.size) ? value.size : 0;
+  summary.icon = type === 'application/pdf' ? 'file-pdf' : FILE_ICONS[value?.group] || 'file';
+  summary.subtitle = [size ? sizeText(size) : '', FILE_WORDS[type] || ''].filter(Boolean).join(' · ');
+  summary.group = typeof value?.group === 'string' ? value.group : '';
+  summary.size = size;
+  summary.type = type;
+  if (value?.viewable === false) summary.viewable = false;
+  let there = true;
+  try { const f = ref.space && vault.filePath(ref.space, value.id); there = Boolean(f) && fs.existsSync(f); } catch { there = false; }
+  if (!there) summary.missing = true;
 }
 
 // The summary of one stored object: only the fields the producer named, trimmed and typed.
@@ -6467,7 +6745,8 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
 const VISIT_STATES = ['want', 'booked', 'visited', 'favorite'];
 const SUMMARY_TINTS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red'];
 const isPriced = (summary) => summary.amount !== undefined || summary.planned !== undefined;
-function objectSummary({ manifest, produce, ref }, id, value, withText = false) {
+function objectSummary({ manifest, produce, ref, hide }, id, value, withText = false) {
+  if (hide && hide.length) value = moduleGuards.hide(value, hide);
   const text = (v) => (typeof v === 'string' ? v.slice(0, 200) : typeof v === 'number' && Number.isFinite(v) ? v : undefined);
   const field = (name) => (produce.summary[name] ? value?.[produce.summary[name]] : undefined);
   const summary = {
@@ -6485,6 +6764,9 @@ function objectSummary({ manifest, produce, ref }, id, value, withText = false) 
     if (v !== undefined && v !== '') summary[name] = v;
   }
   for (const name of ['allDay', 'done']) if (typeof field(name) === 'boolean') summary[name] = field(name);
+  // `doneAt` (a time in milliseconds): done once it has passed, whatever the stored flag says (a poll closed by its time).
+  const doneAt = field('doneAt');
+  if (typeof doneAt === 'number' && Number.isFinite(doneAt) && Date.now() >= doneAt) summary.done = true;
   // A short label a module may give its items to group or colour them ("eat", "stay"): lower case letters, digits and dashes.
   const category = text(field('category'));
   // A producer may give plain words for its categories (`categoryNames`, by the stored category, else by the stored kind).
@@ -6534,6 +6816,7 @@ function objectSummary({ manifest, produce, ref }, id, value, withText = false) 
   if (place && typeof place === 'object' && Number.isFinite(place.lat) && Number.isFinite(place.lng) && Math.abs(place.lat) <= 90 && Math.abs(place.lng) <= 180) {
     summary.place = { lat: place.lat, lng: place.lng, ...(typeof place.name === 'string' && place.name.trim() ? { name: place.name.replace(/\p{Cc}/gu, ' ').trim().slice(0, 120) } : {}) };
   }
+  if (isFileKind(manifest, produce)) fileSummaryExtras(summary, value, ref || {});
   return summary;
 }
 
@@ -6578,7 +6861,7 @@ objectSync.configure({
   pairTo: (ref) => moduleLinks.pairTo(ref),
   addPair: (from, to, by) => moduleLinks.addPair(from, to, by),
   detachPair: (ref) => moduleLinks.detachPair(ref),
-  removePairs: (ref) => moduleLinks.removePairs(ref),
+  removePairs: (ref, keepDetached) => moduleLinks.removePairs(ref, keepDetached),
   newId: () => crypto.randomBytes(8).toString('hex'),
   nameOf: (by) => store.userByKey(by)?.displayName || String(by || ''),
   // Kinds in this space that receive a dated twin, and that this sender is approved to link to.
@@ -6635,12 +6918,22 @@ objectSync.configure({
   },
 });
 
+// A pair (a dated object and its copy in another module, plan-plan-calendar-sync.md) is flagged on both ends, so a
+// module can show a copy as one and a picker can offer the pair once: a copy says `copy: true` and `twinOf` (its original's
+// reference); an original that has copies says `twins` (their references). `index` is moduleLinks.pairIndex().
+function markPair(summary, index) {
+  const original = index.copyOf(summary.ref);
+  if (original) return { ...summary, copy: true, twinOf: original };
+  const copies = index.copiesOf(summary.ref);
+  return copies.length ? { ...summary, twins: copies } : summary;
+}
+
 function resolveRef(who, ref, from, opts = {}) {
   if (!refShape(ref)) throw refError(400, 'that is not a valid reference');
   const at = refScope(who, { provider: ref.module, kind: ref.kind, scope: ref.scope, space: ref.space, from, ...opts });
-  const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(ref.id)));
-  if (!item || !item.value) throw refError(404, `that ${word('object')} is no longer there`);
-  return objectSummary(at, String(ref.id), item.value, opts.withText === true);
+  const value = objectValue(at, ref.id);
+  if (!value) throw refError(404, isFileKind(at.manifest, at.produce) ? 'that file is no longer there' : `that ${word('object')} is no longer there`);
+  return markPair(objectSummary(at, String(ref.id), value, opts.withText === true), moduleLinks.pairIndex());
 }
 
 // The kinds the consumer may point at: every kind of every other enabled module it was approved for.
@@ -6699,7 +6992,14 @@ app.get('/api/objects/search', (req, res) => {
   if (scope === 'spaces' && !who.user) return res.status(403).json({ error: `${word('guest', { many: true })} can only search one ${word('space')}` });
   const has = req.query.has === undefined || req.query.has === '' ? null : String(req.query.has);
   if (has !== null && has !== 'place' && has !== 'amount') return res.status(400).json({ error: 'has must be place or amount' });
-  const cap = has ? SEARCH_CAP_PLACES : SEARCH_CAP;
+  // Costs are kept from guests (a module's guards.hidden) unless an owner opened them in that space.
+  if (has === 'amount' && !who.user && !(scope === 'space' && store.spaceById(String(req.query.space || ''))?.guestsSeeHidden === true)) {
+    return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can't see costs in this ${word('space')}.` });
+  }
+  // `kind=poll` (a kind name): only that kind, and up to 1,000 of them, like `has`: a module asking for one kind wants all of it.
+  const onlyKind = typeof req.query.kind === 'string' && /^[a-z][a-z0-9_-]{0,31}$/i.test(req.query.kind) ? req.query.kind : null;
+  if (req.query.kind !== undefined && req.query.kind !== '' && !onlyKind) return res.status(400).json({ error: 'kind is a kind name' });
+  const cap = has || onlyKind ? SEARCH_CAP_PLACES : SEARCH_CAP;
   // `in=<space id>` (with scope=environment): only the environment's objects marked for that space, and only for those who
   // belong to it (or own the environment).
   let inSpace = null;
@@ -6716,6 +7016,8 @@ app.get('/api/objects/search', (req, res) => {
     ? store.spaces.filter((r) => r.members.includes(who.user.key)).map((r) => ({ scope: 'space', space: r.id }))
     : [{ scope, space: req.query.space }];
   const summaries = [];
+  const pool = [];
+  const pairs = moduleLinks.pairIndex();
   // has=amount only: how many priced objects the viewer was kept from because they may not view the module that holds
   // them (a number alone, never for a guest, and in a space only for its members), so Budget can say some are left out.
   let withheld = 0;
@@ -6747,16 +7049,25 @@ app.get('/api/objects/search', (req, res) => {
         continue; // not on for this scope, or not for this viewer
       }
       const prefix = at.produce.key.replace('{id}', '');
-      for (const item of moduleData.list(k.module, at.scopeKey, prefix)) {
+      for (const item of objectRows(at, prefix)) {
         if (!item.value || !REF_ID_RE.test(item.key.slice(prefix.length))) continue;
-        const summary = objectSummary(at, item.key.slice(prefix.length), item.value);
-        if (inSpace && !(summary.spaces || []).includes(inSpace.id)) continue;
-        if (has === 'place' && !summary.place) continue;
-        if (has === 'amount' && !isPriced(summary)) continue;
-        if (q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q)) continue;
-        summaries.push(summary);
+        const summary = markPair(objectSummary(at, item.key.slice(prefix.length), item.value), pairs);
+        const fits = !(inSpace && !(summary.spaces || []).includes(inSpace.id))
+          && !(onlyKind && summary.ref.kind !== onlyKind)
+          && !(has === 'place' && !summary.place)
+          && !(has === 'amount' && !isPriced(summary))
+          && !(q && !`${summary.title} ${summary.subtitle || ''}`.toLowerCase().includes(q));
+        pool.push({ summary, fits });
       }
     }
+  }
+  // A pair is offered once: its original. A copy is left out when its original is among what this person may see, and
+  // always for the module that holds the original (the Itinerary is not offered its own objects through the Calendar).
+  const seen = new Set(pool.map((p) => objectKey(p.summary.ref)));
+  for (const { summary, fits } of pool) {
+    if (!fits) continue;
+    if (summary.copy && (summary.twinOf.module === from || seen.has(objectKey(summary.twinOf)))) continue;
+    summaries.push(summary);
   }
   // Newest dates first, undated last.
   summaries.sort((a, b) => String(b.when ?? '').localeCompare(String(a.when ?? '')) || a.title.localeCompare(b.title));
@@ -6774,7 +7085,8 @@ app.get('/api/objects/format', (req, res) => {
     version: objectFormat.FORMAT_VERSION,
     fence: objectFormat.FENCE,
     fileSuffix: objectFormat.FILE_SUFFIX,
-    instructions: objectFormat.instructions(word('object'), { kinds: promptKinds() }),
+    // The paste template (server/prompts/paste.js): written for a person to paste into any AI, never sent to the in-app model.
+    instructions: prompts.pasteText({ kinds: promptKinds(), words: aiWords() }, { product: productName() }).text,
     schema: objectFormat.schema(),
   });
 });
@@ -6804,6 +7116,29 @@ function markerKindAt(moduleId, key) {
   const found = modules.enabled(moduleId);
   if (!found) return null;
   return found.manifest.refs.produces.find((p) => p.marker && key.startsWith(p.key.replace('{id}', ''))) || null;
+}
+// The modules (enabled, as enabled() answers) approved to show a marker kind produced by a change's module.
+function markerConsumers(change, kind) {
+  return modules.enabledAll().filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind));
+}
+// The marker kinds one batch of changes touches, with the first change of each and who shows it: worked out once per batch (the batch
+// object is shared by every open stream's listener), not once per stream, so a big Clear or Undo with many streams open
+// costs the same as with one.
+const batchMarkers = new WeakMap();
+function markersOfBatch(batch) {
+  let got = batchMarkers.get(batch);
+  if (got) return got;
+  got = new Map(); // kind name -> first change
+  const producing = new Map(); // module id -> its marker kinds, or null
+  for (const c of batch.changes) {
+    if (!producing.has(c.module)) producing.set(c.module, modules.enabled(c.module)?.manifest.refs.produces.filter((p) => p.marker) || null);
+    const list = producing.get(c.module);
+    if (!list || !list.length) continue;
+    const kind = list.find((p) => c.key.startsWith(p.key.replace('{id}', '')));
+    if (kind && !got.has(kind.kind)) got.set(kind.kind, { change: c, kind, consumers: markerConsumers(c, kind) });
+  }
+  batchMarkers.set(batch, got);
+  return got;
 }
 // Today's date where the server is, as YYYY-MM-DD: a day marker before it is past.
 function todayIn(tz, now = Date.now()) {
@@ -6856,7 +7191,9 @@ app.get('/api/modules/:id/markers', (req, res) => {
           if (!err.status) throw err;
           continue; // not on there, no scope of that kind, or not readable by this viewer
         }
-        for (const row of moduleData.list(producer.id, at.scopeKey, prefix)) {
+        for (const stored of moduleData.list(producer.id, at.scopeKey, prefix)) {
+          // Read without the fields this viewer may not see there (hiddenFor), its dates and title alike.
+          const row = hideItem(stored, at.hide);
           const id = row.key.slice(prefix.length);
           if (!REF_ID_RE.test(id) || !row.value || typeof row.value !== 'object') continue;
           if (kind.summary.done && row.value[kind.summary.done] === true) continue; // done: off the grid
@@ -6912,18 +7249,29 @@ app.post('/api/objects/links', (req, res) => {
     perms = modulePerms(who, null);
   }
   if (!moduleCan(found.manifest, perms, 'write')) return res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
+  // `kind`: replace only the links to objects of that kind (host.files.link keeps the object's other links as they are).
+  const only = req.body?.kind === undefined || req.body?.kind === null || req.body?.kind === '' ? null : String(req.body.kind);
+  if (only !== null && !/^[a-z][a-z0-9_-]{0,31}$/i.test(only)) return res.status(400).json({ error: `kind is a kind name` });
+  // `op`: 'add' or 'remove' (with a kind) changes only those links, whatever else the object points at; the default replaces them all.
+  const mode = req.body?.op === undefined || req.body?.op === null || req.body?.op === '' ? 'replace' : String(req.body.op);
+  if (!['replace', 'add', 'remove'].includes(mode) || (mode !== 'replace' && only === null)) return res.status(400).json({ error: 'op is add or remove, with a kind' });
   const tos = [];
+  const held = moduleLinks.from(from);
   for (const to of (Array.isArray(req.body?.to) ? req.body.to : []).slice(0, 20)) {
     if (to && to.scope === 'person') continue; // a shared link never points into someone's private data
+    if (only !== null && !(to && to.kind === only)) return res.status(400).json({ error: `every link must be to a ${only}` });
+    if (mode === 'remove') { if (refShape(to)) tos.push(to); continue; } // taking a link out needs no sight of what it pointed at
     try {
       resolveRef(who, to, asker);
       tos.push(to);
     } catch (err) {
       if (!err.status) throw err; // one that cannot be seen or is gone is left out
+      // A file that was linked and is now removed keeps its link, which reads "File removed" (plan-attachments-vault.md, decision 2).
+      if (err.status === 404 && refShape(to) && held.some((h) => objectKey(h) === objectKey(to)) && modules.enabled(to.module)?.manifest.library && to.kind === 'file') tos.push(to);
     }
   }
-  moduleLinks.set(from, tos, who.user?.key || 'guest');
-  res.json({ links: tos.length });
+  moduleLinks.set(from, tos, who.user?.key || 'guest', only, mode);
+  res.json({ links: mode === 'replace' ? tos.length : moduleLinks.from(from).filter((l) => l.kind === only).length });
 });
 
 // What points at an item (`dir=to`, for the module that owns it, if it shows backlinks) or what it
@@ -6958,9 +7306,45 @@ app.get('/api/objects/links', (req, res) => {
       summaries.push(dir === 'to' ? resolveRef(who, other, null, { skipConsumer: true }) : resolveRef(who, other, asker));
     } catch (err) {
       if (!err.status) throw err; // gone, or not for this viewer
+      // A link to a file that was removed is kept and said: the object it was on shows "File removed" (never for one this
+      // person could not have seen: those are left out, as above).
+      if (dir === 'from' && err.status === 404 && other.kind === 'file' && modules.enabled(other.module)?.manifest.library && !err.unseen) summaries.push({ ref: other, kind: 'file', title: 'File removed', removed: true, state: 'gone', icon: 'file-circle-xmark' });
     }
   }
   res.json({ summaries });
+});
+
+// What points at several of a module's items in one request (the list of places asks once, not once per place): the same
+// answer as GET /api/objects/links with dir=to for each, for what the viewer may see. An item that cannot be asked about
+// (not the module's own, not visible, a kind that shows no backlinks) is left out of the answer. Read only.
+app.post('/api/objects/links/batch', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' });
+  const asker = String(req.body?.module || '');
+  const found = modules.enabled(asker);
+  if (!found) return res.status(404).json({ error: `no such ${word('module')}` });
+  const out = [];
+  for (const ref of (Array.isArray(req.body?.refs) ? req.body.refs : []).slice(0, 200)) {
+    if (!refShape(ref) || ref.module !== asker) continue;
+    const produce = found.manifest.refs.produces.find((p) => p.kind === ref.kind);
+    if (!produce || !produce.backlinks) continue;
+    try {
+      resolveRef(who, ref, null, { skipConsumer: true });
+    } catch (err) {
+      if (!err.status) throw err;
+      continue;
+    }
+    const summaries = [];
+    for (const other of moduleLinks.to(ref)) {
+      try {
+        summaries.push(resolveRef(who, other, null, { skipConsumer: true }));
+      } catch (err) {
+        if (!err.status) throw err;
+      }
+    }
+    if (summaries.length) out.push({ ref, summaries });
+  }
+  res.json({ links: out });
 });
 
 // --- events and actions: modules reacting to and asking things of each other -------------------
@@ -7238,7 +7622,7 @@ app.post('/api/bus/actions/request', busRoute((who, req) => {
   const objectSpace = sc === 'environment' && takesOwnObject(providerId, def) ? actionObjectSpace(providerId, def, input) : null;
   if (objectSpace) busPlace(who, String(providerId), 'space', objectSpace, 'write');
   else if (!def.local) busPlace(who, String(providerId), sc, space, 'write');
-  const request = moduleBus.request({ from, provider: providerId, action: name, input: busInput(who, def.input, input, takerOf(who, provider.found.manifest, def, objectSpace || provider.spaceId)), scopeKey: provider.scopeKey, by: who.user?.key || 'guest', local: def.local, space: objectSpace });
+  const request = moduleBus.request({ from, provider: providerId, action: name, input: busInput(who, def.input, input, takerOf(who, provider.found.manifest, def, objectSpace || provider.spaceId)), scopeKey: provider.scopeKey, by: who.user?.key || 'guest', local: def.local, askerOnly: def.askerOnly, space: objectSpace });
   return { id: request.id, status: request.status };
 }));
 
@@ -7248,14 +7632,20 @@ app.get('/api/bus/actions/pending', busRoute((who, req) => {
   const scope = busScope(req.query.scope);
   const at = busPlace(who, id, scope, req.query.space, 'read');
   const canWrite = busMayDo(who, id, scope, req.query.space, null);
-  // A view (`local`) is for the person who asked, from their own page; anything else waits for a page that may make the
-  // change: in the object's space when the request names one, else here.
-  return { actions: moduleBus.pending(id, at.scopeKey).filter((a) => (a.local ? a.by === (who.user?.key || 'guest') : a.space ? busMayDo(who, id, scope, req.query.space, a) : canWrite)).map(publicAction) };
+  // A view (`local`) is for the person who asked, from their own page; so is a request whose result is theirs
+  // (`askerOnly`), which also takes write access. Anything else waits for a page that may make the change: in the
+  // object's space when the request names one, else here.
+  const me = who.user?.key || 'guest';
+  const mayTake = (a) => (a.local ? a.by === me : (!a.askerOnly || a.by === me) && (a.space ? busMayDo(who, id, scope, req.query.space, a) : canWrite));
+  return { actions: moduleBus.pending(id, at.scopeKey).filter(mayTake).map(publicAction) };
 }));
+// Someone else's request that only its asker's page may take (`askerOnly`): told no, as a request another page took is.
+const notTheAsker = (who, request) => Boolean(request && request.askerOnly && request.by !== (who.user?.key || 'guest'));
 app.post('/api/bus/actions/claim', busRoute((who, req) => {
   const { module: id, id: requestId, scope, space } = req.body || {};
   const at = busPlace(who, String(id || ''), busScope(scope), space, 'read');
   const waiting = moduleBus.actionById(Number(requestId));
+  if (notTheAsker(who, waiting)) return { ok: false };
   if (waiting && waiting.local) { if (waiting.by !== (who.user?.key || 'guest')) return { ok: false }; } else if (waiting && waiting.space && waiting.provider === id && waiting.scopeKey === at.scopeKey) busPlace(who, String(id || ''), 'space', waiting.space, 'write'); else busPlace(who, String(id || ''), busScope(scope), space, 'write');
   const request = moduleBus.claim(Number(requestId), id, at.scopeKey);
   return request ? { ok: true, action: publicAction(request) } : { ok: false };
@@ -7264,6 +7654,7 @@ app.post('/api/bus/actions/complete', busRoute((who, req) => {
   const { module: id, id: requestId, scope, space, result } = req.body || {};
   const at = busPlace(who, String(id || ''), busScope(scope), space, 'read');
   const done = moduleBus.actionById(Number(requestId));
+  if (notTheAsker(who, done)) return { ok: false };
   if (done && done.local) { if (done.by !== (who.user?.key || 'guest')) return { ok: false }; } else if (done && done.space && done.provider === id && done.scopeKey === at.scopeKey) busPlace(who, String(id || ''), 'space', done.space, 'write'); else busPlace(who, String(id || ''), busScope(scope), space, 'write');
   const clean = { ok: Boolean(result?.ok) };
   if (typeof result?.error === 'string') clean.error = result.error.slice(0, 200);
@@ -7299,7 +7690,7 @@ app.get('/api/bus/actions/status', busRoute((who, req) => {
 function overLimit(moduleId, by, kind) {
   const r = moduleLimits.take(moduleId, by || 'guest', kind);
   if (r.ok) return null;
-  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind + 's'} in a minute`, by, null);
+  if (r.first) noteActivity(moduleId, `was slowed: too many ${kind === 'write' ? 'saves' : kind.startsWith('clear') ? 'clears' : kind + 's'} in a minute`, by === '*' ? null : by, null);
   return r;
 }
 const limitMessage = () => `This ${word('module')} is doing that too often. Try again in a moment.`;
@@ -7500,23 +7891,25 @@ app.get('/api/destinations/:id', (req, res) => {
 // --- AI, for the modules that ask ---------------------------------------------------------------------------------------------
 // One server-wide setting (see ai.js); the key never leaves the server and is never sent back. A module asks through the `ai` hook:
 // the server checks the person's role and the space, reads the chosen objects as that person, asks the service the admin set up, and
-// returns text with any summaries the model wrote (each checked). Nothing is kept: no question, no answer, no object's text. The activity
-// list gets who, which module and task, and how many tokens.
-function sendAiError(err, res) {
-  if (err instanceof AiError) return res.status(err.status).json({ error: err.message });
-  throw err;
-}
+// returns text with any summaries the model wrote (each checked). A module's ask keeps nothing: no question, no answer, no object's text
+// (Chat's own /ai keeps the person's question and answer as private messages). The activity list gets who, which module and task, and
+// how many tokens.
 app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage: ai.usageView(), dependents: modules.aiDependents() }));
+// The AI usage view (plan-ai-integration.md, "Observability"), for owners: this month's tokens and calls by template, person
+// and space, refusals by reason, errors and cut-short answers, and the last 50 call records (never any content).
+app.get('/api/ai/usage', requireOwner, (_req, res) => res.json(ai.usageReport()));
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
+    await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });
     res.json({ models: await ai.listModels({ provider: String(req.body?.provider || ''), address: req.body?.address, key: req.body?.key, workspace: req.body?.workspace }) });
   } catch (err) {
     sendAiError(err, res);
   }
 });
-app.put('/api/ai', requireOwner, (req, res) => {
+app.put('/api/ai', requireOwner, async (req, res) => {
   try {
     const before = ai.view();
+    await ai.checkAddress(req.body || {});
     // Turning AI off (however the patch does it) while a module depends on it: the admin's page should have asked first (as it
     // does for a module others `requires`); a caller that skipped that, or forces past it, is handled the same way.
     if (before.enabled && !ai.previewEnabled(req.body || {}) && req.body?.force !== true) {
@@ -7524,44 +7917,41 @@ app.put('/api/ai', requireOwner, (req, res) => {
       if (dependents.length) throw new AiError(`${dependents.map((m) => m.name).join(' and ')} needs the AI service; turn ${dependents.length === 1 ? 'it' : 'them'} off too?`);
     }
     const after = ai.set(req.body || {});
-    if (before.enabled && !after.enabled) for (const m of modules.aiDependents()) modules.update(m.id, { enabled: false, force: true });
+    // The modules switched off with the service are remembered, and switched on again when the service is: turning AI off and on
+    // again leaves everything as it was.
+    if (before.enabled && !after.enabled) {
+      const off = modules.aiDependents();
+      ai.rememberCascade(off.map((m) => m.id));
+      for (const m of off) { moduleHolds.expireModule(m.id); modules.update(m.id, { enabled: false, force: true }); } // a Clear waiting for its Undo is finished while the module is on
+    } else if (!before.enabled && after.enabled) {
+      for (const id of ai.takeCascade()) {
+        try { if (modules.view(id) && !modules.enabled(id)) modules.update(id, { enabled: true }); } catch { /* left off: an owner can switch it on */ }
+      }
+    }
     noteActivity('host', `changed the AI setting (${after.provider}${after.keySet && !before.keySet ? ', key set' : ''})`, currentUser(req)?.key, null);
     res.json({ ai: after, usage: ai.usageView(), dependents: modules.aiDependents() });
   } catch (err) {
     sendAiError(err, res);
   }
 });
-// Whether AI is available to this person here (for a page to show or hide its buttons): { available, why? }.
-function aiAllowed(ctx) {
-  const user = ctx.who.user;
-  if (!user) return { ok: false, why: `${word('guest', { many: true })} cannot use AI` };
-  // A saved key this server can't decrypt (data restored onto another host): said as such, not as "not set up".
-  if (!ai.ready() && ai.view().keyUnreadable && ai.view().enabled) return { ok: false, why: `the AI key can't be read on this server; ${word('owner', { a: true })} needs to enter it again` };
-  if (!ai.ready()) return { ok: false, why: 'AI is not set up on this server' };
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  if (space && space.aiOff) return { ok: false, why: `AI is turned off in this ${word('space')}` };
-  const perms = ctx.spaceId ? store.spacePermissions(user.key, ctx.spaceId) : store.roleSet(user.role);
-  if (!perms.useAi) return { ok: false, why: 'your role may not use AI' };
-  return { ok: true };
-}
+// Whether this person has the module's write access in the scope asked. access.personWrite opens a person's own data and
+// uploads only (moduleAccess's 'own'): asking the AI takes access.write in every scope.
+const aiModuleWrite = (ctx) => moduleCan(ctx.manifest, ctx.perms, 'write');
+// Whether AI is available to this person here, for a module's page to show or hide its buttons: the same check as the ask,
+// write access included, so a viewer who can only read is told so rather than refused later.
 app.get('/api/modules/:id/ai', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
-  const a = aiAllowed(ctx);
-  res.json({ available: a.ok, why: a.why || '' });
+  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
+  res.json(aiPolicy.availability(ctx.who, space, 'module', { write: aiModuleWrite(ctx) }));
 });
 
-// Whether this person may bring objects into this place with this module, and reading them out of a paste or file.
-function importRefusal(ctx) {
-  if (!ctx.who.user) return `${word('guest', { many: true })} cannot bring in ${word('object', { many: true })}`;
-  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
-  // Same rule as /ai (plan-chat-model.md, decision 12): signed in, not a guest, space AI not off.
-  return chatAiRefusal(ctx.who, space);
-}
+// Whether this person may bring objects into this place with this module (decision 12: not AI use), and reading them out of
+// a paste or file. The module's write access is moduleAccess's.
 app.get('/api/modules/:id/objects/check', (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx) return;
-  const why = importRefusal(ctx);
+  const why = aiPolicy.importRefusal(ctx.who);
   res.json({ available: !why, why });
 });
 function objectsFileType(req, res, next) {
@@ -7576,9 +7966,9 @@ function objectsFileType(req, res, next) {
 const objectsFileText = express.text({ type: 'text/plain', limit: objectFormat.MAX_IMPORT_BYTES });
 const objectsFileRaw = express.raw({ type: 'application/octet-stream', limit: objectFormat.MAX_IMPORT_BYTES });
 app.post('/api/spaces/:id/objects/check', sameOriginOnly, objectsFileType, objectsFileText, objectsFileRaw, (req, res) => {
-  const found = chatAiSpace(req, res);
+  const found = importSpaceOf(req, res);
   if (!found) return;
-  const why = importRefusal({ who: found.who, spaceId: found.space.id });
+  const why = aiPolicy.importRefusal(found.who);
   if (why) return res.status(403).json({ error: why });
   const limited = overLimit('chat', found.who.user.key, 'check');
   if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: limitMessage() });
@@ -7594,7 +7984,7 @@ app.post('/api/spaces/:id/objects/check', sameOriginOnly, objectsFileType, objec
 app.post('/api/modules/:id/objects/check', sameOriginOnly, objectsFileType, objectsFileText, objectsFileRaw, (req, res) => {
   const ctx = moduleAccess(req, res, 'write');
   if (!ctx) return;
-  const why = importRefusal(ctx);
+  const why = aiPolicy.importRefusal(ctx.who);
   if (why) return res.status(403).json({ error: why });
   const limited = overLimit(ctx.manifest.id, ctx.by, 'check');
   if (limited) return res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: limitMessage() });
@@ -7607,43 +7997,44 @@ app.post('/api/modules/:id/objects/check', sameOriginOnly, objectsFileType, obje
     throw err;
   }
 });
+// A module's ask (templates ask, summarise and tags; purpose module): the rollup but no history (a module's ask is not a
+// conversation), and nothing kept but the call's record: no question, no answer, no object's text. `objects`: up to 12
+// pointers, only this space's (or, as the owner's setting allows, the environment's); `question` for ask, or none with an
+// object (the template's default question); `tz`: the asker's time zone.
 app.post('/api/modules/:id/ai', async (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'read');
   if (!ctx || !requireHook(ctx, res, 'ai')) return;
-  const allowed = aiAllowed(ctx);
-  if (!allowed.ok) return res.status(403).json({ error: allowed.why });
-  if (refuseOverAiCalls(res)) return;
-  if (overLimit(ctx.manifest.id, ctx.by, 'ai')) return res.status(429).json({ error: limitMessage() });
+  const space = ctx.spaceId ? store.spaceById(ctx.spaceId) : null;
+  const allowed = aiPolicy.check(ctx.who, space, 'module', { write: aiModuleWrite(ctx) });
+  if (!allowed.ok) return refuseAi(res, allowed, { who: ctx.who, space, purpose: 'module' });
   // Plan-names step 7: the objects to ask about are `objects`, no longer `items`; the old name is refused, not read.
   if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'items')) return res.status(400).json({ error: `items is an old name; send the ${word('object', { many: true })} to ask about as objects` });
-  const refs = Array.isArray(req.body?.objects) ? req.body.objects.slice(0, 12) : [];
-  // The objects are read as this person: only what they may see, and only kinds this module produces or was approved to link to.
-  const material = [];
-  const given = [];
-  for (const ref of refs) {
-    try {
-      const own = ref && ref.module === ctx.manifest.id;
-      const summary = resolveRef(ctx.who, ref, ctx.manifest.id, { withText: true, skipConsumer: own });
-      const bits = [summary.subtitle, summary.when ? `date: ${summary.when}` : '', summary.place && summary.place.name ? `place: ${summary.place.name}` : ''].filter(Boolean);
-      material.push({ title: summary.title, text: [summary.text, ...bits].filter(Boolean).join('\n') || summary.title });
-      given.push(summary.ref);
-    } catch {
-      // an object that is gone, or that this person may not see, is simply left out
-    }
-  }
+  const task = String(req.body?.task || '');
+  if (!prompts.TASKS.includes(task)) return res.status(400).json({ error: 'That task is not offered; ask for ask, summarise or tags.' });
+  const template = prompts.template(task);
+  const asked = task === 'ask' ? aiQuestionOf(req.body?.question) : { question: '' };
+  if (asked.error) return res.status(400).json({ error: asked.error });
+  const refs = aiRefsOf(req.body?.objects);
+  if (task === 'ask' && !asked.question && !refs.length) return res.status(400).json({ error: 'Ask a question.' });
+  if (task !== 'ask' && !refs.length) return res.status(400).json({ error: `Choose something to work on.` });
+  const built = aiContext.build(ctx.who, space, { template, question: asked.question, refs, tz: req.body?.tz, history: false, from: ctx.manifest.id });
+  if (template.needsMaterial && !built.material.length) return res.status(400).json({ error: `None of those ${word('object', { many: true })} can be sent to the AI.`, leftOut: built.leftOut });
+  const question = task !== 'ask' ? '' : asked.question || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
+  if (task === 'ask' && !question) return res.status(400).json({ error: `Ask a question: the ${word('object')} you chose can't be sent to the AI.`, leftOut: built.leftOut });
+  const turn = aiPolicy.takeTurn(ctx.who);
+  if (!turn.ok) return refuseAi(res, turn, { who: ctx.who, space, purpose: 'module' });
+  const inputs = task === 'tags'
+    ? { material: built.material, words: aiWords() }
+    : task === 'summarise'
+      ? { material: built.material, context: built.context, kinds: promptKinds(), words: aiWords() }
+      : { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: [], kinds: promptKinds(), words: aiWords() };
   try {
-    const task = String(req.body?.task || '');
-    const out = await ai.run(task, material, req.body?.question, { kinds: promptKinds() });
-    // Counted on the registry entry regardless of provider (managed or the environment's own key) -- the plan's
-    // aiCallsPerMonth cap is about how much of the environment's own allowance is used, not who is paying for
-    // the tokens (plan-environments.md, "Phase 3"). ai.js keeps its own separate per-provider token accounting.
-    if (BASE_DOMAIN && hostRegistry) {
-      const slug = currentEnvironment().slug;
-      if (slug) hostRegistry.recordAiCall(slug);
-    }
-    noteActivity(ctx.manifest.id, `used AI to ${task} (${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
-    res.json({ text: out.text, summaries: (out.summaries || []).map((c) => ({ ...c, sources: (c.sources || []).map((n) => given[n - 1]).filter(Boolean) })), tags: out.tags, used: out.used.map((n) => given[n - 1]).filter(Boolean), tokens: out.tokens });
+    const out = await ai.run(task, inputs, aiUse(ctx.who, ctx.spaceId, 'module', built), { secrets: aiPolicy.secrets() });
+    countAiCall();
+    noteActivity(ctx.manifest.id, `asked the AI (${AI_TASK_WORDS[task]}, ${out.tokens} tokens)`, ctx.by, ctx.scopeKey);
+    res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
+    if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
     sendAiError(err, res);
   }
 });
@@ -7676,7 +8067,7 @@ app.get('/api/modules/:id/uploads', (req, res) => {
   res.json({ files: moduleUploads.list(ctx.manifest.id, ctx.scopeKey).map(uploadView) });
 });
 app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   if (overLimit(ctx.manifest.id, ctx.by, 'upload')) return res.status(429).json({ error: limitMessage() });
   if (!Buffer.isBuffer(req.body)) return res.status(415).json({ error: 'send the picture itself, as a JPEG, PNG or WebP' });
@@ -7689,14 +8080,14 @@ app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res
 // What the start of a picture says about itself, for a page that will resize it (a resize loses the picture's own facts): send its
 // first ~256 KB. The answer goes only to the person who sent it.
 app.post('/api/modules/:id/uploads/inspect', express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: 300 * 1024 }), (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   if (overLimit(ctx.manifest.id, ctx.by, 'upload')) return res.status(429).json({ error: limitMessage() });
   if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(415).json({ error: 'send the start of the picture' });
   res.json(inspectHead(req.body));
 });
 app.put('/api/modules/:id/uploads/:fid/thumb', rawUpload, checkStorageCap, async (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   const meta = moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   if (!meta) return res.status(404).json({ error: 'no such file' });
@@ -7717,12 +8108,14 @@ function sendUpload(req, res, thumb) {
 app.get('/api/modules/:id/uploads/:fid', (req, res) => sendUpload(req, res, false));
 app.get('/api/modules/:id/uploads/:fid/thumb', (req, res) => sendUpload(req, res, true));
 app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
-  const ctx = uploadAccess(req, res, 'write');
+  const ctx = uploadAccess(req, res, 'own');
   if (!ctx) return;
   const meta = moduleUploads.meta(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   if (!meta) return res.status(404).json({ error: 'no such file' });
   // The person who added a file, or an administrator, removes it. (A module decides who may remove its items; this is the guard on the bytes.)
   if (meta.by !== ctx.by && !hasOwnerRights(ctx.who.user)) return res.status(403).json({ error: 'only the person who added it can remove it' });
+  // A file a Clear holds for its Undo comes back with it, so it stays until that time is over.
+  if (moduleHolds.holdsFile(ctx.manifest.id, ctx.scopeKey, req.params.fid)) return res.status(409).json({ error: 'That file can\'t be removed while the clear that took it can still be undone.' });
   moduleUploads.remove(ctx.manifest.id, ctx.scopeKey, req.params.fid);
   res.json({ ok: true });
 });
@@ -7736,6 +8129,9 @@ app.delete('/api/modules/:id/uploads/:fid', (req, res) => {
 // Uploads stream to a part file, counted as they arrive, and reserve their Content-Length against the space's, the
 // person's, the environment's (a hosted plan's storage cap) and the server's totals first; serving streams with ranges.
 const NO_SUCH_FILE = 'There is no such file.';
+// A record whose bytes are gone from the disk (a backup restored without them, a lost disk): said as a state, with `missing: true`.
+const FILE_MISSING = 'File missing. Its content is gone from the server; remove it from the list.';
+const PDF_DOWNLOAD_ONLY = 'This PDF can\'t be opened here. Download it.';
 // A write that failed on the server's side: the detail goes to the log, never to the person (it can name a path).
 const LIBRARY_NOT_SAVED = 'The file could not be saved. Try again, or ask the admin if it keeps happening.';
 const vaultGb = (value, fallback) => {
@@ -7782,24 +8178,21 @@ const LIBRARY_THUMB_BYTES = 300 * 1024;
 // ten seconds and the time the floor (VAULT_MIN_KB_PER_SECOND) gives its size, or it is cut off.
 const LIBRARY_THUMBS = { person: 2, environment: 8 };
 const thumbDeadlineMs = (bytes) => 10000 + Math.ceil((bytes / libraryMinRate) * 1000);
-const sizeText = (bytes) => (bytes >= 1024 ** 3 ? `${gbText(bytes)} GB` : `${Math.round((bytes / 1048576) * 10) / 10} MB`);
 const libraryKindSentence = 'That kind of file can\'t be added here. It takes pictures (JPEG, PNG, WebP, GIF), audio (MP3, OGG, WAV, M4A), video (MP4, WebM, MOV), PDF and Markdown.';
 const librarySentence = (refusal) => (refusal === 'heic' ? 'HEIC pictures can\'t be added here. Save it as a JPEG.' : libraryKindSentence);
 // Why a PDF is not taken (server/pdf-scan.js), in one sentence.
 const PDF_HOLDS = { scripts: 'scripts', opens: 'links that open programs or files', sends: 'a form that sends what is typed in it', files: 'files of its own' };
 const pdfSentence = (r) => {
   if (r.refuse === 'damaged') return 'That PDF is damaged or cut short.';
-  if (r.refuse === 'unchecked') return 'That PDF can\'t be checked for scripts, so it can\'t be added.';
   return `That PDF holds ${PDF_HOLDS[r.what] || 'active content'}, so it can't be added.`;
 };
 // The check of a file that is in (vault-scan-worker.js), its refusal in one sentence.
 const vaultScanner = createScanner({ seconds: (() => { const v = Number(VAULT_SCAN_SECONDS); return Number.isFinite(v) && v > 0 ? v : 5; })() });
 const scanSentence = (r, type) => {
-  if (r.code === 'unsafe') return type === 'application/pdf' ? 'We could not check that PDF safely. Try saving it again from the program that made it.' : 'We could not check that file safely. Try saving it again from the program that made it.';
+  if (r.code === 'unsafe') return 'We could not check that file safely. Try saving it again from the program that made it.'; // a PDF is kept as download only instead
   if (r.code === 'picture-damaged') return 'That picture is damaged or cut short.';
   if (r.code === 'picture-large') return 'That picture is too large to show.';
   if (r.code === 'pdf-damaged') return pdfSentence({ refuse: 'damaged' });
-  if (r.code === 'pdf-unchecked') return pdfSentence({ refuse: 'unchecked' });
   if (r.code === 'pdf-active') return pdfSentence({ what: r.what });
   if (r.code === 'damaged') return 'That file is damaged or cut short.';
   return libraryKindSentence;
@@ -7827,10 +8220,21 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   const perms = modulePerms(who, space.id);
   const can = (key) => Boolean(perms[`module.${manifest.id}.${key}`]);
   if (need && !can(need)) return refuse(403, `Your role can't do that in ${name}.`);
-  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user) };
+  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space) };
+}
+// Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
+// permission in `keys` of the module there. The public routes ask this on every open.
+function shareMakerCan(userKey, spaceId, moduleId, keys) {
+  const user = store.userByKey(userKey);
+  const space = store.spaceById(spaceId);
+  if (!user || !space) return false;
+  if (!(hasOwnerRights(user) || space.members.includes(user.key))) return false;
+  const perms = store.spacePermissions(user.key, spaceId);
+  return keys.every((k) => Boolean(perms[`module.${moduleId}.${k}`]));
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
-const fileView = (ctx, r) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length });
+// `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
+const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}) });
 // The owner's lower quotas, when the module declares them as `number` settings for the environment: spaceMaxGb and
 // personMaxGb, in GB; 0 or unset leaves the server's.
 function libraryQuotas(manifest) {
@@ -7876,7 +8280,7 @@ function vaultLevels(ctx, keys) {
   return [
     { onDisk: used.spaces.get(ctx.spaceId) || 0, most: quota.space, field: 'space', value: keys.space, sentence: `This ${word('space')}'s ${ctx.name} is full (${sizeText(quota.space)}). Remove some files to add more.` },
     { onDisk: used.people.get(ctx.by) || 0, most: quota.person, field: 'person', value: keys.person, sentence: `You have used your ${sizeText(quota.person)} in ${ctx.name}. Remove some of your files to add more.` },
-    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${gbText(cap)} GB of storage.` }] : []),
+    ...(cap !== null && cap !== undefined ? [{ onDisk: environmentStorageBytes(env.slug, env.dataDir), most: cap, field: 'environment', value: keys.environment, sentence: `This ${word('environment')} has used its ${sizeText(cap)} of storage.` }] : []),
     { onDisk: vaultHostBytes(), most: vaultLimits.total, field: 'environment', value: keys.environment, sentence: 'The server\'s file storage is full. Ask the admin.' },
   ];
 }
@@ -8029,7 +8433,10 @@ function receiveUpload(req, part, declared, onHead, onSlow = () => {}, handle = 
 app.get('/api/modules/:id/library', (req, res) => {
   const ctx = libraryAccess(req, res, 'view');
   if (!ctx) return;
-  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => fileView(ctx, r));
+  const present = vault.present(ctx.spaceId);
+  // `shared` (in a share link that still opens) only for someone who may make share links.
+  const shared = ctx.can('share') ? vault.sharedFileIds(ctx.manifest.id, ctx.spaceId) : null;
+  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => (shared ? { ...fileView(ctx, r, present), shared: shared.has(r.id) } : fileView(ctx, r, present)));
   res.json({ files, usage: { bytes: vault.usage().spaces.get(ctx.spaceId) || 0, maxBytes: libraryQuotas(ctx.manifest).space } });
 });
 
@@ -8091,10 +8498,17 @@ app.post('/api/modules/:id/library', async (req, res) => {
     if (got.failed) { dropPart(); console.error(`A library upload could not be written: ${got.failed}`); return refuse(500, LIBRARY_NOT_SAVED); }
     const group = vaultTypes.TYPES[type].group;
     let kept = { size: got.size, sha256: got.sha256, taken: null, camera: '' };
+    let viewable = true;
     // The whole file's check, in a worker (server/vault-scan.js): the main thread only waits for it.
-    if (group === 'image' || ['application/pdf', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'video/quicktime', 'video/webm', 'text/markdown'].includes(type)) {
+    if (group === 'image' || type === 'application/pdf' || vaultTypes.STRUCTURED.includes(type)) {
       const checked = await vaultScanner.scan({ file: part, type, keepPosition: req.query.keepPosition === '1' });
-      if (checked.refuse) {
+      // A PDF the scan could not judge (pdf-unchecked: encrypted, a part it can't read within its bounds) or could not
+      // finish (unsafe: over its time or memory) is kept as download only (decision 18): never sent inline, never shown.
+      // What it positively finds, and a damaged PDF, are still refused.
+      if (checked.refuse && type === 'application/pdf' && (checked.refuse.code === 'pdf-unchecked' || checked.refuse.code === 'unsafe')) {
+        if (checked.refuse.code === 'unsafe') console.error(`A library PDF could not be checked, so it is kept for download only: ${checked.refuse.reason}`);
+        viewable = false;
+      } else if (checked.refuse) {
         dropPart();
         fs.rmSync(`${part}.clean`, { force: true });
         if (checked.refuse.code === 'unsafe') console.error(`A library file could not be checked: ${checked.refuse.reason}`);
@@ -8116,7 +8530,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     // (Thomas, 2026-10-30: that overshoot is accepted).
     const fullNow = vaultFullOnDisk(ctx, keys, kept.size);
     if (fullNow) { dropPart(); return refuse(413, fullNow.error); }
-    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), thumb: null };
+    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null };
     if (flight.stopped) { dropPart(); return refuse(404, removedWhileArriving); }
     try {
       vault.commit(ctx.manifest.id, ctx.spaceId, part, record);
@@ -8142,17 +8556,19 @@ function contentDisposition(kind, name) {
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 // The headers every library file is sent with: its stored type only (Markdown as plain text, never HTML), never sniffed,
-// never kept by a shared cache, never run as a page (a PDF is the one exception: a browser shows none in a sandboxed
-// document, so it may be framed by this site only).
+// never kept by a shared cache, never run as a page: `sandbox; default-src 'none'` on every type, a PDF too, since the
+// browser's own PDF viewer is not used (decision 18). A PDF is always sent as an attachment, also to the app's own
+// viewer (GET /viewer/pdf), which is handed its bytes by the page that fetched them: nothing opens one in the browser at
+// this site's origin.
 function libraryHeaders(type, name, kind) {
   return {
     'Content-Type': type === 'text/markdown' ? 'text/plain; charset=utf-8' : type,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': contentDisposition(kind, name),
+    'Content-Disposition': contentDisposition(type === 'application/pdf' ? 'attachment' : kind, name),
     'Cache-Control': 'private, no-store',
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': type === 'application/pdf' ? "default-src 'none'; frame-ancestors 'self'" : "sandbox; default-src 'none'",
+    'Content-Security-Policy': "sandbox; default-src 'none'",
   };
 }
 // Streams a file (or its thumbnail) with range requests (206, Content-Range, Accept-Ranges, 416, ETag, Last-Modified,
@@ -8163,6 +8579,10 @@ function sendLibraryFile(req, res, thumb) {
   if (!ctx) return;
   const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
   if (!r || (thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
+  // A PDF kept as download only (decision 18) is sent only as a download (download=1, with `download`); asked for inline
+  // it answers 404, with the note the viewer shows, to someone who may see the file at all.
+  if (!thumb && !download && r.viewable === false) return res.status(404).json({ error: PDF_DOWNLOAD_ONLY });
+  if (vault.isMissing(ctx.spaceId, r.id)) return res.status(404).json({ error: FILE_MISSING, missing: true });
   const file = vault.filePath(ctx.spaceId, r.id, thumb);
   let slot = null;
   if (!thumb) {
@@ -8273,7 +8693,10 @@ app.delete('/api/modules/:id/library/:fid', (req, res) => {
   if (!found) return;
   const { ctx, r, mayChange } = found;
   if (!mayChange) return res.status(403).json({ error: 'Only the person who added it, or someone who may remove other people\'s files, can remove it.' });
+  const holders = moduleLinks.to(fileRef(ctx, r.id));
   vault.remove(ctx.manifest.id, ctx.spaceId, r.id);
+  // The objects that link to it are told, so their chips read "File removed" at once; their links stay.
+  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))] });
   noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
   res.json({ ok: true });
 });
@@ -8293,7 +8716,7 @@ app.get('/api/modules/:id/library/:fid/uses', (req, res) => {
       hidden += 1;
     }
   }
-  res.json({ uses, hidden });
+  res.json({ uses, hidden, ...(vault.isMissing(ctx.spaceId, r.id) ? { missing: true } : {}) });
 });
 
 // --- place search, from the server -----------------------------------------------------------------------------------------
@@ -8318,13 +8741,37 @@ function geocodeSetup(manifest) {
 // A link someone is adding: the server reads that page's title, description and image. Fetched only while the
 // module's linkPreviews setting resolves true (the manifest default applies when nothing is saved), because the request leaves this server for an address the person typed.
 // The picture from a link preview, fetched here and sent to the card. A browser asking the other site for it is often refused.
+// Only for a signed-in person, and only a picture this place already knows: one a link here holds in the field the
+// module's guards declare for its picture (a rule's `linkImage`), or one a link preview here offered in the last while
+// (the editor shows it before the link is saved). A module that declares no such field has only the offered ones. This
+// narrows what is fetched; it doesn't make an address safe, since anyone who may write a link may name any picture: the
+// fetch's own guards (server/link-preview.js: public addresses, the web's ports, the deadline) are what hold.
+const OFFERED_IMAGE_MS = 30 * 60 * 1000;
+const OFFERED_IMAGE_MAX = 500;
+const offeredImages = new Map(); // `${environment slug} ${module} ${scopeKey} ${url}` -> when offered
+function offerImage(ctx, url) {
+  if (!url) return;
+  const key = `${currentEnvironment().slug || ''} ${ctx.manifest.id} ${ctx.scopeKey} ${url}`;
+  offeredImages.delete(key);
+  if (offeredImages.size >= OFFERED_IMAGE_MAX) offeredImages.delete(offeredImages.keys().next().value);
+  offeredImages.set(key, Date.now());
+}
+function imageKnownHere(ctx, url) {
+  const at = offeredImages.get(`${currentEnvironment().slug || ''} ${ctx.manifest.id} ${ctx.scopeKey} ${url}`);
+  if (at && Date.now() - at < OFFERED_IMAGE_MS) return true;
+  const guards = ctx.manifest.guards;
+  if (!guards?.keys?.some((r) => r.linkImage)) return false;
+  return moduleData.list(ctx.manifest.id, ctx.scopeKey).some((item) => moduleGuards.linkImageOf(guards, item.key, item.value) === url);
+}
 app.get('/api/modules/:id/link-image', async (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx) return;
   if (!(ctx.manifest.settings || []).some((s) => s.key === 'linkPreviews')) return res.status(404).end();
   const values = moduleSettings.values(ctx.manifest, 'environment', {});
   if (values.linkPreviews !== true) return res.status(404).end();
+  if (!ctx.who.user) return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can't load link pictures.` });
   const asked = String(req.query.url || '');
+  if (!asked || !imageKnownHere(ctx, asked)) return res.status(404).json({ error: 'That picture isn\'t on a link here.' });
   try {
     let image = cachedImage(asked);
     if (!image) {
@@ -8347,6 +8794,7 @@ app.post('/api/modules/:id/link-preview', async (req, res) => {
   if (overLimit(ctx.manifest.id, ctx.by, 'search')) return res.status(429).json({ error: limitMessage() });
   try {
     const preview = await fetchPreview(String(req.body?.url || ''));
+    offerImage(ctx, preview.image);
     res.json({ enabled: true, ...preview });
   } catch (err) {
     const message = err instanceof PreviewError ? err.message : 'that page could not be read';
@@ -8992,8 +9440,9 @@ app.get('/api/modules/:id/context', (req, res) => {
     // target, { amount?, currency? } (#216; set in Set up by an owner, the admin or a moderator of the space), or null
     // while none is set. This is how a member reads it (plan-budget-module.md, decision 3): through the module, never
     // the general space lists. Always null for a guest (moduleAccess has already refused anyone not in the space or
-    // without the module's read permission).
-    space: here ? { id: here.id, name: here.name, createdAt: here.createdAt, phases: here.phases, budget: (who.user && here.budget) || null } : null,
+    // without the module's read permission). `guestsSeeHidden`: true while an owner lets this space's guests see the fields
+    // modules keep from guests (costs and booking codes), so a page can say what a guest sees.
+    space: here ? { id: here.id, name: here.name, createdAt: here.createdAt, phases: here.phases, budget: (who.user && here.budget) || null, guestsSeeHidden: here.guestsSeeHidden === true } : null,
     phases: phases.map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) })),
     // Facts about the environment every module may need. `pictureMap`: { file, minZoom, maxZoom, tileType } while the
     // environment's map is a picture of an invented world (a module that declares `pictureMap` names the file), else null.
@@ -9011,7 +9460,7 @@ app.get('/api/modules/for-space', (req, res) => {
   res.json({
     modules: modules.enabledAll()
       .filter(({ manifest, entry }) => manifest.scope.includes('space') && manifest.surfaces.canvas && moduleSpaceAccess(entry, who, space) && moduleCan(manifest, perms, 'read'))
-      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]) })),
+      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id), undoSeconds: moduleHolds.seconds })),
     // The built-in modules' names and icons as this environment shows them (the canvas's Conference and Chat switches).
     builtin: BUILTIN_MODULES.map((b) => ({ id: b.id, ...shownModule(b), ...(b.description ? { description: fillWords(b.description) } : {}) })),
     // What this space opens with, or null when it has no list of its own. The environment's list is what a new space
@@ -9037,14 +9486,18 @@ app.get('/modules/:id', (req, res) => {
   if (req.query.s === undefined && !keyedModule) res.set(FRAMED_HERE);
   if (!currentUser(req) && !hasGuestAccess(req)) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   // A module's environment page (no space, not a pop-out) leads to the destination it is a part of while that is shown
-  // (plan-calendar-destination.md, decision 16). The browser keeps the address's #day= or #ref= across the redirect,
+  // (plan-calendar-destination.md, decision 16). For the main the browser keeps the address's #day= or #ref= across the redirect,
   // and the query goes with it (?from=space&spaceName=... is the page's "Back to" link). Only the query is taken from
   // the request: the path is the destination's own, so the redirect never leaves this site.
   if (req.query.space === undefined && req.query.popout === undefined && req.query.guest === undefined) {
-    const to = destinationPathOf(req.params.id, destinationContext(moduleViewer(req)));
+    const dctx = destinationContext(moduleViewer(req));
+    const to = destinationPathOf(req.params.id, dctx);
     if (to && /^\/[A-Za-z0-9/_-]*$/.test(to) && !to.startsWith('//')) {
       const asked = new URL(req.originalUrl, 'http://same.origin');
-      return res.redirect(`${to}${asked.search}`);
+      // A panel (not the main) is named, so the destination opens on it: #panel=<module id>, as a tile's heading does.
+      // The main keeps the bare address, and with it the browser keeps the address's own #day= or #ref=.
+      const partHash = widgetHref(req.params.id, dctx).slice(to.length);
+      return res.redirect(`${to}${asked.search}${/^#panel=[A-Za-z0-9_%-]+$/.test(partHash) ? partHash : ''}`);
     }
   }
   // A module popped out of the Lobby that the Lobby doesn't allow: the sentence, not its page.
@@ -9125,65 +9578,188 @@ app.get('/m/:id/:version/*path', (req, res) => {
   res.type('html').send(html);
 });
 
+// The data routes hold every write to the module's guards (server/module-guards.js: who may write which keys, the
+// shape of values, who may clear everything) and keep a module's hidden fields from guests (hiddenFor).
 app.get('/api/modules/:id/data', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx) return;
-  res.json({ items: moduleData.list(ctx.manifest.id, ctx.scopeKey, typeof req.query.prefix === 'string' ? req.query.prefix : '') });
+  res.json({ items: moduleData.list(ctx.manifest.id, ctx.scopeKey, typeof req.query.prefix === 'string' ? req.query.prefix : '').map((item) => hideItem(item, ctx.hide)) });
 });
 app.get('/api/modules/:id/data/:key', (req, res) => {
   const ctx = moduleAccess(req, res, 'read');
   if (!ctx) return;
   const item = moduleData.get(ctx.manifest.id, ctx.scopeKey, req.params.key);
   if (!item) return res.status(404).json({ error: 'not found' });
-  res.json({ item });
+  res.json({ item: hideItem(item, ctx.hide) });
 });
-function sendModuleConflict(err, res) {
-  if (err.status === 409) return res.status(409).json({ error: err.message, current: err.current || null });
+function sendModuleConflict(err, res, hide = []) {
+  if (err.status === 409) return res.status(409).json({ error: err.message, current: hideItem(err.current || null, hide) });
   throw err;
 }
 app.put('/api/modules/:id/data/:key', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   try {
     const had = moduleData.get(ctx.manifest.id, ctx.scopeKey, req.params.key);
-    const item = moduleData.put(ctx.manifest.id, ctx.scopeKey, req.params.key, req.body?.value, { expected: Number.isInteger(req.body?.version) ? req.body.version : null, by: ctx.by });
+    // A writer who can't see the hidden fields leaves them as they were, and can't replace a value that holds any.
+    const hiddenRefused = moduleGuards.hiddenPutRefusal(req.body?.value, had ? had.value : null, ctx.hide);
+    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+    let value = moduleGuards.keepHidden(req.body?.value, had ? had.value : null, ctx.hide);
+    const guards = guardsAt(ctx);
+    if (guards) {
+      const keys = () => moduleData.list(ctx.manifest.id, ctx.scopeKey).map((item) => item.key);
+      const checked = moduleGuards.checkPut(guards, { key: req.params.key, before: had ? had.value : null, value, who: guardWho(ctx), read: storedValue(ctx), keys, personal: personalAt(ctx) });
+      if (checked.error) return res.status(checked.status).json({ error: checked.error });
+      value = checked.value;
+    }
+    const item = moduleData.put(ctx.manifest.id, ctx.scopeKey, req.params.key, value, { expected: Number.isInteger(req.body?.version) ? req.body.version : null, by: ctx.by });
     objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had ? had.value : null, after: item.value, by: ctx.by, tz: req.body?.tz });
-    res.json({ item });
+    // A file swapped for another (a photo's picture): the old one goes when nothing stored here names it any more.
+    if (had && guards) {
+      const was = moduleGuards.fileOf(guards, req.params.key, had.value);
+      if (was && was !== moduleGuards.fileOf(guards, req.params.key, item.value)) removeFilesOf(ctx, [{ key: req.params.key, value: had.value }]);
+    }
+    res.json({ item: hideItem(item, ctx.hide) });
   } catch (err) {
-    sendModuleConflict(err, res);
+    sendModuleConflict(err, res, ctx.hide);
   }
 });
+// Clear: everything the module holds in the scope, in one write, held for its Undo (server/module-holds.js) for 30 seconds
+// (CLEAR_UNDO_SECONDS): the values leave at once, the files they name wait, and so does what the clear does to other
+// modules. The answer's restoreToken undoes it (POST .../data/restore) until undoUntil; another Clear here is refused (409)
+// while it waits. The guards' `clear` decides who may (checkClear); a writer who can't see the hidden fields can't clear
+// what holds any. A module is cleared at most five times a minute in an environment, by everyone together (429).
+// `cleared` and `restored` count objects: the module's bookkeeping keys ("_...", isBookkeeping) go and come back uncounted.
+function clearRefusal(ctx) {
+  if (ctx.manifest.library) return { status: 400, error: libraryClearRefusal(ctx.manifest) };
+  const guards = guardsAt(ctx);
+  // A person clears their own data; guards that don't read still refuse it.
+  return guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkClear(guards, guardWho(ctx)) : null;
+}
+// The clear budget (server/module-limits.js): five a minute for a module in an environment, but one person takes at most
+// three of them (clearPerson) and a member or guest, with the others like them, at most three (clearOrdinary), so the
+// last two are always there for an owner, admin or moderator of the space. A refusal gives back what it had counted.
+function clearBudget(ctx) {
+  const id = ctx.manifest.id;
+  const user = ctx.who.user;
+  const space = ctx.scopeKey.startsWith('space:') ? store.spaceById(ctx.scopeKey.slice(6)) : null;
+  const trusted = Boolean(user) && (hasOwnerRights(user) || (space ? chatModerator(ctx.who, space) : false));
+  const taken = [];
+  for (const [who, kind] of [[ctx.by, 'clearPerson'], ...(trusted ? [] : [['*', 'clearOrdinary']]), ['*', 'clear']]) {
+    const slow = overLimit(id, who, kind);
+    if (slow) {
+      for (const [w, k] of taken) moduleLimits.refund(id, w, k);
+      return slow;
+    }
+    taken.push([who, kind]);
+  }
+  return null;
+}
 app.delete('/api/modules/:id/data', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
+  const refused = clearRefusal(ctx);
+  if (refused) return res.status(refused.status).json({ error: refused.error });
+  const waiting = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
+  if (waiting) {
+    // Retry-After is when the hold is over (the grace included); the sentence counts to undoUntil, the time the toast shows.
+    const retry = Math.max(1, Math.ceil((Date.parse(waiting.expiresAt) - Date.now()) / 1000));
+    const left = Math.ceil((Date.parse(waiting.undoUntil) - Date.now()) / 1000);
+    const name = modules.shownName(ctx.manifest);
+    return void res.set('Retry-After', String(retry)).status(409).json({ error: left > 0 ? `${name} was just cleared. You can undo that for ${left} more ${left === 1 ? 'second' : 'seconds'}, or clear it again after that.` : `${name} was just cleared. You can clear it again in ${retry} ${retry === 1 ? 'second' : 'seconds'}.` });
+  }
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
-  try {
-    const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
-    for (const item of items) {
-      moduleData.remove(ctx.manifest.id, ctx.scopeKey, item.key, { by: ctx.by });
-      objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: item.key, before: item.value, after: null, by: ctx.by, tz: req.query.tz });
-    }
-    res.json({ cleared: items.length });
-  } catch (err) {
-    sendModuleConflict(err, res);
-  }
+  const items = moduleData.list(ctx.manifest.id, ctx.scopeKey);
+  // A writer who can't see the hidden fields can't remove what holds any.
+  const hiddenRefused = moduleGuards.hiddenClearRefusal(items.map((item) => item.value), ctx.hide);
+  if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+  if (!items.some((item) => !isBookkeeping(item.key))) return res.json({ cleared: 0 }); // no objects: nothing to clear
+  const often = clearBudget(ctx);
+  if (often) return void res.set('Retry-After', String(often.retrySeconds)).status(429).json({ error: `${modules.shownName(ctx.manifest)} was cleared too often just now. Try again in ${often.retrySeconds} ${often.retrySeconds === 1 ? 'second' : 'seconds'}.` });
+  // Held first, then cleared: a stop between the two leaves the data where it was.
+  const held = moduleHolds.hold(ctx.manifest.id, ctx.scopeKey, {
+    items: items.map(({ key, value, version, updatedAt, by }) => ({ key, value, version, updatedAt, by })),
+    files: filesNamedBy(ctx.manifest, items),
+    by: ctx.by,
+    tz: typeof req.query.tz === 'string' ? req.query.tz : null,
+  });
+  moduleData.removeAll(ctx.manifest.id, ctx.scopeKey, { by: ctx.by });
+  res.json({ cleared: items.filter((item) => !isBookkeeping(item.key)).length, restoreToken: held.token, undoSeconds: held.seconds, undoUntil: held.undoUntil });
 });
+// Undo of a Clear: puts back exactly what that clear held (each value with its writer and time, its files kept), in one
+// write and one 'changes' event; it counts as one save against the write limit. The same permission as the clear. A key
+// that holds something now keeps it and is named in `taken` (a bookkeeping key keeps it unnamed); the rest come back.
+// Answers { restored, skipped, taken }, counting objects only. A token that undoes nothing is a 410 that says why.
+app.post('/api/modules/:id/data/restore', (req, res) => {
+  const ctx = moduleAccess(req, res, 'own');
+  if (!ctx) return;
+  const refused = clearRefusal(ctx);
+  if (refused) return res.status(refused.status).json({ error: refused.error });
+  const token = req.body?.restoreToken;
+  if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'Say which clear to undo: send the restoreToken its answer gave.' });
+  const hold = moduleHolds.peek(ctx.manifest.id, ctx.scopeKey);
+  if (!hold || hold.token !== token) return res.status(410).json({ error: UNDO_GONE[moduleHolds.why(ctx.manifest.id, ctx.scopeKey, token)] });
+  const hiddenRefused = moduleGuards.hiddenClearRefusal(hold.items.map((item) => item.value), ctx.hide);
+  if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
+  const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
+  if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
+  let result;
+  try {
+    result = moduleData.restoreMany(ctx.manifest.id, ctx.scopeKey, hold.items, { by: ctx.by });
+  } catch (err) {
+    moduleLimits.refund(ctx.manifest.id, ctx.by, 'write'); // nothing came back, so it was not a save
+    if (err instanceof StoreError && err.status === 413) return res.status(413).json({ error: `${modules.shownName(ctx.manifest)}'s storage is full, so nothing came back. Remove something and press Undo again.` });
+    throw err;
+  }
+  moduleHolds.drop(ctx.manifest.id, ctx.scopeKey, 'undone');
+  // What did not come back is cleared for good: other modules hear of it (unless its key now holds the object they
+  // follow) and its files go, as when a hold runs out.
+  if (result.taken.length) {
+    const left = new Set(result.taken);
+    finishHold({ ...hold, items: hold.items.filter((item) => left.has(item.key)) });
+  }
+  res.json({ restored: result.restored.filter((key) => !isBookkeeping(key)).length, skipped: result.taken.length, taken: result.taken.slice(0, 50) });
+});
+// Why a restoreToken undoes nothing (moduleHolds.why), as the 410 says it.
+const UNDO_GONE = {
+  undone: 'That clear was already undone.',
+  replaced: 'A later clear replaced it.',
+  over: 'The time to undo that clear is over.',
+};
 app.delete('/api/modules/:id/data/:key', (req, res) => {
-  const ctx = moduleAccess(req, res, 'write');
+  const ctx = moduleAccess(req, res, 'own');
   if (!ctx) return;
   const slow = overLimit(ctx.manifest.id, ctx.by, 'write');
   if (slow) return void res.set('Retry-After', String(slow.retrySeconds)).status(429).json({ error: limitMessage() });
   try {
     const expected = req.query.version !== undefined ? Number(req.query.version) : null;
     const had = moduleData.get(ctx.manifest.id, ctx.scopeKey, req.params.key);
+    const guards = guardsAt(ctx);
+    // A person removes their own data; guards that don't read still refuse it.
+    const refused = guards && (!personalAt(ctx) || guards.invalid) ? moduleGuards.checkDelete(guards, { key: req.params.key, before: had ? had.value : null, who: guardWho(ctx), read: storedValue(ctx) }) : null;
+    if (refused) return res.status(refused.status).json({ error: refused.error });
+    // What belongs to it (a rule's `parent`: a poll's votes) goes with it, closed or not.
+    const all = had && guards ? moduleData.list(ctx.manifest.id, ctx.scopeKey) : [];
+    const children = new Set(moduleGuards.childrenOf(guards, req.params.key, all.map((item) => item.key)));
+    const childItems = all.filter((item) => children.has(item.key));
+    // A writer who can't see the hidden fields can't remove what holds any, nor what goes with it.
+    const hiddenRefused = had ? moduleGuards.hiddenDeleteRefusal(had.value, ctx.hide, childItems.map((item) => item.value)) : null;
+    if (hiddenRefused) return res.status(hiddenRefused.status).json({ error: hiddenRefused.error });
     const removed = moduleData.remove(ctx.manifest.id, ctx.scopeKey, req.params.key, { expected: Number.isInteger(expected) ? expected : null, by: ctx.by });
-    if (had) objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
+    if (had) {
+      objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: req.params.key, before: had.value, after: null, by: ctx.by, tz: req.query.tz });
+      for (const child of childItems) {
+        moduleData.remove(ctx.manifest.id, ctx.scopeKey, child.key, { by: ctx.by });
+        objectSync.afterWrite({ module: ctx.manifest.id, scopeKey: ctx.scopeKey, key: child.key, before: child.value, after: null, by: ctx.by, tz: req.query.tz });
+      }
+      removeFilesOf(ctx, [{ key: req.params.key, value: had.value }, ...all.filter((item) => children.has(item.key))]);
+    }
     res.json(removed);
   } catch (err) {
-    sendModuleConflict(err, res);
+    sendModuleConflict(err, res, ctx.hide);
   }
 });
 
@@ -9291,106 +9867,216 @@ app.get('/api/notifications/stream', requireUser, (req, res) => {
 // to what the viewer may read:
 //   with ?space=<id>   scope 'space' (that space) and 'environment'   -- a space's panes
 //   without a space    scope 'environment' and 'spaces' (the viewer's own spaces) -- a module's environment page
+// ?space=<id>&page=1 carries both on one connection (the space page, whose Home dashboard reads the second while its
+// canvas reads the first; health audit MP-01): each event of the second view says so with `"view": "page"`, and the
+// same change may then come once for each view. `page` without a space changes nothing.
+// Every event has an `id:` line, the same on every stream for the same thing that happened (eventIdOf), so a page that
+// moves from one stream to another (public/module-stream.js) hears each thing once while both are open. The id starts
+// with this start's own token, so ids after a restart never match ones a page remembers from before it.
+const streamEventIds = new WeakMap(); // what happened (the object its emitter sent) -> its id
+const streamEventStart = crypto.randomBytes(4).toString('hex');
+let lastStreamEventId = 0;
+function eventIdOf(happened) {
+  if (!happened || typeof happened !== 'object') return `${streamEventStart}.${++lastStreamEventId}`;
+  let id = streamEventIds.get(happened);
+  if (!id) {
+    id = `${streamEventStart}.${++lastStreamEventId}`;
+    streamEventIds.set(happened, id);
+  }
+  return id;
+}
+// A batch's changes as the stream sends them to a viewer who has nothing hidden: written out once per batch.
+const batchTexts = new WeakMap();
+function changesText(batch) {
+  let text = batchTexts.get(batch);
+  if (text === undefined) {
+    text = JSON.stringify(batch.changes.map((c) => ({ key: c.key, ...('value' in c ? { value: c.value } : {}), version: c.version, deleted: c.deleted, by: c.by })));
+    batchTexts.set(batch, text);
+  }
+  return text;
+}
+// A viewer's permissions in a space (or none), worked out once per person for everything done in the same turn of the event
+// loop, by every open stream together: a big Clear or Undo asks for them for each stream and each kind, and they cannot change
+// in between. Dropped at the end of the turn.
+const permsTurns = new Map(); // environment -> "user|space" -> permissions
+function permsThisTurn(env, who, spaceId) {
+  let turn = permsTurns.get(env);
+  if (!turn) {
+    turn = new Map();
+    permsTurns.set(env, turn);
+    queueMicrotask(() => permsTurns.delete(env));
+  }
+  const k = `${who.user ? who.user.key : '-'}|${spaceId || ''}`;
+  if (!turn.has(k)) turn.set(k, modulePerms(who, spaceId));
+  return turn.get(k);
+}
 app.get('/api/modules/stream', (req, res) => {
   const env = currentEnvironment(); // captured once: the close handler below fires later, outside this request
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
   const space = req.query.space ? store.spaceById(String(req.query.space)) : null;
   if (req.query.space && !space) return res.status(404).json({ error: `no such ${word('space')}` });
+  // The views this connection carries: the space's (or, without a space, the page's), and with page=1 the page's too.
+  const views = [{ space, view: null }];
+  if (space && req.query.page === '1') views.push({ space: null, view: 'page' });
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
-  // Where a change belongs for this viewer, or null if they may not see it.
-  const place = (moduleId, scopeKey) => {
-    const found = modules.enabled(moduleId);
+  const send = (v, type, happened, data) => sseWrite(res, `id: ${eventIdOf(happened)}\nevent: ${type}\ndata: ${JSON.stringify(v.view ? { ...data, view: v.view } : data)}\n\n`);
+  const permsHere = (spaceId) => permsThisTurn(env, who, spaceId);
+  // Where a change belongs for this viewer in view `v`, or null if they may not see it there.
+  const place = (v, moduleId, scopeKey, known = null) => {
+    const found = known || modules.enabled(moduleId);
     if (!found) return null;
     const { manifest, entry } = found;
     if (scopeKey === 'environment') {
-      return who.user && moduleCan(manifest, modulePerms(who, null), 'read') ? { scope: 'environment', spaceId: null } : null;
+      return who.user && moduleCan(manifest, permsHere(null), 'read') ? { scope: 'environment', spaceId: null } : null;
     }
     if (scopeKey.startsWith('person:')) {
       // Someone's own data: told only to that person, on whatever page of theirs shows the module.
-      return who.user && scopeKey === `person:${who.user.key}` && moduleCan(manifest, modulePerms(who, null), 'read') ? { scope: 'person', spaceId: null } : null;
+      return who.user && scopeKey === `person:${who.user.key}` && moduleCan(manifest, permsHere(null), 'read') ? { scope: 'person', spaceId: null } : null;
     }
     if (!scopeKey.startsWith('space:')) return null;
     const r = store.spaceById(scopeKey.slice(6));
     if (!r) return null;
-    if (space) {
-      return r.id === space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
+    if (v.space) {
+      return r.id === v.space.id && moduleSpaceAccess(entry, who, r) && moduleCan(manifest, permsHere(r.id), 'read') ? { scope: 'space', spaceId: r.id } : null;
     }
     const mine = who.user && r.members.includes(who.user.key) && modules.isOnIn(entry.id, r.id);
-    return mine && moduleCan(manifest, modulePerms(who, r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
+    return mine && moduleCan(manifest, permsHere(r.id), 'read') ? { scope: 'spaces', spaceId: r.id } : null;
   };
   const onChange = listenIn(env, (change) => {
-    const at = place(change.module, change.scopeKey);
-    if (at) sseWrite(res, `event: change\ndata: ${JSON.stringify({ ...change, ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (!at) continue;
+      // What a guest may not receive goes from the value (hiddenFor); a guest only ever hears their own space.
+      const changed = modules.enabled(change.module)?.manifest;
+      if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
+      const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
+      send(v, 'change', change, { ...hideItem(change, hide), ...at });
+    }
+  });
+  // Many keys at once (a Clear, its Undo: moduleData.removeAll, restoreMany): one 'changes' event, so a page draws once.
+  const onChanges = listenIn(env, (batch) => {
+    for (const v of views) {
+      const at = place(v, batch.module, batch.scopeKey);
+      if (!at) continue;
+      const changed = modules.enabled(batch.module)?.manifest;
+      if (changed && shutFromGuests(who, changed, at.spaceId)) continue;
+      const hide = at.spaceId && changed ? hiddenFor(who, changed, at.spaceId) : [];
+      // A big batch comes without values (`reload: true`, server/module-data.js emitBatch): the page reads the data again.
+      const head = { module: batch.module, by: batch.by, ...(batch.cleared ? { cleared: true } : {}), ...(batch.restored ? { restored: true } : {}), ...(batch.reload ? { reload: true } : {}) };
+      if (!hide.length) {
+        // Nothing hidden from this viewer: the batch's changes are written out once and shared by every stream that hears it.
+        const text = changesText(batch);
+        const body = JSON.stringify(v.view ? { ...head, changes: 0, ...at, view: v.view } : { ...head, changes: 0, ...at }).replace('"changes":0', () => `"changes":${text}`);
+        sseWrite(res, `id: ${eventIdOf(batch)}\nevent: changes\ndata: ${body}\n\n`);
+        continue;
+      }
+      send(v, 'changes', batch, { ...head, changes: batch.changes.map((c) => { const h = hideItem(c, hide); return { key: h.key, ...('value' in h ? { value: h.value } : {}), version: h.version, deleted: h.deleted, by: h.by }; }), ...at });
+    }
   });
   const onFire = listenIn(env, (fire) => {
-    const at = place(fire.module, fire.scopeKey);
-    if (at && at.scope !== 'spaces') sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ module: fire.module, key: fire.key, payload: fire.payload, ...at })}\n\n`);
+    for (const v of views) {
+      const at = place(v, fire.module, fire.scopeKey);
+      if (at && at.scope !== 'spaces') send(v, 'schedule', fire, { module: fire.module, key: fire.key, payload: fire.payload, ...at });
+    }
   });
   // What points at (or from) an item changed: only the pointers go, and the module asks again for what it may see.
   const onLinks = listenIn(env, ({ refs }) => {
     for (const ref of refs) {
-      const at = place(ref.module, refScopeKey(ref));
-      if (at) sseWrite(res, `event: links\ndata: ${JSON.stringify({ module: ref.module, ref, ...at })}\n\n`);
+      for (const v of views) {
+        const at = place(v, ref.module, refScopeKey(ref));
+        if (at) send(v, 'links', ref, { module: ref.module, ref, ...at });
+      }
     }
   });
   // A module said something happened: sent to every module here that may hear it (the host delivers it to those frames).
   const onBus = listenIn(env, (ev) => {
-    const at = place(ev.module, ev.scopeKey);
-    if (!at) return;
-    const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
-    if (subscribers.length) sseWrite(res, `event: bus\ndata: ${JSON.stringify({ ...publicEvent(ev), scope: at.scope, subscribers })}\n\n`);
+    for (const v of views) {
+      const at = place(v, ev.module, ev.scopeKey);
+      if (!at) continue;
+      const subscribers = modules.enabledAll().filter((m) => m.manifest.id !== ev.module && mayHear(m, ev.module, ev.name) && place(v, m.manifest.id, ev.scopeKey)).map((m) => m.manifest.id);
+      if (subscribers.length) send(v, 'bus', ev, { ...publicEvent(ev), scope: at.scope, subscribers });
+    }
   });
   // A request for a module to do something: the providing module's frames are told; one claims it.
   const onAction = listenIn(env, (r) => {
-    if (r.local && r.by !== (who.user?.key || 'guest')) return; // a view is for the person who asked
-    const at = place(r.provider, r.scopeKey);
-    if (at) sseWrite(res, `event: action\ndata: ${JSON.stringify({ ...publicAction(r), provider: r.provider, scope: at.scope })}\n\n`);
+    if ((r.local || r.askerOnly) && r.by !== (who.user?.key || 'guest')) return; // a view, or what is the asker's, is for the person who asked
+    for (const v of views) {
+      const at = place(v, r.provider, r.scopeKey);
+      if (at) send(v, 'action', r, { ...publicAction(r), provider: r.provider, scope: at.scope });
+    }
   });
   // A setting of a module changed: its pages here read their values again.
   // The person's other calendars changed on a read (plan-google-calendar.md, Part 2): only their own streams hear it,
   // naming the modules with the approved `external` hook, which ask again for what they show.
   if (who.user) externalCalendars.noteSeen(who.user.key);
-  const onExternal = listenIn(env, ({ userKey }) => {
-    if (!who.user || userKey !== who.user.key || !store.otherCalendarsOn()) return;
+  const onExternal = listenIn(env, (seen) => {
+    if (!who.user || seen.userKey !== who.user.key || !store.otherCalendarsOn()) return;
     const hearing = externalModules().map(({ manifest }) => manifest.id);
-    if (hearing.length) sseWrite(res, `event: external\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    if (hearing.length) for (const v of views) send(v, 'external', seen, { modules: hearing });
   });
   externalCalendars.on('change', onExternal);
   const onSettings = listenIn(env, (c) => {
     if (c.scope === 'person' && c.userKey !== who.user?.key) return;
-    if (c.scope === 'space' && !(space && space.id === c.spaceId) && !(who.user && store.spaceById(c.spaceId)?.members.includes(who.user.key))) return;
-    sseWrite(res, `event: settings\ndata: ${JSON.stringify({ module: c.module, scope: c.scope, spaceId: c.spaceId })}\n\n`);
+    for (const v of views) {
+      // A space's setting goes only to a view that may read that module there (the same rule as its data's changes), so
+      // opening another space's stream as a non-member or another space's guest tells nothing of it.
+      if (c.scope === 'space' && !place(v, c.module, `space:${c.spaceId}`)) continue;
+      send(v, 'settings', c, { module: c.module, scope: c.scope, spaceId: c.spaceId });
+    }
   });
   moduleSettings.on('change', onSettings);
   // An object of a marker kind was written or deleted where this viewer reads it (plan-calendar-markers.md): the
   // modules here approved to show that kind, and on and readable there, are named, and ask again. No object data goes.
   // A space's page hears its space only; a page without a space hears the environment and the viewer's own spaces.
-  const onMarkers = listenIn(env, (change) => {
+  const onMarkers = listenIn(env, (change, known) => {
     if (!change.scopeKey.startsWith('space:') && change.scopeKey !== 'environment') return;
-    const kind = markerKindAt(change.module, change.key);
+    const kind = known ? known.kind : markerKindAt(change.module, change.key);
     if (!kind) return;
-    const at = place(change.module, change.scopeKey);
-    if (!at || (space && at.scope !== 'space')) return;
-    const hearing = modules.enabledAll()
-      .filter((m) => m.manifest.id !== change.module && consumerMayLink(m, change.module, kind.kind) && place(m.manifest.id, change.scopeKey))
-      .map((m) => m.manifest.id);
-    if (hearing.length) sseWrite(res, `event: markers\ndata: ${JSON.stringify({ modules: hearing })}\n\n`);
+    const consumers = known ? known.consumers : markerConsumers(change, kind);
+    for (const v of views) {
+      const at = place(v, change.module, change.scopeKey);
+      if (!at || (v.space && at.scope !== 'space')) continue;
+      const hearing = consumers.filter((m) => place(v, m.manifest.id, change.scopeKey, m)).map((m) => m.manifest.id);
+      if (hearing.length) send(v, 'markers', change, { modules: hearing });
+    }
   });
+  // A batch tells the marker modules once per kind it touched.
+  const onMarkersBatch = (batch) => {
+    for (const known of markersOfBatch(batch).values()) onMarkers(known.change, known);
+  };
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);
+  moduleData.on('changes', onMarkersBatch);
+  moduleData.on('changes', onChanges);
   moduleHooks.on('fire', onFire);
   // A linked object changed: only the modules that point at it are told, and only a viewer who may see that module here.
   const onRefChange = listenIn(env, (ev) => {
-    const hearing = [];
-    for (const holder of ev.holders) {
-      const at = place(holder.module, refScopeKey(holder));
-      if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+    for (const v of views) {
+      const hearing = [];
+      for (const holder of ev.holders) {
+        const at = place(v, holder.module, refScopeKey(holder));
+        if (at && !hearing.includes(holder.module)) hearing.push(holder.module);
+      }
+      if (hearing.length) send(v, 'refchange', ev, { ref: ev.ref, change: ev.change, modules: hearing });
     }
-    if (hearing.length) sseWrite(res, `event: refchange\ndata: ${JSON.stringify({ ref: ev.ref, change: ev.change, modules: hearing })}\n\n`);
   });
+  // A library's file was added, renamed, removed or given a thumbnail (plan-attachments-vault.md, step 4): told to the viewers who
+  // may read that library in that space, and to the modules there that are the library or approved to link to its files, which
+  // look again. Only ids and the kind of change go: no name, since a file's name is for those who may read the library.
+  const onLibrary = listenIn(env, (c) => {
+    if (!who.user) return;
+    const scopeKey = `space:${c.spaceId}`;
+    for (const v of views) {
+      const at = place(v, c.module, scopeKey);
+      if (!at) continue;
+      const hearing = [c.module, ...modules.enabledAll().filter((m) => m.manifest.id !== c.module && consumerMayLink(m, c.module, 'file') && place(v, m.manifest.id, scopeKey)).map((m) => m.manifest.id)];
+      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op: c.op, id: c.id, modules: hearing, scope: at.scope });
+    }
+  });
+  vault.on('change', onLibrary);
   moduleLinks.on('change', onLinks);
   objectSync.on('refchange', onRefChange);
   moduleBus.on('event', onBus);
@@ -9401,7 +10087,10 @@ app.get('/api/modules/stream', (req, res) => {
     moduleSettings.off('change', onSettings);
     moduleData.off('change', onMarkers);
     moduleData.off('change', onChange);
+    moduleData.off('changes', onMarkersBatch);
+    moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
+    vault.off('change', onLibrary);
     moduleLinks.off('change', onLinks);
     objectSync.off('refchange', onRefChange);
     moduleBus.off('event', onBus);
@@ -9429,19 +10118,39 @@ app.get('/api/modules/:id/events', (req, res) => {
       return void sseWrite(res, `event: change\ndata: ${JSON.stringify({ ...change, spaceId })}\n\n`);
     }
     if (change.scopeKey !== ctx.scopeKey) return;
-    sseWrite(res, `event: change\ndata: ${JSON.stringify(change)}\n\n`);
+    sseWrite(res, `event: change\ndata: ${JSON.stringify(hideItem(change, ctx.hide))}\n\n`);
+  });
+  const onChanges = listenIn(env, (batch) => {
+    if (batch.module !== ctx.manifest.id) return;
+    if (spaceIds) {
+      const spaceId = batch.scopeKey.startsWith('space:') ? batch.scopeKey.slice(6) : null;
+      if (!spaceIds.has(spaceId)) return;
+      return void sseWrite(res, `event: changes\ndata: ${JSON.stringify({ ...batch, spaceId })}\n\n`);
+    }
+    if (batch.scopeKey !== ctx.scopeKey) return;
+    sseWrite(res, `event: changes\ndata: ${JSON.stringify({ ...batch, changes: batch.changes.map((c) => hideItem(c, ctx.hide)) })}\n\n`);
   });
   const onFire = listenIn(env, (fire) => {
     if (spaceIds || fire.module !== ctx.manifest.id || fire.scopeKey !== ctx.scopeKey) return;
     sseWrite(res, `event: schedule\ndata: ${JSON.stringify({ key: fire.key, payload: fire.payload })}\n\n`);
   });
+  // A library module's page hears its own space's files change (the same event the shared stream carries).
+  const onLibrary = listenIn(env, (c) => {
+    if (c.module !== ctx.manifest.id || (ctx.who && !ctx.who.user)) return;
+    if (spaceIds ? !spaceIds.has(c.spaceId) : `space:${c.spaceId}` !== ctx.scopeKey) return;
+    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op: c.op, id: c.id })}\n\n`);
+  });
   moduleData.on('change', onChange);
+  moduleData.on('changes', onChanges);
   moduleHooks.on('fire', onFire);
+  if (ctx.manifest.library) vault.on('change', onLibrary);
   const beat = setInterval(() => sseWrite(res, ': ping\n\n'), 25000);
   req.on('close', () => envContext.run(env, () => {
     clearInterval(beat);
     moduleData.off('change', onChange);
+    moduleData.off('changes', onChanges);
     moduleHooks.off('fire', onFire);
+    vault.off('change', onLibrary);
   }));
 });
 
@@ -9732,7 +10441,17 @@ setInterval(() => {
 if (adminMfaLockoutBypass) console.warn(`The lockout bypass (ADMIN_MFA_LOCKOUT_BYPASS) is on: ${BASE_DOMAIN ? 'every owner and host admin' : "every owner and the server's admin"} skips two-step sign-in entirely. Turn it off once you are back in.`);
 
 // The port it really listens on is logged, so PORT=0 (any free port, for a check) says which one it got.
-const listener = app.listen(Number(PORT), () => {
+// Express 5 hands a listen error (the port taken, no right to it) to this same callback, so it is told apart first.
+const listener = app.listen(Number(PORT), (listenError) => {
+  if (listenError) {
+    const why = listenError.code === 'EADDRINUSE'
+      ? `Port ${PORT} is already in use. Another copy of the server may still be running: close its window or stop it, then start this one again.\nTo find it: Windows \`netstat -ano | findstr :${PORT}\` then \`taskkill /PID <id> /F\`; Mac or Linux \`lsof -i :${PORT}\` then \`kill <id>\`.`
+      : listenError.code === 'EACCES'
+        ? `The server may not use port ${PORT}. Set PORT to a free port above 1024, then start it again.`
+        : `The server could not listen on port ${PORT}: ${listenError.message}`;
+    console.error(why);
+    process.exit(1);
+  }
   const port = listener.address().port;
   const fillTwins = () => {
     try {
@@ -9753,6 +10472,10 @@ const listener = app.listen(Number(PORT), () => {
     return;
   }
   console.log(`${PRODUCT_NAME} ${VERSION} listening on :${port}, ${HAS_CALL_SERVICE ? `LiveKit at ${LIVEKIT_HOST}` : 'no LiveKit'}, base domain ${BASE_DOMAIN}, ${environments.size} environment${environments.size === 1 ? '' : 's'}, host console at ${CONSOLE_HOST}, product pages at ${PRODUCT_HOST}`);
+  // The developer's escape hatches for an environment's own AI address (server/ai-http.js, guardFrom): said out loud, since on
+  // a real host they let any owner make this server call plain http or its own network.
+  if (process.env.AI_ALLOW_HTTP === '1') console.warn('[ai] AI_ALLOW_HTTP=1: owners may point their AI service at a plain http address. Unset it on a real host.');
+  if (process.env.AI_ALLOW_PRIVATE_ADDRESSES === '1') console.warn('[ai] AI_ALLOW_PRIVATE_ADDRESSES=1: owners may point their AI service at this server\'s own network. Unset it on a real host.');
   for (const env of environments.values()) envContext.run(env, fillTwins);
 });
 // A library file of 2 GB takes longer than Node's own five minutes for a whole request on most connections, so a request

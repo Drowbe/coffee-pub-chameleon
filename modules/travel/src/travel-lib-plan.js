@@ -10,6 +10,7 @@
     let trip = null;
     let tripVersion = null;
     let suggested = [];
+    let waiting = []; // other modules' open polls and tasks due before the trip (the Decisions view)
     const listeners = new Set();
     const changed = () => { for (const fn of listeners) fn(); };
 
@@ -91,6 +92,51 @@
       return { ...(t || cleanTrip({})), start: span.start, end: span.end };
     };
 
+    // What the plan points at, told to the host (setLinks), so the object pointed at can show "Used by" and warn before it is deleted
+    // (Places does). Fire and forget: a viewer who may not write is refused, and the plan works the same.
+    const planRef = (id) => host.objects.make('plan', id);
+    // The one thing an item points at: a link's object, or the Place a stop is at.
+    const linkOf = (item) => item.ref || item.placeRef || null;
+    // The files a stay or a journey is linked to (item.files, pointers into the space's library): the plan tells the host (host.files.link
+    // and unlink, which change only the links to files), so the Vault's "Where it is used" and its Remove question come from real link
+    // records. Fire and forget, as setLink: a person who may not write is refused, and the card shows its files all the same.
+    function tellFiles(id, before, after) {
+      if (!host.files || typeof host.files.link !== 'function') return;
+      const had = new Set(before.map(objectKey));
+      const has = new Set(after.map(objectKey));
+      const add = after.filter((r) => !had.has(objectKey(r)));
+      const drop = before.filter((r) => !has.has(objectKey(r)));
+      // A refusal is said in a short sentence, not swallowed: the file would look attached but be unrecorded.
+      const sorry = () => { if (host.ui && typeof host.ui.toast === 'function') host.ui.toast("Couldn't save the file links."); };
+      if (add.length) host.files.link(planRef(id), add).catch(sorry);
+      if (drop.length && typeof host.files.unlink === 'function') host.files.unlink(planRef(id), drop).catch(sorry);
+    }
+    // setLinks replaces everything the object points at, so the item's files are sent with its Place or link, or they would be dropped.
+    function setLink(id, ref, files) {
+      if (!host.objects || typeof host.objects.setLinks !== 'function') return Promise.resolve(false);
+      const keep = (files || []).filter((f) => !ref || objectKey(f) !== objectKey(ref));
+      return host.objects.setLinks(planRef(id), [...(ref ? [ref] : []), ...keep]).then(() => true).catch(() => false);
+    }
+    // Plans made before the plan told the host: once per browser and change, tell it for every item that points at something. What was
+    // told is kept here ({ id: pointer key }) so a page load asks only about what changed.
+    async function backfillLinks() {
+      if (!host.objects || typeof host.objects.setLinks !== 'function' || typeof host.can !== 'function' || !host.can('edit')) return;
+      const here = typeof host.space === 'function' ? host.space() : null;
+      const key = `travel-links-told.${(here && here.id) || ''}`;
+      let told = {};
+      try { told = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (err) { told = {}; }
+      const now = {};
+      const todo = [...items.values()].map((x) => x.item).filter((i) => linkOf(i)).slice(0, 200);
+      for (const i of todo) now[i.id] = objectKey(linkOf(i));
+      for (const id of Object.keys(told)) if (!now[id] && !items.has(id)) delete told[id];
+      let changed = false;
+      for (const i of todo) {
+        if (told[i.id] === now[i.id]) continue;
+        if (await setLink(i.id, linkOf(i), i.files)) { told[i.id] = now[i.id]; changed = true; }
+      }
+      if (changed) { try { localStorage.setItem(key, JSON.stringify(told)); } catch (err) { /* not kept */ } }
+    }
+
     async function load() {
       await moveOldKeys();
       const t = await host.storage.get(TRIP_KEY);
@@ -100,6 +146,7 @@
       for (const it of await host.storage.list(OLD_PLAN_PREFIX)) remember(it.key, it.value, it.version);
       changed();
       resolveSummaries().catch(() => {});
+      backfillLinks().catch(() => {});
     }
 
     host.on('change', (e) => {
@@ -113,10 +160,28 @@
       if (!e.deleted && String(e.key).startsWith(OLD_PLAN_PREFIX)) moveOld({ key: e.key, value: e.value, version: e.version }).catch(() => {});
     });
 
+    // Many at once (someone cleared the plan, or put it back): kept in one pass, drawn once, the summaries asked once. Keys
+    // only (a big event comes without values): the plan is read again.
+    host.on('changes', (e) => {
+      if (e.scope === 'spaces') return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => c.key === TRIP_KEY || planIdOf(c.key) !== null);
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      let plans = false;
+      for (const c of list) {
+        remember(c.key, c.deleted ? null : c.value, c.version);
+        if (planIdOf(c.key) !== null) plans = true;
+      }
+      changed();
+      if (!plans) return;
+      resolveSummaries().catch(() => {});
+      for (const c of list) if (!c.deleted && String(c.key).startsWith(OLD_PLAN_PREFIX)) moveOld({ key: c.key, value: c.value, version: c.version }).catch(() => {});
+    });
+
     // The summaries of the objects other modules hold that this plan points at.
     // `all` asks again for every one (an object may have been changed or deleted where it lives), not just the new ones.
     async function resolveSummaries(all) {
-      const want = [...items.values()].map((x) => x.item).filter((i) => i.ref && (all || !summaries.has(objectKey(i.ref)))).map((i) => i.ref);
+      const want = [...items.values()].map((x) => x.item).filter((i) => linkOf(i) && (all || !summaries.has(objectKey(linkOf(i))))).map((i) => linkOf(i));
       if (!want.length) return;
       let got;
       try {
@@ -175,6 +240,26 @@
       return withDates(trip);
     }
 
+    // The trip's time zone changed: each timed item is written again as it is, so the server re-dates its copy on the calendar in
+    // the new zone (a copy follows its item only when the item is written). Returns how many it could not write.
+    async function redateCopies() {
+      const todo = [...items.values()].filter(({ item }) => item && item.kind !== 'link' && item.date && item.time);
+      let failed = 0;
+      // Written as they are, a few at a time, with one redraw at the end (an edit each would redraw the plan for every item).
+      const next = async () => {
+        for (let cur = todo.shift(); cur; cur = todo.shift()) {
+          const { id, ...value } = cur.item;
+          try {
+            const saved = await host.storage.set(cur.key, value, { version: cur.version });
+            items.set(id, { item: cur.item, version: saved.version, key: cur.key });
+          } catch (err) { failed += 1; }
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, next));
+      changed();
+      return failed;
+    }
+
     // The main phase's end moved later to cover `day` through the host (host.phasesCover, the cover route): only the
     // end moves, and every later boundary with it. Nothing without phases, or on a host without the call.
     async function coverDay(day) {
@@ -208,7 +293,8 @@
       const saved = await host.storage.set(PLAN_PREFIX + id, value, {});
       items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
       changed();
-      if (item.ref) resolveSummaries().catch(() => {});
+      if (linkOf(item)) { setLink(id, linkOf(item), item.files); resolveSummaries().catch(() => {}); }
+      if (item.files && item.files.length) tellFiles(id, [], item.files);
       try {
         await stretchFor(item);
       } catch (err) {
@@ -286,6 +372,8 @@
         if (moving) await host.storage.delete(cur.key).catch(() => {});
         items.set(id, { item, version: saved.version, key: PLAN_PREFIX + id });
         changed();
+        if ((linkOf(cur.item) ? objectKey(linkOf(cur.item)) : '') !== (linkOf(item) ? objectKey(linkOf(item)) : '')) { setLink(id, linkOf(item), item.files); if (linkOf(item)) resolveSummaries().catch(() => {}); }
+        if ((cur.item.files || []).map(objectKey).join() !== (item.files || []).map(objectKey).join()) tellFiles(id, cur.item.files || [], item.files || []);
         await stretchFor(item);
         return item;
       } catch (err) {
@@ -301,12 +389,22 @@
       }
     }
 
+    // Take one file off a stay or a journey (Remove link on a chip whose file was removed): its pointer goes from the object and its link record.
+    async function removeFile(id, ref) {
+      const cur = items.get(id);
+      if (!cur) return null;
+      const keep = (cur.item.files || []).filter((r) => objectKey(r) !== objectKey(ref));
+      return updateItem(id, { files: keep });
+    }
+
     async function removeItem(id) {
       const cur = items.get(id);
       if (!cur) return;
       await host.storage.delete(cur.key || PLAN_PREFIX + id);
       items.delete(id);
       changed();
+      if (linkOf(cur.item)) setLink(id, null, []);
+      else if ((cur.item.files || []).length) tellFiles(id, cur.item.files, []);
     }
 
     // A round trip: the outbound, then the return pointing at it. A car cannot be one.
@@ -431,18 +529,30 @@
     const addLink = (ref, place, title) => addItem({ kind: 'link', ref, ...placeFields(place), title: title || '' });
 
     // Dated objects other modules hold in this space, on days of the trip, that the plan does not already point at:
-    // what the plan could take in. Nothing is stored until one is added.
+    // what the plan could take in. Nothing is stored until one is added. A Calendar copy of the plan's own object (`copy`, set
+    // by the host) is never offered: that would be the plan's own item coming back.
     async function suggest() {
       const tripDaysList = days();
-      if (!tripDaysList.length) { suggested = []; changed(); return suggested; }
       let found = [];
       try {
         found = await host.objects.search('');
       } catch (err) {
         found = [];
       }
+      // The search answers the newest 50, so the polls and tasks Decisions lists are asked for by kind (all of them).
+      const seen = new Set(found.filter((c) => c && c.ref).map((c) => objectKey(c.ref)));
+      for (const kind of ['poll', 'task']) {
+        try {
+          for (const c of await host.objects.search('', { kind })) if (c && c.ref && !seen.has(objectKey(c.ref))) { seen.add(objectKey(c.ref)); found.push(c); }
+        } catch (err) { /* the 50 stand */ }
+      }
+      // Decisions: a poll still open, and a task not done with a due day before the trip starts (or already past).
+      const first = (withDates(trip) || {}).start || tripDaysList[0] || '';
+      waiting = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && c.done !== true
+        && (c.kind === 'poll' || (c.kind === 'task' && first && (summaryWhen(c) || {}).day && summaryWhen(c).day < first)));
+      if (!tripDaysList.length) { suggested = []; changed(); return suggested; }
       const pinned = new Set(list().filter((i) => i.ref).map((i) => objectKey(i.ref)));
-      suggested = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !pinned.has(objectKey(c.ref)) && tripDaysList.includes((summaryWhen(c) || {}).day));
+      suggested = found.filter((c) => c && c.ref && c.module && c.module.id !== 'travel' && !c.copy && !pinned.has(objectKey(c.ref)) && tripDaysList.includes((summaryWhen(c) || {}).day));
       changed();
       return suggested;
     }
@@ -501,9 +611,10 @@
     }
 
     return {
-      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, coverDay, bands, phased, addItem, updateItem, removeItem, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
+      refreshSummaries: () => resolveSummaries(true), refreshPhases, load, list, onLine, atJoint, sortable, days, byDay, dayOf, jointOf, summaries, suggest, provide, onFromText, onSaid, saveTrip, redateCopies, coverDay, bands, phased, addItem, updateItem, removeItem, removeFile, addRoundTrip, returnFor, outboundFor, extraReturns, removeLeg, applyChanges, moveTo, moveToJoint, previewMove, moveDays, previewClear, clearDay: clearDayOf, nudgeItem, addLink, fromSuggestion, fromObject,
       get trip() { return withDates(trip); },
       get suggestions() { return suggested; },
+      get waiting() { return waiting; },
       versionOf: (id) => (items.get(id) || {}).version,
       subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     };

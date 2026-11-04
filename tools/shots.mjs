@@ -269,16 +269,17 @@ async function launch(bin) {
 
 // ---- the throwaway server ----
 function freePort() { return new Promise((res, rej) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej); }); }
-async function startServer(dataDir, port, seed) {
+// `env`: more of the server's environment variables, for a check that needs one (CLEAR_UNDO_SECONDS).
+async function startServer(dataDir, port, seed, env = {}) {
   const child = spawn(process.execPath, ['--require', path.join(root, 'tools', 'shots-clock.cjs'), 'server/index.js'], {
     cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(port), DATA_DIR: dataDir, TZ: 'UTC', LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'devsecretdevsecret', ADMIN_PASSWORD: PASSWORD, SHOTS_NOW: `${TODAY}T09:00:00.000Z`, SHOTS_SEED: seed },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(port), DATA_DIR: dataDir, TZ: 'UTC', LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'devsecretdevsecret', ADMIN_PASSWORD: PASSWORD, SHOTS_NOW: `${TODAY}T09:00:00.000Z`, SHOTS_SEED: seed, ...env },
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 150; i++) {
-    try { const r = await fetch(base + '/healthz'); if (r.ok) return { base, child }; } catch { /* not up yet */ }
+    try { const r = await fetch(base + '/healthz'); if (r.ok) return { base, child, log: () => log }; } catch { /* not up yet */ }
     if (child.exitCode !== null) break;
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -594,8 +595,8 @@ async function main() {
 
 // Starts the throwaway server in dataDir on port, seeds `seedName` through the API (stops, writes the chat, starts again) and
 // signs everyone in. Answers { server, ctx (the seeded ids, for fill()), cookies (by login) }. tools/check-conformance.mjs uses it too.
-async function bootSeeded(seedName, dataDir, port) {
-  let server = await startServer(dataDir, port, 'first');
+async function bootSeeded(seedName, dataDir, port, { env = {} } = {}) {
+  let server = await startServer(dataDir, port, 'first', env);
   const jars = {};
   const call = async (method, url, body, as = 'admin') => {
     const headers = { 'content-type': Buffer.isBuffer(body) ? 'image/png' : 'application/json', accept: 'application/json' };
@@ -615,7 +616,7 @@ async function bootSeeded(seedName, dataDir, port) {
     const seeded = await SEEDS[seedName].seed(async (m, u, b, as) => { if (as !== 'admin' && !jars[as]) await signIn(as); return call(m, u, b, as); });
     await stopServer(server);
     execSeedChat(dataDir, seeded.trip.id, seeded.users, seedName);
-    server = await startServer(dataDir, port, 'second');
+    server = await startServer(dataDir, port, 'second', env);
     await signIn('admin'); await signIn('mia'); await signIn('sam'); await signIn('lee');
     const ctx = { trip: seeded.trip.id, second: seeded.second.id, mia: seeded.users.mia, sam: seeded.users.sam, lee: seeded.users.lee, key: seeded.key };
     const cookies = { admin: jars.admin, mia: jars.mia, sam: jars.sam, lee: jars.lee, none: [] };

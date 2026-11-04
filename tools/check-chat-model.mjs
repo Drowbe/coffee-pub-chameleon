@@ -580,10 +580,6 @@ try {
       assert.ok(!list.some((m) => m.visibility === 'private'), `${label}: ${who} gets no private message`);
       assert.ok(!list.some((m) => mine.includes(m.id)), `${label}: ${who} gets none of Pat's private ids`);
     }
-    for (const cookie of [sam, owner]) {
-      const thread = await call('GET', `/api/spaces/${S}/ai/thread`, { cookie });
-      assert.ok(!(thread.json.entries || []).some((e) => mine.includes(e.id)), `${label}: no thread of another person's`);
-    }
     return mine;
   };
 
@@ -621,14 +617,8 @@ try {
   assert.ok((await chatOf(pat)).some((m) => m.id === asked.json.id));
   n += 1;
 
-  // The thread routes still answer in their old shape, from the one store.
-  const thread = await call('GET', `/api/spaces/${S}/ai/thread`, { cookie: pat });
-  assert.equal(thread.status, 200, thread.text);
-  assert.deepEqual(thread.json.entries.map((e) => e.role), ['user', 'ai', 'user', 'ai']);
-  assert.deepEqual(Object.keys(thread.json.entries[1]).sort(), ['at', 'id', 'role', 'summaries', 'text']);
-  assert.deepEqual(Object.keys(thread.json.entries[2]).sort(), ['at', 'id', 'role', 'text']);
-  assert.equal((await call('GET', `/api/spaces/${S}/ai/thread?user=${ids.pat}`, { cookie: sam })).status, 403);
-  assert.equal((await call('DELETE', `/api/spaces/${S}/ai/thread/${asked.json.id}`, { cookie: sam })).status, 404, "nobody deletes another's thread entry");
+  // The old thread routes are gone: the chat is the one place the thread lives.
+  assert.equal((await call('GET', `/api/spaces/${S}/ai/thread`, { cookie: pat })).status, 404);
   n += 1;
 
   // A command's echo is stored as the caller's private message.
@@ -925,7 +915,7 @@ try {
   assert.equal((await call('GET', `/api/spaces/${S}/ai`, { cookie: pat })).json.available, true);
   await call('PATCH', `/api/spaces/${S}`, { cookie: owner, body: { aiOff: true } });
   const off = await call('POST', `/api/spaces/${S}/ai`, { cookie: pat, body: { question: 'Off?' } });
-  assert.deepEqual([off.status, off.json.error], [403, 'AI is turned off in this space']);
+  assert.deepEqual([off.status, off.json.error], [403, 'AI is turned off in this space.']);
   await call('PATCH', `/api/spaces/${S}`, { cookie: owner, body: { aiOff: false } });
   n += 1;
 

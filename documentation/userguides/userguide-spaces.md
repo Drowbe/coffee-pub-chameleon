@@ -324,6 +324,9 @@ The tabs, with your environment's words for them:
 - **Members** (named for the environment's word for members, such as **Planners**): who belongs to the space,
   **Allow guests**, then **Generate invite link** and the guest link (**Turn on**, **Copy**, **New link**, **Turn
   off**). Members and **Allow guests** are saved with **Save**. The links work at once and are not part of it.
+  Under **Guests**, **Guests can see costs and booking codes** is off unless an owner turns it on. Off, a guest of
+  this space never receives the amounts of Budget's costs or the Itinerary's booking codes, whatever the guest link
+  shows. Only owners and the admin can change it. It is saved with **Save**.
 - **Phases**: each phase's **Start** and **End** in rows, as in the phase sheet, then the **Budget** field. Saved with
   **Save**. Left out when the environment has no phases; then the **Budget** field is on the tab named for the space
   (an owner's), or on **First visit** (a moderator's).
@@ -337,8 +340,9 @@ The tabs, with your environment's words for them:
   list with a note saying why ("(not installed)", "(turned off)", "(can't open on the canvas)"), so turning it back
   on restores it. **Stop using it** returns to the Workspace. After a first visit each person's own arrangement is
   remembered.
-- **Modules** (named for the environment's word): the modules that are on here, **Turn AI off in this space** (while
-  the server has an AI service), and a section for each module with its settings for this space. Every module that
+- **Modules** (named for the environment's word): the modules that are on here, **Turn AI off in this space** and
+  **What AI may see** (while the server has an AI service; owners only: tick **Same as the environment's choice** off to
+  set what goes to the AI for this space alone, as described in [Modules](userguide-modules.md), "The AI service"), and a section for each module with its settings for this space. Every module that
   is turned on is in every space; an owner turns one on or off on the **Modules** tab of Manage (see
   [Modules](userguide-modules.md)). A moderator sees the module settings only. A file a module holds is deleted at once,
   not on **Save**.

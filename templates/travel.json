@@ -2,12 +2,12 @@
   "id": "travel",
   "name": "Travel",
   "description": "Plan trips together: the itinerary, places, maps, research and a calendar.",
-  "version": 7,
+  "version": 8,
   "words": { "space": { "one": "trip", "many": "trips" } },
   "icons": { "home": "suitcase-rolling" },
-  "moduleNames": { "travel": "Itinerary" },
+  "moduleNames": { "travel": "Itinerary", "vault": "Documents" },
   "moduleIcons": {},
-  "modules": ["travel", "places", "maps", "research", "calendar", "budget", "polls", "todo", "chat", "conference"],
+  "modules": ["travel", "places", "maps", "research", "vault", "calendar", "budget", "polls", "todo", "chat", "conference"],
   "settings": { "showCalendar": true, "showMap": true, "calendarFeeds": true, "otherCalendars": true },
   "lobby": { "name": "Home base", "description": "Everyone on every trip." },
   "phases": [
@@ -16,7 +16,7 @@
     { "id": "buffer", "icon": "hourglass-half", "label": "Buffer" },
     { "id": "pre-trip", "icon": "suitcase-rolling", "label": "Pre-trip" },
     { "id": "trip", "icon": "plane", "label": "Trip", "main": true },
-    { "id": "post-trip", "icon": "camera-retro", "label": "Post-trip" }
+    { "id": "post-trip", "icon": "camera", "label": "Post-trip" }
   ],
   "spaceDefaults": { "profile": "participants", "opensWith": ["travel", "chat"] }
 }

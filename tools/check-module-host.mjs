@@ -32,8 +32,10 @@ const cleanRef = new Function(`${sdkSrc}\nreturn cleanRef;`)();
 
 let failed = 0;
 let n = 0;
+const pending = [];
 const test = (name, fn) => {
-  try { fn(); n += 1; } catch (err) { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); }
+  const bad = (err) => { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); };
+  try { const r = fn(); if (r && typeof r.then === 'function') pending.push(r.then(() => { n += 1; }, bad)); else n += 1; } catch (err) { bad(err); }
 };
 const base = { module: 'todo', kind: 'task', id: 'abc' };
 const inSpace = { ...base, scope: 'space', space: 'gq2zb7pq' };
@@ -122,7 +124,9 @@ test('nothing is left of the old translation (WIRE_SCOPE, toSdk, toWire)', () =>
       const at = host.indexOf(`async ${call}(spec)`);
       assert.match(host.slice(at, host.indexOf('\n    },', at)), /scopeOf\(spec\?\.scope, spec\?\.space\)[^\n]*space: undefined/, `${call} passes { space } and keeps it out of the body`);
     }
-    assert.ok(host.includes("async 'objects.setLinks'({ from, to, space })"), 'setLinks takes { space }');
+    assert.ok(host.includes("async 'objects.setLinks'({ from, to, space, kind, op })"), 'setLinks takes { space } (and the optional kind and op)');
+    const setLinks = host.slice(host.indexOf("async 'objects.setLinks'"), host.indexOf("async 'objects.links'"));
+    assert.match(setLinks, /scopeOf\('space', space === undefined/, 'setLinks checks the given { space } against the pointer\'s');
     const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
     assert.ok(sdk.includes("const opts = (o) => ({ scope: (o && o.scope) || 'context', ...(o && o.space ? { space: String(o.space) } : {}) });"), 'the SDK passes { space }');
   });
@@ -291,7 +295,9 @@ test('actions.list passes a valid ref on, cleaned, and drops a bad one; the drop
   const clearFor = (spaceId, guestToken) => {
     const calls = [];
     const api = async (method, url) => { calls.push([method, url]); };
-    const fn = new Function('id', 'spaceId', 'guestToken', 'api', `${clearSrc}\nreturn clearModuleData;`)('todo', spaceId, guestToken, api);
+    // clearWithUndo (public/module-host.js) sends the DELETE (the server holds what went for its Undo): here, that DELETE.
+    const clearWithUndo = async (moduleId, query) => { calls.push(['DELETE', `/api/modules/${moduleId}/data?${query}`]); return null; };
+    const fn = new Function('id', 'spaceId', 'guestToken', 'api', 'clearWithUndo', `${clearSrc}\nreturn clearModuleData;`)('todo', spaceId, guestToken, api, clearWithUndo);
     return fn().then(() => calls.map(([method, url]) => [method, url.replace(/&tz=[^&]*/, '')]));
   };
   const cases = [
@@ -439,7 +445,7 @@ await (async (name, fn) => {
   assert.deepEqual(deliver('calendar', { modules: ['calendar'] }, false), [], 'within a space it is never heard');
   assert.deepEqual(deliver('todo', { modules: ['calendar'] }), []);
   assert.deepEqual(deliver('calendar', {}), []);
-  assert.match(src, /for \(const type of \[[^\]]*'external'\]\)/, 'the shared stream listens for it');
+  assert.match(fs.readFileSync(new URL('../public/module-stream.js', import.meta.url), 'utf8'), /STREAM_TYPES = Object.freeze\(\[[^\]]*'external'[^\]]*\]\)/, 'the shared stream listens for it (public/module-stream.js)');
   // Never within a space, whatever the scope says (the coordinator's decision for #42 Part 2).
   const rule = new Function(`${slice('public/module-host.js', 'export function externalAllowedHere', '// --- end of externalAllowedHere').replace('export function', 'function')}\nreturn externalAllowedHere;`)();
   assert.equal(rule({ scope: 'environment', search: '' }), true, 'the module\'s own page');
@@ -477,7 +483,7 @@ await (async (name, fn) => {
   assert.deepEqual(deliver('calendar', { modules: ['calendar'] }), [['markers', {}]]);
   assert.deepEqual(deliver('todo', { modules: ['calendar'] }), []);
   assert.deepEqual(deliver('calendar', {}), []);
-  assert.match(src, /for \(const type of \[[^\]]*'markers'[^\]]*\]\)/, 'the shared stream listens for it');
+  assert.match(fs.readFileSync(new URL('../public/module-stream.js', import.meta.url), 'utf8'), /STREAM_TYPES = Object.freeze\(\[[^\]]*'markers'[^\]]*\]\)/, 'the shared stream listens for it (public/module-stream.js)');
   const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
   assert.ok(sdk.includes("markers: (o) => call('objects.markers', { from: o && o.from, to: o && o.to }),"), 'the SDK passes from and to');
 });
@@ -495,7 +501,7 @@ test('editor.lift: lifts a frame over the page, makes the rest inert and puts it
   assert.ok(handler.includes('if (!lift) return false;') && handler.includes('if (pageMode) return liftUp ?'), 'a module in the page answers false unless it is a composite\'s part (liftUp), and a mount with lift: false is answered false');
   assert.ok(src.includes("frame.addEventListener('load', () => releaseLift());"), 'the frame loading another document puts it back');
   assert.ok(/destroy\(\) \{\n\s+if \(!pageMode\) releaseLift\(\);/.test(src), 'destroy() puts it back');
-  assert.ok(src.includes('lift = true, onLift = null, liftUp = null }) {'), 'mountModule takes lift, onLift and liftUp');
+  assert.ok(src.includes('lift = true, onLift = null, liftUp = null, onChanges = null }) {'), 'mountModule takes lift, onLift, liftUp and onChanges');
   // The lift itself, run on a stand-in page: body > [header, main > [section > [bar, frame], other]].
   const pageStart = src.indexOf('const inertCount = new WeakMap();'); // the page-wide lift state, above mountModule
   const pageEnd = src.indexOf('// A module\'s bands in a frame (createModuleFrame', pageStart);
@@ -687,7 +693,7 @@ test('the budget target: a module is let in by its manifest flag, which the moun
 
 test('the budget target (#216): the hello carries host.space().budget, the page says a change, the SDK keeps it current', () => {
   const server = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
-  assert.match(server, /space: here \? \{ id: here\.id, name: here\.name, createdAt: here\.createdAt, phases: here\.phases, budget: \(who\.user && here\.budget\) \|\| null \} : null,/, 'the context gives the budget to a signed-in person, null while none and always for a guest');
+  assert.match(server, /space: here \? \{ id: here\.id, name: here\.name, createdAt: here\.createdAt, phases: here\.phases, budget: \(who\.user && here\.budget\) \|\| null, guestsSeeHidden: here\.guestsSeeHidden === true \} : null,/, 'the context gives the budget to a signed-in person, null while none and always for a guest');
   const page = fs.readFileSync(new URL('../public/space.js', import.meta.url), 'utf8');
   // The space's record on the page no longer carries the budget (the presence list leaves it out): the phases' detail
   // has none, so a member's modules never hear it cleared; an owner's save says it at once.
@@ -705,5 +711,36 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
   assert.match(sdk.slice(at, sdk.indexOf('\n  });', at)), /info\.space\.budget = e\.budget \|\| null/, 'host.space().budget follows');
 });
 
+// A keys-only 'changes' event (a big Clear or Undo comes without values) is read with ONE storage.list for the keys' prefix; a read
+// that fails is asked once more, and nothing is dropped silently: after two failures none of the event is drawn and the person is told.
+{
+  const body = slice('public/sdk/host.js', 'async function readKeysOnly(changes, scope, spaceId) {', '\n  }\n');
+  const make = (call) => new Function('call', 'opts', `${body}\nreturn readKeysOnly;`)(call, (o) => o || {});
+  const keys = Array.from({ length: 1700 }, (_, i) => ({ key: `task:t${i}` }));
+  const store = keys.map((c, i) => ({ key: c.key, value: { n: i }, version: 1 }));
+  test('keys only: one storage.list for the prefix, values joined by key, a key not listed is deleted', async () => {
+    const calls = [];
+    const read = make(async (name, args) => { calls.push([name, args]); return store.slice(0, 1699); });
+    const full = await read(keys, 'space', 's1');
+    assert.equal(calls.length, 1, `${calls.length} calls`);
+    assert.equal(calls[0][0], 'storage.list');
+    assert.equal(calls[0][1].prefix, 'task:t');
+    assert.equal(full.length, 1700);
+    assert.deepEqual(full[5].value, { n: 5 });
+    assert.equal(full[1699].deleted, true);
+  });
+  test('keys only: a failed read is asked again once; two failures drop nothing silently (null, and the person is told)', async () => {
+    let tries = 0;
+    const once = make(async (name) => { if (name === 'storage.list' && ++tries === 1) throw new Error('network'); return store; });
+    const full = await once(keys, undefined, undefined);
+    assert.equal(tries, 2);
+    assert.equal(full.filter((c) => c.value).length, 1700, 'every object came, after the retry');
+    const told = [];
+    const failing = make(async (name, args) => { if (name === 'ui.toast') { told.push(args.text); return true; } throw new Error('down'); });
+    assert.equal(await failing(keys), null);
+    assert.match(told.join(' '), /Reload the page/);
+  });
+}
+await Promise.all(pending);
 if (failed) process.exit(1);
 console.log(`check-module-host: OK (${n} groups)`);

@@ -27,6 +27,8 @@
 .place-row .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .pinned, .nopos { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-11); color: var(--text-muted); }
 .pinned { color: var(--accent); }
+/* On the selected row (a wash of the accent) the muted words and the accent mark read as the strong text colour: 4.5 to 1 in dark too. */
+.place-row.on :is(.sub, .pinned, .nopos, .scope-mark, .saved-state) { color: var(--text-primary); }
 .owners { display: inline-flex; }
 .owner { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: -4px; border: 2px solid var(--bg-card); border-radius: var(--radius-round); background: color-mix(in srgb, var(--accent-fill) 35%, var(--bg-card)); color: var(--text-primary); font-size: var(--text-11); font-weight: var(--weight-strong); }
 .owner:first-child { margin-left: 0; }
@@ -78,7 +80,8 @@
 .found-row .mark { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-round); background: color-mix(in srgb, var(--accent-fill) 18%, var(--bg-card)); color: var(--accent); font-size: var(--text-14); }
 .found-row .title { margin: 0; font-size: var(--text-14); font-weight: var(--weight-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .found-row .sub { margin: 0; color: var(--text-muted); font-size: var(--text-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.found-row .source { margin: 1px 0 0; display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: var(--text-11); opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.found-row .source { margin: 1px 0 0; display: flex; align-items: center; gap: 5px; color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); font-size: var(--text-11); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.found-head [data-slot="label"] { color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); }
 .found-row .source:empty { display: none; }
 .found-row .source::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: var(--radius-round); background: var(--accent-fill); }
 .found-state { padding: 16px; text-align: center; color: var(--text-muted); font-size: var(--text-13); }

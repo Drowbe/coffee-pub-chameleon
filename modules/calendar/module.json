@@ -1,7 +1,7 @@
 {
   "id": "calendar",
   "name": "Calendar",
-  "version": "1.24.29",
+  "version": "1.24.35",
   "icon": "calendar-days",
   "color": "red",
   "description": "Sessions and events for the whole {environment} and for each {space}, with reminders.",
@@ -151,7 +151,7 @@
           "end": "end",
           "allDay": "allDay"
         },
-        "dated": { "title": "title", "start": "start", "end": "end", "allDay": "allDay", "repeat": "repeat" },
+        "dated": { "title": "title", "start": "start", "end": "end", "allDay": "allDay", "tz": "tz", "repeat": "repeat", "skips": "skips" },
         "feed": true,
         "mirror": "in",
         "create": { "id": "{id}", "desc": "", "remind": null, "repeat": null, "by": "{by}" }

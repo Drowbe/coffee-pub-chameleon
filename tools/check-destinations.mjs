@@ -494,7 +494,7 @@ try {
       assert.equal(new URL(to, 'http://same.origin').origin, 'http://same.origin', `${sneaky} stays on this site`);
       assert.equal(new URL(to, 'http://same.origin').pathname, '/calendar');
     }
-    assert.equal(await goes('/modules/dest-tasks', aliceT), '/calendar');
+    assert.equal(await goes('/modules/dest-tasks', aliceT), '/calendar#panel=dest-tasks', 'a panel opens on itself');
     assert.equal(await goes(`/modules/dest-dates?space=${keep}`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-tasks?space=${keep}&popout=1`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-dates?space=${keep}&guest=${encodeURIComponent(guest)}`), 200, 'a guest\'s pop-out');
@@ -704,7 +704,7 @@ try {
 
   await test('map: the module pages lead to /map, pop-outs left alone, and the tile\'s href', async () => {
     assert.equal(await goes('/modules/dest-globe', aliceT), '/map');
-    assert.equal(await goes('/modules/dest-pins', aliceT), '/map');
+    assert.equal(await goes('/modules/dest-pins', aliceT), '/map#panel=dest-pins', 'a panel opens on itself');
     assert.equal(await goes(`/modules/dest-globe?space=${keep}`, aliceT), 200);
     assert.equal(await goes(`/modules/dest-pins?space=${keep}&popout=1`, aliceT), 200);
     assert.equal((await hrefs(aliceT))['dest-pins'], '/map#panel=dest-pins');
@@ -881,9 +881,13 @@ try {
     await guestRole(false);
     assert.deepEqual(await search(aliceT, 'has=amount'), [], 'a person who may not view the module gets none');
     assert.deepEqual(await counted(aliceT), { summaries: [], withheld: 3 }, 'only a count of the priced objects held back, no titles or figures');
-    assert.deepEqual((await guestSearch(`scope=space&space=${keep}&has=amount`)).json.withheld, 0, 'a guest is told of none');
-    assert.deepEqual((await guestSearch(`scope=space&space=${keep}&has=amount`)).json.summaries, [], 'a guest who may not view it gets none');
+    // Costs are kept from guests (server/module-guards.js; check-module-guards has the space's guestsSeeHidden opening them).
+    const refusedGuest = await guestSearch(`scope=space&space=${keep}&has=amount`);
+    assert.equal(refusedGuest.status, 403, 'a guest is refused has=amount');
+    assert.match(refusedGuest.json.error, /^Guests can't see costs in this \w+\.$/);
+    assert.equal('withheld' in refusedGuest.json, false, 'and is told of none');
     await guestRole(true);
+    assert.equal((await guestSearch(`scope=space&space=${keep}&has=amount`)).status, 403, 'even one who may view the module');
     await role({ 'module.dest-pins.view': true });
     assert.deepEqual([(await guestSearch('scope=spaces&has=amount')).status], [403], 'a guest cannot search across spaces');
     const anon = await call('GET', `/api/objects/search?from=dest-globe&scope=space&space=${keep}&has=amount`);

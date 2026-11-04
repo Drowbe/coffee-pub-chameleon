@@ -35,6 +35,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [Planner](userguides/userguide-planner.md) -- planning a trip day by day, with phases (the Itinerary in the Travel template).
 - [Budget](userguides/userguide-budget.md) -- costs planned and paid, the space's target, the burndown and settling up.
 - [Research](userguides/userguide-research.md) -- notes, links and photos a group finds while it plans.
+- [Vault](userguides/userguide-vault.md) -- a space's files: adding, finding, opening, linking from other tools and sharing photos, audio, video, PDFs and notes.
 - [Places](userguides/userguide-places.md) and [Maps](userguides/userguide-maps.md) -- saved places, the map, and a
   picture map for an invented world.
 - [Assistant](userguides/userguide-assistant.md) -- the AI behind `/ai`, and bringing in research from another AI.
@@ -48,7 +49,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
   module, must draw from.
 - [Architecture overview](architecture/architecture-overview.md) -- the pieces, the technology,
   and where the code lives.
-- [Teams and budgets](architecture/architecture-teams-and-budgets.md) -- draft: how work is divided into teams and what each may spend.
+- [Teams and budgets](architecture/architecture-teams-and-budgets.md) -- how work is divided into teams, what each may spend, the usage file and the quick-fix lane.
 - [Modules architecture](architecture/architecture-modules.md) -- how module install and storage
   are built.
 - [Canvas architecture](architecture/architecture-canvas.md) -- the canvas: its grid of modules, docked
@@ -59,6 +60,8 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
   registry.
 - [Environments architecture](architecture/architecture-environments.md) -- one host, many environments:
   the seam, the host console, the roles and the Names migration.
+- [AI architecture](architecture/architecture-ai.md) -- how the AI is asked: the prompt registry, what is sent and what it may see, who may ask, refunds, records, the key and the address guard.
+- [The demo seeder and the checks](architecture/architecture-demo-site.md) -- filling a server with demo data, a demo site that resets itself, and the checks added since 0.4.
 
 See the [repository README](https://github.com/Drowbe/coffee-pub-collaborator) for requirements and the
 short install summary.

@@ -40,6 +40,8 @@ ARG GIT_SHA=dev
 ENV NODE_ENV=production
 ENV APP_REVISION=$GIT_SHA
 ENV DATA_DIR=/app/data
-VOLUME ["/app/data"]
+# The library files (the Vault) are big and are kept apart from the data folder, so the in-app backups stay small.
+ENV VAULT_DIR=/app/vault
+VOLUME ["/app/data", "/app/vault"]
 EXPOSE 3000
 CMD ["node", "server/index.js"]

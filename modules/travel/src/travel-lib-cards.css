@@ -350,11 +350,10 @@
 .app.narrow .row.marker.phase .sdk-mk-line { margin-left: 0; }
 .row.marker.phase .sdk-mk-line { display: flex; width: 100%; height: var(--phase-bar-h); margin: 0; padding: 0 var(--space-2) 0 var(--space-1); border-radius: var(--radius-small); background: color-mix(in srgb, var(--ph) 28%, var(--surface-panel)); }
 .row.marker.phase .sdk-mk-line > .sdk-mk-label { flex: 1 1 auto; order: 1; }
-.row.marker.phase .sdk-mk-line > .sdk-mk-when { order: 2; display: inline; margin-left: auto; }
+.row.marker.phase .sdk-mk-line > .sdk-mk-when { order: 2; display: inline; margin-left: auto; color: color-mix(in srgb, var(--text-primary) 82%, transparent); } /* the muted ink is under 4.5:1 on a phase's tint in dark */
 .row.marker.phase .sdk-mk-line > .sdk-mk-when:empty { display: none; }
 .row.marker.phase .sdk-mk-line > .sdk-mk-note { display: none; }
-/* a card: its band is a stronger surface than its body, which is the lighter one (the banded card reads --card-fill and --card-head-base) */
-.card { --card-fill: color-mix(in srgb, var(--surface-panel) 75%, var(--surface-field)); --card-head-base: color-mix(in srgb, var(--card-head-tint) 10%, var(--surface-card)); }
+/* a card is the shared banded card as it is (system.css): its band and body come from the theme, with no base of the Planner's own */
 
 /* phases: a day in a dated phase takes a soft wash of the phase's tint (header and strip chip), with its name beside the
    date in a tag filled in the tint; borders stay the neutral ones. The tint names are the theme's (Phases.tintOf). */
@@ -366,3 +365,11 @@
 .ph-pink { --ph: var(--tint-pink); }
 .ph-gold { --ph: var(--tint-gold); }
 .ph-red { --ph: var(--tint-red); }
+
+/* a stop's linked Place, as a chip that opens it */
+.place-chip { max-width: 100%; }
+.place-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The files a stay or a journey is linked to (host.ui.fileChips): a line of chips under the card's facts. */
+.card-files { margin-top: var(--space-2); }
+.f-files { margin-bottom: var(--space-2); }

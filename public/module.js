@@ -7,7 +7,7 @@
 //                                          (add &guest=<token> for a guest)
 // (A module page opened over a call also carries from=space&spaceName=<the space's name>, for its Back link.)
 import { loadBranding, api, wireOverlayBack, renderTopbar, markModuleRead, word } from '/brand.js';
-import { mountModule, openClearMenu, askCanvasToOpen, sameSiteOpener } from '/module-host.js';
+import { mountModule, openClearMenu, clearWithUndo, followClearable, askCanvasToOpen, sameSiteOpener } from '/module-host.js';
 import { moduleTint } from '/module-tint.js';
 import { compositesOn, compositesToAsk } from '/composites.js';
 import { createModuleFrame } from '/module-frame.js';
@@ -105,7 +105,7 @@ async function start() {
     variant: 'page',
     titlebar: popout
       ? { close: true, standard: () => popoutStandard(mod), onAction: (e) => pageAction(mod, e, mounted) }
-      : { standard: spaceId ? { ...NONE, clear: true } : NONE, onAction: (e) => pageAction(mod, e, mounted) },
+      : { standard: () => (spaceId ? { ...NONE, clear: mod.clear === true } : NONE), onAction: (e) => pageAction(mod, e, mounted) },
     flush: true,
     content: frame,
     onAction: (e) => { if (mounted) mounted.bandEvent(e); },
@@ -136,6 +136,8 @@ async function start() {
     ...(inPage ? { container: frame } : { frame }),
     // A window of its own is the module: its frame fills the window, so an editor window needs no lift (editor.lift).
     lift: !popout,
+    // The data changed (cleared, or put back): whether Clear is offered, and for how long Undo lasts, are asked again.
+    onChanges: followClearable(mod.id, { spaceId, guestToken }, (entry) => { mod.clear = entry.clear === true; mod.undoSeconds = entry.undoSeconds; chrome.setTitlebar({}); }, () => mod.clear === true),
     chrome,
     scope,
     spaceId,
@@ -185,7 +187,7 @@ async function clearModuleData() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz) q.set('tz', tz);
   } catch { /* the server falls back */ }
-  await api('DELETE', `/api/modules/${encodeURIComponent(id)}/data?${q}`);
+  return clearWithUndo(id, q.toString());
 }
 
 // The module's own page has no ways to show it (it is not on a canvas, and it is the page); in a space it has Clear.
@@ -207,13 +209,13 @@ function popoutStandard(mod) {
     ...NONE,
     dock: Boolean(host && host.supportsMode(mod.id, 'dock')) && { label: 'Dock beside the call' },
     window: Boolean(host && host.supportsMode(mod.id, 'float')) && { label: 'Float over the call', tip: 'Float over the call' },
-    clear: true,
+    clear: mod.clear === true,
   };
 }
 function pageAction(mod, e, mounted) {
   if (e.id === 'close') { window.close(); return; }
   if (!e.standard) { if (mounted) mounted.bandEvent(e); return; }
-  if (e.id === 'clear' && e.el) { openClearMenu(e.el, () => clearModuleData(), { armed: true }); return; }
+  if (e.id === 'clear' && e.el) { openClearMenu(e.el, () => clearModuleData(), { armed: true, name: mod.name || '', undoSeconds: mod.undoSeconds }); return; }
   const host = openerCanvas();
   if (!host || (e.id !== 'dock' && e.id !== 'window')) return;
   host.open(mod.id, e.id === 'dock' ? 'dock' : 'float');

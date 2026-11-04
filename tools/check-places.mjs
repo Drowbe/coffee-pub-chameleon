@@ -16,7 +16,7 @@ const geo = win.createHost({ call: async () => ({}), root: { appendChild() {} },
 
 // The bundled types library, which the module build inlines ahead of the lib as `LIB_TYPES` (server/module-build.js).
 const TYPES_FILE = JSON.parse(fs.readFileSync(new URL('../modules/places/src/places-lib-types.json', import.meta.url), 'utf8'));
-const lib = new Function('geo', 'LIB_TYPES', 'word', `${fs.readFileSync(new URL('../modules/places/src/places-lib.js', import.meta.url), 'utf8')}\nreturn { cleanPlace, placeValue, placeFromRequest, createPlaces, createBookmarks, movePlace, homeFor, ticksOf, defaultTicks, ticksFromIn, narrows, marksOnly, bookmarkKey, cleanBookmark, cleanForward, markedFor, shownOnce, searchOn, readEntry, PLACE_PREFIX, CATEGORIES, DEFAULT_CATEGORIES, OLD_CATEGORIES, findCategory, TYPES, typeOf, typeFromOsm, STATUSES, TINTS, categoryColor, cssColor, lookOf, typeGroups, iconOptions };`)(geo, TYPES_FILE, (key) => key); // `word`: the page's, a stand-in
+const lib = new Function('geo', 'LIB_TYPES', 'word', `${fs.readFileSync(new URL('../modules/places/src/places-lib.js', import.meta.url), 'utf8')}\nreturn { cleanPlace, placeValue, placeFromRequest, createPlaces, createBookmarks, movePlace, homeFor, ticksOf, defaultTicks, ticksFromIn, narrows, marksOnly, bookmarkKey, cleanBookmark, cleanForward, markedFor, shownOnce, searchOn, readEntry, PLACE_PREFIX, CATEGORIES, DEFAULT_CATEGORIES, OLD_CATEGORIES, findCategory, TYPES, typeOf, typeFromOsm, STATUSES, TINTS, categoryColor, cssColor, lookOf, typeGroups, iconOptions, findDuplicate, metresBetween };`)(geo, TYPES_FILE, (key) => key); // `word`: the page's, a stand-in
 
 // An in-memory SDK: the store (with versions and 409s), events, ids, pointers and the actions a page provides.
 function fakeHost() {
@@ -706,6 +706,63 @@ await test('the page: Shows in, its line, the narrowing question, the menu, shar
   assert.match(page, /if \(asked && asked\.mine && !own\) throw new Error\('only that person can add to their own list'\);/);
   assert.equal(manifest.refs.produces[0].summary.spaces, 'spaces', 'the summary carries the marks');
   assert.match(manifest.version, /^0\.12\.\d+$/, 'Places is still 0.12.x');
+});
+
+test('a new place that repeats one is found: the same search result, or the same name within about 30 m', () => {
+  const at = (id, title, lat, lng, extra) => ({ w: 'global', p: { id, title, point: lat === null ? null : { lat, lng }, ...extra } });
+  const list = [at('a', 'Torre de Belém', 38.69159, -9.21593, { origin: 'osm:123' }), at('b', 'Taberna da Rua', 38.7, -9.1), at('c', 'No position', null, null)];
+  assert.equal(lib.findDuplicate(list, { origin: 'osm:123', title: 'Anything', point: { lat: 10, lng: 10 } }).p.id, 'a', 'the same search key, wherever it is');
+  assert.equal(lib.findDuplicate(list, { title: 'torre de belem', point: { lat: 38.69161, lng: -9.21595 } }).p.id, 'a', 'the same name (case and accents aside) within 30 m');
+  assert.equal(lib.findDuplicate(list, { title: 'Torre de Belém', point: { lat: 38.6925, lng: -9.21593 } }), null, 'the same name 100 m away is another place');
+  assert.equal(lib.findDuplicate(list, { title: 'Another name', point: { lat: 38.69159, lng: -9.21593 } }), null, 'another name in the same spot is another place');
+  assert.equal(lib.findDuplicate(list, { title: 'Torre de Belém', point: null }), null, 'no position and no key: nothing to compare');
+  assert.ok(lib.metresBetween({ lat: 38.69159, lng: -9.21593 }, { lat: 38.69168, lng: -9.21593 }) < 12);
+  // The search key is kept on the place, and only when there is one.
+  assert.equal(lib.cleanPlace('x', { title: 'T', origin: 'osm:1' }).origin, 'osm:1');
+  assert.ok(!('origin' in lib.cleanPlace('x', { title: 'T' })), 'no key, no field');
+  assert.equal(lib.placeValue(lib.cleanPlace('x', { title: 'T', origin: 'osm:1' })).origin, 'osm:1');
+  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
+  assert.match(page, /if \(!e\.id && !e\.dupOk\) \{\s*const dup = findDuplicate\(entries\(\), \{ origin: e\.origin, title, point: e\.point \}\);\s*if \(dup\) return askDuplicate\(dup\);/, 'saving a new place asks first');
+  const html = fs.readFileSync(new URL('../modules/places/src/places.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('data-action="open-duplicate">Open it</button>') && html.includes('data-action="save-anyway">Save anyway</button>'), 'Open it and Save anyway');
+  assert.match(page, /`Already in \$\{whereName\(dup\.w\)\}`/, 'a result already in a list says where');
+  assert.ok(page.includes("h.source === 'server' ? 'From earlier searches'") && !page.includes('Saved on this server'), 'the saved search results are "From earlier searches"');
+  assert.match(page, /if \(i > 0 \|\| dup\) b\.classList\.remove\('btn-primary'\)/, 'one main Save in a list of results');
+  assert.match(page, /function uniqueResults\(list\)/, 'the same result once');
+});
+
+test('the list sorts by number, not as text', () => {
+  const rows = ['QA place 10', 'QA place 2', 'QA place 1', 'QA place 11'].map((title, i) => ({ w: 'global', p: { id: String(i), title } }));
+  assert.deepEqual(lib.shownOnce([rows]).map((x) => x.p.title), ['QA place 1', 'QA place 2', 'QA place 10', 'QA place 11']);
+});
+
+test('the dialog opens where it is seen, the "+" is the viewer\'s, backlinks come in one request, and delete says who uses the place', () => {
+  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  // A phone shows one part at a time: the dialog is Places' own, so Places shows its part first (the "+" and a new place asked for).
+  assert.match(page, /const revealPart = \(\) => \{ if \(asPart && host\.destination\) host\.destination\.set\(\{ reveal: 'panel' \}\)/);
+  assert.match(page, /host\.on\('add', \(e\) => \{ if \(e\.id === 'place' && canAdd\(\)\) \{ closeFound\(\); revealPart\(\); openEditor\(null, null\); \} \}\);/);
+  assert.match(page, /closeFound\(\);\s*revealPart\(\);\s*openEditor\(null, null, \{ title:/, 'newPlace (the map\'s ask) shows the part too');
+  // The map hides its "+" when this says no.
+  const may = manifest.actions.provides.find((a) => a.name === 'mayAdd');
+  assert.ok(may && may.local === true, 'mayAdd is a local action');
+  assert.match(page, /mayAdd: async \(\) => \{[\s\S]*?return \{ data: \{ may: state\.loaded \? canAdd\(\) : true \} \};/);
+  // One request for all the places, never one each.
+  assert.match(page, /host\.objects\.linksToAll\(todo\.map\(\(x\) => x\.ref\)\)/);
+  assert.ok(!/host\.objects\.linksTo\(/.test(page), 'no request per place');
+  // The delete question names the modules that point at the place.
+  assert.match(page, /usedByWords\(w, id\)/);
+  assert.match(page, /\$\{andList\(names\)\} \$\{names\.length > 1 \? 'use' : 'uses'\} it\./);
+  // "On the map" only while the map says it is drawn; a position alone is "Has a position"; no "?" owner mark.
+  assert.match(page, /asPart && state\.mapOn \? 'On the map' : 'Has a position'/);
+  assert.match(page, /p\.owners\.filter\(\(k\) => nameOf\(k\)\)/);
+  // A place with no type shows its category, not "Custom Location".
+  assert.match(page, /value: typeOf\(e\.type\) \? e\.type : e\.id \? '' : DEFAULT_TYPE/);
+  // Beside the map a change is told to the map through the page.
+  assert.match(page, /host\.destination\.set\(\{ changed: tellCount \}\)/);
+  const css = fs.readFileSync(new URL('../modules/places/src/places.css', import.meta.url), 'utf8');
+  assert.match(css, /\.place-row\.on :is\(\.sub, \.pinned, \.nopos, \.scope-mark, \.saved-state\) \{ color: var\(--text-primary\); \}/, 'the selected row\'s words read in dark');
+  assert.ok(!/\.found-row \.source \{[^}]*opacity/.test(css), 'a result\'s source line is not dimmed');
 });
 
 console.log(`check-places: OK (${n} checks)`);

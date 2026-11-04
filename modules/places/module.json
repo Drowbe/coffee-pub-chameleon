@@ -1,7 +1,7 @@
 {
   "id": "places",
   "name": "Places",
-  "version": "0.12.17",
+  "version": "0.12.20",
   "icon": "location-dot",
   "color": "orange",
   "description": "The places your {space} cares about: where to stay, where to eat, what to see. Other {modules} link to them, and a place with a position shows on the map.",
@@ -114,6 +114,15 @@
       {
         "name": "categoryColors",
         "label": "Tell the colours chosen for categories",
+        "local": true,
+        "input": {
+          "page": "string?",
+          "pageUntil": "number?"
+        }
+      },
+      {
+        "name": "mayAdd",
+        "label": "Tell whether this person may add places",
         "local": true,
         "input": {
           "page": "string?",

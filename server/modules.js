@@ -19,6 +19,7 @@ const { word, fill } = require('./words');
 const { DESTINATION_IDS, DESTINATION_PARTS } = require('./destinations');
 const objectFormat = require('./object-format');
 const { scanBuiltPage } = require('./module-layout');
+const { cleanGuards, unreadableGuards } = require('./module-guards');
 
 // The text a person reads from a manifest, which may name levels by {space}-style placeholders (server/words.js's fill):
 // its description, the dashboard widget's title, its permissions' labels, its settings' labels and help (and their
@@ -78,7 +79,9 @@ function cleanHooks(raw) {
 }
 // What an object's summary (what another module may show of it) can carry, and which of the producing module's own
 // stored fields fill it (`refs.produces[].summary`). See documentation/api/api-module-sdk.md ("Objects").
-const SUMMARY_FIELDS = ['title', 'subtitle', 'when', 'end', 'allDay', 'done', 'place', 'category', 'text', 'amount', 'planned', 'paidBy', 'sharedBy', 'icon', 'visit', 'color', 'spaces'];
+// `doneAt`: a time (milliseconds) after which the summary's `done` is true whatever the `done` field says (a poll that
+// closes by its time).
+const SUMMARY_FIELDS = ['title', 'subtitle', 'when', 'end', 'allDay', 'done', 'doneAt', 'place', 'category', 'text', 'amount', 'planned', 'paidBy', 'sharedBy', 'icon', 'visit', 'color', 'spaces'];
 const REF_KIND_RE = /^[a-z][a-z0-9-]{0,23}$/;
 const REF_CONSUME_RE = /^[a-z][a-z0-9-]{1,31}:[a-z][a-z0-9-]{0,23}$/;
 const SCOPES = ['environment', 'space', 'person'];
@@ -130,6 +133,8 @@ const ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
 // Ids no module may take: 'ai' names the server-wide AI service (not a module) in `missing`/`aiDependents`, the same way a
 // module id would, so it must never also be a real one.
 const RESERVED_IDS = ['ai'];
+// The folders the host keeps inside DATA_DIR/modules/<id>/, which a module's file setting can't name.
+const RESERVED_FOLDERS = ['versions', 'library', 'data', 'uploads', 'trash'];
 const { cleanRows } = require('./setting-list');
 const VERSION_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
 
@@ -335,7 +340,11 @@ function cleanDated(kind, raw) {
   const instant = ['start', 'end', 'allDay'].some((name) => raw[name] !== undefined);
   if (wall === instant) throw new ModuleError(`module.json: refs "${kind}" dated is either a day or an instant`);
   // `repeat` (either shape): the stored field holding a repeat in the Calendar's shape, { every, until }.
-  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'repeat'] : ['title', 'start', 'end', 'allDay', 'repeat'];
+  // A wall-clock kind may also name `endTime` (the check-out time), `minutes` (its length) and `zone` (where the zone its
+  // times are written in is kept: { key, field }, a stored object of the module and the field holding the zone name). An
+  // instant kind may name `tz`, the field a copy keeps that zone in.
+  // `skips` (with `repeat`): the stored field holding the days ('YYYY-MM-DD') of single occurrences taken out of the repeat.
+  const allowed = wall ? ['title', 'day', 'time', 'endDay', 'endTime', 'minutes', 'zone', 'repeat', 'skips'] : ['title', 'start', 'end', 'allDay', 'tz', 'repeat', 'skips'];
   for (const key of Object.keys(raw)) {
     if (!allowed.includes(key)) throw new ModuleError(`module.json: refs "${kind}" dated.${key} is not used`);
   }
@@ -349,21 +358,38 @@ function cleanDated(kind, raw) {
   };
   const title = field('title', true);
   const repeat = field('repeat', false);
+  const skips = field('skips', false);
+  if (skips && !repeat) throw new ModuleError(`module.json: refs "${kind}" dated.skips needs dated.repeat`);
   if (wall) {
     const dated = { form: 'wall', title, day: field('day', true) };
     const time = field('time', false);
     const endDay = field('endDay', false);
+    const endTime = field('endTime', false);
+    const minutes = field('minutes', false);
     if (time) dated.time = time;
     if (endDay) dated.endDay = endDay;
+    if (endTime) dated.endTime = endTime;
+    if (minutes) dated.minutes = minutes;
+    if (raw.zone !== undefined && raw.zone !== null) {
+      const z = raw.zone;
+      if (typeof z !== 'object' || Array.isArray(z) || typeof z.key !== 'string' || !/^[A-Za-z0-9:_.-]{1,80}$/.test(z.key) || typeof z.field !== 'string' || !HOLDS_FIELD_RE.test(z.field)) {
+        throw new ModuleError(`module.json: refs "${kind}" dated.zone must be { "key": a stored key, "field": a stored field }`);
+      }
+      dated.zone = { key: z.key, field: z.field };
+    }
     if (repeat) dated.repeat = repeat;
+    if (skips) dated.skips = skips;
     return dated;
   }
   const dated = { form: 'instant', title, start: field('start', true) };
   const end = field('end', false);
   const allDay = field('allDay', false);
+  const tz = field('tz', false);
   if (end) dated.end = end;
   if (allDay) dated.allDay = allDay;
+  if (tz) dated.tz = tz;
   if (repeat) dated.repeat = repeat;
+  if (skips) dated.skips = skips;
   return dated;
 }
 
@@ -523,7 +549,11 @@ function cleanBus(rawEvents, rawActions, id, permissionKeys = []) {
     // Calendar's createEvent needs ["date"], and To-do's rules and Polls offer it only when they have a day to give.
     // Kept as declared either way; the bus does not refuse a request that leaves an optional field out.
     const needs = [...new Set((Array.isArray(p.needs) ? p.needs : []).filter((f) => ['place', 'date', 'text', 'subtitle'].includes(f)))];
-    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}) });
+    // `askerOnly`: what the action makes belongs to the person who asked (a photo in their name, from their upload), so only
+    // their own open page of the module takes the request, which waits until then; asking still needs write access.
+    if (p.askerOnly !== undefined && typeof p.askerOnly !== 'boolean') throw new ModuleError(`module.json: action "${name}" askerOnly must be true or false`);
+    if (p.askerOnly && p.local === true) throw new ModuleError(`module.json: action "${name}" is local, which is already for the asker only`);
+    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(p.askerOnly ? { askerOnly: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}) });
   }
   for (const c of Array.isArray(rawActions?.uses) ? rawActions.uses.slice(0, 20) : []) {
     if (typeof c !== 'string' || (c !== '*' && !BUS_USE_RE.test(c))) throw new ModuleError(`module.json: actions.uses "${c}" must be "*" or look like "module:action"`);
@@ -716,7 +746,8 @@ function cleanSettings(raw) {
       // only with a base domain; without one the declaration has no effect, since there is no separate host.
       if (def.scope !== 'environment') throw new ModuleError(`module.json: setting "${key}" is a file, so its scope must be "environment"`);
       const folder = r.folder === undefined ? 'files' : String(r.folder);
-      if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(folder) || folder === 'versions' || folder === 'library') throw new ModuleError(`module.json: setting "${key}" folder must be lowercase letters, digits and dashes (not "versions" or "library")`);
+      // The host's own folders beside it (its versions, data, uploads, a Clear's held data, a library's files) can't be named.
+      if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(folder) || RESERVED_FOLDERS.includes(folder)) throw new ModuleError(`module.json: setting "${key}" folder must be lowercase letters, digits and dashes, and not ${RESERVED_FOLDERS.map((f) => `"${f}"`).join(', ')}`);
       def.folder = folder;
       if (r.shared === 'host') def.shared = 'host';
       // `upload`: the owner may put a file here through the page (PUT /api/modules/:id/files/:folder), checked as `accept` says.
@@ -877,12 +908,19 @@ function cleanManifest(raw, files) {
 
   const refs = cleanRefs(raw.refs, id);
   const storage = cleanStorage(raw.storage);
+  // What the server holds the module's data to beyond access.read and access.write (server/module-guards.js). It only
+  // narrows what people may do, so it asks for no approval.
+  const guards = cleanGuards(raw.guards, permissions.map((p) => p.key), ModuleError);
   const { events, actions } = cleanBus(raw.events, raw.actions, id, permissions.map((p) => p.key));
   const commands = cleanCommands(raw.commands, actions);
 
-  // Which of the module's own permissions guards reading and writing its data.
+  // Which of the module's own permissions guards reading and writing its data. `personWrite`: the one that guards writing
+  // a person's own data (scope "person") in place of `write`, for a module where anyone who may read keeps their own.
   const access = {};
-  for (const kind of ['read', 'write']) {
+  if (raw.access?.personWrite !== undefined && raw.access?.personWrite !== null && !scope.includes('person')) {
+    throw new ModuleError('module.json: access.personWrite needs the "person" scope');
+  }
+  for (const kind of ['read', 'write', 'personWrite']) {
     const named = raw.access?.[kind];
     if (named === undefined || named === null) continue;
     if (typeof named !== 'string' || !permissions.some((p) => p.key === named)) {
@@ -925,7 +963,7 @@ function cleanManifest(raw, files) {
   if (raw.content !== undefined && raw.content !== 'padded' && raw.content !== 'flush') throw new ModuleError('module.json: content must be "padded" or "flush"');
   const content = raw.content === 'flush' ? 'flush' : 'padded';
 
-  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install };
+  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install };
 }
 
 // The sentence for a zip's pages that draw or restyle what the host draws (server/module-layout.js), or null when they do not.
@@ -973,6 +1011,9 @@ class ModuleManager {
     // This environment's words (for the placeholders in a manifest's text) and a module's display name and icon (the
     // owner's, else the template's; null for the manifest's own), set by the environment's build (environment.js).
     this.wordsOf = () => null;
+    // Called with a module's id just before an install, update or rollback turns it off (it asks for something not yet approved),
+    // while it is still on: a Clear waiting for its Undo in it and in what needs it is finished first (server/environment.js).
+    this.beforeOff = () => {};
     this.displayOf = () => ({ name: null, icon: null, ownName: null, ownIcon: null, templateName: null, templateIcon: null });
     this.filled = new Map(); // "id@version|words" -> the manifest with its placeholders filled
     this.withPlaceholders = new WeakSet(); // the stored manifests that have any
@@ -1081,6 +1122,14 @@ class ModuleManager {
         manifest.storage = cleanStorage(manifest.storage);
       } catch {
         manifest.storage = { renamed: [] };
+      }
+      // Guards that no longer read are not dropped (that would lift them): every write is refused, the fields kept from
+      // guests are kept as far as they still read, and when those don't read either guests get none of its data
+      // (unreadableGuards).
+      try {
+        manifest.guards = cleanGuards(manifest.guards, manifest.permissions.map((p) => p && p.key), ModuleError);
+      } catch {
+        manifest.guards = unreadableGuards(manifest.guards);
       }
       try {
         const bus = cleanBus(manifest.events, manifest.actions, id, manifest.permissions.map((p) => p && p.key));
@@ -1387,6 +1436,7 @@ class ModuleManager {
       fs.rmSync(staging, { recursive: true, force: true });
     }
 
+    if (existing?.enabled && this.hasPending(this.pendingFor(existing, manifest))) this.beforeOff(manifest.id);
     const now = new Date().toISOString();
     const entry = existing || {
       id: manifest.id, versions: [], enabled: false, allSpaces: false, spaces: [], approved: { permissions: [], hooks: [], refs: [], events: [], actions: [] }, installedAt: now,
@@ -1487,10 +1537,11 @@ class ModuleManager {
     const entry = this.get(id);
     if (!entry.versions.includes(version) || version === entry.version) throw new ModuleError('that version is not available');
     if (this.manifestOf(id, version)?.outdated) throw new ModuleError(`${this.shownName(this.manifestOf(id, version))} ${version} was built for an older version of ${productName()}, so it can't be rolled back to.`, 409);
-    entry.version = version;
-    entry.updatedAt = new Date().toISOString();
     const manifest = this.manifestOf(id, version);
     const pending = this.pendingFor(entry, manifest);
+    if (entry.enabled && this.hasPending(pending)) this.beforeOff(id);
+    entry.version = version;
+    entry.updatedAt = new Date().toISOString();
     if (this.hasPending(pending)) entry.enabled = false;
     this.save();
     return this.view(id);

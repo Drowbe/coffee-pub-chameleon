@@ -75,16 +75,26 @@ Nothing here edits or deletes a place, and pins are not draggable.
 
 The script builds the map's style from the theme tokens at load and again when the theme changes (reading `getComputedStyle` of the root), so the map is never a fixed dark or light picture. The style is the interface side's to specify and the script's to build; the mapping, by the basemap schema's layer names:
 
-| Layer | Colour |
-|---|---|
-| background, `earth` | `--bg-section` |
-| `landuse` (parks, woods), `natural` | `--accent` 9% over `--bg-section` |
-| `water` | `--text` 9% over `--bg-section` |
-| `roads` major | `--text` 16% over `--bg-section`; minor and paths `--border` |
-| `buildings` | `--text` 6% over `--bg-section` (from zoom 15) |
-| `boundaries` | `--text-dim`, dashed |
-| `places` labels | `--text` for cities, `--text-dim` for the rest, halo `--bg-section` |
-| `pois` | not drawn: the pins are the points of interest |
+The colours are map tokens (`--map-*`, in `public/sdk/system.css`, the dark values and a light block that overrides some), each a mix of the theme's own tokens, so a theme that sets one wins. The page reads them with `getComputedStyle` and hands them to the style; a style built without them (the checks) works the same ladder out itself (`mapColours` in `maps-lib-d-style.js`).
+
+| Layer | Token | Dark | Light |
+|---|---|---|---|
+| background, `earth` | `--map-land` | `--text-primary` 4% over `--surface-panel` | `--surface-panel` |
+| `landcover` | `--map-wood` | `--tint-green` 9% over the land | same |
+| `landuse` (parks, woods) | `--map-park` | `--tint-green` 16% over the land | same |
+| `water`, waterways | `--map-water` | `--tint-blue` 38% over `--surface-page` | `--tint-blue` 38% over `--surface-panel` |
+| `roads` paths and minor | `--map-road-minor` | `--text-primary` 20% over the land | 27% |
+| `roads` medium | `--map-road-medium` | 30% | 39% |
+| `roads` major and highways | `--map-road-major` | 42% | 50% |
+| `buildings` (from zoom 15) | `--map-building` | `--text-primary` 10% over the land | 12% |
+| `boundaries` | `--map-boundary` | `--text-muted`, dashed, country and region level only | same |
+| `places` small labels | `--map-label` | `--text-primary` 40% over `--text-muted` | same |
+| `places` cities and regions | `--text-primary` and `--text-muted` (the style's own, not tokens) | halo: the land, 2 px | same |
+| `pois` | not drawn: the pins are the points of interest | | |
+
+The map reads on every theme: whatever the tokens give, the style clamps them last (`guardMap` in `maps-lib-d-style.js`, its minimums in `MAP_MIN`). Each colour is nudged toward the text colour (else black or white) until it holds its minimum against the land, and a colour that already holds is not touched: place names 4.5 to 1 on the land (and 3 to 1 on the water where both can hold), a major road 3, a medium road 2.3, a minor road 1.7 (each road class at least 1.1 times the one below), water 1.5 from the land and with a blue of its own, a park 1.15, a wood 1.06, a building 1.15, and a border as drawn (70% opacity) 2. Names have a 2 px halo in the land colour.
+
+What `check-maps` holds: those minimums on every shipped theme (Strong Coffee, Cream, Calming Teal, Burnt Orange), dark and light, from the real `--map-*` lines of `system.css`, and also with no tokens, with every token set to the land or the page, and on 400 random themes. Parks are green and not the accent, and nothing draws a neighbourhood's boundary.
 
 No sprite or icon font is needed. Labels use one Latin glyph set at first (see the plan). Fewer layers than a general basemap on purpose: it keeps the file small to read and the map calm behind the pins.
 

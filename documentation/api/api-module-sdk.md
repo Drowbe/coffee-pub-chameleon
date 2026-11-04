@@ -109,7 +109,7 @@ await host.storage.delete('event:123');
 - Keys are 1 to 128 of letters, digits and `. _ : / -`. A value can be any JSON up to about 60 KB. A module may store 5 MB in all.
 - Every write bumps the key's `version`. Pass the version you read to detect a change made since: `set(key, value, { version })` rejects with `error.status === 409` and `error.current` (what is stored now) if someone wrote first. Without a version, the last write wins.
 - Store each thing under its own key, not everything as one blob, so two people editing different things never collide.
-- `set` and `delete` also send the browser's time zone, which the server uses only to turn an instant into a day and a time for [held pointers and twins](#keeping-links-true). You pass nothing; a zone the server does not accept falls back to its `TZ`, then UTC, and the write still succeeds.
+- `set` and `delete` also send the browser's time zone, which the server uses only to turn an instant into a day and a time for [held pointers and twins](#keeping-links-true). You pass nothing, except that `set(key, value, { tz })` names the IANA zone the value's clock times are in when it is not the person's own (the Calendar names the trip's zone when it saves a copy of an Itinerary object, so the time does not move with where the person is); a zone the server does not accept falls back to its `TZ`, then UTC, and the write still succeeds.
 - Renaming your own keys: list the change in `module.json` as `"storage": { "renamed": [{ "from": "item:", "to": "plan:" }] }` (up to 10 key prefixes) and the server moves every stored key starting with `from` to `to`, in every scope. A rename is in effect for every version from the one that introduced it onward, even if later versions stop listing it. While it is in effect, keys still under the old prefix are moved on every start, install, update and rollback; switching to a version older than the one that introduced it moves the keys back (the newest rename first) and drops the record. The registry records each as `renamed: [{ from, to, version, at, kept }]`. A key whose new name is already taken is never overwritten: both are kept (`kept`). The log and the activity list note only keys actually moved and new conflicts. A list that would move keys in a circle is refused. Your code then reads only the new keys.
 
 ### Live changes
@@ -121,6 +121,20 @@ host.on('change', (e) => {
 ```
 
 Any change to stored data in the scopes the frame can see is pushed to it, including changes the frame made itself. Read the current state with `list` once at start, then apply `change` events.
+
+**Many keys at once.** A Clear and its Undo change every key of a module together, so they arrive as one `changes` event:
+
+```js
+host.on('changes', (e) => {
+  // e = { changes: [{ key, value, version, deleted, by }], cleared, restored, by, scope, spaceId }
+});
+```
+
+- A module that listens for `changes` hears the whole batch once and can keep every entry, then draw once. A module that does not listen hears each entry as a `change`, in one pass, with `batch: { count, last }` on each so it can draw on the last only.
+- A batch whose values would be bigger than 256 KB arrives with no `value` on its entries, only the key, version and `deleted`. For a module with no `changes` listener the SDK first reads the values with one `storage.list` of the keys' common prefix (asked once more if it fails; if that fails too the person sees "Some changes did not load. Reload the page to see them." and the module hears none of that event). A module with a `changes` listener must check for an entry that is not `deleted` and has no `value`, and read the data again with `list`. These bundled modules listen for it: Budget, Calendar, Places, Polls, Research, To-do and the Planner (read as code).
+- `cleared` is true for a Clear and `restored` for an Undo. The server's contract is in [api-modules](api-modules.md), "The `changes` event".
+
+**Library files.** `host.on('library', ({ op, id, module, spaceId }) => ...)` fires when a file of the space's library was added, renamed, removed or given a small picture (`op` is `added`, `renamed`, `removed` or `thumb`). The library module itself hears it, and so does a module approved to link to the library's files. It carries ids only; ask `host.library.list()` or `host.files.resolve` again for what to show. `host.ui.fileChips` already listens.
 
 ### Reminders and notifications (hooks)
 
@@ -199,6 +213,7 @@ const summaries = await host.objects.resolve([refA, refB]);
 const found = await host.objects.search('retreat');     // summaries, each with its pointer in summary.ref
 // On an environment page, { scope: 'spaces' } asks every space the viewer is a member of at once (each pointer carries its space);
 // { has: 'place' } keeps only summaries with a place, up to 1,000 rather than 50 (a map's pins); { has: 'amount' } keeps only those with an amount (see host.objects.priced below). A page in a space cannot ask 'spaces'.
+// { kind: 'poll' } keeps only that kind ("poll", a kind name; 400 "kind is a kind name" otherwise), also up to 1,000: a module that wants one kind wants all of it.
 const pins = await host.objects.search('', { scope: 'spaces', has: 'place' });
 
 // The costs other modules hold in this space: the summaries that carry an `amount`, as this person may read them.
@@ -211,15 +226,23 @@ const kinds = await host.objects.kinds();               // [{ module, moduleName
 
 // Show an object in the module that owns it. The module opens on the canvas (or its page) and it is handed the pointer.
 await host.objects.open(summary.ref);                   // only useful when summary.open is true
+// A pointer to a library file (kind 'file') opens the file window over the canvas instead (as host.files.open); { list } is the ids of the
+// files linked where it was opened from, so Previous and Next walk those (without it they are hidden).
+await host.objects.open(fileRef, { list: [idA, idB] });
 host.objects.onOpen((ref) => { /* you own ref: show it (select it, scroll to it, open it) */ });
 
 // Tell Collaborator what one of your objects points at (the whole list, replacing the last), so what is pointed at can ask.
 await host.objects.setLinks(host.objects.make('task', id), [refA, refB]);
 // From an environment page, for one of a space's objects: the pointer already carries the space; { space } is only a check.
 await host.objects.setLinks(host.objects.make('task', id, { scope: 'space', space }), [refA], { space });
+// With { kind }, only the links to objects of that kind are replaced and the rest stay; with { kind, op: 'add' | 'remove' } the list is added to those
+// links or taken out of them. At most 20 targets. host.files.link and unlink do exactly this for kind 'file'.
+await host.objects.setLinks(object, fileRefs, { kind: 'file', op: 'add' });
 // What points at one of your objects (kind has "backlinks": true), and what one points at: summaries.
 const from = await host.objects.linksTo(ref);
 const to = await host.objects.linksFrom(ref);
+// What points at each of several of your objects, in one request (a list of places asks once, not once per place): [{ ref, summaries }], only the objects something points at. Up to 200 refs.
+const many = await host.objects.linksToAll([refA, refB]);
 host.on('links', (e) => { /* e.ref: one of your objects whose links changed: ask again */ });
 
 // Other modules' objects that show on a calendar as markers (a kind with "marker": true): a task's due day, a poll's closing time.
@@ -272,6 +295,13 @@ The **drop context** is `{ summary, target?, date?, time?, place? }`: `summary` 
 
 Treat `ref` as untrusted: `dropMenu` resolves it, which is where Collaborator checks what the viewer may see, and shows its error if not. Collaborator brokers a drag between module frames in the same window (the page, or the popped-out app). `host.objects.drag(event, ...)`, called from a native `dragstart`, and `host.objects.accepts` / `host.objects.parse` for a native drop remain for a drag that does not come from a module, but a module offering objects should use `draggable`. Search is the way to link without dragging at all.
 
+### Picking an object (`host.objects.pick`)
+
+`host.objects.pick({ modules?, kinds?, scope?, space?, title?, multiple? })` opens a window the host draws to choose another module's object, and resolves with its pointer, a list of pointers when `multiple` is true (chosen with ticks, then **Pick**), or `null` when the person cancels. It searches as the person (the same search as `host.objects.search`, so only what they may read and what your module consumes), shows the results as rows with each kind's icon, and on a phone is a full-height sheet. Type to search, Up and Down move, Enter chooses, Escape or **Close** cancels.
+
+- `modules: ['places']` keeps only those modules' objects, and `kinds: ['place']` only those kinds (`"kind"` or `"module:kind"`); each list is at most 20 names, and a list that is not names rejects with status 400. `scope` and `space` are `search()`'s. `title` is the window's name (120 characters; "Pick an object" in the environment's word for it by default).
+- It stores nothing. Keep the pointer (`host.objects.setLinks` if it should be linked) and `host.objects.resolve` it for its title. The old name `items` is refused. The Planner's stop uses it for **Pick from Places**. The look is in [design-theme](../designsystem/design-theme.md), "The object picker".
+
 ### Keeping links true
 
 The server keeps a pointer true after the object it points at changes, with no page open. Four declarations on a `refs.produces[]` entry, and one event, do it. None of them names another module. A manifest with a bad one is refused (400, a sentence naming the field). The rules and the reasons are in [plan-linked-objects](../plans/plan-linked-objects.md) and [plan-plan-calendar-sync](../plans/plan-plan-calendar-sync.md).
@@ -301,14 +331,15 @@ const off = host.objects.onChange(({ ref, change }) => { /* change is 'updated' 
   "create": { "id": "{id}", "desc": "", "remind": null, "repeat": null, "by": "{by}" } }
 ```
 
-- `dated` is either a wall clock (`title` and `day` required, `time` and `endDay` optional) or an instant (`title` and `start` required, `end` and `allDay` optional), each naming a stored field. An instant's stored value may be a date or date-time string, or a number of milliseconds. Mixing the two is refused. Either shape may name a `repeat` field (stored as `{ every, until }`, the Calendar's shape).
+- `dated` is either a wall clock (`title` and `day` required; `time`, `endDay`, `endTime`, `minutes` and `zone` optional) or an instant (`title` and `start` required; `end`, `allDay` and `tz` optional), each naming a stored field, except `zone`, which is `{ "key": <a stored key>, "field": <the field holding a zone name> }`: where the space keeps the zone its times are written in (the Itinerary keeps the trip's). `endTime` is the check-out time and `minutes` a length (1 to 10080), each making the twin's end; `tz` is the field a timed twin keeps that zone in. An instant's stored value may be a date or date-time string, or a number of milliseconds. Mixing the two is refused. Either shape may name a `repeat` field (stored as `{ every, until }`, the Calendar's shape).
 - `feed: true` (needs `dated`) offers the kind to calendar feeds ([api-modules](api-modules.md), "Calendar feeds"): a person's everything address and their address for one space read each object with that person's own permissions whenever their calendar app asks, and the environment's published calendar reads it with nobody's, from every space where your module is on that an owner has not left out.
 - `marker: true` (needs `dated`; not with `mirror` or `feed`) shows the kind on a calendar as a marker that links back to the object, never as a twin; see "Markers" under "Objects" above.
 - `mirror` is `out` (sends twins) or `in` (receives them), and needs `dated`. The server sends from a wall-clock kind to an instant kind.
+- **Flags on summaries.** A twin's summary (from `host.objects.resolve`, a search or a list) carries `copy: true` and `twinOf` (the original's reference); an original that has twins carries `twins` (their references). A picker offers a pair once, by its original, and never offers a module its own objects through its twin.
 - `create`, required with `mirror: "in"` and refused otherwise, is the stored value a new twin starts from: text (up to 200 characters), a number, a boolean or `null` per field. `{id}` becomes the new id and `{by}` the writer's name.
 - A space object of a sending kind that has a day, and holds no pointer, gets one twin in each receiving kind that is on in that space and that the sender was approved to link to. A personal object never gets one.
-- A wall-clock day with no time becomes an all-day twin starting on that day, with `endDay` as its end; with a time it becomes the instant of that day and time in the writer's time zone, and the end is left alone. The way back reads the day and time of `start` in the writer's time zone.
-- Title, day and time write both ways. Clearing the sender's day, or deleting the sender, deletes the twin. Deleting the twin leaves the sender as it is until its day changes, which makes a new twin. A receiver's own objects never make a sender object.
+- A wall-clock day with no time becomes an all-day twin starting on that day, with `endDay` as its last day; with a time it becomes the instant of that day and time, in the zone the space keeps (`dated.zone`) else the writer's, and the twin keeps that zone in `dated.tz`. A timed twin's end is the check-out (`endDay` and `endTime`, else the start's clock time on the end day), else `minutes` after the start, and none when neither is there or the end would not be after the start. The way back reads the day and time of `start` in the same zone. Ticking "All day" on a twin never erases the original's time or end day.
+- Title, day and time write both ways. Clearing the sender's day, or deleting the sender, deletes the twin. Deleting the twin hides it for good: the pair stays as a record that it was hidden, the sender is left as it is, and the twin is not made again, even when the sender's day changes (the Calendar words this **Hide**). A receiver's own objects never make a sender object.
 - The pair is the server's: it shows in `linksTo` and `linksFrom`, and `setLinks` never removes it. Twin writes are the server's, do not count toward the write limit, and are skipped when the receiving module's store is full (tried again on the sender's next change).
 - Objects that already had a day when their kind first declared `mirror: "out"` get their twin on the next server start, once; see [Modules API](api-modules.md).
 
@@ -332,7 +363,7 @@ try {
 }
 ```
 
-`checkAvailable` needs your module's `write` permission here and is refused to a guest and in a space with AI turned off; no AI service or **Use AI in modules** is needed, since reading costs no AI. `check` counts against a limit of 20 a minute per module and person. Anything other than a string or a `Blob` is refused at once with "paste an answer or choose a file first". What to do with the objects is your module's: the Assistant keeps them through other modules' actions, the same way it keeps its own answers (see [Assistant](../userguides/userguide-assistant.md)). If you put an object's text into a `text` action input, that input is kept up to 8000 characters.
+`checkAvailable` needs your module's `write` permission here and is refused to a guest (and not to a space with AI turned off, since a paste is not AI use); no AI service or **Use AI in modules** is needed, since reading costs no AI. `check` counts against a limit of 20 a minute per module and person. Anything other than a string or a `Blob` is refused at once with "paste an answer or choose a file first". What to do with the objects is your module's: the Assistant keeps them through other modules' actions, the same way it keeps its own answers (see [Assistant](../userguides/userguide-assistant.md)). If you put an object's text into a `text` action input, that input is kept up to 8000 characters.
 
 ### Settings
 
@@ -378,7 +409,7 @@ host.lookup.remember('flight', savedFlight);                    // a saved fligh
 
 ### Asking in Chat
 
-`host.chat.ask({ question, refs })` puts a private `/ai` question in the space's Chat, as the person using your module, with up to 12 pointers as context (`refs`, the same pointers `host.ai.ask` takes as `objects`). The question and the answer show in Chat, only to that person; your module gets nothing back but whether it was asked. It needs no hook: Chat applies its own rule for who may use `/ai` ([userguide-chat](../userguides/userguide-chat.md)). It works only on a space's canvas; elsewhere it rejects with "Ask this from Chat in a space.", and an empty question with "Type a question.". Research's **Research this** uses it.
+`host.chat.ask({ question, refs })` puts a private `/ai` question in the space's Chat, as the person using your module, with up to 12 pointers as context (`refs`, the same pointers `host.ai.ask` takes as `objects`). With a pointer and an empty question (`question: ''`), Chat asks its own, "What should I know about <the object's title>?", and the object shows as a chip under the box until it is sent. The question and the answer show in Chat, only to that person; your module gets nothing back but whether it was asked. It needs no hook: Chat applies the one rule for who may use `/ai` ([api-modules](api-modules.md), "Who may use AI here"), and only objects from this space go with it. The page sends the person's time zone with the question. It works only on a space's canvas; elsewhere it rejects with "Ask this from Chat in a space.", and with no question and no object it rejects with "Type a question.". Research's **Research this** uses it. `host.chat.available()` resolves to `{ available }`, false off a space's canvas (a module's own page, where `ask` rejects), so a module can hide the button there.
 
 ### Commands in Chat
 
@@ -396,12 +427,63 @@ A module can take typed text from Chat. List it in `module.json` as a top-level 
 A module that declares the `ai` hook (`true`, or `"optional"` for a module that works without the AI service) can ask the AI the owner set up. An optional module must check `available` first and draw its AI controls only when it is true:
 
 ```js
-const { available, why } = await host.ai.available();
+const { available, why, reason } = await host.ai.available();   // reason: guest, role, space-off, module, not-set-up or allowance; '' when available
 const r = await host.ai.ask({ task: 'ask', question: 'Where is the hotel?', objects: [note.ref, place.ref] });
 // r.text: the words, with a line {{summary:0}} where the first summary goes; r.summaries: [{ icon, kind?, title, content, tags?, place?, date?, links?, sources? }]
+// r.used and each summary's sources: pointers to the objects the answer drew on; r.cut: true when it ran out of room
 ```
 
-Tasks are `summarise`, `ask` and `tags` (`ask` needs no objects (the old `items` is refused): with none it answers from the model's own knowledge, and with some it uses them as context and says which parts came from them; `summarise` and `tags` need objects and use only them; each summary carries `basis`: `general`, `items` or `both`) (`tags` returns `r.tags`, up to 6 words). The server reads the objects as the person asking (only what they may see; up to 12, each up to 8 KB of `text`), sends them inside a fixed frame that tells the model they are data and never instructions, gives the model no tools, and returns its text. Asked for several distinct things, the model is told to write one summary per thing (up to 20 in one answer) rather than fold them into prose. Where the model writes a summary in a fenced block (```` objects ````, which the model is asked for, or, for a model that labels its block loosely, ```` summary ````, ```` json ```` or no language), the server checks each field (an icon from a fixed list, a title of 80 characters, content of 6000 characters — plain prose or simple Markdown, rendered with `host.util.markdown` — up to 5 one-word tags, an optional `kind` naming an everyday sort of thing the summary plainly is — `flight`, `train`, `bus`, `ferry`, `car`, `hotel`, `restaurant`, `cafe`, `bar`, `sight`, `museum`, `tour`, `show`, or left out for a plain one — a place with an in-range position, a real date, up to 5 `http` or `https` links, sources only among the objects given) and returns it as a summary; a block that is not a valid summary stays as ordinary text. The checker is the same one that reads objects brought in from another AI (see "Bringing objects in"). `kind` is ordinary domain language, not a module's own names: a module that recognises one (Planner's `acceptSuggestion`, for one) may act on it, and one that does not simply ignores it. Draw a marker `{{summary:N}}` only where N is a real index into `summaries`. Nothing is stored by the server: not the question, not the answer. It logs who, which module and task, and the token count, never the text. Errors are plain messages: not set up, your role may not use AI, AI is off in this space, the monthly allowance is used, the service did not answer. A person is limited to a few requests a minute.
+Tasks are `summarise`, `ask` and `tags` (`ask` needs no objects (the old `items` is refused): with none it answers from the model's own knowledge, and with some it uses them as context and says which parts came from them; `summarise` and `tags` need objects and use only them; each summary carries `basis`: `general`, `items` or `both`) (`tags` returns `r.tags`, up to 6 words). The server reads the objects as the person asking (only what they may see; up to 12, each up to 8 KB of `text`), sends them as numbered data that the prompt tells the model is never an instruction, gives the model no tools, and returns its text. The page sends the person's time zone with every `host.ai.ask`, so "today" in the prompt is theirs; a module does not pass it. What else goes with the question is the owner's choice, **What AI may see**: the space's phases and dates, objects that match the question, objects linked to the ones you pass, and optionally the chat and the members. A module's ask has no earlier questions. The answer carries `used` (pointers to the objects the model cited), `numbered`, `cut` (true when it ran out of room: there is no note in `text`, so say it from `cut`), `sent` and `leftOut` (what went and what was kept out or cut). Asked for several distinct things, the model is told to write one summary per thing (up to 20 in one answer) rather than fold them into prose. Where the model writes a summary in a fenced block (```` objects ````, which the model is asked for, or, for a model that labels its block loosely, ```` summary ````, ```` json ```` or no language), the server checks each field (an icon from a fixed list, a title of 80 characters, content of 6000 characters — plain prose or simple Markdown, rendered with `host.util.markdown` — up to 5 one-word tags, an optional `kind` naming an everyday sort of thing the summary plainly is — `flight`, `train`, `bus`, `ferry`, `car`, `hotel`, `restaurant`, `cafe`, `bar`, `sight`, `museum`, `tour`, `show`, or left out for a plain one — a place with an in-range position, a real date, up to 5 `http` or `https` links, sources only among the objects given) and returns it as a summary; a block that is not a valid summary stays as ordinary text. The checker is the same one that reads objects brought in from another AI (see "Bringing objects in"). `kind` is ordinary domain language, not a module's own names: a module that recognises one (Planner's `acceptSuggestion`, for one) may act on it, and one that does not simply ignores it. Draw a marker `{{summary:N}}` only where N is a real index into `summaries`. Nothing is stored by the server: not the question, not the answer. It records the call (who, which module and task, the template, the token count and how long it took), never the text. Errors are plain messages: not set up, your role may not use AI, AI is off in this space, the monthly allowance is used, the service did not answer. A person is limited to six AI requests a minute, all AI together.
+
+### Files (`host.library`, `host.files`, `host.ui.fileChips`)
+
+A module that declares `"library": true` (the Vault) keeps the space's files, each checked from its own bytes; see [api-modules](api-modules.md), "Library routes". All of it is for the space the frame is in, and every call rejects with the server's sentence.
+
+```js
+const { files, usage } = await host.library.list();          // [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable?, missing?, shared? }], { bytes, maxBytes }
+const job = host.library.add(blob, { name: 'ticket.pdf', keepPosition: false, onProgress: ({ loaded, total }) => {} });
+const file = await job;                                       // job.cancel() stops it
+await host.library.rename(file.id, 'Ticket, Lisbon.pdf');
+await host.library.remove(file.id);
+const { uses, hidden } = await host.library.uses(file.id);   // the objects that link to it, as summaries, and how many others
+await host.library.thumb(file.id, smallPicture);             // the small picture you made, at most 300 KB (pictures and videos)
+const address = await host.library.url(file.id, { thumb: false, download: false });
+const bytes = await host.library.blob(file.id);              // a Blob of the file (or { thumb: true } its small picture)
+await host.library.download(file.id);                        // the host saves it; needs the download permission
+await host.library.share([file.id]);                         // opens the share sheet over the page; needs the share permission
+await host.library.shares();                                 // opens the list of the space's share links over the page
+```
+
+- `missing: true` is a file whose record is there and whose bytes are gone (a restore without `VAULT_DIR`); The server answers a request for its bytes with 404 and "File missing. Its content is gone from the server; remove it from the list." (read as code at the route; not run through `host.library.blob`). `shared: true` is a file in a share link that still opens, and only people with `share` get the field.
+- `share(ids)` and `shares()` are drawn by the host in the page (so Copy works; a frame may not use the clipboard) and resolve when the sheet is up. Your module hears `sharechanged` when a link is made, changed or turned off (call `list()` again), and `sharechoose` when the person presses **Choose files** in the list of links (start choosing files). The sentences are the server's; see [api-modules](api-modules.md), "Share links".
+
+- `add` keeps where a picture was taken only when `keepPosition` is true. The promise has `.cancel()`, and rejects with a sentence when a type or a limit refuses the file.
+- `viewable: false` is only on a PDF the server could not check, which is kept for download only. Never open it: show "This PDF can't be opened here. Download it." with `download(id)`. `blob(id)` of one rejects with status 404.
+- A PDF is never shown from its address: it is always sent as a download. To show one, fetch `blob(id)` and hand its bytes to the app's PDF viewer (`GET /viewer/pdf` in a sandboxed frame; the protocol is the top comment of `public/sdk/pdf-viewer.mjs`). A file window already does this.
+
+`host.files.open(pointer, { list, name })` opens a library file in a file window over the page, drawn by the host. `pointer` is the file's pointer (`{ module, kind: 'file', id, scope: 'space', space }`); `list` is the ids of the files to walk with **Previous** and **Next**, in the order to walk them (the Vault passes its list as filtered); without it the window has no Previous and Next; `name` is a name to show while the file loads. It resolves to `true` when a window opened or came forward, and `false` at the cap of four windows (the person is told: "Close a window to open another."); opening a file that already has a window brings it forward. When the window closes, focus returns to your frame and your module hears the event `fileclosed` (`host.on('fileclosed', ({ id }) => ...)`), so it can put focus back on what opened the file. **Close all** in the Layout menu, under **Open files**, closes every file window.
+
+- A file window follows the library live: a rename shows in its title at once, and a removal turns it into "File removed".
+- It works on a space's canvas only, and only for a file of the space the module is in; a file of another space rejects with status 403 "that file is not in this space"; anything that is not a file pointer, with 400.
+- The Vault opens its own files. Any other module may open a Vault file only if its manifest consumes the kind (`"refs": { "consumes": ["vault:file"] }`, or `"*"`) and an owner approved it when enabling the module; otherwise it rejects with status 403 "this module may not open files".
+
+### Linking files from your objects (`host.files`, `host.ui.fileChips`)
+
+A module that wants to attach library files to its own objects consumes the file kind (`"refs": { "consumes": ["vault:file"] }`, or `"*"`) and an owner approves it when enabling the module, as for any object. A module that was not approved is refused with status 403 and finds, resolves and links nothing. Nothing here names the library module, and a module with no library on in its space can still ask.
+
+```js
+const picked = await host.files.pick({ multiple: true, title: 'Add a file' });  // pointers; [] when the person cancels
+await host.files.link(host.objects.make('stay', id), picked);     // adds them to what the object points at, whatever else it points at
+await host.files.unlink(host.objects.make('stay', id), [picked[0]]);
+const facts = await host.files.resolve(pointers);                  // [{ ref, name, group, type, size, icon, viewable?, state? }], in order
+const chips = host.ui.fileChips(container, pointers, { canEdit: true });  // { update(pointers), destroy() }
+```
+
+- `pick({ multiple?, title? })` is `host.objects.pick` kept to files: search, tick, **Pick**. At most one pointer without `multiple`. The title is "Add a file" by default and is cut to 120 characters. It rejects with status 404 "There is no Vault in this <space>." when no library is on here for your module.
+- `link` and `unlink` go through `host.objects.setLinks` with `kind: 'file'` and `op: 'add'` or `'remove'`, so the library's **Where it is used** and its Remove question come from real link records. They change only the links to files. Keep your own list of the pointers you show (the Planner stores them in the object as `files`); only a pointer to a file is accepted, and a call with none resolves `{ links: 0 }`. A module that replaces an object's whole link list with `setLinks` must send its files again, or they are dropped.
+- `resolve(pointers)` answers in the same order. `state` is `'removed'` (the file is gone; its link stays and reads "File removed"), `'missing'` (its bytes are gone: "File missing"; only `ref`, `name` and `state`) or `'hidden'` (this person may not see it: "Not available to you"; only `ref` and `state`). Without a `state` the file is there.
+- `host.ui.fileChips(container, pointers, { canEdit?, unlinkable?, live?, onOpen?, onRemoveLink? })` draws the shared file chips (a type icon, the name and the size). The container is cleared. A click opens the file window over the canvas (`host.objects.open` with the other chips' ids as `list`, so Previous and Next walk them; one chip alone has none), or calls `onOpen(pointer)`. A removed, missing or hidden file is a muted tag that is not pressed. `canEdit: true` adds **Remove link** beside a removed or missing file, which calls `onRemoveLink(pointer)`; unlink with `host.files.unlink`, update your own list and call `update`. With `unlinkable: true` as well, a file that is there gets **Unlink** too (an editor's list). The chips look again by themselves when a file is renamed or removed and when links change, until the container leaves the page; `live: false` turns that off. `update(pointers)` draws a new list and `destroy()` stops listening and empties the container. The look is in [design-theme](../designsystem/design-theme.md), "File chips".
+- The Planner is the first module to use them: a stay or a journey holds up to 10 files.
 
 ### Uploaded pictures
 
@@ -696,6 +778,14 @@ kind.destroy();         // closes the list, empties the element and takes the cl
 - **In the narrow layout** (640 px wide or less) the open picker is a sheet: `.sdk-kind-sheet`, holding the field and the list, is fixed to the bottom of the screen at half its height (at least 440 px when the screen allows), over a tint of the page, with the field at its top at 44 px and each option at least 44 px tall; the list is inside the sheet, not placed by the script. Opening in the narrow layout focuses the field.
 - **The styles** are in `/sdk/host.css` between `kind:start` and `kind:end`, in the theme's tokens with no colour of their own ([design-theme](../designsystem/design-theme.md), "The kind picker"). `tools/check-module-window.mjs` runs the filtering, the recent list and the markup from a slice of `host.js`, and holds the stylesheet's block to the tokens, the control height, `--kind-color`, the narrow-layout rule and the 360 px list.
 
+### Time fields (`host.ui.timeField`)
+
+`host.ui.timeField(input, { label?, min?, max?, step?, onChange? })` turns an `<input type="time">` you already have into a time field that follows the environment's clock (`host.locale().clock`: 12 or 24 hours) instead of the browser's own. The input becomes a text field that shows "10:30 PM" or "22:30" and reads what is typed ("1030", "10:30 pm", "7p", "22:30"). `input.value` stays `HH:MM` on the 24-hour clock, or `''` when empty, whether you set it or read it, so what a module stores and its code do not change.
+
+- Up and Down move by `step` minutes (5 unless given; PageUp and PageDown by an hour). Enter and leaving the field accept what was typed. Escape puts back the last good time, and only then: with nothing to put back it goes on to close the window around it. Text that is not a time is `''` and `aria-invalid`; so is a time outside `min` or `max`.
+- `input` and `change` fire once for each accepted time, never for each typed letter. The field is 44 px tall with 16 px text on a touch screen. Its accessible name is the field's `<label>`, kept live, or `label`.
+- It returns `{ value, set(hhmm), min, max, focus(), refresh(), destroy() }`. Call `refresh()` if the clock setting changes while a form is open. Anything but an input throws "host.ui.timeField needs an <input>". The Calendar's start and end times and the Planner's times use it. The look is in [design-theme](../designsystem/design-theme.md), "The time field".
+
 ### Events and actions: reacting to and asking things of other modules
 
 The other two conduits between modules, and like refs they name no module. Declare them in `module.json` and an owner approves what your module hears and asks for.
@@ -762,7 +852,7 @@ Each destination's state is its own shape, and the host owns all of it except wh
 | Destination | State | Who may `set` what |
 |---|---|---|
 | `calendar` | `{ view: 'month' \| 'week' \| 'day', spaces: [<id>...], environment: true \| false, externalOff?: [<id>...], markersOff?: [<module>:<kind>...], markerKinds?: [{ id, label, icon, tint }...], day, from, to }`: the view switch, the filter (the spaces on, whether the environment's own list is, and the kinds of markers it has off), the kinds of markers the calendar has shown (for the filter's switches), the selected day and the period shown (`YYYY-MM-DD`, `to` the day after it) | the `main` part only: `{ day, from, to, markerKinds }`. `markerKinds` is up to 20 entries: `id` is `<module>:<kind>`, `label` 1 to 40 characters ("Tasks due"), `icon` a Font Awesome name (else `calendar-check`), `tint` one of the eight tints or `null` |
-| `map` | `{ mine: true \| false, environment: true \| false, spaces: [<id>...], q: '<search text>', find: <number>, selected: <pointer or null>, phone: true \| false, reveal: 'main' \| 'panel' \| null }`: the filter (Mine, the environment's own, the spaces on), the search field as typed, a number raised on each Enter (the person asked the place search), the selected object, whether the parts are the narrow layout's tabs, and a request to bring a part into view (the page shows that tab and clears it) | either part: `{ selected, reveal }`; `phone` is the page's |
+| `map` | `{ mine: true \| false, environment: true \| false, spaces: [<id>...], q: '<search text>', find: <number>, selected: <pointer or null>, phone: true \| false, reveal: 'main' \| 'panel' \| null }`: the filter (Mine, the environment's own, the spaces on), the search field as typed, a number raised on each Enter (the person asked the place search), the selected object, whether the parts are the narrow layout's tabs, and a request to bring a part into view (the page shows that tab and clears it), `mapOn` (true while the map is drawn: a map file is in use and the device can draw it, so the list beside can say "On the map" only when that is true) and `changed` (a counter the list part raises after its places change, so the map reads them again at once) | `main`: `{ selected, reveal, mapOn }`; `panel`: `{ selected, reveal, changed }`; `phone` is the page's |
 
 `set` refuses a field the part may not change (403 "the panel part cannot set day"), a part of a destination that lets it change nothing (403), and a value of the wrong shape (400 "day is not valid"); a set that changes nothing tells nobody. The filter's choice, the view and the panel's tab are remembered per browser by the page, not by you. When the page is opened at a place (`/calendar#day=2026-10-05`) the main part hears it as `host.page.onHash`, as a module's own page does, and an object (`#ref=`) as `host.objects.onOpen`.
 
@@ -783,7 +873,7 @@ The host folds the buttons into the **+** as plain leaves: the primary items fir
 
 ### Text, times and places
 
-**Text nobody here wrote.** `host.util.esc(text)` makes text safe to put in HTML. `host.util.markdown(text)` turns a small, safe subset of Markdown into HTML: `#`/`##`/`###` headings, `**bold**`, `*italic*`/`_italic_`, `` `code` ``, fenced ` ``` ` code blocks, `-`/`*` and `1.` lists, `> ` quotes, `[text](https://...)` and bare `https://` links (nothing else is ever a link), paragraphs on a blank line. Everything is escaped first, so raw HTML in the text can never reach the page. It is the one place a module may set `innerHTML` from text a person or an AI wrote, because the safety already happened inside it; everywhere else, text still goes in with `textContent`. Use it for an AI's replies, and anywhere else people's own words might use it. The space page uses the very same function for chat (`window.hostText.markdown`, exposed once for the host page itself, since Chat is not a module).
+**Text nobody here wrote.** `host.util.esc(text)` makes text safe to put in HTML. `host.util.markdown(text)` turns a small, safe subset of Markdown into HTML: `#`/`##`/`###` headings, `**bold**`, `*italic*`/`_italic_`, `` `code` ``, fenced ` ``` ` code blocks, `-`/`*` and `1.` lists, `> ` quotes, `[text](https://...)` and bare `https://` links (nothing else is ever a link), paragraphs on a blank line. Code, links and addresses are set aside before bold and italic are looked for, so an underscore or star inside an address (`.../Belem_Tower`) can never pair with another and turn into emphasis, and `_italic_` counts only at word edges, so `snake_case_word` stays as written. Everything is escaped first, so raw HTML in the text can never reach the page. It is the one place a module may set `innerHTML` from text a person or an AI wrote, because the safety already happened inside it; everywhere else, text still goes in with `textContent`. Use it for an AI's replies, and anywhere else people's own words might use it. The space page uses the very same function for chat (`window.hostText.markdown`, exposed once for the host page itself, since Chat is not a module).
 
 **Plain text from Markdown and HTML.** `host.util.plain(text, { line })` returns the words of Markdown or HTML without their marks, for a field you show as plain text: a title, a form field, a description, every field of an object's `details`. A field you draw with `host.util.markdown` keeps its Markdown instead. `plain('**Southwest** [details](https://x.example)')` is `"Southwest details (https://x.example)"`. What it does:
 

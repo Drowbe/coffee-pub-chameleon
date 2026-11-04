@@ -18,6 +18,7 @@ const { LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
 const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEFAULT_ICONS, sameList } = require('./default-lists');
 // The phase timeline rule, the one copy the pages use too (plan-one-bar.md, step 1).
 const phaseRule = require('../public/phases.js');
+const aiPolicy = require('./ai-policy');
 
 // Image slots. Participant: what the video box shows when the camera is
 // off, plus optional overlays drawn on top while they talk, are muted, are
@@ -196,7 +197,7 @@ const ROLE_PERMISSIONS = [
   { key: 'canMute', label: 'Mute other people', group: 'Moderation' },
   { key: 'canKick', label: 'Kick other people', group: 'Moderation' },
   { key: 'canInvite', label: "Manage {a space}'s {guest} link", group: 'Moderation' },
-  { key: 'useAi', label: 'Use AI in {modules} (needs an AI service set up)', group: 'AI' },
+  { key: 'useAi', label: 'Use AI (needs an AI service set up)', group: 'AI' },
   { key: 'image_profile', label: 'Profile photo', group: 'Images' },
   { key: 'image_background', label: 'Call background', group: 'Images' },
   { key: 'image_playerOffline', label: 'Participant: Offline', group: 'Images' },
@@ -218,8 +219,8 @@ const IMAGE_KEYS = ROLE_PERMISSIONS.filter((p) => p.group === 'Images').map((p) 
 const imageDefaults = (own) => Object.fromEntries(IMAGE_KEYS.map((k) => [k, own && (k === 'image_profile' || k === 'image_background')]));
 const EDITABLE_ROLES = ['moderator', 'member', 'guest'];
 const ROLE_DEFAULTS = {
-  moderator: { ...Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p.key, true])), useAi: false, ...imageDefaults(true) },
-  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: false, ...imageDefaults(true) },
+  moderator: { ...Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p.key, true])), useAi: true, ...imageDefaults(true) },
+  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: true, ...imageDefaults(true) },
   guest: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: false, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: false, ...imageDefaults(false) },
 };
 function cleanSpacePermissions(p) {
@@ -770,8 +771,13 @@ class Store {
       ...(cleanLayoutId(r.defaultLayout) ? { defaultLayout: r.defaultLayout } : {}),
       // AI turned off in this space, whatever a role may do (updateSpace); absent while AI is allowed here.
       ...(r.aiOff === true ? { aiOff: true } : {}),
+      // What AI may see in this space, its owner's own choice (server/ai-policy.js); absent means the environment's choice.
+      ...(r.aiSees && typeof r.aiSees === 'object' && !Array.isArray(r.aiSees) ? { aiSees: aiPolicy.readSees(r.aiSees) } : {}),
       // Left out of the environment's published calendar (plan-space-calendars.md, section 2); absent means in it.
       ...(r.publishCalendar === false ? { publishCalendar: false } : {}),
+      // The space's guests see the fields modules keep from guests (a module's guards.hidden: the Planner's costs and
+      // booking codes, Budget's amounts); an owner turns it on. Absent means they don't.
+      ...(r.guestsSeeHidden === true ? { guestsSeeHidden: true } : {}),
       // The template's phases' dates on this space, { <id>: { start?, end? } } (plan-one-bar.md, step 1; the rule is
       // public/phases.js); absent while none is set. Kept as stored: the rule's refusals are updateSpace's.
       ...(Object.keys(phaseRule.cleanDates(r.phases)).length ? { phases: phaseRule.cleanDates(r.phases) } : {}),
@@ -987,8 +993,10 @@ class Store {
     const ownIcon = own('moduleIcons');
     // An icon applies only while it can be drawn (displayIconIds); one that cannot now (its module uninstalled, its
     // entry taken off the icon list) is kept as the owner's, and reported as such, but reads the next one down.
-    const icons = this.displayIconIds();
-    const icon = [ownIcon, from(this.templateModuleIcons)].find((i) => i && icons.includes(i)) || null;
+    // The list of drawable icons is built only when there is an icon to check: a name is asked for far more often.
+    const wanted = [ownIcon, from(this.templateModuleIcons)];
+    const icons = wanted.some(Boolean) ? this.displayIconIds() : [];
+    const icon = wanted.find((i) => i && icons.includes(i)) || null;
     // templateName/templateIcon: what the template gives, whether or not the owner's own is set over it.
     return { name: ownName || from(this.templateModuleNames), icon, ownName, ownIcon, templateName: from(this.templateModuleNames), templateIcon: from(this.templateModuleIcons) };
   }
@@ -1772,6 +1780,14 @@ class Store {
       draft.members = [...new Set(patch.members.filter((k) => typeof k === 'string' && this.userByKey(k)))];
     }
     if (patch.aiOff !== undefined) draft.aiOff = patch.aiOff === true; // this space does not use AI, whatever a role may do
+    // What AI may see here (plan-ai-integration.md, "What AI may see"): an object of the setting's keys, or null to go back
+    // to the environment's choice. A bad key or value is refused with the policy's sentence.
+    if (patch.aiSees !== undefined) {
+      if (patch.aiSees === null) delete draft.aiSees;
+      else {
+        try { draft.aiSees = aiPolicy.cleanSees(patch.aiSees); } catch (err) { throw new StoreError(err.message, 400); }
+      }
+    }
     // In the published calendar (plan-space-calendars.md, section 2): true is the default and is stored as nothing. The
     // Lobby is never in it (it has no members of its own), so it takes no switch.
     if (patch.publishCalendar !== undefined) {
@@ -1779,6 +1795,13 @@ class Store {
       if (id === LOBBY) throw new StoreError('the Lobby is never in the published calendar');
       if (patch.publishCalendar) delete draft.publishCalendar;
       else draft.publishCalendar = false;
+    }
+    // Whether guests see what modules keep from guests (server/module-guards.js, `hidden`): false is the default and is
+    // stored as nothing. Who may send it is the route's to decide (owners and the admin).
+    if (patch.guestsSeeHidden !== undefined) {
+      if (typeof patch.guestsSeeHidden !== 'boolean') throw new StoreError('guestsSeeHidden is true or false');
+      if (patch.guestsSeeHidden) draft.guestsSeeHidden = true;
+      else delete draft.guestsSeeHidden;
     }
     if (patch.profile !== undefined) {
       if (!SPACE_PROFILES.includes(patch.profile)) throw new StoreError('profile must be roleplaying, participants or characters');
@@ -1865,7 +1888,9 @@ class Store {
     if (!('opensWith' in draft)) delete space.opensWith;
     if (!('defaultLayout' in draft)) delete space.defaultLayout;
     if (!('publishCalendar' in draft)) delete space.publishCalendar;
+    if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;
+    if (!('aiSees' in draft)) delete space.aiSees;
     // Someone taken off the member list loses their address for this space, as removeMember does.
     for (const u of this.data.users) if (!space.members.includes(u.key)) this.dropSpaceCalendarFeed(u, id);
     this.save();
@@ -2042,6 +2067,9 @@ class Store {
   // Permissions enabled modules add to the Roles grid (see ModuleManager.permissionList);
   // the server sets this once modules are loaded.
   extraPermissions = () => [];
+  // The permission keys a guest never has and Roles can't turn on for guests: a library module's (server/vault-types.js,
+  // GUEST_LOCKED); the server sets this once modules are loaded.
+  guestLocked = () => [];
   // Whether the server has a call service (LiveKit keys set); the server sets it. Without one nobody has the conference.
   callService = true;
 
@@ -2065,6 +2093,7 @@ class Store {
     const base = { ...ROLE_DEFAULTS[defaultsFor], ...Object.fromEntries(extras.map((p) => [p.key, Boolean(p.defaults?.[defaultsFor])])) };
     const set = { ...base };
     for (const [k, v] of Object.entries(this.data.settings.roles?.[role] || {})) if (k in base) set[k] = Boolean(v);
+    if (role === 'guest') for (const k of this.guestLocked()) if (k in set) set[k] = false;
     return set;
   }
 
@@ -2075,6 +2104,11 @@ class Store {
   setRolePermissions(role, patch) {
     if (OWNER_RIGHTS.includes(role)) throw new StoreError(`the ${this.word('owner')} has every permission, so that role can't be changed`);
     if (!EDITABLE_ROLES.includes(role)) throw new StoreError('no such role', 404);
+    if (role === 'guest') {
+      const locked = new Set(this.guestLocked());
+      const asked = this.allPermissions().find((p) => locked.has(p.key) && patch?.[p.key] === true);
+      if (asked) throw new StoreError(`${this.word('guest', { many: true, cap: true })} can never have "${words.fill(asked.label, this.resolvedWords())}".`);
+    }
     const mine = (this.data.settings.roles[role] ??= {});
     for (const p of this.allPermissions()) if (patch?.[p.key] !== undefined) mine[p.key] = Boolean(patch[p.key]);
     this.save();

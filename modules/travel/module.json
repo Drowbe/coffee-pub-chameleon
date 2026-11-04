@@ -1,7 +1,7 @@
 {
   "id": "travel",
   "name": "Planner",
-  "version": "0.15.57",
+  "version": "0.16.4",
   "icon": "suitcase-rolling",
   "color": "teal",
   "description": "Plan together: a day-by-day itinerary that draws in the events, tasks and polls your {space} already has.",
@@ -42,11 +42,24 @@
         "guest": false,
         "moderator": true
       }
+    },
+    {
+      "key": "clear",
+      "label": "Clear the whole trip",
+      "default": {
+        "member": false,
+        "guest": false,
+        "moderator": true
+      }
     }
   ],
   "access": {
     "read": "view",
     "write": "edit"
+  },
+  "guards": {
+    "clear": "clear",
+    "hidden": ["cost", "estimate", "confirm", "paidBy"]
   },
   "lookups": [
     "flight"
@@ -135,7 +148,7 @@
         "backlinks": true,
         "key": "plan:{id}",
         "holds": { "field": "ref", "onDelete": "remove", "follow": { "title": "title", "day": "date", "pin": "pinned" } },
-        "dated": { "title": "title", "day": "date", "time": "time", "endDay": "checkOut" },
+        "dated": { "title": "title", "day": "date", "time": "time", "endDay": "checkOut", "endTime": "checkOutTime", "minutes": "minutes", "zone": { "key": "trip:main", "field": "tz" } },
         "mirror": "out",
         "categoryNames": { "travel": "Travel", "journey": "Travel", "stay": "Lodging", "eat": "Food", "do": "Activities", "other": "Other" },
         "summary": {

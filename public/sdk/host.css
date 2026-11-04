@@ -281,6 +281,12 @@ a {
 .tv-dow-hint { display: block; min-height: 14px; color: var(--accent); font-size: var(--text-11); font-weight: var(--weight-strong); }
 /* datepicker:end */
 
+/* timefield:start -- the time field (host.ui.timeField): the input is a text field that shows the environment's clock; the box is the Fields
+   block of system.css. Digits keep one width so the time does not shift while it is changed; on a touch screen it is 44px tall, 16px text. */
+.sdk-timefield { font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { .sdk-timefield { min-height: 44px; font-size: var(--text-16); } }
+/* timefield:end */
+
 /* kind:start -- the kind picker (host.ui.kindPicker): one row, --bar-control-h tall, with the chosen kind's icon on a
    tinted chip in its colour (--kind-color, set per kind by the script), the field that names it and filters as you type,
    and a chevron. The list (ul.sdk-kind-list, role listbox) is placed by the script: fixed under the field, inside an open
@@ -429,3 +435,48 @@ a {
   }
 }
 /* kind:end */
+
+/* The file chips (host.ui.fileChips; plan-attachments-vault.md, section 5): the Chips block's tag with a type icon, the name and the size.
+   A removed, missing or hidden file is a muted tag that is not pressed; Remove link sits beside the first two for someone who may edit. */
+.sdk-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sdk-file-chipwrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.sdk-file-chip {
+  max-width: 100%;
+}
+.sdk-file-chip-ic {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.sdk-file-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sdk-file-chip-size,
+.sdk-file-chip-state {
+  flex: none;
+  color: var(--text-muted);
+  font-style: normal;
+}
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-ic,
+.sdk-file-chip[data-state="missing"] .sdk-file-chip-state {
+  color: var(--status-warn-text);
+}

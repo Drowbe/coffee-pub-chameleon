@@ -7,8 +7,13 @@ quality-assurance reviews the store and the share links as security changes; con
 
 **Status:** approved 2026-10-30 (decisions 1 to 7 of 2026-10-29, GitHub #380, and decisions 8 to 15 of 2026-10-30).
 Step 1 is built (commits `bde9358` to `154819d`, on `claude/magical-feynman-xupgiq`); security QA round 1 failed and
-was fixed, round 2 is pending. Steps 2 to 8 are not built. Thomas decided the PDF rule (decision 16) and the hosted
-total (decision 17) on 2026-10-31, and changed the PDF safety rule and the PDF viewer on 2026-11-01 (decision 18).
+was fixed, and round 2's fixes for the server half are in. Step 2 (the Vault module, now 0.2.2) and step 3 (the file
+windows, `host.files.open`, the sandboxed PDF viewer and download-only PDFs) are built, checked by tools as reported by the builders (the file windows with live checks); see
+[userguide-vault](../userguides/userguide-vault.md). The page's **Remove where it was taken** ships off
+(a picture keeps where it was taken unless the person ticks it); Thomas has not yet answered the default (open question 1).
+Steps 4 and 5 are in progress; steps 6 to 8 are not built (the templates' words, step 7, are already in both templates). Thomas decided the PDF rule (decision 16) and the hosted
+total (decision 17) on 2026-10-31, and changed the PDF safety rule and the PDF viewer on 2026-11-01 (decision 18). On 2026-11-03 Thomas decided that the
+viewers open in one of the app's windows, not inside the Vault's content area (decision 19), and the same day, several at once with a cap of 4, on the existing window mode first (decision 20).
 Thomas calls it critical for post-trip sharing. One question is still his, the default for metadata removal; the
 details of the PDF viewer are listed under What is not decided. This plan replaces the attachments plan of
 2026-10-15, which proposed a host attachments service with no module of its own; what stays of its four decisions is
@@ -265,7 +270,9 @@ Files are the Vault's objects (decision 8):
   available to you" and nothing else.
 - **Where it is used** is the existing backlinks (`host.objects.linksTo`), which is what `GET .../uses` answers. The
   linking module tells the server its links with `host.objects.setLinks`, as links work today.
-- **Opening** a link (`host.objects.open`) brings the Vault forward on that file's viewer, after the same check.
+- **Opening** a link (`host.objects.open`) opens that file's viewer window over the canvas, after the same check
+  (decision 19). The Vault is not brought forward and does not have to be on the canvas. It is the same window the
+  Vault's own list opens.
 - **Guests and keyed pages** resolve a file pointer as hidden, always.
 
 ### 5. The SDK
@@ -278,7 +285,7 @@ const files = await host.files.pick({ multiple: true, groups: ['document', 'imag
 await host.files.link(host.objects.make('plan', stayId), files);   // adds to the object's links (setLinks underneath)
 const chips = await host.files.resolve(pointers);                 // [{ ref, name, group, size, state? }]
 host.ui.fileChips(el, { object, canEdit });                       // draws an object's files: chip, Open, Remove link
-await host.files.open(pointer);                                   // the Vault's viewer, after the check
+await host.files.open(pointer);                                   // the viewer window over the canvas, after the check
 ```
 
 `host.files` names no module: it reaches whichever enabled module in the space declares `library`, and answers "There
@@ -326,16 +333,42 @@ same access from the sandboxed frame, as `host.uploads.url` does for pictures).
 - **Stored** in the Vault's space data as `{ id, name, files, by, at, ends, download, passwordHash?, tokenHash, opened }`.
   The token is 32 random bytes; only its SHA-256 is kept, so a stolen data file opens no link. The password is hashed with
   scrypt as account passwords are (`server/auth.js`).
-- **Turned off** at any time from the list of share links (**Turn off**), and by itself at its end. A space deleted, the
-  Vault turned off in the space, or every file in it removed, ends it too.
+- **Turned off** at any time from the list of share links (**Turn off**), and by itself at its end. A space deleted or
+  every file in it removed ends it too.
+- **Ending for good (Thomas, 2026-11-04).** A link ends for good when the Vault is turned off or uninstalled, even when the
+  files are kept: every space's share links are deleted (`dropSharesOf` in `server/vault-store.js`), and turned on again,
+  the files return but no old link does.
+- **A link is its maker's (Thomas, 2026-11-04).** A link also ends when its maker no longer exists, is out of the space
+  (unless an owner or the admin), or no longer has `share` in the Vault there, and for a download link no longer has
+  `download` either. The public routes ask this on every open (`shareMakerCan` in `server/index.js`, passed to
+  `server/vault-share.js` as `makerCan`). If the maker gets the permission back, the link opens again while it has not
+  ended.
+- **Who may Turn off (Thomas, 2026-11-04):** its maker, an owner, and a moderator of the space (the admin counts as an
+  owner). Changing a link (name, files) stays with its maker and an owner only.
 - **The address:** `/shared/<token>`. Public routes, no session: `GET /api/shared/:token` (the share's name, its files'
   names, types and sizes, whether download is on, when it ends), `POST /api/shared/:token/unlock` `{ password }`, and
   `GET /api/shared/:token/files/:fid/content` (ranges; `?download=1` only when allowed) and `.../thumb`. Each checks the
   token, the end, the password cookie and that the file is in the set, before anything else. A file outside the set,
   another space's file, and every other route answer 404.
-- **Password:** a right password sets a signed cookie for that path only (`Path=/shared/<token>`, `HttpOnly`,
-  `SameSite=Strict`, one hour). Five wrong tries in fifteen minutes per link and address answer 429 "Too many tries. Wait a
-  few minutes."
+- **Password (Thomas, 2026-11-04):** at least 8 characters, at most 200 ("A password needs at least 8 characters.").
+  A right password sets a signed cookie for that path only (`Path=/api/shared/<token>`, which replaces
+  `/shared/<token>`: the page sends nothing itself, its `fetch()` calls to `/api/shared/<token>/...` carry the cookie;
+  `HttpOnly`, `SameSite=Strict`, `Secure` on https, one hour or to the link's end if sooner).
+- **Limits, as built (`server/vault-share.js`, Thomas 2026-11-04):**
+  - Wrong passwords: five per link and address in fifteen minutes, thirty per link from anywhere, twenty per address
+    across links; each answers 429 "Too many tries. Wait a few minutes." with `Retry-After`. The wait before an answer
+    grows with that address's own tries (0, 0, 0.5, 1, 2, 4 seconds, at most 8). A right password clears the link and
+    address count and takes its try back from the others.
+  - Per-address misses (a hundred in fifteen minutes) apply only to links that don't open (unknown, ended, turned off,
+    its maker no longer allowed). A link that opens is never held up by them.
+  - A valid unlock cookie skips every limit: a link already unlocked, or one with no password, answers `{ ok: true }` to
+    an unlock without counting a try.
+  - Password checks run in an async scrypt queue, never on the main thread: 2 at a time across the server, 50 waiting;
+    past that, 429 with `Retry-After: 5`.
+  - Per-environment unlocks per minute: 60 by default, set by `SHARE_UNLOCKS_PER_MINUTE`; past it, 429 with `Retry-After`.
+  - The per-link tries (thirty) are not evictable: their keys are the links that exist, so a stranger cannot push their
+    counts out; the other counts are bounded (10000 keys) and drop the oldest.
+  - Open streams: twelve per address ("Too many files are open at once. Close some and try again.", 429).
 - **What a person outside sees:** a plain page in the environment's theme with the share's name, "Shared by <first
   name> · Ends 12 November", and its files in a grid with the same viewers as the Vault. No space name, no people, no
   chat, no modules, no sign-in prompt, no other link. **Download** shows only when allowed. A gone or ended link: "This
@@ -344,6 +377,13 @@ same access from the sandboxed frame, as `host.uploads.url` does for pictures).
   a strict CSP with no outside sources.
 - **What view-only means, said plainly on the sheet:** "Without download, people can still save what they see on
   screen." A browser can always keep a picture it shows or a video it plays; view-only only takes the button away.
+  **A PDF on a view-only link can still be downloaded (Thomas, 2026-11-04).** The viewer is pdf.js, which was given the
+  bytes, so a person can save them; the sheet says so, next to the line above. The server still refuses `?download=1`
+  on a view-only link; the PDF reaches the viewer as bytes the page fetched.
+- **Deployment note: a reverse proxy and `TRUST_PROXY_HOPS`.** Every per-address limit above reads `req.ip`. Sharing
+  needs the server behind a reverse proxy with `TRUST_PROXY_HOPS` set to the number of proxies in front of it, or `0` if
+  it is exposed directly, because the limits trust `X-Forwarded-For`: with the wrong number, a stranger can write the
+  address the limits count, or every visitor shares the proxy's. Unset, the server assumes one proxy.
 - **The maker sees** each link's name, files, end, whether it has a password, and how many times it was opened.
 
 ### 8. Deleting
@@ -376,8 +416,12 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
   Remove).
 - **Grid:** square thumbnails for pictures and video (a video shows a play mark and its length), a type tile for audio
   and documents, the name under each. Three across on a phone, as many as fit elsewhere.
-- **Viewer**, inside the module's content area, one file at a time: a top row with **Back**, the name, previous and
-  next, **Download** where allowed, **Share** where allowed, and the more button. Below it:
+- **Viewer (decision 19, 2026-11-03)**, in one of the app's windows (the app's window mode), not in the Vault's content
+  area, not a new browser window, one file at a time. The Vault panel only lists, searches, filters, selects, adds and
+  shares; **Open** on a row, a click on a thumbnail, or a link from another module opens the window. The window's title
+  is the file's name; several windows can be open at once (decision 20); its toolbar holds previous and next, **Download** where allowed, **Share** where allowed, and the
+  more button (what exactly goes in the title bar and what in the toolbar is open, question 6 below). The earlier
+  design, a viewer in the content area with **Back**, is replaced. In the window:
   - pictures: the `img`, fitted, with **Full screen**; a video or picture thumbnail is made in the page (decision 11), a
     PDF has none, only its type tile;
   - audio: the `audio` element with `controls` (play, pause, seek, volume, speed);
@@ -390,8 +434,8 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
   `allow="fullscreen"` (it adds no reach outside the frame), and the host provides the Full screen control for the
   PDF viewer.
 - **The PDF viewer and its sandbox (decision 18).** The viewer is pdf.js, vendored under `public/sdk/` with its licence
-  file, with its scripting turned off, so a PDF's own scripts never run. It is drawn by the host as a layer laid exactly
-  over the module's content area, the way the editor window is lifted, and it lives in an `iframe` with
+  file, with its scripting turned off, so a PDF's own scripts never run. It is drawn by the host in the viewer window's
+  content (decision 19; before it was a layer over the module's content area), and it lives in an `iframe` with
   `sandbox="allow-scripts"` and no `allow-same-origin`: the frame has a null origin, so it has no access to the app's
   cookies, storage or session, and it cannot reach the parent's page. The frame's document comes from its own route,
   which answers with `Content-Security-Policy: default-src 'none'; script-src 'self'` (plus only what the viewer's own
@@ -411,8 +455,8 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
 - **Empty states:** no files ("No files yet. Add tickets, photos and documents for this {space}." with **Add files**);
   nothing matches ("No files match." with **Clear filters**); no permission ("You can't see the files in this
   {space}."); a link chip whose file is gone ("File removed").
-- **Phone (640 pixels or narrower):** one column, the grid three across, the viewer full screen as a sheet, **Download**
-  as a large button.
+- **Phone (640 pixels or narrower):** one column, the grid three across, the viewer window is a full screen sheet,
+  one at a time (this stays under decisions 19 and 20; opening another file replaces the sheet's file), **Download** as a large button.
 - **New design-system pieces**, each added to the registry after Thomas agrees, before a module uses it: the file chip
   (icon, name, size, state), the file chooser sheet, the upload progress row, the media viewer frame, the share sheet.
   Icons: `vault`, `file-pdf`, `file-image`, `file-audio`, `file-video`, `file-lines`, `link`, `download`,
@@ -460,8 +504,9 @@ How a trip's photos and tickets are shared afterwards, as the plan expects it to
 - **Metadata:** the person adding files chooses (decision 10, section 10 "Adding"). Taken time and camera are read into
   the record for pictures either way. Audio and video are kept as sent, which can include where a video was taken, and
   the notice under Add files says so.
-- **Rate limits:** the module `upload` limit, `VAULT_MB_PER_MINUTE`, two uploads at once per person, five password tries
-  per link and address in fifteen minutes, and the existing request limits on share routes.
+- **Rate limits:** the module `upload` limit, `VAULT_MB_PER_MINUTE`, two uploads at once per person, the share
+  limits of section 7 (password tries, misses, unlocks per minute, the scrypt queue, open streams), and the existing
+  request limits on share routes.
 - **SSRF: none.** The server never fetches an address for the Vault: there is no "add from a link". The Drive store is its
   own plan.
 - **Share tokens** hashed at rest, compared in constant time, 32 bytes, never in logs.
@@ -475,7 +520,7 @@ Each step can be built and checked on its own. A new or changed module gets a ve
 |---|---|---|---|---|
 | 1 | **Store, routes, quotas. Built** (commits `bde9358` to `154819d`; security QA round 1 failed and fixed, round 2 pending). `server/vault-store.js`, `server/vault-types.js`, the routes on `/api/modules/:id/library?space=`, the variables, the PDF rule (its "cannot judge" case changes in step 3, decision 18), the minimum upload speed, the 2 hour request timeout, space erase deleting files, `tools/check-vault.mjs` in `npm run check`. The Remove-where-it-was-taken option and its default wait for Thomas's answer | L | server-development | feedback build with a QA security review |
 | 2 | **The Vault module and its list.** `modules/vault` at 0.1.0: manifest and permissions, List and Grid, search, Filters, Add files with progress, Rename, Remove with "where it is used", Select, the status line, empty states, phone | M | experience-design | try build |
-| 3 | **Viewers.** Pictures, audio, video with real controls, Markdown; the frame's `allow="fullscreen"`; previous and next; thumbnails made in the page. **The pdf.js viewer and the download-only state:** pdf.js vendored in `public/sdk/` with its licence file and a check (in `npm run check`) that the vendored file's hash is pinned; the sandboxed viewer frame and its route with its own CSP; page, zoom, search if cheap, Full screen from the host; server-side, the `unchecked` and `unsafe` scan answers for a PDF store it with `viewable: false` instead of refusing it, serve it only as an attachment, and show "This PDF can't be opened here. Download it." | L | experience-design (the viewer, the layer, the notes); server-development (the download-only state, the viewer route and its headers, the hash check) | try build for the viewers, a feedback build with a QA security review for the PDF viewer, then a browser pass by Thomas |
+| 3 | **Viewers, in a window (decision 19).** The viewer window that Open, a thumbnail and `host.files.open` all open (on the existing window mode first; it moves to the general object window later, decision 20); several windows at once with a cap of 4 and **Close all**, and the previous and next rule of decision 20; pictures, audio, video with real controls, Markdown; the frame's `allow="fullscreen"`; previous and next; thumbnails made in the page. **The pdf.js viewer and the download-only state:** pdf.js vendored in `public/sdk/` with its licence file and a check (in `npm run check`) that the vendored file's hash is pinned; the sandboxed viewer frame and its route with its own CSP; page, zoom, search if cheap, Full screen from the host; server-side, the `unchecked` and `unsafe` scan answers for a PDF store it with `viewable: false` instead of refusing it, serve it only as an attachment, and show "This PDF can't be opened here. Download it." | L | experience-design (the viewer, the layer, the notes); server-development (the download-only state, the viewer route and its headers, the hash check) | try build for the viewers, a feedback build with a QA security review for the PDF viewer, then a browser pass by Thomas |
 | 4 | **Linking SDK and one module.** `host.files.pick`, `.link`, `.resolve`, `.open`, `host.ui.fileChips` (resolving a file link must read the library records in `DATA_DIR/modules/<id>/library/`); "File removed"; the Planner links its stays and journeys to files (decision 2 of 2026-10-15's order) | M | experience-design | try build |
 | 5 | **External sharing.** Share records, the public routes, the password and its cookie, ends and Turn off, the `/shared/<token>` page and its viewers, the share sheet and list in the Vault | L | server-development (routes), experience-design (the page and sheet) | feedback build with a QA security review |
 | 6 | **Delete with the space, and backup.** The `space-erase.js` step and its check; uninstall removes files; "File missing"; the orphan sweep; `docker-compose.yml` and the guide's `VAULT_DIR` volume | S | server-development (content-manager for the guide) | try build |
@@ -575,6 +620,30 @@ Thomas decided these on 2026-10-30, answering the open questions. Numbers contin
     cheap, full screen provided by the host). The browser's built-in PDF viewer is not used. This replaces the
     browser-viewer part of decision 5 and the host-drawn layer with an Open fallback.
 
+19. **Viewers open in a window (2026-11-03).** The viewers (pictures, audio, video, Markdown, PDF) open in one of the
+    app's windows (the app's window mode), not inside the Vault's content area and not in a new browser window. The
+    Vault panel lists, searches, filters, selects, adds and shares files. When another module links to a file (a
+    Planner stay to its booking PDF, a Research note, Chat), the same viewer window opens over the canvas; it does not
+    bring the Vault forward. This is object-window question 13a, answered yes. It replaces the viewer "inside the
+    module's content area" with **Back** in section 10, and the "brings the Vault forward" wording in section 4. The
+    phone keeps its full screen sheet.
+
+20. **Viewer windows, several at once (Thomas, 2026-11-03).** Answers to the questions that followed decision 19:
+    - **Several windows.** Opening a file opens a new viewer window; earlier ones stay, so a person can compare two
+      pictures or keep a PDF beside a map. Opening a file that already has a window brings that window forward instead
+      of opening a second. The cap is 4 windows (confirmed by Thomas, 2026-11-03): at the cap, opening a
+      fifth shows "Close a window to open another." and opens nothing. The window's menu has **Close all**. On a
+      phone, one window shows at a time as the full screen sheet (decision 19), and the cap does not apply to what is
+      seen, only one sheet; opening another file replaces the sheet's file.
+    - **Previous and next** walk the files linked where the window was opened from (a Planner stay's files, a Research
+      note's), when the opener gives them, else they are hidden. From the Vault's list they walk the Vault's list as
+      filtered.
+    - **Mechanism and order.** Step 3 builds the viewer on the existing window mode first; the general object window
+      of [plan-object-window](plan-object-window.md) is the later target (its step 9), and the viewer's content does
+      not change in that move.
+    - **The public share page** keeps its own viewer inside the page (section 7), sharing the viewer's code with the
+      window, not a copy.
+
 Kept from the earlier decisions: viewers have real controls (play, pause, seek, volume, full screen). The host provides
 full screen because it doesn't work in the sandboxed module frame (section 10).
 
@@ -592,3 +661,8 @@ full screen because it doesn't work in the sandboxed module frame (section 10).
    security QA. Blocks step 3.
 4. **A damaged PDF** (no end marker, no objects). It stays refused; whether it too becomes download only is for Thomas.
 5. **Whether search ships in the first viewer** (decision 18: "if cheap"). To be answered when the viewer is sized.
+6. **What the viewer window's title bar and toolbar hold** (decision 19). Stays open until Thomas sees the prototype
+   drawing. Suggested split: the title bar has the file's name, Close and the more button (Rename, Where it is used,
+   Remove, each only where allowed); the toolbar has previous and next, **Download**, **Share** and Full screen.
+   Whether Rename and Remove belong in a viewer at all, or only in the list, is Thomas's. *Suggestion: Download, Share
+   and previous/next in the toolbar; Rename, Where it is used and Remove in the more button.* Blocks step 3.

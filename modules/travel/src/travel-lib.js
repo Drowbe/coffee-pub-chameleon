@@ -110,6 +110,24 @@
   // One stored item, made safe and complete; null when it cannot be an item at all. `date` is null for an idea
   // that has no day yet. A `link` item points at another module's object (`ref`) and takes its day from that
   // object's summary unless it has its own.
+  // Files of the space's library (the Vault) that a stay or a journey is linked to: pointers, never copies, at most MAX_FILES, each once.
+  // The files themselves are read from the library when a card or the editor shows them (host.ui.fileChips).
+  const MAX_FILES = 10;
+  function cleanFiles(list) {
+    const out = [];
+    const seen = new Set();
+    for (const r of Array.isArray(list) ? list : []) {
+      if (!r || typeof r.module !== 'string' || r.kind !== 'file' || typeof r.id !== 'string' || r.scope !== 'space' || typeof r.space !== 'string') continue;
+      if (!/^[a-z][a-z0-9-]{1,31}$/.test(r.module) || !/^[A-Za-z0-9_-]{1,64}$/.test(r.id) || r.space.length > 64) continue;
+      const k = `${r.module}|${r.id}|${r.space}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ module: r.module, kind: 'file', id: r.id, scope: 'space', space: r.space });
+      if (out.length >= MAX_FILES) break;
+    }
+    return out;
+  }
+
   function cleanItem(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const kind = KINDS.includes(raw.kind) ? raw.kind : 'stop';
@@ -166,6 +184,11 @@
     if (kind === 'block') item.type = typeof raw.type === 'string' && /^[a-z][a-z0-9-]{0,29}$/.test(raw.type) ? raw.type : '';
     // Details that belong to one kind of item, all optional. A stop: what it is, and for a meal or an event who and how many.
     if (kind === 'stop') {
+      // The Place this stop is at, when it is one the space keeps (a pointer; `place` stays the name the person typed).
+      const pr = raw.placeRef;
+      item.placeRef = pr && typeof pr.module === 'string' && typeof pr.kind === 'string' && typeof pr.id === 'string'
+        ? { module: pr.module.slice(0, 40), kind: pr.kind.slice(0, 40), id: pr.id.slice(0, 80), scope: pr.scope === 'space' ? 'space' : 'environment', ...(pr.scope === 'space' && pr.space ? { space: String(pr.space).slice(0, 64) } : {}) }
+        : null;
       item.type = STOP_TYPES.includes(raw.type) ? raw.type : null;
       item.partySize = count(raw.partySize, 99);
       item.reservationName = clip(raw.reservationName, 60);
@@ -182,6 +205,7 @@
     // A journey: how, and what a ticket for it says (a flight's airline and number, a train's operator and platform...).
     if (kind === 'journey') {
       item.mode = MODES.includes(raw.mode) ? raw.mode : 'other';
+      item.checkOutTime = MODES.includes(raw.mode) && raw.mode === 'car' && isTime(raw.checkOutTime) ? raw.checkOutTime : null; // a car's drop-off time
       item.operator = clip(raw.operator, 60); // the airline, the train company, the ferry line
       item.number = clip(raw.number, 20); // flight or train number
       item.fromCode = code(raw.fromCode, 5);
@@ -194,6 +218,8 @@
       item.travelClass = clip(raw.travelClass, 30);
       item.pickup = clip(raw.pickup, 120); // a car: where it is collected and where it goes back
       item.dropoff = clip(raw.dropoff, 120);
+      // A rental car is kept for days: the day it goes back (checkOut), after the day it is collected. No other journey has one.
+      if (item.mode !== 'car') item.checkOut = null;
       // When it arrives as the ticket says, in the local time where it lands (plan-object-handoff.md, decision 11): beside the
       // length, so a journey across time zones shows both its arrival and its time in the air right. Not for a car.
       item.arrives = item.mode === 'car' ? null : ticketWhen(raw.arrives);
@@ -210,9 +236,15 @@
       const legOf = typeof raw.legOf === 'string' ? clip(raw.legOf, 40) : '';
       item.legOf = legOf && legOf !== item.id && item.mode !== 'car' ? legOf : null;
     }
+    if (kind === 'stay' || kind === 'journey') {
+      const files = cleanFiles(raw.files);
+      if (files.length) item.files = files; // only when there are some, so an object with none is stored as it always was
+    }
     if ((kind === 'block' || kind === 'lane') && !item.type) return null;
     if (kind !== 'link' && kind !== 'block' && kind !== 'lane' && !item.title) return null;
     if (kind === 'stay' && item.checkOut && item.date && item.checkOut < item.date) item.checkOut = null;
+    if (kind === 'journey' && item.checkOut && (!item.date || item.checkOut <= item.date)) item.checkOut = null;
+    if (kind === 'journey' && !item.checkOut) item.checkOutTime = null;
     return item;
   }
 
@@ -335,7 +367,7 @@
     for (const i of [...picked].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || (a.order || 0) - (b.order || 0))) {
       const date = daysLater(i.date, delta);
       const patch = { date };
-      if (i.kind === 'stay' && isYmd(i.checkOut)) patch.checkOut = daysLater(i.checkOut, delta);
+      if ((i.kind === 'stay' || i.kind === 'journey') && isYmd(i.checkOut)) patch.checkOut = daysLater(i.checkOut, delta);
       if (!i.time) {
         const last = next.has(date) ? next.get(date) : Math.max(0, ...staying.filter((o) => o.date === date && !o.time).map((o) => o.order || 0));
         const hasStaying = staying.some((o) => o.date === date && !o.time);
@@ -453,6 +485,11 @@
     return Math.round((parseYmd(item.checkOut) - parseYmd(item.date)) / DAY_MS);
   }
 
+  // A time zone name the browser's own list knows ('Europe/Lisbon'), else ''.
+  function zoneName(v) {
+    if (typeof v !== 'string' || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(v.trim()) || v.length > 60) return '';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: v.trim() }); return v.trim(); } catch (err) { return ''; }
+  }
   // The trip itself: a heading, where, and its dates. `start` and `end` are the plan's own first and last day, kept
   // only for a space whose template has no phases; with phases the main phase's band gives them (tripSpan) and they
   // are left out of what is written. A stored `phases` is never read. `v: 2` is this shape. An empty title means the
@@ -462,7 +499,9 @@
     const start = isYmd(r.start) ? r.start : null;
     const end = isYmd(r.end) && start && r.end >= start ? r.end : start;
     const currency = typeof r.currency === 'string' && /^[A-Za-z]{3}$/.test(r.currency.trim()) ? r.currency.trim().toUpperCase() : '';
-    return { title: clip(r.title, 80), destination: clip(r.destination, 80), start, end, notes: clip(r.notes, 2000), currency, by: clip(r.by, 40), v: 2 };
+    // The trip's own time zone (an IANA name such as Europe/Lisbon), which its Calendar copy is dated in; '' follows each viewer.
+    const tz = zoneName(r.tz);
+    return { title: clip(r.title, 80), destination: clip(r.destination, 80), start, end, notes: clip(r.notes, 2000), currency, ...(tz ? { tz } : {}), by: clip(r.by, 40), v: 2 };
   }
 
   // The main phase's band of a timeline (host.util.phaseTimeline), or null without one.
@@ -659,14 +698,16 @@
 
   // Who owes what. An item with a cost was paid by one person and is shared by the people it belongs to (all the
   // travellers when it belongs to nobody). Returns each person's paid, share and net (positive: owed money), the total,
-  // and the fewest payments that settle it. Amounts are in the trip's one currency, rounded to cents.
+  // and the fewest payments that settle it. `total` counts what someone paid; `planned` every cost, paid or not. Amounts are in the trip's one currency, rounded to cents.
   const cents = (n) => Math.round(n * 100);
   function balances(items, travellers) {
     const keys = travellers.slice();
     const paid = {};
     const share = {};
     let total = 0;
+    let planned = 0;
     for (const item of items) {
+      if (item.cost) planned += cents(item.cost);
       if (!item.cost || !item.paidBy) continue;
       const among = (item.owners.length ? item.owners : keys).filter(Boolean);
       if (!among.length) continue;
@@ -693,7 +734,7 @@
       if (owing[i][1] === 0) i += 1;
       if (owed[j][1] === 0) j += 1;
     }
-    const out = { total: total / 100, paid: {}, share: {}, net: {}, payments };
+    const out = { total: total / 100, planned: planned / 100, paid: {}, share: {}, net: {}, payments };
     for (const k of people) { out.paid[k] = (paid[k] || 0) / 100; out.share[k] = (share[k] || 0) / 100; out.net[k] = net[k] / 100; }
     return out;
   }
@@ -819,6 +860,7 @@
     if (!pool.length) return null;
     const endOf = (i) => {
       if (i.kind === 'stay') return { day: i.checkOut || i.date, time: i.checkOutTime || '' };
+      if (i.checkOut) return { day: i.checkOut, time: '' }; // a rental car's drop-off
       const a = arrivalOf(i);
       if (a) return { day: a.day, time: a.time };
       return { day: i.date, time: i.time || '' };

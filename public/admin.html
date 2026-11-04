@@ -161,10 +161,10 @@
         <div class="theme-opt"><label>Navigation bar background<input id="theme-nav-bg" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-nav-bg"><span class="sdk-choice-text">Auto</span></label></div>
         <div class="theme-opt"><label>Field edge<input id="theme-field-edge" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-field-edge"><span class="sdk-choice-text">Auto</span></label></div>
         <div class="theme-opt"><label>Chosen, today and own message tint<input id="theme-wash" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-wash"><span class="sdk-choice-text">Auto</span></label></div>
-        <div class="theme-opt"><label>Module title bar background<input id="theme-mf-title" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-title"><span class="sdk-choice-text">Auto</span></label></div>
-        <div class="theme-opt"><label>Module toolbar background<input id="theme-mf-toolbar" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-toolbar"><span class="sdk-choice-text">Auto</span></label></div>
-        <div class="theme-opt"><label>Module row background<input id="theme-mf-row" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row"><span class="sdk-choice-text">Auto</span></label></div>
-        <div class="theme-opt"><label>Module row hover background<input id="theme-mf-row-hover" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row-hover"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> title bar background<input id="theme-mf-title" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-title"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> toolbar background<input id="theme-mf-toolbar" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-toolbar"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> row background<input id="theme-mf-row" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> row hover background<input id="theme-mf-row-hover" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row-hover"><span class="sdk-choice-text">Auto</span></label></div>
       </div>
       </div>
       <div class="sdk-stack">
@@ -331,7 +331,7 @@
         <div id="ai-tab-card"></div>
         <section class="panel" id="ai-panel">
           <h2>Setup</h2>
-          <p class="hint" data-fill><strong>Managed</strong> uses the service the host runs, with its key; <strong>Custom</strong> is a service and key of this {environment}'s own. Setting a service up does not turn the AI on: use the switch above, then tick <strong>Use AI in {modules}</strong> for a role on the Roles tab ({guests} never can).</p>
+          <p class="hint" data-fill><strong>Managed</strong> uses the service the host runs, with its key; <strong>Custom</strong> is a service and key of this {environment}'s own. Setting a service up does not turn the AI on: use the switch above, then give a role <strong>Use AI</strong> on the Roles tab. Using AI, in Chat or in a {module}, needs that permission and the {space}'s own AI switch on ({guests} never can).</p>
           <div class="ai-fields">
             <label>Source
               <select id="ai-source" data-fill>
@@ -379,11 +379,20 @@
             </label>
           </div>
           <div class="row"><button class="btn btn-primary" type="button" id="ai-save">Save</button><span class="status" id="ai-status" role="status"></span></div>
+        </section>
+        <section class="panel" id="ai-use-block" aria-labelledby="ai-use-title">
+          <h2 id="ai-use-title">AI use this month</h2>
           <div class="ai-usage" id="ai-usage" hidden>
-            <h3>Used this month</h3>
             <div class="sdk-progress" role="progressbar" aria-label="Monthly allowance used" aria-valuemin="0" aria-valuemax="100" id="ai-meter"><span class="sdk-progress-fill" id="ai-meter-fill"></span></div>
             <p class="hint" id="ai-usage-text"></p>
           </div>
+          <div id="ai-use-box"><p class="hint">Loading...</p></div>
+        </section>
+        <section class="panel" id="ai-sees-block" aria-labelledby="ai-sees-title">
+          <h2 id="ai-sees-title">What AI may see</h2>
+          <p class="hint" data-fill>What goes to the AI with a question. This only narrows it: the AI never sees what the person asking could not open. A {space} can set its own on its Set up.</p>
+          <div id="ai-sees-box"></div>
+          <div class="row"><button class="btn btn-primary" type="button" id="ai-sees-save">Save</button><button class="btn" type="button" id="ai-sees-reset">Back to the usual</button><span class="status" id="ai-sees-status" role="status"></span></div>
         </section>
       </div>
 

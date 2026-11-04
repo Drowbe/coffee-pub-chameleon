@@ -5,11 +5,12 @@
    every radius a token; type sizes the scale's steps. */
 
 /* ================= the frame (prototype.html) ================= */
-.phf { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.phf { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; max-width: 100%; }
 .phf-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
-.phf-tool { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.phf-tool { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); max-width: 100%; min-width: 0; }
+.phf-tool .mf-switch { max-width: 100%; overflow-x: auto; }
 .phf-tool-label { color: var(--text-muted); font-size: var(--text-13); }
-.phf-stage { padding: var(--space-5); overflow-x: auto; border-radius: var(--radius-large); background: var(--surface-canvas); outline: 1px dashed var(--edge-hairline); outline-offset: -1px; }
+.phf-canvas { padding: var(--space-5); overflow-x: auto; border-radius: var(--radius-large); background: var(--surface-canvas); outline: 1px dashed var(--edge-hairline); outline-offset: -1px; }
 /* The device: a bezel-less rectangle of the screen's size; the iframe is the screen, the status bar and the home indicator are drawn over it. */
 .phf-device { position: relative; display: flex; flex-direction: column; box-sizing: content-box; width: var(--phf-w); height: var(--phf-h); margin: 0 auto; overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); box-shadow: var(--shadow-3); }
 .phf-screen { display: block; flex: none; width: 100%; height: var(--phf-screen-h, 100%); border: 0; background: var(--surface-page); }
@@ -27,7 +28,7 @@
 .phf-measure { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
 
 /* ================= the screen (phone.html) ================= */
-html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body); }
+html:has(> body.ph-body), body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body); }
 .ph-body * { box-sizing: border-box; }
 /* The safe areas, as a phone gives them (47px at the top and 34px at the foot upright; sideways 47px at each side and 21px at the foot, none at the top).
    Product: env(safe-area-inset-*) already fills --safe-*; nothing to move. */
@@ -35,7 +36,7 @@ html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(
 :root.ph-land { --safe-top: 0px; --safe-bottom: 21px; --safe-left: 47px; --safe-right: 47px; --ph-top-h: 44px; }
 /* Touch sizes (to system.css: under (pointer: coarse) and (max-width: 640px), or (max-height: 500px) and (pointer: coarse); the plan's compact shape).
    The product's own 640px rules already do this at 390 and 360; sideways the width is over 640px, so the page sets them itself. */
-:root.ph-compact { --btn-h: 44px; --field-h: 44px; --field-font: var(--text-16); --check-h: 44px; --tabbar-h: 54px; }
+:root.ph-compact { --btn-h: 44px; --field-h: 44px; --field-font: var(--text-16); --check-h: 44px; }
 .ph-compact :where(input, textarea, select) { font-size: var(--text-16); }
 
 .ph { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "view" "strip" "bar"; width: 100%; height: 100%; overflow: hidden; background: var(--surface-page); }
@@ -95,21 +96,44 @@ html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(
 .ph-compose-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .ph-send { flex: none; min-width: 44px; }
 
-/* The call strip (to system.css, with the bottom bar): one row above the bar, 52px high: who is talking, the microphone, hang up. */
-.ph-strip { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 52px; padding: var(--space-1) calc(var(--space-2) + var(--safe-right)) var(--space-1) var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); color: var(--text-primary); }
+/* The call strip (to system.css, with the bottom bar): one row above the bar, 56px high like the places under it: who is talking (a tap shows the
+   call), the microphone and hang up, each a 56px target. */
+.ph-strip { display: flex; align-items: center; min-width: 0; min-height: 56px; padding: 0 var(--safe-right) 0 var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); color: var(--text-primary); }
 .ph-strip.is-speaking { box-shadow: inset 0 2px 0 var(--status-ok-mark); }
 .ph-strip.is-muted { box-shadow: inset 0 2px 0 var(--status-danger-text); }
-.ph-strip-who { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; min-height: 44px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ph-strip-who { display: flex; flex: 1 1 auto; align-items: center; align-self: stretch; gap: var(--space-2); min-width: 0; min-height: 56px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ph-strip-who > i { color: var(--status-ok-text); font-size: var(--text-16); }
 .ph-strip.is-muted .ph-strip-who > i { color: var(--status-danger-text); }
 .ph-strip-who:hover { background: var(--fill-hover); }
 .ph-strip-words { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--text-14); }
 .ph-strip-words strong { overflow: hidden; text-overflow: ellipsis; }
+.ph-strip .sdk-icon-btn { flex: none; width: 56px; height: 56px; border-radius: 0; font-size: var(--text-18); }
 
-/* The bottom bar: the product's tab bar (.sdk-tabbar), four places. Sideways it is a rail at the start edge. */
+/* The bottom bar (to system.css, replacing the tab bar's four fixed places): the product's tab bar (.sdk-tabbar) with four places of the person's
+   own and the switcher, More. Every place is a 56px target (a tab 56 wide at least, 56 tall); the call is never in it. Sideways it is a rail at the start edge. */
+:root { --tabbar-h: 65px; --tabbar-min: 56px; }
 .ph .sdk-tabbar { height: auto; min-height: calc(var(--tabbar-h) + var(--safe-bottom)); }
+.ph .sdk-tabbar .sdk-tabbar-tab { justify-content: center; min-height: 56px; padding: 0; }
+.ph .sdk-tabbar .sdk-tabbar-label { max-width: 100%; }
+/* B: the switcher in the middle, a small round button (YouTube's centre). Its target is the full 56 by 56; the disc is 44px, inset in it. */
+.ph .ph-round { position: relative; display: flex; flex: 0 0 var(--tabbar-min); align-items: center; justify-content: center; min-width: var(--tabbar-min); min-height: 56px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text-bar); font: inherit; cursor: pointer; }
+.ph .ph-round-disc { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-round); background: color-mix(in srgb, var(--text-bar) 12%, transparent); color: var(--text-bar); font-size: var(--text-18); transition: background var(--motion-fast); }
+.ph .ph-round-disc > .sdk-badge-micro { top: -4px; right: -6px; }
+.ph .ph-round:hover .ph-round-disc { background: color-mix(in srgb, var(--text-bar) 20%, transparent); }
+.ph .ph-round:is(:active, .is-pressed) .ph-round-disc { background: color-mix(in srgb, var(--text-bar) 28%, transparent); }
+.ph .ph-round:is(:focus-visible, .is-focus) { outline: 0; }
+.ph .ph-round:is(:focus-visible, .is-focus) .ph-round-disc { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ph .ph-round[aria-current="page"] .ph-round-disc { border-color: var(--tabbar-now); background: color-mix(in srgb, var(--accent-fill) 18%, transparent); color: var(--tabbar-now); box-shadow: inset 0 0 0 1px var(--tabbar-now); }
+/* The place that is open: a lighter fill and a second cue, a 2px rule along the top of the tab, so the choice is never the fill alone (Cream light showed it too faint). */
+.ph .sdk-tabbar .sdk-tabbar-tab[aria-current="page"] { background: color-mix(in srgb, var(--accent-fill) 18%, transparent); box-shadow: inset 0 2px 0 var(--tabbar-now); }
+.ph .sdk-tabbar .sdk-tabbar-tab[aria-current="page"]:hover { background: color-mix(in srgb, var(--accent-fill) 26%, transparent); }
+/* Pressed and focus, forced on for the Bar states drawing (a finger or the keyboard cannot hold them still). */
+.ph .sdk-tabbar .sdk-tabbar-tab.is-pressed { background: color-mix(in srgb, var(--text-bar) 16%, transparent); color: var(--text-bar); }
+.ph .sdk-tabbar .sdk-tabbar-tab[aria-current="page"].is-pressed { background: color-mix(in srgb, var(--accent-fill) 46%, transparent); }
+.ph .sdk-tabbar .sdk-tabbar-tab.is-focus { outline: 2px solid var(--tab-focus, var(--focus-ring)); outline-offset: -2px; }
 .ph-land .sdk-tabbar { flex-direction: column; width: calc(76px + var(--safe-left)); height: auto; min-height: 0; padding: var(--space-1) var(--space-1) var(--space-1) calc(var(--space-1) + var(--safe-left)); border-top: 0; border-right: 1px solid var(--edge-hairline); }
-.ph-land .sdk-tabbar .sdk-tabbar-tab { flex: 1 1 0; min-height: 45px; }
+.ph-land .sdk-tabbar .sdk-tabbar-tab { flex: 1 1 0; min-width: 0; }
+.ph-land .ph .ph-round { flex: 0 0 auto; }
 
 /* The action bar (to system.css): one primary action a module names, at the foot of the view, above the strip and the bar. */
 .ph-actionbar { display: flex; flex: none; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
@@ -145,7 +169,7 @@ html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(
 .ph-scrim-clear { background: transparent; }
 .ph-bottom { position: relative; display: flex; flex-direction: column; align-self: center; width: min(100%, 560px); max-height: 92%; padding: var(--space-3) calc(var(--space-2) + var(--safe-right)) calc(var(--space-2) + var(--safe-bottom)) calc(var(--space-2) + var(--safe-left)); overflow-y: auto; border-radius: var(--radius-large) var(--radius-large) 0 0; background: var(--surface-menu, var(--surface-panel)); box-shadow: var(--shadow-3); }
 .ph-bottom > * { flex: none; }
-.ph-bottom-title { margin: 0; padding: var(--space-1) var(--space-3) var(--space-2); color: var(--text-muted); font-size: var(--text-13); font-weight: var(--weight-medium); }
+.ph-bottom-title { margin: 0; padding: var(--space-1) var(--space-3) var(--space-3); color: var(--text-primary); font-size: var(--text-16); font-weight: var(--weight-strong); line-height: var(--leading-ui); }
 .ph-bottom-text { margin: 0; padding: 0 var(--space-3) var(--space-3); font-size: var(--text-14); }
 .ph-bottom-foot { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
 .ph-bottom-foot .btn { flex: 1 1 0; }
@@ -168,3 +192,61 @@ html, body.ph-body { margin: 0; height: 100%; overflow: hidden; background: var(
    text, on the selected fill). To system.css: --tabbar-now at 30% accent, the others' --tabbar-fg at 12% toward the bar (checked at 4.5:1 or more
    in all three themes, both modes). */
 .ph .sdk-tabbar { --tabbar-fg: color-mix(in srgb, var(--text-bar) 88%, var(--surface-bar-top)); --tabbar-now: color-mix(in srgb, var(--accent-fill) 30%, var(--text-bar)); }
+
+/* The top bar's call button (to system.css, in the space bar's phone block): Join out of the call (a primary button); in it, a live dot, the phone and the
+   time (a plain button; the dot is red while you are muted). A tap shows the call. */
+.ph-top .ph-callbtn { flex: none; gap: var(--space-2); padding-inline: var(--space-3); }
+.ph-callbtn .ph-dot { width: 8px; height: 8px; border-radius: var(--radius-round); background: var(--status-ok-mark); }
+.ph-callbtn.is-muted .ph-dot { background: var(--status-danger-text); }
+.ph-callbtn.is-live > i { color: var(--status-ok-text); }
+.ph-callbtn.is-live.is-muted > i { color: var(--status-danger-text); }
+.ph-callbtn .ph-time { font-variant-numeric: tabular-nums; }
+/* At 360 or narrower the chip is the dot and the phone only, so the space's name keeps its room; the time is in the call strip and over the tiles. */
+@media (max-width: 360px) { .ph-callbtn .ph-time { display: none; } }
+.ph-call-head { display: flex; flex: none; align-items: baseline; gap: var(--space-2); margin: 0; padding-inline: var(--space-3); font-size: var(--text-14); }
+.ph-call-head .ph-muted { font-variant-numeric: tabular-nums; }
+.ph-strip-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* A muted microphone is quiet: a slashed icon on the selected fill. Red is for Hang up alone. */
+.ph .sdk-icon-btn.ph-mic-off { background: var(--fill-selected); color: var(--text-primary); }
+.ph-callbtn[aria-pressed="true"] { background: var(--fill-selected); }
+.ph-callbtn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+/* More (to system.css, with the bottom bar): the places that are not in the bar, and Edit: the four places with a tap to replace, then every place with Pin. */
+.ph-sheet-body:has(> .ph-more) { padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left); }
+.ph-more-hint { margin: 0; padding: var(--space-3) var(--space-4) var(--space-2); color: var(--text-muted); font-size: var(--text-13); }
+.ph-more-head { margin: 0; padding: var(--space-3) var(--space-4) 0; color: var(--text-muted); font-size: var(--text-13); font-weight: var(--weight-medium); }
+.ph-row-quiet { color: var(--text-muted); }
+.ph-row-static { cursor: default; }
+.ph-row-static:hover { background: transparent; }
+.ph-row-static.is-pinned { color: var(--text-muted); }
+.ph-row-static.is-pinned .ph-row-icon { color: var(--text-muted); }
+.ph-row-tag { flex: none; color: var(--text-muted); font-size: var(--text-13); }
+.ph-pin { flex: none; min-width: 56px; }
+.ph-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: 0 var(--space-4); }
+.ph-slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); min-width: 0; min-height: 80px; padding: var(--space-2) var(--space-1); border: 1px solid var(--edge-field); border-radius: var(--radius-medium); background: var(--surface-card, var(--surface-panel)); color: var(--text-primary); font: inherit; cursor: pointer; }
+.ph-slot > i { color: var(--text-accent); font-size: var(--text-18); }
+.ph-slot-name { max-width: 100%; overflow: hidden; font-size: var(--text-13); text-overflow: ellipsis; white-space: nowrap; }
+.ph-slot-n { position: absolute; top: var(--space-1); left: var(--space-2); color: var(--text-muted); font-size: var(--text-12); }
+.ph-slot-change { position: absolute; top: var(--space-1); right: var(--space-2); color: var(--text-muted); font-size: var(--text-12); }
+.ph-slot:hover { background: var(--fill-hover); }
+.ph-slot:focus-visible, .ph-pin:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ph-more-foot { display: flex; padding: var(--space-2) var(--space-4) 0; }
+.ph-action-name { flex: 1 1 auto; min-width: 0; }
+.ph-action .ph-row-tag { margin-left: auto; }
+
+/* Bar states: the bar once per look, labelled; only the last one keeps the safe area. */
+.ph-sheet-body:has(> .ph-states) { padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left); }
+.ph-state { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-3); }
+.ph-state-label { margin: 0; padding: 0 var(--space-4); color: var(--text-muted); font-size: var(--text-13); }
+.ph-states .sdk-tabbar { --safe-bottom: 0px; }
+.ph-states .ph-safe-demo { --safe-bottom: 34px; position: relative; }
+.ph-states .ph-safe-demo::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--safe-bottom); border-top: 1px dashed var(--focus-ring); background: color-mix(in srgb, var(--accent-fill) 22%, transparent); pointer-events: none; }
+
+/* The frame: one phone, or the two options side by side with a caption under each. */
+.phf-row { display: flex; align-items: flex-start; justify-content: center; gap: var(--space-6); width: max-content; min-width: 100%; }
+.phf-fig { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
+.phf-caption { color: var(--text-muted); font-size: var(--text-13); text-align: center; }
+.phf-qs { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
+.phf-qs-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.phf-qlist { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding-left: var(--space-5); font-size: var(--text-14); }
+.phf-qlist span { color: var(--text-muted); }

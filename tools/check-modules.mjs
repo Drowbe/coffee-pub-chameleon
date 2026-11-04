@@ -617,14 +617,14 @@ test('calendar: a day wears its phase (the same rule as the Planner): inside, fi
   assert.doesNotMatch(css.slice(css.indexOf('/* phases:'), css.indexOf('/* list */')), /#[0-9a-f]{3,8}\b|rgba?\(/i, 'no colour literals in the phase rules');
 });
 
-test('calendar: the Day view\'s phase bar sticks to the top of the scroll, and the auto-scroll stops beneath it (not under it)', () => {
+test('calendar: the Day view\'s phase bar and all-day row stick to the top of the scroll, and the auto-scroll stops beneath them (not under them)', () => {
   const css = fs.readFileSync(path.join(ROOT, 'modules/calendar/src/calendar.css'), 'utf8');
-  assert.match(css, /\.dayview \.phasehead \{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: \d+;/, 'sticky at the top of the day\'s scroller');
+  assert.match(css, /\.dayview \.daytop \{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: \d+;/, 'sticky at the top of the day\'s scroller (the phase bar and the all-day row are one block)');
   assert.doesNotMatch(css, /(^|\n)\.phasehead[^{]*\{[^}]*position: sticky/, 'only in the Day view: Week and Month have no bar to stick');
   const js = fs.readFileSync(path.join(ROOT, 'modules/calendar/src/calendar.js'), 'utf8');
   const fn = js.slice(js.indexOf('function scrollDay()'), js.indexOf('// Month / Week / Day / Agenda is'));
-  assert.match(fn, /querySelector\('\.phasehead'\)/, 'scrollDay finds the bar');
-  assert.match(fn, /body\.scrollTop = Math\.max\(0, [^;]*- \(bar \? bar\.offsetHeight \+ \d+ : 0\)\)/, 'and offsets the target by its height');
+  assert.match(fn, /querySelector\('\.daytop'\)/, 'scrollDay finds the block');
+  assert.match(fn, /body\.scrollTop = Math\.max\(0, [^;]*- \(top \? top\.offsetHeight \+ \d+ : 0\)\)/, 'and offsets the target by its height');
 });
 
 test('calendar: an event in a list is a full-width row with a time that never wraps', () => {
@@ -822,6 +822,25 @@ test('hooks.ai: true or "optional" only; required waits on the AI service, optio
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a bundled module that stores objects and may point at other modules\' tells the host what its objects point at (setLinks)', () => {
+  // Without it the object pointed at (a place) shows no "Used by", and deleting it warns of nothing (the Planner once did not).
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'modules');
+  const missing = [];
+  let seen = 0;
+  for (const id of fs.readdirSync(root)) {
+    const manifest = path.join(root, id, 'module.json');
+    const src = path.join(root, id, 'src');
+    if (!fs.existsSync(manifest) || !fs.existsSync(src)) continue;
+    const consumes = (JSON.parse(fs.readFileSync(manifest, 'utf8')).refs || {}).consumes || [];
+    const code = fs.readdirSync(src).filter((f) => f.endsWith('.js')).map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('\n');
+    if (!consumes.length || !/storage\.set\(/.test(code)) continue;
+    seen += 1;
+    if (!/objects\.setLinks\(/.test(code)) missing.push(id);
+  }
+  assert.ok(seen >= 6, 'the modules that keep objects were found');
+  assert.deepEqual(missing, [], `these modules store objects and consume other modules' kinds but never call host.objects.setLinks: ${missing.join(', ')}`);
 });
 
 console.log(`check-modules: ${n} groups OK`);

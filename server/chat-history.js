@@ -49,8 +49,13 @@ const copy = (m) => ({
   ...(Array.isArray(m.summaries) ? { summaries: m.summaries.map((s) => ({ ...s })) } : {}),
   ...(m.preview && typeof m.preview === 'object' ? { preview: { ...m.preview } } : {}),
   ...(m.kept && typeof m.kept === 'object' ? { kept: { ...m.kept } } : {}),
+  ...(m.sent && typeof m.sent === 'object' ? { sent: JSON.parse(JSON.stringify(m.sent)) } : {}),
+  ...(Array.isArray(m.used) ? { used: m.used.map((r) => ({ ...r })) } : {}),
+  ...(Array.isArray(m.numbered) ? { numbered: m.numbered.map((r) => ({ ...r })) } : {}),
+  ...(Array.isArray(m.leftOut) ? { leftOut: m.leftOut.map((l) => ({ ...l })) } : {}),
 });
 const QUOTE_MAX = 300;
+const MAX_NUMBERED = 100; // attached (12) plus the rollup's relevant and linked objects (30 + 20), and some over
 const MAX_LINK = 500; // a message's link, as Research keeps one (plan-chat-links.md)
 
 class ChatHistory {
@@ -209,7 +214,7 @@ class ChatHistory {
   // `command` (with `command` and, for a module's command, `module`) the echo of a command; `ai` an AI answer, with
   // `summaries` and `replyTo`. `link` (plan-chat-links.md): the ordinary message's link, found by the route with
   // findLink (server/chat-links.js), stored as `preview: { url }`.
-  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link }) {
+  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, numbered, leftOut, cut }) {
     const ai = kind === 'ai' || command === 'ai';
     const clean = cleanText(text, ai ? MAX_AI_TEXT : MAX_TEXT);
     if (!clean) return null;
@@ -221,6 +226,17 @@ class ChatHistory {
     if (typeof module === 'string' && module) message.module = module.slice(0, 32);
     if (kind === 'ai' && Array.isArray(summaries) && summaries.length) message.summaries = summaries.slice(0, MAX_SUMMARIES);
     if (typeof replyTo === 'string' && ID_RE.test(replyTo)) message.replyTo = replyTo;
+    // An AI answer's provenance (plan-ai-integration.md): the template version that made it, what was sent (counts and the
+    // attached pointers, never content), the pointers it drew on, and whether it was cut short.
+    if (kind === 'ai') {
+      if (typeof prompt === 'string' && /^[a-z]+@\d{1,4}$/.test(prompt)) message.prompt = prompt;
+      if (sent && typeof sent === 'object' && !Array.isArray(sent)) message.sent = JSON.parse(JSON.stringify(sent));
+      if (Array.isArray(used) && used.length) message.used = JSON.parse(JSON.stringify(used.slice(0, 50)));
+      // The pointer behind each number the answer may cite ([n] is numbered[n - 1]), and what was left out of the prompt.
+      if (Array.isArray(numbered) && numbered.length) message.numbered = JSON.parse(JSON.stringify(numbered.slice(0, MAX_NUMBERED)));
+      if (Array.isArray(leftOut) && leftOut.length) message.leftOut = JSON.parse(JSON.stringify(leftOut.slice(0, 20)));
+      if (cut === true) message.cut = true;
+    }
     if (!kind && typeof link === 'string' && link && link.length <= MAX_LINK) message.preview = { url: link };
     if (!this.spaces[spaceId]) this.spaces[spaceId] = [];
     const list = this.spaces[spaceId];
@@ -333,24 +349,6 @@ class ChatHistory {
     else delete this.spaces[spaceId];
     this.flush();
     return removed.map(copy);
-  }
-
-  // The person's private /ai questions and answers, in the old thread shape, for the ai/thread routes.
-  aiThread(spaceId, by) {
-    return this.list(spaceId, by)
-      .filter((m) => isPrivate(m) && m.by === by && isAi(m))
-      .map((m) => ({ id: m.id, at: m.at, role: m.kind === 'ai' ? 'ai' : 'user', text: m.text, ...(m.summaries ? { summaries: m.summaries } : {}) }));
-  }
-
-  removeAiThread(spaceId, by) {
-    return this.removePrivate(spaceId, by, isAi);
-  }
-
-  // null when that message is not one of the person's private AI messages.
-  removeAiEntry(spaceId, by, id) {
-    const m = this.find(spaceId, id, by);
-    if (!m || !isPrivate(m) || !isAi(m) || m.by !== by) return null;
-    return this.remove(spaceId, id, by);
   }
 
   // Empties the space's chat for everyone, private messages included. The time is kept so a browser that still has an

@@ -308,8 +308,8 @@ test('with Budget on the Planner steps its money aside; with it off nothing chan
   assert.equal(lib.costItems(items).length, 1);
   assert.equal(lib.balances(lib.costItems(items), people).total, 90);
   const js = read('travel.js');
-  assert.match(js, /const viewsNow = \(\) => VIEWS\.filter\(\(v\) => v\.id !== 'money' \|\| !state\.budgetOn\);/, 'the Money tab is left out while Budget is on');
-  assert.match(js, /if \(state\.budgetOn && state\.view === 'money'\) state\.view = 'days';/, 'a person on Money is moved to Days when Budget comes on');
+  assert.match(js, /const viewsNow = \(\) => VIEWS\.filter\(\(v\) => v\.id !== 'money' \|\| \(!state\.budgetOn && !hideMoney\(\)\)\);/, 'the Money tab is left out while Budget is on, and for a guest unless an owner opened costs to guests');
+  assert.match(js, /if \(state\.view === 'money' && !viewsNow\(\)\.some\(\(v\) => v\.id === 'money'\)\) state\.view = 'days';/, 'a person on Money is moved to Days when Budget comes on');
   assert.match(js, /budgetOn: state\.budgetOn,/, 'the fact reporter knows');
   assert.match(js, /host\.budget\.elsewhere\(\)/, 'found by the flag of another module, never by name');
   assert.ok(!/['"`]budget['"`]\s*[,)]/.test(js.slice(js.indexOf('async function lookBudget'), js.indexOf("host.on('space', () => { reportFacts"))), 'no module is named');
@@ -370,11 +370,15 @@ await (async () => {
 
 // --- the plan, against a small stand-in for the SDK -------------------------------------------------------------
 
-function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], space = null, today = null } = {}) {
+function fakeHost({ failFilesAtStart = false, summaries = [], search = [], readOnly = false, phases = [], space = null, today = null } = {}) {
   const store = new Map(); // key -> { value, version }
   const handlers = { change: [] };
   const provided = {};
   const covered = []; // every day asked of host.phasesCover, in order
+  const fileLinks = new Map(); // planRef key -> the file pointer keys it is linked to
+  const toasts = [];
+  let failFiles = failFilesAtStart;
+  const links = new Map(); // planRef key -> the pointer keys it was last told it points at
   let clock = 0;
   const objectKey = (r) => [r.module, r.kind, r.id, r.scope, r.space || ''].join('|');
   const refuse = () => { if (readOnly) throw Object.assign(new Error('you may not change this'), { status: 403 }); };
@@ -418,10 +422,18 @@ function fakeHost({ summaries = [], search = [], readOnly = false, phases = [], 
       resolve: async (refs) => refs.map((r) => summaries.find((c) => objectKey(c.ref) === objectKey(r)) || { error: 'gone' }),
       search: async () => search,
       make: (kind, id) => ({ module: 'travel', kind, id, scope: 'space' }),
+      // As the host: what each object points at, all of it, replaced by each call (the plan's setLinks).
+      setLinks: async (from, to) => { links.set(objectKey(from), to.map(objectKey)); },
     },
+    // As the SDK: link and unlink change only the links to files; `failFiles` makes them refuse.
+    files: {
+      link: async (from, ptrs) => { if (failFiles) throw new Error('refused'); const k = objectKey(from); fileLinks.set(k, [...new Set([...(fileLinks.get(k) || []), ...ptrs.map(objectKey)])]); },
+      unlink: async (from, ptrs) => { if (failFiles) throw new Error('refused'); const k = objectKey(from); fileLinks.set(k, (fileLinks.get(k) || []).filter((x) => !ptrs.map(objectKey).includes(x))); },
+    },
+    ui: { toast: (text) => toasts.push(text) },
     actions: { provide: (h) => Object.assign(provided, h) },
   };
-  return { t, store, provided, covered, push: (e) => handlers.change.forEach((fn) => fn(e)) };
+  return { t, store, provided, covered, links, fileLinks, toasts, push: (e) => handlers.change.forEach((fn) => fn(e)) };
 }
 
 const run = async () => {
@@ -500,7 +512,7 @@ const run = async () => {
   await f.provided.acceptSuggestion({ title: 'Something odd', kind: 'nonsense' });
   assert.equal(plan.list().find((i) => i.title === 'Something odd').kind, 'stop');
   const ev = { ref: { module: 'calendar', kind: 'event', id: 'e1', scope: 'space', space: 'lobby' }, module: { id: 'calendar' }, title: 'Train', when: '2026-10-03' };
-  const g = fakeHost({ summaries: [ev], search: [ev, { ...ev, ref: { ...ev.ref, id: 'e2' }, when: '2026-12-25' }, { ...ev, ref: { ...ev.ref, id: 'e3' }, module: { id: 'travel' } }] });
+  const g = fakeHost({ summaries: [ev], search: [ev, { ...ev, ref: { ...ev.ref, id: 'e2' }, when: '2026-12-25' }, { ...ev, ref: { ...ev.ref, id: 'e3' }, module: { id: 'travel' } }, { ...ev, ref: { ...ev.ref, id: 'e4' }, copy: true, twinOf: { module: 'travel', kind: 'plan', id: 'p1', scope: 'space', space: 'lobby' } }] });
   const plan2 = lib.createPlan(g.t);
   await plan2.load();
   await plan2.saveTrip({ start: '2026-10-01', end: '2026-10-03' });
@@ -1320,7 +1332,7 @@ test('the page: with phases there is no plan form (the dates are the bar\'s, the
   assert.ok(html.includes('id="f-start"') && html.includes('id="f-end"'), 'First day and Last day stay for a space without phases');
   assert.ok(!html.includes('id="f-destination"') && !html.includes('id="f-phase-note"'), 'Where is no longer asked');
   assert.ok(!/id="tpl-editor-trip"[\s\S]*?id="f-notes"[\s\S]*?<template id="tpl-editor2"/.test(html), 'nor Notes, in the plan form');
-  assert.match(js, /if \(canEdit && !plan\.phased\(\)\) items\.push\(\{ id: 'edit-trip'/, 'no pencil with phases');
+  assert.match(js, /if \(canEdit\) items\.push\(\{ id: 'edit-trip'/, 'the pencil is there with phases too: the time zone is the trip\'s own');
   assert.match(js, /function planCurrency\(\)/, 'the budget\'s currency wins');
   assert.match(js, /if \(!plan\.phased\(\)\) \{\s*const start = \$\('f-start'\)\.value;/, 'the form\'s dates are only read without phases');
   assert.ok(!js.includes('fillTripPhases'));
@@ -1391,10 +1403,18 @@ test('host.util.localWhen: a local day and time from a when, the clock as writte
 });
 
 test('host.util.markdown: the lines before a list are drawn before it, not after', () => {
-  assert.equal(sdkText.markdown('Body\n\nLinks:\n- A: https://a.example\nExternal source'), '<p>Body</p><p>Links:</p><ul><li>A: <a href="https://a.example" target="_blank" rel="noopener">https://a.example</a></li></ul><p>External source</p>');
+  assert.equal(sdkText.markdown('Body\n\nLinks:\n- A: https://a.example\nExternal source'), '<p>Body</p><p>Links:</p><ul><li>A: <a href="https://a.example" target="_blank" rel="noopener noreferrer">https://a.example</a></li></ul><p>External source</p>');
   assert.equal(sdkText.markdown('- one\n- two'), '<ul><li>one</li><li>two</li></ul>');
   assert.equal(sdkText.markdown('Para\n- a\nAfter'), '<p>Para</p><ul><li>a</li></ul><p>After</p>');
-  assert.equal(sdkText.markdown('Pick:\n1. this\n2. that'), '<p>Pick:</p><ol><li>this</li><li>that</li></ol>');
+  assert.equal(sdkText.markdown('Pick:\n1. this\n2. that'), '<p>Pick:</p><ol><li>this</li><li>that</li></ol>');});
+test('host.util.markdown: an underscore in a link never makes italics', () => {
+  const link = (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`;
+  assert.equal(sdkText.markdown('See https://en.wikipedia.org/wiki/Belem_Tower'), `<p>See ${link('https://en.wikipedia.org/wiki/Belem_Tower')}</p>`);
+  assert.equal(sdkText.markdown('[Belem](https://x.example/Bel%C3%A9m_Tower)'), '<p><a href="https://x.example/Bel%C3%A9m_Tower" target="_blank" rel="noopener noreferrer">Belem</a></p>');
+  const two = sdkText.markdown('https://a.example/a_b and https://b.example/c_d');
+  assert.equal(two, `<p>${link('https://a.example/a_b')} and ${link('https://b.example/c_d')}</p>`, 'two links on one line keep their href and target');
+  assert.equal(sdkText.markdown('snake_case and a https://a.example/x_y'), `<p>snake_case and a ${link('https://a.example/x_y')}</p>`, 'a word with an underscore stays as written');
+  assert.equal(sdkText.markdown('_this_ and *that*'), '<p><em>this</em> and <em>that</em></p>', 'real italics still work');
 });
 
 test('host.util.detailLines:details as "Label: value" lines, in the Planner\'s words (plan-object-handoff.md, step 6)', () => {
@@ -1707,7 +1727,7 @@ test('Unscheduled is the default phase: the first group of the list, and the edi
   const js = fs.readFileSync(new URL('../modules/travel/src/travel.js', import.meta.url), 'utf8');
   assert.ok(js.includes("[{ id: null, label: 'Unscheduled' }, ...bands]"), 'the Unscheduled group comes before the phases');
   assert.ok(!/phaseOf\([^)]*today/.test(js), 'the list does not read today\'s phase');
-  assert.ok(js.includes("const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map(") && js.includes("if (groups.length === 1 && p.id === null) group.querySelector('h3').hidden = true;"), 'Unscheduled alone: its group heading is hidden (the area already says it); with phases beside it, every group keeps its heading');
+  assert.ok(js.includes("const groups = [{ id: null, label: 'Unscheduled' }, ...bands].map(") && js.includes("if (p.id === null) group.querySelector('h3').hidden = true;"), 'Unscheduled alone: its group heading is hidden (the area already says it); with phases beside it, every group keeps its heading');
   assert.ok(js.includes("[{ id: '', label: 'Unscheduled' }, ...phases]") && js.includes("select.value = item && item.phase && phases.some((p) => p.id === item.phase) ? item.phase : '';"), 'the editor\'s Phase starts on Unscheduled');
 });
 
@@ -1981,10 +2001,10 @@ test('a day that follows another until one is chosen: the arrival day and the ch
   assert.deepEqual(lib.checkoutDays(''), []);
   // The page: the check-out follows the check-in day until the person picks one; a pick (an empty one too) is kept.
   const js = read('travel.js');
-  assert.ok(js.includes("setVal('f-checkout', followDay(date, ed.checkOut, 1));"));
+  assert.ok(js.includes("setVal('f-checkout', followDay(date, car && ed.checkOut === undefined ? '' : ed.checkOut, 1));"));
   assert.ok(js.includes("if (e.target.id === 'f-checkout' && state.editing) state.editing.checkOut = e.target.value;"));
   assert.ok(js.includes("if (e.target.id === 'f-date') checkoutOptions();"));
-  assert.ok(js.includes("checkOut: item && item.kind === 'stay' ? item.checkOut || '' : undefined"), 'an existing stay keeps its own check-out, or its none');
+  assert.ok(js.includes("checkOut: item && (item.kind === 'stay' || item.mode === 'car') ? item.checkOut || '' : undefined"), 'an existing stay keeps its own check-out, or its none');
   assert.ok(!js.includes('checkoutMin'), 'the old min on a date input is gone');
   assert.ok(js.includes("`${dayShort(value)} · ${n} night${n === 1 ? '' : 's'}`"), 'each day says how many nights');
 });
@@ -2182,6 +2202,128 @@ test('every phase start and end is a marker of its own, and only the main phase\
   assert.ok(!js.includes('--ph2') && !read('travel-lib-cards.css').includes('--ph2'), 'no blended tints');
   assert.ok(js.includes('y.ends.length - x.ends.length'), 'the ending marker comes first on a joint');
   assert.ok(js.includes('function numberedDays(days)') && js.includes("`Day ${dayNumber(day, days)} of ${numberedDays(days).length}` : ''"), 'a day outside the main phase has no number');
+});
+
+test('audit fixes: a trip keeps its time zone, a rental car its drop-off day, Money counts every cost', () => {
+  assert.equal(lib.cleanTrip({ start: '2026-10-01', tz: 'Europe/Lisbon' }).tz, 'Europe/Lisbon', 'the trip keeps its zone');
+  assert.equal(lib.cleanTrip({ start: '2026-10-01', tz: 'Not/AZone' }).tz, undefined, 'an unknown zone is dropped');
+  assert.equal(lib.cleanTrip({ start: '2026-10-01' }).tz, undefined, 'no zone stays unset');
+  const car = lib.cleanItem({ id: 'c', kind: 'journey', mode: 'car', title: 'Hire car', date: '2026-10-02', checkOut: '2026-10-05' });
+  assert.equal(car.checkOut, '2026-10-05', 'a car has its drop-off day');
+  assert.equal(lib.cleanItem({ id: 'c', kind: 'journey', mode: 'car', title: 'x', date: '2026-10-02', checkOut: '2026-10-02' }).checkOut, null, 'not on or before the pick-up day');
+  assert.equal(lib.cleanItem({ id: 'f', kind: 'journey', mode: 'flight', title: 'x', date: '2026-10-02', checkOut: '2026-10-05' }).checkOut, null, 'only a car has one');
+  assert.ok(lib.coverDaysOf(car).includes('2026-10-05'), 'the plan covers the drop-off day');
+  const costs = [{ id: 'a', cost: 100, paidBy: 'u1', owners: [] }, { id: 'b', cost: 50.5, paidBy: '', owners: [] }];
+  const b = lib.balances(costs, ['u1', 'u2']);
+  assert.equal(b.total, 100, 'total is what was paid');
+  assert.equal(b.planned, 150.5, 'planned counts every cost');
+  const main = read('travel.js');
+  assert.ok(main.includes('`Total ${money(b.planned)}`'), 'Money heads with the planned total');
+});
+
+test('audit fixes: Decisions follow the contract, Move to unscheduled goes to Unscheduled, the module has no card base of its own', () => {
+  const main = read('travel.js');
+  assert.ok(main.includes("poll: 'Polls to vote on', task: 'Tasks due before the trip'"), 'the contract\'s two groups');
+  assert.ok(read('travel-lib-plan.js').includes("c.kind === 'poll' || (c.kind === 'task'"), 'open polls and tasks due before the trip');
+  assert.ok(main.includes("label: 'Move to unscheduled', icon: 'lightbulb', onClick: () => attempt(() => plan.moveTo(id, null, 1e6))"), 'off the day into the Unscheduled area');
+  assert.ok(!read('travel-lib-cards.css').includes('--card-head-base'), 'the shared banded card is the base');
+  assert.ok(main.includes('host.objects.linksToAll') && main.includes("rows.push(['Linked from'"), 'one batched request, and Linked from is shown');
+  assert.ok(main.includes("if (p.id === null) group.querySelector('h3').hidden = true;"), 'the default group has no heading repeating Unscheduled');
+  const manifest = JSON.parse(read('../module.json'));
+  assert.equal(manifest.guards.clear, 'clear', 'only who holds the clear permission may clear everything');
+  const clear = manifest.permissions.find((p) => p.key === 'clear');
+  assert.ok(clear && clear.default.moderator === true && clear.default.member === false && clear.default.guest === false, 'moderators by default, not members or guests');
+});
+
+// A stop at a Place records the link (setLinks); changing the Place replaces it; unlinking and deleting remove it.
+await (async () => {
+  const f = fakeHost();
+  const plan = lib.createPlan(f.t);
+  await plan.load();
+  await plan.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  const planKey = (id) => f.t.util.objectKey(f.t.objects.make('plan', id));
+  const placeRef = (id) => ({ module: 'places', kind: 'place', id, scope: 'space' });
+  const keyOf = (r) => f.t.util.objectKey(r);
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  // A stop with a typed name only: nothing linked, nothing told.
+  const plain = await plan.addItem({ kind: 'stop', type: 'restaurant', title: 'Dinner', place: 'Taberna', date: '2026-10-01' });
+  await tick();
+  assert.equal(plain.placeRef, null, 'a typed name alone links nothing');
+  assert.ok(!f.links.has(planKey(plain.id)), 'nothing is told for a stop with no Place');
+  // Linked on creation.
+  const a = await plan.addItem({ kind: 'stop', type: 'restaurant', title: 'Lunch', place: 'Ramiro', placeRef: placeRef('p1'), date: '2026-10-01' });
+  await tick();
+  assert.equal(keyOf(a.placeRef), keyOf(placeRef('p1')), 'the pointer is kept on the stop');
+  assert.equal(a.place, 'Ramiro', 'the typed name is kept beside the link');
+  assert.deepEqual(f.links.get(planKey(a.id)), [keyOf(placeRef('p1'))], 'the plan told the host what the stop points at');
+  // Linking an existing stop.
+  await plan.updateItem(plain.id, { placeRef: placeRef('p2') });
+  await tick();
+  assert.deepEqual(f.links.get(planKey(plain.id)), [keyOf(placeRef('p2'))], 'linking a stop later records it');
+  // Another Place replaces the first, never adds a second.
+  await plan.updateItem(a.id, { placeRef: placeRef('p3') });
+  await tick();
+  assert.deepEqual(f.links.get(planKey(a.id)), [keyOf(placeRef('p3'))], 'a new Place replaces the old link');
+  // Unlinking: the name stays, the link is told away.
+  const unlinked = await plan.updateItem(a.id, { placeRef: null });
+  await tick();
+  assert.equal(unlinked.placeRef, null);
+  assert.equal(unlinked.place, 'Ramiro', 'unlinking keeps the typed name');
+  assert.deepEqual(f.links.get(planKey(a.id)), [], 'unlinking tells the host the stop points at nothing');
+  // Other edits do not tell again.
+  f.links.delete(planKey(plain.id));
+  await plan.updateItem(plain.id, { notes: 'Window seat' });
+  await tick();
+  assert.ok(!f.links.has(planKey(plain.id)), 'an edit that leaves the Place alone sends nothing');
+  // Deleting the stop removes the link.
+  await plan.removeItem(plain.id);
+  await tick();
+  assert.deepEqual(f.links.get(planKey(plain.id)), [], 'deleting a linked stop removes its link');
+  // The pointer is cleaned on the way in: a stay or a note carries none, a bad one is dropped.
+  const stay = await plan.addItem({ kind: 'stay', title: 'Hotel', placeRef: placeRef('p1'), date: '2026-10-01' });
+  assert.ok(!stay.placeRef, 'only a stop is at a Place');
+  const bad = await plan.addItem({ kind: 'stop', title: 'Walk', placeRef: { module: 'places' }, date: '2026-10-02' });
+  assert.equal(bad.placeRef, null, 'a pointer with no kind or id is dropped');
+})();
+n += 1;
+
+// Files on a stay: linking is told to the host, deleting the stay unlinks them (no phantom use), a refusal is said in a sentence.
+await (async () => {
+  const f = fakeHost();
+  const plan = lib.createPlan(f.t);
+  await plan.load();
+  await plan.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  const planKey = (id) => f.t.util.objectKey(f.t.objects.make('plan', id));
+  const fileRef = (id) => ({ module: 'vault', kind: 'file', id, scope: 'space', space: 's1' });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const stay = await plan.addItem({ kind: 'stay', title: 'Hotel', date: '2026-10-01', files: [fileRef('f1'), fileRef('f2')] });
+  await tick();
+  assert.equal(f.fileLinks.get(planKey(stay.id)).length, 2, 'a stay\'s files are linked');
+  await plan.removeFile(stay.id, fileRef('f1'));
+  await tick();
+  assert.equal(f.fileLinks.get(planKey(stay.id)).length, 1, 'removing one file unlinks it');
+  await plan.removeItem(stay.id);
+  await tick();
+  assert.deepEqual(f.fileLinks.get(planKey(stay.id)), [], 'deleting a stay unlinks its files');
+  assert.deepEqual(f.toasts, [], 'nothing said when it worked');
+  const g = fakeHost({ failFilesAtStart: true });
+  const plan2 = lib.createPlan(g.t);
+  await plan2.load();
+  await plan2.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
+  await plan2.addItem({ kind: 'stay', title: 'Inn', date: '2026-10-01', files: [fileRef('f9')] });
+  await tick();
+  assert.deepEqual(g.toasts, ["Couldn't save the file links."], 'a refused link is said in a short sentence');
+})();
+n += 1;
+
+// A file pointer: another space's refuses with a toast instead of opening; a 403 from the server keeps its sentence.
+test('file pointers: refuse another space, pass the server sentence', () => {
+  const canvas = fs.readFileSync(new URL('../public/canvas.js', import.meta.url), 'utf8');
+  const mh = fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8');
+  const fn = canvas.slice(canvas.indexOf('function openRef(ref)'), canvas.indexOf('function answerOpenRef'));
+  assert.ok(/ref\.kind === 'file' && ref\.scope === 'space' && !\(spaceId && ref\.space === spaceId\)\) \{\s*noticeToast\([^;]*\);\s*return false;/.test(fn), 'a file of another space refuses with a toast');
+  assert.ok(fn.indexOf('noticeToast') < fn.indexOf('openFile('), 'the refusal comes before the file window');
+  assert.ok(mh.includes("seen.status === 403 && seen.error) || `this ${word('module')} may not open files`"), 'the server\'s 403 sentence is passed on');
 });
 
 console.log(`check-travel: OK (${n} checks)`);

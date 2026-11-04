@@ -15,6 +15,7 @@ Browser Source, so a recorded session shows their camera or a picture you chose.
   muted, on top of a Participant box and a Character box.
 - Roles and permissions: admin, owner, moderator, member and guest, with a grid to decide what each can do.
 - Guest links for someone dropping in once, with no account.
+- A Vault for a space's files (photos, audio, video, PDFs and notes), linkable from other tools and shareable by a link with people outside the space.
 - Your own colors and icons, and add-on modules you can install from a zip.
 
 ## Requirements
@@ -31,6 +32,7 @@ Browser Source, so a recorded session shows their camera or a picture you chose.
 Paste `docker-compose.yml` into Container Station on a QNAP, or run `docker compose up -d` anywhere
 Docker runs, after replacing the `CHANGE_ME` values. The full walkthrough, including DNS, router and
 proxy settings, is in the wiki's Getting Started guide.
+The compose file mounts two volumes: the data folder and a second one for the Vault's files (`VAULT_DIR`, `/app/vault`). Back up both.
 
 ## Where to read more
 

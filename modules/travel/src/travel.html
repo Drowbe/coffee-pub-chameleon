@@ -138,8 +138,9 @@
     <!-- only for a space without phases: with phases the dates are the space's timeline, set from the phase chip in the top bar.
          The plan's name, Where and Notes are no longer asked (stored ones are kept); the budget's currency in Set up wins over Currency. -->
     <div class="sdk-form-row">
-      <div class="sdk-field sdk-m" role="group" aria-labelledby="f-start-label"><span class="sdk-label" id="f-start-label">First day</span><input id="f-start" name="start" type="date" aria-labelledby="f-start-label"><span class="sdk-hint"></span></div>
-      <div class="sdk-field sdk-m" role="group" aria-labelledby="f-end-label"><span class="sdk-label" id="f-end-label">Last day</span><input id="f-end" name="end" type="date" aria-labelledby="f-end-label"><span class="sdk-hint"></span></div>
+      <div class="sdk-field sdk-m" data-dates role="group" aria-labelledby="f-start-label"><span class="sdk-label" id="f-start-label">First day</span><input id="f-start" name="start" type="date" aria-labelledby="f-start-label"><span class="sdk-hint"></span></div>
+      <div class="sdk-field sdk-m" data-dates role="group" aria-labelledby="f-end-label"><span class="sdk-label" id="f-end-label">Last day</span><input id="f-end" name="end" type="date" aria-labelledby="f-end-label"><span class="sdk-hint"></span></div>
+      <label class="sdk-field sdk-m"><span class="sdk-label">Time zone</span><select id="f-tz" name="tz"></select><span class="sdk-hint">Where the trip is. Its copies on the calendar use it.</span></label>
       <label class="sdk-field sdk-m"><span class="sdk-label">Currency</span><select id="f-currency" name="currency"></select><span class="sdk-hint">A currency set on the budget in Set up is used instead.</span></label>
     </div>
     <p class="sdk-hint" id="f-by"></p>
@@ -168,7 +169,7 @@
       <label class="sdk-field sdk-s" id="f-time-field" data-types="block flight train ferry bus car taxi rideshare shuttle restaurant cafe bar sight museum attraction tour show hotel"><span class="sdk-label" id="f-time-label">Start time</span><input id="f-time" name="time" type="time"><span class="sdk-hint"></span></label>
       <label class="sdk-field sdk-s" id="f-end-field" data-types="block car taxi rideshare shuttle restaurant cafe bar sight museum attraction tour show"><span class="sdk-label" id="f-end-label">End time</span><input id="f-endTime" type="time" aria-describedby="f-endNote"><span class="sdk-hint" id="f-endNote" role="status"></span></label>
       <div class="sdk-field sdk-m" id="f-length-field" role="group" aria-labelledby="f-minutes-label" data-types="block flight train ferry bus car taxi rideshare shuttle restaurant cafe bar sight museum attraction tour show"><span class="sdk-label" id="f-minutes-label">How long</span><span class="sdk-group sdk-duration"><input id="f-hours" name="hours" type="number" min="0" step="1" inputmode="numeric" aria-label="Hours"><span class="sdk-unit">h</span><input id="f-minutes" name="minutes" type="number" min="0" step="1" inputmode="numeric" aria-label="Minutes"><span class="sdk-unit">min</span></span><span class="sdk-hint"></span></div>
-      <div class="sdk-field sdk-m" id="f-checkout-field" role="group" aria-labelledby="f-checkout-label" data-types="hotel"><span class="sdk-label" id="f-checkout-label">Check out</span><select id="f-checkout" name="checkOut" hidden></select><input id="f-checkout-input" type="date" aria-labelledby="f-checkout-label" aria-describedby="f-checkout-phase"><span class="sdk-hint" id="f-checkout-phase" role="status"></span></div>
+      <div class="sdk-field sdk-m" id="f-checkout-field" role="group" aria-labelledby="f-checkout-label" data-types="hotel car"><span class="sdk-label" id="f-checkout-label">Check out</span><select id="f-checkout" name="checkOut" hidden></select><input id="f-checkout-input" type="date" aria-labelledby="f-checkout-label" aria-describedby="f-checkout-phase"><span class="sdk-hint" id="f-checkout-phase" role="status"></span></div>
       <label class="sdk-field sdk-s" id="f-checkouttime-field" data-types="hotel"><span class="sdk-label">Check-out time</span><input id="f-checkOutTime" name="checkOutTime" type="time"><span class="sdk-hint"></span></label>
     </div>
     <div class="sdk-choice-list" id="f-pinned-row" hidden><label class="sdk-choice-row"><input id="f-pinned" name="pinned" type="checkbox"> Keep on this day</label></div>
@@ -242,6 +243,18 @@
     </fieldset>
 
     <fieldset class="sdk-section" data-types="restaurant cafe bar sight museum attraction tour show"><legend class="sdk-section-title">Where and who</legend>
+      <div class="sdk-field sdk-full" id="f-place-field" role="group" aria-labelledby="f-place-label">
+        <span class="sdk-label" id="f-place-label">Place</span>
+        <input id="f-place" name="place" maxlength="120" autocomplete="off" aria-labelledby="f-place-label" aria-describedby="f-place-hint">
+        <span class="sdk-hint" id="f-place-hint" role="status"></span>
+        <div class="tv-place-linked" id="f-place-linked" hidden><span class="sdk-chip-tag" data-tone="custom"><span class="ic" data-icon="location-dot"></span><span data-slot="title"></span></span></div>
+        <div class="tv-place-actions">
+          <button class="btn" type="button" id="f-place-pick">Pick from Places</button>
+          <button class="btn" type="button" id="f-place-save" hidden>Save as a place</button>
+          <button class="btn" type="button" id="f-place-open" hidden>Open in maps</button>
+          <button class="btn btn-quiet" type="button" id="f-place-unlink" hidden>Unlink</button>
+        </div>
+      </div>
       <label class="sdk-field sdk-full"><span class="sdk-label">Address</span><input id="f-address-stop" name="address" maxlength="200"><span class="sdk-hint"></span></label>
       <div class="sdk-form-row">
         <label class="sdk-field sdk-m" data-types="restaurant cafe bar"><span class="sdk-label">Party size</span><input id="f-partySize" name="partySize" type="number" min="1"><span class="sdk-hint"></span></label>
@@ -259,6 +272,14 @@
         <div class="sdk-field sdk-m" id="f-cost-field" role="group" aria-labelledby="f-cost-label"><span class="sdk-label" id="f-cost-label">Actual</span><span class="sdk-group sdk-money"><input id="f-cost" name="cost" type="text" inputmode="decimal" autocomplete="off" aria-labelledby="f-cost-label" aria-describedby="f-cost-error"><span class="sdk-unit" data-slot="currency"></span></span><span class="sdk-error" id="f-cost-error"></span></div>
       </div>
       <div class="sdk-field sdk-full" role="radiogroup" aria-labelledby="f-paidBy-label"><span class="sdk-label" id="f-paidBy-label">Paid by</span><div class="sdk-people" id="f-paidBy"></div></div>
+    </fieldset>
+
+    <fieldset class="sdk-section" id="f-files-section" data-types="flight train ferry bus car taxi rideshare shuttle hotel" hidden><legend class="sdk-section-title">Attachments</legend>
+      <div class="sdk-field sdk-full" role="group" aria-labelledby="f-files-label"><span class="sdk-label" id="f-files-label">Files</span>
+        <div id="f-files" class="f-files"></div>
+        <div><button class="btn btn-quiet" type="button" id="f-files-add"><span class="ic" data-icon="paperclip" aria-hidden="true"></span> Add file</button></div>
+        <span class="sdk-hint" id="f-files-hint"></span>
+      </div>
     </fieldset>
 
     <label class="sdk-field sdk-full" data-types="lane block note flight train ferry bus car taxi rideshare shuttle hotel restaurant cafe bar sight museum attraction tour show"><span class="sdk-label">Notes</span><textarea id="f-notes" name="notes" rows="3" maxlength="8000"></textarea><span class="sdk-hint"></span></label>

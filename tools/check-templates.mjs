@@ -98,12 +98,12 @@ try {
     assert.deepEqual(t.words, { space: { one: 'trip', many: 'trips' } });
     assert.equal(t.verbs, null, 'Travel sets no verb (addendum 4, decision 3): it reads the default');
     assert.equal('verbs' in travelRaw, false, 'travel.json has no verbs entry');
-    assert.deepEqual(t.modules, ['travel', 'places', 'maps', 'research', 'calendar', 'budget', 'polls', 'todo', 'chat', 'conference']);
-    assert.deepEqual([t.moduleNames.travel, t.icons.home, t.lobby.name, t.lobby.description, t.spaceDefaults.profile], ['Itinerary', 'suitcase-rolling', 'Home base', 'Everyone on every trip.', 'participants']);
+    assert.deepEqual(t.modules, ['travel', 'places', 'maps', 'research', 'vault', 'calendar', 'budget', 'polls', 'todo', 'chat', 'conference']);
+    assert.deepEqual([t.moduleNames.travel, t.moduleNames.vault, t.icons.home, t.lobby.name, t.lobby.description, t.spaceDefaults.profile], ['Itinerary', 'Documents', 'suitcase-rolling', 'Home base', 'Everyone on every trip.', 'participants']);
     assert.deepEqual(t.spaceDefaults.opensWith, ['travel', 'chat']);
-    assert.equal(t.version, 7);
+    assert.equal(t.version, 8);
     // Version 6: each phase has a Font Awesome Free solid icon that can be drawn (the server's own drawable() test).
-    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera-retro']]);
+    assert.deepEqual(t.phases.map((p) => [p.id, p.icon]), [['planning', 'clipboard-list'], ['booking', 'ticket'], ['buffer', 'hourglass-half'], ['pre-trip', 'suitcase-rolling'], ['trip', 'plane'], ['post-trip', 'camera']]);
     for (const p of travelRaw.phases) assert.ok(fs.existsSync(path.join(ROOT, 'node_modules', '@fortawesome', 'fontawesome-free', 'svgs', 'solid', `${p.icon}.svg`)), `${p.id}: ${p.icon} is not a drawable icon`);
     assert.deepEqual(templates.problemsOf(travelRaw, { file: 'travel.json', bundled }), [], 'every phase icon passes the server\'s check');
     // plan-calendar-destination.md, decision 12, and plan-map-destination.md, decision 17: Show Calendar and Show Map
@@ -336,12 +336,12 @@ try {
   await test('the games template is the one decided (plan-template-games.md)', async () => {
     const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates', 'games.json'), 'utf8'));
     const t = templates.get('games');
-    assert.deepEqual([t.name, t.version, t.description], ['Games', 1, 'Run a campaign together: the chat, the calendar for sessions, a campaign planner, quests, lore and polls, and every player as an OBS source.']);
+    assert.deepEqual([t.name, t.version, t.description], ['Games', 2, 'Run a campaign together: the chat, the calendar for sessions, a campaign planner, quests, lore and polls, and every player as an OBS source.']);
     assert.deepEqual(Object.fromEntries(Object.entries(t.words).map(([k, v]) => [k, v.one])), { environment: 'group', space: 'campaign', owner: 'game master', aside: 'whisper', member: 'player' });
     for (const k of ['moderator', 'guest', 'canvas', 'module', 'object', 'home']) assert.equal(k in raw.words, false, `${k} keeps its word`);
-    assert.deepEqual(t.modules, ['travel', 'calendar', 'polls', 'todo', 'research', 'chat', 'conference']);
+    assert.deepEqual(t.modules, ['travel', 'calendar', 'polls', 'todo', 'research', 'vault', 'chat', 'conference']);
     for (const off of ['places', 'maps', 'budget', 'assistant']) assert.equal(t.modules.includes(off), false, `${off} is not in the template`);
-    assert.deepEqual(t.moduleNames, { travel: 'Campaign planner', calendar: 'Sessions', todo: 'Quests', research: 'Lore' });
+    assert.deepEqual(t.moduleNames, { travel: 'Campaign planner', calendar: 'Sessions', todo: 'Quests', research: 'Lore', vault: 'Handouts' });
     assert.deepEqual([t.moduleIcons, t.icons.home, t.lobby.name, t.lobby.description], [{ travel: 'scroll' }, 'dice-d20', 'Common room', 'Everyone in every campaign.']);
     assert.deepEqual(t.settings, { showCalendar: true, showMap: false, calendarFeeds: true });
     assert.deepEqual(t.phases, [], 'no phases');
@@ -421,7 +421,7 @@ try {
     const owned = { homeIcon: env.store.settings.homeIcon, words: env.store.settings.words };
     const opts = { allowed: (id) => id !== 'research', name: (id) => `name of ${id}` };
     const offer = templates.offerFor(env, travel, opts);
-    assert.deepEqual(offer.modules.map((m) => [m.id, m.allowed, m.why || null]), [['travel', true, null], ['places', true, null], ['maps', true, null], ['research', false, 'not in the plan'], ['calendar', true, null], ['budget', true, null], ['polls', true, null], ['todo', true, null], ['conference', true, null]]);
+    assert.deepEqual(offer.modules.map((m) => [m.id, m.allowed, m.why || null]), [['travel', true, null], ['places', true, null], ['maps', true, null], ['research', false, 'not in the plan'], ['vault', true, null], ['calendar', true, null], ['budget', true, null], ['polls', true, null], ['todo', true, null], ['conference', true, null]]);
     assert.equal(offer.modules[0].name, 'name of travel');
     assert.deepEqual(offer.lobby, { name: 'Home base', description: 'Everyone on every trip.' });
     assert.deepEqual(offer.spaceDefaults, { profile: 'participants', opensWith: ['travel', 'chat'] });
@@ -439,7 +439,7 @@ try {
     assert.deepEqual(second, first);
     assert.deepEqual(switchSnapshot(env), once, 'twice: the same');
     // What is left to offer: only what is still missing.
-    assert.deepEqual(templates.offerFor(env, travel, opts).modules.map((m) => m.id), ['travel', 'research', 'calendar', 'budget', 'polls', 'todo']);
+    assert.deepEqual(templates.offerFor(env, travel, opts).modules.map((m) => m.id), ['travel', 'research', 'vault', 'calendar', 'budget', 'polls', 'todo']);
     assert.equal(templates.offerFor(env, travel, opts).spaceDefaults, null);
   });
 
@@ -812,7 +812,7 @@ try {
     });
     let row = await travelRow();
     assert.deepEqual([row.edited, row.update, row.version], [false, null, was.version + 1], 'silent: the version rises, no notice');
-    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera-retro']);
+    assert.deepEqual((await call(server, 'out', 'GET', '/api/branding')).json.phases.map((p) => p.icon), ['clipboard-list', 'ticket', 'hourglass-half', 'suitcase-rolling', 'plane', 'camera']);
     const ownerAgain = cookieOf(await call(server, 'out', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
     const tab = await call(server, 'out', 'GET', '/api/environment/template', { cookie: ownerAgain });
     assert.equal(tab.json.template.offerOpen, false, 'nothing applied once changed, so no offer to apply again');
@@ -825,7 +825,7 @@ try {
       fs.writeFileSync(path.join(hosted, 'host.json'), JSON.stringify(data, null, 2));
     });
     row = await travelRow();
-    assert.deepEqual([row.name, row.edited, row.version, row.update], ['Journeys', true, edited.json.template.version, { shippedVersion: 7 }], 'the notice opens');
+    assert.deepEqual([row.name, row.edited, row.version, row.update], ['Journeys', true, edited.json.template.version, { shippedVersion: 8 }], 'the notice opens');
     const mine = await console_('POST', '/api/host/templates/travel/update', { keep: 'mine' });
     assert.deepEqual([mine.status, mine.json.template.update, mine.json.template.name], [200, null, 'Journeys'], 'once: keeping the edit closes it');
     await restartHost();

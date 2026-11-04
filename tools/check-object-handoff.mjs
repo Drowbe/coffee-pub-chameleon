@@ -23,7 +23,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const PRODUCT = 'Testname';
 process.env.PRODUCT_NAME = PRODUCT;
-const { KINDS, TRAVEL_KINDS, cleanHandoff, takersOf, kindsTaken, instructions } = require('../server/object-format.js');
+const { KINDS, TRAVEL_KINDS, cleanHandoff, takersOf, kindsTaken } = require('../server/object-format.js');
+const prompts = require('../server/prompts');
+const { productName } = require('../server/product-name.js');
+// The copied instructions: the registry's paste template (server/prompts/paste.js), as GET /api/objects/format renders it.
+const instructions = (noun, { kinds = TRAVEL_KINDS } = {}) => prompts.pasteText({ kinds, words: { object: noun, objects: `${noun}s`, space: 'space' } }, { product: productName() }).text;
 const { buildModule } = require('../server/module-build.js');
 
 let n = 0;
@@ -121,7 +125,7 @@ await test('the copied instructions for different sets of modules: each kind wit
   // Only To-do and the Calendar: no flight example, no itinerary line, a plain example, task's line.
   const small = instructions('object', { kinds: kindsTaken([todo, calendar]) });
   assert.ok(!small.includes('flight') && !small.includes('itinerary'));
-  assert.match(small, /\[\{"icon":"note","kind":"task","title":"a short title"/);
+  assert.match(small, /\[\{"icon":"note","kind":"task","title":"<title>"/);
   assert.match(small, /Set "kind" to what the object is: task\. /);
   assert.match(small, /\n- task: due\n/);
   // Nothing named: no kind line and no details, only the date rule.
@@ -147,7 +151,13 @@ await test('the bundled Research, To-do, Calendar and Polls declare what they ta
   assert.equal(providesOf(research, 'saveNote').input.object, 'object?', 'the flat fields still work');
   assert.deepEqual(providesOf(research, 'saveLink').takes, [{ kinds: ['link'], as: 'a link' }]);
   assert.equal(providesOf(research, 'saveLink').input.url, 'text', 'Chat\'s link keeper is found by its url, as before');
-  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, takes: [{ kinds: ['image'], as: 'an image' }] });
+  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, askerOnly: true, takes: [{ kinds: ['image'], as: 'an image' }] });
+  // `askerOnly` (QA round 2, failure 1): true or false, and not with `local`, which is already for the asker only.
+  const withAction = (a) => cleanManifest({ id: 'asker', name: 'Asker', version: '1.0.0', scope: ['space'], surfaces: { page: { entry: 'page.html' }, canvas: { entry: 'page.html' } }, actions: { provides: [{ name: 'make', input: {}, ...a }] } }, new Set(['page.html']));
+  assert.equal(withAction({ askerOnly: true }).actions.provides[0].askerOnly, true);
+  assert.equal('askerOnly' in withAction({ askerOnly: false }).actions.provides[0], false);
+  assert.throws(() => withAction({ askerOnly: 'yes' }), { message: 'module.json: action "make" askerOnly must be true or false' });
+  assert.throws(() => withAction({ askerOnly: true, local: true }), { message: 'module.json: action "make" is local, which is already for the asker only' });
   const todo = await bundled('todo');
   assert.deepEqual(providesOf(todo, 'createTask').takes, [{ kinds: ['task', '*', 'text'], as: 'a task' }]);
   assert.deepEqual(providesOf(todo, 'createTask').input, { title: 'string', notes: 'text?', ref: 'ref?', due: 'date?', object: 'object?' });

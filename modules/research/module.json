@@ -1,7 +1,7 @@
 {
   "id": "research",
   "name": "Research",
-  "version": "0.4.24",
+  "version": "0.4.31",
   "icon": "book-open",
   "color": "blue",
   "description": "What a group finds out while it plans: notes, links with the part that mattered, photos with a caption. Tagged, searchable, linkable from anywhere, and questioned or summarised by the AI the {owner} chose.",
@@ -55,7 +55,28 @@
   ],
   "access": {
     "read": "view",
-    "write": "edit"
+    "write": "edit",
+    "personWrite": "view"
+  },
+  "guards": {
+    "clear": "remove_photos",
+    "exclusive": ["note:{id}", "link:{id}", "photo:{id}", "answer:{id}"],
+    "keys": [
+      {
+        "key": "photo:{id}",
+        "owner": "by",
+        "file": "file",
+        "others": {
+          "change": "remove_photos",
+          "delete": "remove_photos",
+          "may": ["title", "tags", "date", "point", "text", "sub", "at"]
+        }
+      },
+      {
+        "key": "link:{id}",
+        "linkImage": "image"
+      }
+    ]
   },
   "hooks": {
     "ai": "optional"
@@ -171,6 +192,7 @@
       {
         "name": "savePhoto",
         "label": "Save this picture to research",
+        "askerOnly": true,
         "input": {
           "object": "object"
         },

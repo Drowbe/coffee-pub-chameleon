@@ -1,7 +1,7 @@
 {
   "id": "maps",
   "name": "Maps",
-  "version": "0.9.12",
+  "version": "0.9.14",
   "content": "flush",
   "icon": "map-location-dot",
   "color": "pink",
@@ -77,7 +77,7 @@
       "default": "",
       "httpsOnly": true,
       "pathEnds": ".pmtiles",
-      "help": "A world PMTiles file to cut a region from with \"Add a region\". The server reads only the part it cuts, over https range requests, never the whole file. Protomaps publishes a daily build at https://build.protomaps.com/YYYYMMDD.pmtiles, where YYYYMMDD is the build's date (https://build.protomaps.com/20260924.pmtiles, say); any recent date works, or point this at your own stable copy. Left empty, cutting a region is off. With {environments} this is the host's, on the host console."
+      "help": "A world PMTiles file to cut a region from with \"Add a region\". The server reads only the part it cuts, over https range requests, never the whole file. Protomaps publishes a daily build at https://build.protomaps.com/YYYYMMDD.pmtiles, where YYYYMMDD is the build's date (https://build.protomaps.com/20261101.pmtiles, say); only recent builds are kept, so use a date from the last few weeks, or point this at your own stable copy. Left empty, cutting a region is off. With {environments} this is the host's, on the host console."
     },
     {
       "key": "searchNote",

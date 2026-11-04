@@ -17,7 +17,8 @@
 //   title bar --mf-title-h (36 px, on every width), its words 14 px, its first item --mf-inset (12 px) in and its last
 //   --space-1 (4 px) from the end;
 //   toolbar --mf-band-h (40 px, its hairline counted), its first item --mf-inset in; its end group (the search, then the
-//   Filters button) exactly --mf-inset from the end, the same place in every window; with no end group, nothing closer;
+//   Filters button; or, where a host page has a right zone, that zone's last control) exactly --mf-inset from the end, the same
+//   place in every window; with no end group, nothing closer;
 //   status bar --mf-status-h (24 px), its first item --mf-inset in;
 //   a search field and a control in a band (a button, the view switch, a tab, the "+", the menu, Close) --mf-ctl-h (28 px);
 //   the Filters button --mf-ctl-h too, a filter chip --mf-chip-h (24 px); nothing in a band is cut (its controls inside its padding);
@@ -118,7 +119,11 @@ const COLLECT = String.raw`(() => {
     // Its end group (the frame's search, then its Filters button): where it ends, from the band's end (its padding counted).
     if (kind === 'toolbar') {
       const ends = [...el.children].filter((k) => shown(k) && k.matches('.mf-search, .mf-search-open, .mf-filters'));
-      if (ends.length) out.endAt = px(br - Math.max(...ends.map((x) => R(x).right)));
+      // A host page's right zone (the Calendar destination's Agenda / To-do switch, .mf-zone-end) is the row's last thing: it takes the
+      // fixed place at the end, and the search and Filters button stand just before it.
+      const zone = [...el.children].filter((k) => shown(k) && k.matches('.mf-zone-end'));
+      if (zone.length) out.endAt = px(br - Math.max(...zone.map((x) => R(x).right)));
+      else if (ends.length) out.endAt = px(br - Math.max(...ends.map((x) => R(x).right)));
       // Nothing cut: every control inside the band's padding (its scroll width its width).
       out.cut = el.scrollWidth > el.clientWidth + 1;
     }

@@ -206,7 +206,29 @@
   function shownOnce(groups) {
     const seen = new Map();
     for (const list of groups) for (const x of list || []) { const k = `${x.w}/${x.p.id}`; if (!seen.has(k)) seen.set(k, x); }
-    return [...seen.values()].sort((a, b) => a.p.title.localeCompare(b.p.title));
+    return [...seen.values()].sort((a, b) => a.p.title.localeCompare(b.p.title, undefined, { numeric: true }));
+  }
+  // The distance in metres between two points ({ lat, lng }).
+  function metresBetween(a, b) {
+    const rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad;
+    const dLng = (b.lng - a.lng) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  // The same name, ignoring case, spacing and accents.
+  const sameName = (a, b) => {
+    const plain = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return Boolean(plain(a)) && plain(a) === plain(b);
+  };
+  // A place already in `list` ({ p, w }) that `cand` ({ origin, title, point }) would repeat: the one saved from the same search
+  // result (its key), else the same name within about 30 metres. Null when there is none.
+  function findDuplicate(list, cand) {
+    const c = cand || {};
+    for (const x of list || []) if (c.origin && x.p.origin && x.p.origin === c.origin) return x;
+    if (!c.point) return null;
+    for (const x of list || []) if (x.p.point && sameName(x.p.title, c.title) && metresBetween(x.p.point, c.point) <= 30) return x;
+    return null;
   }
 
   // A stored value as a place, or null when it is not one (a forward is not).
@@ -240,6 +262,7 @@
       by: typeof v.by === 'string' ? v.by.slice(0, 64) : '',
       ref,
       spaces: cleanMarks(v.spaces),
+      ...(typeof v.origin === 'string' && v.origin ? { origin: v.origin.slice(0, 60) } : {}), // the search result it was saved from
     };
   }
   // What is stored for a place (no `point` at all when it has none, so its summary carries no place).
@@ -258,6 +281,7 @@
     by: p.by,
     ...(p.ref ? { ref: p.ref } : {}),
     ...(p.spaces && p.spaces.length ? { spaces: cleanMarks(p.spaces) } : {}),
+    ...(p.origin ? { origin: String(p.origin).slice(0, 60) } : {}),
   });
 
   // What another module asks for through `addPlace`: a checked place, or an Error saying what is wrong.
@@ -328,8 +352,17 @@
       remember(String(e.key).slice(PLACE_PREFIX.length), e.deleted ? null : e.value, e.version);
       changed();
     });
+    // Many at once (a Clear, its Undo): kept in one pass, announced once. Keys only (a big event comes without values): read again.
+    host.on('changes', (e) => {
+      if (space ? !(e.scope === 'spaces' && String(e.spaceId) === space) : e.scope === 'spaces' || (e.scope || 'space') !== scope) return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => String(c.key).startsWith(PLACE_PREFIX));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key).slice(PLACE_PREFIX.length), c.deleted ? null : c.value, c.version);
+      changed();
+    });
 
-    const list = () => [...byId.values()].map((x) => x.place).sort((a, b) => a.title.localeCompare(b.title));
+    const list = () => [...byId.values()].map((x) => x.place).sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true })); // QA place 2 before QA place 10
     const get = (id) => (byId.get(id) || {}).place || null;
     const versionOf = (id) => (byId.get(id) || {}).version;
     const forwardOf = (id) => (forwards.get(id) || {}).forward || null;
@@ -424,6 +457,14 @@
     host.on('change', (e) => {
       if (!String(e.key).startsWith(SAVED_PREFIX) || e.scope !== 'person') return;
       remember(String(e.key), e.deleted ? null : e.value);
+      changed();
+    });
+    host.on('changes', (e) => {
+      if (e.scope !== 'person') return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => String(c.key).startsWith(SAVED_PREFIX));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key), c.deleted ? null : c.value);
       changed();
     });
     const has = (ref) => byKey.has(bookmarkKey(ref));

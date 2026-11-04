@@ -3819,6 +3819,12 @@ function storedEntry(m, { local = false } = {}) {
   if (kind && typeof m.module === 'string' && m.module) entry.module = m.module;
   if (kind === 'ai' && Array.isArray(m.summaries)) entry.summaries = m.summaries;
   if (kind === 'ai' && typeof m.replyTo === 'string') entry.replyTo = m.replyTo;
+  // What the answer used (the server keeps it with the answer): the AI used: line under it.
+  if (kind === 'ai' && m.sent && typeof m.sent === 'object') entry.sent = m.sent;
+  if (kind === 'ai' && Array.isArray(m.used)) entry.used = m.used;
+  if (kind === 'ai' && m.cut === true) entry.cut = true;
+  if (kind === 'ai' && Array.isArray(m.numbered)) entry.numbered = m.numbered;
+  if (kind === 'ai' && Array.isArray(m.leftOut)) entry.leftOut = m.leftOut;
   if (kind === 'ai' && m.question && typeof m.question.text === 'string') entry.question = { who: String(m.question.who || 'someone'), text: m.question.text };
   // An ordinary message's link (plan-chat-links.md): its preview, and who kept it. Cleaned, whoever handed it in.
   if (!kind) {
@@ -4552,7 +4558,7 @@ function messageEl(entry, own) {
     look = chatInput.commandLook(entry);
     const quote = entry.visibility === 'public' && entry.question ? entry.question : null;
     if (quote) name = `AI, for ${quote.who}`;
-    body = chatInput.answerBody(entry.text, entry.summaries, quote ? quote.text : '');
+    body = chatInput.answerBody(entry.text, entry.summaries, quote ? quote.text : '', { sent: entry.sent, used: entry.used, cut: entry.cut, numbered: entry.numbered, leftOut: entry.leftOut });
     if (quote) {
       const q = document.createElement('p');
       q.className = 'message-quote';
@@ -5526,11 +5532,11 @@ function updateCrumb() {
     space = { name: spaceName };
   }
   const segs = anchorSegments({ space, viewingHome, guestSpaceName: guestToken ? guestSpaceName : '', parentName, asideWord: word('aside', { cap: true }), others });
-  const iconOf = (seg) => (!currentSpace ? 'message' : currentSpace.isAside ? (seg.action ? spaceCrumbIcon(originSpace) : 'people-arrows') : spaceCrumbIcon(currentSpace));
+  const iconOf = (seg) => (!currentSpace ? spaceCrumbIcon(null) : currentSpace.isAside ? (seg.action ? spaceCrumbIcon(originSpace) : 'people-arrows') : spaceCrumbIcon(currentSpace));
   setTopbarLocation(segs.map((seg) => crumbSegmentHtml(seg, iconOf(seg))).join('<span class="crumb-sep" aria-hidden="true">&rsaquo;</span>'));
   // The one bar (step 7): the switcher reads the last segment; the Spaces slot leaves.
   const last = segs[segs.length - 1] || null;
-  paintSpaceSwitcher(last, last ? iconOf(last) : 'message');
+  paintSpaceSwitcher(last, last ? iconOf(last) : spaceCrumbIcon(null));
   setInSpace(oneBar());
   if (settingUp && !canSetUp()) spaceSetup.cancel(); // home over the space, an aside, a space left: Set up ends
   placeSetupName(); // while setting up, the current segment is the name's input
@@ -6213,6 +6219,7 @@ const chatInput = attachChatInput({
   frameMessage,
   addStored: (m, opts) => addStoredMessage(m, opts),
   openMenu: openHostMenu,
+  openObject: (ref) => openAttentionTarget(ref.module, ref),
   pictureBlob: (entry) => pictureBlob(entry),
   // Chat in sight: open, and not behind the column's collapsed rail.
   isShown: () => Boolean(homeChatSpace) || (canvas.builtinOpen('chat') && !(canvas.columnMode() && columnCollapsed())),
@@ -6231,7 +6238,8 @@ askInChat = (input) => chatInput.askAbout(input);
 $('chat-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = $('chat-input').value.trim();
-  if (!text || !canDo('chat')) return;
+  // A dropped object stands in for the words in the Assistant: the server then asks its usual question about it.
+  if (!canDo('chat') || (!text && !chatInput.canAskEmpty())) return;
   // Where the line goes: a command runs in the Assistant, switching there from the Discussion, in either view; in the
   // Assistant a pasted import answer is brought in and any other words ask the AI; in the Discussion words are a
   // message for everyone.

@@ -228,6 +228,9 @@
   --status-info-fill: var(--tint-blue);
   --status-danger-text: color-mix(in srgb, var(--status-danger-fill) 70%, var(--text-primary)); /* FALLBACK: /theme.css writes the pick */
   --status-danger-tint: color-mix(in srgb, var(--status-danger-fill) 12%, transparent);
+  /* Danger as text on a row or a chip (an overdue date, an overdue task's marker): 4.5 to 1 on the raised step in the dark modes too,
+     where --status-danger-text (the pick for the page surface) is 3.5 to 4.3. Lighter in the dark modes, the same as the pick in the light. */
+  --text-danger: color-mix(in srgb, var(--status-danger-fill) 40%, var(--text-primary));
   --status-danger-on-fill: white; /* FALLBACK: /theme.css writes white or near-black, whichever reaches 4.5:1 */
   --status-ok-text: color-mix(in srgb, var(--status-ok-fill) 70%, var(--text-primary)); /* FALLBACK */
   --status-ok-tint: color-mix(in srgb, var(--status-ok-fill) 12%, transparent);
@@ -239,6 +242,22 @@
   --status-info-text: color-mix(in srgb, var(--status-info-fill) 70%, var(--text-primary)); /* FALLBACK */
   --status-info-tint: color-mix(in srgb, var(--status-info-fill) 12%, transparent);
   --status-info-on-fill: var(--surface-page); /* FALLBACK */
+
+  /* The map (the Maps module reads these to build its style; a light theme gives a light map). The land is a hair off the panel, the
+     water a blue tint and parks a green one, and the roads are one ladder of the text colour over the land: minor, medium, major,
+     each clearly above the land and in that order (dark 1.8, 2.4, 3.4 to 1; light 1.8, 2.4, 3.2). The Maps style also clamps every one of
+     these against the land (maps-lib-d-style.js, guardMap: names 4.5:1, major road 3, minor 1.7, water 1.5 and a blue of its own), so a
+     theme that sets one badly still reads; tools/check-maps.mjs holds the shipped themes to it. Light overrides below. */
+  --map-land: color-mix(in srgb, var(--text-primary) 4%, var(--surface-panel));
+  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-page));
+  --map-park: color-mix(in srgb, var(--tint-green) 16%, var(--map-land));
+  --map-wood: color-mix(in srgb, var(--tint-green) 9%, var(--map-land));
+  --map-road-minor: color-mix(in srgb, var(--text-primary) 20%, var(--map-land));
+  --map-road-medium: color-mix(in srgb, var(--text-primary) 30%, var(--map-land));
+  --map-road-major: color-mix(in srgb, var(--text-primary) 42%, var(--map-land));
+  --map-building: color-mix(in srgb, var(--text-primary) 10%, var(--map-land));
+  --map-label: color-mix(in srgb, var(--text-primary) 40%, var(--text-muted)); /* small labels */
+  --map-boundary: var(--text-muted);
 }
 
 /* Light mode: the shadows are the text colour at a low strength, so one is never a black smudge on a pale page. The same two selectors
@@ -249,6 +268,13 @@
   --shadow-2: 0 2px 8px color-mix(in srgb, var(--text-primary) 10%, transparent);
   --shadow-3: 0 4px 16px color-mix(in srgb, var(--text-primary) 10%, transparent);
   --shadow-color: color-mix(in srgb, black 10%, transparent);
+  --text-danger: color-mix(in srgb, var(--status-danger-fill) 70%, var(--text-primary));
+  --map-land: var(--surface-panel);
+  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-panel));
+  --map-road-minor: color-mix(in srgb, var(--text-primary) 27%, var(--map-land));
+  --map-road-medium: color-mix(in srgb, var(--text-primary) 39%, var(--map-land));
+  --map-road-major: color-mix(in srgb, var(--text-primary) 50%, var(--map-land));
+  --map-building: color-mix(in srgb, var(--text-primary) 12%, var(--map-land));
 }
 
 @media (max-width: 640px) {
@@ -308,6 +334,11 @@
 
 .sdk-btn {
   flex: none;
+}
+
+/* A touch screen: a small icon button is still a 44px target (the icon stays small). */
+@media (pointer: coarse) {
+  .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
 }
 
 .sdk-icon-btn :is(i, svg, .ic) {
@@ -1141,7 +1172,7 @@
 }
 
 /* The parent of a corner count is the corner's frame. */
-:where(:has(> .sdk-badge-micro)) { position: relative; } /* no weight: a parent that is absolute or fixed already keeps that */
+/* removed */
 
 /* A phone: the look stays, the hit area is 44px. */
 @media (max-width: 640px) {
@@ -1581,7 +1612,8 @@
    mode, 0.5 in light. The kind label beside it uses --card-kind-l, 0.88 in dark mode and 0.38 in light (11px text needs 4.5:1 on the card).
    The box (--card-icon) is the circle: 36px in a banded head, 28px in a row. */
 :root { --card-kind-l: 0.88; --card-disc-l: 0.74; }
-:root[data-theme-mode="light"] { --card-kind-l: 0.38; --card-disc-l: 0.5; }
+:root[data-theme-mode="light"],
+:root[data-mode-shown="light"]:not([data-theme-mode="dark"]) { --card-kind-l: 0.38; --card-disc-l: 0.5; }
 .sdk-card-icon {
   flex: none;
   display: inline-flex;
@@ -1881,8 +1913,22 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-tint: 22%;
   --cal-out: 0.55;
   --cal-bar: 3px; /* the kept bar */
+  /* The chosen day: solid accent with the text on it in the dark modes; in the light mode a lighter fill (a state is a fill, never a
+     ring), so the brown is not the heaviest thing on the page. Today wears a ring in both. A phase's wash is lighter in the light mode, so chips stay readable. */
+  --cal-sel-bg: var(--accent-fill);
+  --cal-sel-bg-hover: var(--accent-fill-hover);
+  --cal-sel-text: var(--text-on-accent);
+  --cal-today-ring: var(--accent-fill);
+  --cal-ph-wash: 16%;
   /* Muted text on a fill (hover, today, another calendar's chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
   --cal-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary));
+}
+:root[data-theme-mode="light"], :root[data-mode-shown="light"]:not([data-theme-mode="dark"]) {
+  --cal-sel-bg: color-mix(in srgb, var(--accent-fill) 32%, var(--surface-field));
+  --cal-sel-bg-hover: color-mix(in srgb, var(--accent-fill) 40%, var(--surface-field));
+  --cal-sel-text: var(--text-primary);
+  --cal-today-ring: var(--accent-fill);
+  --cal-ph-wash: 9%;
 }
 
 /* ---- the grids ---- */
@@ -1935,7 +1981,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell:is(:hover, .in-range) .sdk-cal-n { color: var(--cal-dim); }
 
 /* Today: the selected fill at half strength; the number bold in the text colour. */
-.sdk-cal-cell.is-today { background: color-mix(in srgb, var(--accent-fill) var(--cal-today), var(--cal-surface)); }
+.sdk-cal-cell.is-today { background: color-mix(in srgb, var(--accent-fill) var(--cal-today), var(--cal-surface)); box-shadow: inset 0 0 0 1px var(--cal-today-ring); }
 .sdk-cal-cell.is-today .sdk-cal-n { color: var(--text-primary); font-weight: var(--weight-strong); }
 .sdk-cal-cell.is-today:hover { background: color-mix(in srgb, var(--text-primary) var(--cal-press), color-mix(in srgb, var(--accent-fill) var(--cal-today), var(--cal-surface))); }
 
@@ -1948,10 +1994,12 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell.is-other:hover { opacity: 0.85; }
 
 /* The chosen day: the one solid accent. Its focus outline is the text on the accent (an accent outline cannot show on an accent fill). */
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) { background: var(--accent-fill); color: var(--text-on-accent); }
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]):hover { background: var(--accent-fill-hover); }
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-n { color: var(--text-on-accent); font-weight: var(--weight-strong); }
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) { --cal-focus: var(--text-on-accent); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) { background: var(--cal-sel-bg); color: var(--cal-sel-text); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]):hover { background: var(--cal-sel-bg-hover); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-n { color: var(--cal-sel-text); font-weight: var(--weight-strong); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) { --cal-focus: var(--cal-sel-text); }
+/* The focus ring on the chosen day: a double ring, the text colour outside (against the page) and the on-fill colour inside (against the fill), each 3 to 1 or more. */
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]):focus-visible { outline-color: var(--text-primary); box-shadow: inset 0 0 0 4px var(--cal-sel-text); }
 
 /* The day a link opened: the selected fill and a word. */
 .sdk-cal-cell.is-linked { background: var(--fill-selected); }
@@ -2010,9 +2058,10 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-event:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 :is(.sdk-cal-week, .sdk-cal-hours, .sdk-cal-allday) .sdk-cal-event, .sdk-cal-event.is-wrap { white-space: normal; overflow-wrap: anywhere; }
 .sdk-cal-more { color: var(--text-muted); font-size: var(--text-11); line-height: 14px; }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-more { color: var(--cal-sel-text); }
 
 /* An event on the chosen day (solid accent): the chip reads against the accent, not tinted by it. */
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--text-primary) 22%, var(--accent-fill)); color: var(--text-on-accent); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--text-primary) 22%, var(--cal-sel-bg)); color: var(--cal-sel-text); }
 
 /* The exception, kept: the 3px bar on the left of a Calendar agenda row and of the chips of other calendars and markers (Thomas, 2026-10-18).
    A straight, square-ended block the full height of the box (it covers the box's own 1px edge, --bar-bleed); the box is square on that side. */
@@ -2022,14 +2071,17 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-event.sdk-bar-kept { --bar-bleed: 0px; --ev-tone: var(--tint, var(--text-muted)); border-width: 0; padding-left: calc(var(--space-2) + var(--space-0) / 2); background: color-mix(in srgb, var(--text-muted) 12%, var(--cal-surface, var(--surface-field))); color: var(--cal-dim); }
 .sdk-cal-event.sdk-bar-kept:hover { background: color-mix(in srgb, var(--text-muted) 22%, var(--cal-surface, var(--surface-field))); color: var(--text-primary); }
 .sdk-cal-event.sdk-bar-kept.is-marker { color: var(--text-primary); }
-:is(.sdk-cal-event, .sdk-cal-agenda .sdk-row).is-past { opacity: var(--cal-out); }
+:is(.sdk-cal-event, .sdk-cal-agenda .sdk-row).is-past { opacity: var(--cal-out); } /* a thing that has closed (a poll): dimmed */
 :is(.sdk-cal-event, .sdk-cal-agenda .sdk-row).is-past:hover { opacity: 0.85; }
+/* A thing still to do that is late (an overdue task) is not dimmed: it takes the danger tone, in text that reads on the cell. */
+:is(.sdk-cal-event, .sdk-cal-agenda .sdk-row).is-overdue::before { background: var(--status-danger-fill); } /* the bar of a late task */
+.sdk-cal-event.sdk-bar-kept.is-marker.is-overdue, .sdk-cal-agenda .sdk-row.is-overdue :is(.sdk-row-meta, .sdk-row-title) { color: var(--text-danger); }
 
 /* ---- the week, the compact month and week ---- */
 .sdk-cal-week { --cal-cell-h: 150px; }
 .sdk-cal-week .sdk-cal-n { font-size: var(--text-11); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; }
 .sdk-cal-week .sdk-cal-n b { margin-left: var(--space-0); color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); letter-spacing: normal; }
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-n b { color: var(--text-on-accent); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-n b { color: var(--cal-sel-text); }
 .sdk-cal-compact .sdk-cal-grid { --cal-cell-h: 54px; }
 .sdk-cal-compact .sdk-cal-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); }
 .sdk-cal-compact .sdk-cal-event { width: 7px; min-width: 7px; height: 7px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-round); background: var(--ev-tone); font-size: var(--text-11); line-height: 7px; color: transparent; overflow: hidden; }
@@ -2038,7 +2090,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-compact .sdk-cal-event.sdk-bar-kept { width: 7px; padding: 0; background: var(--ev-tone); color: transparent; }
 .sdk-cal-compact .sdk-cal-event.sdk-bar-kept::before { display: none; }
 .sdk-cal-compact .sdk-cal-event.sdk-bar-kept.is-ext { background: var(--text-muted); }
-.sdk-cal-compact .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: var(--text-on-accent); }
+.sdk-cal-compact .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: var(--cal-sel-text); }
 /* A compact week is a list: the day on the left, its events beside it. */
 .sdk-cal-compact .sdk-cal-week { grid-template-columns: minmax(0, 1fr); }
 .sdk-cal-compact .sdk-cal-week .sdk-cal-cell { --cal-cell-h: 0px; flex-direction: row; align-items: flex-start; gap: calc(var(--space-2) + var(--space-0)); }
@@ -2314,7 +2366,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 
 /* ---- the card, when current: the selected fill, opaque. Nothing else changes. ---- */
 .sdk-day { --s: var(--day-step, var(--surface-card)); --chip-surface: var(--s); } /* a page may put the card on another step (--day-step) */
-.sdk-day.is-current { background: color-mix(in srgb, var(--wash-ink) var(--wash-pick), var(--s)); }
+.sdk-day.is-current { background: color-mix(in srgb, var(--wash-ink) calc(var(--wash-pick) * 0.5), var(--s)); } /* half the pick wash: a whole day is a large area, and in Cream light a full one read as a grey slab (1.28:1 on the page) */
 .sdk-day.is-drop { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-day .sdk-card-list { margin-top: var(--space-1); }
 
@@ -2385,7 +2437,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-daychip:hover { background: var(--chip-fill-hover); }
 .sdk-daychip:active { background: var(--chip-fill-active); }
 .sdk-daychip:focus-visible { outline: 2px solid var(--day-focus, var(--focus-ring)); outline-offset: -2px; }
-.sdk-daychip:is(.is-current, [aria-current="true"]) { background: var(--fill-selected); color: var(--day-now); }
+.sdk-daychip:is(.is-current, [aria-current="true"]) { background: color-mix(in srgb, var(--wash-ink) calc(var(--wash-selected) * 0.6), transparent); color: var(--day-now); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) > b { color: var(--day-now); }
 .sdk-daychip:is(.is-current, [aria-current="true"]):hover { background: color-mix(in srgb, var(--wash-ink) 36%, transparent); }
 .sdk-daychip:is(.is-current, [aria-current="true"]) { --day-focus: var(--day-now); }
@@ -3052,6 +3104,73 @@ dialog.sdk-dialog-confirm:not([open]) { display: none; }
   dialog.sdk-dialog-confirm { transition: none; }
 }
 /* confirm:end */
+
+/* objectpick:start */
+/* The object picker (host.objects.pick, public/object-pick.js): a search box and rows in a dialog, 560px wide, a full-height sheet on a phone.
+   The shell, head, title and foot are the Dialogs block's (.sdk-dialog-head, .sdk-dialog-title, .sdk-dialog-foot); the rows are the shared .sdk-row.
+   The highlighted row (.active, the one Enter chooses) is a fill (--fill-selected); a ticked one (aria-selected, multiple) shows a check. */
+dialog.sdk-dialog-pick {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--dlg-w-form), 100vw - 32px);
+  max-width: none;
+  max-height: min(640px, var(--dlg-max-h));
+  height: 100%;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-large);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-14);
+  line-height: 20px;
+}
+dialog.sdk-dialog-pick:not([open]) { display: none; }
+dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
+.sdk-dialog-pick .sdk-dialog-close { position: relative; }
+.sdk-dialog-pick .sdk-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 var(--dlg-pad-x) var(--pad-dialog-y);
+}
+.sdk-pick-status { margin: 0; min-height: 16px; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
+.sdk-pick-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sdk-pick-row { cursor: pointer; flex: none; }
+.sdk-pick-row:hover { --s: var(--surface-field); background: var(--surface-field); }
+.sdk-pick-row.active, .sdk-pick-row.active:hover { background: var(--fill-selected); }
+.sdk-pick-row .sdk-card-icon { color: var(--kind-color, inherit); }
+.sdk-pick-tick { flex: none; width: 16px; text-align: center; color: var(--text-primary); visibility: hidden; }
+.sdk-pick-row[aria-selected="true"] .sdk-pick-tick { visibility: visible; }
+.sdk-dialog-pick .sdk-dialog-foot { margin: 0; padding: var(--pad-dialog-y) var(--dlg-pad-x) calc(var(--pad-dialog-y) + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 640px) {
+  dialog.sdk-dialog-pick { width: 100vw; max-height: none; height: 100dvh; border-radius: 0; border-width: 0; }
+  .sdk-dialog-pick .sdk-dialog-close::after { content: ""; position: absolute; inset: var(--btn-hit); }
+  .sdk-dialog-pick .sdk-dialog-foot > .btn { --btn-h: 44px; }
+  .sdk-pick-row { min-height: 44px; }
+  .sdk-dialog-pick .sdk-search > input { font-size: var(--text-16); min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .sdk-pick-row { min-height: 44px; }
+  .sdk-dialog-pick .sdk-search > input { font-size: var(--text-16); min-height: 44px; }
+}
+/* objectpick:end */
 
 /* ================= Journey bar: the status strip and its journey bar (design system step 30) =================
    The space's status strip (space.js, "the status strip"): the phase chip, the journey bar, the countdown, up to three facts and
@@ -4623,6 +4742,12 @@ html[data-dialog-open] { overflow: hidden; }
   pointer-events: none;
 }
 .sdk-toasts > * { pointer-events: auto; }
+/* While an Undo note shows, the stack sits along the bottom edge, as on a phone: at the top right it covers the title bar's menu button of the module that was cleared. */
+.sdk-toasts:has(> .sdk-toast[data-undo]) {
+  top: auto;
+  bottom: var(--space-4);
+  flex-direction: column-reverse;
+}
 
 /* ---- The toast ---- */
 .sdk-toast {
@@ -5752,9 +5877,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
    the host fills its place with it and pads it (--mf-inset, as the toolbar's sides), unless the manifest says
    "content": "flush" (the SDK puts that on the root as data-content). A module gives the slot, html and body no padding,
    margin or height of its own (tools/check-module-layout.mjs); its parts are 8px apart. */
-:root:has(> body > .sdk-slot),
-:root:has(> body > .sdk-slot) > body { height: 100%; margin: 0; }
-:root:has(> body > .sdk-slot) > body { display: flex; flex-direction: column; overflow: hidden; }
+body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
 .sdk-slot {
   position: relative;
   display: flex;

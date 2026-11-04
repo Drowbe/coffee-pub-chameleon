@@ -135,11 +135,11 @@ export function frameAdd(clean, onPick) {
 
 // What host.status.set sent, cleaned: up to 4 items { text, icon?, title, quiet, end }, text up to 60 characters,
 // `title` (the tooltip) the text unless given. At most one `end` item (the first marked), and it goes last.
-export function cleanStatusItems(items) {
+export function cleanStatusItems(items, limit = STATUS_LIMITS.items) {
   const out = [];
   let end = null;
   for (const i of Array.isArray(items) ? items : []) {
-    if (out.length + (end ? 1 : 0) >= STATUS_LIMITS.items) break;
+    if (out.length + (end ? 1 : 0) >= limit) break;
     if (!i || typeof i !== 'object') continue;
     const text = str(i.text, STATUS_LIMITS.text);
     if (!text) continue;
@@ -224,6 +224,11 @@ export function topmostAt(candidates, x, y) {
 // Anything else is dropped. A function `send` on an item (the host page's own items, never a module's: a module's go through
 // postMessage or this cleaning first) is kept, so the page can mix its own items into a part's row.
 export const TOOLBAR_LIMITS = { items: 16, tabs: 8, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
+// Where the host page puts an item of its own (never a module's: only an item with a `send` function keeps it): `zone: 'end'`
+// is the row's right zone, after the search and Filters (the Calendar destination's panel switch and the panel's items),
+// `pin` that the item is never moved into "More". Any item with a zone also makes the page's order the row's: the items
+// are kept in the order given, not sorted switches first.
+const pageZone = (i) => (typeof i.send === 'function' ? { ...(i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {}), ...(i.pin === true ? { pin: true } : {}) } : {});
 export function cleanToolbarItems(items) {
   const s = (v, n) => String(v ?? '').slice(0, n);
   const id = (v) => s(v, 40);
@@ -234,12 +239,13 @@ export function cleanToolbarItems(items) {
     const own = typeof i.send === 'function' ? { send: i.send } : {};
     const type = ['tabs', 'text', 'title', 'search', 'chips', 'button', undefined].includes(i.type) ? i.type || 'button' : null;
     if (!type) continue;
-    if (type === 'text' || type === 'title') { const text = s(i.text, TOOLBAR_LIMITS[type]); if (text) out.push({ type, text, ...own }); continue; }
+    if (type === 'text' || type === 'title') { const text = s(i.text, TOOLBAR_LIMITS[type]); if (text) out.push({ type, text, ...own, ...pageZone(i) }); continue; }
     if (type === 'tabs') {
       const options = (Array.isArray(i.options) ? i.options : []).slice(0, TOOLBAR_LIMITS.tabs).map((o) => ({
         id: id(o?.id), label: s(o?.label, TOOLBAR_LIMITS.label), icon: icon(o?.icon), regular: Boolean(o?.regular), iconOnly: Boolean(o?.iconOnly),
+        ...(Number.isInteger(o?.count) && o.count >= 0 ? { count: o.count } : {}), // a number that stays visible when the words fold away
       })).filter((o) => o.id && (o.label || o.icon));
-      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...own });
+      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...own, ...pageZone(i) });
       continue;
     }
     if (type === 'search') {
@@ -279,6 +285,7 @@ export function cleanToolbarItems(items) {
       overflow: Boolean(i.overflow),
       placement: i.placement === 'titlebar' || i.placement === 'menu' ? i.placement : 'row',
       ...own,
+      ...pageZone(i),
     };
     if (b.id && (b.label || b.icon)) out.push(b);
   }
@@ -367,22 +374,25 @@ const ROW_ORDER = { tabs: 0, title: 1, text: 1, button: 2 };
 export function frameToolbar(clean) {
   const start = [];
   const end = [];
+  const tail = []; // the right zone: items the page gave `zone: 'end'`
   const groups = [];
+  const zoned = (clean || []).some((i) => i.zone);
+  const place = (e, i) => (i.zone === 'end' ? tail : start).push(i.zone === 'end' ? { ...e, zone: 'end', ...(i.pin ? { pin: true } : {}) } : e);
   for (const i of clean || []) {
-    if (i.type === 'tabs') start.push({ type: 'switch', id: i.id, label: 'View', value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) });
-    else if (i.type === 'title' || i.type === 'text') start.push({ type: i.type, text: i.text });
+    if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: 'View', value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);
+    else if (i.type === 'title' || i.type === 'text') place({ type: i.type, text: i.text }, i);
     else if (i.type === 'search') end.push({ type: 'search', id: i.id, label: i.label, placeholder: i.placeholder, value: i.value, ...(i.send ? { send: i.send } : {}) });
     else if (i.type === 'chips') groups.push({ id: i.id, heading: i.label, single: i.single, ...(i.single ? { value: i.value } : {}), options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) });
     else if (i.type === 'button' && i.placement === 'row') {
-      start.push({
+      place({
         type: 'button', id: i.id, label: i.label || i.title, icon: i.icon || undefined, ...(i.regular ? { regular: true } : {}),
         kind: i.primary ? 'primary' : i.icon && !i.label ? 'icon' : 'secondary',
         ...(i.title && i.title !== i.label ? { tip: i.title } : {}), ...(typeof i.on === 'boolean' ? { on: i.on } : {}),
         ...(i.disabled ? { disabled: true } : {}), ...(i.overflow ? { more: true } : {}), ...(i.send ? { send: i.send } : {}),
-      });
+      }, i);
     }
   }
-  const ordered = start.map((e, at) => ({ e, at })).sort((a, b) => (ROW_ORDER[a.e.type === 'switch' ? 'tabs' : a.e.type] - ROW_ORDER[b.e.type === 'switch' ? 'tabs' : b.e.type]) || a.at - b.at).map((x) => x.e);
+  const ordered = zoned ? start : start.map((e, at) => ({ e, at })).sort((a, b) => (ROW_ORDER[a.e.type === 'switch' ? 'tabs' : a.e.type] - ROW_ORDER[b.e.type === 'switch' ? 'tabs' : b.e.type]) || a.at - b.at).map((x) => x.e);
   if (groups.length) end.push({ type: 'filters', id: 'filters', label: 'Filters', groups });
-  return [...ordered, ...end];
+  return [...ordered, ...end, ...tail];
 }

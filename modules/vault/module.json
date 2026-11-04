@@ -1,0 +1,115 @@
+{
+  "id": "vault",
+  "name": "Vault",
+  "version": "0.3.1",
+  "icon": "vault",
+  "color": "blue",
+  "description": "The files of a {space}: photos, audio, video, PDFs and notes, kept in one place, found again and linked from other tools.",
+  "author": "Coffee Pub",
+  "scope": [
+    "space",
+    "person"
+  ],
+  "surfaces": {
+    "canvas": {
+      "entry": "canvas.html",
+      "width": 460,
+      "height": 600,
+      "mode": [
+        "dock",
+        "float"
+      ]
+    }
+  },
+  "library": true,
+  "permissions": [
+    {
+      "key": "view",
+      "label": "See the {space}'s files",
+      "default": {
+        "member": true,
+        "guest": false,
+        "moderator": true
+      }
+    },
+    {
+      "key": "add",
+      "label": "Add files",
+      "default": {
+        "member": true,
+        "guest": false,
+        "moderator": true
+      }
+    },
+    {
+      "key": "download",
+      "label": "Download files",
+      "default": {
+        "member": true,
+        "guest": false,
+        "moderator": true
+      }
+    },
+    {
+      "key": "remove_any",
+      "label": "Remove files other people added",
+      "default": {
+        "member": false,
+        "guest": false,
+        "moderator": true
+      }
+    },
+    {
+      "key": "share",
+      "label": "Make share links",
+      "default": {
+        "member": false,
+        "guest": false,
+        "moderator": true
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "spaceMaxGb",
+      "label": "Most one {space} may hold, in GB",
+      "type": "number",
+      "scope": "environment",
+      "default": 0,
+      "min": 0,
+      "max": 1000,
+      "help": "0 uses the server's limit. A number here can only lower it."
+    },
+    {
+      "key": "personMaxGb",
+      "label": "Most one person may add, in GB",
+      "type": "number",
+      "scope": "environment",
+      "default": 0,
+      "min": 0,
+      "max": 1000,
+      "help": "0 uses the server's limit. A number here can only lower it. It counts everything the person added in this {environment}."
+    }
+  ],
+  "access": {
+    "read": "view",
+    "write": "add",
+    "personWrite": "view"
+  },
+  "refs": {
+    "produces": [
+      {
+        "kind": "file",
+        "name": "File",
+        "open": true,
+        "backlinks": true,
+        "key": "file:{id}",
+        "summary": {
+          "title": "name",
+          "category": "group"
+        }
+      }
+    ],
+    "consumes": []
+  }
+}

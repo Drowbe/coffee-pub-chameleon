@@ -118,8 +118,9 @@ stay allowed:
 
 Anything else that needs an exception is added to the check's list with its reason, and Thomas decides.
 
-Two states can now share a look: in the Calendar, today and the selected day are both accent fills. See
-[known-issues](../known-issues.md).
+**The Calendar's days.** Today and the chosen day are told apart. The chosen day is a solid accent fill with the on-accent text in the dark modes (`--cal-sel-bg`, `--cal-sel-text`) and a lighter fill (32% accent over the field) with the primary text in the light mode, so the brown is not the heaviest thing on the page. Today wears a 1px inset ring in both (`--cal-today-ring`) over its own fill. The focus ring on the chosen day is a double ring, the text colour outside and the on-fill colour inside, each 3 to 1 or more. A task still to do that is late is not dimmed like a past event: it takes `--text-danger`, which reads 4.5 to 1 on a raised step in the dark modes too.
+
+The Calendar's sizes and shares are tokens in the `calendar` block of `public/sdk/system.css`: `--cal-cell-h` (74px, a cell's least height), `--cal-chip-h` (18px, an event chip), `--cal-hover` and `--cal-press` (10% and 16% of the text colour over a cell), `--cal-today` (14% of the accent), `--cal-tint` (22%, an event's tone over its cell), `--cal-out` (0.55, a day outside the month), `--cal-bar` (3px, the kept bar), `--cal-ph-wash` (16%, a phase's wash) and `--cal-dim` (muted text on a fill). The chosen day is `--cal-sel-bg`, `--cal-sel-bg-hover` and `--cal-sel-text`, and today's ring is `--cal-today-ring`.
 
 ## Tints
 
@@ -139,6 +140,34 @@ Eight named colours mark what a message or a module is from: a module's own colo
 `data-tint="<name>"` on an element sets `--tint` to that token. A tint colours an icon and a thin edge only (a message's 3-pixel left edge and its portrait's icon, a module's icon in its titlebar and the Layout menu); text and backgrounds keep their usual tokens. The tokens are in `public/style.css` and in `/sdk/host.css`, so a module's page has them too.
 
 **Phase colours.** A phase has no colour of its own in a template. Its place in the template's list picks one of the eight, in this order: `blue`, `green`, `teal`, `purple`, `orange`, `pink`, `gold`, `red`, and round again after the eighth (`Phases.tintOf()` in `public/phases.js`). The same phase has the same colour in the status strip, the timeline sheet, Set up's phase rows and a module that draws `host.util.phaseTimeline()`'s bands (each band's `tint` names it). A phase's colour is a fill and a dot, never a coloured border (Thomas, 2026-10-14: "no colored borders"): a band is a wash of `var(--tint)` mixed into transparent (`color-mix(in srgb, var(--tint) 22%, transparent)` ahead of today, 12% behind it, and a stronger mix of 50% with `--header-bg` for today's band) inside a neutral `--border` edge; the dot beside the phase chip is solid `var(--tint)`; and in the timeline sheet a band has a 4px top edge in the tint with a 16% wash. The colour never carries the meaning alone: every band is named, and today's band says "now".
+
+## The map
+
+The Maps module draws the map from the theme's tokens, so a light theme gives a light map and a dark theme a dark one. The tokens are in `public/sdk/system.css`, and the module reads them to build its style (`modules/maps/src/maps-lib-d-style.js`). They follow the SDK's own names (`--text-primary`, `--surface-panel` and the tints), not the older `--bg` and `--text` of the table above.
+
+| Token | Use |
+|---|---|
+| `--map-land` | the land: dark, a hair off the panel (4% of the text colour over `--surface-panel`); light, the panel itself |
+| `--map-water` | water: the blue tint, 38% over the page (dark) or the panel (light) |
+| `--map-park`, `--map-wood` | parks and woods: the green tint over the land, 16% and 9% |
+| `--map-road-minor`, `--map-road-medium`, `--map-road-major` | roads, one ladder of the text colour over the land. Dark 20%, 30% and 42%; light 27%, 39% and 50% |
+| `--map-building` | buildings: 10% (dark) or 12% (light) of the text colour over the land |
+| `--map-label` | small place names: the text colour 40% over muted text |
+| `--map-boundary` | borders between countries and regions: muted text |
+
+**The guard.** A theme may set any of these badly, or have colours that put two of them together. So the Maps style moves every colour, last, until it holds a minimum against the land (`MAP_MIN` in `maps-lib-d-style.js`; the ratio is WCAG's, lighter plus 0.05 over darker plus 0.05). A colour that already holds is not touched.
+
+| Part | Minimum against the land |
+|---|---|
+| Place names | 4.5 to 1 (3 to 1 on water, where the halo is thin) |
+| Roads | minor 1.7, medium 2.3, major 3, and each class at least 1.1 times stronger than the one below |
+| Water | 1.5, and a blue of its own: a visible distance in hue from the land, whatever the land's tint |
+| Parks, woods, buildings | 1.15, 1.06 and 1.15 |
+| Boundary line | 2, as drawn |
+
+`tools/check-maps.mjs` holds every shipped theme to these. `tools/check-maps-live.mjs` checks the Maps and Places pair in a browser and says SKIPPED when there is no Chromium.
+
+**The pin.** A pin's body has a thin ring (`--pin-ring`, the text colour 60% over the panel) so it reads on any land. The selected pin's wider ring is an allowed exception to the rule on selected states below. At low zoom only the selected pin and the one under the pointer or focus show their names.
 
 ## Layout tokens of the bars
 
@@ -182,6 +211,30 @@ The card a module draws for an object (the shared banded card, `.sdk-card-banded
 - **The icon is a solid circle** (`.sdk-card-icon`), not a tinted tile. The disc is the kind's colour at a fixed lightness, and the icon on it takes the page colour (`--surface-page`), dark in a dark theme and light in a light one. It is 36px in a banded head and 28px in a row (`.sdk-row`), set by `--card-icon`. Two tokens keep the contrast at 4.5:1: `--card-disc-l` for the disc (0.74 in dark mode, 0.5 in light) and `--card-kind-l` for the kind label (0.88 in dark mode, 0.38 in light). With no `--tint` the circle is neutral (`--text-muted`).
 - **Narrow cards.** The banded head is an inline-size container. Below 300px it puts the icon above the text, then the kind label, then the title, for every module, so the title keeps the card's whole width.
 - **Taps on a phone.** A small button or icon button keeps its look and gets a 44px hit area: `::after` grows the area past the box by `--btn-hit`, which counts the 1px border (`(--btn-h-small - 2px - 44px) / 2`). A module narrower than 720px does the same for its own controls (the Planner, see [architecture-modules](../architecture/architecture-modules.md)).
+
+The banded card's kind label and disc follow the light values (`--card-kind-l` 0.38, `--card-disc-l` 0.5) whenever the page is shown in light: under the stylesheet's light set (`data-theme-mode="light"`) and also when the environment's default is Light and the person has made no choice (`data-mode-shown="light"`). Before this the second case kept the dark values, and the kind labels were hard to read on a light card. `tools/check-light-default.mjs` checks it in a browser.
+
+## Icon buttons and danger text
+
+An icon-only button (`.sdk-icon-btn`) is a square the same height as a button of its size. On a touch screen (`@media (pointer: coarse)`) a small one (`.sdk-icon-btn.btn-small`) is at least 44px by 44px; the icon stays small. A module that draws such a button gets the rule with the SDK stylesheet.
+
+`--text-danger` is danger as text on a row or a chip, for an overdue date or an overdue task's marker. It is lighter than `--status-danger-text` in the dark modes (40% of the danger fill mixed into the text colour, against 70%), which reads 4.5 to 1 on the raised step where the other is 3.5 to 4.3, and the same as it in the light mode. Use `--text-danger` for danger text on a card or row, and `--status-danger-text` for danger text on the page.
+
+## The time field
+
+A time input (`host.ui.timeField`, [api-module-sdk](../api/api-module-sdk.md), "Time fields") is drawn as a text field in the Fields family, with tabular figures (`.sdk-timefield`), so "10:30 PM" and "22:30" line up in a column of them. On a touch screen it is at least 44px tall with 16px text. It is invalid (`aria-invalid`) the way any field is, and takes no colour of its own. The block is `timefield` in `public/sdk/host.css`.
+
+## The object picker
+
+The window that chooses another module's object (`host.objects.pick`, [api-module-sdk](../api/api-module-sdk.md), "Picking an object") is a dialog in the Dialogs family: 560px wide (`--dlg-w-form`), at most 640px tall, `--surface-panel` on a hairline, `--radius-large`, `--shadow-3`, with the Dialogs head, title and foot. Under the head is a search box and a status line (`.sdk-pick-status`, 12px `--text-muted`: searching, nothing found, could not search), then the results in a scrolling list of shared rows (`.sdk-row`, the kind's icon in a disc, the title, the subtitle and the module). The row the keys are on is `--fill-selected`; a ticked row (when several may be chosen) shows a check. At 640px and below it is a full-height sheet with 44px rows and a 16px search box, and rows are 44px on any touch screen. The block is `objectpick` in `public/sdk/system.css`.
+
+## File chips
+
+A file a module's object is linked to (`host.ui.fileChips`, [api-module-sdk](../api/api-module-sdk.md), "Linking files from your objects") is the Chips block's tag (`.sdk-chip-tag`) with a type icon, the name, truncated with an ellipsis, and the size in `--text-muted` (`.sdk-file-chip`). The chips wrap in a row with `--space-2` between them (`.sdk-file-chips`). A file that was removed or whose bytes are gone is a muted tag that is not pressed ("File removed", "File missing"); a missing one has its name struck through and its icon and word in `--status-warn-text`. A file this person may not see reads "Not available to you" with a lock. **Remove link** and **Unlink** are small quiet buttons beside the chip (`.sdk-file-chip-remove`). The block is in `public/sdk/host.css`.
+
+## The share sheet and the public page
+
+The sheet that makes a share link and the list of links (`public/share-sheet.js`, styles in `public/share-sheet.css`) are dialogs in the Dialogs family, 480px wide for the sheet, 520px for editing a link and 560px for the list, never wider than the screen less `--space-6`. They use the form fields, the three-way switch for the days a link lasts, a choice row with the shared switch for **Allow download**, and the action bar. The public page of a link (`public/shared.html`, `public/shared.css`) takes the environment's theme from `/theme.css` and uses only tokens: `--surface-page` for the page, a grid of cards (`--surface-card` on a hairline, `--radius-medium`) at least 150px wide, and the file windows' own views (`public/file-viewer-views.js`) for a file opened on it. Read as code; the Prototype's "Sharing outside" and "The public page" are the drawings.
 
 ## Muted text and Strong Coffee in light
 

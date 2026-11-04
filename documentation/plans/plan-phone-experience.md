@@ -7,7 +7,8 @@ modules and pages are made for it first; and the sessions that build it: experie
 checks in `tools/`, the phone emulation in `tools/shots.mjs`), quality-assurance (the audit and each step), content-manager
 (the architecture and API documents, the user guides, the changelog).
 
-**Status:** draft, 2026-10-30, by product-planner; still a draft. Proposes; Thomas decides. Nothing in the product
+**Status:** draft, 2026-10-30, by product-planner; still a draft. Proposes; Thomas decides. Decision 16 (2026-11-03): the
+phone's bottom bar is four module buttons and a switcher, and the call is in the top bar. Nothing in the product
 built. Step 1, the audit, was run by quality-assurance on 2026-10-31 with Playwright's emulation outside the
 repository, and its findings are in "The audit (step 1)". From Thomas, 2026-10-30, as
 relayed by the project manager: what we have been calling the "phone layout" is only a width breakpoint, and "a phone
@@ -18,7 +19,10 @@ the same day, from Thomas: "We will need to understand how common each layout is
 experience to the expected size" (the section "How common each layout is", step 0, questions 18 to 23). On
 2026-11-01 Thomas decided questions 1 to 7, 11, 16, 17, 23 and 24, what a phone does not offer, and that every
 module gets the phone treatment in the default order (see "Decisions"); questions 9, 10 and 12 to 15 he will be asked
-when the step that needs each starts. The plan stays a draft until the questions that still block a step are decided ("Still open" in
+when the step that needs each starts. On 2026-11-03 Thomas changed the
+bottom bar (decision 16): four module buttons and a switcher, the call in the top bar, which reverses decision 3's
+contents; the Prototype redraw is the first thing before any building, and the phone work is parked behind the AI and
+module fixes. The plan stays a draft until the questions that still block a step are decided ("Still open" in
 "Open questions"). Every section below
 except "What it is today", "The audit" and "Decisions" is the planner's proposal, shaped by those decisions where
 they apply.
@@ -167,11 +171,11 @@ object window built on the shared sheet.
    call's tiles use the width (question 2, (b)). Reason: the audit found the desktop at 844 by 390 leaves about
    200 px for content and hides every message with the keyboard up (audit problem 4); asking the app to stay
    portrait would stop a person watching the call sideways.
-3. **The fixed bottom bar:** Call, Chat, the module in use, and **Modules** (a full-screen list of the space's
-   modules); **Leave** in the top bar's menu, **Online** beside the space's name (question 3, (c)). Reason: the call
-   and Chat stay one tap away from anywhere, the places do not move as modules open, and the number of modules can
-   grow. This replaces parts of [plan-phone-space-bar](plan-phone-space-bar.md) (see "How it relates to other
-   plans").
+3. **The fixed bottom bar: Call, Chat, the module in use and Modules.** Decided 2026-11-01 (question 3, (c)) and
+   **reversed by decision 16 below on 2026-11-03.** The bar is now four module buttons and a switcher; the Call is
+   not a bottom-bar button. Kept from this decision: a fixed bar with stable places, **Leave** in the top bar's menu
+   with a confirm, **Online** beside the space's name. This replaces parts of
+   [plan-phone-space-bar](plan-phone-space-bar.md) (see "How it relates to other plans").
 4. **Each module's primary phone task is the audit's for now** (question 4, (a)): the "Primary phone task" column of
    the audit table. Each module's is corrected when its step (11 to 13h) is reached.
 5. **A call strip above the bottom bar** while another view shows: who is talking, the microphone, hang up (question
@@ -215,6 +219,32 @@ object window built on the shared sheet.
     offline; unsaved work is kept; a message that cannot be sent is kept and marked "Not sent". Nothing is cached
     (the service worker keeps "fresh pages"). The cached "You're offline" page for the installed app stays a later
     step. Reason: nothing is lost silently, without building a sync engine.
+
+16. **The bottom bar is four module buttons and a switcher; the call is in the top bar (Thomas, 2026-11-03).**
+    This reverses decision 3's contents (Call, Chat, module in use, Modules). Reason (Thomas's): the call is not a
+    place a person switches to like a module, and the people who use a space most want their own four modules a tap
+    away.
+    - **Four dedicated module buttons plus a switcher.** The switcher opens the full-screen list of the space's other
+      modules (the existing Modules list, as large rows with icons and unread counts), where a person re-pins their
+      four. **Where the switcher sits is not decided** (Thomas asked for opinions): at the end of the bar, or in the
+      middle as a smaller round button. Question 26 has both, and the Prototype draws both.
+    - **The call is never a bottom-bar button.** A phone icon in the top bar opens it: **Join** when out of the call,
+      the live state (who is in, a live mark) when in it. While in the call and looking at something else, the **call
+      strip** above the bar stays (who is talking, the microphone, hang up; tap to show the call), as decision 5.
+      **Leave** stays in the top bar's menu with a confirm; **Online** stays beside the space's name.
+    - **The four are the template's default** (travel: Chat, Planner, Calendar, Map, in that order: Chat and Planner,
+      Calendar and Map; the switcher's place is question 26). The defaults for the other templates are the planner's proposal for Thomas
+      to approve (question 27). **Each person can re-pin their own four** from the More list, remembered per person
+      (where: question 28).
+    - **Counts and marks.** Chat keeps its unread count on its button; the module buttons show their own marks.
+    - **Sizes.** The four keep the 56 px minimum tap target. A switcher at the end is a normal slot of the same size;
+      a round one in the middle is smaller, suggested 44 to 48 px, raised or inset (question 29, only if the middle
+      is chosen).
+    - **Kept from decision 3:** the fixed-bar decisions about stable places (the places do not move as modules open
+      and close), and **Leave** and **Online** where they are.
+    - **Order of work.** Thomas parked the phone work behind the AI and module fixes. The first thing, before any
+      building, is the Prototype redraw of the bar, drawing both switcher places (and the top bar's phone icon and
+      the call strip with it); Thomas chooses by eye, and it is QA'd, before step 6 starts (build order, step 5a).
 
 ## Definitions (proposed)
 
@@ -357,7 +387,7 @@ start of `check-phone` (step 7).
 | Sign in, the sign-in step, register (`login*`, `register`) | Sign in with one hand; yes | Nothing: fields 16 px, the field and **Sign in** stay above the keyboard (M). The sign-in step has 3 targets under 44 px, register 1 (M). The second factor's enrolment was not reached. | No manifest link on sign in (M). | polish |
 | Home (`space.html`, no space entered) | Find the space and enter it; yes | Nothing sideways (M). Invite buttons 28 by 28 px; the bell 30 by 30; the top bar's menu 36 px tall (M). | Small targets only. | hurts |
 | Home's Chat | Read and reply; partly | The formatting row's buttons 32 by 34 px; 19 targets under 44 px at 390, 40 at 360 (M). No visible Send: Enter only (M, L). | Enter to send. | hurts |
-| A space: the Workspace and the tab bar | Switch between the call, Chat and one module; partly | No Call tab: the call is reached under **Online** (L). The tab bar shifts when the call starts; at 360 only Chat and the **…** fit before the module tabs, and six modules go into the **…** (M). The phase chip's tap area is 14 px tall (M). | Small targets in the top bar (bell 30 px, menu 36 px). | blocks |
+| A space: the Workspace and the tab bar | Switch between Chat and the modules; partly (the call moves to the top bar, decision 16) | No Call tab: the call is reached under **Online** (L); decision 16 gives it a top-bar icon. The tab bar shifts when the call starts; at 360 only Chat and the **…** fit before the module tabs, and six modules go into the **…** (M). The phase chip's tap area is 14 px tall (M). | Small targets in the top bar (bell 30 px, menu 36 px). | blocks |
 | A space: the conference | Hear, be heard, mute, see who is talking; no | The call bar's buttons are 34 by 34 px and their settings chevrons 12 by 12 (M). **Share your screen** is offered on a phone (M). The microphone cannot be reached from another view (L). | Each tile's volume, aside, kick and picture-in-picture controls are `opacity: 0` until `:hover` (`public/style.css`, about lines 4114 to 4224) yet can be tapped unseen; a first tap shows them (M). | blocks |
 | A space: Chat | Read and reply; send a picture; partly | No visible Send (M). The field is 16 px portrait, 14 px landscape (M). Some message buttons measured under the top bar (M). Long press on a message opens nothing; its menu (Copy, Reply, Send to..., Delete) is a 30 by 30 px button (M). | Enter to send; a 30 px menu button. | hurts |
 | A space: Join, Online, the **…**, Leave | Join, see who is here, leave; yes, too easily | **Leave** is one tap, with no confirm, beside the call's way in, and drops the call (M, L). | None. | blocks |
@@ -467,24 +497,38 @@ on a phone; the phone remembers its own last view per space (question 15).
 
 ### The bottom bar
 
-Today's tab bar shows every open view as a tab and folds the rest into the **…**. Thomas chose a fixed bar with stable
-places (decision 3); the details below are the planner's:
+Today's tab bar shows every open view as a tab and folds the rest into the **...**. Thomas chose a fixed bar with stable
+places (decision 3) and, on 2026-11-03, changed what is on it (decision 16); the details below are the planner's:
 
-- **Call** (the conference; its dot as today), **Chat** (its unread count), the **module being used** (its icon and
-  name; tapping it again goes to that module's top), and **Modules**, which opens a full-screen list of the space's
-  modules (the Show list, as large rows with their icons and unread counts) to switch to one.
-- **Leave** moves to the top bar's menu, with a confirm while in the call; **Join** shows as the Call tab's word while
-  out of the call; **Online** moves to the top bar beside the space's name (its count, opening the list as a sheet).
+- **Four module buttons and a switcher.** Each module button shows the module's icon and its shown name (the
+  template's themed name); the one in use is marked. Tapping the button of the module in use goes to that module's
+  top. **Chat** shows its unread count, the module buttons their own marks. The four are the template's default and
+  each person's own pins (below).
+- **The switcher** opens the full-screen list of the space's other modules (the Show list, as large rows with icons
+  and unread counts); a row switches to that module, and a pin control on each row puts it among the four (replacing
+  one the person picks). Its place is open (question 26): **(A)** at the end of the bar, a normal slot the same size
+  as the four, the three-line icon with "More" under it, not a circle; **(B)** in the middle, a smaller round button
+  like the centre button of the YouTube app: `[ one ] [ two ] (round) [ three ] [ four ]`. A module in use that is
+  not pinned: question 30.
+- **The four.** Travel: Chat, Planner, Calendar, Map. Other templates: proposed in question 27. The pins are kept per
+  person (question 28) and only change when the person changes them.
+- **The call is not on the bar.** A phone icon in the top bar opens the call: **Join** out of the call; in the call,
+  its live state. **Leave** is in the top bar's menu, with a confirm while in the call; **Online** is beside the
+  space's name (its count, opening the list as a sheet).
 - A module's own tools (`host.nav.set`) go into the module's top bar menu, not the bottom bar.
+- Targets: the four buttons at least 56 px high and wide (the minimum kept from the earlier decision); a switcher
+  at the end the same; a round one at least 44 px, as every control (principle 8).
 
-This keeps the call and Chat one tap away from anywhere, puts the places where the thumb learns them, and lets the
-number of modules grow without a crowded bar. It replaces parts of [plan-phone-space-bar](plan-phone-space-bar.md)
-(its decisions 1 to 4 and 7 to 8 change; `phoneTabs()` goes), which Thomas accepted with decision 3.
+This keeps the person's own four modules one tap away, puts the places where the thumb learns them, and lets the number
+of modules grow without a crowded bar. It replaces parts of [plan-phone-space-bar](plan-phone-space-bar.md) (its
+decisions 1 to 4 and 7 to 8 change; `phoneTabs()` goes), which Thomas accepted with decision 3.
 
 ### The call, Chat and modules together
 
-- **In the call, looking at something else:** a **call strip** (decision 5): one row above the bottom bar with the
-  person talking (face and name), the microphone toggle and hang up. Tapping it shows the call. It is drawn from
+- **In the call, looking at something else:** a **call strip** (decision 5, kept by decision 16): one row above the
+  bottom bar with the person talking (face and name), the microphone toggle and hang up. Tapping it shows the call,
+  which is also what the top bar's phone icon does. With the call not on the bar, the strip is the only way to the
+  microphone from another view besides that icon. It is drawn from
   `host.call.state` ([plan-call-as-module](plan-call-as-module.md)) so it works the same when the call is a module.
 - **Audio keeps running** while another view or a sheet is shown, as today.
 - **Chat over a module:** a link chip in Chat opens its object's window as a sheet over Chat; Back returns to Chat
@@ -691,7 +735,8 @@ screen locked, the camera and photo pickers, and HEIC and `.mov` handling.
   text at least 16 px; nothing under the bottom bar or inside the safe areas (set by `Emulation.setSafeAreaInsetsOverride`); back closes the open sheet (one
   entry per sheet); the keyboard approximation keeps the focused field and Save visible.
 - **Cases from the audit** (quality-assurance's proposals, for `check-phone` unless marked):
-  - every surface keeps a way to the microphone while in the call (the call's tab or strip is on screen on every view);
+  - every surface keeps a way to the microphone while in the call (the call strip is on screen on every view, and the top bar's call icon);
+  - the bottom bar holds four module buttons and a switcher in the place decided (question 26), never a Call button; the four buttons are at least 56 px and the switcher at least 44 px; the bar's buttons keep their places when a module opens or the call starts; the pins change only by the person's own action;
   - **Leave** while in the call asks first;
   - at 844 by 390 with touch, the space draws the compact shape (decision 2);
   - back from an open sheet closes it, and from a space returns to Home; `history.length` grows by one per sheet;
@@ -699,7 +744,7 @@ screen locked, the camera and photo pickers, and HEIC and `.mov` handling.
   - the call bar's buttons and chevrons at least 44 by 44 px, and **Share your screen** not drawn on a phone;
   - every text field, `.mf-search-input` and Chat's box included, at least 16 px in portrait and landscape;
   - Chat shows a Send button on a coarse pointer;
-  - the tab bar does not change its tabs' order or count when the call starts;
+  - the bar does not change its buttons' order or count when the call starts (the call is in the top bar);
   - no sheet focuses a field on open on a coarse pointer;
   - a Calendar Month event or day cell is at least 44 px and a tap on a day lists its events;
   - `/modules/todo` shows the to-do list;
@@ -728,8 +773,9 @@ feedback builds for the module steps.
 | 2 | **The phone decisions.** Thomas decides questions 1 to 7, 22 and 23 on the audit's results and the tester list; product-planner records them here and in [plan-phone-space-bar](plan-phone-space-bar.md)'s status, and orders steps 11 to 14. No build. Questions 1 to 7, 16 and 23 decided 2026-11-01 and recorded here, with the note in the phone space bar plan; steps 11 to 14 follow the default order (decision 12). Done, but for question 22's targets table and the four-week review. | Thomas, product-planner | 22 (the targets and the review only) |
 | 3 | **Foundations.** The width-class and input rules in `system.css` (the coarse-pointer tap areas everywhere, not only in the frame; insets by `env(safe-area-inset-*, 0px)`, no token layer); one SDK answer a module can ask (`host.screen`, proposed: `{ width, touch, hover, installed, orientation }` with a `change` event); `check-breakpoints` extended; `check-touch` (static). | experience-design, server-development (the check) | none (1, 2 and 24 decided) |
 | 4 | **History: one entry per sheet.** The host's sheet stack; the editor window, the kind picker, the menus' drill-in, Set up and the phases sheet open through it; back closes; entering a space pushes once. | experience-design | none (6 decided) |
+| 5a | **The Prototype redraw of the bottom bar, first before any building (decision 16).** **Both switcher places drawn**, (A) at the end and (B) in the middle, at 390 px wide, with the travel four (Chat, Planner, Calendar, Map), in dark and in Cream light, so Thomas chooses by eye; also the top bar's phone icon (Join and live) and Online, the call strip above the bar, and the More list with its pin control; 360 px and sideways once he has chosen. Thomas sees it drawn and quality-assurance checks it before anything else in step 6 starts. Parked: the phone work waits behind the AI and module fixes. | experience-design (the drawing), quality-assurance | 26 to 30 |
 | 5 | **The shared phone pieces**, drawn for Thomas in the design system first, then built in the SDK: the full-screen sheet (top bar with Back, title, menu; the keyboard rule), the bottom sheet (menus, pickers, the Modules list), the bottom action bar (one primary action), the offline banner, the "Not sent" state. The object window's phone sheet uses the full-screen sheet. | experience-design | none (2, 11 and 24 decided); Thomas approves the Prototype drawings before the build |
-| 6 | **The navigation model** as decided: the bottom bar, the Modules list, the top bar's Online and Leave, the call strip, the phone's own last view per space. Replaces the parts of the phone space bar it changes, cleanly. | experience-design | 15 (3 and 5 decided) |
+| 6 | **The navigation model** as decided (decision 16): the bottom bar of four module buttons and the switcher (in the place Thomas chooses, question 26), the More list with pinning, the template's default four and each person's pins, the top bar's call icon, Online and Leave, the call strip, the phone's own last view per space. Replaces the parts of the phone space bar it changes, cleanly. Starts only after step 5a is approved. | experience-design (server-development if the pins are kept on the account, question 28) | 15, 27, 28 (3 and 5 decided) |
 | 7 | **`tools/check-phone.mjs`**: the audit's `measure.js` and its list of screens moved into `tools/` on the layer question 8 chooses (touch, `mobile: true`, 390, 360 and 844 by 390, the safe-area override, the keyboard approximation), with the audit's cases ("The checks to add"); added to `npm run check`. The cases for what is not built yet start as reports and become failures as steps 3 to 6 land. | server-development | 8 |
 | 8 | **The keyboard and fields:** the 16 px fields, `inputmode` and `enterkeyhint` everywhere, the phone's date and time pickers on touch, Chat's box above the keyboard. | experience-design | 9 |
 | 9 | **Offline and reconnect:** the banner, failed saves kept with **Try again**, Chat's **Send again**, refresh on `online` and on waking. | experience-design | none (11 decided) |
@@ -784,16 +830,19 @@ Vault. Steps 3 to 6 come before the object window's steps (decision 8); its step
   stack; the object window is built on them, so its step 1's phone part and its step 4's back handling are built once,
   here. Its step 1 waits for this plan's steps 3 to 5. The object window plan records the same order under its own
   decisions (its question 15, answered "after the phone foundations").
-- **[plan-call-as-module](plan-call-as-module.md)** (draft): the call strip and the Call tab's dot read
-  `host.call.state`; the host draws the phone's bars, the call module draws only its content. Built before that plan,
+- **[plan-call-as-module](plan-call-as-module.md)** (draft): the call strip and the top bar's call icon (its live
+  state; decision 16 removed the Call tab) read `host.call.state`; the host draws the phone's bars, the call module
+  draws only its content. If that plan gives the call a place among the modules, the phone still reaches it by the
+  top bar's icon, never a bottom-bar button. Built before that plan,
   the strip reads today's `space.js` state and moves to `host.call.state` with that plan's step.
-- **[plan-phone-space-bar](plan-phone-space-bar.md)** (built): today's tab bar. Decision 3 (the fixed bottom bar)
-  replaces its decisions 1 to 4 and 7 to 8 and `phoneTabs()` in step 6, cleanly. Its status says so (2026-11-01).
+- **[plan-phone-space-bar](plan-phone-space-bar.md)** (built): today's tab bar. Decision 3 (the fixed bottom bar) as
+  changed by decision 16 (four module buttons and a switcher) replaces its decisions 1 to 4 and 7 to 8 and
+  `phoneTabs()` in step 6, cleanly. Its status says so (2026-11-01).
 - **[plan-unified-layout](plan-unified-layout.md)** (approved): its builders (`host.ui.list`, `host.ui.card`,
   `host.ui.table`, `host.ui.form`) should be phone-first when they come: a list's row actions in its menu, a table as
   rows on a phone, a form in the full-screen sheet.
 - **[plan-design-system](plan-design-system.md)**: the 44 px, 16 px and row rules; the approved Phone tab bar family
-  is redrawn for the fixed bottom bar (decision 3); the new pieces in step 5 are drawn for approval before they are built.
+  is redrawn for the fixed bottom bar (decisions 3 and 16: four buttons and a switcher, first in step 5a); the new pieces in step 5 are drawn for approval before they are built.
 - **[plan-attachments-vault](plan-attachments-vault.md)** (approved): its phone parts stand; its share sheet and file
   chooser sheet are built on step 5's pieces.
 - **[plan-layout-menu](plan-layout-menu.md)** and **[plan-docked-limit](plan-docked-limit.md)**: no Layout and no
@@ -814,7 +863,8 @@ As of 2026-11-01, and the steps each blocks now:
 - **25**, what to fix first from the audit: nothing; Leave's confirm (audit problem 2) is done on its own (see "What
   was fixed since").
 
-Nothing open blocks step 3 or step 5. Step 5 waits only on Thomas approving its drawings in the Prototype.
+Nothing open blocks step 3 or step 5. Step 5 waits only on Thomas approving its drawings in the Prototype. Added
+2026-11-03: **26 to 30**, the bottom bar's details (decision 16): 26 (the switcher's place) is the one Thomas is still weighing; they block step 5a and step 6.
 
 Asked when the step that needs each starts (decision 13): **9** (step 8), **10** (step 10), **12** (step 15), **13** (nothing here), **14** (step 16) and
 **15** (step 6).
@@ -832,14 +882,16 @@ Asked when the step that needs each starts (decision 13): **9** (step 8), **10**
    with a switcher in the top bar (its name and a chevron), and the bottom bar holding that module's own actions.
    (c) A fixed bar: Call, Chat, the module being used, and **Modules** (a full-screen list); Leave in the top bar's
    menu, Online beside the space's name. (a) moves tabs as modules open and close; (b) hides the call and Chat a level
-   down. *Suggestion: (c).* Decided 2026-11-01: (c), decision 3.
+   down. *Suggestion: (c).* Decided 2026-11-01: (c), decision 3. **Changed 2026-11-03 (decision 16):** four module
+   buttons and a switcher (its place is question 26); the call is a phone icon in the top bar, not a bar button.
 4. **Each module's primary phone task.** The audit table proposes one per module (the Planner: what is next today and
    where; Budget: add a cost on the spot; Polls: vote). (a) Take them. (b) Correct them row by row. *Suggestion: (b),
    in the review of step 1.* Decided 2026-11-01: (a) for now, each module's corrected when its step is reached; decision 4.
    Thomas confirmed (a) the same day.
 5. **The call while another view shows.** (a) The tab's dot only, as today. (b) A call strip above the bottom bar:
    who is talking, the microphone, hang up. (c) A floating picture of the speaker that can be moved. (c) is a drag
-   and covers content. *Suggestion: (b).* Decided 2026-11-01: (b), decision 5.
+   and covers content. *Suggestion: (b).* Decided 2026-11-01: (b), decision 5. Kept on 2026-11-03 (decision 16), now
+   that the Call is not a bottom-bar button: the strip, and the top bar's phone icon, are how the call is reached.
 6. **Back and views.** (a) Switching views replaces the history entry; sheets push one each; back from a space's base
    goes to Home, asking first while in the call. (b) Switching views pushes too, so back walks through them. (c) No
    history; Back buttons only. (c) leaves the back gesture leaving the page. *Suggestion: (a).* Decided 2026-11-01: (a), decision 6.
@@ -915,3 +967,33 @@ Asked when the step that needs each starts (decision 13): **9** (step 8), **10**
     would replace; the defects in (c) are wrong under any design. *Suggestion: (c).* Blocks nothing; the defects can go
     to bug-fixes at once. Since asked, Leave's confirm (one of (a)'s five) is being built on its own (Thomas,
     2026-11-01).
+26. **Where the switcher sits** (decision 16). Thomas asked for opinions; not decided. (A) At the end of the bar: a normal
+    slot the same size as the four (56 px), the three-line icon with the word "More" under it, not a circle (Thomas:
+    "if on the right it would not be a circle"). (B) In the middle: a smaller round button like YouTube's centre
+    button, `[ one ] [ two ] (round) [ three ] [ four ]`; its glyph is then the three dots or the three-line icon with
+    "More" (the three-line one is clearer, as the "..." is already the overflow of menus and cards). *Suggestion: (A).*
+    It is the convention for More on iOS and Android; the four stay contiguous and keep their places when a person
+    re-pins; and a round middle button reads as an "add" action, as YouTube's create does. The cost of (A): the far
+    right is a stretch for left-handed people. The Prototype (step 5a) draws both at 390 px wide, travel's four, dark
+    and Cream light. Blocks step 5a's choice and step 6.
+27. **The default four for the other templates** (decision 16). Only travel is decided (Chat, Planner, Calendar, Map).
+    The planner's proposal, for Thomas to approve, from the modules each template turns on: Games: Chat, Calendar,
+    Polls, Research (notes between sessions; the Vault joins when it is built). An environment with no template: Chat,
+    then the first three enabled modules in the Show list's order. A template says its four in `templates/<name>.json`
+    (a field proposed as `phoneDefault`, four module ids in order); a module that is off in the space is skipped and
+    the next one in the Show list takes its place. *Suggestion: as proposed.* Blocks step 6.
+28. **Where a person's pins are remembered** (decision 16). (a) In the browser (`localStorage`, per space), like the
+    phone's last view (question 15). Simple, no server change, but lost on a new phone or a cleared browser, and a
+    guest or keyed page has no choice anyway. (b) On the account, through the server (a small per-person, per-space
+    setting), so the same four follow the person to every phone and browser; needs a route and a stored key, and
+    guests (no account) fall back to the template's four. (c) The browser first, the account later. *Suggestion: (b)
+    for members and owners, the template's default for guests,* because people re-pin on one phone and expect the
+    same on the next; if Thomas wants no server work now, (c). Blocks step 6.
+29. **The round button's size and place** (decision 16; only if question 26 is (B)). (a) 44 px, inset in the bar. (b)
+    48 px, raised above the bar's top edge like the YouTube centre button. The four stay at 56 px. A raised button must
+    not cover the call strip or the keyboard-up bar. *Suggestion: lean (a), inset, as it cannot collide with the call
+    strip.* Drawn in step 5a if (B) is kept.
+30. **A module in use that is not one of the four** (decision 16). A person opens a module from More. (a) The bar keeps
+    its four, no button marked, and the switcher shows a dot (proposed). (b) The module takes the place of the last
+    button until the person switches again, which moves a place. (c) The switcher itself shows that module's icon.
+    (b) breaks the stable places Thomas kept; (c) loses the switcher's meaning. *Suggestion: (a).* Blocks step 5a.

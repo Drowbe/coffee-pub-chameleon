@@ -9,6 +9,9 @@
 //   kind     'plain' (easy to take back: the Primary button, focus on it), 'destructive' (soft Danger, focus on Cancel so Enter
 //            does not delete) or 'final' (cannot be undone: solid Danger, focus on Cancel). Default 'plain'.
 //   typed    final only: a name the person types before the action turns on.
+//   run      optional function (a page's own, never a module's): the action runs it while the dialog stays open; if it throws,
+//            the dialog stays and shows the error's message under the question (so a refusal is read where it was asked), and
+//            the action can be pressed again; if it returns, the dialog closes and the promise resolves true.
 //
 // The look is the Dialogs family (documentation/designsystem), the confirm block of /sdk/system.css. A module in a frame asks through
 // host.ui.confirm, which the page answers with this (module-host.js, 'ui.confirm').
@@ -90,12 +93,41 @@ export function confirmDialog(options, doc = document) {
       if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
       resolve(value);
     };
+    // The action: straight away, or through `run`, which may refuse.
+    const run = typeof options.run === 'function' ? options.run : null;
+    let running = false;
+    let problem = null;
+    const accept = async () => {
+      if (!run) { done(true); return; }
+      if (running) return;
+      running = true;
+      ok.disabled = true;
+      dlg.setAttribute('aria-busy', 'true');
+      try {
+        await run();
+        done(true);
+      } catch (err) {
+        if (!problem) {
+          problem = make('p', 'sdk-error');
+          problem.setAttribute('role', 'alert');
+          problem.dataset.error = '';
+          body.appendChild(problem);
+          body.hidden = false;
+        }
+        problem.textContent = (err && err.message) || 'It could not be done.';
+        ok.disabled = Boolean(input) && input.value.trim() !== o.typed;
+        ok.focus();
+      } finally {
+        running = false;
+        dlg.removeAttribute('aria-busy');
+      }
+    };
     const focusables = () => [...dlg.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')].filter((e) => !e.disabled && !e.hidden && !e.closest('[hidden]'));
 
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(false); }); // Escape
     dlg.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { e.preventDefault(); done(false); return; }
-      if (e.key === 'Enter' && e.target === input) { e.preventDefault(); if (!ok.disabled) done(true); return; }
+      if (e.key === 'Enter' && e.target === input) { e.preventDefault(); if (!ok.disabled) accept(); return; }
       if (e.key !== 'Tab') return;
       const f = focusables();
       if (!f.length) return;
@@ -105,7 +137,7 @@ export function confirmDialog(options, doc = document) {
     dlg.addEventListener('click', (e) => {
       if (e.target === dlg) { done(false); return; } // the backdrop
       if (e.target.closest('[data-close]')) { done(false); return; }
-      if (e.target.closest('[data-ok]') && !ok.disabled) done(true);
+      if (e.target.closest('[data-ok]') && !ok.disabled) accept();
     });
     if (input) input.addEventListener('input', () => { ok.disabled = input.value.trim() !== o.typed; });
 

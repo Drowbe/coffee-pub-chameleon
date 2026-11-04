@@ -1,7 +1,7 @@
 // Assistant: no window of its own. Its view is Chat's Assistant (GitHub #203): your
 // commands, the AI's answers and what you bring in, private until you share them. This
-// module keeps the Use permission (which gates /ai) and fulfils askAssistant by asking
-// there, so a drop-menu "Ask the assistant" does not wait on a page that never opens.
+// module only fulfils askAssistant by asking there (Chat decides who may use /ai), so a
+// drop-menu "Ask the assistant" does not wait on a page that never opens.
 (async () => {
   'use strict';
 
@@ -22,10 +22,9 @@
     host.actions.provide({
       askAssistant: async (input) => {
         const i = input || {};
-        const question = typeof i.question === 'string' && i.question.trim()
-          ? i.question.trim().slice(0, 1000)
-          : (i.ref ? 'What should I know about this?' : '');
-        if (!question) return {};
+        // No question with an object: the server asks its own default.
+        const question = typeof i.question === 'string' ? i.question.trim().slice(0, 1000) : '';
+        if (!question && !i.ref) return {};
         await host.chat.ask({ question, refs: i.ref ? [i.ref] : [] });
         return {};
       },

@@ -219,7 +219,7 @@ try {
     const sideSpace = (await as('GET', '/api/spaces')).json.spaces.find((s) => s.id === side);
     const inSpace = await as('GET', `/api/modules/calendar/context?scope=space&space=${side}`);
     assert.equal(inSpace.status, 200, inSpace.text);
-    assert.deepEqual(inSpace.json.space, { id: side, name: 'Side', createdAt: sideSpace.createdAt, phases: {}, budget: null });
+    assert.deepEqual(inSpace.json.space, { id: side, name: 'Side', createdAt: sideSpace.createdAt, phases: {}, budget: null, guestsSeeHidden: false });
     assert.deepEqual(inSpace.json.phases, []);
   });
 
@@ -237,7 +237,7 @@ try {
     assert.equal(r.status, 200, r.text);
     assert.ok(r.json.settings, 'the settings, as before');
     assert.deepEqual([r.json.template.id, r.json.template.name, r.json.template.offerOpen, r.json.template.appliedAt], ['travel', 'Travel', true, null]);
-    assert.deepEqual(r.json.offer.modules.map((m) => [m.id, m.allowed]), [['travel', true], ['places', true], ['maps', true], ['research', true], ['budget', true]], 'the Calendar is on in every space already; the conference is on');
+    assert.deepEqual(r.json.offer.modules.map((m) => [m.id, m.allowed]), [['travel', true], ['places', true], ['maps', true], ['research', true], ['vault', true], ['budget', true]], 'the Calendar is on in every space already; the conference is on');
     assert.deepEqual(r.json.offer.lobby, { name: 'Home base', description: 'Everyone on every trip.' });
     assert.deepEqual(r.json.offer.spaceDefaults, { profile: 'participants', opensWith: ['travel', 'chat'] });
     const b = await words();
@@ -252,7 +252,7 @@ try {
     const again = await as('PATCH', '/api/settings', { template: 'travel' });
     assert.deepEqual([again.status, again.json.template.offerOpen], [200, true], 'the same template: nothing changes');
     const view = (await as('GET', '/api/environment/template')).json;
-    assert.deepEqual([view.template.id, view.template.source, view.offer.modules.length, view.choices.map((c) => c.id)], ['travel', 'bundled', 5, ['games', 'travel']]);
+    assert.deepEqual([view.template.id, view.template.source, view.offer.modules.length, view.choices.map((c) => c.id)], ['travel', 'bundled', 6, ['games', 'travel']]);
   });
 
   await test('switching to a template puts its phases on the module context at once', async () => {
@@ -300,7 +300,7 @@ try {
   await test('a switched template is never applied on its own at a restart; switching back offers only what is missing', async () => {
     assert.equal((await as('PATCH', '/api/settings', { template: 'travel' })).status, 200);
     // A space's "AI off" is refused before the restart and must still be after it (it was dropped on load once).
-    const aiOffSentence = { error: 'AI is turned off in this trip' }; // travel's word for a space
+    const aiOffSentence = { error: 'AI is turned off in this trip.' }; // travel's word for a space
     assert.equal((await as('PATCH', `/api/spaces/${side}`, { aiOff: true })).status, 200);
     assert.deepEqual(await as('POST', `/api/spaces/${side}/ai`, { question: 'hello there' }).then((x) => [x.status, x.json]), [403, aiOffSentence]);
     await server.stop();
@@ -314,7 +314,7 @@ try {
     as = (method, url, body) => call(server, '', method, url, { cookie, body });
     const view = (await as('GET', '/api/environment/template')).json;
     assert.deepEqual([view.template.offerOpen, view.template.appliedAt], [true, null]);
-    assert.deepEqual(view.offer.modules.map((m) => m.id), ['research', 'budget'], 'only what is missing');
+    assert.deepEqual(view.offer.modules.map((m) => m.id), ['research', 'vault', 'budget'], 'only what is missing');
     assert.ok(!server.output().includes('Applied the "travel" template'), server.output());
     assert.equal((await as('GET', '/api/spaces')).json.spaces.find((s) => s.id === 'lobby').name, 'Lobby');
     const spaces = (await as('GET', '/api/spaces')).json.spaces;
@@ -352,7 +352,7 @@ try {
   const console_ = (method, url, body) => call(server, 'admin', method, url, { cookie: host, body });
 
   await test('hosted: the host switches an environment made with no template; the plan\'s refusal is in the offer and recorded', async () => {
-    const made = await console_('POST', '/api/host/environments', { slug: 'beta', name: 'Beta', plan: { modules: ['travel', 'places', 'research', 'calendar', 'budget', 'polls', 'todo', 'stream'] }, owner: { login: 'owner', password: 'owner-password-1' } });
+    const made = await console_('POST', '/api/host/environments', { slug: 'beta', name: 'Beta', plan: { modules: ['travel', 'places', 'research', 'vault', 'calendar', 'budget', 'polls', 'todo', 'stream'] }, owner: { login: 'owner', password: 'owner-password-1' } });
     assert.equal(made.status, 201, made.text);
     assert.deepEqual(await console_('PATCH', '/api/host/environments/beta', { template: 'nope' }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called nope.' }]);
     assert.deepEqual(await console_('PATCH', '/api/host/environments/nope', { template: 'travel' }).then((r) => [r.status, r.json]), [404, { error: 'no such environment' }]);
@@ -455,7 +455,7 @@ try {
     assert.equal(crossing.status, 200, crossing.text);
     const inSpace = await asOwner('GET', `/api/modules/travel/context?scope=space&space=${crossing.json.space.id}`);
     assert.equal(inSpace.status, 200, inSpace.text);
-    assert.deepEqual(inSpace.json.space, { id: crossing.json.space.id, name: 'Crossing', createdAt: crossing.json.space.createdAt, phases: {}, budget: null });
+    assert.deepEqual(inSpace.json.space, { id: crossing.json.space.id, name: 'Crossing', createdAt: crossing.json.space.createdAt, phases: {}, budget: null, guestsSeeHidden: false });
     assert.deepEqual(inSpace.json.phases, [{ id: 'planning', label: 'Planning' }, { id: 'sailing', label: 'Sailing', main: true }], 'a phase edit is on the next read');
     const tab = (await asOwner('GET', '/api/environment/template')).json;
     assert.deepEqual([tab.template.version, tab.template.appliedVersion, tab.template.offerOpen, tab.offer.modules.map((m) => m.id)], [2, 1, true, ['calendar']]);

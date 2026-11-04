@@ -135,7 +135,8 @@
     }
   }
 
-  host.on('change', (e) => {
+  // One change: kept, not drawn. False when it is not a poll or a vote.
+  function applyChange(e) {
     const scope = e.scope === 'spaces' ? 'spaces' : 'own';
     if (e.key.startsWith('poll:')) {
       const key = pollKey(scope, e.key.slice(5), e.spaceId);
@@ -149,9 +150,21 @@
       if (e.deleted) forgetVote(scope, e.key, e.spaceId);
       else rememberVote(scope, { key: e.key, value: e.value }, e.spaceId);
     } else {
-      return;
+      return false;
     }
-    render();
+    return true;
+  }
+  host.on('change', (e) => {
+    if (applyChange(e)) render();
+  });
+  // Many at once (a Clear, its Undo): kept in one pass, drawn once. Keys only (a big event comes without values): read again.
+  host.on('changes', (e) => {
+    const list = (Array.isArray(e.changes) ? e.changes : []).map((c) => ({ ...c, scope: e.scope, spaceId: e.spaceId })).filter((c) => String(c.key).startsWith('poll:') || String(c.key).startsWith('vote:'));
+    if (!list.length) return;
+    if (list.some((c) => !c.deleted && c.value === undefined)) { load().then(render).catch(() => {}); return; }
+    let any = false;
+    for (const c of list) any = applyChange(c) || any;
+    if (any) render();
   });
 
   // --- what links to a poll, and being opened from a link ---------------------
@@ -347,7 +360,7 @@
     const own = [...polls.values()].filter((x) => x.scope === 'own');
     const open = own.filter((x) => !isClosed(x.p)).length;
     syncToolbar();
-    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && open ? { ...f, label: `Open (${open})` } : f)));
+    filterSwitch.set(show, FILTERS.map((f) => (f.id === 'open' && open ? { ...f, count: open } : f)));
 
     let html = groupHtml(spaceInfo.size ? word('environment', { cap: true }) : '', own);
     for (const r of spaceInfo.values()) {
@@ -504,7 +517,7 @@
   async function setClosed(key) {
     const x = polls.get(key);
     if (!x) return;
-    const closing = !x.p.closed;
+    const closing = !isClosed(x.p);
     const p = { ...x.p, closed: closing, closesAt: closing ? x.p.closesAt : null, announced: closing };
     try {
       const saved = await host.storage.set('poll:' + x.id, p, { version: x.version });
@@ -555,7 +568,7 @@
     }
     armed.delete(key);
     try {
-      for (const user of [...(votes.get(key) || new Map()).keys()]) await host.storage.delete(`vote:${x.id}:${user}`);
+      // The server removes its votes with it (closed or not: a closed poll's votes are final on their own).
       await host.storage.delete('poll:' + x.id);
       polls.delete(key);
       votes.delete(key);
@@ -757,7 +770,7 @@
         id: `poll-${key}`,
         anchor: mb,
         items: [
-          { id: 'toggle', label: x.p.closed ? 'Reopen poll' : 'End poll', icon: x.p.closed ? 'lock-open' : 'lock', onClick: () => setClosed(key) },
+          { id: 'toggle', label: isClosed(x.p) ? 'Reopen poll' : 'End poll', icon: isClosed(x.p) ? 'lock-open' : 'lock', onClick: () => setClosed(key) },
           { separator: true },
           { id: 'delete', label: 'Delete poll', icon: 'trash', danger: true, onClick: (item, b) => remove(key, b) },
         ],

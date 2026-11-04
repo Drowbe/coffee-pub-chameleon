@@ -16,9 +16,18 @@ const PRODUCT = 'Testname';
 process.env.PRODUCT_NAME = PRODUCT;
 const {
   ICONS, KINDS, TRAVEL_KINDS, HANDOFF_KINDS, DETAILS, MAX_IMPORT_OBJECTS, MAX_IMPORT_CANDIDATES,
-  cleanObject, cleanDetails, objectRule, instructions, schema, readObjects, decodeBytes, FormatError,
+  cleanObject, cleanDetails, schema, readObjects, decodeBytes, FormatError,
 } = require('../server/object-format.js');
-const { MAX_SUMMARIES, parseSummaries, buildPrompt } = require('../server/ai.js');
+const { MAX_SUMMARIES, parseSummaries } = require('../server/prompts/parse.js');
+const prompts = require('../server/prompts');
+const { fencedRule } = require('../server/prompts/object-rule.js');
+const { productName } = require('../server/product-name.js');
+// The objects rule as the paste template writes it, and the copied instructions (server/prompts/paste.js).
+const objectRule = ({ fence, noun, max, kinds }) => fencedRule({ fence, noun, max, kinds });
+const instructions = (noun, { kinds = TRAVEL_KINDS } = {}) => prompts.pasteText({ kinds, words: { object: noun, objects: `${noun}s`, space: 'space' } }, { product: productName() }).text;
+// The in-app ask's system part, read back by prompt-then-parse (a service without structured output).
+const WORDS = { object: 'object', objects: 'objects', space: 'space' };
+const askSystem = (kinds = TRAVEL_KINDS) => prompts.render(prompts.template('ask'), { question: 'Why?', material: [], context: {}, history: [], kinds, words: WORDS }).messages[0].content;
 const fileFormat = require('../server/file-format.js');
 const themeFile = require('../server/theme-file.js');
 const templateFile = require('../server/template-file.js');
@@ -40,11 +49,11 @@ let n = 0;
 const test = (name, fn) => { fn(); n += 1; };
 
 test('the /ai rule asks for one array in one objects fence, each one an object', () => {
-  const rule = buildPrompt('ask', [], 'Why?').prompt;
-  assert.match(rule, /Include objects only when your answer contains something worth keeping/);
+  const rule = askSystem();
+  assert.match(rule, /then add the objects worth keeping from your answer, only when it contains something worth keeping/);
   assert.ok(!/Always include/.test(rule));
-  assert.match(rule, /```objects\n\[/);
-  assert.match(rule, /exactly one, never one per object/);
+  assert.match(rule, /one JSON array inside a single fenced block labelled objects/);
+  assert.match(rule, /exactly one block, never one per object/);
   assert.match(rule, /at most 20/);
   assert.ok(!/\bcards?\b/.test(rule), 'the rule never says card');
   assert.equal(MAX_SUMMARIES, 20);
@@ -602,12 +611,11 @@ test('old files, pastes and stored AI answers read exactly as before details', (
     // A stored summary (chat.json, chat-private.json, ai-threads.json) is the same when cleaned again.
     for (const s of a.expect.summaries) assert.equal(JSON.stringify(cleanObject(s, { count: a.count })), JSON.stringify(s), a.name);
   }
-  // The prompt as built from the modules' `takes` (plan step 3), regenerated on purpose: with no `takes` declared (the travel
-  // kinds, as before) and with every kind taken (the plan's text).
+  // The copied instructions as built from the modules' `takes` (plan step 3): with no `takes` declared (the travel kinds, as
+  // before) and with every kind taken (the plan's text). paste@1 is that text word for word; the in-app prompts have their
+  // own golden files (tools/check-prompts.mjs).
   assert.equal(instructions('object'), before.prompts.instructions);
-  assert.equal(buildPrompt('ask', [], 'Why?').prompt, before.prompts.summaryRule);
   assert.equal(instructions('object', { kinds: KINDS }), before.prompts.instructionsEveryKind);
-  assert.equal(buildPrompt('ask', [], 'Why?', KINDS).prompt, before.prompts.summaryRuleEveryKind);
 });
 
 test('a booking keeps its travel kind rather than "event" when both are listed', () => {
@@ -618,7 +626,7 @@ test('a booking keeps its travel kind rather than "event" when both are listed',
   const all = sentence('flight, train, bus, ferry, car, hotel, restaurant, cafe, bar, sight, museum, attraction, tour or show');
   assert.ok(every.includes(`Leave it out only when none fits.\n${all}\n`), 'directly after the kind line');
   assert.ok(instructions('object', { kinds: KINDS }).includes(all));
-  assert.ok(buildPrompt('ask', [], 'Why?', KINDS).prompt.includes(all));
+  assert.ok(askSystem(KINDS).includes(all));
   // Only the travel kinds listed, joined as the kind line joins them, whatever order they are given in.
   assert.ok(rule(['event', 'tour', 'hotel', 'task']).includes(sentence('hotel or tour')));
   assert.ok(rule(['museum', 'event']).includes(sentence('museum')));
@@ -628,7 +636,7 @@ test('a booking keeps its travel kind rather than "event" when both are listed',
     assert.ok(!rule(kinds).includes('For a booking or a stop on a trip'), kinds.join(','));
   }
   assert.ok(!instructions('object').includes('For a booking or a stop on a trip'), 'the default, travel kinds only');
-  assert.ok(!buildPrompt('ask', [], 'Why?').prompt.includes('For a booking or a stop on a trip'));
+  assert.ok(!askSystem().includes('For a booking or a stop on a trip'));
 });
 
 test('crafted text cannot stall a read: 120 KB in any field reads in under 100 ms', () => {

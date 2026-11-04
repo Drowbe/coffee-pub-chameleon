@@ -118,9 +118,10 @@ class ModuleBus extends EventEmitter {
   // The request still waits in `scopeKey` (where the asking and providing pages are), but only someone who may change
   // the module in that space may take it (plan-calendar-destination, decision 21).
   // `openOnly`: the request is for a page already open, and is handed out for LIMITS.openOnlyMs only (`expiresAt`).
-  request({ from, provider, action, input, scopeKey, by, local, space, openOnly }) {
+  // `askerOnly`: only the asker's own page may take it (the routes check `by`); it waits for that page as any request does.
+  request({ from, provider, action, input, scopeKey, by, local, askerOnly, space, openOnly }) {
     const at = Date.now();
-    const request = { id: ++this.state.seq, at, from, provider, action, input, scopeKey, by, ...(local ? { local: true } : {}), ...(space ? { space } : {}), ...(openOnly ? { expiresAt: at + LIMITS.openOnlyMs } : {}), status: 'pending', claimedAt: 0, result: null };
+    const request = { id: ++this.state.seq, at, from, provider, action, input, scopeKey, by, ...(local ? { local: true } : {}), ...(askerOnly ? { askerOnly: true } : {}), ...(space ? { space } : {}), ...(openOnly ? { expiresAt: at + LIMITS.openOnlyMs } : {}), status: 'pending', claimedAt: 0, result: null };
     this.state.actions.push(request);
     this.pruneAndSave();
     this.emit('action', request);

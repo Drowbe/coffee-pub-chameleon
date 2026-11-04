@@ -1,0 +1,370 @@
+/* The Prototype's Vault section (Thomas, 2026-11-02): design-process only, nothing here ships. Everything is a theme token (colours, radii, the
+   type scale, spacing). A rule that would move into public/sdk/system.css when the Vault is built carries "to system.css" and says what it
+   becomes; the rest is the Prototype's own page (the section, its trial switches, the pictures of dialogs and menus). The Vault module
+   itself measures its own width (a container, "vault"), never the page's, so a docked 360px Vault answers like a phone.
+
+   What would move to system.css when the Vault is built (each marked "to system.css" below): the file thumbnail and type tile
+   (.vt-thumb), the file row (.vt-row on .sdk-row) and card (.vt-card on .sdk-card-banded, .vt-card-thumb on .sdk-card), the file chip
+   (.vt-chip on .sdk-chip-tag), the upload row and the drop zone (.vt-up, .vt-drop, .vt-dropover), the media viewer frame (.vt-viewer and
+   its top row, zoom bar, info panel, PDF bar), and the form-width and browse-width dialog variants (.vt-sheet-form, .vt-sheet-browse). */
+
+/* ---- the section ---- */
+/* Small muted words on a row or a card: a step stronger than --text-muted, which is under 4.5 to 1 on a tinted or chosen fill (the Cards block does the same). */
+:host, .vt-hold, .vt-sheet, .vt-browser { --vt-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); }
+:is(.vt-row, .vt-card)[aria-selected="true"] :is(.vt-by, .vt-flags, .vt-card-line, .sdk-row-sub, .sdk-card-sub, .vt-sub, .menu-btn) { color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); }
+.vt-trials { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; }
+.vt-trial { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.vt-trial-label { color: var(--text-muted); font-size: var(--text-12); }
+.vt-set { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
+.vt-set-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.vt-set > .pp-state-note { margin-top: calc(-1 * var(--space-3)); }
+.vt-frame { position: relative; contain: layout style; }
+.vt-frame.is-pending { min-height: calc(var(--vt-h, 640px) + 2 * var(--space-5)); }
+.vt-hold { position: relative; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); }
+.vt-hold > .vt-held-menu { position: absolute; z-index: 5; }
+.vt-hold > .mf { width: 100%; height: var(--vt-h, 640px); position: relative; }
+.vt-host { display: contents; }
+.vt-frame[data-w="360"] { --vt-w: 360px; }
+.vt-frame[data-w="390"] { --vt-w: 390px; }
+.vt-frame[data-h="640"] { --vt-h: 640px; }
+.vt-frame[data-w="480"] { --vt-w: 480px; }
+.vt-frame[data-w="820"] { --vt-w: 820px; }
+.vt-frame[data-h="480"] { --vt-h: 480px; }
+.vt-frame[data-h="560"] { --vt-h: 560px; }
+.vt-frame[data-h="720"] { --vt-h: 720px; }
+.vt-frame[data-h="800"] { --vt-h: 800px; }
+.vt-pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); min-width: 0; }
+.vt-pair > .pp-state { flex: 1 1 360px; }
+.vt-pair > .pp-state:has(.vt-frame[data-w="360"]), .vt-pair > .pp-state:has(.vt-frame[data-w="390"]), .vt-pair > .pp-state:has(.vt-frame[data-w="480"]) { flex: 0 0 auto; max-width: 100%; }
+.vt-qs { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); max-width: 90ch; }
+.vt-qs li { color: var(--text-primary); }
+.vt-qs b { font-weight: var(--weight-strong); }
+.vt-qs .vt-q-rec { color: var(--text-muted); }
+.vt-frame .mf-content.mf-content-flush:has(> .vt-host) { display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 640px) {
+  .vt-trials, .vt-set > .pp-state-note { padding-inline: var(--space-4); }
+  .vt-set > .vt-set-name { padding-inline: var(--space-4); }
+  .vt-qs { padding-inline: var(--space-6) var(--space-4); }
+}
+
+/* ---- the module's body (the Vault's content area) ---- */
+.vt-app { container: vault / inline-size; position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; background: var(--surface-panel); color: var(--text-primary); }
+.vt-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--mf-inset); }
+.vt-banner { margin: var(--mf-inset) var(--mf-inset) 0; }
+.vt-empty { height: 100%; justify-content: center; }
+.vt-mark { background: var(--fill-selected); color: inherit; border-radius: var(--radius-min); }
+
+/* ---- the file's picture and its type tile (to system.css: .sdk-file-thumb; the tile is the Cards block's circle icon on a square) ---- */
+.vt-thumb { position: relative; flex: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 36px; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-small); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-16); }
+.vt-thumb > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.vt-tile { font-size: var(--text-16); }
+.vt-play { position: absolute; inset: 0; margin: auto; display: flex; align-items: center; justify-content: center; width: 40%; max-width: 44px; aspect-ratio: 1; min-width: 14px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--surface-page) 72%, transparent); color: var(--text-primary); font-size: var(--text-9); }
+.vt-len { position: absolute; right: var(--space-1); bottom: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-min); background: color-mix(in srgb, var(--surface-page) 78%, transparent); color: var(--text-primary); font-size: var(--text-11); line-height: 14px; font-variant-numeric: tabular-nums; }
+.vt-row .vt-len, .vt-pick .vt-len { display: none; }
+.vt-row .vt-thumb, .vt-pickrow .vt-thumb { width: 36px; }
+
+/* ---- the List (to system.css: .sdk-file-row on the Cards block's .sdk-row) ---- */
+.vt-rows { display: flex; flex-direction: column; gap: var(--gap-card-rows); margin: 0; padding: 0; list-style: none; }
+.vt-row { --s: var(--mf-surface-row); }
+.vt-row.is-missing .vt-thumb { color: var(--status-warn-text); }
+.vt-row .sdk-row-title { display: block; overflow: hidden; width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+button.sdk-open { font: inherit; color: inherit; }
+.vt-by { flex: none; display: flex; align-items: center; gap: var(--space-2); width: 96px; min-width: 0; font-size: var(--text-12); color: var(--vt-dim); }
+.vt-by-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-when { width: 72px; text-align: right; }
+.vt-flags { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 44px; color: var(--vt-dim); font-size: var(--text-12); }
+.vt-flag { display: inline-flex; align-items: center; gap: var(--space-1); }
+.vt-flag > i { font-size: var(--text-12); }
+.vt-sub-narrow { display: none; }
+.vt-tone { display: inline-flex; align-items: center; gap: var(--space-1); }
+.vt-warn { color: var(--status-warn-text); }
+@container vault (max-width: 600px) {
+  .vt-by, .vt-when { display: none; }
+  .vt-sub-narrow { display: inline; }
+}
+@container vault (max-width: 420px) {
+  .vt-sub-kind { display: none; }
+  /* the name keeps the width; the line under it wraps to two lines (size, then who and when) rather than cut the person */
+  .vt-flags { min-width: 0; }
+  .vt-flags:empty { display: none; }
+  .vt-row .vt-sub { overflow: visible; white-space: normal; text-overflow: clip; }
+}
+
+/* ---- the Grid (to system.css: .sdk-file-grid, .sdk-file-card on .sdk-card-banded) ---- */
+.vt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); margin: 0; padding: 0; }
+@container vault (max-width: 480px) {
+  .vt-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+}
+.vt-card { min-width: 0; }
+.vt-card-name { display: -webkit-box; margin: 0; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; text-align: left; font: inherit; color: inherit; word-break: break-word; }
+/* The head is one line (Thomas, 2026-11-03): a small kind icon, the name on one line cut with an ellipsis, the more button; about 40px. A file thumbnail card, so it leaves the banded head's stacked icon and kind word. */
+.vt-card:not(.vt-card-thumb) > .sdk-card-head > .sdk-card-main { display: flex; align-items: center; gap: var(--space-2); }
+.vt-kind-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; font-size: var(--icon-16); color: color-mix(in srgb, var(--tint, var(--text-muted)) 70%, var(--text-primary)); }
+.vt-card:not(.vt-card-thumb) .sdk-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: var(--text-14); line-height: 20px; }
+.vt-card:not(.vt-card-thumb) .vt-card-name { display: block; width: 100%; max-width: 100%; -webkit-line-clamp: unset; line-clamp: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.vt-card:not(.vt-card-thumb) .vt-card-name.vt-cut { display: flex; min-width: 0; }
+/* The head is as wide as its text (prototype-vault-app.js fitCuts sets the text), so the tail follows it with no gap. */
+.vt-nm-head { flex: none; overflow: hidden; white-space: nowrap; }
+.vt-nm-tail { flex: none; white-space: pre; }
+.vt-card .sdk-card-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-card .vt-thumb { width: 100%; border-radius: var(--radius-small); font-size: var(--text-28); }
+.vt-card .vt-tile { font-size: var(--text-28); }
+.vt-card .vt-len { font-size: var(--text-11); }
+.vt-card .vt-play { font-size: var(--text-14); }
+.vt-card-line { margin: 0; color: var(--vt-dim); font-size: var(--text-12); line-height: 16px; }
+.vt-card .vt-flags { justify-content: flex-start; min-width: 0; }
+.vt-card .vt-flags:empty { display: none; }
+.vt-card-thumb { padding: 0; gap: 0; overflow: hidden; }
+.vt-card-thumb > .vt-thumb { width: 100%; border-radius: 0; font-size: var(--text-28); }
+.vt-card-over { position: absolute; top: var(--space-1); right: var(--space-1); left: var(--space-1); display: flex; align-items: center; z-index: 1; pointer-events: none; }
+.vt-card-over > * { pointer-events: auto; }
+.vt-fill { flex: 1 1 auto; }
+.vt-card-over .sdk-icon-btn, .vt-card-over .vt-tick { background: color-mix(in srgb, var(--surface-panel) 84%, transparent); border-radius: var(--radius-small); }
+.vt-card-thumb .vt-card-meta { display: flex; flex-direction: column; gap: var(--space-0); min-width: 0; padding: var(--space-2) var(--space-2) var(--space-2); }
+.vt-card-thumb .vt-card-name { font-size: var(--text-13); font-weight: var(--weight-medium); -webkit-line-clamp: 1; line-clamp: 1; }
+.vt-card-thumb .sdk-card-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-card-thumb .vt-flags { justify-content: flex-start; }
+.vt-card-thumb .vt-flags:empty { display: none; }
+.vt-tick { display: inline-flex; align-items: center; justify-content: center; }
+@container vault (max-width: 480px) {
+  .vt-card-thumb .sdk-card-sub { font-size: var(--text-11); }
+}
+@container vault (max-width: 420px) {
+  .vt-x-kind, .vt-x-by { display: none; }
+  .vt-card-thumb .vt-card-name { -webkit-line-clamp: 2; line-clamp: 2; }
+}
+
+/* ---- Add files (to system.css: the drop zone and the upload row join the Progress block) ---- */
+.vt-add { display: flex; flex: none; flex-direction: column; gap: var(--space-3); max-height: 90%; overflow: auto; padding: var(--pad-card) var(--mf-inset) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.vt-add-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.vt-add-title { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.vt-drop { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-5) var(--space-4); border: 1px dashed var(--edge-field); border-radius: var(--radius-large); color: var(--text-muted); text-align: center; transition: background var(--motion-fast); }
+.vt-drop > .vt-drop-ic { font-size: var(--icon-24); margin-bottom: var(--space-1); }
+.vt-drop-title { margin: 0; color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); }
+.vt-drop-sub { margin: 0; font-size: var(--text-13); }
+.vt-drop .btn { margin-top: var(--space-2); }
+.vt-drop.is-compact { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); }
+.vt-drop.is-compact > .vt-drop-ic { margin: 0; }
+.vt-drop.is-compact .vt-drop-sub { display: none; }
+.vt-drop.is-compact .btn { margin: 0; }
+.vt-drop.is-over, .vt-drop.is-over .vt-drop-sub { color: var(--text-primary); }
+.vt-drop.is-over { border: 2px solid var(--focus-ring); background: var(--fill-selected); }
+.vt-drop.is-off { background: var(--surface-field); }
+.vt-accept, .vt-notice, .vt-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
+.vt-line { color: var(--text-primary); font-size: var(--text-13); }
+.vt-where { align-self: stretch; }
+.vt-queue { margin: 0; padding: 0; list-style: none; }
+.vt-up .sdk-row-sub { white-space: normal; overflow: visible; }
+.vt-up-bad { color: color-mix(in srgb, var(--status-danger-text) 75%, var(--text-primary)); }
+.vt-up .sdk-progress { margin-top: var(--space-1); }
+.vt-up > .sdk-icon-btn { flex: none; }
+.vt-dropover { position: absolute; inset: var(--space-2); z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px dashed var(--focus-ring); border-radius: var(--radius-large); background: color-mix(in srgb, var(--surface-panel) 90%, transparent); color: var(--text-muted); pointer-events: none; text-align: center; padding: var(--space-4); }
+.vt-dropover > i { font-size: var(--icon-24); }
+.vt-quota { margin-top: var(--space-1); }
+
+/* ---- the toasts, inside the module ---- */
+.vt-toastlayer { position: absolute; inset: auto var(--space-3) var(--space-3); z-index: 4; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); pointer-events: none; }
+.vt-toast { pointer-events: auto; }
+
+/* ---- the viewer window (to system.css: the media viewer window, the piece the plan names) ----
+   A file opens in a window of the canvas: the module frame's window variant, placed over whatever is on the canvas. The shared page keeps
+   .vt-viewer, .vt-vbar and .vt-vbody (its viewer sits in the page). */
+.vt-viewer { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; outline: none; }
+.vt-vbar { display: flex; flex: none; align-items: center; gap: var(--space-2); box-sizing: border-box; min-height: 44px; padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
+.vt-vname { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: var(--text-14); font-weight: var(--weight-strong); text-overflow: ellipsis; white-space: nowrap; }
+.vt-vpos { flex: none; color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vt-vbar > .sdk-icon-btn, .vt-vbar > .btn { flex: none; }
+.vt-vbody { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+.vt-wbody { container: vault / inline-size; position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; background: var(--surface-panel); color: var(--text-primary); }
+.vt-wmain { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+.vt-view { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-field); }
+.vt-state { align-items: center; justify-content: center; background: var(--surface-panel); }
+.vt-info { flex: none; box-sizing: border-box; width: 260px; overflow: auto; padding: var(--pad-card); border-left: 1px solid var(--edge-hairline); background: var(--surface-panel); display: flex; flex-direction: column; gap: var(--space-3); }
+.vt-info-head { display: flex; align-items: center; justify-content: space-between; }
+.vt-info-title, .vt-info-sub { margin: 0; font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--text-muted); }
+.vt-info-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); }
+.vt-info-list dt { color: var(--text-muted); }
+.vt-info-list dd { margin: 0; overflow-wrap: anywhere; }
+.vt-info-uses { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-info-none { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.vt-uses { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-13); }
+.vt-uses span { color: var(--text-muted); }
+/* Info: a side panel while the window is wide, under the file when it is narrow */
+@container vault (max-width: 560px) {
+  .vt-wmain.has-info { flex-direction: column; }
+  .vt-wmain.has-info > .vt-info { width: auto; max-height: 48%; border-left: 0; border-top: 1px solid var(--edge-hairline); }
+}
+/* the canvas the windows sit on, and the windows */
+.vt-canvas { container: vtcanvas / inline-size; position: relative; box-sizing: border-box; width: min(var(--vt-w, 100%), 100%); height: var(--vt-h, 640px); overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
+.vt-canvas-under { position: absolute; inset: var(--space-3) auto var(--space-3) var(--space-3); width: min(380px, calc(100% - 2 * var(--space-3))); }
+.vt-canvas-under > .vt-hold, .vt-canvas-under > .vt-hold > .mf { width: 100%; height: 100%; }
+.vt-canvas-layer { position: absolute; inset: 0; pointer-events: none; }
+.vt-canvas-bar { position: absolute; top: var(--space-2); right: var(--space-3); z-index: 2; }
+.vt-canvas-toasts { z-index: 200; }
+.vt-win { position: absolute; display: flex; pointer-events: auto; }
+.vt-win > .mf { flex: 1 1 auto; width: 100%; height: 100%; outline: none; }
+.vt-win:not(.is-front) > .mf { box-shadow: var(--shadow-2); }
+.vt-win.is-front > .mf { box-shadow: var(--shadow-3); }
+.vt-win-grip { position: absolute; right: 0; bottom: 0; z-index: 8; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--edge-hairline) 50%, var(--edge-hairline) 60%, transparent 60%, transparent 70%, var(--edge-hairline) 70%, var(--edge-hairline) 80%, transparent 80%); }
+.vt-win .mf-titlebar { touch-action: none; cursor: grab; }
+.vt-win .mf-titlebar button { cursor: pointer; }
+.vt-canvas-layer.dragging .vt-wbody { pointer-events: none; }
+.vt-win > .mf:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.vt-dlbar { display: none; flex: none; padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.vt-dlbig { width: 100%; min-height: 48px; justify-content: center; }
+/* a phone (640px and narrower): the window is a full-screen sheet, one at a time, with Download as a large button at the foot */
+@container vtcanvas (max-width: 640px) {
+  .vt-canvas-under { inset: 0; width: auto; }
+  .vt-canvas-bar { display: none; }
+  .vt-win { inset: 0 !important; width: auto !important; height: auto !important; }
+  .vt-win-grip { display: none; }
+  .vt-win .mf-titlebar { cursor: default; }
+  .vt-win > .mf { border: 0; border-radius: 0; box-shadow: none !important; }
+  .vt-dlbar { display: flex; }
+}
+/* a picture */
+.vt-pic { align-items: center; justify-content: center; overflow: hidden; }
+.vt-pic-wrap { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; width: 100%; min-height: 0; overflow: hidden; cursor: zoom-in; touch-action: none; }
+.vt-pic.is-zoomed .vt-pic-wrap { cursor: grab; }
+.vt-pic-wrap.is-dragging { cursor: grabbing; }
+.vt-pic-wrap > img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-drag: none; }
+.vt-zoombar { position: absolute; left: 50%; bottom: var(--space-3); z-index: 1; display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); transform: translateX(-50%); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 94%, transparent); box-shadow: var(--shadow-2); }
+.vt-zoom-level { min-width: 56px; justify-content: center; }
+/* audio and video */
+.vt-audio { align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); background: var(--surface-panel); text-align: center; }
+.vt-audio-tile { display: flex; align-items: center; justify-content: center; width: 96px; aspect-ratio: 1; margin-bottom: var(--space-2); border-radius: var(--radius-large); background: color-mix(in srgb, var(--tint, var(--text-muted)) 22%, var(--surface-panel)); color: color-mix(in srgb, var(--tint, var(--text-muted)) 45%, var(--text-primary)); font-size: var(--text-40); }
+.vt-audio-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.vt-audio-meta { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.vt-audio > audio { width: min(480px, 100%); margin-top: var(--space-3); }
+.vt-video { align-items: center; justify-content: center; padding: var(--space-3); }
+.vt-video > video { display: block; width: 100%; max-height: 100%; border-radius: var(--radius-medium); background: var(--surface-page); }
+/* Markdown: the reading width */
+.vt-md-view { overflow: auto; align-items: center; background: var(--surface-panel); }
+.vt-md { box-sizing: border-box; width: min(var(--measure-reading), 100%); padding: var(--space-5) var(--space-4) var(--space-7); font-size: var(--text-14); line-height: 1.6; outline: none; }
+.vt-md > :first-child { margin-top: 0; }
+.vt-md h1 { margin: 0 0 var(--space-3); font-size: var(--text-22); line-height: var(--leading-title); }
+.vt-md h2 { margin: var(--space-5) 0 var(--space-2); font-size: var(--text-18); line-height: var(--leading-title); }
+.vt-md h3 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-16); }
+.vt-md p, .vt-md ul, .vt-md ol, .vt-md blockquote { margin: 0 0 var(--space-3); }
+.vt-md ul, .vt-md ol { padding-left: var(--space-6); }
+.vt-md blockquote { padding-left: var(--space-3); border-left: 3px solid var(--edge-hairline); color: var(--text-muted); }
+.vt-md code { padding: 0 var(--space-1); border-radius: var(--radius-min); background: var(--surface-field); font-size: var(--text-13); }
+.vt-md a { color: var(--text-link); }
+/* a PDF (the app's own viewer, drawn: pdf.js is not on this page) */
+.vt-pdf { overflow: hidden; }
+.vt-pdfbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
+.vt-pdfbar-group { display: flex; align-items: center; gap: var(--space-1); }
+.vt-pdfbar-fill { flex: 1 1 auto; }
+.vt-sep { align-self: stretch; width: 1px; margin: var(--space-1) var(--space-2); background: var(--edge-hairline); }
+.vt-pdf-page { width: 44px; height: var(--mf-ctl-h); text-align: center; }
+.vt-pdf-of { color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; }
+.vt-pdf-search { display: flex; flex: none; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--mf-inset); border-bottom: 1px solid var(--edge-hairline); background: var(--mf-surface-toolbar); }
+.vt-pdf-search[hidden] { display: none; }
+.vt-pdf-search input { flex: 1 1 auto; min-width: 0; }
+.vt-pdf-count { color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; }
+.vt-pdf-pages { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; gap: var(--space-3); min-height: 0; padding: var(--space-4); overflow: auto; outline: none; }
+.vt-pdf-canvas { flex: none; height: auto; max-width: none; border-radius: var(--radius-min); box-shadow: var(--shadow-2); }
+.vt-pdf-pages.is-fit .vt-pdf-canvas { width: min(100%, 880px); }
+@container vault (max-width: 420px) {
+  .vt-pdfbar-zoom > .sdk-icon-btn { display: none; }
+}
+.vt-sep:last-child { display: none; }
+.vt-sub { display: block; }
+.vt-state .sdk-empty > i[data-tone="warn"] { color: var(--status-warn-text); }
+
+/* ---- the file chip (to system.css: .sdk-file-chip, on .sdk-chip-tag) ---- */
+.vt-chipwrap { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; }
+.vt-chip { max-width: 100%; }
+.vt-chip-ic { color: color-mix(in srgb, var(--tint, var(--text-muted)) 55%, var(--text-primary)); }
+.vt-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-chip-size { flex: none; color: var(--vt-dim); }
+.vt-chip-state { flex: none; color: var(--vt-dim); font-style: normal; }
+.vt-chip[data-state="missing"] .vt-chip-name { text-decoration: line-through; text-decoration-color: var(--text-muted); }
+.vt-chip[data-state="missing"] .vt-chip-ic, .vt-chip[data-state="missing"] .vt-chip-state { color: var(--status-warn-text); }
+.vt-chip:disabled { cursor: default; }
+
+/* ---- a sample card of another module (the Itinerary's stay), built from the Cards block ---- */
+.vt-other { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--mf-inset); overflow: auto; background: var(--surface-panel); }
+.vt-other .sdk-card-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.vt-stay-ins { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.vt-stay-ins small { display: block; color: var(--text-muted); font-size: var(--text-11); }
+.vt-stay-ins b { font-size: var(--text-14); }
+.vt-files { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge-hairline); }
+.vt-files-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--text-muted); font-size: var(--text-12); font-weight: var(--weight-strong); letter-spacing: var(--ls-label); text-transform: uppercase; }
+.vt-files-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+
+/* ---- dialogs held open in a picture ---- */
+.vt-scrimbox { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: var(--space-3); overflow: auto; background: var(--scrim); }
+.vt-scrimbox > dialog { position: relative; inset: auto; flex: none; margin: auto; width: min(var(--dlg-w), 100%); max-height: 100%; }
+.vt-sheet-form { --dlg-w: var(--dlg-w-form); }
+.vt-sheet-browse { --dlg-w: var(--dlg-w-browse); }
+dialog.vt-sheet[open] { opacity: 1; transform: none; }
+.vt-share-files { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-share-strip { display: flex; align-items: center; gap: var(--space-1); }
+.vt-share-strip .vt-thumb { width: 40px; }
+.vt-share-more { color: var(--text-muted); font-size: var(--text-13); }
+.vt-share-line { margin: 0; color: var(--text-primary); font-size: var(--text-13); overflow-wrap: anywhere; }
+.vt-share-form { display: flex; flex-direction: column; gap: var(--field-gap, var(--space-3)); }
+.vt-share-address { font-family: var(--font-system); }
+.vt-sharelist { margin: 0; padding: 0; list-style: none; }
+.vt-share.is-ended { opacity: 1; }
+.vt-usesheet { margin: 0; padding: 0; list-style: none; }
+.vt-pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.vt-pick-bar > input { flex: 1 1 200px; min-width: 0; }
+.vt-picklist { margin: 0; padding: 0; list-style: none; }
+.vt-foot-fill { flex: 1 1 auto; }
+.vt-pick-add { margin-right: auto; }
+.vt-sheet-browse .sdk-dialog-foot { flex-wrap: nowrap; }
+
+.vt-backdrop { position: relative; box-sizing: border-box; width: min(var(--vt-w, var(--pp-w, 700px)), 100%); height: var(--vt-h, 480px); overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
+.vt-pagebox { display: flex; justify-content: center; }
+.vt-pagebox > .vt-browser { width: min(1100px, 100%); }
+
+/* ---- the /shared page (a plain page in the environment's theme) ---- */
+.vt-browser { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-page); }
+.vt-browser-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-card); color: var(--text-muted); font-size: var(--text-12); }
+.vt-browser-url { flex: 1 1 auto; min-width: 0; overflow: hidden; padding: var(--space-1) var(--space-3); border-radius: var(--radius-small); background: var(--surface-field); text-overflow: ellipsis; white-space: nowrap; }
+.vt-browser[data-w="390"] { width: min(390px, 100%); }
+.vt-shared { position: relative; container: shared / inline-size; display: flex; flex-direction: column; gap: var(--space-5); min-height: 480px; padding: var(--space-6) var(--space-5); }
+.vt-shared-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.vt-shared-title { margin: 0; font-family: var(--font-display); font-size: var(--text-28); line-height: var(--leading-title); }
+.vt-shared-by { margin: 0; color: var(--text-muted); font-size: var(--text-14); }
+.vt-shared-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.vt-shared .vt-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+@container shared (max-width: 480px) { .vt-shared .vt-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); } }
+.vt-shared-gate { align-self: center; display: flex; flex-direction: column; gap: var(--space-3); width: min(360px, 100%); margin: var(--space-7) auto; }
+.vt-shared-viewer { display: flex; flex-direction: column; min-height: 420px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden; }
+.vt-shared-viewer .vt-vbody { min-height: 340px; }
+.vt-shared-foot { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
+.vt-card-thumb.is-gone .vt-thumb { color: var(--text-muted); }
+
+/* ---- coarse pointers: 44px taps, 16px fields ---- */
+@media (pointer: coarse), (max-width: 640px) {
+  /* The look stays and the tap area grows past it, so the chip must not cut it (system.css does this for a chip on a phone; a coarse pointer on a wide screen gets the same here). */
+  .vt-chip.sdk-chip-tag { position: relative; overflow: visible; }
+  .vt-files-list, .vt-chipwrap { row-gap: var(--space-3); }
+  .vt-pdf-page { height: 44px; }
+  /* The viewer's buttons inside a file window keep their look and get the 44px tap area the frame's buttons have (system.css): the ::after reaches past the 30px button. The bars give it room, so the window's edge does not clip it. */
+  .vt-wmain :is(.vt-zoombar, .vt-pdfbar, .vt-pdf-search, .vt-info-head) button { position: relative; }
+  .vt-wmain :is(.vt-zoombar, .vt-pdfbar, .vt-pdf-search, .vt-info-head) button::after { content: ""; position: absolute; top: 50%; right: -2px; left: -2px; height: 44px; transform: translateY(-50%); }
+  .vt-pdfbar, .vt-pdf-search { padding-block: 7px; }
+}
+@media (pointer: coarse) and (min-width: 641px) {
+  .vt-chip.sdk-chip-tag::after { content: ""; position: absolute; inset: -11px 0; }
+}
+@media (pointer: coarse) {
+  .vt-app :is(input[type="text"], input[type="search"], input[type="password"], input:not([type])), .vt-sheet :is(input[type="text"], input[type="search"], input[type="password"]) { font-size: var(--text-16); }
+}
+@media (max-width: 640px) {
+  .vt-scroll { padding: var(--space-2); }
+  .vt-vbar { padding-inline: var(--space-2); }
+}
+
+/* ---- the page's pinned jump lists (a dock under the top bar) and where a jump lands ---- */
+html { scroll-padding-top: var(--pp-stick, 120px); }
+.pp-dock { position: sticky; z-index: calc(var(--z-dialog, 50) - 1); display: flex; align-items: flex-start; gap: var(--space-2); box-sizing: border-box; padding: var(--space-1) var(--space-4); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.pp-dock-top { flex: none; }
+.pp-dock-rows { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.pp-dock .pp-jump { flex-wrap: nowrap; padding-inline: 0; overflow-x: auto; scrollbar-width: thin; }
+.pp-dock .pp-jump > * { flex: none; }
+@media (max-width: 560px) { .pp-dock { padding-inline: var(--space-2); } .pp-dock-top span { display: none; } }

@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const { parentPort, workerData } = require('worker_threads');
 const vaultTypes = require('./vault-types');
 const { cleanImage } = require('./image-clean');
-const { pdfScan } = require('./pdf-scan');
+const { pdfScanFile } = require('./pdf-scan');
 
 function check({ file, type, keepPosition, picture, allowed }) {
   if (picture) {
@@ -44,7 +44,7 @@ function check({ file, type, keepPosition, picture, allowed }) {
     return { ok: true, size: clean.bytes.length, sha256: crypto.createHash('sha256').update(clean.bytes).digest('hex'), taken: clean.taken, camera: clean.camera };
   }
   if (type === 'application/pdf') {
-    const r = pdfScan(fs.readFileSync(file));
+    const r = pdfScanFile(file); // read a window at a time, never the whole file at once
     if (!r) return { ok: true };
     if (r.refuse) return { refuse: { code: r.refuse === 'damaged' ? 'pdf-damaged' : 'pdf-unchecked' } };
     return { refuse: { code: 'pdf-active', name: r.name, what: r.what } };

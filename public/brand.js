@@ -80,6 +80,7 @@ function migrateStoredKeys() {
 }
 migrateStoredKeys();
 
+let templateHomeIcon = null; // the template's home icon (branding.templateHomeIcon): a space's icon when it picked none
 let product = ''; // filled by loadBranding(); no name is written in the page
 
 // The configured product name (PRODUCT_NAME), from /api/branding. Sentences use this, never a hard-coded name; it is ''
@@ -99,6 +100,7 @@ export async function loadBranding() {
   }
   if (typeof b.productName === 'string' && b.productName.trim()) product = b.productName.trim();
   ICONS = Array.isArray(b.icons) ? b.icons : [];
+  templateHomeIcon = typeof b.templateHomeIcon === 'string' && b.templateHomeIcon ? b.templateHomeIcon : null;
   setEnvironmentMode(b.themeMode, b.themeVersion); // the default mode, and a stylesheet that changed since this page loaded
   setVerbs(b.verbs); // every data-verb and {enter} on the page, and verb() from here on (addendum 4)
   setWords(b.words); // every data-word and data-fill on the page, and word() from here on
@@ -930,10 +932,33 @@ function toastStack() {
   }
   return layer;
 }
+// On a phone the stack sits along the bottom edge, over the page's own bottom bars: the tab bar and the chat's composer. It is
+// lifted to stand on whichever of them reaches highest (measured where they are drawn, so the safe area and a taller composer
+// count), and put back when there are none (the stylesheet's own place). Asked again while a toast shows, as a bar comes and goes.
+const TOAST_AVOID = '.sdk-tabbar, #chat-bar';
+let toastLiftTimer = 0;
+function liftToasts() {
+  const layer = document.getElementById('toast-layer');
+  if (!layer) return;
+  const live = [...layer.children].some((e) => e.dataset.state !== 'leaving');
+  let top = window.innerHeight;
+  if (live && window.innerWidth <= 640) {
+    for (const el of document.querySelectorAll(TOAST_AVOID)) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && r.bottom > window.innerHeight / 2) top = Math.min(top, r.top);
+    }
+  }
+  const lift = window.innerHeight - top;
+  if (lift > 0) layer.style.bottom = `${Math.round(lift + 8)}px`; else layer.style.removeProperty('bottom');
+  if (!live) { clearInterval(toastLiftTimer); toastLiftTimer = 0; }
+}
 function closeToast(t) {
   if (t.gone) return;
   t.gone = true;
   clearTimeout(t.timer);
+  // Focus that was on the toast goes back to where it was before the toast took it (the Undo note), else it would fall to the page.
+  const back = t.returnTo;
+  if (back && back.isConnected && (t.el.contains(document.activeElement) || document.activeElement === document.body)) back.focus({ preventScroll: true });
   t.el.dataset.state = 'leaving';
   setTimeout(() => {
     t.el.remove();
@@ -952,15 +977,18 @@ function placeToast(spec) {
     + (spec.onOpen ? `<button type="button" class="sdk-toast-body" data-toast-open>${head}</button>` : `<div class="sdk-toast-body">${head}</div>`)
     + `<div class="sdk-toast-end">${toastCloseHtml}</div>`
     + (spec.actions ? `<div class="sdk-toast-actions">${spec.actions}</div>` : '');
-  const t = { el, left: spec.ms, started: 0, timer: 0, held: false, gone: false };
+  // `until` (a time in ms): the toast goes then, held or not (an Undo that can't work after it); else after `ms` of its own clock.
+  const fixed = Number.isFinite(spec.until);
+  const t = { el, left: fixed ? Math.max(0, spec.until - Date.now()) : spec.ms, started: 0, timer: 0, held: false, gone: false };
   const start = () => {
+    if (fixed) t.left = Math.max(0, spec.until - Date.now());
     if (t.held || t.gone) return;
     t.started = Date.now();
     clearTimeout(t.timer);
     t.timer = setTimeout(() => closeToast(t), t.left);
   };
   const hold = () => {
-    if (t.gone) return;
+    if (t.gone || fixed) return;
     t.held = true;
     if (t.started) { t.left = Math.max(0, t.left - (Date.now() - t.started)); t.started = 0; }
     clearTimeout(t.timer);
@@ -976,7 +1004,10 @@ function placeToast(spec) {
     else if (spec.onOpen && e.target.closest('[data-toast-open]')) { spec.onOpen(); closeToast(t); }
   });
   toastStack().prepend(el);
+  liftToasts();
+  if (!toastLiftTimer) { toastLiftTimer = setInterval(liftToasts, 300); window.addEventListener('resize', liftToasts); }
   start();
+  if (spec.onPlaced) spec.onPlaced(t);
   return t;
 }
 // Shows a toast, or queues it behind the three showing.
@@ -1010,10 +1041,68 @@ function showToast(n) {
 
 // A short note that goes away by itself (a module's "Saved in ...", host.ui.toast): a toast with a title only, never kept in the bell.
 // It is said aloud once (role=status) and goes after 4.5 s, or when it is closed.
-export function showNote(text) {
+export function showNote(text, body = '') {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!t) return;
-  pushToast({ kind: 'info', icon: 'circle-info', title: t, ms: 4500 });
+  const more = String(body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  pushToast({ kind: 'info', icon: 'circle-info', title: t, ...(more ? { text: more } : {}), ms: 4500 });
+}
+
+// A note with one button, "Undo", until `until` (a time in ms; Clear's undo time from the server's answer): it goes then
+// whatever the pointer or the focus does, as Undo can't work after it. onUndo may resolve to the sentence to show
+// ("Restored 12 objects."), and the note then gives way to it. It may fail: the note then stays, with the server's sentence
+// and Undo ready again, until `until`. Pressed twice quickly, it asks once. Focus moves to Undo as the note shows (a keyboard
+// user would otherwise tab through the whole page in the undo time) and goes back to where it was when the note goes.
+export function undoToast(text, onUndo, { until = Date.now() + 30000 } = {}) {
+  let busy = false;
+  let done = false;
+  let note = null;
+  const before = document.activeElement;
+  const typing = before && (before.isContentEditable || /^(input|textarea|select)$/i.test(before.tagName));
+  pushToast({
+    kind: 'info',
+    icon: 'rotate-left',
+    title: String(text ?? '').slice(0, 200),
+    until,
+    actions: '<button type="button" class="btn btn-primary btn-small" data-undo>Undo</button>',
+    onPlaced: (t) => {
+      note = t;
+      t.el.dataset.undo = '';
+      if (typing) return;
+      t.returnTo = before && before !== document.body ? before : null;
+      t.el.querySelector('[data-undo]')?.focus({ preventScroll: true });
+    },
+    onClick: (e) => {
+      const button = e.target.closest('[data-undo]');
+      if (!button) return false;
+      if (busy || done || !note) return false;
+      busy = true;
+      button.disabled = true;
+      Promise.resolve().then(onUndo).then(
+        (said) => {
+          done = true;
+          closeToast(note);
+          showNote(typeof said === 'string' && said ? said : 'Brought back.');
+        },
+        (err) => {
+          busy = false;
+          button.disabled = false;
+          let line = note.el.querySelector('[data-undo-error]');
+          if (!line) {
+            line = document.createElement('span');
+            line.className = 'sdk-toast-text';
+            line.setAttribute('data-undo-error', '');
+            line.setAttribute('role', 'alert');
+            note.el.querySelector('.sdk-toast-body').appendChild(line);
+          }
+          line.textContent = (err && err.message) || 'It could not be brought back.';
+          note.el.dataset.kind = 'warn';
+          button.focus({ preventScroll: true });
+        },
+      );
+      return false;
+    },
+  });
 }
 
 // A guest's page (a guest link, /guest/<token>, or a module it popped out, ?guest=): no account, so /api/me is not asked.
@@ -1181,10 +1270,15 @@ async function loadUpdateBadge() {
   }
 }
 
-// The header icon for a space: the launch-link icon the space picked, or the
-// plain message icon when it has not picked one ('link' is the default).
+// A space's icon id, as the server's spaceSummary has it: the launch-link icon the space picked ('link' is the default,
+// meaning none), else the template's home icon, else the folder. Never a chat bubble.
+export function spaceIconId(space) {
+  return space?.linkIcon && space.linkIcon !== 'link' ? space.linkIcon : templateHomeIcon || 'folder';
+}
+
+// The header icon for a space (classes); with no space, the same fallback.
 export function spaceCrumbIcon(space) {
-  return space?.linkIcon && space.linkIcon !== 'link' ? iconClasses(space.linkIcon) : 'fa-solid fa-message';
+  return iconClasses(spaceIconId(space));
 }
 
 // The anchor's segments after the Spaces slot. Only the space page sets them (updateCrumb() in space.js: "› <space>",

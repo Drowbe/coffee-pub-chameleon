@@ -131,6 +131,12 @@
     }
     return item;
   }
+  // A stored link whose address is not a web address (a `javascript:` link, say) is not drawn as a link: it shows as an
+  // unreadable one, which can be removed and nothing else. It is never saved back.
+  function unreadable(kind, id, v) {
+    if (kind !== 'link' || !v || typeof v !== 'object') return null;
+    return { id: String(id), kind, title: 'Unreadable link', body: '', excerpt: 'This address cannot be used. Remove it.', content: '', url: '', site: '', image: '', tags: [], date: '', point: null, file: null, by: typeof v.by === 'string' ? v.by.slice(0, 64) : '', at: typeof v.at === 'string' ? v.at.slice(0, 32) : '', ai: null, icon: '', broken: true };
+  }
   // The plain words of an item, for a search and for the AI.
   const textOf = (it) => (it.kind === 'photo' ? it.title : it[BODY_FIELD[it.kind]] || '');
   // What is stored for an item: only what its kind uses, plus the derived `text` and `sub` its summary carries.
@@ -263,7 +269,10 @@
 
     const remember = (key, value, version) => {
       const [kind, id] = split(key);
-      const it = value ? cleanItem(kind, id, value) : null;
+      const it = value ? cleanItem(kind, id, value) || unreadable(kind, id, value) : null;
+      const had = items.get(id);
+      // One id is one object: another kind under the same id (the server refuses a new one) never takes its place.
+      if (had && had.item.kind !== kind) return;
       if (it) items.set(id, { item: it, version });
       else items.delete(id);
     };
@@ -277,6 +286,15 @@
       const [kind] = split(e.key);
       if (!KINDS.includes(kind)) return;
       remember(String(e.key), e.deleted ? null : e.value, e.version);
+      changed();
+    });
+    // Many at once (a Clear, its Undo): kept in one pass, announced once. Keys only (a big event comes without values): read again.
+    host.on('changes', (e) => {
+      if (e.scope === 'spaces' || (e.scope || 'space') !== scope) return;
+      const list = (Array.isArray(e.changes) ? e.changes : []).filter((c) => KINDS.includes(split(c.key)[0]));
+      if (!list.length) return;
+      if (list.some((c) => !c.deleted && c.value === undefined)) { load().catch(() => {}); return; }
+      for (const c of list) remember(String(c.key), c.deleted ? null : c.value, c.version);
       changed();
     });
 

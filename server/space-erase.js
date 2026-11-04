@@ -32,6 +32,7 @@ function eraseSpace(env, id) {
   const gone = {};
   const mod = store.word('module');
   const steps = [
+    [`${mod} data held for an undo`, () => env.moduleHolds.forgetSpace(id)],
     [`${mod} data`, () => env.moduleData.forgetSpace(id)],
     [`${mod} files`, () => env.moduleUploads.forgetSpace(id)],
     ['library files', () => env.vault.forgetSpace(id)],
