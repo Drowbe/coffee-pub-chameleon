@@ -5674,7 +5674,8 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 :is(.mf, .mf-titlebar, .mf-toolbar, .mf-status) :where(button, input) { font: inherit; color: inherit; }
 :is(.mf, .mf-titlebar, .mf-toolbar, .mf-status) :is(button, [tabindex="0"]):focus-visible,
 .mf .mf-search:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.mf .mf-search-input:focus-visible { outline: none; }
+/* The ring is the search box's (above); the shared field focus (outline and soft ring, Fields) must not draw a second one on the input inside it. */
+.mf .mf-search-input:focus { outline: none; box-shadow: none; }
 :is(.mf, .mf-titlebar, .mf-toolbar, .mf-status) :where(button) { margin: 0; cursor: pointer; }
 :is(.mf, .mf-titlebar, .mf-toolbar, .mf-status) :where(button):disabled { cursor: default; opacity: 0.5; }
 .mf .mf-word { white-space: nowrap; }
@@ -5911,8 +5912,14 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
   --mf-hit-w: 36px; /* the least a tap area is wide on a phone */
   --mf-print-h: 100vh; /* a module's frame on paper: set on the frame while it prints, to its own page's height */
 }
+/* On a phone (640 px and narrower) the buttons are also DRAWN 44 px (Thomas, 2026-11-04, #394): a control in a band is 44 px
+   tall (and an icon button 44 wide), the bands grow to hold it (8 px above and below in the title bar, 6 in the toolbar, as on a
+   desktop); the search field and the Filters button follow --mf-ctl-h. A touch screen wider than that keeps the desktop sizes. */
+@media (max-width: 640px) {
+  :root { --mf-ctl-h: var(--mf-hit); --mf-title-h: calc(var(--mf-hit) + 8px); --mf-band-h: calc(var(--mf-hit) + 12px); }
+}
 @media (max-width: 640px), (pointer: coarse) {
-  .mf:is(.mf-page, .mf-docked) { overflow: clip; overflow-clip-margin: calc(var(--mf-hit) - var(--mf-title-h)); }
+  .mf:is(.mf-page, .mf-docked) { overflow: clip; overflow-clip-margin: max(0px, calc(var(--mf-hit) - var(--mf-title-h))); }
   .mf-titlebar-tools { gap: var(--space-2); }
   :where(.mf-titlebar-tools > button, .mf-toolbar button) { position: relative; }
   /* The title bar's buttons: from the line under the bar, --mf-hit up; half the gap to each side. */
