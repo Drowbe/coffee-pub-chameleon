@@ -7018,6 +7018,17 @@ app.post('/api/objects/resolve', (req, res) => {
   res.json({ summaries: refs.map((ref) => refAnswer(() => resolveRef(who, ref, from))).map((c, i) => (c.error ? { ref: refs[i], ...c } : c)) });
 });
 
+// The objects chat names (an AI answer's citations and what it used), as the reader may see them (GitHub #395). Chat is not
+// a module, so no consumer is asked for or checked (skipConsumer, as readerCanOpen filters a shared answer): every viewer
+// check stays (sign-in or the space's guest link, the space's members, the role's read, guest rules, hidden fields), and a
+// space or module of another environment is simply not found here. Same shape as POST /api/objects/resolve, up to 50 refs.
+app.post('/api/chat/citations', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
+  const refs = Array.isArray(req.body?.refs) ? req.body.refs.slice(0, 50) : [];
+  res.json({ summaries: refs.map((ref) => refAnswer(() => resolveRef(who, ref, null, { skipConsumer: true }))).map((c, i) => (c.error ? { ref: refs[i], ...c } : c)) });
+});
+
 // The kinds the asking module may link to, so it does not have to know other modules by name.
 app.get('/api/objects/kinds', (req, res) => {
   if (!moduleViewer(req)) return res.status(401).json({ error: 'sign in first' });

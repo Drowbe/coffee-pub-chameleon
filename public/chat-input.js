@@ -1600,7 +1600,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   }
 
   // --- what an answer used, and the objects it names ---
-  // A pointer is resolved as the reader (POST /api/objects/resolve), so a title shows only to someone who may see it. Asked
+  // A pointer is resolved as the reader (POST /api/chat/citations), so a title shows only to someone who may see it. Asked
   // once for a few seconds, then again.
   const pointerId = (r) => `${r.module}|${r.kind}|${r.scope || ''}|${r.space || ''}|${r.id}`;
   const refOk = (r) => Boolean(r && typeof r.module === 'string' && typeof r.kind === 'string' && r.id !== undefined && r.id !== null && r.id !== '');
@@ -1609,7 +1609,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     const want = refs.filter(refOk);
     const fresh = want.filter((r) => { const c = resolved.get(pointerId(r)); return !c || Date.now() - c.at > 15000; });
     if (fresh.length) {
-      const batch = api('POST', '/api/objects/resolve', { from: 'assistant', refs: fresh.slice(0, 50) }).then((out) => out.summaries || []).catch(() => []);
+      const batch = api('POST', '/api/chat/citations', { refs: fresh.slice(0, 50) }).then((out) => out.summaries || []).catch(() => []);
       fresh.slice(0, 50).forEach((r, i) => resolved.set(pointerId(r), { at: Date.now(), summary: batch.then((list) => list[i] || null) }));
     }
     return Promise.all(want.map((r) => resolved.get(pointerId(r)).summary));
