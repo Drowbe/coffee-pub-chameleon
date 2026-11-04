@@ -786,6 +786,15 @@ export function aiUsedParts(sent, leftOut, w) {
   const fit = s.cut === true || (Array.isArray(leftOut) && leftOut.some((l) => l && (l.why === 'budget' || l.why === 'shortened')));
   return { counts, notSent: bits.length ? `Not sent: ${bits.join('; ')}.` : '', fit: fit ? `Some ${w.objects} were left out to fit.` : '' };
 }
+// The objects an answer looked up (the server's `sent.lookup`: { searches, read }). `read` is how many objects it opened, or
+// the list of them as pointers; a page without the field, or a number alone, still reads. Answers { count, refs }.
+export function lookupOf(sent) {
+  const l = sent && typeof sent === 'object' && sent.lookup && typeof sent.lookup === 'object' ? sent.lookup : null;
+  if (!l) return { count: 0, refs: [] };
+  const refs = Array.isArray(l.read) ? l.read.filter((r) => r && typeof r === 'object') : [];
+  const num = Number(Array.isArray(l.read) ? l.read.length : l.read);
+  return { count: Number.isFinite(num) ? Math.max(0, Math.floor(num)) : 0, refs };
+}
 // A text split at its citations, [1] or [2, 3]: pieces { text } and { cite: [n] }.
 export function citationParts(text) {
   const out = [];
@@ -1660,6 +1669,26 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     }
   }
   const usedWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space'), owner: word('owner'), member: word('member'), members: word('member', { many: true }), nameOf: (id) => { const m = canvas.list().find((x) => x.id === id); return m ? (m.displayName || m.name) : id; } });
+  // "looked up N objects": the ones this reader may open as links, "and N others" for the rest (the gone, the hidden, and
+  // those the server named by number only). Drawn at once as the count, then settled when the pointers are resolved.
+  function lookedUp({ count, refs }) {
+    const span = document.createElement('span');
+    span.className = 'message-looked';
+    const total = Math.max(count, refs.length);
+    const noun = (c) => word('object', { many: c !== 1 });
+    span.textContent = `looked up ${total} ${noun(total)}`;
+    const shown = refs.filter(refOk).slice(0, 5);
+    if (!shown.length) return span;
+    resolveRefs(shown).then((list) => {
+      const open = shown.filter((r, i) => list[i] && !list[i].error);
+      const others = total - open.length;
+      if (!open.length) return;
+      span.append(': ');
+      open.forEach((r, i) => { if (i) span.append(', '); span.append(objectLink(r)); });
+      if (others > 0) span.append(` and ${others} ${others === 1 ? 'other' : 'others'}`);
+    });
+    return span;
+  }
   // Under an answer: AI used: (the attached objects as links, then the counts of the rest), Not sent, left out to fit, and
   // cut short. Null for a message that holds none of it (one stored before the server kept it).
   function usedBlock(meta) {
@@ -1677,6 +1706,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     const items = [];
     for (const r of attached) items.push(objectLink(r));
     for (const t of parts.counts) items.push(t);
+    const looked = lookupOf(meta.sent);
+    if (looked.count) items.push(lookedUp(looked));
     if (!items.length) items.push('just your question');
     items.forEach((it, i) => { line.append(i ? ', ' : ' ', it); });
     line.append('.');
@@ -1999,6 +2030,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     aiBusy = true;
     input().setAttribute('aria-busy', 'true');
     setNote('Asking the AI...');
+    // After a few seconds the wait is most likely look-ups (a plain answer is quick).
+    const lookingTimer = setTimeout(() => { if (aiBusy) setNote('Looking things up...'); }, 6000);
     try {
       const reply = await api('POST', `/api/spaces/${encodeURIComponent(id)}/ai`, {
         question: String(question || '').trim(),
@@ -2018,6 +2051,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
       setNote(said[0].toUpperCase() + said.slice(1) + (/[.!?]$/.test(said) ? '' : '.'), true);
       return false;
     } finally {
+      clearTimeout(lookingTimer);
       aiBusy = false;
       input().removeAttribute('aria-busy');
     }

@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { aiNotice, questionTooLong, askZone, aiUsedParts, citationParts } from '../public/chat-input.js';
+import { aiNotice, questionTooLong, askZone, aiUsedParts, citationParts, lookupOf } from '../public/chat-input.js';
 import { findBrowser, launch, freePort, stopServer, bootSeeded, Tab, sleep, driveScreen } from './shots.mjs';
 
 const say = (...a) => console.log('check-ai-page:', ...a);
@@ -90,6 +90,10 @@ function unitChecks() {
   expect(p.notSent === "Not sent: 2 objects from places, kept out by the owner's setting; 1 object from Research, from another space.", `the Not sent line reads "${p.notSent}"`);
   expect(p.fit === 'Some objects were left out to fit.', 'a cut call does not say some were left out to fit');
   expect(aiUsedParts({}, [{ part: 'relevant', why: 'budget', count: 2 }], w).fit !== '' && aiUsedParts({}, [{ part: 'x', why: 'setting', count: 2 }], w).fit === '', 'left out to fit is for the budget only');
+  // Slice 2: the server's sent.lookup { searches, read } (read a count or a list of pointers); absent reads as none.
+  const lk = lookupOf({ lookup: { searches: 2, read: [{ module: 'a', kind: 'k', id: '1' }, { module: 'a', kind: 'k', id: '2' }] } });
+  expect(lk.count === 2 && lk.refs.length === 2 && lookupOf({ lookup: { searches: 1, read: 3 } }).count === 3, 'sent.lookup is not read as a count or a list');
+  expect(lookupOf({}).count === 0 && lookupOf(null).count === 0 && lookupOf({ lookup: 'x' }).count === 0 && lookupOf({ lookup: { read: -4 } }).count === 0, 'a missing or odd sent.lookup is not read as none');
   const c = citationParts('See [1] and [2, 3] not [x].');
   expect(c.filter((x) => x.cite).map((x) => x.cite.join('+')).join(',') === '1,2+3', 'citations are not read');
   // The default question is the server's now: no page or module writes it.
@@ -150,6 +154,35 @@ async function newAskChecks(t, S, admin) {
   await sleep(300);
   const opened = await t.eval('window.__opened');
   expect(opened && opened.module === 'research' && opened.id === 'n1', `the object's link did not open it (${JSON.stringify(opened)})`);
+}
+
+// Slice 2, the pages half, by a person who has asked nothing yet (a minute's turns are few).
+async function lookupChecks(open, S, workspace) {
+  const t = await open({ ...workspace, as: 'admin' });
+  try {
+    await sleep(1500);
+    // Slice 2: the question waits past a few seconds ("Looking things up..."), and the answer's sent.lookup shows as "looked up N"
+    // with links for what the reader may open and "and N others" for the rest. The server half may not be there yet, so the
+    // reply is the real one with the field added in the page.
+    await t.eval(WATCH);
+    await t.click('#chat-view-assistant');
+    await sleep(600);
+    await t.eval(`(() => { const of = window.fetch; window.fetch = async function (u, o) { const r = await of.apply(this, arguments); if (!(/\\/api\\/spaces\\/[^/]+\\/ai$/.test(String(u)) && o && o.method === 'POST')) return r; await new Promise((ok) => setTimeout(ok, 7000)); const j = await r.json(); if (j.message && j.message.sent) j.message.sent.lookup = { searches: 2, read: [{ module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'n1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-2' }] }; window.fetch = of; return new Response(JSON.stringify(j), { status: r.status, headers: { 'content-type': 'application/json' } }); }; })()`);
+    scripted = { answer: 'Looked around.', used: [] };
+    await t.typeInto('#chat-input', 'what did we plan for the ferry');
+    await t.key('Enter');
+    await sleep(6800);
+    const waiting = await t.eval(NOTE);
+    expect(waiting === 'Looking things up...', `a long wait does not say "Looking things up..." ("${waiting}")`);
+    await snap(t, 'chat-looking');
+    await answered(t);
+    const looked = await t.eval(lastUsed);
+    expect(/looked up 3 objects: .*Where to eat near the hotel.* and 2 others/.test(looked), `the AI used: line does not say what was looked up, with links ("${looked}")`);
+    const lookedLinks = await t.eval(`[...document.querySelectorAll('#messages .message-used')].pop().querySelectorAll('.message-looked .message-ref:not(:disabled)').length`);
+    expect(lookedLinks === 1, `the looked-up objects are ${lookedLinks} links, not 1`);
+    await snap(t, 'chat-looked');
+    say(`looked up: "${looked}"`);
+  } finally { await t.close(); }
 }
 
 // Another person asks (so the first one's minute is not used up): a dropped object stands in for the words, a question under
@@ -267,7 +300,7 @@ async function manageChecks(open, S, admin) {
     try {
       await sleep(2200);
       const rows = await m.eval(`({ switches: document.querySelectorAll('#ai-sees-box input[role=switch][data-sees]').length, select: !!document.querySelector('#ai-sees-box select'), block: document.getElementById('ai-sees-block').getClientRects().length > 0 })`);
-      expect(rows.block && rows.switches === 6 && rows.select, `What AI may see is not drawn on the AI service tab (${JSON.stringify(rows)})`);
+      expect(rows.block && rows.switches === 7 && rows.select, `What AI may see is not drawn on the AI service tab (${JSON.stringify(rows)})`);
       const wide = await m.eval(`document.documentElement.scrollWidth <= ${size} + 1`);
       expect(wide, `the AI service tab scrolls sideways at ${size}`);
       await m.eval(`document.getElementById('ai-sees-block').scrollIntoView()`);
@@ -275,15 +308,17 @@ async function manageChecks(open, S, admin) {
       await m.eval(`document.getElementById('ai-use-block').scrollIntoView()`);
       await snap(m, `manage-use-${size}`);
       if (size === 1280) {
+        expect(await m.eval(`document.getElementById('ai-sees-lookup').checked && /Let AI look things up in this /.test(document.getElementById('ai-sees-lookup').closest('label').textContent)`), 'Let AI look things up is not on by default on Manage');
         await m.eval(`document.getElementById('ai-sees-chat').click()`);
+        await m.eval(`document.getElementById('ai-sees-lookup').click()`);
         await m.eval(`document.getElementById('ai-sees-save').click()`);
         await sleep(900);
         const got = await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json();
-        expect(got.ai.sees && got.ai.sees.chat === true, `Save did not store What AI may see (${JSON.stringify(got.ai.sees)})`);
+        expect(got.ai.sees && got.ai.sees.chat === true && got.ai.sees.lookup === false, `Save did not store What AI may see (${JSON.stringify(got.ai.sees)})`);
         await m.eval(`document.getElementById('ai-sees-reset').click()`);
         await sleep(900);
         const back = await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json();
-        expect(back.ai.sees && back.ai.sees.chat === false, `Back to the usual did not reset it (${JSON.stringify(back.ai.sees)})`);
+        expect(back.ai.sees && back.ai.sees.chat === false && back.ai.sees.lookup !== false, `Back to the usual did not reset it (${JSON.stringify(back.ai.sees)})`);
         const use = await m.eval(`({ text: document.getElementById('ai-use-box').textContent.replace(/\\s+/g, ' '), grids: document.querySelectorAll('#ai-use-box .sdk-table-wrap').length, records: [...document.querySelectorAll('#ai-use-box .sdk-table-wrap')].pop().querySelectorAll('tbody tr').length })`);
         expect(/tokens in \d+ calls? this month/.test(use.text) && /By kind of request/.test(use.text) && use.grids >= 3 && use.records >= 3, `this month's use is not drawn (${JSON.stringify({ ...use, text: use.text.slice(0, 200) })})`);
         // A refusal with no template shows a dash for its Kind, not "Other".
@@ -322,11 +357,12 @@ async function setupChecks(open, S, admin) {
     await snap(t, 'setup-sees-own');
     expect(await t.eval(`[...document.querySelectorAll('#setup-ai-sees-box input')].every((i) => !i.disabled)`), 'turning off "same as" did not let the rows change');
     await t.eval(`document.getElementById('setup-ai-sees-chat').click()`);
+    await t.eval(`document.getElementById('setup-ai-sees-lookup').click()`);
     await sleep(200);
     await t.eval(`document.getElementById('setup-save').click()`);
     await sleep(1500);
     const space = (await (await fetch(`${S.base}/api/spaces/${S.ctx.trip}`, { headers: { cookie: admin } })).json()).space;
-    expect(space.aiSees && space.aiSees.chat === true, `Save did not store the space's own What AI may see (${JSON.stringify(space.aiSees)})`);
+    expect(space.aiSees && space.aiSees.chat === true && space.aiSees.lookup === false, `Save did not store the space's own What AI may see (${JSON.stringify(space.aiSees)})`);
     const env = (await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json()).ai.sees;
     expect(env.chat === false, "the space's choice changed the environment's");
   } finally { await t.close(); }
@@ -441,6 +477,7 @@ async function main() {
     } finally { await t.close(); }
     await cutChecks(open, workspace);
     await chipAndCiteChecks(open, S, workspace);
+    await lookupChecks(open, S, workspace);
     await manageChecks(open, S, admin);
     await setupChecks(open, S, admin);
     unitChecks();

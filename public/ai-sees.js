@@ -1,11 +1,11 @@
 // What AI may see: the owner's setting for what goes to the AI with a question (plan-ai-integration.md). One section, drawn
 // for Manage's AI service tab (the environment's choice) and for a space's Set up (the space's own, or the environment's).
 // It can only narrow what a person's own rights already allow. The values are the server's `sees`:
-//   { attached, relevant, linked, history, chat, members: true|false, environment: 'never'|'attached'|'readable',
+//   { attached, relevant, linked, lookup, history, chat, members: true|false, environment: 'never'|'attached'|'readable',
 //     modules: 'all' | [module ids] }
 
-export const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' });
-export const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members'];
+export const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, lookup: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' });
+export const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'lookup', 'history', 'chat', 'members'];
 
 const KEY_SCOPE = 'environment'; // the server's key for the choice about objects outside any space
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +19,7 @@ export function seesRows(word) {
     ['attached', `The ${objects} a person picks`, 'The ones attached to a question.'],
     ['relevant', `${up(objects)} that fit the question`, 'Found by matching its words.'],
     ['linked', `${up(objects)} linked to those`, 'The ones that point to, or are pointed to by, what is sent.'],
+    ['lookup', `Let AI look things up in this ${space}`, `It can search and read ${objects} there. Only what the person asking may open.`],
     ['history', 'Earlier questions', "The person's own recent questions and answers here."],
     ['chat', `The ${space}'s chat`, 'Recent messages everyone there can read.'],
     ['members', `Who is in the ${space}`, 'Names and roles.'],
