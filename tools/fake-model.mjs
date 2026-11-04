@@ -11,6 +11,19 @@
  *   response_format, Anthropic's forced tool), JSON in that shape.
  * fake.refuseSchema = true makes it a compatible service that refuses a response_format with a 400.
  *
+ * Tools (plan-ai-integration.md, slice 2): a request that offers tools (OpenAI's `tools`, Anthropic's `tools` beyond slice 1's
+ * forced `answer`) is answered with tool calls in the provider's shape (OpenAI `tool_calls`, Anthropic `tool_use` blocks):
+ *   fake.next({ tools: [{ name, input }] })  -- those calls (`raw`: OpenAI arguments as given, malformed JSON included);
+ *                                               `tools` may be a function of the request's tool results (toolResults)
+ *                                               answering the calls, to use the numbers the server gave out;
+ *   no script                                -- the `answer` tool with a normal answer (`json` scripts its input; `text`
+ *                                               scripts a plain text reply instead);
+ *   TOOLLOOP    -- five search_objects calls whenever a look-up is offered, `answer` once only it is;
+ *   TOOLBAD     -- bad inputs (none given, a number for words, a word for n, arguments that are not JSON) once, then `answer`;
+ *   TOOLUNKNOWN -- a tool that was never offered once, then `answer`.
+ * fake.refuseTools = true makes it a service that refuses tools with a 400 naming them.
+ * The words are read in the question (the last user message that is not a tool result).
+ *
  * Every request is kept in fake.seen: { url, auth, apiKey, workspace, body }.
  *
  * As a program: `node tools/fake-model.mjs [--port 4000]` runs one until stopped, for trying the server by hand
@@ -29,14 +42,32 @@ function structuredFor(schema, scripted) {
   return { answer: scripted && typeof scripted.text === 'string' ? scripted.text : ANSWER, objects: [], used: [] };
 }
 
+// The tool results a request carries, oldest first, each parsed from its JSON (OpenAI `tool` messages, Anthropic
+// `tool_result` blocks): [{ id, value }].
+export function toolResults(body) {
+  const out = [];
+  for (const m of (body && body.messages) || []) {
+    if (m.role === 'tool') out.push({ id: m.tool_call_id, value: parse(m.content) });
+    else if (Array.isArray(m.content)) for (const b of m.content) if (b && b.type === 'tool_result') out.push({ id: b.tool_use_id, value: parse(typeof b.content === 'string' ? b.content : JSON.stringify(b.content)) });
+  }
+  return out;
+}
+const parse = (t) => { try { return JSON.parse(t); } catch { return t; } };
+
+// The tool names a request offers.
+export function toolsOffered(body) {
+  return (Array.isArray(body && body.tools) ? body.tools : []).map((t) => t.name || (t.function && t.function.name));
+}
+
 export async function startFakeModel({ port = 0, host = '127.0.0.1' } = {}) {
   const queue = [];
   const fake = {
     seen: [],
     refuseSchema: false,
+    refuseTools: false,
     slowMs: 3000,
     next(answer) { queue.push(answer); return fake; },
-    clear() { queue.length = 0; fake.seen.length = 0; fake.refuseSchema = false; },
+    clear() { queue.length = 0; fake.seen.length = 0; fake.refuseSchema = false; fake.refuseTools = false; },
     last() { return fake.seen[fake.seen.length - 1]; },
   };
   const server = http.createServer((req, res) => {
@@ -54,15 +85,43 @@ export async function startFakeModel({ port = 0, host = '127.0.0.1' } = {}) {
       const anthropic = req.url.startsWith('/v1/messages');
       if (!anthropic && !/\/chat\/completions$/.test(req.url.split('?')[0])) return send(404, { error: { message: 'no such route' } });
       const msgs = (body && body.messages) || [];
-      const lastMsg = msgs[msgs.length - 1];
       const textOf = (m) => (!m ? '' : typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map((b) => b.text || '').join('\n') : '');
-      const last = textOf(lastMsg);
+      const isToolResult = (m) => m && (m.role === 'tool' || (Array.isArray(m.content) && m.content.some((b) => b && b.type === 'tool_result')));
+      // The question: the last user message that is not a tool result (with tools, the last message is often one).
+      const asked = [...msgs].reverse().find((m) => m.role !== 'assistant' && m.role !== 'system' && m.role !== 'tool' && !isToolResult(m));
+      const last = textOf(asked);
       const system = anthropic ? String((body && body.system) || '') : textOf(msgs[0]);
-      const schema = anthropic ? body && body.tools && body.tools[0] && body.tools[0].input_schema : body && body.response_format && body.response_format.json_schema && body.response_format.json_schema.schema;
-      if (schema && fake.refuseSchema && !anthropic) return send(400, { error: { message: "response_format 'json_schema' is not supported by this model" } });
+      // The tools offered, by name, and the answer tool's schema; slice 1's Anthropic forced `answer` alone is not tools.
+      const toolList = Array.isArray(body && body.tools) ? body.tools : [];
+      const toolName = (t) => (anthropic ? t.name : t.function && t.function.name);
+      const offered = toolList.map(toolName);
+      const toolsMode = anthropic ? offered.some((x) => x !== 'answer') || (body.tool_choice && body.tool_choice.type !== 'tool') : offered.length > 0;
+      const answerTool = toolList.find((t) => toolName(t) === 'answer');
+      const answerSchema = answerTool ? (anthropic ? answerTool.input_schema : answerTool.function.parameters) : null;
+      const schema = answerSchema || (anthropic ? null : body && body.response_format && body.response_format.json_schema && body.response_format.json_schema.schema);
+      if (toolsMode && fake.refuseTools) return send(400, { error: { message: 'tools are not supported by this model (tool_choice is not available)' } });
+      if (schema && fake.refuseSchema && !anthropic && !toolsMode) return send(400, { error: { message: "response_format 'json_schema' is not supported by this model" } });
       const scripted = queue.length ? queue.shift() : null;
       const word = (w) => !scripted && new RegExp(`\\b${w}\\b`).test(last);
       if ((scripted && scripted.delayMs) || word('SLOW')) await new Promise((r) => setTimeout(r, (scripted && scripted.delayMs) || fake.slowMs));
+      const hadResults = msgs.some(isToolResult);
+      // Tool calls, in the provider's shape. `calls`: [{ name, input, raw? }].
+      const callsReply = (calls, text = '') => {
+        const tokens = (scripted && scripted.tokens) || [10, 2];
+        if (anthropic) return send(200, { id: 'msg_t', model: body.model, content: [...(text ? [{ type: 'text', text }] : []), ...calls.map((c, i) => ({ type: 'tool_use', id: `toolu_${fake.seen.length}_${i}`, name: c.name, input: c.input }))], stop_reason: 'tool_use', usage: { input_tokens: tokens[0], output_tokens: tokens[1] } });
+        return send(200, { id: 'cmpl_t', model: body.model, choices: [{ message: { role: 'assistant', content: text || null, tool_calls: calls.map((c, i) => ({ id: `call_${fake.seen.length}_${i}`, type: 'function', function: { name: c.name, arguments: c.raw !== undefined ? c.raw : JSON.stringify(c.input) } })) }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: tokens[0], completion_tokens: tokens[1], total_tokens: tokens[0] + tokens[1] } });
+      };
+      const SEARCH = { words: null, kind: null, from: null, to: null, has: null };
+      if (toolsMode && !(scripted && scripted.status)) {
+        if (scripted && typeof scripted.tools === 'function') return callsReply(scripted.tools(toolResults(body), body), scripted.text || '');
+        if (scripted && Array.isArray(scripted.tools)) return callsReply(scripted.tools, scripted.text || '');
+        const lookupOffered = offered.includes('search_objects');
+        if (word('TOOLLOOP') && lookupOffered) return callsReply(Array.from({ length: 5 }, (_, i) => ({ name: 'search_objects', input: { ...SEARCH, words: `loop ${i}` } })));
+        if (word('TOOLBAD') && lookupOffered && !hadResults) {
+          return callsReply([{ name: 'search_objects', input: SEARCH }, { name: 'search_objects', input: { ...SEARCH, words: 5 } }, { name: 'read_object', input: { n: 'abc' } }, ...(anthropic ? [] : [{ name: 'read_object', raw: '{"n": 1,' }])]);
+        }
+        if (word('TOOLUNKNOWN') && !hadResults) return callsReply([{ name: 'delete_everything', input: { all: true } }]);
+      }
       const status = scripted && scripted.status ? scripted.status : word('ERR401') ? 401 : word('ERR429') ? 429 : word('ERR500') ? 500 : word('FILTER') ? 400 : 200;
       if (status !== 200) return send(status, { error: { message: status === 400 ? 'content filtered' : `fake failure ${status}` } });
       let text;
@@ -81,8 +140,10 @@ export async function startFakeModel({ port = 0, host = '127.0.0.1' } = {}) {
       if (text === undefined) {
         if (schema) { structured = structuredFor(schema, scripted); text = JSON.stringify(structured); } else text = scripted && scripted.json !== undefined ? JSON.stringify(scripted.json) : ANSWER;
       }
+      // With tools, a structured answer is a call of the answer tool.
+      if (toolsMode && structured !== undefined) return callsReply([{ name: 'answer', input: structured }]);
       if (anthropic) {
-        const content = schema && structured !== undefined ? [{ type: 'tool_use', id: 'toolu_1', name: body.tools[0].name, input: structured }] : [{ type: 'text', text }];
+        const content = schema && structured !== undefined ? [{ type: 'tool_use', id: 'toolu_1', name: 'answer', input: structured }] : [{ type: 'text', text }];
         return send(200, { id: 'msg_1', model: body.model, content, stop_reason: finish === 'length' ? 'max_tokens' : schema && structured !== undefined ? 'tool_use' : 'end_turn', usage: { input_tokens: tokens[0], output_tokens: tokens[1] } });
       }
       return send(200, { id: 'cmpl_1', model: body.model, choices: [{ message: { role: 'assistant', content: text }, finish_reason: finish }], usage: { prompt_tokens: tokens[0], completion_tokens: tokens[1], total_tokens: tokens[0] + tokens[1] } });

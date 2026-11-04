@@ -5,7 +5,9 @@
 // setting, the key, the month's usage, the call records and `run`: render, then the adapter, then parse, then record
 // (plan-ai-integration.md, "Slice 1").
 //
-// The model is given no tools and its answer is only text or JSON: nothing it says is run.
+// Nothing a model says is run. In Chat's /ai and the Assistant view it may be offered the read tools (server/ai-tools.js,
+// slice 2): it may ask the server to look this space's objects up, as the person asking and through the policy; it can
+// write nothing. Its answer is only text or JSON.
 //
 // Files: DATA_DIR/ai.json (the setting, kept private to the server's user), DATA_DIR/ai-usage.json (this month's tokens and
 // calls, by task, template version, person and space) and DATA_DIR/ai-log.jsonl (a record per call, no content, kept 30 days).
@@ -20,6 +22,7 @@ const { AiError, HOSTS, DEFAULT_MODELS, ADDRESS_UNUSABLE, checkTypedKey, listMod
 const prompts = require('./prompts');
 const { cleanSees, readSees, PolicyError, SEES_DEFAULTS, cleanAnswerText, cleanAnswerObject } = require('./ai-policy');
 const { CHAT_LIMITS } = require('./chat-history');
+const { runToolLoop } = require('./ai-tools');
 
 // A key kept at rest is encrypted (AES-256-GCM, server/auth.js's encryptSecret: 'aesgcm$...'). The sentence shown
 // when a saved one can't be read with this server's key -- data restored onto a different host, say, which has a
@@ -74,7 +77,10 @@ const emptyUsage = () => ({ month: month(), tokens: 0, calls: 0, byTask: {}, byT
 // The service a structured-output refusal is remembered for: provider, address and model (never the key).
 const fingerprint = (c) => crypto.createHash('sha256').update(`${c.provider}|${c.address || ''}|${c.model || ''}`).digest('hex').slice(0, 16);
 // The fields a call record may hold (Ai.log); nothing else is ever written to ai-log.jsonl.
-const LOG_FIELDS = ['at', 'environment', 'space', 'person', 'purpose', 'template', 'provider', 'model', 'mode', 'tokensIn', 'tokensOut', 'finish', 'ms', 'outcome', 'reason', 'error', 'cut', 'sent', 'leftOut'];
+// Slice 2 adds, for a question with the read tools: `tools` (on, off, or refused by a compatible service), `rounds`, `toolCalls`
+// (counts per tool name), `looked` ({ found, read }: counts) and `stop` (answer, limit or text; unfinished, time or allowance
+// for an error). Never a tool's input or its result.
+const LOG_FIELDS = ['at', 'environment', 'space', 'person', 'purpose', 'template', 'provider', 'model', 'mode', 'tokensIn', 'tokensOut', 'finish', 'ms', 'outcome', 'reason', 'error', 'cut', 'sent', 'leftOut', 'tools', 'rounds', 'toolCalls', 'looked', 'stop'];
 // An organisation-level Anthropic key needs an anthropic-workspace-id header naming the workspace (an id, not a
 // secret -- fine to show on a page). Other providers ignore it.
 const WORKSPACE_RE = /^[A-Za-z0-9_-]{1,100}$/;
@@ -453,13 +459,14 @@ class Ai {
     };
   }
 
-  // Counts one call's tokens: `use` is { task, template, person, space } (each optional but task).
-  record(use, tokens) {
+  // Counts one call's tokens: `use` is { task, template, person, space } (each optional but task). `call: false`: tokens of a
+  // later round of a question already counted as a call (slice 2: a question is one call, every round's tokens count).
+  record(use, tokens, { call = true } = {}) {
     const u = typeof use === 'string' ? { task: use } : use || {};
     this.rollMonth();
     const n = Math.max(0, Math.floor(tokens) || 0);
     this.usage.tokens += n;
-    this.usage.calls += 1;
+    if (call) this.usage.calls += 1;
     const add = (map, key) => { if (key) map[key] = (map[key] || 0) + n; };
     add(this.usage.byTask, u.task);
     add(this.usage.byTemplate, u.template);
@@ -535,26 +542,88 @@ class Ai {
     return this.config.schemaRefused && this.config.schemaRefused === fingerprint(c) ? 'text' : 'structured';
   }
 
+  // Whether the saved setting in use refused tools: a compatible service that answered a question with tools with a refusal
+  // naming them, for exactly this provider, address and model (remembered until the setting changes, as the schema is).
+  toolsRefusedFor(c) {
+    return Boolean(this.config.toolsRefused) && this.config.toolsRefused === fingerprint(c);
+  }
+
+  overCapSentence() {
+    return OVER_CAP;
+  }
+
   // One answer through a template (plan-ai-integration.md: render, then the adapter, then parse, then record).
   // `inputs`: the template's typed inputs (from the context builder); `use`: { purpose, person, space, environment, counts,
   // leftOut } for the usage and the record. Answers { text, summaries, used, tags, cut, finish, tokens, prompt, mode } (`used`
   // and `sources` as numbers; the route maps them to pointers). Throws AiError: `refund` when the service did no work.
   // `secrets`: the exact values no answer may carry back (the policy's secrets()), taken out of the answer with the rest.
-  async run(templateId, inputs, use = {}, { secrets = [] } = {}) {
+  // `toolbox`: the read tools for this question (server/ai-tools.js), Chat's /ai and the Assistant view only. When it is on,
+  // the template takes tools and the service has not refused them, the question runs as rounds (runToolLoop) and the answer
+  // also carries `numbered` (every number given out, the tools' too), `lookup` ({ searches, read }), `rounds` and `stop`.
+  async run(templateId, inputs, use = {}, { secrets = [], toolbox = null } = {}) {
     const t = prompts.template(templateId);
     const name = prompts.nameOf(t);
     const started = Date.now();
-    const base = { purpose: use.purpose, environment: use.environment, space: use.space, person: use.person, template: name, sent: use.counts };
+    const toolsWanted = Boolean(toolbox && toolbox.on && t.tools);
+    const base = { purpose: use.purpose, environment: use.environment, space: use.space, person: use.person, template: name, sent: use.counts, ...(toolbox ? { tools: toolsWanted ? 'on' : 'off' } : {}) };
     // Refused before anything is sent: the turn is given back.
     const refused = (err, reason) => { this.log({ ...base, outcome: 'refused', reason }); return err; };
     if (this.config.enabled && this.effective().keyUnreadable) throw refused(new AiError(KEY_UNREADABLE, 503, { refund: true }), 'not-set-up');
     if (!this.ready()) throw refused(new AiError('AI is not set up here.', 503, { refund: true }), 'not-set-up');
     if (this.overCap()) throw refused(new AiError(OVER_CAP, 429, { refund: true }), 'allowance');
     const c = this.effective();
+    const guard = this.config.source === 'custom' && c.provider === 'compatible' ? this.guard() : null;
+    const logPrompts = Boolean(this.env && this.env.AI_LOG_PROMPTS === '1' && !this.hosted);
+    const usage = { task: t.id, template: name, person: use.person, space: use.space };
+
+    // What a parsed answer becomes, the same way with or without tools: cleaned, fitted, recorded as answered.
+    const answerOf = (out, record, extra = {}, count) => {
+      const parsed = prompts.parse(t, out, inputs, count === undefined ? {} : { count });
+      const answered = (more) => this.log({ ...record, model: out.model || c.model, outcome: 'answered', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, leftOut: use.leftOut, ...extra, ...more });
+      const total = out.tokens.in + out.tokens.out;
+      if (t.output === 'tags') {
+        answered({ cut: parsed.cut || undefined });
+        return { tags: parsed.tags, text: '', summaries: [], used: [], cut: parsed.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
+      }
+      // What a page could run or follow, and every secret, taken out of the answer and its objects before it is kept or shown.
+      const summaries = (parsed.summaries || []).map((sm) => cleanAnswerObject(sm, secrets));
+      let body = cleanAnswerText(parsed.text, secrets).replace(/\n{3,}/g, '\n\n').trim();
+      // Objects with no words around them: their places in the text, so the answer is kept and drawn like any other.
+      if (!body && summaries.length) body = summaries.map((_, i) => `{{summary:${i}}}`).join('\n');
+      // No text and no objects (a list or a number where the answer goes, an empty answer): the service gave no answer. Its
+      // tokens still count against the allowance, as a blank answer's do; it is not an answered call.
+      if (!body) {
+        this.log({ ...record, model: out.model || c.model, outcome: 'error', error: 'empty', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, ...extra });
+        throw new AiError(NO_ANSWER, 502, { tokens: extra.rounds ? 0 : total, kind: 'empty' }); // a loop's rounds are counted already
+      }
+      const fitted = fitAnswer(body, parsed.cut);
+      answered({ cut: fitted.cut || undefined });
+      return { text: fitted.text, summaries, used: parsed.used, cut: fitted.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
+    };
+
+    // With the read tools: rounds until the answer tool, a plain answer or a limit (server/ai-tools.js).
+    let toolsNote = toolsWanted ? 'on' : base.tools;
+    if (toolsWanted && this.toolsRefusedFor(c)) toolsNote = 'refused';
+    if (toolsWanted && toolsNote === 'on') {
+      const looped = await runToolLoop(this, { t, name, inputs, use, toolbox, c, guard, hosts: this.hosts, logPrompts, overCapSentence: OVER_CAP });
+      if (looped.toolsRefused) {
+        // A compatible service refused tools: remembered for this saved setting, and asked again once without them.
+        this.config.toolsRefused = fingerprint(c);
+        try { this.saveConfig(); } catch { /* remembered for this run */ }
+        toolsNote = 'refused';
+      } else {
+        const record = { ...base, provider: c.provider, model: c.model, tools: 'on' };
+        const extra = { rounds: looped.rounds, toolCalls: looped.toolCalls, looked: looped.looked, stop: looped.stop };
+        const out = { ...looped.answer, tokens: looped.tokens, model: looped.model };
+        const answer = answerOf(out, record, extra, toolbox.numbered.length);
+        return { ...answer, tokens: looped.billed, numbered: toolbox.numbered.slice(), lookup: toolbox.lookup(), rounds: looped.rounds, stop: looped.stop };
+      }
+    }
+
     const mode = this.modeFor(c);
     const structuredRendered = prompts.render(t, inputs, { structured: true });
     const textRendered = prompts.render(t, inputs, { structured: false });
-    if (this.env && this.env.AI_LOG_PROMPTS === '1' && !this.hosted) {
+    if (logPrompts) {
       // Full prompts only on purpose, never on a hosted install, never the key: the rendered messages, whose objects, chat,
       // history and question the routes and the context builder have already redacted (server/ai-policy.js redactText).
       console.log(`[ai] prompt ${name} (${mode}): ${JSON.stringify((mode === 'structured' ? structuredRendered : textRendered).messages)}`);
@@ -563,44 +632,24 @@ class Ai {
     // The allowance with this ask in it: refused (and given back) when it would not fit beside those on their way.
     if (this.overCap(estimate)) throw refused(new AiError(OVER_CAP, 429, { refund: true }), 'allowance');
     const release = this.reserve(estimate);
-    const record = { ...base, provider: c.provider, model: c.model };
+    const record = { ...base, provider: c.provider, model: c.model, ...(toolsNote ? { tools: toolsNote } : {}) };
     let out;
     try {
-      const guard = this.config.source === 'custom' && c.provider === 'compatible' ? this.guard() : null;
       out = await complete(c, { structuredRendered, textRendered, mode }, { hosts: this.hosts, guard });
     } catch (err) {
       release();
       // A failed ask the service reported tokens for (a blank answer, say) is still counted against the month's allowance.
-      if (err instanceof AiError && err.tokens > 0) this.record({ task: t.id, template: name, person: use.person, space: use.space }, err.tokens);
+      if (err instanceof AiError && err.tokens > 0) this.record(usage, err.tokens);
       this.log({ ...record, outcome: 'error', error: (err instanceof AiError && err.kind) || 'error', ms: Date.now() - started, tokensIn: (err && err.tokens) || 0 });
       throw err;
     }
     release();
     if (out.schemaRefused && c.provider === 'compatible') { this.config.schemaRefused = fingerprint(c); try { this.saveConfig(); } catch { /* remembered for this run */ } }
     else if (out.mode === 'structured' && this.config.schemaRefused) { delete this.config.schemaRefused; try { this.saveConfig(); } catch { /* forgotten for this run */ } }
-    const total = out.tokens.in + out.tokens.out;
-    const usage = { task: t.id, template: name, person: use.person, space: use.space };
-    this.record(usage, total);
-    const parsed = prompts.parse(t, out, inputs);
-    const answered = (extra) => this.log({ ...record, model: out.model || c.model, outcome: 'answered', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, leftOut: use.leftOut, ...extra });
-    if (t.output === 'tags') {
-      answered({ cut: parsed.cut || undefined });
-      return { tags: parsed.tags, text: '', summaries: [], used: [], cut: parsed.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
-    }
-    // What a page could run or follow, and every secret, taken out of the answer and its objects before it is kept or shown.
-    const summaries = (parsed.summaries || []).map((sm) => cleanAnswerObject(sm, secrets));
-    let body = cleanAnswerText(parsed.text, secrets).replace(/\n{3,}/g, '\n\n').trim();
-    // Objects with no words around them: their places in the text, so the answer is kept and drawn like any other.
-    if (!body && summaries.length) body = summaries.map((_, i) => `{{summary:${i}}}`).join('\n');
-    // No text and no objects (a list or a number where the answer goes, an empty answer): the service gave no answer. Its
-    // tokens still count against the allowance, as a blank answer's do; it is not an answered call.
-    if (!body) {
-      this.log({ ...record, model: out.model || c.model, outcome: 'error', error: 'empty', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started });
-      throw new AiError(NO_ANSWER, 502, { tokens: total, kind: 'empty' });
-    }
-    const fitted = fitAnswer(body, parsed.cut);
-    answered({ cut: fitted.cut || undefined });
-    return { text: fitted.text, summaries, used: parsed.used, cut: fitted.cut, finish: out.finish, tokens: total, prompt: name, mode: out.mode };
+    this.record(usage, out.tokens.in + out.tokens.out);
+    const answer = answerOf(out, record);
+    // Without tools (none offered, or the service refused them) nothing was looked up: no `lookup` on the answer.
+    return toolbox ? { ...answer, numbered: toolbox.numbered.slice() } : answer;
   }
 
   // The models a service offers, from its own list, for the admin's choice: [{ id, name }]. Uses the typed key

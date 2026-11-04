@@ -19,10 +19,12 @@
 const { word } = require('./words');
 
 // --- What AI may see -----------------------------------------------------------------------------------------------------
-const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members'];
+// `lookup` (slice 2): whether the in-app AI is offered its read tools (search_objects, read_object) in Chat's /ai and the
+// Assistant view; what a tool may return is still narrowed by `modules`, `environment` and the current space.
+const SEES_SWITCHES = ['attached', 'relevant', 'linked', 'history', 'chat', 'members', 'lookup'];
 const SEES_KEYS = [...SEES_SWITCHES, 'environment', 'modules'];
 const ENVIRONMENT_VALUES = ['never', 'attached', 'readable'];
-const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' });
+const SEES_DEFAULTS = Object.freeze({ attached: true, relevant: true, linked: true, history: true, chat: false, members: false, lookup: true, environment: 'attached', modules: 'all' });
 const MODULE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 class PolicyError extends Error {
@@ -240,7 +242,8 @@ function createAiPolicy(deps) {
     return out.filter((s) => typeof s === 'string' && s.length >= 8);
   }
 
-  // One object, admitted or not, for one part of the context (`part`: attached, relevant or linked). Answers
+  // One object, admitted or not, for one part of the context (`part`: attached, relevant, linked, or lookup for what a read
+  // tool returns, server/ai-tools.js). Answers
   // { ok: true, summary } (redacted; with its text when `withText`) or { ok: false, why, module? }: `why` is 'other-space' (an
   // object of another space, or of a person: never sent, whatever the setting), 'setting' (the owner's setting keeps it out)
   // or 'unreadable' (gone, or the person can't read it now: left out and never named). `from`: the module asking (purpose

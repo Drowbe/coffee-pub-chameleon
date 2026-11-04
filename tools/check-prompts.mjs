@@ -137,7 +137,9 @@ await test('every kept template version renders as its golden files say', () => 
       }
       const structured = prompts.render(t, inputs, { structured: true });
       const text = prompts.render(t, inputs, { structured: false });
-      golden(`${name}/${fixture}.json`, { name, maxTokens: structured.maxTokens, structured: { messages: structured.messages, schema: structured.schema }, text: { messages: text.messages } }, { version: name });
+      // A template that takes the read tools (ask@2) has its rendering with them too: the system part with the look-up paragraph.
+      const tools = t.tools ? { tools: { messages: prompts.render(t, inputs, { structured: true, tools: true }).messages } } : {};
+      golden(`${name}/${fixture}.json`, { name, maxTokens: structured.maxTokens, structured: { messages: structured.messages, schema: structured.schema }, text: { messages: text.messages }, ...tools }, { version: name });
     }
   }
   // Golden folders for a version the registry no longer keeps are dropped with it.
@@ -387,7 +389,7 @@ await test('the relevant objects: the best 15 by word match plus the next 7 days
 
 await test('What AI may see: its cleaning, its refusals and the effective setting only narrowing', () => {
   assert.deepEqual(policyLib.cleanSees({ chat: true, environment: 'readable', modules: ['research', 'research'] }), { chat: true, environment: 'readable', modules: ['research'] });
-  for (const [bad, sentence] of [[{ everything: true }, /has no everything; its keys are attached, relevant, linked, history, chat, members, environment and modules\./], [{ chat: 'yes' }, /^chat is true or false\.$/], [{ environment: 'all' }, /^environment is never, attached or readable\.$/], [{ modules: 'some' }, /^modules is "all" or a list of module ids\.$/], [[], /^What AI may see takes attached, relevant, linked, history, chat, members, environment and modules, each with its value\.$/]]) {
+  for (const [bad, sentence] of [[{ everything: true }, /has no everything; its keys are attached, relevant, linked, history, chat, members, lookup, environment and modules\./], [{ chat: 'yes' }, /^chat is true or false\.$/], [{ environment: 'all' }, /^environment is never, attached or readable\.$/], [{ modules: 'some' }, /^modules is "all" or a list of module ids\.$/], [[], /^What AI may see takes attached, relevant, linked, history, chat, members, lookup, environment and modules, each with its value\.$/]]) {
     assert.throws(() => policyLib.cleanSees(bad), (e) => e.status === 400 && sentence.test(e.message), JSON.stringify(bad));
   }
   const eff = policyLib.effectiveSees({ chat: true, modules: ['research', 'gone'] }, { members: true }, ['research']);
@@ -421,7 +423,8 @@ await test('the policy: one rule, in order, and availability agreeing with it', 
 });
 
 await test('AI_PROMPT_VERSIONS pins a kept version and ignores, with one line, one it does not keep', () => {
-  assert.deepEqual(prompts.pinsFrom({ AI_PROMPT_VERSIONS: 'ask@1' }), { pins: { ask: 1 }, lines: [] });
+  assert.deepEqual(prompts.pinsFrom({ AI_PROMPT_VERSIONS: 'ask@1' }), { pins: { ask: 1 }, lines: ['AI_PROMPT_VERSIONS: ask is pinned to its earlier version, ask@1.'] });
+  assert.deepEqual(prompts.pinsFrom({ AI_PROMPT_VERSIONS: 'ask@2' }), { pins: { ask: 2 }, lines: [] });
   assert.deepEqual(prompts.pinsFrom({ AI_PROMPT_VERSIONS: 'ask@9, nope@1,tags@1' }).lines, ['AI_PROMPT_VERSIONS: ask@9 is not a prompt version this server keeps; it is ignored.', 'AI_PROMPT_VERSIONS: nope@1 is not a prompt version this server keeps; it is ignored.']);
   assert.deepEqual(prompts.pinsFrom({}).lines, []);
 });
@@ -556,7 +559,7 @@ await test('AI_LOG_PROMPTS writes the prompt (never the key) only off a host', a
       await ai.run('ask', ASK_FIXTURES['one-object'], { purpose: 'chat', person: 'p' });
     }
   } finally { console.log = log; await fake.close(); }
-  const prompt = logged.filter((l) => l.startsWith('[ai] prompt ask@1'));
+  const prompt = logged.filter((l) => l.startsWith('[ai] prompt ask@2'));
   assert.equal(prompt.length, 1, 'once: off a host only');
   assert.ok(prompt[0].includes('Is this hotel near the station?') && !prompt[0].includes('sk-log-SECRET'));
 });
@@ -652,10 +655,10 @@ try {
     fakeA.clear();
     const r = await ask('cleo', 'Where is a good dinner before the fado night?', { refs: [R('n1'), R('o1', other.id)], tz: 'Europe/Lisbon' });
     assert.equal(r.status, 200, r.text);
-    assert.equal(r.json.prompt, 'ask@1');
+    assert.equal(r.json.prompt, 'ask@2');
     assert.deepEqual(r.json.leftOut, [{ part: 'attached', why: 'other-space', count: 1 }]);
     assert.deepEqual(r.json.sent.attached, [R('n1')]);
-    assert.equal(r.json.message.prompt, 'ask@1', 'the stored answer names its template version');
+    assert.equal(r.json.message.prompt, 'ask@2', 'the stored answer names its template version');
     assert.deepEqual(r.json.message.sent, r.json.sent);
     // The pointer behind every number [n] (numbered[n - 1]): the attached first, then the rollup's; kept on the answer too.
     assert.ok(Array.isArray(r.json.numbered) && r.json.numbered.length >= 2, JSON.stringify(r.json.numbered));
@@ -857,7 +860,7 @@ try {
     assert.ok(log.some((x) => x.outcome === 'refused' && x.reason === 'role'), 'refusals are recorded with their reason');
     const u = await call('GET', '/api/ai/usage', { cookie: owner });
     assert.equal(u.status, 200);
-    assert.ok(u.json.usage.byTemplate['ask@1'] > 0 && u.json.usage.byPerson[people.rita.key] > 0 && u.json.usage.bySpace[space.id] > 0);
+    assert.ok(u.json.usage.byTemplate['ask@2'] > 0 && u.json.usage.byPerson[people.rita.key] > 0 && u.json.usage.bySpace[space.id] > 0);
     assert.ok(u.json.recent.length <= 50 && u.json.refusals.role >= 1);
     assert.equal((await call('GET', '/api/ai/usage', { cookie: tok.pat })).status, 403);
   });
@@ -874,6 +877,8 @@ try {
   });
 
   await test('server: structured output; a compatible service that refuses the schema falls back, remembered until the setting changes', async () => {
+    // Slice 1's path: with the look-ups off the answer's schema goes as response_format (with them on it is the answer tool's).
+    await call('PUT', '/api/ai', { cookie: owner, body: { sees: { lookup: false } } });
     fakeB.clear();
     fakeB.refuseSchema = true;
     const r = await ask('nora', 'schema please?');
