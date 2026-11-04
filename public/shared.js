@@ -132,6 +132,8 @@ function card(f) {
     name.textContent = f.name;
     name.title = f.name;
     name.addEventListener('click', () => open(f.id, name));
+    thumb.addEventListener('click', () => name.click()); // the picture opens the file as the name does
+    thumb.classList.add('is-open');
     meta.append(name, h('span', 'sh-sub', `${k.word} · ${size(f.size)}`));
   }
   li.append(thumb, meta);
