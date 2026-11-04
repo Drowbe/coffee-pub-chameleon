@@ -44,10 +44,13 @@ function sortedSees(v) {
 // Draws the section's rows into `box` and answers { set, get, setModules }.
 //   idPrefix  keeps the ids apart on a page that holds two;
 //   onChange  called with the value after a person changes anything.
-// `set(value, { locked })` shows a value; locked rows are shown but cannot be changed (a space following the environment).
+// `set(value, { locked, lookupOff })` shows a value; locked rows are shown but cannot be changed (a space following the
+// environment). `lookupOff`: a sentence; the look-up switch is shown off and locked with it as its words (the environment has
+// look-ups off, and a space can only narrow that).
 export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}) {
   let value = fullSees(null);
   let locked = false;
+  let lookupOff = '';
   let modules = []; // [{ id, name }]
   const id = (k) => `${idPrefix}-${k}`;
   const objects = word('object', { many: true });
@@ -80,6 +83,11 @@ export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}
     list.hidden = !some;
     list.innerHTML = (some && !value.modules.length ? '<p class="hint" role="status">Pick at least one, or choose All of them.</p>' : '') + modules.map((m) => `<label class="sdk-choice-row"><input type="checkbox" class="sdk-switch" role="switch" data-sees-module="${esc(m.id)}"${some && value.modules.includes(m.id) ? ' checked' : ''}><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(m.name)}</span></span></label>`).join('') || '<p class="hint">None on yet.</p>';
     for (const el of box.querySelectorAll('input, select')) el.disabled = locked;
+    const look = q('[data-sees="lookup"]');
+    const desc = look.closest('label').querySelector('.sdk-choice-desc');
+    if (desc.dataset.was === undefined) desc.dataset.was = desc.textContent;
+    desc.textContent = lookupOff || desc.dataset.was;
+    if (lookupOff) { look.checked = false; look.disabled = true; }
   };
   const read = () => {
     const out = {};
@@ -96,7 +104,7 @@ export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}
   });
 
   return {
-    set(v, { locked: lock = false } = {}) { value = fullSees(v); locked = lock; paint(); },
+    set(v, { locked: lock = false, lookupOff: off = '' } = {}) { value = fullSees(v); locked = lock; lookupOff = off; paint(); },
     get: () => fullSees(value),
     // A plain sentence when the choice cannot be saved: "Only these" with none ticked.
     problem: () => (Array.isArray(value.modules) && !value.modules.length ? 'Pick at least one, or choose All of them.' : ''),

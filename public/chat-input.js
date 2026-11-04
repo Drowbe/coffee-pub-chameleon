@@ -1669,8 +1669,9 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     }
   }
   const usedWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space'), owner: word('owner'), member: word('member'), members: word('member', { many: true }), nameOf: (id) => { const m = canvas.list().find((x) => x.id === id); return m ? (m.displayName || m.name) : id; } });
-  // "looked up N objects": the ones this reader may open as links, "and N others" for the rest (the gone, the hidden, and
-  // those the server named by number only). Drawn at once as the count, then settled when the pointers are resolved.
+  // "looked up N objects": a reader other than the asker is sent only the pointers they may open (the server drops the rest),
+  // so N counts what they can see and there is no count of hidden ones. "and N others" is only for one that is gone by now.
+  // Drawn at once as the count, then settled when the pointers are resolved.
   function lookedUp({ count, refs }) {
     const span = document.createElement('span');
     span.className = 'message-looked';
