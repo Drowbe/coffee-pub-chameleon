@@ -118,13 +118,17 @@
           "description": "The number n of an object shown in this question."
         },
         "date": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
           "description": "A date, YYYY-MM-DD."
         }
       },
       "required": [
-        "object"
+        "object",
+        "date"
       ],
       "additionalProperties": false
     }

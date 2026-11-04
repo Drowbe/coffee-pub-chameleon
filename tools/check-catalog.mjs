@@ -83,30 +83,45 @@ await test('the catalog has not drifted from the bundled manifests (tools/golden
   assert.equal(now, want, 'the catalog the manifests make changed: if that is meant, bump the module, then run node tools/check-catalog.mjs --update');
 });
 
-// A schema both providers take: an object of plain typed properties, every required one listed, nothing else accepted.
+// A schema both providers take, in OpenAI's strict form: an object of plain typed properties, every property listed in
+// `required`, an optional one typed with null as well (so "absent" is null), nothing else accepted.
 function plainSchema(s, name) {
   assert.equal(s.type, 'object', name);
   assert.equal(s.additionalProperties, false, name);
-  assert.ok(Array.isArray(s.required) && s.required.every((k) => Object.hasOwn(s.properties, k)), name);
+  assert.deepEqual([...s.required].sort(), Object.keys(s.properties).sort(), `${name}: strict mode wants every property in required`);
   for (const [k, p] of Object.entries(s.properties)) {
-    assert.ok(['integer', 'number', 'string', 'boolean'].includes(p.type), `${name}.${k}`);
+    const types = [].concat(p.type);
+    assert.ok(types.length >= 1 && types.length <= 2 && types.every((t) => ['integer', 'number', 'string', 'boolean', 'null'].includes(t)), `${name}.${k}`);
+    assert.ok(types.filter((t) => t !== 'null').length === 1 && types.length - (types.includes('null') ? 1 : 0) === 1, `${name}.${k}: one real type`);
     for (const key of Object.keys(p)) assert.ok(['type', 'minimum', 'minLength', 'maxLength', 'pattern', 'format', 'description'].includes(key), `${name}.${k} ${key}`);
     if (p.pattern) new RegExp(p.pattern); // compiles
   }
   JSON.parse(JSON.stringify(s)); // plain JSON
 }
-const exampleOf = (s) => Object.fromEntries(Object.entries(s.properties).map(([k, p]) => [k, p.type === 'integer' ? 1 : p.type === 'number' ? 1.5 : p.type === 'boolean' ? true : p.pattern ? '2026-05-12' : p.format ? '2026-05-12T10:00:00Z' : 'Ferry']));
+const realType = (p) => [].concat(p.type).find((t) => t !== 'null');
+const exampleOf = (s) => Object.fromEntries(Object.entries(s.properties).map(([k, p]) => [k, realType(p) === 'integer' ? 1 : realType(p) === 'number' ? 1.5 : realType(p) === 'boolean' ? true : p.pattern ? '2026-05-12' : p.format ? '2026-05-12T10:00:00Z' : 'Ferry']));
+const neededOf = (t) => Object.keys(t.schema.properties).filter((k) => !String(t.input[k]).endsWith('?'));
 
-await test('each generated schema is plain, accepts its own example, and refuses what it should', () => {
+await test('each generated schema is plain and OpenAI-strict, accepts its own example, and refuses what it should', () => {
   for (const t of catalog.tools) {
     plainSchema(t.schema, t.name);
+    // An optional input is nullable; a required one is not.
+    for (const [k, p] of Object.entries(t.schema.properties)) assert.equal([].concat(p.type).includes('null'), String(t.input[k]).endsWith('?'), `${t.name}.${k}`);
     const ex = exampleOf(t.schema);
     assert.deepEqual(checkToolInput(t, ex), { ok: true, input: ex }, t.name);
     assert.equal(checkToolInput(t, { ...ex, extra: 1 }).ok, false, `${t.name}: an extra field`);
-    for (const k of t.schema.required) { const less = { ...ex }; delete less[k]; assert.equal(checkToolInput(t, less).error, `${k} is needed.`, `${t.name} ${k}`); }
+    for (const k of neededOf(t)) { const less = { ...ex }; delete less[k]; assert.equal(checkToolInput(t, less).error, `${k} is needed.`, `${t.name} ${k}`); assert.equal(checkToolInput(t, { ...ex, [k]: null }).error, `${k} is needed.`, `${t.name} ${k} null`); }
+    // The strict form sends every field, null for the ones left out: accepted, and left out of the input.
+    const optional = Object.keys(t.schema.properties).filter((k) => !neededOf(t).includes(k));
+    if (optional.length) {
+      const nulled = { ...ex, ...Object.fromEntries(optional.map((k) => [k, null])) };
+      const got = checkToolInput(t, nulled);
+      assert.equal(got.ok, true, `${t.name}: nulls for the optional fields`);
+      assert.deepEqual(Object.keys(got.input).sort(), neededOf(t).sort(), `${t.name}: null means absent`);
+    }
     for (const [k, p] of Object.entries(t.schema.properties)) {
-      if (p.type === 'integer') for (const bad of [0, -1, 1.5, '1']) assert.equal(checkToolInput(t, { ...ex, [k]: bad }).ok, false, `${t.name}.${k} ${bad}`);
-      if (p.pattern) for (const bad of ['12 May', '2026-5-12', 12]) assert.equal(checkToolInput(t, { ...ex, [k]: bad }).ok, false, `${t.name}.${k} ${bad}`);
+      if (realType(p) === 'integer') for (const bad of [0, -1, 1.5, '1']) assert.equal(checkToolInput(t, { ...ex, [k]: bad }).ok, false, `${t.name}.${k} ${bad}`);
+      if (p.pattern) for (const bad of ['12 May', '2026-5-12', 12, '2026-02-30', '2026-13-01', ' 2026-05-12']) assert.equal(checkToolInput(t, { ...ex, [k]: bad }).ok, false, `${t.name}.${k} ${bad}`);
     }
   }
   assert.equal(checkToolInput(catalog.tools[0], null).error, "The input must be named fields, as the tool's schema says.");
@@ -114,6 +129,16 @@ await test('each generated schema is plain, accepts its own example, and refuses
   // A pointer is never taken: only the number the server gave out.
   const due = catalog.tools.find((t) => t.name === 'todo__setTaskDue');
   assert.equal(checkToolInput(due, { task: { module: 'todo', kind: 'task', id: 'x' }, date: '2026-05-12' }).ok, false);
+});
+
+await test('impossible dates and bad datetimes are refused, as search_objects refuses an impossible day', () => {
+  const due = catalog.tools.find((t) => t.name === 'todo__setTaskDue');
+  assert.equal(checkToolInput(due, { task: 1, date: '2026-05-12' }).ok, true);
+  for (const bad of ['2026-02-30', '2026-04-31', '2025-02-29', '2026-00-10']) assert.equal(checkToolInput(due, { task: 1, date: bad }).error, 'date must be a date, YYYY-MM-DD.', bad);
+  assert.equal(checkToolInput(due, { task: 1, date: '2024-02-29' }).ok, true, 'a real leap day');
+  const when = { name: 'x__y', input: { at: 'datetime' }, schema: { properties: { at: { type: 'string', format: 'date-time' } } } };
+  for (const ok of ['2026-05-12T10:00', '2026-05-12T10:00:00Z', '2026-05-12T10:00:00.250+02:00']) assert.equal(checkToolInput(when, { at: ok }).ok, true, ok);
+  for (const bad of ['2026-02-30T10:00:00Z', '2026-05-12T25:00:00Z', '2026-05-12T10:61', 'March 3', '2026-05-12', '12/05/2026 10:00', 'tomorrow']) assert.equal(checkToolInput(when, { at: bad }).ok, false, bad);
 });
 
 // --- module.json's new fields, through the manifest cleaner -------------------------------------------------------------
@@ -240,6 +265,15 @@ try {
     r = await call('GET', C, { cookie: tok.pat });
     assert.deepEqual(names(r), ['places__setPlacePoint', 'travel__addToDay']);
     await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.todo.edit': true } });
+    // The key `lookup` (the read tools) is the same one on a space: setting it is allowed beside `modules`, and the write tools follow
+    // `modules` only.
+    let patch = await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: { lookup: false } } });
+    assert.deepEqual([patch.status, patch.json.space.aiSees], [200, { lookup: false }]);
+    assert.deepEqual(names(await call('GET', C, { cookie: tok.pat })), ['places__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay'], 'lookup off leaves the write tools');
+    patch = await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: { lookup: false, modules: ['todo', 'travel'] } } });
+    assert.deepEqual([patch.status, patch.json.space.aiSees], [200, { lookup: false, modules: ['todo', 'travel'] }]);
+    assert.deepEqual(names(await call('GET', C, { cookie: tok.pat })), ['todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);
+    await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: null } });
     // What AI may see keeping a module out keeps its tools out.
     assert.equal((await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: { modules: ['todo', 'travel'] } } })).status, 200);
     r = await call('GET', C, { cookie: tok.pat });
