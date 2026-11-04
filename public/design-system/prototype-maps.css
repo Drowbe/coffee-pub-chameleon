@@ -52,7 +52,7 @@ body.ms-body { margin: 0; height: 100vh; overflow: hidden; background: var(--sur
 .ms-root .mf-content.mf-content-flush:has(> .ms-host) { display: flex; flex-direction: column; overflow: hidden; }
 .ms-host { position: relative; flex: 1 1 auto; min-height: 0; }
 .ms-root .mf-titlebar-tools > .ms-held { background: var(--fill-hover); color: var(--text-primary); }
-.ms-root > .host-menu.ms-menu-open { position: absolute; z-index: 1; }
+.ms-root > .host-menu.ms-menu-open { position: absolute; z-index: var(--z-popover); } /* over everything, the map's pins too, as the real menu is */
 
 /* ---- inside the shadow root: the drawn map. The map library would draw this; here it is a picture made of the same tokens. ---- */
 .ms-map { overflow: hidden; background: var(--map-land); }
@@ -128,7 +128,7 @@ body.ms-body { margin: 0; height: 100vh; overflow: hidden; background: var(--sur
 .ms-picture .g-isle { fill: color-mix(in srgb, var(--tint-gold) 55%, var(--surface-panel)); stroke: color-mix(in srgb, var(--tint-orange) 60%, var(--surface-page)); stroke-width: 2; }
 .ms-picture .g-hill { fill: color-mix(in srgb, var(--tint-green) 50%, var(--surface-panel)); }
 .ms-picture .g-trail { fill: none; stroke: color-mix(in srgb, var(--tint-red) 70%, var(--surface-page)); stroke-width: 2; stroke-dasharray: 5 4; }
-.ms-picture .g-script { fill: color-mix(in srgb, var(--tint-orange) 30%, var(--surface-page)); font-size: 22px; font-style: italic; }
+.ms-picture .g-script { fill: color-mix(in srgb, var(--tint-gold) 25%, var(--text-primary)); /* the isles' gold on the text colour: 4.5 to 1 or more on the sea in every theme and mode */ font-size: 22px; font-style: italic; }
 
 /* ================= the section on the Prototype page ================= */
 .mp-section { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding-top: var(--space-5); border-top: 1px solid var(--edge-hairline); }
