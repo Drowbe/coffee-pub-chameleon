@@ -16,8 +16,10 @@ built (2026-11-03, commits `fe8628f` to `4865b54` and `a3149e7` on `claude/magic
 **AI used:** line, citations, What AI may see on Manage and in a space's Set up, and the use view), checked by tools
 against the fake model only; no real provider has answered it yet. Slice 2 (the first tools) is a draft for Thomas,
 written 2026-11-04 at his request, AI integration being his top priority: read tools in Chat's `/ai` first, then
-proposals for the modules' actions, and a real-provider test of slice 1 before either. None of it is decided: its eight
-questions (S1 to S8) are open, and nothing of slice 2 is built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
+proposals for the modules' actions, and a real-provider test of slice 1 before either. Thomas answered its eight
+questions (S1 to S8) on 2026-11-04, every one with the option this plan suggested (decisions 16 to 23 below). Steps 8 to
+10, 12 and 13 are ready to build; step 11 waits on Thomas supplying a provider key and a spending limit (step 12 may
+start now). Nothing of slice 2 is built. The cheap must-fixes from the audit landed outside this plan, in `4eccbae`, `fe3dea9`, `3eef7b9`, `1f3cf33`
 and `bb5910f` (instructions and data in separate messages, the one permission rule, availability with a reason, the
 hosted address guard, fair refunds, the monthly calls cap; Chat's `/ai` takes only the current space's objects); what
 is built is described in [architecture-ai](../architecture/architecture-ai.md). From GitHub #382,
@@ -208,6 +210,26 @@ Thomas, 2026-11-02, approving the rest:
 14. **Full prompts are logged only through an environment variable,** off by default and refused on a hosted install;
     **a prompt is rolled back by an environment variable** that pins the previous version (open questions 20 and 21).
 15. **Call records, with no content, are kept 30 days** (open question 23).
+
+Thomas, 2026-11-04, answering the slice 2 questions (S1 to S8), each the option the plan suggested:
+
+16. **S1: the first tools work in Chat's `/ai` and the Assistant view only.** Not in modules' asks, and not for outside
+    apps first. Reason: one door, the one people use, checked before it spreads.
+17. **S2: the first read tools are `search_objects` and `read_object`,** this space only, with one step of links.
+    Reason: search alone can't answer "what does the ferry note say?", and dates are already a search filter.
+18. **S3: a new What AI may see switch, "Let AI look things up" (`lookup`), on by default.** It only narrows, like the
+    others. Reason: plain to an owner, and on matches `relevant`'s default.
+19. **S4: limits per question are 4 rounds, 8 look-ups and 120 seconds.** Raised when the records show the need.
+20. **S5: a question with several rounds is one rate-limit turn and one call against the monthly calls cap,** and every
+    round's tokens count against the token allowance. Reason: the tokens carry the real cost, and counting each round
+    would let one question use up the six a minute.
+21. **S6: the **AI used:** line says "looked up N" with links.** A list of the steps under the answer may come later if
+    wanted, since the steps show search words to everyone once an answer is public.
+22. **S7: the write tools come from the module manifests,** each action gaining `description` and `effect`, with a
+    patch version bump for each bundled module that has actions. Reason: it can't drift, and only it marks what an action
+    changes.
+23. **S8: an AI's write waits as a proposal on the answer,** Keep or Drop by the asker, as Keep works today. An inbox
+    waits for outside apps, which have no answer to hang a proposal on; this narrows open question 1 to them.
 
 ### Choices the plan made
 
@@ -516,9 +538,9 @@ Not planned here; slice 2 onward. What slice 1 must leave possible:
 - The adapters gain the tool-calling loop; the fake model gains scripted tool calls.
 - The record gains the token's name.
 
-## Slice 2: the first tools (a draft for Thomas)
+## Slice 2: the first tools
 
-Nothing in this section is decided. It turns the options in the next section ((a), (b) and (e)) into the smallest step
+Thomas decided the questions at its end on 2026-11-04 (decisions 16 to 23). This section turns the options in the next section ((a), (b) and (e)) into the smallest step
 that lets the in-app AI do something, with its contract. The questions it needs answered are at its end, ordered by what
 blocks the first step; each recommendation there is a suggestion.
 
@@ -722,9 +744,10 @@ Do this first. Slice 2's loop sits on slice 1's adapters, and no real model has 
 
 Anything wrong becomes an issue under `Server:` or `Chat:`.
 
-### Decisions for Thomas (slice 2)
+### Decisions for Thomas (slice 2), all answered
 
-Each can be asked as one multiple-choice question. S1 to S6 block step 1 (steps 8 to 11 below); S7 blocks step 12, S8 step 13.
+Thomas answered S1 to S8 on 2026-11-04, each with option (a), the suggested one, as recorded in decisions 16 to 23. The
+options are kept below as the record of what was weighed; the build follows (a) in every case.
 
 - **S1. Where do the first tools work?** (a) Chat's `/ai` and the Assistant view only; (b) those and modules' asks
   (`host.ai.ask`); (c) outside AI apps first (a read-only MCP endpoint), the in-app AI later. Suggested: (a), one door,
@@ -910,9 +933,10 @@ Each step is built, checked, reviewed and committed before the next starts.
    architecture's AI section, the user guide's AI, Roles and Set up pages (What AI may see), the environment variables
    `AI_LOG_PROMPTS` and `AI_PROMPT_VERSIONS`, [plan-chat-model](plan-chat-model.md)'s status.
 
-### Slice 2: the first tools (draft, not decided)
+### Slice 2: the first tools
 
-Steps 8 to 11 wait on decision questions S1 to S6; step 12 on S7; step 13 on S8.
+S1 to S8 are decided (decisions 16 to 23). Steps 8 to 10, 12 and 13 are ready to build. Step 11 waits on Thomas supplying
+a provider key and a spending limit; step 12 may start now.
 
 **First, slice 1 against a real provider (small),** which needs no decision and can start now: Thomas runs the test
 script above with a key, and quality-assurance writes up the results. It runs beside steps 8 and 10.
@@ -927,7 +951,7 @@ script above with a key, and quality-assurance writes up the results. It runs be
    and quality-assurance reviews it as a security change before it is committed.
 10. **What a person sees of look-ups (small).** experience-design, beside step 9 once this contract's fields stand:
     the **AI used:** line's "looked up N <objects>", the waiting words, the `lookup` switch on Manage and Set up.
-11. **Step 1 against a real provider (small).** Thomas with quality-assurance, after steps 9 and 10: the test script's
+11. **Step 1 against a real provider (small).** Waits on Thomas supplying a provider key and a spending limit. Thomas with quality-assurance, after steps 9 and 10: the test script's
     steps 2 to 5 again, plus questions that need a look-up ("what does the ferry note say?"), and the records' rounds
     and tokens read. content-manager then documents slice 2's step 1.
 12. **Write tools from the manifests (medium).** server-development, beside steps 9 to 11 once S7 is answered:
@@ -1027,7 +1051,7 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
 
 1. **Where an AI's write waits.** (a) An AI inbox the person keeps from; (b) a bus request run when the module is next
    open; (c) server-side writes. Lean: (a). Today's code is already (a)-like: objects are proposals the person Keeps.
-   For the in-app AI, decision question S8 drafts a proposal on the answer instead; this question is left for outside
+   For the in-app AI, decision 23 (S8) makes it a proposal on the answer instead; this question is left for outside
    apps. Blocks step 17.
 2. **"The person's own key."** (a) Keep the environment's (or host's) key only; (b) a key per person on Profile; (c)
    both, a person's own winning. Lean: (a) now. Blocks nothing now.
@@ -1044,8 +1068,7 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
    owner's switch only. Lean: (a). Blocks step 15.
 8. **What the internal AI may read.** Partly answered 2026-11-02: the current space only, never another (decision 4),
    and the rollup beyond what the person attached (decision 2). Left: whether, with tools, it may search the current
-   space itself (lean: yes, with the answer showing what it read). Taken up by decision questions S2, S3 and S6, which
-   block step 9.
+   space itself (lean: yes, with the answer showing what it read). Answered 2026-11-04 by decisions 17, 18 and 21 (S2, S3, S6).
 9. **Chat's `/ai` and `useAi`.** Answered 2026-11-02: one rule, `useAi` and the space's AI switch, never a guest
    (decision 1).
 10. **How long the outside clients' audit trail is kept.** (a) 30 days; (b) 90 days; (c) the owner chooses. Lean: (a),
@@ -1083,6 +1106,5 @@ Numbers 1 to 11 are from the first draft; 12 onward are new with slice 1.
     permission. Lean: (a). Blocks nothing in slice 1; if answered before step 6, the Assistant's version bump there follows it.
 
 Nothing blocks slice 1: every question for its steps is answered (12 to 21 and 23), and 22 and 24 have working
-leans that block no step. Slice 2's own questions are S1 to S8 (Decisions for Thomas, slice 2): S1 to S6 block steps 8
-to 11, S7 step 12 and S8 step 13. Questions 3, 4, 5, 7, 10 and 11 block step 15 onward; 1 blocks step 17; 6 blocks step 12; 8
-is taken up by S2, S3 and S6; 2 blocks nothing now.
+leans that block no step. Slice 2's own questions, S1 to S8, were answered on 2026-11-04 (decisions 16 to 23) and
+block nothing; step 11 waits only on a provider key and a spending limit from Thomas. Questions 3, 4, 5, 7, 10 and 11 block step 15 onward; 1 blocks step 17; 6 blocks step 12; 2 blocks nothing now.
