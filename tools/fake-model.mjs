@@ -13,7 +13,7 @@
  *
  * Tools (plan-ai-integration.md, slice 2): a request that offers tools (OpenAI's `tools`, Anthropic's `tools` beyond slice 1's
  * forced `answer`) is answered with tool calls in the provider's shape (OpenAI `tool_calls`, Anthropic `tool_use` blocks):
- *   fake.next({ tools: [{ name, input }] })  -- those calls (`raw`: OpenAI arguments as given, malformed JSON included);
+ *   fake.next({ tools: [{ name, input }] })  -- those calls (`id`: the call's id as given, a repeated one included; `raw`: OpenAI arguments as given, malformed JSON included);
  *                                               `tools` may be a function of the request's tool results (toolResults)
  *                                               answering the calls, to use the numbers the server gave out;
  *   no script                                -- the `answer` tool with a normal answer (`json` scripts its input; `text`
@@ -108,8 +108,8 @@ export async function startFakeModel({ port = 0, host = '127.0.0.1' } = {}) {
       // Tool calls, in the provider's shape. `calls`: [{ name, input, raw? }].
       const callsReply = (calls, text = '') => {
         const tokens = (scripted && scripted.tokens) || [10, 2];
-        if (anthropic) return send(200, { id: 'msg_t', model: body.model, content: [...(text ? [{ type: 'text', text }] : []), ...calls.map((c, i) => ({ type: 'tool_use', id: `toolu_${fake.seen.length}_${i}`, name: c.name, input: c.input }))], stop_reason: 'tool_use', usage: { input_tokens: tokens[0], output_tokens: tokens[1] } });
-        return send(200, { id: 'cmpl_t', model: body.model, choices: [{ message: { role: 'assistant', content: text || null, tool_calls: calls.map((c, i) => ({ id: `call_${fake.seen.length}_${i}`, type: 'function', function: { name: c.name, arguments: c.raw !== undefined ? c.raw : JSON.stringify(c.input) } })) }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: tokens[0], completion_tokens: tokens[1], total_tokens: tokens[0] + tokens[1] } });
+        if (anthropic) return send(200, { id: 'msg_t', model: body.model, content: [...(text ? [{ type: 'text', text }] : []), ...calls.map((c, i) => ({ type: 'tool_use', id: c.id || `toolu_${fake.seen.length}_${i}`, name: c.name, input: c.input }))], stop_reason: 'tool_use', usage: { input_tokens: tokens[0], output_tokens: tokens[1] } });
+        return send(200, { id: 'cmpl_t', model: body.model, choices: [{ message: { role: 'assistant', content: text || null, tool_calls: calls.map((c, i) => ({ id: c.id || `call_${fake.seen.length}_${i}`, type: 'function', function: { name: c.name, arguments: c.raw !== undefined ? c.raw : JSON.stringify(c.input) } })) }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: tokens[0], completion_tokens: tokens[1], total_tokens: tokens[0] + tokens[1] } });
       };
       const SEARCH = { words: null, kind: null, from: null, to: null, has: null };
       if (toolsMode && !(scripted && scripted.status)) {

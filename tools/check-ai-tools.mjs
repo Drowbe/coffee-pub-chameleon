@@ -20,6 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -163,6 +164,7 @@ function world({ sees = {}, spaceSees = null } = {}) {
     { ref: ref('research', 'note', 'h1'), title: 'Read me first', text: HOSTILE },
     { ref: ref('calendar', 'event', 'e1'), title: 'Museum visit', when: '2026-11-14', place: { name: 'Acropolis' }, text: 'Tickets at the gate.' },
     { ref: ref('places', 'place', 'p1'), title: 'Secret ferry bar', place: { name: 'Psirri' }, text: 'Only for readers of Places.' },
+    { ref: ref('research', 'note', 'k1'), title: `Wifi router ${GUEST_TOKEN}`, text: 'Router notes.' },
     { ref: ref('research', 'note', 'o1', 'space', 's2'), title: 'Porto ferry dinner', text: 'OTHERSPACE text.' },
     { ref: ref('todo', 'task', 't1', 'environment'), title: 'Renew passports before the ferry', text: 'ENVTASK text.' },
     { ref: ref('research', 'note', 'm1', 'person'), title: 'My own ferry note', text: 'PERSONAL text.' },
@@ -561,6 +563,81 @@ try {
     assert.ok(rounds[1].includes('FERRYTEXT') && !rounds.join('').includes(GUEST_TOKEN) && !rounds.join('').includes('sk-log-SECRET'));
   });
 
+  await test('search matches what the model may read: a secret in a title can\'t be found by searching for it', async () => {
+    for (const words of [GUEST_TOKEN, 'guesttokensecret1234']) {
+      fake.clear();
+      const w = world({ sees: QUIET });
+      fake.next({ tools: [search({ words })] });
+      await askIn(SHAPES.openai(), w, 'pat', 'Find it');
+      assert.deepEqual(lastResults(fake.seen[1].body, 1)[0], { objects: [] }, words);
+    }
+    fake.clear();
+    fake.next({ tools: [search({ words: 'wifi router' })] });
+    await askIn(SHAPES.openai(), world({ sees: QUIET }), 'pat', 'Find the router');
+    const titles = lastResults(fake.seen[1].body, 1)[0].objects.map((o) => o.title);
+    assert.equal(titles.length, 1);
+    assert.ok(titles[0].startsWith('Wifi router') && !titles[0].includes(GUEST_TOKEN), titles[0]);
+  });
+
+  await test('a space\'s own What AI may see only narrows lookup: off in the environment stays off; off in the space turns it off', async () => {
+    const eff = (env, space) => policyLib.effectiveSees(env, space, null).lookup;
+    assert.deepEqual([eff({}, null), eff({}, { lookup: true }), eff({}, { lookup: false })], [true, true, false]);
+    assert.deepEqual([eff({ lookup: false }, null), eff({ lookup: false }, { lookup: true }), eff({ lookup: false }, { lookup: false })], [false, false, false]);
+    assert.equal(policyLib.effectiveSees({ lookup: false }, { lookup: true, modules: ['todo'] }, null).modules[0], 'todo', 'the space\'s other keys still apply');
+    fake.clear();
+    const w = world({ sees: { ...QUIET, lookup: false }, spaceSees: { lookup: true } });
+    await askIn(SHAPES.openai(), w, 'pat', 'When does the ferry leave?');
+    assert.equal(fake.last().body.tools, undefined, 'a space cannot turn the look-ups back on');
+    assert.ok(fake.last().body.response_format, 'slice 1\'s structured answer');
+  });
+
+  await test('a refusal of tools is only a message saying tools are not supported; a context-length error that names tool definitions is not', () => {
+    const res = (status, message) => ({ status, text: JSON.stringify({ error: { message } }) });
+    for (const m of ['tools are not supported by this model', 'Unrecognized request argument supplied: tools', 'This model does not support function calling', 'tool_choice is not supported', 'Extra inputs are not permitted: tools']) assert.equal(providers.refusedTools(res(400, m)), true, m);
+    for (const m of ["This model's maximum context length is 8192 tokens. However, your messages and tool definitions resulted in 9000 tokens.", 'Request too large: the tools you sent are too long', 'content filtered', 'Invalid tool_call_id']) assert.equal(providers.refusedTools(res(400, m)), false, m);
+    assert.equal(providers.refusedTools(res(500, 'tools are not supported')), false, 'a server error is not a refusal');
+    assert.equal(providers.refusedTools({ status: 400, text: 'not json' }), false);
+  });
+
+  await test('toolsRefused is forgotten after a later question that took tools, as schemaRefused is', async () => {
+    fake.clear();
+    const ai = SHAPES.compatible();
+    ai.config.toolsRefused = 'some other setting';
+    ai.saveConfig();
+    await askIn(ai, world({ sees: QUIET }), 'pat', 'When does the ferry leave?');
+    assert.ok(fake.seen[0].body.tools, 'a stale refusal does not stop the tools');
+    assert.equal(ai.config.toolsRefused, undefined);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(ai.logFile), 'ai.json'), 'utf8')).toolsRefused, undefined, 'and not kept');
+  });
+
+  for (const shape of ['openai', 'anthropic']) {
+    await test(`${shape}: two tool calls with one id, or an id used in an earlier round, are given distinct ids; the next request never repeats one`, async () => {
+      fake.clear();
+      const ai = SHAPES[shape]();
+      fake.next({ tools: [{ ...search({ words: 'ferry' }), id: 'dup' }, { ...search({ words: 'naxos' }), id: 'dup' }] })
+        .next({ tools: [{ ...search({ words: 'museum' }), id: 'dup' }] });
+      const { out } = await askIn(ai, world({ sees: QUIET }), 'pat', 'When does the ferry leave?');
+      assert.equal(out.stop, 'answer');
+      const idsOf = (body) => {
+        const calls = []; const results = [];
+        for (const m of body.messages) {
+          if (m.role === 'assistant' && Array.isArray(m.tool_calls)) calls.push(...m.tool_calls.map((c) => c.id));
+          else if (m.role === 'assistant' && Array.isArray(m.content)) calls.push(...m.content.filter((b) => b.type === 'tool_use').map((b) => b.id));
+          else if (m.role === 'tool') results.push(m.tool_call_id);
+          else if (Array.isArray(m.content)) results.push(...m.content.filter((b) => b && b.type === 'tool_result').map((b) => b.tool_use_id));
+        }
+        return { calls, results };
+      };
+      for (const i of [1, 2]) {
+        const { calls, results } = idsOf(fake.seen[i].body);
+        assert.equal(new Set(calls).size, calls.length, `request ${i + 1} repeats a call id: ${calls}`);
+        assert.equal(new Set(results).size, results.length, `request ${i + 1} repeats a result id: ${results}`);
+        assert.deepEqual([...calls].sort(), [...results].sort(), `every result names its call`);
+      }
+      assert.equal(idsOf(fake.seen[2].body).calls.length, 3);
+    });
+  }
+
   // --- through a throwaway server --------------------------------------------------------------------------------------
   const dataDir = tmp('server');
   fs.writeFileSync(path.join(dataDir, 'ai.json'), JSON.stringify({ source: 'custom', provider: 'compatible', address: `${fake.url}/v1`, model: 'fake-1', key: '', enabled: true }));
@@ -725,6 +802,45 @@ try {
       assert.deepEqual([p.status, p.json.error], [403, "Guests can't use AI."]);
     });
 
+    await test('server: a shared answer gives other readers only the pointers they can open; the asker keeps all of them', async () => {
+      fake.clear();
+      fake.next({ tools: [search({ words: 'ferry' })] })
+        .next({ tools: (results) => [readN(results.at(-1).value.objects.find((o) => o.title === 'Book the ferry tickets').n), readN(results.at(-1).value.objects.find((o) => o.title === 'Ferry to Naxos').n)] })
+        .next({ json: { answer: 'Booked [1] and written up [2].', objects: [], used: [] } });
+      const r = await ask('rae', 'What is booked for the ferry?');
+      assert.equal(r.status, 200, r.text);
+      assert.ok(r.json.used.some((x) => x.id === 't1') && r.json.used.some((x) => x.id === 'n1'), JSON.stringify(r.json.used));
+      const shared = await call('PATCH', `/api/spaces/${space.id}/chat/${r.json.id}`, { cookie: tok.rae, body: { visibility: 'public' } });
+      assert.equal(shared.status, 200, shared.text);
+      const mine = async (cookie, query = '') => (await call('GET', `/api/spaces/${space.id}/chat${query}`, { cookie })).json.messages.find((m) => m.id === r.json.id);
+      const pointers = (m) => ({ numbered: (m.numbered || []).filter(Boolean).map((x) => x.id), used: (m.used || []).map((x) => x.id), read: ((m.sent && m.sent.lookup && m.sent.lookup.read) || []).map((x) => x.id) });
+      // While every reader may open both, they see both.
+      let m = await mine(tok.nora);
+      assert.ok(pointers(m).numbered.includes('t1') && pointers(m).used.includes('t1') && pointers(m).read.includes('t1'), JSON.stringify(pointers(m)));
+      // To-do turned off for members: Nora, and a guest, get no pointer to the task; the asker keeps every one.
+      // (A guest can open what the guest role may view, which is the same rule: so To-do is off for guests as well.)
+      await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.todo.view': false } });
+      const guestOff = await call('PATCH', '/api/roles/guest', { cookie: owner, body: { 'module.todo.view': false } });
+      assert.equal(guestOff.status, 200, guestOff.text);
+      try {
+        for (const [who, m2] of [['nora', await mine(tok.nora)], ['guest', await mine(undefined, `?guest=${encodeURIComponent(guestToken)}`)]]) {
+          assert.ok(m2, `${who} reads the shared answer`);
+          const got = pointers(m2);
+          for (const list of Object.values(got)) assert.ok(!list.includes('t1'), `${who}: the task's pointer reached them: ${JSON.stringify(got)}`);
+          assert.deepEqual([got.used, got.read], [['n1'], ['n1']], `${who}: the note they can open stays`);
+          assert.ok(!JSON.stringify(m2.numbered).includes('t1') && !JSON.stringify(m2).includes('"t1"'), `${who}: no t1 anywhere`);
+          assert.equal(m2.numbered.length, r.json.numbered.length, `${who}: [n] keeps its place`);
+          assert.equal(m2.text, 'Booked [1] and written up [2].');
+        }
+        const own = pointers(await mine(tok.rae));
+        assert.ok(own.numbered.includes('t1') && own.used.includes('t1') && own.read.includes('t1'), `the asker keeps all: ${JSON.stringify(own)}`);
+        assert.deepEqual(r.json.used.map((x) => x.id).sort(), own.used.slice().sort());
+      } finally {
+        await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.todo.view': true } });
+        await call('PATCH', '/api/roles/guest', { cookie: owner, body: { 'module.todo.view': true } });
+      }
+    });
+
     await test('server: a compatible service refusing tools: asked again once without them, remembered, said in the record', async () => {
       fake.clear();
       fake.refuseTools = true;
@@ -740,6 +856,72 @@ try {
     });
   } finally {
     child.kill('SIGTERM');
+  }
+
+  // --- a hosted install: the month's AI calls -----------------------------------------------------------------------------
+  // A question that failed after a round was paid is one call against the environment's month; one refused before any round is none.
+  const hostedDir = tmp('hosted');
+  const hostedOut = { text: '' };
+  const hosted = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], { cwd: ROOT, env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: hostedDir, BASE_DOMAIN: 'localhost', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'host-password-1', AI_ALLOW_HTTP: '1', AI_ALLOW_PRIVATE_ADDRESSES: '1', TZ: 'UTC' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  hosted.stdout.on('data', (d) => { hostedOut.text += d; });
+  hosted.stderr.on('data', (d) => { hostedOut.text += d; });
+  try {
+    const port = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { hosted.kill(); reject(new Error(`the hosted server did not start:\n${hostedOut.text}`)); }, 25000);
+      const look = () => { const m = /listening on :(\d+)/.exec(hostedOut.text); if (m) { clearTimeout(timer); resolve(Number(m[1])); } };
+      hosted.stdout.on('data', look);
+      hosted.stderr.on('data', look);
+      hosted.once('exit', (code) => { clearTimeout(timer); reject(new Error(`the hosted server stopped (${code}):\n${hostedOut.text}`)); });
+    });
+    // Node's http, since fetch will not send a Host header of its own.
+    const hcall = (host, method, urlPath, { body, cookie } = {}) => new Promise((resolve, reject) => {
+      const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+      const headers = { host: `${host}.localhost:${port}`, accept: 'application/json' };
+      if (payload) { headers['content-type'] = 'application/json'; headers['content-length'] = payload.length; }
+      if (cookie) headers.cookie = cookie;
+      const req = http.request({ host: '127.0.0.1', port, method, path: urlPath, headers }, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json = null;
+          try { json = JSON.parse(text); } catch { /* not JSON */ }
+          resolve({ status: res.statusCode, json, text, cookie: [].concat(res.headers['set-cookie'] || []).map((c) => c.split(';')[0]).join('; ') });
+        });
+      });
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    });
+    const hostLogin = await hcall('admin', 'POST', '/api/host/login', { body: { login: 'host', password: 'host-password-1' } });
+    const made = await hcall('admin', 'POST', '/api/host/environments', { cookie: hostLogin.cookie, body: { slug: 'acme', name: 'Acme', owner: { login: 'owner', password: 'owner-password-1' } } });
+    assert.equal(made.status, 201, made.text);
+    const ownerCookie = (await hcall('acme', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } })).cookie;
+    const saved = await hcall('acme', 'PUT', '/api/ai', { cookie: ownerCookie, body: { source: 'custom', provider: 'compatible', address: `${fake.url}/v1`, model: 'fake-1', key: '', enabled: true } });
+    assert.equal(saved.status, 200, saved.text);
+    const hspace = (await hcall('acme', 'POST', '/api/spaces', { cookie: ownerCookie, body: { name: 'Athens', members: [] } })).json.space;
+    const calls = async () => (await hcall('acme', 'GET', '/api/environment', { cookie: ownerCookie })).json.usage.aiCallsThisMonth;
+    const hask = (question) => hcall('acme', 'POST', `/api/spaces/${hspace.id}/ai`, { cookie: ownerCookie, body: { question } });
+
+    await test('hosted: a question counts as one call when it succeeds, and once when it fails after a round was paid; not when nothing was paid', async () => {
+      assert.equal(await calls(), 0);
+      fake.clear();
+      let r = await hask('First question');
+      assert.equal(r.status, 200, r.text);
+      assert.equal(await calls(), 1, 'a success');
+      fake.clear();
+      fake.next({ tools: [search({ words: 'ferry' })] }).next({ status: 500 });
+      r = await hask('Second question');
+      assert.deepEqual([r.status, r.json.error], [502, 'The AI service had a problem. Try again in a moment.']);
+      assert.equal(await calls(), 2, 'a failure after a paid round counts once');
+      fake.clear();
+      fake.next({ status: 500 });
+      r = await hask('Third question');
+      assert.equal(r.status, 502, r.text);
+      assert.equal(await calls(), 2, 'a failure before any round was paid does not count');
+    });
+  } finally {
+    hosted.kill('SIGTERM');
   }
 } finally {
   await fake.close();

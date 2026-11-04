@@ -4880,11 +4880,45 @@ function liveStreamKeys(req, who) {
   return [[`${slug}|guest|${token}|${req.ip || 'unknown'}`, liveStreamsPerGuestAddress], [`${slug}|link|${token}`, liveStreamsPerGuestLink]];
 }
 
+// A shared AI answer as someone other than its asker may read it: the pointers it keeps (`numbered`, `used`, what was attached,
+// what the AI looked up, each object's sources) only to objects `canOpen` says this reader can open -- the page's own rule
+// (POST /api/objects/resolve). `numbered` keeps its places (a citation [n] is numbered[n - 1]); one the reader can't open
+// is null there, and left out of the lists. Anything else is returned as it is.
+function aiAnswerForReader(m, canOpen) {
+  if (!m || m.kind !== 'ai') return m;
+  const keep = (list) => (Array.isArray(list) ? list.filter((r) => r && canOpen(r)) : list);
+  const out = { ...m };
+  if (Array.isArray(m.numbered)) out.numbered = m.numbered.map((r) => (r && canOpen(r) ? r : null));
+  if (Array.isArray(m.used)) out.used = keep(m.used);
+  if (Array.isArray(m.summaries)) out.summaries = m.summaries.map((c) => (c && Array.isArray(c.sources) ? { ...c, sources: keep(c.sources) } : c));
+  if (m.sent && typeof m.sent === 'object') {
+    out.sent = { ...m.sent };
+    if (Array.isArray(m.sent.attached)) out.sent.attached = keep(m.sent.attached);
+    if (m.sent.lookup && typeof m.sent.lookup === 'object') out.sent.lookup = { ...m.sent.lookup, ...(Array.isArray(m.sent.lookup.read) ? { read: keep(m.sent.lookup.read) } : {}) };
+  }
+  return out;
+}
+// Whether `who` can open an object: resolved as the page resolves it (a gone one, or one the reader's role can't read, is not).
+function readerCanOpen(who) {
+  const memo = new Map();
+  return (ref) => {
+    const key = objectKey(ref);
+    if (!memo.has(key)) {
+      memo.set(key, !refAnswer(() => resolveRef(who, ref, null, { skipConsumer: true })).error);
+    }
+    return memo.get(key);
+  };
+}
+
 app.get('/api/spaces/:id/chat', (req, res) => {
   const found = chatSpaceFor(req, res, 'chatRead');
   if (!found) return;
   // Public messages, and the caller's own private ones (plan-chat-model.md); a guest reads public messages only.
-  res.json({ messages: chatHistory.list(found.space.id, found.who.user ? found.who.user.key : null), clearedAt: chatHistory.clearedAt(found.space.id) });
+  const me = found.who.user ? found.who.user.key : null;
+  const canOpen = readerCanOpen(found.who);
+  // A shared AI answer keeps the pointers of the objects it used; someone other than its asker gets those they can open.
+  const messages = chatHistory.list(found.space.id, me).map((m) => (m.kind === 'ai' && m.by !== me ? aiAnswerForReader(m, canOpen) : m));
+  res.json({ messages, clearedAt: chatHistory.clearedAt(found.space.id) });
 });
 
 // A server-sent stream (the live one): the caps, the headers, the ping, the access asked again, and the counts given
@@ -5309,7 +5343,7 @@ app.patch('/api/spaces/:id/chat/:messageId', (req, res) => {
   if (!out) return res.status(404).json({ error: 'no such message' });
   if (out.changed) {
     tellChat(found.space.id, visibility === 'public'
-      ? { type: 'chat-visibility', id: out.message.id, visibility, message: out.message }
+      ? { type: 'chat-visibility', id: out.message.id, visibility, message: aiAnswerForReader(out.message, () => false) } // one object for every reader: no pointers; a page reads them (the ones it may open) from GET /chat
       : { type: 'chat-visibility', id: out.message.id, visibility });
   }
   res.json({ message: out.message });
@@ -5862,8 +5896,10 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
     res.json({ text: out.text, summaries, used, numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
-    // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
+    // Failed before the service did any work, or on this server's side (not an AiError): it does not count. A question that
+    // failed after a round was paid (refund false) used the service, so it counts against the month's calls, once.
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
+    else countAiCall();
     sendAiError(err, res);
   }
 });
