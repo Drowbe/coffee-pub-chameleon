@@ -44,6 +44,6 @@
   .sh-gate .btn { min-height: 44px; }
 }
 @media (pointer: coarse), (max-width: 640px) {
-  .sh-vbar .btn, .sh-vbar .sdk-icon-btn { min-height: 44px; }
+  .sh-vbar .btn, .sh-vbar .sdk-icon-btn, .sh-viewer :is(.fv-zoombar, .fv-pdfbar, .fv-pdf-search) :is(.btn, .sdk-icon-btn) { --btn-h: 44px; }
   .sh-gate input { font-size: var(--text-16); }
 }
