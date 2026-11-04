@@ -200,9 +200,9 @@ class ModuleHolds {
     const file = path.join(this.dir, id, 'trash', name);
     try {
       fs.renameSync(file, `${file}.bad`);
-      this.log(`A held clear of ${id} (${name}) could not be read, so it was set aside as ${name}.bad. What it took does not come back, and any files it named are left where they are.`);
+      this.log(`A held clear of ${id} (${name}) could not be read, so it was renamed ${name}.bad. What it took does not come back, and any files it named are left where they are.`);
     } catch (err) {
-      this.log(`A held clear of ${id} (${name}) could not be read or set aside: ${err.message}`);
+      this.log(`A held clear of ${id} (${name}) could not be read or renamed: ${err.message}`);
     }
   }
 
