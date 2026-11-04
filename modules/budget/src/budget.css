@@ -73,6 +73,13 @@
 .amount { font-size: var(--text-14); font-weight: var(--weight-strong); white-space: nowrap; }
 .planned { color: var(--text-muted); font-size: var(--text-11); white-space: nowrap; }
 .paid-mark { color: var(--ok); }
+/* A narrow list (Budget docked in a thin column): the amounts go under the title, so the title keeps the row's width
+   instead of breaking a letter per line beside them. */
+#view-costs { container-type: inline-size; }
+@container (max-width: 319px) {
+  .cost-main { grid-template-columns: 28px minmax(0, 1fr); }
+  .cost-main .amounts { grid-column: 2; justify-items: start; }
+}
 
 /* ---- settle up ---- */
 .payment { font-size: var(--text-14); }

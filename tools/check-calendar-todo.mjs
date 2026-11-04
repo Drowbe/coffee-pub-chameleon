@@ -13,6 +13,8 @@
 //   6. The feedback fixes: the chosen day's focus ring reads 3 to 1 against the page and its fill, in each mode; today wears a ring in
 //      each mode; the Undo notice is inside the To-do's box and off the status bar; a guest's copy wears its icon; the Filters
 //      list has no Lobby; Polls and the To-do count alike; the notes' words; the widget names a copy's zone.
+//   7. The Calendar's page in a frame (a docked Calendar), in the page and in a sandbox frame, stacked (880, 600) and beside (1280):
+//      Week, Day and Month keep their height, two samples 2 s apart within 1 px (the week once grew without end).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -268,6 +270,40 @@ async function main() {
           }
           ok(Boolean(flight), 'guest: the Itinerary copy is on the month');
           ok(Boolean(flight && flight.icon), "guest: the copy wears its module's icon", flight);
+        } finally { await tab.close(); }
+      }
+    }
+
+    // ---- 7. the Calendar's page in a frame (a docked Calendar on a space's canvas): Week, Day and Month keep their height. Where the
+    //      page stacks the panel under the calendar (900 px and narrower) it sizes the calendar from the height the calendar reports;
+    //      a week that fills its given height then reported that height, plus a little, every frame, and grew without end (Thomas,
+    //      2026-11-04). Two samples 2 s apart must agree within 1 px, in the page and in a sandbox frame, stacked and beside.
+    for (const runMode of ['page', 'sandbox']) {
+      if (runMode === 'sandbox') {
+        const r = await fetch(`${S.base}/api/modules/calendar`, { method: 'PATCH', headers: { cookie: admin, 'content-type': 'application/json' }, body: JSON.stringify({ runMode: 'sandbox' }) });
+        ok(r.ok, 'the Calendar can be set to run in a sandbox frame', r.status);
+      }
+      for (const [w, mode] of [[880, 'dark'], [600, 'light'], [1280, runMode === 'page' ? 'light' : 'dark']]) {
+        const name = `${runMode}, ${w} px frame, ${mode}`;
+        const tab = await open(w, mode, '/healthz');
+        try {
+          await tab.eval(`(async () => { const f = document.createElement('iframe'); f.id = 'cal'; f.src = ${JSON.stringify(space)}; f.style.cssText = 'width:${w}px;height:1300px;border:0'; document.body.style.margin = '0'; document.body.append(f); await new Promise((r) => f.addEventListener('load', r)); return 1; })()`);
+          // The calendar part's holder (its shadow root's host in the page, its frame in a sandbox) is as tall as the page lets it be.
+          const SIZE = `(() => { const d = document.getElementById('cal').contentDocument; const h = d.querySelector('#dest-main .dest-part-root, #dest-main .dest-part-frame'); if (!h) return null; const r = h.shadowRoot; const g = r && r.querySelector('.body > .sdk-cal-grid, .body > .dayview'); return { part: h.offsetHeight, grid: g ? g.getBoundingClientRect().height : null, frame: h.tagName === 'IFRAME', week: Boolean(d.querySelector('#dest-frame .mf-toolbar [data-key="switch:dest-view:week"]')) }; })()`;
+          let size = null;
+          for (let i = 0; i < 120 && !(size && size.week && size.part > 0); i++) { await sleep(250); size = await tab.eval(SIZE).catch(() => null); }
+          ok(Boolean(size && size.week), `${name}: the Calendar's page shows its Week switch`, size);
+          if (!size || !size.week) continue;
+          ok(size.frame === (runMode === 'sandbox'), `${name}: the Calendar runs ${runMode === 'sandbox' ? 'in a sandbox frame' : 'in the page'}`, size);
+          for (const [view, settle] of [['week', 5000], ['day', 2000], ['month', 2000]]) {
+            await tab.eval(`(() => { document.getElementById('cal').contentDocument.querySelector('#dest-frame .mf-toolbar [data-key="switch:dest-view:${view}"]').click(); return 1; })()`);
+            await sleep(settle);
+            const a = await tab.eval(SIZE);
+            await sleep(2000);
+            const b = await tab.eval(SIZE);
+            ok(Math.abs(a.part - b.part) <= 1, `${name}: ${view}: the calendar keeps its height (2 s apart)`, `${a.part} then ${b.part} px`);
+            if (runMode === 'page') ok(a.grid !== null && Math.abs(a.grid - b.grid) <= 1, `${name}: ${view}: the ${view === 'day' ? 'day' : view} grid keeps its height (2 s apart)`, `${a.grid} then ${b.grid} px`);
+          }
         } finally { await tab.close(); }
       }
     }
