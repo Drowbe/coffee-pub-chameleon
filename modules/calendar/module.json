@@ -1,7 +1,7 @@
 {
   "id": "calendar",
   "name": "Calendar",
-  "version": "1.24.35",
+  "version": "1.24.36",
   "icon": "calendar-days",
   "color": "red",
   "description": "Sessions and events for the whole {environment} and for each {space}, with reminders.",
@@ -109,6 +109,8 @@
       {
         "name": "createEvent",
         "label": "Add it to the calendar",
+        "description": "Add a new event to the calendar.",
+        "effect": "write",
         "input": {
           "title": "string",
           "date": "date?",

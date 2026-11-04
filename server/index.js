@@ -7898,6 +7898,36 @@ app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage:
 // The AI usage view (plan-ai-integration.md, "Observability"), for owners: this month's tokens and calls by template, person
 // and space, refusals by reason, errors and cut-short answers, and the last 50 call records (never any content).
 app.get('/api/ai/usage', requireOwner, (_req, res) => res.json(ai.usageReport()));
+// The write tools an AI may propose in one space for the person asking (plan-ai-integration.md, slice 2 step 12): the
+// catalog made from the enabled manifests (server/action-catalog.js), narrowed to what this person could ask for there now --
+// the AI rule for Chat's /ai (decision 16), the module on in the space and theirs to change (its write access), and the
+// module not kept out by What AI may see. Proposing and Keep are step 13; this only lists.
+const actionCatalog = require('./action-catalog');
+const { moduleAllowed: aiModuleAllowed } = require('./ai-policy');
+app.get('/api/ai/catalog', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const spaceId = typeof req.query.space === 'string' ? req.query.space : '';
+  if (!spaceId) return res.status(400).json({ error: `Say which ${word('space')} the tools are for.` });
+  const space = store.spaceById(spaceId);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  const allowed = aiPolicy.check(who, space, 'chat');
+  if (!allowed.ok) return res.status(allowed.status).json({ error: allowed.why });
+  const sees = aiPolicy.sees(space);
+  const enabled = modules.enabledAll().map(({ manifest }) => manifest);
+  const names = new Map(enabled.map((m) => [m.id, shownModule(m).name || m.name]));
+  const mayChange = new Map();
+  const may = (id) => {
+    if (!mayChange.has(id)) {
+      try { busPlace(who, id, 'space', space.id, 'write'); mayChange.set(id, true); } catch (err) { if (!err.status) throw err; mayChange.set(id, false); }
+    }
+    return mayChange.get(id);
+  };
+  const tools = actionCatalog.buildCatalog(enabled).tools
+    .filter((t) => aiModuleAllowed(sees, t.module) && may(t.module))
+    .map((t) => ({ name: t.name, module: t.module, moduleName: names.get(t.module), action: t.action, label: t.label, description: t.description, effect: t.effect, schema: t.schema }));
+  res.json({ tools });
+});
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
     await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });

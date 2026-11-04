@@ -20,6 +20,7 @@ const { DESTINATION_IDS, DESTINATION_PARTS } = require('./destinations');
 const objectFormat = require('./object-format');
 const { scanBuiltPage } = require('./module-layout');
 const { cleanGuards, unreadableGuards } = require('./module-guards');
+const { cleanActionAi } = require('./action-catalog');
 
 // The text a person reads from a manifest, which may name levels by {space}-style placeholders (server/words.js's fill):
 // its description, the dashboard widget's title, its permissions' labels, its settings' labels and help (and their
@@ -40,7 +41,7 @@ function manifestTexts(m) {
     for (const o of d.options || []) { at(o, 'label'); at(o, 'help'); }
   }
   for (const e of m.events?.publishes || []) at(e, 'label');
-  for (const a of m.actions?.provides || []) at(a, 'label');
+  for (const a of m.actions?.provides || []) { at(a, 'label'); at(a, 'description'); }
   for (const k of m.refs?.produces || []) at(k, 'name');
   return out;
 }
@@ -553,7 +554,9 @@ function cleanBus(rawEvents, rawActions, id, permissionKeys = []) {
     // their own open page of the module takes the request, which waits until then; asking still needs write access.
     if (p.askerOnly !== undefined && typeof p.askerOnly !== 'boolean') throw new ModuleError(`module.json: action "${name}" askerOnly must be true or false`);
     if (p.askerOnly && p.local === true) throw new ModuleError(`module.json: action "${name}" is local, which is already for the asker only`);
-    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(p.askerOnly ? { askerOnly: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}) });
+    // What the AI is told of it and what it changes (server/action-catalog.js): `description`, `effect` and `ai`.
+    const told = cleanActionAi(p, name, p.local === true, (message) => { throw new ModuleError(message); });
+    actions.provides.push({ name, label: String(p.label ?? '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 60) || name, input, ...(p.local === true ? { local: true } : {}), ...(p.askerOnly ? { askerOnly: true } : {}), ...(needs.length ? { needs } : {}), ...(takes ? { takes } : {}), ...told });
   }
   for (const c of Array.isArray(rawActions?.uses) ? rawActions.uses.slice(0, 20) : []) {
     if (typeof c !== 'string' || (c !== '*' && !BUS_USE_RE.test(c))) throw new ModuleError(`module.json: actions.uses "${c}" must be "*" or look like "module:action"`);

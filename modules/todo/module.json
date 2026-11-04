@@ -1,7 +1,7 @@
 {
   "id": "todo",
   "name": "To-do",
-  "version": "1.15.25",
+  "version": "1.15.26",
   "icon": "list-check",
   "color": "green",
   "description": "A shared to-do list for the whole {environment} and for each {space}, with due dates and reminders.",
@@ -71,6 +71,8 @@
       {
         "name": "createTask",
         "label": "Add a task",
+        "description": "Add a new task.",
+        "effect": "write",
         "input": {
           "title": "string",
           "notes": "text?",
@@ -85,6 +87,8 @@
       {
         "name": "linkTask",
         "label": "Link this task to it",
+        "description": "Link a task to another {object} it is about, so each shows the other.",
+        "effect": "write",
         "input": {
           "task": "ref:todo:task",
           "target": "ref"
@@ -93,6 +97,8 @@
       {
         "name": "setTaskDue",
         "label": "Set this task's due date to its date",
+        "description": "Set a task's due date.",
+        "effect": "write",
         "input": {
           "task": "ref:todo:task",
           "date": "date"
