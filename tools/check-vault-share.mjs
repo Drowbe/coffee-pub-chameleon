@@ -423,7 +423,29 @@ try {
   ok(!(await send(S, 'GET', shares(trip.id), { cookie: people.mo.token })).json.shares.some((s) => s.id === single.json.share.id), 'and is gone from the list');
   same((await pub(T, '', { ip: '10.0.7.2' })).json.files.map((f) => f.name), ['beach.png', 'notes.md', 'walk.mp4'], 'a link that had it keeps the rest');
   // Turn off.
-  same((await send(S, 'DELETE', shares(trip.id, sid), { cookie: people.max.token })).json, { ok: true }, 'anyone with share may turn a link off');
+  // Who may turn a link off: its maker, an owner (the admin too) or a moderator of the space; another member with share may not.
+  const REFUSED_OFF = { error: 'Only the person who made this share link, an owner or a moderator of this space can turn it off.' };
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': true })).status, 200, 'Roles: members may share (for the turn-off cases)');
+  const offOf = async (maker, who, label, allowed) => {
+    const l = await make(maker, { name: `Off ${label}`, files: [pic.id] });
+    same(l.status, 201, `${label}: a link is made`);
+    const row = (await send(S, 'GET', shares(trip.id), { cookie: who })).json.shares.find((x) => x.id === l.json.share.id);
+    same(row.canTurnOff, allowed, `${label}: the list says canTurnOff ${allowed}`);
+    const r = await send(S, 'DELETE', shares(trip.id, l.json.share.id), { cookie: who });
+    if (allowed) same(r.json, { ok: true }, `${label}: turned off`);
+    else {
+      same([r.status, r.json], [403, REFUSED_OFF], `${label}: 403 with a plain sentence`);
+      same((await pub(l.json.token, '', { ip: '10.0.7.4' })).status, 200, `${label}: the link still opens`);
+      same((await send(S, 'DELETE', shares(trip.id, l.json.share.id), { cookie: people.mo.token })).json, { ok: true }, `${label}: a moderator then ends it`);
+    }
+  };
+  await offOf(people.pat.token, people.pat.token, 'the maker (a member)', true);
+  await offOf(people.pat.token, people.ola.token, 'an owner', true);
+  await offOf(people.pat.token, admin, 'the admin', true);
+  await offOf(people.pat.token, people.max.token, 'a moderator', true);
+  await offOf(people.mo.token, people.pat.token, 'another member with share', false);
+  same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': false })).status, 200, 'Roles back');
+  same((await send(S, 'DELETE', shares(trip.id, sid), { cookie: people.max.token })).json, { ok: true }, 'a moderator who is not its maker turns it off');
   same((await pub(T, '', { ip: '10.0.7.3' })).json, ENDED, 'a turned-off link answers as ended');
   same((await pub(T, `/files/${pic.id}/content`, { ip: '10.0.7.3' })).json, ENDED, 'and so do its files');
   same((await send(S, 'DELETE', shares(trip.id, sid), { cookie: people.max.token })).json, { error: 'There is no such share link.' }, 'turned off twice: 404');
