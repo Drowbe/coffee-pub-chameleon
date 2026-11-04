@@ -1,7 +1,7 @@
 {
   "id": "places",
   "name": "Places",
-  "version": "0.12.20",
+  "version": "0.12.21",
   "icon": "location-dot",
   "color": "orange",
   "description": "The places your {space} cares about: where to stay, where to eat, what to see. Other {modules} link to them, and a place with a position shows on the map.",
@@ -58,6 +58,8 @@
       {
         "name": "addPlace",
         "label": "Save it as a place",
+        "description": "Save a new place, with its position or address.",
+        "effect": "write",
         "needs": [
           "place"
         ],
@@ -84,6 +86,8 @@
       {
         "name": "setPlacePoint",
         "label": "Give a place a position",
+        "description": "Give a saved place a position on the map, as a latitude and longitude.",
+        "effect": "write",
         "input": {
           "place": "ref:places:place",
           "lat": "number",

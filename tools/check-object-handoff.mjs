@@ -151,7 +151,7 @@ await test('the bundled Research, To-do, Calendar and Polls declare what they ta
   assert.equal(providesOf(research, 'saveNote').input.object, 'object?', 'the flat fields still work');
   assert.deepEqual(providesOf(research, 'saveLink').takes, [{ kinds: ['link'], as: 'a link' }]);
   assert.equal(providesOf(research, 'saveLink').input.url, 'text', 'Chat\'s link keeper is found by its url, as before');
-  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, askerOnly: true, takes: [{ kinds: ['image'], as: 'an image' }] });
+  assert.deepEqual(providesOf(research, 'savePhoto'), { name: 'savePhoto', label: 'Save this picture to research', input: { object: 'object' }, askerOnly: true, takes: [{ kinds: ['image'], as: 'an image' }], effect: 'write' });
   // `askerOnly` (QA round 2, failure 1): true or false, and not with `local`, which is already for the asker only.
   const withAction = (a) => cleanManifest({ id: 'asker', name: 'Asker', version: '1.0.0', scope: ['space'], surfaces: { page: { entry: 'page.html' }, canvas: { entry: 'page.html' } }, actions: { provides: [{ name: 'make', input: {}, ...a }] } }, new Set(['page.html']));
   assert.equal(withAction({ askerOnly: true }).actions.provides[0].askerOnly, true);

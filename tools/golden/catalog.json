@@ -1,0 +1,132 @@
+[
+  {
+    "name": "places__setPlacePoint",
+    "module": "places",
+    "action": "setPlacePoint",
+    "label": "Give a place a position",
+    "description": "Give a saved place a position on the map, as a latitude and longitude.",
+    "effect": "write",
+    "input": {
+      "place": "ref:places:place",
+      "lat": "number",
+      "lng": "number"
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "place": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number n of a place shown in this question."
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "place",
+        "lat",
+        "lng"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "todo__linkTask",
+    "module": "todo",
+    "action": "linkTask",
+    "label": "Link this task to it",
+    "description": "Link a task to another {object} it is about, so each shows the other.",
+    "effect": "write",
+    "input": {
+      "task": "ref:todo:task",
+      "target": "ref"
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number n of a task shown in this question."
+        },
+        "target": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number n of an object shown in this question."
+        }
+      },
+      "required": [
+        "task",
+        "target"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "todo__setTaskDue",
+    "module": "todo",
+    "action": "setTaskDue",
+    "label": "Set this task's due date to its date",
+    "description": "Set a task's due date.",
+    "effect": "write",
+    "input": {
+      "task": "ref:todo:task",
+      "date": "date"
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number n of a task shown in this question."
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "A date, YYYY-MM-DD."
+        }
+      },
+      "required": [
+        "task",
+        "date"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "travel__addToDay",
+    "module": "travel",
+    "action": "addToDay",
+    "label": "Put it on the trip's itinerary",
+    "description": "Put {an object} that already exists on the trip's itinerary, on the day given if there is one.",
+    "effect": "write",
+    "input": {
+      "object": "ref",
+      "date": "date?"
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "object": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number n of an object shown in this question."
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "A date, YYYY-MM-DD."
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "additionalProperties": false
+    }
+  }
+]
