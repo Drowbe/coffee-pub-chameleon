@@ -29,7 +29,15 @@
  *      focus returns to the control that opened each, never the page; a sheet's title is at least the body's size; the space's name is not cut in the
  *      call; every bar and strip control is 56 by 56 or more; a place's count is gone while it is open; the Prototype's Switcher starts at Both and the
  *      two frames share the pins.
- * Usage: node tools/check-prototype-page.mjs
+ *   6. Maps (plan-map-options.md, step 0; Thomas, 2026-11-04): the Prototype's MAP_MIN (prototype-maps.js) is the module's
+ *      (modules/maps/src/maps-lib-d-style.js). On the map screen (map-screen.html), each map theme (Light, Dark) under a dark and a light app
+ *      theme, in two shipped themes: the colours as drawn are the same whatever the app theme, the module's own guardMap moves none of them, and
+ *      every name, road and fill holds MAP_MIN; with the pins as recommended (edge=map, the section's question 2) a pin's edge or ring and
+ *      the selected pin's edge or fill are 3:1 on the land, a pin's name 4.5:1 on its chip, the search results 4.5:1. Map options is in the "..." menu and opens the panel with the focus on the chosen theme; choosing Dark redraws the map; Escape
+ *      closes it and the focus is back on "..."; a click outside closes it. At a real 390 viewport every row of the panel and its close button
+ *      is a 44px tap and the panel is inside the screen. A picture map shows the one line and no choices. The section is on the Prototype page,
+ *      with its jump list, and its first drawing loads. --skip-maps leaves this part out; --maps-only runs only this part.
+ * Usage: node tools/check-prototype-page.mjs [--skip-maps | --maps-only]
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -93,6 +101,7 @@ async function main() {
       return { tab, send, wheel };
     };
     const y = (tab) => tab.eval('Math.round(window.scrollY)');
+    if (process.argv.includes('--maps-only')) { await checkMaps(browser, server); return true; } // reported below, after the browser is closed
 
     for (const size of [390, 500, 700, 1280]) {
       for (const mode of ['light', 'dark']) {
@@ -424,6 +433,7 @@ async function main() {
         say(`File windows at ${size}${size > 640 ? " (coarse pointer)" : ""}: ${r.buttons} buttons measured, ${new Set(r.small).size} short`);
       } finally { await tab.close(); }
     }
+    if (!process.argv.includes('--skip-maps')) await checkMaps(browser, server);
   } finally {
     if (browser) { try { browser.child.kill('SIGTERM'); } catch { /* gone */ } }
     if (server) await stopServer(server);
@@ -432,4 +442,142 @@ async function main() {
   if (failures.length) { console.error(`check-prototype-page: ${failures.length} failure(s)`); process.exit(1); }
   say('OK');
 }
-main().catch((err) => { console.error(`check-prototype-page: ${err.stack || err.message}`); process.exit(1); });
+
+// ---- 6. Maps: the map themes and Map options (plan-map-options.md, step 0) ----
+async function checkMaps(browser, server) {
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+  const lib = new Function(`${read('modules/maps/src/maps-lib-d-style.js')}\nreturn { guardMap, MAP_MIN };`)();
+  const copy = read('public/design-system/prototype-maps.js').match(/export const MAP_MIN = (\{[^}]*\});/);
+  const theirs = copy ? Function(`return (${copy[1]});`)() : null;
+  if (!theirs) fail('maps: no MAP_MIN copy in public/design-system/prototype-maps.js');
+  else if (JSON.stringify(theirs) !== JSON.stringify(lib.MAP_MIN)) fail(`maps: the Prototype's MAP_MIN (${JSON.stringify(theirs)}) is not the module's (${JSON.stringify(lib.MAP_MIN)})`);
+  const screen = async (w, hgt, query) => {
+    const tab = new Tab(browser.cdp, {});
+    await tab.open(w, new URLSearchParams(query).get('mode') === 'light' ? 'light' : 'dark'); // the screenshot prelude holds the page to this mode
+    const send = (m, p) => browser.cdp.send(m, p, tab.sid);
+    const errors = [];
+    const hook = (m) => { if (m.sessionId === tab.sid && (m.method === 'Runtime.exceptionThrown' || (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error'))) errors.push(JSON.stringify(m.params).slice(0, 200)); };
+    browser.cdp.listeners.push(hook);
+    await send('Emulation.setDeviceMetricsOverride', { width: w, height: hgt, deviceScaleFactor: 1, mobile: false });
+    await send('Page.navigate', { url: `${server.base}/design-system/map-screen.html?${query}` });
+    let ok = false;
+    for (let i = 0; i < 100 && !ok; i += 1) { ok = await tab.eval('document.documentElement.dataset.ready === "1"').catch(() => false); if (!ok) await sleep(150); }
+    await sleep(300);
+    const done = async () => { browser.cdp.listeners = browser.cdp.listeners.filter((f) => f !== hook); await tab.close(); };
+    return { tab, send, ok, errors, done };
+  };
+  const key = (k) => ({ type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: k === 'Escape' ? 27 : 0 });
+  // b, c: the colours and their numbers
+  const seen = {};
+  for (const theme of ['strong-coffee', 'calming-teal']) {
+    for (const map of ['light', 'dark']) {
+      for (const mode of ['dark', 'light']) {
+        const label = `maps ${map} map, ${theme} ${mode}`;
+        const s = await screen(900, 560, `theme=${theme}&mode=${mode}&map=${map}&scene=map&edge=map`); // the pins as recommended (question 2)
+        try {
+          if (!s.ok) { fail(`${label}: the map screen did not draw`); continue; }
+          for (const e of s.errors) fail(`${label}: an error on the page (${e})`);
+          const m = await s.tab.eval('window.mapMeasure()');
+          if (m.map !== map) fail(`${label}: the screen drew the ${m.map} map`);
+          const sig = JSON.stringify(m.colours);
+          if (seen[map] && seen[map] !== sig) fail(`${label}: the map's colours differ from another app theme's (a map theme is the same under every app theme)`);
+          seen[map] = seen[map] || sig;
+          const out = lib.guardMap(m.colours, m.tok);
+          const moved = Object.keys(m.colours).filter((k) => JSON.stringify(m.colours[k]) !== JSON.stringify(out[k]));
+          if (moved.length) fail(`${label}: the clamp (guardMap) moves ${moved.join(', ')}; a shipped map theme holds MAP_MIN on its own`);
+          const r = m.ratios; const N = lib.MAP_MIN;
+          for (const [k, need] of [['label', N.label], ['labelWater', N.labelWater], ['city', N.label], ['cityWater', N.labelWater], ['region', N.label], ['regionWater', N.labelWater], ['roadMinor', N.roadMinor], ['roadMedium', N.roadMedium], ['roadMajor', N.roadMajor], ['water', N.water], ['park', N.park], ['wood', N.wood], ['building', N.building], ['boundary', N.boundary], ['results', 4.5]]) {
+            if (!(r[k] >= need)) fail(`${label}: ${k} is ${r[k].toFixed(2)}:1 (needs ${need})`);
+          }
+          for (const [name, p] of [['a pin', m.pin], ['the selected pin', m.selected]]) {
+            if (!p) { fail(`${label}: no ${name} to measure`); continue; }
+            if (!(Math.max(p.edge, p.ring, name === 'a pin' ? 0 : p.fill) >= 3)) fail(`${label}: ${name}'s edge (${p.edge.toFixed(2)}) and ring (${p.ring.toFixed(2)}) are under 3:1 on the land`);
+            if (!(p.name >= 4.5)) fail(`${label}: ${name}'s name is ${p.name.toFixed(2)}:1 on its chip`);
+          }
+          if (theme === 'strong-coffee') say(`Maps ${map} map, ${mode} app theme: names ${r.label.toFixed(2)} on land, ${r.labelWater.toFixed(2)} on water; towns ${r.city.toFixed(2)}/${r.cityWater.toFixed(2)}; regions ${r.region.toFixed(2)}/${r.regionWater.toFixed(2)}; roads ${r.roadMinor.toFixed(2)}, ${r.roadMedium.toFixed(2)}, ${r.roadMajor.toFixed(2)}; water ${r.water.toFixed(2)}; pin edge ${m.pin.edge.toFixed(2)}, ring ${m.pin.ring.toFixed(2)}; selected pin edge ${m.selected.edge.toFixed(2)}, fill ${m.selected.fill.toFixed(2)}; results ${r.results.toFixed(2)}; clamp moves ${moved.length}`);
+        } finally { await s.done(); }
+      }
+    }
+  }
+  // d, e, f: the menu, the panel, the keyboard
+  {
+    const s = await screen(900, 560, 'theme=strong-coffee&mode=dark&map=default&scene=map');
+    try {
+      if (!s.ok) fail('maps: the map screen did not draw for the menu');
+      else {
+        await s.tab.click('.mf-titlebar-menu');
+        await sleep(300);
+        const items = await s.tab.eval(`[...document.querySelectorAll('.host-menu .host-menu-item')].map((b) => b.textContent.trim())`);
+        if (items[0] !== 'Map options') fail(`maps: the "..." menu does not start with Map options (${items.join(', ')})`);
+        await s.tab.click('.host-menu .host-menu-item', 'Map options');
+        await sleep(300);
+        const st = await s.tab.eval(`(() => { const sr = document.querySelector('.ms-host').shadowRoot; const p = sr.querySelector('.mo-pop'); const a = sr.activeElement; return { open: !!p && !p.hidden, focus: a ? (a.value || a.className) : null, title: p ? p.querySelector('.mo-title').textContent : '', words: p ? [...p.querySelectorAll('.sdk-choice-label')].map((x) => x.textContent) : [] }; })()`);
+        if (!st.open) fail('maps: Map options did not open the panel');
+        if (st.focus !== 'default') fail(`maps: the panel opened with the focus on ${st.focus}, not the chosen theme`);
+        if (st.title !== 'Map options' || st.words.join('|') !== 'Theme default|Light|Dark') fail(`maps: the panel's words are ${st.title}: ${st.words.join(', ')}`);
+        const before = await s.tab.eval('window.mapMeasure().colours.land.join()');
+        await s.tab.click('.ms-host >>> .sdk-choice-row[data-choice="dark"]');
+        await sleep(300);
+        const after = await s.tab.eval(`({ land: window.mapMeasure().colours.land.join(), theme: document.querySelector('.ms-host').shadowRoot.getElementById('map').dataset.mapTheme })`);
+        if (after.theme !== 'dark' || after.land === before) fail(`maps: choosing Dark did not redraw the map (${after.theme}, land ${before} to ${after.land})`);
+        await s.send('Input.dispatchKeyEvent', key('Escape'));
+        await s.send('Input.dispatchKeyEvent', { ...key('Escape'), type: 'keyUp' });
+        await sleep(300);
+        const esc = await s.tab.eval(`({ open: !document.querySelector('.ms-host').shadowRoot.querySelector('.mo-pop').hidden, focus: document.activeElement && document.activeElement.classList.contains('mf-titlebar-menu') })`);
+        if (esc.open) fail('maps: Escape did not close the panel');
+        if (!esc.focus) fail('maps: after Escape the focus is not back on "..."');
+        await s.tab.click('.mf-titlebar-menu'); await sleep(200);
+        await s.tab.click('.host-menu .host-menu-item', 'Map options'); await sleep(300);
+        await s.tab.mouse('mousePressed', 200, 400); await s.tab.mouse('mouseReleased', 200, 400); await sleep(300);
+        if (await s.tab.eval(`!document.querySelector('.ms-host').shadowRoot.querySelector('.mo-pop').hidden`)) fail('maps: a click outside did not close the panel');
+        say(`Maps menu and panel: ${items.join(', ')}; opened with the focus on ${st.focus}; Dark redraws; Escape and a click outside close it`);
+      }
+    } finally { await s.done(); }
+  }
+  // g: 44px taps at a real 390 viewport; h: the picture map
+  for (const [mode, scene] of [['dark', 'options'], ['light', 'later'], ['dark', 'guest']]) {
+    const s = await screen(390, 760, `theme=strong-coffee&mode=${mode}&map=default&scene=${scene}`);
+    try {
+      if (!s.ok) { fail(`maps 390 ${scene}: the screen did not draw`); continue; }
+      const r = await s.tab.eval(`(() => { const sr = document.querySelector('.ms-host').shadowRoot; const p = sr.querySelector('.mo-pop'); const pr = p.getBoundingClientRect(); const short = []; let n = 0;
+        for (const e of p.querySelectorAll('.sdk-choice-row, .mo-close, .mf-switch-btn')) { const b = e.getBoundingClientRect(); if (!b.height) continue; n += 1; const after = parseFloat(getComputedStyle(e, '::after').height) || 0; if (b.height < 43.5 && after < 43.5) short.push((e.textContent.trim() || e.getAttribute('aria-label')) + ' ' + Math.round(b.height)); }
+        return { n, short, left: pr.left, right: pr.right, vw: innerWidth, sw: document.documentElement.scrollWidth }; })()`);
+      if (r.n < 4) fail(`maps 390 ${scene}: only ${r.n} controls in the panel; the check measures the wrong thing`);
+      for (const x of r.short) fail(`maps 390 ${scene}: a control in the panel is under 44px (${x})`);
+      if (r.left < 0 || r.right > r.vw || r.sw > r.vw) fail(`maps 390 ${scene}: the panel or the page reaches past the screen (${Math.round(r.left)} to ${Math.round(r.right)}, page ${r.sw})`);
+      say(`Maps panel at 390 (${scene}, ${mode}): ${r.n} controls, ${r.short.length} short`);
+    } finally { await s.done(); }
+  }
+  {
+    const s = await screen(900, 560, 'theme=strong-coffee&mode=dark&map=default&scene=picture');
+    try {
+      const r = await s.tab.eval(`(() => { const p = document.querySelector('.ms-host').shadowRoot.querySelector('.mo-pop'); return { note: (p.querySelector('.mo-note') || {}).textContent, radios: p.querySelectorAll('input[type=radio]').length }; })()`);
+      if (r.note !== 'A picture map keeps its own colours.' || r.radios) fail(`maps: a picture map's panel shows "${r.note}" and ${r.radios} choices`);
+    } finally { await s.done(); }
+  }
+  // i: the section on the Prototype page
+  {
+    const tab = new Tab(browser.cdp, {});
+    await tab.open(1280, 'dark');
+    try {
+      await browser.cdp.send('Page.navigate', { url: `${server.base}/design-system/prototype.html?theme=strong-coffee&mode=dark&w=700` }, tab.sid);
+      for (let i = 0; i < 100; i += 1) { if (await tab.eval(`!!document.getElementById('pp-maps') && !!document.querySelector('.pp-dock')`).catch(() => false)) break; await sleep(150); }
+      const jumps = await tab.eval(`[...document.querySelectorAll('nav[aria-label="Jump to a part of Maps"] button')].map((b) => b.textContent)`);
+      if (jumps.length < 6) fail(`maps: the section's jump list has ${jumps.length} buttons`);
+      const page = await tab.eval(`[...document.querySelectorAll('nav[aria-label="Jump to a section of the page"] button')].some((b) => b.textContent === 'Maps')`);
+      if (!page) fail('maps: the page\'s jump list has no Maps');
+      await tab.eval(`document.getElementById('mp-themes').scrollIntoView()`);
+      let ready = false;
+      for (let i = 0; i < 100 && !ready; i += 1) { ready = await tab.eval(`(() => { const f = window.mapsSection && window.mapsSection.frames[0]; return !!f && f.ready && !!f.out.querySelector('table'); })()`); if (!ready) await sleep(150); }
+      if (!ready) fail('maps: the first map of the section did not draw its numbers');
+      say(`Maps section: ${jumps.length} parts (${jumps.join(', ')}), the first map drawn with its numbers`);
+    } finally { await tab.close(); }
+  }
+}
+
+main().then((mapsOnly) => {
+  if (!mapsOnly) return;
+  if (failures.length) { console.error(`check-prototype-page: ${failures.length} failure(s)`); process.exit(1); }
+  say('OK (Maps only)');
+}).catch((err) => { console.error(`check-prototype-page: ${err.stack || err.message}`); process.exit(1); });
