@@ -49,6 +49,7 @@ const ics = require('./ics');
 const prompts = require('./prompts');
 const { createAiPolicy } = require('./ai-policy');
 const { createContextBuilder } = require('./ai-context');
+const { createAiTools } = require('./ai-tools');
 // AI_PROMPT_VERSIONS (rollback pins) and AI_LOG_PROMPTS (full prompts in the log), said once at start (plan-ai-integration.md,
 // decision 14). Full prompts are never logged on a hosted install (BASE_DOMAIN): server/ai.js ignores the variable there.
 for (const line of prompts.setPins(process.env)) console.warn(line);
@@ -5768,6 +5769,9 @@ const aiContext = createContextBuilder({
   timelineOf: phaseRule.timelineOf,
   templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
 });
+// The read tools for Chat's /ai and the Assistant view (slice 2, server/ai-tools.js): the same pool as the rollup's, read as
+// the person, every result admitted by the policy with part `lookup`.
+const aiTools = createAiTools({ policy: aiPolicy, listObjects: aiObjectsIn, moduleLinks });
 // The template's words a prompt uses.
 const aiWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space') });
 // What a call record and an answer keep of `sent`: the counts, never the pointers' content.
@@ -5819,7 +5823,9 @@ app.get('/api/spaces/:id/ai', (req, res) => {
 // One question (template ask, purpose chat), with the asker's last turns here and the space's rollup. `refs`: up to 12 of
 // this space's objects (another space's are left out and said to be); `question`: 3 to 1,000 characters, or none with an
 // attached object (the template's default question); `tz`: the asker's time zone. Both kept as the asker's private messages
-// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`.
+// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`. With What AI may see `lookup` on, the AI may
+// look this space's objects up as the asker (slice 2): `sent.lookup` is { searches, read } (read: the objects it read, as
+// pointers, which join `used`), and `numbered` holds the numbers the look-ups gave out too.
 app.post('/api/spaces/:id/ai', async (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
@@ -5841,14 +5847,20 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets() });
+    const inputs = { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() };
+    const toolbox = aiTools.toolbox(who, space, built, { words: aiWords(), contract: template.schema(inputs) });
+    const out = await ai.run('ask', inputs, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets(), toolbox });
     countAiCall();
-    const summaries = aiSummaries(out.summaries, built.numbered);
-    const used = aiPointers(out.used, built.numbered);
+    const numbered = out.numbered || built.numbered;
+    const summaries = aiSummaries(out.summaries, numbered);
+    // The objects the AI read join what it used, once each.
+    const used = [];
+    for (const r of [...aiPointers(out.used, numbered), ...(out.lookup ? out.lookup.read : [])]) if (!used.some((u) => objectKey(u) === objectKey(r))) used.push(r);
+    const sent = out.lookup ? { ...built.sent, lookup: out.lookup } : built.sent;
     const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
-    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, numbered: built.numbered, leftOut: built.leftOut, cut: out.cut });
+    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent, used, numbered, leftOut: built.leftOut, cut: out.cut });
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
-    res.json({ text: out.text, summaries, used, numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
+    res.json({ text: out.text, summaries, used, numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
     // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);

@@ -137,9 +137,9 @@ function refusedSchema(res) {
   return /response_format|json_schema|schema|structured[ _-]?output/i.test(message);
 }
 
-async function send(c, url, headers, body, guard) {
+async function send(c, url, headers, body, guard, timeoutMs = FETCH_MS) {
   try {
-    return await request(url, { method: 'POST', headers, body: JSON.stringify(body), timeoutMs: FETCH_MS, maxBytes: MAX_BODY, guard });
+    return await request(url, { method: 'POST', headers, body: JSON.stringify(body), timeoutMs: Math.max(1, Math.min(FETCH_MS, timeoutMs)), maxBytes: MAX_BODY, guard });
   } catch (err) {
     if (!(err instanceof AiNetError)) throw err;
     // Never the key or the prompt. The detail goes to the log; the person gets a sentence.
@@ -203,6 +203,133 @@ async function complete(c, { structuredRendered, textRendered, mode }, { hosts =
   return { text, structured, finish, tokens, model: typeof json.model === 'string' ? json.model.slice(0, 120) : c.model, mode: useMode, schemaRefused };
 }
 
+// --- the tool rounds (plan-ai-integration.md, "Slice 2": the loop) ---------------------------------------------------------
+// One round of a question with tools: the rendered messages, then the rounds so far (`conversation`, provider-neutral), with
+// the tools offered and the provider's "must call a tool" choice. Neutral turns after the rendered messages:
+//   { role: 'assistant', text, calls: [{ id, name, input, raw }] }  -- what the model asked for
+//   { role: 'tool', results: [{ id, content }] }                      -- what the server answered, as JSON text
+// OpenAI (and a compatible service): `tools` with `tool_choice: "required"`, or the one tool named on the last round.
+// Anthropic: `tools` with `tool_choice: { type: "any" }`, or `{ type: "tool", name }` on the last round.
+
+// The conversation as OpenAI takes it, after the rendered messages.
+function openaiTurns(conversation) {
+  const out = [];
+  for (const turn of conversation) {
+    if (turn.role === 'assistant') {
+      out.push({ role: 'assistant', content: turn.text || null, tool_calls: turn.calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: typeof c.raw === 'string' ? c.raw : JSON.stringify(c.input ?? {}) } })) });
+    } else if (turn.role === 'tool') {
+      for (const r of turn.results) out.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+    }
+  }
+  return out;
+}
+
+// The conversation as Anthropic takes it: a tool call is a tool_use block of the assistant's turn, its result a tool_result
+// block of the next user turn.
+function anthropicTurns(conversation) {
+  const out = [];
+  for (const turn of conversation) {
+    if (turn.role === 'assistant') {
+      out.push({ role: 'assistant', content: [...(turn.text ? [{ type: 'text', text: turn.text }] : []), ...turn.calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.input && typeof c.input === 'object' && !Array.isArray(c.input) ? c.input : {} }))] });
+    } else if (turn.role === 'tool') {
+      out.push({ role: 'user', content: turn.results.map((r) => ({ type: 'tool_result', tool_use_id: r.id, content: r.content })) });
+    }
+  }
+  return out;
+}
+
+// One tool round's request body. `tools`: [{ name, description, schema }]; `force`: the one tool's name the model must call
+// (the last round), or '' for any of them.
+function toolBodyFor(provider, model, rendered, conversation, tools, force = '') {
+  const maxTokens = rendered.maxTokens;
+  if (provider === 'anthropic') {
+    return {
+      model,
+      max_tokens: maxTokens,
+      system: rendered.messages[0].content,
+      messages: [...anthropicMessages(rendered.messages), ...anthropicTurns(conversation)],
+      tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema })),
+      tool_choice: force ? { type: 'tool', name: force } : { type: 'any' },
+    };
+  }
+  return {
+    model,
+    [provider === 'openai' ? 'max_completion_tokens' : 'max_tokens']: maxTokens,
+    messages: [...rendered.messages.map((m) => ({ role: m.role, content: m.content })), ...openaiTurns(conversation)],
+    // OpenAI's strict mode where it is OpenAI; a compatible service is sent the plain shape, which more of them take.
+    tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema, ...(provider === 'openai' ? { strict: true } : {}) } })),
+    tool_choice: force ? { type: 'function', function: { name: force } } : 'required',
+  };
+}
+
+const MAX_CALLS_READ = 20; // more calls than this in one reply are not read at all
+const CALL_ID = /^[A-Za-z0-9_-]{1,64}$/;
+// The tool calls of a reply: [{ id, name, input, raw }]. `input` is the parsed object, or undefined when the model's
+// arguments are not JSON (the loop answers that as a bad input). An id the provider did not give, or one that is not plain,
+// is made here, so a tool result always names its call.
+function callsOf(provider, json, round) {
+  const calls = [];
+  const idOf = (id, i) => (typeof id === 'string' && CALL_ID.test(id) ? id : `call_${round}_${i}`);
+  if (provider === 'anthropic') {
+    const blocks = Array.isArray(json.content) ? json.content : [];
+    blocks.filter((b) => b && b.type === 'tool_use').slice(0, MAX_CALLS_READ).forEach((b, i) => {
+      calls.push({ id: idOf(b.id, i), name: typeof b.name === 'string' ? b.name.slice(0, 64) : '', input: b.input && typeof b.input === 'object' && !Array.isArray(b.input) ? b.input : undefined });
+    });
+    return calls;
+  }
+  const msg = json.choices && json.choices[0] && json.choices[0].message;
+  const list = msg && Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+  list.slice(0, MAX_CALLS_READ).forEach((tc, i) => {
+    const fn = tc && tc.function;
+    const raw = fn && typeof fn.arguments === 'string' ? fn.arguments.slice(0, 20000) : fn && fn.arguments && typeof fn.arguments === 'object' ? JSON.stringify(fn.arguments) : '';
+    let input;
+    try { const v = JSON.parse(raw || '{}'); if (v && typeof v === 'object' && !Array.isArray(v)) input = v; } catch { input = undefined; }
+    calls.push({ id: idOf(tc && tc.id, i), name: fn && typeof fn.name === 'string' ? fn.name.slice(0, 64) : '', input, raw });
+  });
+  return calls;
+}
+
+// A compatible service refusing tools rather than the question: a 400 or 422 whose message names tools, tool_choice or
+// function calling (the plan's rule, as decision 13's for the schema). Busy, down and the key are other failures.
+function refusedTools(res) {
+  if (res.status !== 400 && res.status !== 422) return false;
+  let message = '';
+  try {
+    const j = JSON.parse(res.text);
+    const m = j?.error?.message ?? j?.message ?? j?.detail ?? '';
+    message = typeof m === 'string' ? m : JSON.stringify(m);
+  } catch { return false; }
+  return /\btools?\b|tool_choice|tool[ _-]?call|function[ _-]?call/i.test(message);
+}
+
+// One tool round. Answers { text, calls, finish, tokens, model } or, for a compatible service on the first round that
+// refuses tools, { toolsRefused: true } (nothing was answered or billed). `timeoutMs`: what is left of the question's time,
+// never more than one request's 90 seconds.
+async function completeRound(c, { rendered, conversation, tools, force = '', round = 1 }, { hosts = HOSTS, guard = null, timeoutMs = FETCH_MS } = {}) {
+  const base = c.provider === 'compatible' ? c.address : hosts[c.provider];
+  const url = chatUrl(c.provider, base);
+  const headers = headersFor(c.provider, c.key, c.workspace);
+  const res = await send(c, url, headers, toolBodyFor(c.provider, c.model, rendered, conversation, tools, force), guard, timeoutMs);
+  if (round === 1 && c.provider === 'compatible' && refusedTools(res)) {
+    console.warn(`[ai] compatible/${c.model}: the service refused tools (${res.status}); asking again without them`);
+    return { toolsRefused: true };
+  }
+  if (res.status < 200 || res.status >= 300) throw statusError(c, res);
+  let json;
+  try { json = JSON.parse(res.text); } catch { throw new AiError('The AI service answered something unreadable.', 502, { kind: 'unreadable' }); }
+  if (!json || typeof json !== 'object') throw new AiError('The AI service answered something unreadable.', 502, { kind: 'unreadable' });
+  const tokens = tokensOf(c.provider, json);
+  const calls = callsOf(c.provider, json, round);
+  const { text } = answerOf(c.provider, json, false);
+  const plain = c.provider === 'anthropic' ? (Array.isArray(json.content) ? json.content : []).filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n') : text;
+  const finish = finishOf(c.provider, json);
+  if (!tokens.in && !tokens.out) {
+    tokens.in = Math.ceil(JSON.stringify(rendered.messages).length / 4 + JSON.stringify(conversation).length / 4);
+    tokens.out = Math.ceil((plain.length + JSON.stringify(calls).length) / 4);
+  }
+  return { text: typeof plain === 'string' ? plain : '', calls, finish, tokens, model: typeof json.model === 'string' ? json.model.slice(0, 120) : c.model };
+}
+
 // The models a service offers, from its own list: [{ id, name }]. Plain errors: no key, unreachable, refused. With a `guard`
 // (a hosted environment's own address, see server/ai-http.js) every failure is the same sentence and says nothing of the
 // address or what it answered.
@@ -245,4 +372,4 @@ async function listModelsFor({ provider, address, key, workspace }, hosts = HOST
   return list.slice(0, 200).map(({ id, name }) => ({ id, name }));
 }
 
-module.exports = { AiError, HOSTS, DEFAULT_MODELS, ADDRESS_UNUSABLE, checkTypedKey, complete, listModelsFor, bodyFor, finishOf, tokensOf, refusedSchema };
+module.exports = { AiError, HOSTS, DEFAULT_MODELS, ADDRESS_UNUSABLE, FETCH_MS, checkTypedKey, complete, completeRound, listModelsFor, bodyFor, toolBodyFor, callsOf, finishOf, tokensOf, refusedSchema, refusedTools };

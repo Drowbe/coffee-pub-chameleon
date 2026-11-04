@@ -55,7 +55,7 @@ const copy = (m) => ({
   ...(Array.isArray(m.leftOut) ? { leftOut: m.leftOut.map((l) => ({ ...l })) } : {}),
 });
 const QUOTE_MAX = 300;
-const MAX_NUMBERED = 100; // attached (12) plus the rollup's relevant and linked objects (30 + 20), and some over
+const MAX_NUMBERED = 200; // attached (12), the rollup's relevant and linked (30 + 20), and the look-ups' (8 calls of up to 15, slice 2)
 const MAX_LINK = 500; // a message's link, as Research keeps one (plan-chat-links.md)
 
 class ChatHistory {
