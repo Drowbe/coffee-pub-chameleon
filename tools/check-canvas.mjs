@@ -37,7 +37,7 @@ for (const rel of files) {
 // One token sets the module title bar's height (--mf-title-h, the moduleframe block), and only title bars read it.
 const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
 const sysCss = fs.readFileSync(path.join(ROOT, 'public/sdk/system.css'), 'utf8');
-const defs = (css + sysCss).match(/--mf-title-h\s*:/g) || [];
+const defs = (css + sysCss).match(/--mf-title-h\s*:\s*\d+px/g) || []; // the one size; a phone only recalculates it from --mf-hit
 if (defs.length !== 1) fail('public/sdk/system.css', `--mf-title-h must be defined exactly once (found ${defs.length})`);
 if (/--module-header-h\s*:/.test(css + sysCss)) fail('public/style.css', 'the old --module-header-h is gone: the frame\'s --mf-title-h is the one title bar height');
 

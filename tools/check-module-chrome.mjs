@@ -335,7 +335,7 @@ test('the title bar\'s height: --mf-title-h, no padding above or below, its butt
   const sys = read('public/sdk/system.css');
   const block = sys.slice(sys.indexOf('/* moduleframe:start */'), sys.indexOf('/* moduleframe:end */'));
   assert.match(block, /--mf-title-h: 36px;/, 'the one token');
-  assert.equal((sys.match(/--mf-title-h:/g) || []).length + (css.match(/--mf-title-h:/g) || []).length, 1, 'set in one place');
+  assert.equal((sys.match(/--mf-title-h: \d+px/g) || []).length + (css.match(/--mf-title-h:/g) || []).length, 1, 'set in one place (a phone only recalculates it from --mf-hit)');
   const rule = (sel) => { const m = block.match(new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)); return m ? m[2] : null; };
   const head = rule('.mf-titlebar');
   assert.ok(head, 'the title bar is in the moduleframe block');

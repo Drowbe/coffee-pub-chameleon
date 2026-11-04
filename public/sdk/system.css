@@ -5912,12 +5912,14 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
   --mf-hit-w: 36px; /* the least a tap area is wide on a phone */
   --mf-print-h: 100vh; /* a module's frame on paper: set on the frame while it prints, to its own page's height */
 }
-/* On a phone (640 px and narrower) the buttons are also DRAWN 44 px (Thomas, 2026-11-04, #394): a control in a band is 44 px
+/* On a phone (640 px and narrower) the buttons are also DRAWN 44 px (Thomas, 2026-11-04; <html data-phone> is set by theme-head.js from the top page's width, so a page in a frame follows it): a control in a band is 44 px
    tall (and an icon button 44 wide), the bands grow to hold it (8 px above and below in the title bar, 6 in the toolbar, as on a
    desktop); the search field and the Filters button follow --mf-ctl-h. A touch screen wider than that keeps the desktop sizes. */
-@media (max-width: 640px) {
-  :root { --mf-ctl-h: var(--mf-hit); --mf-title-h: calc(var(--mf-hit) + 8px); --mf-band-h: calc(var(--mf-hit) + 12px); }
-}
+:root[data-phone] { --mf-ctl-h: var(--mf-hit); --mf-title-h: calc(var(--mf-hit) + 8px); --mf-band-h: calc(var(--mf-hit) + 12px); }
+/* A view switch in the toolbar: its parts are the buttons, so each is 44 px tall (and at least 44 wide); the sunk track is
+   the edge and padding more. */
+:root[data-phone] .mf-toolbar .mf-switch { height: calc(var(--mf-ctl-h) + 2px + 2 * var(--space-0)); }
+:root[data-phone] .mf-toolbar .mf-switch > .mf-switch-btn { min-width: var(--mf-hit); }
 @media (max-width: 640px), (pointer: coarse) {
   .mf:is(.mf-page, .mf-docked) { overflow: clip; overflow-clip-margin: max(0px, calc(var(--mf-hit) - var(--mf-title-h))); }
   .mf-titlebar-tools { gap: var(--space-2); }
@@ -5949,7 +5951,7 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
   .mf-toolbar :is(.mf-quickset, .mf-chips) > .mf-chip { --mf-hit-gap: var(--space-1); }
   .mf-toolbar .mf-tabs > .mf-tab { --mf-hit-gap: var(--space-0); }
   /* A view switch's choices touch: each its own width, the switch's edge and padding (--space-0) taken in at its two ends. */
-  .mf-toolbar .mf-switch-btn { --mf-hit-own: calc(var(--mf-ctl-h) - 2px - 2 * var(--space-0)); --mf-hit-gap: 0px; }
+  .mf-toolbar .mf-switch-btn { --mf-hit-own: var(--mf-ctl-h); --mf-hit-gap: 0px; }
   .mf-toolbar .mf-switch-btn:first-child { --mf-hit-first: calc(1px + var(--space-0) + var(--mf-gap) / 2); }
   .mf-toolbar .mf-switch-btn:last-child { --mf-hit-last: calc(1px + var(--space-0) + var(--mf-gap) / 2); }
   .mf-toolbar .mf-switch-btn:not(.mf-search *)::after { right: calc(var(--mf-hit-last, 0px) * -1); left: calc(var(--mf-hit-first, 0px) * -1); }
