@@ -593,6 +593,12 @@ try {
 
   await test('a refusal of tools is only a message saying tools are not supported; a context-length error that names tool definitions is not', () => {
     const res = (status, message) => ({ status, text: JSON.stringify({ error: { message } }) });
+    // vLLM's refusal, and a service whose error is a plain string.
+    assert.equal(providers.refusedTools(res(400, '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set')), true, 'vLLM');
+    assert.equal(providers.refusedTools({ status: 400, text: JSON.stringify({ error: 'tools not supported' }) }), true, 'a plain-string error body');
+    assert.equal(providers.refusedTools({ status: 400, text: JSON.stringify({ error: 'maximum context length exceeded by the tools' }) }), false, 'a plain-string context error');
+    assert.equal(providers.refusedTools(res(400, "response_format 'json_schema' is not supported by this model")), false, 'the schema refusal is not the tools\'');
+    assert.equal(providers.refusedTools(res(400, 'Duplicate tool_call_id call_1 in messages')), false, 'a duplicate id');
     for (const m of ['tools are not supported by this model', 'Unrecognized request argument supplied: tools', 'This model does not support function calling', 'tool_choice is not supported', 'Extra inputs are not permitted: tools']) assert.equal(providers.refusedTools(res(400, m)), true, m);
     for (const m of ["This model's maximum context length is 8192 tokens. However, your messages and tool definitions resulted in 9000 tokens.", 'Request too large: the tools you sent are too long', 'content filtered', 'Invalid tool_call_id']) assert.equal(providers.refusedTools(res(400, m)), false, m);
     assert.equal(providers.refusedTools(res(500, 'tools are not supported')), false, 'a server error is not a refusal');
@@ -919,6 +925,45 @@ try {
       r = await hask('Third question');
       assert.equal(r.status, 502, r.text);
       assert.equal(await calls(), 2, 'a failure before any round was paid does not count');
+      // A plain 400 on the first round, nothing billed: not a call, though the person's turn is not given back.
+      fake.clear();
+      fake.next({ status: 400 });
+      r = await hask('Fourth question');
+      assert.equal(r.status, 502, r.text);
+      assert.equal(await calls(), 2, 'a plain 400 on round 1 does not count');
+    });
+
+    await test('hosted: a module\'s ask counts the same way: a billed answer that came to nothing is one call, a plain 400 is none', async () => {
+      assert.equal((await hcall('acme', 'POST', '/api/modules/bundled/research/install', { cookie: ownerCookie, body: {} })).status, 201);
+      assert.equal((await hcall('acme', 'PATCH', '/api/modules/research', { cookie: ownerCookie, body: { enabled: true, allSpaces: true } })).status, 200);
+      // Another person, so the owner's minute of turns is not used up.
+      const ann = (await hcall('acme', 'POST', '/api/users', { cookie: ownerCookie, body: { login: 'ann', displayName: 'Ann', role: 'member', password: 'memberpass1234' } })).json.user;
+      const annSpace = (await hcall('acme', 'POST', '/api/spaces', { cookie: ownerCookie, body: { name: 'Porto', members: [ann.key] } })).json.space;
+      const annCookie = (await hcall('acme', 'POST', '/api/login', { body: { login: 'ann', password: 'memberpass1234' } })).cookie;
+      const mask = (question) => hcall('acme', 'POST', `/api/modules/research/ai?scope=space&space=${annSpace.id}`, { cookie: annCookie, body: { task: 'ask', question } });
+      const before = await calls();
+      fake.clear();
+      let r = await mask('A plain question');
+      assert.equal(r.status, 200, r.text);
+      assert.equal(await calls(), before + 1, 'a success');
+      fake.clear();
+      r = await mask('BLANK please');
+      assert.equal(r.status, 502, r.text);
+      assert.equal(await calls(), before + 2, 'a billed blank answer counts once');
+      fake.clear();
+      fake.next({ status: 400 });
+      r = await mask('A refused question');
+      assert.equal(r.status, 502, r.text);
+      assert.equal(await calls(), before + 2, 'a plain 400 with nothing billed does not count');
+      fake.clear();
+      fake.next({ status: 500 });
+      assert.equal((await mask('A broken service')).status, 502);
+      assert.equal(await calls(), before + 2, 'a 500 is refunded and not counted');
+      // And Chat's /ai agrees on a billed blank answer.
+      fake.clear();
+      r = await hcall('acme', 'POST', `/api/spaces/${annSpace.id}/ai`, { cookie: annCookie, body: { question: 'BLANK please' } });
+      assert.equal(r.status, 502, r.text);
+      assert.equal(await calls(), before + 3, 'Chat\'s /ai counts a billed blank answer too');
     });
   } finally {
     hosted.kill('SIGTERM');

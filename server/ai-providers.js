@@ -33,6 +33,7 @@ class AiError extends Error {
     super(message);
     this.status = status;
     this.refund = refund;
+    this.paid = false; // set by the caller that knows: a round was billed (tokens counted), so the question used the service
     this.tokens = tokens;
     this.kind = kind;
   }
@@ -131,7 +132,7 @@ function refusedSchema(res) {
   let message = '';
   try {
     const j = JSON.parse(res.text);
-    const m = j?.error?.message ?? j?.message ?? j?.detail ?? '';
+    const m = j?.error?.message ?? (typeof j?.error === 'string' ? j.error : undefined) ?? j?.message ?? j?.detail ?? '';
     message = typeof m === 'string' ? m : JSON.stringify(m);
   } catch { return false; }
   return /response_format|json_schema|schema|structured[ _-]?output/i.test(message);
@@ -304,13 +305,13 @@ function refusedTools(res) {
   let message = '';
   try {
     const j = JSON.parse(res.text);
-    const m = j?.error?.message ?? j?.message ?? j?.detail ?? '';
+    const m = j?.error?.message ?? (typeof j?.error === 'string' ? j.error : undefined) ?? j?.message ?? j?.detail ?? '';
     message = typeof m === 'string' ? m : JSON.stringify(m);
   } catch { return false; }
   // A context-length or size error may mention the tool definitions; only a message saying tools are not supported is a refusal.
   if (/context[ _-]?length|too (?:long|large|many tokens)|maximum (?:context|number)|token limit/i.test(message)) return false;
   const subject = /\btools?\b|tool_choice|tool[ _-]?calls?\b|function[ _-]?call(?:ing|s)?\b/i;
-  const refusal = /\bunsupported\b|not\s+(?:be\s+)?supported|(?:does(?:\s*n['’]t|\s+not)|do(?:\s*n['’]t|\s+not)|cannot|can['’]t)\s+support|unrecogni[sz]ed|not\s+recogni[sz]ed|unknown\s+(?:parameter|field|argument|request argument)|extra inputs? are not permitted|not\s+(?:allowed|available|enabled)/i;
+  const refusal = /\bunsupported\b|not\s+(?:be\s+)?supported|(?:does(?:\s*n['’]t|\s+not)|do(?:\s*n['’]t|\s+not)|cannot|can['’]t)\s+support|unrecogni[sz]ed|not\s+recogni[sz]ed|unknown\s+(?:parameter|field|argument|request argument)|extra inputs? are not permitted|tool[ _-]?choice requires|enable-auto-tool-choice|not\s+(?:allowed|available|enabled)/i;
   return subject.test(message) && refusal.test(message);
 }
 

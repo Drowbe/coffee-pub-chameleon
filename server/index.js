@@ -5897,9 +5897,10 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     res.json({ text: out.text, summaries, used, numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
     // Failed before the service did any work, or on this server's side (not an AiError): it does not count. A question that
-    // failed after a round was paid (refund false) used the service, so it counts against the month's calls, once.
+    // failed after a round was billed (`paid`) used the service, so it counts against the month's calls, once; a plain 400 on
+    // the first round, with nothing billed, is not a call.
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
-    else countAiCall();
+    else if (err.paid) countAiCall();
     sendAiError(err, res);
   }
 });
@@ -8113,6 +8114,7 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
+    else if (err.paid) countAiCall(); // a billed answer that failed after: the same as Chat's /ai counts it, once
     sendAiError(err, res);
   }
 });

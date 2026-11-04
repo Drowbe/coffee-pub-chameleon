@@ -594,7 +594,7 @@ class Ai {
       // tokens still count against the allowance, as a blank answer's do; it is not an answered call.
       if (!body) {
         this.log({ ...record, model: out.model || c.model, outcome: 'error', error: 'empty', mode: out.mode, finish: out.finish, tokensIn: out.tokens.in, tokensOut: out.tokens.out, ms: Date.now() - started, ...extra });
-        throw new AiError(NO_ANSWER, 502, { tokens: extra.rounds ? 0 : total, kind: 'empty' }); // a loop's rounds are counted already
+        throw Object.assign(new AiError(NO_ANSWER, 502, { tokens: extra.rounds ? 0 : total, kind: 'empty' }), { paid: true }); // a loop's rounds are counted already; the service billed this answer
       }
       const fitted = fitAnswer(body, parsed.cut);
       answered({ cut: fitted.cut || undefined });
@@ -641,7 +641,7 @@ class Ai {
     } catch (err) {
       release();
       // A failed ask the service reported tokens for (a blank answer, say) is still counted against the month's allowance.
-      if (err instanceof AiError && err.tokens > 0) this.record(usage, err.tokens);
+      if (err instanceof AiError && err.tokens > 0) { this.record(usage, err.tokens); err.paid = true; }
       this.log({ ...record, outcome: 'error', error: (err instanceof AiError && err.kind) || 'error', ms: Date.now() - started, tokensIn: (err && err.tokens) || 0 });
       throw err;
     }

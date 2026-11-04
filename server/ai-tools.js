@@ -211,7 +211,7 @@ async function runToolLoop(ai, { t, name, inputs, use, toolbox, c, guard, hosts,
   const base = { purpose: use.purpose, environment: use.environment, space: use.space, person: use.person, template: name, sent: use.counts, provider: c.provider, model: c.model, tools: 'on' };
   const stats = (extra = {}) => ({ rounds, toolCalls: Object.keys(toolCalls).length ? { ...toolCalls } : undefined, looked: toolbox.looked(), ...extra });
   const failed = (err, extra = {}) => {
-    if (err instanceof AiError && billed > 0) err.refund = false; // earlier rounds were billed: the question counts
+    if (err instanceof AiError && billed > 0) { err.refund = false; err.paid = true; } // earlier rounds were billed: the question counts
     ai.log({ ...base, model, outcome: 'error', error: (err instanceof AiError && err.kind) || 'error', ms: Date.now() - started, tokensIn: tokens.in, tokensOut: tokens.out, ...stats(extra) });
     // Every round's tokens are already counted here: the caller records nothing more for this question.
     if (err instanceof AiError) err.tokens = 0;
