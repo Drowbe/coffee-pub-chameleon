@@ -18,11 +18,12 @@
  *
  *   node tools/check-ai-page.mjs        (no Chromium: SKIPPED, exit 0; that is a skip, never a pass)
  */
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { aiNotice, questionTooLong, askZone, aiUsedParts, citationParts } from '../public/chat-input.js';
+import { aiNotice, questionTooLong, askZone, aiUsedParts, citationParts, lookupOf } from '../public/chat-input.js';
 import { findBrowser, launch, freePort, stopServer, bootSeeded, Tab, sleep, driveScreen } from './shots.mjs';
 
 const say = (...a) => console.log('check-ai-page:', ...a);
@@ -45,7 +46,12 @@ const stub = http.createServer((req, res) => {
     // A scripted answer, once: { answer, used, cut }, as the structured contract holds it.
     const script = scripted; scripted = null;
     const content = script ? JSON.stringify({ answer: script.answer, objects: [], used: script.used || [] }) : 'A plain stub answer.';
-    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content }, finish_reason: script && script.cut ? 'length' : 'stop' }], usage: { total_tokens: 10 } }));
+    // Offered the tools (the read tools and `answer`), a service answers a scripted answer by calling `answer`, as a real one does.
+    const hasAnswerTool = Array.isArray(j.tools) && j.tools.some((x) => x && x.function && x.function.name === 'answer');
+    const message = script && hasAnswerTool
+      ? { role: 'assistant', content: null, tool_calls: [{ id: 'call_stub', type: 'function', function: { name: 'answer', arguments: content } }] }
+      : { role: 'assistant', content };
+    res.end(JSON.stringify({ choices: [{ message, finish_reason: script && script.cut ? 'length' : message.tool_calls ? 'tool_calls' : 'stop' }], usage: { total_tokens: 10 } }));
   });
 });
 await new Promise((r) => stub.listen(0, '127.0.0.1', r));
@@ -90,6 +96,10 @@ function unitChecks() {
   expect(p.notSent === "Not sent: 2 objects from places, kept out by the owner's setting; 1 object from Research, from another space.", `the Not sent line reads "${p.notSent}"`);
   expect(p.fit === 'Some objects were left out to fit.', 'a cut call does not say some were left out to fit');
   expect(aiUsedParts({}, [{ part: 'relevant', why: 'budget', count: 2 }], w).fit !== '' && aiUsedParts({}, [{ part: 'x', why: 'setting', count: 2 }], w).fit === '', 'left out to fit is for the budget only');
+  // Slice 2: the server's sent.lookup { searches, read } (read a count or a list of pointers); absent reads as none.
+  const lk = lookupOf({ lookup: { searches: 2, read: [{ module: 'a', kind: 'k', id: '1' }, { module: 'a', kind: 'k', id: '2' }] } });
+  expect(lk.count === 2 && lk.refs.length === 2 && lookupOf({ lookup: { searches: 1, read: 3 } }).count === 3, 'sent.lookup is not read as a count or a list');
+  expect(lookupOf({}).count === 0 && lookupOf(null).count === 0 && lookupOf({ lookup: 'x' }).count === 0 && lookupOf({ lookup: { read: -4 } }).count === 0, 'a missing or odd sent.lookup is not read as none');
   const c = citationParts('See [1] and [2, 3] not [x].');
   expect(c.filter((x) => x.cite).map((x) => x.cite.join('+')).join(',') === '1,2+3', 'citations are not read');
   // The default question is the server's now: no page or module writes it.
@@ -150,6 +160,35 @@ async function newAskChecks(t, S, admin) {
   await sleep(300);
   const opened = await t.eval('window.__opened');
   expect(opened && opened.module === 'research' && opened.id === 'n1', `the object's link did not open it (${JSON.stringify(opened)})`);
+}
+
+// Slice 2, the pages half, by a person who has asked nothing yet (a minute's turns are few).
+async function lookupChecks(open, S, workspace) {
+  const t = await open({ ...workspace, as: 'admin' });
+  try {
+    await sleep(1500);
+    // Slice 2: the question waits past a few seconds ("Looking things up..."), and the answer's sent.lookup shows as "looked up N"
+    // with links for what the reader may open and "and N others" for the rest. The server half may not be there yet, so the
+    // reply is the real one with the field added in the page.
+    await t.eval(WATCH);
+    await t.click('#chat-view-assistant');
+    await sleep(600);
+    await t.eval(`(() => { const of = window.fetch; window.fetch = async function (u, o) { const r = await of.apply(this, arguments); if (!(/\\/api\\/spaces\\/[^/]+\\/ai$/.test(String(u)) && o && o.method === 'POST')) return r; await new Promise((ok) => setTimeout(ok, 7000)); const j = await r.json(); if (j.message && j.message.sent) j.message.sent.lookup = { searches: 2, read: [{ module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'n1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-2' }] }; window.fetch = of; return new Response(JSON.stringify(j), { status: r.status, headers: { 'content-type': 'application/json' } }); }; })()`);
+    scripted = { answer: 'Looked around.', used: [] };
+    await t.typeInto('#chat-input', 'what did we plan for the ferry');
+    await t.key('Enter');
+    await sleep(6800);
+    const waiting = await t.eval(NOTE);
+    expect(waiting === 'Looking things up...', `a long wait does not say "Looking things up..." ("${waiting}")`);
+    await snap(t, 'chat-looking');
+    await answered(t);
+    const looked = await t.eval(lastUsed);
+    expect(/looked up 3 objects: .*Where to eat near the hotel.* and 2 others/.test(looked), `the AI used: line does not say what was looked up, with links ("${looked}")`);
+    const lookedLinks = await t.eval(`[...document.querySelectorAll('#messages .message-used')].pop().querySelectorAll('.message-looked .message-ref:not(:disabled)').length`);
+    expect(lookedLinks === 1, `the looked-up objects are ${lookedLinks} links, not 1`);
+    await snap(t, 'chat-looked');
+    say(`looked up: "${looked}"`);
+  } finally { await t.close(); }
 }
 
 // Another person asks (so the first one's minute is not used up): a dropped object stands in for the words, a question under
@@ -262,12 +301,14 @@ async function cutChecks(open, workspace) {
 
 // Manage's AI service tab: What AI may see, and this month's use.
 async function manageChecks(open, S, admin) {
-  for (const size of [1280, 390]) {
+  // AI_PAGE_SIZE limits which widths this runs at; the width it measures against is always the one it opened.
+  const only = Number(process.env.AI_PAGE_SIZE);
+  for (const size of only ? [only] : [1280, 390]) {
     const m = await open({ as: 'admin', url: '/admin#modules/ai', wait: '#ai-sees-box' }, size);
     try {
       await sleep(2200);
       const rows = await m.eval(`({ switches: document.querySelectorAll('#ai-sees-box input[role=switch][data-sees]').length, select: !!document.querySelector('#ai-sees-box select'), block: document.getElementById('ai-sees-block').getClientRects().length > 0 })`);
-      expect(rows.block && rows.switches === 6 && rows.select, `What AI may see is not drawn on the AI service tab (${JSON.stringify(rows)})`);
+      expect(rows.block && rows.switches === 7 && rows.select, `What AI may see is not drawn on the AI service tab (${JSON.stringify(rows)})`);
       const wide = await m.eval(`document.documentElement.scrollWidth <= ${size} + 1`);
       expect(wide, `the AI service tab scrolls sideways at ${size}`);
       await m.eval(`document.getElementById('ai-sees-block').scrollIntoView()`);
@@ -275,15 +316,17 @@ async function manageChecks(open, S, admin) {
       await m.eval(`document.getElementById('ai-use-block').scrollIntoView()`);
       await snap(m, `manage-use-${size}`);
       if (size === 1280) {
+        expect(await m.eval(`document.getElementById('ai-sees-lookup').checked && /Let AI look things up in this /.test(document.getElementById('ai-sees-lookup').closest('label').textContent)`), 'Let AI look things up is not on by default on Manage');
         await m.eval(`document.getElementById('ai-sees-chat').click()`);
+        await m.eval(`document.getElementById('ai-sees-lookup').click()`);
         await m.eval(`document.getElementById('ai-sees-save').click()`);
         await sleep(900);
         const got = await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json();
-        expect(got.ai.sees && got.ai.sees.chat === true, `Save did not store What AI may see (${JSON.stringify(got.ai.sees)})`);
+        expect(got.ai.sees && got.ai.sees.chat === true && got.ai.sees.lookup === false, `Save did not store What AI may see (${JSON.stringify(got.ai.sees)})`);
         await m.eval(`document.getElementById('ai-sees-reset').click()`);
         await sleep(900);
         const back = await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json();
-        expect(back.ai.sees && back.ai.sees.chat === false, `Back to the usual did not reset it (${JSON.stringify(back.ai.sees)})`);
+        expect(back.ai.sees && back.ai.sees.chat === false && back.ai.sees.lookup !== false, `Back to the usual did not reset it (${JSON.stringify(back.ai.sees)})`);
         const use = await m.eval(`({ text: document.getElementById('ai-use-box').textContent.replace(/\\s+/g, ' '), grids: document.querySelectorAll('#ai-use-box .sdk-table-wrap').length, records: [...document.querySelectorAll('#ai-use-box .sdk-table-wrap')].pop().querySelectorAll('tbody tr').length })`);
         expect(/tokens in \d+ calls? this month/.test(use.text) && /By kind of request/.test(use.text) && use.grids >= 3 && use.records >= 3, `this month's use is not drawn (${JSON.stringify({ ...use, text: use.text.slice(0, 200) })})`);
         // A refusal with no template shows a dash for its Kind, not "Other".
@@ -310,9 +353,11 @@ async function manageChecks(open, S, admin) {
 
 // A space's Set up: What AI may see follows the environment, until its switch is turned off.
 async function setupChecks(open, S, admin) {
+  const seesShown = async (tab) => { for (let i = 0; i < 40; i += 1) { if (await tab.eval(`document.querySelector('[data-section="ai-sees"]')?.getClientRects().length > 0`)) return; await sleep(250); } };
   const t = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
   try {
-    await sleep(2500);
+    await sleep(1500);
+    await seesShown(t);
     const at = await t.eval(`({ shown: document.querySelector('[data-section="ai-sees"]').getClientRects().length > 0, follow: document.getElementById('setup-ai-sees-follow').checked, locked: [...document.querySelectorAll('#setup-ai-sees-box input')].every((i) => i.disabled) })`);
     expect(at.shown && at.follow && at.locked, `Set up does not show What AI may see as the environment's choice (${JSON.stringify(at)})`);
     await t.eval(`document.querySelector('[data-section="ai-sees"]').scrollIntoView()`);
@@ -322,11 +367,12 @@ async function setupChecks(open, S, admin) {
     await snap(t, 'setup-sees-own');
     expect(await t.eval(`[...document.querySelectorAll('#setup-ai-sees-box input')].every((i) => !i.disabled)`), 'turning off "same as" did not let the rows change');
     await t.eval(`document.getElementById('setup-ai-sees-chat').click()`);
+    await t.eval(`document.getElementById('setup-ai-sees-lookup').click()`);
     await sleep(200);
     await t.eval(`document.getElementById('setup-save').click()`);
     await sleep(1500);
     const space = (await (await fetch(`${S.base}/api/spaces/${S.ctx.trip}`, { headers: { cookie: admin } })).json()).space;
-    expect(space.aiSees && space.aiSees.chat === true, `Save did not store the space's own What AI may see (${JSON.stringify(space.aiSees)})`);
+    expect(space.aiSees && space.aiSees.chat === true && space.aiSees.lookup === false, `Save did not store the space's own What AI may see (${JSON.stringify(space.aiSees)})`);
     const env = (await (await fetch(`${S.base}/api/ai`, { headers: { cookie: admin } })).json()).ai.sees;
     expect(env.chat === false, "the space's choice changed the environment's");
   } finally { await t.close(); }
@@ -339,7 +385,8 @@ async function setupChecks(open, S, admin) {
   // Opened again: the space's own choice shows, and its switch gives it back to the environment.
   const t2 = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
   try {
-    await sleep(2500);
+    await sleep(1500);
+    await seesShown(t2);
     const own = await t2.eval(`({ follow: document.getElementById('setup-ai-sees-follow').checked, chat: document.getElementById('setup-ai-sees-chat').checked })`);
     expect(!own.follow && own.chat, `Set up did not show the space's own choice again (${JSON.stringify(own)})`);
     await t2.eval(`document.getElementById('setup-ai-sees-follow').click()`);
@@ -349,6 +396,52 @@ async function setupChecks(open, S, admin) {
     expect(!back.aiSees, `following the environment again did not clear the space's own (${JSON.stringify(back.aiSees)})`);
     say('set up: follows the environment, saves its own, follows again');
   } finally { await t2.close(); }
+  // With look-ups off for the whole environment, the space's switch is shown off and locked, with the reason, even on its own.
+  const jsonPut = (url, method, body) => fetch(`${S.base}${url}`, { method, headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify(body) });
+  assert.equal((await jsonPut('/api/ai', 'PUT', { sees: { lookup: false } })).status, 200);
+  const t3 = await open({ as: 'admin', url: `/?setup=${S.ctx.trip}#modules`, wait: '#setup-ai-sees-box' });
+  try {
+    await sleep(1500);
+    await seesShown(t3);
+    const read = `(() => { const i = document.getElementById('setup-ai-sees-lookup'); return { on: i.checked, disabled: i.disabled, reason: i.closest('label').textContent.replace(/\\s+/g, ' '), chatDisabled: document.getElementById('setup-ai-sees-chat').disabled }; })()`;
+    let got = await t3.eval(read);
+    expect(!got.on && got.disabled && /Off for the whole /.test(got.reason), `following an environment with look-ups off: the switch is not off, locked and explained (${JSON.stringify(got)})`);
+    await t3.eval(`document.getElementById('setup-ai-sees-follow').click()`);
+    await sleep(300);
+    got = await t3.eval(read);
+    expect(!got.on && got.disabled && !got.chatDisabled && /Off for the whole /.test(got.reason), `a space's own settings can turn look-ups back on over the environment's off (${JSON.stringify(got)})`);
+    await t3.eval(`document.querySelector('[data-section="ai-sees"]').scrollIntoView()`);
+    await snap(t3, 'setup-sees-lookup-locked');
+    say('set up: look-ups off for the whole environment show off, locked and explained');
+  } finally { await t3.close(); await jsonPut('/api/ai', 'PUT', { sees: null }); }
+}
+
+// A shared AI answer reaches another person's open page with its citations, with no reload.
+async function sharedAnswerChecks(open, S, admin, workspace) {
+  const post = (url, method, body) => fetch(`${S.base}${url}`, { method, headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify(body) });
+  const sam = await open({ ...workspace, as: 'sam' });
+  try {
+    await sleep(1500);
+    scripted = { answer: 'Shared find [1].', used: [1] };
+    const asked = await post(`/api/spaces/${S.ctx.trip}/ai`, 'POST', { question: 'What is in the shared note?', refs: [{ module: 'research', kind: 'note', scope: 'space', space: S.ctx.trip, id: 'n1' }] });
+    const answer = await asked.json();
+    expect(asked.status === 200 && answer.id, `could not ask for the shared-answer check (${asked.status})`);
+    const cites = `[...document.querySelectorAll('#messages .message')].filter((m) => /Shared find/.test(m.textContent)).pop()?.querySelectorAll('.message-cite').length`;
+    expect((await sam.eval(cites)) == null, 'a private answer was on another person\'s page');
+    for (const round of ['shared', 'shared again after being made private']) {
+      expect((await post(`/api/spaces/${S.ctx.trip}/chat/${answer.id}`, 'PATCH', { visibility: 'public' })).status === 200, `could not share (${round})`);
+      let n;
+      for (let i = 0; i < 30 && !n; i += 1) { await sleep(300); n = await sam.eval(cites); }
+      expect(n === 1, `${round}: the shared answer did not reach the other page with its citation link (${n})`);
+      expect(await sam.eval(`[...document.querySelectorAll('#messages .message')].filter((m) => /Shared find/.test(m.textContent)).pop()?.querySelector('.message-used') !== null`), `${round}: the "AI used" line is missing`);
+      if (round === 'shared') {
+        await post(`/api/spaces/${S.ctx.trip}/chat/${answer.id}`, 'PATCH', { visibility: 'private' });
+        await sleep(1200);
+        expect((await sam.eval(cites)) == null, 'the answer stayed on the other page after it was made private');
+      }
+    }
+    say('shared answer: the other page draws its citations and "AI used" without a reload, also when shared again');
+  } finally { await sam.close(); }
 }
 
 async function main() {
@@ -369,9 +462,9 @@ async function main() {
     // Using AI needs the role's Use AI; give members theirs whatever the default is.
     const role = await fetch(`${S.base}/api/roles/member`, { method: 'PATCH', headers: { cookie: admin, 'content-type': 'application/json', origin: S.base }, body: JSON.stringify({ useAi: true }) });
     expect(role.status === 200, `could not give members Use AI (${role.status})`);
-    const open = async (screen, size = 1280) => {
+    const open = async (screen, size = Number(process.env.AI_PAGE_SIZE) || 1280) => {
       const tab = new Tab(browser.cdp, S.ctx);
-      await tab.open(Number(process.env.AI_PAGE_SIZE) || size, process.env.AI_PAGE_MODE === 'light' ? 'light' : 'dark', screen.call === true);
+      await tab.open(size, process.env.AI_PAGE_MODE === 'light' ? 'light' : 'dark', screen.call === true);
       const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
       await driveScreen(tab, screen, S.base, S.cookies, S.ctx);
       return tab;
@@ -441,8 +534,10 @@ async function main() {
     } finally { await t.close(); }
     await cutChecks(open, workspace);
     await chipAndCiteChecks(open, S, workspace);
+    await lookupChecks(open, S, workspace);
     await manageChecks(open, S, admin);
     await setupChecks(open, S, admin);
+    await sharedAnswerChecks(open, S, admin, workspace);
     unitChecks();
 
     // The AI not set up: the Assistant says so first.

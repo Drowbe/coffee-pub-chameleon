@@ -1,7 +1,7 @@
 {
   "id": "travel",
   "name": "Planner",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "icon": "suitcase-rolling",
   "color": "teal",
   "description": "Plan together: a day-by-day itinerary that draws in the events, tasks and polls your {space} already has.",
@@ -75,6 +75,8 @@
       {
         "name": "addStop",
         "label": "Add it to the trip",
+        "description": "Add a new stop to the trip's itinerary.",
+        "effect": "write",
         "input": {
           "title": "string",
           "date": "date?",
@@ -85,6 +87,8 @@
       {
         "name": "addToDay",
         "label": "Put it on the trip's itinerary",
+        "description": "Put {an object} that already exists on the trip's itinerary, on the day given if there is one.",
+        "effect": "write",
         "input": {
           "object": "ref",
           "date": "date?"
@@ -93,6 +97,8 @@
       {
         "name": "acceptSuggestion",
         "label": "Add it to the trip, properly typed",
+        "description": "Add a new journey, stay or stop to the trip's itinerary, typed by its kind.",
+        "effect": "write",
         "input": {
           "title": "string",
           "kind": "string?",

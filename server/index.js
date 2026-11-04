@@ -49,6 +49,7 @@ const ics = require('./ics');
 const prompts = require('./prompts');
 const { createAiPolicy } = require('./ai-policy');
 const { createContextBuilder } = require('./ai-context');
+const { createAiTools } = require('./ai-tools');
 // AI_PROMPT_VERSIONS (rollback pins) and AI_LOG_PROMPTS (full prompts in the log), said once at start (plan-ai-integration.md,
 // decision 14). Full prompts are never logged on a hosted install (BASE_DOMAIN): server/ai.js ignores the variable there.
 for (const line of prompts.setPins(process.env)) console.warn(line);
@@ -4879,11 +4880,45 @@ function liveStreamKeys(req, who) {
   return [[`${slug}|guest|${token}|${req.ip || 'unknown'}`, liveStreamsPerGuestAddress], [`${slug}|link|${token}`, liveStreamsPerGuestLink]];
 }
 
+// A shared AI answer as someone other than its asker may read it: the pointers it keeps (`numbered`, `used`, what was attached,
+// what the AI looked up, each object's sources) only to objects `canOpen` says this reader can open -- the page's own rule
+// (POST /api/objects/resolve). `numbered` keeps its places (a citation [n] is numbered[n - 1]); one the reader can't open
+// is null there, and left out of the lists. Anything else is returned as it is.
+function aiAnswerForReader(m, canOpen) {
+  if (!m || m.kind !== 'ai') return m;
+  const keep = (list) => (Array.isArray(list) ? list.filter((r) => r && canOpen(r)) : list);
+  const out = { ...m };
+  if (Array.isArray(m.numbered)) out.numbered = m.numbered.map((r) => (r && canOpen(r) ? r : null));
+  if (Array.isArray(m.used)) out.used = keep(m.used);
+  if (Array.isArray(m.summaries)) out.summaries = m.summaries.map((c) => (c && Array.isArray(c.sources) ? { ...c, sources: keep(c.sources) } : c));
+  if (m.sent && typeof m.sent === 'object') {
+    out.sent = { ...m.sent };
+    if (Array.isArray(m.sent.attached)) out.sent.attached = keep(m.sent.attached);
+    if (m.sent.lookup && typeof m.sent.lookup === 'object') out.sent.lookup = { ...m.sent.lookup, ...(Array.isArray(m.sent.lookup.read) ? { read: keep(m.sent.lookup.read) } : {}) };
+  }
+  return out;
+}
+// Whether `who` can open an object: resolved as the page resolves it (a gone one, or one the reader's role can't read, is not).
+function readerCanOpen(who) {
+  const memo = new Map();
+  return (ref) => {
+    const key = objectKey(ref);
+    if (!memo.has(key)) {
+      memo.set(key, !refAnswer(() => resolveRef(who, ref, null, { skipConsumer: true })).error);
+    }
+    return memo.get(key);
+  };
+}
+
 app.get('/api/spaces/:id/chat', (req, res) => {
   const found = chatSpaceFor(req, res, 'chatRead');
   if (!found) return;
   // Public messages, and the caller's own private ones (plan-chat-model.md); a guest reads public messages only.
-  res.json({ messages: chatHistory.list(found.space.id, found.who.user ? found.who.user.key : null), clearedAt: chatHistory.clearedAt(found.space.id) });
+  const me = found.who.user ? found.who.user.key : null;
+  const canOpen = readerCanOpen(found.who);
+  // A shared AI answer keeps the pointers of the objects it used; someone other than its asker gets those they can open.
+  const messages = chatHistory.list(found.space.id, me).map((m) => (m.kind === 'ai' && m.by !== me ? aiAnswerForReader(m, canOpen) : m));
+  res.json({ messages, clearedAt: chatHistory.clearedAt(found.space.id) });
 });
 
 // A server-sent stream (the live one): the caps, the headers, the ping, the access asked again, and the counts given
@@ -5308,7 +5343,7 @@ app.patch('/api/spaces/:id/chat/:messageId', (req, res) => {
   if (!out) return res.status(404).json({ error: 'no such message' });
   if (out.changed) {
     tellChat(found.space.id, visibility === 'public'
-      ? { type: 'chat-visibility', id: out.message.id, visibility, message: out.message }
+      ? { type: 'chat-visibility', id: out.message.id, visibility, message: aiAnswerForReader(out.message, () => false) } // one object for every reader: no pointers; a page reads them (the ones it may open) from GET /chat
       : { type: 'chat-visibility', id: out.message.id, visibility });
   }
   res.json({ message: out.message });
@@ -5768,6 +5803,9 @@ const aiContext = createContextBuilder({
   timelineOf: phaseRule.timelineOf,
   templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
 });
+// The read tools for Chat's /ai and the Assistant view (slice 2, server/ai-tools.js): the same pool as the rollup's, read as
+// the person, every result admitted by the policy with part `lookup`.
+const aiTools = createAiTools({ policy: aiPolicy, listObjects: aiObjectsIn, moduleLinks });
 // The template's words a prompt uses.
 const aiWords = () => ({ object: word('object'), objects: word('object', { many: true }), space: word('space') });
 // What a call record and an answer keep of `sent`: the counts, never the pointers' content.
@@ -5819,7 +5857,9 @@ app.get('/api/spaces/:id/ai', (req, res) => {
 // One question (template ask, purpose chat), with the asker's last turns here and the space's rollup. `refs`: up to 12 of
 // this space's objects (another space's are left out and said to be); `question`: 3 to 1,000 characters, or none with an
 // attached object (the template's default question); `tz`: the asker's time zone. Both kept as the asker's private messages
-// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`.
+// (plan-chat-model.md); the answer carries `prompt`, `sent`, `used` and `cut`. With What AI may see `lookup` on, the AI may
+// look this space's objects up as the asker (slice 2): `sent.lookup` is { searches, read } (read: the objects it read, as
+// pointers, which join `used`), and `numbered` holds the numbers the look-ups gave out too.
 app.post('/api/spaces/:id/ai', async (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
@@ -5841,17 +5881,26 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const out = await ai.run('ask', { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() }, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets() });
+    const inputs = { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() };
+    const toolbox = aiTools.toolbox(who, space, built, { words: aiWords(), contract: template.schema(inputs) });
+    const out = await ai.run('ask', inputs, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets(), toolbox });
     countAiCall();
-    const summaries = aiSummaries(out.summaries, built.numbered);
-    const used = aiPointers(out.used, built.numbered);
+    const numbered = out.numbered || built.numbered;
+    const summaries = aiSummaries(out.summaries, numbered);
+    // The objects the AI read join what it used, once each.
+    const used = [];
+    for (const r of [...aiPointers(out.used, numbered), ...(out.lookup ? out.lookup.read : [])]) if (!used.some((u) => objectKey(u) === objectKey(r))) used.push(r);
+    const sent = out.lookup ? { ...built.sent, lookup: out.lookup } : built.sent;
     const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
-    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent: built.sent, used, numbered: built.numbered, leftOut: built.leftOut, cut: out.cut });
+    const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent, used, numbered, leftOut: built.leftOut, cut: out.cut });
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
-    res.json({ text: out.text, summaries, used, numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
+    res.json({ text: out.text, summaries, used, numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });
   } catch (err) {
-    // Failed before the service did any work, or on this server's side (not an AiError): it does not count.
+    // Failed before the service did any work, or on this server's side (not an AiError): it does not count. A question that
+    // failed after a round was billed (`paid`) used the service, so it counts against the month's calls, once; a plain 400 on
+    // the first round, with nothing billed, is not a call.
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(who);
+    else if (err.paid) countAiCall();
     sendAiError(err, res);
   }
 });
@@ -7918,6 +7967,36 @@ app.get('/api/ai', requireOwner, (_req, res) => res.json({ ai: ai.view(), usage:
 // The AI usage view (plan-ai-integration.md, "Observability"), for owners: this month's tokens and calls by template, person
 // and space, refusals by reason, errors and cut-short answers, and the last 50 call records (never any content).
 app.get('/api/ai/usage', requireOwner, (_req, res) => res.json(ai.usageReport()));
+// The write tools an AI may propose in one space for the person asking (plan-ai-integration.md, slice 2 step 12): the
+// catalog made from the enabled manifests (server/action-catalog.js), narrowed to what this person could ask for there now --
+// the AI rule for Chat's /ai (decision 16), the module on in the space and theirs to change (its write access), and the
+// module not kept out by What AI may see. Proposing and Keep are step 13; this only lists.
+const actionCatalog = require('./action-catalog');
+const { moduleAllowed: aiModuleAllowed } = require('./ai-policy');
+app.get('/api/ai/catalog', (req, res) => {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
+  const spaceId = typeof req.query.space === 'string' ? req.query.space : '';
+  if (!spaceId) return res.status(400).json({ error: `Say which ${word('space')} the tools are for.` });
+  const space = store.spaceById(spaceId);
+  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  const allowed = aiPolicy.check(who, space, 'chat');
+  if (!allowed.ok) return res.status(allowed.status).json({ error: allowed.why });
+  const sees = aiPolicy.sees(space);
+  const enabled = modules.enabledAll().map(({ manifest }) => manifest);
+  const names = new Map(enabled.map((m) => [m.id, shownModule(m).name || m.name]));
+  const mayChange = new Map();
+  const may = (id) => {
+    if (!mayChange.has(id)) {
+      try { busPlace(who, id, 'space', space.id, 'write'); mayChange.set(id, true); } catch (err) { if (!err.status) throw err; mayChange.set(id, false); }
+    }
+    return mayChange.get(id);
+  };
+  const tools = actionCatalog.buildCatalog(enabled).tools
+    .filter((t) => aiModuleAllowed(sees, t.module) && may(t.module))
+    .map((t) => ({ name: t.name, module: t.module, moduleName: names.get(t.module), action: t.action, label: t.label, description: t.description, effect: t.effect, schema: t.schema }));
+  res.json({ tools });
+});
 app.post('/api/ai/models', requireOwner, async (req, res) => {
   try {
     await ai.checkAddress({ provider: req.body?.provider, address: req.body?.address });
@@ -8055,6 +8134,7 @@ app.post('/api/modules/:id/ai', async (req, res) => {
     res.json({ text: out.text, summaries: aiSummaries(out.summaries, built.numbered), tags: out.tags, used: aiPointers(out.used, built.numbered), numbered: built.numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent: built.sent, leftOut: built.leftOut, ...(task === 'ask' ? { question } : {}) });
   } catch (err) {
     if (!(err instanceof AiError) || err.refund) aiPolicy.giveBack(ctx.who); // failed before the service did any work, or on this server's side
+    else if (err.paid) countAiCall(); // a billed answer that failed after: the same as Chat's /ai counts it, once
     sendAiError(err, res);
   }
 });

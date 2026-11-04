@@ -1,7 +1,7 @@
 {
   "id": "research",
   "name": "Research",
-  "version": "0.4.31",
+  "version": "0.4.32",
   "icon": "book-open",
   "color": "blue",
   "description": "What a group finds out while it plans: notes, links with the part that mattered, photos with a caption. Tagged, searchable, linkable from anywhere, and questioned or summarised by the AI the {owner} chose.",
@@ -162,6 +162,8 @@
       {
         "name": "saveNote",
         "label": "Save it to research",
+        "description": "Save a new note to research.",
+        "effect": "write",
         "input": {
           "title": "string",
           "body": "text?",
@@ -178,6 +180,8 @@
       {
         "name": "saveLink",
         "label": "Save this link to research",
+        "description": "Save a new web link to research.",
+        "effect": "write",
         "input": {
           "url": "text",
           "title": "string?",

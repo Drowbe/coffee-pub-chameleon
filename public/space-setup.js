@@ -549,7 +549,7 @@ export function createSpaceSetup(deps) {
     const follow = state.draft.aiSees === null || state.draft.aiSees === undefined;
     q('#setup-ai-sees-follow').checked = follow;
     state.sees.setModules((state.installed || []).filter((m) => m.enabled && Array.isArray(m.scope) && m.scope.includes('space')));
-    state.sees.set(follow ? state.envSees : state.draft.aiSees, { locked: follow });
+    state.sees.set(follow ? state.envSees : state.draft.aiSees, { locked: follow, lookupOff: state.envSees && state.envSees.lookup === false ? `Off for the whole ${word('environment')}.` : '' });
   }
 
   function paintPicture() {

@@ -4349,6 +4349,17 @@ function applyVisibilityNotice(data) {
     chatMessageNode(data.id)?.repaintVis?.('public');
     return;
   }
+  // A shared AI answer comes in the notice without its pointers (it goes to everyone alike); the ones this reader can open
+  // come from the list, whoever asked.
+  if (data.message.kind === 'ai') {
+    const spaceId = chatSpace().id;
+    fetchChatHistory(spaceId).then(({ messages }) => {
+      if (!chatSpace() || chatSpace().id !== spaceId || chatLog.some((e) => e.id === data.id)) return;
+      const found = messages.find((e) => e.id === data.id);
+      if (found && found.visibility === 'public') addEntry(found, false);
+    }).catch(() => {});
+    return;
+  }
   const entry = storedEntry({ ...data.message, visibility: undefined });
   addEntry(entry, entry.by === me?.key);
 }

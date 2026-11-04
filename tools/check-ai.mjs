@@ -74,7 +74,7 @@ await test('the setting: the key is kept and never shown', () => {
   assert.deepEqual(active, { provider: 'compatible', model: 'local' }); // custom: the service in use is the custom slot
   const { sees, ...rest } = custom;
   assert.deepEqual(rest, { provider: 'compatible', address, model: 'local', workspace: '', monthlyTokens: 0, keySet: true, keyUnreadable: false, keyProblem: null, keyFromEnvironment: false, enabled: true });
-  assert.deepEqual(sees, { attached: true, relevant: true, linked: true, history: true, chat: false, members: false, environment: 'attached', modules: 'all' }, 'What AI may see: the safe defaults');
+  assert.deepEqual(sees, { attached: true, relevant: true, linked: true, history: true, chat: false, members: false, lookup: true, environment: 'attached', modules: 'all' }, 'What AI may see: the safe defaults');
   assert.equal(managedProvider, '');
   assert.equal(source, 'custom'); // no host offer: an environment can only be custom
   assert.deepEqual(managed, { available: false, services: [] });
