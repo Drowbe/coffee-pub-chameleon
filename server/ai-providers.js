@@ -267,9 +267,17 @@ const CALL_ID = /^[A-Za-z0-9_-]{1,64}$/;
 // The tool calls of a reply: [{ id, name, input, raw }]. `input` is the parsed object, or undefined when the model's
 // arguments are not JSON (the loop answers that as a bad input). An id the provider did not give, or one that is not plain,
 // is made here, so a tool result always names its call.
-function callsOf(provider, json, round) {
+// An id already used in this reply, or in `taken` (the ids of the earlier rounds), is made anew: the next request never
+// carries two calls, or two results, with one id.
+function callsOf(provider, json, round, taken = []) {
   const calls = [];
-  const idOf = (id, i) => (typeof id === 'string' && CALL_ID.test(id) ? id : `call_${round}_${i}`);
+  const used = new Set(taken);
+  const idOf = (id, i) => {
+    let out = typeof id === 'string' && CALL_ID.test(id) && !used.has(id) ? id : `call_${round}_${i}`;
+    for (let n = 2; used.has(out); n += 1) out = `call_${round}_${i}_${n}`;
+    used.add(out);
+    return out;
+  };
   if (provider === 'anthropic') {
     const blocks = Array.isArray(json.content) ? json.content : [];
     blocks.filter((b) => b && b.type === 'tool_use').slice(0, MAX_CALLS_READ).forEach((b, i) => {
@@ -299,7 +307,11 @@ function refusedTools(res) {
     const m = j?.error?.message ?? j?.message ?? j?.detail ?? '';
     message = typeof m === 'string' ? m : JSON.stringify(m);
   } catch { return false; }
-  return /\btools?\b|tool_choice|tool[ _-]?call|function[ _-]?call/i.test(message);
+  // A context-length or size error may mention the tool definitions; only a message saying tools are not supported is a refusal.
+  if (/context[ _-]?length|too (?:long|large|many tokens)|maximum (?:context|number)|token limit/i.test(message)) return false;
+  const subject = /\btools?\b|tool_choice|tool[ _-]?calls?\b|function[ _-]?call(?:ing|s)?\b/i;
+  const refusal = /\bunsupported\b|not\s+(?:be\s+)?supported|(?:does(?:\s*n['’]t|\s+not)|do(?:\s*n['’]t|\s+not)|cannot|can['’]t)\s+support|unrecogni[sz]ed|not\s+recogni[sz]ed|unknown\s+(?:parameter|field|argument|request argument)|extra inputs? are not permitted|not\s+(?:allowed|available|enabled)/i;
+  return subject.test(message) && refusal.test(message);
 }
 
 // One tool round. Answers { text, calls, finish, tokens, model } or, for a compatible service on the first round that
@@ -319,7 +331,7 @@ async function completeRound(c, { rendered, conversation, tools, force = '', rou
   try { json = JSON.parse(res.text); } catch { throw new AiError('The AI service answered something unreadable.', 502, { kind: 'unreadable' }); }
   if (!json || typeof json !== 'object') throw new AiError('The AI service answered something unreadable.', 502, { kind: 'unreadable' });
   const tokens = tokensOf(c.provider, json);
-  const calls = callsOf(c.provider, json, round);
+  const calls = callsOf(c.provider, json, round, (conversation || []).flatMap((t) => (Array.isArray(t.calls) ? t.calls.map((x) => x.id) : [])));
   const { text } = answerOf(c.provider, json, false);
   const plain = c.provider === 'anthropic' ? (Array.isArray(json.content) ? json.content : []).filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n') : text;
   const finish = finishOf(c.provider, json);

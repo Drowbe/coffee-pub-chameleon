@@ -612,6 +612,8 @@ class Ai {
         try { this.saveConfig(); } catch { /* remembered for this run */ }
         toolsNote = 'refused';
       } else {
+        // A service that took tools this time no longer counts as refusing them (as a taken schema clears schemaRefused).
+        if (this.config.toolsRefused) { delete this.config.toolsRefused; try { this.saveConfig(); } catch { /* forgotten for this run */ } }
         const record = { ...base, provider: c.provider, model: c.model, tools: 'on' };
         const extra = { rounds: looped.rounds, toolCalls: looped.toolCalls, looked: looped.looked, stop: looped.stop };
         const out = { ...looped.answer, tokens: looped.tokens, model: looped.model };
