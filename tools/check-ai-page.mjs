@@ -124,25 +124,6 @@ async function newAskChecks(t, S, admin) {
   await snap(t, 'chat-used');
   say(`used line "${used}", citation ${JSON.stringify(cite)}, zone ${zone}`);
 
-  // Slice 2: the question waits past a few seconds ("Looking things up..."), and the answer's sent.lookup shows as "looked up N"
-  // with links for what the reader may open and "and N others" for the rest. The server half may not be there yet, so the
-  // reply is the real one with the field added in the page.
-  await t.eval(`(() => { const of = window.fetch; window.fetch = async function (u, o) { const r = await of.apply(this, arguments); if (!(/\\/api\\/spaces\\/[^/]+\\/ai$/.test(String(u)) && o && o.method === 'POST')) return r; await new Promise((ok) => setTimeout(ok, 7000)); const j = await r.json(); if (j.message && j.message.sent) j.message.sent.lookup = { searches: 2, read: [{ module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'n1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-2' }] }; window.fetch = of; return new Response(JSON.stringify(j), { status: r.status, headers: { 'content-type': 'application/json' } }); }; })()`);
-  scripted = { answer: 'Looked around.', used: [] };
-  await t.typeInto('#chat-input', 'what did we plan for the ferry');
-  await t.key('Enter');
-  await sleep(6800);
-  const waiting = await t.eval(NOTE);
-  expect(waiting === 'Looking things up...', `a long wait does not say "Looking things up..." ("${waiting}")`);
-  await snap(t, 'chat-looking');
-  await answered(t);
-  const looked = await t.eval(lastUsed);
-  expect(/looked up 3 objects: .*Where to eat near the hotel.* and 2 others/.test(looked), `the AI used: line does not say what was looked up, with links ("${looked}")`);
-  const lookedLinks = await t.eval(`[...document.querySelectorAll('#messages .message-used')].pop().querySelectorAll('.message-looked .message-ref:not(:disabled)').length`);
-  expect(lookedLinks === 1, `the looked-up objects are ${lookedLinks} links, not 1`);
-  await snap(t, 'chat-looked');
-  say(`looked up: "${looked}"`);
-
   // Over 1,000 characters: refused in the box, nothing sent.
   const n = await t.eval('window.__sent.length');
   await t.eval(`(() => { const i = document.getElementById('chat-input'); i.focus(); i.value = 'x'.repeat(1001); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -173,6 +154,35 @@ async function newAskChecks(t, S, admin) {
   await sleep(300);
   const opened = await t.eval('window.__opened');
   expect(opened && opened.module === 'research' && opened.id === 'n1', `the object's link did not open it (${JSON.stringify(opened)})`);
+}
+
+// Slice 2, the pages half, by a person who has asked nothing yet (a minute's turns are few).
+async function lookupChecks(open, S, workspace) {
+  const t = await open({ ...workspace, as: 'admin' });
+  try {
+    await sleep(1500);
+    // Slice 2: the question waits past a few seconds ("Looking things up..."), and the answer's sent.lookup shows as "looked up N"
+    // with links for what the reader may open and "and N others" for the rest. The server half may not be there yet, so the
+    // reply is the real one with the field added in the page.
+    await t.eval(WATCH);
+    await t.click('#chat-view-assistant');
+    await sleep(600);
+    await t.eval(`(() => { const of = window.fetch; window.fetch = async function (u, o) { const r = await of.apply(this, arguments); if (!(/\\/api\\/spaces\\/[^/]+\\/ai$/.test(String(u)) && o && o.method === 'POST')) return r; await new Promise((ok) => setTimeout(ok, 7000)); const j = await r.json(); if (j.message && j.message.sent) j.message.sent.lookup = { searches: 2, read: [{ module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'n1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-1' }, { module: 'research', kind: 'note', scope: 'space', space: '${S.ctx.trip}', id: 'gone-2' }] }; window.fetch = of; return new Response(JSON.stringify(j), { status: r.status, headers: { 'content-type': 'application/json' } }); }; })()`);
+    scripted = { answer: 'Looked around.', used: [] };
+    await t.typeInto('#chat-input', 'what did we plan for the ferry');
+    await t.key('Enter');
+    await sleep(6800);
+    const waiting = await t.eval(NOTE);
+    expect(waiting === 'Looking things up...', `a long wait does not say "Looking things up..." ("${waiting}")`);
+    await snap(t, 'chat-looking');
+    await answered(t);
+    const looked = await t.eval(lastUsed);
+    expect(/looked up 3 objects: .*Where to eat near the hotel.* and 2 others/.test(looked), `the AI used: line does not say what was looked up, with links ("${looked}")`);
+    const lookedLinks = await t.eval(`[...document.querySelectorAll('#messages .message-used')].pop().querySelectorAll('.message-looked .message-ref:not(:disabled)').length`);
+    expect(lookedLinks === 1, `the looked-up objects are ${lookedLinks} links, not 1`);
+    await snap(t, 'chat-looked');
+    say(`looked up: "${looked}"`);
+  } finally { await t.close(); }
 }
 
 // Another person asks (so the first one's minute is not used up): a dropped object stands in for the words, a question under
@@ -298,7 +308,7 @@ async function manageChecks(open, S, admin) {
       await m.eval(`document.getElementById('ai-use-block').scrollIntoView()`);
       await snap(m, `manage-use-${size}`);
       if (size === 1280) {
-        expect(await m.eval(`document.getElementById('ai-sees-lookup').checked && /Let AI look things up/.test(document.getElementById('ai-sees-lookup').closest('label').textContent)`), 'Let AI look things up is not on by default on Manage');
+        expect(await m.eval(`document.getElementById('ai-sees-lookup').checked && /Let AI look things up in this /.test(document.getElementById('ai-sees-lookup').closest('label').textContent)`), 'Let AI look things up is not on by default on Manage');
         await m.eval(`document.getElementById('ai-sees-chat').click()`);
         await m.eval(`document.getElementById('ai-sees-lookup').click()`);
         await m.eval(`document.getElementById('ai-sees-save').click()`);
@@ -467,6 +477,7 @@ async function main() {
     } finally { await t.close(); }
     await cutChecks(open, workspace);
     await chipAndCiteChecks(open, S, workspace);
+    await lookupChecks(open, S, workspace);
     await manageChecks(open, S, admin);
     await setupChecks(open, S, admin);
     unitChecks();

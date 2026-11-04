@@ -19,7 +19,7 @@ export function seesRows(word) {
     ['attached', `The ${objects} a person picks`, 'The ones attached to a question.'],
     ['relevant', `${up(objects)} that fit the question`, 'Found by matching its words.'],
     ['linked', `${up(objects)} linked to those`, 'The ones that point to, or are pointed to by, what is sent.'],
-    ['lookup', 'Let AI look things up', `It can search and read ${objects} in the ${space} it is asked in. Only what the person asking may open.`],
+    ['lookup', `Let AI look things up in this ${space}`, `It can search and read ${objects} there. Only what the person asking may open.`],
     ['history', 'Earlier questions', "The person's own recent questions and answers here."],
     ['chat', `The ${space}'s chat`, 'Recent messages everyone there can read.'],
     ['members', `Who is in the ${space}`, 'Names and roles.'],
