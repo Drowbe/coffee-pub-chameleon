@@ -519,3 +519,45 @@ export async function viewerFixCases({ S, api, say, fail, browser, until, open, 
     } finally { await tab.close(); }
   }
 }
+
+// The picture opens the file too: a real mouse click on the middle of each file's picture (or its type tile) in the Grid and in the List,
+// at a wide and a narrow width, opens the file's window; in Select mode it ticks the file instead. (Thomas, 2026-11-04: the thumbnail did
+// not open the file, only the name did.)
+export async function thumbOpensCases({ S, say, fail, open, until }) {
+  const names = ['photo.jpg', 'tone.mp3', 'clip.webm', 'planted.md', 'plain.pdf', 'locked.pdf', 'gone.png'];
+  const spot = (tab, name) => tab.eval(`(() => { const b = __q(${JSON.stringify(ROW)}, ${JSON.stringify(name)}) || __q('#module-frame >>> .vt-card .sdk-open', ${JSON.stringify(name)}); if (!b) return null; const t = b.closest('[data-id]').querySelector('.vt-thumb'); if (!t) return null; t.scrollIntoView({ block: 'center' }); const r = t.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  for (const [width, view] of [[1280, 'Grid'], [1280, 'List'], [390, 'Grid'], [390, 'List']]) {
+    const tab = await open(width, 'mia', view === 'List' ? '#module-frame >>> .vt-card' : undefined); // the choice is kept: the Grid is what the page shows after a Grid round
+    try {
+      await tab.click('.mf-switch-btn', view);
+      await sleep(600);
+      let opened = 0; const bad = [];
+      for (const name of names) {
+        const p = await spot(tab, name);
+        if (!p) { bad.push(`${name} (no picture found)`); continue; }
+        await sleep(150);
+        await tab.mouse('mouseMoved', p.x, p.y, { button: 'none', clickCount: 0 }); await tab.mouse('mousePressed', p.x, p.y); await tab.mouse('mouseReleased', p.x, p.y);
+        const n = await until(tab, WINS, (v) => v >= 1, 2500).catch(() => 0);
+        if (n >= 1) { opened++; await tab.key('Escape'); await until(tab, WINS, (v) => v === 0, 3000).catch(() => {}); } else bad.push(name);
+        if (n < 1) say(`  not opened: ${name}`);
+      }
+      if (bad.length) fail(`${view} at ${width}px: a click on the picture did not open ${bad.join(', ')}`);
+      say(`${view} at ${width}px: a click on the picture opened ${opened} of ${names.length} files`);
+    } finally { await tab.close(); }
+  }
+  // Select mode: the picture ticks the file, as the name does
+  const tab = await open(1280, 'mia');
+  try {
+    await tab.click('.mf-switch-btn', 'Grid'); await sleep(500);
+    await tab.eval(`(() => { const r = []; (function walk(x) { r.push(x); for (const e of x.querySelectorAll('*')) if (e.shadowRoot) walk(e.shadowRoot); })(document); for (const x of r) { const b = x.querySelector('button[aria-label="Select"]'); if (b) { b.click(); return true; } } return false; })()`);
+    await sleep(400);
+    const p = await spot(tab, 'photo.jpg');
+    await tab.mouse('mouseMoved', p.x, p.y, { button: 'none', clickCount: 0 }); await tab.mouse('mousePressed', p.x, p.y); await tab.mouse('mouseReleased', p.x, p.y);
+    await sleep(400);
+    const ticked = await tab.eval(`(() => { const b = __q('#module-frame >>> .vt-card .sdk-open', 'photo.jpg'); return b ? b.closest('[data-id]').getAttribute('aria-selected') : 'none'; })()`);
+    const n = await tab.eval(WINS);
+    if (ticked !== 'true' || n !== 0) fail(`in Select mode a click on the picture ticked ${ticked} and opened ${n} window(s) (ticked, none)`);
+    await tab.click('.mf-switch-btn', 'List'); await sleep(400); // the choice is kept, and the next window starts as a List
+    say(`Select mode: the picture ticks the file (${ticked}), no window (${n})`);
+  } finally { await tab.close(); }
+}
