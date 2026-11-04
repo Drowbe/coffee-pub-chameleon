@@ -535,6 +535,38 @@ async function checkMaps(browser, server) {
       }
     } finally { await s.done(); }
   }
+  // j: the held "..." menu is over everything, the pins too (the drawing at 390, and the wider one)
+  for (const [mode, w, hgt] of [['dark', 390, 760], ['light', 390, 760], ['dark', 700, 420], ['light', 700, 420]]) {
+    const s = await screen(w, hgt, `theme=strong-coffee&mode=${mode}&map=default&scene=menu`);
+    try {
+      if (!s.ok) { fail(`maps menu ${w} ${mode}: the screen did not draw`); continue; }
+      const r = await s.tab.eval(`(() => { const m = document.querySelector('.host-menu.ms-menu-open'); m.inert = false; // the held copy is inert; a hit test skips an inert node
+        const items = [...m.querySelectorAll('.host-menu-item')]; const bad = [];
+        for (const it of items) { const b = it.getBoundingClientRect(); const x = b.left + b.width / 2; const y = b.top + b.height / 2; const hit = document.elementFromPoint(x, y); if (!hit || !m.contains(hit)) bad.push(it.textContent.trim() + ' hit ' + (hit ? hit.tagName + '.' + hit.className : 'nothing')); }
+        m.inert = true; return { n: items.length, bad }; })()`);
+      if (r.n < 2) fail(`maps menu ${w} ${mode}: only ${r.n} items in the held menu; the check measures the wrong thing`);
+      for (const b of r.bad) fail(`maps menu ${w} ${mode}: an item of the held menu is under something else (${b})`);
+      say(`Maps held menu at ${w} (${mode}): ${r.n} items, ${r.bad.length} covered`);
+    } finally { await s.done(); }
+  }
+  // k: every place name sits whole inside the map, and so does every pin and its chip (the themes drawings, at three widths)
+  for (const [w, hgt] of [[1280, 640], [900, 560], [390, 760]]) {
+    for (const [mode, map] of [['dark', 'light'], ['light', 'dark']]) {
+      const s = await screen(w, hgt, `theme=strong-coffee&mode=${mode}&map=${map}&scene=map&edge=map`);
+      try {
+        if (!s.ok) { fail(`maps names ${w}: the screen did not draw`); continue; }
+        const r = await s.tab.eval(`(() => { const sr = document.querySelector('.ms-host').shadowRoot; const m = sr.getElementById('map').getBoundingClientRect(); const out = [];
+          const names = [...sr.querySelectorAll('.ms-name')];
+          for (const e of names) { const b = e.getBoundingClientRect(); if (b.left < m.left - 0.5 || b.right > m.right + 0.5 || b.top < m.top - 0.5 || b.bottom > m.bottom + 0.5) out.push('name ' + e.textContent); }
+          const pins = [...sr.querySelectorAll('.ms-pins .pin')];
+          for (const e of pins) for (const n of [e, ...e.querySelectorAll('*')]) { const b = n.getBoundingClientRect(); if (!b.width) continue; if (b.left < m.left - 0.5 || b.right > m.right + 0.5 || b.top < m.top - 0.5 || b.bottom > m.bottom + 0.5) { out.push('pin ' + (e.getAttribute('aria-label') || e.textContent)); break; } }
+          return { names: names.length, pins: pins.length, out }; })()`);
+        if (r.names < 8) fail(`maps names ${w}: only ${r.names} names; the check measures the wrong thing`);
+        for (const o of r.out) fail(`maps names ${w} ${mode}: ${o} reaches past the map's edge`);
+        say(`Maps names at ${w} (${map} map): ${r.names} names, ${r.pins} pins, ${r.out.length} past the edge`);
+      } finally { await s.done(); }
+    }
+  }
   // g: 44px taps at a real 390 viewport; h: the picture map
   for (const [mode, scene] of [['dark', 'options'], ['light', 'later'], ['dark', 'guest']]) {
     const s = await screen(390, 760, `theme=strong-coffee&mode=${mode}&map=default&scene=${scene}`);
