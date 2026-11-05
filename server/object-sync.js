@@ -6,6 +6,8 @@
 
 const { EventEmitter } = require('events');
 
+// One bus for the whole process, so every event names the environment it happened in (`env`, from deps.environment())
+// and a listener hears only its own.
 const bus = new EventEmitter();
 bus.setMaxListeners(0);
 
@@ -355,7 +357,7 @@ function afterWrite({ module, scopeKey, key, before, after, by, tz }) {
     for (const holder of holders) {
       try { applyDelete(holder, ref, by); } catch { /* a holder that cannot be written waits */ }
     }
-    bus.emit('refchange', { ref, change: 'deleted', holders });
+    bus.emit('refchange', { ref, change: 'deleted', holders, env: deps.environment() });
     return;
   }
   const beforeSummary = deps.summarize(module, found.produce, ref, found.id, before);
@@ -364,7 +366,7 @@ function afterWrite({ module, scopeKey, key, before, after, by, tz }) {
     for (const holder of holders) {
       try { applyFollow(holder, ref, beforeSummary, afterSummary, zone, by); } catch { /* a holder that cannot be written waits */ }
     }
-    bus.emit('refchange', { ref, change: 'updated', holders });
+    bus.emit('refchange', { ref, change: 'updated', holders, env: deps.environment() });
   }
   try { mirrorOut(ref, found.produce, scopeKey, before, after, zone, by); } catch (err) { if (!err || err.status !== 413) throw err; }
   try { mirrorIn(ref, found.produce, scopeKey, after, zone, by, before); } catch (err) { if (!err || err.status !== 413) throw err; }
@@ -394,12 +396,18 @@ function backfill() {
   return made;
 }
 
+// Hear the refchange events of one environment only. Returns the function that stops listening.
+function listen(env, fn) {
+  const handler = (ev) => { if (ev.env === env) fn(ev); };
+  bus.on('refchange', handler);
+  return () => bus.off('refchange', handler);
+}
+
 module.exports = {
   writerZone,
   dayInZone,
   configure,
   afterWrite,
   backfill,
-  on: (event, fn) => bus.on(event, fn),
-  off: (event, fn) => bus.off(event, fn),
+  listen,
 };

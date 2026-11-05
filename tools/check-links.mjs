@@ -125,6 +125,40 @@ try {
     assert.equal(objectSync.writerZone('America/New_York'), 'America/New_York');
   });
 
+  // A hosted server shares one objectSync bus: a write in one environment must reach that environment's listeners only,
+  // even with the same module id and scope key (GitHub #295). Two stand-in environments, one module id, one scope key.
+  await test('a refchange reaches the listeners of its own environment only', () => {
+    const A = { slug: 'alpha' };
+    const B = { slug: 'bravo' };
+    let current = A;
+    const holders = [{ module: 'holder', kind: 'row', id: '1', scope: 'space', space: 's1' }];
+    objectSync.configure({
+      environment: () => current,
+      produceFor: () => ({ produce: { kind: 'note' }, id: 'a' }),
+      linksTo: () => holders,
+      summarize: (m, p, r, id, v) => (v ? { title: v.title } : null),
+      read: () => null,
+      write: () => {},
+      remove: () => {},
+      dropLinks: () => {},
+    });
+    const heard = { A: [], B: [] };
+    const stopA = objectSync.listen(A, (ev) => heard.A.push(ev.change));
+    const stopB = objectSync.listen(B, (ev) => heard.B.push(ev.change));
+    const write = (after) => objectSync.afterWrite({ module: 'owner', scopeKey: 'space:s1', key: 'note:a', before: { title: 'One' }, after, by: 'x' });
+    current = A;
+    write({ title: 'Two' });
+    assert.deepEqual(heard, { A: ['updated'], B: [] }, 'a write in A reaches A and not B');
+    current = B;
+    write(null);
+    assert.deepEqual(heard, { A: ['updated'], B: ['deleted'] }, 'a delete in B reaches B and not A');
+    stopA();
+    current = A;
+    write({ title: 'Three' });
+    assert.deepEqual(heard, { A: ['updated'], B: ['deleted'] }, 'a stopped listener hears nothing');
+    stopB();
+  });
+
   const mods = path.join(base, 'mods');
   const ownerDir = writeModule(mods, 'link-owner', {
     produces: [{ kind: 'note', name: 'Note', key: 'note:{id}', summary: { title: 'title', when: 'start' }, backlinks: true }],
