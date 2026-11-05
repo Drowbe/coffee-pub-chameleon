@@ -1861,8 +1861,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // Print a stored file (a picture or a PDF) through the browser's print dialog, drawn from this page. The bytes are asked for with the
     // download flag, so the server asks for the same right as library.download.
+    // A PDF kept as download only (`viewable: false`, the Vault's decision 18) is never printed: the same rule the Vault menu and the viewer follow.
     async 'library.print'({ id }) {
       const doc = (pageMode ? container : frame).ownerDocument;
+      const listed = await api('GET', libraryUrl());
+      const record = (Array.isArray(listed) ? listed : listed?.files || []).find((f) => f.id === String(id ?? ''));
+      if (record && record.viewable === false) throw Object.assign(new Error('This kind of file can\'t be printed.'), { status: 400 });
       const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/content`, { download: '1' }), { headers: accessKeyHeaders() });
       if (!res.ok) {
         let said = '';

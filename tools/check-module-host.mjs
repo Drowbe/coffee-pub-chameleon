@@ -741,6 +741,12 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
     assert.match(told.join(' '), /Reload the page/);
   });
 }
+// host.library.print is bound by the Vault's rule for a PDF kept as download only (decision 18, #401): it looks the file up and refuses one with viewable false.
+{
+  const printSrc = slice('public/module-host.js', "async 'library.print'({ id }) {", 'return printBlob(doc, blob, blob.type);');
+  assert.match(printSrc, /viewable === false\) throw/, 'host.library.print must refuse a file that is not viewable');
+  assert.ok(printSrc.indexOf('viewable === false') < printSrc.indexOf('/content'), 'host.library.print must check viewable before fetching the bytes');
+}
 await Promise.all(pending);
 if (failed) process.exit(1);
 console.log(`check-module-host: OK (${n} groups)`);

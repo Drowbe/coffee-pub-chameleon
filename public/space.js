@@ -1061,6 +1061,7 @@ let micLive = false; // the microphone is live (reflectMic): the call item says 
 const canvas = createCanvas({
   guestToken,
   onNote: (text) => layoutNote(text),
+  onPopBlocked: () => setStatus(POPUP_BLOCKED, true),
   // The Layouts section is read again each time the menu opens, and drawn from layoutMenuItems() with the note last.
   onMenu: (open) => { if (open) refreshLayouts(); },
   menuItems: () => layoutMenuItems(),
@@ -1699,9 +1700,10 @@ function syncCallPlace() {
     if (away) columnEl.querySelector('#call-out-note').textContent = CALL_OUT_NOTES[where];
   }
 }
+const POPUP_BLOCKED = 'The browser did not open the window. Allow pop-ups for this site to open it in its own window.';
 function popOutCall() {
   if (canvas.columnMode()) {
-    if (!canvas.popBuiltin('conference')) setStatus('The browser did not open the window. Allow pop-ups for this site to pop out the call.', true);
+    if (!canvas.popBuiltin('conference')) setStatus(POPUP_BLOCKED, true);
   } else if (canvas.builtinOpen('conference')) canvas.setMode('conference', 'window');
   syncCallPlace();
 }
