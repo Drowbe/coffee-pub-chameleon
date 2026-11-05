@@ -22,14 +22,6 @@ GitHub #20.
 
 Workaround: find the object in the module itself.
 
-## Some data files are still readable by other users on the server
-
-Since the security fix, `app.json`, `host.json`, `ai.json` and `secrets.key` are readable only by the server's own
-user. The chat history and the modules' data files are not yet restricted the same way, and the checks do not yet
-cover every case. GitHub #69.
-
-Workaround: keep the data folder itself readable only by the user the server runs as.
-
 ## The console's Maps tab is too wide in the narrow layout
 
 On the host console at narrow width, the Maps tab runs past the right edge of the screen.
