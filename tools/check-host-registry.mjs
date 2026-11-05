@@ -340,6 +340,14 @@ test('the grace: an environment pastDue past 14 days is degraded to free, one st
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('the past-due sweep runs once at start, not only hourly, and does not throw on a fresh install', () => {
+  const src = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(BASE_DOMAIN\) \{\s*sweepStalePastDue\(\);\s*setInterval\(sweepStalePastDue, 3600000\);/, 'sweep at start, then hourly, only with BASE_DOMAIN');
+  const dir = freshDir();
+  new HostRegistry(dir).degradeStalePastDue();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('a host admin has a secretsKey from the start, 32 random bytes hex, stable across a reload', () => {
   const dir = freshDir();
   const key = new HostRegistry(dir).secretsKey;

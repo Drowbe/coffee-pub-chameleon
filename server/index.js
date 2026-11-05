@@ -10533,7 +10533,14 @@ app.use((err, _req, res, _next) => {
 
 // The grace: an environment pastDue for 14 days is degraded to the free plan once an hour, never deleted
 // (plan-environments.md, "Phase 5"). Only with a base domain -- a self-hosted install has no environments to sweep.
-if (BASE_DOMAIN) setInterval(() => hostRegistry.degradeStalePastDue(), 3600000);
+// It also runs once at start, so a server restarted more often than hourly still sweeps.
+function sweepStalePastDue() {
+  try { hostRegistry.degradeStalePastDue(); } catch (e) { console.error('past-due sweep failed:', e.message); }
+}
+if (BASE_DOMAIN) {
+  sweepStalePastDue();
+  setInterval(sweepStalePastDue, 3600000);
+}
 // Other calendars (plan-google-calendar.md, Part 2): every five minutes, each environment reads again those of its
 // calendars last tried 30 minutes ago or more, for people seen in the last 14 days, while the switch allows it.
 setInterval(() => {
