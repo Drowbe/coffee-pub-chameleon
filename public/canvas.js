@@ -62,7 +62,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // handoff a page over the call gets: from=space and the names for its header), so a link inside it that leads on to
 // another page keeps its way back. `onCompositeLoad(frame)`: each page that loads in a composite's frame, so the page
 // can take the header links inside it (home, which must not navigate the top window away from the call).
-export function createCanvas({ guestToken = null, onChatAsk = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null } = {}) {
+export function createCanvas({ guestToken = null, onChatAsk = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
   // Wider than a phone the Layout menu (openMenu, below) is the one place to show and hide modules, drawn with the page's
@@ -1317,7 +1317,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     }
     if (mode !== 'window' && !supports(mod, mode)) return;
     const m = mod.m;
-    if (mode === 'window') { closeModule(id); return popOut(m.id); }
+    if (mode === 'window') return popOut(m.id); // closes the module only once the window opened
     remember(id, { mode });
     // Docking one too many (not from its Dock button, which is unavailable then): it stays where it floats, and waits.
     if (mode === 'dock' && wouldWait(mod)) {
@@ -1345,7 +1345,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     // A composite's own window is the destination's page for this space, whole (its own bar, no titlebar of the canvas's).
     const url = compositeOf(m) ? compositeSrc(compositeOf(m)) : `/modules/${encodeURIComponent(m.id)}?${q}`;
     const win = window.open(url, `app-module-${m.id}`, `popup,width=${width},height=${height}`);
-    if (!win) return;
+    if (!win) { onPopBlocked?.(); return; } // the browser refused: the module stays where it is
     windows.set(m.id, win);
     if (mod) closeModule(m.id);
   }

@@ -103,13 +103,6 @@ in sight as you scroll (Calendar 1.24.9). Related: GitHub #287.
 
 Workaround: scroll back to the place you want.
 
-## A blocked pop-up leaves the call area empty
-
-**Call position** set to **Its own window** needs a browser that allows pop-ups for Collaborator. When the browser
-refuses the window, the call area can be left empty with no message and no retry. GitHub #288.
-
-Workaround: allow pop-ups for the site and choose **Its own window** again, or choose another **Call position**.
-
 ## Narrow bands in the status strip hide their label
 
 A phase that lasts only a few days is a narrow band in the status strip. When the band is too narrow, its name is not
@@ -148,10 +141,9 @@ they may sit in the wrong place on the picture. Places added after the picture m
 
 Workaround: edit each place and set its **Position** on the picture with the target button, or clear the picture map.
 
-## The pop-out call needs a browser that allows pop-ups
+## A pop-out needs a browser that allows pop-ups
 
-**Its own window** opens the call with `window.open`. A browser that blocks pop-ups, or an installed app that
-restricts them, cannot show it (see the entry above for what is left on the page).
+**Its own window** for the call, and **Open in its own window** for a module, use `window.open`. A browser that blocks pop-ups, or an installed app that restricts them, cannot show the window. The call and the module now stay where they were and the status line reads "The browser did not open the window. Allow pop-ups for this site to open it in its own window." (GitHub #288). Only the window itself is missing.
 
 Workaround: allow pop-ups for Collaborator.
 
@@ -201,7 +193,3 @@ In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle a
 **Print** on a PDF opens the browser's print dialog from a hidden frame that holds the PDF as a blob. The pages for a module's pop-out (`public/module.html`) and for a destination (`public/destination.html`) have a content security policy with `frame-src 'self'`, which blocks that blob frame, so the print can show an error page. Pictures print fine there, and the main space page prints PDFs fine by this reading. Found by quality-assurance and read as code only. Printing a PDF has not been seen in a real browser.
 
 Workaround: print the PDF from the space page, or use **Download** and print it from your device.
-
-## The Vault's "download only" rule is not checked again when a module calls print
-
-A PDF the Vault keeps as download only (decision 18 in `plan-vault-office-files.md`) has no **Print** in the Vault's menu. `host.library.print` does not check that rule on the host side, so a module that calls it directly can print such a PDF if the person may download. Only the Vault's own menu holds the rule. Found by quality-assurance and read as code only.

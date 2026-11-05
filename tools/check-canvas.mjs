@@ -772,6 +772,10 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // The pop-out of a part goes to the destination's page for the space (public/module.js); the canvas builds the
   // composite's frame from the same table and never writes `calendar` or `todo` into a remembered list.
   const moduleJs = fs.readFileSync(path.join(ROOT, 'public/module.js'), 'utf8');
+  // A module's pop-out the browser blocks (#288) leaves the module where it is and says so: it closes only once the window opened.
+  const popOutSrc = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8').match(/function popOut\(id\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
+  if (!/if \(!win\) \{ onPopBlocked\?\.\(\); return; \}/.test(popOutSrc) || popOutSrc.indexOf('onPopBlocked') > popOutSrc.indexOf('closeModule(m.id)')) fail('public/canvas.js', 'a module\'s pop-out the browser blocks must keep the module and call onPopBlocked, closing it only once the window opened');
+  if (/mode === 'window'\) \{ closeModule\(id\)/.test(fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8'))) fail('public/canvas.js', 'setMode(window) must not close the module before popOut has its window');
   if (!/compositesOn\(ids, shown\)\.find\(\(c\) => c\.parts\.includes\(id\)\)/.test(moduleJs) || !/location\.replace\(`\$\{composite\.path\}\?\$\{q\}\$\{location\.hash\}`\)/.test(moduleJs)) fail('public/module.js', 'a part\'s pop-out (/modules/calendar?space=, /modules/todo?space=, /modules/maps?space=, /modules/places?space=) goes to the destination\'s page for the space, the hash kept');
   // The Map's pop-out asks the destination for the space first (a 404 keeps the part's own page), as the canvas does.
   if (!/for \(const c of compositesToAsk\(ids\)\)/.test(moduleJs) || !/await api\('GET', `\/api\/destinations\/\$\{encodeURIComponent\(c\.dest\)\}\?\$\{q\}`\); shown\.push\(c\.dest\);/.test(moduleJs)) fail('public/module.js', 'a part of a composite that asks (Maps, Places) redirects only where GET /api/destinations/map?space= answers');
