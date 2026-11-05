@@ -358,6 +358,7 @@ const liveEvents = proxyFor('liveEvents');
 const invites = proxyFor('invites');
 const inviteEvents = proxyFor('inviteEvents');
 const themeEvents = proxyFor('themeEvents');
+const moduleEvents = proxyFor('moduleEvents');
 const chatPictures = proxyFor('chatPictures');
 const iconSvgs = proxyFor('iconSvgs');
 const moduleActivity = proxyFor('moduleActivity');
@@ -4197,6 +4198,7 @@ app.post('/api/modules/bundled/:id/install', requireOwner, async (req, res) => {
   const { zip } = buildModule(path.join(BUNDLED_DIR, id));
   const installed = await modules.install(zip, { source: 'bundled' });
   afterModulesChanged(currentEnvironment());
+  moduleEvents.emit('modules');
   res.status(201).json({ module: installed });
 });
 // Uploading a module's own zip, and choosing to run one in the page rather than sandboxed, are the host's own
@@ -4223,6 +4225,7 @@ app.post('/api/modules', requireOwner, requireHostTrust, rawZip, async (req, res
     return res.status(403).json({ error: `This ${word('environment')}'s plan does not include ${installed.displayName || installed.name}.` });
   }
   afterModulesChanged(currentEnvironment());
+  moduleEvents.emit('modules');
   res.status(201).json({ module: installed });
 });
 // displayName and displayIcon: what this environment calls the module and shows it as (null, or '' for the name, goes
@@ -4257,12 +4260,14 @@ app.patch('/api/modules/:id', requireOwner, (req, res) => {
   // A library module turned off ends its share links for good (turned on again, its files return but no old link does).
   if (wasOn && !modules.enabled(req.params.id)) vault.dropSharesOf(req.params.id);
   store.applyModuleDisplay(req.params.id, display);
+  if (Object.keys(rest).length) moduleEvents.emit('modules');
   res.json({ module: modules.view(req.params.id) });
 });
 app.post('/api/modules/:id/rollback', requireOwner, (req, res) => {
   const rolled = modules.rollback(req.params.id, String(req.body?.version || ''));
   // The stored keys follow the version now running (storage.renamed): a rename it does not declare is undone.
   syncStoredKeys(currentEnvironment(), req.params.id);
+  moduleEvents.emit('modules');
   res.json({ module: modules.view(req.params.id) || rolled });
 });
 app.delete('/api/modules/:id', requireOwner, (req, res) => {
@@ -4287,6 +4292,7 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
     facts.forgetModule(req.params.id);
     store.applyModuleDisplay(req.params.id, { name: null, icon: null }); // its display name and icon go with its data
   }
+  moduleEvents.emit('modules');
   res.json({ ok: true, ...(libraryFiles ? (req.query.keepData === '0' ? { filesRemoved: libraryFiles } : { filesKept: libraryFiles }) : {}) });
 });
 
@@ -9962,6 +9968,9 @@ app.get('/api/notifications/stream', requireUser, (req, res) => {
   const onMode = listenIn(env, ({ userKey, themeMode }) => { if (userKey === key) sseWrite(res, `event: mode\ndata: ${JSON.stringify({ themeMode })}\n\n`); });
   themeEvents.on('theme', onTheme);
   themeEvents.on('mode', onMode);
+  // The module list changed: a bare event; the page asks again for the modules this person may use here.
+  const onModules = listenIn(env, () => sseWrite(res, `event: modules\ndata: {}\n\n`));
+  moduleEvents.on('modules', onModules);
   const beat = setInterval(() => sseWrite(res, ': ping\n\n'), 25000);
   req.on('close', () => envContext.run(env, () => {
     clearInterval(beat);
@@ -9969,6 +9978,7 @@ app.get('/api/notifications/stream', requireUser, (req, res) => {
     inviteEvents.off('invite', onInvite);
     themeEvents.off('theme', onTheme);
     themeEvents.off('mode', onMode);
+    moduleEvents.off('modules', onModules);
   }));
 });
 

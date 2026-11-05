@@ -149,6 +149,10 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   // light or dark ('mode'): told to every open page over /api/notifications/stream so it switches without a reload.
   const themeEvents = new EventEmitter();
   themeEvents.setMaxListeners(0);
+  // The module list changed (a module installed, turned on or off, rolled back or removed): told to every open page over
+  // /api/notifications/stream as a bare 'modules' event (no ids), and each page asks again for what it may see.
+  const moduleEvents = new EventEmitter();
+  moduleEvents.setMaxListeners(0);
 
   // The chat pictures relayed lately (POST /api/spaces/:id/chat/pictures): never their bytes, only id -> { space, by, at },
   // so the person who sent one (or a moderator) can delete it for everyone and Clear... can take it.
@@ -266,7 +270,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   return {
     slug, dataDir,
     store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
-    geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, invites, inviteEvents, themeEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
+    geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
     moduleActivity, noteActivity, saveActivity, externalCalendars,
   };
 }

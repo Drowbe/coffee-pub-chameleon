@@ -8,6 +8,8 @@
  *     /api/modules/stream open while the Calendar's reminder fires. The server stays up, the stream carries the
  *     notification, and it is stored (GET /api/notifications). This used to stop the process: the stream's listener
  *     read the environment's services from the timer, where there is no environment.
+ *   - The same notifications stream carries a bare `modules` event when a module is turned off or on in Manage > Modules
+ *     (a space's bar asks again, no reload), in both installs, and never to a person in another environment.
  * No network beyond localhost, no LiveKit.
  */
 import fs from 'node:fs';
@@ -184,6 +186,28 @@ try {
       assert.ok(!/no environment resolved/.test(c.server.output()), c.server.output().slice(-2000));
     });
   }
+  const beta = await call(hosted, 'admin', 'POST', '/api/host/environments', { cookie: hostCookie, body: { slug: 'beta', name: 'Beta', owner: { login: 'owner', password: 'owner-password-1' } } });
+  assert.equal(beta.status, 201, beta.text);
+  const betaCookie = cookieOf(await call(hosted, 'beta', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
+  const betaNotes = openStream(hosted, 'beta', '/api/notifications/stream', betaCookie);
+  for (const c of cases) {
+    await test(`live, ${c.name}: turning a module off, then on, tells the open pages (a bare modules event), nobody in another environment`, async () => {
+      const mine = openStream(c.server, c.host, '/api/notifications/stream', c.cookie);
+      await new Promise((r) => setTimeout(r, 300));
+      const count = (t) => (t.match(/^event: modules$/gm) || []).length;
+      const was = count(mine.text());
+      for (const [enabled, seen] of [[false, was + 1], [true, was + 2]]) {
+        assert.equal((await call(c.server, c.host, 'PATCH', '/api/modules/calendar', { cookie: c.cookie, body: { enabled } })).status, 200);
+        const until = Date.now() + 3000;
+        while (Date.now() < until && count(mine.text()) < seen) await new Promise((r) => setTimeout(r, 50));
+        assert.equal(count(mine.text()), seen, `enabled=${enabled}:\n${mine.text()}`);
+      }
+      assert.match(mine.text(), /event: modules\ndata: \{\}\n\n/, 'no module id goes with it');
+      if (c.host) assert.equal(betaNotes.text().includes('event: modules'), false, 'the other environment heard it');
+      mine.close();
+    });
+  }
+  betaNotes.close();
   for (const c of cases) { c.armed.notes.close(); c.armed.mods.close(); }
 } finally {
   for (const s of servers) await s.stop();

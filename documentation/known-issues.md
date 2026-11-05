@@ -193,3 +193,15 @@ In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle a
 **Print** on a PDF opens the browser's print dialog from a hidden frame that holds the PDF as a blob. The pages for a module's pop-out (`public/module.html`) and for a destination (`public/destination.html`) have a content security policy with `frame-src 'self'`, which blocks that blob frame, so the print can show an error page. Pictures print fine there, and the main space page prints PDFs fine by this reading. Found by quality-assurance and read as code only. Printing a PDF has not been seen in a real browser.
 
 Workaround: print the PDF from the space page, or use **Download** and print it from your device.
+
+## A guest does not see a module turned on or off until a refresh
+
+When a module is turned on or off in **Manage > Modules**, members and others who are signed in see the space bar change at once. A guest has no notifications stream, so a guest's open space keeps the old list.
+
+Workaround: the guest refreshes the page.
+
+## A change to a module's permissions needs a reload
+
+Turning a module on or off updates an open space live, but changing who may use a module does not. An open space keeps the old list until the page is reloaded.
+
+Workaround: reload the page.
