@@ -6872,6 +6872,7 @@ function objectSummary({ manifest, produce, ref, hide }, id, value, withText = f
 // The link hook (plan-linked-objects, step 1): which stored key is a produced kind, who points at it, and whether
 // its summary changed. Wired here so a data route can call afterWrite without this file and object-sync circling.
 objectSync.configure({
+  environment: currentEnvironment,
   produceFor(moduleId, key) {
     const found = modules.enabled(moduleId);
     if (!found) return null;
@@ -10189,7 +10190,7 @@ app.get('/api/modules/stream', (req, res) => {
   });
   vault.on('change', onLibrary);
   moduleLinks.on('change', onLinks);
-  objectSync.on('refchange', onRefChange);
+  const stopRefChange = objectSync.listen(env, onRefChange); // this environment's links only: the bus is shared on a hosted server
   moduleBus.on('event', onBus);
   moduleBus.on('action', onAction);
   const beat = setInterval(() => sseWrite(res, ': ping\n\n'), 25000);
@@ -10203,7 +10204,7 @@ app.get('/api/modules/stream', (req, res) => {
     moduleHooks.off('fire', onFire);
     vault.off('change', onLibrary);
     moduleLinks.off('change', onLinks);
-    objectSync.off('refchange', onRefChange);
+    stopRefChange();
     moduleBus.off('event', onBus);
     moduleBus.off('action', onAction);
     externalCalendars.off('change', onExternal);
