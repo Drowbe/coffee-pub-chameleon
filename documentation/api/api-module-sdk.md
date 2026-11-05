@@ -450,7 +450,7 @@ await host.library.thumb(file.id, smallPicture);             // the small pictur
 const address = await host.library.url(file.id, { thumb: false, download: false });
 const bytes = await host.library.blob(file.id);              // a Blob of the file (or { thumb: true } its small picture)
 await host.library.download(file.id);                        // the host saves it; needs the download permission
-await host.library.print(file.id);                           // the browser's print dialog (Save as PDF is there too); a picture or a PDF only, other kinds are refused, and so is a file the Vault keeps download-only ("This kind of file can't be printed.", checked before the file is fetched); needs the download permission
+await host.library.print(file.id);                           // the browser's print dialog (Save as PDF is there too); a picture or a PDF only, other kinds are refused, and so is a file the Vault keeps download-only ("This kind of file can't be printed.", the file's bytes are dropped unread); needs the download permission. It shows a short "Preparing to print..." note until printing starts or fails, and makes its requests (the list, the bytes and the viewer code) together, not one after another
 await host.library.share([file.id]);                         // opens the share sheet over the page; needs the share permission
 await host.library.shares();                                 // opens the list of the space's share links over the page
 ```

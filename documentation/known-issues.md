@@ -193,3 +193,13 @@ In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle a
 **Print** on a PDF opens the browser's print dialog from a hidden frame that holds the PDF as a blob. The pages for a module's pop-out (`public/module.html`) and for a destination (`public/destination.html`) have a content security policy with `frame-src 'self'`, which blocks that blob frame, so the print can show an error page. Pictures print fine there, and the main space page prints PDFs fine by this reading. Found by quality-assurance and read as code only. Printing a PDF has not been seen in a real browser.
 
 Workaround: print the PDF from the space page, or use **Download** and print it from your device.
+
+## A second click on Print while one is preparing starts a second print
+
+**Print** in the Vault shows "Preparing to print..." while it gets the file ready, but it does not stop you from choosing **Print** again. A second click starts a second print of the same file. Found when the print was made faster; it has not been fixed.
+
+Workaround: wait for the print dialog before you choose **Print** again.
+
+## Printing a PDF always waits 400 ms
+
+After a PDF is loaded into the hidden print frame, the Vault waits a fixed 400 ms before it opens the print dialog, in case the browser's PDF viewer is not ready. That is a short, fixed delay on every PDF print, and on a slow device it may still be too short. It was kept when printing was made faster because the check browser has no PDF viewer to test removing it. Not seen in a real browser.
