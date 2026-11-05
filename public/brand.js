@@ -1048,6 +1048,16 @@ export function showNote(text, body = '') {
   pushToast({ kind: 'info', icon: 'circle-info', title: t, ...(more ? { text: more } : {}), ms: 4500 });
 }
 
+// A note for work that is running ("Preparing to print..."): it stays until the returned function is called (a minute at most), then
+// goes. Called before the note is on the screen (three already showing), it goes as soon as it shows.
+export function progressNote(text) {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  let toast = null;
+  let done = false;
+  if (t) pushToast({ kind: 'info', icon: 'circle-info', title: t, ms: 60000, onPlaced: (x) => { toast = x; if (done) closeToast(x); } });
+  return () => { done = true; if (toast) closeToast(toast); };
+}
+
 // A note with one button, "Undo", until `until` (a time in ms; Clear's undo time from the server's answer): it goes then
 // whatever the pointer or the focus does, as Undo can't work after it. onUndo may resolve to the sentence to show
 // ("Restored 12 objects."), and the note then gives way to it. It may fail: the note then stays, with the server's sentence

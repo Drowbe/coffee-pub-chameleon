@@ -741,11 +741,24 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
     assert.match(told.join(' '), /Reload the page/);
   });
 }
-// host.library.print is bound by the Vault's rule for a PDF kept as download only (decision 18, #401): it looks the file up and refuses one with viewable false.
+// host.library.print is bound by the Vault's rule for a PDF kept as download only (decision 18, #401): it looks the file up and refuses one with
+// viewable false. It does not wait for the list before the bytes (on a slow connection that was two trips one after the other, then the printing
+// code's own load: 5 to 10 s, Thomas 2026-11-05): the note shows first, the printing code, the list and the bytes are asked for at once, and the
+// note goes when it ends.
 {
-  const printSrc = slice('public/module-host.js', "async 'library.print'({ id }) {", 'return printBlob(doc, blob, blob.type);');
-  assert.match(printSrc, /viewable === false\) throw/, 'host.library.print must refuse a file that is not viewable');
-  assert.ok(printSrc.indexOf('viewable === false') < printSrc.indexOf('/content'), 'host.library.print must check viewable before fetching the bytes');
+  const printSrc = slice('public/module-host.js', "async 'library.print'({ id }) {", 'finally { stop(); }');
+  assert.match(printSrc, /viewable === false\) \{ ctl\.abort\(\); throw/, 'host.library.print must refuse a file that is not viewable, and drop the bytes');
+  const at = (re) => { const m = printSrc.search(re); assert.ok(m >= 0, `host.library.print: ${re} is missing`); return m; };
+  const note = at(/progressNote\('Preparing to print\.\.\.'\)/);
+  const viewer = at(/import\('\/file-viewer\.js'\)/);
+  const bytes = at(/fetch\(libraryUrl\(`\/\$\{encodeURIComponent\(fid\)\}\/content`/);
+  const list = at(/api\('GET', libraryUrl\(\)\)/);
+  const waits = at(/await listing/);
+  assert.ok(note < viewer && note < bytes && note < list, 'host.library.print must show its note before it asks for anything');
+  assert.ok(viewer < waits && bytes < waits && list < waits, 'host.library.print must ask for the code, the bytes and the list before waiting on any of them');
+  assert.ok(!/await (api|fetch|import)\(/.test(printSrc.slice(0, waits)), 'host.library.print must not wait on a request before the others have started');
+  const viewerSrc = slice('public/file-viewer.js', 'async function printIt(w, f) {', 'finally { stop(); }');
+  assert.ok(viewerSrc.includes("progressNote('Preparing to print...')") && viewerSrc.indexOf('progressNote(') < viewerSrc.indexOf('fetch('), 'the file window\'s Print must show its note before it fetches');
 }
 await Promise.all(pending);
 if (failed) process.exit(1);
