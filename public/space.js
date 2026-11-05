@@ -6218,6 +6218,7 @@ $('chat').addEventListener('drop', (event) => {
 const chatInput = attachChatInput({
   $,
   api,
+  guestToken, // a guest link has no session; the citations call carries it (GitHub #395)
   word,
   getSpace: () => chatSpace(), // Home's chat while it shows on Home (plan-home-lobby.md), else the space's
   isHome: () => Boolean(homeChatSpace), // Home's chat is the Discussion alone (GitHub #326)

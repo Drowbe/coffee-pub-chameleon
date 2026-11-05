@@ -432,6 +432,7 @@
     // The handlers return nothing: the menu waits for what an item returns before it closes, and while it is open it takes Escape.
     const items = [{ id: 'open', label: 'Open', icon: 'eye', onClick: () => { openFile(f, 'menu'); } }];
     if (mayDownload) items.push({ id: 'download', label: 'Download', icon: 'download', onClick: () => { host.library.download(f.id).catch(fail); } });
+    if (mayDownload && f.viewable !== false && (f.group === 'image' || f.type === 'application/pdf') && host.library.print) items.push({ id: 'print', label: 'Print', icon: 'print', onClick: () => { host.library.print(f.id).catch(fail); } });
     if (mayShare) items.push({ id: 'share', label: 'Share', icon: 'share-nodes', onClick: () => { shareFiles([f]); } });
     if (mayRemove(f)) items.push({ id: 'rename', label: 'Rename', icon: 'pen-to-square', onClick: () => { renameFile(f); } });
     items.push({ id: 'uses', label: 'Where it is used', icon: 'link', hint: f.uses ? String(f.uses) : undefined, onClick: () => { showFile(f, { uses: true, opener: 'menu' }); } });

@@ -30,6 +30,14 @@ const ok = (name) => { n += 1; console.log(`ok ${name}`); };
 const tmp = (name) => fs.mkdtempSync(path.join(os.tmpdir(), `check-chat-links-${name}-`));
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
+// A guest link has no session: the page's citations call carries ?guest=<token> (GitHub #395). Read as code.
+{
+  const input = fs.readFileSync(path.join(ROOT, 'public/chat-input.js'), 'utf8');
+  assert.ok(/'\/api\/chat\/citations' \+ \(guestToken \? `\?guest=\$\{encodeURIComponent\(guestToken\)\}`/.test(input), 'citations call adds ?guest=');
+  assert.ok(/attachChatInput\(\{[^}]*?\bguestToken,/s.test(fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8')), 'space.js passes guestToken');
+  ok('citations: the call carries ?guest=<token> on a guest link');
+}
+
 // --- which text is a link -------------------------------------------------------------------------------------------
 
 assert.equal(findLink('This one? https://example.com/hotel'), 'https://example.com/hotel', 'bare');

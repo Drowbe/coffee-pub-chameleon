@@ -14,13 +14,13 @@
 // destination's row and its panel's; any .sdk-toolbar a module drew, which has no look and so fails; the status bar
 // .mf-status), every search field (the frame's .mf-search, any .sdk-search) and every control in a band, and holds them to
 // the approved values in the moduleframe block (read from its tokens, so a value is changed in one place):
-//   title bar --mf-title-h (36 px, on every width), its words 14 px, its first item --mf-inset (12 px) in and its last
+//   title bar --mf-title-h (36 px; 52 on a phone), its words 14 px, its first item --mf-inset (12 px) in and its last
 //   --space-1 (4 px) from the end;
-//   toolbar --mf-band-h (40 px, its hairline counted), its first item --mf-inset in; its end group (the search, then the
+//   toolbar --mf-band-h (40 px; 56 on a phone; its hairline counted), its first item --mf-inset in; its end group (the search, then the
 //   Filters button; or, where a host page has a right zone, that zone's last control) exactly --mf-inset from the end, the same
 //   place in every window; with no end group, nothing closer;
 //   status bar --mf-status-h (24 px), its first item --mf-inset in;
-//   a search field and a control in a band (a button, the view switch, a tab, the "+", the menu, Close) --mf-ctl-h (28 px);
+//   a search field and a control in a band (a button, the view switch, a tab, the "+", the menu, Close) --mf-ctl-h (28 px; 44 on a phone, a view switch's track 50);
 //   the Filters button --mf-ctl-h too, a filter chip --mf-chip-h (24 px); nothing in a band is cut (its controls inside its padding);
 //   a tab strip or view switch (the Tabs family in a band: the Chat's Discussion | Assistant row; the frame's switch and
 //   tabs; and a row of tabs of a module's own, measured as a band of its own): centred in its band, as far from its top as
@@ -63,7 +63,7 @@ const FRAME = (() => {
     if (sp) return space(sp[1]);
     throw new Error(`the moduleframe block has no --${name} in pixels (got "${v}")`);
   };
-  return { title: tok('mf-title-h'), toolbar: tok('mf-band-h'), status: tok('mf-status-h'), ctl: tok('mf-ctl-h'), chip: tok('mf-chip-h'), inset: tok('mf-inset'), end: space(1), hit: tok('mf-hit'), hitW: tok('mf-hit-w') };
+  return { title: tok('mf-title-h'), toolbar: tok('mf-band-h'), status: tok('mf-status-h'), ctl: tok('mf-ctl-h'), chip: tok('mf-chip-h'), inset: tok('mf-inset'), end: space(1), hit: tok('mf-hit'), hitW: tok('mf-hit-w'), edge0: space(0) };
 })();
 const WANT = {
   title: FRAME.title, titleFont: 14, titleLeft: FRAME.inset, titleRight: FRAME.end, toolbar: FRAME.toolbar, toolbarLeft: FRAME.inset, toolbarEnd: FRAME.inset,
@@ -454,8 +454,11 @@ async function symmetry(tab, context) {
   await tab.eval(`(() => { const all = [document]; const walk = (r) => { for (const e of r.querySelectorAll('*')) if (e.shadowRoot) { all.push(e.shadowRoot); walk(e.shadowRoot); } }; walk(document); for (const r of all) for (const e of r.querySelectorAll('[data-symmetry-offender], [data-symmetry-kid]')) { delete e.dataset.symmetryOffender; delete e.dataset.symmetryKid; } })()`).catch(() => {});
 }
 const results = [];
+// On a phone (640 px and narrower) the buttons are drawn --mf-hit tall (#394): a control and the search are --mf-hit, the title bar
+// 8 px more, the toolbar 12 px more, a view switch's track its parts plus its edge and padding.
+const PHONE_WANT = { ...WANT, title: FRAME.hit + 8, toolbar: FRAME.hit + 12, search: FRAME.hit, button: FRAME.hit };
 function judge(context, phone, windows) {
-  const want = WANT;
+  const want = phone ? PHONE_WANT : WANT;
   for (const w of windows) {
     const rows = [];
     const bad = (what, got, should) => { failures.push({ context, window: `${w.name} (${w.kind})`, what, got, should }); rows.push(`    !! ${what}: ${got}, should be ${should}`); };
@@ -483,7 +486,7 @@ function judge(context, phone, windows) {
       for (const st of b.strips) {
         // A strip in a band (the frame's switch and tabs, the Chat's tab strip) is the frame's control height; a module's own row of
         // tabs (a tab row) its small tabs, 30 px.
-        const tabWant = b.band === 'tabrow' && !/mf-(switch|tabs)/.test(st.what) ? 30 : want.button;
+        const tabWant = b.band === 'tabrow' && !/mf-(switch|tabs)/.test(st.what) ? 30 : phone && /mf-switch/.test(st.what) ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
         if (Math.abs(st.h - tabWant) > 0.5 || Math.abs(st.hMin - tabWant) > 0.5) bad(`tab height in the ${b.band} (${st.what})`, st.hMin === st.h ? st.h : `${st.hMin}-${st.h}`, tabWant);
         if (b.band !== 'tabrow' && Math.abs(st.above - st.below) > 0.5) bad(`tabs centred in the ${b.band} (${st.what})`, `above ${st.above} / below ${st.below}`, 'the same above and below');
       }
@@ -506,7 +509,7 @@ function judge(context, phone, windows) {
       for (const x of b.buttons) {
         // Every control in a band is the frame's --mf-ctl-h, on every width (the Prototype at 390 too), the Filters button too; a
         // filter chip is the chip's --mf-chip-h.
-        const should = x.chip ? want.chip : want.button;
+        const should = x.chip ? want.chip : phone && /^View$/.test(x.what) ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
         if (Math.abs(x.h - should) > 0.5) bad(`control in the ${b.band} (${x.what})`, x.h, should);
       }
     }

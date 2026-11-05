@@ -37,6 +37,49 @@ const managerFor = (doc) => {
   if (!m) { m = createManager(doc); managers.set(doc, m); }
   return m;
 };
+// Print a stored file from the top page: a picture or a PDF, drawn in a hidden frame of this page and sent to the browser's print dialog
+// (which also saves as PDF). The bytes come with the download flag, so the server asks for the same right as Download. Other kinds say no.
+export const printable = (f) => f && f.viewable !== false && (f.group === 'image' || f.type === 'application/pdf');
+export async function printBlob(doc, blob, type) {
+  const isPdf = type === 'application/pdf';
+  if (!isPdf && !/^image\//.test(type || '')) throw Object.assign(new Error('This kind of file can\'t be printed.'), { status: 400 });
+  const href = URL.createObjectURL(isPdf ? new Blob([blob], { type: 'application/pdf' }) : blob);
+  const frame = doc.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.tabIndex = -1;
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  const clean = () => { URL.revokeObjectURL(href); frame.remove(); };
+  await new Promise((resolve, reject) => {
+    frame.onload = () => {
+      // srcdoc loads as about:blank first in some browsers; the picture's own load is waited for below.
+      if (isPdf) resolve();
+    };
+    frame.onerror = () => reject(new Error('That did not print. Try again.'));
+    if (isPdf) frame.src = href;
+    else frame.srcdoc = `<!doctype html><title></title><style>html,body{margin:0}img{display:block;max-width:100%;max-height:100vh;margin:0 auto}@page{margin:10mm}</style><img alt="" src="${href}">`;
+    doc.body.append(frame);
+    if (!isPdf) {
+      const wait = () => {
+        const img = frame.contentDocument && frame.contentDocument.querySelector('img');
+        if (img && img.complete) { if (img.naturalWidth) resolve(); else reject(new Error('That did not print. Try again.')); } else setTimeout(wait, 50);
+      };
+      frame.addEventListener('load', wait, { once: true });
+    }
+    setTimeout(() => reject(new Error('That did not print. Try again.')), 20000);
+  }).catch((err) => { clean(); throw err; });
+  const w = frame.contentWindow;
+  w.addEventListener('afterprint', () => setTimeout(clean, 500), { once: true });
+  setTimeout(clean, 10 * 60 * 1000);
+  // A PDF's own viewer needs a moment after load before it can print.
+  if (isPdf) await new Promise((r) => setTimeout(r, 400));
+  try { w.focus(); w.print(); } catch {
+    // A browser that keeps a PDF's own viewer out of reach: show the PDF in a tab, where its print button is.
+    if (doc.defaultView.open(href, '_blank', 'noopener')) return true;
+    clean();
+    throw new Error('That did not print. Download it and print it from your device.');
+  }
+  return true;
+}
 export const fileWindowCount = (doc = document) => (managers.get(doc) ? managers.get(doc).wins.length : 0);
 export function closeAllFiles(doc = document) { const m = managers.get(doc); if (m) m.closeAll(); }
 export function openFile(spec) {
@@ -210,6 +253,13 @@ function createManager(doc) {
     a.click();
     a.remove();
   }
+  async function printIt(w, f) {
+    try {
+      const res = await fetch(libUrl(w.place, `/${enc(f.id)}/content`, { download: '1' }), { headers: accessKeyHeaders() });
+      if (!res.ok) throw new Error(res.status === 403 ? 'Your role can\'t print this file.' : 'That did not print. Try again.');
+      await printBlob(doc, await res.blob(), f.type);
+    } catch (err) { showNote(err && err.message ? err.message : 'That did not print. Try again.'); }
+  }
   async function blobOf(w, f) {
     const res = await fetch(libUrl(w.place, `/${enc(f.id)}/content`), { headers: accessKeyHeaders() });
     if (!res.ok) {
@@ -255,6 +305,7 @@ function createManager(doc) {
     const end = (it) => ({ ...it, zone: 'end', pin: true });
     if (f) {
       if (can(w, 'download') && !phone() && !w.missing && f.viewable !== false) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
+      if (can(w, 'download') && !phone() && !w.missing && !w.broken && printable(f)) list.push(end({ type: 'button', id: 'print', label: 'Print', icon: 'print', kind: 'secondary' }));
       if (SHARE_READY && can(w, 'share')) list.push(end({ type: 'button', id: 'share', label: 'Share', icon: 'share-nodes', kind: 'secondary' }));
       if (f.viewable !== false && !w.broken) list.push(end({ type: 'button', id: 'full', label: 'Full screen', icon: 'expand', kind: 'icon' }));
     }
@@ -280,6 +331,7 @@ function createManager(doc) {
       if (e.id === 'prev') go(w, -1);
       else if (e.id === 'next') go(w, 1);
       else if (e.id === 'info') { w.info = !w.info; drawInfo(w); w.frame.setToolbar(toolbar(w)); } else if (e.id === 'download' && f) download(w, f);
+      else if (e.id === 'print' && f) printIt(w, f);
       else if (e.id === 'full') fullscreen(w);
       else if (e.id === 'share' && f) share(w, f, e.el);
     }

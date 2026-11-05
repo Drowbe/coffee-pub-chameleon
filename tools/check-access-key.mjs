@@ -62,6 +62,7 @@ try {
   const routes = [
     ['GET', `/api/modules/for-space?space=${space}`],
     ['POST', '/api/objects/resolve', { from: 'calendar', refs: [ref] }],
+    ['POST', '/api/chat/citations', { refs: [ref] }],
     ['GET', `/api/objects/search?from=calendar&scope=space&space=${space}`],
     ['GET', `/api/modules/todo/objects/task/abc?from=calendar&scope=space&space=${space}`],
     ['POST', '/api/objects/links', { module: 'todo', from: ref, to: [] }],
@@ -77,6 +78,7 @@ try {
     ['GET', `/api/modules/stream?space=${space}`],
     // At environment scope, named and not.
     ['POST', '/api/objects/resolve', { from: 'calendar', refs: [{ ...ref, scope: 'environment', space: undefined }] }],
+    ['POST', '/api/chat/citations', { refs: [{ ...ref, scope: 'environment', space: undefined }] }],
     ['GET', '/api/objects/search?from=calendar&scope=environment'],
     ['GET', '/api/objects/search?from=calendar'],
     ['GET', '/api/modules/todo/objects/task/abc?from=calendar&scope=environment'],

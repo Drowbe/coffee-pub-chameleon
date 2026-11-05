@@ -12,3 +12,20 @@ try {
 } catch {
   // no storage: the default mode shows
 }
+
+// A phone (640px and narrower) is the top page's width, not a frame's: a module's page in a docked column of a desktop window is
+// narrow too. The bars' buttons are drawn 44px on a phone (system.css, the moduleframe block), so every page, framed or not,
+// follows the top page's width through <html data-phone> (GitHub #394).
+try {
+  const top = window.top;
+  const query = top.matchMedia('(max-width: 640px)');
+  const mark = () => document.documentElement.toggleAttribute('data-phone', query.matches);
+  mark();
+  query.addEventListener('change', mark);
+} catch {
+  // the top page is not ours to read: the page's own width decides, as for any page
+  const query = window.matchMedia('(max-width: 640px)');
+  const mark = () => document.documentElement.toggleAttribute('data-phone', query.matches);
+  mark();
+  query.addEventListener('change', mark);
+}

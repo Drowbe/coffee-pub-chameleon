@@ -25,6 +25,8 @@
  *     (access.personWrite), notes and photos with their uploads; link pictures refused to guests and to addresses no link
  *     here has; icons without a session; a closed poll's votes are final (nobody removes one), and a poll removed takes
  *     its votes with it; the module context's space.guestsSeeHidden.
+ *   - Chat's citations (POST /api/chat/citations, GitHub #395): resolved as the reader with the Assistant module off, a
+ *     space the reader is not in hidden, a guest kept to their space and without hidden fields, 50 at most, 401 signed out.
  * No network beyond localhost, no LiveKit.
  */
 import fs from 'node:fs';
@@ -597,6 +599,42 @@ try {
     const r = await call('POST', '/api/objects/resolve', { from: 'travel', refs: ['late', 'soon', 'q1', 'q2'].map((id) => ({ module: 'polls', kind: 'poll', id, scope: 'space', space: T })) }, 'sam');
     assert.deepEqual(r.json.summaries.map((s) => s.done), [true, false, false, true]);
     assert.equal((await call('PUT', data('polls', `vote:late:${ctx.sam}`), { value: { options: ['o1'] } }, 'sam')).status, 403, 'and takes no votes');
+  });
+
+  await test('live: chat\'s citations resolve as the reader, with or without the Assistant module (GitHub #395)', async () => {
+    const plan = { module: 'travel', kind: 'plan', id: 'a3', scope: 'space', space: T };
+    const kyoto = { module: 'polls', kind: 'poll', id: 'k1', scope: 'space', space: K };
+    const off = await call('PATCH', '/api/modules/assistant', { enabled: false });
+    assert.equal(off.status, 200, JSON.stringify(off.json));
+    try {
+      // The general route still asks for its consumer, so a module that is off links to nothing.
+      const strict = (await call('POST', '/api/objects/resolve', { from: 'assistant', refs: [plan] }, 'sam')).json.summaries[0];
+      assert.equal(strict.state, 'gone', 'the general route is unchanged');
+      // A member of the trip sees its object, and its amount.
+      const mine = await call('POST', '/api/chat/citations', { refs: [plan] }, 'sam');
+      assert.equal(mine.status, 200, JSON.stringify(mine.json));
+      assert.equal(mine.json.summaries[0].title, 'Hotel Avenida Palace');
+      assert.equal(typeof mine.json.summaries[0].amount, 'number', 'a member sees what it costs');
+      // Not a member of Kyoto: hidden, no title; Mia, who is, sees it.
+      const outside = (await call('POST', '/api/chat/citations', { refs: [kyoto] }, 'sam')).json.summaries[0];
+      assert.deepEqual([outside.state, outside.title], ['hidden', undefined], 'sam is not in Kyoto');
+      assert.equal(typeof (await call('POST', '/api/chat/citations', { refs: [kyoto] }, 'mia')).json.summaries[0].title, 'string', 'mia is');
+      // A guest: their own space only, never its hidden fields, nothing of the environment.
+      const guest = await asGuest('POST', `/api/chat/citations?${sp()}`, { refs: [plan, kyoto, { module: 'travel', kind: 'plan', id: 'a1', scope: 'environment' }] });
+      assert.equal(guest.status, 200, JSON.stringify(guest.json));
+      const [g1, g2, g3] = guest.json.summaries;
+      assert.deepEqual([g1.title, g1.amount, g1.planned, g1.paidBy], ['Hotel Avenida Palace', undefined, undefined, undefined], 'no money to a guest');
+      assert.deepEqual([g2.state, g2.title, g3.status, g3.title], ['hidden', undefined, 403, undefined], 'nothing outside the guest\'s space');
+      // A space that is not here, and an object that is gone, read the same: gone.
+      const gone = (await call('POST', '/api/chat/citations', { refs: [{ ...plan, space: 'nope' }, { ...plan, id: 'nope' }] }, 'sam')).json.summaries;
+      assert.deepEqual(gone.map((s) => s.state), ['gone', 'gone']);
+      // Up to 50 at once; nobody signed in is refused with a sentence.
+      assert.equal((await call('POST', '/api/chat/citations', { refs: Array.from({ length: 60 }, () => plan) }, 'sam')).json.summaries.length, 50);
+      const nobody = await call('POST', '/api/chat/citations', { refs: [plan] }, 'nobody');
+      assert.deepEqual([nobody.status, nobody.json.error], [401, 'sign in first']);
+    } finally {
+      assert.equal((await call('PATCH', '/api/modules/assistant', { enabled: true })).status, 200, 'the Assistant is on again');
+    }
   });
 
   // A picture uploaded to Research in the trip by `as`: its file id.
