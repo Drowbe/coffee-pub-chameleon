@@ -19,7 +19,7 @@ import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
 import { actionBar } from '/action-bar.js';
-import { api, accessKeyHeaders, showNote, word } from '/brand.js';
+import { api, accessKeyHeaders, showNote, progressNote, word } from '/brand.js';
 import { fileView, infoView, viewState, stopMedia, KINDS, kindOf, size, when, h } from '/file-viewer-views.js';
 
 export const MAX_WINDOWS = 4;
@@ -254,11 +254,12 @@ function createManager(doc) {
     a.remove();
   }
   async function printIt(w, f) {
+    const stop = progressNote('Preparing to print...');
     try {
       const res = await fetch(libUrl(w.place, `/${enc(f.id)}/content`, { download: '1' }), { headers: accessKeyHeaders() });
       if (!res.ok) throw new Error(res.status === 403 ? 'Your role can\'t print this file.' : 'That did not print. Try again.');
       await printBlob(doc, await res.blob(), f.type);
-    } catch (err) { showNote(err && err.message ? err.message : 'That did not print. Try again.'); }
+    } catch (err) { showNote(err && err.message ? err.message : 'That did not print. Try again.'); } finally { stop(); }
   }
   async function blobOf(w, f) {
     const res = await fetch(libUrl(w.place, `/${enc(f.id)}/content`), { headers: accessKeyHeaders() });

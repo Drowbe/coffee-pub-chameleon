@@ -4,7 +4,7 @@
 // back into the frame. Used by a module's own page (module.js), the dashboard (dashboard.js) and a
 // space's canvas (canvas.js).
 
-import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, undoToast } from '/brand.js';
+import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, progressNote, undoToast } from '/brand.js';
 import { confirmDialog } from '/confirm.js';
 import { pickObjects } from '/object-pick.js';
 import { nav as navBar } from '/nav-bar.js';
@@ -1860,22 +1860,36 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return true;
     },
     // Print a stored file (a picture or a PDF) through the browser's print dialog, drawn from this page. The bytes are asked for with the
-    // download flag, so the server asks for the same right as library.download.
-    // A PDF kept as download only (`viewable: false`, the Vault's decision 18) is never printed: the same rule the Vault menu and the viewer follow.
+    // download flag, so the server asks for the same right as library.download. A note shows at once, and the list (for the rule below) and
+    // the bytes are asked for together, not one after the other: the file starts to arrive without waiting for the list.
+    // A PDF kept as download only (`viewable: false`, the Vault's decision 18) is never printed: the same rule the Vault menu and the viewer
+    // follow; its bytes are then dropped unread.
     async 'library.print'({ id }) {
       const doc = (pageMode ? container : frame).ownerDocument;
-      const listed = await api('GET', libraryUrl());
-      const record = (Array.isArray(listed) ? listed : listed?.files || []).find((f) => f.id === String(id ?? ''));
-      if (record && record.viewable === false) throw Object.assign(new Error('This kind of file can\'t be printed.'), { status: 400 });
-      const res = await fetch(libraryUrl(`/${encodeURIComponent(String(id ?? ''))}/content`, { download: '1' }), { headers: accessKeyHeaders() });
-      if (!res.ok) {
-        let said = '';
-        try { said = (await res.json()).error || ''; } catch { /* no body */ }
-        throw Object.assign(new Error(said || (res.status === 403 ? 'Your role can\'t print this file.' : res.status === 404 ? 'There is no such file.' : 'That did not print. Try again.')), { status: res.status });
-      }
-      const blob = await res.blob();
-      const { printBlob } = await import('/file-viewer.js');
-      return printBlob(doc, blob, blob.type);
+      const fid = String(id ?? '');
+      const sorry = 'That did not print. Try again.';
+      const stop = progressNote('Preparing to print...');
+      try {
+        const ctl = new AbortController();
+        const viewer = import('/file-viewer.js'); // the printing code and what it loads come with the first print: fetched now, not after the bytes
+        viewer.catch(() => {});
+        const bytes = fetch(libraryUrl(`/${encodeURIComponent(fid)}/content`, { download: '1' }), { headers: accessKeyHeaders(), signal: ctl.signal })
+          .then(async (res) => ({ res, blob: res.ok ? await res.blob() : null }));
+        bytes.catch(() => {}); // read below; never unhandled when the list refuses first
+        const listing = api('GET', libraryUrl()).then((listed) => {
+          const record = (Array.isArray(listed) ? listed : listed?.files || []).find((f) => f.id === fid);
+          if (record && record.viewable === false) { ctl.abort(); throw Object.assign(new Error('This kind of file can\'t be printed.'), { status: 400 }); }
+        });
+        await listing;
+        const { res, blob } = await bytes.catch(() => { throw Object.assign(new Error(sorry), { status: 0 }); });
+        if (!res.ok) {
+          let said = '';
+          try { said = (await res.json()).error || ''; } catch { /* no body */ }
+          throw Object.assign(new Error(said || (res.status === 403 ? 'Your role can\'t print this file.' : res.status === 404 ? 'There is no such file.' : sorry)), { status: res.status });
+        }
+        const { printBlob } = await viewer.catch(() => { throw Object.assign(new Error(sorry), { status: 0 }); });
+        return await printBlob(doc, blob, blob.type);
+      } finally { stop(); }
     },
     // Place search answered by the server (a module that declares `geocoder`): saved places first, then the chosen service.
     async 'geocode.search'({ q, lat, lon }) {
