@@ -1034,7 +1034,8 @@ class ModuleManager {
   save() {
     fs.mkdirSync(this.dir, { recursive: true });
     const tmp = `${this.file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(this.registry, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(this.registry, null, 2), { mode: 0o600 });
+    fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, this.file);
   }
 

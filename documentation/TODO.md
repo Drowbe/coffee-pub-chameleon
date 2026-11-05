@@ -172,7 +172,6 @@ The open issues labelled `priority: now` or `priority: next`:
 - #56 Run it on Windows and Mac.
 - #49 A billing relay for a payment provider's webhook.
 - #50 An environment's own domain, and one identity across environments.
-- #51 The past-due sweep for a server that restarts often.
 - The calls cap is enforced by the page only: the page asks `POST /api/call/join` before joining, but a token can publish as soon as it is minted, so a modified page could skip the check, as it could before. Making the cap binding means granting publish only after the check.
 - The host console's environment list waits on LiveKit when any environment's plan caps calls (it counts each one's running calls, up to two seconds a request).
 - #57 An About page.
@@ -196,7 +195,6 @@ The open issues labelled `priority: now` or `priority: next`:
 - Whether members of an aside's parent space see that it is private: decided (2026-10-02), they see that it is private (`asidePrivate`), never who is in it ([plan-primary-nav](plans/plan-primary-nav.md), decision 34).
 - Who sees every space's name and member list: decided (2026-10-02), anyone signed in, for now ([plan-primary-nav](plans/plan-primary-nav.md), decision 35).
 - Owners and the admin missing from Calendar's and Map's filters for spaces they don't belong to: decided (2026-10-02), correct as built, since managing a space is not being a member of it ([plan-calendar-destination](plans/plan-calendar-destination.md), decision 23; [plan-map-destination](plans/plan-map-destination.md), decision 25).
-- `objectSync` (`server/object-sync.js`) is one event source shared by every environment on a hosted server, so a `refchange` from one environment reaches another's `GET /api/modules/stream` listeners when the module id and the scope key match. It carries only pointers, and modules ask again with their own permissions, but it should be scoped per environment. Found while fixing the schedule crash (2026-10-02).
 - Saving and loading layouts, with a space's default layout, is built ([plan-saved-layouts](plans/plan-saved-layouts.md)), and so is **Clean up** ([plan-layout-menu](plans/plan-layout-menu.md)).
 - With an empty dashboard, the space list sits in one column about 300 pixels wide at desktop widths, leaving the rest of the page empty. Seen while checking the word for entering a space (2026-09-30); it was like this before.
 

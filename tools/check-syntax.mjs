@@ -55,7 +55,9 @@ for (const f of list('public', /\.html$/)) {
 // A field for a password, secret, token or key is a masked input (type="password"), never plain text a person nearby can
 // read (#61). Said by its id or name (new-password, a "key" field) or by the words of the <label> it sits in.
 const SECRET_NAME = /(?:^|[-_])(?:password|passwd|passphrase|secret|token|api-?key|key)(?:[-_](?:field|input|value|box|text))?$/i;
-const SECRET_LABEL = /\b(?:password|passphrase|secret|token|api key)\b|^\s*key\s*$/i;
+const SECRET_LABEL = /\b(?:password|passphrase|secret|token|(?:api|access|stream|private|license|auth|encryption)\s+key)\b|^\s*key\s*$/i;
+// accessKey -> access-key, so a camelCase id is read like a hyphenated one.
+const kebab = (name) => name.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
 // An attribute's value, however it is quoted ("x", 'x' or bare), or undefined.
 function attrOf(tag, name) {
   const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i').exec(tag);
@@ -70,16 +72,24 @@ function unmaskedSecretInputs(text) {
     const id = attrOf(` ${m[1]}`, 'for');
     if (id) forLabels.set(id, `${forLabels.get(id) || ''} ${words(m[2])}`);
   }
-  for (const m of text.matchAll(/<input\b[^>]*>/gi)) {
+  // The words of any element with an id, for aria-labelledby.
+  const byId = new Map();
+  for (const m of text.matchAll(/<(\w+)\b([^>]*)>([\s\S]*?)<\/\1>/gi)) {
+    const id = attrOf(` ${m[2]}`, 'id');
+    if (id) byId.set(id, words(m[3]));
+  }
+  for (const m of text.matchAll(/<(?:input|textarea)\b[^>]*>/gi)) {
     const tag = m[0];
     const attr = (n) => attrOf(tag, n);
     const type = (attr('type') || 'text').toLowerCase();
     if (type !== 'text') continue; // password already, or a checkbox, number, url... (and a type built at run time)
     const before = text.slice(Math.max(0, m.index - 300), m.index);
-    const open = before.lastIndexOf('<label');
-    const label = open >= 0 && !before.slice(open).includes('</label>') ? words(before.slice(open)) : '';
+    const open = before.toLowerCase().lastIndexOf('<label');
+    const label = open >= 0 && !before.slice(open).toLowerCase().includes('</label>') ? words(before.slice(open)) : '';
     const id = attr('id') || '';
-    const secret = SECRET_NAME.test(id) || SECRET_NAME.test(attr('name') || '')
+    const labelledby = (attr('aria-labelledby') || '').split(/\s+/).map((i) => byId.get(i) || '').join(' ');
+    const secret = SECRET_NAME.test(kebab(id)) || SECRET_NAME.test(kebab(attr('name') || ''))
+      || SECRET_LABEL.test(labelledby) || (attr('placeholder') || '').trim().split(/\s+/).length <= 3 && SECRET_LABEL.test(attr('placeholder') || '')
       || SECRET_LABEL.test(label) || SECRET_LABEL.test(forLabels.get(id) || '') || SECRET_LABEL.test(attr('aria-label') || '')
       || /^(?:new|current)-password$/i.test(attr('autocomplete') || '');
     if (secret) found.push(tag);
@@ -94,6 +104,11 @@ for (const [html, want] of [
   ['<label for="pw">Password</label><p>more</p><input id="pw" type="text">', 1],
   ['<input id="f1" aria-label="Password">', 1], ['<input id="f2" type="text" autocomplete="new-password">', 1],
   ['<input id="f3" autocomplete="current-password">', 1], ['<input id="access-key-field" type="text">', 1],
+  ['<label>Access key<input id="a"></label>', 1], ['<LABEL>Stream key<INPUT id="s" type="text"></LABEL>', 1],
+  ['<input id="accessKey" type="text">', 1], ['<input name="streamKey">', 1], ['<input placeholder="Password">', 1],
+  ['<span id="l1">Password</span><input aria-labelledby="l1">', 1], ['<textarea id="privateKey"></textarea>', 1],
+  ['<label>Access key<textarea id="a"></textarea></label>', 1], ['<input id="monkeyKey2" type="password">', 0],
+  ['<span id="l2">Name</span><input aria-labelledby="l2">', 0], ['<textarea id="notes"></textarea>', 0],
   ['<label>Password<input id="p" type="password"></label>', 0], ['<label>Hotkey<input id="hotkey-mute" type="text"></label>', 0],
   ["<label>Password<input id='p' type='password'></label>", 0], ['<input id="x" type="password" autocomplete="new-password">', 0],
   ['<input type="checkbox" data-key="x">', 0], ['<label>Login<input id="login" type="text"></label>', 0],
