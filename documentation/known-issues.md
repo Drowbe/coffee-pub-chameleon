@@ -203,3 +203,15 @@ Workaround: wait for the print dialog before you choose **Print** again.
 ## Printing a PDF always waits 400 ms
 
 After a PDF is loaded into the hidden print frame, the Vault waits a fixed 400 ms before it opens the print dialog, in case the browser's PDF viewer is not ready. That is a short, fixed delay on every PDF print, and on a slow device it may still be too short. It was kept when printing was made faster because the check browser has no PDF viewer to test removing it. Not seen in a real browser.
+
+## A guest does not see a module turned on or off until a refresh
+
+When a module is turned on or off in **Manage > Modules**, members and others who are signed in see the space bar change at once. A guest has no notifications stream, so a guest's open space keeps the old list.
+
+Workaround: the guest refreshes the page.
+
+## A change to a module's permissions needs a reload
+
+Turning a module on or off updates an open space live, but changing who may use a module does not. An open space keeps the old list until the page is reloaded.
+
+Workaround: reload the page.

@@ -236,7 +236,7 @@ These serve a running module. The page hosting a module's frame calls them for i
 | `POST /api/modules/:id/notify` | `{ to, title, body }`, `to` being `space`, `environment` or a person's key (otherwise 400 "to must be space, environment or a person's key"); needs the `notify` hook |
 | `GET /api/notifications` | The signed-in person's notifications, with unread counts by module |
 | `POST /api/notifications/read` | `{ module }` or `{ id }` marks them read |
-| `GET /api/notifications/stream` | Server-sent events: `notification` |
+| `GET /api/notifications/stream` | Server-sent events: `notification`, `invite`, `theme`, `mode` and `modules`. `modules` is sent when a module is installed, removed, rolled back, or turned on or off in the environment; it is a bare event with an empty payload (`{}`, no module ids), and a page answers it by reading `GET /api/modules/for-space` again, which still filters by viewer and by whether the module is on in that space. Only that environment's streams hear it. Guests have no stream |
 
 A module's environment page may also read and write one of the caller's spaces with `scope=space&space=<id>`, the SDK's `{ space }` (see [api-module-sdk](api-module-sdk.md), "Storage"); the server applies the same rule as for a page in that space: the module on there, the caller in it, and the module's permission there. That holds for the data, schedule, notify and links routes.
 

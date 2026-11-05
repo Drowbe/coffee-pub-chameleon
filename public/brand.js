@@ -1179,11 +1179,14 @@ async function startNotifications() {
   let connected = false;
   source.addEventListener('open', () => {
     if (connected) {
+      document.dispatchEvent(new CustomEvent('app:modules-changed')); // one may have been turned on or off while it was down
       fetch('/api/branding').then((r) => (r.ok ? r.json() : null)).then((b) => b && setEnvironmentMode(b.themeMode, b.themeVersion)).catch(() => {});
       loadAccountMode(true);
     }
     connected = true;
   });
+  // A module was installed, turned on or off, rolled back or removed: the space's bar asks again (canvas.js).
+  source.addEventListener('modules', () => document.dispatchEvent(new CustomEvent('app:modules-changed')));
   // Someone asked you into a private conversation: join, or decline.
   source.addEventListener('invite', (ev) => {
     try {

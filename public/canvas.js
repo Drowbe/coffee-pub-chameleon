@@ -1980,6 +1980,29 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     update();
   }
 
+  // The modules were changed in Manage (one turned on or off, installed or removed): the list is read again, live, so the
+  // Show list and the tabs follow without a reload. What is open stays, except a module that is no longer on here.
+  async function reread() {
+    const id = spaceId;
+    if (!id) return;
+    try {
+      const q = new URLSearchParams({ space: id });
+      if (guestToken) q.set('guest', guestToken);
+      const answer = await api('GET', `/api/modules/for-space?${q}`);
+      const list = (answer.modules || []).filter((m) => !m.canvas || m.canvas.menu !== false);
+      const shown = await askDestinations(id, list);
+      if (spaceId !== id) return;
+      modules = list;
+      available = composeList(modules, shown);
+      aliases = aliasesFor(modules.map((m) => m.id), shown);
+      colors = new Map((answer.modules || []).filter((m) => TINTS.includes(m.color)).map((m) => [m.id, m.color]));
+      showBuiltin(answer.builtin);
+      for (const p of [...opened.values()]) if (p.kind === 'module' && !available.some((x) => x.id === p.id)) closeModule(p.id);
+    } catch { /* the list stays as it was */ }
+    update();
+  }
+  document.addEventListener('app:modules-changed', reread);
+
   // The built-in modules' names and icons as this environment shows them (their display names, else their own), from the
   // server's `builtin` list; a module that draws its own header hears it through def.onShown.
   function showBuiltin(list) {
