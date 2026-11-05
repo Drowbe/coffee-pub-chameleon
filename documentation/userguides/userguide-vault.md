@@ -8,7 +8,7 @@ The Vault holds the files of a space: tickets and confirmations as PDFs, photos,
 
 - **See the space's files** shows the list and opens a file.
 - **Add files** adds files and renames and removes the ones you added.
-- **Download files** saves a file to your computer.
+- **Download files** saves a file to your computer. It also lets you print a picture or a PDF.
 - **Remove files other people added** removes or renames any file. It starts on for moderators and off for members.
 - **Make share links** makes, changes and turns off share links (below). It starts on for moderators and off for members, and a guest never has it.
 
@@ -50,7 +50,7 @@ Everyone in the space can see what you add. There is no private file.
 
 ## Rename or remove a file
 
-Choose the **More** button on a file's row or card. You see **Open**, **Download**, **Rename**, **Where it is used** and **Remove**.
+Choose the **More** button on a file's row or card. You see **Open**, **Download**, **Print** (pictures and PDFs only), **Rename**, **Where it is used** and **Remove**.
 
 - **Rename** opens a small window. Keep the ending (such as `.pdf`) as it is; a name can be 120 characters.
 - **Remove** asks first. It says where the file is used, and that the places that link to it will show "File removed". The question ends: "It is removed from the Vault for everyone in this space, and from any share link it is in. A link left with no file ends. This can't be undone." (the Vault's and the space's names are your environment's words). After it is removed, the keyboard stays in the list, on the file next to it, or on the empty list's button, not at the top of the page.
@@ -78,7 +78,9 @@ Each window's bar has:
 
 - **Previous** and **Next**, with "3 of 12", to walk the files in the order the Vault's list showed them. The left and right arrow keys do the same.
 - **Info**, which shows the file's type, size, who added it and when, and **Where it is used**. A window that is very short has no Info.
-- **Download**, **Full screen** (not on a download-only PDF) and, in the window's menu, **Rename**, **Where it is used**, **Close all** and **Remove**.
+- **Download**, **Print**, **Full screen** (not on a download-only PDF) and, in the window's menu, **Rename**, **Where it is used**, **Close all** and **Remove**.
+
+**Print.** **Print** is for pictures and PDFs, for people who have **Download files**. It opens your browser's print dialog; choose "Save as PDF" there to keep a copy instead of printing. Other kinds of file have no **Print**. On a phone there is no **Print**, as there is no **Download**, and the public share page has none. A download-only PDF is not printed from the menu. Printing a PDF may not work from a pop-out window ([known issues](../known-issues.md)).
 
 Close a window with its close button or **Esc**; focus goes back to where you opened it. **Close all** closes every file window. It is in each window's menu and in the **Layout** menu, under **Open files**, where the number open is shown. On a phone only one window shows at a time, as a full screen sheet, and opening another file replaces it.
 

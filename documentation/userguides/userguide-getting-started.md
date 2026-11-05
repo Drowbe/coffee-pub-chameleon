@@ -37,6 +37,8 @@ image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator
 
 **Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data) and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`; the example is `/share/appdata/coffee-pub-collaborator-vault`). The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are commented examples in the compose file ([Vault](userguide-vault.md), "Notes for the person running the server").
 
+**Space on the NAS.** The image needs several GB free. If creating the container fails with "no space left on device", clear unused images and stopped containers in Container Station, then create it again. If the NAS keeps an old copy of `:latest`, it may start the old version. Pin an exact tag, such as `:sha-` followed by the first 7 characters of the commit, or remove the old image before you create the container.
+
 Camera access requires HTTPS, which the proxy provides. Players need nothing but a browser. LiveKit
 1.12 or newer is required; the compose file pulls the latest release. With no LiveKit, **Manage** > **Modules** shows
 "Voice and video are not set up on this server" on the Conference card, with its switch off.

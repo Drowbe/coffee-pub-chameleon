@@ -194,7 +194,7 @@ Every module window is one frame, `createModuleFrame` (`public/module-frame.js`)
 | `--mf-title-h` | the title bar: 36px |
 | `--mf-band-h` | the toolbar: 40px |
 | `--mf-status-h` | the status bar: 24px |
-| `--mf-ctl-h` | a control in the toolbar or title bar (a button, the switch, the search, a tab): 28px |
+| `--mf-ctl-h` | a control in the toolbar or title bar (a button, the switch, the search, a tab): 28px; 44px on a phone (see "Taps on a phone") |
 | `--mf-chip-h` | the Filters button and a chip: 24px |
 | `--mf-inset` | the toolbar's sides and the content's padding: 12px |
 | `--mf-search-w`, `--mf-search-min` | the search field's width, 220px, and the least it gives way to before it folds to a magnifier, 120px |
@@ -210,6 +210,7 @@ The card a module draws for an object (the shared banded card, `.sdk-card-banded
 - **The stacked head.** The band holds the kind label above the title. The title is 16px bold and wraps; it is never cut. The kind label is 11px, capitals, bold, in the kind's colour (`--tint`), and never cut. A plain head, with no icon and no kind label, keeps the 30px band for one line and gets 4px of padding above and below when the title wraps.
 - **The icon is a solid circle** (`.sdk-card-icon`), not a tinted tile. The disc is the kind's colour at a fixed lightness, and the icon on it takes the page colour (`--surface-page`), dark in a dark theme and light in a light one. It is 36px in a banded head and 28px in a row (`.sdk-row`), set by `--card-icon`. Two tokens keep the contrast at 4.5:1: `--card-disc-l` for the disc (0.74 in dark mode, 0.5 in light) and `--card-kind-l` for the kind label (0.88 in dark mode, 0.38 in light). With no `--tint` the circle is neutral (`--text-muted`).
 - **Narrow cards.** The banded head is an inline-size container. Below 300px it puts the icon above the text, then the kind label, then the title, for every module, so the title keeps the card's whole width.
+- **Bars on a phone.** On a phone (the top page 640px wide or narrower), the shared title-bar and toolbar buttons, the view switch and the toolbar search are drawn 44px, not only given a 44px hit area: the title bar is 52px, the toolbar 56px and the switch track 50px. `public/theme-head.js` sets `<html data-phone>` from the top page's width, so a page inside a frame follows the top page, and `system.css` sizes the bars from it. Desktop sizes are unchanged. A page that does not load `theme-head.js` (the design-system prototype pages, `keyed.html`) keeps the desktop sizes.
 - **Taps on a phone.** A small button or icon button keeps its look and gets a 44px hit area: `::after` grows the area past the box by `--btn-hit`, which counts the 1px border (`(--btn-h-small - 2px - 44px) / 2`). A module narrower than 720px does the same for its own controls (the Planner, see [architecture-modules](../architecture/architecture-modules.md)).
 
 The banded card's kind label and disc follow the light values (`--card-kind-l` 0.38, `--card-disc-l` 0.5) whenever the page is shown in light: under the stylesheet's light set (`data-theme-mode="light"`) and also when the environment's default is Light and the person has made no choice (`data-mode-shown="light"`). Before this the second case kept the dark values, and the kind labels were hard to read on a light card. `tools/check-light-default.mjs` checks it in a browser.

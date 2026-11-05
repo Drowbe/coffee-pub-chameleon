@@ -194,18 +194,22 @@ Workaround: give **Edit** in Research only to people who may be trusted with eac
 
 A Clear is held on the server for its Undo, and the hold survives a restart. What became of a recent Clear's token (undone, replaced by a later clear) is only remembered in memory. If the server restarts and a page then presses **Undo** on a token that was already undone or replaced, it is refused with "The time to undo that clear is over." rather than the true reason. Nothing is restored or lost by it.
 
-## A Chat citation can read "An object that is gone" when the Assistant is not installed
-
-Under an AI answer in Chat, a citation such as [1] opens the object it names. When the Assistant module is not installed, a citation can show "An object that is gone" (in your environment's word for an object) instead of the object's title, though the object is still there. The words come from Chat's link chip (`public/chat-input.js`), which uses them when it cannot read a summary for the pointer. It is older than the look-up tools. It was reported by the project manager and has not been traced further or fixed; the cause (the Assistant not being installed) is as reported, not re-observed.
-
-Workaround: install the Assistant (it has no window of its own and a new install leaves it out of the Layout menu), or open the object from the module that holds it.
-
 ## Some shared pieces are still drawn 28 pixels high on a phone
 
-At 640 pixels and narrower, buttons are 44 pixels and a small button keeps its 30 pixel look with a 44 pixel area to press. A few shared pieces are still drawn at 28 pixels on a phone. They can be pressed, but the target is smaller than the 44 pixels the rest of the app gives. Reported by the project manager; the pieces were not listed and are not re-measured here.
+At 640 pixels and narrower, buttons are 44 pixels and a small button keeps its 30 pixel look with a 44 pixel area to press. The shared title-bar and toolbar buttons, the view switch and the toolbar search are now drawn 44 pixels (GitHub #394). A few other shared pieces are still drawn at 28 pixels on a phone. They can be pressed, but the target is smaller than the 44 pixels the rest of the app gives. Reported by the project manager; the pieces were not listed and are not re-measured here.
 
 Workaround: none needed to use them; they are harder to hit with a thumb.
 
 ## The keyboard focus ring can show an inner rectangle
 
-In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle as well as its outline on some pieces. Reported by the project manager; the pieces were not listed and this entry's author has not seen it. It does not stop anything from working.
+In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle as well as its outline on some pieces. The toolbar search box was fixed (GitHub #394); the other pieces were not listed. Reported by the project manager; the pieces were not listed and this entry's author has not seen it. It does not stop anything from working.
+
+## Printing a PDF from the Vault can print an error page in a pop-out or a destination page
+
+**Print** on a PDF opens the browser's print dialog from a hidden frame that holds the PDF as a blob. The pages for a module's pop-out (`public/module.html`) and for a destination (`public/destination.html`) have a content security policy with `frame-src 'self'`, which blocks that blob frame, so the print can show an error page. Pictures print fine there, and the main space page prints PDFs fine by this reading. Found by quality-assurance and read as code only. Printing a PDF has not been seen in a real browser.
+
+Workaround: print the PDF from the space page, or use **Download** and print it from your device.
+
+## The Vault's "download only" rule is not checked again when a module calls print
+
+A PDF the Vault keeps as download only (decision 18 in `plan-vault-office-files.md`) has no **Print** in the Vault's menu. `host.library.print` does not check that rule on the host side, so a module that calls it directly can print such a PDF if the person may download. Only the Vault's own menu holds the rule. Found by quality-assurance and read as code only.
