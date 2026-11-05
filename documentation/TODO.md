@@ -172,7 +172,6 @@ The open issues labelled `priority: now` or `priority: next`:
 - #56 Run it on Windows and Mac.
 - #49 A billing relay for a payment provider's webhook.
 - #50 An environment's own domain, and one identity across environments.
-- #51 The past-due sweep for a server that restarts often.
 - The calls cap is enforced by the page only: the page asks `POST /api/call/join` before joining, but a token can publish as soon as it is minted, so a modified page could skip the check, as it could before. Making the cap binding means granting publish only after the check.
 - The host console's environment list waits on LiveKit when any environment's plan caps calls (it counts each one's running calls, up to two seconds a request).
 - #57 An About page.
