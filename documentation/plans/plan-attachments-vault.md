@@ -448,7 +448,8 @@ The in-app backups cannot carry gigabytes: they zip in memory and a restore take
   frame (as written) or a separate origin is one of the open details.
 - **Adding:** **Add files** opens the device's chooser (several at once; on a phone, the photo library and camera), and
   dropping files on the module adds them. Each shows a progress row; a refusal shows its sentence on that row. Under
-  it, one line: "Everyone in this {space} can see what you add." (decision 13). Beside it, an option for the person
+  it, one line that states the default and the setting: "Who can see this: everyone in this {space}." with a way to
+  change it (decision 13, amended by plan-vault-privacy, 2026-11-06). Beside it, an option for the person
   adding (decision 10): **Remove where it was taken**, for pictures, with its state remembered per person. For video
   there is no option, only a notice: "Videos keep their details, which can include where they were taken." The default
   of the option is the one open question.
@@ -596,6 +597,9 @@ Thomas decided these on 2026-10-30, answering the open questions. Numbers contin
     off by default.
 13. **No "Only me" files** in a space's Vault. Everything belongs to the space; the text under Add files reads "Everyone
     in this {space} can see what you add." Personal documents wait for the environment-wide library.
+    **Amended by [plan-vault-privacy](plan-vault-privacy.md), 2026-11-06:** a file now has a visibility (Everyone in the
+    {space}, Only me, or Chosen people). Everyone is still the default, so the text under Add files states the default
+    and the setting. The rest of this decision, and the wait for an environment-wide library, stand.
 14. **Storage default.** `VAULT_DIR` unset means `DATA_DIR/vault`, outside the in-app backup zips. A backup that carries
     the bytes is a later piece.
 15. **Share link ends:** 1, 7 or 30 days, 7 by default, never without an end.

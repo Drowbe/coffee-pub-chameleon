@@ -100,6 +100,60 @@ Press **Enter** on a space. You are in the space, not yet on the call:
 To set the space up, press **Set up** in the top bar. See [Spaces](userguide-spaces.md), "The top bar", "The status
 strip" and "Set up", and [The call](userguide-call.md), "The column: the call and the chat, always on".
 
+## Try it with demo data
+
+The image includes a demo seeder. It fills a space with invented data so you can see every module at work.
+Use it on a throwaway, test or demo environment. Do not run it on an environment that holds real data (see
+the warnings below).
+
+1. Single environment: run this on the NAS, or wherever Docker runs. It uses the container's own admin
+   login and talks to the app at `http://localhost:3000` inside the container.
+
+   ```
+   docker exec -it collaborator-app npm run seed:demo
+   ```
+
+2. A hosted environment (a server with a base domain): the seeder refuses unless you say which environment
+   it may change. Pass an owner of that environment, not the host admin, and use a throwaway owner: a
+   password on a command line shows in shell history and in process lists.
+
+   ```
+   docker exec -it -e SEED_URL=https://<slug>.<base domain> -e DEMO_ALLOW_HOSTED=1 \
+     -e DEMO_ENVIRONMENT=<slug> -e ADMIN_LOGIN=<an owner of that environment> \
+     -e ADMIN_PASSWORD=<that owner's password> collaborator-app node tools/seed-demo.mjs
+   ```
+
+   The public address must be reachable from inside the container. A hosted run makes no map file.
+3. Optional settings, added with `-e` before the container name: `SEED_NO_AI=1` skips the two `/ai`
+   exchanges otherwise made when an AI service is set up; `SEED_MAP=0` skips the map file;
+   `SEED_SEARCH_URL` swaps the place search service.
+
+What it creates:
+
+- One space, **Demo: Portugal**, a trip that starts about 45 days from the day you run it. Every date is
+  worked out from today.
+- Data in every module: Planner 76 objects, Places 37, Calendar 77 events, To-do 16, Polls 3, Budget 18,
+  Research 4 and Chat 25 messages. It is invented; links go to `example.com`.
+- Three invented demo people, `mia` (a moderator), `lee` and `sam`, and a guest link.
+
+What it changes in the environment itself: it installs and turns on every bundled module, turns on the
+calendar and map options, sets the place search to the public Photon service, and switches an environment
+that has no template to travel.
+
+To reset, run the same command again. It resets only the demo space (found by its name and a marker in its
+description) and the three demo people. It refuses to touch a space or an account that only has the same
+name.
+
+Warnings:
+
+- It is not for an environment with real data, because of the settings it changes. An "Add a demo space"
+  feature that leaves environment settings alone is planned (GitHub #416).
+- It prints the three demo people's one-time passwords at the end, new on each run. Anyone who can see the
+  terminal or the container logs can read them. It never prints the admin password.
+- It needs the network. The map is a file of about 5 MB made with range requests to `build.protomaps.com`,
+  saved as `demo-portugal.pmtiles` in the data folder's `modules/maps/map-tiles/`. It is skipped when
+  hosted or offline. Place search uses Photon.
+
 ## Update it later
 
 An install made before the product's rename keeps its old names: the containers `tavern-app` /

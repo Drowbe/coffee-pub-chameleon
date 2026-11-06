@@ -6,6 +6,22 @@ as new.
 A defect is recorded here once it has been observed, with a workaround if one exists, and moves to
 the CHANGELOG once fixed.
 
+## The demo seeder changes environment-wide settings
+
+`npm run seed:demo` installs and turns on every bundled module, turns on the calendar and map options, sets
+the place search to the public Photon service and may switch the template to travel. It is for test and demo
+environments only. An "Add a demo space" feature that does not touch environment settings is planned
+(GitHub #416).
+
+Workaround: run it only on a throwaway environment. See [Getting Started](userguide-getting-started.md), "Try it with demo data".
+
+## The demo seeder prints the demo people's one-time passwords
+
+At the end of a run the seeder prints the one-time passwords of the three demo people to the terminal. They are
+random and new each run. Anyone who can see the terminal or the container logs can read them.
+
+Workaround: run it where only you can see the output, and rerun it to replace them.
+
 ## A call page left open across an update must be reloaded
 
 After the server is updated to the version that renamed "the table" (step 3 of the Names plan), a call page

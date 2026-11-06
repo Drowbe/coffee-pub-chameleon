@@ -33,4 +33,16 @@ ok(vol, `${vaultDir} is a volume`);
 const data = volumes.find((v) => v.target === '/app/data');
 ok(data && data.host !== vol.host && !vol.host.startsWith(`${data.host}/`), 'and not inside the data folder\'s volume, so a backup of the data stays small');
 ok(new RegExp(`ENV VAULT_DIR=${vaultDir}\\b`).test(docker) && docker.includes(`VOLUME ["/app/data", "${vaultDir}"]`), 'the Dockerfile sets the same VAULT_DIR and declares both volumes');
+
+// The demo seeder runs inside the image (npm run seed:demo): every repository file it imports or reads must be COPYed.
+const copied = [...docker.matchAll(/^COPY\s+(?!--)(.+)$/gm)].flatMap((m) => { const a = m[1].trim().split(/\s+/); a.pop(); return a; }).map((s) => s.replace(/^\.\//, '').replace(/\/+$/, ''));
+const isCopied = (rel) => copied.some((c) => c === rel || rel.startsWith(`${c}/`));
+for (const seeder of ['tools/seed-demo.mjs', 'tools/seed-demo-map.mjs']) {
+  ok(isCopied(seeder), `the Dockerfile copies ${seeder}, so npm run seed:demo works in the image`);
+  const text = fs.readFileSync(path.join(ROOT, seeder), 'utf8');
+  const needs = [...text.matchAll(/(?:from|import\()\s*'(\.[^']+)'/g)].map((m) => path.posix.join('tools', m[1]));
+  for (const m of text.matchAll(/path\.join\(root,\s*((?:'[^']+'(?:,\s*)?)+)\)/g)) needs.push([...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).join('/'));
+  // `data` is the runtime data folder (the image sets DATA_DIR), not a repository file.
+  for (const rel of needs.filter((r) => r !== 'data')) ok(isCopied(rel), `the Dockerfile copies ${rel}, which ${seeder} needs`);
+}
 console.log(`check-compose: ${n} checks OK`);
