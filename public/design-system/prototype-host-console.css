@@ -1,0 +1,156 @@
+/* The Prototype's Host console section (plan-host-console.md, slice 1): the page around the pieces only. The pieces are the product's own
+   (.subtabs, .sdk-table, .sdk-card, .sdk-panel, .sdk-status, .sdk-progress, .sdk-banner, the fields and buttons); this file lays them out. Design-process
+   only: nothing here ships. Every colour and size is a token. The console answers to its own width (a container query at 640 px), as the real
+   console will answer to the window's, so the 390 pixel drawing on a wide page folds the way a phone does; the phone sizes the product's
+   media queries give (44 px taps) are set here from the same container. */
+
+.hc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.hc-bar-label { color: var(--text-muted); font-size: var(--text-13); }
+
+/* ---- the console: its own box, the page colour inside ---- */
+.hc-frame { container: hc / inline-size; width: min(var(--pp-w, 700px), 100%); min-width: 0; }
+.hc-frame[data-fixed] { width: min(390px, 100%); }
+.hc {
+  display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden;
+  background: var(--surface-page); color: var(--text-primary); font-size: var(--text-14); line-height: var(--leading-body);
+}
+.hc-top { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-bar-top); }
+.hc-brand { display: inline-flex; flex: none; white-space: nowrap; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-size: var(--text-16); font-weight: var(--weight-strong); }
+.hc-hash { min-width: 0; margin-left: auto; overflow: hidden; color: var(--text-muted); font-size: var(--text-12); text-overflow: ellipsis; white-space: nowrap; }
+
+.hc-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; min-width: 0; }
+.hc-nav.subtabs { flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-4) var(--space-3); overflow: visible; }
+.hc-nav.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-main { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding: var(--space-4) var(--space-5) var(--space-6); }
+
+.hc-head, .hc-env-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-width: 0; }
+.hc-head-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hc-title { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.hc-back { align-self: flex-start; margin-left: calc(-1 * var(--space-2)); }
+.hc-env-id { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-slug { color: var(--text-muted); font-size: var(--text-12); overflow-wrap: anywhere; }
+.hc-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.hc-status { min-height: var(--leading-body); margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.hc-hint { margin: 0; }
+.hc-link { color: var(--text-accent); font-weight: var(--weight-medium); text-decoration: none; }
+.hc-link:hover { text-decoration: underline; }
+.hc-link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+
+/* ---- the needs-attention strip and the table's tools ---- */
+.hc-attention { padding: var(--space-2) var(--space-3); }
+.hc-attention-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.hc-attention-label { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: var(--space-1); font-weight: var(--weight-strong); }
+.hc-attention-none { color: var(--text-muted); }
+.hc-kind { gap: var(--space-1); }
+.hc-kind > b { font-variant-numeric: tabular-nums; }
+.hc-kind[data-tone="danger"] > i { color: var(--status-danger-text); }
+.hc-kind[data-tone="warn"] > i { color: var(--status-warn-text); }
+.hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: var(--space-2); }
+.hc-tools > select { width: auto; max-width: 100%; }
+.hc-count { margin: 0; color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- tables: the table scrolls inside its own box ---- */
+.hc-wrap { border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); }
+.hc .sdk-table { width: 100%; }
+.hc .sdk-table :is(th, td) { vertical-align: middle; }
+.hc .sdk-table :is(th, td).hc-more-col, .hc .sdk-table td.hc-more-cell { width: 1%; white-space: nowrap; text-align: right; }
+.hc .sdk-table tbody tr { height: 44px; }
+.hc .sdk-table tbody tr[tabindex]:hover { cursor: pointer; }
+.hc-name-cell { min-width: 150px; }
+.hc-envs thead th:nth-child(2), .hc-envs tbody td:nth-child(2) { white-space: nowrap; }
+.hc-status-cell { display: table-cell; }
+.hc-status-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
+.hc-use { display: flex; flex-direction: column; gap: var(--space-1); min-width: 210px; max-width: 260px; }
+.hc-use-row { display: grid; grid-template-columns: 54px minmax(60px, 1fr) auto; align-items: center; gap: var(--space-2); font-size: var(--text-12); }
+.hc-use-key { color: var(--text-muted); }
+.hc-use-val { min-width: 76px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.hc-mod-run { grid-template-columns: minmax(80px, 1fr) auto; min-width: 190px; }
+.hc-used { min-width: 180px; }
+.hc-tpls .sdk-chip, .hc-tpls .sdk-status { margin-right: var(--space-1); }
+.hc-plans input { min-width: 84px; }
+.hc-plans tbody th input { min-width: 110px; }
+
+/* ---- an environment's page ---- */
+.hc-tabs.subtabs { border-bottom: 1px solid var(--edge-hairline); padding-bottom: var(--space-1); }
+.hc-tabs .sdk-tab-badge { margin-left: var(--space-1); }
+.hc-pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--space-4); }
+.hc-part { min-width: 0; }
+.hc-part > .btn { align-self: flex-start; }
+.hc-part-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.hc-facts { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.hc-facts > dt { color: var(--text-muted); font-size: var(--text-13); }
+.hc-facts > dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.hc-caps { display: flex; flex-direction: column; gap: var(--space-3); }
+.hc-cap { display: flex; flex-direction: column; gap: var(--space-1); }
+.hc-cap-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); }
+.hc-cap-key { color: var(--text-muted); font-size: var(--text-13); }
+.hc-cap-val { font-variant-numeric: tabular-nums; }
+.hc-cap-note { color: var(--status-warn-text); font-size: var(--text-12); font-weight: var(--weight-strong); }
+.hc-stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.hc-stack > * { max-width: 100%; }
+.hc-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); width: 100%; }
+.hc-inline > :is(input, select) { flex: 1 1 160px; min-width: 0; width: auto; }
+.hc-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hc-form { display: flex; flex-direction: column; gap: var(--space-4); max-width: 640px; }
+.hc-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: var(--space-3); }
+.hc-fieldset { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; margin: 0; padding: 0; border: 0; }
+.hc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin-left: var(--space-5); }
+.hc-sub { margin: 0; }
+.hc-line { margin: 0; }
+.hc-danger-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding-block: var(--space-2); }
+.hc-danger-row + .hc-danger-row { border-top: 1px solid var(--edge-hairline); padding-top: var(--space-4); }
+.hc-danger-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
+
+/* ---- the template editor and the server: parts with a jump list ---- */
+.hc-editor { display: grid; grid-template-columns: 170px minmax(0, 1fr); align-items: start; gap: var(--space-4); min-width: 0; }
+.hc-jump.subtabs { flex-direction: column; align-items: stretch; gap: var(--space-1); overflow: visible; position: sticky; top: var(--pp-stick, var(--space-4)); }
+.hc-jump.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-jump-row.subtabs { flex-direction: row; align-items: center; position: static; overflow-x: auto; }
+.hc-jump-row.subtabs > .subtab { width: auto; }
+.hc-parts { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-part[id] { scroll-margin-top: var(--pp-stick, var(--space-4)); }
+.hc-modrows { display: flex; flex-direction: column; gap: var(--space-2); }
+.hc-modrow { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+.hc-ai { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; padding-bottom: var(--space-3); }
+.hc-ai + .hc-ai { padding-top: var(--space-3); border-top: 1px solid var(--edge-hairline); }
+.hc-ai-head { display: flex; align-items: center; gap: var(--space-2); }
+
+/* ---- the phone: the console's own width is 640 px or less ---- */
+@container hc (max-width: 640px) {
+  .hc { --btn-h: 44px; --field-h: 44px; --field-font: var(--text-16); --check-h: 44px; --tick-hit: 44px; --tab-h-default: 44px; --tab-h: 44px; --tab-icon-dy: 0px; }
+  .hc-top { padding-inline: var(--space-3); }
+  .hc-body { grid-template-columns: minmax(0, 1fr); }
+  /* the left navigation folds into the strip the console has now: one row of tabs, scrolling inside itself */
+  .hc-nav.subtabs { flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
+  .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
+  .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
+  .hc-tools { grid-template-columns: minmax(0, 1fr); }
+  .hc-tools > select { width: 100%; }
+  .hc-tools > .hc-search { grid-column: 1 / -1; }
+  .hc-count { grid-column: 1 / -1; }
+  .hc-editor { grid-template-columns: minmax(0, 1fr); }
+  .hc-jump.subtabs { flex-direction: row; align-items: center; position: static; overflow-x: auto; overflow-y: hidden; }
+  .hc-jump.subtabs > .subtab { width: auto; }
+  .hc-modrow { grid-template-columns: minmax(0, 1fr); }
+  .hc-modrow + .hc-modrow { padding-top: var(--space-2); border-top: 1px solid var(--edge-hairline); }
+  .hc .btn-small { position: relative; }
+  .hc .btn-small::after { content: ""; position: absolute; inset: var(--btn-hit) 0; }
+  .hc .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
+  .hc .sdk-icon-btn.btn-small::after { content: none; }
+  .hc :is(.hc-tabs, .hc-jump).subtabs > .subtab { height: 44px; }
+  /* tables scroll inside their box; the first column stays */
+  .hc .sdk-table-wrap :is(th, td):first-child { position: sticky; left: 0; z-index: 1; }
+  .hc .sdk-table-wrap thead th:first-child { z-index: 3; }
+  .hc .sdk-table-wrap .sdk-table { width: max-content; min-width: 100%; }
+  .hc .sdk-table-wrap :is(td, th).sdk-table-check { width: 44px; }
+  .hc .hc-name-cell { min-width: 130px; max-width: 170px; }
+  .hc-use-row { grid-template-columns: 48px 70px auto; }
+  .hc-checks { margin-left: var(--space-3); }
+  /* a link inside a cell or a fact is a 44 pixel tap: one under another */
+  .hc-used { display: flex; flex-direction: column; align-items: flex-start; }
+  .hc-used > a, .hc-facts a { display: inline-flex; align-items: center; min-height: 44px; }
+  .hc-sep { display: none; }
+  .hc-title { font-size: var(--text-18); }
+}
