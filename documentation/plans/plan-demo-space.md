@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides what a demo space is and where it is offered; and the sessions that build it: server-development (the data format, the loader, the Vault generator, the routes, the demo flag, the cron script and the checks), experience-design (the Prototype section, the owner's Manage **Demo** section, the creation checkbox and the demo banner), product-planner (the content of the games demo), quality-assurance (a security read) and content-manager (the documentation).
 
-**Status:** approved by Thomas 2026-11-06, decisions 1 to 8; step 0 (the existing seeder shipped in the Docker image, run with `docker exec ... npm run seed:demo`) is done as its own build; building the loader (slice 1) starts when Thomas says. The open questions at the end have a recommendation each and are not decided. GitHub #416, Thomas, 2026-11-06: "On our local server we have a space with demo data. This is REALLY handy. I'd like an option to add a demo space to any environment. Right now we have one for travel. In the future we will need one for every type of environment. Plus, we will need this for our demo site."
+**Status:** approved by Thomas 2026-11-06, decisions 1 to 8; he answered four open questions the same day, now decisions 9 to 12 (loopback loader, no place search set, the demo flag, the shared login may do everything); step 0 (the existing seeder shipped in the Docker image, run with `docker exec ... npm run seed:demo`) is done as its own build; building the loader (slice 1) starts when Thomas says. Three open questions at the end have a recommendation each and are not decided. GitHub #416, Thomas, 2026-11-06: "On our local server we have a space with demo data. This is REALLY handy. I'd like an option to add a demo space to any environment. Right now we have one for travel. In the future we will need one for every type of environment. Plus, we will need this for our demo site."
 
 ## What it is today
 
@@ -26,16 +26,23 @@ The seeder is therefore handy but narrow: it is for a throwaway, test or demo en
 
 ## Decisions
 
-Thomas, 2026-11-06, in chat. Each was put with a recommendation and he chose the recommendation.
+Thomas, 2026-11-06, in chat. Decisions 1 to 8: each was put with a recommendation and he chose the recommendation. Decisions 9 to 12 are below the list.
 
 1. **An existing environment is never reconfigured.** The demo fills only its own marked space and its own marked demo people. It never changes environment-wide settings: it does not install or turn on a module, change `showCalendar` or `showMap`, set the place search or switch the template. A module the template does not already have on is skipped, and the report says so plainly. Reason: an owner who adds a demo space must not find their environment changed.
 2. **Where it is offered.** An **owner's Manage page** gets a **Demo** section with Add, Reset and Remove. There is also a checkbox **Include a demo space** when an environment is made: the host console's create form and the sign-up. The host console's environment page (plan-host-console) may offer it later. Reason: the owner is who has the environment, and a new environment is when an empty one is least helpful.
 3. **One data file per template, one generic loader.** The demo data of a template is one data file, with dates as offsets from today. One loader reads any such file and writes through the product's real module routes, so every module's rules run. The travel demo is converted to this file with identical results: the same counts the seeder prints today (Planner 76, Places 37, Calendar 77 events, To-do 16, Polls 3, Budget 18, Research 4, Chat 25). The Vault demo files come from a small generator in code: original drawn pictures, a generated PDF and a README, with no real or third-party images ("create your own fake ones").
 4. **The first pass builds both travel (converted) and a games demo** (campaign, sessions, quests, lore, polls, handouts), to prove the format works for a second kind of environment.
-5. **The demo site** uses one shared demo member login with a known password set by the loader (not the one-time printed ones). The environment resets nightly. Chat posting and uploads may be limited.
+5. **The demo site** uses one shared demo member login with a known password set by the loader (not the one-time printed ones). The environment resets nightly. What the shared login may do is decision 12.
 6. **AI on the demo site is off.** No provider key; the Assistant says it is off in the demo. The seeder already skips AI with `SEED_NO_AI=1`.
 7. **Calls on the demo site are left out.** No call service; the call button is hidden or says calls are off in the demo.
 8. **The nightly reset** is a Reset action plus a documented cron recipe that calls it, as a script. There is no scheduler inside the app.
+
+Thomas, 2026-11-06, in chat, answering open questions. He chose the recommendation on 9, 10 and 11, and a different option on 12.
+
+9. **The loader reaches the routes by loopback.** It makes requests to the server's own address, each as a signed-in demo person, exactly like a browser, so every module's real rules run. There is no direct function call per route. Reason: no guard can be skipped by mistake.
+10. **The demo does not set the place search on an existing environment.** The demo's places carry their coordinates, so the map and the lists work without a search provider. The report does not need to say more than that search is the owner's choice. Reason: decision 1 (no settings change).
+11. **The demo flag: yes.** A field on the environment, `demo`. It shows the banner "This is a demo, it resets every night" and refuses sign-up, billing and password changes. Reason: one switch for the demo site instead of several settings that can be forgotten.
+12. **The shared demo login may do everything its role allows.** Thomas chose this over the recommended "no chat posting and no uploads", and relies on the nightly reset. No posting or upload limit is built for the shared login. The planner's note stands as an **accepted risk**: a public login that can post chat and upload files can be used to put unwanted words or files on a public site until the next reset. The mitigations that remain are the nightly reset, the demo flag refusing sign-up and password change, low upload size and quota caps on the demo environment through the existing plan caps, no AI, no calls and no outbound mail. If abuse shows up, a limit on posting and uploads is the first thing to add.
 
 ## The design
 
@@ -76,9 +83,9 @@ Order, for **Add** or **Reset**:
 6. Make the Vault files (see below), if the Vault is on.
 7. Print or return the report: created counts per module, skipped modules with why, and any refusal.
 
-**The routes it uses are the real ones and no new data route is added.** Whether the loader, running inside the server, calls them by a request to its own address or by a direct call is settled in slice 1 (open question 5); either way each write is made as a signed-in person, so no guard is bypassed.
+**The routes it uses are the real ones and no new data route is added.** The loader, running inside the server, calls them by requests to the server's own address on the loopback (decision 9), each write made as a signed-in demo person exactly like a browser, so no guard is bypassed.
 
-**What it never does:** install or enable a module, change a setting, switch the template, set the place search, make a map file, ask the AI (the demo site has none), and touch any space or account that is not marked. Map files stay the job of `seed:demo-map`, run by the host on a single install (it is the host's file, not the environment's).
+**What it never does:** install or enable a module, change a setting, switch the template, set the place search (decision 10), make a map file, ask the AI (the demo site has none), and touch any space or account that is not marked. Map files stay the job of `seed:demo-map`, run by the host on a single install (it is the host's file, not the environment's).
 
 **Marking.** The space is marked by the existing marker line at the start of its description (`MARKER`, kept as it is today). A demo person is marked by the pair the seeder already uses: the login from the file and the display name from the file together. An account with a demo login but another display name is refused and left alone, as now. The marker is never printed as a secret and is the only way the loader decides what it may delete.
 
@@ -133,11 +140,11 @@ These names are the plan's proposal; the checks name them once they are built.
 
 The demo site is a hosted install with one environment made for the purpose, with the template's demo added. What changes for it, on top of the above:
 
-- **The demo flag.** A field on the environment, `demo`, set by the host (the host console's environment page and the create form; a single install, which has no environment record, uses the environment variable `DEMO_MODE=on`). It is recommended, and open question 1 asks Thomas to confirm it. A flagged environment shows a banner on every page, **This is a demo. It resets every night.**, and refuses what a demo must not do: sign-up of new people to it, billing, a password change, an email change, the second-factor setup, deleting the environment's own account, and making new environments from it. Each refusal is a 403 with one sentence, and the matching button is hidden or says it is off in the demo.
+- **The demo flag.** A field on the environment, `demo`, set by the host (the host console's environment page and the create form; a single install, which has no environment record, uses the environment variable `DEMO_MODE=on`). Thomas decided it (decision 11). A flagged environment shows a banner on every page, **This is a demo. It resets every night.**, and refuses what a demo must not do: sign-up of new people to it, billing, a password change, an email change, the second-factor setup, deleting the environment's own account, and making new environments from it. Each refusal is a 403 with one sentence, and the matching button is hidden or says it is off in the demo.
 - **AI off.** The flag switches the AI off for the environment (decision 6). The Assistant says "The AI is off in the demo." No provider key is set for the environment, and the loader never asks the AI.
 - **No calls.** The flag hides the call button and the call page says "Calls are off in the demo." (decision 7). There is no call service for the environment to reach.
 - **The shared login.** One demo member, login `demo`, role `member`, in the demo space only. The loader sets its password to the value of the environment variable `DEMO_MEMBER_PASSWORD`, so it is known and can be put on the demo site's page. The password lives in that variable on the server and in the cron job's private environment file, never in the repository, the data file, the documentation or a log. The loader refuses to run on a flagged environment if the variable is unset or shorter than the product's minimum password length. Only the usual password hash is stored, as for any account. Other demo people (`mia`, `lee`, `sam`) are kept so the demo shows a group, but are not signed into by visitors; their passwords are random and discarded.
-- **Limits for the shared login** (open question 2): recommended, no chat posting and no uploads on the demo site. The demo space is filled by the loader and read by visitors. A visitor can still change things in modules (a to-do, a poll vote); the nightly reset puts it back.
+- **No limits for the shared login** (decision 12). It may do all its role allows, including chat posts and uploads. This is an accepted risk; the mitigations are the nightly reset, the flag's refusals, low upload size and quota caps on the demo environment through the existing plan caps, no AI, no calls and no outbound mail. The first thing to add if abuse shows up is a limit on posting and uploads.
 - **The nightly reset.** A script, `tools/demo-reset.mjs`, signs in as the demo environment's owner and calls `POST /api/demo/reset`, then exits non-zero with one sentence on a failure. A cron line runs it at 03:00. The owner login and password, the address and `DEMO_MEMBER_PASSWORD` sit in a file only the job's user can read (`/etc/collaborator-demo.env`), as in the existing recipe in [architecture-demo-site](../architecture/architecture-demo-site.md). The recipe is written in slice 7 with cron first and the Windows and GitHub Actions variants as now; the script prints nothing readable by others on success, so a job log in a public place leaks nothing. The recipe is not run as written until it has been (see Verify). The app has no scheduler (decision 8).
 
 ## Left to build, in order
@@ -147,12 +154,12 @@ Each slice is built and checked on its own. Building starts when Thomas says.
 | # | Slice | Size | Agent | Depends on | Checks |
 |---|---|---|---|---|---|
 | 0 | The seeder in the Docker image | done | server-development | none | its own build |
-| 1 | The data format, the loader and the travel conversion with identical counts | L | server-development | 0 | `check-seed-demo` (counts Planner 76, Places 37, Calendar 77, To-do 16, Polls 3, Budget 18, Research 4, Chat 25), `check-templates`, a new case that the loader never changes environment-wide settings and skips a module that is off, and a live run on a throwaway server |
+| 1 | The data format, the loader (loopback requests as signed-in demo people, no place search set) and the travel conversion with identical counts | L | server-development | 0 | `check-seed-demo` (counts Planner 76, Places 37, Calendar 77, To-do 16, Polls 3, Budget 18, Research 4, Chat 25), `check-templates`, a new case that the loader never changes environment-wide settings (the place search included) and skips a module that is off, and a live run on a throwaway server |
 | 2 | The Vault generator | S to M | server-development | 1 | `check-vault` (the files arrive through the real upload route, types and sizes are allowed) |
 | 3 | The games demo file | M | server-development, with the content from product-planner | 1 (2 for the handouts) | the loader on a games environment in `check-seed-demo`, and `check-templates` for the file's name |
 | 4 | The routes Add, Reset, Remove with the safety rules | M | server-development | 1 | a new check (owner only, only the marked space and people, one run at a time, a failed run leaves nothing) and `check-space-erase` (uploads are taken) |
 | 5 | The Prototype of the Manage **Demo** section and the creation checkbox; Thomas looks and locks; then the build | S to M | experience-design | 4 | the Prototype checks (`check-prototype-page`, `check-prototype-words`, `check-prototype-parity`); the built section checked in a browser at 1280 and 390 wide |
-| 6 | The demo flag, the banner, the refusals and the shared login | M | server-development, then experience-design | 4 | a new check: the refusals are 403 with a sentence, the shared login's password comes from the variable and is refused when unset, the AI and call button are off |
+| 6 | The demo flag, the banner, the refusals and the shared login (no posting or upload limit) | M | server-development, then experience-design | 4 | a new check: the refusals are 403 with a sentence, the shared login's password comes from the variable and is refused when unset, the AI and call button are off |
 | 7 | The nightly script and the cron recipe | S | server-development | 4, 6 | the script against a throwaway server; the recipe read as documentation |
 
 After slice 7: quality-assurance with a security read (the loader runs with owner rights and writes through the real routes; the demo login is public; the refusals must really hold), then content-manager for the documentation. Slices 2, 3 and 5 can run beside each other once slice 1 is in. Slice 5's Prototype can start any time after Thomas says go, since it only draws.
@@ -178,12 +185,10 @@ Nothing. It extends [architecture-demo-site](../architecture/architecture-demo-s
 
 ## Open questions
 
-Each has a recommendation and is Thomas's to decide.
+Each has a recommendation and is Thomas's to decide. Four questions Thomas answered are now decisions 9 to 12.
 
-1. **The demo flag on an environment** (a field that shows the banner "This is a demo. It resets every night.", refuses sign-up, billing and password change, and turns AI and calls off). Recommended: yes. It gives the demo site one switch instead of several settings that can be forgotten. Blocks slice 6 only.
-2. **How much moderation a public demo needs.** Recommended: the shared login cannot post chat or upload files on the demo site. Anything else a visitor changes is put back by the nightly reset. Blocks slice 6 only.
-3. **Vault demo files with privacy marks.** Once [plan-vault-privacy](plan-vault-privacy.md) slice 1 lands, mark one demo file **Only me** and one **Chosen people**. Recommended: yes, as a later step after that slice. Blocks nothing now.
-4. **The marker for demo people.** Today a person is a demo person by login plus display name. Recommended: keep that rule; the alternative is a `demo-` prefix on the login, which is clearer in the people list but changes every demo login, including the known `demo` one. Blocks slice 1 only for the names in the file.
-5. **How the loader reaches the routes from inside the server.** Recommended: it calls the server's own address on the loopback with the environment's host name, signed in as each demo person, so every guard runs exactly as for a browser. The alternative, a direct function call per route, is faster but would let a guard be skipped by mistake. Settled in slice 1; blocks slices 1 and 4.
-6. **The anchor of the games demo and its content** (how many sessions, which quests and lore), drawn up by product-planner for Thomas to read. Blocks slice 3.
-7. **The place search for the travel demo on an existing environment.** The seeder sets Photon if none is set; decision 1 says no settings change. Recommended: do not set it; the demo's places show without search until the owner chooses one, and the report says so. Blocks slice 1.
+1. **Vault demo files with privacy marks.** Once [plan-vault-privacy](plan-vault-privacy.md) slice 1 lands, mark one demo file **Only me** and one **Chosen people**. Recommended: yes, as a later step after that slice. Blocks nothing now.
+2. **The marker for demo people.** Today a person is a demo person by login plus display name. Recommended: keep that rule; the alternative is a `demo-` prefix on the login, which is clearer in the people list but changes every demo login, including the known `demo` one. Blocks slice 1 only for the names in the file.
+3. **The games demo content** (the anchor, how many sessions, which quests and lore), to be drafted by product-planner with Thomas. Blocks slice 3.
+
+Also still open, under "What is not decided": the map file for a hosted demo, and demos for custom templates.
