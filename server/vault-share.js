@@ -11,7 +11,9 @@
 //   DELETE /api/modules/:id/library/shares/:sid?space=     Turn off (its maker, an owner or a moderator of the space); 200 { ok: true }
 //   share: { id, name, files: [fid], by: <person key>, at, ends, download, hasPassword, opened }  (`opened`: how many times
 //   its list was read; no address or person is kept). `files` holds only the files the person asking may see
-//   (plan-vault-privacy.md); a file they can't see, named in POST or PATCH, is refused as one that is not there. GET /api/modules/:id/library adds `shared: true|false` to each file
+//   (plan-vault-privacy.md); a file they can't see, named in POST or PATCH, is refused as one that is not there. A share
+//   whose files are all hidden from them answers as not there (404), except that its maker still lists it (its `files`
+//   then empty) and may turn it off. GET /api/modules/:id/library adds `shared: true|false` to each file
 //   for someone with `share` only.
 // Public (no session; a session cookie that comes along is never read; on a hosted install only on the environment's own
 // host, where only that environment's links open):
@@ -166,14 +168,17 @@ function mountVaultShares(app, deps) {
   const mayTurnOff = (ctx, s) => s.by === ctx.by || ctx.owner || ctx.moderator;
   // A share as this person is shown it: without the ids of files hidden from them (ctx.sees, the library's one rule).
   // A share whose files are all hidden from this person is not theirs to see, change or turn off: it answers as one that is not there.
+  // Its maker is the exception for seeing and turning it off: they made it, so it tells them nothing, and a file narrowed
+  // after they made the link must not leave them unable to end it. Its `files` still holds only the files they can see.
   const shareHidden = (ctx, s) => s.files.length > 0 && s.files.every((fid) => { const r = vault.get(ctx.manifest.id, ctx.spaceId, fid); return Boolean(r) && !ctx.sees(r); });
+  const ownShare = (ctx, s) => s.by === ctx.by;
   const seenShare = (ctx, s) => ({ ...s, files: s.files.filter((fid) => ctx.sees(vault.get(ctx.manifest.id, ctx.spaceId, fid))) });
 
   app.get('/api/modules/:id/library/shares', (req, res) => {
     const ctx = libraryAccess(req, res, 'share');
     if (!ctx) return;
     // `canTurnOff`: this person may turn that link off (its maker, an owner or this space's moderator).
-    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId).filter((s) => !shareHidden(ctx, s)).map((s) => ({ ...seenShare(ctx, s), canTurnOff: mayTurnOff(ctx, s) })) });
+    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId).filter((s) => ownShare(ctx, s) || !shareHidden(ctx, s)).map((s) => ({ ...seenShare(ctx, s), canTurnOff: mayTurnOff(ctx, s) })) });
   });
 
   app.post('/api/modules/:id/library/shares', shareAccess, smallJson, (req, res) => {
@@ -211,7 +216,7 @@ function mountVaultShares(app, deps) {
     const ctx = libraryAccess(req, res, 'share');
     if (!ctx) return;
     const s = vault.getShare(ctx.manifest.id, ctx.spaceId, req.params.sid);
-    if (!s || shareHidden(ctx, s)) return res.status(404).json({ error: NO_SUCH_SHARE });
+    if (!s || (!ownShare(ctx, s) && shareHidden(ctx, s))) return res.status(404).json({ error: NO_SUCH_SHARE });
     if (!mayTurnOff(ctx, s)) return res.status(403).json({ error: `Only the person who made this share link, ${word('owner', { a: true })} or a ${word('moderator')} of this ${word('space')} can turn it off.` });
     if (!vault.revokeShare(ctx.manifest.id, ctx.spaceId, req.params.sid)) return res.status(404).json({ error: NO_SUCH_SHARE });
     noteActivity(ctx.manifest.id, 'turned off a share link', ctx.by, `space:${ctx.spaceId}`);

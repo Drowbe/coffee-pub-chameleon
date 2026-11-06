@@ -7342,9 +7342,10 @@ app.post('/api/objects/links', (req, res) => {
     if (only !== null && !(to && to.kind === only)) return res.status(400).json({ error: `every link must be to a ${only}` });
     if (mode === 'remove') {
       // Taking a link out needs no sight of what it pointed at, except a library file hidden from this person: they can't
-      // take out a link to it, and it answers as a file that is not there (plan-vault-privacy.md).
+      // take out a link to it, and it is passed over as quietly as one the object doesn't hold, so the answer is the same
+      // whether it is held or not (plan-vault-privacy.md). A link to a removed file ("File removed") can still be taken out.
       if (!refShape(to)) continue;
-      if (isLibraryFileRef(to) && held.some((h) => objectKey(h) === objectKey(to)) && !refFileSeen(who, to, true)) return res.status(404).json({ error: NO_SUCH_FILE });
+      if (isLibraryFileRef(to) && held.some((h) => objectKey(h) === objectKey(to)) && !refFileSeen(who, to, true)) continue;
       tos.push(to);
       continue;
     }

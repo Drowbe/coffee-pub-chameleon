@@ -183,7 +183,9 @@ let server = null;
 const streams = [];
 try {
   const mods = path.join(base, 'mods');
-  const holderDir = writeModule(mods, 'holder', { refs: { produces: [{ kind: 'row', name: 'Row', key: 'row:{id}', summary: { title: 'title' }, backlinks: true }], consumes: ['vault:file'] } });
+  // A row may hold a spot (`target`): when that spot is deleted, the holding row goes with its links (the drop path).
+  const holderDir = writeModule(mods, 'holder', { refs: { produces: [{ kind: 'row', name: 'Row', key: 'row:{id}', summary: { title: 'title' }, backlinks: true, holds: { field: 'target', onDelete: 'remove' } }], consumes: ['vault:file', 'spot:spot'] } });
+  const spotDir = writeModule(mods, 'spot', { refs: { produces: [{ kind: 'spot', name: 'Spot', key: 'spot:{id}', summary: { title: 'title' } }], consumes: [] } });
   server = await startServer(path.join(base, 'data'), path.join(base, 'vault'));
   const login = async (who, password) => cookieOf(await call(server, 'POST', '/api/login', { body: { login: who, password } }));
   const admin = await login('admin', 'admin-password-1');
@@ -200,8 +202,8 @@ try {
   must(await as(admin, 'PATCH', `/api/spaces/${A.id}`, { members: ['ada', 'lis', 'nol', 'mod', 'tmp'].map(K) }), 200, 'members of A');
   must(await as(admin, 'PATCH', `/api/spaces/${B.id}`, { members: ['out', 'tmp'].map(K) }), 200, 'members of B');
   must(await as(admin, 'PATCH', `/api/users/${K('mod')}/spaces/${A.id}`, { permissions: { moderator: true } }), 200, 'mod moderates A');
-  for (const dir of [path.join(ROOT, 'modules', 'vault'), holderDir]) must(await as(admin, 'POST', '/api/modules', buildModule(dir).zip, 'application/zip'), 201, `install ${dir}`);
-  for (const id of ['vault', 'holder']) must(await as(admin, 'PATCH', `/api/modules/${id}`, { enabled: true, allSpaces: true }), 200, `turn on ${id}`);
+  for (const dir of [path.join(ROOT, 'modules', 'vault'), holderDir, spotDir]) must(await as(admin, 'POST', '/api/modules', buildModule(dir).zip, 'application/zip'), 201, `install ${dir}`);
+  for (const id of ['vault', 'holder', 'spot']) must(await as(admin, 'PATCH', `/api/modules/${id}`, { enabled: true, allSpaces: true }), 200, `turn on ${id}`);
   const guestToken = must(await as(admin, 'POST', `/api/spaces/${A.id}/guest-link`, {}), 200, 'guest link').json.space.guestToken;
   const streamKey = (await as(admin, 'GET', '/api/me')).json.streamKey;
   must(await as(admin, 'PUT', '/api/ai', { source: 'custom', provider: 'compatible', address: `http://127.0.0.1:${aiStub.address().port}/v1`, model: 'stub-model', key: 'sk-test', enabled: true }), 200, 'point the AI at the stand-in');
@@ -493,7 +495,8 @@ try {
   }
   // A link the person can't see stays when they replace an object's links.
   {
-    must(await as(people.nol.cookie, 'POST', '/api/objects/links', { module: 'holder', from: row, to: [ref(files.everyone.id)], kind: 'file' }), 200, 'nol replaces the booking\'s files');
+    const replaced = must(await as(people.nol.cookie, 'POST', '/api/objects/links', { module: 'holder', from: row, to: [ref(files.everyone.id)], kind: 'file' }), 200, 'nol replaces the booking\'s files');
+    expect(replaced.json?.links === 1, `a member who replaces the links is counted only the one they can see: ${replaced.text} (wanted links 1)`);
     const held = (await as(admin, 'GET', `/api/objects/links?from=holder&dir=from&ref=${encodeURIComponent(JSON.stringify(row))}`)).json.summaries.filter((s) => s.ref.module === 'vault').length;
     expect(held === 5, `a member who replaces the links keeps the four files they can't see (${held} left)`);
     const add = await as(people.nol.cookie, 'POST', '/api/objects/links', { module: 'holder', from: { ...row, id: 'r2' }, to: [ref(files['only-me'].id)], kind: 'file', op: 'add' });
@@ -550,13 +553,21 @@ try {
     expect(count.status === 200 && count.json?.links === 1, `a member who sees one of three linked files is told ${count.text} (wanted links 1)`);
     const countLis = await link(people.lis.cookie, [ref(vis)], 'add');
     expect(countLis.status === 200 && countLis.json?.links === 2, `a member who sees two of three is told ${countLis.text} (wanted links 2)`);
-    const gone = await link(people.nol.cookie, [ref(hid)], 'remove');
-    expect(gone.status === 404 && gone.json?.error === 'There is no such file.', `taking out a link to a hidden file answered ${gone.status} ${gone.text} (wanted 404 as missing)`);
+    // Taking out a link to a file they can't see is passed over: the same 200 whether the object holds it, holds another
+    // hidden file instead, or the id is nobody's, so the answer says nothing of what is linked.
+    const quiet = {
+      'held and hidden': await link(people.nol.cookie, [ref(hid)], 'remove'),
+      'hidden, not held': await link(people.nol.cookie, [ref(files['people-then-removed'].id)], 'remove'),
+      'not there': await link(people.nol.cookie, [ref(MISSING)], 'remove'),
+    };
+    for (const [what, r] of Object.entries(quiet)) {
+      expect(r.status === 200 && r.json?.links === 1, `taking out a link to a file they can't see (${what}) answered ${r.status} ${r.text} (wanted 200, links 1)`);
+      expect(shape(r) === shape(quiet['not there']), `taking out a link (${what}) differs from one to a file that is not there: ${brief(r)} vs ${brief(quiet['not there'])}`);
+    }
     expect((await heldNow()).includes(hid), 'a member who cannot see a file took its link off an object');
     const goneBoth = await link(people.nol.cookie, [ref(vis), ref(hid)], 'remove');
-    expect(goneBoth.status === 404 && (await heldNow()).includes(vis), `a removal naming a hidden file changed something anyway (${goneBoth.status})`);
-    const mine = await link(people.nol.cookie, [ref(vis)], 'remove');
-    expect(mine.status === 200 && mine.json?.links === 0 && !(await heldNow()).includes(vis), `taking out a visible link answered ${mine.text}`);
+    const afterBoth = await heldNow();
+    expect(goneBoth.status === 200 && goneBoth.json?.links === 0 && !afterBoth.includes(vis) && afterBoth.includes(hid), `a removal naming a visible and a hidden file should take out only the visible: ${goneBoth.status} ${goneBoth.text}, left ${JSON.stringify(afterBoth)}`);
     const own = await link(people.ada.cookie, [ref(hid)], 'remove');
     expect(own.status === 200 && !(await heldNow()).includes(hid), `the adder taking out their own file's link answered ${own.status}`);
     // The share links: one holding only files hidden from someone is not theirs to see or turn off.
@@ -574,6 +585,59 @@ try {
     const ownerList = await as(people.ola.cookie, 'GET', `/api/modules/vault/library/shares?space=${A.id}`);
     expect(ownerList.json.shares.some((s) => s.id === sh.id && s.name === 'Hidden only'), 'the owner still sees and keeps the link of hidden files');
     for (const s of [sh, mixed]) await as(people.ola.cookie, 'DELETE', `/api/modules/vault/library/shares/${s.id}?space=${A.id}`);
+  }
+  // A link's maker keeps it when its file is narrowed away from them: they still list it (naming no file they can't see)
+  // and can turn it off. Someone else who can't see the file still finds the link not there, as an id that is nobody's.
+  {
+    const shares = `/api/modules/vault/library/shares?space=${A.id}`;
+    const one = (sid) => `/api/modules/vault/library/shares/${sid}?space=${A.id}`;
+    const narrowed = must(await add(people.ada.cookie, 'narrowed-probe.jpg', `&visibility=people&people=${K('mod')}`), 201, 'add a file to narrow').json.file;
+    const made = must(await as(people.mod.cookie, 'POST', shares, { name: 'Moderator link', files: [narrowed.id] }), 201, 'the moderator shares it').json;
+    const sid = made.share.id;
+    must(await as(people.ada.cookie, 'PATCH', `/api/modules/vault/library/${narrowed.id}?space=${A.id}`, { visibility: 'only-me' }), 200, 'the adder narrows it to only-me');
+    const modList = await as(people.mod.cookie, 'GET', shares);
+    const mine = modList.json?.shares?.find((s) => s.id === sid);
+    expect(modList.status === 200 && mine && mine.name === 'Moderator link' && JSON.stringify(mine.files) === '[]' && mine.canTurnOff === true, `the maker no longer lists their link of a narrowed file: ${modList.status} ${JSON.stringify(mine)}`);
+    expect(!modList.text.includes(narrowed.id) && !modList.text.includes('narrowed-probe'), 'the maker\'s list names the file they can no longer see');
+    must(await as(admin, 'PATCH', '/api/roles/member', { 'module.vault.share': true }), 200, 'members may share, for now');
+    const nolList = await as(people.nol.cookie, 'GET', shares);
+    expect(nolList.status === 200 && !nolList.text.includes(sid), `a member who can't see the file is shown the link: ${nolList.status}`);
+    const NOBODY = 'a'.repeat(18);
+    for (const [what, method, body] of [['turning off', 'DELETE'], ['changing', 'PATCH', { name: 'Renamed' }]]) {
+      const theirs = await as(people.nol.cookie, method, one(sid), body);
+      const missing = await as(people.nol.cookie, method, one(NOBODY), body);
+      expect(theirs.status === 404 && shape(theirs) === shape(missing), `${what} someone else's link of a file they can't see: ${brief(theirs)} vs ${brief(missing)} for an id that is nobody's`);
+    }
+    must(await as(admin, 'PATCH', '/api/roles/member', { 'module.vault.share': false }), 200, 'members may not share again');
+    expect((await call(server, 'GET', `/api/shared/${made.token}`)).status === 200, 'the link still opened before its maker turned it off');
+    const off = await as(people.mod.cookie, 'DELETE', one(sid));
+    expect(off.status === 200 && off.json?.ok === true, `the maker could not turn off their link of a narrowed file: ${off.status} ${off.text}`);
+    expect((await call(server, 'GET', `/api/shared/${made.token}`)).status === 404, 'the link still opens after its maker turned it off');
+    must(await as(people.ada.cookie, 'DELETE', `/api/modules/vault/library/${narrowed.id}?space=${A.id}`), 200, 'remove the narrowed file');
+  }
+  // The drop path: a row that holds a spot goes when that spot is deleted, and its links with it. A hidden file it
+  // linked reaches only the streams of those who can see the file; the adder's stream is told.
+  {
+    const hid = files['only-me'].id;
+    const rowRef = (id) => ({ module: 'holder', kind: 'row', id, scope: 'space', space: A.id });
+    const spot = { module: 'spot', kind: 'spot', id: 't1', scope: 'space', space: A.id };
+    must(await as(admin, 'PUT', `/api/modules/spot/data/spot:t1?scope=space&space=${A.id}`, { value: { title: 'Target' } }), 200, 'spot t1');
+    must(await as(admin, 'PUT', `/api/modules/holder/data/row:h1?scope=space&space=${A.id}`, { value: { title: 'Holding', target: spot } }), 200, 'row h1 holds t1');
+    const toSpot = must(await as(admin, 'POST', '/api/objects/links', { module: 'holder', from: rowRef('h1'), to: [spot], kind: 'spot', op: 'add' }), 200, 'h1 links t1');
+    expect(toSpot.json?.links === 1, `the holding row links the spot: ${toSpot.text}`);
+    must(await as(people.ada.cookie, 'POST', '/api/objects/links', { module: 'holder', from: rowRef('h1'), to: [ref(hid)], kind: 'file', op: 'add' }), 200, 'h1 links the hidden file');
+    await sleep(300);
+    const marks = Object.fromEntries(Object.entries(live).map(([n, p]) => [n, p.map((s) => s.events.length)]));
+    must(await as(admin, 'DELETE', `/api/modules/spot/data/spot:t1?scope=space&space=${A.id}`), 200, 'delete t1');
+    await sleep(500);
+    const h1 = await as(admin, 'GET', `/api/modules/holder/data/row:h1?scope=space&space=${A.id}`);
+    expect(h1.status === 404, `the row holding a deleted row did not go: ${h1.status} ${h1.text.slice(0, 120)}`);
+    for (const [n, pair] of Object.entries(live)) {
+      const after = pair.map((s, i) => s.events.slice(marks[n][i]));
+      if (SEES[n].includes('only-me')) expect(after[0].some((e) => e.event === 'links' && e.data.ref?.id === hid), `${n}: was not told that a dropped row's link to a file it can see went`);
+      else expect(!after.flat().some((e) => e.raw.includes(hid)), `${n}: a stream carried the id of a hidden file when the row linking it was dropped`);
+      if (SEES[n].includes('everyone')) expect(after[0].some((e) => e.event === 'links' && e.data.ref?.id === 'h1'), `${n}: was not told of the dropped row`);
+    }
   }
   // Removing: a hidden file's links are told only to those who could see it; no activity line for a file not everyone sees.
   {
