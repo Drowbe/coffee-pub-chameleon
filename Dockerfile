@@ -36,6 +36,8 @@ COPY public ./public
 # The bundled modules (sources, not zips): Manage > Modules installs and updates them from here.
 COPY modules ./modules
 COPY templates ./templates
+# The demo seeder (`npm run seed:demo`, run inside the container); it also reads modules/maps/src, copied above.
+COPY tools/seed-demo.mjs tools/seed-demo-map.mjs ./tools/
 ARG GIT_SHA=dev
 ENV NODE_ENV=production
 ENV APP_REVISION=$GIT_SHA

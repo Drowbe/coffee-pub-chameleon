@@ -203,6 +203,8 @@ On a touch screen (`@media (pointer: coarse)`, not a width) `--field-font` is 16
 
 The title bar and the status bar are the same, darker surface (`--mf-surface-title`, the panel colour mixed 70% with black); the toolbar is a step lighter than the panel and the content is the panel colour. An object's row in the content is a gentle tint of the theme's accent (`--mf-surface-row`, a little more on hover): a hint, not a card. A count anywhere in the frame (the Filters button, a tab, a menu entry) is the one shared `.sdk-badge`, and it shows the real number. The badge is a circle for one digit and a small rounded corner for two or more (a CSS `clip-path`). A chip (`.mf-chip`) takes its corners from `--radius-small`. The status bar is words with a dot between, never pills. A filter is not shown as a row of chips: the toolbar has one Filters button, and its menu holds the groups and **Clear filters**.
 
+`node tools/check-surface-steps.mjs` measures it: neighbouring surfaces differ by at least deltaE 2.0 in every theme and mode, and the status bar equals the title bar. A theme below the minimum is named in the check's known list, never fixed by lowering the minimum.
+
 ## The banded card
 
 The card a module draws for an object (the shared banded card, `.sdk-card-banded` in `public/sdk/system.css`) has a band at the top and a body under it.
