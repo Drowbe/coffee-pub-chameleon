@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides how the host console is organised and what it shows; and the sessions that build it: experience-design (`public/host.html`, `public/host.js`, `public/host-templates.js`, the styles, the Prototype section) and server-development (the host routes, only where a slice needs new data, and the checks).
 
-**Status:** draft, 2026-11-06, by product-planner (GitHub #213). Thomas decided the direction and the build process on 2026-11-06 (decisions 1 to 7); the open questions at the end are not decided. Building does not start until Thomas approves the summary of this plan, and the first step is the Prototype, not the console. From Thomas: "The organization, design, and layout of this critical part of our experience is very bad. It's poorly organized, it is unclear how you manage things like templates or modules, and every environment is just another box on a long list... We need to take a step back and really invest in making this a much more obvious and easier part of the experience for site owners." The original note: "Admin needs a lot of cleanup where each environment gets its own configuration space." ("Admin" is the host console, for example `admin.collaborator.coffeepub.ai`.)
+**Status:** approved 2026-11-06 (Thomas: decisions 1 to 7, and the open questions answered in chat); slice 1 (the Prototype) started 2026-11-06; building the console does not start until Thomas has looked at the Prototype and locked the design. Written as a draft 2026-11-06 by product-planner (GitHub #213). From Thomas: "The organization, design, and layout of this critical part of our experience is very bad. It's poorly organized, it is unclear how you manage things like templates or modules, and every environment is just another box on a long list... We need to take a step back and really invest in making this a much more obvious and easier part of the experience for site owners." The original note: "Admin needs a lot of cleanup where each environment gets its own configuration space." ("Admin" is the host console, for example `admin.collaborator.coffeepub.ai`.)
 
 ## What it is today
 
@@ -14,20 +14,20 @@ Read from `public/host.html` (486 lines), `public/host.js` (833), `public/host-t
 - **Templates** are a list (name, id, bundled or own, version, used by N, Hidden, update notices) and one long editor form of twelve parts (id, name and description, Words, Home icon, Modules with display names and icons, New environments, Phases, Reactions, Theme, Icons, and the Review panel). "Used by N" is a count; it does not name the environments.
 - **Per environment, the console offers nothing beyond** name, plan, caps and template: no people, spaces, usage history, domain or backup list. Backup is a manual download.
 - **Design-system use.** It uses `.subtabs`, `.sdk-card`, `.sdk-status`, `.sdk-table`, `.sdk-banner`, `.sdk-progress` and `confirmDialog`. It has its own cards with a 4 px coloured left edge (`body.host-console .environment` rules in `public/style.css`), its own two-click Delete and Restore, no `host.menu.show` and no `host.ui.viewSwitch`.
-- **What the list already returns** (read as code, `server/index.js` `GET /api/host/environments`): per environment its record (slug, name, plan and caps, status, `pastDueSince`, `degradedAt`, `deleteRequestedAt`, `createdAt`), `usage` (members, spaces, AI calls this month, and calls now where the plan caps calls), `refused` (why it will not open), and `template`. Not returned today: storage. The route sets `usage.storageBytes` to `null`, so the console cannot show storage at a glance from this list (question 6).
+- **What the list already returns** (read as code, `server/index.js` `GET /api/host/environments`): per environment its record (slug, name, plan and caps, status, `pastDueSince`, `degradedAt`, `deleteRequestedAt`, `createdAt`), `usage` (members, spaces, AI calls this month, and calls now where the plan caps calls), `refused` (why it will not open), and `template`. Not returned today: storage. The route sets `usage.storageBytes` to `null`, so the console cannot show storage at a glance from this list (decision 10).
 - **Phone.** Decision 10 of [plan-phone-experience](plan-phone-experience.md) says the host console is "usable, not redesigned": nothing cut, nothing scrolling sideways, taps at 44 px. Its audit found the Host tab scrolling sideways (the billing sentence does not wrap).
 
 The research notes behind this section are the console walk-through done for #213 on 2026-11-06. Everything above was checked against the code named; the card height and the 300 px figure are from a live measurement that was not repeated here.
 
 ## Decisions
 
-Thomas, 2026-11-06. Each was put as a question with a recommendation, and he chose the recommendation.
+Thomas, 2026-11-06. Each was put as a question with a recommendation, and he chose the recommendation. Decisions 8 to 15 answer the questions the first draft left open.
 
 1. **Direction: the hybrid, built in slices.**
    - A **left navigation** with five sections: Environments, Templates, Modules, Plans, Server.
    - **Server** holds the host's facts, host admins and your two-step sign-in, AI, Maps and the flight schedule.
    - **Environments** is a searchable, sortable, filterable **table** (name, plan, status, use at a glance, template). Each row opens that environment's own **page** with tabs: Overview (use against caps, and status), Plan and modules, Template, Owners and two-step, Backups, Danger zone, and a spare slot for Domain (#50).
-   - A short **needs attention** strip above the table (past due, suspended, won't open, deletion asked, near a cap), built only from data the environments list already returns. No new server work.
+   - A short **needs attention** strip above the table (past due, suspended, won't open, deletion asked, near a cap, degraded), built only from data the environments list already returns. No new server work (decision 10).
    - Row actions go in a **More** menu with `host.menu.show`. Delete and Restore use `confirmDialog`.
    Reason: every environment today is a box on a long list; one table scales to many, and one page per environment gives each its own space.
 2. **Modules: a read-only section first.** It shows which modules exist and which environments run which, with versions. Host-run install and update come later as their own slice and need server work (a `GET /api/host/modules` listing is the likely first route). Reason: the console has no view of modules at all, and a read-only view answers "what runs where" without new risk.
@@ -36,6 +36,14 @@ Thomas, 2026-11-06. Each was put as a question with a recommendation, and he cho
 5. **The redesign ships first** and leaves room for #214 (templates set default views, modules and more) and #50 (an environment's own domain). Neither blocks it.
 6. **Process: prototype first.** The design is built as a **Host console** section on the Prototype page (`public/design-system/prototype.html`, `prototype.js`), shown with 6 and with 30 environments at 1280 and 390 wide. Thomas looks, the design is locked, then it is built. Thomas's standing rule.
 7. **This work may run beside other work.** The shared-file risks are in the files list below.
+8. **Near a cap (2026-11-06, chat, picking the recommendation).** "Near a cap" means 80 percent or more of the plan's cap, for members, AI calls a month and calls at once. At 100 percent the row says "at cap". Reason: one clear line, and the same for every cap.
+9. **The attention strip (2026-11-06, chat, picking the recommendation).** It lists past due, suspended, won't open, deletion asked, near a cap, and degraded. Each is a filter on the table.
+10. **Storage (2026-11-06, chat, picking the recommendation).** Storage is not in the table or the strip. It is shown on an environment's Overview page only. There is no new server work in the first slices, and the environments list keeps returning storage as `null`. Reason: no server change is needed to ship the redesign.
+11. **Table columns and order (2026-11-06, chat, picking the recommendation).** Columns are Name, Plan, Status, Use, Template. Rows that need attention come first, then by name.
+12. **Used by links (2026-11-06, chat, picking the recommendation).** The names under "Used by" in Templates link to the environment's page.
+13. **Maps and AI (2026-11-06, chat, picking the recommendation).** Both stay under Server.
+14. **Modules view (2026-11-06, chat, picking the recommendation).** Modules shows a by-module table only: module, version, environments running it. No second view by environment.
+15. **The Prototype's data (2026-11-06, chat, picking the recommendation).** 30 invented environments, plus a second state with 6. No real environment is used.
 
 ## The design
 
@@ -48,11 +56,11 @@ A left navigation lists Environments, Templates, Modules, Plans, Server. The add
 ### Environments: the table
 
 - A search box (name and slug), filters (plan, status, template), a count ("12 of 30"), and sortable columns.
-- Columns (a first proposal, question 3): Name (with `slug.domain` beneath), Plan, Status, Use, Template. Use at a glance shows members and AI calls this month against their caps, as two short bars (`.sdk-progress`), and calls now where the plan caps them.
+- Columns (decision 11): Name (with `slug.domain` beneath), Plan, Status, Use, Template. Use at a glance shows members and AI calls this month against their caps, as two short bars (`.sdk-progress`), and calls now where the plan caps them.
 - Status uses the existing `.sdk-status` chips: active, suspended, past due, won't open, deletion asked.
 - The row opens the environment's page (the name is the link, and the whole row is the target). The row's **More** menu (`host.menu.show`) holds Open, Back up, Suspend or Resume, and Delete. **New environment** is a button above the table that opens the existing create form in a dialog or its own view.
 - The table sits in its own scroll wrapper, so on a phone it scrolls inside itself, never the page. Rows are at least 44 px tall.
-- **Needs attention** strip above the table: one line per kind with a count, each a filter on the table when tapped. The conditions are in question 2. It uses only fields the list already returns.
+- **Needs attention** strip above the table: one line per kind with a count, each a filter on the table when tapped. The conditions are in decisions 8 and 9. It uses only fields the list already returns.
 
 ### An environment's page
 
@@ -70,13 +78,13 @@ Each tab saves on its own and says so in one status line, as the console does no
 
 ### Templates
 
-A list of templates with name, id, bundled or own, version, an Edited badge, the Hidden switch, and **Used by**: the environments that use it, by name (a count when more than four, then "and N more"). Whether those names link to the environment's page is question 4. Update notices stay above the list with **Review**. Row actions (Export, Duplicate, Reset to shipped, Delete when own and unused) go in a **More** menu. Import file and New stay above the list.
+A list of templates with name, id, bundled or own, version, an Edited badge, the Hidden switch, and **Used by**: the environments that use it, by name (a count when more than four, then "and N more"). The names link to the environment's page (decision 12). Update notices stay above the list with **Review**. Row actions (Export, Duplicate, Reset to shipped, Delete when own and unused) go in a **More** menu. Import file and New stay above the list.
 
 The editor keeps its fields and rules and splits into sections with a jump list at its side (a strip on a phone): Basics (id, name, description), Words and verbs, Home icon, Modules (and their display names and icons), New environments, Phases, Reactions, Theme, Icons. One **Save** for the whole template, as today. The Review panel (Shipped beside Yours, take the new version, keep mine) stays; its entry point moves with the offer where it applies to one environment (see An environment's page, Template).
 
 ### Modules (read-only)
 
-A table of the modules on the host: name, id, version, bundled or uploaded, and the environments that run it, by name. A second view by environment (each environment's list of modules) may be added if the Prototype shows it is needed. No install, update or upload here; that is a later slice (slice 8) and needs server work.
+A table of the modules on the host: name, id, version, bundled or uploaded, and the environments that run it, by name. There is no second view by environment (decision 14). No install, update or upload here; that is a later slice (slice 8) and needs server work.
 
 ### Plans
 
@@ -84,7 +92,7 @@ The catalog as it is today: one row per plan with id, name and five caps (member
 
 ### Server
 
-One section with sub-headings, in this order: The host (facts), Your two-step sign-in, Host admins, AI (managed AI), Maps (shared map files), Flight schedule. Whether AI and Maps stay here is question 5. The Maps tab's width problem on a phone and the Host tab's sideways scroll (the billing sentence) are fixed here, because the section is rebuilt.
+One section with sub-headings, in this order: The host (facts), Your two-step sign-in, Host admins, AI (managed AI), Maps (shared map files), Flight schedule. AI and Maps stay here (decision 13). The Maps tab's width problem on a phone and the Host tab's sideways scroll (the billing sentence) are fixed here, because the section is rebuilt.
 
 ## The contract
 
@@ -150,17 +158,13 @@ No decision in either plan changes. The documents that describe the console ([ar
 
 ## What is not decided
 
-Questions for Thomas. The answers shape the Prototype; none blocks slice 1, because the Prototype can show the recommendation and Thomas can change it when he looks. Every recommendation here is a suggestion, not a decision.
+Answered in chat on 2026-11-06 and moved to the Decisions (8 to 15): what "near a cap" means, the attention strip's conditions, the table's columns and order, the links under "Used by", where Maps and AI sit, storage at a glance, the Prototype's data, and the Modules view. No slice size or order changes because of them.
 
-1. **What "near a cap" means.** Suggestion: 80 percent of a cap, for members, AI calls a month and calls at once, shown on the row and counted in the strip; 100 percent shown as "at cap". Storage is left out until the list returns it (question 6).
-2. **The attention strip's conditions.** Suggestion: past due, suspended, won't open (`refused`), deletion asked, near a cap, and degraded to free. Each is a filter on the table.
-3. **The table's columns and default sort.** Suggestion: Name, Plan, Status, Use, Template, with Created available as a sort but not a column; default sort is needs-attention first, then name.
-4. **Do the names under "Used by" in Templates link to the environment's page?** Suggestion: yes, one tap to the environment, and the environment's Template tab links back to the template.
-5. **Do Maps and AI stay under Server?** Suggestion: yes for now. Both are host-wide, not per environment, and Server is where host-wide things sit. If Modules grows host-run install (slice 8), Maps could move under Modules because its shared folders belong to a module.
-6. **Storage at a glance.** The list route returns no storage today (`usage.storageBytes` is `null`), so the table cannot show it or flag it near a cap without a small server change (the registry already measures it, at most once a minute). Suggestion: leave storage on the environment's Overview, and add it to the table only if Thomas wants it there; that is a small server-development step added to slice 4.
-7. **What the Prototype shows for 30 environments.** Fake data only: a mix of plans, statuses (a few past due, suspended, won't open, deletion asked), uneven use, and long and short names. Suggestion: product-planner and experience-design agree the list before slice 1; none of it comes from a real environment.
-8. **Is a second Prototype view of the Modules section by environment needed?** Suggestion: draw the by-module table only, and add the other if it looks thin.
+Still open:
+
+1. **The Prototype's look and lock.** Thomas looks at the Prototype (slice 2) and locks the design or asks for changes. Nothing in "The design" is final before then.
+2. **What Modules shows later, when host-run install comes.** Slice 8 needs its own addendum. If it grows host-run install, Maps could move under Modules, because its shared folders belong to a module; that is not decided.
 
 ## Open questions that block building
 
-None block slice 1, the Prototype. Slices 3 onward wait for Thomas's lock of the design (slice 2), which settles questions 1 to 6 and 8. Slice 8 waits for its own addendum.
+Slice 1, the Prototype, is not blocked. Slices 3 onward wait for Thomas's lock of the design (open question 1, slice 2). Slice 8 waits for its own addendum (open question 2).
