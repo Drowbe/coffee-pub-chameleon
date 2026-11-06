@@ -4,7 +4,9 @@
 // fetched, every module's content is made up. The modules are the real module frame (createModuleFrame, docked and floating), their
 // menus the host's own (openHostMenu, with the frame's own entries from titlebarMenu()), the docked limit the real dockLimit
 // (public/snap-grid.js). What is new (the stack, the divider, the drop zones, the new menu entries) is drawn here, and what is real
-// in this drawing is the drag of a title bar, the drag and the keys of a divider, the collapse buttons and every menu entry.
+// in this drawing is the drag of a title bar, the drag and the keys of a divider, the collapse buttons and every menu entry. The divider
+// is the call and chat column's own splitter (.side-column-splitter and -h in style.css, wireSplitter in space.js), turned to sit between
+// two sections (Thomas: "We should not reinvent this."); the drop zones are the preview, B (Thomas's choice).
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu } from '/host-menu.js';
 import { dockLimit, FLEX_MIN } from '/snap-grid.js';
@@ -13,7 +15,7 @@ const D = document;
 const TITLE_H = 36; // --mf-title-h
 const CONTENT_MIN = 120; // decision 3's number: a section never gets less than its title bar plus this
 const SECTION_MIN = TITLE_H + CONTENT_MIN;
-const DIV_H = 8; // the divider's band
+// The divider takes no height: like the real splitter, its strip lies over the frames' edges (margin -4px 0), so the sections fill the column.
 const MAX = 3; // decision 3
 const STEP = 16;
 const BIG_STEP = 64;
@@ -95,7 +97,7 @@ const nameOf = (id) => MODS[id].name;
 // last (`keep`), and never the last one open.
 function splitHeights(total, col) {
   const n = col.ids.length;
-  const avail = total - DIV_H * (n - 1);
+  const avail = total;
   const auto = col.ids.map(() => false);
   const shut = (i) => col.folded[i] || auto[i];
   for (;;) {
@@ -161,12 +163,12 @@ function heldPair(items, rowLabel, flyItems) {
 }
 
 // ---- one drawing: a canvas (and maybe the call and chat column beside it) ----
-// spec: { w, h, cols: [{ ids, w?, h?, folded? }], floats: [{ id, x, y, w, h }], side, styles: { divider, fold, zones, pick }, drag (title bars
+// spec: { w, h, cols: [{ ids, w?, h?, folded? }], floats: [{ id, x, y, w, h }], side, styles: { fold, pick }, drag (title bars
 // can be dragged), note (a <p> for the note line), readout (a <p>), menus (the stack entries in the frames' menus) }.
 function stackCanvas(spec) {
   const v = {
     w: spec.w, h: spec.h, side: spec.side || 0, cols: clone(spec.cols), floats: (spec.floats || []).map((f) => ({ ...f })),
-    styles: { divider: 'A', fold: 'A', zones: 'A', pick: 'A', ...(spec.styles || {}) },
+    styles: { fold: 'A', pick: 'A', ...(spec.styles || {}) },
     frames: [], secs: new Map(), colEls: [], divs: [],
   };
   const start = { cols: clone(spec.cols), floats: (spec.floats || []).map((f) => ({ ...f })) };
@@ -191,7 +193,7 @@ function stackCanvas(spec) {
     if (!MODS[col.ids[0]].stack) return `${nameOf(col.ids[0])} can't hold a stack.`;
     if (colOf(id) === c) return '';
     if (col.ids.length >= MAX) return 'A stack holds three modules at most.';
-    if ((col.ids.length + 1) * SECTION_MIN + col.ids.length * DIV_H > v.h) return 'The canvas is too short to stack here.';
+    if ((col.ids.length + 1) * SECTION_MIN > v.h) return 'The canvas is too short to stack here.';
     return '';
   }
 
@@ -465,26 +467,29 @@ function stackCanvas(spec) {
     return [...base.slice(0, cut), { divider: true }, ...group, ...(base.slice(cut).length ? base.slice(cut) : [])];
   }
 
-  // ---- the divider ----
+  // ---- the divider: the real splitter's classes, its states and its pointer handling (wireSplitter in space.js), turned horizontal ----
   function divider(col, i) {
-    const dv = h('div', 'pps-div');
-    dv.dataset.style = v.styles.divider;
+    const dv = h('div', 'side-column-splitter side-column-splitter-h pps-div');
     dv.setAttribute('role', 'separator');
     dv.setAttribute('aria-orientation', 'horizontal');
     dv.setAttribute('aria-label', `Resize ${nameOf(col.ids[i])} and ${nameOf(col.ids[i + 1])}`);
+    dv.title = 'Drag to resize';
     dv.tabIndex = 0;
     const setUpper = (a, total, share) => { const x = clamp(a, Math.min(SECTION_MIN, total / 2), Math.max(total - SECTION_MIN, total / 2)); col.h[i] = (share * x) / total; col.h[i + 1] = share - col.h[i]; relayout(); };
+    const even = () => { equalize(col); relayout(); say(`${listWords(col.ids.map(nameOf))} have equal heights.`); };
+    let s = null;
     dv.addEventListener('pointerdown', (e) => {
-      if (dv.classList.contains('pps-div-off') || e.button !== 0) return;
+      if (dv.classList.contains('pps-div-off') || (e.button !== 0 && e.pointerType === 'mouse')) return;
       e.preventDefault();
-      dv.setPointerCapture(e.pointerId);
-      const s = { y: e.clientY, a: col.px[i], total: col.px[i] + col.px[i + 1], share: col.h[i] + col.h[i + 1] };
-      dv.classList.add('is-drag'); canvas.classList.add('pps-resizing');
-      const move = (ev) => setUpper(s.a + ev.clientY - s.y, s.total, s.share);
-      const up = () => { dv.classList.remove('is-drag'); canvas.classList.remove('pps-resizing'); dv.removeEventListener('pointermove', move); dv.removeEventListener('pointerup', up); dv.removeEventListener('pointercancel', up); };
-      dv.addEventListener('pointermove', move); dv.addEventListener('pointerup', up); dv.addEventListener('pointercancel', up);
+      s = { y: e.clientY, a: col.px[i], total: col.px[i] + col.px[i + 1], share: col.h[i] + col.h[i + 1] };
+      dv.classList.add('dragging'); canvas.classList.add('pps-resizing');
+      dv.setPointerCapture?.(e.pointerId);
     });
-    dv.addEventListener('dblclick', () => { equalize(col); relayout(); say(`${listWords(col.ids.map(nameOf))} have equal heights.`); });
+    dv.addEventListener('pointermove', (e) => { if (s) setUpper(s.a + e.clientY - s.y, s.total, s.share); });
+    const stop = () => { if (!s) return; s = null; dv.classList.remove('dragging'); canvas.classList.remove('pps-resizing'); };
+    dv.addEventListener('pointerup', stop);
+    dv.addEventListener('pointercancel', stop);
+    dv.addEventListener('dblclick', even);
     dv.addEventListener('keydown', (e) => {
       if (dv.classList.contains('pps-div-off')) return;
       const total = col.px[i] + col.px[i + 1]; const share = col.h[i] + col.h[i + 1]; const step = e.shiftKey ? BIG_STEP : STEP;
@@ -492,7 +497,7 @@ function stackCanvas(spec) {
       else if (e.key === 'ArrowDown') setUpper(col.px[i] + step, total, share);
       else if (e.key === 'Home') setUpper(0, total, share);
       else if (e.key === 'End') setUpper(total, total, share);
-      else if (e.key === 'Enter') { equalize(col); relayout(); say(`${listWords(col.ids.map(nameOf))} have equal heights.`); } else return;
+      else if (e.key === 'Enter') even(); else return;
       e.preventDefault();
     });
     return dv;
@@ -535,18 +540,10 @@ function stackCanvas(spec) {
     zones.textContent = '';
     if (!drag) return;
     const hit = drag.hit;
-    if (v.styles.zones === 'A') {
-      for (const z of drag.zones) {
-        if (z.kind !== 'stack') continue;
-        const el = h('div', `pps-zone${z === hit ? ' is-on' : ''}`);
-        Object.assign(el.style, { left: `${z.x + 4}px`, top: `${z.y + 4}px`, width: `${z.w - 8}px`, height: `${Math.max(0, z.h - 8)}px` });
-        const wds = h('span', 'pps-zone-words'); wds.append(fa(z.pos === 'above' ? 'arrow-up' : 'arrow-down'), `Stack ${z.pos} ${nameOf(z.target)}`);
-        if (z.h >= 26) el.append(wds);
-        zones.append(el);
-      }
-    } else if (hit && hit.kind === 'stack') {
-      // B: the place it would take, as a section with its title bar: a share of the target's column, at the target's top or bottom.
-      const share = Math.max(SECTION_MIN, (hit.col.h - DIV_H * hit.n) / (hit.n + 1));
+    if (hit && hit.kind === 'stack') {
+      // The preview (B, Thomas's choice): nothing until the pointer is over a module; then the place it would take, as a section with its
+      // title bar, a share of the target's column at the target's top or bottom, and in words ("Polls goes under To-do"), not colour alone.
+      const share = Math.max(SECTION_MIN, hit.col.h / (hit.n + 1));
       const g = h('div', 'pps-ghost-sec');
       const top = hit.pos === 'above' ? hit.sec.y : hit.sec.y + hit.sec.h - Math.min(share, hit.sec.h);
       Object.assign(g.style, { left: `${hit.col.x + 2}px`, top: `${top}px`, width: `${hit.col.w - 4}px`, height: `${Math.min(share, hit.sec.h)}px` });
@@ -636,7 +633,7 @@ function stackCanvas(spec) {
   }
 
   render();
-  return { el: wrap, canvas, v, render, relayout, freeze, reset, unstackAll, layoutItems, menuFor, stackGroup, stackWithItems, frames: v.frames };
+  return { el: wrap, canvas, v, render, relayout, freeze, reset, unstackAll, layoutItems, menuFor, stackGroup, stackWithItems, frames: v.frames, menuButton: (id) => canvas.querySelector(`.mf[data-id="${id}"] .mf-titlebar-menu`) };
 }
 
 // The call and the chat, in the column beside the canvas (architecture-canvas, "The work area and the always-on column"): never a
@@ -662,7 +659,7 @@ sec.id = 'pp-panel-stacking';
 sec.setAttribute('aria-labelledby', 'pp-panel-stacking-name');
 const title = h('h2', 'pp-group-name', 'Panel stacking: two or three modules in one column');
 title.id = 'pp-panel-stacking-name';
-sec.append(title, h('p', 'pp-state-note', 'The plan\'s step 0 (plan-panel-stacking.md, GitHub #387). Option B, decided: modules stacked one above the other in one column of the canvas, each in its own frame, with a divider between them and a collapse on each. Nothing in the real canvas is built yet. The modules are the real module frame and the real menus; their content is made up. Drag a title bar, a divider, or use a module\'s "..." menu in any drawing: those are real here. Light and dark are the switches at the top.'));
+sec.append(title, h('p', 'pp-state-note', 'The plan\'s step 0 (plan-panel-stacking.md, GitHub #387). Option B, decided: modules stacked one above the other in one column of the canvas, each in its own frame, with a divider between them and a collapse on each. Nothing in the real canvas is built yet. The modules are the real module frame and the real menus; their content is made up. Drag a title bar, a divider, or use a module\'s "..." menu in any drawing: those are real here. Light and dark are the switches at the top. Thomas has chosen the drop zones (B, a preview of the result) and the divider (the call and chat column\'s own splitter, turned to lie between two sections); what is still open is at the end.'));
 const jump = h('nav', 'pp-jump');
 jump.setAttribute('aria-label', 'Jump to a part of Panel stacking');
 jump.append(h('span', 'pp-jump-label', 'Jump to'));
@@ -698,7 +695,7 @@ function cell(into, name, note, ab) {
 const noteLine = () => { const p = h('p', 'pps-note'); p.setAttribute('role', 'status'); return p; };
 const readout = () => h('p', 'pps-readout');
 const cells = (into) => { const c = h('div', 'pps-cells'); into.append(c); return c; };
-function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
+function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }, hint = '') {
   const box = h('div', 'pps-bar-item');
   box.append(h('span', 'pps-bar-label', label));
   const sw = h('div', 'mf-switch');
@@ -717,17 +714,18 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
   };
   draw(value);
   box.append(sw);
+  if (hint) box.append(h('span', 'pps-hint', hint));
   return box;
 }
 
 // 1. Try it
 {
-  const s = part('try', 'Try it: the whole thing, live', 'A 920 pixel canvas beside the call and chat column, at its docked limit (three columns). Drag a title bar onto another module: the zones show where it lands; the outer edges of a column move it between columns, as today. The Calendar column holds no stack and the call and chat column is not part of the canvas, so neither shows a zone. Budget floats: its "..." has Stack with... (the limit is reached, so Dock as a panel is off, but a stack still fits). Every module\'s "..." has the stack entries, the keyboard way to do all of it. The divider moves with the pointer and with Up, Down, Shift, Home, End and Enter.');
+  const s = part('try', 'Try it: the whole thing, live', 'A 920 pixel canvas beside the call and chat column, at its docked limit (three columns). To-do and Polls are stacked, Polls collapsed. Drag a title bar onto another module: the place it would take is drawn as you move; the outer edges of a column move it between columns, with a line where it lands. The Calendar column holds no stack and the call and chat column is not part of the canvas, so neither takes a stack. Budget floats: its "..." has Stack with... (the limit is reached, so Dock as a panel is off, but a stack still fits). Every module\'s "..." has the stack entries, the keyboard way to do all of it. The divider moves with the pointer and with Up, Down, Shift, Home, End and Enter.');
   later(s, () => {
     const note = noteLine(); const rd = readout();
-    const styles = { divider: 'A', fold: 'A', zones: 'A', pick: 'A' };
+    const styles = { fold: 'A', pick: 'A' };
     const view = stackCanvas({ w: 920, h: 600, side: 280, drag: true, note, readout: rd, styles,
-      cols: [{ ids: ['planner'] }, { ids: ['todo', 'polls'], w: 300 }, { ids: ['calendar'], w: 280 }],
+      cols: [{ ids: ['planner'] }, { ids: ['todo', 'polls'], w: 300, folded: [false, true] }, { ids: ['calendar'], w: 280 }],
       floats: [{ id: 'budget', x: 24, y: 300, w: 290, h: 270 }] });
     const bar = h('div', 'pps-bar');
     const layoutBtn = h('button', 'btn btn-small');
@@ -738,43 +736,47 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
     const resetBtn = h('button', 'btn btn-small', 'Start again');
     resetBtn.type = 'button';
     resetBtn.addEventListener('click', () => view.reset());
-    const set = (k) => (x) => { styles[k] = x; view.v.styles[k] = x; view.render(); };
+    // Collapsed shows at once (Polls starts folded); Stack with... only shows in a menu, so Budget's "..." is marked and the note says so.
+    const setFold = (x) => { styles.fold = x; view.v.styles.fold = x; view.render(); };
+    let pulse = 0;
+    const setPick = (x) => {
+      styles.pick = x; view.v.styles.pick = x;
+      const b = view.menuButton('budget') || view.menuButton('polls');
+      clearTimeout(pulse);
+      view.canvas.querySelectorAll('.pps-pulse').forEach((e) => e.classList.remove('pps-pulse'));
+      b?.classList.add('pps-pulse');
+      pulse = setTimeout(() => b?.classList.remove('pps-pulse'), 1600);
+      note.textContent = view.menuButton('budget') ? 'Open Budget\'s menu to see this.' : 'Open a module\'s menu to see this.';
+    };
     bar.append(layoutBtn, resetBtn,
-      abSwitch('Drop zones', 'A', set('zones'), { A: 'A: labelled', B: 'B: a preview' }),
-      abSwitch('Divider', 'A', set('divider'), { A: 'A: a band', B: 'B: a gap' }),
-      abSwitch('Collapsed', 'A', set('fold'), { A: 'A: title bar', B: 'B: and its status' }),
-      abSwitch('Stack with...', 'A', set('pick'), { A: 'A: one list', B: 'B: two steps' }));
+      abSwitch('Collapsed', 'A', setFold, { A: 'A: title bar', B: 'B: and its status' }, 'Fold a section with its chevron to see this.'),
+      abSwitch('Stack with...', 'A', setPick, { A: 'A: one list', B: 'B: two steps' }, 'Open Budget\'s "..." menu and pick Stack with... to see this.'));
     s.append(bar, view.el, note, rd);
   });
 }
 
 // 2. The drag
 {
-  const s = part('drag', 'The drag: make a stack, or move between columns', 'A title bar dragged more than 6 pixels lifts the module (today\'s look). Over another module, the upper half stacks it above, the lower half below; the outer eighth of a column at each side moves it between columns, with a line where it would land. A and B differ only in how the stack zones are shown. Each picture is a drag held still; the canvases below them are live.');
+  const s = part('drag', 'The drag: make a stack, or move between columns', 'A title bar dragged more than 6 pixels lifts the module (today\'s look). Over another module, the upper half stacks it above, the lower half below, and the place it would take is drawn there (Thomas chose this, B, the preview); the outer eighth of a column at each side moves it between columns, with a line where it would land. The pictures are a drag held still; the canvas under them is live.');
   later(s, () => {
     const base = { w: 800, h: 520, side: 240, cols: [{ ids: ['todo'] }, { ids: ['polls'], w: 260 }, { ids: ['calendar'], w: 260 }] };
     const row = cells(s);
-    const a = cell(row, 'Labelled zones, from the start', 'Every zone shows "Stack above" or "Stack below" with the module\'s name as soon as the drag starts; the one under the pointer fills with the accent. <strong>Recommended:</strong> the meaning is in the words, never in the colour alone (the plan\'s Accessibility), and a person sees every place before moving there.', 'A');
-    const va = stackCanvas({ ...base, styles: { zones: 'A' } }); a.append(va.el); requestAnimationFrame(() => va.freeze('polls', 120, 400));
-    const b = cell(row, 'A preview of the result', 'Nothing until the pointer is over a module; then the place the module would take, drawn as a section with its title bar. Calmer, and it shows the size it will get, but a person does not see the choices until they find one.', 'B');
-    const vb = stackCanvas({ ...base, styles: { zones: 'B' } }); b.append(vb.el); requestAnimationFrame(() => vb.freeze('polls', 120, 400));
-    const row2 = cells(s);
-    const c = cell(row2, 'Moving between columns: the line', 'Polls dragged to the right edge of Calendar. Over the outer edge of a column: a line where the column lands, the same in A and B. Today\'s drag moves the columns while the pointer moves and draws no line (wireReorder in canvas.js); with zones in the columns that would make them jump under the pointer, so the line replaces it.', '');
-    const vc = stackCanvas({ ...base, styles: { zones: 'A' } }); c.append(vc.el); requestAnimationFrame(() => vc.freeze('polls', 790, 260));
+    const b = cell(row, 'A preview of the result', 'Nothing until the pointer is over a module; then the place the module would take, drawn as a section with its title bar, and in words: "Polls goes under To-do". It shows the size it will get, and the meaning is in the words, not in the colour alone (the plan\'s Accessibility).', '');
+    const vb = stackCanvas({ ...base }); b.append(vb.el); requestAnimationFrame(() => vb.freeze('polls', 120, 400));
+    const c = cell(row, 'Moving between columns: the line', 'Polls dragged to the right edge of Calendar. Over the outer edge of a column: a line where the column lands. Today\'s drag moves the columns while the pointer moves and draws no line (wireReorder in canvas.js); with stacking in the columns that would make them jump under the pointer, so the line replaces it.', '');
+    const vc = stackCanvas({ ...base }); c.append(vc.el); requestAnimationFrame(() => vc.freeze('polls', 790, 260));
     const row3 = cells(s);
-    for (const k of ['A', 'B']) {
-      const d = cell(row3, `Live, ${k}`, 'Drag Polls (or any title bar) over To-do or to an edge, and let go.', k);
-      const note = noteLine();
-      const vd = stackCanvas({ ...base, side: 0, w: 640, drag: true, note, styles: { zones: k }, cols: [{ ids: ['todo'] }, { ids: ['polls'], w: 260 }] });
-      const again = h('button', 'btn btn-small', 'Start again'); again.type = 'button'; again.addEventListener('click', () => vd.reset());
-      const b2 = h('div', 'pps-bar'); b2.append(again); d.append(vd.el, note, b2);
-    }
+    const d = cell(row3, 'Live', 'Drag Polls (or any title bar) over To-do or to an edge, and let go.', '');
+    const note = noteLine();
+    const vd = stackCanvas({ ...base, side: 0, w: 640, drag: true, note, cols: [{ ids: ['todo'] }, { ids: ['polls'], w: 260 }] });
+    const again = h('button', 'btn btn-small', 'Start again'); again.type = 'button'; again.addEventListener('click', () => vd.reset());
+    const b2 = h('div', 'pps-bar'); b2.append(again); d.append(vd.el, note, b2);
   });
 }
 
 // 3. Stacks of two and three
 {
-  const s = part('stacks', 'A stack of two and of three', 'Each section is the module\'s own docked frame (title bar, toolbar, content, status bar), unchanged; the stack is a group that holds them, with no bar of its own. A new stack starts with equal heights (decision 6). Here two at 300 pixels and the most, three, at 240 pixels, on a 600 pixel canvas: three leave each module about 95 to 135 pixels of content once its toolbar (when it has one) and status bar are counted.');
+  const s = part('stacks', 'A stack of two and of three', 'Each section is the module\'s own docked frame (title bar, toolbar, content, status bar), unchanged; the stack is a group that holds them, with no bar of its own. A new stack starts with equal heights (decision 6). Here two at 300 pixels and the most, three, at 240 pixels, on a 600 pixel canvas: three leave each module about 100 to 140 pixels of content once its toolbar (when it has one) and status bar are counted.');
   later(s, () => {
     const rd = readout();
     const view = stackCanvas({ w: 860, h: 600, cols: [{ ids: ['planner'] }, { ids: ['todo', 'polls'], w: 300 }, { ids: ['research', 'budget', 'places'], w: 240 }], readout: rd });
@@ -784,23 +786,29 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
 
 // 4. The divider
 {
-  const s = part('divider', 'The divider', 'Between a status bar and the next title bar. It moves with the pointer, stops at the least a section may have (its title bar plus 120 pixels: 156; about 56 of content once a toolbar and a status bar are counted), and a double click or Enter gives equal heights. It is a separator with a name ("Resize To-do and Polls"), a tab stop, and its value is the upper section\'s share.');
+  const s = part('divider', 'The divider', 'The call and chat column\'s own splitter (the line between the call and the chat), the same design and the same handling, between a status bar and the next title bar. Thomas: "We should not reinvent this." An 8 pixel strip over the two frames\' edges that adds no height (14 on a finger), nothing drawn at rest, the accent under the pointer, on the keyboard and while it moves, the up and down cursor. The one thing added: the lower frame\'s top edge, a 1 pixel line in the frame\'s own edge colour, so two flush frames show where one ends. It stops at the least a section may have (its title bar plus 120 pixels: 156; about 56 of content once a toolbar and a status bar are counted), and a double click or Enter gives equal heights. It is a separator with a name ("Resize To-do and Polls"), a tab stop, and its value is the upper section\'s share.');
   later(s, () => {
     const row = cells(s);
-    for (const [k, words] of [['A', 'A band in the title bar\'s tone with a grip in the middle; the accent under the pointer and while it moves. <strong>Recommended:</strong> the grip says it moves before anyone points at it, which a finger needs, and it reads as a line between the two frames.'], ['B', 'A gap of the canvas between the two frames, with no grip; an accent line under the pointer and while it moves. Quieter, and the two frames look separate, but nothing says it moves until the pointer finds it.']]) {
-      const c = cell(row, k === 'A' ? 'A band with a grip' : 'A gap', words, k);
-      const rd = readout();
-      const view = stackCanvas({ w: 300, h: 460, cols: [{ ids: ['todo', 'polls'] }], styles: { divider: k }, readout: rd });
-      c.append(view.el, rd);
-    }
+    const c = cell(row, 'Live', 'Point at the line between To-do and Polls and drag it up or down, or Tab to it and use Up and Down.', '');
+    const rd = readout();
+    const view = stackCanvas({ w: 300, h: 460, cols: [{ ids: ['todo', 'polls'] }], readout: rd });
+    c.append(view.el, rd);
     const row2 = cells(s);
-    const states = [['Rest', ''], ['Under the pointer', 'is-hover'], ['The keyboard on it', 'is-focus'], ['Being dragged', 'is-drag'], ['A finger: 24 px', 'pps-show-hit pps-hit-24'], ['A finger: 44 px', 'pps-show-hit pps-hit-44']];
-    for (const [name, cls] of states) {
-      const c = cell(row2, name, cls.includes('hit-24') ? 'The plan\'s hit area (dashed): 8 above and below the band.' : cls.includes('hit-44') ? 'The design system\'s 44: it reaches over the title bar\'s buttons below it. Thomas to choose (see the questions).' : '', '');
-      const view = stackCanvas({ w: 280, h: 300, cols: [{ ids: ['todo', 'polls'] }], menus: false });
-      const dv = view.canvas.querySelector('.pps-div');
+    const states = [
+      ['Rest', '', 'Nothing drawn, as the real splitter; the line is the lower frame\'s edge.'],
+      ['Under the pointer', 'is-hover', 'The accent at half strength, the up and down cursor.'],
+      ['The keyboard on it', 'is-focus', 'The same, with the accent outline.'],
+      ['Being dragged', 'dragging', 'The same as under the pointer, held while it moves.'],
+      ['A finger: 14 px', 'pps-coarse pps-show-hit', 'The real splitter\'s strip on a coarse pointer (dashed), still adding no height.'],
+      ['A finger: 24 px', 'pps-show-hit pps-hit-24', 'The plan\'s hit area (dashed): 8 above and below the strip. Open, see the questions.'],
+      ['A finger: 44 px', 'pps-show-hit pps-hit-44', 'The design system\'s 44: it reaches over the title bar\'s buttons below it. Open, see the questions.'],
+    ];
+    for (const [name, cls, words] of states) {
+      const c2 = cell(row2, name, words, '');
+      const v2 = stackCanvas({ w: 280, h: 300, cols: [{ ids: ['todo', 'polls'] }], menus: false });
+      const dv = v2.canvas.querySelector('.pps-div');
       if (cls) dv.className += ` ${cls}`;
-      c.append(view.el);
+      c2.append(v2.el);
     }
   });
 }
@@ -835,7 +843,7 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
     s.append(bar, holder, rd);
     draw(560);
     const row = cells(s);
-    const c = cell(row, 'Held at 420 pixels', 'Three sections need 3 × 156 + 2 × 8 = 484 pixels; at 420 Budget, the lowest, has collapsed by itself.', '');
+    const c = cell(row, 'Held at 420 pixels', 'Three sections need 3 × 156 = 468 pixels (the dividers take none); at 420 Budget, the lowest, has collapsed by itself.', '');
     const view = stackCanvas({ w: 280, h: 420, cols: [{ ids: ['todo', 'polls', 'budget'] }] });
     c.append(view.el);
   });
@@ -871,7 +879,7 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
     c5.append(heldPair(fItems, 'Stack with...', fv.stackWithItems('budget', bf.el)));
     const c6 = cell(row2, 'With the keyboard alone', '', '');
     const ol = h('ol', 'pps-list-words');
-    for (const t of ['Tab to Polls\' "..." in its title bar and press Enter.', 'Down to Stack with..., then Right (or Enter) to open the list.', 'Down to "Below To-do", Enter. The note says "Polls was stacked under To-do." and the keyboard is on Polls\' "..." again.', 'In a stack: Move up, Move down, Move out of the stack, Collapse or Expand, Equal heights, the same way.', 'The divider is a tab stop: Up and Down move it 16 pixels, with Shift 64; Home and End go to the least and the most; Enter gives equal heights.']) ol.append(h('li', '', t));
+    for (const t of ['Tab to Polls\' "..." in its title bar and press Enter.', 'Down to Stack with..., then Right (or Enter) to open the list.', 'Down to "Below To-do", Enter. The note says "Polls was stacked under To-do." and the keyboard is on Polls\' "..." again.', 'In a stack: Move up, Move down, Move out of the stack, Collapse or Expand, Equal heights, the same way.', 'The divider is a tab stop: Up and Down move it 16 pixels, with Shift 64 (the real splitter\'s steps); Home and End go to the least and the most; Enter gives equal heights.']) ol.append(h('li', '', t));
     c6.append(ol);
   });
 }
@@ -958,18 +966,18 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
 
 // 12. The recommendations and the questions
 {
-  const s = part('questions', 'Recommendations, and what the plan leaves open', '');
+  const s = part('questions', 'Decided, recommended, and still open', '');
   const ul = h('ul', 'pps-list-words');
   for (const t of [
-    'Drop zones: A, labelled from the start. On a finger there is no hover, so zones that only appear under the pointer are never seen; A shows every place the moment the title bar lifts. A screen reader hears nothing from either (the zones are for the eye; the menu does the same job), and in A the meaning is in the words, not in the colour alone.',
-    'Divider: A, a band with a grip. A finger has no pointer to find a thin line with, and the grip says "this moves" before anyone touches it; it keeps the plan\'s hit area of 24 pixels (44 is the open question below). For a screen reader both are the same separator with a name and a value, and in A the band is visible without its colour changing.',
-    'A collapsed section: A, its title bar alone, the chevron at its start. It costs a finger one 44 pixel button, the same one as when the section is open. A screen reader hears "Collapse Polls" or "Expand Polls" with its state, and what is folded is not read; B adds a status that is read as part of the title, which is words rather than colour but makes the title long in a narrow column.',
-    'Stack with...: A, one list with Above and Below under each column. A finger or a keyboard reaches every place in one open menu and one pick, and a screen reader reads the heading and then the places in order; B takes two menus, the second opening away from the first, which is one more step to find and to leave. Both say in words, not colour, when a column is full.',
-    'Open: the plan asks for a 24 pixel hit area on the divider for a finger and, under Accessibility, 44 by 44; 44 reaches over the title bar\'s buttons. Which?',
-    'Open: does "120 pixels of content" include the toolbar and the status bar? Drawn as the plan reads (title bar + 120 = 156 in all); with a toolbar and a status bar that leaves about 56 pixels of real content (title 36 + toolbar 40 + status 24 = 100 of the 156). On a 700 pixel canvas three sections get about 128 pixels of content each ((700 - 16) / 3 = 228, less the same 100), not the plan\'s "about 180". Thomas to choose the least.',
-    'Open: the plan says the outer quarter of a column moves it between columns. Drawn as an eighth at each side (a quarter of the width in all, at least 24 pixels), so the middle half keeps "Stack above Budget" whole in a 240 pixel column. A quarter at each side would leave half the column for stacking.',
-    'Proposal (not in the plan): the last open section of a stack cannot be collapsed. Without it, collapsing both sections of a stack of two leaves the rest of the column empty. Its chevron says so ("The last open one stays open.") and the menu entry is off with that reason; opening another one lets the first collapse.',
-    'Open: a short canvas collapses the lowest sections by itself, and also refuses a new stack ("The canvas is too short to stack here."). Drawn: refused when the new stack could not give every section its least.',
+    'Decided by Thomas: the drop zones are B, a preview of the result ("I prefer the B: preview"). Nothing is drawn until the pointer is over a module; then the place it would take, as a section, and the words "Polls goes above To-do" or "under", so the meaning is in words and not in the colour alone. A screen reader hears nothing from it (it is for the eye, aria-hidden); the menu does the same job. The line for moving between columns stays.',
+    'Decided by Thomas: the divider is the call and chat column\'s splitter, the same design and handling ("We should not reinvent this. Mouse over the line between them and drag it up or down like we do the edges."). No visible band at rest, same as the real column splitter; the lower frame\'s 1 pixel edge shows where two frames meet. Its keys and its separator name and value are the plan\'s.',
+    'Recommended, a collapsed section: A, its title bar alone, the chevron at its start. It costs a finger one 44 pixel button, the same one as when the section is open. A screen reader hears "Collapse Polls" or "Expand Polls" with its state, and what is folded is not read; B adds a status that is read as part of the title, which is words rather than colour but makes the title long in a narrow column. Open: A or B.',
+    'Recommended, Stack with...: A, one list with Above and Below under each column. A finger or a keyboard reaches every place in one open menu and one pick, and a screen reader reads the heading and then the places in order; B takes two menus, the second opening away from the first, which is one more step to find and to leave. Both say in words, not colour, when a column is full. Open: A or B.',
+    'Open: the divider\'s hit area on a finger. The real splitter uses 14 pixels on a coarse pointer; the plan asks for 24, and under Accessibility 44 by 44, which reaches over the title bar\'s buttons. Which?',
+    'Open: does "120 pixels of content" include the toolbar and the status bar? Drawn as the plan reads (title bar + 120 = 156 in all); with a toolbar and a status bar that leaves about 56 pixels of real content (title 36 + toolbar 40 + status 24 = 100 of the 156). On a 700 pixel canvas three sections get about 133 pixels of content each (700 / 3 = 233, less the same 100), not the plan\'s "about 180". Thomas to choose the least.',
+    'Proposal (not in the plan), open: the last open section of a stack cannot be collapsed. Without it, collapsing both sections of a stack of two leaves the rest of the column empty. Its chevron says so ("The last open one stays open.") and the menu entry is off with that reason; opening another one lets the first collapse.',
+    'Drawn this way, say if not: the plan says the outer quarter of a column moves it between columns. Drawn as an eighth at each side (a quarter of the width in all, at least 24 pixels), so the middle half keeps the preview whole in a 240 pixel column.',
+    'Drawn this way, say if not: a short canvas collapses the lowest sections by itself, and also refuses a new stack ("The canvas is too short to stack here."), when the new stack could not give every section its least.',
   ]) ul.append(h('li', '', t));
   s.append(ul);
 }

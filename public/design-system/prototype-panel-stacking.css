@@ -2,7 +2,7 @@
    Theme tokens only. The modules are the real module frame (createModuleFrame, the moduleframe block of public/sdk/system.css) and the
    menus the host's (host-menu.js, its own styles); what is new is here, and would go to style.css if the design is built. */
 
-.pps { --pps-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); --pps-hit: 0px; }
+.pps { --pps-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); }
 .pps-set { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; scroll-margin-top: var(--pp-stick, 0); }
 .pps-set-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
 .pps-set > p, .pps-cell > p { margin: 0; max-width: 90ch; color: var(--pps-dim); font-size: var(--text-13); }
@@ -15,6 +15,7 @@
 .pps-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
 .pps-bar-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pps-bar-label { color: var(--pps-dim); font-size: var(--text-13); }
+.pps-hint { color: var(--pps-dim); font-size: var(--text-12); }
 .pps-list-words { margin: 0; padding-left: var(--space-5); max-width: 90ch; color: var(--pps-dim); font-size: var(--text-13); }
 .pps-list-words > li + li { margin-top: var(--space-1); }
 .pps-list-words strong { color: var(--text-primary); }
@@ -36,41 +37,37 @@
 .pps-sec.pps-folded[data-fold="B"] .pps-fold-sum { display: inline; }
 .mf-titlebar > .pps-fold { flex: none; margin-left: calc(-1 * var(--space-2)); }
 
-/* ---- the divider: A is a band with a grip, B is a gap of the canvas ---- */
-.pps-div { position: relative; flex: none; height: 8px; touch-action: none; cursor: ns-resize; }
-.pps-div::before { content: ""; position: absolute; inset: calc(-1 * var(--pps-hit)) 0; }
-.pps-div[data-style="A"] { background: var(--mf-surface-title); border-block: 1px solid var(--mf-edge); box-sizing: border-box; }
-.pps-div[data-style="A"]::after { content: ""; position: absolute; left: 50%; top: 50%; width: 28px; height: 2px; margin: -1px 0 0 -14px; border-radius: var(--radius-round); background: var(--text-muted); }
-.pps-div[data-style="B"] { background: var(--surface-canvas); }
-.pps-div[data-style="B"]::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: transparent; }
-.pps-div:is(:hover, .is-hover)[data-style="A"] { background: color-mix(in srgb, var(--accent-fill) 35%, var(--mf-surface-title)); }
-.pps-div:is(:hover, .is-hover)[data-style="B"]::after { background: color-mix(in srgb, var(--accent-fill) 60%, transparent); }
-.pps-div:focus-visible, .pps-div.is-focus { outline: 2px solid var(--focus-ring); outline-offset: -2px; z-index: 2; }
-.pps-div.is-drag[data-style="A"] { background: var(--accent-fill); }
-.pps-div.is-drag[data-style="A"]::after { background: var(--text-on-accent); }
-.pps-div.is-drag[data-style="B"]::after { background: var(--accent-fill); }
-.pps-div.pps-div-off { cursor: default; }
-.pps-div.pps-div-off::after { opacity: 0.35; }
-/* A finger: the plan's 24px hit area (8 above and below), or the design system's 44px; drawn dashed in the picture. */
-@media (pointer: coarse) { .pps { --pps-hit: 8px; } }
-.pps-div.pps-show-hit::before { outline: 1px dashed var(--accent-fill); outline-offset: -1px; background: color-mix(in srgb, var(--accent-fill) 12%, transparent); z-index: 1; }
+/* ---- the divider: the real splitter (.side-column-splitter and .side-column-splitter-h in style.css: the 8px strip, 14px on a coarse
+   pointer, its negative margin, transparent at rest, the accent on hover, focus and drag, the row-resize cursor, touch-action none).
+   Only what the real rules tie to the call and chat column, or cannot show in a picture, is here. ---- */
+/* style.css shows the -h strip only in .side-column.in-call; in a stack it is always there. */
+.pps-stack > .side-column-splitter-h { display: block; }
+/* The one addition: where two frames meet flush, the lower one's top edge (the frame's own border, --mf-edge), so the line is there at rest. */
+.pps-stack > .pps-div + .pps-sec > .mf { border-top-width: 1px; }
+/* Next to a collapsed section the divider moves nothing: not a target. */
+.pps-div.pps-div-off { pointer-events: none; }
+/* The pictures of its states: the real :hover and :focus-visible rules, held (the same tokens), and its coarse-pointer size. */
+.pps-div.is-hover, .pps-div.is-focus { background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.pps-div.is-focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pps-div.pps-coarse { height: 14px; margin: -8px 0; }
+/* The hit areas still open (24 or 44 on a finger), drawn dashed around the strip. */
+.pps-div::before { content: ""; position: absolute; inset: calc(-1 * var(--pps-hit, 0px)) 0; }
+.pps-div.pps-show-hit::before { outline: 1px dashed var(--accent-fill); outline-offset: -1px; background: color-mix(in srgb, var(--accent-fill) 12%, transparent); }
 .pps-div.pps-hit-24 { --pps-hit: 8px; }
 .pps-div.pps-hit-44 { --pps-hit: 18px; }
 
 /* ---- the drag: the zones (aria-hidden, drawn only while a title bar is dragged) ---- */
 .pps-canvas.pps-dragging, .pps-canvas.pps-dragging * { cursor: grabbing !important; user-select: none; }
-.pps-canvas.pps-resizing, .pps-canvas.pps-resizing * { cursor: ns-resize !important; user-select: none; }
+/* While a divider is dragged the frames under the pointer do not take it (as .work.resizing-column iframe in style.css). */
+.pps-canvas.pps-resizing, .pps-canvas.pps-resizing * { cursor: row-resize !important; user-select: none; }
+.pps-canvas.pps-resizing iframe { pointer-events: none; }
 .pps-zones { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
-.pps-zone { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: var(--space-1); border: 1px dashed color-mix(in srgb, var(--accent-fill) 70%, var(--edge-hairline)); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); overflow: hidden; }
-.pps-zone.is-on { border: 2px solid var(--accent-fill); background: color-mix(in srgb, var(--accent-fill) 24%, var(--surface-panel)); }
-.pps-zone-words { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--surface-panel); color: var(--text-primary); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pps-zone.is-on .pps-zone-words { background: var(--accent-fill); color: var(--text-on-accent); }
-/* B: nothing until the pointer is over a module; then the place it would take, drawn as a section with its title bar. */
+/* The preview (B, Thomas's choice): nothing until the pointer is over a module; then the place it would take, as a section with its title bar. */
 .pps-ghost-sec { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; border: 2px solid var(--accent-fill); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent-fill) 16%, var(--surface-panel)); overflow: hidden; }
 .pps-ghost-head { display: flex; flex: none; align-items: center; gap: var(--space-2); height: var(--mf-title-h); padding: 0 var(--space-3); background: var(--mf-surface-title); color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); }
 .pps-ghost-head > i { color: var(--text-accent); }
 .pps-ghost-words { margin: auto; padding: var(--space-2); color: var(--text-primary); font-size: var(--text-12); text-align: center; }
-/* Both: the line for moving between columns, where the column would land. */
+/* The line for moving between columns, where the column would land. */
 .pps-line { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: var(--radius-min); background: var(--accent-fill); }
 .pps-line-words { position: absolute; top: var(--space-3); left: 8px; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; }
 .pps-line.pps-line-flip .pps-line-words { left: auto; right: 8px; }
@@ -145,6 +142,9 @@
 @media (prefers-reduced-motion: reduce) {
   .pps * { transition: none !important; animation: none !important; }
 }
+
+/* Try it: Budget's "..." marked for a moment when the Stack with... switch is flipped (no animation). */
+.pps-canvas .mf-titlebar-menu.pps-pulse { outline: 2px solid var(--accent); outline-offset: 1px; background: color-mix(in srgb, var(--accent) 24%, transparent); }
 
 /* The module being dragged: today's lifted look (.module-lifted in style.css), with the theme's accent token. */
 .pps-canvas .mf.pps-lifted { position: relative; z-index: 3; outline: 2px solid var(--accent-fill); outline-offset: -2px; }
