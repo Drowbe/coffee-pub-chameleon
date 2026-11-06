@@ -331,7 +331,9 @@ try {
     assert.ok(!from.text.includes('secret-plan') && !from.text.includes(mine.id) && !from.json.summaries.some((s) => s.removed), 'the object it is on shows nothing of it to them, not "File removed"');
     assert.equal((await resolve(people.pat.cookie, [ref(mine.id)])).json.summaries[0].title, 'secret-plan.pdf', 'its adder still sees it');
     const replaced = await as(people.sam.cookie, 'POST', '/api/objects/links', { module: 'holder', from: row, to: [ref(doc.id)], kind: 'file' });
-    assert.equal(replaced.json.links, 2, 'a reader who replaces the object\'s file links keeps the one they can\'t see');
+    assert.equal(replaced.json.links, 1, 'a reader who replaces the object\'s file links is told only of the one they can see');
+    const kept = await as(people.pat.cookie, 'GET', `/api/objects/links?from=holder&dir=from&ref=${encodeURIComponent(JSON.stringify(row))}`);
+    assert.ok(kept.json.summaries.some((s) => s.ref.id === mine.id), 'and the one they can\'t see is kept');
     assert.equal((await as(people.pat.cookie, 'DELETE', `/api/modules/shelf/library/${mine.id}?space=${space.id}`)).status, 200);
   });
 
