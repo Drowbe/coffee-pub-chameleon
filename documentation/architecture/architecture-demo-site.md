@@ -2,17 +2,56 @@
 
 **Audience:** developers and operators who fill a server with demo data, run a demo site that resets itself, or need to know what the checks added since 0.4 look at.
 
-## The demo seeder
+## The demo loader and the seeder
 
-`npm run seed:demo` (`tools/seed-demo.mjs`) fills a **running** server, through its own API, with one space named "Demo: Portugal": a trip of ten days starting about 45 days after the day it is run (Lisbon, Sintra, Porto), with every module holding data. It is for looking at a real-feeling space, for screenshots and for a public demo. Run it in a second window against the server you already have running.
+Two parts make the demo. They are kept apart on purpose.
 
-It signs in as an admin, installs and turns on every bundled module (a module that is on is on in every space), chooses the place search, fills each earlier phase with dated objects, and creates three demo people: `mia` (a moderator), `lee` and `sam` (members). It prints a one-time password for each and a guest link. The passwords are new on every run, and the admin is a member of the space too. Every date is worked out from today, so a nightly run keeps the demo ahead of the day.
+- **The loader**, `server/demo-loader.js`, fills one marked demo space and its marked demo people from a data file. It is the part a future "Add a demo space" feature will call (slice 1 of [plan-demo-space](../plans/plan-demo-space.md), GitHub #416; the feature itself is in later slices and does not exist yet).
+- **The seeder**, `npm run seed:demo` (`tools/seed-demo.mjs`), is a thin command over the loader. It first does the environment-wide setup that a throwaway environment needs, then calls the loader.
 
-**Re-running resets only the demo.** The seeder finds its space by its name and a marker in its description, and its people by their logins, removes them and builds them again. Every other space, its data and every other account are left alone (`tools/check-seed-demo.mjs` checks this).
+### What the loader does
 
+`loadDemo({ base, templateId, today, session, headers, words, say, dir })` reads `templates/demo/<template id>.json` and writes it through the server's own address, with loopback HTTP requests. Each request is made as a signed-in demo person, so every module's real rules, permissions and validation run. It calls no route function directly.
+
+- **Only the demo.** It acts on one space and three people (`mia`, a moderator, and `lee` and `sam`, members), all marked as the demo's. It never changes an environment-wide setting: it does not install or turn on a module, set the calendar or map options, choose a place search or switch the template.
+- **A module that is off is skipped.** The report says so in plain words, for example that the costs were not added because the Budget is off. The module is not turned on.
+- **It refuses what it did not make.** A space that has the demo's name but not the marker in its description, or an account that has a demo person's login but not the demo's display name, is refused before anything is changed.
+- **A rerun resets only the demo.** It removes the marked space and the marked people and builds them again. Every other space, its data and every other account are left alone.
+- **Passwords are random on every run.** They are returned to the caller, never stored. The seeder prints them once. It never prints the admin password.
+- **Words follow the environment.** Its messages use the environment's own words: the `words` option if given, else the words from the target's `/api/branding`, else the plain defaults. On a travel environment a space reads "trip".
+- **A template with no demo file** reports "no demo" and creates nothing.
+- **A guest link** that cannot be made is listed in `refused` in the report.
+
+### The data file
+
+The trip is in `templates/demo/travel.json`: "Demo: Portugal", ten days starting 45 days after the day it is run, with data for every module. The folder is `templates/demo/`, not `templates/`, because the template loader reads only the `*.json` files directly in `templates/`. A module block is written in that module's own format, in steps, each step by the person it names. Module ids must match `^[a-z0-9-]+$`.
+
+No date in the file is absolute. Each is an offset, so the same file is right on any day and a nightly run keeps the demo ahead of the day. `start` is today plus the file's `anchor` (45 days).
+
+| Written | Gives |
+|---|---|
+| `today+N`, `today-N` | The day N days from the day of the run, as `YYYY-MM-DD`. |
+| `start+N`, `start-N` | The day N days from the trip's first day, as `YYYY-MM-DD`. |
+| `start+1T09:30` | That day with a time: `YYYY-MM-DDT09:30`. |
+| `start+1T19:00Z` | A trailing `Z` gives a full timestamp. |
+| `ms:today+2T10:00` | `ms:` in front gives milliseconds since 1970, as a number. `ms:now` is the time of the run. |
+| `@mia` | A person's key, whole or as one part of a key. |
+| `{space}`, `{base}` | The space's id and the server's address. |
+
+A base the loader does not know (such as `tomorrow+1`) refuses the whole file before anything is made.
+
+### What the seeder adds
+
+`tools/seed-demo.mjs` keeps the setup that belongs to a throwaway environment and that the loader refuses to do: it switches the template to travel if there is none, installs and turns on every bundled module, turns on the calendar and map options, sets the place search and makes the map file. Then it calls the loader. Its output and counts are as before (Planner 76, Places 37, Calendar 77, To-do 16, Polls 3, Budget 18, Research 4, Chat 25).
+
+One difference: the server records who wrote each object, so the `by` on the objects is now the demo person who wrote it (`mia`, or the voter) and not the admin. This includes 61 Calendar copies.
+
+`tools/check-demo-loader.mjs` checks the loader, and `tools/check-compose.mjs` requires that the `Dockerfile` copies the loader and the data file.
+
+**Re-running resets only the demo.** `tools/check-seed-demo.mjs` and `tools/check-demo-loader.mjs` check that other spaces, their data and other accounts are left alone.
 ### Settings
 
-All are environment variables of the seeder's own window. None is a server setting.
+All are environment variables of the seeder's own window. None is a server setting, and the loader reads none of them: the seeder passes it its options.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -119,6 +158,7 @@ GitHub runs scheduled jobs on UTC and may start them late. A failed run shows in
 
 | Check | What it looks at |
 |---|---|
+| `check-demo-loader` | The loader against throwaway servers, 14 groups: the same counts as the seeder; a module that is off skipped and not turned on; no environment-wide setting changed (a snapshot before and after); an unmarked same-named space or person refused; a rerun resetting only the demo; every date an offset, with the demo staying ahead of a faked today; a template with no demo file reporting "no demo"; the `words` option; module id checks; each person's last writer. |
 | `check-seed-demo` | The seeder against a throwaway server: the trip, the module contents, a second run giving the same counts and a new space, other data untouched, the plain sentences for a wrong password or a missing server, and the hosted refusals. |
 | `check-streams` | Without a browser, the stream hub and relay (`public/module-stream.js`) against a stand-in event source and clock, and the server's `?space=&page=1` stream with its event ids. In a browser, that a space's Workspace holds at most three open event streams, that both windows finish loading, and that a change from a second session reaches a window. See [architecture-modules](architecture-modules.md), "Live changes". |
 | `check-module-guards` | The rules in `server/module-guards.js` and the data routes, against throwaway servers, with a module made for the purpose and with Research. See [api-modules](../api/api-modules.md), "Data guards". |
