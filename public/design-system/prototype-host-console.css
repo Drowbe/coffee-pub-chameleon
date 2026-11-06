@@ -47,7 +47,12 @@
 .hc-kind[data-tone="danger"] > i { color: var(--status-danger-text); }
 .hc-kind[data-tone="warn"] > i { color: var(--status-warn-text); }
 .hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: var(--space-2); }
-.hc-tools > select { width: auto; max-width: 100%; }
+.hc-tools select { width: auto; max-width: 100%; }
+.hc-tools-more { display: contents; }
+.hc-filter-btn { display: none; }
+.hc-swipe { display: none; margin: 0; }
+.hc-empty { align-items: flex-start; }
+.hc-tablebox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .hc-count { margin: 0; color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- tables: the table scrolls inside its own box ---- */
@@ -56,7 +61,7 @@
 .hc .sdk-table :is(th, td) { vertical-align: middle; }
 .hc .sdk-table :is(th, td).hc-more-col, .hc .sdk-table td.hc-more-cell { width: 1%; white-space: nowrap; text-align: right; }
 .hc .sdk-table tbody tr { height: 44px; }
-.hc .sdk-table tbody tr[tabindex]:hover { cursor: pointer; }
+.hc .sdk-table tbody tr[data-slug]:hover, .hc .sdk-table tbody tr[data-id]:hover { cursor: pointer; }
 .hc-name-cell { min-width: 150px; }
 .hc-envs thead th:nth-child(2), .hc-envs tbody td:nth-child(2) { white-space: nowrap; }
 .hc-status-cell { display: table-cell; }
@@ -126,10 +131,18 @@
   .hc-nav.subtabs { flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
   .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
   .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
-  .hc-tools { grid-template-columns: minmax(0, 1fr); }
-  .hc-tools > select { width: 100%; }
-  .hc-tools > .hc-search { grid-column: 1 / -1; }
+  /* search and one "Filter and sort" control in a row; the two selects open under it */
+  .hc-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .hc-filter-btn { display: inline-flex; }
+  .hc-tools-more { display: none; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .hc-tools-more[data-open] { display: grid; }
+  .hc-tools select { width: 100%; }
   .hc-count { grid-column: 1 / -1; }
+  /* the needs-attention strip is one row that scrolls inside itself */
+  .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .hc-attention-row > * { flex: none; white-space: nowrap; }
+  .hc-swipe:not([hidden]) { display: block; }
+  .hc-empty { padding: var(--space-4); }
   .hc-editor { grid-template-columns: minmax(0, 1fr); }
   .hc-jump.subtabs { flex-direction: row; align-items: center; position: static; overflow-x: auto; overflow-y: hidden; }
   .hc-jump.subtabs > .subtab { width: auto; }
@@ -154,3 +167,6 @@
   .hc-sep { display: none; }
   .hc-title { font-size: var(--text-18); }
 }
+
+/* a console not yet drawn holds its place */
+.hc-frame[data-lazy] .hc-main { min-height: 480px; }

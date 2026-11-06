@@ -2,14 +2,14 @@
 // whole screens, for Thomas to judge before anything is built. Design-process only: nothing here ships and nothing calls the server.
 // The console is drawn twice, working: once as wide as the page's width switch (default 700; use 1280 to see it wide) and once always 390
 // wide, the phone. Both answer to their own width (a container query at 640 px, as the real console will answer to the window's), so
-// the left navigation folds into the tab strip the console has now. 30 invented environments, or 6 (the switch under the heading).
+// the left navigation folds into the tab strip the console has now. 30 invented environments, or 6, or none (the switch under the heading).
 // Pieces reused, not drawn again: .subtabs (the navigation, the environment's tabs, the editor's jump list), .sdk-table, .sdk-card,
 // .sdk-panel, .sdk-status, .sdk-progress, .sdk-banner, .sdk-search and the fields, openHostMenu (host.menu.show's menu), confirmDialog.
 import { openHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
 import {
-  DOMAIN, PLANS, MODULES, TEMPLATES, ENVIRONMENTS, HOST_ADMINS, MAP_FILES, KINDS, STATUS_WORD, STATUS_TONE,
-  pct, nearCap, needsAttention, tplName, usedBy, runningModule,
+  DOMAIN, PLANS, MODULES, BUNDLED, TPL_MODS, TEMPLATES, ENVIRONMENTS, HOST_ADMINS, MAP_FILES, KINDS, STATUS_WORD, STATUS_TONE,
+  pct, atCap, nearCap, level, needsAttention, tplName, usedBy, runningModule,
 } from './prototype-host-console-data.js';
 
 const D = document;
@@ -39,15 +39,17 @@ const chip = (tone, word, dot = true) => {
   s.append(word);
   return s;
 };
-const bar = (label, value, cap, { unit = '' } = {}) => {
+// A bar warns (the same test as the chip: an active environment at 80 percent or more) only when given its environment `e`; no `e` is a plain bar.
+const bar = (label, value, cap, e) => {
   const p = pct(value, cap);
-  const b = h('span', `sdk-progress sdk-progress-sm${p >= 80 ? ' warn' : ''}`);
+  const lv = e ? level(e, value, cap) : 'ok';
+  const b = h('span', `sdk-progress sdk-progress-sm${lv !== 'ok' ? ' warn' : ''}`);
   b.setAttribute('role', 'progressbar');
   b.setAttribute('aria-label', label);
   b.setAttribute('aria-valuemin', '0');
   b.setAttribute('aria-valuemax', '100');
   b.setAttribute('aria-valuenow', String(p));
-  b.setAttribute('aria-valuetext', `${p} percent${p >= 80 ? ', near the cap' : ''}${unit}`);
+  b.setAttribute('aria-valuetext', `${p} percent${lv === 'full' ? ', at the cap' : lv === 'near' ? ', near the cap' : ''}`);
   const f = h('span', 'sdk-progress-fill');
   f.style.setProperty('--pct', `${p}%`);
   b.append(f);
@@ -89,7 +91,13 @@ const tableIn = (label, head, ...rest) => {
   th.append(tr);
   t.append(th, ...rest);
   wrap.append(t);
-  return { wrap, table: t };
+  // On a phone a table that scrolls sideways says so, above itself; the hint is gone when the table fits.
+  const box = h('div', 'hc-tablebox');
+  const swipe = h('p', 'sdk-hint hc-swipe', 'Swipe for more');
+  swipe.hidden = true;
+  box.append(swipe, wrap);
+  if (window.ResizeObserver) new ResizeObserver(() => { swipe.hidden = !(wrap.scrollWidth > wrap.clientWidth + 1); }).observe(wrap);
+  return { wrap: box, table: t };
 };
 const link = (text, onClick) => { const a = h('a', 'hc-link', text); a.href = '#'; a.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onClick(); }); return a; };
 
@@ -107,12 +115,16 @@ const TABS = [
 const EDITOR_PARTS = ['Basics', 'Words and verbs', 'Home icon', 'Modules', 'New environments', 'Phases', 'Reactions', 'Theme', 'Icons'];
 const SERVER_PARTS = ['The host', 'Your two-step sign-in', 'Host admins', 'AI', 'Maps', 'Flight schedule'];
 
-// One console. `count` says how many environments it holds (30 or 6), read at each draw.
-export function createConsole({ count, width }) {
+// One console. `count` says how many environments it holds (30, 6 or 0), read at each draw.
+export function createConsole({ count, width, lazy = false, label = 'Host console' }) {
   const frame = h('div', 'hc-frame');
   if (width) frame.dataset.fixed = String(width);
   const el = h('div', 'hc');
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', label);
   frame.append(el);
+  let live = !lazy; // a console off the screen is drawn when it comes near it
+  if (lazy) frame.dataset.lazy = '';
   const S = { route: 'environments', slug: '', tab: 'overview', tpl: 'travel', q: '', filter: 'all', sort: 'attention', offer: false, log: '' };
   const envs = () => ENVIRONMENTS.slice(0, count());
   const byslug = (slug) => ENVIRONMENTS.find((e) => e.slug === slug) || ENVIRONMENTS[0];
@@ -133,7 +145,7 @@ export function createConsole({ count, width }) {
     navBtns[id] = b;
     nav.append(b);
   }
-  const main = h('main', 'hc-main');
+  const main = h('div', 'hc-main');
   const body = h('div', 'hc-body');
   body.append(nav, main);
   el.append(top, body);
@@ -157,6 +169,7 @@ export function createConsole({ count, width }) {
   const openTpl = (id) => go('editor', { tpl: id });
 
   function draw() {
+    if (!live) return;
     const at = S.route === 'env' || S.route === 'new' ? 'environments' : S.route === 'editor' ? 'templates' : S.route;
     for (const [id, b] of Object.entries(navBtns)) { if (id === at) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); }
     hash.textContent = `#${S.route === 'env' ? `environments/${S.slug}` : S.route === 'new' ? 'environments/new' : S.route === 'editor' ? `templates/${S.tpl}` : S.route}`;
@@ -182,6 +195,14 @@ export function createConsole({ count, width }) {
   function drawEnvironments() {
     const all = envs();
     const nw = btn('New environment', { cls: 'btn btn-primary', icon: 'plus', onClick: () => go('new') });
+    if (!all.length) {
+      main.append(pageHead('Environments'));
+      const empty = h('section', 'sdk-panel hc-part hc-empty');
+      empty.setAttribute('aria-label', 'No environments');
+      empty.append(h('h3', 'hc-part-name', 'No environments yet'), h('p', 'sdk-hint hc-hint', 'An environment is a group of people with their own spaces. Make the first one.'), nw);
+      main.append(empty, statusLine());
+      return;
+    }
     main.append(pageHead('Environments', nw));
 
     // The needs-attention strip: each kind with its count is a filter.
@@ -197,9 +218,15 @@ export function createConsole({ count, width }) {
     search.append(fa('magnifying-glass'), si);
     const fOptions = [['all', 'All statuses'], ...KINDS.map((k) => [k.id, k.one]), ['active', 'Active']];
     const fSel = select(fOptions, S.filter); fSel.setAttribute('aria-label', 'Status');
-    const sSel = select([['attention', 'Needs attention first'], ['name', 'Name'], ['plan', 'Plan'], ['newest', 'Newest'], ['use', 'Most used']], S.sort); sSel.setAttribute('aria-label', 'Sort');
+    const sSel = select([['attention', 'Needs attention first'], ['name', 'Name'], ['plan', 'Plan'], ['newest', 'Newest'], ['use', 'Highest use']], S.sort); sSel.setAttribute('aria-label', 'Sort');
     const counter = h('p', 'hc-count'); counter.setAttribute('role', 'status'); counter.setAttribute('aria-live', 'polite');
-    tools.append(search, fSel, sSel, counter);
+    // On a phone the two selects fold behind one control, so the first screen holds rows.
+    const more = h('div', 'hc-tools-more'); more.id = `${frame.dataset.uid}-fs`;
+    more.append(fSel, sSel);
+    const fsBtn = btn('Filter and sort', { cls: 'btn hc-filter-btn', icon: 'sliders' });
+    fsBtn.setAttribute('aria-expanded', 'false'); fsBtn.setAttribute('aria-controls', more.id);
+    fsBtn.addEventListener('click', () => { const on = more.toggleAttribute('data-open'); fsBtn.setAttribute('aria-expanded', String(on)); });
+    tools.append(search, fsBtn, more, counter);
 
     const tbody = h('tbody');
     const { wrap, table } = tableIn('Environments', [['Name'], ['Plan'], ['Status'], ['Use'], ['Template'], ['', 'hc-more-col']], tbody);
@@ -245,18 +272,16 @@ export function createConsole({ count, width }) {
         return;
       }
       for (const e of list) {
-        const tr = h('tr');
-        tr.tabIndex = 0;
+        const tr = h('tr'); // the name link takes the keyboard; the row click is for the mouse
         tr.dataset.slug = e.slug;
         tr.addEventListener('click', (ev) => { if (!ev.target.closest('button, a')) openEnv(e.slug); });
-        tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target === tr) openEnv(e.slug); });
         const name = h('th', 'hc-name-cell'); name.scope = 'row';
         const a = link(e.name, () => openEnv(e.slug)); a.href = `#environments/${e.slug}`;
         name.append(a, h('span', 'sdk-table-sub', `${e.slug}.${DOMAIN}`));
         const plan = h('td', '', e.plan === 'pro' ? 'Pro' : 'Free');
         const st = h('td', 'hc-status-cell');
         st.append(chip(STATUS_TONE[e.status], STATUS_WORD[e.status]));
-        if (nearCap(e)) st.append(chip('warn', 'Near a cap', false));
+        capChip(st, e);
         if (e.degraded) st.append(chip('warn', 'Degraded', false));
         const u = h('td'); u.append(useCell(e));
         const tp = h('td', 'sdk-table-dim', tplName(e.template));
@@ -273,12 +298,13 @@ export function createConsole({ count, width }) {
     sSel.addEventListener('change', () => { S.sort = sSel.value; rows(); });
     rows();
   }
+  const capChip = (to, e) => { if (atCap(e)) to.append(chip('danger', 'At cap', false)); else if (nearCap(e)) to.append(chip('warn', 'Near a cap', false)); };
   // Use at a glance: members and AI calls this month against their caps, and calls now where there are any.
   function useCell(e) {
     const box = h('div', 'hc-use');
     const line = (label, v, cap) => {
       const r = h('div', 'hc-use-row');
-      r.append(h('span', 'hc-use-key', label), bar(`${label} of ${e.name}`, v, cap), h('span', 'hc-use-val', `${num(v)} / ${num(cap)}`));
+      r.append(h('span', 'hc-use-key', label), bar(`${label} of ${e.name}`, v, cap, e), h('span', 'hc-use-val', `${num(v)} / ${num(cap)}`));
       box.append(r);
     };
     line('Members', e.members, e.memCap);
@@ -325,15 +351,16 @@ export function createConsole({ count, width }) {
     l.append(h('h2', 'hc-title', e.name), h('code', 'hc-slug', `${e.slug}.${DOMAIN}`));
     const chips = h('div', 'hc-chips');
     chips.append(chip(STATUS_TONE[e.status], STATUS_WORD[e.status]));
-    if (nearCap(e)) chips.append(chip('warn', 'Near a cap', false));
+    capChip(chips, e);
     if (e.degraded) chips.append(chip('warn', 'Degraded', false));
     l.append(chips);
     hd.append(l, btn('Open environment', { icon: 'arrow-up-right-from-square' }));
     main.append(hd);
 
-    const tabs = h('nav', 'subtabs hc-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', `${e.name}, pages`);
+    const tabs = h('div', 'subtabs hc-tabs'); tabs.setAttribute('role', 'tablist');
+    const paneId = `${frame.dataset.uid}-pane`; tabs.setAttribute('aria-label', `${e.name}, pages`);
     const mk = (id, label, disabled) => {
-      const b = h('button', 'subtab'); b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.tab = id;
+      const b = h('button', 'subtab'); b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.tab = id; b.id = `${frame.dataset.uid}-tab-${id}`; b.setAttribute('aria-controls', paneId);
       b.setAttribute('aria-selected', String(S.tab === id)); b.tabIndex = S.tab === id ? 0 : -1;
       b.append(h('span', '', label));
       if (disabled) { b.setAttribute('aria-disabled', 'true'); b.disabled = true; b.append(h('span', 'sdk-tab-badge', 'later')); }
@@ -343,13 +370,14 @@ export function createConsole({ count, width }) {
     for (const [id, label] of TABS) tabs.append(mk(id, label));
     tabs.append(mk('domain', 'Domain', true));
     tabs.addEventListener('keydown', (ev) => {
-      if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
-      const live = TABS.map(([id]) => id); const i = live.indexOf(S.tab);
-      S.tab = live[(i + (ev.key === 'ArrowRight' ? 1 : live.length - 1)) % live.length];
+      if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(ev.key)) return;
+      ev.preventDefault();
+      const ids = TABS.map(([id]) => id); const i = ids.indexOf(S.tab);
+      S.tab = ev.key === 'Home' ? ids[0] : ev.key === 'End' ? ids[ids.length - 1] : ids[(i + (ev.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
       draw(); main.querySelector(`.hc-tabs [data-tab="${S.tab}"]`).focus();
     });
     main.append(tabs);
-    const pane = h('div', 'hc-pane'); pane.setAttribute('role', 'tabpanel');
+    const pane = h('div', 'hc-pane'); pane.setAttribute('role', 'tabpanel'); pane.id = paneId; pane.setAttribute('aria-labelledby', `${frame.dataset.uid}-tab-${S.tab}`);
     main.append(pane, statusLine());
     ({ overview: envOverview, plan: envPlan, template: envTemplate, owners: envOwners, backups: envBackups, danger: envDanger })[S.tab](pane, e);
   }
@@ -369,7 +397,7 @@ export function createConsole({ count, width }) {
       const r = h('div', 'hc-cap');
       const top2 = h('div', 'hc-cap-top'); top2.append(h('span', 'hc-cap-key', label), h('span', 'hc-cap-val', words || `${num(v)} of ${num(c)}`));
       r.append(top2);
-      if (c) { r.append(bar(label, v, c)); if (pct(v, c) >= 80) r.append(h('span', 'hc-cap-note', pct(v, c) >= 100 ? 'At the cap' : 'Near the cap')); }
+      if (c) { r.append(bar(label, v, c, e)); const lv = level(e, v, c); if (lv !== 'ok') r.append(h('span', 'hc-cap-note', lv === 'full' ? 'At the cap' : 'Near the cap')); }
       return r;
     };
     u.append(cap('Members', e.members, e.memCap), cap('AI calls this month', e.ai, e.aiCap), cap('Calls at once', e.calls, e.callsCap, `${e.calls} now, of ${e.callsCap}`), cap('Storage', e.storageGb, e.storageCap, `${e.storageGb} of ${e.storageCap} GB`));
@@ -406,11 +434,14 @@ export function createConsole({ count, width }) {
     made.append(sw);
     pane.append(panel('Template', made));
     const offer = h('div', 'hc-stack');
-    const ban = banner('info', 'gift', 'The Travel template has a new version. It offers 2 modules and a new Lobby.', S.offer ? '' : 'Review');
-    const rv = ban.querySelector('.sdk-banner-action');
-    if (rv) rv.addEventListener('click', () => { S.offer = true; draw(); });
-    offer.append(ban);
-    if (S.offer) {
+    if (!(t && t.update)) offer.append(hint(t ? 'Nothing new from this template.' : 'No template to offer anything.'));
+    else {
+      const ban = banner('info', 'gift', `The ${t.name} template has a new version. It offers 2 modules and a new Lobby.`, S.offer ? '' : 'Review');
+      const rv = ban.querySelector('.sdk-banner-action');
+      if (rv) rv.addEventListener('click', () => { S.offer = true; draw(); });
+      offer.append(ban);
+    }
+    if (t && t.update && S.offer) {
       offer.append(check('Places (new)', true), check('Maps (new)', true, false), check('A Lobby called "Base camp"'), check('The Travel icons'));
       const row = h('div', 'hc-actions');
       row.append(btn('Apply', { cls: 'btn btn-primary', onClick: () => { S.offer = false; S.log = 'Applied (a picture).'; draw(); } }), btn('Not now', { onClick: () => { S.offer = false; draw(); } }));
@@ -432,7 +463,7 @@ export function createConsole({ count, width }) {
       const n = h('th', ''); n.scope = 'row'; n.append(o.name, h('span', 'sdk-table-sub', o.login));
       const s = h('td'); s.append(o.twoStep ? chip('ok', 'On') : chip('neutral', 'Off'));
       const a = h('td', 'hc-more-cell');
-      a.append(btn('Reset second factor', { cls: 'btn btn-small', onClick: () => ask({ title: `Reset ${o.name}'s second factor?`, message: `${o.login} signs in with the password alone next time, then sets up an authenticator app again.`, action: 'Reset', kind: 'destructive' }, `Reset for ${o.login} (a picture).`) }));
+      a.append(btn('Reset', { cls: 'btn btn-small', aria: `Reset second factor for ${o.name}`, onClick: () => ask({ title: `Reset ${o.name}'s second factor?`, message: `${o.login} signs in with the password alone next time, then sets up an authenticator app again.`, action: 'Reset', kind: 'destructive' }, `Reset for ${o.login} (a picture).`) }));
       tr.append(n, s, a); tb.append(tr);
     }
     const { wrap } = tableIn('Owners', [['Owner'], ['Two-step'], ['', 'hc-more-col']], tb);
@@ -456,7 +487,8 @@ export function createConsole({ count, width }) {
       row(sus ? 'Resume' : 'Suspend', sus ? 'People can open it again.' : 'No one can open it. Nothing is removed.', btn(sus ? 'Resume' : 'Suspend', { onClick: () => rowMenuAct(e, sus) })),
       row('Delete this environment', 'It is moved aside, not erased.', btn('Delete', { cls: 'btn btn-danger', icon: 'trash', onClick: () => deleteEnv(e) })),
     );
-    pane.append(panel('Danger zone', box));
+    const back = h('p', 'sdk-hint hc-hint'); back.append('To bring back a backup, see ', link('Backups', () => { S.tab = 'backups'; S.log = ''; draw(); }), '.');
+    pane.append(panel('Danger zone', box, back));
   }
   const rowMenuAct = (e, sus) => (sus
     ? ask({ title: `Resume ${e.name}?`, message: 'People can open it again.', action: 'Resume' }, `${e.name} resumed (a picture).`)
@@ -469,9 +501,8 @@ export function createConsole({ count, width }) {
     for (const t of outdated) { const b = banner('info', 'gift', `The ${t.name} template has a new version.`, 'Review'); main.append(b); }
     const tb = h('tbody');
     for (const t of TEMPLATES) {
-      const tr = h('tr'); tr.tabIndex = 0; tr.dataset.id = t.id;
+      const tr = h('tr'); tr.dataset.id = t.id;
       tr.addEventListener('click', (ev) => { if (!ev.target.closest('button, a, input')) openTpl(t.id); });
-      tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target === tr) openTpl(t.id); });
       const n = h('th', 'hc-name-cell'); n.scope = 'row';
       const a = link(t.name, () => openTpl(t.id)); n.append(a, h('span', 'sdk-table-sub', t.id));
       const k = h('td'); k.append(chip('neutral', t.kind === 'bundled' ? 'Bundled' : 'Own', false)); if (t.edited) k.append(chip('info', 'Edited', false));
@@ -506,9 +537,9 @@ export function createConsole({ count, width }) {
     const mkPart = (i, ...kids) => { const p = panel(EDITOR_PARTS[i], ...kids); p.id = ids[i]; p.setAttribute('tabindex', '-1'); return p; };
     const two = (...f) => { const g = h('div', 'hc-fields'); g.append(...f); return g; };
     const modRows = h('div', 'hc-modrows');
-    for (const m of MODULES.slice(0, 6)) {
+    for (const m of BUNDLED) {
       const r = h('div', 'hc-modrow');
-      r.append(check(m.name, true), input(m.name, 'Name shown'), input('', 'Icon'));
+      r.append(check(m.name, (TPL_MODS[t.id] || []).includes(m.id)), input(m.name, 'Name shown'), input('', 'Icon'));
       modRows.append(r);
     }
     const chipsOf = (words) => { const c = h('div', 'hc-chips'); for (const w of words) c.append(chip('neutral', w, false)); return c; };
@@ -542,10 +573,15 @@ export function createConsole({ count, width }) {
       const tr = h('tr');
       const n = h('th', ''); n.scope = 'row'; n.append(m.name, h('span', 'sdk-table-sub', m.id));
       const v = h('td', 'sdk-table-dim', m.version);
-      const c = h('td'); const box = h('div', 'hc-use-row hc-mod-run'); box.append(bar(`${m.name}: environments running it`, run.length, all.length), h('span', 'hc-use-val', `${run.length} of ${all.length}`)); c.append(box);
-      tr.append(n, v, c); tb.append(tr);
+      const src = h('td'); src.append(chip('neutral', m.source === 'uploaded' ? 'Uploaded' : 'Bundled', false));
+      const c = h('td', 'num', `${run.length} of ${all.length}`);
+      const names = h('td', 'hc-used');
+      if (!run.length) names.append(h('span', 'sdk-table-dim', 'None'));
+      run.slice(0, 3).forEach((e, i) => { if (i) names.append(h('span', 'hc-sep', ', ')); names.append(link(e.name, () => openEnv(e.slug))); });
+      if (run.length > 3) names.append(h('span', 'sdk-table-dim', ` +${run.length - 3}`));
+      tr.append(n, v, src, c, names); tb.append(tr);
     }
-    const { wrap } = tableIn('Modules', [['Module'], ['Version'], ['Environments running it']], tb);
+    const { wrap } = tableIn('Modules', [['Module'], ['Version'], ['Source'], ['Running', 'num'], ['Environments running it']], tb);
     main.append(wrap);
   }
 
@@ -597,13 +633,13 @@ export function createConsole({ count, width }) {
       ai.append(r);
     }
     const mt = h('tbody');
-    for (const f of MAP_FILES) { const tr = h('tr'); const n = h('th', '', f.name); n.scope = 'row'; const del = h('td', 'hc-more-cell'); del.append(iconBtn('trash', `Delete ${f.name}`, () => ask({ title: `Delete ${f.name}?`, message: 'Maps that use it stop showing that area.', action: 'Delete', kind: 'destructive' }, 'Deleted (a picture).'), 'sdk-icon-btn btn-small btn-danger')); tr.append(n, h('td', 'sdk-table-dim', f.kind), h('td', 'sdk-table-dim', f.zoom), h('td', 'num sdk-table-dim', f.size), del); mt.append(tr); }
-    const maps = tableIn('Map files', [['File'], ['Type'], ['Zoom'], ['Size', 'num'], ['', 'hc-more-col']], mt);
+    for (const f of MAP_FILES) { const tr = h('tr'); const n = h('th', ''); n.scope = 'row'; n.append(f.name, h('span', 'sdk-table-sub', `${f.kind}, zoom ${f.zoom}`)); const del = h('td', 'hc-more-cell'); del.append(iconBtn('trash', `Delete ${f.name}`, () => ask({ title: `Delete ${f.name}?`, message: 'Maps that use it stop showing that area.', action: 'Delete', kind: 'destructive' }, 'Deleted (a picture).'), 'sdk-icon-btn btn-small btn-danger')); tr.append(n, h('td', 'num sdk-table-dim', f.size), del); mt.append(tr); }
+    const maps = tableIn('Map files', [['File'], ['Size', 'num'], ['', 'hc-more-col']], mt);
     const region = h('div', 'hc-inline'); region.append(input('', 'Find a region'), btn('Find'), btn('Estimate'));
     region.firstChild.setAttribute('aria-label', 'Find a region');
     const flight = h('div', 'hc-stack'); const fi = h('div', 'hc-inline'); fi.append(input('', 'WN 2483'), btn('Forget a flight')); fi.firstChild.setAttribute('aria-label', 'Flight number');
     flight.append(h('p', 'hc-line', 'This server has learned 214 flights from saved trips.'), hint('It keeps the airline, the airports, the times and the terminal, never who flew.'), fi, btn('Clear all', { cls: 'btn btn-small btn-danger', onClick: () => ask({ title: 'Clear every flight it learned?', message: 'Later lookups start from nothing.', action: 'Clear all', kind: 'destructive' }, 'Cleared (a picture).') }));
-    const hostFacts = facts([['Base domain', DOMAIN], ['Version', '0.9.4'], ['Environments', String(ENVIRONMENTS.length)], ['Sign-up', chip('ok', 'On')], ['Billing webhook', 'Receives payment news at /api/host/billing; the signing secret is set.']]);
+    const hostFacts = facts([['Base domain', DOMAIN], ['Version', '0.9.4'], ['Environments', String(envs().length)], ['Sign-up', chip('ok', 'On')], ['Billing webhook', 'Receives payment news at /api/host/billing; the signing secret is set.']]);
     const mfa = h('div', 'hc-stack'); mfa.append(h('p', 'hc-line', ''), (() => { const r = h('div', 'hc-inline'); r.append(chip('ok', 'On'), btn('Turn off', { cls: 'btn btn-small' }), btn('Reset', { cls: 'btn btn-small' })); return r; })());
     mfa.firstChild.textContent = 'You sign in with a password and an authenticator app.';
     stack.append(part(0, hostFacts), part(1, mfa), part(2, adm.wrap, addAdmin), part(3, ai), part(4, maps.wrap, h('p', 'sdk-label hc-sub', 'A region cut from the world file'), region), part(5, flight));
@@ -613,7 +649,12 @@ export function createConsole({ count, width }) {
 
   const api = { el: frame, go, openEnv, redraw: draw, state: S };
   frame.dataset.uid = `hc${++uidn}`;
-  draw();
+  if (!live) {
+    const wake = () => { if (live) return; live = true; delete frame.dataset.lazy; draw(); };
+    api.wake = wake;
+    if ('IntersectionObserver' in window) { const io = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) { io.disconnect(); wake(); } }, { rootMargin: '600px 0px' }); io.observe(frame); }
+    else wake();
+  } else draw();
   return api;
 }
 let uidn = 0;
@@ -634,7 +675,7 @@ bar2.append(h('span', 'hc-bar-label', 'Environments:'));
 const sw = h('div', 'mf-switch'); sw.setAttribute('role', 'radiogroup'); sw.setAttribute('aria-label', 'How many environments');
 function drawSwitch() {
   sw.textContent = '';
-  for (const n of [30, 6]) {
+  for (const n of [30, 6, 0]) {
     const b = h('button', 'mf-switch-btn'); b.type = 'button'; b.dataset.key = `hccount:${n}`;
     b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(state.count === n)); b.tabIndex = state.count === n ? 0 : -1;
     b.append(h('span', '', `${n}`));
@@ -666,7 +707,7 @@ for (const [name, note, width] of [['Wide', 'As wide as the width switch at the 
   const st = h('section', 'pp-state');
   const hh = h('h3', 'pp-state-name', name);
   slots.push(hh);
-  const c = createConsole({ count: () => state.count, width });
+  const c = createConsole({ count: () => state.count, width, lazy: Boolean(width), label: width ? 'Host console, phone' : 'Host console, wide' });
   consoles.push(c);
   st.append(hh, h('p', 'pp-state-note', note), c.el);
   sec.append(st);

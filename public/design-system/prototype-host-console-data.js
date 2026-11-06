@@ -1,5 +1,5 @@
 // The Host console section of the Prototype (plan-host-console.md, slice 1): the invented data. Nothing here is real and nothing is
-// fetched: thirty made-up environments (and the first six of them for the second state), the plans, the templates, the modules.
+// fetched: thirty made-up environments (the first six, or none, for the other states), the plans, the templates, the modules.
 // Design-process only: nothing here ships.
 export const DOMAIN = 'example.org';
 
@@ -20,16 +20,19 @@ export const MODULES = [
   { id: 'todo', name: 'To-do', version: '1.15.26' },
   { id: 'travel', name: 'Planner', version: '0.16.5' },
   { id: 'vault', name: 'Vault', version: '0.3.4' },
+  { id: 'dice', name: 'Dice roller', version: '1.0.2', source: 'uploaded' },
 ];
+// The modules that ship with the product; the rest were uploaded by the host.
+export const BUNDLED = MODULES.filter((m) => m.source !== 'uploaded');
 
 // The templates: bundled ones and the host's own. `edited` is a bundled template the host has changed; `update` is a newer shipped version.
 export const TEMPLATES = [
   { id: 'travel', name: 'Travel', kind: 'bundled', version: '3', edited: true, update: true, hidden: false, desc: 'Trips with friends and family: a Planner, a budget, places and maps.' },
-  { id: 'campaigns', name: 'Campaigns', kind: 'bundled', version: '2', edited: false, update: false, hidden: false, desc: 'Tabletop games: sessions, a map table, polls for when to play.' },
+  { id: 'campaigns', name: 'Campaigns', kind: 'bundled', version: '2', edited: false, update: false, hidden: false, desc: 'Tabletop games: sessions, a map, polls for when to play.' },
   { id: 'book-club', name: 'Book club', kind: 'own', version: '1', edited: false, update: false, hidden: false, desc: 'A reading list, polls and a place to talk.' },
   { id: 'study-group', name: 'Study group', kind: 'own', version: '1', edited: false, update: false, hidden: true, desc: 'Shared notes, a calendar and a to-do list.' },
 ];
-const TPL_MODS = {
+export const TPL_MODS = {
   travel: ['calendar', 'travel', 'places', 'maps', 'budget', 'todo'],
   campaigns: ['calendar', 'maps', 'polls', 'stream', 'todo', 'vault'],
   'book-club': ['calendar', 'polls', 'todo', 'research', 'vault', 'assistant'],
@@ -77,7 +80,7 @@ export const ENVIRONMENTS = ROWS.map(([slug, name, plan, status, members, ai, ca
   const p = planOf(plan);
   const free = plan === 'free';
   const all = MODULES.map((m) => m.id);
-  const mods = free ? TPL_MODS[template] : all.filter((m) => !(m === 'stream' && i % 3 === 0) && !(m === 'research' && i % 4 === 0));
+  const mods = free ? TPL_MODS[template] : all.filter((m) => !(m === 'stream' && i % 3 === 0) && !(m === 'research' && i % 4 === 0) && !(m === 'dice' && template !== 'campaigns'));
   return {
     slug, name, plan, status, template,
     members, ai, calls,
@@ -94,14 +97,21 @@ export const ENVIRONMENTS = ROWS.map(([slug, name, plan, status, members, ai, ca
 });
 
 export const pct = (n, cap) => (cap ? Math.min(100, Math.round((n / cap) * 100)) : 0);
-// Near a cap (Thomas, 2026-11-06): 80 percent or more of members, AI calls a month or calls at once. Storage is not counted here.
-export const nearCap = (e) => e.status === 'active' && [[e.members, e.memCap], [e.ai, e.aiCap], [e.calls, e.callsCap]].some(([n, c]) => c && n / c >= 0.8);
+// Near a cap and at a cap (Thomas, 2026-11-06; decision 8): of members, AI calls a month or calls at once. At 100 percent or more is "at cap";
+// 80 to 99 percent is "near a cap" (an environment with one at its cap is counted as at cap only). Only active environments are counted, and
+// the bars use the same test. Storage is not counted here.
+const ratios = (e) => [[e.members, e.memCap], [e.ai, e.aiCap], [e.calls, e.callsCap]].filter(([, c]) => c).map(([n, c]) => n / c);
+export const atCap = (e) => e.status === 'active' && ratios(e).some((r) => r >= 1);
+export const nearCap = (e) => e.status === 'active' && !atCap(e) && ratios(e).some((r) => r >= 0.8);
+// One resource's level, for its bar: only an active environment gets a warning; any other status is neutral.
+export const level = (e, n, cap) => (e.status !== 'active' || !cap ? 'ok' : n / cap >= 1 ? 'full' : n / cap >= 0.8 ? 'near' : 'ok');
 // The kinds the strip counts, in its order. An environment can be in more than one (a past-due one near a cap).
 export const KINDS = [
   { id: 'pastdue', word: 'past due', one: 'Past due', icon: 'credit-card', tone: 'danger', test: (e) => e.status === 'pastdue' },
   { id: 'suspended', word: 'suspended', one: 'Suspended', icon: 'circle-pause', tone: 'warn', test: (e) => e.status === 'suspended' },
   { id: 'refused', word: 'won’t open', one: 'Won’t open', icon: 'triangle-exclamation', tone: 'danger', test: (e) => e.status === 'refused' },
   { id: 'deletion', word: 'deletion asked', one: 'Deletion asked', icon: 'trash-can', tone: 'warn', test: (e) => e.status === 'deletion' },
+  { id: 'atcap', word: 'at cap', one: 'At cap', icon: 'circle-exclamation', tone: 'danger', test: atCap },
   { id: 'near', word: 'near a cap', one: 'Near a cap', icon: 'gauge-high', tone: 'warn', test: nearCap },
   { id: 'degraded', word: 'degraded', one: 'Degraded', icon: 'arrow-trend-down', tone: 'warn', test: (e) => Boolean(e.degraded) },
 ];
