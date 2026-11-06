@@ -519,6 +519,13 @@ class HostRegistry {
   }
 
   setPlansCatalog(raw) {
+    // A save with a plan that has no name is refused. Loading stays lenient (cleanPlansCatalog), so an old stored plan
+    // without a name still loads, under its id.
+    if (raw && typeof raw === 'object') {
+      for (const [id, entry] of Object.entries(raw)) {
+        if (PLAN_ID_RE.test(id) && entry && typeof entry === 'object' && !cleanText(entry.name, 40)) throw new HostError('Give the plan a name.');
+      }
+    }
     this.data.plans = cleanPlansCatalog(raw);
     this.save();
     return this.plansCatalog();
