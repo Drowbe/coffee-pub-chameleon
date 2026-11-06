@@ -20,8 +20,8 @@
 .pps-list-words strong { color: var(--text-primary); }
 
 /* ---- the drawing: a window's canvas (and the call and chat column) at real pixels; it scrolls sideways when the screen is narrower ---- */
-.pps-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); }
-.pps-screen { display: flex; width: max-content; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden; background: var(--surface-canvas); }
+.pps-wrap { position: relative; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); }
+.pps-screen { position: relative; display: flex; width: max-content; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden; background: var(--surface-canvas); }
 .pps-canvas { position: relative; display: grid; grid-template-rows: minmax(0, 1fr); flex: none; overflow: hidden; background: var(--surface-canvas); }
 .pps-col { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .pps-col > .mf, .pps-sec > .mf { flex: 1 1 auto; height: 100%; min-height: 0; }
@@ -132,11 +132,15 @@
 
 @media (max-width: 640px) {
   .pps-set > :is(h3, p, .pps-bar, .pps-note, .pps-readout, ol, ul), .pps-cell > :is(h4, p), .pps > :is(h2, p, .pp-jump) { padding-inline: var(--space-4); }
-  .pps .btn, .pps .mf-switch-btn { min-height: 44px; }
+  .pps .btn, .pps-bar .mf-switch-btn { min-height: 44px; }
+  .pps-bar .mf-switch { height: auto; }
   .pps input[type="range"] { min-height: 44px; }
+  .mf-titlebar > .pps-fold { min-width: 44px; min-height: 44px; margin-block: -4px; }
 }
 @media (pointer: coarse) {
-  .pps .btn, .pps .mf-switch-btn { min-height: 44px; }
+  .pps .btn, .pps-bar .mf-switch-btn { min-height: 44px; }
+  .pps-bar .mf-switch { height: auto; }
+  .mf-titlebar > .pps-fold { min-width: 44px; min-height: 44px; margin-block: -4px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pps * { transition: none !important; animation: none !important; }

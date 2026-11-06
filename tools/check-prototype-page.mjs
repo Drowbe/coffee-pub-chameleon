@@ -433,6 +433,25 @@ async function main() {
         say(`File windows at ${size}${size > 640 ? " (coarse pointer)" : ""}: ${r.buttons} buttons measured, ${new Set(r.small).size} short`);
       } finally { await tab.close(); }
     }
+    // 7. Panel stacking (plan-panel-stacking.md, step 0): at 390 the page is no wider than the window with the section in view and at its end
+    // (a hidden element inside a module frame once escaped the drawing's own sideways scroll and made the page 923px wide).
+    {
+      const tab = new Tab(browser.cdp, {});
+      await tab.open(390, 'dark');
+      try {
+        await browser.cdp.send('Page.navigate', { url: `${server.base}/design-system/prototype.html?theme=strong-coffee&mode=dark&w=390` }, tab.sid);
+        for (let i = 0; i < 100; i += 1) { if (await tab.eval(`!!document.getElementById('pps-try')`).catch(() => false)) break; await sleep(150); }
+        for (const id of ['pps-try', 'pps-questions']) {
+          await tab.eval(`document.getElementById('${id}').scrollIntoView()`);
+          for (let i = 0; i < 40; i += 1) { if (await tab.eval(`!!document.querySelector('#${id} .pps-canvas, #${id} .pps-list-words')`)) break; await sleep(150); }
+          await sleep(300);
+          const r = await tab.eval(`({ sw: document.documentElement.scrollWidth, vw: innerWidth, frames: document.querySelectorAll('#pp-panel-stacking .mf').length })`);
+          if (!r.frames) fail(`panel stacking at 390 (${id}): no module frame is drawn; the check measures the wrong thing`);
+          if (r.sw > r.vw) fail(`panel stacking at 390 (${id}): the page scrolls sideways (${r.sw}px wide in a ${r.vw}px window)`);
+          say(`Panel stacking at 390 (${id}): page ${r.sw}px in ${r.vw}px, ${r.frames} frames`);
+        }
+      } finally { await tab.close(); }
+    }
     if (!process.argv.includes('--skip-maps')) await checkMaps(browser, server);
   } finally {
     if (browser) { try { browser.child.kill('SIGTERM'); } catch { /* gone */ } }

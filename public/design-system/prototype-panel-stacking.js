@@ -195,6 +195,13 @@ function stackCanvas(spec) {
     return '';
   }
 
+  // Why `id` cannot have a column of its own now, or ''.
+  function ownWhy(id) {
+    const c = colOf(id);
+    const extra = c < 0 || v.cols[c].ids.length > 1 ? 1 : 0;
+    return v.cols.length + extra > limit() ? 'The window is too narrow for another column.' : '';
+  }
+
   // ---- drawing ----
   function render() {
     for (const f of v.frames) f.destroy?.();
@@ -253,20 +260,22 @@ function stackCanvas(spec) {
         sec.classList.toggle('pps-folded', shut);
         const b = sec.querySelector('.pps-fold');
         if (b) {
+          if (!shut && openCount(col) === 1) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
           b.setAttribute('aria-expanded', String(!shut));
           const t = `${shut ? 'Expand' : 'Collapse'} ${nameOf(id)}`;
           b.setAttribute('aria-label', t); b.title = t;
           b.querySelector('i').className = `fa-solid fa-${shut ? 'chevron-right' : 'chevron-down'} fa-fw`;
         }
-        words.push(shut ? `${nameOf(id)} collapsed${auto[i] && !col.folded[i] ? ' by itself (too short)' : ''}` : `${nameOf(id)} ${px[i]} px${px[i] <= SECTION_MIN ? ' (the least: title bar 36 + 120)' : ''}`);
+        words.push(shut ? `${nameOf(id)} collapsed${auto[i] && !col.folded[i] ? ' by itself (too short)' : ''}` : `${nameOf(id)} ${px[i]} px${Math.abs(px[i] - SECTION_MIN) <= 1 ? ' (the least: title bar 36 + 120 of the section; about 56 of content once toolbar and status are counted)' : px[i] < SECTION_MIN ? ' (under the least: the last one open, which cannot collapse)' : ''}`);
       });
     }
     for (const { dv, col, i } of v.divs) {
       const a = col.px[i]; const b = col.px[i + 1];
       const off = col.folded[i] || col.auto[i] || col.folded[i + 1] || col.auto[i + 1];
       dv.classList.toggle('pps-div-off', Boolean(off));
-      dv.tabIndex = off ? -1 : 0;
-      if (off) dv.setAttribute('aria-disabled', 'true'); else dv.removeAttribute('aria-disabled');
+      // Next to a collapsed section the divider moves nothing: it is a plain line, with no value (a value there would be outside its range).
+      if (off) { for (const k of ['tabindex', 'aria-disabled', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow']) dv.removeAttribute(k); continue; }
+      dv.tabIndex = 0;
       const lo = Math.round((100 * SECTION_MIN) / (a + b));
       dv.setAttribute('aria-valuemin', String(Math.min(lo, 50)));
       dv.setAttribute('aria-valuemax', String(Math.max(100 - lo, 50)));
@@ -298,7 +307,7 @@ function stackCanvas(spec) {
       const fb = h('button', 'mf-icon-btn mf-titlebar-btn pps-fold');
       fb.type = 'button';
       fb.append(fa('chevron-down'));
-      fb.addEventListener('click', () => toggleFold(id));
+      fb.addEventListener('click', () => { const r = toggleFold(id); if (r !== null) say(''); });
       f.titlebar.prepend(fb);
       const sum = h('span', 'pps-fold-sum', m.status.text);
       f.titlebar.querySelector('.mf-titlebar-title')?.after(sum);
@@ -356,8 +365,8 @@ function stackCanvas(spec) {
   function ownColumn(id, index) {
     const c = colOf(id);
     const wasStacked = c >= 0 && v.cols[c].ids.length > 1;
-    const extra = c < 0 || wasStacked ? 1 : 0;
-    if (v.cols.length + extra > limit()) { say('The window is too narrow for another column.'); return false; }
+    const why = ownWhy(id);
+    if (why) { say(why); return false; }
     const before = v.cols[index] || null;
     const r = takeOut(id);
     let at = before ? v.cols.indexOf(before) : v.cols.length;
@@ -367,9 +376,13 @@ function stackCanvas(spec) {
     say(wasStacked || c < 0 ? `${nameOf(id)} has its own column again.${r.left ? ` So has ${nameOf(r.left)}.` : ''}` : '');
     return true;
   }
+  // Proposal: the last section open in a stack cannot be collapsed (the rest of the column would be empty).
+  const openCount = (col) => col.ids.filter((_, k) => !(col.folded[k] || (col.auto && col.auto[k]))).length;
+  const LAST_OPEN = 'The last open one stays open.';
   function toggleFold(id) {
     const c = colOf(id); const col = v.cols[c]; const i = col.ids.indexOf(id);
     const shut = col.folded[i] || (col.auto && col.auto[i]);
+    if (!shut && openCount(col) === 1) { say(`${nameOf(id)} can't be collapsed. ${LAST_OPEN}`); return null; }
     if (shut) { col.folded[i] = false; col.keep = i; } else col.folded[i] = true;
     relayout();
     return !shut;
@@ -438,7 +451,7 @@ function stackCanvas(spec) {
       if (i > 0) out.push({ label: 'Move up', icon: 'arrow-up', onPick: swap(i - 1) });
       if (i < n - 1) out.push({ label: 'Move down', icon: 'arrow-down', onPick: swap(i + 1) });
       out.push({ label: 'Move out of the stack', icon: 'object-ungroup', onPick: () => { if (ownColumn(id, c + 1)) focusMenuOf(id); } });
-      out.push({ label: shut ? 'Expand' : 'Collapse', icon: shut ? 'chevron-down' : 'chevron-up', onPick: () => { toggleFold(id); say(`${nameOf(id)} ${shut ? 'expanded' : 'collapsed'}.`); focusMenuOf(id); } });
+      out.push({ label: shut ? 'Expand' : 'Collapse', icon: shut ? 'chevron-down' : 'chevron-up', disabled: !shut && openCount(col) === 1, hint: !shut && openCount(col) === 1 ? 'The last one open' : undefined, onPick: () => { toggleFold(id); say(`${nameOf(id)} ${shut ? 'expanded' : 'collapsed'}.`); focusMenuOf(id); } });
       out.push({ label: 'Equal heights', icon: 'equals', onPick: () => { equalize(col); relayout(); say(`${listWords(col.ids.map(nameOf))} have equal heights.`); focusMenuOf(id); } });
     }
     return out;
@@ -541,7 +554,7 @@ function stackCanvas(spec) {
       g.append(head, h('p', 'pps-ghost-words', `${nameOf(drag.id)} goes ${hit.pos === 'above' ? 'above' : 'under'} ${nameOf(hit.target)}`));
       zones.append(g);
     }
-    if (hit && hit.kind === 'move') {
+    if (hit && hit.kind === 'move' && !ownWhy(drag.id)) { // a drop that would be refused draws no line (the note says why when it is let go)
       const line = h('div', `pps-line${hit.line > v.w - 140 ? ' pps-line-flip' : ''}`);
       line.style.left = `${clamp(hit.line, 2, v.w - 2)}px`;
       line.append(h('span', 'pps-line-words', colOf(drag.id) >= 0 && v.cols[colOf(drag.id)].ids.length > 1 ? 'Its own column here' : 'Move here'));
@@ -771,7 +784,7 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
 
 // 4. The divider
 {
-  const s = part('divider', 'The divider', 'Between a status bar and the next title bar. It moves with the pointer, stops at the least a section may have (its title bar plus 120 pixels: 156), and a double click or Enter gives equal heights. It is a separator with a name ("Resize To-do and Polls"), a tab stop, and its value is the upper section\'s share.');
+  const s = part('divider', 'The divider', 'Between a status bar and the next title bar. It moves with the pointer, stops at the least a section may have (its title bar plus 120 pixels: 156; about 56 of content once a toolbar and a status bar are counted), and a double click or Enter gives equal heights. It is a separator with a name ("Resize To-do and Polls"), a tab stop, and its value is the upper section\'s share.');
   later(s, () => {
     const row = cells(s);
     for (const [k, words] of [['A', 'A band in the title bar\'s tone with a grip in the middle; the accent under the pointer and while it moves. <strong>Recommended:</strong> the grip says it moves before anyone points at it, which a finger needs, and it reads as a line between the two frames.'], ['B', 'A gap of the canvas between the two frames, with no grip; an accent line under the pointer and while it moves. Quieter, and the two frames look separate, but nothing says it moves until the pointer finds it.']]) {
@@ -948,12 +961,14 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
   const s = part('questions', 'Recommendations, and what the plan leaves open', '');
   const ul = h('ul', 'pps-list-words');
   for (const t of [
-    'Drop zones: A, labelled from the start (the meaning is in the words).',
-    'Divider: A, a band with a grip (it says it moves, for a finger too).',
-    'A collapsed section: A, its title bar alone (the plan\'s contract), the chevron at its start.',
-    'Stack with...: A, one list with Above and Below under each column.',
+    'Drop zones: A, labelled from the start. On a finger there is no hover, so zones that only appear under the pointer are never seen; A shows every place the moment the title bar lifts. A screen reader hears nothing from either (the zones are for the eye; the menu does the same job), and in A the meaning is in the words, not in the colour alone.',
+    'Divider: A, a band with a grip. A finger has no pointer to find a thin line with, and the grip says "this moves" before anyone touches it; it keeps the plan\'s hit area of 24 pixels (44 is the open question below). For a screen reader both are the same separator with a name and a value, and in A the band is visible without its colour changing.',
+    'A collapsed section: A, its title bar alone, the chevron at its start. It costs a finger one 44 pixel button, the same one as when the section is open. A screen reader hears "Collapse Polls" or "Expand Polls" with its state, and what is folded is not read; B adds a status that is read as part of the title, which is words rather than colour but makes the title long in a narrow column.',
+    'Stack with...: A, one list with Above and Below under each column. A finger or a keyboard reaches every place in one open menu and one pick, and a screen reader reads the heading and then the places in order; B takes two menus, the second opening away from the first, which is one more step to find and to leave. Both say in words, not colour, when a column is full.',
     'Open: the plan asks for a 24 pixel hit area on the divider for a finger and, under Accessibility, 44 by 44; 44 reaches over the title bar\'s buttons. Which?',
-    'Open: does "120 pixels of content" include the toolbar and the status bar? Drawn as the plan reads (title bar + 120 = 156 in all); with a toolbar and a status bar that leaves about 56 pixels of real content.',
+    'Open: does "120 pixels of content" include the toolbar and the status bar? Drawn as the plan reads (title bar + 120 = 156 in all); with a toolbar and a status bar that leaves about 56 pixels of real content (title 36 + toolbar 40 + status 24 = 100 of the 156). On a 700 pixel canvas three sections get about 128 pixels of content each ((700 - 16) / 3 = 228, less the same 100), not the plan\'s "about 180". Thomas to choose the least.',
+    'Open: the plan says the outer quarter of a column moves it between columns. Drawn as an eighth at each side (a quarter of the width in all, at least 24 pixels), so the middle half keeps "Stack above Budget" whole in a 240 pixel column. A quarter at each side would leave half the column for stacking.',
+    'Proposal (not in the plan): the last open section of a stack cannot be collapsed. Without it, collapsing both sections of a stack of two leaves the rest of the column empty. Its chevron says so ("The last open one stays open.") and the menu entry is off with that reason; opening another one lets the first collapse.',
     'Open: a short canvas collapses the lowest sections by itself, and also refuses a new stack ("The canvas is too short to stack here."). Drawn: refused when the new stack could not give every section its least.',
   ]) ul.append(h('li', '', t));
   s.append(ul);
