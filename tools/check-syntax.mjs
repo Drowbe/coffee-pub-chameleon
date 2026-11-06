@@ -52,6 +52,23 @@ for (const f of list('public', /\.html$/)) {
     }
   }
 }
+// Print puts a PDF in a hidden frame whose src is a blob: URL (file-viewer.js printBlob). A page that can mount a module
+// (the pop-out, a destination page, the keyed viewer) names blob: in frame-src, or the browser blocks the frame and Print
+// prints an error page. No other directive on any page takes blob: for frames, and no other page needs it (#401).
+let blobFrames = 0;
+const PRINT_PAGES = new Set(['module.html', 'destination.html', 'keyed.html']);
+for (const f of list('public', /\.html$/)) {
+  const csp = /http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i.exec(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+  if (!csp) continue;
+  const frame = /(?:^|;)\s*frame-src([^;]*)/.exec(csp[1]);
+  if (PRINT_PAGES.has(path.basename(f)) !== !!(frame && /\bblob:/.test(frame[1]))) {
+    blobFrames += 1; console.error(`${f}: frame-src ${PRINT_PAGES.has(path.basename(f)) ? 'must' : 'must not'} name blob: (Print uses a blob: frame)`);
+  }
+  if (path.basename(f) === 'space.html') continue; // its child-src already covers the frame
+  if (/blob:/.test(csp[1].replace(/(?:^|;)\s*(?:frame-src|img-src|media-src|worker-src|child-src)[^;]*/g, ''))) {
+    blobFrames += 1; console.error(`${f}: blob: appears in a directive besides frame-src, img-src, media-src, worker-src and child-src`);
+  }
+}
 // A field for a password, secret, token or key is a masked input (type="password"), never plain text a person nearby can
 // read (#61). Said by its id or name (new-password, a "key" field) or by the words of the <label> it sits in.
 const SECRET_NAME = /(?:^|[-_])(?:password|passwd|passphrase|secret|token|api-?key|key)(?:[-_](?:field|input|value|box|text))?$/i;
@@ -127,7 +144,7 @@ for (const f of [...list('public', /\.(html|js)$/), ...list('public/sdk'), ...(f
   }
 }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-check-'));
-let failed = rawBytes + inline + unmasked;
+let failed = rawBytes + blobFrames + inline + unmasked;
 for (const rel of FILES) {
   const file = path.join(ROOT, rel);
   const source = fs.readFileSync(file, 'utf8');
