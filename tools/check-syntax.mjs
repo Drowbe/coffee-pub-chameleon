@@ -53,16 +53,20 @@ for (const f of list('public', /\.html$/)) {
   }
 }
 // Print puts a PDF in a hidden frame whose src is a blob: URL (file-viewer.js printBlob). A page that can mount a module
-// (the pop-out, a destination page, the keyed viewer) names blob: in frame-src, or the browser blocks the frame and Print
-// prints an error page. No other directive on any page takes blob: for frames, and no other page needs it (#401).
+// (the pop-out, a destination page) names blob: in frame-src, or the browser blocks the frame and Print prints an error
+// page. No other directive on any page takes blob: for frames, and no other page needs it (#401). keyed.html does not
+// name blob: for frames (its img-src, media-src and worker-src already do, as before): keyed viewers (access key, no session) are refused by the library routes, so Print can't work there.
 let blobFrames = 0;
-const PRINT_PAGES = new Set(['module.html', 'destination.html', 'keyed.html']);
+const PRINT_PAGES = new Set(['module.html', 'destination.html']);
 for (const f of list('public', /\.html$/)) {
   const csp = /http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i.exec(fs.readFileSync(path.join(ROOT, f), 'utf8'));
   if (!csp) continue;
   const frame = /(?:^|;)\s*frame-src([^;]*)/.exec(csp[1]);
   if (PRINT_PAGES.has(path.basename(f)) !== !!(frame && /\bblob:/.test(frame[1]))) {
     blobFrames += 1; console.error(`${f}: frame-src ${PRINT_PAGES.has(path.basename(f)) ? 'must' : 'must not'} name blob: (Print uses a blob: frame)`);
+  }
+  if (path.basename(f) === 'keyed.html' && /(?:^|;)\s*(?:frame-src|child-src|default-src)[^;]*\bblob:/.test(csp[1])) {
+    blobFrames += 1; console.error(`${f}: must not name blob: in frame-src, child-src or default-src (keyed viewers cannot reach library files, so Print never runs there)`);
   }
   if (path.basename(f) === 'space.html') continue; // its child-src already covers the frame
   if (/blob:/.test(csp[1].replace(/(?:^|;)\s*(?:frame-src|img-src|media-src|worker-src|child-src)[^;]*/g, ''))) {
