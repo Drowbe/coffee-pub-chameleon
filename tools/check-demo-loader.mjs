@@ -14,6 +14,9 @@
  *      old passwords stop working);
  *  (f) every date in the data file is an offset (no absolute date, no epoch number), a file with an unknown base is refused
  *      before anything is made, and the demo stays ahead of a faked "today" and moves with it;
+ *  (h) every sentence reads in the environment's own words (a `words` function renaming space and environment shows in a
+ *      refusal and a skip), and a module id outside [a-z0-9-] refuses the file before anything is made;
+ *  (i) the last writer of every object is pinned per module (a demo person, never the admin);
  *  (g) a template with no demo file reports "There is no demo for this template." and creates nothing; the data file's
  *      folder does not stop the server (the server started, so templates/ read fine) and every file in it names a bundled
  *      template; and no file holds a password.
@@ -31,11 +34,14 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const loaderPath = process.env.DEMO_LOADER_UNDER_TEST ? path.resolve(process.env.DEMO_LOADER_UNDER_TEST) : path.join(ROOT, 'server', 'demo-loader.js');
+const WORDS = require(path.join(ROOT, 'server', 'words.js'));
 const { loadDemo, readDemoFile, DemoError, MARKER, dayPlus } = require(loaderPath);
 const PASSWORD = 'testpass1234';
 const ALL = ['travel', 'places', 'todo', 'polls', 'calendar', 'budget', 'research', 'maps'];
 const WANT = { travel: 76, places: 37, calendar: 77, todo: 16, polls: 3, budget: 18, research: 4, chat: 25 };
 const TODAY = '2031-03-01';
+// Who last wrote each object, per module (the item's `by`, as a demo login): the demo people, never the admin who ran the loader.
+const WRITERS = { travel: { mia: 77 }, places: { mia: 37 }, calendar: { mia: 77 }, todo: { mia: 16 }, polls: { lee: 4, mia: 3, sam: 4 }, budget: { mia: 18 }, research: { mia: 4 } };
 
 const free = () => new Promise((res, rej) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej); });
 const servers = [];
@@ -153,6 +159,17 @@ try {
     const chat = (await A.api('GET', `/api/spaces/${first.space.id}/chat`)).json.messages;
     assert.ok(chat.some((m) => m.text.includes(`${A.base}/modules/travel?space=${first.space.id}`)), 'the chat link holds this server and this space');
   });
+  await step('(a) each module\'s last writer is a demo person, never the admin who ran the loader', async () => {
+    const login = Object.fromEntries(first.people.map((p) => [p.key, p.login]));
+    const tally = {};
+    for (const id of ['travel', 'places', 'calendar', 'todo', 'polls', 'budget', 'research']) {
+      const items = (await A.api('GET', `/api/modules/${id}/data?scope=space&space=${first.space.id}&prefix=`)).json.items;
+      const by = {};
+      for (const it of items) { const who = login[it.by] || `other:${it.by}`; by[who] = (by[who] || 0) + 1; }
+      tally[id] = by;
+    }
+    assert.deepEqual(tally, WRITERS, 'the last writer of every object, per module');
+  });
   await step('(c) it changed no environment-wide setting', async () => {
     assert.equal(await snapshot(A), A.before, 'settings, modules, place search and template are identical after the run');
   });
@@ -235,12 +252,34 @@ try {
       const spacesBefore = (await E.api('GET', '/api/spaces')).json.spaces.map((s) => s.id).join();
       await rejects(E.run({ dir }), /a date the loader does not know \("tomorrow\+1" at modules\.todo\.steps\[0\]\.task:dm01\.due\)/, 'the unknown base');
       assert.equal((await E.api('GET', '/api/spaces')).json.spaces.map((s) => s.id).join(), spacesBefore, 'nothing was made or removed');
+      const evil = structuredClone(raw); evil.modules['../settings'] = evil.modules.todo;
+      fs.writeFileSync(path.join(dir, 'travel.json'), JSON.stringify(evil));
+      await rejects(E.run({ dir }), /modules\.\.\.\/settings is not a module id/, 'a module id outside [a-z0-9-]');
+      assert.equal((await E.api('GET', '/api/spaces')).json.spaces.map((s) => s.id).join(), spacesBefore, 'nothing was made or removed for a bad module id');
       const odd = structuredClone(raw); odd.phases.voyage = { start: 'today+1' }; odd.modules.todo.steps[0].data['task:dm01'].phase = 'voyage';
       fs.writeFileSync(path.join(dir, 'travel.json'), JSON.stringify(odd));
       const r = await E.run({ dir });
       assert.ok(r.skipped.some((s) => s.module === 'phases' && /no phase "voyage"/.test(s.why)));
       assert.ok(r.refused.some((x) => x.module === 'todo' && x.key === 'task:dm01' && /no phase "voyage"/.test(x.why)));
       assert.equal(r.created.todo, 15, 'the object that needs the missing phase is left out');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  await step('(h) the sentences use the words function: a skip and a refusal read the environment\'s own words', async () => {
+    const set = WORDS.resolve({ space: { one: 'quest', many: 'quests' }, environment: { one: 'campaign', many: 'campaigns' } }, null);
+    const words = (key, opts) => WORDS.format(set, key, opts);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-files-'));
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates', 'demo', 'travel.json'), 'utf8'));
+      raw.modules = { budget: raw.modules.budget }; raw.phases = { voyage: { start: 'today+1' } };
+      fs.writeFileSync(path.join(dir, 'travel.json'), JSON.stringify(raw));
+      assert.equal((await E.api('PATCH', '/api/modules/budget', { enabled: false })).status, 200);
+      const r = await E.run({ dir, words });
+      assert.match(r.skipped.find((x) => x.module === 'budget').why, /^Budget is off in this campaign, so the 18 demo costs were not made\.$/);
+      assert.match(r.skipped.find((x) => x.module === 'phases').why, /^This campaign's template has no phase "voyage"/);
+      const plain = await E.run({ dir });
+      assert.match(plain.skipped.find((x) => x.module === 'budget').why, /^Budget is off in this environment,/, 'the default words without the option');
+      await E.api('PATCH', '/api/modules/budget', { enabled: true });
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 
@@ -252,11 +291,12 @@ try {
     const mine = (await D.api('POST', '/api/spaces', { name: 'Demo: Portugal', description: 'My own trip.', members: [] })).json.space;
     const usersBefore = JSON.stringify((await D.api('GET', '/api/users')).json.users.map((u) => u.login));
     const spacesBefore = (await D.api('GET', '/api/spaces')).json.spaces.map((s) => s.id);
-    await rejects(D.run(), /A space called "Demo: Portugal" exists but is not the demo \(its description lacks the marker\), so it is left alone\./, 'no marker');
+    await rejects(D.run(), /A trip called "Demo: Portugal" exists but is not the demo \(its description lacks the marker\), so it is left alone\./, 'no marker (the travel environment\'s own word for a space)');
     const spaces = (await D.api('GET', '/api/spaces')).json.spaces;
     assert.deepEqual(spaces.map((s) => s.id), spacesBefore, 'nothing was made or removed');
     assert.ok(spaces.some((s) => s.id === mine.id), 'the space is still there');
     assert.equal(JSON.stringify((await D.api('GET', '/api/users')).json.users.map((u) => u.login)), usersBefore, 'and no person was made or changed');
+    await rejects(D.run({ words: (key, opts) => WORDS.format(WORDS.resolve({ space: { one: 'journey', many: 'journeys' } }, null), key, opts) }), /^A journey called "Demo: Portugal" exists but is not the demo/, 'the refusal uses the words function');
     await D.api('DELETE', `/api/spaces/${mine.id}`);
   });
   await step('(d) a person with a demo login and another name is refused', async () => {

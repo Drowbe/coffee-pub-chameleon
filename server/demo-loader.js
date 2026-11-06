@@ -39,11 +39,13 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { word: defaultWord, format } = require('./words');
 
 const DEMO_DIR = path.join(__dirname, '..', 'templates', 'demo');
 // The first line of the demo space's description: how the loader knows a space is its own.
 const MARKER = 'Demo data from npm run seed:demo.';
 const TEMPLATE_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
+const MODULE_ID_RE = /^[a-z0-9-]+$/;
 const TOP_KEYS = ['template', 'name', 'description', 'anchor', 'tz', 'guestLink', 'budget', 'phases', 'people', 'modules'];
 
 class DemoError extends Error {}
@@ -54,9 +56,9 @@ const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 const password = () => crypto.randomBytes(12).toString('base64url');
 
 // --- the file --------------------------------------------------------------------------------------------------------
-function problemsOf(raw, templateId) {
+function problemsOf(raw, templateId, word = defaultWord) {
   const out = [];
-  if (!isObject(raw)) return ['the file must be a JSON object'];
+  if (!isObject(raw)) return ['the file must be a JSON map'];
   for (const k of Object.keys(raw)) if (!k.startsWith('_') && !TOP_KEYS.includes(k)) out.push(`"${k}" is not a field of a demo file`);
   if (raw.template !== templateId) out.push(`"template" must be "${templateId}"`);
   if (typeof raw.name !== 'string' || !raw.name.trim()) out.push('"name" must be text');
@@ -67,10 +69,11 @@ function problemsOf(raw, templateId) {
     raw.people.forEach((p, i) => { if (!isObject(p) || typeof p.login !== 'string' || typeof p.displayName !== 'string') out.push(`people[${i}] needs a login and a displayName`); });
     if (new Set(raw.people.map((p) => p && p.login)).size !== raw.people.length) out.push('"people" has the same login twice');
   }
-  if (!isObject(raw.modules)) out.push('"modules" must be an object');
+  if (!isObject(raw.modules)) out.push(`the ${word('module', { many: true })} part must be a map from ${word('module')} id to what it holds`);
   else {
     for (const [id, b] of Object.entries(raw.modules)) {
-      if (!isObject(b)) { out.push(`modules.${id} must be an object`); continue; }
+      if (!MODULE_ID_RE.test(id)) { out.push(`modules.${id} is not a ${word('module')} id (lower-case letters, digits and hyphens)`); continue; }
+      if (!isObject(b)) { out.push(`modules.${id} must be a map`); continue; }
       if (id === 'chat') { if (!Array.isArray(b.messages)) out.push('modules.chat needs a list of messages'); continue; }
       const steps = b.steps || (b.data ? [b] : null);
       if (!Array.isArray(steps) || !steps.length || steps.some((s) => !isObject(s) || !isObject(s.data))) out.push(`modules.${id} needs steps, each with data`);
@@ -80,13 +83,13 @@ function problemsOf(raw, templateId) {
 }
 
 // The demo file of a template, parsed and checked; null when the template has none (or its id cannot name a file).
-function readDemoFile(templateId, { dir = DEMO_DIR } = {}) {
+function readDemoFile(templateId, { dir = DEMO_DIR, words = defaultWord } = {}) {
   if (typeof templateId !== 'string' || !TEMPLATE_ID_RE.test(templateId)) return null;
   const file = path.join(dir, `${templateId}.json`);
   if (!fs.existsSync(file)) return null;
   let raw;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new DemoError(`The demo file for ${templateId} is not valid JSON (${e.message}).`); }
-  const problems = problemsOf(raw, templateId);
+  const problems = problemsOf(raw, templateId, words);
   if (problems.length) throw new DemoError(`The demo file for ${templateId} is not valid: ${problems.join('; ')}.`);
   return raw;
 }
@@ -129,9 +132,12 @@ const stepsOf = (block) => block.steps || [block];
 //     refused: [{ module, key, why }], people: [{ login, displayName, password }], guestUrl }
 // or, for a template with no demo file, { demo: false, message, created: {}, skipped: [], refused: [], people: [] } and
 // nothing is made. Throws a DemoError (one plain sentence) when it cannot start or must not touch what it found.
-async function loadDemo({ base, templateId, today, session = {}, headers = {}, say = () => {}, fetchImpl = fetch, dir = DEMO_DIR, now = Date.now() }) {
+async function loadDemo({ base, templateId, today, session = {}, headers = {}, say = () => {}, fetchImpl = fetch, dir = DEMO_DIR, now = Date.now(), words = null }) {
   base = String(base || '').replace(/\/+$/, '');
-  const file = readDemoFile(templateId, { dir });
+  // The words every sentence below uses: the caller's (inside the server, its word()), else the environment's own as its
+  // /api/branding answers them, else the product's defaults (before that answer is read).
+  let word = words || defaultWord;
+  const file = readDemoFile(templateId, { dir, words: (...a) => word(...a) });
   if (!file) return { demo: false, message: 'There is no demo for this template.', created: {}, skipped: [], refused: [], people: [] };
   if (!isDay(today)) throw new DemoError('The day must be given as YYYY-MM-DD.');
   const start = dayPlus(today, file.anchor);
@@ -176,10 +182,16 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
     return r.json.user;
   };
 
+  // --- the environment's words (the branding answers without a sign-in) ---
+  if (!words) {
+    const b = await call('caller', 'GET', '/api/branding');
+    if (b.status === 200 && b.json && b.json.words) word = (key, opts) => format(b.json.words, key, opts);
+  }
+
   // --- who is calling: an owner or admin ---
   if (session.cookie) jars.caller = session.cookie;
   else if (session.login && session.password) await signIn('caller', session.login, session.password);
-  else throw new DemoError('The loader needs the owner\'s or admin\'s session or sign-in.');
+  else throw new DemoError(`The loader needs the ${word('owner')}'s or ${word('admin')}'s session or sign-in.`);
   const me = await call('caller', 'GET', '/api/me');
   if (me.status !== 200 || !me.json || !me.json.user) throw new DemoError('The session is not signed in.');
   const callerKey = me.json.user.key;
@@ -196,7 +208,7 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
   for (const sp of (await ok('caller', 'GET', '/api/spaces')).spaces || []) {
     if (sp.name !== file.name) continue;
     const full = (await ok('caller', 'GET', `/api/spaces/${sp.id}`)).space;
-    if (!String(full.description || '').startsWith(MARKER)) throw new DemoError(`A space called "${file.name}" exists but is not the demo (its description lacks the marker), so it is left alone.`);
+    if (!String(full.description || '').startsWith(MARKER)) throw new DemoError(`A ${word('space')} called "${file.name}" exists but is not the demo (its description lacks the marker), so it is left alone.`);
     old.push(sp.id);
   }
 
@@ -217,13 +229,13 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
     const m = installed.get(id);
     if (!m || !m.enabled) {
       off.add(id);
-      skipped.push({ module: id, why: `${nameOf(id)} is off in this environment, so the ${countOf(id, b)} demo ${b.what || 'objects'} were not made.` });
+      skipped.push({ module: id, why: `${nameOf(id)} is off in this ${word('environment')}, so the ${countOf(id, b)} demo ${b.what || word('object', { many: true })} were not made.` });
     }
   }
   for (const [id, b] of Object.entries(file.modules)) {
     if (id === 'chat' || off.has(id)) continue;
     const needs = ((installed.get(id) || {}).requires || []).filter((r) => !(installed.get(r) || {}).enabled);
-    if (needs.length) { off.add(id); skipped.push({ module: id, why: `${nameOf(id)} needs ${needs.map(nameOf).join(' and ')}, which ${needs.length === 1 ? 'is' : 'are'} off in this environment, so the ${countOf(id, b)} demo ${b.what || 'objects'} were not made.` }); }
+    if (needs.length) { off.add(id); skipped.push({ module: id, why: `${nameOf(id)} needs ${needs.map(nameOf).join(' and ')}, which ${needs.length === 1 ? 'is' : 'are'} off in this ${word('environment')}, so the ${countOf(id, b)} demo ${b.what || word('object', { many: true })} were not made.` }); }
   }
 
   // --- the demo people ---
@@ -239,7 +251,7 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
   const moderator = (file.people.find((p) => p.moderator) || file.people[0]).login;
 
   // --- reset only the demo space, then make it ---
-  for (const id of old) { await ok('caller', 'DELETE', `/api/spaces/${id}`); say('Removed the old demo space.'); }
+  for (const id of old) { await ok('caller', 'DELETE', `/api/spaces/${id}`); say(`Removed the old demo ${word('space')}.`); }
   const members = [...new Set([...logins.map((l) => keys[l]), callerKey].filter(Boolean))];
   const space = (await ok('caller', 'POST', '/api/spaces', { name: file.name, description: `${MARKER} ${file.description}`.trim(), members })).space;
   for (const p of file.people.filter((x) => x.moderator)) await ok('caller', 'PATCH', `/api/users/${keys[p.login]}/spaces/${space.id}`, { permissions: { moderator: true } });
@@ -250,7 +262,7 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
     const dates = {};
     for (const [id, range] of Object.entries(file.phases)) {
       if (phaseIds.has(id)) dates[id] = resolveValue(range, ctx, `phases.${id}`);
-      else skipped.push({ module: 'phases', why: `This environment's template has no phase "${id}", so its dates were not set.` });
+      else skipped.push({ module: 'phases', why: `This ${word('environment')}'s template has no phase "${id}", so its dates were not set.` });
     }
     if (Object.keys(dates).length) patch.phases = dates;
   }
@@ -269,10 +281,10 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
         const key = resolveKey(rawKey, ctx);
         const value = resolveValue(rawValue, ctx, `modules.${id}.steps[${n}].${rawKey}`);
         if (isObject(value) && typeof value.phase === 'string' && !phaseIds.has(value.phase)) {
-          refused.push({ module: id, key, why: `This environment's template has no phase "${value.phase}", so the object was left out.` });
+          refused.push({ module: id, key, why: `This ${word('environment')}'s template has no phase "${value.phase}", so the ${word('object')} was left out.` });
           continue;
         }
-        const r = await call(as, 'PUT', `/api/modules/${id}/data/${encodeURIComponent(key)}?scope=space&space=${space.id}`, { value, tz: step.tz || block.tz || file.tz });
+        const r = await call(as, 'PUT', `/api/modules/${encodeURIComponent(id)}/data/${encodeURIComponent(key)}?scope=space&space=${space.id}`, { value, tz: step.tz || block.tz || file.tz });
         if (r.status >= 300) refused.push({ module: id, key, why: (r.json && r.json.error) || `answered ${r.status}` });
         else written[id] += 1;
       }
@@ -297,12 +309,13 @@ async function loadDemo({ base, templateId, today, session = {}, headers = {}, s
   if (file.guestLink) {
     const g = await call('caller', 'POST', `/api/spaces/${space.id}/guest-link`, {});
     if (g.status < 300 && g.json) guestUrl = g.json.guestUrl || '';
+    else refused.push({ module: 'guest-link', key: '', why: (g.json && g.json.error) || `answered ${g.status}` });
   }
   for (const [id, block] of Object.entries(file.modules)) {
     if (id === 'chat' || off.has(id)) continue;
     const prefixes = block.count || [''];
     let total = 0;
-    for (const pre of prefixes) total += (((await ok('caller', 'GET', `/api/modules/${id}/data?scope=space&space=${space.id}&prefix=${encodeURIComponent(pre)}`)).items) || []).length;
+    for (const pre of prefixes) total += (((await ok('caller', 'GET', `/api/modules/${encodeURIComponent(id)}/data?scope=space&space=${space.id}&prefix=${encodeURIComponent(pre)}`)).items) || []).length;
     created[id] = total;
   }
   return { demo: true, space, start, created, skipped, refused, people, guestUrl };
