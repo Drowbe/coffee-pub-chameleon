@@ -263,3 +263,21 @@ Workaround: the guest refreshes the page.
 Turning a module on or off updates an open space live, but changing who may use a module does not. An open space keeps the old list until the page is reloaded.
 
 Workaround: reload the page.
+
+## An export blocks the whole hosted server while it builds
+
+An owner's **Download a copy** (and the host's backup) reads and zips the environment's folder in one go, and the server answers nothing else while it does. A large environment makes that long. A fix is planned as its own piece of work: streaming the zip, a size cap, one at a time and a rate limit.
+
+Workaround: ask for a copy when the environment is quiet, and keep the environment small.
+
+## A host admin's password alone opens every environment
+
+A host admin signs in to any environment with the host password, even when that host admin uses a second step at the console. This is read as code only, not tried live. A GitHub issue is to be filed.
+
+Workaround: give the host password only to people you would trust with every environment, and keep it long and unique.
+
+## An owner's copy still carries some personal details
+
+The copy leaves out sign-in secrets and private chat, but it still carries logins and display names, module notifications, counts from the AI log (never the text), module setting values (a typed address can carry a key), a space's link, and the Vault's file records (names and sizes). Treat the zip as private.
+
+Workaround: keep the file private and delete it when it is no longer needed.

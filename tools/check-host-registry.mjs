@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -403,6 +404,30 @@ test("a host admin's own second factor: start, enable, a step and a recovery cod
 // --- the server, hosted ---------------------------------------------------------------------------------------
 const names = require('../server/migrate-names.js');
 const { zipFiles } = require('../server/module-build.js');
+const auth = require('../server/auth.js');
+const yauzl = require('yauzl');
+// A zip's files as a Map of name to bytes.
+function unzipEntries(buffer) {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zip) => {
+      if (err) return reject(err);
+      const files = new Map();
+      zip.on('error', reject);
+      zip.on('end', () => resolve(files));
+      zip.on('entry', (entry) => {
+        if (entry.fileName.endsWith('/')) return zip.readEntry();
+        zip.openReadStream(entry, (streamErr, stream) => {
+          if (streamErr) return reject(streamErr);
+          const chunks = [];
+          stream.on('data', (c) => chunks.push(c));
+          stream.on('error', reject);
+          stream.on('end', () => { files.set(entry.fileName, Buffer.concat(chunks)); zip.readEntry(); });
+        });
+      });
+      zip.readEntry();
+    });
+  });
+}
 const FIXTURE = path.join(ROOT, 'tools', 'fixtures', 'names-v1');
 const HOST_LOGIN = 'boss';
 const HOST_PASSWORD = 'check-host-password-1';
@@ -668,6 +693,266 @@ try {
     assert.deepEqual([missing.status, missing.json], [404, { error: 'no such environment' }]);
   });
 
+  // An owner's export (GET /api/environment/export) carries people and spaces but no sign-in secret, link or sealed
+  // value; the host admin's backup stays complete. Asserted on the field names and on the seeded values themselves.
+  await liveTest('live: an owner\'s export leaves out every secret, the host backup keeps them, and a restored export opens through a new link or password', async () => {
+    const envDir = path.join(data, 'environments', 'beta');
+    const signIn = async (slug, login, password) => {
+      const res = await call(server, slug, 'POST', '/api/login', { body: { login, password } });
+      assert.equal(res.status, 200, `${login} signs in to ${slug}: ${res.text}`);
+      return { cookie: cookieOf(res), key: res.json.user.key };
+    };
+    const sessionCookie = (secret, user) => `app_session=${auth.issueSession(secret, user)}`;
+    // Seeded straight into app.json while the server is stopped, as only a hand-edited or restored file can be: a short
+    // session key (replaced on load), a host admin's stand-in with a password and a personal link of its own (dropped
+    // on load), a person's calendar address (its hash), the published calendar's, and another calendar's sealed address.
+    await server.stop();
+    const appFile = path.join(envDir, 'app.json');
+    const seeded = readJson(appFile);
+    const shortKey = 'short-session-key';
+    seeded.secrets.session = shortKey;
+    const standInPassword = 'stand-in-chosen-1';
+    const standInLink = crypto.randomBytes(24).toString('base64url');
+    let standIn = seeded.users.find((u) => u.login === HOST_LOGIN);
+    if (!standIn) { standIn = { key: 'standin1', login: HOST_LOGIN, displayName: HOST_LOGIN, role: 'admin', createdAt: new Date().toISOString() }; seeded.users.push(standIn); }
+    Object.assign(standIn, { hostAdmin: true, passwordHash: auth.hashPassword(standInPassword), linkToken: standInLink });
+    const standInHash = standIn.passwordHash;
+    const seededOwner = seeded.users.find((u) => u.login === 'owner');
+    const feedHash = crypto.randomBytes(32).toString('hex');
+    const publishedHash = crypto.randomBytes(32).toString('hex');
+    seededOwner.calendarFeed = { hash: feedHash, made: new Date().toISOString(), readAt: null };
+    seededOwner.externalCalendars = [{ id: 'other1', name: 'Other', url: `aesgcm$${crypto.randomBytes(40).toString('hex')}`, readAt: null, error: null }];
+    seeded.settings.publishedCalendarFeed = { hash: publishedHash, made: new Date().toISOString(), readAt: null };
+    fs.writeFileSync(appFile, JSON.stringify(seeded));
+    server = await startServer(data, hostedEnv);
+    cookie = await signInHost(server);
+    const loaded = readJson(appFile);
+    assert.notEqual(loaded.secrets.session, shortKey, 'a short session key in app.json is replaced on load');
+    assert.match(loaded.secrets.session, /^[A-Za-z0-9_-]{43}$/, 'by a strong one');
+    const loadedOwner = loaded.users.find((u) => u.login === 'owner');
+    assert.equal((await call(server, 'beta', 'GET', '/api/me', { cookie: sessionCookie(shortKey, loadedOwner) })).status, 401, 'a cookie signed with the short key opens nothing');
+    assert.equal((await call(server, 'beta', 'GET', '/api/me', { cookie: sessionCookie(loaded.secrets.session, loadedOwner) })).status, 200, 'one signed with the new key does (the forged cookie is well made)');
+    const loadedStandIn = loaded.users.find((u) => u.login === HOST_LOGIN);
+    assert.deepEqual([loadedStandIn.hostAdmin, loadedStandIn.passwordHash, loadedStandIn.linkToken, loadedStandIn.mfa], [true, null, null, null], 'the stand-in is written back without a sign-in of its own');
+    assert.equal((await call(server, 'beta', 'POST', '/api/login', { body: { login: HOST_LOGIN, password: standInPassword } })).status, 401, "the stand-in's own password signs nobody in");
+    assert.equal((await call(server, 'beta', 'GET', `/j/${standInLink}`, { accept: 'text/html' })).status, 404, "nor its own personal link");
+    const hostIn = await signIn('beta', HOST_LOGIN, HOST_PASSWORD);
+    assert.equal((await call(server, 'beta', 'GET', '/api/me', { cookie: hostIn.cookie })).json.user.hostAdmin, true, 'the host admin still signs in with the host password');
+    const owner = await signIn('beta', 'owner', 'owner-password-1');
+    // Seed: a member with a password, one with a personal link, a guest link, an invite, two-step, an AI key.
+    const withPassword = await call(server, 'beta', 'POST', '/api/users', { cookie: owner.cookie, body: { login: 'robin', displayName: 'Robin Export', password: 'robin-password-1' } });
+    assert.equal(withPassword.status, 201, withPassword.text);
+    const withLink = await call(server, 'beta', 'POST', '/api/users', { cookie: owner.cookie, body: { login: 'linky', displayName: 'Linky Export', passwordless: true } });
+    assert.equal(withLink.status, 201, withLink.text);
+    assert.equal((await call(server, 'beta', 'POST', '/api/spaces/lobby/guest-link', { cookie: owner.cookie, body: {} })).status, 200);
+    assert.equal((await call(server, 'beta', 'POST', '/api/invites', { cookie: owner.cookie, body: { spaces: ['lobby'] } })).status, 201);
+    const started = await call(server, 'beta', 'POST', '/api/me/mfa/start', { cookie: owner.cookie });
+    assert.equal(started.status, 200, started.text);
+    const enabled = await call(server, 'beta', 'POST', '/api/me/mfa/enable', { cookie: owner.cookie, body: { code: auth.totpCode(started.json.secret) } });
+    assert.equal(enabled.status, 200, enabled.text);
+    const ownerCookie = cookieOf(enabled);
+    const aiSet = await call(server, 'beta', 'PUT', '/api/ai', { cookie: ownerCookie, body: { source: 'custom', provider: 'anthropic', model: 'claude-x', key: 'sk-ant-export-check-key', enabled: true } });
+    assert.equal(aiSet.status, 200, aiSet.text);
+    // Files only a migrated or interrupted environment has: a single install's key, the Names migration's copies, a
+    // library module's share links, a half-written file.
+    const fileSecret = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(path.join(envDir, 'secrets.key'), fileSecret);
+    fs.mkdirSync(path.join(envDir, 'pre-names', 'a-part'), { recursive: true });
+    fs.writeFileSync(path.join(envDir, 'pre-names', 'a-part', 'app.json'), JSON.stringify({ marker: `pre-names-${fileSecret}` }));
+    fs.mkdirSync(path.join(envDir, 'modules', 'vault', 'library'), { recursive: true });
+    fs.writeFileSync(path.join(envDir, 'modules', 'vault', 'library', 'space-lobby.shares.json'), JSON.stringify({ marker: `shares-${fileSecret}` }));
+    fs.writeFileSync(path.join(envDir, 'app.json.tmp'), `tmp-${fileSecret}`);
+    // Other people's private chat (never in an owner's copy, always in the backup), and links planted in the folder
+    // to a file and a folder outside it (in neither: a link is never followed).
+    const posted = await call(server, 'beta', 'POST', '/api/spaces/lobby/chat', { cookie: ownerCookie, body: { text: `private-${fileSecret}` } });
+    assert.equal(posted.status, 200, posted.text);
+    const madePrivate = await call(server, 'beta', 'PATCH', `/api/spaces/lobby/chat/${posted.json.message.id}`, { cookie: ownerCookie, body: { visibility: 'private' } });
+    assert.equal(madePrivate.status, 200, madePrivate.text);
+    fs.writeFileSync(path.join(envDir, 'ai-threads.moved.json'), `{"marker":"threads-${fileSecret}"}\n`);
+    // Each person's own module data, held clear and uploads: private to them, so in the backup and never in the export.
+    const personFiles = {
+      [`modules/personcheck/data/person-${owner.key}.json`]: `{"marker":"person-data-${fileSecret}"}`,
+      [`modules/personcheck/trash/person-${owner.key}.json`]: `{"marker":"person-trash-${fileSecret}"}`,
+      [`modules/personcheck/uploads/person-${owner.key}/abc123.json`]: `{"marker":"person-upload-${fileSecret}"}`,
+    };
+    for (const [name, text] of Object.entries(personFiles)) {
+      fs.mkdirSync(path.dirname(path.join(envDir, name)), { recursive: true });
+      fs.writeFileSync(path.join(envDir, name), text);
+    }
+    const privateFiles = { 'chat-private.json': `private-${fileSecret}`, 'ai-threads.moved.json': `threads-${fileSecret}`, ...Object.fromEntries(Object.entries(personFiles).map(([name, text]) => [name, JSON.parse(text).marker])) };
+    const outside = path.join(liveDir, 'outside-beta');
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(outside, 'elsewhere.json'), `{"marker":"linked-${fileSecret}"}`);
+    fs.symlinkSync(path.join(outside, 'elsewhere.json'), path.join(envDir, 'chat-linked.json'));
+    fs.mkdirSync(path.join(envDir, 'images'), { recursive: true });
+    fs.symlinkSync(outside, path.join(envDir, 'images', 'linked'));
+    const linked = ['chat-linked.json', 'images/linked/elsewhere.json'];
+
+    // The host backup: complete, every secret in it.
+    const backup = await call(server, 'admin', 'POST', '/api/host/environments/beta/backup', { cookie });
+    assert.equal(backup.status, 200);
+    for (const name of ['chat-linked.json', 'images/linked']) assert.ok(server.output().includes(`Left a link out of the zip, not followed: ${path.join(envDir, ...name.split('/'))}`), `the log names the skipped link ${name}`);
+    const inBackup = await unzipEntries(backup.raw);
+    const fullApp = JSON.parse(inBackup.get('app.json').toString('utf8'));
+    const byLogin = (app, login) => app.users.find((u) => u.login === login);
+    const secrets = {
+      session: fullApp.secrets.session,
+      stream: fullApp.secrets.stream,
+      ownerHash: byLogin(fullApp, 'owner').passwordHash,
+      robinHash: byLogin(fullApp, 'robin').passwordHash,
+      linkToken: byLogin(fullApp, 'linky').linkToken,
+      guestToken: fullApp.spaces.find((s) => s.id === 'lobby').guestToken,
+      invite: fullApp.invites[0]?.token,
+      mfaSecret: byLogin(fullApp, 'owner').mfa?.secret,
+      recovery: byLogin(fullApp, 'owner').mfa?.recovery?.[0],
+      aiKey: JSON.parse(inBackup.get('ai.json').toString('utf8')).key,
+      feedHash,
+      publishedHash,
+      fileSecret,
+    };
+    for (const [what, value] of Object.entries(secrets)) assert.ok(typeof value === 'string' && value.length >= 16, `the backup carries ${what}`);
+    assert.match(secrets.mfaSecret, /^aesgcm\$/);
+    assert.match(secrets.aiKey, /^aesgcm\$/);
+    for (const name of ['secrets.key', 'pre-names/a-part/app.json', 'modules/vault/library/space-lobby.shares.json', 'app.json.tmp']) assert.ok(inBackup.has(name), `the backup carries ${name}`);
+    for (const [name, marker] of Object.entries(privateFiles)) assert.ok(inBackup.get(name)?.toString('utf8').includes(marker), `the backup carries ${name}`);
+    assert.ok(!inBackup.get('chat.json').toString('utf8').includes(privateFiles['chat-private.json']), 'a private message is only in chat-private.json');
+    assert.match(byLogin(fullApp, 'owner').externalCalendars[0].url, /^aesgcm\$/, "the backup carries the owner's other calendar");
+    for (const value of [standInHash, standInLink]) assert.ok(!backup.raw.includes(value), "the stand-in's dropped sign-in is in no file");
+    // The backup is the folder exactly: every file, as it is on disk, and no link or what it points to.
+    const onDisk = new Map();
+    const walkDisk = (rel) => {
+      for (const e of fs.readdirSync(path.join(envDir, rel), { withFileTypes: true })) {
+        const child = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isSymbolicLink()) continue;
+        if (e.isDirectory()) walkDisk(child); else if (e.isFile()) onDisk.set(child, fs.readFileSync(path.join(envDir, child)));
+      }
+    };
+    walkDisk('');
+    assert.deepEqual([...inBackup.keys()].sort(), [...onDisk.keys()].sort(), 'the backup has every file of the folder');
+    for (const [name, bytes] of onDisk) assert.ok(bytes.equals(inBackup.get(name)), `the backup's ${name} is as on disk`);
+    for (const name of linked) assert.ok(!inBackup.has(name), `the backup does not follow the link ${name}`);
+    assert.ok(!backup.raw.includes(`linked-${fileSecret}`), 'nor carry what a link points to');
+    // Default-deny, live: every field the store keeps and every file in the folder is on one of the export's lists.
+    const exportLists = require('../server/environment-export.js');
+    assert.deepEqual(exportLists.unclassifiedFields(fullApp), [], "a field on neither of server/environment-export.js's lists");
+    const declaredFolders = (id) => {
+      const versions = path.join(envDir, 'modules', id, 'versions');
+      if (!fs.existsSync(versions)) return [];
+      return fs.readdirSync(versions).flatMap((v) => { try { return readJson(path.join(versions, v, 'module.json')).settings || []; } catch { return []; } })
+        .filter((d) => d.type === 'file' || d.type === 'files').map((d) => d.folder);
+    };
+    for (const name of onDisk.keys()) {
+      if (name === 'app.json' || name === 'ai.json') continue;
+      assert.ok(exportLists.fileAllowed(name, declaredFolders) || exportLists.fileLeftOut(name), `${name} is on neither of server/environment-export.js's file lists`);
+    }
+
+    // Who may ask for an export: an owner (and the host admin's sign-in), never a member or nobody.
+    const robin = await signIn('beta', 'robin', 'robin-password-1');
+    assert.deepEqual(await call(server, 'beta', 'GET', '/api/environment/export', { cookie: robin.cookie }).then((r) => [r.status, r.json]), [403, { error: 'owners only' }]);
+    assert.equal((await call(server, 'beta', 'GET', '/api/environment/export')).status, 401);
+    const exported = await call(server, 'beta', 'GET', '/api/environment/export', { cookie: ownerCookie });
+    assert.equal(exported.status, 200, exported.text);
+    assert.equal(exported.headers['content-type'], 'application/zip');
+    assert.match(exported.headers['cache-control'] || '', /\bno-store\b/, 'the export is never kept by a browser or proxy');
+    const inExport = await unzipEntries(exported.raw);
+    for (const name of [...Object.keys(privateFiles), ...linked]) assert.ok(!inExport.has(name), `the export leaves out ${name}`);
+    for (const name of inExport.keys()) assert.ok(name === 'app.json' || name === 'ai.json' || exportLists.fileAllowed(name, declaredFolders), `the export carries ${name}, which is not allowed`);
+    for (const name of onDisk.keys()) if (exportLists.fileAllowed(name, declaredFolders)) assert.ok(onDisk.get(name).equals(inExport.get(name)), `the export carries ${name} as it is`);
+    for (const name of ['secrets.key', 'pre-names/a-part/app.json', 'modules/vault/library/space-lobby.shares.json', 'app.json.tmp']) assert.ok(!inExport.has(name), `the export leaves out ${name}`);
+    for (const [name, bytes] of inExport) {
+      const text = bytes.toString('utf8');
+      for (const [what, value] of Object.entries({ ...secrets, standInHash, standInLink, ...privateFiles, linked: `linked-${fileSecret}` })) assert.ok(!text.includes(value), `the export's ${name} carries ${what}`);
+      assert.ok(!text.includes('aesgcm$'), `the export's ${name} carries a sealed value`);
+    }
+    const app = JSON.parse(inExport.get('app.json').toString('utf8'));
+    assert.equal('secrets' in app || 'invites' in app, false, 'no secrets or invites');
+    for (const u of app.users) for (const field of ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 'calendarFeed']) assert.equal(field in u, false, `${u.login}: no ${field}`);
+    assert.equal('publishedCalendarFeed' in app.settings, false, "no published calendar's address");
+    assert.deepEqual(exportLists.unclassifiedFields(app), []);
+    for (const s of app.spaces) assert.equal('guestToken' in s, false, `${s.id}: no guestToken`);
+    assert.equal(JSON.parse(inExport.get('ai.json').toString('utf8')).key, '', 'ai.json without its key');
+    assert.deepEqual(app.users.map((u) => [u.login, u.displayName]), fullApp.users.map((u) => [u.login, u.displayName]), 'every person stays');
+    assert.deepEqual(app.spaces.map((s) => s.id), fullApp.spaces.map((s) => s.id), 'every space stays');
+    assert.deepEqual(app.migrations, fullApp.migrations, 'the migration record stays, so a restore reads it');
+    // Nothing live was changed by the export.
+    assert.equal(readJson(path.join(envDir, 'app.json')).secrets.session, secrets.session);
+    assert.equal((await call(server, 'beta', 'GET', '/api/me', { cookie: ownerCookie })).status, 200, 'the owner is still signed in');
+
+    // The export restored by the host admin: it opens, nobody signs in with an old password or link, and the
+    // host admin gives the owner a new personal link and a member a new password through the existing actions.
+    const gamma = await call(server, 'admin', 'POST', '/api/host/environments', { cookie, body: { slug: 'gamma', name: 'Gamma' } });
+    assert.equal(gamma.status, 201, gamma.text);
+    const restored = await call(server, 'admin', 'POST', '/api/host/environments/gamma/restore', { cookie, body: exported.raw, type: 'application/zip' });
+    assert.deepEqual([restored.status, restored.json], [200, { ok: true }]);
+    const gammaApp = readJson(path.join(data, 'environments', 'gamma', 'app.json'));
+    assert.ok(gammaApp.secrets.session && gammaApp.secrets.session !== secrets.session, 'a new session key is made on load');
+    assert.ok(gammaApp.secrets.stream && gammaApp.secrets.stream !== secrets.stream, 'and a new stream key');
+    assert.equal((await call(server, 'gamma', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } })).status, 401, 'no password signs in');
+    assert.equal((await call(server, 'gamma', 'GET', `/j/${secrets.linkToken}`, { accept: 'text/html' })).status, 404, 'the old personal link opens nothing');
+    const boss = await signIn('gamma', HOST_LOGIN, HOST_PASSWORD);
+    const users = (await call(server, 'gamma', 'GET', '/api/users', { cookie: boss.cookie })).json.users;
+    const ownerKey = users.find((u) => u.login === 'owner').key;
+    const link = await call(server, 'gamma', 'POST', `/api/users/${ownerKey}/link`, { cookie: boss.cookie });
+    assert.equal(link.status, 200, link.text);
+    const token = new URL(link.json.user.link).pathname.split('/').pop();
+    const opened = await call(server, 'gamma', 'GET', `/j/${token}`, { accept: 'text/html' });
+    assert.equal(opened.status, 302, 'the new personal link signs the owner in');
+    const me = (await call(server, 'gamma', 'GET', '/api/me', { cookie: cookieOf(opened) })).json;
+    assert.deepEqual([me.user.login, me.user.role], ['owner', 'owner']);
+    const robinKey = users.find((u) => u.login === 'robin').key;
+    assert.equal((await call(server, 'gamma', 'PATCH', `/api/users/${robinKey}`, { cookie: boss.cookie, body: { password: 'robin-new-password-1' } })).status, 200);
+    await signIn('gamma', 'robin', 'robin-new-password-1');
+    assert.equal((await call(server, 'beta', 'POST', '/api/login', { body: { login: 'robin', password: 'robin-password-1' } })).status, 200, 'the environment exported is as it was');
+
+    // A zip written by hand cannot make anyone the host admin: a record marked as the host admin's stand-in, given a
+    // password and a personal link of its own, signs in with neither; the host admin still signs in as before.
+    const crafted = structuredClone(app);
+    const craftedPassword = 'crafted-password-1';
+    const craftedLink = crypto.randomBytes(24).toString('base64url');
+    Object.assign(byLogin(crafted, 'owner'), { hostAdmin: true, role: 'admin', passwordHash: auth.hashPassword(craftedPassword), linkToken: craftedLink });
+    const restoreApp = async (appData, extra = []) => {
+      const res = await call(server, 'admin', 'POST', '/api/host/environments/gamma/restore', { cookie, body: zipFiles([['app.json', Buffer.from(JSON.stringify(appData))], ...extra]), type: 'application/zip' });
+      assert.deepEqual([res.status, res.json], [200, { ok: true }], res.text);
+      return readJson(path.join(data, 'environments', 'gamma', 'app.json'));
+    };
+    await restoreApp(crafted);
+    assert.equal((await call(server, 'gamma', 'POST', '/api/login', { body: { login: 'owner', password: craftedPassword } })).status, 401, "a stand-in's own password signs nobody in");
+    assert.equal((await call(server, 'gamma', 'GET', `/j/${craftedLink}`, { accept: 'text/html' })).status, 404, 'nor its own personal link');
+    const hostAgain = await signIn('gamma', HOST_LOGIN, HOST_PASSWORD);
+    assert.deepEqual(await call(server, 'gamma', 'GET', '/api/me', { cookie: hostAgain.cookie }).then((r) => [r.json.user.login, r.json.user.role, r.json.user.hostAdmin]), [HOST_LOGIN, 'admin', true], 'the host admin signs in through the host as today');
+    // A record with role admin that is not the host admin's stand-in (a single install's admin, or a hand-made one) is
+    // restored as an owner: a hosted environment's only admin is the host admin.
+    const madeAdmin = structuredClone(app);
+    madeAdmin.users.push({ key: 'madeadm1', login: 'madeadmin', displayName: 'Made Admin', role: 'admin', createdAt: new Date().toISOString() });
+    const madeApp = await restoreApp(madeAdmin);
+    assert.equal(byLogin(madeApp, 'madeadmin').role, 'owner', 'a restored admin that is not the stand-in is an owner');
+    const madeBoss = await signIn('gamma', HOST_LOGIN, HOST_PASSWORD);
+    const madeUsers = (await call(server, 'gamma', 'GET', '/api/users', { cookie: madeBoss.cookie })).json.users;
+    assert.deepEqual(madeUsers.filter((u) => u.role === 'admin').map((u) => u.login), madeUsers.some((u) => u.login === HOST_LOGIN) ? [HOST_LOGIN] : [], 'no admin but the host admin');
+    assert.equal(madeUsers.find((u) => u.login === 'madeadmin').role, 'owner');
+
+    // A zip's session and stream keys are never used: the restore makes new, strong ones (everyone signs in again).
+    const keyed = structuredClone(app);
+    keyed.secrets = { session: 'x', stream: 'y' };
+    const keyedApp = await restoreApp(keyed);
+    assert.notDeepEqual(keyedApp.secrets, keyed.secrets);
+    assert.match(keyedApp.secrets.session, /^[A-Za-z0-9_-]{43}$/);
+    assert.match(keyedApp.secrets.stream, /^[A-Za-z0-9_-]{24}$/);
+    const keyedOwner = byLogin(keyedApp, 'owner');
+    assert.equal((await call(server, 'gamma', 'GET', '/api/me', { cookie: sessionCookie('x', keyedOwner) })).status, 401, "a cookie signed with the zip's key opens nothing");
+    assert.equal((await call(server, 'gamma', 'GET', '/api/me', { cookie: sessionCookie(keyedApp.secrets.session, keyedOwner) })).status, 200, 'one signed with the new key does');
+    assert.equal((await call(server, 'gamma', 'GET', '/api/status?s=y')).status, 403, "the zip's stream key opens nothing");
+    assert.equal((await call(server, 'gamma', 'GET', `/api/status?s=${encodeURIComponent(keyedApp.secrets.stream)}`)).status, 200, 'the new one does');
+    // A full backup's keys too: restoring beta's own backup app.json into gamma does not carry beta's keys.
+    const fromBackup = (await restoreApp(fullApp)).secrets;
+    assert.ok(fromBackup.session !== secrets.session && fromBackup.stream !== secrets.stream, "a backup's keys are not restored either");
+
+    assert.equal((await call(server, 'beta', 'DELETE', `/api/spaces/lobby/chat/${posted.json.message.id}`, { cookie: ownerCookie })).status, 200);
+    for (const name of ['secrets.key', 'pre-names', 'modules/vault/library', 'modules/personcheck', 'app.json.tmp', 'ai-threads.moved.json', 'chat-linked.json', 'images/linked']) fs.rmSync(path.join(envDir, name), { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+    assert.equal((await call(server, 'admin', 'DELETE', '/api/host/environments/gamma', { cookie })).status, 200, 'gamma goes again, so the later lists are as they were');
+  });
+
   await liveTest('live: an environment refused at startup is skipped, answers 503, and a good restore brings it back', async () => {
     await server.stop();
     const appFile = path.join(data, 'environments', 'beta', 'app.json');
@@ -711,7 +996,10 @@ try {
     walk('');
     const restored = await call(server, 'admin', 'POST', '/api/host/environments/bravo/restore', { cookie, body: zipFiles(entries), type: 'application/zip' });
     assert.deepEqual([restored.status, restored.json], [200, { ok: true }]);
-    const s = 'fixture-stream-key-0';
+    // A restore never keeps the zip's stream key: the restored environment made a new one.
+    const s = readJson(path.join(data, 'environments', 'bravo', 'app.json')).secrets.stream;
+    assert.notEqual(s, 'fixture-stream-key-0');
+    assert.match(s, /^[A-Za-z0-9_-]{24}$/);
     const presence = await call(server, 'bravo', 'GET', `/api/presence?s=${s}`);
     assert.equal(presence.status, 200, presence.text);
     assert.deepEqual(presence.json.spaces.map((r) => r.id), ['lobby', 'keep01'], 'the spaces, read back (the fixture\'s empty aside is swept away by the read, as any empty aside is)');
@@ -1247,6 +1535,8 @@ try {
     assert.deepEqual([made.status, made.json.user.role], [201, 'owner']);
     const olive = await signInSingle('olive', 'olive-password-1');
     assert.equal((await call(server, '', 'GET', '/api/users', { cookie: olive.cookie })).status, 200, 'the owner runs Manage');
+    // A single install has no export (the route is hosted only): 404, as before, for the owner and the admin.
+    for (const who of [olive, gm]) assert.deepEqual(await call(server, '', 'GET', '/api/environment/export', { cookie: who.cookie }).then((r) => [r.status, r.json]), [404, { error: 'not hosted' }]);
     const refused = async (method, url, body) => { const r = await call(server, '', method, url, { cookie: olive.cookie, body }); return [r.status, r.json]; };
     assert.deepEqual(await refused('PATCH', `/api/users/${gm.key}`, { role: 'owner' }), [400, { error: "this account is the server's admin, so its role can't be changed here" }]);
     assert.deepEqual(await refused('PATCH', `/api/users/${gm.key}`, { password: 'taken-over-1' }), [400, { error: "this account is the server's admin: it signs in with ADMIN_LOGIN and ADMIN_PASSWORD, so its sign-in can't be changed here" }]);

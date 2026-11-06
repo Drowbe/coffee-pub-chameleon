@@ -558,6 +558,14 @@ function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
+// The environment's session signing key and stream key: randomToken(SESSION_KEY_BYTES) and randomToken(STREAM_KEY_BYTES).
+const SESSION_KEY_BYTES = 32;
+const STREAM_KEY_BYTES = 18;
+// Whether a stored key is at least as strong as the ones made here: base64url, and as long as `bytes` random bytes make.
+function strongKey(value, bytes) {
+  return typeof value === 'string' && value.length >= Math.ceil((bytes * 4) / 3) && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 function cleanText(value, max = 60) {
   return String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')
@@ -648,9 +656,11 @@ class Store {
       ...(cleanTemplateHistory(raw.templateHistory).length ? { templateHistory: cleanTemplateHistory(raw.templateHistory) } : {}),
       // Templates an owner imported on a single install (addendum 2), checked by server/templates.js before saving.
       ...(Array.isArray(raw.templates) && raw.templates.length ? { templates: raw.templates.filter((t) => t && typeof t === 'object' && typeof t.id === 'string') } : {}),
+      // A key that is not the shape this server makes (a hand-edited file, say) is replaced with a new one: nobody
+      // chooses the key that signs this environment's sessions or opens its stream. A new session key signs everyone out.
       secrets: {
-        session: raw.secrets?.session || randomToken(32),
-        stream: raw.secrets?.stream || randomToken(18),
+        session: strongKey(raw.secrets?.session, SESSION_KEY_BYTES) ? raw.secrets.session : randomToken(SESSION_KEY_BYTES),
+        stream: strongKey(raw.secrets?.stream, STREAM_KEY_BYTES) ? raw.secrets.stream : randomToken(STREAM_KEY_BYTES),
       },
       settings: { ...DEFAULT_SETTINGS, ...migrateMfaSettings(raw.settings) },
       users: Array.isArray(raw.users) ? raw.users.map((u) => this.sanitizeUser(u)).filter(Boolean) : [],
@@ -733,7 +743,9 @@ class Store {
       data.settings.homeIconChoiceSeeded = true;
       clearedHomeIcon = true;
     }
-    if (!raw.secrets?.session || !raw.secrets?.stream || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
+    // A host admin's stand-in stored with a sign-in of its own (dropped by sanitizeUser) is written back without it.
+    const standInSignIn = Array.isArray(raw.users) && raw.users.some((u) => u && typeof u === 'object' && u.hostAdmin && (u.passwordHash || u.linkToken || u.mfa));
+    if (data.secrets.session !== raw.secrets?.session || data.secrets.stream !== raw.secrets?.stream || standInSignIn || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
       this.data = data;
       this.save();
     }
@@ -857,13 +869,14 @@ class Store {
       // The stand-in is always `admin`; anything else reads as it is stored, or as a member when it is no role at all
       // (the names-roles migration has already renamed the old values, so this only ever meets them in hand-made data).
       role: u.hostAdmin ? 'admin' : ROLES.includes(u.role) ? u.role : 'member',
-      passwordHash: typeof u.passwordHash === 'string' ? u.passwordHash : null,
-      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js): its own
-      // passwordHash is always null, so nothing inside the environment can ever authenticate as it directly -- the
-      // check always goes back to the host registry.
+      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js) never has a
+      // password, a personal link or a second factor of its own, whatever the stored record says (one restored from a
+      // zip, say): nothing inside the environment can ever authenticate as it directly -- the check always goes back
+      // to the host registry.
+      passwordHash: !u.hostAdmin && typeof u.passwordHash === 'string' ? u.passwordHash : null,
       hostAdmin: Boolean(u.hostAdmin),
-      linkToken: typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
-      mfa: sanitizeMfa(u.mfa),
+      linkToken: !u.hostAdmin && typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
+      mfa: u.hostAdmin ? null : sanitizeMfa(u.mfa),
       images,
       spaces,
       player: {}, // borders and the plate are server-wide now; older per-user values are dropped
@@ -928,7 +941,7 @@ class Store {
   }
 
   regenerateStreamKey() {
-    this.data.secrets.stream = randomToken(18);
+    this.data.secrets.stream = randomToken(STREAM_KEY_BYTES);
     this.save();
     return this.data.secrets.stream;
   }
@@ -2447,5 +2460,5 @@ module.exports = {
   LEGACY_SLOTS, ROLES, ASSIGNABLE_ROLES, hasOwnerRights, ROLE_PERMISSIONS, IMAGE_TYPES, MAX_IMAGE_BYTES, DEFAULT_BORDER_COLOR, LOBBY, randomToken, cleanText, cleanLogin,
   sanitizeMfa, CURRENCIES, QUALITY_OPTIONS, LANGUAGES, BUILTIN_THEME_IDS: BUILTIN_THEMES.map((t) => t.id), displayNameProblem,
   THEME_BASE, THEME_OPTIONAL, DEFAULT_THEME, cleanColor, cleanAuthor, cleanReactions, cleanThemeName, MAX_THEMES,
-  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS,
+  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS, DEFAULT_SETTINGS,
 };

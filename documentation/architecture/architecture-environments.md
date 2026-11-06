@@ -574,7 +574,7 @@ one. The old `/api/host/tenants...` paths are gone and answer 404; there is no a
 | `GET /api/host/environments/:slug/template` | `{ template, offer, choices }`, as the owner's `GET /api/environment/template`; read-only; 404 `no such environment` |
 | `POST /api/host/environments/:slug/template/apply` `{ modules?, lobby?, spaceDefaults?, reactions?, theme?, iconSet? }` | `{ environment }` with `template` and `offer`; the same body and refusals as the owner's apply; 404 `no such environment` |
 | `DELETE /api/host/environments/:slug` | `{ ok: true }`, the data moved to `DATA_DIR/environments-deleted/<slug>-<ms>/`, never removed; 404 `no such environment` |
-| `POST /api/host/environments/:slug/backup` | the environment's folder as a zip (`Content-Disposition` `<slug>-backup.zip`); 404 `no such environment` |
+| `POST /api/host/environments/:slug/backup` | the environment's folder as a zip (`Content-Disposition` `<slug>-backup.zip`), every regular file byte for byte, private chat and person data included; a symbolic link is not followed and is logged by path; 404 `no such environment` |
 | `POST /api/host/environments/:slug/restore` | see "Refused environments", Restore |
 | `DELETE /api/host/environments/:slug/owners/:login/mfa` | `{ ok: true }`; 404 `no such environment` or `no owner with that login there` |
 | `GET` and `DELETE /api/host/flight-schedule[?number=]` | The flight schedule every environment shares: its counts, forgetting one number, or clearing it all. The answers and refusals are in [api-modules](../api/api-modules.md), "Flight lookup" |
@@ -614,7 +614,40 @@ than read in a shape this server does not understand (plan-names decision 22).
   object is refused the same way, before anything is replaced: 400
   `{ error: "This backup's data can't be read, so nothing was restored." }` (`UNREADABLE_BACKUP`). The other
   answers are as before: 404 `no such environment`, 400 `choose a zip file to restore`, and
-  400 with the zip reader's message.
+  400 with the zip reader's message. A restore always drops `secrets` from the zip's `app.json` (see the next section).
+
+## The owner's copy and a restore
+
+`GET /api/environment/export` (an owner; hosted only, else 404 `not hosted`) answers the environment's zip, `<slug>-export.zip`,
+with `Cache-Control: private, no-store`. It is built from allow-lists in `server/environment-export.js`: a field of `app.json`
+or a file is in the copy only when the module names it, so anything added later stays out until someone classifies it.
+The host's backup is not filtered.
+
+- **Left out of `app.json`:** `secrets` (the session key and the stream key), `invites`; on each person `passwordHash`,
+  `linkToken`, `mfa`, `externalCalendars`, `calendarFeed`; on each space `guestToken`; `settings.publishedCalendarFeed`.
+  `ai.json` is kept with its `key` emptied.
+- **Left out of the files:** `secrets.key`, the pre-names copies, `chat-private.json`, `ai-threads.moved.json`, each person's
+  module data, hold and uploads (`modules/<id>/data|trash/person-<key>.json`, `modules/<id>/uploads/person-<key>/`), a library
+  module's `*.shares.json`, and half-written files (`*.tmp`, `*.part`, names starting with a dot).
+- **Still in the copy:** logins and display names, module notifications, AI-log counts (never the text), module setting
+  values (a typed address can carry a key), a space's link, and the Vault's file records (names and sizes).
+- **Symbolic links.** Neither the export nor the backup follows a link inside an environment (for example `modules` linked to
+  another disk): it is left out, and the server logs each skipped link by path with `console.warn`. A symbolic `DATA_DIR`
+  or environment folder itself still works.
+- **The guard.** `tools/check-environment-export.mjs` (in `npm run check`) fails when a person, space or aside field, or a
+  file, is on neither list. Settings fields are classified by hand.
+
+**A restore** (the host's restore, of an owner's copy or of a backup) removes `secrets` from the zip's `app.json`
+(`restoreEntries`), so `Store.load` makes a new session key and a new stream key. It also replaces a stored session key shorter
+than 43 base64url characters, or a stream key shorter than 24. The result for people:
+
+- everyone is signed out; "remember this device" cookies stop working; guests open their guest link again; visitors to a
+  password-protected Vault share enter the password again;
+- every OBS browser source and keyed link needs the new stream key from Settings;
+- from a host backup, passwords, personal links, guest links, invites and calendar feeds survive; from an owner's copy nobody
+  has a password or link until the host admin gives out new ones;
+- a person record with `hostAdmin: true` keeps no `passwordHash`, `linkToken` or `mfa` (dropped on load and on restore);
+- a record with role `admin` that is not the host admin's stand-in is restored as `owner`.
 
 ## Templates
 
