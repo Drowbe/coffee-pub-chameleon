@@ -797,7 +797,7 @@ function abSwitch(label, value, onPick, words = { A: 'A', B: 'B' }) {
     const states = [['Rest', ''], ['Under the pointer', 'is-hover'], ['The keyboard on it', 'is-focus'], ['Being dragged', 'is-drag'], ['A finger: 24 px', 'pps-show-hit pps-hit-24'], ['A finger: 44 px', 'pps-show-hit pps-hit-44']];
     for (const [name, cls] of states) {
       const c = cell(row2, name, cls.includes('hit-24') ? 'The plan\'s hit area (dashed): 8 above and below the band.' : cls.includes('hit-44') ? 'The design system\'s 44: it reaches over the title bar\'s buttons below it. Thomas to choose (see the questions).' : '', '');
-      const view = stackCanvas({ w: 240, h: 300, cols: [{ ids: ['todo', 'polls'] }], menus: false });
+      const view = stackCanvas({ w: 280, h: 300, cols: [{ ids: ['todo', 'polls'] }], menus: false });
       const dv = view.canvas.querySelector('.pps-div');
       if (cls) dv.className += ` ${cls}`;
       c.append(view.el);

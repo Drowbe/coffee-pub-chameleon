@@ -450,6 +450,17 @@ async function main() {
           if (r.sw > r.vw) fail(`panel stacking at 390 (${id}): the page scrolls sideways (${r.sw}px wide in a ${r.vw}px window)`);
           say(`Panel stacking at 390 (${id}): page ${r.sw}px in ${r.vw}px, ${r.frames} frames`);
         }
+        // The first column of a canvas is flexible and never narrower than FLEX_MIN (280); a canvas narrower than that clips every drawing in it.
+        const sets = await tab.eval(`[...document.querySelectorAll('#pp-panel-stacking .pps-set')].map((e) => e.id)`);
+        for (const id of sets) {
+          await tab.eval(`document.getElementById('${id}').scrollIntoView()`);
+          await sleep(250);
+        }
+        const wide = await tab.eval(`[...document.querySelectorAll('#pp-panel-stacking .pps-canvas')].map((c) => ({ set: c.closest('.pps-set')?.id, w: c.offsetWidth, first: parseFloat(getComputedStyle(c).gridTemplateColumns) })).filter((c) => !(c.first <= c.w + 0.5))`);
+        const total = await tab.eval(`document.querySelectorAll('#pp-panel-stacking .pps-canvas').length`);
+        if (total < 10) fail(`panel stacking: only ${total} canvases are drawn; the width check measures too little`);
+        for (const c of wide) fail(`panel stacking (${c.set}): a canvas ${c.w}px wide has a first column ${c.first}px wide, so the drawing is clipped`);
+        say(`Panel stacking: ${total} canvases, none narrower than its first column`);
       } finally { await tab.close(); }
     }
     if (!process.argv.includes('--skip-maps')) await checkMaps(browser, server);
