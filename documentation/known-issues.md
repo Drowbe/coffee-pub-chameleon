@@ -8,12 +8,50 @@ the CHANGELOG once fixed.
 
 ## The demo seeder changes environment-wide settings
 
-`npm run seed:demo` installs and turns on every bundled module, turns on the calendar and map options, sets
-the place search to the public Photon service and may switch the template to travel. It is for test and demo
-environments only. An "Add a demo space" feature that does not touch environment settings is planned
-(GitHub #416).
+The demo loader (`server/demo-loader.js`) never changes an environment-wide setting. The seeder around it does:
+`npm run seed:demo` installs and turns on every bundled module, turns on the calendar and map options, sets the
+place search to the public Photon service and may switch the template to travel. Use it only on test and demo
+environments. An "Add a demo space" feature that calls only the loader is planned (GitHub #416,
+[plan-demo-space](plans/plan-demo-space.md)).
 
-Workaround: run it only on a throwaway environment. See [Getting Started](userguide-getting-started.md), "Try it with demo data".
+Workaround: run the seeder only on a throwaway environment. See [Getting Started](userguide-getting-started.md), "Try it with demo data".
+
+## The demo loader adopts a real account that looks like a demo person
+
+The loader marks a demo person by login and display name. If a real account has the login `mia` and the display
+name "Mia Alvarez" (or the same for `lee` or `sam`), the loader takes it as the demo's and resets its password. No
+account is deleted. Thomas decided on 2026-11-06 that the server will store a marker on demo people, set by the
+server, in slice 4 of [plan-demo-space](plans/plan-demo-space.md) (GitHub #416).
+
+Workaround: do not give a real account a demo person's login.
+
+## The demo space's marker is a public string
+
+The loader knows its space by the first line of the description, "Demo data from npm run seed:demo." Anyone who may
+edit a space's description can add or remove it. Slice 4 is to replace this (GitHub #416).
+
+Workaround: leave the first line of the demo space's description alone, and do not copy it to another space.
+
+## Two demo loader runs at once are not safe
+
+Running the loader twice at the same time against one environment can leave the demo half built. There is no lock yet;
+a per-environment lock is planned for slice 4 (GitHub #416).
+
+Workaround: run one at a time. A nightly schedule is fine.
+
+## The demo loader's retry has no overall limit
+
+When the server answers 429 (too fast), the loader waits and tries again. There is no limit on the total time, so a
+server that keeps refusing keeps the loader waiting (GitHub #416).
+
+Workaround: stop the command and run it again later.
+
+## The demo loader does not check the address it is given
+
+The loader does not validate `base`. The seeder passes the address it was given. Slice 4 must pass the server's own
+loopback address (GitHub #416).
+
+Workaround: none is needed for the seeder, which is run by hand. Do not call the loader with an address you do not own.
 
 ## The demo seeder prints the demo people's one-time passwords
 
