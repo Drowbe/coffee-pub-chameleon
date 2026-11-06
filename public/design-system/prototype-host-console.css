@@ -122,6 +122,15 @@
 .hc-ai + .hc-ai { padding-top: var(--space-3); border-top: 1px solid var(--edge-hairline); }
 .hc-ai-head { display: flex; align-items: center; gap: var(--space-2); }
 
+/* ---- narrower than 900 px of its own width: search and one "Filter and sort" control in a row; the two selects open under it ---- */
+@container hc (max-width: 900px) {
+  .hc-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .hc-filter-btn { display: inline-flex; }
+  .hc-tools-more { display: none; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .hc-tools-more[data-open] { display: grid; }
+  .hc-tools select { width: 100%; }
+}
+
 /* ---- the phone: the console's own width is 640 px or less ---- */
 @container hc (max-width: 640px) {
   .hc { --btn-h: 44px; --field-h: 44px; --field-font: var(--text-16); --check-h: 44px; --tick-hit: 44px; --tab-h-default: 44px; --tab-h: 44px; --tab-icon-dy: 0px; }
@@ -131,12 +140,6 @@
   .hc-nav.subtabs { flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
   .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
   .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
-  /* search and one "Filter and sort" control in a row; the two selects open under it */
-  .hc-tools { grid-template-columns: minmax(0, 1fr) auto; }
-  .hc-filter-btn { display: inline-flex; }
-  .hc-tools-more { display: none; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
-  .hc-tools-more[data-open] { display: grid; }
-  .hc-tools select { width: 100%; }
   .hc-count { grid-column: 1 / -1; }
   /* the needs-attention strip is one row that scrolls inside itself */
   .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
