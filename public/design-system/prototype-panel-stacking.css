@@ -1,0 +1,146 @@
+/* The Prototype's Panel stacking section (plan-panel-stacking.md, step 0; prototype-panel-stacking.js). Design-process only, nothing ships.
+   Theme tokens only. The modules are the real module frame (createModuleFrame, the moduleframe block of public/sdk/system.css) and the
+   menus the host's (host-menu.js, its own styles); what is new is here, and would go to style.css if the design is built. */
+
+.pps { --pps-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); --pps-hit: 0px; }
+.pps-set { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; scroll-margin-top: var(--pp-stick, 0); }
+.pps-set-name { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.pps-set > p, .pps-cell > p { margin: 0; max-width: 90ch; color: var(--pps-dim); font-size: var(--text-13); }
+.pps-set > p strong, .pps-cell > p strong { color: var(--text-primary); }
+.pps-cells { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); min-width: 0; }
+.pps-cell { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.pps-cell-name { margin: 0; font-size: var(--text-14); font-weight: var(--weight-strong); }
+.pps-ab { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; margin-right: var(--space-2); padding: 0 var(--space-1); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); }
+.pps-rec { color: var(--text-primary); }
+.pps-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.pps-bar-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.pps-bar-label { color: var(--pps-dim); font-size: var(--text-13); }
+.pps-list-words { margin: 0; padding-left: var(--space-5); max-width: 90ch; color: var(--pps-dim); font-size: var(--text-13); }
+.pps-list-words > li + li { margin-top: var(--space-1); }
+.pps-list-words strong { color: var(--text-primary); }
+
+/* ---- the drawing: a window's canvas (and the call and chat column) at real pixels; it scrolls sideways when the screen is narrower ---- */
+.pps-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); }
+.pps-screen { display: flex; width: max-content; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden; background: var(--surface-canvas); }
+.pps-canvas { position: relative; display: grid; grid-template-rows: minmax(0, 1fr); flex: none; overflow: hidden; background: var(--surface-canvas); }
+.pps-col { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pps-col > .mf, .pps-sec > .mf { flex: 1 1 auto; height: 100%; min-height: 0; }
+.pps-stack { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.pps-sec { position: relative; display: flex; flex-direction: column; flex: none; min-height: 0; overflow: hidden; }
+.pps-empty-col { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--pps-dim); font-size: var(--text-13); }
+
+/* A collapsed section is its title bar: what is under it is not drawn, so it is not in the tab order and not read. */
+.pps-sec.pps-folded > .mf > :not(.mf-titlebar) { display: none; }
+.pps-sec.pps-folded > .mf > .mf-titlebar { border-bottom: 0; }
+.pps-fold-sum { display: none; flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--pps-dim); font-size: var(--text-12); white-space: nowrap; text-overflow: ellipsis; }
+.pps-sec.pps-folded[data-fold="B"] .pps-fold-sum { display: inline; }
+.mf-titlebar > .pps-fold { flex: none; margin-left: calc(-1 * var(--space-2)); }
+
+/* ---- the divider: A is a band with a grip, B is a gap of the canvas ---- */
+.pps-div { position: relative; flex: none; height: 8px; touch-action: none; cursor: ns-resize; }
+.pps-div::before { content: ""; position: absolute; inset: calc(-1 * var(--pps-hit)) 0; }
+.pps-div[data-style="A"] { background: var(--mf-surface-title); border-block: 1px solid var(--mf-edge); box-sizing: border-box; }
+.pps-div[data-style="A"]::after { content: ""; position: absolute; left: 50%; top: 50%; width: 28px; height: 2px; margin: -1px 0 0 -14px; border-radius: var(--radius-round); background: var(--text-muted); }
+.pps-div[data-style="B"] { background: var(--surface-canvas); }
+.pps-div[data-style="B"]::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: transparent; }
+.pps-div:is(:hover, .is-hover)[data-style="A"] { background: color-mix(in srgb, var(--accent-fill) 35%, var(--mf-surface-title)); }
+.pps-div:is(:hover, .is-hover)[data-style="B"]::after { background: color-mix(in srgb, var(--accent-fill) 60%, transparent); }
+.pps-div:focus-visible, .pps-div.is-focus { outline: 2px solid var(--focus-ring); outline-offset: -2px; z-index: 2; }
+.pps-div.is-drag[data-style="A"] { background: var(--accent-fill); }
+.pps-div.is-drag[data-style="A"]::after { background: var(--text-on-accent); }
+.pps-div.is-drag[data-style="B"]::after { background: var(--accent-fill); }
+.pps-div.pps-div-off { cursor: default; }
+.pps-div.pps-div-off::after { opacity: 0.35; }
+/* A finger: the plan's 24px hit area (8 above and below), or the design system's 44px; drawn dashed in the picture. */
+@media (pointer: coarse) { .pps { --pps-hit: 8px; } }
+.pps-div.pps-show-hit::before { outline: 1px dashed var(--accent-fill); outline-offset: -1px; background: color-mix(in srgb, var(--accent-fill) 12%, transparent); z-index: 1; }
+.pps-div.pps-hit-24 { --pps-hit: 8px; }
+.pps-div.pps-hit-44 { --pps-hit: 18px; }
+
+/* ---- the drag: the zones (aria-hidden, drawn only while a title bar is dragged) ---- */
+.pps-canvas.pps-dragging, .pps-canvas.pps-dragging * { cursor: grabbing !important; user-select: none; }
+.pps-canvas.pps-resizing, .pps-canvas.pps-resizing * { cursor: ns-resize !important; user-select: none; }
+.pps-zones { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.pps-zone { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: var(--space-1); border: 1px dashed color-mix(in srgb, var(--accent-fill) 70%, var(--edge-hairline)); border-radius: var(--radius-medium); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); overflow: hidden; }
+.pps-zone.is-on { border: 2px solid var(--accent-fill); background: color-mix(in srgb, var(--accent-fill) 24%, var(--surface-panel)); }
+.pps-zone-words { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--surface-panel); color: var(--text-primary); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pps-zone.is-on .pps-zone-words { background: var(--accent-fill); color: var(--text-on-accent); }
+/* B: nothing until the pointer is over a module; then the place it would take, drawn as a section with its title bar. */
+.pps-ghost-sec { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; border: 2px solid var(--accent-fill); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent-fill) 16%, var(--surface-panel)); overflow: hidden; }
+.pps-ghost-head { display: flex; flex: none; align-items: center; gap: var(--space-2); height: var(--mf-title-h); padding: 0 var(--space-3); background: var(--mf-surface-title); color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); }
+.pps-ghost-head > i { color: var(--text-accent); }
+.pps-ghost-words { margin: auto; padding: var(--space-2); color: var(--text-primary); font-size: var(--text-12); text-align: center; }
+/* Both: the line for moving between columns, where the column would land. */
+.pps-line { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: var(--radius-min); background: var(--accent-fill); }
+.pps-line-words { position: absolute; top: var(--space-3); left: 8px; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; }
+.pps-line.pps-line-flip .pps-line-words { left: auto; right: 8px; }
+/* The title bar that is being dragged follows the pointer as a small chip. */
+.pps-chip { position: absolute; display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--accent-fill); border-radius: var(--radius-small); background: var(--mf-surface-title); box-shadow: var(--shadow-2); color: var(--text-primary); font-size: var(--text-13); font-weight: var(--weight-strong); white-space: nowrap; }
+.pps-chip > i { color: var(--text-accent); }
+
+/* ---- a floating module over the canvas ---- */
+.pps-float { position: absolute; z-index: 4; display: flex; }
+.pps-float > .mf { flex: 1 1 auto; min-height: 0; }
+
+/* ---- the call and chat column beside the canvas (not a column of the canvas: no zones there) ---- */
+.pps-side { display: flex; flex: none; flex-direction: column; min-height: 0; border-left: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.pps-side > .mf { flex: 1 1 auto; min-height: 0; }
+.pps-side > .mf:first-child { flex: none; height: 46%; }
+.pps-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); height: 100%; }
+.pps-tile { display: flex; align-items: center; justify-content: center; min-height: 0; border-radius: var(--radius-medium); background: color-mix(in srgb, var(--accent-fill) 14%, var(--surface-page)); color: var(--text-primary); font-weight: var(--weight-strong); }
+
+/* ---- the note line under a drawing: the Layout menu's note, said again ---- */
+.pps-note { min-height: 1.5em; margin: 0; color: var(--text-primary); font-size: var(--text-13); }
+.pps-note:empty::before { content: "\00a0"; }
+.pps-readout { margin: 0; color: var(--pps-dim); font-size: var(--text-12); font-variant-numeric: tabular-nums; }
+
+/* ---- the sample modules' content ---- */
+.pps-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.pps-task { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; padding: 0 var(--space-2); border-radius: var(--radius-small); background: var(--mf-surface-row); }
+.pps-task > i { flex: none; color: var(--text-muted); }
+.pps-task.is-done > i { color: var(--text-accent); }
+.pps-task.is-done .pps-task-words { color: var(--pps-dim); text-decoration: line-through; }
+.pps-task-words, .pps-row-words { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pps-small { flex: none; color: var(--pps-dim); font-size: var(--text-12); font-variant-numeric: tabular-nums; }
+.pps-polls { display: flex; flex-direction: column; gap: var(--space-3); }
+.pps-poll { display: flex; flex-direction: column; gap: var(--space-1); }
+.pps-poll-q { margin: 0; font-weight: var(--weight-strong); }
+.pps-opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px var(--space-2); }
+.pps-meter { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-round); background: var(--fill-hover); overflow: hidden; }
+.pps-meter > span { display: block; height: 100%; border-radius: var(--radius-round); background: var(--accent-fill); }
+.pps-budget { display: flex; flex-direction: column; gap: var(--space-2); }
+.pps-big { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.pps-row { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; padding: 0 var(--space-2); border-radius: var(--radius-small); background: var(--mf-surface-row); }
+.pps-row > i { flex: none; color: var(--text-muted); }
+.pps-msg { display: flex; flex-direction: column; gap: 2px; }
+.pps-msg-who { font-weight: var(--weight-strong); font-size: var(--text-12); }
+
+/* ---- the menus held open in a picture (the host's menu, its own look; static here) ---- */
+.pps-menus { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-1); }
+.pps .host-menu.pps-held { position: static; z-index: auto; flex: none; align-self: flex-start; }
+.pps-held-cap { margin: 0; color: var(--pps-dim); font-size: var(--text-12); }
+
+/* ---- a phone: one view at a time and its tab bar ---- */
+.pps-phone { display: flex; flex-direction: column; width: 390px; max-width: 100%; height: 640px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); overflow: hidden; background: var(--surface-page); }
+.pps-phone-top { display: flex; flex: none; align-items: center; gap: var(--space-2); height: 44px; padding: 0 var(--space-3); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-panel); font-weight: var(--weight-strong); }
+.pps-phone-view { display: flex; flex: 1 1 auto; min-height: 0; }
+.pps-phone-view > .mf { flex: 1 1 auto; min-height: 0; }
+.pps-tabs { display: flex; flex: none; border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); }
+.pps-tab { display: flex; flex: 1 0 56px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 0; border: 0; background: none; color: var(--pps-dim); font: inherit; font-size: var(--text-12); cursor: pointer; }
+.pps-tab[aria-current="true"] { background: var(--selected-bg); color: var(--text-primary); }
+.pps-tab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+@media (max-width: 640px) {
+  .pps-set > :is(h3, p, .pps-bar, .pps-note, .pps-readout, ol, ul), .pps-cell > :is(h4, p), .pps > :is(h2, p, .pp-jump) { padding-inline: var(--space-4); }
+  .pps .btn, .pps .mf-switch-btn { min-height: 44px; }
+  .pps input[type="range"] { min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .pps .btn, .pps .mf-switch-btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pps * { transition: none !important; animation: none !important; }
+}
+
+/* The module being dragged: today's lifted look (.module-lifted in style.css), with the theme's accent token. */
+.pps-canvas .mf.pps-lifted { position: relative; z-index: 3; outline: 2px solid var(--accent-fill); outline-offset: -2px; }
