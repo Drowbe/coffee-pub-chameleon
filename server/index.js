@@ -71,6 +71,7 @@ const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROF
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
 const { buildEnvironment, flushEnvironment, setAsideEnvironment } = require('./environment');
+const { exportEntries, restoreEntries } = require('./environment-export');
 const { HostRegistry, HostError, cleanSlug, reservedSentence } = require('./host-registry');
 const { domainSettings } = require('./domains');
 const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, MigrationError, recordedParts, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
@@ -2296,12 +2297,14 @@ hostRouter.delete('/api/host/environments/:slug', requireHostAdmin, (req, res) =
 
 // An environment's whole directory, walked into [name, bytes] pairs for zipFiles (server/module-build.js), or read back
 // out of a zip on restore (a general-purpose reader, not modules.js's own readZip -- an environment's own data is
-// whatever shape it is, not the narrow set of file types a module's zip is allowed).
+// whatever shape it is, not the narrow set of file types a module's zip is allowed). A symbolic link is never followed
+// (the server writes none here): it and what it points to stay out of the zip, and the log says which link was skipped.
 function walkFiles(dir, base = dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
-    const st = fs.statSync(full);
-    if (st.isDirectory()) walkFiles(full, base, out);
+    const st = fs.lstatSync(full);
+    if (st.isSymbolicLink()) console.warn(`Left a link out of the zip, not followed: ${full}`);
+    else if (st.isDirectory()) walkFiles(full, base, out);
     else if (st.isFile()) out.push([path.relative(base, full).split(path.sep).join('/'), fs.readFileSync(full)]);
   }
   return out;
@@ -2521,13 +2524,16 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
   if (!hostRegistry.findEnvironment(req.params.slug)) return res.status(404).json({ error: 'no such environment' });
   if (!req.body || !req.body.length) return res.status(400).json({ error: 'choose a zip file to restore' });
   try {
-    const files = await readEnvironmentZip(req.body);
+    let files = await readEnvironmentZip(req.body);
     // A backup whose data (app.json, or the older LEGACY_ENVIRONMENT_RECORD when there is no app.json) cannot be read, or
     // whose app.json (or that older record) records a Names migration part this server does not know (made by a newer version of the product), is
     // refused before anything is replaced. Checked on what would actually land: names as written to disk, the last
     // of any repeated entry.
     const refusal = backupRefusal(files);
     if (refusal) return res.status(400).json({ error: refusal });
+    // The session and stream keys are never taken from a zip: the restored environment makes new ones (everyone signs
+    // in again, and the stream's sources need its new key).
+    files = restoreEntries(files);
     const env = environments.get(req.params.slug);
     if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
     const dir = path.join(DATA_DIR, 'environments', req.params.slug);
@@ -10531,14 +10537,23 @@ app.get('/api/environment', requireOwner, async (req, res) => {
     },
   });
 });
-// The environment's own copy of its data, the same zip the host console's own backup makes -- any environment admin
-// may ask for it, not only a host admin (plan-environments.md, "Phase 2": Download a copy).
+// The environment's own copy of its data (plan-environments.md, "Phase 2": Download a copy): the host console's backup
+// built from allow-lists, so no sign-in secret, link, sealed value or other person's private chat is in it
+// (server/environment-export.js says what goes in); an owner may ask for it.
 app.get('/api/environment/export', requireOwner, (req, res) => {
   if (!BASE_DOMAIN) return res.status(404).json({ error: 'not hosted' });
   const env = currentEnvironment();
   flushEnvironment(env); // every debounced write on disk before it is zipped
-  const zip = zipFiles(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : []);
-  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${env.slug}-export.zip"` });
+  // The folders each installed module declares for the files an owner places (its manifest's file settings).
+  const declared = (id) => {
+    try {
+      const manifest = env.modules.manifestOf(id, env.modules.get(id).version);
+      return (manifest?.settings || []).filter((d) => d.type === 'file' || d.type === 'files').map((d) => d.folder);
+    } catch { return []; }
+  };
+  const zip = zipFiles(exportEntries(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : [], env.store.data, { declared }));
+  // Personal data: never kept by a browser or a proxy on the way.
+  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${env.slug}-export.zip"`, 'Cache-Control': 'private, no-store' });
   res.send(zip);
 });
 // Asked for by the environment's own admin, carried out by a host admin on the console (the existing Delete) --

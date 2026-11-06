@@ -30,7 +30,7 @@ Whether your environment requires it of everyone is yours to set (Manage > Envir
 
 ## A copy, and leaving
 
-**Download a copy** on the Environment panel gives you the whole environment as a zip: every setting, account, space, picture and module's data, the same file the host's own backup makes. **Ask for deletion** sends the host a request (with a reason, if you like); a host admin carries it out, which moves the environment aside rather than destroying it at once. You can withdraw the request until then.
+**Download a copy** on the Environment panel gives you a copy of your environment as a zip: its settings, people, spaces, pictures and module data. It leaves out what could let someone sign in as another person (passwords, personal links, guest links, invites, second-step secrets and the stream key), other people's private chat, and each person's own private module data. It is not the same file as the host's backup, which is complete. If the copy is restored on a host, nobody has a password or personal link until the host admin gives out new ones, and everyone signs in again. See [architecture-environments](../architecture/architecture-environments.md), "The owner's copy and a restore". **Ask for deletion** sends the host a request (with a reason, if you like); a host admin carries it out, which moves the environment aside rather than destroying it at once. You can withdraw the request until then.
 
 ## If your environment won't open
 
