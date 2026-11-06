@@ -4,6 +4,8 @@
 
 The Vault holds the files of a space: tickets and confirmations as PDFs, photos, a voice note, a clip, a Markdown note. Everyone in the space sees the same files. In the Travel template the Vault is called Documents, and in the Games template it is called Handouts; the steps are the same. Other tools, such as the Planner, can link to a file, and a file can be shared by a link with people outside the space.
 
+**Nothing changes yet for who sees which file.** The server has the rule for letting only some people see a file, but the Vault has no screen for it, so everyone in the space still sees the same files. This guide will say more when the screens arrive.
+
 **Who can:** a member or a moderator can see, add and download files, and an owner always can. A guest never can: a guest sees no Vault, and the Roles tab cannot turn it on for guests. What each role may do is set on the **Roles** tab under the Vault ([Accounts, roles and permissions](userguide-accounts.md)):
 
 - **See the space's files** shows the list and opens a file.
