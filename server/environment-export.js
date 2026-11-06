@@ -14,8 +14,11 @@
 //   ai.json    key (sealed with the same key): emptied, so the AI service has to be given its key again.
 //   files      everything not on FILE_RULES: among them secrets.key (the key a single install sealed with), pre-names/
 //              (copies of the data from before the Names migration, which hold the same secrets), chat-private.json and
-//              ai-threads.moved.json (other people's private chat), a library module's share links
+//              ai-threads.moved.json (other people's private chat), each person's own module data, held clears and
+//              uploads (modules/<id>/data/person-<key>.json, modules/<id>/trash/person-<key>.json,
+//              modules/<id>/uploads/person-<key>/...: private to that person), a library module's share links
 //              (modules/<id>/library/*.shares.json), and half-written files (*.tmp, *.part, names starting with a dot).
+//              A left-out file is never in the copy, even where a rule above would allow it.
 // The zip's layout is otherwise the backup's, so the host console's restore reads it the same way.
 
 const path = require('path');
@@ -133,11 +136,15 @@ const FILE_LEFT_OUT = [
   (name) => name === LEGACY_ENVIRONMENT_RECORD, // the older name of app.json: only app.json speaks for the environment
   /^tmp\//,
   new RegExp(`^modules/${MODULE_ID}/library/[^/]+\\.shares\\.json$`),
+  // Each person's own module data, held clears and uploads: private to that person, so not the owner's to carry.
+  new RegExp(`^modules/${MODULE_ID}/(data|trash)/person-[^/]+$`),
+  new RegExp(`^modules/${MODULE_ID}/uploads/person-[^/]+/.+$`),
 ];
 
 // Whether a file of the folder goes in the copy. `declared(id)`: the folders module <id> declares for its files.
 function fileAllowed(name, declared = () => []) {
   if (half(name) || name.includes('\\') || name.split('/').some((p) => p === '' || p === '..')) return false;
+  if (fileLeftOut(name)) return false;
   if (FILE_RULES.some((rule) => rule.test(name))) return true;
   const m = new RegExp(`^modules/(${MODULE_ID})/([a-z0-9][a-z0-9-]{0,31})/.+$`).exec(name);
   return Boolean(m && declared(m[1]).includes(m[2]));
@@ -165,16 +172,21 @@ function exportEntries(files, appData, { declared } = {}) {
 
 // The files of a zip being restored (POST /api/host/environments/:slug/restore), with the session and stream keys taken
 // out of the environment's record (app.json, or its older name), so the restored environment always makes new ones:
-// nobody chooses them by writing a zip, and everyone signs in again. A record that is not JSON is left as it is (the
-// restore refuses it before this).
+// nobody chooses them by writing a zip, and everyone signs in again. A restore is hosted only, and a hosted environment's
+// only admin is the host admin's stand-in (hostAdmin: true), so every other record with role `admin` (a single install's
+// admin, or a hand-made one) is restored as an `owner`, as moving a single install into a host does (ownersFromServerAdmin
+// in index.js). A record that is not JSON is left as it is (the restore refuses it before this).
 function restoreEntries(files) {
   return files.map(([name, data]) => {
     const where = path.posix.normalize(name);
     if (where !== APP_FILE && where !== LEGACY_ENVIRONMENT_RECORD) return [name, data];
     let app;
     try { app = JSON.parse(Buffer.from(data).toString('utf8')); } catch { return [name, data]; }
-    if (!isObject(app) || !('secrets' in app)) return [name, data];
+    if (!isObject(app)) return [name, data];
+    const admins = Array.isArray(app.users) ? app.users.filter((u) => isObject(u) && u.role === 'admin' && !u.hostAdmin) : [];
+    if (!('secrets' in app) && !admins.length) return [name, data];
     delete app.secrets;
+    for (const u of admins) u.role = 'owner';
     return [name, Buffer.from(`${JSON.stringify(app, null, 2)}\n`)];
   });
 }

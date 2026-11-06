@@ -7,12 +7,15 @@
  *     per space, each space, each aside) is either on the copy's allow-list or on its documented left-out list, so a
  *     field added later fails here until someone classifies it; the copy carries only allowed fields, keeps every one
  *     of them as it is, and carries no left-out one; a field on neither list stays out of the copy;
+ *   - every field a person, a space or an aside can be stored with, conditional ones included (read from the store's
+ *     own sanitizeUser, sanitizeSpace and sanitizeAside), is set by the seed, so a new one has to be classified;
  *   - the same for files: every file the server keeps in an environment's folder is allowed or left out, and the
- *     copy carries exactly the allowed ones (a module's declared folder included, other people's private chat, share
- *     links, half-written files and an unknown file not);
+ *     copy carries exactly the allowed ones (a module's declared folder included, other people's private chat, each
+ *     person's own module data, held clears and uploads, share links, half-written files and an unknown file not);
  *   - a host admin's stand-in never keeps a password, a personal link or a second factor of its own when loaded;
  *   - a session or stream key that is not as strong as the ones the server makes is replaced when loaded, a strong
- *     one is kept; a restore's files carry no session or stream key.
+ *     one is kept; a restore's files carry no session or stream key, and a record with role admin that is not the host
+ *     admin's stand-in is restored as an owner.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -93,12 +96,27 @@ function levels(data) {
 }
 const unclassified = ex.unclassifiedFields;
 
+// The fields the store sets only sometimes (`...(cond ? { field: ... } : {})`), read from its own code, so one added
+// later is caught below until the seed sets it (and so it is classified).
+const conditionalFields = (fn) => [...new Set([...fn.toString().matchAll(/\?\s*\{\s*([A-Za-z_$][\w$]*)\s*:/g)].map((m) => m[1]))];
+
 test("every field of a fully seeded environment is on the copy's allow-list or its left-out list", () => {
   const { store } = loadStore(seededApp());
   assert.deepEqual(unclassified(store.data), [], 'classify each of these in server/environment-export.js');
   // The seed reaches every left-out field, so none of them is checked only on paper.
   for (const [level, objects, , leftOut] of levels(store.data)) {
     for (const k of leftOut) assert.ok(objects.some((o) => k in o), `the seed sets ${level}: ${k}`);
+  }
+  // The seed sets every field each level is stored with, the ones the store keeps only while set included.
+  for (const [level, objects, allowed, leftOut] of levels(store.data)) {
+    if (level === 'app.json' || level === 'settings') continue;
+    for (const k of [...allowed, ...leftOut]) assert.ok(objects.some((o) => k in o), `the seed sets ${level}: ${k}`);
+  }
+  const byLevel = Object.fromEntries(levels(store.data).map(([level, objects]) => [level, objects]));
+  for (const [fn, where] of [[Store.prototype.sanitizeUser, ['users[]', 'users[].spaces{}']], [Store.prototype.sanitizeSpace, ['spaces[]']], [Store.prototype.sanitizeAside, ['asides[]']]]) {
+    const fields = conditionalFields(fn);
+    assert.ok(fn !== Store.prototype.sanitizeUser || fields.includes('themeMode'), 'the conditional fields are read from the store');
+    for (const k of fields) assert.ok(where.some((level) => byLevel[level].some((o) => k in o)), `${fn.name} can store ${k}: set it in the seed here, and classify it in server/environment-export.js`);
   }
   // A field added later is caught here, and is not in the copy.
   const later = structuredClone(store.data);
@@ -178,6 +196,18 @@ test("a restore's files carry no session or stream key; every other file is as i
   assert.equal(ex.restoreEntries([['app.json', Buffer.from('not json')]])[0][1].toString(), 'not json');
 });
 
+test("a restore turns every admin that is not the host admin's stand-in into an owner; the stand-in stays the admin", () => {
+  for (const file of ['app.json', LEGACY_ENVIRONMENT_RECORD]) {
+    const src = seededApp();
+    delete src.secrets; // a zip with nothing else to take out still has its admins turned into owners
+    src.users.push({ key: 'madeadm1', login: 'madeadmin', displayName: 'Made', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
+    const [[, out]] = ex.restoreEntries([[file, Buffer.from(JSON.stringify(src))]]);
+    const back = loadStore(JSON.parse(out.toString('utf8'))).store;
+    assert.deepEqual(back.data.users.map((u) => [u.login, u.role, u.hostAdmin]), [['owner', 'owner', false], ['boss', 'admin', true], ['madeadmin', 'owner', false]], file);
+    assert.deepEqual(back.serverAdmins(), [], `${file}: no admin but the stand-in`);
+  }
+});
+
 // --- files ---------------------------------------------------------------------------------------------------------
 
 // What the server keeps in an environment's folder, one of each kind (and the copy's verdict).
@@ -186,12 +216,13 @@ const FILES = {
     'chat.json', 'layouts.json', 'attention.json', 'facts.json', 'ai-usage.json', 'ai-log.jsonl',
     'images/ownerkey/player.png', 'images/site/icon.png', 'images/spaces/trip01.webp',
     'modules/registry.json', 'modules/settings.json', 'modules/activity.json', 'modules/announced.json', 'modules/links.json', 'modules/schedules.json', 'modules/notifications.json', 'modules/bus.json',
-    'modules/todo/data/environment.json', 'modules/todo/data/space-trip01.json', 'modules/todo/data/person-ownerkey.json', 'modules/todo/trash/space-trip01.json',
+    'modules/todo/data/environment.json', 'modules/todo/data/space-trip01.json', 'modules/todo/trash/space-trip01.json',
     'modules/research/uploads/space-trip01/abc123.png', 'modules/research/uploads/space-trip01/abc123.json', 'modules/todo/versions/1.0.0/module.json',
     'modules/vault/library/space-trip01.json', 'modules/places/geocode.json', 'modules/maps/image-map/castle.png',
   ],
   leftOut: [
     'secrets.key', 'pre-names/a-part/app.json', 'chat-private.json', 'ai-threads.moved.json', 'ai-threads.json', LEGACY_ENVIRONMENT_RECORD, 'tmp/region-cut/x.pmtiles',
+    'modules/todo/data/person-ownerkey.json', 'modules/todo/trash/person-ownerkey.json', 'modules/research/uploads/person-ownerkey/abc123.png', 'modules/research/uploads/person-ownerkey/abc123.json',
     'modules/vault/library/space-trip01.shares.json', 'app.json.tmp', 'modules/maps/image-map/.upload-1a2b.part', 'modules/.staging-1-2/todo/module.json', 'modules/maps/map-tiles/x.pmtiles.part',
   ],
 };

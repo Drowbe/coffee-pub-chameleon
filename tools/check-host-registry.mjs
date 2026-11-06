@@ -769,7 +769,17 @@ try {
     const madePrivate = await call(server, 'beta', 'PATCH', `/api/spaces/lobby/chat/${posted.json.message.id}`, { cookie: ownerCookie, body: { visibility: 'private' } });
     assert.equal(madePrivate.status, 200, madePrivate.text);
     fs.writeFileSync(path.join(envDir, 'ai-threads.moved.json'), `{"marker":"threads-${fileSecret}"}\n`);
-    const privateFiles = { 'chat-private.json': `private-${fileSecret}`, 'ai-threads.moved.json': `threads-${fileSecret}` };
+    // Each person's own module data, held clear and uploads: private to them, so in the backup and never in the export.
+    const personFiles = {
+      [`modules/personcheck/data/person-${owner.key}.json`]: `{"marker":"person-data-${fileSecret}"}`,
+      [`modules/personcheck/trash/person-${owner.key}.json`]: `{"marker":"person-trash-${fileSecret}"}`,
+      [`modules/personcheck/uploads/person-${owner.key}/abc123.json`]: `{"marker":"person-upload-${fileSecret}"}`,
+    };
+    for (const [name, text] of Object.entries(personFiles)) {
+      fs.mkdirSync(path.dirname(path.join(envDir, name)), { recursive: true });
+      fs.writeFileSync(path.join(envDir, name), text);
+    }
+    const privateFiles = { 'chat-private.json': `private-${fileSecret}`, 'ai-threads.moved.json': `threads-${fileSecret}`, ...Object.fromEntries(Object.entries(personFiles).map(([name, text]) => [name, JSON.parse(text).marker])) };
     const outside = path.join(liveDir, 'outside-beta');
     fs.mkdirSync(outside, { recursive: true });
     fs.writeFileSync(path.join(outside, 'elsewhere.json'), `{"marker":"linked-${fileSecret}"}`);
@@ -781,6 +791,7 @@ try {
     // The host backup: complete, every secret in it.
     const backup = await call(server, 'admin', 'POST', '/api/host/environments/beta/backup', { cookie });
     assert.equal(backup.status, 200);
+    for (const name of ['chat-linked.json', 'images/linked']) assert.ok(server.output().includes(`Left a link out of the zip, not followed: ${path.join(envDir, ...name.split('/'))}`), `the log names the skipped link ${name}`);
     const inBackup = await unzipEntries(backup.raw);
     const fullApp = JSON.parse(inBackup.get('app.json').toString('utf8'));
     const byLogin = (app, login) => app.users.find((u) => u.login === login);
@@ -850,7 +861,7 @@ try {
     for (const name of ['secrets.key', 'pre-names/a-part/app.json', 'modules/vault/library/space-lobby.shares.json', 'app.json.tmp']) assert.ok(!inExport.has(name), `the export leaves out ${name}`);
     for (const [name, bytes] of inExport) {
       const text = bytes.toString('utf8');
-      for (const [what, value] of Object.entries({ ...secrets, standInHash, standInLink, privateChat: `private-${fileSecret}`, threads: `threads-${fileSecret}`, linked: `linked-${fileSecret}` })) assert.ok(!text.includes(value), `the export's ${name} carries ${what}`);
+      for (const [what, value] of Object.entries({ ...secrets, standInHash, standInLink, ...privateFiles, linked: `linked-${fileSecret}` })) assert.ok(!text.includes(value), `the export's ${name} carries ${what}`);
       assert.ok(!text.includes('aesgcm$'), `the export's ${name} carries a sealed value`);
     }
     const app = JSON.parse(inExport.get('app.json').toString('utf8'));
@@ -909,6 +920,16 @@ try {
     assert.equal((await call(server, 'gamma', 'GET', `/j/${craftedLink}`, { accept: 'text/html' })).status, 404, 'nor its own personal link');
     const hostAgain = await signIn('gamma', HOST_LOGIN, HOST_PASSWORD);
     assert.deepEqual(await call(server, 'gamma', 'GET', '/api/me', { cookie: hostAgain.cookie }).then((r) => [r.json.user.login, r.json.user.role, r.json.user.hostAdmin]), [HOST_LOGIN, 'admin', true], 'the host admin signs in through the host as today');
+    // A record with role admin that is not the host admin's stand-in (a single install's admin, or a hand-made one) is
+    // restored as an owner: a hosted environment's only admin is the host admin.
+    const madeAdmin = structuredClone(app);
+    madeAdmin.users.push({ key: 'madeadm1', login: 'madeadmin', displayName: 'Made Admin', role: 'admin', createdAt: new Date().toISOString() });
+    const madeApp = await restoreApp(madeAdmin);
+    assert.equal(byLogin(madeApp, 'madeadmin').role, 'owner', 'a restored admin that is not the stand-in is an owner');
+    const madeBoss = await signIn('gamma', HOST_LOGIN, HOST_PASSWORD);
+    const madeUsers = (await call(server, 'gamma', 'GET', '/api/users', { cookie: madeBoss.cookie })).json.users;
+    assert.deepEqual(madeUsers.filter((u) => u.role === 'admin').map((u) => u.login), madeUsers.some((u) => u.login === HOST_LOGIN) ? [HOST_LOGIN] : [], 'no admin but the host admin');
+    assert.equal(madeUsers.find((u) => u.login === 'madeadmin').role, 'owner');
 
     // A zip's session and stream keys are never used: the restore makes new, strong ones (everyone signs in again).
     const keyed = structuredClone(app);
@@ -927,7 +948,7 @@ try {
     assert.ok(fromBackup.session !== secrets.session && fromBackup.stream !== secrets.stream, "a backup's keys are not restored either");
 
     assert.equal((await call(server, 'beta', 'DELETE', `/api/spaces/lobby/chat/${posted.json.message.id}`, { cookie: ownerCookie })).status, 200);
-    for (const name of ['secrets.key', 'pre-names', 'modules/vault/library', 'app.json.tmp', 'ai-threads.moved.json', 'chat-linked.json', 'images/linked']) fs.rmSync(path.join(envDir, name), { recursive: true, force: true });
+    for (const name of ['secrets.key', 'pre-names', 'modules/vault/library', 'modules/personcheck', 'app.json.tmp', 'ai-threads.moved.json', 'chat-linked.json', 'images/linked']) fs.rmSync(path.join(envDir, name), { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
     assert.equal((await call(server, 'admin', 'DELETE', '/api/host/environments/gamma', { cookie })).status, 200, 'gamma goes again, so the later lists are as they were');
   });

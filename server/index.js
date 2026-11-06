@@ -2298,12 +2298,13 @@ hostRouter.delete('/api/host/environments/:slug', requireHostAdmin, (req, res) =
 // An environment's whole directory, walked into [name, bytes] pairs for zipFiles (server/module-build.js), or read back
 // out of a zip on restore (a general-purpose reader, not modules.js's own readZip -- an environment's own data is
 // whatever shape it is, not the narrow set of file types a module's zip is allowed). A symbolic link is never followed
-// (the server writes none here): it and what it points to stay out of the zip.
+// (the server writes none here): it and what it points to stay out of the zip, and the log says which link was skipped.
 function walkFiles(dir, base = dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
     const st = fs.lstatSync(full);
-    if (st.isDirectory()) walkFiles(full, base, out);
+    if (st.isSymbolicLink()) console.warn(`Left a link out of the zip, not followed: ${full}`);
+    else if (st.isDirectory()) walkFiles(full, base, out);
     else if (st.isFile()) out.push([path.relative(base, full).split(path.sep).join('/'), fs.readFileSync(full)]);
   }
   return out;
