@@ -50,6 +50,9 @@ const shared = (viewer, f) => { // true when the file is open to this person onl
   return f.by !== keyOf(viewer) && x.v !== 'everyone' && !(x.v === 'people' && x.p.includes(keyOf(viewer)));
 };
 const visibleTo = (viewer) => FILES.filter((f) => sees(viewer, f)).sort((a, b) => (a.at < b.at ? 1 : -1));
+const setLabel = (b, t) => { b.querySelector('.vt-btn-word').textContent = t; };
+// Who loses sight when a file goes from Everyone to Only me: the members, less the owners (who keep access) and the person changing it.
+const LOSE = Object.entries(CAST).filter(([k, v]) => v.role !== 'Owner' && k !== 'lee').length;
 const peopleWord = (n) => (n === 1 ? '1 person' : `${n} people`);
 const markOf = (f) => { const x = vis(f); return x.v === 'only-me' ? ['lock', 'Only me'] : x.v === 'people' ? ['user-group', peopleWord(x.p.length)] : null; };
 
@@ -205,42 +208,39 @@ function addForm({ vis: v0 = 'everyone', people: p0 = [], onPick } = {}) {
   const id = `vp-who-${++uid}`;
   const line = h('p', 'vt-line vp-line');
   const pick = h('div', 'vp-pick');
+  const pickBtn = btn('btn btn-small', { label: 'Choose people', icon: 'user-group' });
+  const names = h('span', 'vp-names');
+  pick.append(pickBtn, names);
+  pickBtn.addEventListener('click', () => { if (onPick) onPick(st, draw); else { const d = peopleSheet({ chosen: st.p, max: LIMIT, members: members(), onDone: (c) => { st.p = c; draw(); } }); liveOpen(d); const q = d.querySelector('.sdk-search input'); if (q) q.focus(); } });
   function sentence() {
     if (st.v === 'everyone') return `Everyone in this ${W.space} can see what you add. This is the default. It applies to every file you add now.`;
     if (st.v === 'only-me') return 'Only you and the owners can see what you add. It applies to every file you add now.';
-    return st.p.length ? `You, the owners and ${peopleWord(st.p.length)} can see what you add. It applies to every file you add now.` : 'Choose who can see what you add. It applies to every file you add now.';
+    return st.p.length ? `You, the owners and ${peopleWord(st.p.length)} can see what you add. It applies to every file you add now.` : 'Only you and the owners until you choose someone. It applies to every file you add now.';
   }
+  // The radios are made once; a change updates the sentence and the people row in place, so the keyboard stays on the radio.
   function draw() {
-    who.textContent = '';
-    const label = h('span', 'sdk-label', 'Who can see this');
-    label.id = id;
-    const list = h('div', 'sdk-choice-list');
-    list.setAttribute('role', 'radiogroup'); list.setAttribute('aria-labelledby', id);
-    for (const [key, word, desc] of CHOICES) {
-      const r = h('label', 'sdk-choice-row sdk-choice-boxed');
-      const i = h('input'); i.type = 'radio'; i.name = id; i.checked = st.v === key;
-      i.addEventListener('change', () => { st.v = key; draw(); });
-      const t = h('span', 'sdk-choice-text'); t.append(h('span', 'sdk-choice-label', word), h('span', 'sdk-choice-desc', desc));
-      r.append(i, t);
-      list.append(r);
-    }
-    who.append(label, list);
-    if (st.v === 'people') {
-      pick.textContent = '';
-      const b = btn('btn btn-small', { label: st.p.length ? 'Change people' : 'Choose people', icon: 'user-group' });
-      b.addEventListener('click', () => { if (onPick) onPick(st, draw); else liveOpen(peopleSheet({ chosen: st.p, max: LIMIT, members: members(), onDone: (c) => { st.p = c; draw(); } })); });
-      pick.append(b);
-      if (st.p.length) {
-        const names = h('span', 'vp-names');
-        names.append(...st.p.slice(0, 3).map((k) => nm(k)).flatMap((n, i, a) => (i < a.length - 1 ? [n, ', '] : [n])));
-        if (st.p.length > 3) names.append(` and ${st.p.length - 3} more`);
-        pick.append(names);
-      }
-      who.append(pick);
+    pick.hidden = st.v !== 'people';
+    setLabel(pickBtn, st.p.length ? 'Change people' : 'Choose people');
+    names.textContent = '';
+    if (st.p.length) {
+      names.append(...st.p.slice(0, 3).map((k) => nm(k)).flatMap((n, i, a) => (i < a.length - 1 ? [n, ', '] : [n])));
+      if (st.p.length > 3) names.append(` and ${st.p.length - 3} more`);
     }
     line.textContent = sentence();
-    who.append(line);
   }
+  const label = h('span', 'sdk-label vp-label', 'Who can see this');
+  label.id = id;
+  const list = h('div', 'sdk-choice-list');
+  list.setAttribute('role', 'radiogroup'); list.setAttribute('aria-labelledby', id);
+  for (const [key, word, desc] of CHOICES) {
+    const r = h('label', 'sdk-choice-row sdk-choice-boxed');
+    const i = h('input'); i.type = 'radio'; i.name = id; i.checked = st.v === key;
+    i.addEventListener('change', () => { st.v = key; draw(); });
+    const t = h('span', 'sdk-choice-text'); t.append(h('span', 'sdk-choice-label', word), h('span', 'sdk-choice-desc', desc));
+    r.append(i, t);
+    list.append(r);
+  }
+  who.append(label, list, pick, line);
   draw();
   const opt = h('label', 'sdk-choice-row vt-where');
   const cb = h('input'); cb.type = 'checkbox';
@@ -267,7 +267,7 @@ function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder
   const st = { chosen: new Set(chosen), q: query };
   const body = h('div', 'vp-pickbody');
   const search = h('label', 'sdk-search');
-  const inp = h('input'); inp.type = 'search'; inp.placeholder = `Search people in this ${W.space}`; inp.setAttribute('aria-label', 'Search people'); inp.value = query;
+  const inp = h('input'); inp.type = 'search'; inp.placeholder = 'Search people'; inp.setAttribute('aria-label', 'Search people'); inp.value = query;
   search.append(fa('magnifying-glass'), inp);
   const head = h('div', 'vp-chosen-head');
   const count = h('span', 'vp-count'); count.setAttribute('role', 'status');
@@ -297,13 +297,20 @@ function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder
     const shown = all.filter((x) => !q || x.name.toLowerCase().includes(q));
     const full = st.chosen.size >= max;
     for (const x of shown.slice(0, 30)) {
+      if (x.role === 'Owner') { // owners always can: shown, not choosable
+        const r = h('div', 'sdk-choice-row vp-person vp-locked');
+        r.append(av(x.key, 24), h('span', 'sdk-choice-label', x.name), h('span', 'vp-role', 'Always can'));
+        list.append(r);
+        continue;
+      }
       const r = h('label', 'sdk-choice-row vp-person');
       const i = h('input'); i.type = 'checkbox'; i.checked = st.chosen.has(x.key); i.disabled = full && !i.checked;
       i.addEventListener('change', () => { if (i.checked) st.chosen.add(x.key); else st.chosen.delete(x.key); redraw(); });
       r.append(i, av(x.key, 24), h('span', 'sdk-choice-label', x.name), h('span', 'vp-role', x.role));
       list.append(r);
     }
-    if (!shown.length) list.append(h('p', 'vt-info-none', `No one matches "${st.q.trim()}".`));
+    if (!all.length) list.append(h('p', 'vt-info-none', `No one else is in this ${W.space} yet. Only you and the owners can see what you add.`));
+    else if (!shown.length) list.append(h('p', 'vt-info-none', `No one matches "${st.q.trim()}".`));
     else if (shown.length > 30) list.append(h('p', 'vt-info-none', `${shown.length - 30} more. Search to find them.`));
   }
   function redraw() {
@@ -325,8 +332,8 @@ function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder
 // ---- the file window ----
 const winCtx = { can: (what) => ['view', 'add', 'download'].includes(what), canRemove: () => false, remove: () => {}, share: () => {}, words: { module: W.module }, pdfSearch: true };
 // Who can see this, in the file window's Info: a control for the adder and owners, a line for everyone else.
-function whoBlock(f, { viewer, change }) {
-  const x = vis(f);
+function whoBlock(f, { viewer, change, as }) {
+  const x = as || vis(f);
   const box = h('div', 'vp-who-info');
   box.append(h('h4', 'vt-info-sub', 'Who can see this'));
   const adderName = nm(f.by);
@@ -342,7 +349,8 @@ function whoBlock(f, { viewer, change }) {
     ];
     b.addEventListener('click', () => openHostMenu(b, items));
     box.append(b);
-    if (x.v === 'people') {
+    if (x.v === 'people' && !x.p.length) box.append(h('p', 'vt-info-none', 'No one chosen yet. Only you and the owners can see it.'));
+    if (x.v === 'people' && x.p.length) {
       const names = h('ul', 'vp-namelist');
       for (const k of x.p) { const li = h('li'); li.append(av(k, 20), nm(k)); names.append(li); }
       box.append(names);
@@ -350,8 +358,10 @@ function whoBlock(f, { viewer, change }) {
     const owners = f.by === keyOf(viewer) ? 'You added this file, and owners and the admin can always see it.' : `${adderName} added this file. Owners and the admin can always see it.`;
     box.append(h('p', 'vt-info-none', owners));
   } else {
-    // Read only: a person who may not change it. No names.
-    box.append(h('p', 'vp-readonly', x.v === 'everyone' ? `Shared with everyone in this ${W.space}.` : `Shared with ${peopleWord(x.p.length)}.`));
+    // Read only: a person who may not change it. No names, no count; nothing at all for a file shared with everyone.
+    if (x.v === 'everyone') return null;
+    box.classList.add('vp-after');
+    box.append(h('p', 'vp-readonly', 'Shared with you and others.'));
   }
   return box;
 }
@@ -382,7 +392,12 @@ function windowShot(box, { viewer, fileId, block, openSheet, phone = false, menu
       if (root.adoptedStyleSheets && !root.adoptedStyleSheets.includes(PSHEET)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, PSHEET];
       const put = () => {
         const info = w.body.querySelector('.vt-info');
-        if (info && !info.querySelector('.vp-who-info')) { info.insertBefore(block(f), info.querySelector('.vt-info-list')); }
+        if (info && !info.dataset.vpDone) {
+        info.dataset.vpDone = '';
+        for (const dt of info.querySelectorAll('.vt-info-list dt')) if (dt.textContent === 'Shared') dt.textContent = 'Share link'; // that row is about share links
+        const b = block(f);
+        if (b) { if (b.classList.contains('vp-after')) info.querySelector('.vt-info-list').after(b); else info.insertBefore(b, info.querySelector('.vt-info-list')); }
+      }
       };
       put();
       new MutationObserver(put).observe(w.body, { childList: true, subtree: true });
@@ -417,7 +432,8 @@ function card({ tint, icon, kind, title, body, files, canEdit = false }) {
   const ul = h('ul', 'vt-files-list');
   for (const it of files) { const li = h('li'); li.append(fileChip(it.file ? byId(it.file) : null, { state: it.state || 'ok', canEdit })); ul.append(li); }
   blk.append(fh, ul);
-  b.append(...body, blk);
+  b.append(...body);
+  if (files.length || canEdit) b.append(blk); // like the real card: nothing at all when there is nothing to show and the viewer may not add
   c.append(head, b);
   return c;
 }
@@ -454,6 +470,7 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   shot(p, { name: 'Everyone in this trip (the default)', h: 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm() }); box.append(v.hold); return {}; } });
   shot(p, { name: 'Chosen people, three picked', note: 'Choose people opens the picker below. The line counts the people.', h: 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm({ vis: 'people', people: ['ana', 'ben', 'chloe'] }) }); box.append(v.hold); return {}; } });
   const p2 = pair(s);
+  shot(p2, { name: 'Chosen people, no one picked yet', note: 'Adding is not blocked: until someone is chosen, only the adder and the owners can see the files.', h: 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm({ vis: 'people' }) }); box.append(v.hold); return {}; } });
   shot(p2, { name: 'Only me', h: 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm({ vis: 'only-me' }) }); box.append(v.hold); return {}; } });
   shot(p2, { name: 'On a phone (390)', note: 'The three choices are rows of 44px; the buttons are 44px.', w: 390, h: 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm({ vis: 'people', people: ['ana', 'ben', 'chloe'] }) }); box.append(v.hold); return {}; } });
 }
@@ -464,21 +481,26 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const phoneBase = { chosen: ['ana', 'ben', 'chloe'], members: members() };
   const p = pair(s);
   const over = (name, note, dlg, opts = {}) => shot(p, { name, note, w: opts.w, h: opts.h || 940, build: (box) => { const v = vaultFrame({ viewer: 'lee', form: addForm({ vis: 'people', people: ['ana', 'ben', 'chloe'] }) }); box.append(v.hold); return { after: () => heldDialog(v.hold, dlg()) }; } });
-  over('Three chosen', 'The list shows everyone in the trip who is not the adder, with their role in quiet words.', () => peopleSheet(phoneBase));
+  over('Three chosen', 'The list shows everyone in the trip who is not the adder, with their role in quiet words. Owners are shown with Always can and cannot be chosen; moderators can.', () => peopleSheet(phoneBase));
   over('Searching', 'The list narrows as the person types; the chosen stay on their chips.', () => peopleSheet({ ...phoneBase, query: 'e' }));
   over('At the limit: 200 of 200', 'A big trip (the picker lists the first thirty and asks for a search). Nothing more can be ticked, a message says why, and the chips scroll.', () => peopleSheet({ chosen: BIG.slice(BIG.length - LIMIT).map((x) => x.key), members: BIG, max: LIMIT }));
+  over('A search with no match', 'The list says so; the chosen stay on their chips.', () => peopleSheet({ ...phoneBase, query: 'zzz' }));
+  over('No one to choose', 'A trip with only the adder.', () => peopleSheet({ chosen: [], members: [] }));
   over('On a phone (390)', 'A full-width sheet; the rows and buttons are 44px.', () => peopleSheet({ ...phoneBase, phone: true }), { w: 390, h: 940 });
 }
 
 // ================= 4. the file window =================
 {
-  const s = set('window', 'The file window: Who can see this', 'At the top of the file window\'s Info, above the facts, so it is the first thing seen on a phone, where Info sits under the file. The adder (and an owner) gets a control: a button that shows the setting and opens the menu with the three choices; Chosen people also lists the names. Anyone else gets one read-only line and no names: "Shared with 3 people." The control is the host\'s menu (host.menu.show), as the Vault\'s other menus.');
+  const s = set('window', 'The file window: Who can see this', 'In the file window\'s Info. For the adder (and an owner) it is the first block, above the facts, with a control: a button that shows the setting and opens the menu with the three choices; Chosen people also lists the names. Anyone else gets it after the facts, as one read-only line with no names and no count ("Shared with you and others."), and nothing at all for a file shared with everyone. The Info row that was called Shared is now Share link, so the two never clash. The control is the host\'s menu (host.menu.show), as the Vault\'s other menus.');
   const p = pair(s);
   shot(p, { name: 'The adder (Lee), his file', note: 'Trevi fountain.jpg, chosen people. The button opens the choices.', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }) }) });
-  shot(p, { name: 'Someone it is shared with (Sam)', note: 'The same file. A read-only line, no control.', h: 720, build: (box) => windowShot(box, { viewer: 'sam', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'sam', change: false }) }) });
+  shot(p, { name: 'Someone it is shared with (Sam)', note: 'The same file. A read-only line after the facts, no control.', h: 720, build: (box) => windowShot(box, { viewer: 'sam', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'sam', change: false }) }) });
   const p2 = pair(s);
-  shot(p2, { name: 'The menu open', note: 'Three radio choices; a change that narrows who sees a file with links asks first (section 9).', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }), menu: true }) });
-  shot(p2, { name: 'On a phone (390)', note: 'The window is a full-screen sheet; the control is a 44px button.', w: 390, h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }) }) });
+  shot(p2, { name: 'Chosen people, no one chosen yet', note: 'A file of Lee\'s with an empty list.', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true, as: { v: 'people', p: [] } }) }) });
+  shot(p2, { name: 'Shared with everyone: no block (Sam)', note: 'A file in the default state shows no block to a viewer.', h: 720, build: (box) => windowShot(box, { viewer: 'sam', fileId: 'f30', block: (f) => whoBlock(f, { viewer: 'sam', change: false }) }) });
+  const p3 = pair(s);
+  shot(p3, { name: 'The menu open', note: 'Three radio choices; a change that narrows who sees a file with links asks first (section 9).', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }), menu: true }) });
+  shot(p3, { name: 'On a phone (390)', note: 'The window is a full-screen sheet; the control is a 44px button.', w: 390, h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }) }) });
 }
 
 // ================= 5. owner or admin =================
@@ -491,13 +513,13 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
 
 // ================= 6. the moderator, and the permission =================
 {
-  const s = set('moderator', 'The moderator, and See every file', 'Mia is a moderator. Without See every file she sees what is for everyone, what is hers and what is shared with her; Lee\'s Only me files and his file for three other people are not in her list (no row, no count). A quiet notice at the top says why the list is shorter, without saying there is anything hidden. Remove (for files that others added) works only on files she can see. With See every file on, a moderator sees what an owner sees. The permission is a row in Settings, Roles, in the Vault\'s group: off for moderators by default, locked on for owners, and locked off for guests (a guest has no Vault at all).');
+  const s = set('moderator', 'The moderator, and See every file', 'Mia is a moderator. Without See every file she sees what is for everyone, what is hers and what is shared with her; Lee\'s Only me files and his file for three other people are not in her list (no row, no count). Nothing in the Vault says the list is shorter, and the status line says only what she can see. The setting is explained where it lives: the row\'s description in Settings, Roles. Remove (for files that others added) works only on files she can see. With See every file on, a moderator sees what an owner sees. The permission is a row in Settings, Roles, in the Vault\'s group: off for moderators by default, locked on for owners, and locked off for guests (a guest has no Vault at all).');
   const p = pair(s);
-  shot(p, { name: 'A moderator without See every file (the default)', note: 'The notice is the one place the setting shows up in the Vault. Alternative for Thomas: no notice, only a quiet word in the status line.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'mia', banner: { text: `You see the files shared with you. See every file is off for moderators in this ${W.space}.`, icon: 'circle-info' } }); box.append(v.hold); return {}; } });
-  shot(p, { name: 'A moderator with See every file on', note: 'Like the owner\'s list, with the same "Not shared with you" marks. No notice.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'mia-all' }); box.append(v.hold); return {}; } });
+  shot(p, { name: 'A moderator without See every file (the default)', note: 'No notice and no word in the status line: the list just is what she can see.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'mia' }); box.append(v.hold); return {}; } });
+  shot(p, { name: 'A moderator with See every file on', note: 'Like the owner\'s list, with the same "Not shared with you" marks.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'mia-all' }); box.append(v.hold); return {}; } });
   const wrap = h('section', 'pp-state');
   wrap.append(h('h4', 'pp-state-name', 'Settings, Roles: the new row'));
-  wrap.append(h('p', 'pp-state-note', 'The Vault\'s group in the roles grid (the same grid as admin.js draws): one new row, See every file. Owners are locked on, as in every row. Guests are locked off, with the reason in the tooltip. The other rows are today\'s.'));
+  wrap.append(h('p', 'pp-state-note', 'The Vault\'s group in the roles grid (the same grid as admin.js draws): one new row, See every file. Owners are locked on, as in every row. Guests are locked off, with the reason in the tooltip. The row\'s description is the one place that explains the setting. The other rows are today\'s.'));
   const page = h('div', 'vp-page');
   const tw = h('div', 'sdk-table-wrap');
   const tb = h('table', 'sdk-table');
@@ -511,13 +533,13 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const grp = h('tr', 'sdk-table-group'); const gh = h('th', '', W.module); gh.scope = 'colgroup'; gh.colSpan = 5; grp.append(gh); tbody.append(grp);
   const PERMS = [
     ["See the trip's files", [1, 1, 1, 0]], ['Add files', [1, 1, 1, 0]], ['Download files', [1, 1, 1, 0]], ['Remove files other people added', [1, 1, 0, 0]], ['Make share links', [1, 1, 0, 0]],
-    ['See every file', [1, 0, 0, 0], true],
+    ['See every file', [1, 0, 0, 0], true, 'Lets this role open files that were not shared with them. Off by default for moderators; owners always can.'],
   ];
-  for (const [label, on, isNew] of PERMS) {
+  for (const [label, on, isNew, desc] of PERMS) {
     const tr = h('tr');
     if (isNew) tr.id = 'vp-see-all';
     const th = h('th', '', label); th.scope = 'row';
-    if (isNew) th.append(h('span', 'vp-new', ' New'));
+    if (isNew) { th.append(h('span', 'vp-new', ' New'), h('span', 'vp-desc', desc)); th.title = desc; }
     tr.append(th);
     ['owner', 'moderator', 'member', 'guest'].forEach((role, i) => {
       const td = h('td', 'is-center');
@@ -525,6 +547,7 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
       c.setAttribute('aria-label', `${label}, ${role[0].toUpperCase()}${role.slice(1)}`);
       if (role === 'owner') { c.disabled = true; c.title = 'Owners can always do this'; }
       if (role === 'guest' && isNew) { c.disabled = true; c.title = 'Guests can never do this'; }
+      if (isNew && role !== 'guest' && role !== 'owner') c.title = desc;
       td.append(c); tr.append(td);
     });
     tbody.append(tr);
@@ -577,23 +600,23 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
     for (const [icon, text] of rows) { const li = h('li'); li.append(fa(icon), h('span', '', text)); ul.append(li); }
     return ul;
   };
-  const ask = (rows, lead) => {
-    const x = sheet({ title: 'Change who can see this file?', width: 'confirm' });
+  const ask = (rows, lead, action) => {
+    const x = sheet({ title: 'Change who can see this file?', width: 'confirm', kind: 'destructive' });
     x.body.append(h('p', '', lead), effects(rows));
-    x.foot.append(cancelBtn(), okBtn('Change who can see it', 'btn btn-primary'));
+    x.foot.append(cancelBtn(), okBtn(action, 'btn btn-danger'));
     return x.dlg;
   };
   const p = pair(s);
   const over = (name, note, dlg) => shot(p, { name, note, h: 720, build: (box) => { const v = vaultFrame({ viewer: 'lee' }); box.append(v.hold); return { after: () => heldDialog(v.hold, dlg()) }; } });
-  over('Everyone to Only me, with links and a share link', 'Hotel Roma booking.pdf, added by Lee.', () => ask([
-    ['users', '13 people can no longer see the file.'],
-    ['link', 'Linked from 2 places: Hotel Roma in the Itinerary and Hotels near Termini in Research. For those 13 people the links show hidden.'],
+  over('Everyone to Only me, with links and a share link', 'Hotel Roma booking.pdf, added by Lee. The count leaves out the owners, who keep access, and Lee.', () => ask([
+    ['users', `${peopleWord(LOSE)} can no longer see the file.`],
+    ['link', `Linked from 2 places: Hotel Roma in the Itinerary and Hotels near Termini in Research. For those ${LOSE} people the links show hidden.`],
     ['share-nodes', 'In 1 share link, "Rome, October", made by Mia. It ends, because Mia can no longer see the file.'],
-  ], 'Hotel Roma booking.pdf will be seen only by you and the owners.'));
+  ], 'Hotel Roma booking.pdf will be seen only by you and the owners.', 'Make it only me'));
   over('Chosen people to fewer people, with a link', 'Trevi fountain.jpg, added by Lee. No share link, so one line less.', () => ask([
     ['users', 'Ben and Sam can no longer see the file.'],
     ['link', 'Linked from 1 place: Day 3 in the Itinerary. For Ben and Sam the link shows hidden.'],
-  ], 'Trevi fountain.jpg will be seen by you, the owners and Ana.'));
+  ], 'Trevi fountain.jpg will be seen by you, the owners and Ana.', 'Remove those people'));
 }
 
 // ---- jump list, dock ----

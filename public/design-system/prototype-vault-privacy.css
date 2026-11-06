@@ -5,7 +5,9 @@
 /* ---- the mark on a row: the adder's own files that are not for everyone, and the owner's "Not shared with you" ---- */
 .vp-mark { color: var(--vt-dim); white-space: nowrap; }
 .vp-mark > i { font-size: var(--text-11); }
-.vp-mark[data-kind="rights"] { color: var(--text-muted); }
+.vp-mark[data-kind="rights"] { color: var(--vp-dim); }
+/* Small quiet words that still pass 4.5 to 1 (--text-muted alone does not in the two light themes). */
+:host, .vp, .vt-hold, .vt-sheet { --vp-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); }
 
 /* ---- Add files: Who can see this ---- */
 .vp-who { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -13,6 +15,8 @@
 .vp-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .vp-names { color: var(--text-primary); font-size: var(--text-13); overflow-wrap: anywhere; min-width: 0; }
 .vp-line { overflow-wrap: anywhere; }
+.vp-who .vp-label { color: var(--vp-dim); }
+.vp-pick[hidden] { display: none; }
 
 /* ---- the file window's Info ---- */
 .vp-who-info { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--edge-hairline); }
@@ -21,19 +25,21 @@
 .vp-namelist { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; font-size: var(--text-13); }
 .vp-namelist > li { display: flex; align-items: center; gap: var(--space-2); }
 .vp-readonly { margin: 0; font-size: var(--text-13); }
+.vp-who-info.vp-after { padding: var(--space-3) 0 0; border-bottom: 0; border-top: 1px solid var(--edge-hairline); }
 .vp-rights { margin-bottom: var(--space-1); }
 
 /* ---- the people picker (a dialog) ---- */
 .vp-pickbody { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .vp-chosen-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.vp-count { color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; }
+.vp-count { color: var(--vp-dim); font-size: var(--text-13); font-variant-numeric: tabular-nums; }
 .vp-chosen { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); max-height: 92px; overflow: auto; }
 .vp-chosen .sdk-avatar { flex: none; }
 .vp-chosen :is(.sdk-chip-tag, .sdk-chip-removable) { max-width: 100%; }
 .vp-people { display: flex; flex-direction: column; gap: var(--space-1); max-height: 248px; overflow: auto; padding: 0; }
 .vp-person { align-items: center; }
 .vp-person .sdk-avatar { flex: none; }
-.vp-role { margin-left: auto; color: var(--text-muted); font-size: var(--text-12); }
+.vp-locked { cursor: default; }
+.vp-role { margin-left: auto; color: var(--vp-dim); font-size: var(--text-12); }
 .vp-limit[hidden] { display: none; }
 
 /* ---- the share dialog's restriction line, the question's effects ---- */
@@ -45,7 +51,8 @@
 /* ---- the Roles excerpt ---- */
 .vp-page { display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; max-width: 760px; padding: var(--pad-card); border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-panel); }
 .vp-page-title { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
-.vp-new { margin-left: var(--space-1); color: var(--text-muted); font-size: var(--text-12); font-weight: var(--weight-strong); text-transform: uppercase; letter-spacing: var(--ls-label); }
+.vp-desc { display: block; max-width: 46ch; margin-top: var(--space-1); color: var(--vp-dim); font-size: var(--text-12); font-weight: var(--weight-regular); }
+.vp-new { margin-left: var(--space-1); color: var(--vp-dim); font-size: var(--text-12); font-weight: var(--weight-strong); text-transform: uppercase; letter-spacing: var(--ls-label); }
 .vp-page .sdk-table .is-center { text-align: center; }
 .vp-page .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
