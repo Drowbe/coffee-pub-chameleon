@@ -7340,7 +7340,14 @@ app.post('/api/objects/links', (req, res) => {
   for (const to of (Array.isArray(req.body?.to) ? req.body.to : []).slice(0, 20)) {
     if (to && to.scope === 'person') continue; // a shared link never points into someone's private data
     if (only !== null && !(to && to.kind === only)) return res.status(400).json({ error: `every link must be to a ${only}` });
-    if (mode === 'remove') { if (refShape(to)) tos.push(to); continue; } // taking a link out needs no sight of what it pointed at
+    if (mode === 'remove') {
+      // Taking a link out needs no sight of what it pointed at, except a library file hidden from this person: they can't
+      // take out a link to it, and it answers as a file that is not there (plan-vault-privacy.md).
+      if (!refShape(to)) continue;
+      if (isLibraryFileRef(to) && held.some((h) => objectKey(h) === objectKey(to)) && !refFileSeen(who, to, true)) return res.status(404).json({ error: NO_SUCH_FILE });
+      tos.push(to);
+      continue;
+    }
     try {
       resolveRef(who, to, asker);
       tos.push(to);
@@ -7364,7 +7371,9 @@ app.post('/api/objects/links', (req, res) => {
     }
   }
   moduleLinks.set(from, tos, who.user?.key || 'guest', only, mode);
-  res.json({ links: mode === 'replace' ? tos.length : moduleLinks.from(from).filter((l) => l.kind === only).length });
+  // Only the links this person can see are counted.
+  const counted = mode === 'replace' ? tos : moduleLinks.from(from).filter((l) => l.kind === only);
+  res.json({ links: counted.filter((l) => !isLibraryFileRef(l) || refFileSeen(who, l, true)).length });
 });
 
 // What points at an item (`dir=to`, for the module that owns it, if it shows backlinks) or what it
@@ -8398,16 +8407,25 @@ function fileSight(who, spaceId, moduleId) {
   };
 }
 const fileVisible = (who, spaceId, moduleId, r) => fileSight(who, spaceId, moduleId)(r);
+// A pointer to a library file, and whether this viewer may know of it: they see the file's record as it is now. A file
+// that is gone answers `whenGone` (a link to it reads "File removed" for those who could see it; a live tell leaves it out).
+const isLibraryFileRef = (ref) => Boolean(ref) && ref.kind === 'file' && ref.scope === 'space' && Boolean(modules.enabled(ref.module)?.manifest.library);
+function refFileSeen(who, ref, whenGone) {
+  const r = vault.get(ref.module, ref.space, ref.id);
+  return r ? fileVisible(who, ref.space, ref.module, r) : whenGone;
+}
 // Who may change who sees a file: the person who added it, an owner or the admin. Nobody else, whatever their role.
 const fileManageable = (who, r) => Boolean(who && who.user && r && (r.by === who.user.key || hasOwnerRights(who.user)));
 // The visibility a request asks for, checked: { visibility, people } or { error } (one sentence, a 400). `people` comes as
 // a list of user keys or one text of keys split by commas; each must be a member of the space now, at most PEOPLE_MAX.
 function askedVisibility(rawVisibility, rawPeople, space) {
-  const visibility = rawVisibility === undefined || rawVisibility === null || rawVisibility === '' ? 'everyone' : rawVisibility;
+  // Only a missing field means "not asked"; null, empty or any other shape is refused, never read as a default (a private
+  // file is not published by a request that is merely odd). Only an exact word counts: no padding, no capitals.
+  const visibility = rawVisibility === undefined ? 'everyone' : rawVisibility;
   if (typeof visibility !== 'string' || !VISIBILITIES.includes(visibility)) return { error: 'Who can see a file is everyone, only-me or people.' };
-  const given = rawPeople === undefined || rawPeople === null || rawPeople === '' ? [] : rawPeople;
+  const given = rawPeople === undefined ? [] : rawPeople;
   const list = typeof given === 'string' ? given.split(',').map((k) => k.trim()).filter(Boolean) : given;
-  if (!Array.isArray(list) || list.some((k) => typeof k !== 'string')) return { error: 'People are a list of people\'s keys.' };
+  if (!Array.isArray(list) || list.some((k) => typeof k !== 'string') || (typeof given === 'string' && !given.trim())) return { error: 'People are a list of people\'s keys.' };
   if (visibility !== 'people') return list.length ? { error: 'People are chosen only when a file is shown to chosen people.' } : { visibility, people: [] };
   const people = [...new Set(list)];
   if (!people.length) return { error: 'Choose the people who can see it.' };
@@ -10220,7 +10238,12 @@ app.get('/api/modules/stream', (req, res) => {
   const onLinks = listenIn(env, ({ refs, file }) => {
     // A removed file's links: told only to a viewer who could see that file (plan-vault-privacy.md).
     if (file && !fileVisible(who, file.spaceId, file.module, file.record)) return;
+    // A pointer to a library file goes only to a viewer who can see that file as it is now (plan-vault-privacy.md); the
+    // holder's own pointer goes as before.
     for (const ref of refs) {
+      // (A removed file's own pointer was checked against its last record above.)
+      const removed = file && ref.module === file.module && ref.space === file.spaceId && ref.id === file.record.id;
+      if (!removed && isLibraryFileRef(ref) && !refFileSeen(who, ref, false)) continue;
       for (const v of views) {
         const at = place(v, ref.module, refScopeKey(ref));
         if (at) send(v, 'links', ref, { module: ref.module, ref, ...at });

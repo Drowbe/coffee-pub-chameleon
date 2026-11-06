@@ -57,7 +57,7 @@ const expect = (cond, what) => { if (cond) passed += 1; else failures.push(what)
     let last = null;
     for (const m of before.matchAll(fn)) last = m;
     const where = last ? (last[1] || `${last[2]} ${last[3]}`) : '?';
-    const ok = ['libraryFile', 'objectValue'].includes(where) || /^patch \/api\/modules\/:id\/library\/:fid$/.test(where);
+    const ok = ['libraryFile', 'objectValue', 'refFileSeen'].includes(where) || /^patch \/api\/modules\/:id\/library\/:fid$/.test(where);
     expect(ok, `part 1: server/index.js:${g.at} reads a library record outside the door (${where})`);
   }
   for (const x of src.split('\n').map((line, i) => ({ line, at: i + 1 })).filter((y) => /\bvault\.list\(/.test(y.line))) {
@@ -498,6 +498,82 @@ try {
     expect(held === 5, `a member who replaces the links keeps the four files they can't see (${held} left)`);
     const add = await as(people.nol.cookie, 'POST', '/api/objects/links', { module: 'holder', from: { ...row, id: 'r2' }, to: [ref(files['only-me'].id)], kind: 'file', op: 'add' });
     expect(add.json?.links === 0, 'nobody links a file they can\'t see');
+  }
+  // Who sees a change: only a strict word changes it (null, empty, other types, padded or capitalised words are refused and
+  // leave the record as it was), on a change and on an upload.
+  {
+    const mine = must(await add(people.ada.cookie, 'strict-probe.jpg', '&visibility=only-me'), 201, 'add the strict probe').json.file;
+    const url = `/api/modules/vault/library/${mine.id}?space=${A.id}`;
+    const viewOf = async () => (await as(people.ada.cookie, 'GET', lib())).json.files.find((x) => x.id === mine.id);
+    const odd = [['visibility null', { visibility: null }], ['visibility empty', { visibility: '' }], ['visibility a number', { visibility: 0 }], ['visibility a list', { visibility: [] }], ['visibility an object', { visibility: {} }], ['visibility Everyone', { visibility: 'Everyone' }], ['visibility padded before', { visibility: ' only-me' }], ['visibility padded after', { visibility: 'everyone ' }], ['people null', { people: null }], ['people empty', { people: '' }], ['people a number', { people: 5 }], ['people null with people', { visibility: 'people', people: null }], ['people a list of numbers', { visibility: 'people', people: [1] }]];
+    for (const [what, b] of odd) {
+      const r = await as(people.ada.cookie, 'PATCH', url, b);
+      const now = await viewOf();
+      expect(r.status === 400 && typeof r.json?.error === 'string', `a change with ${what} answered ${r.status} ${r.text} (wanted 400)`);
+      expect(now && now.visibility === 'only-me' && !('people' in now), `a change with ${what} left the file as ${JSON.stringify(now && [now.visibility, now.people])}`);
+    }
+    const up = await add(people.ada.cookie, 'strict-empty.jpg', '&visibility=');
+    expect(up.status === 400, `an upload with an empty visibility answered ${up.status}`);
+    must(await as(people.ada.cookie, 'DELETE', url), 200, 'remove the strict probe');
+  }
+  // The links of a hidden file: its id reaches no stream of someone who can't see it, whichever way it was linked or unlinked;
+  // the holder's own pointer still reaches everyone who can see the holder; a file someone can see is told as before.
+  {
+    must(await as(admin, 'PUT', `/api/modules/holder/data/row:r3?scope=space&space=${A.id}`, { value: { title: 'Hotel' } }), 200, 'row r3');
+    const row3 = { ...row, id: 'r3' };
+    const hid = files['only-me'].id;
+    const vis = files.everyone.id;
+    const ppl = files.people.id;
+    const link = (cookie, to, op) => as(cookie, 'POST', '/api/objects/links', { module: 'holder', from: row3, to, kind: 'file', ...(op ? { op } : {}) });
+    const marks = Object.fromEntries(Object.entries(live).map(([n, p]) => [n, p.map((s) => s.events.length)]));
+    must(await link(people.ada.cookie, [ref(hid)], 'add'), 200, 'add the hidden file');
+    must(await link(people.ada.cookie, [ref(vis)], 'add'), 200, 'add the visible file');
+    must(await link(people.ada.cookie, [ref(hid)], 'remove'), 200, 'remove the hidden file');
+    must(await link(people.ada.cookie, [ref(hid)], 'add'), 200, 'add the hidden file again');
+    must(await link(people.ada.cookie, [ref(vis)]), 200, 'replace with the visible file');
+    await sleep(500);
+    for (const [n, pair] of Object.entries(live)) {
+      const after = pair.map((s, i) => s.events.slice(marks[n][i]));
+      const told = after[0].filter((e) => e.event === 'links');
+      if (!SEES[n].includes('only-me')) expect(!after.flat().some((e) => e.raw.includes(hid)), `${n}: a stream carried the id of a hidden file that was linked and unlinked`);
+      if (SEES[n].includes('only-me')) expect(told.some((e) => e.data.ref?.id === hid), `${n}: was not told of a file it can see being linked`);
+      if (SEES[n].includes('everyone')) {
+        expect(told.some((e) => e.data.ref?.id === 'r3'), `${n}: was not told of the object a hidden file was linked to`);
+        expect(told.some((e) => e.data.ref?.id === vis), `${n}: was not told of a visible file being linked`);
+      }
+    }
+    // What a viewer is counted and may take out: only what they can see.
+    must(await link(people.ada.cookie, [ref(hid), ref(ppl)], 'add'), 200, 'add the hidden and the listed file');
+    const heldNow = async () => (await as(admin, 'GET', `/api/objects/links?from=holder&dir=from&ref=${encodeURIComponent(JSON.stringify(row3))}`)).json.summaries.filter((s) => s.ref.module === 'vault').map((s) => s.ref.id).sort();
+    expect(JSON.stringify(await heldNow()) === JSON.stringify([vis, hid, ppl].sort()), `the object holds the three files: ${JSON.stringify(await heldNow())}`);
+    const count = await link(people.nol.cookie, [ref(vis)], 'add');
+    expect(count.status === 200 && count.json?.links === 1, `a member who sees one of three linked files is told ${count.text} (wanted links 1)`);
+    const countLis = await link(people.lis.cookie, [ref(vis)], 'add');
+    expect(countLis.status === 200 && countLis.json?.links === 2, `a member who sees two of three is told ${countLis.text} (wanted links 2)`);
+    const gone = await link(people.nol.cookie, [ref(hid)], 'remove');
+    expect(gone.status === 404 && gone.json?.error === 'There is no such file.', `taking out a link to a hidden file answered ${gone.status} ${gone.text} (wanted 404 as missing)`);
+    expect((await heldNow()).includes(hid), 'a member who cannot see a file took its link off an object');
+    const goneBoth = await link(people.nol.cookie, [ref(vis), ref(hid)], 'remove');
+    expect(goneBoth.status === 404 && (await heldNow()).includes(vis), `a removal naming a hidden file changed something anyway (${goneBoth.status})`);
+    const mine = await link(people.nol.cookie, [ref(vis)], 'remove');
+    expect(mine.status === 200 && mine.json?.links === 0 && !(await heldNow()).includes(vis), `taking out a visible link answered ${mine.text}`);
+    const own = await link(people.ada.cookie, [ref(hid)], 'remove');
+    expect(own.status === 200 && !(await heldNow()).includes(hid), `the adder taking out their own file's link answered ${own.status}`);
+    // The share links: one holding only files hidden from someone is not theirs to see or turn off.
+    const sh = (await as(people.ola.cookie, 'POST', `/api/modules/vault/library/shares?space=${A.id}`, { name: 'Hidden only', files: [hid] })).json.share;
+    const mixed = (await as(people.ola.cookie, 'POST', `/api/modules/vault/library/shares?space=${A.id}`, { name: 'Mixed', files: [hid, vis] })).json.share;
+    expect(sh && mixed, 'the owner makes two share links');
+    const list = await as(people.mod.cookie, 'GET', `/api/modules/vault/library/shares?space=${A.id}`);
+    expect(!list.text.includes(sh.id) && !list.text.includes('Hidden only') && !list.text.includes(hid), `a moderator's share list shows a link of hidden files: ${list.text.slice(0, 200)}`);
+    const seenMixed = list.json.shares.find((s) => s.id === mixed.id);
+    expect(seenMixed && JSON.stringify(seenMixed.files) === JSON.stringify([vis]), `a link of a hidden and a visible file lists only the visible: ${JSON.stringify(seenMixed)}`);
+    const off = await as(people.mod.cookie, 'DELETE', `/api/modules/vault/library/shares/${sh.id}?space=${A.id}`);
+    expect(off.status === 404 && off.json?.error === 'There is no such share link.', `turning off a link of hidden files answered ${off.status} ${off.text} (wanted 404 as missing)`);
+    const edit = await as(people.mod.cookie, 'PATCH', `/api/modules/vault/library/shares/${sh.id}?space=${A.id}`, { name: 'Renamed' });
+    expect(edit.status === 404, `changing a link of hidden files answered ${edit.status} (wanted 404 as missing)`);
+    const ownerList = await as(people.ola.cookie, 'GET', `/api/modules/vault/library/shares?space=${A.id}`);
+    expect(ownerList.json.shares.some((s) => s.id === sh.id && s.name === 'Hidden only'), 'the owner still sees and keeps the link of hidden files');
+    for (const s of [sh, mixed]) await as(people.ola.cookie, 'DELETE', `/api/modules/vault/library/shares/${s.id}?space=${A.id}`);
   }
   // Removing: a hidden file's links are told only to those who could see it; no activity line for a file not everyone sees.
   {
