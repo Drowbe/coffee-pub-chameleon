@@ -71,6 +71,7 @@ const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROF
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
 const { buildEnvironment, flushEnvironment, setAsideEnvironment } = require('./environment');
+const { exportEntries } = require('./environment-export');
 const { HostRegistry, HostError, cleanSlug, reservedSentence } = require('./host-registry');
 const { domainSettings } = require('./domains');
 const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, MigrationError, recordedParts, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
@@ -10392,13 +10393,13 @@ app.get('/api/environment', requireOwner, async (req, res) => {
     },
   });
 });
-// The environment's own copy of its data, the same zip the host console's own backup makes -- any environment admin
-// may ask for it, not only a host admin (plan-environments.md, "Phase 2": Download a copy).
+// The environment's own copy of its data (plan-environments.md, "Phase 2": Download a copy): the host console's backup
+// less every sign-in secret, link and sealed value (server/environment-export.js says which); an owner may ask for it.
 app.get('/api/environment/export', requireOwner, (req, res) => {
   if (!BASE_DOMAIN) return res.status(404).json({ error: 'not hosted' });
   const env = currentEnvironment();
   flushEnvironment(env); // every debounced write on disk before it is zipped
-  const zip = zipFiles(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : []);
+  const zip = zipFiles(exportEntries(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : [], env.store.data));
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${env.slug}-export.zip"` });
   res.send(zip);
 });
