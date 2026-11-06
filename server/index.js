@@ -30,7 +30,7 @@ const { RegionCutJobs, RegionCutError } = require('./region-cut');
 const { pmtilesInfo, pmtilesWhyNot } = require('./pmtiles-header');
 const { ModuleUploads } = require('./module-uploads');
 const { inspectHead } = require('./image-clean');
-const { cleanName, nameForType, folderBytes } = require('./vault-store');
+const { cleanName, nameForType, folderBytes, VISIBILITIES, PEOPLE_MAX } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const pdfViewer = require('./pdf-viewer');
@@ -6760,23 +6760,32 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
   if (manifest.library && !who.user) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
   if (shutFromGuests(who, manifest, scope === 'space' ? String(space) : null)) throw Object.assign(refError(403, guestsShutRefusal(manifest)), { unseen: true });
   // `hide`: the provider's fields this viewer may not see there (hiddenFor), left out of every summary made from it.
-  return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
+  // `sees`: for a library's files, which of them this viewer may see there (fileSight); objectRows and objectValue ask it.
+  return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) }, ...(manifest.library && produce.kind === 'file' && scope === 'space' ? { sees: fileSight(who, String(space), manifest.id) } : {}) };
 }
 
 // A library module's files are its objects of kind `file` (plan-attachments-vault.md, section 4): their records are in
 // DATA_DIR/modules/<id>/library/, not in the module's data, so every reader of "the objects of a kind" goes through these.
 const isFileKind = (manifest, produce) => Boolean(manifest.library) && produce.kind === 'file';
-// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records.
+// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records
+// this viewer may see (a file hidden from them is not a row: search, the AI's pool and every list leave it out).
 function objectRows(at, prefix) {
   if (isFileKind(at.manifest, at.produce)) {
-    if (at.ref.scope !== 'space') return [];
-    return vault.list(at.manifest.id, at.ref.space).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
+    if (at.ref.scope !== 'space' || !at.sees) return [];
+    return vault.list(at.manifest.id, at.ref.space).filter(at.sees).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
   }
   return moduleData.list(at.manifest.id, at.scopeKey, prefix);
 }
+// A library file that is there but hidden from this viewer (plan-vault-privacy.md, decision 7): 403 and unseen, so a link
+// to it reads hidden, never gone, and nothing of it is said. `hiddenFile` lets a link that holds it keep it.
+const HIDDEN_FILE = 'that file is not shared with you';
 // One stored object's value (a library's record for a file), or null.
 function objectValue(at, id) {
-  if (isFileKind(at.manifest, at.produce)) return at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+  if (isFileKind(at.manifest, at.produce)) {
+    const r = at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+    if (r && !(at.sees && at.sees(r))) throw Object.assign(refError(403, HIDDEN_FILE), { unseen: true, hiddenFile: true });
+    return r;
+  }
   const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(id)));
   return item ? item.value : null;
 }
@@ -7339,6 +7348,19 @@ app.post('/api/objects/links', (req, res) => {
       if (!err.status) throw err; // one that cannot be seen or is gone is left out
       // A file that was linked and is now removed keeps its link, which reads "File removed" (plan-attachments-vault.md, decision 2).
       if (err.status === 404 && refShape(to) && held.some((h) => objectKey(h) === objectKey(to)) && modules.enabled(to.module)?.manifest.library && to.kind === 'file') tos.push(to);
+    }
+  }
+  // A link this person can't see (a file not shared with them) is not theirs to drop: replacing the object's links keeps
+  // it, so a booking keeps the file someone else attached. Only someone who can see it, or names it in op remove, takes it out.
+  if (mode === 'replace') {
+    for (const h of held) {
+      if ((only !== null && h.kind !== only) || tos.some((t) => refShape(t) && objectKey(t) === objectKey(h))) continue;
+      try {
+        resolveRef(who, h, asker);
+      } catch (err) {
+        if (!err.status) throw err;
+        if (err.hiddenFile) tos.push(h);
+      }
     }
   }
   moduleLinks.set(from, tos, who.user?.key || 'guest', only, mode);
@@ -8342,7 +8364,56 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   const perms = modulePerms(who, space.id);
   const can = (key) => Boolean(perms[`module.${manifest.id}.${key}`]);
   if (need && !can(need)) return refuse(403, `Your role can't do that in ${name}.`);
-  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space) };
+  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space), sees: fileSight(who, space.id, manifest.id) };
+}
+
+// --- who may see a library file (documentation/plans/plan-vault-privacy.md) --------------------------------------------
+// The one place the rule is written. A record's `visibility` is 'everyone' (also when it has none), 'only-me' or
+// 'people' (with `people`, user keys); anything else is read as 'only-me', so a damaged record shows to fewer people,
+// never more. `fileSight(who, spaceId, moduleId)` answers the test for one viewer in one space, worked out once for a
+// whole list; `fileVisible` asks it for one record. A file shows to:
+//   1. the person who added it;
+//   2. an owner or the admin (hasOwnerRights);
+//   and, for a current member of the space only:
+//   3. everyone, when it is 'everyone';
+//   4. someone whose role there has the module's `see_all` ("See every file");
+//   5. someone listed in `people`, when it is 'people' (a listed key that is not a member now grants nothing).
+// Nobody else: a signed-out visitor, the access key and a guest see no file. Every route, the object chokepoint and the
+// live streams ask this; a file someone can't see answers as one that is not there (library routes) or as hidden (objects).
+const visibilityOf = (r) => (r.visibility === undefined || r.visibility === 'everyone' ? 'everyone' : r.visibility === 'people' ? 'people' : 'only-me');
+function fileSight(who, spaceId, moduleId) {
+  const user = who && !who.keyed ? who.user : null;
+  if (!user) return () => false;
+  if (hasOwnerRights(user)) return (r) => Boolean(r);
+  const space = store.spaceById(String(spaceId || ''));
+  const member = Boolean(space && space.members.includes(user.key));
+  const seesAll = member && Boolean(store.spacePermissions(user.key, space.id)[`module.${moduleId}.see_all`]);
+  return (r) => {
+    if (!r) return false;
+    if (r.by === user.key) return true;
+    if (!member) return false;
+    const vis = visibilityOf(r);
+    if (vis === 'everyone' || seesAll) return true;
+    return vis === 'people' && Array.isArray(r.people) && r.people.includes(user.key);
+  };
+}
+const fileVisible = (who, spaceId, moduleId, r) => fileSight(who, spaceId, moduleId)(r);
+// Who may change who sees a file: the person who added it, an owner or the admin. Nobody else, whatever their role.
+const fileManageable = (who, r) => Boolean(who && who.user && r && (r.by === who.user.key || hasOwnerRights(who.user)));
+// The visibility a request asks for, checked: { visibility, people } or { error } (one sentence, a 400). `people` comes as
+// a list of user keys or one text of keys split by commas; each must be a member of the space now, at most PEOPLE_MAX.
+function askedVisibility(rawVisibility, rawPeople, space) {
+  const visibility = rawVisibility === undefined || rawVisibility === null || rawVisibility === '' ? 'everyone' : rawVisibility;
+  if (typeof visibility !== 'string' || !VISIBILITIES.includes(visibility)) return { error: 'Who can see a file is everyone, only-me or people.' };
+  const given = rawPeople === undefined || rawPeople === null || rawPeople === '' ? [] : rawPeople;
+  const list = typeof given === 'string' ? given.split(',').map((k) => k.trim()).filter(Boolean) : given;
+  if (!Array.isArray(list) || list.some((k) => typeof k !== 'string')) return { error: 'People are a list of people\'s keys.' };
+  if (visibility !== 'people') return list.length ? { error: 'People are chosen only when a file is shown to chosen people.' } : { visibility, people: [] };
+  const people = [...new Set(list)];
+  if (!people.length) return { error: 'Choose the people who can see it.' };
+  if (people.length > PEOPLE_MAX) return { error: `A file can be shown to at most ${PEOPLE_MAX} people.` };
+  if (people.some((k) => !space.members.includes(k))) return { error: `Everyone chosen must be in this ${word('space')}.` };
+  return { visibility, people };
 }
 // Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
 // permission in `keys` of the module there. The public routes ask this on every open.
@@ -8356,7 +8427,8 @@ function shareMakerCan(userKey, spaceId, moduleId, keys) {
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
 // `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
-const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}) });
+// `visibility` and `people` only for someone who may change them (fileManageable): nobody else learns who else sees a file.
+const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}), ...(fileManageable(ctx.who, r) ? { visibility: visibilityOf(r), ...(visibilityOf(r) === 'people' ? { people: [...(r.people || [])] } : {}) } : {}) });
 // The owner's lower quotas, when the module declares them as `number` settings for the environment: spaceMaxGb and
 // personMaxGb, in GB; 0 or unset leaves the server's.
 function libraryQuotas(manifest) {
@@ -8551,25 +8623,32 @@ function receiveUpload(req, part, declared, onHead, onSlow = () => {}, handle = 
   });
 }
 
-// GET /api/modules/:id/library?space= -- the space's files, and what they use of the space's quota.
+// GET /api/modules/:id/library?space= -- the space's files this person may see, and what those use of the space's quota
+// (the bytes of the files they see only: a file hidden from them moves no number they are shown; the quota itself is
+// still kept on the space's real total).
 app.get('/api/modules/:id/library', (req, res) => {
   const ctx = libraryAccess(req, res, 'view');
   if (!ctx) return;
   const present = vault.present(ctx.spaceId);
   // `shared` (in a share link that still opens) only for someone who may make share links.
   const shared = ctx.can('share') ? vault.sharedFileIds(ctx.manifest.id, ctx.spaceId) : null;
-  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => (shared ? { ...fileView(ctx, r, present), shared: shared.has(r.id) } : fileView(ctx, r, present)));
-  res.json({ files, usage: { bytes: vault.usage().spaces.get(ctx.spaceId) || 0, maxBytes: libraryQuotas(ctx.manifest).space } });
+  const seen = vault.list(ctx.manifest.id, ctx.spaceId).filter(ctx.sees);
+  const files = seen.map((r) => (shared ? { ...fileView(ctx, r, present), shared: shared.has(r.id) } : fileView(ctx, r, present)));
+  res.json({ files, usage: { bytes: seen.reduce((sum, r) => sum + vault.bytesOf(r), 0), maxBytes: libraryQuotas(ctx.manifest).space } });
 });
 
-// POST /api/modules/:id/library?space=&name=[&keepPosition=1] -- add one file, the raw body with its Content-Length.
-// A picture loses where it was taken unless keepPosition=1 (the person's choice, "Remove where it was taken", on by default).
+// POST /api/modules/:id/library?space=&name=[&keepPosition=1][&visibility=everyone|only-me|people&people=<key>,<key>] --
+// add one file, the raw body with its Content-Length. A picture loses where it was taken unless keepPosition=1 (the
+// person's choice, "Remove where it was taken", on by default). Who may see it is everyone unless `visibility` says
+// otherwise (askedVisibility; `people` members of the space, at most 200).
 app.post('/api/modules/:id/library', async (req, res) => {
   const refuse = (status, error, headers = {}) => { if (!res.headersSent) res.set(headers).status(status).json({ error }); dropUploadBody(req); };
   const ctx = libraryAccess(req, res, 'add');
   if (!ctx) return dropUploadBody(req);
   const name = cleanName(req.query.name);
   if (!name) return refuse(400, 'Name the file in ?name=.');
+  const sight = askedVisibility(req.query.visibility, req.query.people, ctx.space);
+  if (sight.error) return refuse(400, sight.error);
   if (req.headers['transfer-encoding'] || !/^\d{1,15}$/.test(String(req.headers['content-length'] || ''))) return refuse(411, 'Send the file with its size (Content-Length).');
   const declared = Number(req.headers['content-length']);
   if (!declared) return refuse(400, 'There is no file in that.');
@@ -8652,7 +8731,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     // (Thomas, 2026-10-30: that overshoot is accepted).
     const fullNow = vaultFullOnDisk(ctx, keys, kept.size);
     if (fullNow) { dropPart(); return refuse(413, fullNow.error); }
-    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null };
+    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null, ...(sight.visibility !== 'everyone' ? { visibility: sight.visibility } : {}), ...(sight.visibility === 'people' ? { people: sight.people } : {}) };
     if (flight.stopped) { dropPart(); return refuse(404, removedWhileArriving); }
     try {
       vault.commit(ctx.manifest.id, ctx.spaceId, part, record);
@@ -8662,7 +8741,8 @@ app.post('/api/modules/:id/library', async (req, res) => {
       return refuse(500, LIBRARY_NOT_SAVED);
     }
     part = null;
-    noteActivity(ctx.manifest.id, `added a file to ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
+    // A file not everyone may see writes no activity line: the line alone would tell the others something was added.
+    if (sight.visibility === 'everyone') noteActivity(ctx.manifest.id, `added a file to ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
     res.status(201).json({ file: fileView(ctx, record) });
   } finally {
     flight.done();
@@ -8697,10 +8777,10 @@ function libraryHeaders(type, name, kind) {
 // If-Range), from disk through the response with its backpressure: a slow reader is sent only as fast as it reads.
 function sendLibraryFile(req, res, thumb) {
   const download = !thumb && req.query.download === '1';
-  const ctx = libraryAccess(req, res, 'view', { file: true });
-  if (!ctx) return;
-  const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r || (thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
+  const found = libraryFile(req, res);
+  if (!found) return;
+  const { ctx, r } = found;
+  if ((thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
   // A PDF kept as download only (decision 18) is sent only as a download (download=1, with `download`); asked for inline
   // it answers 404, with the note the viewer shows, to someone who may see the file at all.
   if (!thumb && !download && r.viewable === false) return res.status(404).json({ error: PDF_DOWNLOAD_ONLY });
@@ -8736,10 +8816,9 @@ app.get('/api/modules/:id/library/:fid/thumb', (req, res) => sendLibraryFile(req
 // a JPEG, PNG or WebP of at most 300 KB, from the person who added the file. Checked and cleaned like a picture.
 app.put('/api/modules/:id/library/:fid/thumb', async (req, res) => {
   const refuse = (status, error, headers = {}) => { if (!res.headersSent) res.set(headers).status(status).json({ error }); dropUploadBody(req); };
-  const ctx = libraryAccess(req, res, 'add', { file: true });
-  if (!ctx) return dropUploadBody(req);
-  const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r) return refuse(404, NO_SUCH_FILE);
+  const found = libraryFile(req, res, 'add');
+  if (!found) return dropUploadBody(req);
+  const { ctx, r } = found;
   if (r.by !== ctx.by) return refuse(403, 'Only the person who added it can give it a small picture.');
   if (r.group !== 'image' && r.group !== 'video') return refuse(400, 'Only pictures and videos have a small picture.');
   if (req.headers['transfer-encoding'] || !/^\d{1,15}$/.test(String(req.headers['content-length'] || ''))) return refuse(411, 'Send the picture with its size (Content-Length).');
@@ -8785,28 +8864,41 @@ app.put('/api/modules/:id/library/:fid/thumb', async (req, res) => {
   res.json({ file: fileView(ctx, vault.putThumb(ctx.manifest.id, ctx.spaceId, r.id, clean.bytes, clean.type)) });
 });
 
-// The file a route names, for someone who may see it, and whether they may change it (its adder, or someone with
-// remove_any); null after the 404.
-function libraryFile(req, res) {
-  const ctx = libraryAccess(req, res, 'view', { file: true });
+// The one door of every route that names a file (`:fid`): the file, for someone who may use the library with `need` and may
+// see that file (fileVisible), and whether they may rename or remove it (its adder, or someone with remove_any) and change
+// who sees it (fileManageable); null after the refusal. A file that is not there and a file hidden from this person get the
+// same answer, byte for byte (404, NO_SUCH_FILE). No route reads a record any other way (tools/check-vault-visibility.mjs).
+function libraryFile(req, res, need = 'view') {
+  const ctx = libraryAccess(req, res, need, { file: true });
   if (!ctx) return null;
   const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r) return void res.status(404).json({ error: NO_SUCH_FILE });
-  return { ctx, r, mayChange: r.by === ctx.by || ctx.can('remove_any') };
+  if (!r || !ctx.sees(r)) return void res.status(404).json({ error: NO_SUCH_FILE });
+  return { ctx, r, mayChange: r.by === ctx.by || ctx.can('remove_any'), manageable: fileManageable(ctx.who, r) };
 }
-// PATCH /api/modules/:id/library/:fid?space= { name } -- rename it (the adder, or remove_any). The name keeps the type's
-// extension. Its small JSON body is read only once that is decided.
+// PATCH /api/modules/:id/library/:fid?space= { name?, visibility?, people? } -- rename it (the adder, or remove_any; the
+// name keeps the type's extension), and change who may see it (the adder, an owner or the admin: askedVisibility). Its
+// JSON body is read only once the file is found; nothing changes unless all of it may.
 app.patch('/api/modules/:id/library/:fid', (req, res, next) => {
   const found = libraryFile(req, res);
   if (!found) return dropUploadBody(req);
-  if (!found.mayChange) { res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can rename it.` }); return dropUploadBody(req); }
+  if (!found.mayChange && !found.manageable) { res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can change it.` }); return dropUploadBody(req); }
   req.libraryFile = found;
   next();
-}, express.json({ limit: '4kb' }), (req, res) => {
-  const { ctx, r } = req.libraryFile;
-  const name = cleanName(req.body?.name);
-  if (!name) return res.status(400).json({ error: 'Give the file a name.' });
-  res.json({ file: fileView(ctx, vault.rename(ctx.manifest.id, ctx.spaceId, r.id, nameForType(name, vaultTypes.TYPES[r.type].exts))) });
+}, express.json({ limit: '16kb' }), (req, res) => {
+  const { ctx, r, mayChange, manageable } = req.libraryFile;
+  const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const renaming = b.name !== undefined;
+  const showing = b.visibility !== undefined || b.people !== undefined;
+  if (!renaming && !showing) return res.status(400).json({ error: 'Give the file a name.' });
+  const name = renaming ? cleanName(b.name) : '';
+  if (renaming && !name) return res.status(400).json({ error: 'Give the file a name.' });
+  if (renaming && !mayChange) return res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can rename it.` });
+  if (showing && !manageable) return res.status(403).json({ error: `Only the person who added it, ${word('owner', { a: true })} or the admin can change who can see it.` });
+  const sight = showing ? askedVisibility(b.visibility === undefined ? visibilityOf(r) : b.visibility, b.people, ctx.space) : null;
+  if (sight && sight.error) return res.status(400).json({ error: sight.error });
+  if (renaming) vault.rename(ctx.manifest.id, ctx.spaceId, r.id, nameForType(name, vaultTypes.TYPES[r.type].exts));
+  if (sight) vault.setVisibility(ctx.manifest.id, ctx.spaceId, r.id, sight);
+  res.json({ file: fileView(ctx, vault.get(ctx.manifest.id, ctx.spaceId, r.id)) });
 });
 // DELETE /api/modules/:id/library/:fid?space= -- remove it: its record, bytes and small picture (the adder, or remove_any).
 // Links to it stay on the objects that hold them, and read "File removed".
@@ -8816,10 +8908,12 @@ app.delete('/api/modules/:id/library/:fid', (req, res) => {
   const { ctx, r, mayChange } = found;
   if (!mayChange) return res.status(403).json({ error: 'Only the person who added it, or someone who may remove other people\'s files, can remove it.' });
   const holders = moduleLinks.to(fileRef(ctx, r.id));
+  const was = { ...r };
   vault.remove(ctx.manifest.id, ctx.spaceId, r.id);
-  // The objects that link to it are told, so their chips read "File removed" at once; their links stay.
-  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))] });
-  noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
+  // The objects that link to it are told, so their chips read "File removed" at once; their links stay. `file` (never
+  // sent) lets each stream tell only the viewers who could see the file.
+  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))], file: { module: ctx.manifest.id, spaceId: ctx.spaceId, record: was } });
+  if (visibilityOf(was) === 'everyone') noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
   res.json({ ok: true });
 });
 // GET /api/modules/:id/library/:fid/uses?space= -- where it is linked: the summaries of the objects this person may see,
@@ -10025,6 +10119,20 @@ function changesText(batch) {
 // loop, by every open stream together: a big Clear or Undo asks for them for each stream and each kind, and they cannot change
 // in between. Dropped at the end of the turn.
 const permsTurns = new Map(); // environment -> "user|space" -> permissions
+// What a library change (vault-store's tell) is to one viewer, by whether they could see the file before it and can see it
+// after (fileVisible, plan-vault-privacy.md): its own op when both, 'removed' when they lose sight of it, 'added' when they
+// gain it, and null -- nothing is sent -- when they could see it neither before nor after, so nobody hears of a hidden
+// file's id, its arrival or its change.
+function libraryOpFor(who, c) {
+  const sight = c.sight || {};
+  const sees = fileSight(who, c.spaceId, c.module);
+  const before = Boolean(sight.before) && sees(sight.before);
+  const after = Boolean(sight.after) && sees(sight.after);
+  if (before && after) return c.op;
+  if (before) return 'removed';
+  if (after) return 'added';
+  return null;
+}
 function permsThisTurn(env, who, spaceId) {
   let turn = permsTurns.get(env);
   if (!turn) {
@@ -10109,7 +10217,9 @@ app.get('/api/modules/stream', (req, res) => {
     }
   });
   // What points at (or from) an item changed: only the pointers go, and the module asks again for what it may see.
-  const onLinks = listenIn(env, ({ refs }) => {
+  const onLinks = listenIn(env, ({ refs, file }) => {
+    // A removed file's links: told only to a viewer who could see that file (plan-vault-privacy.md).
+    if (file && !fileVisible(who, file.spaceId, file.module, file.record)) return;
     for (const ref of refs) {
       for (const v of views) {
         const at = place(v, ref.module, refScopeKey(ref));
@@ -10194,12 +10304,14 @@ app.get('/api/modules/stream', (req, res) => {
   // look again. Only ids and the kind of change go: no name, since a file's name is for those who may read the library.
   const onLibrary = listenIn(env, (c) => {
     if (!who.user) return;
+    const op = libraryOpFor(who, c);
+    if (!op) return;
     const scopeKey = `space:${c.spaceId}`;
     for (const v of views) {
       const at = place(v, c.module, scopeKey);
       if (!at) continue;
       const hearing = [c.module, ...modules.enabledAll().filter((m) => m.manifest.id !== c.module && consumerMayLink(m, c.module, 'file') && place(v, m.manifest.id, scopeKey)).map((m) => m.manifest.id)];
-      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op: c.op, id: c.id, modules: hearing, scope: at.scope });
+      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op, id: c.id, modules: hearing, scope: at.scope });
     }
   });
   vault.on('change', onLibrary);
@@ -10233,6 +10345,7 @@ app.get('/api/modules/:id/events', (req, res) => {
   const ctx = all ? { manifest: all.manifest, scopeKey: null } : moduleAccess(req, res, 'read');
   if (!ctx) return;
   const spaceIds = all ? new Set(all.spaces.map((r) => r.id)) : null;
+  const viewer = ctx.who || moduleViewer(req); // who is listening, for which library files they may hear of
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
@@ -10264,7 +10377,9 @@ app.get('/api/modules/:id/events', (req, res) => {
   const onLibrary = listenIn(env, (c) => {
     if (c.module !== ctx.manifest.id || (ctx.who && !ctx.who.user)) return;
     if (spaceIds ? !spaceIds.has(c.spaceId) : `space:${c.spaceId}` !== ctx.scopeKey) return;
-    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op: c.op, id: c.id })}\n\n`);
+    const op = libraryOpFor(viewer, c);
+    if (!op) return;
+    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op, id: c.id })}\n\n`);
   });
   moduleData.on('change', onChange);
   moduleData.on('changes', onChanges);

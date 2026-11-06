@@ -317,6 +317,24 @@ try {
     assert.equal(louStream.of('library').length, 0, 'an outsider still hears nothing');
   });
 
+  await test('a link to a file not shared with the reader reads hidden, never gone, and says nothing of it (plan-vault-privacy.md)', async () => {
+    const mine = (await add(people.pat.cookie, 'secret-plan.pdf', pdf, 'application/pdf', space.id)).json?.file;
+    assert.ok(mine, 'an only-me file is kept');
+    const set = await as(people.pat.cookie, 'PATCH', `/api/modules/shelf/library/${mine.id}?space=${space.id}`, { visibility: 'only-me' });
+    assert.equal(set.status, 200, set.text);
+    const row = { module: 'holder', kind: 'row', id: '2', scope: 'space', space: space.id };
+    assert.equal((await as(people.pat.cookie, 'POST', '/api/objects/links', { module: 'holder', from: row, to: [ref(mine.id)], kind: 'file', op: 'add' })).json.links, 2, 'its adder links it');
+    const seen = (await resolve(people.sam.cookie, [ref(mine.id)])).json.summaries[0];
+    assert.deepEqual([seen.state, seen.status], ['hidden', 403], 'another member: hidden, not gone');
+    assert.ok(!JSON.stringify(seen).includes('secret-plan'), 'and no name');
+    const from = await as(people.sam.cookie, 'GET', `/api/objects/links?from=holder&dir=from&ref=${encodeURIComponent(JSON.stringify(row))}`);
+    assert.ok(!from.text.includes('secret-plan') && !from.text.includes(mine.id) && !from.json.summaries.some((s) => s.removed), 'the object it is on shows nothing of it to them, not "File removed"');
+    assert.equal((await resolve(people.pat.cookie, [ref(mine.id)])).json.summaries[0].title, 'secret-plan.pdf', 'its adder still sees it');
+    const replaced = await as(people.sam.cookie, 'POST', '/api/objects/links', { module: 'holder', from: row, to: [ref(doc.id)], kind: 'file' });
+    assert.equal(replaced.json.links, 2, 'a reader who replaces the object\'s file links keeps the one they can\'t see');
+    assert.equal((await as(people.pat.cookie, 'DELETE', `/api/modules/shelf/library/${mine.id}?space=${space.id}`)).status, 200);
+  });
+
   await test('the access key and a stranger to the session are refused', async () => {
     assert.equal((await call(server, 'POST', '/api/objects/resolve', { body: { from: 'holder', refs: [ref(doc.id)] } })).status, 401);
   });

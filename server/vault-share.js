@@ -10,7 +10,8 @@
 //   PATCH  /api/modules/:id/library/shares/:sid?space=     { name?, files? }  its maker or an owner; 200 { share }
 //   DELETE /api/modules/:id/library/shares/:sid?space=     Turn off (its maker, an owner or a moderator of the space); 200 { ok: true }
 //   share: { id, name, files: [fid], by: <person key>, at, ends, download, hasPassword, opened }  (`opened`: how many times
-//   its list was read; no address or person is kept). GET /api/modules/:id/library adds `shared: true|false` to each file
+//   its list was read; no address or person is kept). `files` holds only the files the person asking may see
+//   (plan-vault-privacy.md); a file they can't see, named in POST or PATCH, is refused as one that is not there. GET /api/modules/:id/library adds `shared: true|false` to each file
 //   for someone with `share` only.
 // Public (no session; a session cookie that comes along is never read; on a hosted install only on the environment's own
 // host, where only that environment's links open):
@@ -163,12 +164,14 @@ function mountVaultShares(app, deps) {
   const body = (req) => (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {});
 
   const mayTurnOff = (ctx, s) => s.by === ctx.by || ctx.owner || ctx.moderator;
+  // A share as this person is shown it: without the ids of files hidden from them (ctx.sees, the library's one rule).
+  const seenShare = (ctx, s) => ({ ...s, files: s.files.filter((fid) => ctx.sees(vault.get(ctx.manifest.id, ctx.spaceId, fid))) });
 
   app.get('/api/modules/:id/library/shares', (req, res) => {
     const ctx = libraryAccess(req, res, 'share');
     if (!ctx) return;
     // `canTurnOff`: this person may turn that link off (its maker, an owner or this space's moderator).
-    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId).map((s) => ({ ...s, canTurnOff: mayTurnOff(ctx, s) })) });
+    res.json({ shares: vault.listShares(ctx.manifest.id, ctx.spaceId).map((s) => ({ ...seenShare(ctx, s), canTurnOff: mayTurnOff(ctx, s) })) });
   });
 
   app.post('/api/modules/:id/library/shares', shareAccess, smallJson, (req, res) => {
@@ -180,7 +183,7 @@ function mountVaultShares(app, deps) {
     if (b.download === true && !ctx.can('download')) return res.status(403).json({ error: `Your role can't download from ${ctx.name}, so its share links can't allow it.` });
     vault.dropEndedShares(ctx.manifest.id, ctx.spaceId);
     try {
-      const made = vault.createShare(ctx.manifest.id, ctx.spaceId, { name: b.name, files: b.files, by: ctx.by, days: b.days === undefined ? 7 : b.days, download: b.download === true, password: b.password || '' });
+      const made = vault.createShare(ctx.manifest.id, ctx.spaceId, { name: b.name, files: b.files, by: ctx.by, days: b.days === undefined ? 7 : b.days, download: b.download === true, password: b.password || '', visible: ctx.sees });
       noteActivity(ctx.manifest.id, 'made a share link', ctx.by, `space:${ctx.spaceId}`);
       res.status(201).json({ share: made.share, token: made.token, url: `/shared/${made.token}` });
     } catch (err) {
@@ -196,7 +199,7 @@ function mountVaultShares(app, deps) {
     const b = body(req);
     if (b.files !== undefined && s.download && !ctx.can('download')) return res.status(403).json({ error: `Your role can't download from ${ctx.name}, so you can't change the files of a link that allows it.` });
     try {
-      res.json({ share: vault.updateShare(ctx.manifest.id, ctx.spaceId, s.id, { name: b.name, files: b.files }) });
+      res.json({ share: seenShare(ctx, vault.updateShare(ctx.manifest.id, ctx.spaceId, s.id, { name: b.name, files: b.files, visible: ctx.sees })) });
     } catch (err) {
       refuseShare(res, err);
     }
