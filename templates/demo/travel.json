@@ -1,0 +1,356 @@
+{
+  "_about": "The demo of the travel template: one space, three people, every module filled. Read by server/demo-loader.js, which writes it through the real module routes. Dates are offsets, never absolute: \"today+N\" is N days after the day the loader runs, \"start+N\" is N days after the trip start (today plus \"anchor\" days); a time follows as \"T09:30\", a trailing \"Z\" gives a full timestamp (\"start+1T19:00Z\"), and \"ms:\" in front gives a number of milliseconds (\"ms:today+2T10:00\", \"ms:now\"). \"@login\" is that person's key (in a value or a key), \"{space}\" the space id, \"{base}\" the server address. \"as\" is the person whose session writes a step (default: the first moderator); \"count\" lists the key prefixes the report counts and \"what\" names them in the sentence that says a module was skipped. A phase is named by its id in the template. Nothing here is an absolute date, so the demo stays ahead of the day on every run.",
+  "template": "travel",
+  "name": "Demo: Portugal",
+  "description": "Portugal in ten days: Lisbon, Sintra, Porto. Reset by running it again.",
+  "anchor": 45,
+  "tz": "Europe/Lisbon",
+  "guestLink": true,
+  "budget": { "amount": 6500, "currency": "EUR" },
+  "phases": {
+    "planning": {"start":"today+0"},
+    "booking": {"start":"today+8"},
+    "buffer": {"start":"today+20"},
+    "pre-trip": {"start":"today+34"},
+    "trip": {"start":"start+0","end":"start+9"},
+    "post-trip": {"start":"start+10","end":"start+30"}
+  },
+  "people": [
+    { "login": "mia", "displayName": "Mia Alvarez", "role": "member", "moderator": true },
+    { "login": "lee", "displayName": "Lee Chen", "role": "member", "moderator": false },
+    { "login": "sam", "displayName": "Sam Okafor", "role": "member", "moderator": false }
+  ],
+  "modules": {
+    "places": {
+      "what": "places",
+      "count": ["place:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "place:castelo": {"title":"Castelo de Sao Jorge","category":"sights","type":"castle","status":"want","address":"Rua de Santa Cruz do Castelo","point":{"lat":38.7139,"lng":-9.1334},"notes":"Go late in the day for the light over the river.","owners":[],"by":"Mia Alvarez"},
+            "place:jeronimos": {"title":"Mosteiro dos Jeronimos","category":"sights","type":"monument","status":"booked","address":"Praca do Imperio, Belem","point":{"lat":38.6979,"lng":-9.2068},"notes":"Closed on Mondays.","owners":[],"by":"Mia Alvarez"},
+            "place:belem": {"title":"Torre de Belem","category":"sights","type":"tower","status":"want","address":"Av. Brasilia, Belem","point":{"lat":38.6916,"lng":-9.216},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:pasteis": {"title":"Pasteis de Belem","category":"food","type":"bakery","status":"favorite","address":"Rua de Belem 84","point":{"lat":38.6975,"lng":-9.2032},"notes":"Eat them warm, with cinnamon.","owners":[],"by":"Mia Alvarez"},
+            "place:maat": {"title":"MAAT","category":"sights","type":"museum","status":"want","address":"Av. Brasilia","point":{"lat":38.6957,"lng":-9.193},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:timeout": {"title":"Time Out Market","category":"food","type":"food-hall","status":"want","address":"Av. 24 de Julho 49","point":{"lat":38.7068,"lng":-9.146},"notes":"Lots of stalls, one bench for three.","owners":[],"by":"Mia Alvarez"},
+            "place:brasileira": {"title":"Cafe A Brasileira","category":"food","type":"cafe","status":"want","address":"Rua Garrett 120","point":{"lat":38.7103,"lng":-9.1424},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:ramiro": {"title":"Cervejaria Ramiro","category":"food","type":"seafood","status":"want","address":"Av. Almirante Reis 1","point":{"lat":38.7226,"lng":-9.1357},"notes":"Go early; there is a queue after 7.","owners":[],"by":"Mia Alvarez"},
+            "place:senhoramonte": {"title":"Miradouro da Senhora do Monte","category":"sights","type":"viewpoint","address":"Largo Monte","point":{"lat":38.7203,"lng":-9.1329},"notes":"The best view of the castle.","owners":[],"by":"Mia Alvarez"},
+            "place:santaluzia": {"title":"Miradouro de Santa Luzia","category":"sights","type":"viewpoint","address":"Largo de Santa Luzia","point":{"lat":38.7118,"lng":-9.1296},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:rossio": {"title":"Rossio Station","category":"transport","type":"train-station","address":"Praca Dom Joao da Camara","point":{"lat":38.7141,"lng":-9.1415},"notes":"Trains to Sintra leave from here.","owners":[],"by":"Mia Alvarez"},
+            "place:apolonia": {"title":"Santa Apolonia Station","category":"transport","type":"train-station","status":"booked","address":"Av. Infante Dom Henrique","point":{"lat":38.714,"lng":-9.1223},"notes":"Trains to Porto leave from here.","owners":[],"by":"Mia Alvarez"},
+            "place:lis": {"title":"Lisbon Airport (LIS)","category":"transport","type":"airport","address":"Alameda das Comunidades Portuguesas","point":{"lat":38.7742,"lng":-9.1342},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:comercio": {"title":"Praca do Comercio","category":"sights","type":"landmark","address":"Praca do Comercio","point":{"lat":38.7075,"lng":-9.1364},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:azulejo": {"title":"Museu Nacional do Azulejo","category":"sights","type":"museum","address":"Rua da Madre de Deus 4","point":{"lat":38.7253,"lng":-9.1139},"notes":"Five hundred years of tiles.","owners":[],"by":"Mia Alvarez"},
+            "place:casalargo": {"title":"Casa do Largo (Lisbon stay)","category":"stay","type":"hotel","status":"booked","address":"Largo do Carmo 7","point":{"lat":38.7134,"lng":-9.1393},"notes":"Demo hotel. Breakfast from 7:30.","owners":[],"by":"Mia Alvarez"},
+            "place:lxfactory": {"title":"LX Factory","category":"shopping","type":"market","address":"Rua Rodrigues de Faria 103","point":{"lat":38.7033,"lng":-9.1783},"notes":"Bookshop and a good coffee.","owners":[],"by":"Mia Alvarez"},
+            "place:santajusta": {"title":"Elevador de Santa Justa","category":"sights","type":"landmark","address":"Rua do Ouro","point":{"lat":38.7121,"lng":-9.1393},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:tram28": {"title":"Tram 28 stop, Martim Moniz","category":"transport","type":"tram","status":"favorite","address":"Largo Martim Moniz","point":{"lat":38.7167,"lng":-9.1359},"notes":"Get there before 9 to find a seat.","owners":[],"by":"Mia Alvarez"},
+            "place:pena": {"title":"Palacio da Pena","category":"sights","type":"castle","status":"booked","address":"Estrada da Pena, Sintra","point":{"lat":38.7876,"lng":-9.3906},"notes":"Timed tickets. Take the bus from the station.","owners":[],"by":"Mia Alvarez"},
+            "place:regaleira": {"title":"Quinta da Regaleira","category":"sights","type":"historic-site","status":"want","address":"Rua Barbosa du Bocage","point":{"lat":38.7966,"lng":-9.3963},"notes":"Bring a torch for the well.","owners":[],"by":"Mia Alvarez"},
+            "place:piriquita": {"title":"Casa Piriquita","category":"food","type":"bakery","status":"want","address":"Rua das Padarias 1, Sintra","point":{"lat":38.7973,"lng":-9.3875},"notes":"Travesseiros.","owners":[],"by":"Mia Alvarez"},
+            "place:sintra": {"title":"Sintra Station","category":"transport","type":"train-station","address":"Av. Dr. Miguel Bombarda","point":{"lat":38.7978,"lng":-9.3868},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:caboroca": {"title":"Cabo da Roca","category":"nature","type":"viewpoint","address":"Colares","point":{"lat":38.7804,"lng":-9.4989},"notes":"The westernmost point of mainland Europe. Only if there is time.","owners":[],"by":"Mia Alvarez"},
+            "place:lello": {"title":"Livraria Lello","category":"shopping","type":"bookshop","status":"want","address":"Rua das Carmelitas 144","point":{"lat":41.1469,"lng":-8.615},"notes":"Buy the ticket online.","owners":[],"by":"Mia Alvarez"},
+            "place:clerigos": {"title":"Torre dos Clerigos","category":"sights","type":"tower","address":"Rua de Sao Filipe de Nery","point":{"lat":41.1458,"lng":-8.6143},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:saobento": {"title":"Estacao de Sao Bento","category":"sights","type":"train-station","address":"Praca Almeida Garrett","point":{"lat":41.1457,"lng":-8.6102},"notes":"The tile panels in the hall.","owners":[],"by":"Mia Alvarez"},
+            "place:bolsa": {"title":"Palacio da Bolsa","category":"sights","type":"historic-site","status":"booked","address":"Rua de Ferreira Borges","point":{"lat":41.1415,"lng":-8.616},"notes":"Guided tour only.","owners":[],"by":"Mia Alvarez"},
+            "place:bolhao": {"title":"Mercado do Bolhao","category":"food","type":"market","address":"Rua Formosa","point":{"lat":41.1488,"lng":-8.6064},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:serralves": {"title":"Fundacao de Serralves","category":"sights","type":"museum","status":"want","address":"Rua Dom Joao de Castro 210","point":{"lat":41.1594,"lng":-8.6597},"notes":"Gardens are included.","owners":[],"by":"Mia Alvarez"},
+            "place:ribeira": {"title":"Cais da Ribeira","category":"sights","type":"neighborhood","status":"favorite","address":"Cais da Ribeira","point":{"lat":41.1403,"lng":-8.6119},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:luis": {"title":"Ponte Dom Luis I","category":"sights","type":"bridge","address":"Ponte Luiz I","point":{"lat":41.1399,"lng":-8.6094},"notes":"Walk the upper deck at sunset.","owners":[],"by":"Mia Alvarez"},
+            "place:campanha": {"title":"Porto Campanha Station","category":"transport","type":"train-station","address":"Praca Almeida Garrett","point":{"lat":41.1488,"lng":-8.5855},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:opo": {"title":"Porto Airport (OPO)","category":"transport","type":"airport","address":"Maia","point":{"lat":41.2481,"lng":-8.6814},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:ribeiravelha": {"title":"Pensao Ribeira Velha (Porto stay)","category":"stay","type":"hotel","status":"booked","address":"Rua dos Mercadores 22","point":{"lat":41.1411,"lng":-8.6124},"notes":"Demo guesthouse.","owners":[],"by":"Mia Alvarez"},
+            "place:taylors": {"title":"Taylor's Port Cellars","category":"activities","type":"winery","status":"want","address":"Rua do Choupelo 250","point":{"lat":41.1384,"lng":-8.6162},"notes":"","owners":[],"by":"Mia Alvarez"},
+            "place:pinhao": {"title":"Pinhao viewpoint","category":"nature","type":"viewpoint","status":"favorite","address":"Pinhao, Douro Valley","point":{"lat":41.1887,"lng":-7.544},"notes":"Terraced vineyards down to the river.","owners":[],"by":"Mia Alvarez"}
+          }
+        }
+      ]
+    },
+    "calendar": {
+      "what": "events",
+      "count": ["event:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "event:dm-trip": {"id":"dm-trip","by":"Mia Alvarez","title":"Portugal trip","allDay":true,"start":"start+0","end":"start+9","desc":"Lisbon, Sintra and Porto.","remind":null,"repeat":null},
+            "event:dm-call": {"id":"dm-call","by":"Mia Alvarez","title":"Weekly planning call","allDay":false,"start":"today+3T19:00Z","end":"today+3T19:45Z","desc":"Fifteen minutes on what is still open.","remind":15,"repeat":{"every":"week","until":"start-1"}},
+            "event:dm-photos": {"id":"dm-photos","by":"Mia Alvarez","title":"Passport photos","allDay":false,"start":"today+5T16:00Z","end":"today+5T16:30Z","desc":"","remind":60,"repeat":null},
+            "event:dm-euros": {"id":"dm-euros","by":"Mia Alvarez","title":"Exchange euros at the bank","allDay":false,"start":"today+12T12:00Z","end":null,"desc":"About 300 euros in small notes.","remind":1440,"repeat":null},
+            "event:dm-sitter": {"id":"dm-sitter","by":"Mia Alvarez","title":"House sitter arrives","allDay":true,"start":"start-1","end":null,"desc":"Keys under the flowerpot, plants on Tuesday.","remind":null,"repeat":null},
+            "event:dm-pack": {"id":"dm-pack","by":"Mia Alvarez","title":"Pack the suitcases","allDay":true,"start":"start-1","end":null,"desc":"","remind":null,"repeat":null},
+            "event:dm-checkin": {"id":"dm-checkin","by":"Mia Alvarez","title":"Online check-in opens","allDay":false,"start":"start-1T19:30Z","end":null,"desc":"Pick seats together.","remind":30,"repeat":null},
+            "event:dm-card": {"id":"dm-card","by":"Mia Alvarez","title":"Lisboa Card runs out","allDay":false,"start":"start+4T10:00Z","end":null,"desc":"The 72 hours end around now.","remind":60,"repeat":null},
+            "event:dm-family": {"id":"dm-family","by":"Mia Alvarez","title":"Video call with family","allDay":false,"start":"start+4T19:00Z","end":"start+4T19:30Z","desc":"From the hotel lobby, it has good wifi.","remind":null,"repeat":null},
+            "event:dm-plan": {"id":"dm-plan","by":"Mia Alvarez","title":"Planning session: pick the cities","allDay":false,"start":"today+2T18:00Z","end":"today+2T19:00Z","desc":"Lisbon, Sintra, Porto: in or out?","remind":30,"repeat":null},
+            "event:dm-book": {"id":"dm-book","by":"Mia Alvarez","title":"Book the Pena Palace tickets","allDay":false,"start":"today+9T09:00Z","end":null,"desc":"Timed entry sells out on weekends.","remind":60,"repeat":null},
+            "event:dm-deposit": {"id":"dm-deposit","by":"Mia Alvarez","title":"Douro winery deposit is due","allDay":true,"start":"today+14","end":null,"desc":"60 euros, paid by Lee.","remind":1440,"repeat":null},
+            "event:dm-visa": {"id":"dm-visa","by":"Mia Alvarez","title":"Check passports, visa and insurance papers","allDay":false,"start":"today+23T12:00Z","end":null,"desc":"Passports valid past March; insurance policy printed.","remind":1440,"repeat":null},
+            "event:dm-print": {"id":"dm-print","by":"Mia Alvarez","title":"Print the tickets and bookings","allDay":false,"start":"today+36T18:00Z","end":null,"desc":"One folder, plus a copy on each phone.","remind":60,"repeat":null},
+            "event:dm-weigh": {"id":"dm-weigh","by":"Mia Alvarez","title":"Weigh the suitcases","allDay":false,"start":"today+40T18:00Z","end":null,"desc":"23 kg each on Lusa Air.","remind":60,"repeat":null},
+            "event:dm-return": {"id":"dm-return","by":"Mia Alvarez","title":"Back home: laundry and photos","allDay":true,"start":"start+11","end":null,"desc":"Share the best ones in Research.","remind":null,"repeat":null}
+          }
+        }
+      ]
+    },
+    "travel": {
+      "what": "plan objects",
+      "count": ["plan:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "trip:main": {"title":"Demo: Portugal","destination":"Portugal","start":"start+0","end":"start+9","currency":"EUR","tz":"Europe/Lisbon"},
+            "plan:d01": {"by":"Mia Alvarez","order":1000,"kind":"block","type":"travel-day","title":"Travel day","date":"start+0"},
+            "plan:d02": {"by":"Mia Alvarez","order":2000,"kind":"note","title":"Documents and chargers","date":"start+0","notes":"Passports (valid past March), the booking emails, a charger for each phone, two plug adapters, a rain jacket."},
+            "plan:d03": {"by":"Mia Alvarez","order":3000,"kind":"block","type":"meet-up","title":"Meet at the departures hall","date":"start+0","time":"17:30","notes":"Terminal 1, by the check-in desks."},
+            "plan:d04": {"by":"Mia Alvarez","order":4000,"kind":"journey","mode":"flight","title":"Flight to Lisbon","date":"start+0","time":"19:30","arrives":"start+1T07:20","minutes":410,"operator":"Lusa Air","number":"LA 482","fromCode":"BOS","toCode":"LIS","from":"Boston Logan","to":"Lisbon Humberto Delgado","terminal":"E","gate":"E7","seat":"23A, 23B, 23C","travelClass":"Economy","confirm":"DEMO-4821","cost":1344,"paidBy":"@mia","owners":["@mia","@lee","@sam"],"pinned":true},
+            "plan:d05": {"by":"Mia Alvarez","order":5000,"kind":"journey","mode":"rideshare","title":"Rideshare to the hotel","date":"start+1","time":"08:30","minutes":35,"from":"Lisbon Airport","to":"Casa do Largo","estimate":28,"owners":["@mia"]},
+            "plan:d06": {"by":"Mia Alvarez","order":6000,"kind":"stay","type":"hotel","title":"Casa do Largo","date":"start+1","checkOut":"start+6","time":"15:00","checkOutTime":"11:00","place":"Casa do Largo (Lisbon stay)","address":"Largo do Carmo 7, Lisbon","roomType":"Triple","guests":3,"confirm":"DEMO-HL-1107","cost":1050,"paidBy":"@sam","owners":["@mia","@lee","@sam"],"pinned":true},
+            "plan:d07": {"by":"Mia Alvarez","order":7000,"kind":"stop","type":"cafe","title":"Coffee at A Brasileira","date":"start+1","time":"09:30","minutes":45,"place":"Cafe A Brasileira","address":"Rua Garrett 120","estimate":12},
+            "plan:d08": {"by":"Mia Alvarez","order":8000,"kind":"stop","type":"other","title":"Collect the Lisboa Cards (72 hours)","date":"start+1","time":"10:30","minutes":30,"notes":"At the tourist office on Praca dos Restauradores. Covers the metro, trams and many entries.","cost":60,"paidBy":"@lee","admissionCount":3},
+            "plan:d09": {"by":"Mia Alvarez","order":9000,"kind":"stop","type":"sight","title":"Walk through Alfama","date":"start+1","time":"11:15","minutes":120,"place":"Miradouro de Santa Luzia"},
+            "plan:d10": {"by":"Mia Alvarez","order":10000,"kind":"stop","type":"restaurant","title":"Lunch at Cervejaria Ramiro","date":"start+1","time":"13:45","minutes":90,"place":"Cervejaria Ramiro","address":"Av. Almirante Reis 1","partySize":3,"reservationName":"Alvarez","estimate":95,"owners":["@mia","@sam"]},
+            "plan:d11": {"by":"Mia Alvarez","order":11000,"kind":"stop","type":"attraction","title":"Ride Tram 28","date":"start+1","time":"15:45","minutes":60,"place":"Tram 28 stop, Martim Moniz"},
+            "plan:d12": {"by":"Mia Alvarez","order":12000,"kind":"stop","type":"sight","title":"Castelo de Sao Jorge","date":"start+1","time":"17:15","minutes":90,"place":"Castelo de Sao Jorge","admissionCount":3,"estimate":45},
+            "plan:d13": {"by":"Mia Alvarez","order":13000,"kind":"stop","type":"restaurant","title":"Dinner at Taberna da Rua das Flores","date":"start+1","time":"20:00","minutes":90,"place":"Taberna da Rua das Flores","address":"Rua das Flores 103","partySize":3,"reservationName":"Alvarez","estimate":70},
+            "plan:d14": {"by":"Mia Alvarez","order":14000,"kind":"stop","type":"cafe","title":"Pasteis de Belem","date":"start+2","time":"09:30","minutes":45,"place":"Pasteis de Belem","address":"Rua de Belem 84","estimate":14},
+            "plan:d15": {"by":"Mia Alvarez","order":15000,"kind":"stop","type":"sight","title":"Mosteiro dos Jeronimos","date":"start+2","time":"10:30","minutes":90,"place":"Mosteiro dos Jeronimos","admissionCount":3,"cost":30,"paidBy":"@sam"},
+            "plan:d16": {"by":"Mia Alvarez","order":16000,"kind":"stop","type":"sight","title":"Torre de Belem","date":"start+2","time":"12:15","minutes":45,"place":"Torre de Belem","estimate":18},
+            "plan:d17": {"by":"Mia Alvarez","order":17000,"kind":"stop","type":"restaurant","title":"Lunch at Time Out Market","date":"start+2","time":"13:30","minutes":75,"place":"Time Out Market","address":"Av. 24 de Julho 49","estimate":54,"owners":["@mia","@lee","@sam"]},
+            "plan:d18": {"by":"Mia Alvarez","order":18000,"kind":"stop","type":"museum","title":"MAAT","date":"start+2","time":"15:30","minutes":90,"place":"MAAT","admissionCount":3,"estimate":33},
+            "plan:d19": {"by":"Mia Alvarez","order":19000,"kind":"journey","mode":"taxi","title":"Taxi back to the hotel","date":"start+2","time":"17:45","minutes":25,"from":"Belem","to":"Casa do Largo","estimate":16},
+            "plan:d20": {"by":"Mia Alvarez","order":20000,"kind":"stop","type":"show","title":"Fado night with dinner","date":"start+2","time":"21:30","minutes":120,"place":"Fado house in Alfama","address":"Rua de Sao Pedro 18","admissionCount":3,"gate":"Door B","confirm":"DEMO-FD-22","cost":135,"paidBy":"@sam","owners":["@mia","@lee","@sam"]},
+            "plan:d21": {"by":"Mia Alvarez","order":21000,"kind":"block","type":"meet-up","title":"Meet at Rossio station","date":"start+3","time":"08:45"},
+            "plan:d22": {"by":"Mia Alvarez","order":22000,"kind":"journey","mode":"train","title":"Train to Sintra","date":"start+3","time":"09:15","arrives":"start+3T09:55","minutes":40,"operator":"CP","from":"Rossio","to":"Sintra","platform":"3","seat":"open seating","cost":12.9,"paidBy":"@lee"},
+            "plan:d23": {"by":"Mia Alvarez","order":23000,"kind":"stop","type":"sight","title":"Palacio da Pena","date":"start+3","time":"10:45","minutes":150,"place":"Palacio da Pena","admissionCount":3,"confirm":"DEMO-PN-31","cost":57,"paidBy":"@lee","pinned":true,"notes":"Timed entry. The bus from the station takes 15 minutes."},
+            "plan:d24": {"by":"Mia Alvarez","order":24000,"kind":"stop","type":"cafe","title":"Travesseiros at Casa Piriquita","date":"start+3","time":"13:30","minutes":45,"place":"Casa Piriquita","estimate":15},
+            "plan:d25": {"by":"Mia Alvarez","order":25000,"kind":"stop","type":"sight","title":"Quinta da Regaleira","date":"start+3","time":"14:45","minutes":120,"place":"Quinta da Regaleira","admissionCount":3,"estimate":36},
+            "plan:d26": {"by":"Mia Alvarez","order":26000,"kind":"journey","mode":"train","title":"Train back to Lisbon","date":"start+3","time":"17:35","minutes":40,"operator":"CP","from":"Sintra","to":"Rossio"},
+            "plan:d27": {"by":"Mia Alvarez","order":27000,"kind":"block","type":"leave-by","title":"Leave the hotel by 8:20","date":"start+3","time":"08:20"},
+            "plan:d28": {"by":"Mia Alvarez","order":28000,"kind":"block","type":"free-day","title":"Free day","date":"start+4"},
+            "plan:d29": {"by":"Mia Alvarez","order":29000,"kind":"block","type":"free-time","title":"Wander, shop, nap","date":"start+4","time":"10:00","minutes":360},
+            "plan:d30": {"by":"Mia Alvarez","order":30000,"kind":"stop","type":"bar","title":"Drinks at Pavilhao Chines","date":"start+4","time":"19:30","minutes":90,"place":"Pavilhao Chines","address":"Rua Dom Pedro V 89","estimate":30},
+            "plan:d31": {"by":"Mia Alvarez","order":31000,"kind":"link","title":"Lisboa Card runs out","date":null,"ref":{"module":"calendar","kind":"event","id":"dm-card","scope":"space","space":"{space}"}},
+            "plan:d32": {"by":"Mia Alvarez","order":32000,"kind":"link","title":"Video call with family","date":null,"ref":{"module":"calendar","kind":"event","id":"dm-family","scope":"space","space":"{space}"}},
+            "plan:d33": {"by":"Mia Alvarez","order":33000,"kind":"link","title":"Miradouro da Senhora do Monte","date":"start+4","ref":{"module":"places","kind":"place","id":"senhoramonte","scope":"space","space":"{space}"},"notes":""},
+            "plan:d34": {"by":"Mia Alvarez","order":34000,"kind":"lane","type":"rest","after":"start+4"},
+            "plan:d35": {"by":"Mia Alvarez","order":35000,"kind":"journey","mode":"taxi","title":"Taxi to Santa Apolonia","date":"start+6","time":"08:30","minutes":15,"from":"Casa do Largo","to":"Santa Apolonia Station","estimate":10},
+            "plan:d36": {"by":"Mia Alvarez","order":36000,"kind":"journey","mode":"train","title":"Train to Porto","date":"start+6","time":"09:35","arrives":"start+6T12:20","minutes":165,"operator":"CP Alfa Pendular","number":"AP 120","from":"Lisboa Santa Apolonia","to":"Porto Campanha","platform":"5","carriage":"4","seat":"41, 42, 43","travelClass":"Second","confirm":"DEMO-TR-9","cost":118.5,"paidBy":"@mia","owners":["@mia","@lee","@sam"]},
+            "plan:d37": {"by":"Mia Alvarez","order":37000,"kind":"stay","type":"hotel","title":"Pensao Ribeira Velha","date":"start+6","checkOut":"start+9","time":"15:00","checkOutTime":"10:00","place":"Pensao Ribeira Velha (Porto stay)","address":"Rua dos Mercadores 22, Porto","roomType":"Triple","guests":3,"confirm":"DEMO-HP-2210","cost":540,"paidBy":"@mia","owners":["@mia","@lee","@sam"],"pinned":true},
+            "plan:d38": {"by":"Mia Alvarez","order":38000,"kind":"stop","type":"restaurant","title":"Lunch at Cafe Santiago","date":"start+6","time":"13:45","minutes":75,"place":"Cafe Santiago","address":"Rua de Passos Manuel 226","estimate":36},
+            "plan:d39": {"by":"Mia Alvarez","order":39000,"kind":"stop","type":"shop","title":"Livraria Lello","date":"start+6","time":"15:30","minutes":60,"place":"Livraria Lello","admissionCount":3,"cost":15,"paidBy":"@lee"},
+            "plan:d40": {"by":"Mia Alvarez","order":40000,"kind":"stop","type":"restaurant","title":"Dinner at Taberna dos Mercadores","date":"start+6","time":"20:00","minutes":90,"place":"Taberna dos Mercadores","address":"Rua dos Mercadores 36","partySize":3,"reservationName":"Alvarez","estimate":66},
+            "plan:d41": {"by":"Mia Alvarez","order":41000,"kind":"note","title":"Check the forecast","date":"start+6","notes":"Porto is wetter than Lisbon. If it pours, swap the Douro day with a museum day."},
+            "plan:d42": {"by":"Mia Alvarez","order":42000,"kind":"stop","type":"tour","title":"Palacio da Bolsa guided tour","date":"start+7","time":"10:00","minutes":60,"place":"Palacio da Bolsa","admissionCount":3,"confirm":"DEMO-BS-5","cost":42,"paidBy":"@sam"},
+            "plan:d43": {"by":"Mia Alvarez","order":43000,"kind":"stop","type":"sight","title":"Estacao de Sao Bento tiles","date":"start+7","time":"11:30","minutes":30,"place":"Estacao de Sao Bento"},
+            "plan:d44": {"by":"Mia Alvarez","order":44000,"kind":"stop","type":"restaurant","title":"Lunch at Mercado do Bolhao","date":"start+7","time":"12:30","minutes":75,"place":"Mercado do Bolhao","estimate":40},
+            "plan:d45": {"by":"Mia Alvarez","order":45000,"kind":"stop","type":"museum","title":"Fundacao de Serralves","date":"start+7","time":"15:00","minutes":150,"place":"Fundacao de Serralves","admissionCount":3,"estimate":60},
+            "plan:d46": {"by":"Mia Alvarez","order":46000,"kind":"journey","mode":"car","title":"Rental car, pick-up","date":"start+7","time":"18:30","minutes":2220,"operator":"Sunroad Rentals","pickup":"Porto Campanha Station","dropoff":"Porto Airport (OPO)","confirm":"DEMO-CAR-77","cost":185,"paidBy":"@lee","owners":["@lee","@mia"],"notes":"Drop-off is two days later at the airport, 7:30. Full tank on return."},
+            "plan:d47": {"by":"Mia Alvarez","order":47000,"kind":"block","type":"meet-up","title":"Meet in the hotel lobby","date":"start+8","time":"08:30"},
+            "plan:d48": {"by":"Mia Alvarez","order":48000,"kind":"stop","type":"tour","title":"Douro winery tour and tasting","date":"start+8","time":"11:00","minutes":120,"place":"Taylor's Port Cellars","admissionCount":3,"estimate":120},
+            "plan:d49": {"by":"Mia Alvarez","order":49000,"kind":"stop","type":"restaurant","title":"Lunch at the winery","date":"start+8","time":"13:30","minutes":90,"estimate":75},
+            "plan:d50": {"by":"Mia Alvarez","order":50000,"kind":"stop","type":"sight","title":"Pinhao viewpoint","date":"start+8","time":"16:00","minutes":45,"place":"Pinhao viewpoint"},
+            "plan:d51": {"by":"Mia Alvarez","order":51000,"kind":"link","title":"Ponte Dom Luis I at sunset","date":"start+8","ref":{"module":"places","kind":"place","id":"luis","scope":"space","space":"{space}"}},
+            "plan:d52": {"by":"Mia Alvarez","order":52000,"kind":"journey","mode":"flight","title":"Flight home","date":"start+9","time":"11:20","arrives":"start+9T13:45","minutes":445,"operator":"Lusa Air","number":"LA 483","fromCode":"OPO","toCode":"BOS","from":"Porto","to":"Boston Logan","terminal":"1","gate":"A3","seat":"23A, 23B, 23C","travelClass":"Economy","confirm":"DEMO-4831","owners":["@mia","@lee","@sam"]},
+            "plan:d53": {"by":"Mia Alvarez","order":53000,"kind":"lane","type":"buffer","after":"start+9"},
+            "plan:d54": {"by":"Mia Alvarez","order":54000,"kind":"note","title":"Which cities?","date":"today+1","notes":"Lisbon for the city, Sintra for a day of palaces, Porto for the river. Skip the Algarve this time."},
+            "plan:d55": {"by":"Mia Alvarez","order":55000,"kind":"note","title":"Rough budget: 6,500 euros","date":"today+3","notes":"Flights and hotels first, then about 100 a day for food and tickets."},
+            "plan:d56": {"by":"Mia Alvarez","order":56000,"kind":"link","title":"Casa do Largo (the hotel we like)","date":"today+4","ref":{"module":"places","kind":"place","id":"casalargo","scope":"space","space":"{space}"}},
+            "plan:d57": {"by":"Mia Alvarez","order":57000,"kind":"stop","type":"other","title":"Read about Sintra in one day","date":"today+6","time":"19:00","minutes":30,"notes":"Pena first, then Regaleira. See Research."},
+            "plan:d58": {"by":"Mia Alvarez","order":58000,"kind":"stop","type":"other","title":"Pena Palace: book the time slot","date":"today+9","time":"09:00","minutes":30,"notes":"Timed entry. Lee books for 10:45.","owners":["@lee"]},
+            "plan:d59": {"by":"Mia Alvarez","order":59000,"kind":"stop","type":"other","title":"Flight booked: LA 482 to Lisbon","date":"today+10","time":"20:15","minutes":30,"notes":"Seats 23A to 23C, confirmation DEMO-4821.","confirm":"DEMO-4821","owners":["@mia","@lee","@sam"]},
+            "plan:d60": {"by":"Mia Alvarez","order":60000,"kind":"stop","type":"other","title":"Reserve the Fado dinner","date":"today+12","time":"12:00","minutes":30,"notes":"Ask about the early seating.","owners":["@sam"]},
+            "plan:d61": {"by":"Mia Alvarez","order":61000,"kind":"stop","type":"other","title":"Pay the Douro winery deposit","date":"today+14","time":"10:00","minutes":30,"notes":"60 euros, paid by Lee.","cost":60,"paidBy":"@lee","owners":["@lee"]},
+            "plan:d62": {"by":"Mia Alvarez","order":62000,"kind":"stop","type":"other","title":"Rental car booked","date":"today+16","time":"18:00","minutes":30,"notes":"Automatic, a small one. Confirmation DEMO-CAR-77.","confirm":"DEMO-CAR-77","owners":["@lee"]},
+            "plan:d63": {"by":"Mia Alvarez","order":63000,"kind":"stop","type":"other","title":"Check passports and visa rules","date":"today+22","time":"12:00","minutes":30,"notes":"US passports need no visa for ninety days, but check the expiry date."},
+            "plan:d64": {"by":"Mia Alvarez","order":64000,"kind":"stop","type":"other","title":"Insurance reminder: policy in the folder","date":"today+26","time":"19:00","minutes":30,"notes":"Print the policy and the emergency number."},
+            "plan:d65": {"by":"Mia Alvarez","order":65000,"kind":"note","title":"Wait for the forecast","date":"today+31","notes":"Look at the ten-day forecast and decide what to swap if it rains in Porto."},
+            "plan:d66": {"by":"Mia Alvarez","order":66000,"kind":"stop","type":"other","title":"Print the tickets and bookings","date":"today+36","time":"18:00","minutes":30,"notes":"One folder, plus a copy on each phone."},
+            "plan:d67": {"by":"Mia Alvarez","order":67000,"kind":"stop","type":"other","title":"Weigh the suitcases","date":"today+40","time":"18:00","minutes":30,"notes":"23 kg each. The scale is in the Budget."},
+            "plan:d68": {"by":"Mia Alvarez","order":68000,"kind":"note","title":"The night before","date":"today+43","notes":"Charge the power bank, set two alarms, leave the keys for the house sitter."},
+            "plan:d69": {"by":"Mia Alvarez","order":69000,"kind":"stop","type":"other","title":"Book the Douro winery","date":null,"after":null,"notes":"Two places left for the 11:00 tasting last time.","phase":"booking"},
+            "plan:d70": {"by":"Mia Alvarez","order":70000,"kind":"stop","type":"other","title":"Buy travel insurance","date":null,"after":null,"notes":"Compare two quotes.","phase":"booking"},
+            "plan:d71": {"by":"Mia Alvarez","order":71000,"kind":"stop","type":"other","title":"Reserve Pena Palace tickets","date":null,"after":null,"notes":"Timed entry sells out on weekends.","phase":"booking"},
+            "plan:d72": {"by":"Mia Alvarez","order":72000,"kind":"stop","type":"other","title":"Print the tickets and bookings","date":null,"after":null,"notes":"One folder, plus a copy on each phone.","phase":"pre-trip"},
+            "plan:d73": {"by":"Mia Alvarez","order":73000,"kind":"stop","type":"other","title":"Check suitcase weight limits","date":null,"after":null,"notes":"","phase":"pre-trip"},
+            "plan:d74": {"by":"Mia Alvarez","order":74000,"kind":"stop","type":"other","title":"A pastelaria near the hotel","date":null,"after":null,"notes":"Someone said there is a tiny one on Rua do Carmo."},
+            "plan:d75": {"by":"Mia Alvarez","order":75000,"kind":"stop","type":"other","title":"Day trip to Cascais?","date":null,"after":null,"notes":"Only if the Sintra day goes quickly."},
+            "plan:d76": {"by":"Mia Alvarez","order":76000,"kind":"stop","type":"other","title":"Buy tiles for the kitchen","date":null,"after":null,"notes":"Measure the wall first."}
+          }
+        }
+      ]
+    },
+    "todo": {
+      "what": "tasks",
+      "count": ["task:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "task:dm01": {"id":"dm01","title":"Renew the passport","notes":"Mia. Valid until 2029, done.","due":"today+1","remind":false,"done":true,"doneAt":"ms:today+0T10:00","createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm02": {"id":"dm02","title":"Book the Sintra train","notes":"Sam. Cheaper online.","due":"today+6","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Sam Okafor","links":[{"module":"travel","kind":"plan","id":"d22","scope":"space","space":"{space}"}]},
+            "task:dm03": {"id":"dm03","title":"Reserve Pena Palace tickets","notes":"Lee. Timed entry.","due":"today+9","remind":true,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Lee Chen","links":[]},
+            "task:dm04": {"id":"dm04","title":"Exchange some euros","notes":"Mia. About 300 in small notes.","due":"today+12","remind":true,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm05": {"id":"dm05","title":"Buy travel insurance","notes":"Sam. Compare two quotes.","due":"today+14","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Sam Okafor","links":[]},
+            "task:dm06": {"id":"dm06","title":"Book the rental car","notes":"Lee. Automatic, a small one.","due":"today+16","remind":false,"done":true,"doneAt":"ms:today+1T10:00","createdAt":"ms:now","by":"Lee Chen","links":[]},
+            "task:dm07": {"id":"dm07","title":"Reserve the Fado dinner","notes":"Sam. Ask about the early seating.","due":"today+18","remind":false,"done":true,"doneAt":"ms:today+2T10:00","createdAt":"ms:now","by":"Sam Okafor","links":[]},
+            "task:dm08": {"id":"dm08","title":"Download offline maps","notes":"Everyone. Lisbon, Sintra, Porto.","due":"today+28","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm09": {"id":"dm09","title":"Get an eSIM for each phone","notes":"Lee.","due":"today+30","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Lee Chen","links":[]},
+            "task:dm10": {"id":"dm10","title":"Tell the bank we are travelling","notes":"Mia.","due":"today+33","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm11": {"id":"dm11","title":"Choose the cities and the dates","notes":"Everyone. Done in the planning call.","due":"today+2","remind":false,"done":true,"doneAt":"ms:today+1T10:00","createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm12": {"id":"dm12","title":"Check passports and visa rules","notes":"Mia.","due":"today+22","remind":true,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Mia Alvarez","links":[]},
+            "task:dm13": {"id":"dm13","title":"Print the tickets and bookings","notes":"Sam. One folder, plus phone copies.","due":"today+36","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Sam Okafor","links":[]},
+            "task:dm14": {"id":"dm14","title":"Weigh the suitcases","notes":"Lee. 23 kg each.","due":"today+40","remind":true,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Lee Chen","links":[]},
+            "task:dm15": {"id":"dm15","title":"Pack adapters and chargers","notes":"Sam.","due":"today+42","remind":false,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Sam Okafor","links":[]},
+            "task:dm16": {"id":"dm16","title":"Online check-in, seats together","notes":"Mia. Opens the day before.","due":"start-1","remind":true,"done":false,"doneAt":null,"createdAt":"ms:now","by":"Mia Alvarez","links":[]}
+          }
+        }
+      ]
+    },
+    "polls": {
+      "what": "polls",
+      "count": ["poll:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "poll:q1": {"id":"q1","question":"Where do we eat on the first night in Porto?","options":[{"id":"o1","text":"Taberna dos Mercadores"},{"id":"o2","text":"Mercado do Bolhao stalls"},{"id":"o3","text":"Somewhere near the hotel","desc":"We will be tired after the train."}],"multi":false,"addable":true,"closed":false,"closesAt":null,"createdAt":"ms:today+2T10:00","by":"Mia Alvarez","byKey":"@mia"},
+            "vote:q1:@mia": {"options":["o1"],"name":"Mia Alvarez","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "sam",
+          "data": {
+            "vote:q1:@sam": {"options":["o1"],"name":"Sam Okafor","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "lee",
+          "data": {
+            "vote:q1:@lee": {"options":["o3"],"name":"Lee Chen","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "sam",
+          "data": {
+            "poll:q2": {"id":"q2","question":"Which day for the Sintra trip?","options":[{"id":"o1","text":"Day 3","date":"start+2"},{"id":"o2","text":"Day 4","date":"start+3"},{"id":"o3","text":"Day 6","date":"start+5"}],"multi":true,"addable":false,"closed":false,"closesAt":null,"createdAt":"ms:today+0T10:00","by":"Sam Okafor","byKey":"@sam"}
+          }
+        },
+        {
+          "as": "mia",
+          "data": {
+            "vote:q2:@mia": {"options":["o2"],"name":"Mia Alvarez","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "sam",
+          "data": {
+            "vote:q2:@sam": {"options":["o2","o3"],"name":"Sam Okafor","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "lee",
+          "data": {
+            "vote:q2:@lee": {"options":["o2"],"name":"Lee Chen","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "sam",
+          "data": {
+            "poll:q2": {"id":"q2","question":"Which day for the Sintra trip?","options":[{"id":"o1","text":"Day 3","date":"start+2"},{"id":"o2","text":"Day 4","date":"start+3"},{"id":"o3","text":"Day 6","date":"start+5"}],"multi":true,"addable":false,"closed":true,"closesAt":null,"createdAt":"ms:today+0T10:00","by":"Sam Okafor","byKey":"@sam"}
+          }
+        },
+        {
+          "as": "lee",
+          "data": {
+            "poll:q3": {"id":"q3","question":"Rental car: manual or automatic?","options":[{"id":"o1","text":"Manual, it is cheaper"},{"id":"o2","text":"Automatic, steep hills"}],"multi":false,"addable":false,"closed":false,"closesAt":"ms:today+20T12:00","createdAt":"ms:today+4T10:00","by":"Lee Chen","byKey":"@lee"},
+            "vote:q3:@lee": {"options":["o2"],"name":"Lee Chen","at":"ms:today+3T12:00"}
+          }
+        },
+        {
+          "as": "sam",
+          "data": {
+            "vote:q3:@sam": {"options":["o2"],"name":"Sam Okafor","at":"ms:today+3T12:00"}
+          }
+        }
+      ]
+    },
+    "budget": {
+      "what": "costs",
+      "count": ["cost:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "cost:dm01": {"title":"Travel insurance","category":"services","categoryName":"Services","planned":180,"actual":172.6,"amount":172.6,"done":true,"paidBy":"@mia","sharedBy":["@mia","@lee","@sam"],"date":"today+3","notes":"","by":"Mia Alvarez"},
+            "cost:dm02": {"title":"eSIM data plans","category":"supplies","categoryName":"Supplies","planned":45,"actual":39,"amount":39,"done":true,"paidBy":"@sam","sharedBy":["@mia","@lee","@sam"],"date":"today+5","notes":"","by":"Mia Alvarez"},
+            "cost:dm03": {"title":"Lisboa Cards, spare day","category":"activities","categoryName":"Activities","planned":20,"amount":20,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm04": {"title":"Quinta da Regaleira tickets","category":"activities","categoryName":"Activities","planned":36,"amount":36,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm05": {"title":"Douro winery tour deposit","category":"activities","categoryName":"Activities","planned":60,"actual":60,"amount":60,"done":true,"paidBy":"@lee","sharedBy":["@mia","@lee","@sam"],"date":"today+14","notes":"","by":"Mia Alvarez"},
+            "cost:dm06": {"title":"Fado night extras","category":"food","categoryName":"Food","planned":40,"amount":40,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm07": {"title":"Plug adapters","category":"supplies","categoryName":"Supplies","planned":30,"actual":27.8,"amount":27.8,"done":true,"paidBy":"@mia","sharedBy":["@mia","@lee","@sam"],"date":"today+7","notes":"","by":"Mia Alvarez"},
+            "cost:dm08": {"title":"Luggage scale and locks","category":"supplies","categoryName":"Supplies","planned":25,"actual":21,"amount":21,"done":true,"paidBy":"@lee","sharedBy":["@lee","@mia"],"date":"today+8","notes":"","by":"Mia Alvarez"},
+            "cost:dm09": {"title":"Guidebook","category":"other","categoryName":"Other","planned":24,"actual":22.5,"amount":22.5,"done":true,"paidBy":"@sam","sharedBy":["@sam"],"date":"today+9","notes":"","by":"Mia Alvarez"},
+            "cost:dm10": {"title":"Rental car insurance","category":"fees","categoryName":"Fees","planned":70,"amount":70,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm11": {"title":"Fuel and tolls, Douro day","category":"travel","categoryName":"Travel","planned":55,"amount":55,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm12": {"title":"Hotel city tax","category":"fees","categoryName":"Fees","planned":48,"amount":48,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm13": {"title":"Airport snacks","category":"food","categoryName":"Food","planned":40,"amount":40,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm14": {"title":"Laundry","category":"services","categoryName":"Services","planned":30,"amount":30,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm15": {"title":"Tips and small change","category":"other","categoryName":"Other","planned":100,"amount":100,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm16": {"title":"Metro and tram top-ups","category":"travel","categoryName":"Travel","planned":40,"actual":40,"amount":40,"done":true,"paidBy":"@mia","sharedBy":["@mia","@lee","@sam"],"date":"today+16","notes":"","by":"Mia Alvarez"},
+            "cost:dm17": {"title":"Souvenirs fund","category":"other","categoryName":"Other","planned":150,"amount":150,"done":false,"sharedBy":[],"date":"","notes":"","by":"Mia Alvarez"},
+            "cost:dm18": {"title":"Welcome dinner deposit","category":"food","categoryName":"Food","planned":60,"actual":60,"amount":60,"done":true,"paidBy":"@sam","sharedBy":["@sam","@mia"],"date":"today+10","notes":"","by":"Mia Alvarez"}
+          }
+        }
+      ]
+    },
+    "research": {
+      "what": "research objects",
+      "count": ["note:","link:","answer:"],
+      "steps": [
+        {
+          "as": "mia",
+          "data": {
+            "note:r1": {"text":"Bom dia (good morning). Obrigado / obrigada (thanks). A conta, por favor (the bill, please). Uma bica (a short coffee).","sub":"","kind":"note","title":"Phrases worth learning","body":"Bom dia (good morning). Obrigado / obrigada (thanks). A conta, por favor (the bill, please). Uma bica (a short coffee).","tags":["language"],"icon":"language","date":"today+2","by":"Mia Alvarez","at":"today+5T10:00Z"},
+            "link:r2": {"text":"Board at the first stop, go before nine, and mind your pockets.","sub":"","kind":"link","title":"Riding Tram 28 without the queue","url":"https://example.com/lisbon-tram-28","excerpt":"Board at the first stop, go before nine, and mind your pockets.","tags":["lisbon"],"date":"today+5","by":"Sam Okafor","at":"today+6T10:00Z"},
+            "link:r3": {"text":"Pena first, then Regaleira, with a bus between them. Skip the Moorish Castle if you are short of time.","sub":"","kind":"link","title":"Sintra in one day","url":"https://example.com/sintra-one-day","excerpt":"Pena first, then Regaleira, with a bus between them. Skip the Moorish Castle if you are short of time.","tags":["sintra"],"date":"start+3","by":"Lee Chen","at":"today+7T10:00Z"},
+            "answer:r4": {"text":"For three days of trams, metro and two or three entries (Jeronimos, Belem Tower) it pays for itself. If you walk everywhere and visit one museum, buy single tickets instead.","sub":"","kind":"answer","title":"Is the Lisboa Card worth it?","content":"For three days of trams, metro and two or three entries (Jeronimos, Belem Tower) it pays for itself. If you walk everywhere and visit one museum, buy single tickets instead.","tags":["lisbon","money"],"date":"today+7","by":"Mia Alvarez","at":"today+8T10:00Z"}
+          }
+        }
+      ]
+    },
+    "chat": {
+      "messages": [
+        {"as":"mia","text":"Okay, the Demo: Portugal space is open. Ten days, three cities."},
+        {"as":"sam","text":"Finally. Is the flight booked yet?"},
+        {"as":"mia","text":"Booked, seats 23A to C. Check the Planner."},
+        {"as":"lee","text":"Found it. Day one is just the flight: {base}/modules/travel?space={space}"},
+        {"as":"sam","text":"> Day one is just the flight\nGood, we can pack in the morning."},
+        {"as":"lee","text":"Did anyone look at the hotel in Lisbon?"},
+        {"as":"mia","text":"Casa do Largo, five nights, ten minutes from Rossio. Breakfast from 7:30."},
+        {"as":"sam","text":"Perfect for the Sintra train."},
+        {"as":"lee","text":"Poll time: manual or automatic for the rental car. I vote automatic, the hills in Porto are steep."},
+        {"as":"sam","text":"Automatic. Voted."},
+        {"as":"mia","text":"Adding the Fado night on day 3. Dinner is included."},
+        {"as":"lee","text":"> Dinner is included\nThen skip the late lunch that day."},
+        {"as":"sam","text":"Budget check: we are at about 4,200 of 6,500 euros with everything planned."},
+        {"as":"mia","text":"Good. Keep 300 for small things."},
+        {"as":"lee","text":"Pena Palace tickets are timed. I will book for 10:45."},
+        {"as":"sam","text":"Thanks Lee. I will buy the Sintra train tickets this week."},
+        {"as":"mia","text":"Reminder: exchange some euros before the trip."},
+        {"as":"lee","text":"Is anyone bringing a power bank?"},
+        {"as":"sam","text":"I have one. Bringing two cables."},
+        {"as":"mia","text":"Weekly call Thursday at 7, fifteen minutes."},
+        {"as":"lee","text":"I will be there. Also, the Douro day needs the rental car; pick-up is the evening before."},
+        {"as":"sam","text":"> pick-up is the evening before\nGot it, and drop-off at the airport on the last morning."},
+        {"as":"mia","text":"Everything for the trip is in the Planner, Places and To-do. Add what you find."},
+        {"as":"lee","text":"Added three places near the hotel to Places."},
+        {"as":"sam","text":"Great. Two months and we are in Lisbon."}
+      ]
+    }
+  }
+}

@@ -40,9 +40,11 @@ const isCopied = (rel) => copied.some((c) => c === rel || rel.startsWith(`${c}/`
 for (const seeder of ['tools/seed-demo.mjs', 'tools/seed-demo-map.mjs']) {
   ok(isCopied(seeder), `the Dockerfile copies ${seeder}, so npm run seed:demo works in the image`);
   const text = fs.readFileSync(path.join(ROOT, seeder), 'utf8');
-  const needs = [...text.matchAll(/(?:from|import\()\s*'(\.[^']+)'/g)].map((m) => path.posix.join('tools', m[1]));
+  const needs = [...text.matchAll(/(?:from|import\(|require\()\s*'(\.[^']+)'/g)].map((m) => path.posix.join('tools', m[1]));
   for (const m of text.matchAll(/path\.join\(root,\s*((?:'[^']+'(?:,\s*)?)+)\)/g)) needs.push([...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).join('/'));
   // `data` is the runtime data folder (the image sets DATA_DIR), not a repository file.
   for (const rel of needs.filter((r) => r !== 'data')) ok(isCopied(rel), `the Dockerfile copies ${rel}, which ${seeder} needs`);
 }
+// The seeder hands over to the demo loader (server/demo-loader.js), which reads the template's data file.
+ok(isCopied('server/demo-loader.js') && isCopied('templates/demo/travel.json'), 'the Dockerfile copies the demo loader and the demo data files');
 console.log(`check-compose: ${n} checks OK`);
