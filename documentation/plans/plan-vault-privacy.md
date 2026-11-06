@@ -4,11 +4,12 @@
 permission and the check; experience-design draws the Vault's new controls on the Prototype first, then builds them;
 bug-fixes closes the small leaks; quality-assurance reads the result as a security change; content-manager documents.
 
-**Status:** approved by Thomas 2026-11-06 on the decisions below (his request: "one member might not be able to view
-another member's files"; he chose per-file "share with chosen people"). Building the server rule is a **held build for
-Thomas**, because it is security work. The Vault's screens wait for the Prototype look. Nothing is built yet. This plan
-amends decision 13 of [plan-attachments-vault](plan-attachments-vault.md) and overturns the "an owner may not open
-someone's Only me file" part of decisions 3 and 4 of the 2026-10-15 attachments plan (see What it overturns).
+**Status:** approved by Thomas 2026-11-06; slice 1 (server rule) started 2026-11-06 as a HELD build for Thomas with a
+security read before any merge; slice 2 (Prototype of the Vault controls) started 2026-11-06; nothing merged. Thomas's
+request: "one member might not be able to view another member's files"; he chose per-file "share with chosen people".
+On 2026-11-06 he also chose the suggestions for questions a, f and g (decisions 9 to 11). This plan amends decision 13
+of [plan-attachments-vault](plan-attachments-vault.md) and overturns the "an owner may not open someone's Only me file"
+part of decisions 3 and 4 of the 2026-10-15 attachments plan (see What it overturns).
 
 ## What it is today
 
@@ -37,7 +38,8 @@ So today the Vault is one shared shelf per space. Decision 13 of the Vault plan 
 
 ## Decisions
 
-Thomas decided these on 2026-11-06.
+Thomas decided decisions 1 to 8 on 2026-11-06, and decisions 9 to 11 later the same day, in chat, picking the
+suggestions made to him.
 
 1. **The model.** Each file has a visibility: **Everyone in the space** (the default for new files, which is today's
    behaviour), **Only me**, or **Chosen people** (a list of members of that space).
@@ -56,6 +58,13 @@ Thomas decided these on 2026-11-06.
    "File removed", never the file's name. To show a file to everyone on a booking, share the file with everyone first.
 8. **A share link (public link) for a restricted file** may be made only by someone who can see the file. It ends (it
    reads "ended") when its maker can no longer see the file.
+9. **Storage total (was question a).** Each person sees their **visible** total: the bytes of only the files they can
+   see. The space's real quota is still enforced on the real total. A refusal reads "the space is full" and does not say
+   why.
+10. **A gone link (was question f).** The link keeps a copy of the file's visibility. After a restricted file is
+    deleted, only the people who could see it see "File removed"; everyone else sees nothing.
+11. **The activity line (was question g).** No activity line is written for a file that is not shared with everyone. The
+    chosen-people list holds **at most 200 people** (accepted).
 
 ## The design
 
@@ -64,13 +73,14 @@ Thomas decided these on 2026-11-06.
 A record gains `visibility`: `'everyone'`, `'only-me'` or `'people'`, and `people`: a list of user keys, used only
 when the visibility is `people`.
 
-- A record with no `visibility` reads as `'everyone'`. That is the whole migration (open question e).
+- A record with no `visibility` reads as `'everyone'`. That is the whole migration (question e, still open;
+  this is the suggestion).
 - **The adder can always see their own file**, whatever the list says (`by` is checked first).
 - **People are checked against the current members of the space at read time.** A key in `people` that is not a
   member of that space now is ignored; it is not removed from the list. This is why a person who returns regains sight
   (decision 6), and why a key from another space, or a stale one, never grants anything.
-- The list is cleaned on write: only keys of members of that space are accepted, no duplicates, a sensible cap
-  (proposed 200).
+- The list is cleaned on write: only keys of members of that space are accepted, no duplicates, a cap of 200 people
+  (decision 11).
 
 ### The one function
 
@@ -102,7 +112,7 @@ Each line is a place a hidden file could show through today if only the list rou
    hidden files.
 2. **Counts**: the file count, the `uses` count on a row, and any per-adder or per-group count are made from visible
    records only. Closes: a number that moves when a hidden file is added.
-3. **Usage totals and quota numbers.** See open question (a). The space's byte total moves with hidden bytes.
+3. **Usage totals and quota numbers.** Decision 9: each viewer gets the total of the files they can see; the quota is enforced on the real total, and a refusal says only that the space is full.
 4. **`uses`** (`.../:fid/uses`): the file must be visible to the viewer first. Its `hidden` count of other holders
    stays as it is (those are objects, not files).
 5. **Thumbnails** (`GET` and `PUT .../:fid/thumb`): behind the door. `PUT` stays adder-only.
@@ -120,8 +130,8 @@ Each line is a place a hidden file could show through today if only the list rou
 10. **"File removed" for a gone link** (`GET /api/objects/links`, `dir=from`). A link to a file that no longer exists
     shows "File removed". For a file that was restricted, that line would tell people outside the list that a file
     existed. Two ways: keep the visibility on the link when it is made, or show nothing to people outside the list.
-    **Decision to make (open question f).** Until then the plan is to show nothing to someone who could not have seen
-    the file, which needs the visibility kept on the link record.
+    **Decided (decision 10):** show nothing to someone who could not have seen the file. The visibility is kept on
+    the link record when the link is made.
 11. **The AI's object pool and shared chat answers.** `aiObjectsIn` runs through the same chokepoint as the asker, so a
     hidden file is not in the pool and the AI cannot name it. A shared answer is filtered per reader by `resolveRef`
     (`readerCanOpen`). The prose risk is the same as for any hidden object: if the asker could see a file, the AI may
@@ -133,8 +143,8 @@ Each line is a place a hidden file could show through today if only the list rou
     disappears from the list of those who lose it); everyone else hears nothing about that file. The `refchange` to
     holders follows the same per-viewer test.
 13. **The activity line** ("added a file to the Vault") has an actor and a space but no name. A line about a file
-    that only some can see still tells the others that someone added something. Proposed: for a file that is not
-    `everyone`, write no activity line at all. Listed under open question g.
+    that only some can see still tells the others that someone added something. Decided: for a file that is not
+    `everyone`, write no activity line at all. Decided (decision 11).
 14. **Share links and `shareView`** (`server/vault-share.js`): creating a link checks `fileVisible` for the maker for
     each file chosen; a hidden file answers as missing. Listing links to other makers hides the files the viewer
     cannot see (a link's file list must not name them). Opening a link rechecks, on every open, that the maker can
@@ -147,7 +157,7 @@ Each line is a place a hidden file could show through today if only the list rou
 16. **Space erase** (`space-erase.js`, `vault.forgetSpace`): erases every file of the space whatever its visibility.
     The check `check-space-erase.mjs` already fails on a per-space file it does not know; the new field adds none.
 17. **Leaving a space, being removed** (`removeMember`, `removeUser` in `store.js`): files and `by` are untouched
-    (decision 6). Owners and the admin can reassign or remove them (open question c). A removed **user** (not only
+    (decision 6). Owners and the admin can reassign or remove them (open question c, not decided). A removed **user** (not only
     from one space) leaves files whose `by` points at no one; owners and the admin still see them.
 18. **Guests and access keys**: already refused by `libraryAccess`. Stays. The check keeps proving it.
 19. **`taken`** (a photo's position): it follows the file. Anyone who can see the file sees its position as today;
@@ -247,7 +257,7 @@ Each cell asserts the status. For every refusal it also asserts that:
 
 ### What is verified and what is not
 
-- Verified by a tool: only after slice 1 exists; nothing is built yet. The statements in What it is today were read as
+- Verified by a tool: only after slice 1 exists; slice 1 is started but nothing is merged. The statements in What it is today were read as
   code, on 2026-11-06, not run.
 - Needs a real LiveKit call: nothing in this plan. The Vault does not use the call. The realtime streams are the
   server's own and can be checked with a local server.
@@ -269,26 +279,16 @@ Each cell asserts the status. For every refusal it also asserts that:
 
 ## Open questions
 
-None of these is decided. Each has a suggestion; it is a suggestion only.
+None of these is decided. Each has a suggestion; it is a suggestion only. None blocks slice 1 (it is started). Questions
+a, f and g were decided on 2026-11-06 (decisions 9 to 11).
 
-- **(a) The space storage total.** The list gives the space's whole byte total, so a hidden file moves a number every
-  member sees, and "this space is full" depends on hidden bytes. Options: show each viewer the total of the files they
-  can see, and enforce the space quota on the real total without saying why it is full beyond "This {space}'s Vault is
-  full"; or accept that the real total is shown. *Suggestion:* show the visible total, enforce on the real total. The
-  remaining leak is a "full" message that arrives earlier than the visible number explains; that is small and does not
-  name a file. **Blocks slice 1.**
 - **(b) Quotas.** Do Only me files count toward the person's own quota? *Suggestion:* yes, they count where they count
   today (the person's total by `by`, and the space's total). Nothing changes in how bytes are counted. Does not block.
 - **(c) Reassigning.** When an owner reassigns a file, does `by` change, or only the list? *Suggestion:* `by` changes,
   because `by` also drives the person's quota and "Mine"; the old adder is not left with a quota they cannot free.
-  The visibility list stays unless the owner changes it. **Blocks slice 4's leaver handling, not slice 1.**
+  The visibility list stays unless the owner changes it. Blocks slice 4's leaver handling only.
 - **(d) People in the picker:** names or avatars? *Suggestion:* names with a small avatar, decided on the Prototype.
-  Blocks slice 2 only.
-- **(e) Migration.** Existing files read as `everyone` by a default when the record is read. No data migration is
-  needed; the repo's rule allows clean changes while the product is unreleased. *Suggestion:* no stored change at all;
-  the field is written only when a person sets something other than the default. Not a real question unless Thomas
-  wants the field written on every record.
-- **(f) A gone link to a restricted file.** Keep the visibility on the link, or show nothing to people outside the
-  list. *Suggestion:* keep a copy of the visibility on the link when it is made, so a removed file still hides from
-  people who never could see it. Blocks slice 4.
-- **(g) The activity line** for a file that is not Everyone. *Suggestion:* write none. Blocks nothing.
+  Blocks slice 2 only, which is started; Thomas settles it when he looks at the Prototype.
+- **(e) Migration.** *Suggestion:* a record with no field reads as `everyone` when it is read, with no stored change;
+  the field is written only when a person sets something other than the default. Slice 1 builds this reading, which
+  costs nothing to change. Not a real question unless Thomas wants the field written on every record.
