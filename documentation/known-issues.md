@@ -188,12 +188,6 @@ Workaround: none needed to use them; they are harder to hit with a thumb.
 
 In `public/sdk/system.css`, a control's focus ring can draw an inner rectangle as well as its outline on some pieces. The toolbar search box was fixed (GitHub #394); the other pieces were not listed. Reported by the project manager; the pieces were not listed and this entry's author has not seen it. It does not stop anything from working.
 
-## Printing a PDF from the Vault can print an error page in a pop-out or a destination page
-
-**Print** on a PDF opens the browser's print dialog from a hidden frame that holds the PDF as a blob. The pages for a module's pop-out (`public/module.html`) and for a destination (`public/destination.html`) have a content security policy with `frame-src 'self'`, which blocks that blob frame, so the print can show an error page. Pictures print fine there, and the main space page prints PDFs fine by this reading. Found by quality-assurance and read as code only. Printing a PDF has not been seen in a real browser.
-
-Workaround: print the PDF from the space page, or use **Download** and print it from your device.
-
 ## A second click on Print while one is preparing starts a second print
 
 **Print** in the Vault shows "Preparing to print..." while it gets the file ready, but it does not stop you from choosing **Print** again. A second click starts a second print of the same file. Found when the print was made faster; it has not been fixed.
