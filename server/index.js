@@ -2569,7 +2569,11 @@ hostRouter.delete('/api/host/flight-schedule', requireHostAdmin, flightScheduleC
 // PUT replaces the whole catalog (the same shape GET's own `plans` field is), free always kept present regardless
 // of what is sent.
 hostRouter.put('/api/host/plans', requireHostAdmin, (req, res) => {
-  res.json({ plans: hostRegistry.setPlansCatalog(req.body || {}) });
+  try {
+    res.json({ plans: hostRegistry.setPlansCatalog(req.body || {}) });
+  } catch (err) {
+    sendHostError(err, res);
+  }
 });
 // Provider-agnostic billing webhook: a provider's own format is adapted into this shape outside the app (a
 // small relay), which is what keeps every provider's own card handling out of it (plan-environments.md, "Phase 5").

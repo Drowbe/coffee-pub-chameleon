@@ -679,6 +679,7 @@ $('plans-save').addEventListener('click', async () => {
   // skipped, as before.
   for (const row of $('plans-editor').querySelectorAll('.plan-row')) {
     if (!row.querySelector('[name="id"]').value.trim()) continue;
+    if (!row.querySelector('[name="name"]').value.trim()) { say($('plans-status'), 'Give the plan a name.', true); row.querySelector('[name="name"]').focus(); return; }
     const bad = [...row.querySelectorAll('input')].find((i) => !i.checkValidity());
     if (bad) { bad.reportValidity(); bad.focus(); return; }
   }
@@ -690,7 +691,7 @@ $('plans-save').addEventListener('click', async () => {
     const num = (name) => (v(name) === '' ? null : Number(v(name)));
     const mods = v('modules');
     plans[id] = {
-      name: v('name') || id,
+      name: v('name'),
       caps: {
         modules: !mods || mods === 'all' ? 'all' : mods.split(/[\s,]+/).filter(Boolean),
         members: num('members'),

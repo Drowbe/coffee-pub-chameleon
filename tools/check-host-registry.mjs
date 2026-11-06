@@ -294,6 +294,18 @@ test('the plan catalog always has a free entry, even from nothing or a bad one',
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('saving the plan catalog refuses a plan with a blank name, and never uses the id as the name', () => {
+  const dir = freshDir();
+  const r = new HostRegistry(dir);
+  const caps = { modules: 'all', members: 5, storageBytes: null, aiCallsPerMonth: null, calls: null };
+  for (const name of ['', '   ', undefined]) {
+    assert.throws(() => r.setPlansCatalog({ pro: { name, caps } }), (e) => e instanceof HostError && e.status === 400 && e.message === 'Give the plan a name.');
+  }
+  assert.equal(r.plansCatalog().pro, undefined, 'nothing was saved');
+  assert.equal(r.setPlansCatalog({ pro: { name: '  Pro  ', caps } }).pro.name, 'Pro');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('billing: paid takes the named plan from the catalog, lapsed/cancelled start the grace once', () => {
   const dir = freshDir();
   const r = new HostRegistry(dir);
@@ -480,6 +492,14 @@ try {
     assert.equal(list.status, 200);
     assert.equal('tenants' in list.json, false);
     assert.deepEqual(list.json.environments.map((e) => [e.slug, e.refused]), [['acme', null], ['bravo', null]]);
+    // The plans route: a blank or whitespace-only name is a 400, a good name saves.
+    const planBody = (name) => ({ free: { name: 'Free', caps: {} }, pro: { name, caps: {} } });
+    for (const name of ['', '   ']) {
+      const bad = await call(server, 'admin', 'PUT', '/api/host/plans', { cookie, body: planBody(name) });
+      assert.equal(bad.status, 400, `name ${JSON.stringify(name)}`);
+      assert.equal(bad.json.error, 'Give the plan a name.');
+    }
+    assert.equal((await call(server, 'admin', 'PUT', '/api/host/plans', { cookie, body: planBody('Pro') })).json.plans.pro.name, 'Pro');
     // Each environment's own part (names-table) runs when it is built: the old settings gone, recorded once, the copy kept.
     for (const slug of ['acme', 'bravo']) {
       assert.equal((await call(server, slug, 'GET', '/api/branding')).status, 200);
