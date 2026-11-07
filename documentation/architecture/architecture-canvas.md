@@ -1,6 +1,6 @@
 # Canvas Architecture
 
-**Audience:** developers changing the space page in Collaborator: the canvas, and the modules on it (the conference, the chat and installed modules).
+**Audience:** developers changing the space page in Coffee Pub Chameleon: the canvas, and the modules on it (the conference, the chat and installed modules).
 
 How a space's canvas is built and the rules that keep it predictable. The conference and the chat are built-in modules, handled the same way as an installed one. Wider than the narrow layout they are not columns of the canvas grid but live in the always-on column beside it ("The work area and the always-on column" below); the grid rules in this document apply to them in the narrow layout, floating and in a window of their own. What a player sees is in [userguide-call](../userguides/userguide-call.md); colors are in [design-theme](../designsystem/design-theme.md).
 

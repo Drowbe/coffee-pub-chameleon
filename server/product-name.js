@@ -2,12 +2,21 @@
 
 // The product's name, from configuration (PRODUCT_NAME). Sentences a person reads use this; identifiers never do
 // (file formats, fenced blocks, stored keys are named by kind: plan-kind-names.md).
-// DEFAULT_PRODUCT_NAME is the only place the default is written; server/index.js defaults PRODUCT_NAME from it.
-const DEFAULT_PRODUCT_NAME = 'Collaborator';
+// PRODUCT_NAME holds the FULL name (titles, sign-in, first mentions, About); shortProductName() is the form for where only
+// the name fits and for running text. DEFAULT_PRODUCT_NAME is the only place the default is written; server/index.js defaults PRODUCT_NAME from it.
+const DEFAULT_PRODUCT_NAME = 'Coffee Pub Chameleon';
 
 function productName() {
   const name = typeof process.env.PRODUCT_NAME === 'string' ? process.env.PRODUCT_NAME.trim() : '';
   return name || DEFAULT_PRODUCT_NAME;
+}
+
+// The short form: the full name without a leading "Coffee Pub " (one space, any letter case). A name without that prefix,
+// such as a branded "Travel Pub", is its own short form (the default's short form is its last word).
+function shortProductName() {
+  const full = productName();
+  const short = full.replace(/^coffee pub /i, '').trim();
+  return short || full;
 }
 
 // The product's name as it can go in a request header: HTTP header values take only Latin-1, and a user-agent's product
@@ -31,4 +40,4 @@ function userAgent({ contact = null } = {}) {
 // kind names, plan-kind-names.md decision 3).
 const REPOSITORY_URL = 'https://github.com/Drowbe/coffee-pub-collaborator';
 
-module.exports = { DEFAULT_PRODUCT_NAME, productName, headerProductName, userAgent, REPOSITORY_URL };
+module.exports = { DEFAULT_PRODUCT_NAME, productName, shortProductName, headerProductName, userAgent, REPOSITORY_URL };

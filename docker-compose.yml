@@ -1,4 +1,4 @@
-# Collaborator - paste this into QNAP Container Station (Applications >
+# Coffee Pub Chameleon - paste this into QNAP Container Station (Applications >
 # Create) or run with `docker compose up -d` anywhere. No files to edit on the
 # NAS: everything is set below. Replace the CHANGE_ME values.
 #
@@ -82,7 +82,7 @@ services:
       # sign-up pick a template for each new environment). Ignored, with a line, on data that already exists.
       # TEMPLATE: "travel"
       # MAP_IMAGE_MAX_MB: "100"          # the most a picture map file (an invented world, as PMTiles picture tiles) may weigh, in MB
-      PRODUCT_NAME: "Collaborator"
+      PRODUCT_NAME: "Coffee Pub Chameleon"
       # CONTACT_EMAIL: "you@example.com" # optional: where the product page's "ask" writes to
       # SIGNUP: "on"                     # lets anyone make a free environment from the product page; off unless set
       # The AI the host offers every environment (each picks it as "Managed", or sets up its own): a key is

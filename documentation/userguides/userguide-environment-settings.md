@@ -1,6 +1,6 @@
 # Manage
 
-**Audience:** an owner or the admin running a Collaborator environment, working through the Manage page.
+**Audience:** an owner or the admin running a Coffee Pub Chameleon environment, working through the Manage page.
 
 Open the Manage page from the menu under your picture in the top bar: choose **Manage**. It has seven tabs, in this order: **Environment**,
 **Template**, **Theme**, **Spaces**, **Roles**, **Users** and **Modules**, plus **About**. In the narrow layout the row of tabs scrolls sideways within itself. (Old addresses still work: `/admin#server` and `#settings` open Environment, `#rooms` opens Spaces, and `#words` and `#home-icon` open the Template tab at that section.) Manage's tabs are in the bar under the top bar. The pages reached from here (a person's profile, a module's configuration, the AI configuration) have **Manage** at the start of that bar, to come back. Only owners and the admin (on a hosted server, the host admin) see it; anyone else asking for it is told "Owners only."
@@ -16,13 +16,13 @@ Open the Manage page from the menu under your picture in the top bar: choose **M
 - **Call features.** Turns screen sharing, asides, private conversations and reactions on or off for
   everyone, and sets the highest video quality anyone can pick.
 - **Calendar sharing.** One line, "Calendar sharing is set in Calendar's configuration.", links to the Calendar's configuration page, where the calendar switches are now (see "Calendar sharing (owner)" in [Calendar](userguide-calendar.md)). The **Top bar** and **Calendar apps** sections that used to be here are gone; their switches moved to the Calendar's and Maps' configuration pages (see "Top bar" below). The line shows only while a module that takes part in calendar sharing is installed.
-- **Sign-in page.** A background picture behind the sign-in box, the text under the password field, and **Require two-step sign-in for everyone**: off (the default: anyone may set up an authenticator app on their profile) or on (everyone must, from their next sign-in; a session already open keeps working); see "Two-step sign-in" in [Accounts, roles and permissions](userguide-accounts.md). The switch is not shown when the server does not offer two-step sign-in (`ENABLE_MFA` in the compose file). The Users tab marks accounts that have set it up. Click the picture to upload your own, paste one, or choose **Choose from the library** for one of the pre-made backgrounds that ship with Collaborator (filter by theme and style, pick one, **Use this background**). New pre-made images are added by putting files in `public/assets/images/backgrounds/`; see the README there for the format and file names.
+- **Sign-in page.** A background picture behind the sign-in box, the text under the password field, and **Require two-step sign-in for everyone**: off (the default: anyone may set up an authenticator app on their profile) or on (everyone must, from their next sign-in; a session already open keeps working); see "Two-step sign-in" in [Accounts, roles and permissions](userguide-accounts.md). The switch is not shown when the server does not offer two-step sign-in (`ENABLE_MFA` in the compose file). The Users tab marks accounts that have set it up. Click the picture to upload your own, paste one, or choose **Choose from the library** for one of the pre-made backgrounds that ship with Chameleon (filter by theme and style, pick one, **Use this background**). New pre-made images are added by putting files in `public/assets/images/backgrounds/`; see the README there for the format and file names.
 - **Sign-up.** Self-service `/register` on or off, and invite links into specific spaces. See
   [Accounts, roles and permissions](userguide-accounts.md).
 - **Access key.** The key that a keyed page's link carries in place of a sign-in (the Stream module's
   OBS views, `?s=...`). Show, copy or regenerate it; regenerating stops every existing link working.
   How the OBS boxes look (borders, the name plate, dimming) is the Stream module's own settings now; see
-  [Collaborator in OBS](userguide-obs.md).
+  [Chameleon in OBS](userguide-obs.md).
 
 ## Top bar
 
@@ -60,7 +60,7 @@ The **Template** tab gathers what a template gives an environment. From the top:
   Thumbs down.
 - **Icons.** The icons you want available. Paste an icon's HTML from fontawesome.com, for example
   `<i class="fa-solid fa-dice"></i>`, and the preview shows it. These icons are the choices offered for a
-  space's launch link, the home icon and a module's icon. Only the Free icons that ship with Collaborator will
+  space's launch link, the home icon and a module's icon. Only the Free icons that ship with Chameleon will
   draw, unless you have added your own Pro package (see "Font Awesome Pro" under Theme). A new environment starts with
   113 icons.
 
@@ -132,7 +132,7 @@ labels and help) still uses the default words.
   own.
 - **Font Awesome Pro (optional).** If you have a Pro licence, drop your own "Web" download from your
   Font Awesome account (the folder with `css/`, `webfonts/` and `svgs/` in it, the Classic style) at
-  `DATA_DIR/fontawesome-pro/` on the server and restart it. Collaborator serves and draws from it ahead of
+  `DATA_DIR/fontawesome-pro/` on the server and restart it. Chameleon serves and draws from it ahead of
   the bundled Free set, falling back to Free for any style or icon it does not have. Nothing about your
   licence or your package ever leaves your own server: it is never built into the shared image, never
   uploaded, and no token for it lives in this repository.
@@ -158,4 +158,4 @@ world map with your own picture (see "Picture map" in [Maps](userguide-maps.md))
 
 ## About
 
-The version, the licence, and the credits for the open-source software Collaborator is built on.
+The version, the licence, and the credits for the open-source software Chameleon is built on. The product's name is printed once.

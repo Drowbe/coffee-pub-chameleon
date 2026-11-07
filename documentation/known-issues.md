@@ -1,6 +1,6 @@
 # Known Issues
 
-**Audience:** anyone running Collaborator who wants to know what is broken before reporting it
+**Audience:** anyone running Coffee Pub Chameleon who wants to know what is broken before reporting it
 as new.
 
 A defect is recorded here once it has been observed, with a workaround if one exists, and moves to
@@ -104,7 +104,7 @@ Workaround: none is needed for owners, since no offer is made to them. Ignore th
 ## The logo still reads the old name
 
 The logo on the landing page and on the host console's bar reads "COFFEE PUB MAGPIE", the product's old name.
-The words on those pages say Collaborator. GitHub #110.
+The words on those pages say Chameleon. GitHub #110.
 
 Workaround: none.
 
@@ -211,7 +211,7 @@ Workaround: edit each place and set its **Position** on the picture with the tar
 
 **Its own window** for the call, and **Open in its own window** for a module, use `window.open`. A browser that blocks pop-ups, or an installed app that restricts them, cannot show the window. The call and the module now stay where they were and the status line reads "The browser did not open the window. Allow pop-ups for this site to open it in its own window." (GitHub #288). Only the window itself is missing.
 
-Workaround: allow pop-ups for Collaborator.
+Workaround: allow pop-ups for Chameleon.
 
 ## A Calendar or Map editor in a narrow window is a narrow-layout sheet
 

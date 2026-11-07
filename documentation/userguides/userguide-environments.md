@@ -1,6 +1,6 @@
 # Your environment
 
-**Audience:** the owner of an environment on a hosted Collaborator server: what is yours to run, what your plan allows, and how to leave.
+**Audience:** the owner of an environment on a hosted Coffee Pub Chameleon server: what is yours to run, what your plan allows, and how to leave.
 
 An **environment** is your group's own place on a host that serves several: its own address (`yourname.<base domain>`), its own people, spaces, settings, look and modules. Nothing in it is shared with any other environment. You run it; the host runs the server underneath. A server with no base domain is one environment at its own address, run by its admin and any owners it makes, and this page does not apply to it.
 
@@ -34,7 +34,7 @@ Whether your environment requires it of everyone is yours to set (Manage > Envir
 
 ## If your environment won't open
 
-If your environment shows only a page saying its data is from a newer version of Collaborator, or could not be
+If your environment shows only a page saying its data is from a newer version of Chameleon, or could not be
 updated, nothing in it has been lost, but it cannot be used until the host puts it right, usually by
 restoring a backup. The host console shows the host admin that it won't open, and why. Other environments on the
 same host are not affected.
