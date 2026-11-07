@@ -114,12 +114,18 @@ The "door" is one middleware, registered right after `express.json()`, before an
   product pages would hide it); the start stops with a line naming it. All of these checks run before `host.json`
   is written.
 
-  `PRODUCT_NAME` (default "Collaborator") and `CONTACT_EMAIL` (default none) are
-  configuration, never code, since the product's own name is not settled yet -- `GET /api/product` (registered on
+  `PRODUCT_NAME` (default "Coffee Pub Chameleon") and `CONTACT_EMAIL` (default none) are
+  configuration, never code -- `GET /api/product` (registered on
   both the main app and `hostRouter`, never behind a session) answers `{ name, contact, baseDomain, productDomain, version, signup, plans, templates, pages }`
   wherever it is reached; `productDomain` is the product host (`PRODUCT_DOMAIN`, else the base), null without a base domain. `PRODUCT_NAME` unset, empty or only spaces means the default, everywhere: `productName()`
   in `server/product-name.js` is the one rule, and `DEFAULT_PRODUCT_NAME` there is the only place the default is
-  written. The pages write no name of their own: they start with none and fill it in from branding. `version` is
+  written. `PRODUCT_NAME` holds the full name; `shortProductName()` in the same file derives the short form by dropping a
+  leading "Coffee Pub " (any letter case), so the default's short form is "Chameleon", and a name without that prefix, such as a
+  branded "Travel Pub", is its own short form and shows everywhere. The short form is `productShortName` in `GET /api/product`,
+  `/api/branding` and `/api/host/settings`. Titles, sign-in, first mentions and the About tab use the full name; running text
+  uses the short one. An environment that already stored a name keeps it, and the About tab prints the name once (it no longer
+  adds "A Coffee Pub product"). A compose file that still sets `PRODUCT_NAME: "Collaborator"` overrides the default and keeps
+  the old name on a new install: change it to the new name. The pages write no name of their own: they start with none and fill it in from branding. `version` is
   the package version and the first seven characters of `APP_REVISION` (`v0.4.0 (1a2b3c4)`), which the Dockerfile
   sets to the commit the image was built from (`dev` when unset). It was `TAVERN_REVISION`, which is no longer read;
   only the Dockerfile ever set it.
@@ -347,7 +353,7 @@ admin names, the browser's `tavern.*` keys), the checks that prove them, the def
 entry for the default's line or for `PAST_BLOCK_LABELS` would allow more than that one line as it is, and when
 `PAST_BLOCK_LABELS` is not a frozen list of two. The checks whose sentences carry the product's name run with
 `PRODUCT_NAME=Testname` and build what they expect from it, so a sentence that hard-codes the default fails too.
-If the default product name ever changes, the old one must be added to `PAST_PRODUCT_NAMES` by hand.
+If the default product name ever changes, the old one must be added to `PAST_PRODUCT_NAMES` by hand (the list is magpie, tavern and collaborator since the rename to Coffee Pub Chameleon).
 
 ### The host's part: `names-environment`
 

@@ -1,9 +1,9 @@
 # Theme and Design Tokens
 
-**Audience:** anyone styling a page, a panel or a module against Collaborator, who needs the
+**Audience:** anyone styling a page, a panel or a module against Coffee Pub Chameleon, who needs the
 colors to follow whatever theme the admin has chosen.
 
-Admins can re-theme Collaborator from the Theme tab of the Manage page, including light themes. A theme
+Admins can re-theme Chameleon from the Theme tab of the Manage page, including light themes. A theme
 changes colors only, never layout. Anything drawn with a fixed color will be unreadable on some
 server, so every color must come from the tokens below.
 
@@ -283,4 +283,4 @@ The list (`.sdk-kind-list`) is `--bg-card` on a 1 px `--border` with a `--radius
 
 ## Modules
 
-A module runs in a sandboxed frame, so it cannot see Collaborator's stylesheet. The host reads the current theme from the page's computed style and hands it to the module on start, and the module SDK sets it on the frame's `:root` as CSS custom properties. A module written to the rules above follows the theme with no code. Collaborator also adds a small base stylesheet to each module page (`.btn`, `.btn-primary`, `.action-btn`, `.card`, styled inputs) built from the same tokens. The rules apply to module authors too; see [api-module-sdk](../api/api-module-sdk.md).
+A module runs in a sandboxed frame, so it cannot see Chameleon's stylesheet. The host reads the current theme from the page's computed style and hands it to the module on start, and the module SDK sets it on the frame's `:root` as CSS custom properties. A module written to the rules above follows the theme with no code. Chameleon also adds a small base stylesheet to each module page (`.btn`, `.btn-primary`, `.action-btn`, `.card`, styled inputs) built from the same tokens. The rules apply to module authors too; see [api-module-sdk](../api/api-module-sdk.md).

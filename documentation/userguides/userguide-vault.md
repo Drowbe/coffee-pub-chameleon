@@ -71,7 +71,7 @@ Choose a file (or **Open** in its menu). It opens in a window of its own over th
 - **A picture** fits the window; zoom with the buttons, the wheel or a pinch, and drag to move it.
 - **Audio and video** play with the browser's controls.
 - **Markdown** is drawn as text. Anything in it that looks like a web page is shown as plain text, never run.
-- **A PDF** opens in the Vault's own PDF viewer, with page buttons, a page number, **Fit width**, and **Search in the PDF**. The viewer runs apart from the rest of Collaborator and has no network, so a PDF cannot reach anything.
+- **A PDF** opens in the Vault's own PDF viewer, with page buttons, a page number, **Fit width**, and **Search in the PDF**. The viewer runs apart from the rest of Coffee Pub Chameleon and has no network, so a PDF cannot reach anything.
 - **A download-only PDF** shows **This PDF can't be opened here. Download it.** with a **Download** button (or says your role can't download it).
 
 You can have up to four windows open at once. Opening a file that already has a window brings that window forward. With four open, opening another says **Four windows are open**, "Close a window to open another."

@@ -1,6 +1,6 @@
-# Collaborator
+# Coffee Pub Chameleon
 
-**Audience:** anyone deciding whether to run Collaborator, or looking for where to read more
+**Audience:** anyone deciding whether to run Chameleon, or looking for where to read more
 about it.
 
 Self-hosted voice and video for a tabletop game. Each player signs in once with a login and password, or
@@ -11,7 +11,7 @@ Coffee Pub Studio, and it runs on your own server; nothing about your calls is s
 
 Known defects and their workarounds are in [Known issues](known-issues.md).
 
-## Running Collaborator
+## Running Chameleon
 
 - [Getting started](userguides/userguide-getting-started.md) -- running the server, signing in
   for the first time and a first look around.
@@ -22,7 +22,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [Spaces](userguides/userguide-spaces.md) -- Home, the top bar, the status strip, phases, Set up, and stepping aside.
 - [Participant and Character images](userguides/userguide-images.md) -- the pictures OBS shows for
   each player.
-- [Collaborator in OBS](userguides/userguide-obs.md) -- adding a player to OBS by hand.
+- [Chameleon in OBS](userguides/userguide-obs.md) -- adding a player to OBS by hand.
 - [Manage](userguides/userguide-environment-settings.md) -- every tab of the Manage page, where an environment is set up.
 - [Creating themes](userguides/userguide-themes.md) -- the colours, light and dark, and sharing a theme as a file.
 - [Your environment](userguides/userguide-environments.md) -- an owner's view on a hosted server: the plan, the caps, a copy, leaving.

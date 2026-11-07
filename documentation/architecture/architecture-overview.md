@@ -1,9 +1,9 @@
 # Architecture Overview
 
-**Audience:** a developer changing Collaborator, who needs the shape of the whole system and
+**Audience:** a developer changing Coffee Pub Chameleon, who needs the shape of the whole system and
 where each part lives.
 
-Collaborator is a small Node web app, plus a LiveKit media server if you want voice and video. LiveKit carries audio and video
+Chameleon is a small Node web app, plus a LiveKit media server if you want voice and video. LiveKit carries audio and video
 and nothing else; entering a space, who is here, chat and asides run through the app itself and work without it. There is no build step and no front-end
 framework: the pages are plain HTML, CSS and JavaScript served as they are.
 
@@ -17,16 +17,16 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
         ^                                             ^
         | pages and API                               | access tokens
 +--------------------------------------------------------------+
-| Collaborator (Node/Express): pages, accounts, images, API    |
+| Chameleon (Node/Express): pages, accounts, images, API       |
 +--------------------------------------------------------------+
 ```
 
 - **LiveKit server** is open source and runs as its own container. It is a selective forwarding unit:
   each player uploads once and the server fans the stream out. It has a built-in TURN relay for players
-  behind strict routers. Collaborator calls its server API for the calls cap, the microphone and camera marks, kick and mute.
+  behind strict routers. Chameleon calls its server API for the calls cap, the microphone and camera marks, kick and mute.
   It is optional: with no LiveKit keys the server starts, logs "No LiveKit: voice and video are off." and the call, the
   Conference and asides are off ([Hosting](#hosting)).
-- **Collaborator web app** serves the pages, mints LiveKit access tokens for the call, and keeps accounts, spaces,
+- **Chameleon web app** serves the pages, mints LiveKit access tokens for the call, and keeps accounts, spaces,
   images and settings. It never touches media. It also keeps who is where in memory and sends it, with chat and the
   asides' nudges, on a server-sent stream per page (`GET /api/live`).
 - **Coffee Pub Studio** signs in as an owner and creates one OBS Browser Source per player, pointing at
@@ -34,7 +34,7 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
 
 ## Technology
 
-- **LiveKit** on both sides, with `livekit-client` served by Collaborator itself from `/lib/`. It was chosen
+- **LiveKit** on both sides, with `livekit-client` served by Chameleon itself from `/lib/`. It was chosen
   over a hand-rolled mesh, whose upload cost grows with every person in the call, and over Jitsi, where per-participant
   OBS views would need low-level work.
 - **Node 22 and Express 5.** One app serves every page and the JSON API.
