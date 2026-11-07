@@ -11,8 +11,11 @@ signs in. Any machine that runs Docker works the same way; only the router and p
 
 ## Set it up
 
-Everything the NAS needs is in `docker-compose.yml`, which you paste into Container Station. The app
-image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator`.
+Everything the NAS needs is in `docker-compose.yml`, which you paste into Container Station. It is short on
+purpose: it holds the settings you must change, and the optional ones are in the
+[Settings reference](userguide-settings-reference.md). It has two services: `chameleon`, the app (container
+`chameleon-app`), and `livekit`, the media server (container `chameleon-livekit`). The app image is built by GitHub and
+pulled from `ghcr.io/drowbe/coffee-pub-collaborator`; the image keeps that name for now.
 
 1. **Make the secrets** in Terminal on your Mac and keep them in a note. The first two are for video only:
    ```bash
@@ -25,17 +28,24 @@ image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator
    (Cloudflare's orange cloud), turn it off for these: media has to reach the NAS directly.
 3. **Router.** For video, forward to the NAS's LAN address: `7881` TCP, `7882` UDP, `3478` UDP. Ports 80 and 443
    already reach Nginx Proxy Manager.
-4. **Container Station.** Applications, Create, give it the name `collaborator`, paste the contents of
+4. **Container Station.** Applications, Create, give it the name `chameleon`, paste the contents of
    `docker-compose.yml`, replace the `CHANGE_ME` values (domain, API key, API secret, the
-   admin's login and password), and click Create. Both containers should show green within a minute. To run without
-   video, delete the `livekit` service and the three `LIVEKIT_` lines of `collaborator` first (and the API key and
-   secret are not needed); add them later and recreate the app to turn video on.
+   admin's login and password, and the image tag, below), and click Create. Both containers should show green within a
+   minute. To run without video, delete the `livekit` service and the three `LIVEKIT_` lines of `chameleon` first (and
+   the API key and secret are not needed); add them later and recreate the app to turn video on. The server starts
+   without LiveKit: spaces, chat, who is here and the modules all work, and the call, the Conference and asides are
+   missing until you add it. Set both the LiveKit key and secret, or neither.
 5. **Nginx Proxy Manager.** A proxy host for each address, each with a Let's Encrypt certificate and Force SSL:
    - For video, `livekit.<domain>` to scheme http, forward host = NAS LAN address, port `7880`, **Websockets
      Support on**.
    - `collaborator.<domain>` to scheme http, NAS LAN address, port `3000`.
 
-**Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data) and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`; the example is `/share/appdata/coffee-pub-collaborator-vault`). The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are commented examples in the compose file ([Vault](userguide-vault.md), "Notes for the person running the server").
+**The image tag.** The file names the image as `ghcr.io/drowbe/coffee-pub-collaborator:sha-CHANGE_ME`. Replace
+`CHANGE_ME` with the first 7 characters of the commit you want: on GitHub, open the repository's **Actions** tab, pick the
+run that built the image you want, and copy the first 7 characters of its commit (for example `sha-1a2b3c4`). Do not use
+`:latest` on a NAS: it reuses the copy it cached, and you keep running an old build. To update, change the tag.
+
+**Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data), which is `/share/appdata/coffee-pub-chameleon` on the NAS, and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`), which is `/share/appdata/coffee-pub-chameleon-vault`. The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are in the [Settings reference](userguide-settings-reference.md) ([Vault](userguide-vault.md), "Notes for the person running the server").
 
 **Space on the NAS.** The image needs several GB free. If creating the container fails with "no space left on device", clear unused images and stopped containers in Container Station, then create it again. If the NAS keeps an old copy of `:latest`, it may start the old version. Pin an exact tag, such as `:sha-` followed by the first 7 characters of the commit, or remove the old image before you create the container.
 
@@ -45,7 +55,9 @@ Camera access requires HTTPS, which the proxy provides. Players need nothing but
 
 ## Sign in as the admin
 
-The compose file holds one account, the server's **admin**: `ADMIN_LOGIN` and `ADMIN_PASSWORD`. Open
+The compose file holds one account, the server's **admin**: `ADMIN_LOGIN` and `ADMIN_PASSWORD`. On one environment this
+admin runs it (owners are made in **Manage**); with several environments it is the host admin, who signs in to the host
+console at `admin.<base domain>`. Open
 `https://collaborator.<domain>/`, sign in with them, and choose **Manage** in the menu under your picture, at the right of the top bar. Add your
 players under **Users** and send each of them a login and password, or a personal link; see
 [Accounts, roles and permissions](userguide-accounts.md). If someone else will run the server day to day, make
@@ -110,7 +122,7 @@ the warnings below).
    login and talks to the app at `http://localhost:3000` inside the container.
 
    ```
-   docker exec -it collaborator-app npm run seed:demo
+   docker exec -it chameleon-app npm run seed:demo
    ```
 
 2. A hosted environment (a server with a base domain): the seeder refuses unless you say which environment
@@ -120,7 +132,7 @@ the warnings below).
    ```
    docker exec -it -e SEED_URL=https://<slug>.<base domain> -e DEMO_ALLOW_HOSTED=1 \
      -e DEMO_ENVIRONMENT=<slug> -e ADMIN_LOGIN=<an owner of that environment> \
-     -e ADMIN_PASSWORD=<that owner's password> collaborator-app node tools/seed-demo.mjs
+     -e ADMIN_PASSWORD=<that owner's password> chameleon-app node tools/seed-demo.mjs
    ```
 
    The public address must be reachable from inside the container. A hosted run makes no map file.
@@ -159,12 +171,13 @@ Warnings:
 An install made before the product's rename keeps its old names: the containers `tavern-app` /
 `magpie-app` and `tavern-livekit` / `magpie-livekit`, and the data paths `/share/appdata/tavern` or
 `/share/appdata/magpie`, all still work if the compose volume still points at that folder. The
-`TAVERN_ADMIN_*` variables do not: see **Older names** above.
+`TAVERN_ADMIN_*` variables do not: see **Older names** above. An install made before the Chameleon rename keeps
+`collaborator-app` and `collaborator-livekit`, and its paths, working as long as its compose file still names them.
 Do not change the volume path until you have moved the folder: the data lives there.
 
-In Container Station, pull the new image for the `collaborator` application
-(`ghcr.io/drowbe/coffee-pub-collaborator`) and recreate it. Users, images and settings live in the
-folder the volume names (`/share/appdata/coffee-pub-collaborator` on a new install).
+In Container Station, change the image tag of the `chameleon` application
+(`ghcr.io/drowbe/coffee-pub-collaborator:sha-...`) to the new commit's and recreate it. Users, images and settings live in the
+folder the volume names (`/share/appdata/coffee-pub-chameleon` on a new install).
 
 Take a copy of that data folder, and of the Vault's folder (`/app/vault`), before you update. An update can bring the data up to date for the
 new version, and an older version then refuses to open it rather than misread it: going back to an older
@@ -205,11 +218,11 @@ To switch environments on, with the server already running as above:
    `ADMIN_PASSWORD`. `MIGRATE_TENANT_SLUG` moves nothing: use `MIGRATE_ENVIRONMENT_SLUG`.
 
 **Behind a proxy, and the limits.** `TRUST_PROXY_HOPS` says how many reverse proxies stand in front of the container.
-It defaults to `1`, the Nginx Proxy Manager in the compose file. Sign-in and guest limits count by the address the
+It defaults to `1`, the Nginx Proxy Manager. Sign-in and guest limits count by the address the
 nearest proxy saw, so nobody can choose their own with a made-up header. Two in a row (say Cloudflare, then Nginx Proxy
 Manager) is `2`; reached directly with no proxy, `0`. A value that is not a whole number logs a line and uses `1`. If
 the count is wrong, every visitor can look like the proxy's own address and share one limit. The Vault's public share links depend on it most: their limit on wrong passwords counts by this address, so set it to the real number of proxies, and to `0` when the container is exposed directly. `SHARE_UNLOCKS_PER_MINUTE` (60) caps how many password checks the environment does a minute. Four more switches are in
-the compose file, commented, and the defaults are usually right: `LIVE_STREAMS_PER_PERSON` (50, the live streams
+the [Settings reference](userguide-settings-reference.md), and the defaults are usually right: `LIVE_STREAMS_PER_PERSON` (50, the live streams
 one signed-in person may hold open, about one a browser tab), `LIVE_STREAMS_PER_GUEST_LINK` (25, for one guest link in
 all; one address gets 40% of it) and `GUEST_CHAT_POSTS_PER_MINUTE` (20, the messages one guest link may post a minute;
 one address gets half). The first two were `CHAT_STREAMS_PER_PERSON` and `CHAT_STREAMS_PER_GUEST_LINK`; the old names

@@ -299,7 +299,7 @@ someone outside the aside only which space they stepped out of.
 
 ## Hosting
 
-`docker-compose.yml` has two services, meant to be pasted into Container Station. `collaborator` is the app and is all
+`docker-compose.yml` has two services, meant to be pasted into Container Station. `chameleon` is the app (container `chameleon-app`) and is all
 that most things need; `livekit` is the part you add for voice and video. The app starts without it: leave out the
 `livekit` service and the three `LIVEKIT_` settings (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST`;
 `LIVEKIT_API_URL` is optional too) and it logs "No LiveKit: voice and video are off." instead of refusing to start. If
@@ -309,7 +309,7 @@ video are not set up on this server", the Conference can't be switched on (`PATC
 pages hide the call, the Conference and asides; Manage > Modules says "Voice and video are not set up on this server"
 with the switch off. `livekit` is from the
 official image, configured entirely through an environment variable (keys, TURN, ports 7880 for
-signaling, 7881 TCP and 7882 UDP for media, 3478 for TURN), and `collaborator`, the Node app from
+signaling, 7881 TCP and 7882 UDP for media, 3478 for TURN), and `chameleon`, the Node app from
 `ghcr.io/drowbe/coffee-pub-collaborator`, built by GitHub Actions. A reverse proxy terminates TLS for both
 hostnames, because browsers only allow camera access over HTTPS.
 
