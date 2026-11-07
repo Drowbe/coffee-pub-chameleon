@@ -65,5 +65,5 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [AI architecture](architecture/architecture-ai.md) -- how the AI is asked: the prompt registry, what is sent and what it may see, who may ask, refunds, records, the key and the address guard.
 - [The demo seeder and the checks](architecture/architecture-demo-site.md) -- filling a server with demo data, a demo site that resets itself, and the checks added since 0.4.
 
-See the [repository README](https://github.com/Drowbe/coffee-pub-collaborator) for requirements and the
+See the [repository README](https://github.com/Drowbe/coffee-pub-chameleon) for requirements and the
 short install summary.

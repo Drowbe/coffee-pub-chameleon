@@ -1,6 +1,6 @@
 # To do
 
-GitHub issues are the work list: <https://github.com/Drowbe/coffee-pub-collaborator/issues>, on the board at
+GitHub issues are the work list: <https://github.com/Drowbe/coffee-pub-chameleon/issues>, on the board at
 <https://github.com/users/Drowbe/projects/8>. This page is an index of the open issues, grouped, with a few words
 each; the issue holds the detail. See the Studio repository for that app's side of things.
 

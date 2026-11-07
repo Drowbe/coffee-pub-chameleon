@@ -15,7 +15,9 @@ Everything the NAS needs is in `docker-compose.yml`, which you paste into Contai
 purpose: it holds the settings you must change, and the optional ones are in the
 [Settings reference](userguide-settings-reference.md). It has two services: `chameleon`, the app (container
 `chameleon-app`), and `livekit`, the media server (container `chameleon-livekit`). The app image is built by GitHub and
-pulled from `ghcr.io/drowbe/coffee-pub-collaborator`; the image keeps that name for now.
+pulled from `ghcr.io/drowbe/coffee-pub-chameleon`.
+
+**If you installed before the rename.** The old image name, `ghcr.io/drowbe/coffee-pub-collaborator`, gets no new builds. The old image keeps running but is never updated. When you next update, change the image line in your compose file to the new name, with an exact `:sha-` tag.
 
 1. **Make the secrets** in Terminal on your Mac and keep them in a note. The first two are for video only:
    ```bash
@@ -40,7 +42,7 @@ pulled from `ghcr.io/drowbe/coffee-pub-collaborator`; the image keeps that name 
      Support on**.
    - `collaborator.<domain>` to scheme http, NAS LAN address, port `3000`.
 
-**The image tag.** The file names the image as `ghcr.io/drowbe/coffee-pub-collaborator:sha-CHANGE_ME`. Replace
+**The image tag.** The file names the image as `ghcr.io/drowbe/coffee-pub-chameleon:sha-CHANGE_ME`. Replace
 `CHANGE_ME` with the first 7 characters of the commit you want: on GitHub, open the repository's **Actions** tab, pick the
 run that built the image you want, and copy the first 7 characters of its commit (for example `sha-1a2b3c4`). Do not use
 `:latest` on a NAS: it reuses the copy it cached, and you keep running an old build. To update, change the tag.
@@ -176,7 +178,7 @@ An install made before the product's rename keeps its old names: the containers 
 Do not change the volume path until you have moved the folder: the data lives there.
 
 In Container Station, change the image tag of the `chameleon` application
-(`ghcr.io/drowbe/coffee-pub-collaborator:sha-...`) to the new commit's and recreate it. Users, images and settings live in the
+(`ghcr.io/drowbe/coffee-pub-chameleon:sha-...`) to the new commit's and recreate it. Users, images and settings live in the
 folder the volume names (`/share/appdata/coffee-pub-chameleon` on a new install).
 
 Take a copy of that data folder, and of the Vault's folder (`/app/vault`), before you update. An update can bring the data up to date for the
