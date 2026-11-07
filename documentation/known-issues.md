@@ -6,6 +6,18 @@ as new.
 A defect is recorded here once it has been observed, with a workaround if one exists, and moves to
 the CHANGELOG once fixed.
 
+## Vault: who can see a file is only half built
+
+The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:
+
+- **Space full.** The "space is full" refusal and the storage total can tell a person that files they cannot see take space. Thomas decided to accept this and document it.
+- **Share links stay open.** Until slice 4, a share link or public link to a file keeps working after the file is narrowed. Its maker, an owner or the admin can turn it off.
+- **Empty share.** A share link whose files are all hidden from its maker shows to them as "0 files", and its **Edit** button answers 404. How it should look is for Thomas to decide.
+- **Held objects.** When a hidden file is linked to an object, people who can see that object are still told that it changed. They can tell something changed on it, not what.
+- **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
+
+Workaround: none needed for now, as nothing sets a visibility yet.
+
 ## The demo seeder changes environment-wide settings
 
 The demo loader (`server/demo-loader.js`) never changes an environment-wide setting. The seeder around it does:

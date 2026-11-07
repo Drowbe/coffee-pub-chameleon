@@ -219,6 +219,25 @@ try {
   const otherList = await send(S, 'GET', shares(other.id), { cookie: people.ola.token });
   same([otherList.status, otherList.json.shares], [200, []], 'another space has its own (empty) list');
 
+  // A file not shared with the maker (plan-vault-privacy.md, slice 1): refused as one that is not there, and its id is in
+  // no list shown to someone who can't see it.
+  {
+    same((await json('PATCH', `/api/modules/vault/library/${notShared.id}?space=${trip.id}`, people.pat.token, { visibility: 'only-me' })).status, 200, 'its adder makes private.md only-me');
+    const hidden = await make(people.mo.token, { name: 'Hidden', files: [notShared.id] });
+    const missing = await make(people.mo.token, { name: 'Hidden', files: ['ffffffffffffffffffffffff'] });
+    same([hidden.status, hidden.text], [missing.status, missing.text], 'a moderator who can\'t see it: the same answer as a file that is not there');
+    same([hidden.status, hidden.json], [404, NO_FILE], 'which is 404 "There is no such file."');
+    const ownerMade = await make(people.ola.token, { name: 'With the private one', files: [notShared.id, pic.id] });
+    same(ownerMade.status, 201, 'an owner sees it, so may share it');
+    const moList = await send(S, 'GET', shares(trip.id), { cookie: people.mo.token });
+    same(moList.json.shares.find((s) => s.id === ownerMade.json.share.id).files, [pic.id], 'the moderator\'s list of links leaves its id out');
+    ok(!moList.text.includes(notShared.id), 'anywhere in the list');
+    const edit = await json('PATCH', shares(trip.id, view.json.share.id), people.mo.token, { files: [pic.id, notShared.id] });
+    same([edit.status, edit.json], [404, NO_FILE], 'nor can the moderator put it into their own link');
+    same((await send(S, 'DELETE', shares(trip.id, ownerMade.json.share.id), { cookie: people.ola.token })).status, 200, 'the owner\'s link turned off');
+    same((await json('PATCH', `/api/modules/vault/library/${notShared.id}?space=${trip.id}`, people.pat.token, { visibility: 'everyone' })).status, 200, 'and private.md is everyone\'s again');
+  }
+
   // --- public: the list ----------------------------------------------------------------------------------------------
   const T = view.json.token;
   const pub = (token, rest = '', o = {}) => send(S, o.method || 'GET', `/api/shared/${token}${rest}`, o);
