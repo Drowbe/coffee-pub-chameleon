@@ -15,6 +15,8 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 
 - [Getting started](userguides/userguide-getting-started.md) -- running the server, signing in
   for the first time and a first look around.
+- [Settings reference](userguides/userguide-settings-reference.md) -- the optional server settings that are not in
+  the compose file, with their defaults.
 - [The call](userguides/userguide-call.md) -- joining a space, the always-on column of call and chat, the
   controls, layouts, reactions, away, and the pop-out window.
 - [Accounts, roles and permissions](userguides/userguide-accounts.md) -- who can do what, guests,
