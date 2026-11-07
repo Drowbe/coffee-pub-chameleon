@@ -12,8 +12,10 @@ https://coffeepubstudio.com/products/chameleon; each product owner will be accou
 own product area, leveraging the design system. On our site, the product pages will be removed and they will be
 replaced with a functional page that will 1) have a link to the product page, and 2) let someone choose and log into
 their specific environment, which should NOT be part of the product page. It will be our hook into the demo too."
-Thomas answered four questions in chat the same day; they are decisions 1 to 4. The rest are open, each with a
-suggestion marked "suggestion, Thomas to confirm". Nothing is built yet. Slice 0 can start when Thomas says.
+Thomas answered four questions in chat the same day (decisions 1 to 4) and four more on 2026-11-07 (decisions 5 to 8).
+Decisions 9 to 12 are the planner's suggestions, which Thomas said he will follow unless he objects; they are marked
+that way and are not his decisions. One question is still open: the rename of `PRODUCT_DOMAIN` and `/api/product*`.
+Nothing is built yet. Slice 0 can start when Thomas says.
 
 **Known privacy issue, live today.** `GET /api/product/environments` lists every active environment on the host, by
 address and name, to anyone. On 2026-11-07 it answered 200 with 5 environments at
@@ -23,7 +25,7 @@ as its first build slice (decision 1), not ahead of it.
 
 This plan supersedes [plan-product-pages](plan-product-pages.md) and answers question 5 of
 [plan-domains](plan-domains.md) ("the app's front door as an environment chooser"). Where the domains plan says "front
-door" or "product page", this plan says "start page" (see Open question 2).
+door" or "product page", this plan says "start page" (decision 6).
 
 ## What it is today
 
@@ -123,6 +125,34 @@ Thomas's, in chat, 2026-11-07.
    The product owner, Thomas, approves the words. Screenshots come from the demo data, through a new `npm run shots`
    tier, handed over and never committed to main.
 
+Thomas's, in chat, 2026-11-07 (second round).
+
+5. **"Try the demo" opens the demo environment's own sign-in with the login filled in (`?login=demo`),** and the start
+   page shows the public demo password beside the button. Two steps, no cross-site post and no exemption. There will be
+   one demo per template later (travel now; a games demo environment when its demo file exists, since one environment
+   holds one template). The button is shown only once #416 slices 4, 6 and 7 exist. Reason: decision 3 keeps passwords
+   off the start page's own form.
+6. **The page is called the "start page"** (`start.html`, `start.js`). Names in code stay as they are until Thomas
+   decides otherwise: `PRODUCT_DOMAIN`, `/api/product*` and the rest are not renamed by this decision.
+7. **The start page uses the app's own design system,** in the Chameleon theme once it is built (rename plan step 5),
+   the default theme until then. The `OWN_PALETTE` exception goes. Reason: one look for the app's own pages.
+8. **The order: the website's product page is brought up to date first (slice 2), then the app's marketing pages are
+   removed (slice 5).** Reason: visitors never see "Coming soon" and a retired address.
+
+Not answered by Thomas. The project manager told him he will follow the planner's suggestions unless he objects. Each is
+a **suggestion, followed unless Thomas objects**, not a decision.
+
+9. **Upgrade points at a short plans list on the start page** (`#plans`). A self-hosting buyer's plans are their own, so
+   the website cannot hold them. *Suggestion, followed unless Thomas objects.*
+10. **The app's own design-system pages stay public on the host** (`/design-system/`, with the Prototype). Out of scope.
+    *Suggestion, followed unless Thomas objects.*
+11. **`env_hint` is kept** until the Public Suffix List and bare-domain questions are decided. Registering the domain
+    would end it anyway, and moving the start page would want it. Slice 4 leaves it as it is. *Suggestion, followed
+    unless Thomas objects.*
+12. **The `check-brand-hosts` pattern is widened** to the brand followed by any letters and a top-level domain, rather
+    than naming the two domains (naming them in the check would put them in code). *Suggestion, followed unless Thomas
+    objects.*
+
 ## What the start page is
 
 A plain page at the product host's `/`. It is not a product page and sells nothing. It does five things:
@@ -134,10 +164,11 @@ A plain page at the product host's `/`. It is not a product page and sells nothi
 4. **Get your own.** Sign-up when it is open; otherwise the contact link, or "Coming soon" without one.
 5. **About the product.** A link to the product page on the website, when `PRODUCT_SITE_URL` is set.
 
-Later, once the demo exists: **Try the demo** (slice 6).
+Later, once the demo exists: **Try the demo** (slice 6). Plans is a sixth part: a short list of the host's plans
+(decision 9).
 
 It never lists environments it was not given, never takes a password, and has no marketing copy, screenshots or use
-pages. How it looks is drawn on the Prototype first and locked by Thomas (slice 3).
+pages. It uses the app's own design system (decision 7). How it looks is drawn on the Prototype first and locked by Thomas (slice 3).
 
 ## The contract
 
@@ -148,19 +179,19 @@ pages. How it looks is drawn on the Prototype first and locked by Thomas (slice 
   start with one sentence, as a bad `PRODUCT_DOMAIN` is. Never written in code; examples use `example.com`. Thomas's
   value is `https://coffeepubstudio.com/products/chameleon`, set in his compose file.
 - `PRODUCT_DOMAIN`, `BASE_DOMAIN`, `SIGNUP`, `CONTACT_EMAIL` and `PRODUCT_NAME` are unchanged (their names are Open
-  question 2).
+  question 1).
 - Without `BASE_DOMAIN` nothing in this plan applies: `/` is the one environment, as today.
 
 ### Server (server-development)
 
 **Routes kept, at the product host:**
-- `/` sends the start page (`public/start.html`, name pending Open question 2) instead of `landing.html`.
+- `/` sends the start page (`public/start.html`) instead of `landing.html`.
 - `GET /api/product`, trimmed: `pages` is removed. It gains `productSiteUrl` (the setting, or `null`). Later it gains
   `demo` (slice 6). Public, no session, no CORS needed (the website reads it from its build, not a browser).
 - `GET /api/product/environment?slug=`: `{ slug, name }` for an active or past-due environment, 404 for anything else.
   The start page's Go and its recent list use it. It reveals only what visiting the address would.
 - `GET /api/product/address?slug=` and `POST /api/product/signup`, as today.
-- The design-system pages, `/sdk/*` and the fonts, as today (Open question 5).
+- The design-system pages, `/sdk/*` and the fonts, as today (decision 10).
 - The product host's allowed paths (`PRODUCT_HOST_PATHS`) become exactly what the start page loads.
 
 **Routes removed, cleanly, with no redirects:**
@@ -171,8 +202,7 @@ pages. How it looks is drawn on the Prototype first and locked by Thomas (slice 
   loads.
 - `POST /login` (the form route) and `CROSS_ORIGIN_EXEMPT`: with no cross-site post, nothing calls it, and every write
   falls under the same-origin rule. The `?error=1` return goes with it. The `?login=` fill on the sign-in page stays,
-  because sign-up's answer uses it (`/login?login=<owner>`). See Open question 1 for the one way the demo could want a
-  cross-site post back.
+  because sign-up's answer uses it (`/login?login=<owner>`). The demo needs no cross-site post (decision 5).
 
 **Other server changes:**
 - `GET /api/host/settings` (the console) carries `productSiteUrl`, for the facts line.
@@ -180,19 +210,19 @@ pages. How it looks is drawn on the Prototype first and locked by Thomas (slice 
   (so `coffeepubstudio.com` and `coffeepubstudio.live` fail), and its self-test plants both. Today no file needs an
   allow-list entry for them.
 - The start page's recent list is the page's own: the server stores nothing for it. `env_hint` is not read by the
-  start page (Open question 7).
+  start page and is kept (decision 11).
 
 **Removed with the pages (slice 5):** `tools/check-product-pages.mjs` and its place in `npm run check`;
 `tools/landing-preview.mjs`; the `landing.html` and `travel.html` cases in `check-origin` and `check-host-registry`,
 and the `POST /login` exemption cases in `check-origin` (replaced by a case that `/api/product/environments` is 404 and
 that a cross-site `POST /login` is refused); the `landing.css` entries in `OWN_PALETTE`, `check-radius`,
 `check-system-css`, `check-buttons`, `ds.js` and `design-system-snapshot.mjs`, then `sources.js` regenerated; the five
-`check-names-allow.json` entries. If the start page uses the app's own system (Open question 3), the `OWN_PALETTE`
+`check-names-allow.json` entries. The start page uses the app's own system (decision 7), so the `OWN_PALETTE`
 exception goes entirely.
 
 ### Pages (experience-design)
 
-- **`public/start.html` and `start.js`** (names pending Open question 2), from the locked Prototype. What a person sees:
+- **`public/start.html` and `start.js`** (names in code stay as they are, decision 6), from the locked Prototype. What a person sees:
   - The product's name from `GET /api/product` (`name`), never written in the file.
   - **Find your environment:** one text field, the suffix `.<baseDomain>` shown after it, and Go. Go cleans the text
     (lower case, spaces trimmed; a full address pasted in is cut to its first label), asks
@@ -207,13 +237,14 @@ exception goes entirely.
   - **Get your own:** the sign-up form when `signup` is true, with the template choice (product pages decision 5) and
     `?template=<id>` preselecting one; otherwise the contact `mailto:` when `contact` is set, else "Coming soon".
   - **About:** a link to `productSiteUrl`, hidden when it is `null`.
-  - **Plans:** only if Open question 4 keeps them.
-  - **Try the demo:** not in the page until slice 6.
+  - **Plans:** a short list of the host's plans (decision 9). Fixed anchor `#plans`.
+  - **Try the demo:** not in the page until slice 6. It opens the demo environment's sign-in with `?login=demo` and shows
+    the public demo password beside it (decision 5).
   - Fixed anchors the website links to: `#start` (sign-up) and `#demo` (slice 6). They do not change without telling
     the website session.
 - No password field anywhere on the page.
 - Manage's Upgrade link (`public/admin.js`) and the console's facts line (`public/host.js`: "Start page" and "Product
-  site") follow Open question 4.
+  site") follow decision 9: Upgrade goes to `#plans` on the start page.
 
 ### The product sheet (content-manager)
 
@@ -250,10 +281,10 @@ Each slice is built and checked on its own. Thomas names the kind of build for e
 | 0 | **The privacy fix and the no-password sign-in.** Remove `GET /api/product/environments` everywhere; the landing page's Sign in becomes the typed address and Go (no dropdown, no password); remove `POST /login` and `CROSS_ORIGIN_EXEMPT`; close the `check-brand-hosts` gap | server-development, then experience-design | Thomas's go. Small. The landing page it changes is deleted in slice 5; this ships first because the issue is live | Nothing |
 | 1 | **Facts for the website.** The product sheet; its check; the `product` shots tier from the demo data | content-manager (the sheet), server-development (the check and the tier) | The demo loader (done) | Nothing |
 | 2 | **The website page brought up to date** from the product sheet, the shots and `/api/product` | the website session; Thomas approves the words | Slice 1 | Outside this repository |
-| 3 | **The start page on the Prototype.** The five parts above, in the chosen look; Thomas locks it | experience-design | Slice 0 | Open questions 2, 3 and 4 |
-| 4 | **The start page built and served.** `start.html` and `start.js` from the lock; `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed | experience-design, server-development | Slice 3 locked | Open question 4 |
-| 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slice 4 | Open question 6 (whether slice 2 must land first) |
-| 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Open question 1 |
+| 3 | **The start page on the Prototype.** The five parts above, in the chosen look; Thomas locks it | experience-design | Slice 0 | Nothing |
+| 4 | **The start page built and served.** `start.html` and `start.js` from the lock; `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed | experience-design, server-development | Slice 3 locked | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now |
+| 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slices 2 and 4 | Nothing |
+| 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Nothing |
 | 7 | **Documentation.** architecture-environments (the door's product-host branch, the start page, the removed routes), userguide-getting-started, userguide-settings-reference (`PRODUCT_SITE_URL`), userguide-templates and userguide-environments (where they describe the product page), the compose file's comment (`PRODUCT_SITE_URL` with an `example.com` value), the CHANGELOG, and the status lines of the superseded plans below | content-manager | Slices 4 and 5 (and again after 6) | Nothing |
 
 Slices 0 and 1 can run beside each other. QA after each slice of a production build, with a security read on slice 0
@@ -304,8 +335,8 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
    changed. Slice 6 waits for #416 slices 6 and 7.
 4. **The website's claims drifting** again. The product sheet's date and the build-time read of `/api/product` are the
    guard; neither forces the website to rebuild.
-5. **Removing the pages before the website's page is current** leaves visitors with "Coming soon" and a stale address
-   for a while (Open question 6).
+5. **Removing the pages before the website's page is current** leaves visitors with "Coming soon" and a stale address.
+   Slice 5 waits for slice 2 (decision 8).
 6. **The recent list on a shared computer** shows the next person which addresses were used. It names no person, and
    each row can be removed.
 7. **The demo adds traffic to a public login that can post and upload** (demo plan decision 12, an accepted risk). The
@@ -316,38 +347,10 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
 
 ### Open questions
 
-Each has a suggestion, marked as such. None of these is a decision.
-
-1. **What "Try the demo" opens, and one demo per template.** *Suggestion, Thomas to confirm:* the shared `demo` login
-   on one public demo environment, found by its demo flag (no new setting), shown only once #416 slices 6 and 7 exist;
-   travel now, a games demo environment of its own when its demo file exists (one environment holds one template).
-   Note: a true one-click sign-in from the start page is a cross-site post of the demo login and password, which is
-   what decision 3 removes. The choices are (a) the button opens the demo's own sign-in with `?login=demo` filled and
-   the start page shows the public password beside it, two steps, no exemption; or (b) a demo-only exemption that
-   accepts a cross-site post for the demo environment alone. *Suggestion: (a).* Blocks slice 6.
-2. **The page's name, and the settings' names.** "Front door" clashes with "the door", the server's host-name
-   resolver. *Suggestion, Thomas to confirm:* "start page" (`start.html`, `start.js`). Whether to rename
-   `PRODUCT_DOMAIN` and `/api/product*` now that no product pages live there (domains decision 15 kept the name; the
-   no-compatibility rule allows a clean rename): *suggestion: Thomas's call; if renamed, do it in slice 4, with
-   `PRODUCT_SITE_URL` named to match.* Blocks slice 3 (the file names) and slice 4 (the setting).
-3. **The start page's look.** *Suggestion, Thomas to confirm:* the app's own system (`sdk/system.css`, the theme
-   tokens) with the Chameleon theme once it is built (rename plan step 5), which drops the `OWN_PALETTE` exception.
-   Until that theme exists, the default theme. Blocks slice 3.
-4. **Where Manage's Upgrade link goes,** and whether the start page keeps a plain list of the host's plans.
-   *Suggestion, Thomas to confirm:* keep a short plans list on the start page (a self-hosting buyer's plans are their
-   own, so the website cannot hold them), and Upgrade goes to it (`#plans`). Blocks slices 3 and 4.
-5. **The app's design-system pages** (`/design-system/`, with the Prototype) stay public on the product host.
-   *Suggestion, Thomas to confirm:* leave them; out of scope. Blocks nothing.
-6. **The order.** *Suggestion, Thomas to confirm:* the website's page is brought up to date (slice 2) before slice 5
-   deletes the app's marketing pages. Blocks slice 5 only.
-7. **`env_hint`.** Nothing reads it on Thomas's install, and the start page uses its own storage (decision 2). Remove
-   `setEnvHint()` and the cookie now, or keep it for a later move of the start page to the bare base?
-   *Suggestion, Thomas to confirm:* keep it until the Public Suffix List and bare-base questions are decided, since
-   registering the domain would end it anyway and moving would want it. Blocks nothing; slice 4 leaves it as it is
-   unless Thomas says remove.
-8. **The `check-brand-hosts` gap.** Closing it is in slice 0. *Suggestion, Thomas to confirm:* widen the pattern to
-   the brand followed by any letters and a top-level domain, rather than listing the two domains (listing them in the
-   check would put them in code). Blocks slice 0's check change only.
+1. **Renaming `PRODUCT_DOMAIN` and `/api/product*`,** now that no product pages live there. Domains decision 15 kept the
+   name; the no-compatibility rule allows a clean rename. Decision 6 leaves them as they are. *Suggestion: Thomas's
+   call; if renamed, do it in slice 4, with `PRODUCT_SITE_URL` named to match.* Blocks nothing now; it would block
+   slice 4's setting names if Thomas renames.
 
 ### Undecided and out of scope
 
@@ -358,5 +361,5 @@ Each has a suggestion, marked as such. None of these is a decision.
   email on every account and a host-wide index of people, against the current architecture. Out of scope until Thomas
   asks.
 - A throwaway environment per demo visitor. Not planned by #416.
-- Which design system "leveraging the design system" means for the start page itself: the website page uses the
-  studio's (decision 4); the start page is Open question 3.
+- Which design system "leveraging the design system" means: the website page uses the studio's (decision 4); the
+  start page uses the app's own (decision 7).
