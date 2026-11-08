@@ -12,7 +12,9 @@
 //
 // It reads public/*.css, public/sdk/*.css, modules/*/src/*.css and the CSS inside the .js files of public and
 // modules/*/src (style strings, el.style.color, { background: '#fff' }, fill="#fff" attributes); not public/design-system
-// or MapLibre. A colour a script keeps as plain data (a palette array) is not in a declaration and is not read.
+// or MapLibre. A colour a script keeps as plain data (a palette array) is not in a declaration and is not read; nor is a palette
+// NAME that is the whole value of a quoted object property ({ fill: 'gold' }). A hex or rgb() there, an assignment
+// (el.style.fill = 'gold') and an attribute (fill="gold") are still read.
 //
 // The admin theme editor's native colour inputs (public/admin.html, type="color") hold a colour the person picks and the code draws none, so there is nothing to read there.
 // No page has a palette of its own: the start page too reads the theme tokens. @font-face blocks are not read.
@@ -101,6 +103,7 @@ for (const file of files) {
     const mixes = [];
     for (const m of value.matchAll(/color-mix\(/gi)) mixes.push([m.index, closeOf(value, m.index + m[0].length - 1)]);
     for (const c of coloursIn(value, named)) {
+      if (d.data && c.kind === 'named' && value.trim() === c.text) continue; // { fill: 'gold' }: a palette name kept as data
       const bw = blackOrWhite(c);
       const inMix = mixes.some(([a, b]) => c.index > a && c.index < b);
       const shadowProp = /shadow|filter/.test(d.prop);
