@@ -211,6 +211,13 @@
         l.timer = setTimeout(() => { l.timer = 0; const v = l.soon; l.soon = undefined; if (v) queue(key, v); }, ms);
       },
       remove(id) { queue(keyOf(id), GONE); },
+      // Whether the server holds a block (a connector's block that is not on this page: gone, or only late). When it
+      // cannot be asked, true: nothing is removed on a guess. (A list by the key, not a get: a key that is not there is an
+      // empty list rather than a 404 in the browser's console.)
+      async exists(id) {
+        const key = keyOf(id);
+        try { const list = await host.storage.list(key); return (Array.isArray(list) ? list : []).some((e) => e.key === key); } catch { return true; }
+      },
       // Send whatever is waiting now (the page is going away).
       flush() {
         for (const [key, l] of lanes) {
