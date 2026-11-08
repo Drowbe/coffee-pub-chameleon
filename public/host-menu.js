@@ -99,7 +99,7 @@ export function openHostMenu(trigger, items) {
   build(trigger, items, false);
 }
 
-// The same entries drawn into `container` and left there (the Set up panel's Show tab): no position, no closing on a
+// The same entries drawn into `container` and left there (the Set up panel's Modules tab): no position, no closing on a
 // press outside or Escape, the keyboard roves between the rows (one tab stop), a category's flyout is the menu's own.
 // Another menu opening does not close it. Gives { redraw, destroy }; redraw draws it again from `items` (a function).
 export function mountHostMenu(container, items) {

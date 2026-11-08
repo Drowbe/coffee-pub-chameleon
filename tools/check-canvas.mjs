@@ -1051,7 +1051,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/checked: shown\(def\.id\)/.test(canvasJs)) fail('public/canvas.js', 'a switch reads off while its module is hidden behind the narrow canvas\'s view');
   // The Show menu is the first tab of Set up (Thomas, 2026-11-08): Set up's button opens it, drawn by canvas.mountMenu.
   if (/modules-toggle/.test(spaceJs)) fail('public/space.js', 'the Layout button is gone: no #modules-toggle');
-  if (!/show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/.test(spaceJs)) fail('public/space.js', 'Set up draws the canvas\'s menu in its Show tab (canvas.mountMenu)');
+  if (!/show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/.test(spaceJs)) fail('public/space.js', 'Set up draws the canvas\'s menu in its Modules tab (canvas.mountMenu)');
   if (!/mountHostMenu\(container, layoutMenuItems\);/.test(canvasJs)) fail('public/canvas.js', 'the Show menu is the page\'s shared menu (host-menu.js mountHostMenu), drawn from layoutMenuItems()');
   for (const needle of ["{ heading: 'Show' }", "{ heading: 'Arrange' }", "label: 'Panel Mode'", "label: 'Window Mode'", "label: 'Snap to grid'", "label: 'Clean up'"]) if (!canvasJs.includes(needle)) fail('public/canvas.js', `the Layout menu has ${needle}`);
   const arrangeItems = canvasJs.slice(canvasJs.indexOf("{ heading: 'Arrange' }"), canvasJs.indexOf("const extra = typeof menuItems"));

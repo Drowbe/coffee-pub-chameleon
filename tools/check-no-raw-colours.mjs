@@ -15,7 +15,7 @@
 // or MapLibre. A colour a script keeps as plain data (a palette array) is not in a declaration and is not read.
 //
 // The admin theme editor's native colour inputs (public/admin.html, type="color") hold a colour the person picks and the code draws none, so there is nothing to read there.
-// No page has a palette of its own: the start page too reads the theme tokens. @font-face blocks are not read.
+// One page has a palette of its own: the start page (public/start.css), whose :root blocks are token definitions like the theme files' (the studio's colours, light and dark); outside those blocks it is read like any file. @font-face blocks are not read.
 // Today's offenders are recorded per file and kind in tools/check-no-raw-colours-allow.json. The check passes while no
 // count is higher, fails on a higher count or a new file, and says when a count has dropped.
 //   node tools/check-no-raw-colours.mjs                 the check
@@ -24,7 +24,7 @@
 //   node tools/check-no-raw-colours.mjs --update --force-raise   also allow raising (how it was first made)
 import { collectFiles, declarations, Tally, runRatchet, summary } from './lib/drift.mjs';
 
-const TOKEN_FILES = new Set(['public/style.css', 'public/sdk/host.css', 'public/sdk/system.css']);
+const TOKEN_FILES = new Set(['public/style.css', 'public/sdk/host.css', 'public/sdk/system.css', 'public/start.css']); // public/start.css: only its :root blocks, the start page's own palette (the studio's design system)
 // :root, optionally with attribute and :not() parts, and nothing else (no descendant): a token definition.
 const TOKEN_SELECTOR = /^:root(?:\[[^\]]*\]|:not\((?:[^()]|\([^()]*\))*\))*$/;
 

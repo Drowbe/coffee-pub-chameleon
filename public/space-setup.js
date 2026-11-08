@@ -4,18 +4,20 @@
 // an input in the bar, and this panel opens (a full-screen sheet on a phone). `/?setup=<id>#<tab>` opens it from an
 // address (space.js; setupAddress below reads it).
 //
-// The tabs, each a code id that is also its address fragment (#space, #members, #phases, #opens-with, #modules):
+// The tabs, each a code id that is also its address fragment (#show, #space, #members, #phases, #modules). Two ids
+// differ from the words a person reads, and are kept as they are (links and stored addresses use them): `show` is
+// the tab labelled "Modules" (the first tab) and `modules` is the tab labelled "Settings" (the last).
+//   show        "Modules": the page's menu of modules (the switches), Arrange and Layouts
 //   space       the picture, name, description, faces in the call, launch link, link icon, the published calendar
 //               switch, and a danger section with Delete (its own confirmation here; it does not wait for Save)
 //   members     the members and Allow guests (drafts), then Generate invite link and the guest link (actions, at once)
 //   phases      each phase's start and end, inline, through the rule in public/phases.js (a draft; the phase chip's
 //               sheet is its own surface and still saves as it is set there), then the budget (while a module here
 //               reads it, or one is set: #216; budgetTabOf says where it goes when the template has no phases)
-//   opens-with  the first visit (labelled so): the Workspace with its Opens with switches, Calendar, Map or a shared
-//               layout; a saved id that cannot open now is kept and said why; a default layout can be stopped
-//   modules     the modules on here (no switches: an enabled module is on in every space), Turn AI off, then a section
-//               per module with its settings for this space (module-settings.js, its draft mode)
-// An owner and the admin see every tab; a moderator sees phases, opens-with and the modules tab's module settings (the
+//   modules     "Settings": first the First visit section (the Workspace with its Opens with switches, Calendar, Map or a
+//               shared layout; a saved id that cannot open now is kept and said why; a default layout can be stopped),
+//               then Turn AI off and What AI may see (an owner's), then a section per module with its settings for this space (module-settings.js, its draft mode)
+// An owner and the admin see every tab; a moderator sees phases and Settings (First visit and the module settings; the
 // server lets a moderator PATCH exactly `phases`, `opensWith`, `defaultLayout` and `budget`, and set a space's module
 // settings; the Budget field is on the phases tab, which the three of them see);
 // a member has no Set up. A tab with nothing to show (no phases in the template, no module settings for a moderator) is
@@ -37,18 +39,22 @@ import { actionBar } from './action-bar.js';
 import { mountSees, fullSees, sameSees } from './ai-sees.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
 
+// The name of the Set up button and of the panel's title: "<space word> Configuration" (Trip Configuration), in the
+// template's word; in an aside, the aside's word. `word` is the page's word helper. One helper, so the two say the same.
+export const configurationLabel = (word, aside = false) => `${word(aside ? 'aside' : 'space', { cap: true })} Configuration`;
+
 // The tabs, in the order shown, by rights.
-export const SETUP_TABS = Object.freeze(['space', 'members', 'phases', 'opens-with', 'modules']);
+export const SETUP_TABS = Object.freeze(['space', 'members', 'phases', 'modules']);
 export const OWNER_TABS = SETUP_TABS;
-export const MODERATOR_TABS = Object.freeze(['phases', 'opens-with', 'modules']);
+export const MODERATOR_TABS = Object.freeze(['phases', 'modules']);
 // The fields a moderator's PATCH may hold (server/index.js, MODERATOR_SPACE_FIELDS).
 export const MODERATOR_FIELDS = Object.freeze(['phases', 'opensWith', 'defaultLayout', 'budget']);
-// `phases`: the template has phases; `modules`: there is something for the modules tab (left out once the panel knows
-// there is not, e.g. a moderator with no module settings to change).
-// `show`: the Show tab (the modules' switches, Arrange and Layouts, for everyone wider than a phone) comes first.
-export function setupTabs({ owner = false, moderator = false, phases = true, modules = true, show = false } = {}) {
+// `phases`: the template has phases. Settings is always there for an owner and a moderator: the First visit section is
+// in it, so it never has nothing to show.
+// `show`: the Modules tab (id `show`: the modules' switches, Arrange and Layouts, for everyone wider than a phone) comes first.
+export function setupTabs({ owner = false, moderator = false, phases = true, show = false } = {}) {
   const tabs = owner ? OWNER_TABS : moderator ? MODERATOR_TABS : [];
-  return [...(show ? ['show'] : []), ...tabs].filter((t) => (t !== 'phases' || phases) && (t !== 'modules' || modules));
+  return [...(show ? ['show'] : []), ...tabs].filter((t) => t !== 'phases' || phases);
 }
 // The tab an address fragment asks for, else the first the person may see (an unknown fragment is never an error).
 export function pickTab(tabs, hash = '') {
@@ -68,13 +74,13 @@ export const FIELD_TAB = Object.freeze({
   name: 'space', description: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
   members: 'members', allowGuests: 'members',
   phases: 'phases',
-  opensWith: 'opens-with', defaultLayout: 'opens-with',
+  opensWith: 'modules', defaultLayout: 'modules',
   aiOff: 'modules', aiSees: 'modules',
 });
-// A module's settings, in the save's lists and its words, are `module:<id>`; they live on the modules tab.
+// A module's settings, in the save's lists and its words, are `module:<id>`; they live on the Settings tab (id `modules`), as does the First visit section.
 // The tab the budget is on: the phases tab (every role with a Set up has it), else, when the template has no phases, the
-// space tab (an owner's), else the first visit's (a moderator's). `tabs` is the tabs the person has.
-export const budgetTabOf = (tabs) => (tabs.includes('phases') ? 'phases' : tabs.includes('space') ? 'space' : 'opens-with');
+// space tab (an owner's), else the Settings tab (a moderator's, with First visit). `tabs` is the tabs the person has.
+export const budgetTabOf = (tabs) => (tabs.includes('phases') ? 'phases' : tabs.includes('space') ? 'space' : 'modules');
 export const tabOfField = (f, tabs = null) => (f === 'budget' && tabs ? budgetTabOf(tabs) : FIELD_TAB[f] || (String(f).startsWith('module:') ? 'modules' : null));
 
 const sameList = (a, b) => {
@@ -270,7 +276,8 @@ export function createSpaceSetup(deps) {
   const spaceWord = () => word('space');
   const membersWord = (cap = false) => word('member', { many: true, cap });
   const modulesWord = (cap = false) => word('module', { many: true, cap });
-  const tabLabel = (id) => ({ show: 'Show', space: word('space', { cap: true }), members: membersWord(true), phases: 'Phases', 'opens-with': 'First visit', modules: modulesWord(true) })[id];
+  const configLabel = () => configurationLabel(word, Boolean(state && state.space && state.space.isAside)); // the button's name too (space.js setupLabel)
+  const tabLabel = (id) => ({ show: modulesWord(true), space: word('space', { cap: true }), members: membersWord(true), phases: 'Phases', modules: 'Settings' })[id];
   const sectionHtml = (id, title, inner, { hidden = false, cls = '' } = {}) => `<section class="setup-section${cls ? ` ${cls}` : ''}" data-section="${id}"${hidden ? ' hidden' : ''}><h3 class="setup-heading">${title}</h3>${inner}</section>`;
 
   function spaceTabHtml() {
@@ -397,10 +404,10 @@ export function createSpaceSetup(deps) {
         <p class="setup-phases-status" id="setup-phases-status" role="status" aria-live="polite"></p></section>`;
   }
 
-  // First visit (plan-layout-views.md, step 5): one choice, radios of one name. The Workspace first, with its Opens
+  // First visit, a section of the Settings tab (plan-layout-views.md, step 5): one choice, radios of one name. The Workspace first, with its Opens
   // with switches directly under it (always editable, whichever is picked: they are what the Workspace holds), then
   // Calendar and Map while they are on here, then the shared layouts by name (paintLayouts).
-  function opensWithTabHtml() {
+  function firstVisitHtml() {
     return `<section class="setup-section" data-section="first-visit"><h3 class="setup-heading" id="setup-first-visit-heading">First visit</h3>
         <p class="hint setup-first-visit-hint" id="setup-first-visit-hint">What someone sees the first time they enter this ${esc(spaceWord())}. After that, each person's own arrangement is remembered.</p>
         <div class="setup-opens-with-layout" id="setup-opens-with-layout" hidden>
@@ -420,15 +427,14 @@ export function createSpaceSetup(deps) {
         <p class="hint" id="setup-layout-note" hidden></p></section>`;
   }
 
-  // The modules tab (plan-setup-panel.md, step 5). For an owner and the admin: the modules on here (a list: an enabled
+  // The Settings tab (id `modules`; plan-setup-panel.md, step 5). It starts with the First visit section (everyone with this
+  // tab). For an owner and the admin: the modules on here (a list: an enabled
   // module is on in every space, so there are no switches; Manage's Modules tab turns one on or off), Turn AI off while
   // the server has an AI service, then a section per module with its settings for this space. A moderator sees the
   // module settings only. The settings are drawn by module-settings.js in its draft mode (no Save on each).
   function modulesTabHtml() {
-    const { space } = state;
-    const parts = [];
+    const parts = [firstVisitHtml()];
     if (state.owner) {
-      parts.push(sectionHtml('module-list', esc(modulesWord(true)), `${space.isLobby ? `<p class="hint">${esc(space.name || 'The Lobby')} keeps only chat, the call and ${esc(modulesWord())} made for it.</p>` : ''}<ul class="setup-module-list" id="setup-module-list"><li class="hint">Loading…</li></ul><p class="hint">Every ${esc(word('module'))} that is turned on is in every ${esc(spaceWord())}. Turn one on or off on the ${esc(modulesWord(true))} tab of Manage.</p>`));
       parts.push(sectionHtml('ai', '<i class="fa-solid fa-wand-magic-sparkles fa-fw" aria-hidden="true"></i> AI', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Turn AI off in this ${esc(spaceWord())}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-off"></label><p class="hint">${esc(modulesWord(true))} here can use the server's AI service to summarise and answer questions. Turned off, nobody here can, whatever the roles allow. Saved with Save.</p>`, { hidden: true }));
       parts.push(sectionHtml('ai-sees', 'What AI may see', `<p class="hint">What goes to the AI with a question in this ${esc(spaceWord())}. This only narrows it: the AI never sees what the person asking could not open. Saved with Save.</p><label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label" id="setup-ai-sees-follow-label">Same as the ${esc(word('environment'))}'s choice</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-sees-follow"></label><div id="setup-ai-sees-box"></div>`, { hidden: true }));
     }
@@ -436,7 +442,9 @@ export function createSpaceSetup(deps) {
     return parts.join('');
   }
 
-  const TAB_HTML = { show: () => '<div class="setup-show" id="setup-show"></div>', space: spaceTabHtml, members: membersTabHtml, phases: phasesTabHtml, 'opens-with': opensWithTabHtml, modules: modulesTabHtml };
+  // The Modules tab (id `show`): the menu is drawn into #setup-show; an owner and the admin read at its foot where modules are turned on.
+  const showTabHtml = () => `<div class="setup-show" id="setup-show"></div>${state.owner ? `<p class="hint setup-modules-note" id="setup-modules-note">${esc(modulesWord(true))} are turned on for the whole ${esc(word('environment'))} in Manage.</p>` : ''}`;
+  const TAB_HTML = { show: showTabHtml, space: spaceTabHtml, members: membersTabHtml, phases: phasesTabHtml, modules: modulesTabHtml };
 
   function draw() {
     const { tabs, space } = state;
@@ -445,9 +453,9 @@ export function createSpaceSetup(deps) {
     const contents = tabs.map((id) => `<div role="tabpanel" class="setup-tab-content" id="setup-content-${id}" data-tab="${id}" aria-labelledby="setup-tab-${id}" tabindex="-1" hidden>${TAB_HTML[id]()}${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}</div>`).join('');
     el.innerHTML = `
       <div class="setup-head">
-        <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : 'Set up')}</h2>
+        <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : configLabel())}</h2>
         <p class="setup-which" id="space-setup-which"></p>
-        <div class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist" aria-label="Set up"${one ? ' hidden' : ''}>${tabButtons}<button type="button" class="core-link layout-tabs-more" id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></div>
+        <div class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist" aria-label="${esc(configLabel())}"${one ? ' hidden' : ''}>${tabButtons}<button type="button" class="core-link layout-tabs-more" id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></div>
       </div>
       <div class="setup-body">${contents}</div>
       <p class="setup-status status" id="space-setup-status" role="status" aria-live="polite"></p>`;
@@ -455,7 +463,7 @@ export function createSpaceSetup(deps) {
     state.bar = actionBar({
       label: 'Save the set up',
       doc,
-      readOnly: !(state.opts.owner || state.opts.moderator), // only the Show tab: nothing to save, only Close
+      readOnly: !(state.opts.owner || state.opts.moderator), // only the Modules tab: nothing to save, only Close
       ids: { save: 'setup-save', cancel: 'setup-cancel-button' },
       discardWords: 'Discard your changes?',
       dirty: isDirty,
@@ -469,7 +477,7 @@ export function createSpaceSetup(deps) {
     mountShow();
   }
 
-  // The Show tab: the page's menu of modules, Arrange and Layouts (canvas.mountMenu), drawn into the tab and kept up to date.
+  // The Modules tab (id `show`): the page's menu of modules, Arrange and Layouts (canvas.mountMenu), drawn into the tab and kept up to date.
   function mountShow() {
     const holder = q('#setup-show');
     if (!holder || typeof state.opts.show !== 'function') return;
@@ -755,7 +763,7 @@ export function createSpaceSetup(deps) {
       r.disabled = !layouts.canSetDefault;
     }
     const note = q('#setup-layout-note');
-    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the Show tab, for everyone in this ${word('space')}.`;
+    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the ${modulesWord(true)} tab, for everyone in this ${word('space')}.`;
     note.hidden = !note.textContent;
     paintLayoutLine();
   }
@@ -1179,7 +1187,6 @@ export function createSpaceSetup(deps) {
     state.installed = installed;
     state.ownerPartsIn = true; // the stored budget is known now: the Budget section may show (paintBudgetSection)
     fillFields();
-    paintModuleList();
     // Turn AI off is for a server that has an AI service set up (as the old page's).
     const aiSection = q('[data-section="ai"]');
     if (aiSection) aiSection.hidden = !ai || !ai.active || ai.active.provider === 'none';
@@ -1190,22 +1197,8 @@ export function createSpaceSetup(deps) {
     refresh();
     if (!space.isLobby) loadCalendarSwitch(space);
   }
-  // The modules on here: the installed, enabled modules with a space panel; the Lobby keeps only those made for it.
-  function paintModuleList() {
-    const list = q('#setup-module-list');
-    if (!list) return;
-    const iconOf = (m) => { const i = m.displayIcon || m.icon || ''; return iconOk(i) ? i : 'puzzle-piece'; };
-    const on = (state.installed || []).filter((m) => m.enabled && Array.isArray(m.scope) && m.scope.includes('space') && (!state.space.isLobby || m.lobby === true));
-    list.innerHTML = on.length
-      ? on.map((m) => {
-        // The manifest's one line, in this environment's words as the server filled it; a module without one shows none.
-        const about = String(m.description || '').trim();
-        return `<li${about ? ` title="${esc(about)}"` : ''}><i class="fa-solid fa-${esc(iconOf(m))} fa-fw" aria-hidden="true"></i> <span class="setup-module-text"><span class="setup-module-name">${esc(m.displayName || m.name)}</span>${about ? `<span class="setup-module-about hint" id="setup-module-about-${esc(m.id)}">${esc(about)}</span>` : ''}</span></li>`;
-      }).join('')
-      : `<li class="hint">None on yet.</li>`;
-  }
   // The modules' own settings for this space, drawn without their Saves (module-settings.js, `draft: true`): the panel's
-  // Save sends them. A moderator with none to change has no modules tab.
+  // Save sends them. A moderator with none to change has only the First visit section.
   async function loadModuleSettings(space) {
     const box = q('#setup-module-settings');
     if (!box) return;
@@ -1217,16 +1210,6 @@ export function createSpaceSetup(deps) {
     const section = q('[data-section="module-settings"]');
     if (answer) { if (section) section.hidden = false; refresh(); return; }
     if (section) section.hidden = true;
-    if (!state.owner) dropTab('modules');
-  }
-  // A tab found to have nothing in it after it was drawn: it goes, and the panel shows the first tab if it was on it.
-  function dropTab(id) {
-    if (!state.tabs.includes(id)) return;
-    state.tabs = state.tabs.filter((t) => t !== id);
-    q(`#setup-tab-${id}`)?.remove();
-    q(`#setup-content-${id}`)?.remove();
-    fitTabs();
-    if (state.tab === id && state.tabs.length) select(state.tabs[0]);
   }
   // The space's place in the published calendar (plan-space-calendars.md, section 2): shown only while an owner has
   // turned publishing on and the module whose events it carries is on, named after it.
@@ -1247,7 +1230,7 @@ export function createSpaceSetup(deps) {
 
   async function loadOptions() {
     const { space } = state;
-    const asks = state.tabs.includes('opens-with');
+    const asks = state.tabs.includes('modules');
     const [answer, layouts] = await Promise.all([
       asks ? api('GET', `/api/modules/for-space?space=${encodeURIComponent(space.id)}`).catch(() => ({})) : Promise.resolve({}),
       asks ? api('GET', `/api/spaces/${encodeURIComponent(space.id)}/layouts`).catch(() => ({})) : Promise.resolve({}),
@@ -1312,7 +1295,7 @@ export function createSpaceSetup(deps) {
   }
   // The keyboard goes to the tab's first field: the name, the first member's switch, the first phase's start (or the
   // first step's day), the first visit's choice, the first module setting.
-  const FIRST_FIELD = { show: '#setup-show .host-menu-item[tabindex="0"]', space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', 'opens-with': '#setup-first-visit input:checked, #setup-first-visit input', modules: '#setup-module-settings input, #setup-module-settings select' };
+  const FIRST_FIELD = { show: '#setup-show .host-menu-item[tabindex="0"]', space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', modules: '#setup-first-visit input:checked, #setup-first-visit input, #setup-module-settings input, #setup-module-settings select' };
   function focusFirst() {
     const content = q(`#setup-content-${state.tab}`);
     const firstStep = state.tab === 'phases' && q('#setup-phase-first') && !q('#setup-phase-first').hidden ? q('#setup-phase-first-day') : null;
@@ -1355,7 +1338,7 @@ export function createSpaceSetup(deps) {
     return words;
   }
   function refused(saved, failed, problem) {
-    say(setupSaidWords({ saved, failed, problem }, { words: fieldWords() }));
+    say(setupSaidWords({ saved, failed, problem }, { setUp: configLabel(), words: fieldWords() }));
     const tab = tabOfField(failed, state.tabs);
     if (tab && state.tabs.includes(tab)) select(tab);
     const moduleId = String(failed).startsWith('module:') ? failed.slice(7) : null;
@@ -1434,7 +1417,7 @@ export function createSpaceSetup(deps) {
     } finally {
       if (state) { state.saving = false; el.classList.remove('saving'); }
     }
-    const said = setupSaidWords({ saved }, { words: fieldWords() });
+    const said = setupSaidWords({ saved }, { setUp: configLabel(), words: fieldWords() });
     const onDone = opts.onDone;
     close();
     if (typeof onDone === 'function') onDone(answered, said, saved);

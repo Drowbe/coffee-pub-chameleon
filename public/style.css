@@ -13,11 +13,6 @@
   --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
-  --brand-teal: #5cc8cf; /* the brand kit's teal: the start page's main buttons and links */
-  --brand-teal-hover: #7fd6db;
-  --surface-band: color-mix(in srgb, #13243b 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
-  --text-on-brand-teal: #0e1a2b;
-  --brand-coral: #ff8264; /* the brand kit's coral for the product's name in the lockup: large text only (24px and up), never body text */
 
   /* SCAFFOLDING, deleted when the last file that reads each one moves onto the roles (plan-design-system.md, step 36): the old
      token names, defined from the roles so that files not yet moved follow the theme. Not for new code: use the roles. */
@@ -143,11 +138,6 @@
   --tint-red: #b3372b;
   --tint-orange: #b35a00;
   --tint-pink: #ad3a78;
-  --brand-coral: #e0553c;
-  --brand-teal: #0b7a84;
-  --brand-teal-hover: #096870;
-  --surface-band: color-mix(in srgb, #f3e9d4 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
-  --text-on-brand-teal: #ffffff;
 }
 
 /* A tint by name: a message, a module's icon in its titlebar or the Layout menu (data-tint="<name>"). */
@@ -7528,11 +7518,11 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(380px, 100vw);
+  width: min(460px, 100vw); /* wide enough for all five tabs with a long word (Campaign, Party Members); narrower windows use the "..." */
   border-left: 1px solid var(--edge-hairline);
   background: var(--surface-panel);
   color: var(--text-primary);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-4);
 }
 
 .space-setup[hidden] {
@@ -8013,44 +8003,7 @@ h4.setup-subheading {
   display: none;
 }
 
-/* The modules tab: the modules on here, then each module's settings (module-settings.js, its draft mode). */
-.setup-module-list li {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.setup-module-list li > i {
-  flex: none;
-  width: 1.25em;
-  margin-top: 3px;
-  text-align: center;
-}
-
-.setup-module-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.setup-module-about {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  font-size: var(--text-12);
-}
-
-.setup-module-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-14);
-}
-
+/* The Settings tab: the First visit section, then each module's settings (module-settings.js, its draft mode). */
 .space-setup .module-settings-card {
   gap: 8px;
   padding: 10px 0;
