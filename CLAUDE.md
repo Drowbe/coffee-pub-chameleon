@@ -1,7 +1,7 @@
 # Collaborator
 
 Self-hosted voice and video for a tabletop game, with tools beside the call (modules) and every
-player as an OBS source. The repository is `coffee-pub-collaborator`; the product is **Collaborator**.
+player as an OBS source. The repository is `coffee-pub-chameleon`; the product is **Chameleon**.
 Thomas owns the design, the architecture and what gets built. Claude helps build it; it doesn't
 decide those.
 
