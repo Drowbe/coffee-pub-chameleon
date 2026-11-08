@@ -92,6 +92,69 @@
   pointer-events: none;
 }
 
+/* a picture: the upload drawn to its box, with a border only when one is picked; "Picture not found" when it is gone */
+.wb-type-image { border: var(--wb-weight) solid var(--wb-stroke); cursor: grab; }
+.wb-type-image[data-stroke="none"] { border-style: none; }
+.wb-picture { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.wb-alt { display: none; }
+.wb-missing {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 1px dashed var(--edge-hairline);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font-size: var(--text-14);
+  text-align: center;
+  overflow: hidden;
+}
+.wb-type-image[data-missing] .wb-missing { display: flex; }
+.wb-type-image[data-missing] .wb-picture { visibility: hidden; }
+
+/* a picture on its way: a placeholder where it will be, with a spinner and how far it is */
+.wb-pending {
+  position: absolute;
+  z-index: 2147482998;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: calc(2px / var(--wb-scale, 1)) dashed var(--accent);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-card));
+  color: var(--text-muted);
+  font-size: var(--text-14);
+  text-align: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* files dragged over the board */
+.wb-drop {
+  position: absolute;
+  inset: var(--space-2);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 2px dashed var(--focus-ring);
+  border-radius: var(--radius-large);
+  background: color-mix(in srgb, var(--surface-panel) 90%, transparent);
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+.wb-drop-title { margin: 0; color: var(--text-primary); font-size: var(--text-16); font-weight: var(--weight-strong); }
+.wb-drop-sub { margin: 0; font-size: var(--text-14); }
+
 /* editing words: a text box in the block's own place and look */
 .wb-editing .wb-words { visibility: hidden; }
 .wb-text-edit {
@@ -113,6 +176,18 @@
 }
 .wb-type-note .wb-text-edit { position: absolute; inset: 12px; width: auto; height: auto; }
 .wb-type-text .wb-text-edit { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); }
+.wb-type-image .wb-text-edit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--edge-hairline);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+}
 .wb-type-rect .wb-text-edit, .wb-type-ellipse .wb-text-edit { position: absolute; inset: 8px; width: auto; height: auto; text-align: center; font-size: var(--text-16); }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */

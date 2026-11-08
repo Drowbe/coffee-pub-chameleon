@@ -77,7 +77,7 @@
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP}`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   const takesNext = (def, role) => {
     const usual = def.create();
@@ -280,17 +280,18 @@
       return;
     }
     held.add(id);
-    const handle = wbEditText(el, def.textOf(el), b.text || '', (text) => {
+    const field = def.textField || 'text'; // a picture's description is its alt
+    const handle = wbEditText(el, def.textOf(el), b[field] || '', (text) => {
       if (editing && editing.id === id) editing = null;
       const now = board.get(id);
       if (now) {
         if (!text.trim() && def.textEmpty === 'remove') remove(id);
-        else if (text !== now.text || drafts.has(id)) ctx.change(id, { text }, { save: 'now' });
+        else if (text !== now[field] || drafts.has(id)) ctx.change(id, { [field]: text }, { save: 'now' });
         else renderer.draw(now);
       }
       release(id);
       renderer.refreshFrame();
-    }, { grow: b.type === 'text' });
+    }, { grow: b.type === 'text', line: Boolean(def.textLine), label: def.textLabel || 'Words', max: def.textMax || 0 });
     editing = { id, finish: handle.finish, fresh };
   }
 
@@ -607,14 +608,69 @@
     { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
   ];
 
-  // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there).
-  // Paste is there too, greyed until something is copied.
+  // ---- pictures from the computer ---------------------------------------------------------------------------------------
+  // Pasted, dropped on the board, or chosen with "Add a picture" in the +: each is made ready and sent one at a time (lib-i)
+  // with a placeholder where it will be, and becomes an image block once its upload is there, saved once, one undo step.
+  // Only for someone who may change the board; everyone who may see the board sees the pictures (the uploads are the
+  // space's, read with the module's view permission). Deleting a picture block leaves its upload (see lib-i).
+  blockTypes.get('image').source = (upload, thumb) => host.uploads.url(upload, { thumb, scope: 'space' });
+  const PICTURE_STEPS = { waiting: 'Waiting', reading: 'Getting it ready', sending: 'Sending' };
+  const sentence = (text) => { const t = String(text || '').trim(); return t ? `${t[0].toUpperCase()}${t.slice(1)}${/[.!?]$/.test(t) ? '' : '.'}` : ''; };
+  const pictures = policy.canAddPicture() ? createPictures({
+    host,
+    newId: () => host.util.id(),
+    onStart(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); updateStatus(); },
+    onStep(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); },
+    onPlaced(job, file) {
+      renderer.pending(job.id, null);
+      if (!policy.canCreate()) { pictures.forget(file.id, (u) => board.all().some((b) => b.upload === u)); updateStatus(); return; }
+      const def = blockTypes.get('image');
+      const b = wbClean({ ...def.create(), id: job.id, type: 'image', x: job.box.x, y: job.box.y, w: job.box.w, h: job.box.h, upload: file.id, z: Math.floor(board.topZ()) + 1 });
+      if (!b) { updateStatus(); return; }
+      commit(b, 'now'); // saved once, the upload there already: one step of the undo history
+      // Picked, with the others added along with it, unless the person has picked something else meanwhile.
+      const batch = job.batch;
+      if (batch) {
+        const same = sel.size === batch.picked.length && batch.picked.every((id) => sel.has(id));
+        batch.made.push(b.id);
+        if (same) select(batch.made.slice());
+        batch.picked = [...sel];
+      }
+      updateStatus();
+    },
+    onFailed(job, err) {
+      renderer.pending(job.id, null);
+      note(err && err.status === 403 ? 'You may not add pictures to this whiteboard.' : `The picture was not added. ${sentence(err && err.message)}`.trim());
+      updateStatus();
+    },
+    onBusy() { note('Adding a lot of pictures at once. The rest follow in a few seconds.'); },
+  }) : null;
+  // Add picture files with the middle of them at `at` (a point on the board), or in the middle of what is in sight.
+  function addPictures(files, at = null) {
+    if (!pictures) return;
+    const { pictures: list, others } = wbSplitPictures(files);
+    if (others) note('Only pictures can go on the board.');
+    if (!list.length) return;
+    // The pictures added together share a batch, so they are picked together as they arrive.
+    pictures.add(list, at || renderer.center(), { batch: { made: [], picked: [...sel] } });
+  }
+  // The computer's own file chooser, for "Add a picture" (touch and the keyboard too).
+  $('picker').accept = WB_PICTURE_ACCEPT;
+  $('picker').addEventListener('change', () => {
+    const files = [...$('picker').files];
+    $('picker').value = '';
+    if (files.length) addPictures(files);
+  });
+
+  // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there),
+  // and a picture from the computer. Paste is there too, greyed until something is copied.
   function setAdd() {
     if (!policy.canEdit || !host.add) return;
     host.add.set([
       { id: 'note', label: 'Add a note', icon: 'note-sticky' },
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
+      ...(pictures ? [{ id: 'picture', label: 'Add a picture', icon: 'image' }] : []),
       { divider: true },
       { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has() },
     ]).catch(() => {});
@@ -623,6 +679,7 @@
     setAdd();
     host.on('add', ({ id }) => {
       if (id === 'paste') { paste(); return; }
+      if (id === 'picture') { if (pictures) $('picker').click(); return; }
       const def = blockTypes.get(id);
       if (!def) return;
       const c = renderer.center();
@@ -643,6 +700,8 @@
       const n = board.size - drafts.size;
       const items = [{ text: n === 1 ? '1 block' : `${n} blocks`, icon: 'shapes' }];
       if (sel.size > 1) items.push({ text: `${sel.size} selected` });
+      const coming = pictures ? pictures.count : 0;
+      if (coming) items.push({ text: coming === 1 ? 'Adding a picture' : `Adding ${coming} pictures`, icon: 'image' });
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
@@ -651,10 +710,10 @@
   }
   function updateHint() {
     const hint = $('hint');
-    hint.hidden = board.size > 0;
+    hint.hidden = board.size > 0 || Boolean(pictures && pictures.count);
     if (hint.hidden) return;
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
-      : tool.id === 'select' || tool.id === 'hand' ? 'Pick a tool above, then click the board.'
+      : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
         : tool.id === 'pen' ? 'Press and drag to draw.' : 'Click the board to put it there.';
   }
 
@@ -784,7 +843,7 @@
       id: 'block',
       at,
       items: [
-        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
+        ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
@@ -818,8 +877,10 @@
     // Copy, cut, paste and duplicate (by the key's place too, so any keyboard layout).
     const letter = mod && !e.shiftKey ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
     if (letter && 'cxvd'.includes(letter) && policy.canEdit) {
-      e.preventDefault();
-      if (letter === 'c') copy(); else if (letter === 'x') copy({ cut: true }); else if (letter === 'v') paste(); else duplicate();
+      if (letter === 'd') { e.preventDefault(); duplicate(); return; }
+      // Copy, cut and paste go through the browser's own copy, cut and paste events (below), so a picture on the
+      // computer's clipboard reaches a paste; where the browser sends none, the board does it a moment later.
+      clipKey(letter);
       return;
     }
     if ((k === 'Delete' || k === 'Backspace') && picked.length) { e.preventDefault(); removeMany(picked.map((x) => x.id)); surface.focus({ preventScroll: true }); return; }
@@ -852,6 +913,83 @@
     if (k === '0') { renderer.fit(); updateStatus(); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
     if (t) { e.preventDefault(); if (t.apart) toggleTool(t); else setTool(t.id); }
+  });
+
+  // ---- the computer's clipboard, and dropping files -----------------------------------------------------------------------
+  // Ctrl or Cmd C, X and V reach the board as the browser's copy, cut and paste events. Copy and cut keep the blocks in
+  // this page's clipboard (lib-h) as before and put a mark on the computer's clipboard (CLIP_MARK, no words or picture), so
+  // a picture copied elsewhere earlier is no longer there to be pasted instead. A paste that carries picture files and
+  // not the mark adds the pictures, where the pointer is over the board or else in the middle of what is in sight;
+  // any other paste puts down the copied blocks. A browser that sends no event: the key does it after CLIP_WAIT.
+  const CLIP_MARK = 'application/x-coffee-whiteboard-blocks';
+  const CLIP_WAIT = 150;
+  let clipTimer = 0;
+  function clipKey(letter) {
+    clearTimeout(clipTimer);
+    clipTimer = setTimeout(() => {
+      clipTimer = 0;
+      if (letter === 'c') copy(); else if (letter === 'x') copy({ cut: true }); else paste();
+    }, CLIP_WAIT);
+  }
+  const inField = (e) => Boolean(e.target && e.target.closest && e.target.closest('.wb-text-edit'));
+  function onCopyEvent(e, cut) {
+    if (inField(e) || !policy.canEdit) return;
+    clearTimeout(clipTimer);
+    clipTimer = 0;
+    if (!copyable().length) return;
+    e.preventDefault();
+    try { if (e.clipboardData) e.clipboardData.setData(CLIP_MARK, '1'); } catch { /* the page's own clipboard still has them */ }
+    copy({ cut });
+  }
+  surface.addEventListener('copy', (e) => onCopyEvent(e, false));
+  surface.addEventListener('cut', (e) => onCopyEvent(e, true));
+  // The files a paste or a drop carries (some browsers give them only as items).
+  function filesOf(data) {
+    if (!data) return [];
+    const files = [...(data.files || [])];
+    if (files.length) return files;
+    return [...(data.items || [])].filter((it) => it.kind === 'file').map((it) => it.getAsFile()).filter(Boolean);
+  }
+  // Where the pointer is over the board (a mouse or a pen hovering), for a paste.
+  let hover = null;
+  surface.addEventListener('pointermove', (e) => { if (e.pointerType !== 'touch') hover = { cx: e.clientX, cy: e.clientY }; });
+  surface.addEventListener('pointerleave', () => { hover = null; });
+  surface.addEventListener('paste', (e) => {
+    if (inField(e) || !policy.canEdit) return;
+    clearTimeout(clipTimer);
+    clipTimer = 0;
+    const data = e.clipboardData;
+    const ours = Boolean(data && [...(data.types || [])].includes(CLIP_MARK));
+    const files = ours ? [] : filesOf(data);
+    e.preventDefault();
+    if (files.length && pictures) { const p = hover && renderer.toBoard(hover.cx, hover.cy); addPictures(files, p && { x: p.x, y: p.y }); return; }
+    paste();
+  });
+
+  // Dropping files on the board, the Vault's way: a drag carrying files shows "Drop to add to the board" over it, only to
+  // someone who may add pictures; each picture dropped is added where it is let go (several, a step apart). For anyone
+  // else, a file dropped on the board does nothing (and the browser does not open it in place of the page).
+  let dragDepth = 0;
+  const carriesFiles = (e) => Boolean(e.dataTransfer) && [...(e.dataTransfer.types || [])].includes('Files');
+  function showDropOver(on) {
+    $('drop').hidden = !on;
+  }
+  $('drop-sub').textContent = 'JPEG, PNG, WebP or GIF pictures. Everyone who can see the board sees them.';
+  surface.addEventListener('dragenter', (e) => { if (!pictures || !carriesFiles(e)) return; dragDepth += 1; showDropOver(true); });
+  surface.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) showDropOver(false); });
+  surface.addEventListener('dragover', (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = pictures ? 'copy' : 'none';
+  });
+  surface.addEventListener('drop', (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    showDropOver(false);
+    if (!pictures) return;
+    const p = renderer.toBoard(e.clientX, e.clientY);
+    addPictures(filesOf(e.dataTransfer), { x: p.x, y: p.y });
   });
 
   // ---- the width ------------------------------------------------------------------------------------------------------
