@@ -351,13 +351,54 @@ function setupSignup() {
 }
 
 // ---- the page ----
-function drawAbout() {
-  const f = $('sp-foot');
-  if (!product.productSiteUrl) { f.hidden = true; return; }
-  const a = $('sp-about');
-  a.href = product.productSiteUrl;
-  a.replaceChildren(D.createTextNode(`About ${product.productShortName || product.name}`), fa('arrow-up-right-from-square'));
-  f.hidden = false;
+// The studio's parts: the hero's button, the header's links, the ways to use the product and the footer. Every link is the studio's
+// address (product.productSiteUrl, from PRODUCT_SITE_URL) with a path on it; without that address none of them is drawn.
+const WAYS = [
+  { icon: 'suitcase', title: 'Travel', line: 'Plans, places and the budget', path: '/products/chameleon/travel' },
+  { icon: 'dice', title: 'Gaming', line: 'Chat, calls and streams', path: '/products/chameleon/games' },
+  { icon: 'clipboard', title: 'Projects', line: 'Tasks, dates and research', path: '/products/chameleon/projects', soon: true },
+  { icon: 'mentoring', title: 'Mentoring', line: 'Sessions, polls and notes', path: '/products/chameleon/mentoring', soon: true },
+  { icon: 'real-estate', title: 'Real estate', line: 'Viewings, costs and paperwork', path: '/products/chameleon/real-estate', soon: true },
+];
+const footProducts = () => [[product.name, '/products/chameleon'], ['Showrunner', '/products/showrunner'], ['Foundry VTT modules', '/products#modules'], ['All products', '/products']];
+const FOOT_STUDIO = [['About', '/about'], ['Contact', '/contact'], ['Get help', '/support'], ['Design system', '/design-system']];
+// Elsewhere: the studio's own pages elsewhere on the web. They are not on the studio's address, so they are written out.
+const FOOT_ELSEWHERE = [['willhavebeen.com', 'https://willhavebeen.com'], ['Patreon', 'https://www.patreon.com/cw/CoffeePub'], ['GitHub', 'https://github.com/Drowbe']];
+function drawHero() {
+  const full = product.name; const short = product.productShortName || product.name;
+  $('sp-title').textContent = full;
+  const site = siteOrigin();
+  $('sp-lead').textContent = `This is the front door to ${full}. Sign in to your own environment below${site ? ', or ask for an invite to get one' : ''}. Chat all week, call when it counts, and keep the plans, the maps and the notes right beside it.`;
+  const where = $('sp-where');
+  where.replaceChildren('Your own environment at ', h('code', '', `yourname.${product.baseDomain}`), ': your people, your spaces, your tools.');
+  const invite = $('sp-invite'); invite.hidden = !site;
+  if (site) invite.href = siteLink('/contact');
+  return short;
+}
+function siteOrigin() {
+  try { return product.productSiteUrl ? new URL(product.productSiteUrl).origin : ''; } catch { return ''; }
+}
+function siteLink(path) { return new URL(path, siteOrigin()).href; }
+function drawStudio(short) {
+  const site = siteOrigin();
+  for (const id of ['sp-nav-more', 'sp-nav-support']) $(id).hidden = !site;
+  $('sp-ways').hidden = !site; $('sp-site').hidden = !site;
+  if (!site) return;
+  $('sp-nav-more').href = product.productSiteUrl;
+  $('sp-nav-support').href = siteLink('/support');
+  $('sp-foot-brand').href = siteLink('/');
+  $('sp-ways-h').textContent = `Ways to use ${short}`;
+  $('sp-ways-grid').replaceChildren(...WAYS.map((w) => {
+    const a = h('a', 'sp-way');
+    a.href = siteLink(w.path);
+    const img = h('img', ''); img.src = `/assets/images/brand/start/${w.icon}.svg`; img.alt = ''; img.width = 56; img.height = 56; img.loading = 'lazy';
+    a.append(img, h('b', '', w.title), ...(w.soon ? [h('span', 'sp-soon', 'Coming soon')] : []), h('span', 'sp-way-line', w.line));
+    return a;
+  }));
+  const column = (id, list, outside) => $(id).append(...list.map(([text, to]) => { const a = h('a', '', text); a.href = outside ? to : siteLink(to); if (outside) { a.target = '_blank'; a.rel = 'noopener'; } return a; }));
+  column('sp-foot-products', footProducts()); column('sp-foot-studio', FOOT_STUDIO); column('sp-foot-else', FOOT_ELSEWHERE, true);
+  const legal = $('sp-legal');
+  legal.replaceChildren(`\u00a9 ${new Date().getFullYear()} Coffee Pub Studio \u00b7 `, Object.assign(h('a', '', 'Privacy'), { href: siteLink('/privacy.html') }), ' \u00b7 ', Object.assign(h('a', '', 'Terms'), { href: siteLink('/terms.html') }));
 }
 async function load() {
   $('sp-failed').hidden = true;
@@ -382,7 +423,7 @@ async function load() {
   drawFind();
   drawRecent();
   drawOwn();
-  drawAbout();
+  drawStudio(drawHero());
   if (location.hash === '#start') $('start').scrollIntoView({ block: 'start' });
   else if (matchMedia('(pointer: fine)').matches) $('sp-find-input').focus(); // not on a phone: the keyboard would cover the page
 }

@@ -13,6 +13,9 @@
   --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
+  --brand-teal: #5cc8cf; /* the brand kit's teal: the start page's main buttons and links */
+  --brand-teal-hover: #7fd6db;
+  --text-on-brand-teal: #0e1a2b;
   --brand-coral: #ff8264; /* the brand kit's coral for the product's name in the lockup: large text only (24px and up), never body text */
 
   /* SCAFFOLDING, deleted when the last file that reads each one moves onto the roles (plan-design-system.md, step 36): the old
@@ -140,6 +143,9 @@
   --tint-orange: #b35a00;
   --tint-pink: #ad3a78;
   --brand-coral: #e0553c;
+  --brand-teal: #0b7a84;
+  --brand-teal-hover: #096870;
+  --text-on-brand-teal: #ffffff;
 }
 
 /* A tint by name: a message, a module's icon in its titlebar or the Layout menu (data-tint="<name>"). */
