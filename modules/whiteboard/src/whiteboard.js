@@ -8,6 +8,7 @@
 //   lib-d render    drawing the board, the view (pan and zoom), editing words in place
 //   lib-e block-*   one file per block type
 //   lib-f tool-*    one file per tool
+//   lib-g history   undo and redo of this person's own changes
 //   lib-h clipboard copy, cut, paste and duplicate (in this page's memory)
 (async () => {
   'use strict';
@@ -55,6 +56,7 @@
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
+  const known = new Map(); // id -> the block as last saved here or heard from elsewhere: a change's "before", for undo
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish }
@@ -62,6 +64,8 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
+  // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl.
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
   const takesNext = (def, role) => {
     const usual = def.create();
     if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
@@ -70,7 +74,9 @@
 
   // ---- the one path for changes made here -----------------------------------------------------------------------------
   // Every local change lands here: drawn at once, and saved now, soon (after a pause) or not yet (while a drag or a stroke
-  // goes on). Undo and redo, when they come, record { before, after } here.
+  // goes on). Each save, and each delete (remove), is told to the history as { before, after }, the whole block (lib-g):
+  // that is what undo and redo put back, through this same path.
+  const history = policy.canEdit ? createHistory({ cap: 100, onChange: () => historyButtons() }) : null;
   function commit(next, save) {
     board.put(next);
     renderer.draw(next);
@@ -79,6 +85,8 @@
   }
   function persist(b, how) {
     const stamped = { ...b, by: me, at: new Date().toISOString() };
+    if (history) history.record(b.id, known.get(b.id) || null, stamped);
+    known.set(b.id, stamped);
     board.put(stamped);
     drafts.delete(b.id);
     waiting.delete(b.id); // ours is newer than what waited
@@ -141,6 +149,8 @@
     if (!b) return;
     if (drafts.has(id)) { ctx.discard(id); return; }
     if (!policy.canDelete(b)) return;
+    if (history) history.record(id, known.get(id) || b, null);
+    known.delete(id);
     board.remove(id);
     renderer.remove(id);
     held.delete(id);
@@ -161,6 +171,7 @@
       held.delete(id);
       waiting.delete(id);
       drafts.delete(id);
+      known.delete(id);
       board.remove(id);
       renderer.remove(id);
       unpick(id);
@@ -168,6 +179,7 @@
       const b = change.block;
       if (held.has(b.id)) { waiting.set(b.id, change); return; }
       if (!policy.canSee(b)) return;
+      known.set(b.id, b);
       board.put(b);
       renderer.draw(b);
     }
@@ -194,7 +206,9 @@
     drafts.clear();
     held.clear();
     waiting.clear();
-    for (const b of list) { if (!policy.canSee(b)) continue; board.put(b); renderer.draw(b); }
+    known.clear();
+    if (history) history.clear(); // the board was cleared or put back as a whole: older steps no longer fit it
+    for (const b of list) { if (!policy.canSee(b)) continue; known.set(b.id, b); board.put(b); renderer.draw(b); }
     select(null);
     updateStatus();
   }
@@ -442,7 +456,43 @@
     }
   }
 
+  // ---- undo and redo ----------------------------------------------------------------------------------------------------
+  // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
+  // edit. Someone else may have changed a block since: it is put back as this person left it anyway (the last write wins,
+  // as everywhere on the board). A block someone else deleted since, which the step needs, is left out, and the person is
+  // told once. A block this person deleted comes back whole, with its own id.
+  let undoButton = null;
+  let redoButton = null;
+  function historyButtons() {
+    if (undoButton) undoButton.set({ disabled: !history.canUndo() });
+    if (redoButton) redoButton.set({ disabled: !history.canRedo() });
+  }
+  function applyChanges(list) {
+    let left = 0;
+    const touched = [];
+    for (const { id, target, source } of list) {
+      const now = board.get(id);
+      if (!target) { if (now) remove(id); continue; }
+      if (!now && source) { left += 1; continue; } // someone else deleted it since
+      const b = wbClean(target);
+      if (!b || (now && !policy.canChange(now)) || (!now && !policy.canCreate())) continue;
+      commit(b, 'now');
+      touched.push(id);
+    }
+    select(touched.filter((id) => board.has(id)));
+    return left;
+  }
+  function undoRedo(which) {
+    if (!history || down !== null) return; // not in the middle of a drag or a stroke
+    if (editing) { const ed = editing; editing = null; ed.finish(true); }
+    const left = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
+    if (left > 0) note(`Left out ${left === 1 ? 'a block' : `${left} blocks`} someone else deleted.`);
+    historyButtons();
+  }
+
   if (policy.canEdit) {
+    undoButton = host.ui.toolbarButton({ id: 'undo', label: `Undo (${MOD} Z)`, icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => undoRedo('undo') });
+    redoButton = host.ui.toolbarButton({ id: 'redo', label: `Redo (${MOD} Shift Z)`, icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => undoRedo('redo') });
     host.ui.toolbarButton({ id: 'colour', label: 'Colour', icon: 'palette', iconOnly: true, onClick: (e) => colourMenu(toolbarAt(e)) });
     host.ui.toolbarButton({ id: 'width', label: 'Width', icon: 'grip-lines', iconOnly: true, onClick: (e) => widthMenu(toolbarAt(e)) });
   }
@@ -466,7 +516,6 @@
   // saved whole, like any new block; a copy the server refuses (the module's storage is full) is taken off again and the
   // person told once (onRefused).
   const clipboard = createClipboard();
-  const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
   const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
   // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
   function boundsOf(blocks) {
@@ -686,6 +735,9 @@
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
+    // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
+    const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
+    if (zy && history) { e.preventDefault(); undoRedo(zy === 'z' && !e.shiftKey ? 'undo' : 'redo'); return; }
     // Copy, cut, paste and duplicate (by the key's place too, so any keyboard layout).
     const letter = mod && !e.shiftKey ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
     if (letter && 'cxvd'.includes(letter) && policy.canEdit) {
@@ -705,6 +757,7 @@
       const step = e.shiftKey ? 1 : 10;
       const dx = k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0;
       const dy = k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0;
+      if (history) history.tag(`nudge:${picked.map((x) => x.id).sort().join(',')}`); // a run of presses is one step
       for (const x of picked) ctx.change(x.id, { x: x.x + dx, y: x.y + dy }, { save: 'soon' });
       return;
     }
@@ -739,7 +792,7 @@
   host.on('changes', (e) => sync.handleMany(e));
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
-  for (const b of first) if (policy.canSee(b)) { board.put(b); renderer.draw(b); }
+  for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
   $('loading').hidden = true;
   $('app').hidden = false;
   if (surface.clientWidth > 0) { fitted = true; renderer.fit(); }

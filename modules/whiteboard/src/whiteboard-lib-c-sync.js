@@ -8,7 +8,9 @@
   // other waiting one. saveSoon waits a moment first (nudging with the arrow keys saves once, after the last press).
   //
   // What comes in is checked before anyone draws it: a change whose version is not newer than the one this page last saw
-  // for that key is this page's own echo or a repeat, and is skipped; a change that arrives while this page is writing
+  // for that key is this page's own echo or a repeat, and is skipped; after this page deletes a block, nothing for it is
+  // taken until the delete itself comes back (a late echo of an older write does not bring it back), and once a delete is
+  // heard the key starts afresh, so a block brought back with the same id (an undo) is taken, whatever its version; a change that arrives while this page is writing
   // the same key waits until the write is done and is then judged the same way; a value that is not a block is left out.
   // A write the server turns away for now (429: too many saves in a minute, as when many blocks move at once) is sent
   // again after the wait it names, unless a newer one for that key has come meanwhile; onBusy hears it once per refusal.
@@ -19,7 +21,7 @@
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
-    const seen = new Map(); // key -> the newest version this page knows of (Infinity once deleted)
+    const seen = new Map(); // key -> the newest version this page knows of (Infinity: deleted here, until that is heard back)
     const lanes = new Map(); // key -> { busy, next, soon, timer, deferred }
     const lane = (key) => {
       let l = lanes.get(key);
@@ -45,7 +47,7 @@
     async function refetch(key) {
       try {
         const got = await host.storage.get(key);
-        if (!got) { seen.set(key, Infinity); onRemote({ op: 'remove', id: idOf(key) }); return; }
+        if (!got) { seen.delete(key); onRemote({ op: 'remove', id: idOf(key) }); return; }
         seen.set(key, Number.isFinite(got.version) ? got.version : 0);
         const b = clean(got.value);
         if (b && keyOf(b.id) === key) onRemote({ op: 'put', block: b });
@@ -96,10 +98,10 @@
     function accept(e) {
       const have = seen.get(e.key);
       if (have === Infinity && !e.deleted) return; // deleted here; a late echo of an older write does not bring it back
+      if (e.deleted) { seen.delete(e.key); if (have !== Infinity) onRemote({ op: 'remove', id: idOf(e.key) }); return; }
       if (have !== undefined && Number.isFinite(e.version) && e.version <= have) return; // our own echo, or a repeat
       if (Number.isFinite(e.version)) seen.set(e.key, e.version);
       const id = idOf(e.key);
-      if (e.deleted) { seen.set(e.key, Infinity); onRemote({ op: 'remove', id }); return; }
       if (e.value === undefined) { refetch(e.key); return; }
       const b = clean(e.value);
       if (!b || b.id !== id) return; // not a block this page can draw
