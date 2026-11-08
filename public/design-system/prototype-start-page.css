@@ -130,3 +130,4 @@
   .sp-switchbar .mf-switch-btn { min-height: 44px; }
   .sp .pp-jump .btn-small { min-height: 44px; }
 }
+.sp-form .sdk-error[hidden] { display: none; }

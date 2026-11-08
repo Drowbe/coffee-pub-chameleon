@@ -105,7 +105,7 @@ function findPart(ctx, { check = 'type', value = '', phase = 'idle', loading = f
     go.textContent = '';
     if (busy && check === 'go') { const s = h('span', 'sdk-spinner sdk-spinner-sm'); s.setAttribute('aria-hidden', 'true'); go.append(s, h('span', '', 'Go')); } else go.append(h('span', '', 'Go'));
     go.setAttribute('aria-busy', String(busy));
-    go.disabled = loading || (check === 'type' ? st.phase !== 'found' : !input.value.trim() || busy);
+    go.disabled = loading || (check === 'go' && (!input.value.trim() || busy)); // A keeps Go on: Enter or Go before the check ends waits for it, and after an error it tries again
     input.setAttribute('aria-invalid', String(st.phase === 'none' || st.phase === 'bad'));
     if (st.phase === 'looking') line(say, '', 'spin', [`Looking for ${addr(slug)}`]);
     else if (st.phase === 'found') { const n = h('strong', '', st.env.name); line(say, 'ok', 'circle-check', [n, ` at ${addr(st.env.slug)}`]); }
@@ -125,15 +125,15 @@ function findPart(ctx, { check = 'type', value = '', phase = 'idle', loading = f
   async function ask(then) {
     const slug = clean(input.value);
     const mine = ++st.token;
-    st.phase = 'looking'; draw();
+    st.phase = 'looking'; st.goAfter = !!then; draw();
     const r = await lookup(slug);
     if (mine !== st.token) return;
     if (r.error) { st.phase = r.error; draw(); return; }
     st.env = r; st.phase = 'found'; draw();
-    if (then) open(r);
+    if (then || st.goAfter) open(r);
   }
   input.addEventListener('input', () => {
-    clearTimeout(st.timer); st.token += 1; st.phase = 'idle'; st.env = null; proto.hidden = true; draw();
+    clearTimeout(st.timer); st.token += 1; st.goAfter = false; st.phase = 'idle'; st.env = null; proto.hidden = true; draw();
     if (check !== 'type' || loading) return;
     const slug = clean(input.value);
     if (!slug || (slug.length < 3 && /^[a-z0-9-]*$/.test(slug))) return; // too short to say anything yet
@@ -147,6 +147,7 @@ function findPart(ctx, { check = 'type', value = '', phase = 'idle', loading = f
     if (!shapeOk(slug)) { st.phase = 'bad'; draw(); input.focus(); return; }
     if (st.phase === 'found' && st.env && st.env.slug === slug) { open(st.env); return; }
     clearTimeout(st.timer);
+    if (st.phase === 'looking' && check === 'type') { st.goAfter = true; return; } // A: the check is already running; go when it finds the name
     ask(true);
   });
   draw();
@@ -268,6 +269,15 @@ function ownPart(ctx, { own = 'open', fold = false, password = false, slug = '',
   const slugLab = h('div'); slugLab.append(slugWord, addressBox(slugIn), slugSay);
   const nameIn = inp({ maxLength: 60, placeholder: 'The Elegant Eight' });
   const loginIn = inp({ maxLength: 40 }); loginIn.setAttribute('autocapitalize', 'off');
+  // An empty required field says so under itself (announced politely) and clears when the person types.
+  const needSay = (input, text) => {
+    const p = h('span', 'sdk-error'); p.id = nid('need'); p.setAttribute('aria-live', 'polite'); p.hidden = true;
+    input.setAttribute('aria-describedby', p.id);
+    input.addEventListener('input', () => { input.removeAttribute('aria-invalid'); p.hidden = true; p.textContent = ''; });
+    return { p, show: () => { input.setAttribute('aria-invalid', 'true'); p.textContent = text; p.hidden = false; input.focus(); } };
+  };
+  const nameNeed = needSay(nameIn, 'Give your environment a name.');
+  const loginNeed = needSay(loginIn, 'Choose a login.');
   const displayIn = inp({ maxLength: 40 });
   const fs = h('fieldset');
   const lg = h('legend', 'sdk-label', 'Template');
@@ -283,7 +293,7 @@ function ownPart(ctx, { own = 'open', fold = false, password = false, slug = '',
   const make = h('button', 'btn btn-primary', 'Make my environment'); make.type = 'submit';
   const status = h('p', 'sp-line'); status.setAttribute('role', 'status');
   const foot = h('div', 'sp-form-foot'); foot.append(make);
-  form.append(slugLab, field('Its name', nameIn), fs, field('Your login', loginIn), field('Your name (optional)', displayIn));
+  form.append(slugLab, field('Its name', nameIn, nameNeed.p), fs, field('Your login', loginIn, loginNeed.p), field('Your name (optional)', displayIn));
   if (password) { const pw = inp({ type: 'password', autocomplete: 'new-password', minLength: 8 }); form.append(field('Your password', pw)); }
   form.append(foot, status);
   if (!password) form.append(h('p', 'sdk-hint', 'Next you choose your password, on your new environment\'s own page.'));
@@ -311,8 +321,8 @@ function ownPart(ctx, { own = 'open', fold = false, password = false, slug = '',
     e.preventDefault();
     const s = slugIn.value;
     if (!shapeOk(s)) { sayCheck(SAY.signupHint, 'error'); slugIn.focus(); return; }
-    if (!nameIn.value.trim()) { nameIn.setAttribute('aria-invalid', 'true'); nameIn.focus(); return; }
-    if (!loginIn.value.trim()) { loginIn.setAttribute('aria-invalid', 'true'); loginIn.focus(); return; }
+    if (!nameIn.value.trim()) { nameNeed.show(); return; }
+    if (!loginIn.value.trim()) { loginNeed.show(); return; }
     nameIn.removeAttribute('aria-invalid'); loginIn.removeAttribute('aria-invalid');
     setStatus('making');
     setTimeout(() => {
@@ -561,7 +571,7 @@ const ul = (items) => { const l = h('ul', 'sp-list-words'); for (const t of item
 {
   const s = set('keys', 'Keyboard and focus order', 'The numbers are the Tab order, read from the drawing itself (it is real: press Tab in it). The address field is first, so a person who knows their address types and presses Enter. A row of Recent is two stops: the row (Enter opens it) and its x. A radio group is one stop; the arrow keys move in it. The page sets no tabindex of its own.');
   s.append(ul([
-    ['Enter', 'in the address field is Go. In A it waits for the name; pressed before then it looks the address up and goes.'],
+    ['Enter', 'in the address field is Go. In A, pressed before the name is found, it waits for the name and then goes.'],
     ['After x', 'the focus moves to the next row of Recent, or the one before; after the last, to the address field.'],
     ['Make an environment', 'opens the form in place and puts the focus in its Address.'],
     ['Errors', 'are read out (a live line under the field) and leave the focus where it was, in the field.'],
