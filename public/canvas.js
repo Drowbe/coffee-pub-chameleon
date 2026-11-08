@@ -1076,7 +1076,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     note(`${nameOf(id)} moved ${step < 0 ? 'up' : 'down'}.`);
     focusMenuOf(id);
   }
-  // Unstack all, in Arrange (the Show tab of Set up; decision 9): every module of every stack in a column of its own, where it was; past the
+  // Unstack all, in Arrange (the Modules tab of Set up; decision 9): every module of every stack in a column of its own, where it was; past the
   // docked limit the rightmost ones float and wait, as Panel Mode's do (fitColumns says so).
   const hasStacks = () => columnsFrom(dockedModules()).some(stacked);
   function unstackAll() {

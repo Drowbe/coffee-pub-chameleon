@@ -19,7 +19,7 @@
 //      kept in what is remembered, and it is drawn again when the window is wide.
 //  10. A short canvas collapses the lowest section by itself and opens it again when the height returns.
 //  11. A saved layout carries the stack (the server keeps it), and loading it, and a reload, give the same stack back.
-//  12. Unstack all, in the Show tab of Set up, puts every module of every stack in a column of its own.
+//  12. Unstack all, in the Modules tab of Set up (its id is show), puts every module of every stack in a column of its own.
 // It cannot check a real tablet's touch, a screen reader, or a call (no LiveKit here).
 // Usage: node tools/check-stacking.mjs [--mode=light|dark]. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
@@ -96,7 +96,7 @@ async function main() {
         await sleep(450);
         return drawn;
       };
-      // The Show tab of Set up (the modules' switches, Arrange): opened from the top bar's Set up, closed with Escape.
+      // The Modules tab of Set up (#setup-show) (the modules' switches, Arrange): opened from the top bar's Set up, closed with Escape.
       const showTab = async () => { await tab.eval(`document.getElementById('setup').click()`); await tab.waitFor('#setup-show .host-menu-item'); await sleep(300); };
       const openFromLayoutMenu = async (name) => { await showTab(); await pick(name); await closeMenus(); await sleep(400); };
       // Enter the trip with a remembered layout of these modules, docked (Panel Mode, what nothing remembered reads as).
@@ -311,7 +311,7 @@ async function main() {
         s = await state();
         expect(s.groups.includes('Stacked: Places, Polls, Research'), `${L} back at 1280 the stack is not drawn again: ${JSON.stringify(s.groups)}`);
 
-        // A saved layout carries the stack (plan step 6; server/layouts.js keeps stack, at, h, folded): saved from the Show tab,
+        // A saved layout carries the stack (plan step 6; server/layouts.js keeps stack, at, h, folded): saved from the Modules tab,
         // it is what the server answers, and loading it after Unstack all, and again after a reload, gives the same stack.
         const shape = (st) => st.docked.filter((d) => d.stacked).sort((a, b) => a.top - b.top).map((d) => `${d.id}:${d.h}`).join();
         const want = shape(await state());
@@ -326,7 +326,7 @@ async function main() {
         expect(members.map((m) => `${m.id}:${m.at}`).join() === 'places:0,polls:1,research:2' && new Set(members.map((m) => m.stack)).size === 1 && Math.abs(members.reduce((a, m) => a + m.h, 0) - 1) <= 0.01 && members.every((m) => typeof m.folded === 'boolean'), `${L} the saved layout does not carry the stack: ${JSON.stringify(savedLayout?.modules)}`);
         await closeMenus();
 
-        // Unstack all (the Show tab's Arrange): every module in a column of its own; past the limit the last one waits, floating.
+        // Unstack all (the Modules tab's Arrange): every module in a column of its own; past the limit the last one waits, floating.
         await showTab();
         expect((await menuItems()).some((x) => x.text === 'Unstack all' && !x.off), `${L} Arrange has no Unstack all while there is a stack`);
         await pick('Unstack all');
