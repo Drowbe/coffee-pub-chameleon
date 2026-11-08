@@ -5,7 +5,7 @@ whose environment uses a template or could.
 
 A **template** sets an environment up for one use when it is made: what things are called, which modules are
 on, how the Lobby reads, how new spaces start, and, if it has them, its reactions, a theme and a set of icons. It is picked when the environment is made, and an owner or the
-host admin can switch it later. An environment without one reads exactly as Collaborator always has.
+host admin can switch it later. An environment without one reads exactly as Coffee Pub Chameleon always has.
 
 ## The Travel template
 
@@ -129,7 +129,7 @@ deleted.
    to take one out. Leave the list empty for none.
 5. If it should, tick **Give reactions** and add them (up to 120; a template's icons can be up to 120 too, solid icons only), click **Choose a theme file…** to give it a theme (a
    `.theme.json` file, see [userguide-themes](userguide-themes.md)). The theme is checked as you choose it: its name
-   shows, followed by "Left out: ..." when part of the file wasn't a colour Collaborator knows, and a file that can't
+   shows, followed by "Left out: ..." when part of the file wasn't a colour Chameleon knows, and a file that can't
    be used is refused beside **Theme** with a sentence saying why. List **Icons** by their Font Awesome
    names, separated by spaces.
 6. Click **Save**. It is version 1, and offered on the create form straight away. A problem, such as a phase id
@@ -149,7 +149,7 @@ switch; the environments using it keep it. Untick it to offer it again.
 Hide it instead."): hide it, or switch those environments to another first.
 
 **Import a file:** click **Import…** and choose a `.template.json` file. If a template already has its id,
-you are asked for another. Anything in the file Collaborator doesn't know is left out and listed. It keeps the
+you are asked for another. Anything in the file Chameleon doesn't know is left out and listed. It keeps the
 file's version.
 
 **Export one:** click **Export** on any row, a bundled one included. An edited bundled template exports as you
@@ -188,8 +188,8 @@ If you never edited it, a new release's template simply replaces it, with no not
 ## Template files
 
 A template can travel as a file, `<name>.template.json`, of at most 64 KB. Its theme travels inside it.
-Collaborator refuses a file it can't read ("That isn't a Collaborator template file."), one from a newer version ("This
-template was made by a newer version of Collaborator.") and one exported before 2026-09-30, which is in an older
+Chameleon refuses a file it can't read ("That isn't a Coffee Pub Chameleon template file."), one from a newer version ("This
+template was made by a newer version of Coffee Pub Chameleon.") and one exported before 2026-09-30, which is in an older
 format ("That template file is in an older format. Export the template again and import the new file."). Where the
 server has been given another product name, the sentences use it.
 

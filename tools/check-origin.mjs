@@ -10,10 +10,15 @@
  *   - the same requests pass the rule from their own origin (also behind a proxy, X-Forwarded-*), with
  *     Sec-Fetch-Site: none, with neither header (old browsers, curl), with a Bearer token, and with no cookie at all
  *     (webhooks); GET is never refused;
- *   - POST /login is exempt: the landing page at the bare base domain posts its sign-in form there across origins;
- *   - the rule runs before any body parser, and /login is the only exemption;
+ *   - no path is exempt: the old cross-site sign-in form post (POST /login) is gone, so it is refused with a cookie and
+ *     404 without one, never a session, while POST /api/login still signs in from its own origin;
+ *   - nobody lists the environments: GET /api/product/environments answers 404 at the product host (with and without
+ *     PRODUCT_DOMAIN), the console and an environment's address, and GET /api/product has no `environments`
+ *     (plan-product-site.md, slice 0);
+ *   - the rule runs before any body parser;
  *   - the domains (plan-domains.md): with one domain the product pages stay on the bare base; with PRODUCT_DOMAIN they
- *     are served at that host, sign-up there passes the rule and answers the new environment's /login?login=, the bare
+ *     are served at that host, sign-up there passes the rule and answers the new environment's first-password link
+ *     (/login/first-password#<token>, plan-first-password.md), the bare
  *     base redirects (302) there keeping path and query, and the console stays at admin.<base>; without BASE_DOMAIN
  *     both settings are ignored with a line.
  */
@@ -41,15 +46,17 @@ const test = async (name, fn) => {
   }
 };
 
-await test('the rule runs for every write before any body is parsed, and only POST /login is exempt', () => {
+await test('the rule runs for every write before any body is parsed, and no path is exempt', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
-  const mount = src.indexOf('app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEMPT.has(req.path) ? sameOriginOnly(req, res, next) : next()));');
+  const mount = src.indexOf('app.use((req, res, next) => (WRITE_METHODS.has(req.method) ? sameOriginOnly(req, res, next) : next()));');
   assert.ok(mount > 0, 'sameOriginOnly is mounted for every write');
   const firstParser = src.search(/app\.use\(express\.(json|text|raw|urlencoded)\(/);
   assert.ok(mount < firstParser, 'before the first body parser');
   assert.ok(mount < src.indexOf('if (BASE_DOMAIN) {\n  app.use((req, res, next) => {'), 'before the door, so the host console is covered too');
   assert.match(src, /const WRITE_METHODS = new Set\(\['POST', 'PUT', 'PATCH', 'DELETE'\]\);/);
-  assert.match(src, /const CROSS_ORIGIN_EXEMPT = new Set\(\['\/login'\]\);/);
+  assert.ok(!/CROSS_ORIGIN_EXEMPT/.test(src), 'no exemption from the rule');
+  assert.ok(!/app\.post\(\s*'\/login'/.test(src), 'no sign-in form post route');
+  assert.ok(!/\/api\/product\/environments'/.test(src), 'no list of environments is registered');
   assert.ok(src.includes(`error: '${SENTENCE}'`));
 });
 
@@ -188,13 +195,32 @@ try {
     assert.equal(console.status, 200, console.text);
   });
 
-  await test('POST /login is exempt: the landing page\'s sign-in form posts there from the bare base domain, cookie or not', async () => {
-    for (const cookie of [undefined, ownerCookie]) {
-      const r = await call('POST', 'aaa', '/login', { headers: { origin: originOf(''), 'sec-fetch-site': 'same-site', ...(cookie ? { cookie } : {}) }, body: 'login=ownaaa&password=ownerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
-      assert.equal(r.status, 303, r.text);
-      assert.equal(r.location, '/');
-      assert.ok(r.cookies.some((c) => c.startsWith('app_session=')), 'signed in');
+  await test('POST /login is gone and not exempt: from the bare base domain it is refused with a cookie and 404 without one, never a session; POST /api/login still signs in', async () => {
+    for (const headers of [{ origin: originOf(''), 'sec-fetch-site': 'same-site' }, { origin: originOf(''), 'sec-fetch-site': 'cross-site' }, { origin: originOf('aaa'), 'sec-fetch-site': 'same-origin' }]) {
+      for (const cookie of [undefined, ownerCookie]) {
+        const r = await call('POST', 'aaa', '/login', { headers: { ...headers, ...(cookie ? { cookie } : {}) }, body: 'login=ownaaa&password=ownerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
+        const crossSite = headers['sec-fetch-site'] !== 'same-origin';
+        if (cookie && crossSite) assert.ok(refused(r), `${JSON.stringify(headers)} with a cookie -> ${r.status} ${r.text.slice(0, 120)}`);
+        else assert.equal(r.status, 404, `${JSON.stringify(headers)} ${cookie ? 'with' : 'without'} a cookie -> ${r.status} ${r.text.slice(0, 120)}`);
+        assert.ok(!r.cookies.some((c) => c.startsWith('app_session=')), 'no session');
+      }
     }
+    const api = await call('POST', 'aaa', '/api/login', { headers: { origin: originOf('aaa'), 'sec-fetch-site': 'same-origin' }, body: { login: 'ownaaa', password: 'ownerpass1234' } });
+    assert.equal(api.status, 200, api.text);
+    assert.ok(api.cookies.some((c) => c.startsWith('app_session=')), 'POST /api/login signs in');
+  });
+  await test('no list of environments: GET /api/product/environments is 404 at the bare base (the product host), the console and an environment; /api/product has no environments; one environment is still found by its address', async () => {
+    for (const sub of ['', 'admin', 'aaa']) {
+      const r = await call('GET', sub, '/api/product/environments');
+      assert.equal(r.status, 404, `${sub || 'bare'}: ${r.status} ${r.text.slice(0, 120)}`);
+      assert.ok(!r.text.includes('Env aaa') && !r.text.includes('Env bbb'), `${sub || 'bare'} names an environment`);
+    }
+    const info = await call('GET', '', '/api/product');
+    assert.equal(info.status, 200);
+    assert.ok(!('environments' in info.json), 'GET /api/product has no environments');
+    assert.ok(!/Env aaa|Env bbb/.test(info.text), 'GET /api/product names no environment');
+    assert.deepEqual((await call('GET', '', '/api/product/environment?slug=aaa')).json, { slug: 'aaa', name: 'Env aaa' });
+    assert.equal((await call('GET', '', '/api/product/environment?slug=nope')).status, 404);
   });
   await test('a module frame page inlines the shared styles (system.css) and the SDK styles (host.css), unless it opts out', async () => {
     const sys = fs.readFileSync(new URL('../public/sdk/system.css', import.meta.url), 'utf8');
@@ -230,57 +256,28 @@ try {
       assert.equal(r.headers['access-control-allow-origin'], undefined, `${p} must not carry the CORS header`);
     }
   });
-  // plan-product-pages.md, decisions 7, 8, 10 and the contract: the use pages at the bare base domain.
+  // plan-product-site.md, slice 5: the use pages are gone, and /api/product no longer lists pages.
   const same = (sub) => ({ cookie: hostCookie, origin: originOf(sub), 'sec-fetch-site': 'same-origin' });
-  await test('/travel and /games answer 200 with their pages while their templates are offered; /projects (no template) answers 404', async () => {
-    const travel = await call('GET', '', '/travel', { headers: { accept: 'text/html' } });
-    assert.equal(travel.status, 200, travel.text.slice(0, 120));
-    assert.equal(travel.text, fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'), 'the page is public/travel.html');
-    const games = await call('GET', '', '/games', { headers: { accept: 'text/html' } });
-    assert.equal(games.status, 200, games.text.slice(0, 120));
-    assert.equal(games.text, fs.readFileSync(path.join(ROOT, 'public', 'games.html'), 'utf8'), 'the page is public/games.html');
-    for (const p of ['/projects', '/travel/', '/travel.html', '/games/', '/games.html']) assert.equal((await call('GET', '', p)).status, 404, p);
-    const info = await call('GET', '', '/api/product');
-    assert.deepEqual(info.json.pages, [{ path: '/travel', template: 'travel' }, { path: '/games', template: 'games' }]);
+  await test('/travel, /games and /projects are 404 everywhere, and /api/product has no `pages` (and no list of environments)', async () => {
+    for (const sub of ['', 'aaa', 'admin']) {
+      for (const p of ['/travel', '/games', '/projects', '/travel/', '/travel.html', '/games.html', '/landing.html', '/landing.js', '/landing.css']) assert.equal((await call('GET', sub, p, { headers: { accept: 'text/html' } })).status, 404, `${sub || 'bare'} ${p}`);
+    }
+    const info = (await call('GET', '', '/api/product')).json;
+    assert.equal('pages' in info, false, 'no pages');
+    assert.equal(info.productSiteUrl, null, 'no PRODUCT_SITE_URL, no link');
   });
-  await test('a use page is only at the bare base domain: an environment and the console do not send it', async () => {
-    const file = fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8');
-    for (const sub of ['aaa', 'admin']) assert.notEqual((await call('GET', sub, '/travel', { headers: { accept: 'text/html' } })).text, file, sub);
-  });
-  await test('hiding the travel template takes /travel to 404 and out of `pages`; showing it brings it back', async () => {
+  await test('hiding a template takes it out of the templates the start page offers; showing it brings it back', async () => {
     const hide = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: true } });
     assert.equal(hide.status, 200, hide.text);
-    assert.equal((await call('GET', '', '/travel')).status, 404, 'hidden: 404');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [{ path: '/games', template: 'games' }], 'games stays');
-    assert.equal((await call('GET', '', '/games')).status, 200, 'games still 200');
     assert.deepEqual((await call('GET', '', '/api/product')).json.templates.map((t) => t.id), ['games']);
-    const hideGames = await call('PATCH', 'admin', '/api/host/templates/games', { headers: same('admin'), body: { hidden: true } });
-    assert.equal(hideGames.status, 200, hideGames.text);
-    assert.equal((await call('GET', '', '/games')).status, 404, 'games hidden: 404');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [], 'both hidden: none');
-    const showGames = await call('PATCH', 'admin', '/api/host/templates/games', { headers: same('admin'), body: { hidden: false } });
-    assert.equal(showGames.status, 200, showGames.text);
     const show = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: false } });
     assert.equal(show.status, 200, show.text);
-    assert.equal((await call('GET', '', '/travel')).status, 200, 'shown again: 200');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [{ path: '/travel', template: 'travel' }, { path: '/games', template: 'games' }]);
-  });
-  await test('the bundled games template, and a host template called projects, (a template with no file gives no page)', async () => {
-    assert.equal((await call('GET', '', '/games')).status, 200);
-    assert.ok((await call('GET', '', '/api/product')).json.pages.some((p) => p.path === '/games'));
-    assert.ok((await call('GET', '', '/api/product')).json.templates.some((t) => t.id === 'games'), 'the games template is offered');
-    assert.equal((await call('POST', 'admin', '/api/host/templates', { headers: same('admin'), body: { id: 'games', name: 'Games', description: 'A test.', modules: ['chat'] } })).status, 409, 'its id is taken');
-    const made = await call('POST', 'admin', '/api/host/templates', { headers: same('admin'), body: { id: 'projects', name: 'Projects', description: 'A test.', modules: ['chat'] } });
-    assert.equal(made.status, 201, made.text);
-    const projectsPage = fs.existsSync(path.join(ROOT, 'public', 'projects.html'));
-    assert.equal((await call('GET', '', '/projects')).status, projectsPage ? 200 : 404);
-    assert.equal((await call('GET', '', '/api/product')).json.pages.some((p) => p.path === '/projects'), projectsPage);
-    await call('DELETE', 'admin', '/api/host/templates/projects', { headers: same('admin') });
+    assert.ok((await call('GET', '', '/api/product')).json.templates.some((t) => t.id === 'travel'), 'shown again');
   });
   await test('one domain, no PRODUCT_DOMAIN: the product pages stay on the bare base domain, never redirected, and productDomain is the base', async () => {
     const front = await call('GET', '', '/', { headers: { accept: 'text/html' } });
     assert.equal(front.status, 200);
-    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
+    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'start.html'), 'utf8'));
     const info = (await call('GET', '', '/api/product')).json;
     assert.deepEqual([info.baseDomain, info.productDomain], [BASE, BASE]);
     assert.deepEqual((await call('GET', '', '/api/product/address?slug=aaa')).json, { slug: 'aaa', free: false, reason: 'taken' });
@@ -299,7 +296,7 @@ try {
   const two = fs.mkdtempSync(path.join(os.tmpdir(), 'check-origin-product-'));
   const srv = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: two, BASE_DOMAIN: BASE, PRODUCT_DOMAIN: PRODUCT, SIGNUP: 'on', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: two, BASE_DOMAIN: BASE, PRODUCT_DOMAIN: PRODUCT, PRODUCT_SITE_URL: 'https://example.com/products/thing', SIGNUP: 'on', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let srvOut = '';
@@ -333,17 +330,17 @@ try {
       });
     };
     const productOrigin = `http://${PRODUCT}:${p2}`;
-    await test('PRODUCT_DOMAIN: the product host serves the front page, the use pages and the product API, and nothing else', async () => {
+    await test('PRODUCT_DOMAIN: the product host serves the start page and the product API, and nothing else', async () => {
       assert.ok(srvOut.includes(`host console at admin.${BASE}, product pages at ${PRODUCT}`), srvOut);
       const front = await at('GET', PRODUCT, '/', { headers: { accept: 'text/html' } });
       assert.equal(front.status, 200);
-      assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
-      assert.equal((await at('GET', PRODUCT, '/travel', { headers: { accept: 'text/html' } })).text, fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'));
-      for (const p of ['/landing.js', '/landing.css', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2', '/api/product/environments']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
+      assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'start.html'), 'utf8'));
+      for (const p of ['/travel', '/games', '/landing.js', '/landing.css', '/start.html']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
+      for (const p of ['/start.js', '/start.css', '/theme-head.js', '/assets/images/brand/mark.svg', '/assets/images/brand/mark-dark.svg', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
       const info = (await at('GET', PRODUCT, '/api/product')).json;
-      assert.deepEqual([info.baseDomain, info.productDomain, info.signup], [BASE, PRODUCT, true]);
+      assert.deepEqual([info.baseDomain, info.productDomain, info.signup, info.productSiteUrl, 'pages' in info], [BASE, PRODUCT, true, 'https://example.com/products/thing', false]);
       assert.deepEqual((await at('GET', PRODUCT, '/api/product/address?slug=fresh')).json, { slug: 'fresh', free: true, reason: null });
-      for (const p of ['/app.js', '/login', '/api/me', '/admin']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
+      for (const p of ['/app.js', '/login', '/api/me', '/admin', '/api/product/environments']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
       // The design system pages and what they import are open; the app is not.
       for (const p of ['/design-system/', '/design-system/prototype.html', '/design-system/prototype.js', '/design-system/prototype.css', '/design-system/themes/calming-teal.css', '/design-system/proposed.html', '/design-system/legacy/index.html', '/design-system/legacy/', '/design-system/legacy/inventory/', '/design-system/legacy/inventory/img/now-coffee-planner-days-1280-dark.png', '/design-system/legacy/system-v1/proposed.html', '/module-frame.js', '/host-menu.js', '/tooltip.js', '/sdk/system.css', '/destination.css', '/diag.css', '/fonts/fraunces/latin.woff2', '/fa/css/all.min.css']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
       for (const p of ['/admin.html', '/api/modules', '/api/me', '/space.html', '/design-system/../server/index.js', '/design-system/nope.html', '/design-system/legacy/system-v1/', '/design-system/nope/']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
@@ -386,13 +383,13 @@ try {
       assert.deepEqual([settings.baseDomain, settings.productDomain, 'consoleHost' in settings], [BASE, PRODUCT, false]);
       assert.equal((await at('GET', `admin.${PRODUCT}`, '/')).status, 404, 'no console under the product host');
     });
-    await test('PRODUCT_DOMAIN: sign-up from the product host passes the origin rule and answers the new environment\'s sign-in, its login filled in', async () => {
-      const body = { slug: 'newone', name: 'New one', owner: { login: 'Maker', password: 'makerpass1234' } };
+    await test('PRODUCT_DOMAIN: sign-up from the product host passes the origin rule and answers the new environment\'s first-password link', async () => {
+      const body = { slug: 'newone', name: 'New one', owner: { login: 'Maker' } };
       // A stray cookie from the product host's own origin: the rule lets it through.
       const r = await at('POST', PRODUCT, '/api/product/signup', { headers: { cookie: 'x=1', origin: productOrigin, 'sec-fetch-site': 'same-origin' }, body });
       assert.equal(r.status, 201, r.text);
-      assert.equal(r.json.url, `http://newone.${BASE}:${p2}/login?login=maker`);
-      assert.equal((await at('GET', `newone.${BASE}`, '/login?login=maker', { headers: { accept: 'text/html' } })).status, 200, 'the sign-in page is there');
+      assert.match(r.json.url, new RegExp(`^http://newone\\.${BASE.replace('.', '\\.')}:${p2}/login/first-password#[A-Za-z0-9_-]{43}$`));
+      assert.ok(!r.json.url.includes('login=') && !r.json.url.includes('?'), 'no login and no query in the address');
       assert.deepEqual((await at('GET', PRODUCT, '/api/product/address?slug=newone')).json, { slug: 'newone', free: false, reason: 'taken' });
       // The same post from another origin with a cookie is refused, as any write.
       const cross = await at('POST', PRODUCT, '/api/product/signup', { headers: { cookie: 'x=1', origin: `http://newone.${BASE}:${p2}`, 'sec-fetch-site': 'cross-site' }, body: { ...body, slug: 'other' } });
@@ -402,11 +399,24 @@ try {
       assert.equal(reserved.status, 400, reserved.text);
       assert.equal(reserved.json.error, '"livekit" is reserved. Pick another.');
     });
-    await test('PRODUCT_DOMAIN: POST /login from the product host\'s origin (another site) is still exempt and signs in', async () => {
-      const r = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site', cookie: 'x=1' }, body: 'login=maker&password=makerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
-      assert.equal(r.status, 303, r.text);
-      assert.equal(r.location, '/');
-      assert.ok(r.cookies.some((c) => c.startsWith('app_session=')), 'signed in');
+    await test('PRODUCT_DOMAIN: POST /login from the product host\'s origin (another site) is refused with a cookie and 404 without one, never a session', async () => {
+      const form = { body: 'login=maker&password=makerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' };
+      const withCookie = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site', cookie: 'x=1' }, ...form });
+      assert.ok(refused(withCookie), `${withCookie.status} ${withCookie.text}`);
+      const without = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site' }, ...form });
+      assert.equal(without.status, 404, without.text);
+      for (const r of [withCookie, without]) assert.ok(!r.cookies.some((c) => c.startsWith('app_session=')), 'no session');
+    });
+    await test('PRODUCT_DOMAIN: GET /api/product/environments is 404 at the product host, the console and an environment, and only redirected at the bare base; /api/product has no environments', async () => {
+      for (const h of [PRODUCT, `admin.${BASE}`, `newone.${BASE}`]) {
+        const r = await at('GET', h, '/api/product/environments');
+        assert.equal(r.status, 404, `${h}: ${r.status} ${r.text.slice(0, 120)}`);
+        assert.ok(!r.text.includes('New one'), `${h} names an environment`);
+      }
+      assert.equal((await at('GET', BASE, '/api/product/environments')).status, 302, 'the bare base only redirects to the product host');
+      const info = (await at('GET', PRODUCT, '/api/product')).json;
+      assert.ok(!('environments' in info), 'GET /api/product has no environments');
+      assert.deepEqual((await at('GET', PRODUCT, '/api/product/environment?slug=newone')).json, { slug: 'newone', name: 'New one' }, 'one typed address is still found');
     });
   } finally {
     await new Promise((resolve) => { if (srv.exitCode !== null) return resolve(); srv.once('exit', resolve); srv.kill('SIGTERM'); });
@@ -419,7 +429,7 @@ try {
   const one = fs.mkdtempSync(path.join(os.tmpdir(), 'check-origin-single-'));
   const solo = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: one, ADMIN_PASSWORD: 'testpass1234', PRODUCT_DOMAIN: 'product.test', RESERVED_SLUGS: 'studio' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: one, ADMIN_PASSWORD: 'testpass1234', PRODUCT_DOMAIN: 'product.test', RESERVED_SLUGS: 'studio', PRODUCT_SITE_URL: 'https://example.com/products/thing' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let soloOut = '';
@@ -432,14 +442,13 @@ try {
       solo.stdout.on('data', look);
       solo.stderr.on('data', look);
     });
-    await test('without BASE_DOMAIN (PRODUCT_DOMAIN and RESERVED_SLUGS set, and ignored with a line): /travel, /games and /projects are not pages, and /api/product lists no pages', async () => {
+    await test('without BASE_DOMAIN (PRODUCT_DOMAIN and RESERVED_SLUGS set, and ignored with a line): /travel, /games and /projects are not pages, and /api/product lists no templates', async () => {
       for (const p of ['/travel', '/games', '/projects']) {
         const r = await fetch(`http://127.0.0.1:${soloPort}${p}`, { redirect: 'manual' });
         assert.equal(r.status, 404, p);
-        assert.notEqual(await r.text(), fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'), p);
       }
       const info = await (await fetch(`http://127.0.0.1:${soloPort}/api/product`)).json();
-      assert.deepEqual([info.pages, info.templates, info.baseDomain], [[], [], null]);
+      assert.deepEqual([info.templates, info.baseDomain, 'pages' in info], [[], null, false]);
       assert.equal(info.productDomain, null);
       assert.ok(soloOut.includes('PRODUCT_DOMAIN and RESERVED_SLUGS are ignored without BASE_DOMAIN: this server has one environment, at its own address.'), soloOut);
       // Every host is the one environment, the product host's name included.

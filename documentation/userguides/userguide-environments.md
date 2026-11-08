@@ -1,6 +1,6 @@
 # Your environment
 
-**Audience:** the owner of an environment on a hosted Collaborator server: what is yours to run, what your plan allows, and how to leave.
+**Audience:** the owner of an environment on a hosted Coffee Pub Chameleon server: what is yours to run, what your plan allows, and how to leave.
 
 An **environment** is your group's own place on a host that serves several: its own address (`yourname.<base domain>`), its own people, spaces, settings, look and modules. Nothing in it is shared with any other environment. You run it; the host runs the server underneath. A server with no base domain is one environment at its own address, run by its admin and any owners it makes, and this page does not apply to it.
 
@@ -30,11 +30,11 @@ Whether your environment requires it of everyone is yours to set (Manage > Envir
 
 ## A copy, and leaving
 
-**Download a copy** on the Environment panel gives you the whole environment as a zip: every setting, account, space, picture and module's data, the same file the host's own backup makes. **Ask for deletion** sends the host a request (with a reason, if you like); a host admin carries it out, which moves the environment aside rather than destroying it at once. You can withdraw the request until then.
+**Download a copy** on the Environment panel gives you a copy of your environment as a zip: its settings, people, spaces, pictures and module data. It leaves out what could let someone sign in as another person (passwords, personal links, guest links, invites, second-step secrets and the stream key), other people's private chat, and each person's own private module data. It is not the same file as the host's backup, which is complete. If the copy is restored on a host, nobody has a password or personal link until the host admin gives out new ones, and everyone signs in again. See [architecture-environments](../architecture/architecture-environments.md), "The owner's copy and a restore". **Ask for deletion** sends the host a request (with a reason, if you like); a host admin carries it out, which moves the environment aside rather than destroying it at once. You can withdraw the request until then.
 
 ## If your environment won't open
 
-If your environment shows only a page saying its data is from a newer version of Collaborator, or could not be
+If your environment shows only a page saying its data is from a newer version of Chameleon, or could not be
 updated, nothing in it has been lost, but it cannot be used until the host puts it right, usually by
 restoring a backup. The host console shows the host admin that it won't open, and why. Other environments on the
 same host are not affected.
@@ -47,4 +47,4 @@ you switch to another template or to none. See [Templates](userguide-templates.m
 
 ## Signing up
 
-On the host's product page, **Get started** makes an environment on the free plan in a minute: an address (letters, digits and hyphens, three to thirty, checked as you type, and fixed once chosen), a name, and the owner's login, display name and password. It takes you straight to the new environment's sign-in.
+On the host's product page, **Get started** makes an environment on the free plan in a minute: an address (letters, digits and hyphens, three to thirty, checked as you type, and fixed once chosen), a name, and the owner's login and display name. There is no password on this page. When you press the button, it takes you to your new environment's own page, where you choose your password (8 to 200 characters) and are signed in. Do it within 15 minutes: the link works once. If it has expired or was used, the page says so; ask whoever runs the host for a new one.

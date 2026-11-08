@@ -1,0 +1,152 @@
+/* The start page (public/start.html, start.js; documentation/plans/plan-product-site.md). It looks like the studio's product page: the studio's
+   header, a hero with the drawing, the sign-in, the ways to use the product and the studio's footer. The sign-in is built from the Prototype's
+   Start page section (public/design-system/prototype-start-page.css) on the app's own system (public/sdk/system.css: panels, rows, fields,
+   buttons, choice rows, the spinner and the empty state). Theme tokens only. There is no owner's theme at the product host, so /theme.css gives
+   the bundled default: its light set (Cream) unless this browser picked dark. */
+
+.sp-body { margin: 0; min-height: 100vh; background: var(--surface-page); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--text-14); }
+
+/* ---- the header: the studio's. The mark 56px, "Coffee Pub" in Fraunces Bold in the text colour, the product's name in the brand's coral at the
+   same size (2rem, coral only at 24px and larger), then Support, the teal pill and a round button for light and dark ---- */
+.sp-wrap { box-sizing: border-box; width: 100%; max-width: 1425px; margin: 0 auto; padding: 0 clamp(24px, 4.5vw, 60px); }
+/* Sticky: the header stays at the top while the page scrolls; --sp-top-h is its height, so anchor jumps land below it. */
+html { --sp-top-h: 84px; scroll-padding-top: var(--sp-top-h); }
+.sp-top { position: sticky; top: 0; z-index: var(--z-menu); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-page); }
+.sp-top-in { display: flex; align-items: center; gap: 28px; height: 84px; }
+.sp-brand { display: inline-flex; align-items: center; gap: 12px; min-width: 0; color: var(--text-primary); text-decoration: none; }
+.sp-brand:focus-visible, .sp-nav a:focus-visible, .sp-btn:focus-visible, .sp-way:focus-visible, .sp-site a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+.sp-mark { flex: none; width: 56px; height: 56px; }
+.sp-mark-dark { display: none; }
+:root[data-theme-mode="dark"] .sp-mark-light { display: none; }
+:root[data-theme-mode="dark"] .sp-mark-dark { display: inline-block; }
+.sp-lockup { min-width: 0; font-size: 2rem; line-height: 1; letter-spacing: -0.01em; white-space: nowrap; }
+.sp-lockup-brand { font-family: var(--font-display); font-weight: 700; color: var(--text-primary); }
+.sp-lockup-product { font-family: var(--font-ui); font-weight: 600; letter-spacing: 0; color: var(--brand-coral); }
+.sp-skel-name { display: block; width: 220px; max-width: 100%; height: 28px; }
+.sp-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.sp-nav-link { padding: 8px 14px; border-radius: var(--radius-small); color: var(--text-muted); font-weight: 500; font-size: var(--text-16); text-decoration: none; }
+.sp-nav-link:hover { background: var(--surface-panel); color: var(--text-primary); }
+.sp-pill, .sp-btn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border-radius: var(--radius-round); background: var(--brand-teal); color: var(--text-on-brand-teal); font-family: var(--font-ui); font-weight: 600; text-decoration: none; cursor: pointer; }
+.sp-pill { padding: 10px 20px; margin-left: 8px; font-size: 0.95rem; }
+.sp-btn { padding: 15px 28px; font-size: var(--text-16); }
+.sp-pill:hover, .sp-btn:hover { background: var(--brand-teal-hover); }
+.sp-theme { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: 8px; padding: 0; border: 1px solid var(--edge-field); border-radius: var(--radius-round); background: transparent; color: var(--text-primary); font-size: var(--text-16); cursor: pointer; }
+.sp-theme:hover { background: var(--surface-panel); }
+.sp-theme:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.sp-top [hidden], .sp-page [hidden], .sp-site[hidden] { display: none; }
+
+/* ---- the hero: the product's mark and a badge, the title in Fraunces, the words, the button, and the drawing beside them ---- */
+.sp-page { display: flex; flex-direction: column; gap: 56px; box-sizing: border-box; min-width: 0; padding: 0 0 72px; }
+/* The bands alternate as the studio's do: the hero on its own darker ground, the sections after it on the page's. */
+.sp-band { background: var(--surface-band); padding: 56px 0; }
+.sp-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.sp-hero-text { min-width: 0; }
+.sp-eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.sp-hero-mark { width: 56px; height: 56px; }
+.sp-badge { padding: 4px 12px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--brand-coral) 18%, var(--surface-page)); color: var(--text-primary); font-size: var(--text-12); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.sp-hero h1 { margin: 0 0 24px; font-family: var(--font-display); font-weight: 600; font-size: clamp(2.5rem, 5.6vw, 4.2rem); line-height: 1.08; letter-spacing: -0.02em; color: var(--text-primary); }
+.sp-lead { max-width: 46rem; margin: 0; color: var(--text-muted); font-size: clamp(1.15rem, 1.5vw, 1.3rem); line-height: 1.6; }
+.sp-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 36px; }
+.sp-actions:has(> [hidden]:only-child) { display: none; }
+.sp-where { margin: 14px 0 0; color: var(--text-muted); font-size: var(--text-14); line-height: 1.7; overflow-wrap: anywhere; }
+.sp-where code { padding: 3px 9px; border-radius: var(--radius-medium); background: color-mix(in srgb, var(--brand-coral) 14%, var(--surface-page)); color: var(--text-primary); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em; }
+.sp-art { min-width: 0; --sand: color-mix(in srgb, var(--accent-fill) 24%, var(--surface-page)); --accent-soft: color-mix(in srgb, var(--brand-teal) 22%, var(--surface-page)); --sea: color-mix(in srgb, var(--brand-teal) 50%, var(--surface-page)); --accent: var(--brand-teal); --coral: var(--brand-coral); --bg: var(--surface-page); --surface: var(--surface-panel); --line: var(--edge-hairline); --line2: var(--edge-field); }
+.sp-scene { display: block; width: 100%; height: auto; overflow: visible; }
+.sp-scene .plane { offset-path: path("M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164"); offset-rotate: auto; offset-distance: 50%; }
+
+/* ---- the sign-in: one wide band, the address field and Go first, Recent as chips under it ---- */
+.sp-signin { box-sizing: border-box; }
+.sp-find-band { display: flex; flex-direction: column; gap: var(--space-5); box-sizing: border-box; width: 100%; max-width: 760px; margin: 0 auto; padding: var(--space-5); border-radius: var(--radius-large); }
+.sp-find { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.sp-find > h2, .sp-recent-band > h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: 600; }
+.sp-link { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.sp-link b { color: var(--text-primary); font-weight: var(--weight-strong); }
+.sp-find-band:has(> #sp-find[hidden]) { display: none; }
+.sp-find-band [hidden] { display: none; }
+.sp-recent-band { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
+.sp-recent-band > h2 { font-size: var(--text-16); }
+
+/* ---- the ways to use the product: cards, each a link to its page on the studio's site ---- */
+.sp-ways h2 { margin: 0 0 24px; font-family: var(--font-display); font-weight: 600; font-size: clamp(1.7rem, 3vw, 2.2rem); letter-spacing: -0.01em; color: var(--text-primary); }
+.sp-ways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+.sp-way { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 14px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-panel); color: var(--text-primary); text-align: center; text-decoration: none; transition: transform 0.2s; }
+.sp-way:hover { transform: translateY(-2px); border-color: var(--brand-teal); }
+.sp-way img { width: 56px; height: 56px; }
+.sp-way b { font-family: var(--font-display); font-size: 1.05rem; }
+.sp-way-line { color: var(--text-muted); font-size: var(--text-14); line-height: 1.4; }
+.sp-soon { padding: 2px 10px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--brand-coral) 18%, var(--surface-page)); color: var(--text-primary); font-size: var(--text-11); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ---- the footer: the studio's ---- */
+.sp-site { border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); color: var(--text-muted); font-size: 0.98rem; }
+.sp-site-in { display: grid; gap: 16px; padding-top: 44px; padding-bottom: 44px; }
+.sp-foot-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 32px 40px; align-items: start; }
+.sp-foot-brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-primary); text-decoration: none; }
+.sp-foot-mark { width: 28px; height: 28px; }
+.sp-foot-wm { font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; line-height: 1; letter-spacing: -0.01em; white-space: nowrap; }
+.sp-foot-wm i { font-family: var(--font-ui); font-style: normal; font-weight: 600; letter-spacing: 0; color: var(--brand-coral); }
+.sp-foot-about p { max-width: 34ch; margin: 10px 0 0; line-height: 1.6; }
+.sp-site nav { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.sp-site nav h2 { margin: 0 0 4px; color: var(--text-primary); font: 700 0.8rem/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+.sp-site a { color: var(--text-muted); text-decoration: none; }
+.sp-site a:hover { color: var(--text-accent); }
+.sp-foot-base { display: grid; justify-items: center; gap: 8px; padding-top: 22px; border-top: 1px solid var(--edge-hairline); text-align: center; }
+.sp-foot-base p { margin: 0; }
+.sp-foot-base p:last-child { font-size: 0.9rem; }
+
+/* The address: one field, the base domain after it inside the same box, and Go beside it. */
+.sp-go-row { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.sp-address { position: relative; display: flex; flex: 1 1 auto; align-items: center; min-width: 0; height: var(--field-h); box-sizing: border-box; border: 1px solid var(--edge-field); border-radius: var(--radius-small); background: var(--surface-field); cursor: text; }
+.sp-address:hover { background: var(--field-fill-hover); }
+.sp-address > input { flex: 1 1 0; width: auto; min-width: 0; height: 100%; padding-right: 0; border: 0; background: transparent; }
+.sp-address > input:hover { background: transparent; }
+.sp-address > input:focus { border: 0; outline: 0; box-shadow: none; }
+.sp-address:focus-within { box-shadow: 0 0 0 2px var(--field-ring); outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.sp-address:has(> input[aria-invalid="true"]) { outline: 2px solid var(--status-danger-fill); outline-offset: -2px; }
+.sp-address:has(> input[aria-invalid="true"]):focus-within { box-shadow: 0 0 0 2px var(--field-ring-danger); }
+.sp-suffix { flex: 0 1 auto; min-width: 0; max-width: 65%; padding-right: var(--field-pad-x); overflow: hidden; color: var(--text-muted); font-size: var(--field-font); text-overflow: ellipsis; white-space: nowrap; }
+.sp-skel-suffix { width: 110px; height: 14px; margin-right: var(--field-pad-x); }
+.sp-go { flex: none; min-width: 64px; }
+.sp-go .sdk-spinner { color: inherit; }
+.sp-line { display: flex; align-items: flex-start; gap: var(--space-2); min-height: 16px; margin: 0; color: var(--text-muted); font-size: var(--text-13); line-height: 18px; overflow-wrap: anywhere; }
+.sp-line:empty { display: none; }
+.sp-line > i { flex: none; margin-top: 2px; }
+.sp-line[data-kind="ok"] { color: var(--text-primary); }
+.sp-line[data-kind="ok"] > i { color: var(--status-ok-text); }
+.sp-line[data-kind="error"] { color: var(--status-danger-text); }
+.sp-line strong { font-weight: var(--weight-strong); }
+
+/* Recent: chips that wrap, each a link to its sign-in (name over address) with a remove. */
+.sp-recent { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.sp-chip { display: flex; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-field); }
+.sp-chip-main { display: flex; flex-direction: column; min-width: 0; }
+.sp-chip-name { overflow: hidden; color: var(--text-primary); font-weight: var(--weight-strong); text-overflow: ellipsis; white-space: nowrap; }
+.sp-chip-addr { overflow: hidden; color: var(--text-muted); font-size: var(--text-12); text-overflow: ellipsis; white-space: nowrap; }
+.sp-form { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+
+#sp-failed { max-width: 480px; margin: 0 auto; }
+
+/* ---- a phone: the system sets its 640px sizes (fields, checks and buttons 44px) on :root; the lockup stacks its two words beside the mark ---- */
+@media (max-width: 900px) { .sp-hero { grid-template-columns: 1fr; gap: 24px; } }
+@media (max-width: 640px) {
+  .sp-wrap { padding-inline: var(--space-4); }
+  .sp-band { padding: 24px 0; }
+  .sp-find-band { padding: var(--space-4); }
+  html { --sp-top-h: 140px; }
+  .sp-top-in { height: auto; flex-wrap: wrap; gap: 10px; padding-block: 14px; }
+  .sp-lockup { font-size: var(--text-28); white-space: normal; }
+  .sp-lockup-brand, .sp-lockup-product { display: block; }
+  .sp-nav { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .sp-nav .sp-theme { margin-left: auto; }
+  .sp-page { gap: 32px; padding: 0 0 48px; }
+  .sp-hero { grid-template-columns: 1fr; gap: 24px; }
+  .sp-foot-grid { grid-template-columns: 1fr 1fr; }
+  .sp-foot-about { grid-column: 1 / -1; }
+  .sp-nav-link, .sp-pill, .sp-site a { min-height: 44px; display: inline-flex; align-items: center; }
+  .sp-chip { min-height: 44px; }
+  .sp-recent { flex-direction: column; }
+  .sp-chip { width: 100%; box-sizing: border-box; }
+  .sp-chip-main { flex: 1 1 auto; }
+  .sp-page :where(.btn-small) { position: relative; }
+  .sp-page .btn-small::after { content: ""; position: absolute; inset: var(--btn-hit) 0; }
+  .sp-page .sdk-icon-btn.btn-small::after { inset: var(--btn-hit); }
+}

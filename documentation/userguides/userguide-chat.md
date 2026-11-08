@@ -1,6 +1,6 @@
 # Chat
 
-**Audience:** anyone in a space on a Collaborator server who types in Chat: to talk, to ask the AI, to add something to a module, or to bring in research from another AI.
+**Audience:** anyone in a space on a Coffee Pub Chameleon server who types in Chat: to talk, to ask the AI, to add something to a module, or to bring in research from another AI.
 
 Chat has one box, **Chat or type / for commands...** ("Chat, or / for commands", or just "Chat", when the chat is narrow), and two tabs above the messages: **Discussion** and **Assistant**. The chat is in the column beside the Workspace, in every layout tab (see [The call](userguide-call.md), "The column: the call and the chat, always on"). It is also on Home, where it is the environment's own chat.
 
@@ -140,7 +140,7 @@ Each module has a colour, and it shows in three places: on the messages its comm
 
 ## Bring in research from another AI
 
-You can research in another AI and bring what it finds into Collaborator as objects. This uses none of the environment's AI.
+You can research in another AI and bring what it finds into Chameleon as objects. This uses none of the environment's AI.
 
 1. Open the formatting menu and choose **Bring in research** (it switches you to the **Assistant** tab). It shows only to people who may use `/ai` here (the same rule as "Ask the AI", with or without an AI service set up), and only where some module on in the space can keep an object (the Planner, Research, the To-do and so on).
 2. Choose **Copy instructions for another AI**, paste them into the other AI, then ask your question.

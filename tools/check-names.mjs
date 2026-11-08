@@ -1440,7 +1440,7 @@ function migrationCheck() {
       const logged = [];
       const opts = { hosted: true, log: (m) => logged.push(m), stop: () => {} };
       names.refusedAtStartup(new names.MigrationError('The names migration part "x" stopped at /d/app.json: this value is not a shape the part knows', '/d/app.json'), opts);
-      names.refusedAtStartup(new names.MigrationError('/d/app.json records the migration part "y", which this version of Collaborator does not know: so it will not be opened here.', '/d/app.json', 'newer'), opts);
+      names.refusedAtStartup(new names.MigrationError('/d/app.json records the migration part "y", which this version of the app does not know: so it will not be opened here.', '/d/app.json', 'newer'), opts);
       assert.ok(logged[0].includes('the part knows. This environment is skipped'), logged[0]);
       assert.ok(logged[1].includes('opened here. This environment is skipped') && !logged[1].includes('..'), logged[1]);
     });
@@ -1484,7 +1484,7 @@ function migrationCheck() {
     });
 
     test('what a person asking for a refused environment is told, exactly', () => {
-      assert.equal(names.REFUSED_NEWER, "This environment's data is from a newer version of Collaborator.");
+      assert.equal(names.REFUSED_NEWER, `This environment's data is from a newer version of ${require('../server/product-name.js').productName()}.`);
       assert.equal(names.REFUSED_FAILED, "This environment's data could not be updated. The host admin has been told.");
       const dir = copyFixture();
       const file = path.join(dir, 'app.json');
@@ -2297,7 +2297,7 @@ function migrationCheck() {
       assert.equal(fs.readFileSync(path.join(dir, 'app.json'), 'utf8'), '{ not json');
     });
 
-    test('a record naming a part this server does not know is from a newer Collaborator', () => {
+    test('a record naming a part this server does not know is from a newer app', () => {
       assert.deepEqual(names.unknownParts({ version: 2, migrations: [{ id: 'names-from-the-future', at: '', moved: [] }] }), ['names-from-the-future']);
       assert.deepEqual(names.unknownParts({ version: 1 }), []);
       assert.deepEqual(names.unknownParts(null), []);
@@ -2339,7 +2339,7 @@ function oldRouteCheck(files) {
 // Documentation and the changelog are history and are not read; neither are the allow-list (the check's input), the
 // wiki build or node_modules. Exempt only by an allow-list entry of level "product-name" (or "*", for the files the
 // Names check already exempts whole): its file, the name's own token, and its line when it gives one.
-const PAST_PRODUCT_NAMES = ['magpie', 'tavern'];
+const PAST_PRODUCT_NAMES = ['magpie', 'tavern', 'collaborator'];
 const PRODUCT_NAME_ROOTS = ['server', 'public', 'modules', 'tools', 'templates'];
 const PRODUCT_NAME_FILES = ['Dockerfile'];
 const PRODUCT_NAME_EXTS = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.txt', '.md']);

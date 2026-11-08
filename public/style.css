@@ -13,6 +13,11 @@
   --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
+  --brand-teal: #5cc8cf; /* the brand kit's teal: the start page's main buttons and links */
+  --brand-teal-hover: #7fd6db;
+  --surface-band: color-mix(in srgb, #13243b 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
+  --text-on-brand-teal: #0e1a2b;
+  --brand-coral: #ff8264; /* the brand kit's coral for the product's name in the lockup: large text only (24px and up), never body text */
 
   /* SCAFFOLDING, deleted when the last file that reads each one moves onto the roles (plan-design-system.md, step 36): the old
      token names, defined from the roles so that files not yet moved follow the theme. Not for new code: use the roles. */
@@ -138,6 +143,11 @@
   --tint-red: #b3372b;
   --tint-orange: #b35a00;
   --tint-pink: #ad3a78;
+  --brand-coral: #e0553c;
+  --brand-teal: #0b7a84;
+  --brand-teal-hover: #096870;
+  --surface-band: color-mix(in srgb, #f3e9d4 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
+  --text-on-brand-teal: #ffffff;
 }
 
 /* A tint by name: a message, a module's icon in its titlebar or the Layout menu (data-tint="<name>"). */
@@ -703,11 +713,50 @@ body.host-console .topbar .nav-toggle {
   display: none;
 }
 
-body.host-console .host-logo {
-  display: block;
-  height: 60px; /* the file has wide transparent margins; the bar's own height is unchanged */
-  width: auto;
-  margin: -12px 0;
+/* The product's lockup (brand.js, productLockup()): the mark and the product's name as live text, one line. The kit's
+   proportions, by the text's size: the mark 1.75 times the text (56 units for 32), 0.375 of it between them (12 for 32).
+   "Coffee Pub" is Fraunces 700, the rest Figtree 600; both take the theme's text colour here (the kit's coral name is for
+   large text only). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
+.product-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375em;
+  min-width: 0;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.product-lockup-mark {
+  flex: none;
+  width: 1.75em;
+  height: 1.75em;
+}
+
+.product-lockup-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--leading-section);
+}
+
+.product-lockup-brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.product-lockup-product {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-strong);
+}
+
+body.host-console .topbar .brand-home .product-lockup {
+  font-size: var(--text-18);
+}
+
+@media (max-width: 640px) {
+  body.host-console .topbar .brand-home .product-lockup {
+    font-size: var(--text-16);
+  }
 }
 
 body.host-console .environment .section-head h2 code {
@@ -6414,6 +6463,17 @@ body.chat-window {
 .mfa-codes { list-style: none; margin: 8px 0; padding: 0; columns: 2; gap: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-14); line-height: var(--leading-body); }
 .owner-reset .hint { margin: 0; }
 .owner-reset input { max-width: 14em; }
+/* The console's "New first-password link" (plan-first-password.md): a row per owner with no password yet, then the link
+   just made, in a box like the calendar feed's, its field taking the row's room and wrapping under on a phone. */
+.first-password .hint { margin: 0; }
+.first-password-made { margin: 8px 0 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-large); background: var(--bg-card, var(--bg)); }
+.first-password-made .row { flex-wrap: wrap; align-items: flex-end; }
+.first-password-field { display: flex; flex-direction: column; gap: var(--label-gap); flex: 1 1 16em; min-width: 0; }
+.first-password-field input { width: 100%; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.first-password-made .row + .hint { margin-top: 8px; }
+@media (max-width: 640px) {
+  .first-password-field { flex-basis: 100%; } /* the link takes the line; Copy and Close stay together under it */
+}
 
 /* Profile's calendar feed (plan-google-calendar.md): the address, shown once in a box like the MFA block's, then the
    short steps for a calendar app. The address wraps rather than widening the page on a phone. */

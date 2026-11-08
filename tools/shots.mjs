@@ -44,7 +44,7 @@
 // of the call (marked "call": Start call pressed) loads tools/shots-livekit-stub.mjs in place of the call's client library, so
 // the page joins a call nobody else is in. That is a test double for taking pictures: a call itself (people's tiles, the
 // controls with real state, the popped-out window) is not shown, and is only checked in a real call. A hosted server's pages (the host console, the
-// landing page, the environment banner) need a base domain and are not in the set; nor is anything that needs a person in an
+// start page, the environment banner) need a base domain and are not in the set; nor is anything that needs a person in an
 // aside (the ghost slot on Home) or a request still waiting (a loading skeleton).
 //
 // Seeds: the default seeds the travel template; `--seed=games` seeds the games template (two campaigns, tools/shots-seed.mjs) and runs

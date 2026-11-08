@@ -918,7 +918,8 @@ try {
     kept[want[0]] ||= r.json.file; // the first of each type
   }
   const v = kept['application/pdf'];
-  same(Object.keys(v).sort(), ['at', 'by', 'group', 'hasThumb', 'id', 'name', 'size', 'type', 'uses'], 'a file\'s view');
+  same(Object.keys(v).sort(), ['at', 'by', 'group', 'hasThumb', 'id', 'name', 'size', 'type', 'uses', 'visibility'], 'a file\'s view (to its adder, with who may see it)');
+  same(v.visibility, 'everyone', 'a file added without a visibility is everyone\'s');
   same([v.by, v.size, v.hasThumb, v.uses], [people.pat.key, pdfOf().length, false, 0], 'who added it, its size, no thumbnail, no links');
   ok(/^[a-f0-9]{24}$/.test(v.id) && fs.existsSync(path.join(spaceDir, `${v.id}.bin`)), 'its bytes are VAULT_DIR/_default/space-<id>/<id>.bin on a single install');
   same(fs.readFileSync(path.join(spaceDir, `${v.id}.bin`)), pdfOf(), 'kept as sent');

@@ -456,6 +456,20 @@
         <button class="btn btn-small danger" type="submit">Reset their second factor</button>
         <span class="status" data-slot="owner-reset-status"></span>
       </form>
+      <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, drawn by host.js from the
+           list's awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
+      <div class="first-password" data-slot="first-password" hidden>
+        <div data-slot="first-password-rows"></div>
+        <div class="first-password-made" data-slot="first-password-made" hidden>
+          <div class="row">
+            <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
+            <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
+            <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
+          </div>
+          <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
+        </div>
+        <span class="status" data-slot="first-password-status" role="status" hidden></span>
+      </div>
       <form class="plan-form" data-slot="plan-form" hidden>
         <h3>Edit</h3>
         <p class="hint">The name is what the environment calls itself and what the product page lists; the slug (its address) is fixed. Choosing a plan fills the caps from the catalog; adjust them here for this environment alone. Empty caps mean no cap.</p>

@@ -77,7 +77,7 @@ The "door" is one middleware, registered right after `express.json()`, before an
   2. The **product host** serves the product's own pages: `public/landing.html` for `/`, the use pages
      (`PRODUCT_PAGES`) and a short allowlist of other paths (`PRODUCT_HOST_PATHS`: `/landing.css`, `/landing.js`,
      `/style.css`, `/theme.css`, `/img/site/icon`, `/favicon.ico`, `/api/product`, `/api/product/environment`,
-     `/api/product/environments`, `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
+     `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
      `/assets/images/brand/*`). The product host is `PRODUCT_DOMAIN`, or the bare `<base>` when that is unset or
      equal to the base. No environment is ever resolved there, so `/theme.css` and `siteIcon` both fall back to
      "nothing set" when `envContext.getStore()` is empty, the same as any environment that has not set its own
@@ -114,12 +114,18 @@ The "door" is one middleware, registered right after `express.json()`, before an
   product pages would hide it); the start stops with a line naming it. All of these checks run before `host.json`
   is written.
 
-  `PRODUCT_NAME` (default "Collaborator") and `CONTACT_EMAIL` (default none) are
-  configuration, never code, since the product's own name is not settled yet -- `GET /api/product` (registered on
+  `PRODUCT_NAME` (default "Coffee Pub Chameleon") and `CONTACT_EMAIL` (default none) are
+  configuration, never code -- `GET /api/product` (registered on
   both the main app and `hostRouter`, never behind a session) answers `{ name, contact, baseDomain, productDomain, version, signup, plans, templates, pages }`
   wherever it is reached; `productDomain` is the product host (`PRODUCT_DOMAIN`, else the base), null without a base domain. `PRODUCT_NAME` unset, empty or only spaces means the default, everywhere: `productName()`
   in `server/product-name.js` is the one rule, and `DEFAULT_PRODUCT_NAME` there is the only place the default is
-  written. The pages write no name of their own: they start with none and fill it in from branding. `version` is
+  written. `PRODUCT_NAME` holds the full name; `shortProductName()` in the same file derives the short form by dropping a
+  leading "Coffee Pub " (any letter case), so the default's short form is "Chameleon", and a name without that prefix, such as a
+  branded "Travel Pub", is its own short form and shows everywhere. The short form is `productShortName` in `GET /api/product`,
+  `/api/branding` and `/api/host/settings`. Titles, sign-in, first mentions and the About tab use the full name; running text
+  uses the short one. An environment that already stored a name keeps it, and the About tab prints the name once (it no longer
+  adds "A Coffee Pub product"). A compose file that still sets `PRODUCT_NAME: "Collaborator"` overrides the default and keeps
+  the old name on a new install: change it to the new name. The pages write no name of their own: they start with none and fill it in from branding. `version` is
   the package version and the first seven characters of `APP_REVISION` (`v0.4.0 (1a2b3c4)`), which the Dockerfile
   sets to the commit the image was built from (`dev` when unset). It was `TAVERN_REVISION`, which is no longer read;
   only the Dockerfile ever set it.
@@ -136,56 +142,133 @@ with code 1. Without it, such a start built a second, empty single-environment i
 the AI files, `secrets.key`) beside the environments, and every later start with `BASE_DOMAIN` refused (GitHub
 #90). `tools/check-host-registry.mjs` covers it.
 
-Two more pieces exist only to let the product page's own **Sign in** send someone to the right place, without the
-host ever learning who anyone is (accounts live inside each environment, not in `host.json`):
+Two more pieces let the product page's **Sign in** send someone to the right place, without the host ever learning
+who anyone is (accounts live inside each environment, not in `host.json`). The page lists no environments and takes no
+password: a person types their environment's address (the base domain is shown after the field) and presses **Go**,
+and the page opens `<slug>.<base>/login` in the same tab once the lookup below finds it. A line under the form says
+"Got a link from someone? Just open it." The environment's own sign-in page does the rest, so the session cookie is
+first-party and nothing is posted across sites.
 
 - On every real sign-in to an environment (`GET /j/:token`, `POST /api/login`, `POST /api/register`,
   `POST /api/invites/:token/accept` -- never the host admin's own `POST /api/host/login`), `setEnvHint(req, res)`
   sets a cookie `env_hint` on the parent `BASE_DOMAIN`: a comma-separated list of slugs, most recent first,
   deduplicated, capped at five, `Path=/`, `SameSite=Lax`, `Secure` when the request is, a year long, **not**
-  `HttpOnly` (the page reads it with `document.cookie`). Never cleared on sign-out -- it is a hint, not a session,
-  and it names no person. A no-op without `BASE_DOMAIN`.
-  The cookie is on `Domain=<BASE_DOMAIN>`, so a product page on another site (a `PRODUCT_DOMAIN` outside the
-  base) cannot read it. `public/landing.js` skips the **recent** shortcut ("Sign in to ...") when
-  `location.hostname` is not the base or under it; the environment list and the sign-in form stay. Nothing moves
-  the cookie to the product host.
+  `HttpOnly`. Never cleared on sign-out. A no-op without `BASE_DOMAIN`. **Nothing reads it now**: the product page
+  used to preselect from it and no longer does (plan-product-site.md, decision 11).
 - `GET /api/product/environment?slug=` (registered on both the main app and `hostRouter`, and in
   `BARE_BASE_PATHS`, so it answers at the bare base domain too) answers `{ slug, name }` for an `active` or
-  `pastDue` environment and a plain 404 for anything else -- unknown, suspended, or a slug that fails `cleanSlug`'s own
-  shape check before it ever reaches the registry. Suspended and unknown look identical on purpose: a slug is
-  already a public address (it is the environment's own subdomain), so confirming one exists reveals nothing a browser
-  couldn't already see by just visiting it.
+  `pastDue` environment and a plain 404 for anything else -- unknown, suspended, refused at startup (see "Refused
+  environments"), or a slug that fails `cleanSlug`'s own shape check before it ever reaches the registry. These all
+  look identical on purpose: a slug is already a public address (it is the environment's own subdomain), so confirming
+  one exists reveals nothing a browser couldn't already see by just visiting it. It shares the address check's limit:
+  120 a minute from one address, counted together with `GET /api/product/address`, then 429
+  `{ error: "Too many checks from this address; try again in a minute." }`. The limit is checked before the slug is
+  read, so unknown and malformed slugs count too.
+- There is no list of environments. `GET /api/product/environments` is removed and answers 404 on every host, so no
+  visitor is ever shown another customer's environment.
 - `GET /api/product/address?slug=` (same registration pattern, and in `PRODUCT_HOST_PATHS`) is the sign-up
   form's check as the name is typed. It answers `{ slug, free, reason }` through `HostRegistry#addressFor()`:
   `reason` is `shape` (not a slug; `slug` is echoed lower-cased, cut to 64 characters), `reserved`, `taken` (an
   environment has it, whatever its status) or null when `free` is true. It is public, 404 without a
-  `hostRegistry`, and limited to 120 a minute per address (429 `Too many checks from this address; try again in a
-  minute.`). Unlike the lookup above, it says nothing about the environment beyond whether the name is taken, and
-  the lookup keeps meaning "this environment exists".
-- `GET /api/product/environments` (same registration pattern) answers `{ environments: [{ slug, name }] }` for
-  the page's own dropdown: every `active` or `pastDue` environment that is not refused (see "Refused environments"),
-  sorted by name, suspended ones left out entirely
-  (not even a slug -- unlike the single lookup above, there is no address a visitor already has here to confirm).
-  `{ environments: [] }` when there is no `hostRegistry` at all.
-- `POST /login` (form-encoded, `login`/`password`/`next`; each environment's own, registered on the main app like
-  `POST /api/login`) is the page's actual sign-in: a top-level form post from `https://<slug>.<base>/login`, so
-  the session cookie is set first-party with no cross-origin request involved. Same check as the JSON route
-  (`store.userByLogin`, `auth.verifyPassword`, the environment's own `limiter`, a `LoginLimiter` shared with
-  `POST /api/login` since it is the same `proxyFor('limiter')`), but a redirect instead of a JSON body: success
-  sets the session and `env_hint` exactly as `POST /api/login` does, then `303`s to `next` when it is a path on
-  this environment (`safeNextPath` requires a single leading `/` -- a second one, as in `//evil.com`, is a
-  protocol-relative URL to a browser, not a path), `/` otherwise; blocked-by-the-limiter or a wrong login/password
-  both `303` to `/login?error=1&login=<login>`, indistinguishable from each other, same as the JSON route's own
-  single "wrong username or password".
+  `hostRegistry`, and limited to 120 a minute per address (429, same sentence), shared with the lookup above. It says
+  nothing about the environment beyond whether the name is taken.
+- The form `POST /login` is removed with its `?error=1&login=` return. Sign-in is `POST /api/login` from the
+  environment's own `/login` page (`public/login.js`, and `public/login-step.js` for the second step).
+  Both keep the `next` address only through `sameSiteNext` in `public/next-address.js`: it must start with a single
+  `/` and stay on this site; `//evil`, `/\evil`, absolute addresses and tab or newline tricks fall back to `/`.
 - `POST /api/product/signup` (main app only, in `PRODUCT_HOST_PATHS`, so it is served at the product host; off
-  unless `SIGNUP=on`) makes the environment on the free plan and its owner, and answers 201
-  `{ url }`, `<scheme>://<slug>.<BASE_DOMAIN>[:port]/login?login=<login>`. The person is not signed in (the product
-  host is another site, and no one-time sign-in link exists), so they land on the new environment's sign-in with
-  the login filled in. A reserved name is a 400 `"<slug>" is reserved. Pick another.`; a taken one a 409.
+  unless `SIGNUP=on`; five tries an hour per address) makes the environment on the free plan and its owner, and
+  answers 201 `{ url }` with `Cache-Control: no-store`. It takes `{ slug, name, template, owner: { login, displayName } }`
+  and **no password**: any `owner.password` or `password` is a 400 `Sign-up takes no password. You choose it on your
+  new environment's own page.` The owner's login is checked first, before anything is made: 400
+  `Sign-up needs the owner's login.`, and 400 `The owner's name must be text.` for a display name that is not text.
+  A reserved name is a 400 `"<slug>" is reserved. Pick another.`; a taken one a 409 `"<slug>" is already in use`.
+  A folder already in `DATA_DIR/environments/<slug>` with no registry entry (left behind) is answered the same 409 and
+  is never read, changed or removed. If the owner cannot be made, the environment made a moment before is undone.
+  The `url` is `<scheme>://<slug>.<BASE_DOMAIN>[:port]/login/first-password#<token>`: see "The first password" below.
 
 Because `AsyncLocalStorage` context follows the real async causality chain (promises, `await`, timers,
 `EventEmitter.emit`), a route handler can `await` anything, register a `setInterval`, or call `moduleBus.on(...)`
 and the Proxy still resolves correctly inside all of it, with one exception below.
+
+## The first password
+
+A new owner made at sign-up has no password. They choose it on the new environment's own page, with a link that works
+once. The start page is another site from the environment, so no cookie can carry the person across, and the start
+page never sees a password. Plan: [plan-first-password](../plans/plan-first-password.md).
+
+**The link.** The token is 32 random bytes in base64url (43 characters), made by `auth.oneTimeToken()`. It is in the
+address's **fragment** (after `#`), never the query, so a browser does not send it to a server or a proxy, and it
+cannot appear in an access log or a `Referer`. The server keeps only its SHA-256, on the owner's account, as
+`firstPassword: { hash, expiresAt }`; after the link is used it is `{ claim, claimedAt, expiresAt }`, where `claim` is a random 32-hex id for that use
+(carried as `c` in the pending cookie). A stored record without a valid claim is dropped when it is loaded. The token
+is never stored or logged. The link made by sign-up lives 15 minutes. The field is never made for the host admin's stand-in account, is
+left out of the owner's export (`USER_LEFT_OUT`), and the host's backup, which is not filtered, keeps the hash only.
+Setting a password any other way ends the link.
+
+**The routes**, on a hosted install only (without `BASE_DOMAIN` they do nothing, and the single-environment install is
+unchanged):
+
+| Route | What it does |
+|---|---|
+| `GET /login/first-password` | The page (`public/login-first-password.html` and `.js`). The file is reachable only at this route: `/login-first-password.html` answers 404 everywhere, like an unknown file (`ROUTE_ONLY_FILES`). It never redirects, signed in or not, because a redirect would carry the fragment on. `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. |
+| `POST /api/login/first-password` `{ token }` | The exchange. Hashes the token, finds the owner whose link matches and is not ended, and spends it. Sets the `mfa_pending` cookie (10 minutes, purpose `first-password`) bound to the owner, the environment and this claim. 200 `{ login, displayName, environmentName }`. |
+| `POST /api/login/first-password/set` `{ login, password }` | Reads the pending cookie only for who the step is (never the body). `login` must be the login of the owner the cookie names (cleaned as a login is), so a page still naming an older link's owner cannot set this one's password; a missing, non-text or different `login` is the 401 below. The password is 8 to 200 characters, enforced here (the field has no `maxlength`; the rule comes from the page's script and the server): 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
+| `POST /api/host/environments/:slug/owners/:login/first-password` | Host admin only (on `hostRouter`). A new link for an owner with no password, valid 24 hours, single use, no-store, answering `{ url }` once. It replaces older links and any step already begun from them. 404 `no such environment` or `no owner with that login there`; 400 when the owner has a password already. |
+
+**Every failure of the two login routes** (no such token, ended, already used, a bad, missing or foreign pending cookie, a
+step from an older claim, a `login` that is not the cookie's owner) is the same 401 `This link has expired or was already used. Ask whoever runs this host for a new
+one.` The environment's own sign-in limit applies to them: after the limit, 429 `too many attempts, try again in a few
+minutes`. A good use clears the count.
+
+**The window and its closed doors.** From sign-up until the password is set, the environment has an owner with no
+password. Nothing else can use that gap: an account with no password never signs in by password; the owner has no
+personal link and no second factor; and `POST /api/register` answers 403 `sign-up is turned off` while any owner waits
+(`Store#awaitingFirstPassword()`), even if the environment allows self sign-up. The sign-in page says nothing about the
+wait.
+
+**Limits.** The two login routes share the environment's sign-in limit (10 failures in 15 minutes per address, then 429), as
+wrong passwords do. Sign-up has its own five tries an hour per address. The address check and the environment lookup on
+the product host (`GET /api/product/address` and `GET /api/product/environment`) share one limiter of 120 a minute per
+address (`addressLimiter`, 429 `Too many checks from this address; try again in a minute.`); the first-password routes do not
+use it.
+
+**Framing.** `/login/first-password` is in `FRAMED_HERE_PATHS` on a hosted install, so
+every variant of the path (case, trailing slash) answers with the framed-here headers. The page carries its own
+Content-Security-Policy and loads only its own script.
+
+**The page.** It reads the token from the fragment, removes it from the address at once (`history.replaceState`), and
+keeps it in memory only. A link opened in a tab that already shows the page is used too: the page listens for the
+fragment changing, takes the new token and removes it from the address and history the same way. It has one password field with **Show**, and the hint "8 to 200 characters". A reload within
+the 10 minutes still works because the cookie, not the address, says who it is. For that, the page keeps the owner's
+**login** (never the token) in the tab's session storage after a good exchange, so a reload can send it with the password; it
+is cleared when the step ends. The same link opened again in the tab that already used it is recognised and ignored, so the
+form stays and nothing is sent (the page keeps the spent token in memory to compare). A different new link opened in that tab is
+used in its turn, one at a time, and the page then names the owner of the last one. A fragment that is not a link's form
+(not 43 characters of base64url) is removed from the address and never sent.
+
+**The console.** `GET /api/host/environments` lists, for each environment, `awaitingFirstPassword`: the logins of its
+owners with no password (logins only, never a link, a hash or a time). The card shows **New first-password link** for
+each, and shows the link it gets back once, with **Copy**: "This link works once, for 24 hours. Send it to the owner."
+
+**Other ways to set a password** are unchanged and still checked only for "not empty" on the server; only a new host admin
+is held to 8 characters.
+
+**Known limits.**
+- A leftover folder is never deleted by sign-up or by the console's list. The undo after a failed owner removes the folder
+  that request itself made, then removes it again once the environment's background work (the template, the module installs)
+  has finished, unless the address was taken again in the meantime.
+- The console's create route adopts a leftover folder, and the console page sends no framing headers (GitHub #442 and #441).
+- Nothing removes an environment whose owner never arrives. The address stays taken until a host admin makes a new link or
+  deletes the environment.
+
+**Accepted risks.** The browser's navigation timing entry holds the token for the page's lifetime; only this site's
+scripts can read it. An attacker can make a lookalike environment and send its link: the person ends up signed in to
+that environment only, and the attacker never learns the password. Both are low.
+
+**Not verified.** That the fragment survives the move from the product host to an environment on separate domains, and a
+proxy redirect, in Chromium, Firefox and Safari; that the token is absent from the proxy's access log; that password
+managers offer to save the login.
 
 ## The one gotcha: a callback that outlives the request
 
@@ -224,8 +307,7 @@ can never be confused for one another even if somehow set on the same browser, b
 where it expects the other.
 
 The person running the whole deployment can still sign into any one environment, without a second account to
-remember: `resolveLoginUser(login, password)` in `index.js`, used by both `POST /api/login` and the product
-page's `POST /login`, checks the environment's own users first (as always) and only then, when that fails and
+remember: `resolveLoginUser(login, password)` in `index.js`, used by `POST /api/login`, checks the environment's own users first (as always) and only then, when that fails and
 there is a host registry, `hostRegistry.findAdminByLogin`. A match there never touches that environment's own
 data for the password: it only ensures a user record exists for that login (`hostAdmin: true`, `passwordHash`
 always `null`, so nothing inside the environment can authenticate as it directly -- `PATCH /api/users/:key`
@@ -338,8 +420,8 @@ identifiers are named by kind ([plan-kind-names](../plans/plan-kind-names.md)). 
 read from `DEFAULT_PRODUCT_NAME` in `server/product-name.js` and never repeated in the check, and the past names in
 `PAST_PRODUCT_NAMES` (magpie and tavern), matched in any letter case anywhere in a line, comments included, and in
 file and folder names, under `server/`, `public/`, `modules/`, `tools/` and `templates/`, and in the `Dockerfile`.
-The brand, Coffee Pub, and the repository and image addresses (`github.com/Drowbe/coffee-pub-collaborator`,
-`ghcr.io/drowbe/coffee-pub-collaborator`) are allowed. Anything else is exempt only by an allow-list entry of level
+The brand, Coffee Pub, and the repository and image addresses (`github.com/Drowbe/coffee-pub-chameleon`,
+`ghcr.io/drowbe/coffee-pub-chameleon`) are allowed. Anything else is exempt only by an allow-list entry of level
 `product-name` with a reason: the read-once migrations of what installs stored or were configured with (the
 `tavern_session` cookie, `tavern.json`, the "Coffee Pub Tavern" environment name, `TAVERN_AI_KEY` and the removed
 admin names, the browser's `tavern.*` keys), the checks that prove them, the default's one definition,
@@ -347,7 +429,7 @@ admin names, the browser's `tavern.*` keys), the checks that prove them, the def
 entry for the default's line or for `PAST_BLOCK_LABELS` would allow more than that one line as it is, and when
 `PAST_BLOCK_LABELS` is not a frozen list of two. The checks whose sentences carry the product's name run with
 `PRODUCT_NAME=Testname` and build what they expect from it, so a sentence that hard-codes the default fails too.
-If the default product name ever changes, the old one must be added to `PAST_PRODUCT_NAMES` by hand.
+If the default product name ever changes, the old one must be added to `PAST_PRODUCT_NAMES` by hand (the list is magpie, tavern and collaborator since the rename to Coffee Pub Chameleon).
 
 ### The host's part: `names-environment`
 
@@ -569,12 +651,13 @@ one. The old `/api/host/tenants...` paths are gone and answer 404; there is no a
 | `GET /api/host/templates/:id/export` | the template file (`Content-Disposition` `<name>.template.json`), bundled ones included; an edited bundled template's file is the template in use plus `"edited": true`, which every import ignores without listing it in `dropped`; 404 as above |
 | `POST /api/host/templates/import[?id=<new id>]`, the file's text as the body (any content type) | 201 `{ template, dropped }`, keeping the file's `version`; `?id=` saves it under another id. 400 `That isn't a <product> template file.`, `This template was made by a newer version of <product>.`, `That template file is in an older format. Export the template again and import the new file.` or `{ error, problems }` (<product> is `PRODUCT_NAME`); 409 `There is already a template called <id>.`; 403 from another origin with a cookie (`sameOriginOnly`) |
 | `POST /api/host/themes/check`, a theme file's text (or its JSON) as the body, at most 16 KB | For the template editor's theme picker: reads the file exactly as `POST /api/themes/import` does and stores nothing. 200 `{ theme: { name, author?, light, dark }, dropped }`, `dropped` listing the keys left out; 400 `{ error }` with the theme file's sentence (`That isn't a <product> theme file.`, also for a body over 16 KB or one the parser can't read; `This theme was made by a newer version of <product>.`; `That theme file is in an older format. Export the theme again and import the new file.`; or the no complete set sentence); 403 from another origin with a cookie (`sameOriginOnly`) |
+| `POST /api/host/environments/:slug/owners/:login/first-password` | 200 `{ url }`, a new first-password link (24 hours, single use); see "The first password". The list's `awaitingFirstPassword` is the owners it is for |
 | `POST /api/host/environments` `{ slug, name, plan?, template?, owner?: { login, displayName, password } }` | 201 `{ environment }`; 409 `"<slug>" is already in use`; a bad slug answers `cleanSlug`'s own error; 400 `There is no template called <id>.` or `A template is named by its id, such as travel.` |
 | `PATCH /api/host/environments/:slug` `{ name?, plan?, status?, template? }` | `{ environment }`; 404 `no such environment`; 400 for a status not in the list. With `template` (an id, or `"none"`) it switches the environment's template, building the environment if it isn't built yet, and `environment` also carries `template` and `offer` (see "Templates"); 400 `There is no template called <id>.` or `A template is named by its id, or "none" for no template.` |
 | `GET /api/host/environments/:slug/template` | `{ template, offer, choices }`, as the owner's `GET /api/environment/template`; read-only; 404 `no such environment` |
 | `POST /api/host/environments/:slug/template/apply` `{ modules?, lobby?, spaceDefaults?, reactions?, theme?, iconSet? }` | `{ environment }` with `template` and `offer`; the same body and refusals as the owner's apply; 404 `no such environment` |
 | `DELETE /api/host/environments/:slug` | `{ ok: true }`, the data moved to `DATA_DIR/environments-deleted/<slug>-<ms>/`, never removed; 404 `no such environment` |
-| `POST /api/host/environments/:slug/backup` | the environment's folder as a zip (`Content-Disposition` `<slug>-backup.zip`); 404 `no such environment` |
+| `POST /api/host/environments/:slug/backup` | the environment's folder as a zip (`Content-Disposition` `<slug>-backup.zip`), every regular file byte for byte, private chat and person data included; a symbolic link is not followed and is logged by path; 404 `no such environment` |
 | `POST /api/host/environments/:slug/restore` | see "Refused environments", Restore |
 | `DELETE /api/host/environments/:slug/owners/:login/mfa` | `{ ok: true }`; 404 `no such environment` or `no owner with that login there` |
 | `GET` and `DELETE /api/host/flight-schedule[?number=]` | The flight schedule every environment shares: its counts, forgetting one number, or clearing it all. The answers and refusals are in [api-modules](../api/api-modules.md), "Flight lookup" |
@@ -600,7 +683,7 @@ than read in a shape this server does not understand (plan-names decision 22).
   `{ error: "This environment's data could not be read. The host admin has been told." }` (`unreadable`) or
   `{ error: "This environment's data could not be updated. The host admin has been told." }` (`failed`), or a
   plain HTML page with the same sentence for a browser asking for a page. The file and the detail go to the log
-  and the console only. A refused environment is left out of `GET /api/product/environments`, and the console's
+  and the console only. A refused environment is answered 404 by `GET /api/product/environment`, and the console's
   map-region search skips it.
 - **The console's list.** `GET /api/host/environments` gives each environment
   `refused: null | { reason: 'newer' | 'unreadable' | 'failed', file, message, at }`, and every `usage` count is `null` while
@@ -614,7 +697,40 @@ than read in a shape this server does not understand (plan-names decision 22).
   object is refused the same way, before anything is replaced: 400
   `{ error: "This backup's data can't be read, so nothing was restored." }` (`UNREADABLE_BACKUP`). The other
   answers are as before: 404 `no such environment`, 400 `choose a zip file to restore`, and
-  400 with the zip reader's message.
+  400 with the zip reader's message. A restore always drops `secrets` from the zip's `app.json` (see the next section).
+
+## The owner's copy and a restore
+
+`GET /api/environment/export` (an owner; hosted only, else 404 `not hosted`) answers the environment's zip, `<slug>-export.zip`,
+with `Cache-Control: private, no-store`. It is built from allow-lists in `server/environment-export.js`: a field of `app.json`
+or a file is in the copy only when the module names it, so anything added later stays out until someone classifies it.
+The host's backup is not filtered.
+
+- **Left out of `app.json`:** `secrets` (the session key and the stream key), `invites`; on each person `passwordHash`,
+  `linkToken`, `mfa`, `externalCalendars`, `calendarFeed`, `firstPassword`; on each space `guestToken`; `settings.publishedCalendarFeed`.
+  `ai.json` is kept with its `key` emptied.
+- **Left out of the files:** `secrets.key`, the pre-names copies, `chat-private.json`, `ai-threads.moved.json`, each person's
+  module data, hold and uploads (`modules/<id>/data|trash/person-<key>.json`, `modules/<id>/uploads/person-<key>/`), a library
+  module's `*.shares.json`, and half-written files (`*.tmp`, `*.part`, names starting with a dot).
+- **Still in the copy:** logins and display names, module notifications, AI-log counts (never the text), module setting
+  values (a typed address can carry a key), a space's link, and the Vault's file records (names and sizes).
+- **Symbolic links.** Neither the export nor the backup follows a link inside an environment (for example `modules` linked to
+  another disk): it is left out, and the server logs each skipped link by path with `console.warn`. A symbolic `DATA_DIR`
+  or environment folder itself still works.
+- **The guard.** `tools/check-environment-export.mjs` (in `npm run check`) fails when a person, space or aside field, or a
+  file, is on neither list. Settings fields are classified by hand.
+
+**A restore** (the host's restore, of an owner's copy or of a backup) removes `secrets` from the zip's `app.json`
+(`restoreEntries`), so `Store.load` makes a new session key and a new stream key. It also replaces a stored session key shorter
+than 43 base64url characters, or a stream key shorter than 24. The result for people:
+
+- everyone is signed out; "remember this device" cookies stop working; guests open their guest link again; visitors to a
+  password-protected Vault share enter the password again;
+- every OBS browser source and keyed link needs the new stream key from Settings;
+- from a host backup, passwords, personal links, guest links, invites and calendar feeds survive; from an owner's copy nobody
+  has a password or link until the host admin gives out new ones;
+- a person record with `hostAdmin: true` keeps no `passwordHash`, `linkToken` or `mfa` (dropped on load and on restore);
+- a record with role `admin` that is not the host admin's stand-in is restored as `owner`.
 
 ## Templates
 

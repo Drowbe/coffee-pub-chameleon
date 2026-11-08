@@ -1,10 +1,36 @@
 # Known Issues
 
-**Audience:** anyone running Collaborator who wants to know what is broken before reporting it
+**Audience:** anyone running Coffee Pub Chameleon who wants to know what is broken before reporting it
 as new.
 
 A defect is recorded here once it has been observed, with a workaround if one exists, and moves to
 the CHANGELOG once fixed.
+
+## Vault: who can see a file is only half built
+
+The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:
+
+- **Space full.** The "space is full" refusal and the storage total can tell a person that files they cannot see take space. Thomas decided to accept this and document it.
+- **Share links stay open.** Until slice 4, a share link or public link to a file keeps working after the file is narrowed. Its maker, an owner or the admin can turn it off.
+- **Empty share.** A share link whose files are all hidden from its maker shows to them as "0 files", and its **Edit** button answers 404. How it should look is for Thomas to decide.
+- **Held objects.** When a hidden file is linked to an object, people who can see that object are still told that it changed. They can tell something changed on it, not what.
+- **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
+
+Workaround: none needed for now, as nothing sets a visibility yet.
+
+## The host console sends no framing headers
+
+The host console's page does not send the headers that stop it being shown inside another site's frame, as the other
+sign-in and settings pages do (GitHub #441).
+
+Workaround: none needed for normal use; sign in to the console only from its own address.
+
+## The console's create route adopts a leftover environment folder
+
+If a folder for an address is already on disk with no entry in the registry, the host console's create route takes it
+over instead of refusing, as sign-up does (GitHub #442).
+
+Workaround: before creating an environment, make sure no folder is left for that address.
 
 ## The demo seeder changes environment-wide settings
 
@@ -92,7 +118,7 @@ Workaround: none is needed for owners, since no offer is made to them. Ignore th
 ## The logo still reads the old name
 
 The logo on the landing page and on the host console's bar reads "COFFEE PUB MAGPIE", the product's old name.
-The words on those pages say Collaborator. GitHub #110.
+The words on those pages say Chameleon. GitHub #110.
 
 Workaround: none.
 
@@ -199,7 +225,7 @@ Workaround: edit each place and set its **Position** on the picture with the tar
 
 **Its own window** for the call, and **Open in its own window** for a module, use `window.open`. A browser that blocks pop-ups, or an installed app that restricts them, cannot show the window. The call and the module now stay where they were and the status line reads "The browser did not open the window. Allow pop-ups for this site to open it in its own window." (GitHub #288). Only the window itself is missing.
 
-Workaround: allow pop-ups for Collaborator.
+Workaround: allow pop-ups for Chameleon.
 
 ## A Calendar or Map editor in a narrow window is a narrow-layout sheet
 
@@ -263,3 +289,21 @@ Workaround: the guest refreshes the page.
 Turning a module on or off updates an open space live, but changing who may use a module does not. An open space keeps the old list until the page is reloaded.
 
 Workaround: reload the page.
+
+## An export blocks the whole hosted server while it builds
+
+An owner's **Download a copy** (and the host's backup) reads and zips the environment's folder in one go, and the server answers nothing else while it does. A large environment makes that long. A fix is planned as its own piece of work: streaming the zip, a size cap, one at a time and a rate limit.
+
+Workaround: ask for a copy when the environment is quiet, and keep the environment small.
+
+## A host admin's password alone opens every environment
+
+A host admin signs in to any environment with the host password, even when that host admin uses a second step at the console. This is read as code only, not tried live. A GitHub issue is to be filed.
+
+Workaround: give the host password only to people you would trust with every environment, and keep it long and unique.
+
+## An owner's copy still carries some personal details
+
+The copy leaves out sign-in secrets and private chat, but it still carries logins and display names, module notifications, counts from the AI log (never the text), module setting values (a typed address can carry a key), a space's link, and the Vault's file records (names and sizes). Treat the zip as private.
+
+Workaround: keep the file private and delete it when it is no longer needed.

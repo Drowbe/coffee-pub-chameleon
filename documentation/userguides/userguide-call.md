@@ -1,6 +1,6 @@
 # The Call
 
-**Audience:** a player using Collaborator in a browser: entering a space, joining the call, talking,
+**Audience:** a player using Coffee Pub Chameleon in a browser: entering a space, joining the call, talking,
 chatting, and stepping away.
 
 The words here are the defaults. An environment set up from a template, or renamed by its owner, may call a space,
@@ -315,7 +315,7 @@ for when something else needs quiet for a minute. Only you are affected, and nob
 ## Away
 
 The moon button pauses your microphone and camera, mutes what you hear, and marks your tile so everyone knows. When you
-click it, Collaborator asks for an optional **away message** (up to 200 characters, several lines allowed).
+click it, Chameleon asks for an optional **away message** (up to 200 characters, several lines allowed).
 Ctrl or Cmd plus Enter, or **Go away**, confirms. Everyone else sees your message on your tile in
 place of "Away"; leave it empty to show plain "Away".
 
@@ -388,16 +388,16 @@ you go on from your profile to Manage, or from Manage to your profile.
 
 ## Install it as an app, and pop it out
 
-To run Collaborator without browser bars, install it as an app:
+To run Chameleon without browser bars, install it as an app:
 
 - **Chrome and Edge.** Click your picture at the right end of the top bar and choose **Install as an app**. In the narrow layout it is in the top bar's menu, with the other entries under your picture. It is there only while the browser offers to install,
-  so it is gone once Collaborator is installed.
+  so it is gone once Chameleon is installed.
 - **Safari on macOS.** **File, Add to Dock**.
 - **iPhones and iPads.** **Share, Add to Home Screen**.
 
 A hint under **Join the call** in the narrow layout says which applies to your browser.
 
-Guests can't install Collaborator. On a guest link (and the windows popped out from it) there is no install hint and
+Guests can't install Chameleon. On a guest link (and the windows popped out from it) there is no install hint and
 no install line in the settings, and the browser itself does not offer to install.
 
 In Chrome and Edge the **Pop out** button at the right end of the top bar (next to **Full screen**) moves the whole

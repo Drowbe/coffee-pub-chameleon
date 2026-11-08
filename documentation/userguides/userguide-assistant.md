@@ -1,6 +1,6 @@
 # Assistant
 
-**Audience:** an owner setting up the AI on a Collaborator server, and anyone asking it questions or bringing in research from another AI.
+**Audience:** an owner setting up the AI on a Coffee Pub Chameleon server, and anyone asking it questions or bringing in research from another AI.
 
 The AI is asked from Chat now, in its **Assistant** tab or with `/ai`; see [Chat](userguide-chat.md), "Ask the AI". The Assistant tab shows only your own commands and answers. The Assistant module has no window of its own and is not in the Layout menu. A new install leaves it out, even when its template lists it. Where it is installed, it keeps its **Use the assistant** permission, which decides who may use `/ai` and bring in research, and the AI hook; **Ask the assistant** asks in Chat. Research brought in from another AI comes in through Chat too.
 
@@ -22,7 +22,7 @@ When the AI writes something worth keeping, it appears as an object of its own i
 
 ## Bring in research from another AI
 
-You can research in another AI (a chat app on your computer or phone, say) and bring the results into Collaborator as objects, kept the same way the Assistant keeps its own answers. Bringing research in uses none of this environment's AI: it works without an AI service set up and without **Use AI in modules**.
+You can research in another AI (a chat app on your computer or phone, say) and bring the results into Chameleon as objects, kept the same way the Assistant keeps its own answers. Bringing research in uses none of this environment's AI: it works without an AI service set up and without **Use AI in modules**.
 
 Who can: anyone signed in, except guests. Pasting is not AI use, so it works in a space where **Turn AI off in this space** is ticked, and needs neither **Use AI in modules** nor an AI service. It also needs somewhere to keep things: the Planner, or a module that keeps notes such as Research. When you can't, **Bring in research** is not shown.
 

@@ -82,7 +82,7 @@ function groupOf(file) {
   if (/(nav-bar|primary-nav|brand|host-menu|menu-flyout|action-bar|environment-banner|theme-mode)/.test(file)) return 'Navigation and the top bar';
   if (/(chat|message)/.test(file)) return 'Chat';
   if (/(space|canvas|call|dashboard|layouts|phase|status|snap|slot|opens-with|switch-list|module-host|module-chrome|module-settings|module-config|module)/.test(file)) return 'Space, canvas and call';
-  if (/(admin|ai-|profile|login|register|setup|template|landing|destination|keyed|diag|bad-link|mfa|word|background)/.test(file)) return 'Manage, accounts and pages';
+  if (/(admin|ai-|profile|login|register|setup|template|destination|keyed|diag|bad-link|mfa|word|background)/.test(file)) return 'Manage, accounts and pages';
   if (/sdk\//.test(file)) return 'SDK';
   return 'Other';
 }
@@ -127,7 +127,7 @@ export function buildSources({ withFiles } = {}) {
     const { DEFAULT_THEME } = require('../server/store.js');
     data.files = {
       'style.css': rd('public/style.css'), 'host.css': rd('public/sdk/host.css'), 'host.js': rd('public/sdk/host.js'), 'tooltip.js': rd('public/tooltip.js'),
-      'destination.css': rd('public/destination.css'), 'landing.css': rd('public/landing.css'), 'diag.css': rd('public/diag.css'),
+      'destination.css': rd('public/destination.css'), 'diag.css': rd('public/diag.css'),
       'theme.css': themeCss({ light: DEFAULT_THEME.light, dark: null }, 'dark'),
     };
   }

@@ -1,7 +1,7 @@
 // The host console (admin.<base domain>): the deployment's own door. The environments (each its own people, spaces,
 // settings and modules), their plans against their use, the host admins, the host itself. It shows no environment's
 // data beyond the counts. The API is /api/host/ (documentation/plans/plan-environments.md, "Phase 1 in detail").
-import { loadBranding, api, renderTopbar } from '/brand.js';
+import { loadBranding, api, renderTopbar, productLockup } from '/brand.js';
 import { wireRegionCut } from '/region-cut.js';
 import { mountEnrolment, mountDisable } from '/mfa-enrol.js';
 import { renderOffer, switchConfirm } from '/template-offer.js';
@@ -232,7 +232,7 @@ function signupFact(s) {
 
 function renderFacts() {
   const webhook = settings.baseDomain ? `${location.protocol}//admin.${settings.baseDomain}${location.port ? ':' + location.port : ''}/api/host/billing` : '';
-  $('host-facts').innerHTML = `<dt>Base domain</dt><dd>${escapeHtml(settings.baseDomain || '(none: one environment)')}</dd><dt>Product pages</dt><dd>${escapeHtml(settings.productDomain || settings.baseDomain || '(none)')}</dd><dt>Version</dt><dd>${escapeHtml(settings.version || '')}</dd><dt>Environments</dt><dd>${environments.length}</dd><dt>Sign-up</dt><dd>${escapeHtml(signupFact(settings))}</dd><dt>Billing webhook</dt><dd>${webhook ? `<code>${escapeHtml(webhook)}</code>, a JSON body { slug, plan, event: paid | lapsed | cancelled } signed with <code>BILLING_SECRET</code> (x-billing-signature, HMAC-SHA256 of the body, hex)${settings.billingSecretSet === false ? '; <strong>BILLING_SECRET is not set</strong>, so the webhook refuses everything' : ''}` : 'needs a base domain'}</dd>`;
+  $('host-facts').innerHTML = `<dt>Base domain</dt><dd>${escapeHtml(settings.baseDomain || '(none: one environment)')}</dd><dt>Start page</dt><dd>${escapeHtml(settings.productDomain || settings.baseDomain || '(none)')}</dd><dt>Product site</dt><dd>${escapeHtml(settings.productSiteUrl || '(none)')}</dd><dt>Version</dt><dd>${escapeHtml(settings.version || '')}</dd><dt>Environments</dt><dd>${environments.length}</dd><dt>Sign-up</dt><dd>${escapeHtml(signupFact(settings))}</dd><dt>Billing webhook</dt><dd>${webhook ? `<code>${escapeHtml(webhook)}</code>, a JSON body { slug, plan, event: paid | lapsed | cancelled } signed with <code>BILLING_SECRET</code> (x-billing-signature, HMAC-SHA256 of the body, hex)${settings.billingSecretSet === false ? '; <strong>BILLING_SECRET is not set</strong>, so the webhook refuses everything' : ''}` : 'needs a base domain'}</dd>`;
 }
 
 function refusedCopy() {
@@ -283,6 +283,7 @@ function renderEnvironments() {
       box.hidden = false;
       slot(el, 'owner-reset').hidden = true; // nothing inside it can be reached until a good backup is restored
     }
+    if (!refused) renderFirstPassword(el, t.awaitingFirstPassword);
     const u = refused ? {} : t.usage || {};
     const p = t.plan || {};
     const mods = p.modules === 'all' || !p.modules ? 'all installed' : `${p.modules.length} allowed`;
@@ -329,6 +330,70 @@ function renderEnvironments() {
   }
 }
 
+// The owners who have no password yet (plan-first-password.md, Decision 4): a row each with "New first-password link".
+// The list names only their logins; the link itself is made when the button is pressed and shown once.
+function renderFirstPassword(card, logins) {
+  const list = Array.isArray(logins) ? logins : [];
+  const box = slot(card, 'first-password');
+  box.hidden = !list.length;
+  slot(box, 'first-password-rows').replaceChildren(...list.map((login) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = `${login} has no password yet.`;
+    const button = document.createElement('button');
+    button.className = 'btn btn-small';
+    button.type = 'button';
+    button.dataset.action = 'first-password';
+    button.dataset.login = login;
+    button.textContent = 'New first-password link';
+    row.append(hint, button);
+    return row;
+  }));
+}
+// The link just made, in its read-only field until Close; nothing else keeps it.
+function showFirstPasswordLink(card, login, url) {
+  const made = slot(card, 'first-password-made');
+  made.dataset.login = login;
+  slot(made, 'first-password-label').textContent = `Link for ${login}`;
+  const field = slot(made, 'first-password-url');
+  field.value = url;
+  made.hidden = false;
+  field.focus();
+  field.select();
+}
+function closeFirstPasswordLink(card) {
+  const made = slot(card, 'first-password-made');
+  if (made.hidden) return;
+  const login = made.dataset.login;
+  slot(made, 'first-password-url').value = '';
+  delete made.dataset.login;
+  made.hidden = true;
+  say(slot(card, 'first-password-status'), '');
+  const back = [...card.querySelectorAll('[data-action="first-password"]')].find((b) => b.dataset.login === login);
+  if (back) back.focus();
+}
+async function copyFirstPasswordLink(card) {
+  const field = slot(card, 'first-password-url');
+  const status = slot(card, 'first-password-status');
+  try {
+    await navigator.clipboard.writeText(field.value);
+  } catch {
+    field.focus();
+    field.select();
+    if (!document.execCommand('copy')) { say(status, 'Copy did not work here. The link is selected: copy it by hand.', true); return; }
+  }
+  say(status, 'copied');
+}
+$('environments').addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const made = e.target.closest('[data-slot="first-password-made"]');
+  if (!made) return;
+  e.preventDefault();
+  closeFirstPasswordLink(made.closest('.environment'));
+});
+
 function renderAdmins() {
   const box = $('admins');
   box.replaceChildren(...(settings.hostAdmins || []).map((a) => {
@@ -353,6 +418,20 @@ $('environments').addEventListener('click', async (e) => {
   if (action === 'plan-cancel') { slot(card, 'plan-form').hidden = true; return; }
   if (action === 'template-switch') { switchEnvironmentTemplate(card, t); return; }
   if (action === 'template-review') { reviewEnvironmentOffer(card, t); return; }
+  if (action === 'first-password') {
+    const login = b.dataset.login;
+    const status = slot(card, 'first-password-status');
+    b.disabled = true;
+    try {
+      const { url } = await api('POST', `/api/host/environments/${encodeURIComponent(slug)}/owners/${encodeURIComponent(login)}/first-password`);
+      say(status, '');
+      showFirstPasswordLink(card, login, url);
+    } catch (err) { say(status, err.message, true); }
+    b.disabled = false;
+    return;
+  }
+  if (action === 'first-password-copy') { copyFirstPasswordLink(card); return; }
+  if (action === 'first-password-close') { closeFirstPasswordLink(card); return; }
   if (action === 'suspend') {
     try {
       await api('PATCH', `/api/host/environments/${encodeURIComponent(slug)}`, { status: t.status === 'suspended' ? 'active' : 'suspended' });
@@ -820,14 +899,12 @@ $('host-logout').addEventListener('click', async () => {
 
 renderTopbar({ location: '', themeSwitch: false });
 await loadBranding();
-// The console is the product's own door, so its bar wears the product's logo, not any environment's name and icon.
+// The console is the product's own door, so its bar wears the product's lockup (the mark and the product's name), not
+// any environment's name and icon. The console has no /api/branding: the name is /api/product's (PRODUCT_NAME).
 const brandHome = document.querySelector('.topbar .brand-home');
 if (brandHome) {
-  const logo = document.createElement('img');
-  logo.className = 'host-logo';
-  logo.src = '/assets/images/brand/logo-light.png';
-  logo.alt = 'Host console';
-  brandHome.replaceChildren(logo);
+  const product = await fetch('/api/product').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  brandHome.replaceChildren(productLockup(product.name || ''));
   brandHome.href = '/';
   brandHome.title = 'Host console';
 }

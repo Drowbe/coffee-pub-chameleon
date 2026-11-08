@@ -1,31 +1,23 @@
-# Collaborator - paste this into QNAP Container Station (Applications >
-# Create) or run with `docker compose up -d` anywhere. No files to edit on the
-# NAS: everything is set below. Replace the CHANGE_ME values.
+# Coffee Pub Chameleon: paste into QNAP Container Station (Applications > Create) or `docker compose up -d`.
+# Replace every CHANGE_ME. Never paste this file anywhere with the secrets filled in.
 #
-# LiveKit is the part you add for voice and video. Without it (leave out the livekit service and the three LIVEKIT_
-# lines of the app) the app still starts, and spaces, chat, presence and modules all work; there is no call.
-#
-# Before starting:
-#   DNS:    collaborator.<domain> -> your public IP (DNS only, not proxied); for video, livekit.<domain> too
-#           (for several environments, also *.collaborator.<domain>, and a wildcard certificate: see the guide)
-#   Router: for video, forward 7881/tcp, 7882/udp and 3478/udp to the NAS
-#   Proxy:  Nginx Proxy Manager hosts with TLS:
-#             collaborator.<domain>  -> NAS:3000
-#             livekit.<domain> -> NAS:7880 (Websockets Support ON), for video
+# DNS (to your public IP, DNS only): CHANGE_ME_BASE_DOMAIN and *.CHANGE_ME_BASE_DOMAIN (environments at
+#   <slug>.CHANGE_ME_BASE_DOMAIN, the console at admin.CHANGE_ME_BASE_DOMAIN), and livekit.CHANGE_ME_DOMAIN.
+# Router: forward 7881/tcp, 7882/udp and 3478/udp to the NAS.
+# Proxy (TLS): the app host and *.CHANGE_ME_BASE_DOMAIN -> NAS:3000; livekit.CHANGE_ME_DOMAIN -> NAS:7880 (Websockets ON).
 version: "3.7"
 
 services:
-  # Optional: voice and video. The app does not wait for it; with it down, only the call is missing.
   livekit:
-    image: livekit/livekit-server:latest # 1.12 or newer
-    container_name: collaborator-livekit
+    image: livekit/livekit-server:latest # voice and video (1.12 or newer); the app starts without it
+    container_name: chameleon-livekit
     restart: unless-stopped
     network_mode: bridge
     ports:
-      - "7880:7880/tcp" # signaling, behind the reverse proxy
-      - "7881:7881/tcp" # media over TCP (fallback)
-      - "7882:7882/udp" # media over UDP
-      - "3478:3478/udp" # TURN
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
     environment:
       LIVEKIT_CONFIG: |
         port: 7880
@@ -42,92 +34,36 @@ services:
         logging:
           level: info
 
-  collaborator:
-    image: ghcr.io/drowbe/coffee-pub-collaborator:latest
-    container_name: collaborator-app
+  chameleon:
+    # Pin the tag: the first 7 characters of the commit on the GitHub Actions run you want (sha-1a2b3c4).
+    # Never :latest on a NAS: it reuses the copy it cached and you run an old build.
+    image: ghcr.io/drowbe/coffee-pub-chameleon:sha-CHANGE_ME
+    container_name: chameleon-app
     restart: unless-stopped
     network_mode: bridge
     ports:
-      - "3000:3000/tcp" # behind the reverse proxy
+      - "3000:3000/tcp"
     environment:
-      # Voice and video (optional): the LiveKit service above, and the same key and secret as its keys: line. Leave
-      # all three out for no call; set both the key and the secret, or neither.
+      # LiveKit. The host must be the same as the livekit service's turn: domain above. Key and secret = its keys: line.
       LIVEKIT_HOST: "livekit.CHANGE_ME_DOMAIN"
       LIVEKIT_API_KEY: "CHANGE_ME_API_KEY"
       LIVEKIT_API_SECRET: "CHANGE_ME_API_SECRET"
-      # The server's admin. Made on first start, and its password reset to this on every start, so if you
-      # ever forget it, change it here and restart the container. On one environment this admin runs it
-      # (owners are made in Manage); with several environments it is the host admin, who signs in to the
-      # host console at admin.<base domain>.
+      # The admin. Its password is set to this on every start: change it here and recreate to rotate it.
       ADMIN_LOGIN: "CHANGE_ME_ADMIN_LOGIN"
       ADMIN_PASSWORD: "CHANGE_ME_ADMIN_PASSWORD"
-      # Several environments on one server (see the getting-started guide, "Environments"): set the base
-      # domain, and for ONE start only the environment the data already here becomes.
-      # BASE_DOMAIN: "collaborator.CHANGE_ME_DOMAIN"
-      # MIGRATE_ENVIRONMENT_SLUG: "main"
-      # The product page, the use pages and sign-up on a host of their own, so their name can change without touching
-      # any environment's address. A host name only (no https://, no port). Needs its own DNS record, an ordinary
-      # certificate and a proxy host to port 3000; the base domain keeps the wildcard. Unset, they stay on the base
-      # domain. The console is always at admin.<base domain>. Ignored without BASE_DOMAIN.
-      # PRODUCT_DOMAIN: "product.example.com"
-      # With BASE_DOMAIN, the AI address an environment's owner types is guarded: https only, and never a private, loopback or
-      # link-local address. For a developer running the host on one machine only: "1" allows plain http / private addresses.
-      # AI_ALLOW_HTTP: "1"
-      # AI_ALLOW_PRIVATE_ADDRESSES: "1"
-      # Names no new environment may take, on top of the built-in list (www, api, admin, mail, livekit ...). Comma
-      # separated. An environment that already has one keeps working.
-      # RESERVED_SLUGS: "studio,shop"
-      # One environment set up for one use, from a template in templates/ (e.g. "travel"): its words, icons, modules
-      # and Lobby. Only on a fresh data folder, and only without BASE_DOMAIN (with it, the host console and the
-      # sign-up pick a template for each new environment). Ignored, with a line, on data that already exists.
-      # TEMPLATE: "travel"
-      # MAP_IMAGE_MAX_MB: "100"          # the most a picture map file (an invented world, as PMTiles picture tiles) may weigh, in MB
-      PRODUCT_NAME: "Collaborator"
+      PRODUCT_NAME: "Coffee Pub Chameleon"
       # CONTACT_EMAIL: "you@example.com" # optional: where the product page's "ask" writes to
-      # SIGNUP: "on"                     # lets anyone make a free environment from the product page; off unless set
-      # The AI the host offers every environment (each picks it as "Managed", or sets up its own): a key is
-      # enough, the model is chosen for you and can be changed on the host console. Either or both.
-      # AI_OPENAI_KEY: "sk-..."
-      # AI_ANTHROPIC_KEY: "sk-ant-..."
-      # AI_ANTHROPIC_WORKSPACE: "wrkspc_..." # only for a key made at the organisation level; Anthropic then asks which workspace
-      # Two-step sign-in (a code from an authenticator app). ENABLE_MFA says whether the server offers it at all;
-      # each environment's owner then chooses to require it, and each person chooses to use it. If an owner or admin is
-      # locked out, turn the bypass on, sign in, reset the factor on the profile, turn the bypass off again.
+      # Several environments: set the base domain (unset, one environment). PRODUCT_DOMAIN puts the product page on its own host.
+      # BASE_DOMAIN: "CHANGE_ME_BASE_DOMAIN"
+      # PRODUCT_DOMAIN: "CHANGE_ME_PRODUCT_HOST"
+      # Two-step sign-in. If an owner or admin is locked out: bypass "true", sign in, reset the factor, set it back.
       ENABLE_MFA: "true"
       ADMIN_MFA_LOCKOUT_BYPASS: "false"
-      # HOST_MFA_REQUIRED: "true"   # with environments: every host admin must use it
-      # How many reverse proxies stand in front of this container (default 1: the Nginx Proxy Manager above). The
-      # sign-in and guest limits count by the address the nearest proxy saw, so nobody can pick their own. Two proxies
-      # in a row (say Cloudflare, then Nginx Proxy Manager): 2. Reached directly, with no proxy: 0.
-      # TRUST_PROXY_HOPS: "1"
-      # Live streams (one per open browser tab: who is here and the chat) and guests in chat: the defaults are usually right.
-      # LIVE_STREAMS_PER_PERSON: "50"     # streams one signed-in person may hold open
-      # LIVE_STREAMS_PER_GUEST_LINK: "25" # streams one guest link may hold open; one address gets 40% of it
-      # GUEST_CHAT_POSTS_PER_MINUTE: "20" # messages one guest link may post a minute; one address gets half
-      # CHAT_PICTURE_MAX_MB: "3"          # the most a picture in the chat may weigh (held in memory, never stored)
-      # CHAT_PICTURE_KEEP_MINUTES: "15"   # how long a chat picture is held for its readers to fetch
-      # CHAT_PICTURE_SPACE_MB: "30"       # MB of chat pictures held a space; past it the oldest go
-      # CHAT_PICTURE_ENVIRONMENT_MB: "100" # the same an environment
-      # CHAT_PICTURE_SERVER_MB: "200"     # the same for the whole server
-      # CHAT_PICTURE_MB_PER_MINUTE: "20"  # MB of pictures one person (or guest link) may send a minute
-      # LIVE_STREAM_BUFFER_MB: "8"        # how far a reader may fall behind before its stream is dropped (it reconnects)
-      # PRESENCE_CHANGES_PER_MINUTE: "60" # times a minute one person may say away or on the call in a space
-      # The library (the Vault, files kept in a space): the bytes live in /app/vault, a volume of their own below, not in
-      # the data folder, so the in-app backups stay small. Back that folder up with the data folder: a restore of the data
-      # without it shows those files as "File missing". The limits below are the defaults; an owner may set lower ones.
+      # The Vault's files live in their own folder, so the in-app backups stay small. Back up both folders together.
       VAULT_DIR: "/app/vault"
-      # VAULT_MAX_GB: "20"                # the most the whole folder may hold
-      # VAULT_SPACE_MAX_GB: "5"           # the most one space may hold
-      # VAULT_PERSON_MAX_GB: "2"          # the most one person may have added across an environment
-      # VAULT_MB_PER_MINUTE: "500"        # MB one person may send a minute
-      # VAULT_MIN_KB_PER_SECOND: "16"     # the slowest an upload may arrive, after its first minute
-      # VAULT_SLOW_CUTOFFS: "3"           # cut-offs for slowness ...
-      # VAULT_SLOW_MINUTES: "10"          # ... within this many minutes before a person's new uploads wait
-      # VAULT_SCAN_SECONDS: "5"           # the most the check of one file may take
-      # VAULT_SWEEP_SECONDS: "10"         # the most the tidy-up on start may take (bytes with no record, leftovers)
-      # REQUEST_BODY_SECONDS: "300"       # how long any other route's body may take to arrive (library uploads are exempt)
-      # CLEAR_UNDO_SECONDS: "30"          # how long a Clear can be undone (1 to 600)
       PORT: "3000"
     volumes:
-      - /share/appdata/coffee-pub-collaborator:/app/data # users, settings and images
-      - /share/appdata/coffee-pub-collaborator-vault:/app/vault # the library's files (can be large)
+      - /share/appdata/coffee-pub-chameleon:/app/data # users, settings and images
+      - /share/appdata/coffee-pub-chameleon-vault:/app/vault # the Vault's files (can be large)
+
+# Every other setting: see the guide's Settings reference.

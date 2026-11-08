@@ -558,6 +558,14 @@ function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
+// The environment's session signing key and stream key: randomToken(SESSION_KEY_BYTES) and randomToken(STREAM_KEY_BYTES).
+const SESSION_KEY_BYTES = 32;
+const STREAM_KEY_BYTES = 18;
+// Whether a stored key is at least as strong as the ones made here: base64url, and as long as `bytes` random bytes make.
+function strongKey(value, bytes) {
+  return typeof value === 'string' && value.length >= Math.ceil((bytes * 4) / 3) && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 function cleanText(value, max = 60) {
   return String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')
@@ -648,9 +656,11 @@ class Store {
       ...(cleanTemplateHistory(raw.templateHistory).length ? { templateHistory: cleanTemplateHistory(raw.templateHistory) } : {}),
       // Templates an owner imported on a single install (addendum 2), checked by server/templates.js before saving.
       ...(Array.isArray(raw.templates) && raw.templates.length ? { templates: raw.templates.filter((t) => t && typeof t === 'object' && typeof t.id === 'string') } : {}),
+      // A key that is not the shape this server makes (a hand-edited file, say) is replaced with a new one: nobody
+      // chooses the key that signs this environment's sessions or opens its stream. A new session key signs everyone out.
       secrets: {
-        session: raw.secrets?.session || randomToken(32),
-        stream: raw.secrets?.stream || randomToken(18),
+        session: strongKey(raw.secrets?.session, SESSION_KEY_BYTES) ? raw.secrets.session : randomToken(SESSION_KEY_BYTES),
+        stream: strongKey(raw.secrets?.stream, STREAM_KEY_BYTES) ? raw.secrets.stream : randomToken(STREAM_KEY_BYTES),
       },
       settings: { ...DEFAULT_SETTINGS, ...migrateMfaSettings(raw.settings) },
       users: Array.isArray(raw.users) ? raw.users.map((u) => this.sanitizeUser(u)).filter(Boolean) : [],
@@ -733,7 +743,9 @@ class Store {
       data.settings.homeIconChoiceSeeded = true;
       clearedHomeIcon = true;
     }
-    if (!raw.secrets?.session || !raw.secrets?.stream || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
+    // A host admin's stand-in stored with a sign-in of its own (dropped by sanitizeUser) is written back without it.
+    const standInSignIn = Array.isArray(raw.users) && raw.users.some((u) => u && typeof u === 'object' && u.hostAdmin && (u.passwordHash || u.linkToken || u.mfa));
+    if (data.secrets.session !== raw.secrets?.session || data.secrets.stream !== raw.secrets?.stream || standInSignIn || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
       this.data = data;
       this.save();
     }
@@ -857,13 +869,14 @@ class Store {
       // The stand-in is always `admin`; anything else reads as it is stored, or as a member when it is no role at all
       // (the names-roles migration has already renamed the old values, so this only ever meets them in hand-made data).
       role: u.hostAdmin ? 'admin' : ROLES.includes(u.role) ? u.role : 'member',
-      passwordHash: typeof u.passwordHash === 'string' ? u.passwordHash : null,
-      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js): its own
-      // passwordHash is always null, so nothing inside the environment can ever authenticate as it directly -- the
-      // check always goes back to the host registry.
+      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js) never has a
+      // password, a personal link or a second factor of its own, whatever the stored record says (one restored from a
+      // zip, say): nothing inside the environment can ever authenticate as it directly -- the check always goes back
+      // to the host registry.
+      passwordHash: !u.hostAdmin && typeof u.passwordHash === 'string' ? u.passwordHash : null,
       hostAdmin: Boolean(u.hostAdmin),
-      linkToken: typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
-      mfa: sanitizeMfa(u.mfa),
+      linkToken: !u.hostAdmin && typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
+      mfa: u.hostAdmin ? null : sanitizeMfa(u.mfa),
       images,
       spaces,
       player: {}, // borders and the plate are server-wide now; older per-user values are dropped
@@ -876,6 +889,10 @@ class Store {
       // Their other calendars (plan-google-calendar.md, Part 2): each address sealed with the secrets key, never kept
       // plain; left off while they have none.
       ...(cleanExternalCalendars(u.externalCalendars).length ? { externalCalendars: cleanExternalCalendars(u.externalCalendars) } : {}),
+      // A new owner's first-password link (plan-first-password.md): { hash, expiresAt } until it is used, then
+      // { claim, claimedAt, expiresAt } until the password is set (claim: a random id for that use); only the SHA-256 of the token, never the token. Never on a
+      // host admin's stand-in or an account that has a password; left off otherwise.
+      ...(cleanFirstPassword(u) ? { firstPassword: cleanFirstPassword(u) } : {}),
       createdAt: typeof u.createdAt === 'string' ? u.createdAt : new Date().toISOString(),
     };
   }
@@ -928,7 +945,7 @@ class Store {
   }
 
   regenerateStreamKey() {
-    this.data.secrets.stream = randomToken(18);
+    this.data.secrets.stream = randomToken(STREAM_KEY_BYTES);
     this.save();
     return this.data.secrets.stream;
   }
@@ -1519,7 +1536,7 @@ class Store {
     return key;
   }
 
-  addUser({ login, displayName, role, passwordHash, hostAdmin }) {
+  addUser({ login, displayName, role, passwordHash, hostAdmin, firstPassword }) {
     const cleaned = cleanLogin(login);
     if (!cleaned) throw new StoreError('username is required');
     if (role !== undefined && !hostAdmin && !ASSIGNABLE_ROLES.includes(role)) throw new StoreError('role must be owner or member');
@@ -1531,6 +1548,7 @@ class Store {
       role,
       passwordHash: passwordHash || null,
       hostAdmin,
+      firstPassword,
       images: {},
       createdAt: new Date().toISOString(),
     });
@@ -1568,6 +1586,57 @@ class Store {
     if (patch.passwordHash !== undefined) draft.passwordHash = patch.passwordHash || null;
     if (patch.linkToken !== undefined) draft.linkToken = patch.linkToken || null;
     Object.assign(user, draft);
+    if (user.passwordHash) delete user.firstPassword; // a password set any other way ends a first-password link
+    this.save();
+    return user;
+  }
+
+  // --- the first password (plan-first-password.md) ----------------------------------------------------------------
+  // A new owner made with no password holds firstPassword: the SHA-256 of a one-time token and when it ends. Each
+  // method is synchronous from its check to its write, so one token can be used once only.
+
+  // Whether an owner here is still waiting to set their first password (the link used or not, ended or not).
+  awaitingFirstPassword() {
+    return this.data.users.some((u) => u.firstPassword);
+  }
+
+  // A new link for an owner with no password, replacing any old one (and so ending it, and any step begun from it).
+  setFirstPassword(key, { hash, expiresAt }) {
+    const user = this.userByKey(key);
+    if (!user) throw new StoreError('no such user', 404);
+    if (user.role !== 'owner' || user.hostAdmin || user.passwordHash) throw new StoreError('only an owner with no password can have a first-password link');
+    const next = cleanFirstPassword({ firstPassword: { hash, expiresAt } });
+    if (!next?.hash) throw new StoreError('a first-password link is kept by its hash and its end');
+    user.firstPassword = next;
+    this.save();
+    return next;
+  }
+
+  // Uses a link: the owner here whose unused link has this hash, has not ended, and who still has no password. The hash
+  // is removed at once and a random id for this use (the claim) kept instead, with its time. Returns
+  // { user, claim, claimedAt }, or null for any other case.
+  claimFirstPassword(hash, now = Date.now()) {
+    if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
+    const user = this.data.users.find((u) => u.firstPassword?.hash === hash);
+    if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
+    const ends = Date.parse(user.firstPassword.expiresAt);
+    if (!(ends > now)) return null;
+    const claim = crypto.randomBytes(16).toString('hex');
+    const claimedAt = new Date(now).toISOString();
+    user.firstPassword = { claim, claimedAt, expiresAt: user.firstPassword.expiresAt };
+    this.save();
+    return { user, claim, claimedAt };
+  }
+
+  // Sets the first password of the owner whose link's current claim is `claim`, and removes the link. Returns the
+  // account, or null when it is not (or no longer) that claim.
+  finishFirstPassword(key, claim, passwordHash) {
+    const user = this.userByKey(key);
+    if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
+    if (typeof claim !== 'string' || !user.firstPassword?.claim || user.firstPassword.claim !== claim) return null;
+    if (typeof passwordHash !== 'string' || !passwordHash) return null;
+    user.passwordHash = passwordHash;
+    delete user.firstPassword;
     this.save();
     return user;
   }
@@ -2419,6 +2488,20 @@ function cleanCalendarFeed(raw) {
   return { hash: raw.hash, made: when(raw.made) || new Date().toISOString(), readAt: when(raw.readAt) };
 }
 
+// A first-password link as stored (plan-first-password.md): { hash, expiresAt } (not used yet) or
+// { claim, claimedAt, expiresAt } (used, the password not set yet; claim: the random id of that use, 32 hex characters),
+// the times ISO. Null for anything else, and for an account that may never have one: a host admin's stand-in, or one
+// with a password already.
+function cleanFirstPassword(u) {
+  const raw = u?.firstPassword;
+  if (!raw || typeof raw !== 'object' || u.hostAdmin || typeof u.passwordHash === 'string') return null;
+  const when = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null);
+  if (!when(raw.expiresAt)) return null;
+  if (typeof raw.hash === 'string' && /^[0-9a-f]{64}$/.test(raw.hash)) return { hash: raw.hash, expiresAt: raw.expiresAt };
+  if (typeof raw.claim === 'string' && /^[0-9a-f]{32}$/.test(raw.claim) && when(raw.claimedAt)) return { claim: raw.claim, claimedAt: raw.claimedAt, expiresAt: raw.expiresAt };
+  return null;
+}
+
 // A person's other calendars as stored: at most five, each with its address sealed (an "aesgcm$" value); one with a
 // plain or missing address is dropped rather than kept.
 const MAX_EXTERNAL_CALENDARS = 5;
@@ -2447,5 +2530,5 @@ module.exports = {
   LEGACY_SLOTS, ROLES, ASSIGNABLE_ROLES, hasOwnerRights, ROLE_PERMISSIONS, IMAGE_TYPES, MAX_IMAGE_BYTES, DEFAULT_BORDER_COLOR, LOBBY, randomToken, cleanText, cleanLogin,
   sanitizeMfa, CURRENCIES, QUALITY_OPTIONS, LANGUAGES, BUILTIN_THEME_IDS: BUILTIN_THEMES.map((t) => t.id), displayNameProblem,
   THEME_BASE, THEME_OPTIONAL, DEFAULT_THEME, cleanColor, cleanAuthor, cleanReactions, cleanThemeName, MAX_THEMES,
-  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS,
+  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS, DEFAULT_SETTINGS,
 };

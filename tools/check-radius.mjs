@@ -87,7 +87,6 @@ console.log(`check-radius: ${seen} radii in ${files.length} files, all tokens`);
 // selector with the reason it is a circle, and only as many times as listed: a new use fails, and an entry no longer used
 // fails too (take it out), so the list only shrinks.
 const ROUND_SKIP = {
-  'public/landing.css': 'the product pages (landing, travel, games) are Thomas\'s own look, with their own radii; not the shared system',
   'public/design-system/sources.js': 'a generated snapshot of the modules\' sources (tools/design-system-snapshot.mjs), not CSS that is served',
 };
 const ROUND_SKIP_DIRS = ['public/design-system/legacy/']; // the archived first proposals, kept as they were
@@ -130,6 +129,8 @@ const ROUND_OK = [
   // public/style.css
   { file: 'public/style.css', sel: '.sdk-member .call-mark', why: 'the 15px on-the-call mark on a member tile' },
   { file: 'public/style.css', sel: '.whoami img', why: 'your picture in the top bar' },
+  { file: 'public/start.css', sel: '.sp-theme', why: 'the start page\'s light and dark button: a 44px square box, a true circle' },
+  { file: 'public/start.css', sel: '.sp-pill, .sp-btn', why: 'the studio\'s teal pill buttons (Find Out More, Request an Invite): the start page matches the studio\'s header and hero, Thomas\'s brief of 2026-11-08, so these two stay pills' },
   { file: 'public/style.css', sel: '.tile.has-bg-image .placeholder', why: 'a call tile\'s round picture' },
   { file: 'public/style.css', sel: '.dot', why: 'a 10px status dot' },
   { file: 'public/style.css', sel: '.fbtn', why: 'the call toolbar\'s round buttons (check-buttons holds it)' },

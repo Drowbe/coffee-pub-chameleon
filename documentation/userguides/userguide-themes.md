@@ -1,7 +1,7 @@
 # Creating Themes
 
 **Audience:** an owner who wants an environment in their own colours, and anyone sharing a theme with another
-Collaborator environment.
+Coffee Pub Chameleon environment.
 
 A theme changes colours only, never the layout. Every page and every module follows it, so one theme recolours the
 whole environment. Themes are made on Manage > **Theme**; only owners (and the admin) can change them.
@@ -57,12 +57,12 @@ A theme can be saved as a file and brought into another environment.
 
 When the chosen theme has an author, a "Made by ..." line under the buttons shows who made it. Below that, after
 an import, a line says what came in, such as "Imported Harbour by Thomas.", and, when anything in the file wasn't
-a colour Collaborator knows, "Left out: ...". An import never replaces a theme: if the name is taken, it is added as
+a colour Chameleon knows, "Left out: ...". An import never replaces a theme: if the name is taken, it is added as
 "Harbour (2)", then "(3)". A theme file can only hold colours, so importing one can't change anything else.
 
 A file saved as UTF-16, such as one saved by Windows Notepad, imports like any other.
 
-A file that isn't a theme, was made by a newer version of Collaborator, or has neither a complete light nor a complete
+A file that isn't a theme, was made by a newer version of Chameleon, or has neither a complete light nor a complete
 dark version is refused, with a sentence saying which. A theme file exported before 2026-09-30 is in an older format
 and is refused with "That theme file is in an older format. Export the theme again and import the new file.": export
 it again from a current version and import the new file. An environment holds at most 100 themes. At that limit an
@@ -70,5 +70,5 @@ import is refused with "This environment has 100 themes, the most it can hold. D
 
 ## Where to start
 
-Strong Coffee is how Collaborator has always looked. Calming Teal and Burnt Orange are the other built-in themes. Choose
+Strong Coffee is how Chameleon has always looked. Calming Teal and Burnt Orange are the other built-in themes. Choose
 one of them, change what you want, and **Save as new theme**.
