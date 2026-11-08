@@ -7487,7 +7487,7 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(380px, 100vw);
+  width: min(460px, 100vw); /* wide enough for all five tabs with a long word (Campaign, Party Members); narrower windows use the "..." */
   border-left: 1px solid var(--edge-hairline);
   background: var(--surface-panel);
   color: var(--text-primary);
@@ -7972,44 +7972,7 @@ h4.setup-subheading {
   display: none;
 }
 
-/* The modules tab: the modules on here, then each module's settings (module-settings.js, its draft mode). */
-.setup-module-list li {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.setup-module-list li > i {
-  flex: none;
-  width: 1.25em;
-  margin-top: 3px;
-  text-align: center;
-}
-
-.setup-module-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.setup-module-about {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  font-size: var(--text-12);
-}
-
-.setup-module-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-14);
-}
-
+/* The Settings tab: the First visit section, then each module's settings (module-settings.js, its draft mode). */
 .space-setup .module-settings-card {
   gap: 8px;
   padding: 10px 0;
