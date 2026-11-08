@@ -549,7 +549,7 @@
 }
 
 /* Small tabs: 30px, a little tighter. */
-:is(.sdk-tabs-small, .tb-tabs, .layout-tabs, .page-bar .subtabs):is(.sdk-tabs, .tb-tabs, .subtabs, .setup-tabs, .layout-tabs) {
+:is(.sdk-tabs-small, .tb-tabs, .layout-tabs, .setup-tabs-fit, .page-bar .subtabs):is(.sdk-tabs, .tb-tabs, .subtabs, .setup-tabs, .layout-tabs) {
   --tab-h: var(--tab-h-small);
   --tab-font: var(--text-13);
   --tab-icon: var(--icon-14);
@@ -557,6 +557,10 @@
   --tab-gap: var(--space-1);
   --tabs-gap: var(--space-1);
 }
+
+/* The Set up panel's strip: small and close, the ones that do not fit going into a "..." (space-setup.js). Tap height on a phone. */
+.setup-tabs.setup-tabs-fit { --tab-pad-x: var(--space-2); }
+@media (max-width: 640px) { .setup-tabs.setup-tabs-fit { --tab-h: var(--tab-h-tap); } }
 
 /* A strip in a band (a toolbar row): the band is the module frame's toolbar (moduleframe) and the tabs
    are the frame's controls' height (--mf-ctl-h), the same on every width. No page sets its own. (Named twice, so it outranks
