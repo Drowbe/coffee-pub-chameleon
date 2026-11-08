@@ -65,7 +65,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 export function createCanvas({ guestToken = null, onChatAsk = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
-  // Wider than a phone the Show tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
+  // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
   // the page's shared menu (host-menu.js), opened from the top bar's Set up button (#setup, a nav tool of space.js).
   const menu = document.getElementById('modules-menu');
   // An inline menu (the tab bar) is always shown: it is never hidden or positioned by this file, only kept up to date.
@@ -1832,7 +1832,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   }
   let menuView = null;
   const menuOpen = () => Boolean(menuView);
-  // Draw the menu into `container` (the Set up panel's Show tab) and keep it there until the handle's destroy(). Never
+  // Draw the menu into `container` (the Set up panel's Modules tab) and keep it there until the handle's destroy(). Never
   // on a phone, where the tab bar is the list. It is drawn again on every change (refreshMenu).
   function mountMenu(container) {
     if (inline() || !container) return null;
