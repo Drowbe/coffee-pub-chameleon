@@ -200,8 +200,9 @@ page never sees a password. Plan: [plan-first-password](../plans/plan-first-pass
 **The link.** The token is 32 random bytes in base64url (43 characters), made by `auth.oneTimeToken()`. It is in the
 address's **fragment** (after `#`), never the query, so a browser does not send it to a server or a proxy, and it
 cannot appear in an access log or a `Referer`. The server keeps only its SHA-256, on the owner's account, as
-`firstPassword: { hash, expiresAt }`; after the link is used it is `{ claimedAt, expiresAt }`. The token is never stored
-or logged. The link made by sign-up lives 15 minutes. The field is never made for the host admin's stand-in account, is
+`firstPassword: { hash, expiresAt }`; after the link is used it is `{ claim, claimedAt, expiresAt }`, where `claim` is a random 32-hex id for that use
+(carried as `c` in the pending cookie). A stored record without a valid claim is dropped when it is loaded. The token
+is never stored or logged. The link made by sign-up lives 15 minutes. The field is never made for the host admin's stand-in account, is
 left out of the owner's export (`USER_LEFT_OUT`), and the host's backup, which is not filtered, keeps the hash only.
 Setting a password any other way ends the link.
 
@@ -210,9 +211,9 @@ unchanged):
 
 | Route | What it does |
 |---|---|
-| `GET /login/first-password` | The page (`public/login-first-password.html` and `.js`). It never redirects, signed in or not, because a redirect would carry the fragment on. `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. |
+| `GET /login/first-password` | The page (`public/login-first-password.html` and `.js`). The file is reachable only at this route: `/login-first-password.html` answers 404 everywhere, like an unknown file (`ROUTE_ONLY_FILES`). It never redirects, signed in or not, because a redirect would carry the fragment on. `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. |
 | `POST /api/login/first-password` `{ token }` | The exchange. Hashes the token, finds the owner whose link matches and is not ended, and spends it. Sets the `mfa_pending` cookie (10 minutes, purpose `first-password`) bound to the owner, the environment and this claim. 200 `{ login, displayName, environmentName }`. |
-| `POST /api/login/first-password/set` `{ password }` | Reads the pending cookie only (never the body). 8 to 200 characters, enforced here: 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
+| `POST /api/login/first-password/set` `{ password }` | Reads the pending cookie only (never the body). 8 to 200 characters, enforced here (the field has no `maxlength`; the rule comes from the page's script and the server): 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
 | `POST /api/host/environments/:slug/owners/:login/first-password` | Host admin only (on `hostRouter`). A new link for an owner with no password, valid 24 hours, single use, no-store, answering `{ url }` once. It replaces older links and any step already begun from them. 404 `no such environment` or `no owner with that login there`; 400 when the owner has a password already. |
 
 **Every failure of the two login routes** (no such token, ended, already used, a bad, missing or foreign pending cookie, a
@@ -226,12 +227,13 @@ personal link and no second factor; and `POST /api/register` answers 403 `sign-u
 (`Store#awaitingFirstPassword()`), even if the environment allows self sign-up. The sign-in page says nothing about the
 wait.
 
-**Framing.** `/login/first-password` and `/login-first-password.html` are in `FRAMED_HERE_PATHS` on a hosted install, so
+**Framing.** `/login/first-password` is in `FRAMED_HERE_PATHS` on a hosted install, so
 every variant of the path (case, trailing slash) answers with the framed-here headers. The page carries its own
 Content-Security-Policy and loads only its own script.
 
 **The page.** It reads the token from the fragment, removes it from the address at once (`history.replaceState`), and
-keeps it in memory only. It has one password field with **Show**, and the hint "8 to 200 characters". A reload within
+keeps it in memory only. A link opened in a tab that already shows the page is used too: the page listens for the
+fragment changing, takes the new token and removes it from the address and history the same way. It has one password field with **Show**, and the hint "8 to 200 characters". A reload within
 the 10 minutes still works because the cookie, not the address, says who it is.
 
 **The console.** `GET /api/host/environments` lists, for each environment, `awaitingFirstPassword`: the logins of its
@@ -240,6 +242,10 @@ each, and shows the link it gets back once, with **Copy**: "This link works once
 
 **Other ways to set a password** are unchanged and still checked only for "not empty" on the server; only a new host admin
 is held to 8 characters.
+
+**Accepted risks.** The browser's navigation timing entry holds the token for the page's lifetime; only this site's
+scripts can read it. An attacker can make a lookalike environment and send its link: the person ends up signed in to
+that environment only, and the attacker never learns the password. Both are low.
 
 **Not verified.** That the fragment survives the move from the product host to an environment on separate domains, and a
 proxy redirect, in Chromium, Firefox and Safari; that the token is absent from the proxy's access log; that password
