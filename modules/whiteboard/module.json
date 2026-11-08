@@ -1,9 +1,10 @@
 {
   "id": "whiteboard",
   "name": "Whiteboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icon": "chalkboard",
   "color": "teal",
+  "content": "flush",
   "description": "A shared board for the {space}: draw, add notes, text and shapes, and move them around together.",
   "author": "Coffee Pub",
   "scope": [

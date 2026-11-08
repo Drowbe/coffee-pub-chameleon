@@ -70,13 +70,16 @@
   // A block type: { type, label, create(at) -> its own fields, clean(raw) -> its own fields or null, box(block) -> the
   // box it is drawn in relative to x, y ({ x, y, w, h }, h null for a block whose height follows its words), render(block, el)
   // -> draws it into its element, describe(block) -> words for a screen reader, edit?: 'text' | 'tint', and for 'text'
-  // textOf(el) -> the element the words are edited over }. Hit-testing is the browser's: what render draws with
+  // textOf(el) -> the element the words are edited over, resize?: how it changes size when it is the one block picked:
+  // { handles: 'corners', min: { w, h }, height?: false } (x, y, w, h; height false: only w, the words set the height) or
+  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }. Hit-testing is the browser's: what render draws with
   // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
 
   // A tool: { id, label, icon, order, key?, edits (it changes the board), cursor?, down(p, ctx), move?(p, ctx), up?(p, ctx),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
-  // on the screen, id (the block under it, or null), pointerType and event.
+  // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType
+  // and event.
   const tools = wbRegistry('tool', 'id', ['label', 'icon', 'down']);
 
   // A block read from anywhere (storage, a change from someone else) made safe to draw, or null when it is not a block.

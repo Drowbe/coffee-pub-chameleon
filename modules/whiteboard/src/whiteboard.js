@@ -80,6 +80,7 @@
   const ctx = {
     policy,
     get: (id) => board.get(id),
+    selected: () => selected,
     scale: () => renderer.view.s,
     panBy: (dx, dy) => renderer.panBy(dx, dy),
     draft(type, fields) {
@@ -177,10 +178,18 @@
   let deleteButton = null;
   function select(id) {
     selected = id && board.has(id) ? id : null;
-    renderer.select(selected);
+    renderer.select(selected, handlesOf(selected));
     const can = Boolean(selected) && policy.canDelete(board.get(selected));
     if (can && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => { if (selected) remove(selected); } });
     if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
+  }
+
+  // The handles the one picked block shows: its type's (resize), only with Select and only to someone who may change it.
+  function handlesOf(id) {
+    const b = id && board.get(id);
+    const def = b && blockTypes.get(b.type);
+    if (!def || !def.resize || tool.id !== 'select' || !(drafts.has(id) || policy.canChange(b))) return null;
+    return def.resize.handles;
   }
 
   function edit(id, { fresh = false } = {}) {
@@ -224,6 +233,7 @@
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
+    renderer.select(selected, handlesOf(selected));
     if (toolSwitch) toolSwitch.set(tool.id);
     updateHint();
   }
@@ -317,7 +327,7 @@
   const pointers = new Map(); // pointer id -> its last point on the screen
   let down = null; // the pointer the tool is following
   let pinch = null; // two fingers on the board: { d, s, mx, my }
-  const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), pointerType: e.pointerType, event: e });
+  const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
     const [a, b] = [...pointers.values()];
     return { d: Math.max(1, Math.hypot(a.sx - b.sx, a.sy - b.sy)), mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2 };

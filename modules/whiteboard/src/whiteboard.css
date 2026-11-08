@@ -124,4 +124,38 @@
   transform: translate(calc(-2px / var(--wb-scale, 1)), calc(-2px / var(--wb-scale, 1)));
 }
 
+/* the picked block's handles, on the frame's corners or a line's ends: --hx, --hy is the point in the block (board units),
+   --ox, --oy pushes it out onto the frame. Each is 24px on the screen to press (32px on a touch screen) round a 10px mark,
+   the same at any zoom. */
+.wb-handle {
+  --hit: 24px;
+  position: absolute;
+  left: calc(var(--hx) * 1px + (6px + var(--ox) * 7px) / var(--wb-scale, 1));
+  top: calc(var(--hy) * 1px + (6px + var(--oy) * 7px) / var(--wb-scale, 1));
+  width: calc(var(--hit) / var(--wb-scale, 1));
+  height: calc(var(--hit) / var(--wb-scale, 1));
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+.wb-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(10px / var(--wb-scale, 1));
+  height: calc(10px / var(--wb-scale, 1));
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: calc(2px / var(--wb-scale, 1));
+  background: var(--surface-card);
+}
+.wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
+.wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
+.wb-handle-start, .wb-handle-end { cursor: move; }
+.wb-handle-start::after, .wb-handle-end::after { border-radius: 50%; }
+@media (pointer: coarse) { .wb-handle { --hit: 32px; } }
+.app.narrow .wb-handle { --hit: 32px; }
+
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: 24px; }

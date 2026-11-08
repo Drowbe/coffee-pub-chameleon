@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-e-block-line.js: a line, or an arrow ----------------------------------------------------------------
   // { ...block, dx, dy, arrow, tint }: from x, y to x + dx, y + dy, with a head at the end when arrow is true.
-  // Double-click to change its colour (tint).
+  // Double-click to change its colour (tint); drag either end to move it.
   blockTypes.register({
     type: 'line',
     label: 'Line',
@@ -33,4 +33,5 @@
       el.replaceChildren(svg);
     },
     describe: (b) => (b.arrow ? 'Arrow' : 'Line'),
+    resize: { handles: 'ends' }, // a handle on each end moves that end
   });

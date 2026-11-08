@@ -5,10 +5,12 @@
   // renderer owns the view and the elements; what a block looks like is its block type's render. It saves nothing.
   function createRenderer({ surface, world, frame }) {
     const els = new Map(); // block id -> its element
+    const shown = new Map(); // block id -> the block as it was last drawn
     const view = { x: 0, y: 0, s: 1 };
     const MIN = 0.2;
     const MAX = 4;
     let selected = null;
+    let grips = null; // the selected block's handles: 'corners', 'ends' or null
 
     function applyView() {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
@@ -32,6 +34,7 @@
     function draw(block) {
       const def = blockTypes.get(block.type);
       if (!def) return null;
+      shown.set(block.id, block);
       let el = els.get(block.id);
       if (!el || el.dataset.type !== block.type) {
         if (el) el.remove();
@@ -56,23 +59,54 @@
       const el = els.get(id);
       if (el) el.remove();
       els.delete(id);
+      shown.delete(id);
       if (selected === id) select(null);
     }
 
     function clear() { for (const id of [...els.keys()]) remove(id); }
 
-    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own.
+    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own. Its
+    // handles (when the page asks for them) sit on the frame's corners or on a line's ends, each at a point of the block's
+    // element in board units (--hx, --hy) pushed out by --ox, --oy screen steps; whiteboard.css keeps their size on the
+    // screen the same at any zoom. Which handle is pressed is its data-handle (the select tool reads it).
+    const CORNERS = [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]];
+    function handlePoints(el) {
+      if (grips === 'corners') return CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 }));
+      const b = shown.get(selected);
+      const def = b && blockTypes.get(b.type);
+      if (grips !== 'ends' || !def) return [];
+      const box = def.box(b);
+      return [{ id: 'start', x: -box.x, y: -box.y, ox: 0, oy: 0 }, { id: 'end', x: -box.x + b.dx, y: -box.y + b.dy, ox: 0, oy: 0 }];
+    }
     function showFrame() {
       const el = selected && els.get(selected);
-      if (!el) { frame.hidden = true; return; }
+      if (!el) { frame.hidden = true; frame.replaceChildren(); return; }
       frame.hidden = false;
       frame.style.left = `${el.offsetLeft}px`;
       frame.style.top = `${el.offsetTop}px`;
       frame.style.width = `${el.offsetWidth}px`;
       frame.style.height = `${el.offsetHeight}px`;
+      const points = handlePoints(el);
+      if (frame.children.length !== points.length || [...frame.children].some((h, i) => h.dataset.handle !== points[i].id)) {
+        frame.replaceChildren(...points.map((pt) => {
+          const h = document.createElement('div');
+          h.className = `wb-handle wb-handle-${pt.id}`;
+          h.dataset.handle = pt.id;
+          h.setAttribute('aria-hidden', 'true');
+          return h;
+        }));
+      }
+      points.forEach((pt, i) => {
+        const h = frame.children[i];
+        h.style.setProperty('--hx', String(pt.x));
+        h.style.setProperty('--hy', String(pt.y));
+        h.style.setProperty('--ox', String(pt.ox));
+        h.style.setProperty('--oy', String(pt.oy));
+      });
     }
-    function select(id) {
+    function select(id, handles = null) {
       selected = id && els.has(id) ? id : null;
+      grips = selected ? handles : null;
       showFrame();
     }
 
@@ -85,6 +119,11 @@
     function blockAt(target) {
       const el = target && target.closest ? target.closest('.wb-block') : null;
       return el && world.contains(el) ? el.dataset.id : null;
+    }
+    // The selected block's handle under a pointer event ('nw', 'se', 'start', ...), or null.
+    function handleAt(target) {
+      const h = target && target.closest ? target.closest('.wb-handle') : null;
+      return h && frame.contains(h) ? h.dataset.handle : null;
     }
 
     function zoomAt(s, sx, sy) {
@@ -129,6 +168,7 @@
       refreshFrame: showFrame,
       toBoard,
       blockAt,
+      handleAt,
       zoomAt,
       zoomBy: (f) => zoomAt(view.s * f, surface.clientWidth / 2, surface.clientHeight / 2),
       reset: () => zoomAt(1, surface.clientWidth / 2, surface.clientHeight / 2),
