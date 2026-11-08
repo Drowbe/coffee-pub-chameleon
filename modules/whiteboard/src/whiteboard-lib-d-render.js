@@ -28,13 +28,39 @@
       el.style.top = `${block.y + box.y}px`;
       el.style.width = `${box.w}px`;
       el.style.height = box.h === null ? '' : `${box.h}px`;
-      el.style.zIndex = String(Math.max(0, Math.round(block.z)));
+    }
+
+    // The stack: z can be any number (a block moved one layer sits between its neighbours), so each element's z-index is
+    // its place in the order, 1 at the bottom. Worked out again only when a block's z changes or one comes or goes.
+    let restackFrame = 0;
+    function restack() {
+      if (restackFrame) return;
+      restackFrame = requestAnimationFrame(() => {
+        restackFrame = 0;
+        const order = [...shown.values()].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
+        order.forEach((b, i) => { const el = els.get(b.id); if (el) el.style.zIndex = String(i + 1); });
+      });
+    }
+
+    // A block's colours and width, as custom properties whiteboard.css draws with: --wb-fill, --wb-stroke and --wb-ink are
+    // the role's theme token (unset for 'none' or 'auto', which data-fill and data-stroke tell the stylesheet), --wb-weight
+    // the width in board units.
+    function paint(el, block, def) {
+      for (const role of WB_ROLES) {
+        const v = def.paint && def.paint[role.id] ? block[role.id] : undefined;
+        const c = v && WB_PALETTE_BY_ID.get(v);
+        if (v) el.dataset[role.id] = v; else delete el.dataset[role.id];
+        if (c) el.style.setProperty(`--wb-${role.id}`, c.token); else el.style.removeProperty(`--wb-${role.id}`);
+      }
+      if (def.weight) el.style.setProperty('--wb-weight', `${block.weight}px`); else el.style.removeProperty('--wb-weight');
     }
 
     function draw(block) {
       const def = blockTypes.get(block.type);
       if (!def) return null;
+      const before = shown.get(block.id);
       shown.set(block.id, block);
+      if (!before || before.z !== block.z) restack();
       let el = els.get(block.id);
       if (!el || el.dataset.type !== block.type) {
         if (el) el.remove();
@@ -46,8 +72,9 @@
         el.setAttribute('role', 'button');
         world.insertBefore(el, frame);
         els.set(block.id, el);
+        restack();
       }
-      el.dataset.tint = block.tint || 'ink';
+      paint(el, block, def);
       if (!el.classList.contains('wb-editing')) def.render(block, el);
       place(el, block, def);
       el.setAttribute('aria-label', def.describe(block));
@@ -59,7 +86,7 @@
       const el = els.get(id);
       if (el) el.remove();
       els.delete(id);
-      shown.delete(id);
+      if (shown.delete(id)) restack();
       if (selected === id) select(null);
     }
 
