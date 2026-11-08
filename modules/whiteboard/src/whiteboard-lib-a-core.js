@@ -97,7 +97,10 @@
   // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, resize?: how it
   // changes size when it is the one block picked:
   // { handles: 'corners', min: { w, h }, height?: false } (x, y, w, h; height false: only w, the words set the height) or
-  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }. Hit-testing is the browser's: what render draws with
+  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }, and, for a block that points at other blocks (a
+  // connector, later), refs?(block) -> the ids it points at and remap?(block, idMap) -> the fields to change when it is
+  // copied along with them (lib-h; idMap: old id -> the copy's id). A block's delete takes away only the block: what it
+  // points at or uses (another block, an upload) stays, so an undo can bring it back whole. Hit-testing is the browser's: what render draws with
   // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
 

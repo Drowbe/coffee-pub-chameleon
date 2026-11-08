@@ -8,6 +8,7 @@
 //   lib-d render    drawing the board, the view (pan and zoom), editing words in place
 //   lib-e block-*   one file per block type
 //   lib-f tool-*    one file per tool
+//   lib-h clipboard copy, cut, paste and duplicate (in this page's memory)
 (async () => {
   'use strict';
 
@@ -212,6 +213,7 @@
     if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
     updateStatus();
   }
+  function selectAll() { select(board.all().filter((x) => !drafts.has(x.id)).map((x) => x.id)); }
   // Every block a rectangle on the board (board units, any two corners) touches, by each block type's box.
   function blocksIn(r) {
     const x0 = Math.min(r.x0, r.x1); const x1 = Math.max(r.x0, r.x1);
@@ -458,14 +460,71 @@
     }),
   });
 
+  // ---- copy, cut, paste and duplicate -----------------------------------------------------------------------------------
+  // Only for someone who may change the board. The copies are new blocks: new ids, saved as this person's, on top of
+  // everything (in the order the originals were), a step along each time (lib-h), and picked once they are there. Each is
+  // saved whole, like any new block; a copy the server refuses (the module's storage is full) is taken off again and the
+  // person told once (onRefused).
+  const clipboard = createClipboard();
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
+  // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
+  function boundsOf(blocks) {
+    const r = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const b of blocks) {
+      const box = blockTypes.get(b.type).box(b);
+      const x = b.x + box.x; const y = b.y + box.y;
+      r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x + box.w); r.y1 = Math.max(r.y1, y + (box.h === null ? 32 : box.h));
+    }
+    return r;
+  }
+  function copy({ cut = false } = {}) {
+    const list = copyable();
+    if (!policy.canEdit || !list.length) return;
+    clipboard.copy(list, { cut });
+    if (cut) removeMany(list.map((b) => b.id));
+    setAdd();
+  }
+  function placeCopies(copies) {
+    if (!policy.canCreate() || !copies.length) return;
+    const top = Math.floor(board.topZ());
+    const made = [];
+    copies.forEach((c, i) => { const b = wbClean({ ...c, z: top + 1 + i }); if (b) { commit(b, 'now'); made.push(b.id); } });
+    select(made);
+  }
+  // Paste: a step along from the last paste, or, given a point on the board, round it.
+  function paste(at = null) {
+    if (!policy.canCreate() || !clipboard.has()) return;
+    placeCopies(clipboard.take({ newId: () => host.util.id(), at, bounds: boundsOf }));
+  }
+  // Duplicate: copies of what is picked, a step along, without touching what was copied.
+  function duplicate() {
+    if (!policy.canCreate()) return;
+    placeCopies(wbCopies(copyable(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
+  }
+  const clipRows = (at) => [
+    { id: 'cut', label: 'Cut', icon: 'scissors', hint: `${MOD} X`, onClick: () => copy({ cut: true }) },
+    { id: 'copy', label: 'Copy', icon: 'copy', hint: `${MOD} C`, onClick: () => copy() },
+    { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste(at) },
+    { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: `${MOD} D`, onClick: () => duplicate() },
+  ];
+
   // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there).
-  if (policy.canEdit && host.add) {
+  // Paste is there too, greyed until something is copied.
+  function setAdd() {
+    if (!policy.canEdit || !host.add) return;
     host.add.set([
       { id: 'note', label: 'Add a note', icon: 'note-sticky' },
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
+      { divider: true },
+      { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has() },
     ]).catch(() => {});
+  }
+  if (policy.canEdit && host.add) {
+    setAdd();
     host.on('add', ({ id }) => {
+      if (id === 'paste') { paste(); return; }
       const def = blockTypes.get(id);
       if (!def) return;
       const c = renderer.center();
@@ -569,15 +628,30 @@
   }, { passive: false });
 
   // Right-click (or a long press) on a block: what can be done with it, and with the others picked with it.
+  // On the board itself: paste there, or select everything.
   surface.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.wb-text-edit')) return;
     const id = renderer.blockAt(e.target);
-    if (!id || e.target.closest('.wb-text-edit')) return;
+    const box = host.rootElement.getBoundingClientRect();
+    const at = { x: e.clientX - box.left, y: e.clientY - box.top };
+    if (!id) {
+      e.preventDefault();
+      if (!policy.canEdit) return;
+      const there = renderer.toBoard(e.clientX, e.clientY);
+      host.menu.show({
+        id: 'board',
+        at,
+        items: [
+          { id: 'paste', label: 'Paste here', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
+          { id: 'all', label: 'Select all', icon: 'object-group', hint: `${MOD} A`, disabled: board.size === 0, onClick: () => selectAll() },
+        ],
+      });
+      return;
+    }
     e.preventDefault();
     if (!sel.has(id)) select([id]);
     const ids = [...sel];
     const list = targets();
-    const box = host.rootElement.getBoundingClientRect();
-    const at = { x: e.clientX - box.left, y: e.clientY - box.top };
     if (!list.length) return;
     const single = list.length === 1 ? list[0] : null;
     const def = single && defOf(single);
@@ -590,6 +664,8 @@
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
+        { separator: true },
+        ...clipRows(null),
         { separator: true },
         { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: 'Delete', danger: true, onClick: () => removeMany(ids) },
       ],
@@ -609,7 +685,14 @@
     const b = one() && board.get(one());
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); select(board.all().filter((x) => !drafts.has(x.id)).map((x) => x.id)); return; }
+    if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
+    // Copy, cut, paste and duplicate (by the key's place too, so any keyboard layout).
+    const letter = mod && !e.shiftKey ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
+    if (letter && 'cxvd'.includes(letter) && policy.canEdit) {
+      e.preventDefault();
+      if (letter === 'c') copy(); else if (letter === 'x') copy({ cut: true }); else if (letter === 'v') paste(); else duplicate();
+      return;
+    }
     if ((k === 'Delete' || k === 'Backspace') && picked.length) { e.preventDefault(); removeMany(picked.map((x) => x.id)); surface.focus({ preventScroll: true }); return; }
     if (k === 'Escape') {
       if (tool.id !== 'select') setTool('select'); else select(null);
