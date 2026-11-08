@@ -45,9 +45,10 @@ export const MODERATOR_TABS = Object.freeze(['phases', 'opens-with', 'modules'])
 export const MODERATOR_FIELDS = Object.freeze(['phases', 'opensWith', 'defaultLayout', 'budget']);
 // `phases`: the template has phases; `modules`: there is something for the modules tab (left out once the panel knows
 // there is not, e.g. a moderator with no module settings to change).
-export function setupTabs({ owner = false, moderator = false, phases = true, modules = true } = {}) {
+// `show`: the Show tab (the modules' switches, Arrange and Layouts, for everyone wider than a phone) comes first.
+export function setupTabs({ owner = false, moderator = false, phases = true, modules = true, show = false } = {}) {
   const tabs = owner ? OWNER_TABS : moderator ? MODERATOR_TABS : [];
-  return tabs.filter((t) => (t !== 'phases' || phases) && (t !== 'modules' || modules));
+  return [...(show ? ['show'] : []), ...tabs].filter((t) => (t !== 'phases' || phases) && (t !== 'modules' || modules));
 }
 // The tab an address fragment asks for, else the first the person may see (an unknown fragment is never an error).
 export function pickTab(tabs, hash = '') {
@@ -246,7 +247,7 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // --- the panel ----------------------------------------------------------------------------------------------------
 
-// `deps`: { api, word, verb, icons, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml, doc, layoutVerb,
+// `deps`: { tabOverflow, openMenu, api, word, verb, icons, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml, doc, layoutVerb,
 // renderModuleSettings }. Returns { open(opts), close(), done(), cancel(), isOpen(), select(tab), el }. `open({ space,
 // owner, moderator, phases, rule, today, tab, onDone, onSaved, onDeleted, onLinks, onTab, onLeave, nameInput })`:
 // `space` the space's record, `phases` the template's phases (a list) and `rule` the Phases object (public/phases.js),
@@ -255,7 +256,7 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // a part of it did and a later request was refused, `onDeleted(space)` after Delete, `onLinks(space)` after an invite
 // or guest link action, `onTab(id)` as the tab changes, `onLeave()` when the mode ends either way.
 export function createSpaceSetup(deps) {
-  const { api, word, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml } = deps;
+  const { api, word, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml, tabOverflow, openMenu: openHostMenu } = deps; // tabOverflow (primary-nav.js) and openMenu (host-menu.js) come from the page
   const doc = deps.doc || document;
   const el = doc.createElement('aside');
   el.id = 'space-setup';
@@ -269,7 +270,7 @@ export function createSpaceSetup(deps) {
   const spaceWord = () => word('space');
   const membersWord = (cap = false) => word('member', { many: true, cap });
   const modulesWord = (cap = false) => word('module', { many: true, cap });
-  const tabLabel = (id) => ({ space: word('space', { cap: true }), members: membersWord(true), phases: 'Phases', 'opens-with': 'First visit', modules: modulesWord(true) })[id];
+  const tabLabel = (id) => ({ show: 'Show', space: word('space', { cap: true }), members: membersWord(true), phases: 'Phases', 'opens-with': 'First visit', modules: modulesWord(true) })[id];
   const sectionHtml = (id, title, inner, { hidden = false, cls = '' } = {}) => `<section class="setup-section${cls ? ` ${cls}` : ''}" data-section="${id}"${hidden ? ' hidden' : ''}><h3 class="setup-heading">${title}</h3>${inner}</section>`;
 
   function spaceTabHtml() {
@@ -435,17 +436,18 @@ export function createSpaceSetup(deps) {
     return parts.join('');
   }
 
-  const TAB_HTML = { space: spaceTabHtml, members: membersTabHtml, phases: phasesTabHtml, 'opens-with': opensWithTabHtml, modules: modulesTabHtml };
+  const TAB_HTML = { show: () => '<div class="setup-show" id="setup-show"></div>', space: spaceTabHtml, members: membersTabHtml, phases: phasesTabHtml, 'opens-with': opensWithTabHtml, modules: modulesTabHtml };
 
   function draw() {
     const { tabs, space } = state;
+    const one = tabs.length === 1;
     const tabButtons = tabs.map((id) => `<button type="button" role="tab" class="setup-tab" id="setup-tab-${id}" data-tab="${id}" aria-controls="setup-content-${id}" aria-selected="false" tabindex="-1"><span class="setup-tab-label">${esc(tabLabel(id))}</span><span class="setup-tab-dot" aria-hidden="true" hidden></span><span class="visually-hidden setup-tab-unsaved"></span></button>`).join('');
     const contents = tabs.map((id) => `<div role="tabpanel" class="setup-tab-content" id="setup-content-${id}" data-tab="${id}" aria-labelledby="setup-tab-${id}" tabindex="-1" hidden>${TAB_HTML[id]()}${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}</div>`).join('');
     el.innerHTML = `
       <div class="setup-head">
-        <h2 id="space-setup-title">Set up</h2>
+        <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : 'Set up')}</h2>
         <p class="setup-which" id="space-setup-which"></p>
-        <div class="setup-tabs" id="setup-tabs" role="tablist" aria-label="Set up">${tabButtons}</div>
+        <div class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist" aria-label="Set up"${one ? ' hidden' : ''}>${tabButtons}<button type="button" class="core-link layout-tabs-more" id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></div>
       </div>
       <div class="setup-body">${contents}</div>
       <p class="setup-status status" id="space-setup-status" role="status" aria-live="polite"></p>`;
@@ -453,6 +455,7 @@ export function createSpaceSetup(deps) {
     state.bar = actionBar({
       label: 'Save the set up',
       doc,
+      readOnly: !(state.opts.owner || state.opts.moderator), // only the Show tab: nothing to save, only Close
       ids: { save: 'setup-save', cancel: 'setup-cancel-button' },
       discardWords: 'Discard your changes?',
       dirty: isDirty,
@@ -463,6 +466,51 @@ export function createSpaceSetup(deps) {
     el.querySelector('#space-setup-which').textContent = space.name;
     fillFields();
     wire();
+    mountShow();
+  }
+
+  // The Show tab: the page's menu of modules, Arrange and Layouts (canvas.mountMenu), drawn into the tab and kept up to date.
+  function mountShow() {
+    const holder = q('#setup-show');
+    if (!holder || typeof state.opts.show !== 'function') return;
+    state.showView = state.opts.show(holder);
+  }
+
+  // The tabs that fit show; the rest go into the "..." after them (tabOverflow: the first tab and the one shown never
+  // leave). The "..." lists the hidden ones on the shared menu, a check on none of them (the one shown is always in the row).
+  function fitTabs() {
+    if (!state) return;
+    const strip = q('#setup-tabs');
+    const more = q('#setup-tabs-more');
+    if (!strip || !more) return;
+    const list = [...strip.querySelectorAll(':scope > .setup-tab')];
+    for (const t of list) t.classList.remove('layout-tab-out');
+    more.hidden = true;
+    if (strip.hidden || !strip.getClientRects().length) return;
+    const view = doc.defaultView || window;
+    const css = view.getComputedStyle(strip);
+    const gap = parseFloat(css.columnGap) || 0;
+    const avail = strip.clientWidth - (parseFloat(css.paddingLeft) || 0) - (parseFloat(css.paddingRight) || 0);
+    more.hidden = false;
+    const moreWidth = more.getBoundingClientRect().width;
+    more.hidden = true;
+    const { out, more: showMore } = tabOverflow({ avail: Math.floor(avail) - 1, gap, widths: list.map((t) => t.getBoundingClientRect().width), more: moreWidth, current: list.findIndex((t) => t.dataset.tab === state.tab) });
+    const focused = doc.activeElement && strip.contains(doc.activeElement) ? doc.activeElement : null;
+    list.forEach((t, i) => t.classList.toggle('layout-tab-out', out.includes(i)));
+    more.hidden = !showMore;
+    if (focused && focused.classList.contains('layout-tab-out')) more.focus();
+  }
+  function openMoreTabs() {
+    const more = q('#setup-tabs-more');
+    const hidden = [...el.querySelectorAll('#setup-tabs > .setup-tab.layout-tab-out')];
+    const dirty = dirtyNow();
+    openHostMenu(more, hidden.map((t) => ({
+      label: tabLabel(t.dataset.tab),
+      radio: true,
+      checked: t.dataset.tab === state.tab,
+      ...(dirty.has(t.dataset.tab) ? { tag: 'Unsaved' } : {}),
+      onPick: () => select(t.dataset.tab, { focus: true }),
+    })));
   }
 
   const q = (sel) => el.querySelector(sel);
@@ -477,11 +525,9 @@ export function createSpaceSetup(deps) {
       const on = b.dataset.tab === id;
       b.setAttribute('aria-selected', String(on));
       b.tabIndex = on ? 0 : -1;
-      if (on) {
-        if (typeof b.scrollIntoView === 'function') b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        if (focus) b.focus();
-      }
     }
+    fitTabs(); // the tab shown never stays in the "..."
+    if (focus) q(`#setup-tab-${id}`)?.focus();
     for (const p of el.querySelectorAll('.setup-tab-content')) p.hidden = p.dataset.tab !== id;
     hideDeleteConfirm();
     if (typeof state.opts.onTab === 'function') state.opts.onTab(id);
@@ -709,7 +755,7 @@ export function createSpaceSetup(deps) {
       r.disabled = !layouts.canSetDefault;
     }
     const note = q('#setup-layout-note');
-    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the ${typeof deps.layoutVerb === 'function' ? deps.layoutVerb() : 'Layout'} menu, for everyone in this ${word('space')}.`;
+    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the Show tab, for everyone in this ${word('space')}.`;
     note.hidden = !note.textContent;
     paintLayoutLine();
   }
@@ -918,10 +964,22 @@ export function createSpaceSetup(deps) {
       const b = event.target.closest('.setup-tab');
       if (b) select(b.dataset.tab, { focus: true });
     });
+    q('#setup-tabs-more').addEventListener('click', openMoreTabs);
+    if (typeof (doc.defaultView || window).ResizeObserver === 'function') {
+      state.fitWatch = new (doc.defaultView || window).ResizeObserver(() => fitTabs());
+      state.fitWatch.observe(tablist);
+    }
     tablist.addEventListener('keydown', (event) => {
-      const all = [...el.querySelectorAll('.setup-tab')];
+      const all = [...el.querySelectorAll('.setup-tab:not(.layout-tab-out)')];
+      if (event.target.id === 'setup-tabs-more') {
+        if (event.key === 'ArrowLeft' && all.length) { event.preventDefault(); all[all.length - 1].focus(); }
+        else if (event.key === 'ArrowDown') { event.preventDefault(); openMoreTabs(); }
+        return;
+      }
       const at = all.indexOf(event.target.closest('.setup-tab'));
       if (at < 0) return;
+      const more = q('#setup-tabs-more');
+      if (event.key === 'ArrowRight' && at === all.length - 1 && !more.hidden) { event.preventDefault(); more.focus(); return; }
       const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: all.length - 1 }[event.key];
       if (to === undefined) return;
       event.preventDefault();
@@ -1167,6 +1225,7 @@ export function createSpaceSetup(deps) {
     state.tabs = state.tabs.filter((t) => t !== id);
     q(`#setup-tab-${id}`)?.remove();
     q(`#setup-content-${id}`)?.remove();
+    fitTabs();
     if (state.tab === id && state.tabs.length) select(state.tabs[0]);
   }
   // The space's place in the published calendar (plan-space-calendars.md, section 2): shown only while an owner has
@@ -1222,7 +1281,7 @@ export function createSpaceSetup(deps) {
     // The template's phases (a list) and the rule (public/phases.js); without either, no phases tab.
     const rule = opts.rule || null;
     const phaseList = rule && Array.isArray(opts.phases) ? rule.cleanPhases(opts.phases) : [];
-    const tabs = setupTabs({ owner: opts.owner, moderator: opts.moderator, phases: phaseList.length > 0 });
+    const tabs = setupTabs({ owner: opts.owner, moderator: opts.moderator, phases: phaseList.length > 0, show: typeof opts.show === 'function' });
     if (!tabs.length) return false;
     const before = beforeOf(space);
     state = {
@@ -1231,7 +1290,7 @@ export function createSpaceSetup(deps) {
       image: { file: null, url: '', remove: false }, links: { guestToken: space.guestToken || null, allowGuests: space.allowGuests !== false },
       users: null, saving: false, rule, phaseList, today: opts.today || null, installed: null, moduleSettings: null,
     };
-    el.dataset.who = opts.owner ? 'owner' : 'moderator';
+    el.dataset.who = opts.owner ? 'owner' : opts.moderator ? 'moderator' : 'member';
     draw();
     // The bar's input and the panel's Name are one name: typed in either, the other follows.
     if (opts.nameInput && state.owner) {
@@ -1242,16 +1301,18 @@ export function createSpaceSetup(deps) {
     if (!el.isConnected) doc.body.appendChild(el);
     select(pickTab(tabs, opts.tab));
     focusFirst();
+    fitTabs();
+    (doc.defaultView || window).requestAnimationFrame(() => fitTabs());
     refresh();
     loadOptions().then(() => { if (state && state.space.id === space.id) { if (q('#setup-opens-with')) paintOpensWith(); if (q('#setup-first-visit')) paintLayouts(); paintBudgetSection(); refresh(); } });
     if (state.owner) loadOwnerParts(space);
-    else if (!space.isLobby) loadModeratorParts(space);
+    else if (opts.moderator && !space.isLobby) loadModeratorParts(space);
     if (state.tabs.includes('modules')) loadModuleSettings(space);
     return true;
   }
   // The keyboard goes to the tab's first field: the name, the first member's switch, the first phase's start (or the
   // first step's day), the first visit's choice, the first module setting.
-  const FIRST_FIELD = { space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', 'opens-with': '#setup-first-visit input:checked, #setup-first-visit input', modules: '#setup-module-settings input, #setup-module-settings select' };
+  const FIRST_FIELD = { show: '#setup-show .host-menu-item[tabindex="0"]', space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', 'opens-with': '#setup-first-visit input:checked, #setup-first-visit input', modules: '#setup-module-settings input, #setup-module-settings select' };
   function focusFirst() {
     const content = q(`#setup-content-${state.tab}`);
     const firstStep = state.tab === 'phases' && q('#setup-phase-first') && !q('#setup-phase-first').hidden ? q('#setup-phase-first-day') : null;
@@ -1265,6 +1326,8 @@ export function createSpaceSetup(deps) {
     if (state.image.url) URL.revokeObjectURL(state.image.url);
     const { opts } = state;
     if (state.onBarName && opts.nameInput) opts.nameInput.removeEventListener('input', state.onBarName);
+    state.showView?.destroy();
+    state.fitWatch?.disconnect();
     state = null;
     el.hidden = true;
     el.innerHTML = '';

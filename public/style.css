@@ -7535,6 +7535,45 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   padding: 0 var(--space-3) var(--space-1);
 }
 
+/* The tabs fit the panel: small, close together, and the ones that do not fit go into a "..." (space-setup.js fitTabs,
+   the layout tabs' rule). Not a scrolling strip; a long word is cut short with dots. */
+.setup-tabs.setup-tabs-fit {
+  display: flex;
+  overflow: visible;
+}
+
+.setup-tabs-fit > .setup-tab {
+  max-width: 12em;
+  min-width: 0;
+}
+
+.setup-tabs-fit > .setup-tab .setup-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.setup-tabs-fit > .layout-tabs-more {
+  flex: none;
+  padding: 0 var(--space-2);
+}
+
+.setup-tabs-fit > .layout-tabs-more[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--tab-ink) 10%, transparent);
+  color: var(--tab-ink);
+}
+
+/* The Show tab: the page's menu drawn in the panel, not floating over it. */
+.host-menu.host-menu-inline {
+  position: static;
+  min-width: 0;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
 /* Unsaved changes on this tab: the tab's dot (public/sdk/system.css), said to a screen reader by the hidden words beside it. */
 
 .setup-tab-content[hidden] {
