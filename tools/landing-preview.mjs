@@ -28,6 +28,7 @@ for (const file of pageFiles) {
     .replace('href="/landing.css"', 'href="landing.css"')
     .replace('<script src="/landing.js">', '<script src="preview.js">')
     .replaceAll('/assets/images/brand/landing/', 'img/')
+    .replaceAll('/assets/images/brand/', 'img/')
     .replace(/href="\/(\?[^"#]*)?(#[^"]*)?"/g, (_m, _q, hash) => `href="index.html${hash || ''}"`)
     .replace(/href="\/([a-z]+)(#[^"]*)?"/g, (m, name, hash) => (pageFiles.includes(`${name}.html`) ? `href="${name}.html${hash || ''}"` : m))
     .replace(/(<[^>]*\bdata-product\b[^>]*>)[^<]*(<)/g, `$1${NAME}$2`)
@@ -38,6 +39,7 @@ for (const file of pageFiles) {
 fs.writeFileSync(path.join(out, 'landing.css'), fs.readFileSync(path.join(root, 'public', 'landing.css'), 'utf8').replaceAll('url(/fonts/', 'url(fonts/'));
 fs.cpSync(path.join(root, 'public', 'fonts'), path.join(out, 'fonts'), { recursive: true });
 for (const f of fs.readdirSync(IMAGES)) fs.copyFileSync(path.join(IMAGES, f), path.join(out, 'img', f));
+for (const f of ['mark.svg', 'mark-dark.svg']) fs.copyFileSync(path.join(IMAGES, '..', f), path.join(out, 'img', f)); // the bar's mark, light and dark
 
 // landing.js down to its host line: light or dark before the first paint, the Light / Dark switch and the walkthrough's
 // controls. The rest of that file talks to the host, which a preview has none of.
