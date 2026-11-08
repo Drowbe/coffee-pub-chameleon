@@ -7483,7 +7483,7 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   right: 0;
   bottom: 0;
   max-height: calc(100dvh - var(--setup-top, 44px)); /* never taller than what shows: the bar is always in view */
-  z-index: calc(var(--z-toast) + 1); /* over the undo note, as a menu is: the Show tab's menu is drawn inside it */
+  z-index: var(--z-menu);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -7562,6 +7562,12 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
 .setup-tabs-fit > .layout-tabs-more[aria-expanded="true"] {
   background: color-mix(in srgb, var(--tab-ink) 10%, transparent);
   color: var(--tab-ink);
+}
+
+/* While Set up is open (wider than a phone) the toast stack holding an undo note sits under it, so the panel and the Show tab's menu in it are
+   what is on top where they meet (the panel stays under the popovers and sheets opened from it). */
+@media (min-width: 641px) {
+  body.setting-up .sdk-toasts:has(> .sdk-toast[data-undo]) { z-index: calc(var(--z-menu) - 1); }
 }
 
 /* The Show tab: the page's menu drawn in the panel, not floating over it. */
