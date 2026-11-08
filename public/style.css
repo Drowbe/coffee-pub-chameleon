@@ -1,16 +1,16 @@
 /* The colour roles (public/sdk/system.css, documentation/designsystem/design-theme.md). A theme sets seven base roles and may set
    the four status fills and a few more (server/store.js THEME_BASE and THEME_OPTIONAL; /theme.css writes them, and the colours it
-   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are Strong Coffee's
-   dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
+   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are the default theme's
+   (the studio's, in server/store.js DEFAULT_THEME) dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
    every other role from these with color-mix(). They are here, not in system.css, so a page that loads only this file still has them. */
 :root {
-  --surface-page: #1a1410;
-  --surface-panel: #241c16;
-  --edge-hairline: #3b2e24;
-  --text-primary: #f1e6d8;
-  --text-muted: #a8998a;
-  --accent-fill: #c8873a;
-  --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
+  --surface-page: #0e1a2b;
+  --surface-panel: #182c47;
+  --edge-hairline: #2a4162;
+  --text-primary: #f4ecdd;
+  --text-muted: #b9c3d3;
+  --accent-fill: #5cc8cf;
+  --text-on-accent: #0e1a2b; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
 
@@ -691,7 +691,7 @@ a:hover {
 }
 
 .core-link[aria-current="page"] {
-  color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
   background: var(--fill-selected);
 }
 
@@ -2595,9 +2595,9 @@ button.whoami:focus-visible {
 }
 
 .icon-grid button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* Same "every choice is one click away" idea as .icon-grid, but a row of
@@ -2629,9 +2629,9 @@ button.whoami:focus-visible {
 }
 
 .layout-pick button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* A hotkey field looks like the other .fields inputs at rest, then turns
@@ -3557,6 +3557,33 @@ a.crumb-here:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* An ask on its way (chat-input.js, askNow): the question as sent, a quiet waiting line under it. A failed one keeps the
+   words, says why, and offers Send again. */
+.chat-pending-line {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-12);
+}
+
+.chat-failed-body p {
+  margin: 0;
+}
+
+.chat-failed-line {
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.chat-failed-why {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.chat-failed-body .btn {
+  margin-top: var(--space-2);
 }
 
 .chat-session-divider {
@@ -5729,7 +5756,7 @@ body.chat-window {
 .module-display-row input[type="text"] { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
 .module-display .icon-pick summary { width: 38px; height: 34px; color: var(--accent); }
 .module-display .icon-pick .icon-grid { max-height: 260px; overflow-y: auto; }
-.module-display .icon-pick .icon-grid button.selected { background: var(--accent); color: var(--on-accent); }
+.module-display .icon-pick .icon-grid button.selected { background: var(--fill-chosen); color: var(--text-on-chosen); }
 /* the first choice, "Its own icon": marked apart from the icons that replace it */
 .module-display .icon-pick .icon-grid [data-display-icon=""] { border: 1px dashed var(--border); }
 .module-display .status:empty { display: none; }
@@ -7604,7 +7631,9 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
 /* The Show tab: the page's menu drawn in the panel, not floating over it. */
 .host-menu.host-menu-inline {
   position: static;
+  width: 100%; /* fills the panel's content: rows, descriptions and switches use the whole width, not the floating menu's cap */
   min-width: 0;
+  max-width: none;
   max-height: none;
   margin: 0;
   border: 0;

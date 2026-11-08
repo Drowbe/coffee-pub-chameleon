@@ -1016,7 +1016,6 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   // Whether the AI is there for this person in this space (GET /api/spaces/:id/ai, asked when Chat opens and when the
   // Assistant shows): unknown until asked, and then the server's reason when it is not.
   let aiState = { known: false, available: true, reason: '', why: '', at: 0 };
-  let aiBusy = false;
   let view = 'discussion';
   let importOk = false;
   let hintCtx = null;
@@ -2024,38 +2023,107 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     if (q0 && [...q0].length < 3) { setNote('Ask a question of at least 3 characters.', true); return false; }
     const tooLong = questionTooLong(question);
     if (tooLong) { setNote(tooLong, true); return false; }
-    if (aiBusy) { setNote('Still asking. Wait for the answer.'); return false; }
     // Known to be unavailable: look again once (it may have been set up since), then say why instead of sending.
     if (aiState.known && !aiState.available && !isGuest()) await checkAi(true);
     if (aiState.known && !aiState.available) { setNote(aiLine(), true); return false; }
-    aiBusy = true;
-    input().setAttribute('aria-busy', 'true');
-    setNote('Asking the AI...');
+    // Sent at once, as in any chat: the question is on the page with a waiting line, the box is the caller's to empty, and
+    // nothing here holds it. Several may be on their way; each answer comes under its own question. What was attached
+    // goes with this question only.
+    const refs = aiContext.map((c) => c.ref).filter(Boolean);
+    aiContext = [];
+    paintContext();
+    setNote('');
+    askNow(String(question || '').trim(), refs);
+    return true;
+  }
+
+  // Why an ask failed, in plain words: the server's own sentence (403, 429, 400, the AI service), else what happened.
+  function whyAiFailed(err) {
+    const said = String(err?.serverSaid ? err.message : '').trim();
+    const why = said || (err?.status ? 'The server could not take it just now.' : 'The server could not be reached.');
+    return why[0].toUpperCase() + why.slice(1) + (/[.!?]$/.test(why) ? '' : '.');
+  }
+
+  // One question on its way. Drawn at once as the person's own private message in the Assistant, with a waiting line; when
+  // the server answers it is replaced by what the server stored (a question and its answer, never a copy made here), and
+  // the answer goes right under its question. A failure stays in its place with the words, why, and Send again. Nothing
+  // of this is stored: a page loaded again shows only what the server stored.
+  function askNow(text, refs) {
+    const me = getMe();
+    const pending = frameMessage({
+      name: me?.displayName || 'You',
+      at: new Date(),
+      visibility: 'private',
+      kind: 'command',
+      icon: 'robot',
+      tint: 'gold',
+      command: '/ai',
+      by: me?.key || '',
+      body: pendingBody(text),
+      entry: { text, by: me?.key || '', who: me?.displayName || 'You', visibility: 'private', kind: 'command', command: 'ai' },
+    });
+    pending.classList.add('own', 'chat-pending');
+    pending.setAttribute('aria-busy', 'true');
+    const list = $('messages');
+    list.appendChild(pending);
+    list.scrollTop = list.scrollHeight;
+    const line = pending.querySelector('.chat-pending-line');
     // After a few seconds the wait is most likely look-ups (a plain answer is quick).
-    const lookingTimer = setTimeout(() => { if (aiBusy) setNote('Looking things up...'); }, 6000);
-    try {
-      const reply = await api('POST', `/api/spaces/${encodeURIComponent(id)}/ai`, {
-        question: String(question || '').trim(),
-        refs: aiContext.map((c) => c.ref).filter(Boolean),
-        tz: askZone(),
-      });
-      setNote('');
-      // What was attached went with this question only.
-      aiContext = [];
-      paintContext();
-      if (reply.question) addStored(reply.question);
-      if (reply.message) addStored(reply.message);
-      return true;
-    } catch (err) {
-      // The server's own sentence for a refusal (403, 429, 400); a failure of the AI service is said plainly.
-      const said = String(err.message || 'The AI could not answer.');
-      setNote(said[0].toUpperCase() + said.slice(1) + (/[.!?]$/.test(said) ? '' : '.'), true);
-      return false;
-    } finally {
-      clearTimeout(lookingTimer);
-      aiBusy = false;
-      input().removeAttribute('aria-busy');
-    }
+    const lookingTimer = setTimeout(() => { if (line) line.lastChild.textContent = ' Looking things up...'; }, 6000);
+    api('POST', `/api/spaces/${encodeURIComponent(spaceId())}/ai`, { question: text, refs, tz: askZone() }).then((reply) => {
+      const shown = (m) => (m && addStored(m), m && m.id && list.querySelector(`.message[data-chat-id="${CSS.escape(m.id)}"]`));
+      const q = shown(reply.question);
+      // The stored question takes the waiting one's place, whatever the two clocks say; the answer goes under it.
+      if (q && pending.isConnected) pending.replaceWith(q);
+      else pending.remove();
+      const a = shown(reply.message);
+      if (a && q && q.isConnected) q.after(a);
+    }, (err) => {
+      pending.classList.remove('chat-pending');
+      pending.classList.add('chat-failed');
+      pending.removeAttribute('aria-busy');
+      pending.querySelector('.message-body').replaceWith(failedBody(text, whyAiFailed(err), () => {
+        pending.remove();
+        askNow(text, refs);
+      }));
+      list.scrollTop = list.scrollHeight; // the notice is taller than the waiting line it replaces
+    }).finally(() => clearTimeout(lookingTimer));
+  }
+
+  function pendingBody(text) {
+    const body = document.createElement('div');
+    body.className = 'message-body text';
+    const p = document.createElement('p');
+    p.textContent = text || 'Asking about what you attached';
+    const wait = document.createElement('p');
+    wait.className = 'chat-pending-line';
+    wait.setAttribute('role', 'status');
+    const spin = document.createElement('span');
+    spin.className = 'sdk-spinner sdk-spinner-sm';
+    spin.setAttribute('aria-hidden', 'true');
+    wait.append(spin, document.createTextNode(' Waiting for the answer...'));
+    body.append(p, wait);
+    return body;
+  }
+
+  // The notice that takes the answer's place: what was not sent (so it can be copied), why, and a button to send it again.
+  function failedBody(text, why, again) {
+    const body = document.createElement('div');
+    body.className = 'message-body text chat-failed-body';
+    body.setAttribute('role', 'alert');
+    const head = document.createElement('p');
+    head.className = 'chat-failed-line';
+    head.textContent = `Failed to send "${text || 'your question'}"`;
+    const reason = document.createElement('p');
+    reason.className = 'chat-failed-why';
+    reason.textContent = why;
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'btn btn-small';
+    send.textContent = 'Send again';
+    send.addEventListener('click', again);
+    body.append(head, reason, send);
+    return body;
   }
 
   function postCommand(parsed, chosen) {

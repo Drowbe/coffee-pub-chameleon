@@ -8,7 +8,7 @@ import { createPlanner, PLANNER_VIEWS } from './prototype-planner.js';
 const D = document;
 const root = D.getElementById('ph');
 const q = new URLSearchParams(location.search);
-const THEMES = ['strong-coffee', 'calming-teal', 'burnt-orange'];
+const THEMES = ['chameleon', 'strong-coffee', 'calming-teal', 'burnt-orange'];
 
 const S = {
   view: ['call', 'chat', 'module'].includes(q.get('view')) ? q.get('view') : 'chat',

@@ -87,6 +87,22 @@ try {
     });
   }
 
+  await test('the Modules tab\'s menu fills the panel: its right edge is at the content\'s right edge, rows and Layouts included', async () => {
+    const tab = await inSpace('admin', 1280);
+    await openSetup(tab);
+    await sleep(600);
+    const m = await tab.eval(`(() => {
+      const body = document.querySelector('#space-setup .setup-body');
+      const cs = getComputedStyle(body);
+      const edge = body.getBoundingClientRect().right - parseFloat(cs.paddingRight) - (body.offsetWidth - body.clientWidth);
+      const menu = document.querySelector('#setup-show .host-menu-inline').getBoundingClientRect();
+      const rows = [...document.querySelectorAll('#setup-show .host-menu-item')].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+      return { edge, menuRight: menu.right, rowRights: rows.map((r) => Math.round(r.right)), widest: Math.max(...rows.map((r) => r.width)) };
+    })()`);
+    assert.ok(Math.abs(m.menuRight - m.edge) <= 3, `the menu's right edge ${m.menuRight} is the content's ${m.edge}`);
+    assert.ok(m.widest > 400, `rows are wide (${m.widest}px), not the floating menu's cap`);
+  });
+
   await test('the "..." appears when the panel is narrowed, and holds the tabs that do not fit', async () => {
     const tab = await inSpace('admin', 1280);
     await openSetup(tab);
@@ -160,6 +176,9 @@ try {
       const tab = await inSpace('admin', width, mode);
       await openSetup(tab);
       fs.writeFileSync(path.join(SHOTS, `modules-${width}-${mode}.png`), await tab.shoot(false));
+      await tab.eval(`document.querySelector('#space-setup .setup-body').scrollTop = 99999`);
+      await sleep(300);
+      fs.writeFileSync(path.join(SHOTS, `modules-bottom-${width}-${mode}.png`), await tab.shoot(false));
       await tab.click('#setup-tab-modules');
       await sleep(900);
       fs.writeFileSync(path.join(SHOTS, `settings-${width}-${mode}.png`), await tab.shoot(false));
