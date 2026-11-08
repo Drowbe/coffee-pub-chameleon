@@ -1417,8 +1417,8 @@ function currentUser(req) {
 }
 
 // A hint, not a session: on a real sign-in at this environment (never the host admin's own), remembers which
-// slugs this browser has used, most recent first, so the product page's own Sign in can offer them back without
-// the host ever learning who anyone is (see "Sign in from the product page" in plan-environments.md). Only set with a
+// slugs this browser has used, most recent first, in the env_hint cookie on the base domain. Nothing but this reads it now: the
+// product page's Sign in is a typed address and offers nothing back (plan-product-site.md, slice 0). Only set with a
 // base domain; never cleared on sign-out, since it names no person, just a short list of addresses.
 function setEnvHint(req, res) {
   if (!BASE_DOMAIN) return;
@@ -2823,10 +2823,17 @@ function productInfo(_req, res) {
 hostRouter.get('/api/product', productInfo);
 // One environment's public name, for the product page's typed address (a slug is an address already, so confirming
 // one exists reveals only what visiting it would): { slug, name } for an active or pastDue environment, 404 for
-// anything else -- unknown, suspended, or a slug that does not even look like one (checked before the registry).
+// anything else -- unknown, suspended, refused at startup (its data could not be opened, so it cannot be signed in to),
+// or a slug that does not even look like one (checked before the registry).
 // There is deliberately no list of environments: nobody is shown anyone else's (plan-product-site.md, decision 1).
+// It shares the address check's limit (addressLimiter, below): 120 a minute from one address, then 429.
+const addressLimiter = new auth.LoginLimiter(120, 60000);
+const TOO_MANY_CHECKS = 'Too many checks from this address; try again in a minute.';
 function productEnvironment(req, res) {
   if (!hostRegistry) return res.status(404).json({ error: 'not found' });
+  const ip = req.ip || 'unknown';
+  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
+  addressLimiter.fail(ip);
   let slug;
   try {
     slug = cleanSlug(req.query.slug);
@@ -2834,17 +2841,17 @@ function productEnvironment(req, res) {
     return res.status(404).json({ error: 'not found' });
   }
   const environment = hostRegistry.findEnvironment(slug);
-  if (!environment || (environment.status !== 'active' && environment.status !== 'pastDue')) return res.status(404).json({ error: 'not found' });
+  if (!environment || (environment.status !== 'active' && environment.status !== 'pastDue') || refusals.has(environment.slug)) return res.status(404).json({ error: 'not found' });
   res.json({ slug: environment.slug, name: environment.name });
 }
 hostRouter.get('/api/product/environment', productEnvironment);
 // Whether a name could be a new environment's, for the sign-up form's note as the name is typed (plan-domains.md):
-// { slug, free, reason }, reason 'shape', 'reserved' or 'taken', null when free. Public; an address gets 120 a minute.
-const addressLimiter = new auth.LoginLimiter(120, 60000);
+// { slug, free, reason }, reason 'shape', 'reserved' or 'taken', null when free. Public; an address gets 120 a minute,
+// counted together with the lookup above.
 function productAddress(req, res) {
   if (!hostRegistry) return res.status(404).json({ error: 'not found' });
   const ip = req.ip || 'unknown';
-  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: 'Too many checks from this address; try again in a minute.' });
+  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
   addressLimiter.fail(ip);
   res.json(hostRegistry.addressFor(req.query.slug));
 }

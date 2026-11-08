@@ -1,4 +1,5 @@
 import { loadBranding, api } from '/brand.js';
+import { sameSiteNext } from '/next-address.js';
 
 const $ = (id) => document.getElementById(id);
 loadBranding().then((b) => {
@@ -18,8 +19,7 @@ $('login').addEventListener('submit', async (event) => {
   $('error').hidden = true;
   try {
     const res = await api('POST', '/api/login', { login: $('login-name').value.trim(), password: $('password').value });
-    const next = new URLSearchParams(location.search).get('next') || '/';
-    const safeNext = next.startsWith('/') ? next : '/';
+    const safeNext = sameSiteNext(new URLSearchParams(location.search).get('next'));
     // A second step: the code page, or enrolment first for an account the policy requires to have one (the pending
     // token that says who this is is in a cookie the server just set).
     if (res && res.mfaRequired) { location.href = `/login/${res.enrol ? 'enrol' : 'verify'}?next=${encodeURIComponent(safeNext)}`; return; }

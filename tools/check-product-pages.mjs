@@ -5,6 +5,9 @@
  * sign-in block, and the page head's fixed lines. Sign in is a typed address and Go: no page lists environments or takes a password to sign in (plan-product-site.md, slice 0). They are plain files with no build step, so this check is what keeps
  * the copies the same. Also: every use page file is in server/index.js's PRODUCT_PAGES table, and each page has its own
  * <title> and description. The routing itself (200, 404, `pages`) is checked in check-origin.mjs.
+ * Go opens only the environment whose cleaned slug passed the shape test and the lookup: read from public/landing.js,
+ * and live in headless Chromium (CHROME_PATH) against a throwaway server, where an address with another site's name after
+ * the slug never leaves the base domain. Without Chromium the live part says SKIPPED (not a pass).
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -151,6 +154,54 @@ test('the Sign in check fails on the old dropdown and password post', () => {
   for (const re of [/password field outside sign-up/, /current password/, /posts to a sign-in/, /posts by itself/, /list to choose from/, /no typed address/]) assert.ok(found.some((p) => re.test(p)), `${re}: ${found.join(' | ')}`);
 });
 
+// Go opens only the checked environment: the Sign in handler (public/landing.js) cleans the field to a slug once, tests
+// its shape, looks it up, and only then navigates, to envUrl(slug) and nowhere else. envUrl puts the slug in front of the
+// base domain and nothing else. Across the whole script the only navigations are that one and sign-up's answer.
+const NAVIGATES = /\blocation(?:\.href)?\s*=(?!=)|\blocation\.(?:assign|replace)\s*\(|\bwindow\.open\s*\(/g;
+export function goProblems(js) {
+  const problems = [];
+  const envUrl = "const envUrl = (slug, path = '/login') => `${location.protocol}//${slug}.${product.baseDomain}${location.port ? `:${location.port}` : ''}${path}`;";
+  if (!js.includes(envUrl)) problems.push('envUrl is not the slug in front of the base domain');
+  const handler = /signinForm\.addEventListener\('submit', async \(e\) => \{([\s\S]*?)\n {2}\}\);/.exec(js);
+  if (!handler) return [...problems, 'no Sign in handler'];
+  const body = handler[1];
+  const at = (s) => body.indexOf(s);
+  const clean = at('const slug = addressSlug(field.value);');
+  const shape = at('if (!slugOk(slug)) {');
+  const lookup = at('await fetch(`/api/product/environment?slug=${encodeURIComponent(slug)}`)');
+  const missing = at('if (res.status === 404) {');
+  const go = at('location.href = envUrl(slug);');
+  if (clean < 0) problems.push('the slug is not cleaned from the field once, by addressSlug');
+  if ((body.match(/field\.value/g) || []).length !== 1) problems.push('the handler reads the field more than once');
+  if (/(?<![\w?&.$])slug\s*=(?!=)/.test(body.replace('const slug = addressSlug(field.value);', ''))) problems.push('the slug is changed after it is cleaned');
+  if (shape < 0 || shape < clean) problems.push('the slug\'s shape is not tested before the lookup');
+  if (lookup < 0 || lookup < shape) problems.push('the slug is not looked up');
+  if (missing < 0 || missing < lookup) problems.push('an unknown address does not stop Go');
+  const navigations = body.match(NAVIGATES) || [];
+  if (go < 0 || go < missing || navigations.length !== 1) problems.push(`Go does not open envUrl(slug) alone, after the lookup (${navigations.length} navigations)`);
+  const all = [...js.matchAll(new RegExp(`^.*(?:${NAVIGATES.source}).*$`, 'gm'))].map((m) => m[0].trim());
+  const allowed = ['location.href = envUrl(slug);', "location.href = data.url || envUrl(body.slug, '/login');"];
+  for (const line of all) if (!allowed.includes(line)) problems.push(`another navigation: ${line}`);
+  return problems;
+}
+test('Go opens only envUrl(slug), with the slug that passed the shape test and the lookup', () => {
+  const js = fs.readFileSync(path.join(PUBLIC, 'landing.js'), 'utf8');
+  assert.deepEqual(goProblems(js), []);
+  for (const [what, bad, re] of [
+    ['the slug changed', js.replace('location.href = envUrl(slug);', 'slug = slug.replace(/x/, \'.\'); location.href = envUrl(slug);'), /changed after it is cleaned/],
+    ['the raw field', js.replace('location.href = envUrl(slug);', 'location.href = envUrl(field.value);'), /Go does not open envUrl\(slug\)|another navigation/],
+    ['the field read again', js.replace('location.href = envUrl(slug);', 'location.href = envUrl(addressSlug(field.value));'), /reads the field more than once/],
+    ['no lookup', js.replace('const res = await fetch(`/api/product/environment?slug=${encodeURIComponent(slug)}`);', 'const res = { ok: true, status: 200 };'), /not looked up/],
+    ['a second navigation', js.replace('location.href = envUrl(slug);', 'location.href = envUrl(slug); window.open(field.value);'), /navigations|another navigation/],
+    ['a navigation elsewhere', js.replace('function start() {', 'function start() {\n  if (location.hash) location.assign(location.hash.slice(1));'), /another navigation/],
+    ['envUrl changed', js.replace('${slug}.${product.baseDomain}', '${slug}'), /envUrl/],
+  ]) {
+    assert.notEqual(bad, js, `${what}: the change did not apply`);
+    const found = goProblems(bad);
+    assert.ok(found.some((p) => re.test(p)), `${what}: ${found.join(' | ') || 'no problem found'}`);
+  }
+});
+
 // The sign-up name note (public/landing.js slugChecker) and the host console's Sign-up line (public/host.js signupFact),
 // run from their source with stubs.
 const fromSource = (file, name) => {
@@ -191,5 +242,118 @@ test('the host Sign-up line names the product host when it is not the base domai
   assert.equal(signupFact({ signup: true, baseDomain: 'a.test', productDomain: 'p.a.test' }), 'on, at p.a.test, on the free plan');
   assert.equal(signupFact({ signup: false, baseDomain: 'a.test', productDomain: 'p.a.test' }), 'off (SIGNUP=off)');
 });
+
+// --- live: Go, in a browser (headless Chromium over the DevTools protocol, tools/shots.mjs) ---------------------------
+// A throwaway server with BASE_DOMAIN=localhost (Chromium sends localhost and every *.localhost to this machine) and one
+// environment, acme. On the front page, each typed address is put in the field and Go pressed; every page the tab then
+// asks for is recorded (one outside the base domain is stopped before it goes out). acme followed by another site's name
+// opens acme's own /login and nothing else; an unknown name opens nothing. With no Chromium it says SKIPPED (not a pass).
+const { findBrowser, launch, freePort, sleep } = await import('./shots.mjs');
+const bin = findBrowser();
+if (!bin) {
+  console.log('check-product-pages: live Go SKIPPED. No Chromium found (set CHROME_PATH). This is not a pass; nothing was measured.');
+} else {
+  const { spawn } = await import('node:child_process');
+  const os = await import('node:os');
+  const http = await import('node:http');
+  const port = await freePort();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-product-pages-'));
+  let log = '';
+  const child = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
+    cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(port), DATA_DIR: dataDir, BASE_DOMAIN: 'localhost', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234', LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'devsecretdevsecret' },
+  });
+  child.stdout.on('data', (d) => { log += d; });
+  child.stderr.on('data', (d) => { log += d; });
+  // One request by Host header: { status, json, cookies }.
+  const call = (method, host, urlPath, body, headers = {}) => new Promise((resolve, reject) => {
+    const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
+    const req = http.request({ host: '127.0.0.1', port, method, path: urlPath, headers: { host: `${host}:${port}`, accept: 'application/json', ...(payload ? { 'content-type': 'application/json', 'content-length': payload.length } : {}), ...headers } }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { text += d; });
+      res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* not JSON */ } resolve({ status: res.statusCode, json, text, cookies: (res.headers['set-cookie'] || []).map((c) => c.split(';')[0]) }); });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+  let browser = null;
+  try {
+    const end = Date.now() + 25000;
+    while (!/listening on :\d+/.test(log)) {
+      if (child.exitCode !== null || Date.now() > end) throw new Error(`the throwaway server did not start:\n${log.slice(-600)}`);
+      await sleep(100);
+    }
+    const signedIn = await call('POST', 'admin.localhost', '/api/host/login', { login: 'host', password: 'hostpass1234' });
+    assert.equal(signedIn.status, 200, signedIn.text);
+    const made = await call('POST', 'admin.localhost', '/api/host/environments', { slug: 'acme', name: 'Acme', owner: { login: 'ownacme', password: 'ownerpass1234' } }, { cookie: signedIn.cookies.join('; ') });
+    assert.equal(made.status, 201, made.text);
+
+    browser = await launch(bin);
+    const { browserContextId } = await browser.cdp.send('Target.createBrowserContext');
+    const { targetId } = await browser.cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
+    const { sessionId } = await browser.cdp.send('Target.attachToTarget', { targetId, flatten: true });
+    const s = (m, p) => browser.cdp.send(m, p, sessionId);
+    await s('Page.enable');
+    await s('Runtime.enable');
+    // Every page the tab asks for is recorded; one outside the base domain is failed before it leaves the machine.
+    const opened = [];
+    const inBase = (u) => { try { const h = new URL(u).hostname; return h === 'localhost' || h.endsWith('.localhost'); } catch { return false; } };
+    browser.cdp.listeners.push((m) => {
+      if (m.method !== 'Fetch.requestPaused' || m.sessionId !== sessionId) return;
+      const { requestId, request, resourceType } = m.params;
+      if (resourceType === 'Document') opened.push(request.url);
+      const next = resourceType === 'Document' && !inBase(request.url) ? s('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }) : s('Fetch.continueRequest', { requestId });
+      next.catch(() => {});
+    });
+    await s('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
+    const evaluate = async (expr) => {
+      const r = await s('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+      if (r.exceptionDetails) throw new Error(`page error: ${r.exceptionDetails.exception?.description || r.exceptionDetails.text}`);
+      return r.result.value;
+    };
+    const front = `http://localhost:${port}/`;
+    const acmeLogin = `http://acme.localhost:${port}/login`;
+    const pressGo = async (typed) => {
+      await s('Page.navigate', { url: front });
+      const ready = Date.now() + 15000;
+      while (!(await evaluate("location.href === '" + front + "' && document.querySelector('[data-signin-domain]')?.textContent === '.localhost' && !document.getElementById('signin-env').disabled").catch(() => false))) {
+        if (Date.now() > ready) throw new Error(`the front page did not get its base domain (${typed})`);
+        await sleep(100);
+      }
+      opened.length = 0;
+      await evaluate("document.getElementById('signin-env').focus()");
+      await s('Input.insertText', { text: typed });
+      await evaluate("document.getElementById('signin-go').click()");
+      // Until a page is asked for, or the note answers, or two seconds have passed.
+      const wait = Date.now() + 2000;
+      while (Date.now() < wait && !opened.length && !(await evaluate("!document.getElementById('signin-note').hidden").catch(() => false))) await sleep(50);
+      await sleep(300);
+      return [...opened];
+    };
+    const problems = [];
+    for (const typed of ['acme', 'acme.evil.example', 'acme@evil.example', 'acme/..//evil.example', `https://acme.localhost:${port}/admin`, 'ACME.evil.example:443/x']) {
+      const went = await pressGo(typed);
+      if (went.some((u) => !inBase(u))) problems.push(`${typed}: left the base domain for ${went.join(', ')}`);
+      if (went.length !== 1 || went[0] !== acmeLogin) problems.push(`${typed}: opened ${went.join(', ') || 'nothing'}, not ${acmeLogin} alone`);
+    }
+    for (const typed of ['evil.example', 'https://evil.example', '//evil.example', 'nope@acme']) {
+      const went = await pressGo(typed);
+      if (went.length) problems.push(`${typed}: opened ${went.join(', ')}, not nothing`);
+    }
+    assert.deepEqual(problems, [], 'Go opens only the looked-up environment\'s own sign-in');
+    n += 1;
+  } finally {
+    if (browser) {
+      const done = new Promise((r) => browser.child.once('exit', r));
+      browser.child.kill('SIGTERM'); // this browser only
+      await Promise.race([done, sleep(5000)]);
+      try { fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* a browser still closing may hold its profile a moment longer: the folder is left, not a failure */ }
+    }
+    await new Promise((resolve) => { if (child.exitCode !== null) return resolve(); child.once('exit', resolve); child.kill('SIGTERM'); });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
 
 console.log(`check-product-pages: ${n} OK (${files.join(', ')})`);

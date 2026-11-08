@@ -953,7 +953,7 @@ try {
     assert.equal((await call(server, 'admin', 'DELETE', '/api/host/environments/gamma', { cookie })).status, 200, 'gamma goes again, so the later lists are as they were');
   });
 
-  await liveTest('live: an environment refused at startup is skipped, answers 503, and a good restore brings it back', async () => {
+  await liveTest('live: an environment refused at startup is skipped, answers 503, is not found by the product page\'s lookup, and a good restore brings it back', async () => {
     await server.stop();
     const appFile = path.join(data, 'environments', 'beta', 'app.json');
     fs.writeFileSync(appFile, JSON.stringify({ ...readJson(appFile), version: 2, migrations: [{ id: 'names-from-the-future', at: '', moved: [] }] }));
@@ -967,6 +967,10 @@ try {
       assert.ok(!/acme|bravo|beta/i.test(listed.text), `${host || 'the product host'} names an environment`);
     }
     assert.ok(!('environments' in (await call(server, '', 'GET', '/api/product')).json), 'GET /api/product has no environments');
+    // The product page's address lookup: a refused environment cannot be signed in to, so it is not found; the other is.
+    const lookup = async (slug) => { const r = await call(server, '', 'GET', `/api/product/environment?slug=${slug}`); return [r.status, r.json]; };
+    assert.deepEqual(await lookup('beta'), [404, { error: 'not found' }], 'the refused environment is not found by its address');
+    assert.equal((await lookup('acme'))[0], 200, 'the other environment is found');
     const page = await call(server, 'beta', 'GET', '/', { accept: 'text/html' });
     assert.equal(page.status, 503);
     assert.match(page.headers['content-type'], /text\/html/);
@@ -986,6 +990,7 @@ try {
     const after = await call(server, 'admin', 'GET', '/api/host/environments', { cookie });
     assert.equal(after.json.environments.find((e) => e.slug === 'beta').refused, null);
     assert.equal((await call(server, 'beta', 'GET', '/api/me')).status, 401, 'opens again, without a restart');
+    assert.equal((await lookup('beta'))[0], 200, 'and is found by its address again');
   });
 
   await liveTest('live: restoring a backup made before names-spaces migrates it, and it reads back through the new routes', async () => {
