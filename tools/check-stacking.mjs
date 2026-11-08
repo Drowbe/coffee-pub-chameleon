@@ -18,6 +18,7 @@
 //   9. A phone (390 px): no stack is drawn (one view at a time, no divider, no collapse, no stack entries), the stack is
 //      kept in what is remembered, and it is drawn again when the window is wide.
 //  10. A short canvas collapses the lowest section by itself and opens it again when the height returns.
+//  11. Unstack all, in the Show tab of Set up, puts every module of every stack in a column of its own.
 // It cannot check a real tablet's touch, a screen reader, or a call (no LiveKit here).
 // Usage: node tools/check-stacking.mjs [--mode=light|dark]. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
@@ -94,7 +95,9 @@ async function main() {
         await sleep(450);
         return drawn;
       };
-      const openFromLayoutMenu = async (name) => { await tab.eval(`document.getElementById('modules-toggle').click()`); await sleep(350); await pick(name); await closeMenus(); await sleep(400); };
+      // The Show tab of Set up (the modules' switches, Arrange): opened from the top bar's Set up, closed with Escape.
+      const showTab = async () => { await tab.eval(`document.getElementById('setup').click()`); await tab.waitFor('#setup-show .host-menu-item'); await sleep(300); };
+      const openFromLayoutMenu = async (name) => { await showTab(); await pick(name); await closeMenus(); await sleep(400); };
       // Enter the trip with a remembered layout of these modules, docked (Panel Mode).
       const enter = async (open) => {
         await driveScreen(tab, { id: 'storage', as: who, url: '/healthz', wait: 'body' }, S.base, S.cookies, S.ctx);
@@ -306,8 +309,17 @@ async function main() {
         await size(1280, 900);
         s = await state();
         expect(s.groups.includes('Stacked: Places, Polls, Research'), `${L} back at 1280 the stack is not drawn again: ${JSON.stringify(s.groups)}`);
+
+        // Unstack all (the Show tab's Arrange): every module in a column of its own; past the limit the last one waits, floating.
+        await showTab();
+        expect((await menuItems()).some((x) => x.text === 'Unstack all' && !x.off), `${L} Arrange has no Unstack all while there is a stack`);
+        await pick('Unstack all');
+        s = await state();
+        expect(!s.groups.length && !s.docked.some((d) => d.stacked) && s.floats.includes('research') && /too narrow for another column/.test(s.said), `${L} Unstack all: ${JSON.stringify({ groups: s.groups, floats: s.floats, said: s.said })}`);
+        expect((await menuItems()).some((x) => x.text === 'Unstack all' && x.off), `${L} Unstack all is still offered with no stack left`);
+        await closeMenus();
         if (errors.length) failures.push(`${L} the page threw: ${errors.slice(0, 3).join(' | ')}`);
-        say(`${mode}: stacked by menu and drag, divider 8 px within 156 px by pointer and keys, collapse and the last one open, a fourth refused, one column of the limit, out by the drag, reload, close to one, composites refused, short canvas, phone`);
+        say(`${mode}: stacked by menu and drag, divider 8 px within 156 px by pointer and keys, collapse and the last one open, a fourth refused, one column of the limit, out by the drag, reload, close to one, composites refused, short canvas, phone, Unstack all`);
       } finally {
         tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== listen);
         await tab.close();
