@@ -3559,6 +3559,33 @@ a.crumb-here:hover {
   gap: 6px;
 }
 
+/* An ask on its way (chat-input.js, askNow): the question as sent, a quiet waiting line under it. A failed one keeps the
+   words, says why, and offers Send again. */
+.chat-pending-line {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-12);
+}
+
+.chat-failed-body p {
+  margin: 0;
+}
+
+.chat-failed-line {
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.chat-failed-why {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.chat-failed-body .btn {
+  margin-top: var(--space-2);
+}
+
 .chat-session-divider {
   display: flex;
   align-items: center;

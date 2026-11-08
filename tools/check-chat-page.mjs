@@ -79,8 +79,10 @@ test('one store: no local echo, no AI thread load, no second public post (no dup
     assert.ok(!/reflectCommand|addAiTurn|shareMode|threadId/.test(src), `${file}: the local echo and the share mode are gone`);
   }
   const run = fnBody(chat.replace(/^ {2}/gm, ''), 'async function runAi(question) {');
-  assert.ok(!/share/.test(run.replace(/\/\/.*$/gm, '')), 'POST .../ai is not sent share');
-  assert.match(run, /if \(reply\.question\) addStored\(reply\.question\);\n\s*if \(reply\.message\) addStored\(reply\.message\);/, 'the stored question and answer are drawn from the reply');
+  const ask = fnBody(chat.replace(/^ {2}/gm, ''), 'function askNow(text, refs) {');
+  assert.ok(!/share/.test((run + ask).replace(/\/\/.*$/gm, '')), 'POST .../ai is not sent share');
+  assert.match(ask, /const shown = \(m\) => \(m && addStored\(m\)/, 'the stored question and answer are drawn from the reply');
+  assert.match(ask, /shown\(reply\.question\)[\s\S]*shown\(reply\.message\)/, 'the question, then the answer');
   const echo = fnBody(chat.replace(/^ {2}/gm, ''), 'function echo(parsed, chosen, reply) {');
   assert.match(echo, /if \(reply && reply\.message\) \{ addStored\(reply\.message\); return; \}/, 'a command\'s echo is the stored message the server returned');
   assert.match(echo, /\{ local: true \}/, 'a guest\'s echo (no message) stays on the page only');
@@ -111,6 +113,14 @@ test('the badge: the author of a stored message flips it with PATCH, both ways; 
   const frame = fnBody(space, 'function frameMessage(');
   assert.match(frame, /const done = await setMessageVisibility\(entry, next\);\n\s*if \(!done\) return;/, 'the badge repaints only once the server took it');
   assert.match(frame, /label: next === 'public' \? 'Make public' : 'Make private'/);
+  // The mark is an icon, never a word and never a lock: one person private, three people public and shared, each with a
+  // tooltip and a label in plain words.
+  assert.match(frame, /icon: next === 'public' \? 'users' : 'user',/, 'Make public shows three people, Make private one');
+  assert.match(frame, /fa-solid \$\{said === 'private' \? 'fa-user' : 'fa-users'\} fa-fw/, 'one person private, three people public and shared');
+  assert.match(frame, /const words = said === 'private' \? 'Only you' : said === 'shared' \? 'Shared with everyone' : 'Everyone';/);
+  assert.match(frame, /vis\.dataset\.tip = words;\n\s*vis\.dataset\.mark = said;\n\s*vis\.setAttribute\('aria-label', words\);/, 'tooltip and aria-label say it');
+  assert.ok(!/vis\.textContent/.test(frame) && !/lock/.test(frame), 'no word in the header, no lock');
+  assert.ok(!/fa-(user-)?lock|'lock'/.test(chat) && !/fa-(user-)?lock|'lock'/.test(space.slice(space.indexOf('function messageEl('), space.indexOf('function placeMessage('))), 'no lock for private in Chat');
 });
 
 test('chat-visibility beside chat-delete: made public, drawn by its time and counted unread; made private, gone', () => {

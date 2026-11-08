@@ -4039,7 +4039,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   line-height: 16px;
 }
 
-/* "private", "public" or "shared": a word, a button for its author. */
+/* Private (one person) or public and shared (three people): an icon, a button for its author. */
 .message-vis {
   padding: var(--space-0) var(--space-1);
   border: 0;
