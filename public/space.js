@@ -1100,8 +1100,6 @@ nav.register({ ...SPACE_TOOL, id: 'popout', order: 12, icon: 'up-right-from-squa
 function registerWordTools() {
   nameModuleChooser();
   if (nav.get('module-chooser')) nav.register({ ...nav.get('module-chooser'), label: word('module', { many: true, cap: true }) });
-  // The Layout button reads the environment's layout verb (registered with Set up, further down).
-  if (nav.get('modules-toggle')) nav.register({ ...nav.get('modules-toggle'), label: verb('layout') });
   nav.register({ ...SPACE_TOOL, id: 'recall-button', order: 51, icon: 'people-arrows', label: 'Pull participants back', title: `Give everyone in a Private Conversation from this ${word('space')} a 10 second warning, then pull them back`, labelled: true, workspace: 'every', visible: () => recallWanted(), onClick: recallParticipants });
   // Leave is in the space bar only where the bar is the phone's tab bar (plan-one-bar.md, step 5 and decision 3); wider,
   // it is the last entry of the top bar's space switcher (brand.js, through app:enter-space { action: 'leave' } below).
@@ -2500,7 +2498,7 @@ nav.register({ id: 'aside-rejoin', bar: 'primary', zone: 'right', group: 'aside'
 // in order, and leaves the mode; Cancel and Escape leave it and drop the edits, asking "Discard your changes?" first
 // when something was edited; a click outside does nothing. A member has no Set up. /?setup=<id>#<tab> opens it from an
 // address (openSetupFor, step 6), as do the space card's Set up link on Home and Manage's Edit link.
-const spaceSetup = createSpaceSetup({ api, word, verb, icons: getIcons, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml, layoutVerb: () => verb('layout'), renderModuleSettings });
+const spaceSetup = createSpaceSetup({ tabOverflow, openMenu: openHostMenu, api, word, verb, icons: getIcons, switchListHtml, wireSwitchList, opensWithSummary, escapeHtml, layoutVerb: () => verb('layout'), renderModuleSettings });
 let settingUp = false;
 const setupNameInput = document.createElement('input');
 setupNameInput.type = 'text';
@@ -2511,9 +2509,13 @@ setupNameInput.autocomplete = 'off';
 setupNameInput.setAttribute('aria-label', 'Name');
 const isModeratorHere = () => Boolean(currentSpace && me?.spaces?.[currentSpace.id]?.permissions?.moderator);
 const canSetUp = () => Boolean(currentSpace) && !inAside() && !viewingHome && !guestToken && Boolean(me) && me.role !== 'guest' && (hasOwnerRights(me) || isModeratorHere());
-const setupShown = () => canSetUp(); // shown while open too, pressed (nav.setActive in enterSetup and leaveSetup)
+// The Show tab (the modules' switches, Arrange, Layouts: canvas.mountMenu) is for everyone in a space wider than a phone, a
+// guest too; so Set up's button is, and a person who may not set up has that one tab and Close.
+const canShowTab = () => Boolean(currentSpace) && !viewingHome && !phoneWidth();
+const canOpenSetup = () => canSetUp() || canShowTab();
+const setupShown = () => canOpenSetup(); // shown while open too, pressed (nav.setActive in enterSetup and leaveSetup)
 // The panel's tabs in the address: the fragment it opened with, and the tab shown while it is open; gone with it.
-const SETUP_TAB_HASH = /^#(space|members|phases|opens-with|modules)$/;
+const SETUP_TAB_HASH = /^#(show|space|members|phases|opens-with|modules)$/;
 function setupTabInAddress(tab) {
   const keep = location.pathname + location.search;
   if (tab) history.replaceState(history.state, '', `${keep}#${tab}`);
@@ -2536,7 +2538,7 @@ function placeSetupSide() {
 }
 // `tab`: the tab asked for (an address's fragment, or /?setup=<id>#<tab>'s); the address's own fragment when not given.
 function enterSetup({ tab = location.hash } = {}) {
-  if (!canSetUp() || settingUp) return;
+  if (!canOpenSetup() || settingUp) return;
   const space = phaseSpaceRecord() || currentSpace;
   settingUp = true;
   document.body.classList.add('setting-up');
@@ -2545,8 +2547,9 @@ function enterSetup({ tab = location.hash } = {}) {
   nav.setActive('setup', true);
   const opened = spaceSetup.open({
     space,
-    owner: hasOwnerRights(me),
-    moderator: isModeratorHere(),
+    owner: canSetUp() && hasOwnerRights(me),
+    moderator: canSetUp() && isModeratorHere(),
+    show: canShowTab() ? (holder) => canvas.mountMenu(holder) : null,
     phases: templatePhases, // drawn inline in the phases tab, a draft saved with Save (the chip's sheet is its own)
     rule: phaseRule(),
     today: phaseToday(),
@@ -2650,22 +2653,14 @@ function saySetup(text) {
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !settingUp || event.defaultPrevented) return;
   if (event.target.closest?.('#space-setup')) return;
-  if (document.querySelector('dialog[open], .host-menu, .module-chooser-list:not([hidden]), .who-here-list:not([hidden])')) return;
+  if (document.querySelector('dialog[open], .host-menu:not(.host-menu-inline), .module-chooser-list:not([hidden]), .who-here-list:not([hidden])')) return;
   event.preventDefault();
   spaceSetup.cancel();
 });
 // Set up, wider than a phone, sits after your picture and before the window controls (`place: 'end'`, in their group
 // 'space', so no divider between them; Thomas, 2026-10-13: "Settings should go right before the window controls"). On a
 // phone `place` is not read and it keeps its place in the menu (groupOrder 85, before the bell's 90 and you 999).
-nav.register({ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', icon: 'sliders', label: 'Set up', toggleable: true, active: false, visible: setupShown, onClick: () => (settingUp ? spaceSetup.cancel() : enterSetup()) });
-// Layout (the environment's `layout` verb): an icon button right next to the bell, the same look and size as Set up
-// (Thomas, 2026-10-13: no label, no caret; "the layout button should be next to the notification bell"), that opens the
-// Layout menu (canvas.toggleMenu; the page's shared menu). A Workspace tool drawn among the bar's own (`place: 'own'`,
-// in the bell's group, so no divider between them); never folds; not while setting up, and not on a phone, where the
-// tab bar is the list. The layout tabs are in the left zone (further down, `layout-tabs`).
-nav.register({ bar: 'secondary', zone: 'right', group: 'notices', groupOrder: 90, order: 89, fold: false, icon: 'object-group', label: verb('layout'), visible: () => !phoneWidth() && !settingUp, onClick: (event) => canvas.toggleMenu(event.currentTarget), workspace: 'only', place: 'own', id: 'modules-toggle' });
-nav.elementOf('modules-toggle')?.setAttribute('aria-haspopup', 'menu');
-nav.elementOf('modules-toggle')?.setAttribute('aria-expanded', 'false');
+nav.register({ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', icon: 'sliders', label: 'Set up', toggleable: true, active: false, visible: setupShown, onClick: () => (settingUp ? spaceSetup.cancel() : enterSetup({ tab: '#show' })) });
 // --- end Set up ---
 
 // --- the Layout menu's Layouts section (plan-saved-layouts.md, step 3; Thomas, 2026-10-13: in the shared menu) --------
@@ -2801,7 +2796,7 @@ function layoutRowItems(layoutId) {
   const layout = findLayout(layoutId);
   if (!layout) return [];
   const shared = layoutList.shared.includes(layout);
-  const trigger = () => nav.elementOf('modules-toggle');
+  const trigger = () => nav.elementOf('setup');
   const entries = [];
   if (mayFavorite()) {
     entries.push(isFavorite(layoutId)
@@ -2932,7 +2927,7 @@ function openLayoutSheet({ title, name = '', share = null, emptyName = '', onSav
   sharedRow.hidden = share === null;
   sharedSwitch.checked = Boolean(share);
   wireSwitchList(form); // Enter flips the share switch, as Space does
-  const opener = nav.elementOf('modules-toggle');
+  const opener = nav.elementOf('setup');
   let failed = false; // the last save was refused (sheet.error)
   const bar = actionBar({
     submit: true,
@@ -3114,7 +3109,7 @@ function openIconSheet({ title, current = '', defaultIcon = '', onSave }) {
     if (search.value) { search.value = ''; search.dispatchEvent(new Event('input')); }
     pick(grid.querySelector(`[data-icon-choice="${CSS.escape(defaultIcon)}"]`), true);
   });
-  const opener = nav.elementOf('modules-toggle');
+  const opener = nav.elementOf('setup');
   let failed = false;
   const bar = actionBar({
     submit: true,
@@ -4954,7 +4949,7 @@ canvas.registerBuiltin({
       chatViews?.seen();
       // Into the message box when it opens, but not when it only moves (docked, floating, snapped), and not while the
       // module chooser's list is open: the switch that turned it on keeps the keyboard.
-      if ((!moving || mode === 'window') && $('modules-toggle')?.getAttribute('aria-expanded') !== 'true') $('chat-input').focus();
+      if ((!moving || mode === 'window') && !$('space-setup')?.contains(document.activeElement)) $('chat-input').focus();
       $('messages').scrollTop = $('messages').scrollHeight;
     }
   },
@@ -5551,7 +5546,7 @@ function updateCrumb() {
   const last = segs[segs.length - 1] || null;
   paintSpaceSwitcher(last, last ? iconOf(last) : spaceCrumbIcon(null));
   setInSpace(oneBar());
-  if (settingUp && !canSetUp()) spaceSetup.cancel(); // home over the space, an aside, a space left: Set up ends
+  if (settingUp && !canOpenSetup()) spaceSetup.cancel(); // home over the space, an aside, a space left: Set up ends
   placeSetupName(); // while setting up, the current segment is the name's input
   nav.draw('secondary');
   updatePhaseChip(); // the strip follows the breadcrumb: shown in a space, gone on home, in an aside and for a guest
