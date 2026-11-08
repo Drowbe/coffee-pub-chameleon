@@ -173,9 +173,11 @@ body.landing { margin: 0; background: var(--l-bg); color: var(--l-text); font: 1
 .signin { display: grid; gap: 16px; margin: 4px var(--l-side) 0; padding: 20px; border: 1px solid var(--l-line); border-radius: var(--radius-large); background: var(--l-surface); }
 .signin h2 { font-size: 22px; }
 .signin-text p { margin-top: 4px; color: var(--l-dim); }
-.signin-form { display: grid; gap: 12px; }
-.signin-creds { display: grid; gap: 12px; }
-.signin-creds[hidden] { display: none; }
+.signin-form { display: grid; gap: 8px; }
+.signin-form label { font-weight: 600; font-size: 15px; }
+.signin-address { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.signin-address input { flex: 1 1 120px; min-width: 0; }
+.signin-domain { flex: none; color: var(--l-dim); }
 .signin .hint { margin-top: 0; }
 .signin + .band.alt { margin-top: 48px; } /* a coloured section never touches the card */
 
@@ -323,7 +325,6 @@ body.landing { margin: 0; background: var(--l-bg); color: var(--l-text); font: 1
   .hero { padding-top: 48px; padding-bottom: 48px; }
   .signin { grid-template-columns: 1fr 1.6fr; align-items: center; padding: 24px 32px; }
   .signin-form { grid-template-columns: 1fr; }
-  .signin-creds { grid-template-columns: 1fr 1fr auto; }
   .signin .hint { grid-column: 1 / -1; }
   .modules { grid-template-columns: repeat(2, 1fr); }
   .modules li:last-child:nth-child(odd) { grid-column: 1 / -1; } /* an odd one out takes the row, not half of it */

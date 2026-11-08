@@ -10,8 +10,12 @@
  *   - the same requests pass the rule from their own origin (also behind a proxy, X-Forwarded-*), with
  *     Sec-Fetch-Site: none, with neither header (old browsers, curl), with a Bearer token, and with no cookie at all
  *     (webhooks); GET is never refused;
- *   - POST /login is exempt: the landing page at the bare base domain posts its sign-in form there across origins;
- *   - the rule runs before any body parser, and /login is the only exemption;
+ *   - no path is exempt: the old cross-site sign-in form post (POST /login) is gone, so it is refused with a cookie and
+ *     404 without one, never a session, while POST /api/login still signs in from its own origin;
+ *   - nobody lists the environments: GET /api/product/environments answers 404 at the product host (with and without
+ *     PRODUCT_DOMAIN), the console and an environment's address, and GET /api/product has no `environments`
+ *     (plan-product-site.md, slice 0);
+ *   - the rule runs before any body parser;
  *   - the domains (plan-domains.md): with one domain the product pages stay on the bare base; with PRODUCT_DOMAIN they
  *     are served at that host, sign-up there passes the rule and answers the new environment's /login?login=, the bare
  *     base redirects (302) there keeping path and query, and the console stays at admin.<base>; without BASE_DOMAIN
@@ -41,15 +45,17 @@ const test = async (name, fn) => {
   }
 };
 
-await test('the rule runs for every write before any body is parsed, and only POST /login is exempt', () => {
+await test('the rule runs for every write before any body is parsed, and no path is exempt', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
-  const mount = src.indexOf('app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEMPT.has(req.path) ? sameOriginOnly(req, res, next) : next()));');
+  const mount = src.indexOf('app.use((req, res, next) => (WRITE_METHODS.has(req.method) ? sameOriginOnly(req, res, next) : next()));');
   assert.ok(mount > 0, 'sameOriginOnly is mounted for every write');
   const firstParser = src.search(/app\.use\(express\.(json|text|raw|urlencoded)\(/);
   assert.ok(mount < firstParser, 'before the first body parser');
   assert.ok(mount < src.indexOf('if (BASE_DOMAIN) {\n  app.use((req, res, next) => {'), 'before the door, so the host console is covered too');
   assert.match(src, /const WRITE_METHODS = new Set\(\['POST', 'PUT', 'PATCH', 'DELETE'\]\);/);
-  assert.match(src, /const CROSS_ORIGIN_EXEMPT = new Set\(\['\/login'\]\);/);
+  assert.ok(!/CROSS_ORIGIN_EXEMPT/.test(src), 'no exemption from the rule');
+  assert.ok(!/app\.post\(\s*'\/login'/.test(src), 'no sign-in form post route');
+  assert.ok(!/\/api\/product\/environments'/.test(src), 'no list of environments is registered');
   assert.ok(src.includes(`error: '${SENTENCE}'`));
 });
 
@@ -188,13 +194,32 @@ try {
     assert.equal(console.status, 200, console.text);
   });
 
-  await test('POST /login is exempt: the landing page\'s sign-in form posts there from the bare base domain, cookie or not', async () => {
-    for (const cookie of [undefined, ownerCookie]) {
-      const r = await call('POST', 'aaa', '/login', { headers: { origin: originOf(''), 'sec-fetch-site': 'same-site', ...(cookie ? { cookie } : {}) }, body: 'login=ownaaa&password=ownerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
-      assert.equal(r.status, 303, r.text);
-      assert.equal(r.location, '/');
-      assert.ok(r.cookies.some((c) => c.startsWith('app_session=')), 'signed in');
+  await test('POST /login is gone and not exempt: from the bare base domain it is refused with a cookie and 404 without one, never a session; POST /api/login still signs in', async () => {
+    for (const headers of [{ origin: originOf(''), 'sec-fetch-site': 'same-site' }, { origin: originOf(''), 'sec-fetch-site': 'cross-site' }, { origin: originOf('aaa'), 'sec-fetch-site': 'same-origin' }]) {
+      for (const cookie of [undefined, ownerCookie]) {
+        const r = await call('POST', 'aaa', '/login', { headers: { ...headers, ...(cookie ? { cookie } : {}) }, body: 'login=ownaaa&password=ownerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
+        const crossSite = headers['sec-fetch-site'] !== 'same-origin';
+        if (cookie && crossSite) assert.ok(refused(r), `${JSON.stringify(headers)} with a cookie -> ${r.status} ${r.text.slice(0, 120)}`);
+        else assert.equal(r.status, 404, `${JSON.stringify(headers)} ${cookie ? 'with' : 'without'} a cookie -> ${r.status} ${r.text.slice(0, 120)}`);
+        assert.ok(!r.cookies.some((c) => c.startsWith('app_session=')), 'no session');
+      }
     }
+    const api = await call('POST', 'aaa', '/api/login', { headers: { origin: originOf('aaa'), 'sec-fetch-site': 'same-origin' }, body: { login: 'ownaaa', password: 'ownerpass1234' } });
+    assert.equal(api.status, 200, api.text);
+    assert.ok(api.cookies.some((c) => c.startsWith('app_session=')), 'POST /api/login signs in');
+  });
+  await test('no list of environments: GET /api/product/environments is 404 at the bare base (the product host), the console and an environment; /api/product has no environments; one environment is still found by its address', async () => {
+    for (const sub of ['', 'admin', 'aaa']) {
+      const r = await call('GET', sub, '/api/product/environments');
+      assert.equal(r.status, 404, `${sub || 'bare'}: ${r.status} ${r.text.slice(0, 120)}`);
+      assert.ok(!r.text.includes('Env aaa') && !r.text.includes('Env bbb'), `${sub || 'bare'} names an environment`);
+    }
+    const info = await call('GET', '', '/api/product');
+    assert.equal(info.status, 200);
+    assert.ok(!('environments' in info.json), 'GET /api/product has no environments');
+    assert.ok(!/Env aaa|Env bbb/.test(info.text), 'GET /api/product names no environment');
+    assert.deepEqual((await call('GET', '', '/api/product/environment?slug=aaa')).json, { slug: 'aaa', name: 'Env aaa' });
+    assert.equal((await call('GET', '', '/api/product/environment?slug=nope')).status, 404);
   });
   await test('a module frame page inlines the shared styles (system.css) and the SDK styles (host.css), unless it opts out', async () => {
     const sys = fs.readFileSync(new URL('../public/sdk/system.css', import.meta.url), 'utf8');
@@ -339,11 +364,11 @@ try {
       assert.equal(front.status, 200);
       assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
       assert.equal((await at('GET', PRODUCT, '/travel', { headers: { accept: 'text/html' } })).text, fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'));
-      for (const p of ['/landing.js', '/landing.css', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2', '/api/product/environments']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
+      for (const p of ['/landing.js', '/landing.css', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
       const info = (await at('GET', PRODUCT, '/api/product')).json;
       assert.deepEqual([info.baseDomain, info.productDomain, info.signup], [BASE, PRODUCT, true]);
       assert.deepEqual((await at('GET', PRODUCT, '/api/product/address?slug=fresh')).json, { slug: 'fresh', free: true, reason: null });
-      for (const p of ['/app.js', '/login', '/api/me', '/admin']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
+      for (const p of ['/app.js', '/login', '/api/me', '/admin', '/api/product/environments']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
       // The design system pages and what they import are open; the app is not.
       for (const p of ['/design-system/', '/design-system/prototype.html', '/design-system/prototype.js', '/design-system/prototype.css', '/design-system/themes/calming-teal.css', '/design-system/proposed.html', '/design-system/legacy/index.html', '/design-system/legacy/', '/design-system/legacy/inventory/', '/design-system/legacy/inventory/img/now-coffee-planner-days-1280-dark.png', '/design-system/legacy/system-v1/proposed.html', '/module-frame.js', '/host-menu.js', '/tooltip.js', '/sdk/system.css', '/destination.css', '/diag.css', '/fonts/fraunces/latin.woff2', '/fa/css/all.min.css']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
       for (const p of ['/admin.html', '/api/modules', '/api/me', '/space.html', '/design-system/../server/index.js', '/design-system/nope.html', '/design-system/legacy/system-v1/', '/design-system/nope/']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
@@ -402,11 +427,24 @@ try {
       assert.equal(reserved.status, 400, reserved.text);
       assert.equal(reserved.json.error, '"livekit" is reserved. Pick another.');
     });
-    await test('PRODUCT_DOMAIN: POST /login from the product host\'s origin (another site) is still exempt and signs in', async () => {
-      const r = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site', cookie: 'x=1' }, body: 'login=maker&password=makerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' });
-      assert.equal(r.status, 303, r.text);
-      assert.equal(r.location, '/');
-      assert.ok(r.cookies.some((c) => c.startsWith('app_session=')), 'signed in');
+    await test('PRODUCT_DOMAIN: POST /login from the product host\'s origin (another site) is refused with a cookie and 404 without one, never a session', async () => {
+      const form = { body: 'login=maker&password=makerpass1234&next=%2F', type: 'application/x-www-form-urlencoded' };
+      const withCookie = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site', cookie: 'x=1' }, ...form });
+      assert.ok(refused(withCookie), `${withCookie.status} ${withCookie.text}`);
+      const without = await at('POST', `newone.${BASE}`, '/login', { headers: { origin: productOrigin, 'sec-fetch-site': 'cross-site' }, ...form });
+      assert.equal(without.status, 404, without.text);
+      for (const r of [withCookie, without]) assert.ok(!r.cookies.some((c) => c.startsWith('app_session=')), 'no session');
+    });
+    await test('PRODUCT_DOMAIN: GET /api/product/environments is 404 at the product host, the console and an environment, and only redirected at the bare base; /api/product has no environments', async () => {
+      for (const h of [PRODUCT, `admin.${BASE}`, `newone.${BASE}`]) {
+        const r = await at('GET', h, '/api/product/environments');
+        assert.equal(r.status, 404, `${h}: ${r.status} ${r.text.slice(0, 120)}`);
+        assert.ok(!r.text.includes('New one'), `${h} names an environment`);
+      }
+      assert.equal((await at('GET', BASE, '/api/product/environments')).status, 302, 'the bare base only redirects to the product host');
+      const info = (await at('GET', PRODUCT, '/api/product')).json;
+      assert.ok(!('environments' in info), 'GET /api/product has no environments');
+      assert.deepEqual((await at('GET', PRODUCT, '/api/product/environment?slug=newone')).json, { slug: 'newone', name: 'New one' }, 'one typed address is still found');
     });
   } finally {
     await new Promise((resolve) => { if (srv.exitCode !== null) return resolve(); srv.once('exit', resolve); srv.kill('SIGTERM'); });

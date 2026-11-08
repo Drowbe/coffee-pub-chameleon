@@ -51,7 +51,7 @@ ${src.slice(0, end)}
 document.addEventListener('DOMContentLoaded', () => {
 pageParts();
 for (const el of document.querySelectorAll('[data-example-host]')) el.textContent = 'yourname.example.com';
-for (const el of document.querySelectorAll('[data-signup-domain]')) el.textContent = '.example.com';
+for (const el of document.querySelectorAll('[data-signup-domain], [data-signin-domain]')) el.textContent = '.example.com';
 // the use cards link to the use pages this folder has, as the real page does for the pages the host offers
 for (const card of document.querySelectorAll('.aud[data-page]')) {
   const file = ${JSON.stringify(pageFiles.filter((f) => f !== 'landing.html'))}.find((f) => '/' + f.replace('.html', '') === card.dataset.page);
@@ -77,7 +77,6 @@ for (const form of [signup, document.getElementById('signin-form')].filter(Boole
   note.textContent = 'This is a preview. The form does nothing here.';
   form.after(note);
 }
-document.getElementById('signin-creds')?.removeAttribute('hidden');
 for (const a of document.querySelectorAll('[data-contact-link]')) a.href = '#start';
 });
 `;

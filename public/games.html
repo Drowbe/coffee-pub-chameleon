@@ -137,25 +137,19 @@
       </div>
     </section>
 
-    <!-- Sign in: the host knows where a person has been (the env_hint cookie an environment leaves on the parent domain), never who they are -->
+    <!-- Sign in: a person types their environment's address and Go opens that environment's own sign-in page. The page
+         lists no environments and takes no password (plan-product-site.md, decisions 1 to 3). -->
     <section id="signin" class="signin" aria-labelledby="signin-title">
       <div class="signin-text">
         <h2 id="signin-title">Sign in</h2>
-        <p id="signin-lede">Each environment has its own sign-in. Which one is yours?</p>
+        <p id="signin-lede">Each environment has its own sign-in page. Type yours to go there.</p>
       </div>
-      <form class="signin-form" id="signin-form" method="post" action="#signin">
-        <label for="signin-env" class="sr-only">Environment</label>
-        <select id="signin-env" name="environment" required><option value="">Choose an environment</option></select>
-        <div class="signin-creds" id="signin-creds" hidden>
-          <label for="signin-login" class="sr-only">Login</label>
-          <input id="signin-login" name="login" type="text" placeholder="Login" autocapitalize="off" autocomplete="username" required>
-          <label for="signin-password" class="sr-only">Password</label>
-          <input id="signin-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-          <input type="hidden" name="next" value="/">
-          <button class="btn btn-go" type="submit">Sign in</button>
-        </div>
+      <form class="signin-form" id="signin-form" action="#signin" novalidate>
+        <label for="signin-env">Your environment's address</label>
+        <span class="signin-address"><input id="signin-env" name="environment" type="text" maxlength="200" placeholder="yourname" autocapitalize="off" autocomplete="off" spellcheck="false" required><span class="signin-domain" data-signin-domain></span><button class="btn btn-go" type="submit" id="signin-go">Go</button></span>
       </form>
-      <p class="hint" id="signin-note" hidden></p>
+      <p class="hint" id="signin-note" role="status" hidden></p>
+      <p class="hint">Got a link from someone? Just open it; there is nothing to choose here.</p>
     </section>
 
     <section id="what" class="band" aria-labelledby="what-title">
