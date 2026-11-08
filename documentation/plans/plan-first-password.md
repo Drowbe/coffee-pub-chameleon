@@ -7,11 +7,18 @@ runs a security read with live probing; and content-manager, who documents it.
 **Status:** approved for building, 2026-11-08. Drafted the same day by the planner for slice 3a of
 [plan-product-site](plan-product-site.md) (its decision 17 and open question 2). Thomas, 2026-11-08, looking at the
 start page on the Prototype: "I like all the A options". Then, in chat, he approved Design A as written and decided the
-recovery, the password rule and the register rule (Decisions 3 to 6). Nothing is built.
+recovery, the password rule and the register rule (Decisions 3 to 6).
 
-## What it is today
+**Built, held for Thomas's merge.** Steps 1 to 4 are built on the branch `pm/first-password-server` and are not on
+main. Step 5 (documentation) is written there. Where this plan and the built code differ, the code and
+[architecture-environments](../architecture/architecture-environments.md), "The first password", are right, and the
+differences are marked below (the claim id, the set step's `login`, no `maxlength`). Not verified: the fragment through the
+real separate domains and a proxy redirect in Chromium, Firefox and Safari, the token's absence from the proxy's access
+log, and password managers offering to save the login.
 
-On `origin/main` at `1ab9ea9`. Slice 0 of the product site plan is in: `GET /api/product/environments`, `POST /login`
+## What it was before the build
+
+On `origin/main` at `1ab9ea9`, before this work (the sections that follow, up to Decisions, describe that state). Slice 0 of the product site plan is in: `GET /api/product/environments`, `POST /login`
 and `CROSS_ORIGIN_EXEMPT` are gone, and `GET /api/product/environment` already shares the 120 a minute limit
 (`addressLimiter`), so slice 3a's "limit fix-up" is done.
 
@@ -135,14 +142,17 @@ environment with no owner. Step 1 fixes it by checking the login first.
    variable only, never in storage.
 8. **The page exchanges it:** `POST /api/login/first-password` `{ token }`. The server hashes the token, finds the
    owner in this environment whose `firstPassword.hash` matches, not expired and still without a password, and **spends
-   the token at once**: the hash is removed and `firstPassword` becomes `{ claimedAt, expiresAt }`. It sets a pending
+   the token at once**: the hash is removed and `firstPassword` becomes `{ claim, claimedAt, expiresAt }`, where `claim` is a random 32-hex id for
+   this use (built; the first draft had no claim). It sets a pending
    token (the `mfa_pending` cookie, `httpOnly`, host-only, 10 minutes) with the new purpose `first-password`, naming
    this owner and this environment. It answers 200 `{ login, displayName, environmentName }`.
 9. **The person chooses a password** on the same page. A reload still works for 10 minutes, because the cookie, not the
    address, now says who it is.
-10. **The page sends** `POST /api/login/first-password/set` `{ password }`. The server reads the pending cookie
+10. **The page sends** `POST /api/login/first-password/set` `{ login, password }` (built: `login` is the one the page was
+    told by the exchange; the server refuses the step unless it is the owner of the cookie, so a page still naming an older
+    link's owner cannot set this one's password). The server reads the pending cookie
     (purpose `first-password`, this environment), checks the account is still an owner with no password and a claimed
-    `firstPassword`, checks the password rules, hashes it with `auth.hashPassword()`, stores it, removes `firstPassword`
+    `firstPassword` whose `claim` is the one in the cookie, checks the password rules, hashes it with `auth.hashPassword()`, stores it, removes `firstPassword`
     and clears the pending cookie.
 11. **Then the normal sign-in finish:** `mfaGate()`, as `POST /api/login` does. If the environment requires a second
     step for this owner, it sets the `enrol` pending token and answers `{ mfaRequired: true, enrol: true }`; the page
@@ -162,7 +172,7 @@ environment with no owner. Step 1 fixes it by checking the login first.
 
 ### What the owner's account holds before the password is set
 
-`passwordHash: null`, `linkToken: null`, `mfa: null`, `firstPassword: { hash, expiresAt }` (then `{ claimedAt,
+`passwordHash: null`, `linkToken: null`, `mfa: null`, `firstPassword: { hash, expiresAt }` (then `{ claim, claimedAt,
 expiresAt }`). With no hash, every other door is shut or no different from any new environment:
 
 | Door | Before the first password |
@@ -294,23 +304,25 @@ to the next page.
 - Not found, expired, used, empty or malformed: `limiter.fail()`, 401
   `{ error: "This link has expired or was already used. Ask whoever runs this host for a new one." }`. One answer for
   every failure.
-- Found: removes the hash (`firstPassword: { claimedAt, expiresAt }`), saves, sets the pending cookie
-  (`issuePending({ userKey, env: slug, purpose: 'first-password' })`, `setPendingCookie()`), `limiter.clear()`, 200
+- Found: removes the hash (`firstPassword: { claim, claimedAt, expiresAt }`, `claim` a random 32-hex id), saves, sets the pending cookie
+  (`issuePending({ userKey, env: slug, purpose: 'first-password', claim })`, `setPendingCookie()`), `limiter.clear()`, 200
   `{ login, displayName, environmentName }`. The pending token is not put in the body.
 
 **`POST /api/login/first-password/set`, new:**
-- Body `{ password }`. Reads the pending token from the cookie only, with `readPending(..., { env, purpose:
+- Body `{ login, password }`. Reads the pending token from the cookie only, with `readPending(..., { env, purpose:
   'first-password' })`.
-- No valid pending token, or the account is not an owner with no password and a claimed `firstPassword`: 401
-  `{ error: "Start again from your link." }`.
-- Password shorter than 8 or longer than 200 characters (Decision 5): 400 with one sentence
-  ("A password needs at least 8 characters.").
+- No valid pending token, or the account is not an owner with no password and a claimed `firstPassword` with the
+  cookie's claim, or `login` is missing, not text or not that owner's: 401 with the same sentence as every failure (built;
+  the first draft had "Start again from your link."), counted on the sign-in limit.
+- Password shorter than 8 or longer than 200 characters (Decision 5): 400 "A password needs at least 8 characters." or
+  "A password can have at most 200 characters." The password field has no `maxlength`; the page's script and the server
+  enforce the rule.
 - Otherwise `updateUser(key, { passwordHash: auth.hashPassword(password) })`, `firstPassword` removed, the pending
   cookie cleared, then `mfaGate()`: `{ mfaRequired: true, enrol: true }` with the `enrol` pending cookie, or the session
   cookie, `setEnvHint()` and `{ user: publicUser(...) }`.
 
-**The stored field** `firstPassword` on an account: `{ hash, expiresAt }` or `{ claimedAt, expiresAt }`, absent
-otherwise. `sanitizeUser()` keeps it (a 64-character hex hash or nothing, two ISO times), or a restart between sign-up
+**The stored field** `firstPassword` on an account: `{ hash, expiresAt }` or `{ claim, claimedAt, expiresAt }`, absent
+otherwise. `sanitizeUser()` keeps it (a 64-character hex hash, or a 32-character hex claim with its time, and an ISO end), or a restart between sign-up
 and the exchange drops it and locks the owner out. Never on a host admin's stand-in account. `publicUser()` never shows
 it. `USER_LEFT_OUT` in `server/environment-export.js` lists it, so the owner's export leaves it out. The host admin's
 backup keeps it, as it keeps everything; it holds only a hash.
@@ -385,15 +397,15 @@ Existing checks that change: `check-origin`'s sign-up case (it posts a password 
 guide's sign-up part and `userguide-environments.md` (what a new owner sees), the CHANGELOG, and the product site plan's
 status line for slice 3a. The host console's part of the getting-started guide.
 
-## Left to build, in order
+## The steps, and where each stands
 
-| # | Step | Agent | Needs |
-|---|---|---|---|
-| 1 | The server: sign-up without a password and with the login checked first, the token and `firstPassword`, `sanitizeUser`, `USER_LEFT_OUT`, the page route and its headers, the exchange and the set routes, the register rule (Decision 6), the checks above | server-development | Nothing; Decisions 3, 5 and 6 are made |
-| 2 | The page: `login-first-password.html` and `.js`; the password field removed from the start page's sign-up (`landing.*` now) | experience-design | Step 1 |
-| 3 | The recovery (Decision 4): the console action "New first-password link" (24 hours, single use) and its button on the console's environment | server-development, then experience-design | Step 1 |
-| 4 | Security read with live probing: every attack under Checks tried by hand against a local base-domain server, and the code read for the window's doors | quality-assurance | Steps 1 to 3 |
-| 5 | Documentation | content-manager | Step 4 |
+| # | Step | Agent | Needs | Status |
+|---|---|---|---|---|
+| 1 | The server: sign-up without a password and with the login checked first, the token and `firstPassword`, `sanitizeUser`, `USER_LEFT_OUT`, the page route and its headers, the exchange and the set routes, the register rule (Decision 6), the checks above | server-development | Nothing; Decisions 3, 5 and 6 are made | Built, with `tools/check-first-password.mjs` |
+| 2 | The page: `login-first-password.html` and `.js`; the password field removed from the start page's sign-up (`landing.*` now) | experience-design | Step 1 | Built, with `tools/check-first-password-page.mjs` |
+| 3 | The recovery (Decision 4): the console action "New first-password link" (24 hours, single use) and its button on the console's environment | server-development, then experience-design | Step 1 | Built, with `tools/check-first-password-console.mjs` |
+| 4 | Security read with live probing: every attack under Checks tried by hand against a local base-domain server, and the code read for the window's doors | quality-assurance | Steps 1 to 3 | Two independent reads done, live on throwaway servers; their fixes are built. A third short read of the last fix-up was under way when this was written |
+| 5 | Documentation | content-manager | Step 4 | Written on this branch; the merge waits for Thomas |
 
 Step 1 and step 2 can be checked on their own (step 1 by tool, step 2 live). The start page's sign-up in product site
 slice 4 waits for steps 1 and 2.
@@ -417,6 +429,17 @@ slice 4 waits for steps 1 and 2.
   across a redirect that names none, but this has not been checked here); the fragment gone from the address bar; what
   each browser's history keeps (the first address with the token may stay in history even after `replaceState`; it is
   spent by then); and the proxy's access log after a real sign-up, searched for the token. No LiveKit call is involved.
+
+## Known limits
+
+- **Leftover folders.** A folder in `DATA_DIR/environments/<slug>` with no registry entry is answered as taken (409) and
+  never read, changed or removed. The undo after a failed owner removes only the folder that sign-up itself made, and
+  again once the new environment's background work is done. The host console's create route still adopts such a folder
+  (known issue, GitHub #442).
+- **The console page sends no framing headers** (known issue, GitHub #441).
+- **The lost-tab case** is answered by the console action only; nothing sweeps an environment whose owner never arrives.
+- **Accepted as low:** the browser's navigation timing entry holds the token for the page's life (only this site's
+  scripts can read it); a lookalike environment can send its own link, and the attacker never learns the password.
 
 ## Risks
 

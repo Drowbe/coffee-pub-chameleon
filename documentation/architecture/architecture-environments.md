@@ -213,11 +213,11 @@ unchanged):
 |---|---|
 | `GET /login/first-password` | The page (`public/login-first-password.html` and `.js`). The file is reachable only at this route: `/login-first-password.html` answers 404 everywhere, like an unknown file (`ROUTE_ONLY_FILES`). It never redirects, signed in or not, because a redirect would carry the fragment on. `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. |
 | `POST /api/login/first-password` `{ token }` | The exchange. Hashes the token, finds the owner whose link matches and is not ended, and spends it. Sets the `mfa_pending` cookie (10 minutes, purpose `first-password`) bound to the owner, the environment and this claim. 200 `{ login, displayName, environmentName }`. |
-| `POST /api/login/first-password/set` `{ password }` | Reads the pending cookie only (never the body). 8 to 200 characters, enforced here (the field has no `maxlength`; the rule comes from the page's script and the server): 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
+| `POST /api/login/first-password/set` `{ login, password }` | Reads the pending cookie only for who the step is (never the body). `login` must be the login of the owner the cookie names (cleaned as a login is), so a page still naming an older link's owner cannot set this one's password; a missing, non-text or different `login` is the 401 below. The password is 8 to 200 characters, enforced here (the field has no `maxlength`; the rule comes from the page's script and the server): 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
 | `POST /api/host/environments/:slug/owners/:login/first-password` | Host admin only (on `hostRouter`). A new link for an owner with no password, valid 24 hours, single use, no-store, answering `{ url }` once. It replaces older links and any step already begun from them. 404 `no such environment` or `no owner with that login there`; 400 when the owner has a password already. |
 
 **Every failure of the two login routes** (no such token, ended, already used, a bad, missing or foreign pending cookie, a
-step from an older claim) is the same 401 `This link has expired or was already used. Ask whoever runs this host for a new
+step from an older claim, a `login` that is not the cookie's owner) is the same 401 `This link has expired or was already used. Ask whoever runs this host for a new
 one.` The environment's own sign-in limit applies to them: after the limit, 429 `too many attempts, try again in a few
 minutes`. A good use clears the count.
 
@@ -227,6 +227,12 @@ personal link and no second factor; and `POST /api/register` answers 403 `sign-u
 (`Store#awaitingFirstPassword()`), even if the environment allows self sign-up. The sign-in page says nothing about the
 wait.
 
+**Limits.** The two login routes share the environment's sign-in limit (10 failures in 15 minutes per address, then 429), as
+wrong passwords do. Sign-up has its own five tries an hour per address. The address check and the environment lookup on
+the product host (`GET /api/product/address` and `GET /api/product/environment`) share one limiter of 120 a minute per
+address (`addressLimiter`, 429 `Too many checks from this address; try again in a minute.`); the first-password routes do not
+use it.
+
 **Framing.** `/login/first-password` is in `FRAMED_HERE_PATHS` on a hosted install, so
 every variant of the path (case, trailing slash) answers with the framed-here headers. The page carries its own
 Content-Security-Policy and loads only its own script.
@@ -234,7 +240,12 @@ Content-Security-Policy and loads only its own script.
 **The page.** It reads the token from the fragment, removes it from the address at once (`history.replaceState`), and
 keeps it in memory only. A link opened in a tab that already shows the page is used too: the page listens for the
 fragment changing, takes the new token and removes it from the address and history the same way. It has one password field with **Show**, and the hint "8 to 200 characters". A reload within
-the 10 minutes still works because the cookie, not the address, says who it is.
+the 10 minutes still works because the cookie, not the address, says who it is. For that, the page keeps the owner's
+**login** (never the token) in the tab's session storage after a good exchange, so a reload can send it with the password; it
+is cleared when the step ends. The same link opened again in the tab that already used it is recognised and ignored, so the
+form stays and nothing is sent (the page keeps the spent token in memory to compare). A different new link opened in that tab is
+used in its turn, one at a time, and the page then names the owner of the last one. A fragment that is not a link's form
+(not 43 characters of base64url) is removed from the address and never sent.
 
 **The console.** `GET /api/host/environments` lists, for each environment, `awaitingFirstPassword`: the logins of its
 owners with no password (logins only, never a link, a hash or a time). The card shows **New first-password link** for
@@ -242,6 +253,14 @@ each, and shows the link it gets back once, with **Copy**: "This link works once
 
 **Other ways to set a password** are unchanged and still checked only for "not empty" on the server; only a new host admin
 is held to 8 characters.
+
+**Known limits.**
+- A leftover folder is never deleted by sign-up or by the console's list. The undo after a failed owner removes the folder
+  that request itself made, then removes it again once the environment's background work (the template, the module installs)
+  has finished, unless the address was taken again in the meantime.
+- The console's create route adopts a leftover folder, and the console page sends no framing headers (GitHub #442 and #441).
+- Nothing removes an environment whose owner never arrives. The address stays taken until a host admin makes a new link or
+  deletes the environment.
 
 **Accepted risks.** The browser's navigation timing entry holds the token for the page's lifetime; only this site's
 scripts can read it. An attacker can make a lookalike environment and send its link: the person ends up signed in to

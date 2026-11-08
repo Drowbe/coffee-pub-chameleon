@@ -171,7 +171,7 @@ Prototype's own option A (its Choices section).
     prefers it visible; the website's `#start` link lands on it either way.
 17. **The owner's password is not asked on the start page** (A). The new environment's own page asks for it first.
     **This needs a server change** (slice 3a): sign-up's answer must carry a safe way to set the first password on the
-    environment's own page. Its design is open (Open questions 2). Reason: it keeps decision 3 whole (no password on
+    environment's own page. Its design is decided and built on a branch held for Thomas's merge (Open questions 2). Reason: it keeps decision 3 whole (no password on
     the start page, not even a new one).
 18. **The other Prototype notes stand:** the words, the states, the keyboard order, Recent kept in the browser only
     (up to 5, each row removable) and the page not being a list, a password box, marketing or an account.
@@ -325,7 +325,7 @@ Each slice is built and checked on its own. Thomas names the kind of build for e
 | 1 | **Facts for the website.** The product sheet; its check; the `product` shots tier from the demo data | content-manager (the sheet), server-development (the check and the tier) | The demo loader (done) | Nothing |
 | 2 | **The website page brought up to date** from the product sheet, the shots and `/api/product` | the website session; Thomas approves the words | Slice 1 | Outside this repository |
 | 3 | **The start page on the Prototype.** The five parts above, in the chosen look. Drawn; Thomas chose the A options on 2026-11-08 (decisions 13 to 18). Anything else Thomas wants changed is a new round on the Prototype | experience-design | Slice 0 | Nothing (done, pending the lock's wording) |
-| 3a | **The first password at the environment's own page.** Sign-up no longer takes the owner's password; its answer carries a one-time way to set it on the new environment's own sign-in page (decision 17). Also the 120 a minute limit on `GET /api/product/environment` (the slice 0 fix-up, if not already there). Then QA with a security read | server-development, then quality-assurance | Open question 2 decided, with a security review of the design | Open question 2. **Blocks slice 4's sign-up part** |
+| 3a | **The first password at the environment's own page.** Sign-up no longer takes the owner's password; its answer carries a one-time way to set it on the new environment's own sign-in page (decision 17). Also the 120 a minute limit on `GET /api/product/environment` (the slice 0 fix-up, if not already there). Then QA with a security read | server-development, then quality-assurance | Open question 2 decided (it is) | **Built on the branch `pm/first-password-server`, held for Thomas's merge:** sign-up takes no password, the one-time link, the page, the console's "New first-password link", the checks, two independent security reads with their fixes. Waits for the merge; the fragment through the real domains and a proxy is not verified. **Blocks slice 4's sign-up part until merged** |
 | 4 | **The start page built and served.** `start.html` and `start.js` from the lock, to the Prototype's A options (decisions 13 to 16); `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed. Everything but sign-up can be built first; sign-up waits for slice 3a | experience-design, server-development | Slice 3 locked (done 2026-11-08, the A options); slice 0 (the typed address's limit); slice 3a for sign-up | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now; slice 3a for sign-up |
 | 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slices 2 and 4 | Nothing |
 | 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Nothing |
@@ -414,33 +414,13 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
    name; the no-compatibility rule allows a clean rename. Decision 6 leaves them as they are. *Suggestion: Thomas's
    call; if renamed, do it in slice 4, with `PRODUCT_SITE_URL` named to match.* Blocks nothing now; it would block
    slice 4's setting names if Thomas renames.
-2. **How the owner sets the first password on the environment's own page** (decision 17, slice 3a). **Open for the
-   planner and a security review; blocks slice 4's sign-up part and slice 3a.** Sign-in is security-sensitive, so
-   nothing here is chosen. Two options:
-   - **A. A one-time token in sign-up's answer.** `POST /api/product/signup` returns a random, short-lived (for example
-     15 minutes), single-use token with the redirect. The page sends the person to the environment's sign-in, and the
-     token travels in the URL fragment (`#`), which is not sent to servers or written in their logs, not in the query.
-     The sign-in page reads it, removes it from the address bar at once, and exchanges it with a POST for a "choose
-     your password" step; setting the password signs the owner in and spends the token. Only a hash of the token is
-     stored. Costs: a token in a URL still reaches browser history until removed and any script on the page; a lost
-     tab loses the chance (needs a way to get another, which the plan does not have: no email); the environment
-     starts with no usable password, and what that means for the stored account must be settled.
-   - **B. A first-sign-in setup page keyed by the owner's login.** The environment starts "unlocked for setup": its
-     sign-in page, seeing an owner with no password, shows "choose your password" for that login only, until the
-     first password is set; after that the state is gone and the normal sign-in applies. No token travels. Costs: for
-     the time between sign-up and the first visit, anyone who reaches the address and knows (or guesses) the login can
-     set the password and own the environment. The login is chosen by the owner at sign-up and the address is not
-     secret, so this is the weaker design unless the window is short or tied to the browser that signed up (for
-     example a cookie set by sign-up's answer, which cannot be set across `.com` and `.live`).
-   - **Questions for the review.** Does the token live in the fragment, a POST body or a short-lived cookie on the
-     environment's host? How long, and what happens when it expires (the owner is locked out: who can reset it, with
-     no email)? Is there one token per sign-up, and may a second sign-up with the same address or login race it? What
-     does the account hold before the first password (no hash, or a random one nobody knows)? Does the "choose your
-     password" step use today's password rules and the login limiter? Should sign-in refuse every other path until it
-     is set (admin reset, API login, invites)? Where the start page's browser-storage Recent row points before the
-     password is set. *Suggestion: A, with the token in the fragment, a 15-minute life, a stored hash only, and a
-     reset by the admin when it lapses; B only if a short window tied to the signing browser can be made safe. Thomas
-     and the review decide.*
+2. **How the owner sets the first password on the environment's own page** (decision 17, slice 3a). **Decided and built
+   on the branch `pm/first-password-server`, held for Thomas's merge** (it is not on main). Thomas approved Design A as
+   written, 2026-11-08: a one-time token in the address's fragment, 15 minutes, only its hash stored, exchanged on the
+   environment's own page for a "choose your password" step. Design B was rejected. The record of the options and the
+   decisions is [plan-first-password](plan-first-password.md); how it works is in
+   [architecture-environments](../architecture/architecture-environments.md), "The first password". Slice 4's sign-up part
+   no longer waits for the design, only for the merge.
 
 ### Undecided and out of scope
 
