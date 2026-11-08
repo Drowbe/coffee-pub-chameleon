@@ -428,6 +428,8 @@ const THEME_OPTIONAL = [
   // What a chosen thing is drawn with, apart from the accent that marks an action (public/sdk/system.css): the fill of a chosen segment or
   // day and the base of the tints under a chosen, hovered or pressed thing; the text on that fill; the ink chosen text is mixed from.
   'fill-chosen', 'text-on-chosen', 'ink-chosen',
+  // The colour of the second word of the product's lockup (the brand's coral), the accent until a theme sets it. Large text only (24px and up).
+  'ink-brand',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
@@ -447,6 +449,7 @@ const DEFAULT_THEME = {
     'surface-page': '#0e1a2b', 'surface-panel': '#182c47', 'edge-hairline': '#2a4162', 'text-primary': '#f4ecdd', 'text-muted': '#b9c3d3', 'accent-fill': '#5cc8cf', 'text-on-accent': '#0e1a2b',
     'surface-card': '#213655', 'surface-bar-top': '#13243b', 'surface-bar-nav': '#13243b',
     'wash-ink': '#4d6c99', 'fill-chosen': '#4d6c99', 'text-on-chosen': '#f4ecdd', 'ink-chosen': '#f4ecdd',
+    'ink-brand': '#ff8264',
   },
   // Light: the studio's page. Cream ground (--bg); panels, cards, menus and fields white (--surface) on a tan hairline; the bars are the
   // ground itself (the studio's header is cream with a line), so the band tan stays for a deliberate band and the module title bars.
@@ -458,6 +461,7 @@ const DEFAULT_THEME = {
     'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e',
     'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
     'wash-ink': '#cfae6c', 'fill-chosen': '#cfae6c', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'ink-brand': '#e0553c',
     'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
   },
 };

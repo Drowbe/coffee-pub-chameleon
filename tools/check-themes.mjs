@@ -158,6 +158,20 @@ await test('a theme file, a template\'s theme and the bundled templates that set
   for (const mode of ['light', 'dark']) for (const key of Object.keys(NAV)) assert.ok(DEFAULT_THEME[mode][key] == null, `the default theme ${mode} ${key}`);
 });
 
+await test('ink-brand, the colour of the lockup\'s second word: the default theme\'s coral, light and dark; no other built-in sets it (it follows the accent there); it round-trips', () => {
+  assert.equal(DEFAULT_THEME.light['ink-brand'], '#e0553c');
+  assert.equal(DEFAULT_THEME.dark['ink-brand'], '#ff8264');
+  for (const id of BUILTIN_THEME_IDS) {
+    const theme = store.themes.find((t) => t.id === id);
+    for (const mode of ['light', 'dark']) assert.ok(theme[mode]['ink-brand'] == null, `${id} ${mode} ink-brand is Auto`);
+  }
+  const out = tf.themeToFile(null);
+  for (const mode of ['light', 'dark']) assert.equal(out[mode]['ink-brand'], DEFAULT_THEME[mode]['ink-brand'], `exported ${mode}`);
+  const back = tf.readThemeFile(out, sanitize);
+  assert.deepEqual(back.dropped, []);
+  assert.equal(back.light['ink-brand'], '#e0553c');
+});
+
 await test('Store.importTheme: a new id, "Name (2)" on a clash (Strong Coffee\'s name too), author kept, nothing applied', () => {
   const before = { active: store.settings.activeThemeId || null, mode: store.settings.themeMode };
   const a = store.importTheme(tf.readThemeFile(file(), sanitize));

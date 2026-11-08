@@ -48,8 +48,8 @@ const prop = (body, name) => new RegExp(`^ {2}${name}: ([^;]+);$`, 'm').exec(bod
 
 test('the keys of a set are the colour roles: seven base ones, and the optional ones including the four status fills', () => {
   assert.deepEqual(THEME_BASE, ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent']);
-  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill', 'fill-chosen', 'text-on-chosen', 'ink-chosen']) assert.ok(THEME_OPTIONAL.includes(key), key);
-  assert.equal(THEME_OPTIONAL.length, 29);
+  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand']) assert.ok(THEME_OPTIONAL.includes(key), key);
+  assert.equal(THEME_OPTIONAL.length, 30);
   assert.equal(new Set([...THEME_BASE, ...THEME_OPTIONAL]).size, THEME_BASE.length + THEME_OPTIONAL.length);
 });
 

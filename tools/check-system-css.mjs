@@ -111,7 +111,7 @@ const DERIVED = [
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',
-  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
+  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
   'status-warn-fill', 'status-info-fill', 'status-ok-mark',
   ...['danger', 'ok', 'warn', 'info'].flatMap((k) => ['text', 'tint', 'on-fill'].map((p) => `status-${k}-${p}`)),
 ];

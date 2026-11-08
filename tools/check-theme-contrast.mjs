@@ -65,6 +65,8 @@ for (const theme of THEMES) {
       add(`text on ${name}`, text, bg, 4.5);
       add(`muted text on ${name}`, c['text-muted'], bg, 4.5);
     }
+    // The brand's coral (ink-brand) is for large text only (24px and up), so it needs the 3 to 1 of large text, on the page and on the panel.
+    if (c['ink-brand']) for (const [name, bg] of [['page', page], ['panel', panel]]) add(`brand name ink on ${name} (large text, 24px and up)`, c['ink-brand'], bg, 3);
     // What the server picks and the theme editor shows.
     for (const r of got.report) {
       if (r.id === 'text-on-page' || r.id === 'text-on-panel' || r.id === 'muted-on-page' || r.id === 'muted-on-panel') continue; // above

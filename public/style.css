@@ -224,6 +224,18 @@ a:hover {
   color: var(--accent-hover);
 }
 
+/* A link inside a heading is a title that opens something: the chosen ink (the accent until a theme sets it; Chameleon: ink), and
+   underlined on hover instead of turning the accent. */
+:is(h1, h2, h3, h4, h5, h6) > a,
+:is(h1, h2, h3, h4, h5, h6) > a:hover {
+  color: var(--ink-chosen);
+}
+
+:is(h1, h2, h3, h4, h5, h6) > a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* Two zones (plan-two-zone-nav.md): left, the branding (the logo and the environment) and then the places (Calendar,
    Map, Spaces and, in a space, its breadcrumb); right, people and you (the bell, your picture). The right zone takes
    what it needs and the left the rest, so a long breadcrumb is cut, never the bell. The middle element (#core-nav) is
@@ -565,6 +577,11 @@ a:hover {
   background: color-mix(in srgb, var(--icon-hover) 14%, transparent);
 }
 
+/* The open switcher's tint stays, the space's name in it is the chosen ink (the accent until a theme sets it; Chameleon: ink). */
+.topbar .space-switcher-button[aria-expanded="true"] .crumb-label {
+  color: var(--ink-chosen);
+}
+
 .topbar .space-switcher-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -706,7 +723,7 @@ body.host-console .topbar .nav-toggle {
 /* The product's lockup (brand.js, productLockup()): the mark and the product's name as live text, one line. The kit's
    proportions, by the text's size: the mark 1.75 times the text (56 units for 32), 0.375 of it between them (12 for 32).
    "Coffee Pub" is Fraunces 700, the rest Figtree 600; both take the theme's text colour here (the kit's coral name is for
-   large text only). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
+   large text only: a lockup marked data-size="large", 24px and up, draws the product's word in --ink-brand). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
 .product-lockup {
   display: inline-flex;
   align-items: center;
@@ -737,6 +754,10 @@ body.host-console .topbar .nav-toggle {
 .product-lockup-product {
   font-family: var(--font-ui);
   font-weight: var(--weight-strong);
+}
+
+.product-lockup[data-size="large"] .product-lockup-product {
+  color: var(--ink-brand);
 }
 
 body.host-console .topbar .brand-home .product-lockup {
@@ -904,8 +925,9 @@ body.host-console .grow {
   color: var(--header-text);
 }
 
+/* The brand is a name, not an action: hovering it does not turn it the accent (a:hover's colour). */
 .brand-home:hover {
-  color: var(--icon-hover);
+  color: var(--header-text);
 }
 
 /* The environment's name, the wordmark: larger than the nav text on purpose (Thomas, 2026-10-14: it stays larger, for
@@ -1327,7 +1349,7 @@ body.in-space .page-scroll {
 }
 
 .space-list-title i {
-  color: var(--accent);
+  color: var(--ink-chosen); /* a heading's icon is not an action: the accent until a theme sets the chosen ink (Chameleon: ink) */
 }
 
 /* Add <space> (GitHub #233): the ghost card, last in the grid, a space card's size. A plain button, so Enter and Space work.
@@ -2372,10 +2394,6 @@ button.whoami:focus-visible {
 .topbar .brand-home i,
 .topbar .crumb-here:not(.core-link) i {
   color: var(--icon, color-mix(in srgb, var(--header-text) 75%, transparent));
-}
-
-.topbar .brand-home:hover i {
-  color: var(--icon-hover);
 }
 
 .icon-link:hover {
@@ -5128,7 +5146,7 @@ html.has-background .panel.login {
 
 .module-icon {
   font-size: var(--text-22);
-  color: var(--accent);
+  color: var(--ink-chosen); /* a module's icon beside its name: the accent until a theme sets the chosen ink (Chameleon: ink) */
 }
 
 .module-asks {
@@ -6159,7 +6177,7 @@ body.chat-window {
 }
 
 .whos-around-title i {
-  color: var(--accent);
+  color: var(--ink-chosen);
 }
 
 .whos-around-list {
@@ -6246,7 +6264,7 @@ body.chat-window {
 }
 
 #dashboard .dashboard-widget-title i {
-  color: var(--accent);
+  color: var(--ink-chosen);
 }
 
 #dashboard .dashboard-widget-frame {
@@ -6614,7 +6632,7 @@ body.chat-window {
 .module-name-row { padding: 12px 0 0; border-top: 1px solid var(--border); scroll-margin-top: 80px; }
 .module-name-row:first-child { border-top: none; }
 .module-name-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.module-name-head .module-icon { color: var(--accent); }
+.module-name-head .module-icon { color: var(--ink-chosen); }
 .module-name-row .module-display { margin-top: 8px; }
 .module-shown-as { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: var(--text-14); }
 .module-shown-as .field-label { margin: 0; }
