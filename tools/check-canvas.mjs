@@ -778,6 +778,15 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/zoneLayer\.setAttribute\('aria-hidden', 'true'\);/.test(canvasJs)) fail(C, 'the drop zones are for the eye only (aria-hidden)');
   if (!/const left = dropFromStack\(id\);/.test(canvasJs.slice(canvasJs.indexOf('  function closeModule(id) {'), canvasJs.indexOf('  function closeAllModules() {')))) fail(C, 'closing a module leaves its stack (one left is an ordinary column, decision 8)');
   if (!/if \(suspended \|\| restoring\) return null;/.test(canvasJs.slice(canvasJs.indexOf('  function dropFromStack(id) {')))) fail(C, 'entering, leaving and a canvas popped out keep what is remembered (dropFromStack waits)');
+  const one = L.tidyStacks([{ id: 'a', mode: 'dock', dockW: 300, stack: 'q', at: 0 }, { id: 'b', mode: 'dock', dockW: 420, stack: 'q', at: 1 }]);
+  if (one.map((e) => e.dockW).join() !== '300,300') fail(F, `tidyStacks(): one column, one width, the top one's: ${JSON.stringify(one)}`);
+  // The page's order follows the stack (Tab goes top section, divider, next section) without loading anything again.
+  const order = canvasJs.slice(canvasJs.indexOf('  function orderInPage(c) {'), canvasJs.indexOf('  function relayoutStacks() {'));
+  if (!/canvas\.moveBefore\(node, after\.nextSibling\)/.test(order) || !/else if \(node\.classList\.contains\('stack-divider'\)\) canvas\.insertBefore/.test(order)) fail(C, 'orderInPage() moves a section only with moveBefore() (a frame keeps its page), a divider either way');
+  // Only a new stack starts with equal heights (decision 6); a move inside a stack keeps every share; a joiner takes an equal part.
+  const into = canvasJs.slice(canvasJs.indexOf('  function stackInto('), canvasJs.indexOf('  function moveToColumn('));
+  if (!/const within = from === into;/.test(into) || !/if \(held\.length < 2\) into\.even = true;/.test(into)) fail(C, 'stackInto(): equal heights for a new stack only');
+  if (!/if \(restore && Number\.isFinite\(ownW\) && stack\)/.test(canvasJs)) fail(C, 'a module out of its stack gets its own width back (ownW)');
   if (!/el\.style\.gridColumn = `\$\{1 \+ i\} \/ \$\{2 \+ i\}`;/.test(canvasJs)) fail(C, 'a column\'s parts name both grid lines (a stacked section is laid in its area absolutely, where a missing end line is the canvas\'s edge)');
   const sty = css.slice(css.indexOf('/* A stack (plan-panel-stacking.md'), css.indexOf('.stack-chip > i'));
   if (!/\.canvas > \.module-docked\.in-stack > \.mod-content \{ position: absolute;/.test(sty) || !/\.canvas > \.stack-divider \{ display: block;/.test(sty)) fail('public/style.css', 'a stacked section lies in its column\'s area; the divider shows the splitter in the canvas');

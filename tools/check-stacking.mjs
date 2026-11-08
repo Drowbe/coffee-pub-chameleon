@@ -20,6 +20,9 @@
 //  10. A short canvas collapses the lowest section by itself and opens it again when the height returns.
 //  11. A saved layout carries the stack (the server keeps it), and loading it, and a reload, give the same stack back.
 //  12. Unstack all, in the Modules tab of Set up (its id is show), puts every module of every stack in a column of its own.
+//  13. Inside a stack Tab goes top section, divider, next section; nothing in a module starts again when the page's order
+//      follows the stack; a drag inside a stack keeps the shares; Escape stops a drag; a module out of a stack has its own
+//      width again; after Unstack all the keyboard is on Panel Mode.
 // It cannot check a real tablet's touch, a screen reader, or a call (no LiveKit here).
 // Usage: node tools/check-stacking.mjs [--mode=light|dark]. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
@@ -72,7 +75,7 @@ async function main() {
       const stored = async () => JSON.parse(await tab.eval(`localStorage.getItem(${JSON.stringify(KEY)}) || '{}'`));
       const size = async (w, h = 900) => { await tab.cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false }, tab.sid); await sleep(1200); };
       const key = async (k, shift = false) => {
-        for (const type of ['keyDown', 'keyUp']) await tab.cdp.send('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: KEYS[k], modifiers: shift ? 8 : 0 }, tab.sid);
+        for (const type of ['keyDown', 'keyUp']) await tab.cdp.send('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: KEYS[k], modifiers: shift ? 8 : 0, ...(k === 'Enter' && type === 'keyDown' ? { text: '\r' } : {}) }, tab.sid);
         await sleep(120);
       };
       const menuOf = async (id) => { await tab.eval(`document.querySelector('.module-docked[data-module="${id}"] .mf-titlebar-menu, .module-floating[data-module="${id}"] .mf-titlebar-menu').click()`); await sleep(350); };
@@ -100,9 +103,9 @@ async function main() {
       const showTab = async () => { await tab.eval(`document.getElementById('setup').click()`); await tab.waitFor('#setup-show .host-menu-item'); await sleep(300); };
       const openFromLayoutMenu = async (name) => { await showTab(); await pick(name); await closeMenus(); await sleep(400); };
       // Enter the trip with a remembered layout of these modules, docked (Panel Mode, what nothing remembered reads as).
-      const enter = async (open) => {
+      const enter = async (open, records = {}) => {
         await driveScreen(tab, { id: 'storage', as: who, url: '/healthz', wait: 'body' }, S.base, S.cookies, S.ctx);
-        await tab.eval(`localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(JSON.stringify({ __open: open }))})`);
+        await tab.eval(`localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(JSON.stringify({ __open: open, ...records }))})`);
         try {
           await driveScreen(tab, { id: 'workspace', as: who, url: '/#join={trip}', wait: '#canvas .module-docked', call: true }, S.base, S.cookies, S.ctx);
         } catch (e) {
@@ -113,7 +116,9 @@ async function main() {
         await sleep(800);
       };
       try {
-        await enter(['travel', 'places', 'polls']);
+        // Places and Polls remember shares from before (a new stack still starts equal) and Polls its own width (given back
+        // when it leaves the stack).
+        await enter(['travel', 'places', 'polls'], { places: { h: 0.8 }, polls: { h: 0.2, dockW: 300 } });
         let s = await state();
         expect(s.docked.map((d) => d.id).join() === 'travel,places,polls' && new Set(s.docked.map((d) => d.col)).size === 3, `${L} the trip did not open with the Itinerary, Places and Polls in three columns: ${JSON.stringify(s.docked)}`);
 
@@ -192,8 +197,22 @@ async function main() {
         await openFromLayoutMenu('Research');
         s = await state();
         expect(s.docked.some((d) => d.id === 'research') && !s.floats.includes('research'), `${L} Research did not dock in the third column (a stack is one column): ${JSON.stringify(s)}`);
+        // A NEW stack starts with equal heights even when a module brings a share from the stack it leaves (decision 6):
+        // Polls, unequal under Places, stacked under Research; then back under Places (again a new stack of two).
+        const hOf = async (id) => (await stored())[id]?.h;
+        expect(Math.abs((await hOf('polls')) - 0.5) > 0.01, `${L} Polls' share under Places is ${await hOf('polls')}, so a new stack's equal start is not measured`);
+        await menuOf('polls'); await pick('Stack with...'); await pick('Below Research');
+        s = await state();
+        expect(s.groups.includes('Stacked: Research, Polls') && (await hOf('research')) === 0.5 && (await hOf('polls')) === 0.5 && Math.abs(s.docked.find((d) => d.id === 'research').h - s.docked.find((d) => d.id === 'polls').h) <= 2, `${L} a new stack of Research and Polls did not start with equal heights: ${JSON.stringify({ research: await hOf('research'), polls: await hOf('polls') })}`);
+        await menuOf('polls'); await pick('Stack with...'); await pick('Below Places');
 
-        // 4. A third joins by the drag; a fourth is refused.
+        // 4. A third joins by the drag; a fourth is refused. Joining moves Places and Polls after Research in the page (the
+        // keyboard's order), and nothing in them starts again: each module's own content is the same, and a frame put in
+        // Polls keeps its page (moveBefore; a frame moved the old way would load again).
+        await tab.eval(`(() => { window.__kept = {}; for (const s of document.querySelectorAll('#canvas > .module-docked')) { const r = s.querySelector('.module-root'); window.__kept[s.dataset.module] = r && r.shadowRoot ? r.shadowRoot.firstElementChild : null; }
+          const f = document.createElement('iframe'); f.id = 'check-stacking-frame'; f.srcdoc = '<p>kept</p>'; f.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0'; document.querySelector('.module-docked[data-module="polls"] > .mod-content').append(f); return true; })()`);
+        await sleep(400);
+        await tab.eval(`(() => { const f = document.getElementById('check-stacking-frame'); f.contentWindow.__kept = 'yes'; window.__loads = 0; f.addEventListener('load', () => { window.__loads += 1; }); })()`);
         let b = await box('places');
         const third = await drag('research', { x: b.x, y: b.t + 30 });
         expect(third.ghost === 'Research goes above Places' && third.hidden === 'true', `${L} dragging Research over Places' upper half drew "${third.ghost}" (aria-hidden ${third.hidden}), not "Research goes above Places"`);
@@ -201,6 +220,27 @@ async function main() {
         const cols = new Set(['research', 'places', 'polls'].map((id) => s.docked.find((d) => d.id === id)?.col));
         expect(cols.size === 1 && s.groups.includes('Stacked: Research, Places, Polls') && s.dividers.length === 2, `${L} Research did not join the stack on top: ${JSON.stringify({ docked: s.docked, groups: s.groups })}`);
         expect(s.said === 'Research was stacked above Places.', `${L} the note says "${s.said}"`);
+        const untouched = await tab.eval(`(() => { const f = document.getElementById('check-stacking-frame'); const out = { frame: Boolean(f && f.contentWindow && f.contentWindow.__kept === 'yes' && window.__loads === 0) }; for (const s of document.querySelectorAll('#canvas > .module-docked')) { const r = s.querySelector('.module-root'); out[s.dataset.module] = Boolean(r && r.shadowRoot && r.shadowRoot.firstElementChild === window.__kept[s.dataset.module]); } f?.remove(); return out; })()`);
+        expect(Object.values(untouched).every(Boolean), `${L} a module started again when the stack was put in order in the page: ${JSON.stringify(untouched)}`);
+        // The keyboard: top section, divider, next section, divider, last section (the plan's Accessibility).
+        await tab.eval(`document.querySelector('.module-docked[data-module="research"] .stack-fold').focus()`);
+        const where = `(() => { const a = document.activeElement; if (a.closest('.stack-divider')) return 'divider'; const sec = a.closest('#canvas > .module-docked'); return sec ? sec.dataset.module : 'elsewhere'; })()`;
+        const walk = [];
+        for (let k = 0; k < 80 && walk.filter((w) => w === 'elsewhere' || w === 'travel').length === 0; k++) { const w = await tab.eval(where); if (walk[walk.length - 1] !== w) walk.push(w); await key('Tab'); }
+        expect(walk.slice(0, 5).join() === 'research,divider,places,divider,polls', `${L} Tab goes ${walk.join(' > ')}, not top section, divider, next section`);
+        // A drag inside the stack keeps every section's share (only a new stack starts equal).
+        await tab.eval(`document.querySelectorAll('#canvas > .stack-divider')[0].focus()`);
+        await key('ArrowDown'); await key('ArrowDown');
+        const shares = async () => { const r = await stored(); return ['research', 'places', 'polls'].map((id) => Math.round((r[id]?.h || 0) * 100) / 100).join(); }; // to the hundredth: cleaning may move the fourth place
+        const sharesBefore = await shares();
+        b = await box('research');
+        await drag('polls', { x: b.x, y: b.t + 30 });
+        s = await state();
+        expect(s.docked.filter((d) => d.stacked).sort((x, y) => x.top - y.top).map((d) => d.id).join() === 'polls,research,places' && await shares() === sharesBefore, `${L} Polls dragged above Research inside the stack: ${s.docked.filter((d) => d.stacked).map((d) => d.id)} with shares ${await shares()}, not the ${sharesBefore} they had`);
+        b = await box('places');
+        await drag('polls', { x: b.x, y: b.b - 30 });
+        s = await state();
+        expect(s.docked.filter((d) => d.stacked).sort((x, y) => x.top - y.top).map((d) => d.id).join() === 'research,places,polls' && await shares() === sharesBefore, `${L} Polls dragged back under Places did not keep the shares (${await shares()} for ${sharesBefore})`);
         await menuOf('travel');
         await pick('Stack with...');
         const full = await menuItems();
@@ -211,12 +251,27 @@ async function main() {
         s = await state();
         expect(!fourth.ghost && s.said === 'A stack holds three modules at most.' && s.docked.find((d) => d.id === 'travel').col !== s.docked.find((d) => d.id === 'polls').col, `${L} a fourth was not refused with its note: drew "${fourth.ghost}", said "${s.said}"`);
 
+        // Escape during a title bar drag: nothing changes.
+        const colsNow = async () => (await state()).docked.map((d) => `${d.id}:${d.col}`).join();
+        const colsBefore = await colsNow();
+        b = await box('polls');
+        const tp = await tab.eval(`(() => { const r = document.querySelector('.module-docked[data-module="polls"] .mf-titlebar-title').getBoundingClientRect(); return { x: r.left + 16, y: r.top + r.height / 2 }; })()`);
+        await tab.mouse('mouseMoved', tp.x, tp.y, { button: 'none', clickCount: 0 });
+        await tab.mouse('mousePressed', tp.x, tp.y);
+        for (let k = 1; k <= 6; k++) await tab.mouse('mouseMoved', tp.x + ((b.r - 8 - tp.x) * k) / 6, tp.y + ((b.y - tp.y) * k) / 6, { button: 'left', buttons: 1, clickCount: 0 });
+        await key('Escape');
+        await tab.mouse('mouseReleased', b.r - 8, b.y);
+        await sleep(300);
+        expect(await colsNow() === colsBefore && !(await tab.eval(`document.getElementById('canvas').classList.contains('reordering') || Boolean(document.querySelector('.stack-zones > *'))`)), `${L} Escape during a drag changed the columns: ${await colsNow()} (was ${colsBefore})`);
+
         // 6. Out by the drag: a column of its own; then closing all but one.
         b = await box('polls');
         const out = await drag('polls', { x: b.r - 8, y: b.y });
         s = await state();
         expect(out.line === 'Its own column here' && !s.docked.find((d) => d.id === 'polls').stacked && s.docked.find((d) => d.id === 'polls').col !== s.docked.find((d) => d.id === 'places').col, `${L} dragging Polls to the edge did not give it its own column (the line said "${out.line}"): ${JSON.stringify(s.docked)}`);
         expect(s.groups.includes('Stacked: Research, Places'), `${L} the stack left is not Research and Places: ${JSON.stringify(s.groups)}`);
+        const own = (await stored()).polls || {};
+        expect(own.dockW === 300 && !('ownW' in own), `${L} out of the stack Polls did not get its own width (300) back: ${JSON.stringify(own)}`);
         await menuOf('polls');
         await pick('Stack with...');
         await pick('Below Places');
@@ -329,7 +384,18 @@ async function main() {
         // Unstack all (the Modules tab's Arrange): every module in a column of its own; past the limit the last one waits, floating.
         await showTab();
         expect((await menuItems()).some((x) => x.text === 'Unstack all' && !x.off), `${L} Arrange has no Unstack all while there is a stack`);
-        await pick('Unstack all');
+        // By the keyboard in light, by the pointer in dark: either way the keyboard stays in Arrange, on Panel Mode.
+        if (mode === 'light') {
+          await tab.eval(`[...document.querySelectorAll('#setup-show .host-menu-item')].find((b) => b.textContent.trim() === 'Unstack all').focus()`);
+          await key('Enter');
+          await sleep(450);
+        } else {
+          const u = await tab.eval(`(() => { const r = [...document.querySelectorAll('#setup-show .host-menu-item')].find((b) => b.textContent.trim() === 'Unstack all').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+          await tab.mouse('mouseMoved', u.x, u.y, { button: 'none', clickCount: 0 }); await tab.mouse('mousePressed', u.x, u.y); await tab.mouse('mouseReleased', u.x, u.y);
+          await sleep(450);
+        }
+        const focusAt = await tab.eval(`document.activeElement?.closest('#setup-show') ? document.activeElement.textContent.trim() : (document.activeElement?.id || document.activeElement?.tagName)`);
+        expect(focusAt === 'Panel Mode', `${L} after Unstack all the keyboard is on "${focusAt}", not Panel Mode in Arrange`);
         s = await state();
         expect(!s.groups.length && !s.docked.some((d) => d.stacked) && s.floats.includes('research') && /too narrow for another column/.test(s.said), `${L} Unstack all: ${JSON.stringify({ groups: s.groups, floats: s.floats, said: s.said })}`);
         expect((await menuItems()).some((x) => x.text === 'Unstack all' && x.off), `${L} Unstack all is still offered with no stack left`);

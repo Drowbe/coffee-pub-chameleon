@@ -188,7 +188,7 @@ export function stackRefusal({ mover = true, target = true, n = 1, inIt = false,
 
 // A list of layout entries with their stacks made whole: a stack is only docked modules with a good id, two to stackMax of
 // them (the rest are columns of their own, a stack left with one is none), their `at` 0, 1, 2 in their old order, their
-// shares cleaned (cleanShares), `folded` true or false and never every one. The entries keep their order; an entry not in
+// shares cleaned (cleanShares), `folded` true or false and never every one, and one width, the top one's `dockW`. The entries keep their order; an entry not in
 // a stack has none of the four keys. Nothing given is changed.
 export function tidyStacks(entries) {
   const list = (Array.isArray(entries) ? entries : []).map((e) => {
@@ -205,7 +205,9 @@ export function tidyStacks(entries) {
     if (!m) { const { stack, at, h, folded, ...rest } = e; return rest; }
     const all = m.c.ids.map((id) => Boolean(list.find((x) => x.id === id).folded));
     const keepOpen = all.every(Boolean) && m.at === m.c.ids.length - 1;
-    return { ...e, at: m.at, h: shares.get(m.c.key)[m.at], folded: Boolean(e.folded) && !keepOpen };
+    // One column, one width: every module of a stack takes the top one's dockW (where it has one).
+    const topW = list.find((x) => x.id === m.c.ids[0]).dockW;
+    return { ...e, ...(topW !== undefined ? { dockW: topW } : {}), at: m.at, h: shares.get(m.c.key)[m.at], folded: Boolean(e.folded) && !keepOpen };
   });
 }
 

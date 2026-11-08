@@ -535,9 +535,16 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   // A section's least height: its title bar and 120 px under it (156 on the desktop's title bar; Thomas, on the Prototype).
   const sectionMin = () => Math.max(STACK.sectionMin, headH() + STACK.contentMin);
   const contentOf = (p) => (p && p.el && p.el.querySelector ? p.el.querySelector(':scope > .mod-content') : null);
-  function clearStackRecord(id) {
-    if (!saved[id] || !('stack' in saved[id] || 'at' in saved[id] || 'h' in saved[id] || 'folded' in saved[id])) return;
-    const { stack, at, h, folded, ...rest } = saved[id];
+  // A module out of its stack: no stack keys, and its own width again (`ownW`, kept when it was stacked and its width
+  // became the column's), unless `restore` is false (a saved layout gives the width itself).
+  function clearStackRecord(id, { restore = true } = {}) {
+    if (!saved[id] || !['stack', 'at', 'h', 'folded', 'ownW'].some((k) => k in saved[id])) return;
+    const { stack, at, h, folded, ownW, ...rest } = saved[id];
+    if (restore && Number.isFinite(ownW) && stack) {
+      rest.dockW = ownW;
+      const p = opened.get(id);
+      if (p && p.kind === 'module') p.width = clampDock(ownW);
+    }
     saved[id] = rest;
   }
 
@@ -791,9 +798,32 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       g.setAttribute('aria-label', `Stacked: ${ids.map(nameOf).join(', ')}`);
       g.setAttribute('aria-owns', owns.join(' '));
     });
+    for (const c of cols) if (stacked(c)) orderInPage(c);
     for (const p of opened.values()) if (p.kind === 'module' && !inStack.has(p.id)) clearSection(p);
     for (const [key, dv] of dividers) if (!liveDividers.has(key)) { dv.remove(); dividers.delete(key); }
     for (const [sid, g] of groups) if (!liveGroups.has(sid)) { g.remove(); groups.delete(sid); autoFolded.delete(sid); }
+  }
+  // The page's order follows the stack, top first, each divider right after the section above it, so the keyboard goes
+  // top section, divider, next section (the plan's Accessibility), and again after Move up or a drag. A section is moved
+  // with moveBefore(), which keeps a module's frame, its focus and an open editor window as they are (nothing loads
+  // again); a browser without moveBefore() leaves the sections where they are (they would load again) and only the
+  // dividers follow the section above them. Only what is out of place moves.
+  function orderInPage(c) {
+    const canMove = typeof canvas.moveBefore === 'function';
+    const put = (node, after) => {
+      if (!node || !after || after.parentNode !== canvas || after.nextSibling === node) return;
+      if (canMove) canvas.moveBefore(node, after.nextSibling);
+      else if (node.classList.contains('stack-divider')) canvas.insertBefore(node, after.nextSibling);
+    };
+    let prev = c.mods[0].el;
+    c.mods.forEach((p, i) => {
+      if (!i) return;
+      const dv = dividers.get(`${c.stack}:${i - 1}`);
+      put(dv, prev);
+      prev = dv && dv.previousSibling === prev ? dv : prev;
+      put(p.el, prev);
+      prev = p.el;
+    });
   }
   // The heights again, nothing else (a divider moved, a section collapsed, the canvas changed height).
   function relayoutStacks() {
@@ -819,7 +849,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       b.className = 'mf-icon-btn mf-titlebar-btn stack-fold';
       b.innerHTML = '<i class="fa-solid fa-chevron-down fa-fw" aria-hidden="true"></i>';
       const id = p.id;
-      b.addEventListener('click', () => toggleFold(id));
+      b.addEventListener('click', () => toggleFold(id, { say: true })); // said as the menu's Collapse says it
       head.prepend(b);
     }
     const words = `${shut ? 'Expand' : 'Collapse'} ${nameOf(p.id)}`;
@@ -946,7 +976,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
         const sid = c.stack || newStackId();
         const shares = c.even ? evenShares(c.ids.length) : cleanShares(c.ids.map((id) => saved[id]?.h), c.ids.length);
         c.ids.forEach((id, at) => {
-          saved[id] = { ...(saved[id] || {}), stack: sid, at, h: shares[at], folded: saved[id]?.folded === true };
+          const was = saved[id] || {};
+          const own = Number.isFinite(was.ownW) ? was.ownW : was.stack ? undefined : (opened.get(id)?.mode === 'dock' ? opened.get(id).width : undefined) ?? was.dockW;
+          saved[id] = { ...was, stack: sid, at, h: shares[at], folded: was.folded === true, ...(Number.isFinite(own) ? { ownW: own } : {}) };
           if (c.width) {
             saved[id].dockW = c.width;
             const p = opened.get(id);
@@ -983,8 +1015,10 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       if (!stacked(c)) continue;
       const shares = cleanShares(c.mods.map((p) => saved[p.id]?.h), c.mods.length);
       const allFolded = c.mods.every((p) => saved[p.id]?.folded === true);
+      const width = dockWidthOf(c.mods[0]); // one column, one width: the top module's
       c.mods.forEach((p, at) => {
-        saved[p.id] = { ...saved[p.id], at, h: shares[at], folded: saved[p.id]?.folded === true && !(allFolded && at === c.mods.length - 1) };
+        if (p.mode === 'dock') p.width = width;
+        saved[p.id] = { ...saved[p.id], at, h: shares[at], dockW: width, folded: saved[p.id]?.folded === true && !(allFolded && at === c.mods.length - 1) };
         kept.add(p.id);
       });
     }
@@ -1023,10 +1057,20 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     const from = cols.find((c) => c.ids.includes(id));
     if (from) from.ids.splice(from.ids.indexOf(id), 1);
     const left = from && from !== into && from.ids.length === 1 ? from.ids[0] : null;
+    const within = from === into; // moved inside its own stack: every section keeps its share and its collapse, as Move up
+    const held = into.ids.slice(); // the column's modules before this one joins
     into.ids.splice(into.ids.indexOf(targetId) + (pos === 'below' ? 1 : 0), 0, id);
-    into.even = true;
     if (!saved[id]) saved[id] = {};
-    saved[id].folded = false;
+    if (!within) {
+      saved[id].folded = false;
+      if (held.length < 2) into.even = true; // a new stack starts with equal heights (decision 6)
+      else {
+        // Joining a stack: the newcomer an equal part, the others keep their proportions in the rest.
+        const shares = cleanShares(held.map((x) => saved[x]?.h), held.length);
+        held.forEach((x, k) => { saved[x] = { ...(saved[x] || {}), h: (shares[k] * held.length) / (held.length + 1) }; });
+        saved[id].h = 1 / (held.length + 1);
+      }
+    }
     const next = cols.filter((c) => c.ids.length);
     const floating = p.mode === 'float' && !p.waiting;
     arrange(next);
@@ -1219,6 +1263,15 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       chip.style.left = `${Math.min(Math.max(drag.pt.x + 14, 0), Math.max(0, cw - 120))}px`;
       chip.style.top = `${Math.min(Math.max(drag.pt.y + 14, 0), Math.max(0, canvas.clientHeight - 36))}px`;
       layer.append(chip);
+      // Never over the words of the preview or the line: the chip moves just below them (above, where there is no room).
+      const cr = canvas.getBoundingClientRect();
+      for (const words of layer.querySelectorAll('.stack-ghost-words, .stack-line-words')) {
+        const a = chip.getBoundingClientRect();
+        const b = words.getBoundingClientRect();
+        if (a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom) continue;
+        const below = b.bottom - cr.top + 8;
+        chip.style.top = `${below + a.height <= canvas.clientHeight ? below : Math.max(0, b.top - cr.top - a.height - 8)}px`;
+      }
     }
   }
   function onDragKey(event) {
@@ -2269,7 +2322,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
         }
         remember(want.id, rec);
         // Its stack as the layout says (placeLayout made it whole), or none.
-        if (want.stack) remember(want.id, { stack: want.stack, at: want.at, h: want.h, folded: want.folded === true }); else clearStackRecord(want.id);
+        clearStackRecord(want.id, { restore: false }); // the layout's width is the one (dockW, above)
+        if (want.stack) remember(want.id, { stack: want.stack, at: want.at, h: want.h, folded: want.folded === true });
         let mod = opened.get(want.id);
         if (mod && mod.waiting) {
           if (mode === 'float') { mod.waiting = false; } else { mod.width = clampDock(want.dockW || mod.width); continue; }
@@ -2390,7 +2444,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       items.push({ radio: true, checked: !windowMode, keepOpen: true, icon: 'fa-solid fa-table-columns', label: 'Panel Mode', onPick: () => setArrangeMode('panel') });
       items.push({ radio: true, checked: windowMode, keepOpen: true, icon: 'window-restore', label: 'Window Mode', onPick: () => setArrangeMode('window') });
       // Every stack back to columns of their own (plan-panel-stacking.md, decision 9); off while there is none.
-      if (!windowMode) items.push({ icon: 'object-ungroup', label: 'Unstack all', disabled: !hasStacks(), keepOpen: true, onPick: () => unstackAll() });
+      if (!windowMode) items.push({ icon: 'object-ungroup', label: 'Unstack all', disabled: !hasStacks(), keepOpen: true, onPick: () => { unstackAll(); keepFocusInArrange(); } });
       if (windowMode) {
         items.push({ toggle: true, checked: snapAllOn(), icon: 'border-all', label: 'Snap to grid', onPick: () => setSnapAll(!snapAllOn()) });
         if (snapAllOn()) {
@@ -2410,6 +2464,19 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     return items;
   }
   let menuView = null;
+  let menuHolder = null; // where the menu is drawn (the Modules tab of Set up)
+  // After Unstack all its row is off: the keyboard stays in Arrange, on Panel Mode, not on the next row (Layouts) or the
+  // tab. Once the menu has been drawn again after the pick (host-menu.js draws it right after onPick).
+  function keepFocusInArrange() {
+    setTimeout(() => {
+      const rows = menuHolder ? [...menuHolder.querySelectorAll('.host-menu-item')] : [];
+      const row = rows.find((b) => b.querySelector('.host-menu-label')?.textContent.trim() === 'Panel Mode');
+      if (!row) return;
+      for (const r of rows) if (r.tabIndex === 0) r.tabIndex = -1;
+      row.tabIndex = 0;
+      row.focus();
+    }, 0);
+  }
   const menuOpen = () => Boolean(menuView);
   // Draw the menu into `container` (the Set up panel's Modules tab) and keep it there until the handle's destroy(). Never
   // on a phone, where the tab bar is the list. It is drawn again on every change (refreshMenu).
@@ -2417,6 +2484,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (inline() || !container) return null;
     menuView?.destroy();
     onMenu?.(true);
+    menuHolder = container;
     const view = mountHostMenu(container, layoutMenuItems);
     const handle = { redraw: () => view.redraw(), destroy: () => { view.destroy(); if (menuView === handle) menuView = null; } };
     menuView = handle;

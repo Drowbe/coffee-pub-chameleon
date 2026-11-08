@@ -6421,7 +6421,8 @@ body.chat-window {
 .canvas.resizing-stack iframe { pointer-events: none; } /* a frame under the pointer would swallow the drag */
 
 /* While a title bar is dragged (.reordering): the place the module would take over the module under the pointer (a section
-   with its title bar, and the words), the line where a column would land, and the module's name following the pointer.
+   with its title bar, and the words), the line where a column would land (its words under the title bars, never over a
+   title), and the module's name following the pointer (moved off any of those words: canvas.js).
    For the eye only (aria-hidden): the title bar menu does the same. */
 .canvas > .stack-zones { position: absolute; inset: 0; grid-column: 1 / -1; grid-row: 1 / -1; z-index: 10; pointer-events: none; }
 .stack-ghost { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--accent-fill); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent-fill) 16%, var(--surface-panel)); }
@@ -6429,7 +6430,7 @@ body.chat-window {
 .stack-ghost-head > i { color: var(--text-accent); }
 .stack-ghost-words { margin: auto; padding: var(--space-2); color: var(--text-primary); font-size: var(--text-12); text-align: center; }
 .stack-line { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: var(--radius-min); background: var(--accent-fill); }
-.stack-line-words { position: absolute; top: var(--space-3); left: 8px; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; }
+.stack-line-words { position: absolute; top: calc(var(--mf-title-h) + var(--space-3)); left: 8px; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; }
 .stack-line.stack-line-flip .stack-line-words { left: auto; right: 8px; }
 .stack-chip { position: absolute; display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--accent-fill); border-radius: var(--radius-small); background: var(--mf-surface-title); box-shadow: var(--shadow-2); color: var(--text-primary); font-size: var(--text-13); font-weight: var(--weight-strong); white-space: nowrap; }
 .stack-chip > i { color: var(--text-accent); }
