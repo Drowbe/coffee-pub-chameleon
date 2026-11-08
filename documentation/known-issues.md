@@ -18,6 +18,20 @@ The server now decides which Vault files a person may see ([plan-vault-privacy](
 
 Workaround: none needed for now, as nothing sets a visibility yet.
 
+## The host console sends no framing headers
+
+The host console's page does not send the headers that stop it being shown inside another site's frame, as the other
+sign-in and settings pages do (GitHub #441).
+
+Workaround: none needed for normal use; sign in to the console only from its own address.
+
+## The console's create route adopts a leftover environment folder
+
+If a folder for an address is already on disk with no entry in the registry, the host console's create route takes it
+over instead of refusing, as sign-up does (GitHub #442).
+
+Workaround: before creating an environment, make sure no folder is left for that address.
+
 ## The demo seeder changes environment-wide settings
 
 The demo loader (`server/demo-loader.js`) never changes an environment-wide setting. The seeder around it does:

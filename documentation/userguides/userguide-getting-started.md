@@ -252,7 +252,7 @@ makes, and what a lapsed environment goes back to) and any named plans, each wit
 storage, assistant calls a month, calls at once, modules). An environment is put on a plan from its card,
 which fills its caps from the catalog to adjust on its own. The product page at the base domain lists the
 plans and, only when the server has `SIGNUP: "on"`, makes a free environment for anyone who asks (an
-address, a name, an owner account); without it the page offers no sign-up form, just the plans and a way to
+address, a name, the owner's login and name; the owner chooses a password next, on the new environment's own page); without it the page offers no sign-up form, just the plans and a way to
 write to you. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
 (the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and the product page's
 plan buttons and an owner's Upgrade go there with `?environment=<slug>`. The provider tells the server
@@ -348,6 +348,19 @@ every old address redirects to the new.
 Once a server has environments, keep `BASE_DOMAIN` set on every start, and set it on any server you move the
 data folder to. A start without it stops with "This data folder belongs to a server with environments: set
 BASE_DOMAIN." and changes nothing: set it and start again.
+
+## Send an owner their first password link
+
+A person who signs up chooses their own password on their new environment's page, from a link that works for 15
+minutes. If they lose it, close the page too soon or wait too long, a host admin makes a new one. Only a host admin can.
+
+1. Sign in to the host console at `admin.<base domain>` and open the **Environments** tab.
+2. On the environment's card, find the owner and click **New first-password link**. The button is there only for an
+   owner who has no password yet.
+3. Click **Copy**. The link is shown once. It works once, for 24 hours, and a new link replaces any older one.
+4. Send it to the owner yourself. You never see the password they choose.
+
+If the owner already has a password, there is no button; use their sign-in instead.
 
 ## Back up and restore an environment
 

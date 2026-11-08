@@ -66,7 +66,7 @@ const { ModuleHooks, HOST_SOURCE } = require('./module-hooks');
 const moduleNotices = require('./module-notices');
 const themeCssLib = require('./theme-css');
 const { eraseSpace } = require('./space-erase');
-const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
+const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, cleanLogin, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
 // The phase timeline rule (plan-one-bar.md, step 1), the one copy the pages use too.
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
@@ -1774,6 +1774,20 @@ app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && M
 const publicDir = path.join(__dirname, '..', 'public');
 const clientDist = path.join(__dirname, '..', 'node_modules', 'livekit-client', 'dist');
 const page = (name) => path.join(publicDir, name);
+// Pages the static files never serve by their file name: only their own route sends them, with that route's headers
+// (the first-password page: GET /login/first-password, on a hosted install only -- plan-first-password.md). Matched as
+// the static files would find them: decoded, with ./, ../ and doubled slashes resolved, and in any case.
+const ROUTE_ONLY_FILES = new Set(['login-first-password.html']);
+function routeOnlyFile(reqPath) {
+  let decoded;
+  try { decoded = decodeURIComponent(reqPath); } catch { return false; } // the static files refuse it themselves
+  return ROUTE_ONLY_FILES.has(path.posix.basename(path.posix.normalize(decoded)).toLowerCase());
+}
+// express.static, passing over the route-only pages, which go on to whatever answers an unknown path.
+function publicStatic(options) {
+  const serve = express.static(publicDir, options);
+  return (req, res, next) => (routeOnlyFile(req.path) ? next() : serve(req, res, next));
+}
 // A template file's text, whatever type it is sent as (the JSON body parser reads it when it is JSON).
 const templateFileText = express.text({ type: () => true, limit: 64 * 1024 });
 // A theme file's text (POST /api/themes/import, POST /api/host/themes/check). Its own 16 KB limit: a JSON body is parsed
@@ -1806,7 +1820,7 @@ function sendHostError(err, res) {
 
 // The console's tab icon: no environment here, so only the product's mark (the same files siteIcon falls back to).
 hostRouter.get(['/img/site/icon', '/favicon.ico'], (req, res) => res.set('Cache-Control', 'no-cache').sendFile(brandIconFile(req.path)));
-hostRouter.use(express.static(publicDir, { index: false }));
+hostRouter.use(publicStatic({ index: false }));
 hostRouter.get('/', (_req, res) => res.sendFile(page('host.html')));
 
 // The host admins' own second step (documentation/plans/plan-mfa.md): HOST_MFA_REQUIRED makes it mandatory,
@@ -1936,6 +1950,54 @@ hostRouter.delete('/api/host/environments/:slug/owners/:login/mfa', requireHostA
   res.json({ ok: true });
 });
 
+// --- the first password (documentation/plans/plan-first-password.md) ----------------------------------------------
+// A new owner made at sign-up has no password: a one-time link lets them choose it on the environment's own page. The
+// link's token is in the address's fragment only; only its SHA-256 is kept (firstPassword on the account).
+const FIRST_PASSWORD_SIGNUP_MS = 15 * 60000; // from sign-up, which opens the link at once
+const FIRST_PASSWORD_CONSOLE_MS = 24 * 3600000; // from the console, passed on by hand
+const FIRST_PASSWORD_DEAD = 'This link has expired or was already used. Ask whoever runs this host for a new one.';
+function firstPasswordUrl(req, slug, token) {
+  return `${auth.isSecure(req) ? 'https' : 'http'}://${slug}.${BASE_DOMAIN}${requestPort(req)}/login/first-password#${token}`;
+}
+// The slug of a folder already on disk for this address (DATA_DIR/environments/<slug>, whether or not the registry
+// names it), or null: also null for an address that is not a slug or is reserved, which addEnvironment refuses itself.
+function addressOnDisk(value) {
+  let slug;
+  try { slug = cleanSlug(value); } catch { return null; }
+  if (hostRegistry.isReserved(slug)) return null;
+  try { fs.lstatSync(path.join(DATA_DIR, 'environments', slug)); return slug; } catch { return null; }
+}
+// Undoes an environment made a moment ago in the same request (sign-up, when its owner cannot be made): the registry
+// entry, its services and the folder this request made (the caller checked none was there before), so nothing is left
+// behind. The environment's first build also starts work in the background (the template, the automatic module
+// installs) that writes into its folder, so the folder is removed again once that work is done -- unless the address
+// has been taken again in the meantime, when the folder is the new environment's.
+function discardNewEnvironment(slug) {
+  try { hostRegistry.removeEnvironment(slug); } catch { /* not in the registry */ }
+  const env = environments.get(slug);
+  if (env) { setAsideEnvironment(env); environments.delete(slug); }
+  const dir = path.join(DATA_DIR, 'environments', slug);
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (env?.templateReady) {
+    env.templateReady.finally(() => {
+      if (hostRegistry.findEnvironment(slug) || environments.has(slug)) return;
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+}
+// "New first-password link" (the console): for an owner who still has no password, a fresh link that lives 24 hours,
+// used once. It replaces any older link, which stops working, as does any step begun from it. Answered once, never kept.
+hostRouter.post('/api/host/environments/:slug/owners/:login/first-password', requireHostAdmin, (req, res) => {
+  if (!hostRegistry.findEnvironment(req.params.slug)) return res.status(404).json({ error: 'no such environment' });
+  const env = environmentFor(req.params.slug);
+  const owner = env.store.userByLogin(req.params.login);
+  if (!owner || owner.role !== 'owner') return res.status(404).json({ error: 'no owner with that login there' });
+  if (owner.passwordHash) return res.status(400).json({ error: `This ${env.store.word('owner')} has a password already, so there is no first password to set.` });
+  const token = auth.oneTimeToken();
+  env.store.setFirstPassword(owner.key, { hash: auth.tokenHash(token), expiresAt: new Date(Date.now() + FIRST_PASSWORD_CONSOLE_MS).toISOString() });
+  res.set('Cache-Control', 'no-store').json({ url: firstPasswordUrl(req, req.params.slug, token) });
+});
+
 // What an environment is using, from its own already-built services (building them if it is not running yet -- an
 // admin looking at the list is reason enough to have it up). Storage isn't walked here (a real figure needs
 // reading the whole directory); left null until that is worth the cost.
@@ -1951,6 +2013,14 @@ function environmentUsage(slug) {
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
   return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
+}
+// The logins of an environment's owners who have no password yet: whom the console's "New first-password link" is for
+// (the route below refuses everyone else). None for an environment that does not open.
+function ownersAwaitingFirstPassword(slug) {
+  if (refusalView(slug)) return [];
+  let env;
+  try { env = environmentFor(slug); } catch { return []; }
+  return env.store.users.filter((u) => u.role === 'owner' && !u.hostAdmin && !u.passwordHash).map((u) => u.login);
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -1982,7 +2052,9 @@ hostRouter.get('/api/host/environments', requireHostAdmin, async (_req, res) => 
   // `template`: the template it was made from, with what was skipped (templateView), or null.
   const list = hostRegistry.listEnvironments();
   const callsNow = await hostCallsNow(list);
-  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t) }; }) });
+  // `awaitingFirstPassword`: the logins of its owners who have no password yet, for the card's "New first-password link"
+  // (plan-first-password.md, Decision 4); never the link, its hash or its times.
+  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t), awaitingFirstPassword: ownersAwaitingFirstPassword(t.slug) }; }) });
 });
 // The templates an environment can be made from, for the console's create form.
 // Every template, with where it comes from, its version, whether it is hidden and which environments use it.
@@ -2855,7 +2927,9 @@ function productAddress(req, res) {
   const ip = req.ip || 'unknown';
   if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
   addressLimiter.fail(ip);
-  res.json(hostRegistry.addressFor(req.query.slug));
+  const answer = hostRegistry.addressFor(req.query.slug);
+  // A folder left on disk with no registry entry is taken too, as sign-up treats it (and says no more than that).
+  res.json(answer.free && addressOnDisk(answer.slug) ? { slug: answer.slug, free: false, reason: 'taken' } : answer);
 }
 hostRouter.get('/api/product/address', productAddress);
 hostRouter.use((_req, res) => res.status(404).json({ error: 'not found' }));
@@ -2886,7 +2960,7 @@ function redirectToHost(req, res, status, newHost) {
 // The paths the product host lets through beside / and the use pages: what those pages load and ask.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
-const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
+const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
   app.use((req, res, next) => {
@@ -2936,17 +3010,34 @@ app.post('/api/product/signup', (req, res) => {
   if (signupLimiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a bit' });
   signupLimiter.fail(ip);
   try {
+    // No password at sign-up (plan-first-password.md): the owner chooses it on the new environment's own page, through
+    // a one-time link. The owner's login is checked before anything is made, so a refusal leaves nothing behind.
     const owner = req.body?.owner;
-    if (!owner?.login || !owner?.password) throw new HostError('an owner login and password are required');
+    const has = (obj, key) => Boolean(obj) && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key);
+    if (has(owner, 'password') || has(req.body, 'password')) throw new HostError(`Sign-up takes no password. You choose it on your new ${word('environment')}'s own page.`);
+    // Only text is cleaned: anything else (an object, a list, a number) is refused, never turned into words.
+    const login = owner && typeof owner === 'object' && typeof owner.login === 'string' ? cleanLogin(owner.login) : '';
+    if (!login) throw new HostError(`Sign-up needs the ${word('owner')}'s login.`);
+    if (owner.displayName != null && typeof owner.displayName !== 'string') throw new HostError(`The ${word('owner')}'s name must be text.`);
+    if (req.body?.name != null && typeof req.body.name !== 'string') throw new HostError(`The ${word('environment')}'s name must be text.`);
     const free = hostRegistry.plansCatalog().free;
     const template = chosenTemplate(req.body?.template);
+    // A folder already on disk for this address with no registry entry (left behind) is someone's data: refused as the
+    // address being taken, with the same answer, and never read, changed or removed.
+    const asked = addressOnDisk(req.body?.slug);
+    if (asked) throw new HostError(`"${asked}" is already in use`, 409);
     const environment = hostRegistry.addEnvironment({ slug: req.body?.slug, name: req.body?.name, plan: { name: 'free', ...free.caps }, template });
-    const made = environmentFor(environment.slug).store.addUser({ login: owner.login, displayName: owner.displayName || owner.login, role: 'owner', passwordHash: auth.hashPassword(owner.password) });
-    // The new environment's sign-in, its login filled in (plan-domains.md, decision 10): the product host is another
-    // site from the environment, so no session comes along. The port is carried the same way the door's redirects
-    // carry it (requestPort, above).
-    const newHost = `${environment.slug}.${BASE_DOMAIN}`;
-    res.status(201).json({ url: `${auth.isSecure(req) ? 'https' : 'http'}://${newHost}${requestPort(req)}/login?login=${encodeURIComponent(made.login)}` });
+    const token = auth.oneTimeToken();
+    try {
+      environmentFor(environment.slug).store.addUser({ login, displayName: owner.displayName || login, role: 'owner', passwordHash: null, firstPassword: { hash: auth.tokenHash(token), expiresAt: new Date(Date.now() + FIRST_PASSWORD_SIGNUP_MS).toISOString() } });
+    } catch (err) {
+      // The folder was checked to be absent above, with nothing in between that waits, so this request made it.
+      discardNewEnvironment(environment.slug); // nothing is left behind: no environment without its owner
+      throw err;
+    }
+    // The new environment's first-password page, the token in the fragment only (never sent to a server, a log or a
+    // Referer). Not kept in any cache. The product host is another site from the environment, so no session comes along.
+    res.set('Cache-Control', 'no-store').status(201).json({ url: firstPasswordUrl(req, environment.slug, token) });
   } catch (err) {
     sendHostError(err, res);
   }
@@ -2970,12 +3061,19 @@ const FRAMED_HERE = { 'Content-Security-Policy': "frame-ancestors 'self'", 'X-Fr
 const FRAMED_HERE_PATHS = new Set([
   '/profile', '/admin', '/login', '/login/verify', '/login/enrol', '/register',
   '/profile.html', '/admin.html', '/module-config.html', '/login.html', '/login-step.html', '/register.html', '/module.html', '/destination.html',
+  ...(BASE_DOMAIN ? ['/login/first-password'] : []), // a hosted install's only, and never by its file name (ROUTE_ONLY_FILES; plan-first-password.md)
   ...destinations.DESTINATIONS.map((d) => d.path),
-]);
+].map((p) => framingPath(p)));
+// A path as the router matches it: the router ignores case and a trailing slash (Express's defaults), so the framing
+// decision must too, or /Login/ would reach the sign-in page without its headers.
+function framingPath(p) {
+  return String(p).toLowerCase().replace(/\/+$/, '') || '/';
+}
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path === '/space.html') res.set(NOT_FRAMED);
-  else if (FRAMED_HERE_PATHS.has(req.path) || /^\/profile\/[^/]+$/.test(req.path) || /^\/invite\/[^/]+$/.test(req.path)) res.set(FRAMED_HERE);
+  const p = framingPath(req.path);
+  if (p === '/space.html') res.set(NOT_FRAMED);
+  else if (FRAMED_HERE_PATHS.has(p) || /^\/profile\/[^/]+$/.test(p) || /^\/invite\/[^/]+$/.test(p)) res.set(FRAMED_HERE);
   next();
 });
 // A page a frame asked for that would otherwise redirect a framed request into a page that refuses frames (/, a guest
@@ -3014,6 +3112,14 @@ app.get('/login/verify', (req, res) => {
 app.get('/login/enrol', (req, res) => {
   if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
   res.sendFile(page('login-step.html'));
+});
+// A new owner's first-password page (plan-first-password.md), on a hosted install only. It never redirects, signed in
+// or not: a redirect would carry the address's fragment, the one-time token, on to the next page. Kept in no cache and
+// sends no Referer.
+app.get('/login/first-password', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res.sendFile(page('login-first-password.html'), (err) => { if (err && !res.headersSent) res.status(404).type('text').send('not found'); });
 });
 
 // Self sign-up (only does anything once an admin turns it on in Settings)
@@ -3248,7 +3354,7 @@ app.get('/theme.css', (req, res) => {
 // public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
 mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html'), makerCan: shareMakerCan });
 
-app.use(express.static(publicDir, { index: false }));
+app.use(publicStatic({ index: false }));
 
 // Public API ------------------------------------------------------------------
 
@@ -3308,11 +3414,68 @@ app.post('/api/login/verify', (req, res) => {
   res.json({ user: publicUser(req, fresh, { self: true }), token });
 });
 
+// The first password (plan-first-password.md), on a hosted install only. The exchange uses the link's token once and
+// starts a ten-minute step (the pending cookie, purpose first-password, naming this owner, this environment and this
+// claim); the set step ({ login, password }) chooses the password and then finishes the sign-in as POST /api/login
+// does (mfaGate). Every
+// refusal of either is the same 401 and sentence, and counts against this environment's sign-in limit.
+app.post('/api/login/first-password', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set('Cache-Control', 'no-store');
+  const ip = req.ip || 'unknown';
+  if (limiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a few minutes' });
+  const hash = auth.tokenHash(typeof req.body?.token === 'string' ? req.body.token : ''); // hashed before anything is looked up
+  const claimed = store.claimFirstPassword(hash);
+  if (!claimed) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  limiter.clear(ip);
+  auth.setPendingCookie(req, res, auth.issuePending(store.sessionSecret, { userKey: claimed.user.key, env: currentEnvironment().slug || '', purpose: 'first-password', claim: claimed.claim }));
+  res.json({ login: claimed.user.login, displayName: claimed.user.displayName, environmentName: store.settings.environmentName });
+});
+app.post('/api/login/first-password/set', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set('Cache-Control', 'no-store');
+  const ip = req.ip || 'unknown';
+  if (limiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a few minutes' });
+  const pendingToken = auth.parseCookies(req.get('cookie'))[auth.PENDING_COOKIE] || null; // the cookie only, never the body
+  const pend = pendingToken && auth.readPending(store.sessionSecret, pendingToken, { env: currentEnvironment().slug || '', purpose: 'first-password' });
+  const user = pend && store.userByKey(pend.u);
+  // The login the page names, sent with the password: the step must be that owner's. The browser keeps only the newest
+  // step's cookie, so a page still naming an older link's owner (another tab, a slower answer) never sets this one's.
+  const named = typeof req.body?.login === 'string' ? cleanLogin(req.body.login) : '';
+  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claim !== pend.c || !named || named !== user.login) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  const password = req.body?.password;
+  if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'A password needs at least 8 characters.' });
+  if (password.length > 200) return res.status(400).json({ error: 'A password can have at most 200 characters.' });
+  const fresh = store.finishFirstPassword(user.key, pend.c, auth.hashPassword(password));
+  if (!fresh) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  limiter.clear(ip);
+  const gate = mfaGate(req, fresh);
+  if (gate) {
+    auth.setPendingCookie(req, res, gate.pending); // replaces the first-password step with the second step's
+    return res.json({ mfaRequired: true, enrol: gate.enrol });
+  }
+  auth.clearSessionCookie(req, res, auth.PENDING_COOKIE);
+  auth.setSessionCookie(req, res, auth.issueSession(store.sessionSecret, fresh));
+  setEnvHint(req, res);
+  res.json({ user: publicUser(req, fresh, { self: true }) });
+});
+
 // Self sign-up: only works while an admin has it turned on. A self-signed
 // account is a normal user, in the Lobby like everyone (that's automatic,
 // not something to grant).
 app.post('/api/register', (req, res) => {
-  if (!store.settings.allowRegistration) return res.status(403).json({ error: 'sign-up is turned off' });
+  // Also off while an owner here has not yet set their first password, so nobody arrives before the owner
+  // (plan-first-password.md).
+  if (!store.settings.allowRegistration || store.awaitingFirstPassword()) return res.status(403).json({ error: 'sign-up is turned off' });
   if (refuseOverMembers(res)) return;
   const { login, displayName, password } = req.body || {};
   if (!password) throw new StoreError('a password is required');
