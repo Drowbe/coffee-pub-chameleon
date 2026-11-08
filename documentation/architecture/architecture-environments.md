@@ -77,7 +77,7 @@ The "door" is one middleware, registered right after `express.json()`, before an
   2. The **product host** serves the product's own pages: `public/landing.html` for `/`, the use pages
      (`PRODUCT_PAGES`) and a short allowlist of other paths (`PRODUCT_HOST_PATHS`: `/landing.css`, `/landing.js`,
      `/style.css`, `/theme.css`, `/img/site/icon`, `/favicon.ico`, `/api/product`, `/api/product/environment`,
-     `/api/product/environments`, `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
+     `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
      `/assets/images/brand/*`). The product host is `PRODUCT_DOMAIN`, or the bare `<base>` when that is unset or
      equal to the base. No environment is ever resolved there, so `/theme.css` and `siteIcon` both fall back to
      "nothing set" when `envContext.getStore()` is empty, the same as any environment that has not set its own
@@ -142,47 +142,40 @@ with code 1. Without it, such a start built a second, empty single-environment i
 the AI files, `secrets.key`) beside the environments, and every later start with `BASE_DOMAIN` refused (GitHub
 #90). `tools/check-host-registry.mjs` covers it.
 
-Two more pieces exist only to let the product page's own **Sign in** send someone to the right place, without the
-host ever learning who anyone is (accounts live inside each environment, not in `host.json`):
+Two more pieces let the product page's **Sign in** send someone to the right place, without the host ever learning
+who anyone is (accounts live inside each environment, not in `host.json`). The page lists no environments and takes no
+password: a person types their environment's address (the base domain is shown after the field) and presses **Go**,
+and the page opens `<slug>.<base>/login` in the same tab once the lookup below finds it. A line under the form says
+"Got a link from someone? Just open it." The environment's own sign-in page does the rest, so the session cookie is
+first-party and nothing is posted across sites.
 
 - On every real sign-in to an environment (`GET /j/:token`, `POST /api/login`, `POST /api/register`,
   `POST /api/invites/:token/accept` -- never the host admin's own `POST /api/host/login`), `setEnvHint(req, res)`
   sets a cookie `env_hint` on the parent `BASE_DOMAIN`: a comma-separated list of slugs, most recent first,
   deduplicated, capped at five, `Path=/`, `SameSite=Lax`, `Secure` when the request is, a year long, **not**
-  `HttpOnly` (the page reads it with `document.cookie`). Never cleared on sign-out -- it is a hint, not a session,
-  and it names no person. A no-op without `BASE_DOMAIN`.
-  The cookie is on `Domain=<BASE_DOMAIN>`, so a product page on another site (a `PRODUCT_DOMAIN` outside the
-  base) cannot read it. `public/landing.js` skips the **recent** shortcut ("Sign in to ...") when
-  `location.hostname` is not the base or under it; the environment list and the sign-in form stay. Nothing moves
-  the cookie to the product host.
+  `HttpOnly`. Never cleared on sign-out. A no-op without `BASE_DOMAIN`. **Nothing reads it now**: the product page
+  used to preselect from it and no longer does (plan-product-site.md, decision 11).
 - `GET /api/product/environment?slug=` (registered on both the main app and `hostRouter`, and in
   `BARE_BASE_PATHS`, so it answers at the bare base domain too) answers `{ slug, name }` for an `active` or
-  `pastDue` environment and a plain 404 for anything else -- unknown, suspended, or a slug that fails `cleanSlug`'s own
-  shape check before it ever reaches the registry. Suspended and unknown look identical on purpose: a slug is
-  already a public address (it is the environment's own subdomain), so confirming one exists reveals nothing a browser
-  couldn't already see by just visiting it.
+  `pastDue` environment and a plain 404 for anything else -- unknown, suspended, refused at startup (see "Refused
+  environments"), or a slug that fails `cleanSlug`'s own shape check before it ever reaches the registry. These all
+  look identical on purpose: a slug is already a public address (it is the environment's own subdomain), so confirming
+  one exists reveals nothing a browser couldn't already see by just visiting it. It shares the address check's limit:
+  120 a minute from one address, counted together with `GET /api/product/address`, then 429
+  `{ error: "Too many checks from this address; try again in a minute." }`. The limit is checked before the slug is
+  read, so unknown and malformed slugs count too.
+- There is no list of environments. `GET /api/product/environments` is removed and answers 404 on every host, so no
+  visitor is ever shown another customer's environment.
 - `GET /api/product/address?slug=` (same registration pattern, and in `PRODUCT_HOST_PATHS`) is the sign-up
   form's check as the name is typed. It answers `{ slug, free, reason }` through `HostRegistry#addressFor()`:
   `reason` is `shape` (not a slug; `slug` is echoed lower-cased, cut to 64 characters), `reserved`, `taken` (an
   environment has it, whatever its status) or null when `free` is true. It is public, 404 without a
-  `hostRegistry`, and limited to 120 a minute per address (429 `Too many checks from this address; try again in a
-  minute.`). Unlike the lookup above, it says nothing about the environment beyond whether the name is taken, and
-  the lookup keeps meaning "this environment exists".
-- `GET /api/product/environments` (same registration pattern) answers `{ environments: [{ slug, name }] }` for
-  the page's own dropdown: every `active` or `pastDue` environment that is not refused (see "Refused environments"),
-  sorted by name, suspended ones left out entirely
-  (not even a slug -- unlike the single lookup above, there is no address a visitor already has here to confirm).
-  `{ environments: [] }` when there is no `hostRegistry` at all.
-- `POST /login` (form-encoded, `login`/`password`/`next`; each environment's own, registered on the main app like
-  `POST /api/login`) is the page's actual sign-in: a top-level form post from `https://<slug>.<base>/login`, so
-  the session cookie is set first-party with no cross-origin request involved. Same check as the JSON route
-  (`store.userByLogin`, `auth.verifyPassword`, the environment's own `limiter`, a `LoginLimiter` shared with
-  `POST /api/login` since it is the same `proxyFor('limiter')`), but a redirect instead of a JSON body: success
-  sets the session and `env_hint` exactly as `POST /api/login` does, then `303`s to `next` when it is a path on
-  this environment (`safeNextPath` requires a single leading `/` -- a second one, as in `//evil.com`, is a
-  protocol-relative URL to a browser, not a path), `/` otherwise; blocked-by-the-limiter or a wrong login/password
-  both `303` to `/login?error=1&login=<login>`, indistinguishable from each other, same as the JSON route's own
-  single "wrong username or password".
+  `hostRegistry`, and limited to 120 a minute per address (429, same sentence), shared with the lookup above. It says
+  nothing about the environment beyond whether the name is taken.
+- The form `POST /login` is removed with its `?error=1&login=` return. Sign-in is `POST /api/login` from the
+  environment's own `/login` page (`public/login.js`, and `public/login-step.js` for the second step).
+  Both keep the `next` address only through `sameSiteNext` in `public/next-address.js`: it must start with a single
+  `/` and stay on this site; `//evil`, `/\evil`, absolute addresses and tab or newline tricks fall back to `/`.
 - `POST /api/product/signup` (main app only, in `PRODUCT_HOST_PATHS`, so it is served at the product host; off
   unless `SIGNUP=on`) makes the environment on the free plan and its owner, and answers 201
   `{ url }`, `<scheme>://<slug>.<BASE_DOMAIN>[:port]/login?login=<login>`. The person is not signed in (the product
@@ -230,8 +223,7 @@ can never be confused for one another even if somehow set on the same browser, b
 where it expects the other.
 
 The person running the whole deployment can still sign into any one environment, without a second account to
-remember: `resolveLoginUser(login, password)` in `index.js`, used by both `POST /api/login` and the product
-page's `POST /login`, checks the environment's own users first (as always) and only then, when that fails and
+remember: `resolveLoginUser(login, password)` in `index.js`, used by `POST /api/login`, checks the environment's own users first (as always) and only then, when that fails and
 there is a host registry, `hostRegistry.findAdminByLogin`. A match there never touches that environment's own
 data for the password: it only ensures a user record exists for that login (`hostAdmin: true`, `passwordHash`
 always `null`, so nothing inside the environment can authenticate as it directly -- `PATCH /api/users/:key`
@@ -606,7 +598,7 @@ than read in a shape this server does not understand (plan-names decision 22).
   `{ error: "This environment's data could not be read. The host admin has been told." }` (`unreadable`) or
   `{ error: "This environment's data could not be updated. The host admin has been told." }` (`failed`), or a
   plain HTML page with the same sentence for a browser asking for a page. The file and the detail go to the log
-  and the console only. A refused environment is left out of `GET /api/product/environments`, and the console's
+  and the console only. A refused environment is answered 404 by `GET /api/product/environment`, and the console's
   map-region search skips it.
 - **The console's list.** `GET /api/host/environments` gives each environment
   `refused: null | { reason: 'newer' | 'unreadable' | 'failed', file, message, at }`, and every `usage` count is `null` while

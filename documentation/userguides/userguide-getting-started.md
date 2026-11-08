@@ -301,8 +301,9 @@ What changes:
   there is no setting to move it.
 - Sign-up and **Sign in** on the product page work across the two sites. After sign-up the person arrives at the
   new environment's sign-in with their login already filled in; they enter the password.
-- The product page cannot offer the "Sign in to ..." shortcut for the environment this browser was last in,
-  because that is remembered for the base domain only. The environment list and the sign-in form are there.
+- **Sign in** on the product page asks for your environment's address, not a password. Type it, press **Go**, and
+  you arrive at that environment's own sign-in page. The page lists no environments. If someone sent you a link,
+  just open it.
 - An owner's **Upgrade** link on Manage and the console's own facts name the product host.
 - LiveKit is unchanged. `LIVEKIT_HOST` is its own setting, and its DNS record, certificate, proxy host and the
   TURN domain stay where they are.

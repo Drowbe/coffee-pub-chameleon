@@ -3,10 +3,11 @@
 // `next` in the address, the same as the sign-in page's.
 import { loadBranding, api } from '/brand.js';
 import { mountEnrolment } from '/mfa-enrol.js';
+import { sameSiteNext } from '/next-address.js';
 
 const $ = (id) => document.getElementById(id);
 const mode = location.pathname.endsWith('/enrol') ? 'enrol' : 'verify';
-const next = (() => { const n = new URLSearchParams(location.search).get('next') || '/'; return n.startsWith('/') ? n : '/'; })();
+const next = sameSiteNext(new URLSearchParams(location.search).get('next'));
 
 loadBranding();
 

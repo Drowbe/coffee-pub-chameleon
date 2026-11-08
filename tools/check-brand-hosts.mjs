@@ -5,15 +5,17 @@
  *
  * Searched: server/, public/, modules/, templates/, tools/, .github/, the Dockerfile, docker-compose.yml and package.json.
  * Not searched: documentation/ (plans and guides may name the install), this check and its allow-list.
- * Looked for: the brand's domains (the brand name followed by a top-level domain, any case, so a subdomain of one
- * counts too) and the host label of the real deployment. Use example.com or localhost in examples and tests.
+ * Looked for: the brand's domains (the brand name, then any more letters, then a top-level domain, any case, so the
+ * studio's domains and a subdomain of any of them count too, without this check naming them) and the host label of
+ * the real deployment. Use example.com or localhost in examples and tests.
  *
  * tools/check-brand-hosts-allow.json: [{ file, pattern, count, reason }]. `file` is a path from the repository's
  * root; `pattern` is a regular expression tested against the matched text; `count` is how many hits it may allow in
  * that file. The count may only fall: more hits than `count` fail, and so does an entry that allows more than it
  * finds (lower it or delete it). An entry without a reason fails.
  *
- * Self-test: a planted file with each form fails; one with a brand-free host and the brand name alone ("Coffee Pub")
+ * Self-test: a planted file with each form fails (the brand plus a top-level domain, the brand plus more letters plus
+ * one, the deployment label); one with a brand-free host and the brand name alone ("Coffee Pub")
  * passes; an allow-list entry lets exactly its count and no more.
  */
 import fs from 'node:fs';
@@ -26,7 +28,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Written in pieces so this file does not hold what it looks for.
 const BRAND = ['coffee', 'pub'].join('');
 const DEPLOYMENT = ['the', 'pub'].join('');
-const PATTERNS = [new RegExp(`${BRAND}\\.[a-z]{2,}`, 'gi'), new RegExp(`\\b${DEPLOYMENT}\\b`, 'gi')];
+const PATTERNS = [new RegExp(`${BRAND}[a-z]*\\.[a-z]{2,}`, 'gi'), new RegExp(`\\b${DEPLOYMENT}\\b`, 'gi')];
 const TARGETS = ['server', 'public', 'modules', 'templates', 'tools', '.github', 'Dockerfile', 'docker-compose.yml', 'package.json'];
 const SKIP_DIRS = new Set(['node_modules', '.git', '.wiki-build']);
 const SKIP_FILES = new Set(['tools/check-brand-hosts.mjs', 'tools/check-brand-hosts-allow.json']);
@@ -83,8 +85,11 @@ function selfTest() {
     const planted = (s) => { fs.writeFileSync(file, s); return scan(dir); };
     assert.equal(planted(`const a = 'https://x.${BRAND}.ai';`).length, 1, 'a brand domain must be found');
     assert.equal(planted(`const a = 'SUB.${BRAND.toUpperCase()}.LIVE';`).length, 1, 'any case must be found');
+    assert.equal(planted(`const a = 'https://x.${BRAND}studio.live';`).length, 1, 'the brand followed by more letters and a top-level domain must be found');
+    assert.equal(planted(`const a = '${BRAND}studio.com/products';`).length, 1, 'the brand followed by more letters must be found under any top-level domain');
     assert.equal(planted(`// ${DEPLOYMENT}`).length, 1, 'the deployment label must be found');
     assert.equal(planted(`const a = 'example.com'; // Coffee Pub, coffee-pub`).length, 0, 'the brand name alone passes');
+    assert.equal(planted(`// ${BRAND}studio, with no top-level domain`).length, 0, 'the brand and more letters without a domain pass');
     const two = planted(`'${BRAND}.ai'\n'${BRAND}.live'`);
     assert.equal(two.length, 2);
     assert.equal(judge(two, []).length, 2, 'no allow-list: fails');
