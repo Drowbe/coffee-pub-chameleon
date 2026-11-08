@@ -9,7 +9,9 @@
 /* ---- the header: the studio's. The mark 56px, "Coffee Pub" in Fraunces Bold in the text colour, the product's name in the brand's coral at the
    same size (2rem, coral only at 24px and larger), then Support, the teal pill and a round button for light and dark ---- */
 .sp-wrap { box-sizing: border-box; width: 100%; max-width: 1425px; margin: 0 auto; padding: 0 clamp(24px, 4.5vw, 60px); }
-.sp-top { border-bottom: 1px solid var(--edge-hairline); background: var(--surface-page); }
+/* Sticky: the header stays at the top while the page scrolls; --sp-top-h is its height, so anchor jumps land below it. */
+html { --sp-top-h: 84px; scroll-padding-top: var(--sp-top-h); }
+.sp-top { position: sticky; top: 0; z-index: var(--z-menu); border-bottom: 1px solid var(--edge-hairline); background: var(--surface-page); }
 .sp-top-in { display: flex; align-items: center; gap: 28px; height: 84px; }
 .sp-brand { display: inline-flex; align-items: center; gap: 12px; min-width: 0; color: var(--text-primary); text-decoration: none; }
 .sp-brand:focus-visible, .sp-nav a:focus-visible, .sp-btn:focus-visible, .sp-way:focus-visible, .sp-site a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
@@ -34,7 +36,9 @@
 .sp-top [hidden], .sp-page [hidden], .sp-site[hidden] { display: none; }
 
 /* ---- the hero: the product's mark and a badge, the title in Fraunces, the words, the button, and the drawing beside them ---- */
-.sp-page { display: flex; flex-direction: column; gap: 72px; box-sizing: border-box; min-width: 0; padding: 40px 0 72px; }
+.sp-page { display: flex; flex-direction: column; gap: 56px; box-sizing: border-box; min-width: 0; padding: 0 0 72px; }
+/* The bands alternate as the studio's do: the hero on its own darker ground, the sections after it on the page's. */
+.sp-band { background: var(--surface-band); padding: 56px 0; }
 .sp-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
 .sp-hero-text { min-width: 0; }
 .sp-eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
@@ -50,19 +54,17 @@
 .sp-scene { display: block; width: 100%; height: auto; overflow: visible; }
 .sp-scene .plane { offset-path: path("M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164"); offset-rotate: auto; offset-distance: 50%; }
 
-/* ---- the sign-in: one 480px column of cards, right after the hero ---- */
-.sp-signin { box-sizing: border-box; padding: 0 clamp(24px, 4.5vw, 60px); }
-.sp-cols { display: flex; flex-direction: column; gap: var(--space-5); box-sizing: border-box; width: 100%; max-width: 480px; margin: 0 auto; min-width: 0; }
-.sp-signin .sdk-panel { border-radius: var(--radius-large); padding: var(--space-5); }
-.sp-part { gap: var(--space-3); }
-.sp-part > h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: 600; }
-.sp-part > p { margin: 0; }
-.sp-quiet { color: var(--text-muted); font-size: var(--text-13); }
-.sp-plain { display: flex; flex-direction: column; gap: var(--space-2); padding-inline: var(--space-1); }
-.sp-plain > h2 { margin: 0; font-size: var(--text-14); font-weight: var(--weight-strong); }
-.sp-plain > p { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
-.sp-cols [hidden] { display: none; }
-#start { scroll-margin-top: var(--space-4); }
+/* ---- the sign-in: one wide band, the address field and Go first, Recent as chips under it ---- */
+.sp-signin { box-sizing: border-box; }
+.sp-find-band { display: flex; flex-direction: column; gap: var(--space-5); box-sizing: border-box; width: 100%; max-width: 760px; margin: 0 auto; padding: var(--space-5); border-radius: var(--radius-large); }
+.sp-find { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.sp-find > h2, .sp-recent-band > h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: 600; }
+.sp-link { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.sp-link b { color: var(--text-primary); font-weight: var(--weight-strong); }
+.sp-find-band:has(> #sp-find[hidden]) { display: none; }
+.sp-find-band [hidden] { display: none; }
+.sp-recent-band { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
+.sp-recent-band > h2 { font-size: var(--text-16); }
 
 /* ---- the ways to use the product: cards, each a link to its page on the studio's site ---- */
 .sp-ways h2 { margin: 0 0 24px; font-family: var(--font-display); font-weight: 600; font-size: clamp(1.7rem, 3vw, 2.2rem); letter-spacing: -0.01em; color: var(--text-primary); }
@@ -113,40 +115,38 @@
 .sp-line[data-kind="error"] { color: var(--status-danger-text); }
 .sp-line strong { font-weight: var(--weight-strong); }
 
-/* Recent: rows on the panel, each a link to its sign-in, with a remove. */
-.sp-recent { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.sp-recent .sdk-row-title { color: var(--text-primary); }
-
-/* Get your own: the form, the contact link. */
-.sp-form { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.sp-form label:not(.sdk-choice-row) { display: flex; flex-direction: column; min-width: 0; }
-.sp-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.sp-form legend { padding: 0; }
-.sp-form .sdk-choice-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.sp-form-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
-.sp-own-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sp-form .sdk-error[hidden] { display: none; }
+/* Recent: chips that wrap, each a link to its sign-in (name over address) with a remove. */
+.sp-recent { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.sp-chip { display: flex; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-field); }
+.sp-chip-main { display: flex; flex-direction: column; min-width: 0; }
+.sp-chip-name { overflow: hidden; color: var(--text-primary); font-weight: var(--weight-strong); text-overflow: ellipsis; white-space: nowrap; }
+.sp-chip-addr { overflow: hidden; color: var(--text-muted); font-size: var(--text-12); text-overflow: ellipsis; white-space: nowrap; }
+.sp-form { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 
 #sp-failed { max-width: 480px; margin: 0 auto; }
 
 /* ---- a phone: the system sets its 640px sizes (fields, checks and buttons 44px) on :root; the lockup stacks its two words beside the mark ---- */
 @media (max-width: 900px) { .sp-hero { grid-template-columns: 1fr; gap: 24px; } }
 @media (max-width: 640px) {
-  .sp-wrap, .sp-signin { padding-inline: var(--space-4); }
+  .sp-wrap { padding-inline: var(--space-4); }
+  .sp-band { padding: 24px 0; }
+  .sp-find-band { padding: var(--space-4); }
+  html { --sp-top-h: 140px; }
   .sp-top-in { height: auto; flex-wrap: wrap; gap: 10px; padding-block: 14px; }
   .sp-lockup { font-size: var(--text-28); white-space: normal; }
   .sp-lockup-brand, .sp-lockup-product { display: block; }
   .sp-nav { width: 100%; margin-left: 0; flex-wrap: wrap; }
   .sp-nav .sp-theme { margin-left: auto; }
-  .sp-page { gap: 48px; padding: 24px 0 48px; }
+  .sp-page { gap: 32px; padding: 0 0 48px; }
   .sp-hero { grid-template-columns: 1fr; gap: 24px; }
   .sp-foot-grid { grid-template-columns: 1fr 1fr; }
   .sp-foot-about { grid-column: 1 / -1; }
   .sp-nav-link, .sp-pill, .sp-site a { min-height: 44px; display: inline-flex; align-items: center; }
-  .sp-page .sdk-row { min-height: 44px; }
-  .sp-page .sdk-choice-row { min-height: 44px; }
+  .sp-chip { min-height: 44px; }
+  .sp-recent { flex-direction: column; }
+  .sp-chip { width: 100%; box-sizing: border-box; }
+  .sp-chip-main { flex: 1 1 auto; }
   .sp-page :where(.btn-small) { position: relative; }
   .sp-page .btn-small::after { content: ""; position: absolute; inset: var(--btn-hit) 0; }
   .sp-page .sdk-icon-btn.btn-small::after { inset: var(--btn-hit); }
-  .sp-own-actions > .btn { flex: 1 1 auto; }
 }

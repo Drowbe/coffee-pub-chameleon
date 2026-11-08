@@ -15,6 +15,7 @@
   --status-danger-fill: #b8503f;
   --brand-teal: #5cc8cf; /* the brand kit's teal: the start page's main buttons and links */
   --brand-teal-hover: #7fd6db;
+  --surface-band: color-mix(in srgb, #13243b 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
   --text-on-brand-teal: #0e1a2b;
   --brand-coral: #ff8264; /* the brand kit's coral for the product's name in the lockup: large text only (24px and up), never body text */
 
@@ -145,6 +146,7 @@
   --brand-coral: #e0553c;
   --brand-teal: #0b7a84;
   --brand-teal-hover: #096870;
+  --surface-band: color-mix(in srgb, #f3e9d4 55%, var(--surface-page)); /* the studio's hero band (its --band at .55 over the ground): the start page's hero */
   --text-on-brand-teal: #ffffff;
 }
 
