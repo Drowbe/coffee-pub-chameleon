@@ -344,8 +344,8 @@ identifiers are named by kind ([plan-kind-names](../plans/plan-kind-names.md)). 
 read from `DEFAULT_PRODUCT_NAME` in `server/product-name.js` and never repeated in the check, and the past names in
 `PAST_PRODUCT_NAMES` (magpie and tavern), matched in any letter case anywhere in a line, comments included, and in
 file and folder names, under `server/`, `public/`, `modules/`, `tools/` and `templates/`, and in the `Dockerfile`.
-The brand, Coffee Pub, and the repository and image addresses (`github.com/Drowbe/coffee-pub-collaborator`,
-`ghcr.io/drowbe/coffee-pub-collaborator`) are allowed. Anything else is exempt only by an allow-list entry of level
+The brand, Coffee Pub, and the repository and image addresses (`github.com/Drowbe/coffee-pub-chameleon`,
+`ghcr.io/drowbe/coffee-pub-chameleon`) are allowed. Anything else is exempt only by an allow-list entry of level
 `product-name` with a reason: the read-once migrations of what installs stored or were configured with (the
 `tavern_session` cookie, `tavern.json`, the "Coffee Pub Tavern" environment name, `TAVERN_AI_KEY` and the removed
 admin names, the browser's `tavern.*` keys), the checks that prove them, the default's one definition,

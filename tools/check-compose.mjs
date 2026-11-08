@@ -36,7 +36,7 @@ ok(new RegExp(`ENV VAULT_DIR=${vaultDir}\\b`).test(docker) && docker.includes(`V
 
 // A short file with a pinned image, no real secrets, and the names the host will see.
 ok(compose.split('\n').length < 100, 'the file is under 100 lines');
-const image = /^\s*image:\s*ghcr\.io\/drowbe\/coffee-pub-collaborator(\S*)/m.exec(compose);
+const image = /^\s*image:\s*ghcr\.io\/drowbe\/coffee-pub-chameleon(\S*)/m.exec(compose);
 ok(image && /^:sha-[A-Za-z0-9_]+$/.test(image[1]), 'the app image has a pinned sha- tag (a placeholder is fine)');
 ok(!/^\s*image:\s*ghcr.*:latest\b/m.test(compose), 'the app image is not :latest');
 ok(/container_name: chameleon-app/.test(compose) && /container_name: chameleon-livekit/.test(compose) && /^  chameleon:/m.test(compose), 'the service and container names are chameleon, chameleon-app and chameleon-livekit');
