@@ -5889,6 +5889,8 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
   padding: var(--mf-inset);
 }
 :root[data-content="flush"] .sdk-slot { padding: 0; }
+/* A module running in the page: data-content is on its shadow root's host (the container), so :root never matches there. */
+:host([data-content="flush"]) .sdk-slot { padding: 0; }
 
 /* ---- where the frame is drawn ---- */
 /* A docked column of the canvas: the column's divider is its left edge; no corner, no shadow. A page (a module's own page,
