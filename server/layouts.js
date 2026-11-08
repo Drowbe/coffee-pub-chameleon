@@ -16,7 +16,7 @@
 // them, per space, like favorites: "system": { "<user key>": { "<system id>": { "name"?, "icon"?, "tab"?: false } } }.
 // A user layout may carry an `icon`; one stored without reads as kind `user` with the default icon.
 //
-// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap? }], snap?: { all, pitch } }. cleanLayout()
+// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }], snap?: { all, pitch } }. cleanLayout()
 // is the one shape check, pure; the Layouts class keeps the lists, their limits and the clean-up when a space or a
 // person is removed (server/store.js calls forgetSpace and forgetPerson). The browser's own remembered layout
 // (app.canvas.<space id>) is unchanged and separate. An aside has no layouts: index.js only finds spaces.
@@ -37,7 +37,16 @@ const LAYOUT_LIMITS = Object.freeze({
   dockWMax: 2000,
   pitchMin: 50, // the snap grid's pitch in pixels, as the canvas's SNAP_PITCH
   pitchMax: 320,
+  stackMax: 3, // modules in one stack (plan-panel-stacking.md decision 3)
+  stackHMin: 0.1, // a section's share of its column's height
+  stackHMax: 0.9,
+  stackHSum: 0.01, // the shares must add up to 1, within this
 });
+// Never stacked (plan-panel-stacking.md decision 2): the conference, Chat and the composites (dest:*; their ':' fails
+// MODULE_ID, so they never reach a layout, but the rule is kept here in words).
+const NEVER_STACKED = Object.freeze(['conference', 'chat']);
+const stackable = (id) => !NEVER_STACKED.includes(id) && !id.startsWith('dest:');
+const STACK_ID = /^[a-z0-9]{1,32}$/;
 // The system layouts' stable ids (a user layout's is `l` and six characters, so they never collide) and their default
 // icons; a user layout's default icon is the Layout button's.
 const SYSTEM_IDS = Object.freeze(['workspace', 'calendar', 'map']);
@@ -48,7 +57,7 @@ const ICON_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const MODULE_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const MODES = ['dock', 'float'];
 const TOP_KEYS = ['name', 'shared', 'modules', 'snap', 'icon'];
-const MODULE_KEYS = ['id', 'mode', 'dockW', 'box', 'snap'];
+const MODULE_KEYS = ['id', 'mode', 'dockW', 'box', 'snap', 'stack', 'at', 'h', 'folded'];
 const BOX_KEYS = ['x', 'y', 'w', 'h'];
 const SNAP_KEYS = ['all', 'pitch'];
 const ID_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -56,6 +65,59 @@ const ID_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 const isFraction = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
 const many = (key) => words.word(key, { many: true });
+
+// A stack (plan-panel-stacking.md, decision 4): a column of the canvas holding 2 or 3 docked modules one above the
+// other. It is carried on the members' own entries in `modules`, with four optional keys:
+//   stack   the stack's id, 1 to 32 characters of [a-z0-9]; members with the same id share one column
+//   at      the member's place in the stack, 0 (top) to 2
+//   h       the member's share of the column's height, 0.1 to 0.9; the members' shares add up to 1 (within 0.01)
+//   folded  true when the member is collapsed
+// A stack's width is the `dockW` of its members as for any docked module. An entry with none of the four is an
+// ordinary column, so layouts saved before stacks are unchanged. Stack keys are cleaned, never refused (cleanStacks):
+// a stack key on a float, the conference, Chat or a composite is dropped; a stack of one member, and members past the
+// third, become ordinary columns; members are put in `at` order (list order where `at` is missing or repeats), kept
+// together at the place of the stack's first member, and renumbered 0, 1, 2; `h` is kept (clamped to 0.1 to 0.9, rounded
+// to 4 places) only when every member has one and they add up to 1 within 0.01, else all are dropped (equal heights);
+// `folded` is kept only as true or false. The 20 entry limit counts every member (Opens with names every module too);
+// the server knows no column limit, so a stack being one column against the docked limit is the page's.
+function cleanStacks(entries) {
+  const groups = new Map();
+  entries.forEach((e, i) => {
+    const { stack } = e.raw;
+    if (e.kept.mode !== 'dock' || !stackable(e.kept.id) || typeof stack !== 'string' || !STACK_ID.test(stack)) return;
+    if (!groups.has(stack)) groups.set(stack, []);
+    groups.get(stack).push(i);
+  });
+  const placed = new Map(); // index of a stack's first member -> its cleaned, ordered members
+  const inStack = new Set();
+  for (const idx of groups.values()) {
+    const stack = entries[idx[0]].raw.stack;
+    const atOf = (i) => { const a = entries[i].raw.at; return Number.isInteger(a) && a >= 0 && a < LAYOUT_LIMITS.stackMax ? a : Infinity; };
+    const order = idx.map((i, n) => ({ i, n, at: atOf(i) }));
+    order.sort((a, b) => (a.at === b.at ? a.n - b.n : a.at - b.at));
+    const members = order.slice(0, LAYOUT_LIMITS.stackMax).map((o) => o.i);
+    if (members.length < 2) continue;
+    const hs = members.map((i) => entries[i].raw.h);
+    const heights = hs.every((h) => typeof h === 'number' && Number.isFinite(h))
+      ? hs.map((h) => Math.round(Math.min(LAYOUT_LIMITS.stackHMax, Math.max(LAYOUT_LIMITS.stackHMin, h)) * 10000) / 10000) : null;
+    const sound = heights && Math.abs(heights.reduce((a, b) => a + b, 0) - 1) <= LAYOUT_LIMITS.stackHSum + 1e-9;
+    members.forEach((i, at) => {
+      const k = entries[i].kept;
+      k.stack = stack;
+      k.at = at;
+      if (sound) k.h = heights[at];
+      if (typeof entries[i].raw.folded === 'boolean') k.folded = entries[i].raw.folded;
+      inStack.add(i);
+    });
+    placed.set(Math.min(...idx), members);
+  }
+  const out = [];
+  entries.forEach((e, i) => {
+    if (placed.has(i)) placed.get(i).forEach((m) => out.push(entries[m].kept));
+    else if (!inStack.has(i)) out.push(e.kept);
+  });
+  return out;
+}
 
 // A layout's name as it is kept: control characters out, whitespace collapsed, trimmed.
 function cleanName(value) {
@@ -91,7 +153,7 @@ function cleanLayout(input, { partial = false, icons = null } = {}) {
     if (!Array.isArray(input.modules) || input.modules.length === 0) return { error: `List the ${many('module')} the layout opens.` };
     if (input.modules.length > LAYOUT_LIMITS.modules) return { error: `A layout can hold at most ${LAYOUT_LIMITS.modules} ${many('module')}.` };
     const seen = new Set();
-    out.modules = [];
+    const entries = [];
     for (const entry of input.modules) {
       if (!isObject(entry)) return { error: `Each ${words.word('module')} in a layout needs an id and a mode.` };
       const id = entry.id;
@@ -119,8 +181,9 @@ function cleanLayout(input, { partial = false, icons = null } = {}) {
         if (typeof entry.snap !== 'boolean') return { error: `"${id}": snap must be true or false.` };
         kept.snap = entry.snap;
       }
-      out.modules.push(kept);
+      entries.push({ kept, raw: entry });
     }
+    out.modules = cleanStacks(entries);
   }
 
   if (input.icon !== undefined) {

@@ -521,6 +521,80 @@ const refused = (input, pattern, label, options) => {
   n += 1;
 }
 
+// --- stacks (plan-panel-stacking.md, decision 4): cleanLayout() accepts and cleans them -----------------------------
+
+{
+  const dock = (id, extra = {}) => ({ id, mode: 'dock', dockW: 320, ...extra });
+  const mods = (modules, options) => cleanLayout({ name: 'Stacked', modules }, options).layout?.modules;
+  const stacked = [
+    dock('calendar'),
+    dock('todo', { stack: 's1', at: 0, h: 0.4 }),
+    dock('polls', { stack: 's1', at: 1, h: 0.6, folded: true }),
+  ];
+  // A stack round-trips: the same shape comes back, and cleaning it again changes nothing.
+  assert.deepEqual(mods(stacked), stacked, 'a stack of two round-trips');
+  assert.deepEqual(mods(mods(stacked)), stacked, 'and cleaning it twice is the same');
+  const three = [dock('todo', { stack: 'abc123', at: 0, h: 0.3 }), dock('polls', { stack: 'abc123', at: 1, h: 0.3 }), dock('notes', { stack: 'abc123', at: 2, h: 0.4, folded: false })];
+  assert.deepEqual(mods(three), three, 'a stack of three round-trips, folded false kept');
+  assert.deepEqual(mods([...stacked, dock('notes', { stack: 's2', at: 0 }), dock('budget', { stack: 's2', at: 1 })]).map((m) => m.stack), [undefined, 's1', 's1', 's2', 's2'], 'two stacks');
+  // Old layouts, with no stack keys, are unchanged.
+  assert.deepEqual(cleanLayout(good()).layout.modules, good().modules, 'a layout without stacks is as it was');
+  n += 4;
+
+  // Malformed shapes are cleaned, never refused and never trusted.
+  const same = (input, expected, label) => { assert.deepEqual(mods(input), expected, label); n += 1; };
+  same([dock('todo', { stack: 's1', at: 0, h: 0.5, folded: true })], [dock('todo')], 'one member is an ordinary column, all stack keys gone');
+  same([dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('notes', { stack: 's1', at: 2 }), dock('budget', { stack: 's1', at: 3 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('notes', { stack: 's1', at: 2 }), dock('budget')], 'a fourth member becomes an ordinary column');
+  same([dock('todo', { stack: 's1', at: 1 }), dock('polls', { stack: 's1', at: 0 })],
+    [dock('polls', { stack: 's1', at: 0 }), dock('todo', { stack: 's1', at: 1 })], 'members come back in at order');
+  same([dock('todo', { stack: 's1', at: 0 }), dock('x', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 7 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('x', { stack: 's1', at: 1 }), dock('polls', { stack: 's1', at: 2 })], 'a repeated or out of range at keeps list order and is renumbered');
+  same([dock('todo', { stack: 's1', at: 0 }), dock('calendar'), dock('polls', { stack: 's1', at: 1 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('calendar')], 'members are kept together at the first one');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.5 }), dock('polls', { stack: 's1', at: 1 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h on some members only is ignored');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.3 }), dock('polls', { stack: 's1', at: 1, h: 0.3 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h not adding up to 1 is ignored');
+  same([dock('todo', { stack: 's1', at: 0, h: 'a' }), dock('polls', { stack: 's1', at: 1, h: 0.5 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h as text is ignored');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.02 }), dock('polls', { stack: 's1', at: 1, h: 0.98 })],
+    [dock('todo', { stack: 's1', at: 0, h: 0.1 }), dock('polls', { stack: 's1', at: 1, h: 0.9 })], 'h is clamped to 0.1 and 0.9');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.02 }), dock('polls', { stack: 's1', at: 1, h: 0.5 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h that no longer adds up to 1 once clamped is ignored');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.1 }), dock('polls', { stack: 's1', at: 1, h: 0.9 })],
+    [dock('todo', { stack: 's1', at: 0, h: 0.1 }), dock('polls', { stack: 's1', at: 1, h: 0.9 })], 'the edges of h are allowed');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.4, folded: 'yes' }), dock('polls', { stack: 's1', at: 1, h: 0.60004 })],
+    [dock('todo', { stack: 's1', at: 0, h: 0.4 }), dock('polls', { stack: 's1', at: 1, h: 0.6 })], 'folded not a boolean is dropped, h rounded');
+  for (const bad of ['', 'S1', 'a-b', 'x'.repeat(33), 7, null, {}]) {
+    same([dock('todo', { stack: bad, at: 0 }), dock('polls', { stack: bad, at: 1 })], [dock('todo'), dock('polls')], `stack id ${JSON.stringify(bad)} is dropped`);
+  }
+  same([dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('notes', { stack: 's1', at: 1.5 })],
+    [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('notes', { stack: 's1', at: 2 })], 'a fractional at is not trusted');
+  same([{ id: 'todo', mode: 'float', box: { x: 0, y: 0, w: 0.3, h: 0.3 }, stack: 's1', at: 0 }, dock('polls', { stack: 's1', at: 1 })],
+    [{ id: 'todo', mode: 'float', box: { x: 0, y: 0, w: 0.3, h: 0.3 } }, dock('polls')], 'a floating module cannot be in a stack');
+  assert.ok(cleanLayout({ name: 'x', modules: [dock('todo', { stack: 's1', at: 0, extra: 1 })] }).error, 'a key that is not a layout key is still refused');
+  assert.ok(cleanLayout({ name: 'x', modules: [dock('todo', { stack: 's1' }), dock('todo', { stack: 's1' })] }).error, 'a module listed twice is still refused');
+  n += 2;
+
+  // Never stacked: the conference, Chat and the composites.
+  same([dock('conference', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], [dock('conference'), dock('polls')], 'the conference cannot be stacked, so the other is alone');
+  same([dock('chat', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 }), dock('todo', { stack: 's1', at: 2 })],
+    [dock('chat'), dock('polls', { stack: 's1', at: 0 }), dock('todo', { stack: 's1', at: 1 })], 'Chat is left out of a stack, the rest stay stacked');
+  assert.ok(cleanLayout({ name: 'x', modules: [dock('dest:calendar', { stack: 's1', at: 0 })] }).error, 'a composite is not a module id at all');
+  assert.ok(!stackedOf(mods([dock('chat', { stack: 's1' }), dock('conference', { stack: 's1' })])), 'nothing is left stacked when only the refused were');
+  n += 2;
+
+  // The limits: a stack's members each count in the 20; the server holds no column limit.
+  const twenty = Array.from({ length: 20 }, (_, i) => dock(`m${i}`, i < 3 ? { stack: 's1', at: i } : {}));
+  assert.equal(mods(twenty).length, 20, '20 entries with a stack of three is allowed');
+  assert.ok(cleanLayout({ name: 'x', modules: [...twenty, dock('m20')] }).error, 'the 21st is refused, stacked or not');
+  const patched = cleanLayout({ modules: stacked }, { partial: true }).layout;
+  assert.deepEqual(patched, { modules: stacked }, 'a PUT carries a stack too');
+  n += 3;
+}
+function stackedOf(modules) { return modules.some((m) => 'stack' in m || 'at' in m || 'h' in m || 'folded' in m); }
+
 // --- the store: a space's default layout (step 4) -----------------------------------------------------------------
 
 {
@@ -1079,6 +1153,25 @@ try {
   await expect('PATCH Calendar once off', 404, 'PATCH', `${SYS}/calendar`, { cookie: pat3, body: { name: 'x' } });
   await expect('Calendar on again', 200, 'PATCH', '/api/modules/calendar', { cookie: owner2, body: { enabled: true } });
   assert.equal((await call('GET', L, { cookie: pat3 })).json.system[1].name, 'Our plans', 'and comes back as the person left it');
+  n += 1;
+
+  // Stacks through the routes (plan-panel-stacking.md, decision 4): a shared layout, a person's own, the space's default
+  // layout and a replace all keep a stack; a malformed one is cleaned on the way in.
+  const st = (id, extra) => ({ id, mode: 'dock', dockW: 320, ...extra });
+  const stackBody = [st('calendar'), st('todo', { stack: 's1', at: 0, h: 0.5 }), st('polls', { stack: 's1', at: 1, h: 0.5 })];
+  const stackedShared = (await expect('owner saves a shared layout with a stack', 201, 'POST', `${C}/layouts`, { cookie: owner2, body: { name: 'Stacked', modules: stackBody, shared: true } })).json.layout;
+  assert.deepEqual(stackedShared.modules, stackBody, 'the shared layout answers with its stack');
+  await expect('the stacked layout is the default', 200, 'PATCH', C, { cookie: owner2, body: { defaultLayout: stackedShared.id } });
+  const listed = (await call('GET', `${C}/layouts`, { cookie: pat3 })).json;
+  assert.deepEqual(listed.shared.find((l) => l.id === stackedShared.id).modules, stackBody, 'a member reads the stack');
+  assert.equal(listed.defaultLayout, stackedShared.id, 'as the default layout');
+  assert.deepEqual(listed.firstVisit.layout, stackedShared.id, 'and a first visit opens it');
+  const stackedOwn = (await expect('a person saves their own with a stack', 201, 'POST', `${C}/layouts`, { cookie: pat3, body: { name: 'Mine stacked', modules: stackBody } })).json.layout;
+  assert.deepEqual(stackedOwn.modules, stackBody, 'their own keeps it');
+  assert.deepEqual(readJson(path.join(dataDir, 'layouts.json')).spaces[camp.id].people[patUser.key].find((l) => l.id === stackedOwn.id).modules, stackBody, 'and it is stored');
+  const messy = [st('calendar', { stack: 's9', at: 0 }), st('chat', { stack: 'q', at: 0 }), st('todo', { stack: 'q', at: 1 }), st('polls', { stack: 'q', at: 2 })];
+  const cleanedPut = (await expect('a replace is cleaned', 200, 'PUT', `${C}/layouts/${stackedOwn.id}`, { cookie: pat3, body: { modules: messy } })).json.layout;
+  assert.deepEqual(cleanedPut.modules, [st('calendar'), st('chat'), st('todo', { stack: 'q', at: 0 }), st('polls', { stack: 'q', at: 1 })], 'a lone stack and Chat in a stack are cleaned');
   n += 1;
 
   // A removed person takes their own layouts; a removed space takes all of its layouts.
