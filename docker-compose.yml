@@ -35,10 +35,9 @@ services:
           level: info
 
   chameleon:
-    # The repository and image keep their old name for now (renamed in a later step).
     # Pin the tag: the first 7 characters of the commit on the GitHub Actions run you want (sha-1a2b3c4).
     # Never :latest on a NAS: it reuses the copy it cached and you run an old build.
-    image: ghcr.io/drowbe/coffee-pub-collaborator:sha-CHANGE_ME
+    image: ghcr.io/drowbe/coffee-pub-chameleon:sha-CHANGE_ME
     container_name: chameleon-app
     restart: unless-stopped
     network_mode: bridge

@@ -38,6 +38,6 @@ function userAgent({ contact = null } = {}) {
 
 // The repository's address, which the geocoder's user-agent carries (the repository's name is out of scope for the
 // kind names, plan-kind-names.md decision 3).
-const REPOSITORY_URL = 'https://github.com/Drowbe/coffee-pub-collaborator';
+const REPOSITORY_URL = 'https://github.com/Drowbe/coffee-pub-chameleon';
 
 module.exports = { DEFAULT_PRODUCT_NAME, productName, shortProductName, headerProductName, userAgent, REPOSITORY_URL };

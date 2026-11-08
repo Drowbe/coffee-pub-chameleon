@@ -1988,6 +1988,8 @@ test('the page bar: one shared builder, its name first, a Manage link for owners
   assert.ok(!/renderPageBar/.test(read('host.js')), 'the host console has no page bar');
   // The tabs keep their ids; the page bar's look.
   for (const f of ['admin.html', 'profile.html']) assert.match(read(f), /<nav class="subtabs" id="subtabs">/, `${f} keeps #subtabs`);
+  assert.doesNotMatch(read('admin.html'), /MIT licen[sc]e/i, 'About does not call the product MIT-licensed');
+  assert.match(read('admin.html'), /<p>Proprietary software\. All rights reserved\.<\/p>/, 'About says the product is proprietary');
   const css = read('style.css');
   assert.match(css, /\.subnav\.page-bar \.nav-left > \.subtabs \{\s*flex: 0 1 auto;\s*min-width: 0;/, 'the tabs give way inside the bar and scroll sideways');
   assert.match(read('sdk/system.css'), /:is\(\[hidden\], \.layout-tab-out\) \{ display: none; \}/, 'a hidden tab stays hidden (space settings\' Modules), in the Tabs component');
