@@ -435,6 +435,112 @@ async function main() {
         say(`File windows at ${size}${size > 640 ? " (coarse pointer)" : ""}: ${r.buttons} buttons measured, ${new Set(r.small).size} short`);
       } finally { await tab.close(); }
     }
+    // 7. Panel stacking (plan-panel-stacking.md, step 0): at 390 the page is no wider than the window with the section in view and at its end
+    // (a hidden element inside a module frame once escaped the drawing's own sideways scroll and made the page 923px wide).
+    {
+      const tab = new Tab(browser.cdp, {});
+      await tab.open(390, 'dark');
+      try {
+        await browser.cdp.send('Page.navigate', { url: `${server.base}/design-system/prototype.html?theme=strong-coffee&mode=dark&w=390` }, tab.sid);
+        for (let i = 0; i < 100; i += 1) { if (await tab.eval(`!!document.getElementById('pps-try')`).catch(() => false)) break; await sleep(150); }
+        for (const id of ['pps-try', 'pps-questions']) {
+          await tab.eval(`document.getElementById('${id}').scrollIntoView()`);
+          for (let i = 0; i < 40; i += 1) { if (await tab.eval(`!!document.querySelector('#${id} .pps-canvas, #${id} .pps-list-words')`)) break; await sleep(150); }
+          await sleep(300);
+          const r = await tab.eval(`({ sw: document.documentElement.scrollWidth, vw: innerWidth, frames: document.querySelectorAll('#pp-panel-stacking .mf').length })`);
+          if (!r.frames) fail(`panel stacking at 390 (${id}): no module frame is drawn; the check measures the wrong thing`);
+          if (r.sw > r.vw) fail(`panel stacking at 390 (${id}): the page scrolls sideways (${r.sw}px wide in a ${r.vw}px window)`);
+          say(`Panel stacking at 390 (${id}): page ${r.sw}px in ${r.vw}px, ${r.frames} frames`);
+        }
+        // The first column of a canvas is flexible and never narrower than FLEX_MIN (280); a canvas narrower than that clips every drawing in it.
+        const sets = await tab.eval(`[...document.querySelectorAll('#pp-panel-stacking .pps-set')].map((e) => e.id)`);
+        for (const id of sets) {
+          await tab.eval(`document.getElementById('${id}').scrollIntoView()`);
+          await sleep(250);
+        }
+        const wide = await tab.eval(`[...document.querySelectorAll('#pp-panel-stacking .pps-canvas')].map((c) => ({ set: c.closest('.pps-set')?.id, w: c.offsetWidth, first: parseFloat(getComputedStyle(c).gridTemplateColumns) })).filter((c) => !(c.first <= c.w + 0.5))`);
+        const total = await tab.eval(`document.querySelectorAll('#pp-panel-stacking .pps-canvas').length`);
+        if (total < 10) fail(`panel stacking: only ${total} canvases are drawn; the width check measures too little`);
+        for (const c of wide) fail(`panel stacking (${c.set}): a canvas ${c.w}px wide has a first column ${c.first}px wide, so the drawing is clipped`);
+        say(`Panel stacking: ${total} canvases, none narrower than its first column`);
+        // The stack's divider is the call and chat column's splitter (.side-column-splitter-h in style.css), turned to lie between two
+        // sections: an 8px strip that adds no height (14px on a coarse pointer), its cursor, its colours at rest and under the pointer.
+        const send = (m, p) => browser.cdp.send(m, p, tab.sid);
+        const DIV = `document.querySelector('#pps-divider .pps-cell .pps-div')`;
+        const measure = `(() => { const ref = document.createElement('div'); ref.className = 'side-column-splitter side-column-splitter-h'; ref.style.display = 'block'; document.body.append(ref);
+          const pick = (e) => { const c = getComputedStyle(e); return { h: e.getBoundingClientRect().height, mt: c.marginTop, mb: c.marginBottom, cursor: c.cursor, touch: c.touchAction, bg: c.backgroundColor, z: c.zIndex }; };
+          const out = { div: pick(${DIV}), ref: pick(ref) }; ref.remove(); return out; })()`;
+        await tab.eval(`document.getElementById('pps-divider').scrollIntoView({ block: 'center' })`);
+        for (let i = 0; i < 40; i += 1) { if (await tab.eval(`!!${DIV}`)) break; await sleep(150); }
+        await sleep(300);
+        const fine = await tab.eval(measure);
+        if (fine.div.h !== 8) fail(`panel stacking: the stack divider's hit strip is ${fine.div.h}px tall, not 8px like the real splitter`);
+        for (const k of ['h', 'mt', 'mb', 'cursor', 'touch', 'bg', 'z']) if (fine.div[k] !== fine.ref[k]) fail(`panel stacking: the stack divider's ${k} is ${fine.div[k]}, the real splitter's ${fine.ref[k]}`);
+        // The divider itself to the middle of the window (the parts drawn as they come near move what is below them), and it is what is under the point.
+        await tab.eval(`${DIV}.scrollIntoView({ block: 'center' })`);
+        await sleep(300);
+        const box = await tab.eval(`(() => { const d = ${DIV}; const r = d.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2; return { x, y, hit: document.elementFromPoint(x, y) === d }; })()`);
+        if (!box.hit) fail('panel stacking: the stack divider is not what is under its own middle, so the pointer checks below measure nothing');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
+        await sleep(300);
+        const hover = await tab.eval(`(() => { const p = document.createElement('div'); p.style.background = 'color-mix(in srgb, var(--accent) 50%, transparent)'; document.body.append(p); const want = getComputedStyle(p).backgroundColor; p.remove(); return { got: getComputedStyle(${DIV}).backgroundColor, want }; })()`);
+        if (hover.got !== hover.want) fail(`panel stacking: under the pointer the stack divider is ${hover.got}, not the real splitter's ${hover.want}`);
+        const now = () => tab.eval(`(() => { const d = ${DIV}; const s = [...d.parentElement.querySelectorAll(':scope > .pps-sec')].map((e) => e.offsetHeight); return { v: Number(d.getAttribute('aria-valuenow')), s }; })()`);
+        const before = await now();
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y + 40, button: 'left', buttons: 1 });
+        const moved = await now();
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y - 1000, button: 'left', buttons: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y - 1000, button: 'left', clickCount: 1 });
+        const clamped = await now();
+        if (!(moved.s[0] === before.s[0] + 40)) fail(`panel stacking: dragging the divider 40px down moved it from ${before.s[0]} to ${moved.s[0]}`);
+        if (clamped.s[0] !== 156) fail(`panel stacking: dragged far up, the upper section is ${clamped.s[0]}px, not the least (156)`);
+        await tab.eval(`(() => { const d = ${DIV}; d.focus(); d.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })); })()`);
+        const ended = await now();
+        if (ended.s[1] !== 156) fail(`panel stacking: End left the lower section ${ended.s[1]}px, not the least (156)`);
+        await tab.eval(`${DIV}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))`);
+        const up = await now();
+        if (up.s[0] !== ended.s[0] - 16) fail(`panel stacking: Up moved the divider from ${ended.s[0]} to ${up.s[0]}, not 16px`);
+        say(`Panel stacking divider: ${fine.div.h}px strip, cursor ${fine.div.cursor}, hover ${hover.got}; drag ${before.s[0]} to ${moved.s[0]}, clamped at ${clamped.s[0]}, End and Up by key`);
+        await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        if (!(await tab.eval("matchMedia('(pointer: coarse)').matches"))) fail('panel stacking: (pointer: coarse) did not answer, so the finger strip was not measured');
+        const coarse = await tab.eval(measure);
+        if (coarse.div.h !== 14) fail(`panel stacking: on a coarse pointer the stack divider's hit strip is ${coarse.div.h}px tall, not 14px like the real splitter`);
+        if (coarse.div.mt !== coarse.ref.mt || coarse.div.mb !== coarse.ref.mb) fail(`panel stacking: on a coarse pointer the divider's margins (${coarse.div.mt}, ${coarse.div.mb}) are not the real splitter's (${coarse.ref.mt}, ${coarse.ref.mb})`);
+        say(`Panel stacking divider on a coarse pointer: ${coarse.div.h}px strip, margins ${coarse.div.mt} ${coarse.div.mb}`);
+        await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+        // A drop that would be refused draws no line: in the docked limit's canvas (two columns, full) Polls dragged out of its stack to
+        // the right edge would need a third column. The Planner, a column of its own, dragged to the same edge does draw one.
+        await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+        await tab.eval(`document.getElementById('pps-limit').scrollIntoView({ block: 'start' })`);
+        for (let i = 0; i < 40; i += 1) { if (await tab.eval(`!!document.querySelector('#pps-limit .pps-canvas .mf[data-id="polls"]')`)) break; await sleep(150); }
+        await sleep(300);
+        const lineFor = async (id) => {
+          await tab.eval(`document.querySelector('#pps-limit .pps-canvas').scrollIntoView({ block: 'center' })`);
+          await sleep(300);
+          const p = await tab.eval(`(() => { const c = document.querySelector('#pps-limit .pps-canvas'); const e = c.querySelector('.mf[data-id="${id}"] .mf-titlebar-title'); const t = e.getBoundingClientRect(); const r = c.getBoundingClientRect(); const x = t.left + 4; const y = t.top + t.height / 2; return { x, y, ex: r.right - 6, ey: r.top + r.height / 2, hit: e.contains(document.elementFromPoint(x, y)) }; })()`);
+          if (!p.hit) fail(`panel stacking: ${id}'s title is not what is under the point the drag starts from`);
+          await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
+          await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 });
+          // First past the 6px threshold while still on the title bar (it lifts on its own moves, as a real pointer's first steps are), then away.
+          await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x + 10, y: p.y, button: 'left', buttons: 1 });
+          for (const k of [0.3, 0.6, 1]) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x + (p.ex - p.x) * k, y: p.y + (p.ey - p.y) * k, button: 'left', buttons: 1 });
+          await sleep(100);
+          const r = await tab.eval(`({ line: document.querySelectorAll('#pps-limit .pps-line').length, lifted: document.querySelectorAll('#pps-limit .pps-lifted').length })`);
+          await tab.eval(`document.querySelector('#pps-limit .mf[data-id="${id}"] .mf-titlebar').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+          await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.ex, y: p.ey, button: 'left', clickCount: 1 });
+          await tab.eval(`document.querySelector('#pps-limit .pps-bar .btn').click()`);
+          await sleep(100);
+          return r;
+        };
+        const refused = await lineFor('polls');
+        const allowed = await lineFor('planner');
+        if (!refused.lifted || !allowed.lifted) fail(`panel stacking: the title bar drag did not start (${refused.lifted}, ${allowed.lifted}); the refused line is not measured`);
+        if (refused.line) fail('panel stacking: a drop that would be refused (a third column does not fit) draws a line');
+        if (!allowed.line) fail('panel stacking: a drop that is allowed draws no line, so the refused case measures nothing');
+        say(`Panel stacking: a refused drop draws ${refused.line} line(s), an allowed one ${allowed.line}`);
+      } finally { await tab.close(); }
+    }
     if (!process.argv.includes('--skip-maps')) await checkMaps(browser, server);
     await checkStartPage(browser, server);
   } finally {
