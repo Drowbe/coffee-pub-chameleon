@@ -12,14 +12,14 @@
 // when it is popped out: they open in whichever window the canvas is in.
 // See documentation/architecture/architecture-canvas.md.
 
-import { api, markModuleRead, followTheme, word, noticeToast } from '/brand.js';
+import { api, markModuleRead, followTheme, word, fill, noticeToast } from '/brand.js';
 import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame, joinStream } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
 import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
 import { fileWindowCount, closeAllFiles, openFile } from '/file-viewer.js';
 import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
-import { layoutOf, placeLayout, leftOutNote } from '/layouts.js';
+import { layoutOf, placeLayout, leftOutNote, groupColumns, splitHeights, dragShares, evenShares, cleanShares, stackRefusal, STACK, STACK_ID } from '/layouts.js';
 import { TINTS, moduleTint } from '/module-tint.js';
 import { MIN_W, MIN_H, SNAP_GAP, gridFor, cellBox, snapCell, leastSpan, clampCell, nearestFree, nextFree, resettle, tidyBoxes, fillBoxes, TIDY_GAP, DOCK_MIN, FLEX_MIN, NARROW, dockLimit, fitDock } from '/snap-grid.js';
 import { composeList, aliasesFor, compositeById, compositesToAsk } from '/composites.js';
@@ -508,21 +508,61 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
   const maxDock = () => Math.max(DOCK_MIN, Math.round(canvas.clientWidth * 0.6));
   const clampDock = (w) => Math.min(Math.max(Math.round(w), DOCK_MIN), maxDock());
 
+  // --- stacks (plan-panel-stacking.md) -------------------------------------------------------------------------------
+  // A column of the canvas holds one docked module, or a stack: two or three docked modules one above the other, each in
+  // its own frame, with a divider between two of them and a collapse on each. A stack is one column of the docked limit.
+  // Which modules may be in one is the host's rule (decision 2): every docked module but the conference, the chat and a
+  // composite (dest:*). What makes one is each module's record (`saved[id]`, remembered with the space's layout, and in a
+  // saved layout: layouts.js): `stack` (the column's id), `at` (its place, top first), `h` (its share of the column's
+  // height) and `folded` (the person collapsed it). The modules' sections stay where they are in the page (nothing is
+  // moved, so a module in a frame is never loaded again): each one's content is laid in its column's grid area at its own
+  // top and height (paintStacks), and a divider between two of them is the call and chat column's own splitter, turned.
+  // Not on a phone (640 px and below): one view at a time there, the stack kept in what is remembered for a wide window.
+  const canStack = (p) => Boolean(p) && p.kind === 'module' && !compositeOf(p.m) && supports(p, 'dock');
+  const stackOf = (p) => { const s = canStack(p) ? saved[p.id]?.stack : null; return typeof s === 'string' && STACK_ID.test(s) ? s : null; };
+  // The columns the modules in `mods` make, in column order (layouts.js's groupColumns): [{ key, stack, mods }], a stack's
+  // modules top first. A stack id only one of them carries is an ordinary column (decision 8).
+  function columnsFrom(mods) {
+    const byId = new Map(mods.map((p) => [p.id, p]));
+    return groupColumns(mods.map((p) => ({ id: p.id, order: p.order, stack: stackOf(p), at: saved[p.id]?.at })))
+      .map((c) => ({ key: c.key, stack: c.stack, mods: c.ids.map((id) => byId.get(id)) }));
+  }
+  const stacked = (c) => Boolean(c) && c.mods.length > 1;
+  // The flexible column: the conference's when it is docked, else the first.
+  const flexOf = (cols) => cols.find((c) => c.mods.some((p) => p.def?.flex)) || cols[0];
+  const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+  const newStackId = () => { let s = ''; while (!s) s = Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, ''); return s; };
+  // A section's least height: its title bar and 120 px under it (156 on the desktop's title bar; Thomas, on the Prototype).
+  const sectionMin = () => Math.max(STACK.sectionMin, headH() + STACK.contentMin);
+  const contentOf = (p) => (p && p.el && p.el.querySelector ? p.el.querySelector(':scope > .mod-content') : null);
+  function clearStackRecord(id) {
+    if (!saved[id] || !('stack' in saved[id] || 'at' in saved[id] || 'h' in saved[id] || 'folded' in saved[id])) return;
+    const { stack, at, h, folded, ...rest } = saved[id];
+    saved[id] = rest;
+  }
+
   // --- how many columns fit (plan-docked-limit.md) ----------------------------------------------------------------
   // A module whose remembered mode is dock wants a column. snap-grid.js's fitDock() says which get one at the canvas's
   // width: the conference and the chat always, installed modules from the left until the window is full. The rest are
   // waiting (`mod.waiting`): shown floating, their remembered mode still dock, and docked again, in their old place in the
   // column order, as soon as the canvas is wide enough. Dragging or resizing a waiting module makes it floating for good.
+  // A stack is one column (decision 7): its modules dock or wait together.
   const wantsColumn = (p) => p.mode === 'dock' || Boolean(p.waiting);
   const byOrder = (a, b) => a.order - b.order;
   const dockWidthOf = (p) => p.width ?? clampDock(saved[p.id]?.dockW || p.m?.canvas?.width || p.def?.width || 320);
-  const columnsOf = (mods) => mods.slice().sort(byOrder).map((p) => ({ id: p.id, width: dockWidthOf(p), flex: Boolean(p.def?.flex), keep: p.kind === 'builtin' }));
+  // fitDock()'s columns: a stack's width is its top module's (every module in it has the column's width).
+  const specsOf = (cols) => cols.map((c) => ({ id: c.key, width: dockWidthOf(c.mods[0]), flex: c.mods.some((p) => Boolean(p.def?.flex)), keep: c.mods.some((p) => p.kind === 'builtin') }));
   // The canvas's width; while it is hidden (the space list shown over a running call), the last width it had.
   let fitWidth = 0;
   const canvasWidth = () => { if (canvas.clientWidth > 0) fitWidth = canvas.clientWidth; return fitWidth; };
-  // fitDock() over every module wanting a column now, and `extra` (one about to dock).
-  const planColumns = (extra = []) => fitDock(canvasWidth(), columnsOf([...opened.values()].filter(wantsColumn).concat(extra)));
-  // Whether a module about to dock would get a column, or wait.
+  // fitDock() over every module wanting a column now, and `extra` (one about to dock); `waiting` is the modules' ids.
+  const planColumns = (extra = []) => {
+    const cols = columnsFrom([...opened.values()].filter(wantsColumn).concat(extra));
+    const plan = fitDock(canvasWidth(), specsOf(cols));
+    const waits = new Set(plan.waiting);
+    return { ...plan, cols, waiting: cols.filter((c) => waits.has(c.key)).flatMap((c) => c.mods.map((p) => p.id)) };
+  };
+  // Whether a module about to dock would get a column, or wait (one joining a stack needs no column of its own).
   const wouldWait = (p) => !isNarrow() && planColumns([{ ...p, order: order + 1, mode: 'dock', waiting: false }]).waiting.includes(p.id);
 
   // No note while the layout is put back on entering, a canvas pops out or back, or the window is resized: the change is
@@ -596,10 +636,10 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     return started;
   }
   // Why a floating module's Dock as a panel (its "..." menu) is unavailable, or '': while it waits, and while the columns
-  // are full (so a pick never stores a dock it cannot show).
+  // are full (so a pick never stores a dock it cannot show). A stack counts as one column.
   function dockBlocked(p) {
     if (p.waiting) return 'Docks when the window is wide enough';
-    const full = !isNarrow() && [...opened.values()].filter(wantsColumn).length >= dockLimit(canvasWidth());
+    const full = !isNarrow() && columnsFrom([...opened.values()].filter(wantsColumn)).length >= dockLimit(canvasWidth());
     return full ? 'The window is too narrow for another column' : '';
   }
   // A waiting module's box says so (data-waiting).
@@ -609,21 +649,24 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       p.el.toggleAttribute('data-waiting', Boolean(p.waiting));
     }
   }
-  // A waiting module dragged or resized by the person floats for good.
+  // A waiting module dragged or resized by the person floats for good (and leaves its stack).
   function settleWaiting(id) {
     const mod = opened.get(id);
     if (!mod?.waiting) return;
     mod.waiting = false;
+    const left = dropFromStack(id);
     remember(id, { mode: 'float' });
     paintDockButtons();
     snapshot();
+    if (left && !quiet()) note(`${nameOf(left)} has its own column again.`);
   }
 
   // Docked modules are the columns, in order: the conference, the chat, then modules. One
   // column is flexible and takes what is left: the conference when it is docked, else the
-  // first docked module, so the canvas is never left with an empty column. The others keep
+  // first column, so the canvas is never left with an empty column. The others keep
   // their widths while they fit, and shrink in step when they do not, none below DOCK_MIN (fitDock); a module past the
-  // limit waits, floating (fitColumns). On a narrow canvas CSS takes over (see architecture-canvas).
+  // limit waits, floating (fitColumns). A stack is one column: its modules share the column's grid area (paintStacks).
+  // On a narrow canvas CSS takes over (see architecture-canvas).
   function syncDock() {
     fitColumns();
     const docked = dockedModules();
@@ -636,108 +679,629 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     paintDockButtons();
     if (isNarrow() || !docked.length) {
       canvas.style.removeProperty('--canvas-cols');
+      paintStacks([]);
       return;
     }
-    const flex = docked.find((p) => p.def?.flex) || docked[0];
-    flex.el.classList.add('is-flex');
+    const cols = columnsFrom(docked);
+    const flex = flexOf(cols);
+    for (const p of flex.mods) p.el.classList.add('is-flex');
     // Each module keeps the width it was given for when there is room again; only what is shown shrinks.
-    const { widths } = fitDock(canvasWidth(), columnsOf(docked));
-    canvas.style.setProperty('--canvas-cols', docked.map((p) => (p === flex ? 'minmax(0, 1fr)' : `${widths.get(p.id) ?? DOCK_MIN}px`)).join(' '));
-    docked.forEach((p, i) => { for (const el of p.parts()) el.style.gridColumn = String(1 + i); });
+    const { widths } = fitDock(canvasWidth(), specsOf(cols));
+    canvas.style.setProperty('--canvas-cols', cols.map((c) => (c === flex ? 'minmax(0, 1fr)' : `${widths.get(c.key) ?? DOCK_MIN}px`)).join(' '));
+    // Both lines given: a stack's sections are laid in the column's area absolutely, where a missing end line is the canvas's edge.
+    cols.forEach((c, i) => { for (const p of c.mods) for (const el of p.parts()) el.style.gridColumn = `${1 + i} / ${2 + i}`; });
+    paintStacks(cols);
   }
 
   // When the fixed columns together are wider than the canvas allows, syncDock shows them squeezed in step
   // and the conference at its minimum. A drag would then change a stored width that is not what is on
-  // screen, so the conference never moved. Called as a drag starts: each fixed module takes the width it is
+  // screen, so the conference never moved. Called as a drag starts: each fixed column takes the width it is
   // showing, so the drag moves what the person sees (narrowing one gives the room to the conference).
   function settleDock() {
-    const docked = dockedModules();
-    if (isNarrow() || docked.length < 2) return;
-    const flex = docked.find((p) => p.def?.flex) || docked[0];
-    const fixed = docked.filter((p) => p !== flex);
-    const total = fixed.reduce((sum, p) => sum + p.width, 0);
+    const cols = columnsFrom(dockedModules());
+    if (isNarrow() || cols.length < 2) return;
+    const flex = flexOf(cols);
+    const fixed = cols.filter((c) => c !== flex);
+    const total = fixed.reduce((sum, c) => sum + dockWidthOf(c.mods[0]), 0);
     if (total <= canvasWidth() - FLEX_MIN) return;
-    const { widths } = fitDock(canvasWidth(), columnsOf(docked));
-    for (const p of fixed) p.width = widths.get(p.id) ?? DOCK_MIN;
+    const { widths } = fitDock(canvasWidth(), specsOf(cols));
+    for (const c of fixed) for (const p of c.mods) p.width = widths.get(c.key) ?? DOCK_MIN;
   }
 
   // Widening a column when there is no room left takes the width from the other fixed columns (each down to
   // its minimum), not by squeezing the one being dragged; the conference keeps what it has.
   function takeWidthFromOthers(mod) {
-    const docked = dockedModules();
-    if (isNarrow() || docked.length < 2) return;
-    const flex = docked.find((p) => p.def?.flex) || docked[0];
-    if (mod === flex) return;
-    const fixed = docked.filter((p) => p !== flex);
-    const others = fixed.filter((p) => p !== mod);
-    const excess = fixed.reduce((sum, p) => sum + p.width, 0) - Math.max(DOCK_MIN, canvasWidth() - FLEX_MIN);
+    const cols = columnsFrom(dockedModules());
+    if (isNarrow() || cols.length < 2) return;
+    const flex = flexOf(cols);
+    const own = cols.find((c) => c.mods.includes(mod));
+    if (!own || own === flex) return;
+    const w = (c) => dockWidthOf(c.mods[0]);
+    const fixed = cols.filter((c) => c !== flex);
+    const others = fixed.filter((c) => c !== own);
+    const excess = fixed.reduce((sum, c) => sum + w(c), 0) - Math.max(DOCK_MIN, canvasWidth() - FLEX_MIN);
     if (excess <= 0) return;
-    const spare = others.reduce((sum, p) => sum + Math.max(0, p.width - DOCK_MIN), 0);
+    const spare = others.reduce((sum, c) => sum + Math.max(0, w(c) - DOCK_MIN), 0);
     if (spare <= 0) return;
     const take = Math.min(excess, spare);
-    for (const p of others) p.width -= Math.round(take * (Math.max(0, p.width - DOCK_MIN) / spare));
+    for (const c of others) {
+      const next = w(c) - Math.round(take * (Math.max(0, w(c) - DOCK_MIN) / spare));
+      for (const p of c.mods) p.width = next;
+    }
+  }
+  // The modules in `mod`'s column (itself alone when it is not in a stack).
+  const columnMates = (mod) => columnsFrom(dockedModules()).find((c) => c.mods.includes(mod))?.mods || [mod];
+
+  // --- a stack drawn: its sections, its dividers, its group ---------------------------------------------------------
+  const dividers = new Map(); // `<stack>:<i>` -> the divider under the stack's section i
+  const groups = new Map(); // stack id -> its group for a screen reader ("Stacked: To-do, Polls")
+  const autoFolded = new Map(); // stack id -> which sections the short canvas collapsed, as last drawn (splitHeights)
+  const keepOpen = new Map(); // stack id -> the module the person opened last (not the next one to collapse by itself)
+  // Draw every stack in `cols` (syncDock's columns; none on a phone): each section's content at its top and height in its
+  // column's grid area, the person's collapse and the short canvas's, a collapse button at the start of each title bar,
+  // a divider between two sections. Every other module has none of it.
+  function paintStacks(cols) {
+    const doc = canvasDoc();
+    const total = canvas.clientHeight;
+    const liveDividers = new Set();
+    const liveGroups = new Set();
+    const inStack = new Set();
+    cols.forEach((c, ci) => {
+      if (!stacked(c)) return;
+      const sid = c.stack;
+      const ids = c.mods.map((p) => p.id);
+      const { px, auto, open } = splitHeights(total, { h: ids.map((id) => saved[id]?.h), folded: ids.map((id) => saved[id]?.folded === true), keep: ids.indexOf(keepOpen.get(sid)) }, { titleH: headH(), min: sectionMin() });
+      autoFolded.set(sid, auto);
+      const owns = [];
+      let y = 0;
+      c.mods.forEach((p, i) => {
+        inStack.add(p.id);
+        const shut = !open.includes(i);
+        const content = contentOf(p);
+        p.el.classList.add('in-stack');
+        p.el.classList.toggle('stack-top', i === 0);
+        p.el.classList.toggle('stack-folded', shut);
+        if (content) {
+          content.id ||= `stack-section-${p.id}`;
+          content.style.top = `${y}px`;
+          content.style.height = `${px[i]}px`;
+          owns.push(content.id);
+        }
+        paintFold(p, shut, !shut && open.length === 1);
+        y += px[i];
+        if (i === c.mods.length - 1) return;
+        const key = `${sid}:${i}`;
+        let dv = dividers.get(key);
+        if (!dv || dv.ownerDocument !== doc) { dv?.remove(); dv = makeDivider(); dividers.set(key, dv); }
+        if (dv.parentNode !== canvas) canvas.appendChild(dv);
+        liveDividers.add(key);
+        dv.id = `stack-divider-${sid}-${i}`;
+        dv.style.gridColumn = `${1 + ci} / ${2 + ci}`;
+        dv.style.top = `${y}px`;
+        dv._stack = { sid, ids, i, px };
+        paintDivider(dv, shut || !open.includes(i + 1));
+        owns.push(dv.id);
+      });
+      // The stack is a group (its sections and dividers, top first), named by what it holds.
+      let g = groups.get(sid);
+      if (!g || g.ownerDocument !== doc) { g?.remove(); g = doc.createElement('div'); g.className = 'stack-group'; g.setAttribute('role', 'group'); groups.set(sid, g); }
+      if (g.parentNode !== canvas) canvas.appendChild(g);
+      liveGroups.add(sid);
+      g.style.gridColumn = `${1 + ci} / ${2 + ci}`;
+      g.setAttribute('aria-label', `Stacked: ${ids.map(nameOf).join(', ')}`);
+      g.setAttribute('aria-owns', owns.join(' '));
+    });
+    for (const p of opened.values()) if (p.kind === 'module' && !inStack.has(p.id)) clearSection(p);
+    for (const [key, dv] of dividers) if (!liveDividers.has(key)) { dv.remove(); dividers.delete(key); }
+    for (const [sid, g] of groups) if (!liveGroups.has(sid)) { g.remove(); groups.delete(sid); autoFolded.delete(sid); }
+  }
+  // The heights again, nothing else (a divider moved, a section collapsed, the canvas changed height).
+  function relayoutStacks() {
+    if (isNarrow()) return;
+    paintStacks(columnsFrom(dockedModules()));
+  }
+  // A module not in a stack: no place of its own in the column, no collapse button.
+  function clearSection(p) {
+    p.el?.classList?.remove('in-stack', 'stack-top', 'stack-folded');
+    const content = contentOf(p);
+    if (content) { content.style.top = ''; content.style.height = ''; }
+    p.frame?.titlebar?.querySelector(':scope > .stack-fold')?.remove();
+  }
+  // The collapse button at the start of a section's title bar: a real button, "Collapse Polls" or "Expand Polls" with
+  // aria-expanded. The last open section cannot be collapsed (Thomas, on the Prototype): its button says so when pressed.
+  function paintFold(p, shut, lastOpen) {
+    const head = p.frame?.titlebar;
+    if (!head) return;
+    let b = head.querySelector(':scope > .stack-fold');
+    if (!b) {
+      b = head.ownerDocument.createElement('button');
+      b.type = 'button';
+      b.className = 'mf-icon-btn mf-titlebar-btn stack-fold';
+      b.innerHTML = '<i class="fa-solid fa-chevron-down fa-fw" aria-hidden="true"></i>';
+      const id = p.id;
+      b.addEventListener('click', () => toggleFold(id));
+      head.prepend(b);
+    }
+    const words = `${shut ? 'Expand' : 'Collapse'} ${nameOf(p.id)}`;
+    b.setAttribute('aria-label', words);
+    b.dataset.tip = words;
+    b.setAttribute('aria-expanded', String(!shut));
+    if (p.frame.content?.id) b.setAttribute('aria-controls', p.frame.content.id);
+    if (lastOpen) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+    b.querySelector('i').className = `fa-solid fa-chevron-${shut ? 'right' : 'down'} fa-fw`;
   }
 
-  // Reordering the columns: drag a docked module by its titlebar. The module's column follows the pointer as the others make way, so the
-  // order is what the person sees; it is remembered with the layout. Buttons in the bar are left alone, and a press that does not move
-  // is a click as before.
+  // The divider between two sections: the call and chat column's splitter (.side-column-splitter-h, style.css; Thomas:
+  // "We should not reinvent this."), 8 px over the frames' edges and 14 on a coarse pointer, taking no height. A separator
+  // that moves: dragged, or Up and Down (16 px; Shift, 64), Home and End (the least and the most the 156 px least allows),
+  // Enter or a double click for equal heights. Next to a collapsed section it moves nothing and is not a tab stop.
+  function makeDivider() {
+    const dv = canvasDoc().createElement('div');
+    dv.className = 'side-column-splitter side-column-splitter-h stack-divider';
+    dv.setAttribute('role', 'separator');
+    dv.setAttribute('aria-orientation', 'horizontal');
+    dv.title = 'Drag to resize';
+    const off = () => !dv._stack || dv.classList.contains('stack-divider-off');
+    let press = null;
+    dv.addEventListener('pointerdown', (event) => {
+      if (off() || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      event.preventDefault();
+      press = { y: event.clientY, a: dv._stack.px[dv._stack.i] };
+      dv.classList.add('dragging');
+      canvas.classList.add('resizing-stack'); // a frame under the pointer would swallow the drag
+      dv.setPointerCapture?.(event.pointerId);
+    });
+    dv.addEventListener('pointermove', (event) => { if (press) moveDivider(dv, press.a + event.clientY - press.y, { store: false }); });
+    const stop = () => {
+      if (!press) return;
+      press = null;
+      dv.classList.remove('dragging');
+      canvas.classList.remove('resizing-stack');
+      persist();
+    };
+    dv.addEventListener('pointerup', stop);
+    dv.addEventListener('pointercancel', stop);
+    dv.addEventListener('dblclick', () => { if (!off()) evenHeights(dv._stack.sid); });
+    dv.addEventListener('keydown', (event) => {
+      if (off()) return;
+      const { i, px } = dv._stack;
+      const step = event.shiftKey ? 64 : 16;
+      if (event.key === 'ArrowUp') moveDivider(dv, px[i] - step);
+      else if (event.key === 'ArrowDown') moveDivider(dv, px[i] + step);
+      else if (event.key === 'Home') moveDivider(dv, 0);
+      else if (event.key === 'End') moveDivider(dv, px[i] + px[i + 1]);
+      else if (event.key === 'Enter') evenHeights(dv._stack.sid);
+      else return;
+      event.preventDefault();
+    });
+    return dv;
+  }
+  // Its name and value: the upper section's share of the two, in percent, within what the least height allows.
+  function paintDivider(dv, off) {
+    const { ids, i, px } = dv._stack;
+    dv.classList.toggle('stack-divider-off', off);
+    dv.setAttribute('aria-label', `Resize ${nameOf(ids[i])} and ${nameOf(ids[i + 1])}`);
+    if (off) {
+      for (const k of ['tabindex', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow']) dv.removeAttribute(k);
+      return;
+    }
+    const a = px[i];
+    const both = Math.max(1, px[i] + px[i + 1]);
+    const lo = Math.round((100 * sectionMin()) / both);
+    dv.tabIndex = 0;
+    dv.setAttribute('aria-valuemin', String(Math.min(lo, 50)));
+    dv.setAttribute('aria-valuemax', String(Math.max(100 - lo, 50)));
+    dv.setAttribute('aria-valuenow', String(Math.round((100 * a) / both)));
+  }
+  // The section above `dv` to be `upper` px tall: only the two beside it change (layouts.js's dragShares).
+  function moveDivider(dv, upper, { store = true } = {}) {
+    const { ids, i, px } = dv._stack;
+    const shares = cleanShares(ids.map((id) => saved[id]?.h), ids.length);
+    const next = dragShares({ px, h: shares, i, upper, min: sectionMin() }).h;
+    ids.forEach((id, k) => { saved[id] = { ...(saved[id] || {}), h: next[k] }; });
+    relayoutStacks();
+    if (store) persist();
+  }
+  function evenHeights(sid, { say = true } = {}) {
+    const c = columnsFrom(dockedModules()).find((x) => x.stack === sid);
+    if (!stacked(c)) return;
+    const shares = evenShares(c.mods.length);
+    c.mods.forEach((p, k) => { saved[p.id] = { ...(saved[p.id] || {}), h: shares[k] }; });
+    persist();
+    relayoutStacks();
+    if (say) note(`${listWords(c.mods.map((p) => nameOf(p.id)))} have equal heights.`);
+  }
+  // Collapse or expand a section (its button, or Collapse and Expand in its menu). Answers whether it is collapsed now, or
+  // null when it could not change: the last open section stays open.
+  function toggleFold(id, { say = false } = {}) {
+    const c = columnsFrom(dockedModules()).find((x) => x.mods.some((p) => p.id === id));
+    if (!stacked(c)) return null;
+    const i = c.mods.findIndex((p) => p.id === id);
+    const auto = autoFolded.get(c.stack) || [];
+    const shutAt = (p, k) => saved[p.id]?.folded === true || Boolean(auto[k]);
+    const shut = shutAt(c.mods[i], i);
+    if (!shut && c.mods.filter((p, k) => !shutAt(p, k)).length <= 1) {
+      note(`${nameOf(id)} can't be collapsed. The last open one stays open.`);
+      return null;
+    }
+    if (shut) { remember(id, { folded: false }); keepOpen.set(c.stack, id); } else remember(id, { folded: true });
+    relayoutStacks();
+    if (say) note(`${nameOf(id)} ${shut ? 'expanded' : 'collapsed'}.`);
+    return !shut;
+  }
+
+  // --- a stack changed: the columns rearranged --------------------------------------------------------------------------
+  // The columns of every module wanting one, as plain lists to change: [{ ids, stack, width }], in column order.
+  const currentColumns = () => columnsFrom([...opened.values()].filter(wantsColumn)).map((c) => ({ ids: c.mods.map((p) => p.id), stack: c.stack, width: dockWidthOf(c.mods[0]) }));
+  // Put the columns in this order and grouping, `cols` from currentColumns() changed: each module's place in the column
+  // order (the order values they had, given out again in the new order), and each stack's records (`even`: a new stack, or
+  // one joined, starts with equal heights, decision 6; else each keeps its share, the rest closing up). A column of one
+  // keeps no stack. Every module of a column takes the column's width.
+  function arrange(cols) {
+    const pool = cols.flatMap((c) => c.ids).map((id) => opened.get(id)?.order).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    let k = 0;
+    for (const c of cols) {
+      if (c.ids.length < 2) clearStackRecord(c.ids[0]);
+      else {
+        const sid = c.stack || newStackId();
+        const shares = c.even ? evenShares(c.ids.length) : cleanShares(c.ids.map((id) => saved[id]?.h), c.ids.length);
+        c.ids.forEach((id, at) => {
+          saved[id] = { ...(saved[id] || {}), stack: sid, at, h: shares[at], folded: saved[id]?.folded === true };
+          if (c.width) {
+            saved[id].dockW = c.width;
+            const p = opened.get(id);
+            if (p && p.mode === 'dock') p.width = c.width;
+          }
+        });
+      }
+      for (const id of c.ids) { const p = opened.get(id); if (p && k < pool.length) p.order = pool[k++]; }
+    }
+    persist();
+  }
+  // A module leaves its stack (closed, floated, popped out): the others close up, and a stack left with one module is an
+  // ordinary column at once (decision 8). Answers the id of that module, or null. Not while a layout is put back or the
+  // modules are opened again together (entering, leaving, a pop-out of the canvas): what is remembered stays.
+  function dropFromStack(id) {
+    if (suspended || restoring) return null;
+    const sid = typeof saved[id]?.stack === 'string' ? saved[id].stack : null;
+    if (!sid) return null;
+    clearStackRecord(id);
+    const rest = [...opened.values()].filter((p) => p.id !== id && wantsColumn(p) && stackOf(p) === sid)
+      .sort((a, b) => (saved[a.id]?.at ?? 99) - (saved[b.id]?.at ?? 99));
+    if (rest.length === 1) { clearStackRecord(rest[0].id); persist(); return rest[0].id; }
+    const shares = cleanShares(rest.map((p) => saved[p.id]?.h), rest.length);
+    rest.forEach((p, at) => { saved[p.id] = { ...saved[p.id], at, h: shares[at] }; });
+    persist();
+    return null;
+  }
+  // After a layout is put back (entering, a saved layout): the stacks made whole from what opened (layouts.js's rules:
+  // two or three modules that may stack, `at` with no gap, the shares cleaned, never every one collapsed), and a stack
+  // record on a module not in one let go.
+  function tidyStackRecords() {
+    const kept = new Set();
+    for (const c of columnsFrom([...opened.values()].filter(wantsColumn))) {
+      if (!stacked(c)) continue;
+      const shares = cleanShares(c.mods.map((p) => saved[p.id]?.h), c.mods.length);
+      const allFolded = c.mods.every((p) => saved[p.id]?.folded === true);
+      c.mods.forEach((p, at) => {
+        saved[p.id] = { ...saved[p.id], at, h: shares[at], folded: saved[p.id]?.folded === true && !(allFolded && at === c.mods.length - 1) };
+        kept.add(p.id);
+      });
+    }
+    for (const id of Object.keys(saved)) if (!id.startsWith('__') && saved[id] && typeof saved[id] === 'object' && !kept.has(id)) clearStackRecord(id);
+    persist();
+  }
+
+  // Why `id` cannot go into column `c` (columnsFrom's) as a section: a short line, or ''.
+  function refusalFor(id, c) {
+    const code = stackRefusal({ mover: canStack(opened.get(id)), target: c.mods.every(canStack), n: c.mods.length, inIt: c.mods.some((p) => p.id === id), height: canvas.clientHeight, min: sectionMin() });
+    if (code === 'mover') return `${nameOf(id)} can't be in a stack.`;
+    if (code === 'target') return `${nameOf(c.mods[0].id)} can't hold a stack.`;
+    if (code === 'full') return fill('A stack holds three {modules} at most.');
+    if (code === 'short') return fill('The {canvas} is too short to stack here.');
+    return '';
+  }
+  // Why `id` cannot have a column of its own now (out of its stack), or ''.
+  function ownColumnBlocked(id) {
+    const cols = currentColumns();
+    const c = cols.find((x) => x.ids.includes(id));
+    const extra = !c || c.ids.length > 1 ? 1 : 0;
+    return extra && cols.length + extra > dockLimit(canvasWidth()) ? 'The window is too narrow for another column.' : '';
+  }
+  const focusMenuOf = (id) => requestAnimationFrame(() => opened.get(id)?.frame?.titlebar?.querySelector('.mf-titlebar-menu')?.focus());
+
+  // Stack `id` above or below `targetId` (a drop on a zone, or Stack with... in its menu). A floating module docks and
+  // stacks in one step (decision 5). Answers whether it did.
+  function stackInto(id, targetId, pos, { focus = false } = {}) {
+    const p = opened.get(id);
+    const target = columnsFrom(dockedModules()).find((c) => c.mods.some((x) => x.id === targetId));
+    if (!p || !target || id === targetId) return false;
+    const why = refusalFor(id, target);
+    if (why) { note(why); return false; }
+    const cols = currentColumns();
+    const into = cols.find((c) => c.ids.includes(targetId));
+    const from = cols.find((c) => c.ids.includes(id));
+    if (from) from.ids.splice(from.ids.indexOf(id), 1);
+    const left = from && from !== into && from.ids.length === 1 ? from.ids[0] : null;
+    into.ids.splice(into.ids.indexOf(targetId) + (pos === 'below' ? 1 : 0), 0, id);
+    into.even = true;
+    if (!saved[id]) saved[id] = {};
+    saved[id].folded = false;
+    const next = cols.filter((c) => c.ids.length);
+    const floating = p.mode === 'float' && !p.waiting;
+    arrange(next);
+    if (floating) {
+      hush += 1;
+      try { setMode(id, 'dock'); } finally { hush -= 1; }
+      const now = opened.get(id);
+      if (now && now.mode === 'dock') { now.width = into.width; syncDock(); }
+    } else syncDock();
+    update();
+    note(`${nameOf(id)} was stacked ${pos === 'above' ? 'above' : 'under'} ${nameOf(targetId)}.${left ? ` ${nameOf(left)} has its own column again.` : ''}`);
+    if (focus) focusMenuOf(id);
+    return true;
+  }
+  // Give `id` a column of its own before the column at `index` (as the columns are now), out of its stack, or move its
+  // column there (a drop on a column's edge, Move out of the stack). Answers whether it did.
+  function moveToColumn(id, index, { focus = false } = {}) {
+    const cols = currentColumns();
+    const from = cols.find((c) => c.ids.includes(id));
+    if (!from) return false;
+    const wasStacked = from.ids.length > 1;
+    const why = ownColumnBlocked(id);
+    if (why) { note(why); return false; }
+    from.ids.splice(from.ids.indexOf(id), 1);
+    const left = wasStacked && from.ids.length === 1 ? from.ids[0] : null;
+    const next = cols.filter((c) => c.ids.length);
+    const at = cols.slice(0, Math.max(0, index)).filter((c) => next.includes(c)).length;
+    next.splice(at, 0, { ids: [id], stack: null, width: from.width });
+    arrange(next);
+    syncDock();
+    update();
+    if (wasStacked) note(`${nameOf(id)} has its own column again.${left ? ` So has ${nameOf(left)}.` : ''}`);
+    if (focus) focusMenuOf(id);
+    return true;
+  }
+  // Move a section one place up or down in its stack.
+  function moveInStack(id, step) {
+    const cols = currentColumns();
+    const c = cols.find((x) => x.ids.includes(id));
+    const i = c ? c.ids.indexOf(id) : -1;
+    const j = i + step;
+    if (!c || c.ids.length < 2 || j < 0 || j >= c.ids.length) return;
+    [c.ids[i], c.ids[j]] = [c.ids[j], c.ids[i]];
+    arrange(cols);
+    syncDock();
+    update();
+    note(`${nameOf(id)} moved ${step < 0 ? 'up' : 'down'}.`);
+    focusMenuOf(id);
+  }
+  // The Layout menu's Unstack all (decision 9): every module of every stack in a column of its own, where it was; past the
+  // docked limit the rightmost ones float and wait, as Panel Mode's do (fitColumns says so).
+  const hasStacks = () => columnsFrom(dockedModules()).some(stacked);
+  function unstackAll() {
+    const cols = currentColumns();
+    if (!cols.some((c) => c.ids.length > 1)) return;
+    const waitingBefore = [...opened.values()].filter((p) => p.waiting).length;
+    arrange(cols.flatMap((c) => c.ids.map((id) => ({ ids: [id], stack: null, width: c.width }))));
+    syncDock();
+    update();
+    if ([...opened.values()].filter((p) => p.waiting).length <= waitingBefore) note(fill('Every {module} has its own column again.'));
+  }
+
+  // The stack entries in a module's title bar menu (module-frame.js's `extra`), after the window's own (Dock as a panel's
+  // siblings): Stack with... for a docked or floating module that may stack (a floating one docks and stacks in one step,
+  // decision 5), and in a stack Move up, Move down, Move out of the stack, Collapse or Expand, Equal heights. None on a
+  // phone. Every drag has its menu route here, for the keyboard, a screen reader and a finger.
+  function stackTargets(id) {
+    const cols = columnsFrom(dockedModules());
+    const own = cols.find((c) => c.mods.some((p) => p.id === id));
+    return cols.filter((c) => c !== own && c.mods.every(canStack));
+  }
+  function stackWithItems(id) {
+    const out = [];
+    for (const c of stackTargets(id)) {
+      out.push({ heading: listWords(c.mods.map((p) => nameOf(p.id))) });
+      const why = refusalFor(id, c);
+      if (why) { out.push({ label: c.mods.length >= STACK.max ? fill('Full: three {modules}') : 'Too short here', disabled: true }); continue; }
+      const top = c.mods[0].id;
+      out.push({ label: `Above ${nameOf(top)}`, icon: 'arrow-up', onPick: () => stackInto(id, top, 'above', { focus: true }) });
+      for (const p of c.mods) out.push({ label: `Below ${nameOf(p.id)}`, icon: 'arrow-down', onPick: () => stackInto(id, p.id, 'below', { focus: true }) });
+    }
+    return out;
+  }
+  function stackMenu(id) {
+    const p = opened.get(id);
+    if (!p || isNarrow() || !canStack(p) || (p.mode !== 'dock' && p.mode !== 'float')) return [];
+    const out = [];
+    const targets = stackTargets(id);
+    out.push(targets.length
+      ? { label: 'Stack with...', icon: 'layer-group', items: () => stackWithItems(id) }
+      : { label: 'Stack with...', icon: 'layer-group', disabled: true, hint: 'No column here can hold it' });
+    const c = p.mode === 'dock' ? columnsFrom(dockedModules()).find((x) => x.mods.includes(p)) : null;
+    if (!stacked(c)) return out;
+    const i = c.mods.indexOf(p);
+    const auto = autoFolded.get(c.stack) || [];
+    const shutAt = (x, k) => saved[x.id]?.folded === true || Boolean(auto[k]);
+    const shut = shutAt(p, i);
+    const lastOpen = !shut && c.mods.filter((x, k) => !shutAt(x, k)).length <= 1;
+    if (i > 0) out.push({ label: 'Move up', icon: 'arrow-up', onPick: () => moveInStack(id, -1) });
+    if (i < c.mods.length - 1) out.push({ label: 'Move down', icon: 'arrow-down', onPick: () => moveInStack(id, 1) });
+    out.push({ label: 'Move out of the stack', icon: 'object-ungroup', onPick: () => { const cols = currentColumns(); moveToColumn(id, cols.findIndex((x) => x.ids.includes(id)) + 1, { focus: true }); } });
+    out.push({ label: shut ? 'Expand' : 'Collapse', icon: shut ? 'chevron-down' : 'chevron-up', ...(lastOpen ? { disabled: true, hint: 'The last one open' } : {}), onPick: () => { toggleFold(id, { say: true }); focusMenuOf(id); } });
+    out.push({ label: 'Equal heights', icon: 'equals', onPick: () => { evenHeights(c.stack); focusMenuOf(id); } });
+    return out;
+  }
+
+  // --- the title bar drag: move between columns, or stack ---------------------------------------------------------------
+  // A docked module is dragged by its titlebar (more than 6 px; buttons in the bar still click). While it moves, the place
+  // it would take is drawn over the module under the pointer (Thomas's choice on the Prototype, the preview): its upper
+  // half stacks it above, its lower half below, in words as well as in the accent ("Polls goes under To-do"); the outer
+  // eighth of a column at each side moves it between columns, with a line where it would land. Nothing is drawn where a
+  // stack cannot go (the conference, the chat, a composite, a full stack, a canvas too short): a drop there does nothing
+  // and the note says why. Letting go makes the change; Escape takes it back. All of it is in the menus too (stackMenu).
+  let drag = null;
+  let zoneLayer = null;
+  const relRect = (r) => { const cr = canvas.getBoundingClientRect(); return { x: r.left - cr.left, y: r.top - cr.top, w: r.width, h: r.height }; };
+  // A column's box on the canvas: its modules' content (a module's) or parts (the conference's, the chat's).
+  function columnRect(c) {
+    const boxes = c.mods.flatMap((p) => (p.kind === 'module' ? [contentOf(p)] : p.parts())).filter(Boolean).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    if (!boxes.length) return null;
+    const left = Math.min(...boxes.map((r) => r.left)); const top = Math.min(...boxes.map((r) => r.top));
+    const right = Math.max(...boxes.map((r) => r.right)); const bottom = Math.max(...boxes.map((r) => r.bottom));
+    return relRect({ left, top, width: right - left, height: bottom - top });
+  }
+  function zonesFor(id) {
+    const out = [];
+    const cols = columnsFrom(dockedModules());
+    cols.forEach((c, ci) => {
+      const r = columnRect(c);
+      if (!r) return;
+      const own = c.mods.some((p) => p.id === id);
+      if (own && c.mods.length === 1) return; // its own column: nothing to do there
+      const edge = Math.max(24, r.w / 8);
+      out.push({ kind: 'move', index: ci, x: r.x, y: r.y, w: edge, h: r.h, line: r.x });
+      out.push({ kind: 'move', index: ci + 1, x: r.x + r.w - edge, y: r.y, w: edge, h: r.h, line: r.x + r.w });
+      const why = refusalFor(id, c);
+      if (why) { out.push({ kind: 'refused', why, x: r.x + edge, y: r.y, w: r.w - 2 * edge, h: r.h }); return; }
+      for (const p of c.mods) {
+        if (p.id === id) continue;
+        const sr = relRect(contentOf(p).getBoundingClientRect());
+        const n = c.mods.length + (own ? 0 : 1);
+        out.push({ kind: 'stack', target: p.id, pos: 'above', x: r.x + edge, y: sr.y, w: r.w - 2 * edge, h: sr.h / 2, sec: sr, col: r, n });
+        out.push({ kind: 'stack', target: p.id, pos: 'below', x: r.x + edge, y: sr.y + sr.h / 2, w: r.w - 2 * edge, h: sr.h / 2, sec: sr, col: r, n });
+      }
+    });
+    return out;
+  }
+  function zones() {
+    const doc = canvasDoc();
+    if (!zoneLayer || zoneLayer.ownerDocument !== doc) {
+      zoneLayer?.remove();
+      zoneLayer = doc.createElement('div');
+      zoneLayer.className = 'stack-zones';
+      zoneLayer.setAttribute('aria-hidden', 'true');
+    }
+    if (zoneLayer.parentNode !== canvas) canvas.appendChild(zoneLayer);
+    return zoneLayer;
+  }
+  const iconOf = (id) => { const m = opened.get(id)?.m; return m?.icon || 'cube'; };
+  function drawZones() {
+    const layer = zones();
+    layer.textContent = '';
+    if (!drag) return;
+    const doc = canvasDoc();
+    const el = (tag, cls, text) => { const e = doc.createElement(tag); e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    const glyph = (id) => { const i = el('i', `fa-solid fa-${iconOf(id)} fa-fw`); i.setAttribute('aria-hidden', 'true'); return i; };
+    const cw = canvas.clientWidth;
+    const hit = drag.hit;
+    if (hit && hit.kind === 'stack') {
+      // The place it would take: a section with its title bar, a share of the column at the target's top or bottom.
+      const share = Math.min(hit.sec.h, Math.max(sectionMin(), hit.col.h / hit.n));
+      const g = el('div', 'stack-ghost');
+      const top = hit.pos === 'above' ? hit.sec.y : hit.sec.y + hit.sec.h - share;
+      Object.assign(g.style, { left: `${hit.col.x + 2}px`, top: `${top}px`, width: `${Math.max(0, hit.col.w - 4)}px`, height: `${share}px` });
+      const head = el('div', 'stack-ghost-head');
+      head.append(glyph(drag.id), el('span', 'stack-ghost-name', nameOf(drag.id)));
+      g.append(head, el('p', 'stack-ghost-words', `${nameOf(drag.id)} goes ${hit.pos === 'above' ? 'above' : 'under'} ${nameOf(hit.target)}`));
+      layer.append(g);
+    }
+    if (hit && hit.kind === 'move' && !ownColumnBlocked(drag.id)) {
+      const line = el('div', `stack-line${hit.line > cw - 140 ? ' stack-line-flip' : ''}`);
+      line.style.left = `${Math.min(Math.max(hit.line, 2), cw - 2)}px`;
+      const inStack = currentColumns().some((c) => c.ids.length > 1 && c.ids.includes(drag.id));
+      line.append(el('span', 'stack-line-words', inStack ? 'Its own column here' : 'Move here'));
+      layer.append(line);
+    }
+    if (drag.pt) {
+      const chip = el('div', 'stack-chip');
+      chip.append(glyph(drag.id), el('span', '', nameOf(drag.id)));
+      chip.style.left = `${Math.min(Math.max(drag.pt.x + 14, 0), Math.max(0, cw - 120))}px`;
+      chip.style.top = `${Math.min(Math.max(drag.pt.y + 14, 0), Math.max(0, canvas.clientHeight - 36))}px`;
+      layer.append(chip);
+    }
+  }
+  function onDragKey(event) {
+    if (event.key !== 'Escape' || !drag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    endDrag(true);
+  }
+  function beginDrag(mod) {
+    drag = { id: mod.id, zones: zonesFor(mod.id), hit: null, pt: null };
+    canvas.classList.add('reordering');
+    for (const el of mod.parts()) el.classList.add('module-lifted');
+    canvasDoc().addEventListener('keydown', onDragKey, true);
+    drawZones();
+  }
+  function dragTo(clientX, clientY) {
+    if (!drag) return;
+    const cr = canvas.getBoundingClientRect();
+    const x = clientX - cr.left;
+    const y = clientY - cr.top;
+    drag.pt = { x, y };
+    const inside = (z) => x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h;
+    drag.hit = drag.zones.find((z) => z.kind === 'move' && inside(z)) || drag.zones.find((z) => z.kind !== 'move' && inside(z)) || null;
+    drawZones();
+  }
+  function endDrag(cancel) {
+    if (!drag) return;
+    const { id, hit } = drag;
+    drag = null;
+    canvasDoc().removeEventListener('keydown', onDragKey, true);
+    canvas.classList.remove('reordering');
+    for (const p of opened.values()) for (const el of p.parts()) el.classList.remove('module-lifted');
+    if (zoneLayer) zoneLayer.textContent = '';
+    if (cancel || !hit || !opened.has(id)) return;
+    if (hit.kind === 'refused') note(hit.why);
+    else if (hit.kind === 'stack') stackInto(id, hit.target, hit.pos);
+    else if (hit.kind === 'move') moveToColumn(id, hit.index);
+  }
   function wireReorder(head, current) {
     if (!head || wired.has(head)) return;
     wired.add(head);
     head.classList.add('reorderable');
-    let drag = null;
-    head.addEventListener('pointerdown', (event) => {
+    let press = null;
+    const move = (event) => {
       const mod = current();
-      if (!mod || mod.mode !== 'dock' || isNarrow() || event.button !== 0 || event.target.closest('button, a, input, select, textarea, [data-close]')) return;
-      drag = { id: event.pointerId, x: event.clientX, started: false };
-    });
-    head.addEventListener('pointermove', (event) => {
-      const mod = current();
-      if (!drag || event.pointerId !== drag.id || !mod) return;
-      if (!drag.started) {
-        if (Math.abs(event.clientX - drag.x) < 6) return;
-        drag.started = true;
+      if (!press || event.pointerId !== press.id || !mod) return;
+      if (!press.started) {
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < 6) return;
+        press.started = true;
         head.setPointerCapture?.(event.pointerId);
-        canvas.classList.add('reordering');
-        for (const el of mod.parts()) el.classList.add('module-lifted');
+        beginDrag(mod);
       }
-      const docked = dockedModules();
-      const at = docked.indexOf(mod);
-      const cols = getComputedStyle(canvas).gridTemplateColumns.split(' ').map(parseFloat);
-      if (at < 0 || cols.length !== docked.length || cols.some((w) => !Number.isFinite(w))) return;
-      // Where the pointer is among the other columns, as they would sit without this one: each other column's midpoint in that row.
-      const others = docked.map((p, i) => ({ p, w: cols[i] })).filter((c) => c.p !== mod);
-      let x = canvas.getBoundingClientRect().left;
-      let target = 0;
-      for (const c of others) {
-        if (event.clientX > x + c.w / 2) target += 1;
-        x += c.w;
-      }
-      if (target === at) return;
-      const values = docked.map((p) => p.order).sort((a, b) => a - b);
-      const next = others.map((c) => c.p);
-      next.splice(target, 0, mod);
-      next.forEach((p, i) => { p.order = values[i]; });
-      syncDock();
-      update();
-    });
-    const stop = (event) => {
-      if (!drag || event.pointerId !== drag.id) return;
-      const moved = drag.started;
-      drag = null;
+      dragTo(event.clientX, event.clientY);
+    };
+    const stop = (event, cancel) => {
+      if (!press || event.pointerId !== press.id) return;
+      const moved = press.started;
+      press.off();
+      press = null;
       if (!moved) return;
-      canvas.classList.remove('reordering');
-      for (const p of opened.values()) for (const el of p.parts()) el.classList.remove('module-lifted');
       // The release would otherwise count as a click on something in the bar.
       const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
       head.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => head.removeEventListener('click', swallow, { capture: true }), 100);
+      endDrag(cancel);
     };
-    head.addEventListener('pointerup', stop);
-    head.addEventListener('pointercancel', stop);
+    head.addEventListener('pointerdown', (event) => {
+      const mod = current();
+      if (!mod || mod.mode !== 'dock' || isNarrow() || event.button !== 0 || event.target.closest('button, a, input, select, textarea, [data-close]')) return;
+      // Followed on the whole page until it is let go: a quick press can leave the title bar before it has moved 6 px.
+      const doc = head.ownerDocument;
+      const up = (e) => stop(e, false);
+      const cancel = (e) => stop(e, true);
+      press?.off();
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY, started: false, off: () => { doc.removeEventListener('pointermove', move, true); doc.removeEventListener('pointerup', up, true); doc.removeEventListener('pointercancel', cancel, true); } };
+      doc.addEventListener('pointermove', move, true);
+      doc.addEventListener('pointerup', up, true);
+      doc.addEventListener('pointercancel', cancel, true);
+    });
   }
 
   // `current` returns the module the handle belongs to right now (a built-in module is a new object each time it opens).
+  // A stack's column is moved by its top section's edge (the others have none), and each of its modules takes the width.
   function wireDockResize(current, handle) {
     let drag = null;
     handle.addEventListener('pointerdown', (event) => {
@@ -753,7 +1317,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     handle.addEventListener('pointermove', (event) => {
       const mod = current();
       if (!drag || !mod) return;
+      const mates = columnMates(mod);
       mod.width = clampDock(drag.w + (drag.sx - event.clientX)); // the column is on the right: dragging left widens it
+      for (const p of mates) p.width = mod.width;
       takeWidthFromOthers(mod);
       syncDock();
     });
@@ -763,7 +1329,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       drag = null;
       handle.classList.remove('dragging');
       canvas.classList.remove('resizing-dock');
-      remember(mod.id, { dockW: mod.width });
+      for (const p of columnMates(mod)) { p.width = mod.width; remember(p.id, { dockW: mod.width }); }
       mod.onWidth?.(mod.width);
     };
     handle.addEventListener('pointerup', stop);
@@ -784,7 +1350,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       icon: m.icon,
       tint: colorOf(m.id),
       variant: mode === 'dock' ? 'docked' : 'window',
-      titlebar: { close: true, standard: () => standardFor(m.id), onAction: (e) => titlebarAction(m.id, e) },
+      titlebar: { close: true, standard: () => standardFor(m.id), extra: () => stackMenu(m.id), onAction: (e) => titlebarAction(m.id, e) },
       flush: true,
       content: holderEl,
       onAction: (e) => opened.get(m.id)?.mount?.bandEvent?.(e),
@@ -1285,12 +1851,14 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (!mod) return;
     if (!restoring) keepLayout = false;
     if (mod.kind === 'builtin') return closeBuiltin(id);
+    const left = dropFromStack(id); // a stack left with one module is an ordinary column at once (decision 8)
     mod.mount.destroy();
     mod.frame?.destroy();
     mod.el.remove();
     opened.delete(id);
     syncDock();
     update();
+    if (left && !quiet()) note(`${nameOf(left)} has its own column again.`);
   }
 
   function closeAllModules() {
@@ -1318,7 +1886,10 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (mode !== 'window' && !supports(mod, mode)) return;
     const m = mod.m;
     if (mode === 'window') return popOut(m.id); // closes the module only once the window opened
+    // Open as a window takes it out of its stack; the stack closes up (plan-panel-stacking.md).
+    const left = mode === 'float' ? dropFromStack(id) : null;
     remember(id, { mode });
+    if (left && !quiet()) note(`${nameOf(left)} has its own column again.`);
     // Docking one too many (not from its Dock button, which is unavailable then): it stays where it floats, and waits.
     if (mode === 'dock' && wouldWait(mod)) {
       Object.assign(mod, { waiting: true, order: ++order, width: dockWidthOf(mod) });
@@ -1618,6 +2189,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     }
     restoring = false;
     suspended = false;
+    if (!keepLayout) tidyStackRecords(); // a remembered stack whose other modules did not open is an ordinary column (not for a one-object request, which remembers nothing)
     syncDock();
     update();
     snapshot();
@@ -1655,6 +2227,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
         flex: Boolean(p.def?.flex),
         width: p.width ?? rec.dockW,
         box: !narrow && floater && p.mode === 'float' ? currentBox(floater) : rec.box,
+        // Its stack as remembered (layoutOf keeps only a whole one, of docked modules).
+        ...(stackOf(p) ? { stack: stackOf(p), at: rec.at, h: rec.h, folded: rec.folded === true } : {}),
       };
     });
     return layoutOf(mods, canvasArea(), { all: snapAllOn(), pitch: snapPitch() });
@@ -1695,6 +2269,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
           if (want.cell) Object.assign(rec, { cell: want.cell, placed: { x: want.box.x - g.x, y: want.box.y - g.y, w: want.box.w, h: want.box.h } });
         }
         remember(want.id, rec);
+        // Its stack as the layout says (placeLayout made it whole), or none.
+        if (want.stack) remember(want.id, { stack: want.stack, at: want.at, h: want.h, folded: want.folded === true }); else clearStackRecord(want.id);
         let mod = opened.get(want.id);
         if (mod && mod.waiting) {
           if (mode === 'float') { mod.waiting = false; } else { mod.width = clampDock(want.dockW || mod.width); continue; }
@@ -1733,6 +2309,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       suspended = false;
     }
     keepLayout = false;
+    tidyStackRecords(); // the stacks as they opened here (one whose module was left out closes up)
     hush += 1; // one note for the whole load, below, not one per module
     try { syncDock(); } finally { hush -= 1; }
     update();
@@ -1813,6 +2390,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       items.push({ divider: true }, { heading: 'Arrange' });
       items.push({ radio: true, checked: !windowMode, keepOpen: true, icon: 'fa-solid fa-table-columns', label: 'Panel Mode', onPick: () => setArrangeMode('panel') });
       items.push({ radio: true, checked: windowMode, keepOpen: true, icon: 'window-restore', label: 'Window Mode', onPick: () => setArrangeMode('window') });
+      // Every stack back to columns of their own (plan-panel-stacking.md, decision 9); off while there is none.
+      if (!windowMode) items.push({ icon: 'object-ungroup', label: 'Unstack all', disabled: !hasStacks(), keepOpen: true, onPick: () => unstackAll() });
       if (windowMode) {
         items.push({ toggle: true, checked: snapAllOn(), icon: 'border-all', label: 'Snap to grid', onPick: () => setSnapAll(!snapAllOn()) });
         if (snapAllOn()) {
@@ -1904,6 +2483,14 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     });
   }
   bindDoc(document);
+  // A stack's heights follow the canvas's own height (the window, the top bar, the call's column), not only a resize.
+  if (typeof ResizeObserver === 'function') {
+    let frameId = 0;
+    new ResizeObserver(() => {
+      if (frameId || !dividers.size) return;
+      frameId = requestAnimationFrame(() => { frameId = 0; relayoutStacks(); });
+    }).observe(canvas);
+  }
 
   document.addEventListener('app:unread', (event) => {
     unread = event.detail || {};

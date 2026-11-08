@@ -6376,6 +6376,47 @@ body.chat-window {
 .canvas.reordering iframe { pointer-events: none; }
 .module-lifted { position: relative; z-index: 3; box-shadow: 0 0 0 2px var(--accent), 0 4px 12px var(--shadow-color); }
 
+/* A stack (plan-panel-stacking.md; canvas.js, paintStacks): two or three docked modules in one column, one above the other,
+   each in its own frame. Each section's content lies in the column's grid area at the top and height canvas.js gives it
+   (the sections are never moved in the page). Only the top section has the column's edge to drag; a lower one shows
+   where it starts by its frame's top edge (the frame's own edge colour). A collapsed section is its title bar: what is
+   under it is not drawn, so it is not in the tab order and not read. Not on a phone (canvas.js draws none there). */
+.canvas > .module-docked.in-stack > .mod-content { position: absolute; left: 0; right: 0; grid-row: 1 / -1; }
+.canvas > .module-docked.in-stack:not(.stack-top) > .dock-resize { display: none; }
+.canvas > .module-docked.in-stack:not(.stack-top) > .mod-content > .mf { border-top-width: 1px; }
+.canvas > .module-docked.stack-folded > .mod-content > .mf > :not(.mf-titlebar) { display: none; }
+.canvas > .module-docked.stack-folded > .mod-content > .mf > .mf-titlebar { border-bottom: 0; }
+/* The collapse at the start of a section's title bar: the title bar's own icon button. */
+.mf-titlebar > .stack-fold { flex: none; margin-left: calc(-1 * var(--space-2)); }
+.mf-titlebar > .stack-fold[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+/* On a coarse pointer its tap area is --mf-hit (44 px) square, drawn by nothing, as the title bar's other buttons' (system.css). */
+@media (pointer: coarse) {
+  .mf-titlebar > .stack-fold { position: relative; }
+  .mf-titlebar > .stack-fold::after { content: ""; position: absolute; inset: calc((var(--mf-ctl-h) - var(--mf-hit)) / 2); }
+}
+/* The divider between two sections is the call and chat column's own splitter (.side-column-splitter-h: 8 px, 14 on a coarse
+   pointer, nothing at rest, the accent on hover, focus and drag), laid on the line between the two frames, taking no
+   height. Next to a collapsed section it moves nothing. The group is for a screen reader only. */
+.canvas > .stack-divider { display: block; position: absolute; left: 0; right: 0; margin: 0; grid-row: 1 / -1; transform: translateY(-50%); }
+.canvas > .stack-divider.stack-divider-off { pointer-events: none; }
+.canvas > .stack-group { position: absolute; inset: 0; grid-row: 1 / -1; pointer-events: none; }
+.canvas.resizing-stack, .canvas.resizing-stack * { cursor: row-resize !important; user-select: none; }
+.canvas.resizing-stack iframe { pointer-events: none; } /* a frame under the pointer would swallow the drag */
+
+/* While a title bar is dragged (.reordering): the place the module would take over the module under the pointer (a section
+   with its title bar, and the words), the line where a column would land, and the module's name following the pointer.
+   For the eye only (aria-hidden): the title bar menu does the same. */
+.canvas > .stack-zones { position: absolute; inset: 0; grid-column: 1 / -1; grid-row: 1 / -1; z-index: 10; pointer-events: none; }
+.stack-ghost { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--accent-fill); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent-fill) 16%, var(--surface-panel)); }
+.stack-ghost-head { display: flex; flex: none; align-items: center; gap: var(--space-2); height: var(--mf-title-h); padding: 0 var(--space-3); background: var(--mf-surface-title); color: var(--text-primary); font-size: var(--text-14); font-weight: var(--weight-strong); }
+.stack-ghost-head > i { color: var(--text-accent); }
+.stack-ghost-words { margin: auto; padding: var(--space-2); color: var(--text-primary); font-size: var(--text-12); text-align: center; }
+.stack-line { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: var(--radius-min); background: var(--accent-fill); }
+.stack-line-words { position: absolute; top: var(--space-3); left: 8px; padding: 2px var(--space-2); border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-12); font-weight: var(--weight-strong); white-space: nowrap; }
+.stack-line.stack-line-flip .stack-line-words { left: auto; right: 8px; }
+.stack-chip { position: absolute; display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--accent-fill); border-radius: var(--radius-small); background: var(--mf-surface-title); box-shadow: var(--shadow-2); color: var(--text-primary); font-size: var(--text-13); font-weight: var(--weight-strong); white-space: nowrap; }
+.stack-chip > i { color: var(--text-accent); }
+
 /* a list setting (Planner's marker types): a row each with a colour, an icon, a label and tools */
 .list-rows { list-style: none; margin: 8px 0 8px; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .list-row [data-f="label"] { flex: 1; min-width: 0; }
