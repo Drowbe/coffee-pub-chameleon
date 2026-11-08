@@ -1,5 +1,6 @@
 /* The product page (public/landing.html). One stylesheet, no framework. Its fonts are the product's two, served by us from /fonts
-   (Figtree, and Fraunces for the title only); its sizes are its own. Weights are the three: 400, 500, 600.
+   (Figtree, and Fraunces for the titles and the lockup's "Coffee Pub"); its sizes are its own. Weights are the three: 400, 500,
+   600, and the brand kit's 700 for "Coffee Pub" in the lockup.
    This page is shown before anyone is in an environment, so it has a palette of its own, a travel one, defined below as
    custom properties (--l-*) on .landing. It does not read the app's theme tokens, and the app's pages do not read these.
    Light is sand, sea teal and sunset coral over deep night navy; dark turns the page into the night: navy ground, sand text,
@@ -70,9 +71,16 @@ body.landing { margin: 0; background: var(--l-bg); color: var(--l-text); font: 1
 
 /* --- the bar ---------------------------------------------------------------------------------------------------- */
 .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: color-mix(in srgb, var(--l-bg) 90%, transparent); border-bottom: 1px solid var(--l-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--l-text); font-weight: 600; font-size: 19px; text-decoration: none; min-width: 0; }
-.brand-mark { width: 34px; height: auto; flex: none; }
+/* The lockup: the mark (the full-colour one on light, the -dark one on dark) and the product's name as live text, in the
+   kit's proportions by the text's size: the mark 1.75 times the text, 0.375 of it between. "Coffee Pub" is Fraunces 700,
+   the rest Figtree 600 (landing.js splits the name); both the text colour, since the kit's coral name is for 24px and up. */
+.brand { display: inline-flex; align-items: center; gap: 0.375em; color: var(--l-text); font-weight: 600; font-size: 19px; text-decoration: none; min-width: 0; }
+.brand-mark { width: 1.75em; height: auto; flex: none; }
+.landing .brand-mark-dark, :root[data-theme="dark"] .landing .brand-mark-light { display: none; }
+:root[data-theme="dark"] .landing .brand-mark-dark { display: block; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.landing .brand { color: var(--l-text); }
+.brand-word { font-family: "Fraunces", "Fraunces Fallback", Georgia, serif; font-weight: 700; }
 .top-links { display: flex; align-items: center; gap: 8px; }
 .top-links > a:not(.btn) { white-space: nowrap; padding: 8px 12px; color: var(--l-dim); font-size: 15px; font-weight: 500; text-decoration: none; border-radius: var(--radius-small); }
 .top-links > a:not(.btn):hover { color: var(--l-text); }
@@ -355,8 +363,9 @@ body.landing { margin: 0; background: var(--l-bg); color: var(--l-text); font: 1
   .top-links { gap: 8px; }
   .top-links .btn { min-height: 38px; padding: 0 12px; font-size: 14px; }
   .theme-switch { width: 38px; height: 38px; }
-  .brand { font-size: 16px; gap: 8px; }
-  .brand-mark { width: 28px; }
+  .brand { font-size: 16px; }
+  /* a phone: the mark and the product's own word ("Chameleon"), not a name cut short; "Coffee Pub" stays for screen readers */
+  .brand-word { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .tour-bar { gap: 8px; }
   .tour-bar .btn-small, .tour-tabs button { padding: 0 12px; } /* Pause and the four screens fit one row */
 }
