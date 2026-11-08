@@ -7491,7 +7491,7 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   border-left: 1px solid var(--edge-hairline);
   background: var(--surface-panel);
   color: var(--text-primary);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-4);
 }
 
 .space-setup[hidden] {
