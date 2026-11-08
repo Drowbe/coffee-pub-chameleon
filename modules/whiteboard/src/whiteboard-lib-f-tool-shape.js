@@ -1,12 +1,17 @@
-  // ---- whiteboard-lib-f-tool-shape.js: draw a rectangle, an ellipse, a line or an arrow ---------------------------------
+  // ---- whiteboard-lib-f-tool-shape.js: draw a shape, a line or an arrow -------------------------------------------------
   // Drag to draw it to size, or click for one of the usual size; it is saved when the pointer lifts and the tool goes back
-  // to Select. Another drawn shape is one more entry in SHAPE_TOOLS.
+  // to Select. Another drawn shape is one more entry in SHAPE_TOOLS. The flowchart shapes are in the toolbar's Flowchart
+  // menu (group), not the tool switch, which holds eight.
   {
     const SHAPE_TOOLS = [
       { id: 'rect', type: 'rect', label: 'Rectangle', icon: 'square', key: 'r', order: 50 },
       { id: 'ellipse', type: 'ellipse', label: 'Ellipse', icon: 'circle', key: 'o', order: 60 },
       { id: 'line', type: 'line', label: 'Line', icon: 'minus', key: 'l', order: 70, line: true },
       { id: 'arrow', type: 'line', label: 'Arrow', icon: 'arrow-right-long', key: 'a', order: 80, line: true, arrow: true },
+      { id: 'rounded', type: 'rounded', label: 'Rounded box', icon: 'square', key: 'b', order: 92, group: 'flowchart' },
+      { id: 'diamond', type: 'diamond', label: 'Diamond', icon: 'diamond', key: 'd', order: 93, group: 'flowchart' },
+      { id: 'pill', type: 'pill', label: 'Pill', icon: 'capsules', order: 94, group: 'flowchart' },
+      { id: 'parallelogram', type: 'parallelogram', label: 'Parallelogram', icon: 'arrow-right-arrow-left', order: 95, group: 'flowchart' },
     ];
     for (const t of SHAPE_TOOLS) {
       let drag = null; // { id, x, y, sx, sy, moved }
@@ -20,6 +25,7 @@
         icon: t.icon,
         key: t.key,
         order: t.order,
+        group: t.group,
         edits: true,
         makes: t.type,
         cursor: 'crosshair',
