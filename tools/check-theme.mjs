@@ -48,8 +48,8 @@ const prop = (body, name) => new RegExp(`^ {2}${name}: ([^;]+);$`, 'm').exec(bod
 
 test('the keys of a set are the colour roles: seven base ones, and the optional ones including the four status fills', () => {
   assert.deepEqual(THEME_BASE, ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent']);
-  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill']) assert.ok(THEME_OPTIONAL.includes(key), key);
-  assert.equal(THEME_OPTIONAL.length, 26);
+  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill', 'fill-chosen', 'text-on-chosen', 'ink-chosen']) assert.ok(THEME_OPTIONAL.includes(key), key);
+  assert.equal(THEME_OPTIONAL.length, 29);
   assert.equal(new Set([...THEME_BASE, ...THEME_OPTIONAL]).size, THEME_BASE.length + THEME_OPTIONAL.length);
 });
 
@@ -254,7 +254,7 @@ test('the old tokens that a role has its own default for are also written when t
 test('style.css has the default theme dark set as the default of the base roles, and the old tokens are defined from the roles', () => {
   const style = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const root = /^:root \{([\s\S]*?)\n\}/m.exec(style)[1];
-  for (const [key, value] of Object.entries(DEFAULT_THEME.dark)) assert.ok(root.includes(`--${key}: ${value};`), `--${key}: ${value}`);
+  for (const key of THEME_BASE) assert.ok(root.includes(`--${key}: ${DEFAULT_THEME.dark[key]};`), `--${key}`);
   for (const [old, role] of [['--bg', 'surface-page'], ['--bg-section', 'surface-panel'], ['--border', 'edge-hairline'], ['--text', 'text-primary'], ['--text-dim', 'text-muted'], ['--accent', 'accent-fill'], ['--on-accent', 'text-on-accent']]) {
     assert.ok(root.includes(`${old}: var(--${role});`), `${old} is defined from --${role}`);
   }

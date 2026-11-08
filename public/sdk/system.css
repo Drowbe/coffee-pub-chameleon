@@ -194,7 +194,7 @@
   --text-on-secondary: var(--text-primary);
   --text-accent: var(--accent-fill); /* FALLBACK: /theme.css writes the accent mixed with the least text colour that reaches 4.5:1 */
   --text-link: var(--text-accent);
-  --text-selected: color-mix(in srgb, var(--accent-fill) 55%, var(--text-primary));
+  --text-selected: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-primary));
   --text-tooltip: var(--surface-page);
   --icon-default: var(--text-muted);
   --icon-bar: color-mix(in srgb, var(--text-bar) 75%, transparent);
@@ -208,6 +208,12 @@
   /* Interaction. The wash is what a chosen thing, today and your own chat message are tinted with: the accent by default; a theme that
      sets wash-ink (a neutral ink) also gets quieter steps (server/theme-css.js writes them), so no large area is a tint of the accent. */
   --wash-ink: var(--accent-fill);
+  /* What a chosen thing is drawn with, apart from the accent that marks an action: the fill of a chosen segment or day and the base of the
+     tints under a chosen, hovered or pressed thing (fill-chosen), the text on that fill (text-on-chosen) and the ink the chosen text is
+     mixed from (ink-chosen). All three are the accent until a theme sets them. */
+  --fill-chosen: var(--accent-fill);
+  --text-on-chosen: var(--text-on-accent);
+  --ink-chosen: var(--accent-fill);
   --wash-selected: 28%;
   --wash-today: 14%;
   --wash-own: 10%;
@@ -453,8 +459,8 @@
 /* Selected, on, pressed: the selected fill, never an edge. */
 :is(.btn, .sdk-btn, .sdk-icon-btn):is(.on, [aria-pressed="true"]) {
   --b-bg: var(--fill-selected);
-  --b-bg-h: color-mix(in srgb, var(--accent-fill) 38%, transparent);
-  --b-bg-a: color-mix(in srgb, var(--accent-fill) 46%, transparent);
+  --b-bg-h: color-mix(in srgb, var(--fill-chosen) 38%, transparent);
+  --b-bg-a: color-mix(in srgb, var(--fill-chosen) 46%, transparent);
   --b-fg: var(--text-selected);
   --b-fg-h: var(--text-selected);
   --b-bd: transparent;
@@ -545,7 +551,7 @@
 :is(.sdk-tabs, .tb-tabs, .subtabs, .setup-tabs, .layout-tabs):is(.sdk-tabs-bar, .layout-tabs) {
   --tab-ink: var(--text-bar);
   --tab-fg: var(--icon-bar);
-  --tab-sel: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  --tab-sel: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
 }
 
 /* Small tabs: 30px, a little tighter. */
@@ -675,12 +681,12 @@
 }
 
 :is(.sdk-tabs, .tb-tabs, .subtabs, .setup-tabs, .layout-tabs) > :is(.sdk-tab, .tb-tab, .subtab, .setup-tab, .core-link):is([aria-selected="true"], [aria-pressed="true"], [aria-current="page"], [aria-current="true"], .on, .active, .layout-tabs-more-current):hover {
-  background: color-mix(in srgb, var(--accent-fill) 38%, transparent);
+  background: color-mix(in srgb, var(--fill-chosen) 38%, transparent);
   color: var(--tab-sel);
 }
 
 :is(.sdk-tabs, .tb-tabs, .subtabs, .setup-tabs, .layout-tabs) > :is(.sdk-tab, .tb-tab, .subtab, .setup-tab, .core-link):is([aria-selected="true"], [aria-pressed="true"], [aria-current="page"], [aria-current="true"], .on, .active, .layout-tabs-more-current):active {
-  background: color-mix(in srgb, var(--accent-fill) 46%, transparent);
+  background: color-mix(in srgb, var(--fill-chosen) 46%, transparent);
 }
 
 /* The "..." while its menu is open wears the hover fill. */
@@ -839,7 +845,7 @@
 .mf-switch > .mf-switch-btn > .ic { display: inline-flex; width: 1em; height: 1em; }
 .mf-switch > .mf-switch-btn > .ic svg { display: block; width: 1em; height: 1em; fill: currentColor; }
 .mf-switch > .mf-switch-btn:hover { color: var(--text-primary); }
-.mf-switch > .mf-switch-btn[aria-checked="true"] { background: var(--accent-fill); color: var(--text-on-accent); }
+.mf-switch > .mf-switch-btn[aria-checked="true"] { background: var(--fill-chosen); color: var(--text-on-chosen); }
 .mf-switch > .mf-switch-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .mf-switch > .mf-switch-btn:disabled { cursor: default; opacity: 0.5; }
 .mf-switch.tb-tabs-compact > .mf-switch-btn:has(> i) > .mf-word {
@@ -1017,9 +1023,9 @@
 }
 
 :is(.sdk-chip, .sdk-chip-people, .sdk-people > label):is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], .on, .active):hover,
-.sdk-people > label:has(> input:checked):hover { background: color-mix(in srgb, var(--accent-fill) 36%, transparent); }
+.sdk-people > label:has(> input:checked):hover { background: color-mix(in srgb, var(--fill-chosen) 36%, transparent); }
 
-:is(.sdk-chip, .sdk-chip-people, .sdk-people > label):is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], .on, .active):active { background: color-mix(in srgb, var(--accent-fill) 46%, transparent); }
+:is(.sdk-chip, .sdk-chip-people, .sdk-people > label):is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], .on, .active):active { background: color-mix(in srgb, var(--fill-chosen) 46%, transparent); }
 
 :is(.sdk-chip, .sdk-chip-people, .sdk-people > label, .sdk-chip-tag):is(:disabled, [aria-disabled="true"]),
 .sdk-people > label:has(> input:disabled) {
@@ -1033,7 +1039,7 @@
 :is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="ok"] { --chip-tone: var(--status-ok-fill); }
 :is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="warn"] { --chip-tone: var(--status-warn-fill); }
 :is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="danger"] { --chip-tone: var(--status-danger-fill); }
-:is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="info"] { --chip-tone: var(--accent-fill); }
+:is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="info"] { --chip-tone: var(--ink-chosen); }
 :is(.sdk-chip, .sdk-chip-people, .sdk-chip-tag, .sdk-chip-removable, .sdk-status, .sdk-chip-dot)[data-tone="neutral"] { --chip-tone: var(--text-muted); }
 .sdk-status[data-tone="ok"] .sdk-chip-dot { background: var(--status-ok-mark); } /* the dot of an ok tone is a mark: 3 to 1 in the light mode too */
 
@@ -1566,7 +1572,7 @@
   background: var(--fill-selected);
 }
 :is(.sdk-card, .sdk-row, .space-choice):is([aria-current="true"], [aria-selected="true"], .on):is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):hover {
-  background: color-mix(in srgb, var(--accent-fill) 38%, transparent);
+  background: color-mix(in srgb, var(--fill-chosen) 38%, transparent);
 }
 
 /* The ghost: a quiet fill on hover (written twice over, so it beats the clickable card's rule above). */
@@ -1749,7 +1755,7 @@
 /* Hover, selected. */
 .sdk-table tbody tr:hover > :is(td, th) { background: color-mix(in srgb, var(--text-primary) var(--tbl-hover), var(--tbl-surface)); }
 .sdk-table tbody tr:is([aria-selected="true"], .is-selected) > :is(td, th) { background: color-mix(in srgb, var(--accent-fill) 28%, var(--tbl-surface)); }
-.sdk-table tbody tr:is([aria-selected="true"], .is-selected):hover > :is(td, th) { background: color-mix(in srgb, var(--accent-fill) 38%, var(--tbl-surface)); }
+.sdk-table tbody tr:is([aria-selected="true"], .is-selected):hover > :is(td, th) { background: color-mix(in srgb, var(--fill-chosen) 38%, var(--tbl-surface)); }
 .sdk-table tbody tr:is([aria-selected="true"], .is-selected) :is(.sdk-table-sub, .sdk-table-dim) { color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); }
 
 /* A row that opens something takes the focus outline: 2px, inside the cell edge. */
@@ -1919,17 +1925,17 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-bar: 3px; /* the kept bar */
   /* The chosen day: solid accent with the text on it in the dark modes; in the light mode a lighter fill (a state is a fill, never a
      ring), so the brown is not the heaviest thing on the page. Today wears a ring in both. A phase's wash is lighter in the light mode, so chips stay readable. */
-  --cal-sel-bg: var(--accent-fill);
-  --cal-sel-bg-hover: var(--accent-fill-hover);
-  --cal-sel-text: var(--text-on-accent);
+  --cal-sel-bg: var(--fill-chosen);
+  --cal-sel-bg-hover: color-mix(in srgb, var(--fill-chosen) 85%, white);
+  --cal-sel-text: var(--text-on-chosen);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 16%;
   /* Muted text on a fill (hover, today, another calendar's chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
   --cal-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary));
 }
 :root[data-theme-mode="light"], :root[data-mode-shown="light"]:not([data-theme-mode="dark"]) {
-  --cal-sel-bg: color-mix(in srgb, var(--accent-fill) 32%, var(--surface-field));
-  --cal-sel-bg-hover: color-mix(in srgb, var(--accent-fill) 40%, var(--surface-field));
+  --cal-sel-bg: color-mix(in srgb, var(--fill-chosen) 32%, var(--surface-field));
+  --cal-sel-bg-hover: color-mix(in srgb, var(--fill-chosen) 40%, var(--surface-field));
   --cal-sel-text: var(--text-primary);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 9%;
@@ -1985,9 +1991,9 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell:is(:hover, .in-range) .sdk-cal-n { color: var(--cal-dim); }
 
 /* Today: the selected fill at half strength; the number bold in the text colour. */
-.sdk-cal-cell.is-today { background: color-mix(in srgb, var(--accent-fill) var(--cal-today), var(--cal-surface)); box-shadow: inset 0 0 0 1px var(--cal-today-ring); }
+.sdk-cal-cell.is-today { background: color-mix(in srgb, var(--fill-chosen) var(--cal-today), var(--cal-surface)); box-shadow: inset 0 0 0 1px var(--cal-today-ring); }
 .sdk-cal-cell.is-today .sdk-cal-n { color: var(--text-primary); font-weight: var(--weight-strong); }
-.sdk-cal-cell.is-today:hover { background: color-mix(in srgb, var(--text-primary) var(--cal-press), color-mix(in srgb, var(--accent-fill) var(--cal-today), var(--cal-surface))); }
+.sdk-cal-cell.is-today:hover { background: color-mix(in srgb, var(--text-primary) var(--cal-press), color-mix(in srgb, var(--fill-chosen) var(--cal-today), var(--cal-surface))); }
 
 /* A range: the quiet fill. */
 .sdk-cal-cell.in-range { background: color-mix(in srgb, var(--text-primary) var(--cal-hover), var(--cal-surface)); }
@@ -2108,7 +2114,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 
 /* ---- the agenda: rows are Cards rows; the bar is the declared exception ---- */
 .sdk-cal-agenda { display: flex; flex-direction: column; gap: var(--gap-in); min-width: 0; }
-.sdk-cal-agenda .sdk-row-meta { width: 21ch; text-align: left; color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-primary)); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
+.sdk-cal-agenda .sdk-row-meta { width: 21ch; text-align: left; color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-primary)); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 .sdk-cal-agenda .sdk-row:is(.is-ext, .is-marker) .sdk-row-meta { color: var(--text-muted); }
 .sdk-cal-compact .sdk-cal-agenda .sdk-row-meta { width: 18ch; }
 @media (max-width: 640px) {
@@ -2322,7 +2328,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --chip-h-day: 40px; /* 44px on a phone */
   /* Muted text on a fill (the date block, a day chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
   --day-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary));
-  --day-now: color-mix(in srgb, var(--accent-fill) 55%, var(--text-primary));
+  --day-now: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-primary));
 }
 @media (max-width: 640px) {
   :root { --chip-h-day: 44px; }
@@ -3215,7 +3221,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   --jr-ahead: 22%;
   --jr-count: 22%;
   --jr-fact: 8%;
-  --jr-now: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  --jr-now: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
   --jr-muted: color-mix(in srgb, var(--text-bar) 78%, var(--surface-bar-top));
   --jr-pin-fill: color-mix(in srgb, var(--accent-fill) 88%, var(--text-primary)); /* the micro count's fill */
   --jr-phase-h: 58px; /* the phases sheet's band; 52px on a phone */
@@ -3295,8 +3301,8 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
 .sdk-strip-sentence > .story-part:not(.story-lead) { color: color-mix(in srgb, currentColor 80%, transparent); }
 
 /* The countdown: a 22% accent fill; the number 16px weight 600, the words 13px, on one baseline. */
-.sdk-strip-count { align-items: baseline; background: color-mix(in srgb, var(--accent-fill) var(--jr-count), transparent); }
-.sdk-strip-count:hover { background: color-mix(in srgb, var(--accent-fill) 32%, transparent); }
+.sdk-strip-count { align-items: baseline; background: color-mix(in srgb, var(--fill-chosen) var(--jr-count), transparent); }
+.sdk-strip-count:hover { background: color-mix(in srgb, var(--fill-chosen) 32%, transparent); }
 .sdk-strip-count-n { font-size: var(--text-16); font-weight: var(--weight-strong); line-height: calc(var(--jr-chip-h) - 2px); }
 .sdk-strip-count-words { font-size: var(--text-13); font-weight: var(--weight-medium); line-height: calc(var(--jr-chip-h) - 2px); }
 
@@ -3368,7 +3374,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
 .sdk-band[data-state="off"] { padding: 0; border-style: dashed; background: none; }
 .sdk-band[data-state="off"] > * { display: none; }
 .sdk-band:is(.lit, :hover):not([data-state="off"]) { background: color-mix(in srgb, var(--tint, var(--accent-fill)) 32%, transparent); }
-.sdk-band[data-state="current"]:is(.lit, :hover) { background: color-mix(in srgb, var(--accent-fill) 38%, transparent); }
+.sdk-band[data-state="current"]:is(.lit, :hover) { background: color-mix(in srgb, var(--fill-chosen) 38%, transparent); }
 .sdk-band:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 
 .sdk-band-box { display: flex; align-items: center; gap: var(--jr-chip-gap); min-width: 0; width: 100%; overflow: hidden; }
@@ -3452,8 +3458,8 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
 .sdk-phase-band-label { display: block; max-width: 100%; overflow: hidden; font-size: var(--text-13); font-weight: var(--weight-medium); line-height: var(--jr-phase-label-h); text-overflow: ellipsis; white-space: nowrap; }
 .sdk-phase-band[data-main] .sdk-phase-band-label { font-weight: var(--weight-strong); }
 .sdk-phase-band-span { display: block; max-width: 100%; overflow: hidden; color: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); font-size: var(--text-11); line-height: var(--jr-phase-span-h); text-overflow: ellipsis; white-space: nowrap; }
-.sdk-phase-band[data-state="current"] .sdk-phase-band-label { color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-primary)); font-weight: var(--weight-strong); }
-.sdk-phase-band-now { font-size: var(--text-11); font-weight: var(--weight-strong); line-height: var(--jr-phase-span-h); color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-primary)); }
+.sdk-phase-band[data-state="current"] .sdk-phase-band-label { color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-primary)); font-weight: var(--weight-strong); }
+.sdk-phase-band-now { font-size: var(--text-11); font-weight: var(--weight-strong); line-height: var(--jr-phase-span-h); color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-primary)); }
 .sdk-phase-band-now[hidden] { display: none; }
 /* Today in the band: a dashed neutral line (a block, not an edge) and its word above the bar, in the strip's top room. */
 .sdk-phase-today { position: absolute; top: 0; bottom: 0; left: var(--at); width: 2px; margin-left: -1px; background: linear-gradient(var(--text-primary) 50%, transparent 50%) 0 0 / 2px 6px repeat-y; pointer-events: none; }
@@ -3516,7 +3522,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   --menu-font: var(--text-14);
   --menu-hover: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --menu-press: color-mix(in srgb, var(--text-primary) 16%, transparent);
-  --menu-current-hover: color-mix(in srgb, var(--accent-fill) 33%, transparent);
+  --menu-current-hover: color-mix(in srgb, var(--fill-chosen) 33%, transparent);
   --menu-current-fg: var(--text-selected);
   --menu-danger-fg: var(--status-danger-text);
   /* On the quiet fill the same red is 4.3 to 1 in dark mode, so a hovered or focused danger row, and a hint on a filled row, take one step more. */
@@ -4696,9 +4702,9 @@ html[data-dialog-open] { overflow: hidden; }
 .sdk-dp-day.today:hover, .sdk-dp-day.inrange:hover { background: var(--menu-press); }
 
 /* The chosen day: the one place a selection is a solid accent fill. On its own focus the ring is the on-accent colour. */
-.sdk-dp-day.sel { background: var(--accent-fill); color: var(--text-on-accent); font-weight: var(--weight-strong); }
-.sdk-dp-day.sel:hover { background: var(--accent-fill-hover); }
-.sdk-dp-day.sel:focus-visible { background: var(--accent-fill); outline-color: var(--text-on-accent); }
+.sdk-dp-day.sel { background: var(--fill-chosen); color: var(--text-on-chosen); font-weight: var(--weight-strong); }
+.sdk-dp-day.sel:hover { background: color-mix(in srgb, var(--fill-chosen) 85%, white); }
+.sdk-dp-day.sel:focus-visible { background: var(--fill-chosen); outline-color: var(--text-on-chosen); }
 
 .sdk-dp-foot { display: flex; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
 /* pickers:end */
@@ -5333,7 +5339,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
   --cr-pad-x: var(--space-2);
   --cr-gap: var(--space-2);
   --cr-hover: var(--fill-hover);
-  --cr-checked-hover: color-mix(in srgb, var(--accent-fill) 33%, transparent);
+  --cr-checked-hover: color-mix(in srgb, var(--fill-chosen) 33%, transparent);
   --cr-desc-strong: color-mix(in srgb, var(--text-muted) 50%, var(--text-primary));
 }
 
@@ -5505,7 +5511,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
   --tabbar-badge-top: -4px;
   --tabbar-badge-right: -6px;
   --tabbar-fg: color-mix(in srgb, var(--text-bar) 75%, var(--surface-bar-top));
-  --tabbar-now: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  --tabbar-now: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
   --tabbar-leave: color-mix(in srgb, var(--status-danger-fill) 70%, var(--text-bar));
   --tabbar-join: color-mix(in srgb, var(--status-ok-fill) 70%, var(--text-bar)); /* the ok colour, toward the text, so the icon reaches 3 to 1 in both modes */
 }
@@ -5602,8 +5608,8 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 
 /* Current: the neutral selected fill; the label and the icon in the accent mix. */
 .sdk-tabbar .sdk-tabbar-tab:is([aria-current="page"], .on, [aria-expanded="true"]) { --tab-focus: var(--tabbar-now); background: var(--fill-selected); color: var(--tabbar-now); }
-.sdk-tabbar .sdk-tabbar-tab:is([aria-current="page"], .on, [aria-expanded="true"]):hover { background: color-mix(in srgb, var(--accent-fill) 38%, transparent); }
-.sdk-tabbar .sdk-tabbar-tab:is([aria-current="page"], .on, [aria-expanded="true"]):active { background: color-mix(in srgb, var(--accent-fill) 46%, transparent); }
+.sdk-tabbar .sdk-tabbar-tab:is([aria-current="page"], .on, [aria-expanded="true"]):hover { background: color-mix(in srgb, var(--fill-chosen) 38%, transparent); }
+.sdk-tabbar .sdk-tabbar-tab:is([aria-current="page"], .on, [aria-expanded="true"]):active { background: color-mix(in srgb, var(--fill-chosen) 46%, transparent); }
 .sdk-tabbar .sdk-tabbar-tab:is(:disabled, [aria-disabled="true"]) { opacity: 0.5; cursor: default; pointer-events: none; }
 
 /* The call: Join's phone in the ok colour; Leave the readable red; Online on the call in the ok colour, red while the mic is live. */
@@ -5781,7 +5787,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 
 /* Quick sets: the same chips, but one is chosen at a time, with counts; the chosen one is filled solid. */
 .mf-quickset { display: flex; flex: none; align-items: center; gap: var(--space-1); }
-.mf-quickset .mf-chip.is-on { background: var(--accent-fill); color: var(--text-on-accent); }
+.mf-quickset .mf-chip.is-on { background: var(--fill-chosen); color: var(--text-on-chosen); }
 .mf-quickset .mf-chip:not(.is-on) { background: transparent; }
 
 /* The Filters button: its count is the shared .sdk-badge; always shown, only ever moved into More. A control's height, as the

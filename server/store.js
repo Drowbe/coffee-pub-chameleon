@@ -425,6 +425,9 @@ const THEME_OPTIONAL = [
   // tints a chosen card or day, today and your own chat message in place of the accent (server/theme-css.js writes its quieter steps).
   'surface-field', 'surface-menu', 'surface-bar-nav', 'edge-field', 'wash-ink',
   'mf-surface-title', 'mf-surface-toolbar', 'mf-surface-row', 'mf-surface-row-hover',
+  // What a chosen thing is drawn with, apart from the accent that marks an action (public/sdk/system.css): the fill of a chosen segment or
+  // day and the base of the tints under a chosen, hovered or pressed thing; the text on that fill; the ink chosen text is mixed from.
+  'fill-chosen', 'text-on-chosen', 'ink-chosen',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
@@ -436,20 +439,26 @@ const THEME_OPTIONAL = [
 // contrast rule it is adjusted by a stated rule, noted beside the value.
 const DEFAULT_THEME = {
   get name() { return shortProductName(); },
-  // Dark: navy ground (--bg), the studio's surface for panels, its line for edges, cream ink, teal as the action colour.
-  // Only the seven base roles, as style.css's :root holds them (a theme's dark set that left a role out falls through to :root, so
-  // an optional role here would leak into every other theme): the bars, fields, cards and menus follow the formulas in system.css.
+  // Dark: navy ground (--bg), the studio's surface for panels, its line for edges, cream ink. The bars are the band, a step off the
+  // ground; a card is a step lighter than its panel (--surface mixed 50% with --line). Teal is the accent: the primary buttons, a switch
+  // that is on, the focus ring, links. What is chosen (a tab, a chip, a segment, a day) is a lighter navy with cream ink, not teal.
+  // The seven base roles are also style.css's :root (tools/check-theme.mjs holds them equal).
   dark: {
     'surface-page': '#0e1a2b', 'surface-panel': '#182c47', 'edge-hairline': '#2a4162', 'text-primary': '#f4ecdd', 'text-muted': '#b9c3d3', 'accent-fill': '#5cc8cf', 'text-on-accent': '#0e1a2b',
+    'surface-card': '#213655', 'surface-bar-top': '#13243b', 'surface-bar-nav': '#13243b',
+    'wash-ink': '#4d6c99', 'fill-chosen': '#4d6c99', 'text-on-chosen': '#f4ecdd', 'ink-chosen': '#f4ecdd',
   },
-  // Light: cream ground (--bg), the band (--band) for the bars, white surface for panels, fields and menus (the studio's cards
-  // and inputs), cream for a card on a panel, navy ink, teal as the action colour. The field edge is the studio's --line2
-  // with 30% ink mixed in (the least that reaches 3:1 on a white field; --line2 alone is 1.75:1).
+  // Light: the studio's page. Cream ground (--bg); panels, cards, menus and fields white (--surface) on a tan hairline; the bars are the
+  // ground itself (the studio's header is cream with a line), so the band tan stays for a deliberate band and the module title bars.
+  // Teal (--accent) only on the primary buttons, a switch that is on, the focus ring and links. What is chosen is sand with navy ink:
+  // fill-chosen is the --sand family deepened so that a 30% wash over white or cream reads as the studio's sand (#EEE0C6).
+  // The field edge is --line2 with 30% ink mixed in (the least that reaches 3:1 on a white field; --line2 alone is 1.75:1).
   light: {
     'surface-page': '#fbf6ec', 'surface-panel': '#ffffff', 'edge-hairline': '#e2d3b3', 'text-primary': '#14243b', 'text-muted': '#475569', 'accent-fill': '#0b7a84', 'text-on-accent': '#ffffff',
-    'surface-card': '#fbf6ec', 'surface-bar-top': '#f3e9d4', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'surface-bar-nav': '#f3e9d4', 'edge-field': '#9a937e',
+    'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e',
     'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
-    'mf-surface-title': '#f3e9d4', 'mf-surface-toolbar': '#f8f0e0', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
+    'wash-ink': '#cfae6c', 'fill-chosen': '#cfae6c', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
   },
 };
 // Shipped pre-made (see the seeding in load()), fixed ids so seeding is idempotent -- colors read straight off each real site's

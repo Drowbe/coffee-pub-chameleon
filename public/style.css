@@ -701,7 +701,7 @@ a:hover {
 }
 
 .core-link[aria-current="page"] {
-  color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
   background: var(--fill-selected);
 }
 
@@ -2605,9 +2605,9 @@ button.whoami:focus-visible {
 }
 
 .icon-grid button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* Same "every choice is one click away" idea as .icon-grid, but a row of
@@ -2639,9 +2639,9 @@ button.whoami:focus-visible {
 }
 
 .layout-pick button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* A hotkey field looks like the other .fields inputs at rest, then turns
@@ -5739,7 +5739,7 @@ body.chat-window {
 .module-display-row input[type="text"] { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
 .module-display .icon-pick summary { width: 38px; height: 34px; color: var(--accent); }
 .module-display .icon-pick .icon-grid { max-height: 260px; overflow-y: auto; }
-.module-display .icon-pick .icon-grid button.selected { background: var(--accent); color: var(--on-accent); }
+.module-display .icon-pick .icon-grid button.selected { background: var(--fill-chosen); color: var(--text-on-chosen); }
 /* the first choice, "Its own icon": marked apart from the icons that replace it */
 .module-display .icon-pick .icon-grid [data-display-icon=""] { border: 1px dashed var(--border); }
 .module-display .status:empty { display: none; }
