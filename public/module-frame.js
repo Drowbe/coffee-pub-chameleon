@@ -21,6 +21,9 @@
 //       moduleStandard: { settings, share, print, onPick(id, el) }, // the module's own handlers (host.standard.set): each
 //                                                    // true or { hint?, disabled? }; only those given are drawn, with the
 //                                                    // host's words and icons; a pick calls onPick, not onAction
+//       extra,                                       // the window's own entries besides the standard ones (host-menu.js
+//                                                    // items, or a function giving them, asked as the menu opens): a run
+//                                                    // of their own after the standard actions (the canvas's stack entries)
 //       close,                                       // true: a close button at the end
 //       onAction(event),                             // the title bar's events; else the frame's onAction
 //     },
@@ -207,7 +210,10 @@ export function createModuleFrame(opts = {}) {
       (s.danger ? hostDanger : standard).push(item);
     }
     const danger = [...actions.filter((a) => a.danger).map(entry), ...hostDanger];
-    const runs = [own, standard, danger].filter((r) => r.length);
+    // The window's own entries that are not standard actions (the canvas's stack entries: Stack with..., Move up, ...),
+    // host-menu.js items, as a run of their own after the standard ones.
+    const extra = typeof tbOpts.extra === 'function' ? tbOpts.extra() : tbOpts.extra;
+    const runs = [own, standard, Array.isArray(extra) ? extra : [], danger].filter((r) => r.length);
     return runs.flatMap((r, at) => (at ? [{ divider: true }, ...r] : r));
   }
   function pickAction(a, from) {
