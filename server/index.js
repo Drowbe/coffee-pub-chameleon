@@ -1804,6 +1804,8 @@ function sendHostError(err, res) {
   throw err;
 }
 
+// The console's tab icon: no environment here, so only the product's mark (the same files siteIcon falls back to).
+hostRouter.get(['/img/site/icon', '/favicon.ico'], (req, res) => res.set('Cache-Control', 'no-cache').sendFile(brandIconFile(req.path)));
 hostRouter.use(express.static(publicDir, { index: false }));
 hostRouter.get('/', (_req, res) => res.sendFile(page('host.html')));
 
@@ -3075,13 +3077,14 @@ app.get('/admin', (req, res) => {
 // where the default is the mark as a real .ico -- pages set their own <link rel="icon"> (see brand.js), but plenty of
 // browsers and tools still fetch that path directly (bookmarks, tab previews, before any page JS has run).
 const BRAND_DIR = path.join(publicDir, 'assets', 'images', 'brand');
+function brandIconFile(reqPath) { return path.join(BRAND_DIR, reqPath === '/favicon.ico' ? 'favicon.ico' : 'favicon.svg'); }
 function siteIcon(req, res) {
   // No environment at the bare base domain (the landing page): the bundled default, same as any environment
   // that has not set its own.
   const env = envContext.getStore();
   const file = env && env.store.iconPath();
   if (file) return sendImage(res, file);
-  res.set('Cache-Control', 'no-cache').sendFile(path.join(BRAND_DIR, req.path === '/favicon.ico' ? 'favicon.ico' : 'favicon.svg'));
+  res.set('Cache-Control', 'no-cache').sendFile(brandIconFile(req.path));
 }
 app.get('/img/site/icon', siteIcon);
 app.get('/favicon.ico', siteIcon);
