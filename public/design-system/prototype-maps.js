@@ -70,7 +70,7 @@ function set(id, name, note) {
 }
 
 // The page's theme (the switch at the top), read at each draw.
-const pageTheme = () => D.documentElement.dataset.ppTheme || 'strong-coffee';
+const pageTheme = () => D.documentElement.dataset.ppTheme || 'chameleon';
 const src = (f) => {
   const u = new URLSearchParams({ id: f.id, theme: pageTheme(), mode: f.mode, map: f.map, scene: f.scene, edge: T.edge });
   if (f.tdef) u.set('tdef', f.tdef);

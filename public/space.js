@@ -4191,11 +4191,11 @@ function messagePortrait(name, kind, icon, by) {
 }
 
 // A chat message is a header and a container. The header has a left zone (portrait, name, time) and a
-// right zone (private or public, then the menu). The container is the message itself.
+// right zone (the private or public mark, an icon, then the menu). The container is the message itself.
 // `tint` is the colour of a command's module, or gold for the AI (plan-chat-model.md, decision 18): the portrait's icon
 // and a thin left edge. `command` ("/n") follows the name. data-vis says private or public; data-in which of Chat's
 // views shows it (viewOf: private in the Assistant, the person's own shared command or answer in both, else the
-// Discussion). The person's own shared one reads "shared".
+// Discussion). The person's own shared one shows the public icon, labelled "Shared with everyone".
 function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, entry, tint, command }) {
   const el = document.createElement('div');
   el.className = 'message';
@@ -4236,11 +4236,18 @@ function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, e
   const vis = document.createElement(canChange ? 'button' : 'span');
   if (canChange) vis.type = 'button';
   vis.className = 'message-vis';
+  // The mark is an icon: one person for private, three for public and for the author's shared one. The words are its
+  // tooltip and its label ("Only you", "Everyone", "Shared with everyone").
   const paintVis = () => {
     el.dataset.in = viewOf({ visibility: state, kind, mine });
     const said = el.dataset.in === 'both' ? 'shared' : state;
-    vis.textContent = said;
-    vis.setAttribute('aria-label', said === 'private' ? 'Private' : said === 'shared' ? 'Shared' : 'Public');
+    const words = said === 'private' ? 'Only you' : said === 'shared' ? 'Shared with everyone' : 'Everyone';
+    vis.innerHTML = `<i class="fa-solid ${said === 'private' ? 'fa-user' : 'fa-users'} fa-fw" aria-hidden="true"></i>`;
+    vis.dataset.tip = words;
+    vis.dataset.mark = said;
+    vis.setAttribute('aria-label', words);
+    if (!canChange) vis.setAttribute('role', 'img');
+    else vis.setAttribute('aria-haspopup', 'menu');
   };
   paintVis();
   // The badge flips who sees it, and nothing else (decision 3): PATCH, then repaint here and tell the call. On a
@@ -4249,7 +4256,7 @@ function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, e
     event.stopPropagation();
     const next = state === 'private' ? 'public' : 'private';
     openHostMenu(vis, [{
-      icon: next === 'public' ? 'users' : 'lock',
+      icon: next === 'public' ? 'users' : 'user',
       label: next === 'public' ? 'Make public' : 'Make private',
       onPick: async () => {
         const done = await setMessageVisibility(entry, next);

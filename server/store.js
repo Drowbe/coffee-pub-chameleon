@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const words = require('./words');
+const { shortProductName } = require('./product-name');
 const { Layouts } = require('./layouts');
 const { LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
 const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEFAULT_ICONS, sameList } = require('./default-lists');
@@ -341,10 +342,10 @@ const DEFAULT_SETTINGS = {
   // Saved color themes (see /theme.css and the :root comment in style.css)
   // -- each one a light and a dark set of the same seven colors, named and
   // kept around so an admin can switch back without re-picking them.
-  // activeThemeId null means Strong Coffee, the built-in default (see
+  // activeThemeId null means the product's own theme, the built-in default (see
   // DEFAULT_THEME): dark, it is style.css's own palette byte for byte,
   // rather than round-tripping the same colors back through an extra
-  // stylesheet. The two in BUILTIN_THEMES ship pre-made -- an admin can
+  // stylesheet. The three in BUILTIN_THEMES ship pre-made -- an admin can
   // edit or delete either exactly like one of their own. themeMode picks
   // the light or the dark set of whichever theme is live.
   themes: [],
@@ -424,26 +425,61 @@ const THEME_OPTIONAL = [
   // tints a chosen card or day, today and your own chat message in place of the accent (server/theme-css.js writes its quieter steps).
   'surface-field', 'surface-menu', 'surface-bar-nav', 'edge-field', 'wash-ink',
   'mf-surface-title', 'mf-surface-toolbar', 'mf-surface-row', 'mf-surface-row-hover',
+  // What a chosen thing is drawn with, apart from the accent that marks an action (public/sdk/system.css): the fill of a chosen segment or
+  // day and the base of the tints under a chosen, hovered or pressed thing; the text on that fill; the ink chosen text is mixed from.
+  'fill-chosen', 'text-on-chosen', 'ink-chosen',
+  // The colour of the second word of the product's lockup (the brand's coral), the accent until a theme sets it. Large text only (24px and up).
+  'ink-brand',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
 // picks which one is live.
-// Strong Coffee is the built-in default ("Default" in the chooser, no
-// stored theme): its dark set is the palette public/style.css's :root starts from (tools/check-theme.mjs holds the two equal),
-// and its light set is this one.
+// The product's own theme is the built-in default ("Default" in the chooser, no stored theme), named by the product's short
+// name. It is the Coffee Pub Studio's design system read into our roles: the studio's cream ground (--bg), band (--band), surface, line, ink, muted and teal, light and
+// dark. Its dark set is the palette public/style.css's :root starts from (tools/check-theme.mjs holds the two equal).
+// The studio has no status colours, so the four status fills stay on Auto. Where a studio colour fell short of our
+// contrast rule it is adjusted by a stated rule, noted beside the value.
 const DEFAULT_THEME = {
-  name: 'Strong Coffee',
-  dark: { 'surface-page': '#1a1410', 'surface-panel': '#241c16', 'edge-hairline': '#3b2e24', 'text-primary': '#f1e6d8', 'text-muted': '#a8998a', 'accent-fill': '#c8873a', 'text-on-accent': '#1a1206' },
-  // Light is Cream (Thomas, 2026-10-31): a warm off-white of very low chroma, strong ink, the accent only on actions and markers.
+  get name() { return shortProductName(); },
+  // Dark: navy ground (--bg), the studio's surface for panels, its line for edges, cream ink. The bars are the band, a step off the
+  // ground; a card is a step lighter than its panel (--surface mixed 50% with --line). Teal is the accent: the primary buttons, a switch
+  // that is on, the focus ring, links. What is chosen (a tab, a chip, a segment, a day) is a lighter navy with cream ink, not teal.
+  // The seven base roles are also style.css's :root (tools/check-theme.mjs holds them equal).
+  dark: {
+    'surface-page': '#0e1a2b', 'surface-panel': '#182c47', 'edge-hairline': '#2a4162', 'text-primary': '#f4ecdd', 'text-muted': '#b9c3d3', 'accent-fill': '#5cc8cf', 'text-on-accent': '#0e1a2b',
+    'surface-card': '#213655', 'surface-bar-top': '#13243b', 'surface-bar-nav': '#13243b',
+    'wash-ink': '#4d6c99', 'fill-chosen': '#4d6c99', 'text-on-chosen': '#f4ecdd', 'ink-chosen': '#f4ecdd',
+    'ink-brand': '#ff8264',
+  },
+  // Light: the studio's page. Cream ground (--bg); panels, cards, menus and fields white (--surface) on a tan hairline; the bars are the
+  // ground itself (the studio's header is cream with a line), so the band tan stays for a deliberate band and the module title bars.
+  // Teal (--accent) only on the primary buttons, a switch that is on, the focus ring and links. What is chosen is sand with navy ink:
+  // fill-chosen is the --sand family deepened so that a 30% wash over white or cream reads as the studio's sand (#EEE0C6).
+  // The field edge is --line2 with 30% ink mixed in (the least that reaches 3:1 on a white field; --line2 alone is 1.75:1).
   light: {
-    'surface-page': '#eeede8', 'surface-panel': '#f7f6f2', 'edge-hairline': '#c9c7bf', 'text-primary': '#181714', 'text-muted': '#55534b', 'accent-fill': '#9a5518', 'text-on-accent': '#ffffff',
-    'surface-card': '#fffffd', 'surface-bar-top': '#dad8d0', 'surface-field': '#ffffff', 'surface-menu': '#fffffd', 'surface-bar-nav': '#dad8d0', 'edge-field': '#8a877d', 'wash-ink': '#181714',
-    'mf-surface-title': '#dad8d0', 'mf-surface-toolbar': '#e9e8e2', 'mf-surface-row': '#fffffd', 'mf-surface-row-hover': '#eeede7',
+    'surface-page': '#fbf6ec', 'surface-panel': '#ffffff', 'edge-hairline': '#e2d3b3', 'text-primary': '#14243b', 'text-muted': '#475569', 'accent-fill': '#0b7a84', 'text-on-accent': '#ffffff',
+    'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e',
+    'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
+    'wash-ink': '#cfae6c', 'fill-chosen': '#cfae6c', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'ink-brand': '#e0553c',
+    'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
   },
 };
 // Shipped pre-made (see the seeding in load()), fixed ids so seeding is idempotent -- colors read straight off each real site's
-// own computed styles (button/link accent, body text, page background), not eyeballed.
+// own computed styles (button/link accent, body text, page background), not eyeballed. Strong Coffee, the default before the
+// product's own theme, is the first of them, as it was (its dark set is what public/style.css held).
 const BUILTIN_THEMES = [
+  {
+    id: 'strong-coffee',
+    name: 'Strong Coffee',
+    dark: { 'surface-page': '#1a1410', 'surface-panel': '#241c16', 'edge-hairline': '#3b2e24', 'text-primary': '#f1e6d8', 'text-muted': '#a8998a', 'accent-fill': '#c8873a', 'text-on-accent': '#1a1206' },
+    // Light is Cream (Thomas, 2026-10-31): a warm off-white of very low chroma, strong ink, the accent only on actions and markers.
+    light: {
+      'surface-page': '#eeede8', 'surface-panel': '#f7f6f2', 'edge-hairline': '#c9c7bf', 'text-primary': '#181714', 'text-muted': '#55534b', 'accent-fill': '#9a5518', 'text-on-accent': '#ffffff',
+      'surface-card': '#fffffd', 'surface-bar-top': '#dad8d0', 'surface-field': '#ffffff', 'surface-menu': '#fffffd', 'surface-bar-nav': '#dad8d0', 'edge-field': '#8a877d', 'wash-ink': '#181714',
+      'mf-surface-title': '#dad8d0', 'mf-surface-toolbar': '#e9e8e2', 'mf-surface-row': '#fffffd', 'mf-surface-row-hover': '#eeede7',
+    },
+  },
   {
     id: 'staying-blonde',
     name: 'Calming Teal',
@@ -1303,7 +1339,7 @@ class Store {
     return this.data.settings.themes;
   }
 
-  // Strong Coffee, the built-in default: its name and both sets, for the chooser.
+  // The product's own theme, the built-in default: its name and both sets, for the chooser.
   get defaultTheme() {
     return this.sanitizeTheme({ ...DEFAULT_THEME, id: null });
   }
@@ -1362,7 +1398,7 @@ class Store {
     return theme;
   }
 
-  // `name`, or "name (2)", "(3)"... when a theme (Strong Coffee included) already has it, ignoring case; the
+  // `name`, or "name (2)", "(3)"... when a theme (the default included) already has it, ignoring case; the
   // number always fits inside the 40 characters a name may have.
   freeThemeName(name) {
     const lower = (x) => String(x || '').trim().toLowerCase();
@@ -1385,7 +1421,7 @@ class Store {
   }
 
   // Both of the live theme's sets, for /theme.css to send at once (server/theme-css.js): { light, dark }, a theme
-  // with only one set showing it in both modes. Strong Coffee, when no saved theme is live, gives both of its sets.
+  // with only one set showing it in both modes. The default theme, when no saved theme is live, gives both of its sets.
   activeThemeSets() {
     const s = this.data.settings;
     const theme = s.activeThemeId ? s.themes.find((t) => t.id === s.activeThemeId) : null;

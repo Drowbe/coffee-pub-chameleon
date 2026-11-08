@@ -111,7 +111,7 @@ const DERIVED = [
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',
-  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
+  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
   'status-warn-fill', 'status-info-fill', 'status-ok-mark',
   ...['danger', 'ok', 'warn', 'info'].flatMap((k) => ['text', 'tint', 'on-fill'].map((p) => `status-${k}-${p}`)),
 ];
@@ -127,8 +127,8 @@ for (const r of BASE) {
 }
 if (!styleDefs.has('--icon-hover')) fail('--icon-hover (a role a theme may set) is not defined in style.css');
 for (const r of DERIVED) if (!defs.has(`--${r}`)) fail(`derived colour role --${r} is missing from system.css`);
-// The base defaults in style.css are Strong Coffee's dark set.
-for (const key of Object.keys(DEFAULT_THEME.dark)) if (styleDefs.get(`--${key}`)?.[0] !== DEFAULT_THEME.dark[key]) fail(`style.css --${key} is ${styleDefs.get(`--${key}`)?.[0]}, Strong Coffee's dark set says ${DEFAULT_THEME.dark[key]}`);
+// The base defaults in style.css are the default theme's dark base roles (an optional role of its dark set is written by /theme.css; in :root it would leak into every other theme).
+for (const key of BASE.filter((k) => k in DEFAULT_THEME.dark)) if (styleDefs.get(`--${key}`)?.[0] !== DEFAULT_THEME.dark[key]) fail(`style.css --${key} is ${styleDefs.get(`--${key}`)?.[0]}, the default theme's dark set says ${DEFAULT_THEME.dark[key]}`);
 // The Auto status fills the server and the editor use are the ones style.css draws.
 {
   const [dangerDark, okDark] = [styleDefs.get('--status-danger-fill')?.[0], styleDefs.get('--status-ok-fill')?.[0]];

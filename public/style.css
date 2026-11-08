@@ -1,16 +1,16 @@
 /* The colour roles (public/sdk/system.css, documentation/designsystem/design-theme.md). A theme sets seven base roles and may set
    the four status fills and a few more (server/store.js THEME_BASE and THEME_OPTIONAL; /theme.css writes them, and the colours it
-   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are Strong Coffee's
-   dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
+   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are the default theme's
+   (the studio's, in server/store.js DEFAULT_THEME) dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
    every other role from these with color-mix(). They are here, not in system.css, so a page that loads only this file still has them. */
 :root {
-  --surface-page: #1a1410;
-  --surface-panel: #241c16;
-  --edge-hairline: #3b2e24;
-  --text-primary: #f1e6d8;
-  --text-muted: #a8998a;
-  --accent-fill: #c8873a;
-  --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
+  --surface-page: #0e1a2b;
+  --surface-panel: #182c47;
+  --edge-hairline: #2a4162;
+  --text-primary: #f4ecdd;
+  --text-muted: #b9c3d3;
+  --accent-fill: #5cc8cf;
+  --text-on-accent: #0e1a2b; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
 
@@ -222,6 +222,18 @@ a:focus-visible {
 
 a:hover {
   color: var(--accent-hover);
+}
+
+/* A link inside a heading is a title that opens something: the chosen ink (the accent until a theme sets it; Chameleon: ink), and
+   underlined on hover instead of turning the accent. */
+:is(h1, h2, h3, h4, h5, h6) > a,
+:is(h1, h2, h3, h4, h5, h6) > a:hover {
+  color: var(--ink-chosen);
+}
+
+:is(h1, h2, h3, h4, h5, h6) > a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Two zones (plan-two-zone-nav.md): left, the branding (the logo and the environment) and then the places (Calendar,
@@ -565,6 +577,11 @@ a:hover {
   background: color-mix(in srgb, var(--icon-hover) 14%, transparent);
 }
 
+/* The open switcher's tint stays, the space's name in it is the chosen ink (the accent until a theme sets it; Chameleon: ink). */
+.topbar .space-switcher-button[aria-expanded="true"] .crumb-label {
+  color: var(--ink-chosen);
+}
+
 .topbar .space-switcher-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -691,7 +708,7 @@ a:hover {
 }
 
 .core-link[aria-current="page"] {
-  color: color-mix(in srgb, var(--accent-fill) 55%, var(--text-bar));
+  color: color-mix(in srgb, var(--ink-chosen) 55%, var(--text-bar));
   background: var(--fill-selected);
 }
 
@@ -706,7 +723,7 @@ body.host-console .topbar .nav-toggle {
 /* The product's lockup (brand.js, productLockup()): the mark and the product's name as live text, one line. The kit's
    proportions, by the text's size: the mark 1.75 times the text (56 units for 32), 0.375 of it between them (12 for 32).
    "Coffee Pub" is Fraunces 700, the rest Figtree 600; both take the theme's text colour here (the kit's coral name is for
-   large text only). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
+   large text only: a lockup marked data-size="large", 24px and up, draws the product's word in --ink-brand). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
 .product-lockup {
   display: inline-flex;
   align-items: center;
@@ -737,6 +754,10 @@ body.host-console .topbar .nav-toggle {
 .product-lockup-product {
   font-family: var(--font-ui);
   font-weight: var(--weight-strong);
+}
+
+.product-lockup[data-size="large"] .product-lockup-product {
+  color: var(--ink-brand);
 }
 
 body.host-console .topbar .brand-home .product-lockup {
@@ -904,8 +925,9 @@ body.host-console .grow {
   color: var(--header-text);
 }
 
+/* The brand is a name, not an action: hovering it does not turn it the accent (a:hover's colour). */
 .brand-home:hover {
-  color: var(--icon-hover);
+  color: var(--header-text);
 }
 
 /* The environment's name, the wordmark: larger than the nav text on purpose (Thomas, 2026-10-14: it stays larger, for
@@ -1327,7 +1349,7 @@ body.in-space .page-scroll {
 }
 
 .space-list-title i {
-  color: var(--accent);
+  color: var(--ink-chosen); /* a heading's icon is not an action: the accent until a theme sets the chosen ink (Chameleon: ink) */
 }
 
 /* Add <space> (GitHub #233): the ghost card, last in the grid, a space card's size. A plain button, so Enter and Space work.
@@ -2374,10 +2396,6 @@ button.whoami:focus-visible {
   color: var(--icon, color-mix(in srgb, var(--header-text) 75%, transparent));
 }
 
-.topbar .brand-home:hover i {
-  color: var(--icon-hover);
-}
-
 .icon-link:hover {
   color: var(--icon-hover);
   background: color-mix(in srgb, var(--icon-hover) 14%, transparent);
@@ -2595,9 +2613,9 @@ button.whoami:focus-visible {
 }
 
 .icon-grid button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* Same "every choice is one click away" idea as .icon-grid, but a row of
@@ -2629,9 +2647,9 @@ button.whoami:focus-visible {
 }
 
 .layout-pick button.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--fill-chosen);
+  border-color: var(--fill-chosen);
+  color: var(--text-on-chosen);
 }
 
 /* A hotkey field looks like the other .fields inputs at rest, then turns
@@ -3557,6 +3575,33 @@ a.crumb-here:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* An ask on its way (chat-input.js, askNow): the question as sent, a quiet waiting line under it. A failed one keeps the
+   words, says why, and offers Send again. */
+.chat-pending-line {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-12);
+}
+
+.chat-failed-body p {
+  margin: 0;
+}
+
+.chat-failed-line {
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.chat-failed-why {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.chat-failed-body .btn {
+  margin-top: var(--space-2);
 }
 
 .chat-session-divider {
@@ -5101,7 +5146,7 @@ html.has-background .panel.login {
 
 .module-icon {
   font-size: var(--text-22);
-  color: var(--accent);
+  color: var(--ink-chosen); /* a module's icon beside its name: the accent until a theme sets the chosen ink (Chameleon: ink) */
 }
 
 .module-asks {
@@ -5729,7 +5774,7 @@ body.chat-window {
 .module-display-row input[type="text"] { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
 .module-display .icon-pick summary { width: 38px; height: 34px; color: var(--accent); }
 .module-display .icon-pick .icon-grid { max-height: 260px; overflow-y: auto; }
-.module-display .icon-pick .icon-grid button.selected { background: var(--accent); color: var(--on-accent); }
+.module-display .icon-pick .icon-grid button.selected { background: var(--fill-chosen); color: var(--text-on-chosen); }
 /* the first choice, "Its own icon": marked apart from the icons that replace it */
 .module-display .icon-pick .icon-grid [data-display-icon=""] { border: 1px dashed var(--border); }
 .module-display .status:empty { display: none; }
@@ -6132,7 +6177,7 @@ body.chat-window {
 }
 
 .whos-around-title i {
-  color: var(--accent);
+  color: var(--ink-chosen);
 }
 
 .whos-around-list {
@@ -6219,7 +6264,7 @@ body.chat-window {
 }
 
 #dashboard .dashboard-widget-title i {
-  color: var(--accent);
+  color: var(--ink-chosen);
 }
 
 #dashboard .dashboard-widget-frame {
@@ -6587,7 +6632,7 @@ body.chat-window {
 .module-name-row { padding: 12px 0 0; border-top: 1px solid var(--border); scroll-margin-top: 80px; }
 .module-name-row:first-child { border-top: none; }
 .module-name-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.module-name-head .module-icon { color: var(--accent); }
+.module-name-head .module-icon { color: var(--ink-chosen); }
 .module-name-row .module-display { margin-top: 8px; }
 .module-shown-as { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: var(--text-14); }
 .module-shown-as .field-label { margin: 0; }
@@ -7563,7 +7608,9 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
 /* The Show tab: the page's menu drawn in the panel, not floating over it. */
 .host-menu.host-menu-inline {
   position: static;
+  width: 100%; /* fills the panel's content: rows, descriptions and switches use the whole width, not the floating menu's cap */
   min-width: 0;
+  max-width: none;
   max-height: none;
   margin: 0;
   border: 0;
