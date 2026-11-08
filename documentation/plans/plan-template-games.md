@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides what the gaming template sets; server-development builds the template file and the seed; experience-design uses both for the games page.
 
-**Status:** drafted 2026-10-21 by product-planner; Thomas answered two rounds the same day (see Decisions); nothing built. It is step 6 of [plan-product-pages](plan-product-pages.md) (decision 13: the template is made first, then the games page). Sibling of GitHub #351, the project and mentoring template. Three items were proposed as recommended and Thomas has **not yet answered** them; they are marked **proposed, to confirm** and listed under "What is not decided". The template file can be built now with those values (see "Left to build").
+**Status:** drafted 2026-10-21 by product-planner; Thomas answered two rounds the same day (see Decisions); nothing built when it was written (`templates/games.json` has since been added). Steps 7 to 9 of [plan-product-pages](plan-product-pages.md) (the games art, the seed and shots for `/games`, and `/games` itself), which "Left to build" steps 2 and 3 below follow, are superseded by [plan-product-site](plan-product-site.md): `/games` is removed and is not built. It is step 6 of [plan-product-pages](plan-product-pages.md) (decision 13: the template is made first, then the games page). Sibling of GitHub #351, the project and mentoring template. Three items were proposed as recommended and Thomas has **not yet answered** them; they are marked **proposed, to confirm** and listed under "What is not decided". The template file can be built now with those values (see "Left to build").
 
 ## What it is today
 

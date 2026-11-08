@@ -3,7 +3,7 @@
 **Audience:** Thomas, who decides what the product page says and how it splits; experience-design, who builds the
 pages and draws the art; server-development, who serves the new addresses and checks them.
 
-**Status:** decided by Thomas, 2026-10-21; steps 1 to 4 built the same day (see "Built so far"); step 5 is ready. Thomas: the product page is trying to be about
+**Status:** superseded by [plan-product-site](plan-product-site.md) (built 2026-11-08, PR #447). The use pages (`/travel`, `/games`), the front page (`landing.*`), their screenshots, `PRODUCT_PAGES`, `livePages()` and `pages` in `GET /api/product` are removed; the product host now serves only the start page. Its steps 5 and 7 to 11 are not built; `/projects` was never started. What follows is the record of the earlier decision. Decided by Thomas, 2026-10-21; steps 1 to 4 were built the same day (see "Built so far"). Thomas: the product page is trying to be about
 everything; "perhaps we make this product page about travel... another about gaming, etc." It follows on from the
 product page redesign (GitHub #212) and waits, for its third use, on the project and mentoring template (GitHub #351).
 The front page headline (decision 21), lede and meta description (decision 22) are decided.
