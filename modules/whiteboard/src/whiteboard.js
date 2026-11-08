@@ -315,10 +315,25 @@
     const border = b ? b.type !== 'line' && b.type !== 'stroke' : def && def.type !== 'line' && def.type !== 'stroke';
     const whose = b || def ? whoseOf(b, def) : 'new lines and borders';
     const items = [{ heading: `${border ? 'Border width' : 'Width'} ${b ? 'of' : 'for'} ${whose}` }];
-    if (!b) items.push(choiceRow(null, 'Usual', now, pick(null), { hint: def ? `${def.create().weight}` : '' }));
-    for (const w of WB_WEIGHTS) items.push(choiceRow(w, `${w}`, now, pick(w)));
+    const samples = []; // the weight each choice row draws, in row order
+    if (!b) {
+      const usual = def ? def.create().weight : null;
+      items.push(choiceRow(null, 'Usual', now, pick(null), { hint: usual ? wbWeightName(usual) : '' }));
+      samples.push(usual);
+    }
+    for (const w of WB_WEIGHTS) { items.push(choiceRow(w, wbWeightName(w), now, pick(w))); samples.push(w); }
     if (b && b.stroke === 'none') items.push({ separator: true }, { label: 'Pick a border colour to show it', disabled: true });
-    host.menu.show({ id: 'width', ...where, items });
+    host.menu.show({ id: 'width', className: 'wb-width-menu', ...where, items });
+    // The menu has no picture slot but an icon, so each choice row gets a small line drawn at its weight.
+    const menu = surface.getRootNode().querySelector('.wb-width-menu');
+    if (menu) [...menu.querySelectorAll('.sdk-menu-item:not(:disabled)')].forEach((row, i) => {
+      if (!samples[i]) return;
+      const line = document.createElement('span');
+      line.className = 'wb-width-sample';
+      line.setAttribute('aria-hidden', 'true');
+      line.style.setProperty('--sample', `${samples[i]}px`);
+      row.insertBefore(line, row.firstChild);
+    });
   }
 
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'

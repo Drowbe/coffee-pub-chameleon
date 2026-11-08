@@ -33,9 +33,6 @@
     { id: 'green', label: 'Green', token: 'var(--tint-green)' },
   ];
   const WB_PALETTE_BY_ID = new Map(WB_PALETTE.map((c) => [c.id, c]));
-  // A note's usual fill, a palette name. Kept here, not written as a field's value in the note's file, where
-  // check-no-raw-colours would read `fill: <a colour's name>` as a raw colour.
-  const WB_NOTE_FILL = 'gold';
   // The colour roles, in the order a menu offers them, with the words a person reads. A type may name a role its own way
   // (a line's stroke is its "Line").
   const WB_ROLES = [
@@ -45,6 +42,9 @@
   ];
   // The widths a line or a border can have, in board units.
   const WB_WEIGHTS = [1, 2, 3, 4, 8, 12];
+  // The words a menu shows for them.
+  const WB_WEIGHT_NAMES = { 1: 'Hairline', 2: 'Thin', 3: 'Medium', 4: 'Thick', 8: 'Heavy', 12: 'Extra heavy' };
+  const wbWeightName = (w) => WB_WEIGHT_NAMES[w] || `${w}`;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
   // Small checks every block type uses to clean what it reads.
   const wb = {

@@ -163,3 +163,6 @@
 .app.narrow .wb-handle { --hit: 32px; }
 
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
+
+/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
+.wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
