@@ -54,8 +54,8 @@ assert.ok(!wbOk("const a = { fill: 'tomato' };\n"), 'a name not in the Whiteboar
 assert.ok(!wbOk("const a = { fill: '#ffd24a' };\n"), 'a hex in the Whiteboard source fails');
 assert.ok(!wbOk("el.style.fill = 'gold';\n"), 'an assignment of a palette name in the Whiteboard source fails');
 assert.ok(!wbOk("const a = { border: '1px solid gold' };\n"), 'a name inside a longer value fails');
-const noTable = run('check-no-raw-colours', { 'modules/whiteboard/src/whiteboard.js': "const a = { fill: 'gold' };\n" });
-assert.ok(!noTable.ok && /WB_PALETTE/.test(noTable.out), 'the Whiteboard source without its palette table fails clearly');
+const noPalette = run('check-no-raw-colours', { 'modules/whiteboard/src/whiteboard.js': "const a = { fill: 'gold' };\n" });
+assert.ok(!noPalette.ok && /WB_PALETTE/.test(noPalette.out), 'the Whiteboard source without its palette table fails clearly');
 
 const FACE = '@font-face { font-family: "F"; font-weight: 100 900; src: local("Arial"); }\n@font-face { font-family: "G"; font-weight: 300; src: local("Arial"); }\n';
 assert.ok(run('check-type-scale', { 'public/sdk/system.css': FACE }).ok, 'font-weight inside @font-face is not read');
