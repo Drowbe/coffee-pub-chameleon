@@ -54,7 +54,8 @@
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
-  let selected = null;
+  const sel = new Set(); // the picked blocks' ids
+  const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish }
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
@@ -87,7 +88,9 @@
   const ctx = {
     policy,
     get: (id) => board.get(id),
-    selected: () => selected,
+    selected: () => one(),
+    selection: () => [...sel],
+    isSelected: (id) => sel.has(id),
     scale: () => renderer.view.s,
     panBy: (dx, dy) => renderer.panBy(dx, dy),
     draft(type, fields) {
@@ -111,11 +114,15 @@
       drafts.delete(id);
       board.remove(id);
       renderer.remove(id);
-      if (selected === id) select(null);
+      unpick(id);
       updateStatus();
     },
     remove: (id) => remove(id),
-    select: (id) => select(id),
+    select: (id) => select(id ? [id] : []),
+    setSelection: (ids) => select(ids),
+    toggle(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); else select([...sel, id]); },
+    marquee: (r) => renderer.marquee(r),
+    blocksIn: (r) => blocksIn(r),
     edit: (id, o) => edit(id, o),
     setTool: (id) => setTool(id),
     hold(id, on) { if (on) held.add(id); else release(id); },
@@ -138,9 +145,12 @@
     held.delete(id);
     waiting.delete(id);
     sync.remove(id);
-    if (selected === id) select(null);
+    unpick(id);
     updateStatus();
   }
+  function removeMany(ids) { for (const id of ids) remove(id); }
+  // A block gone from the board is gone from what is picked.
+  function unpick(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); }
 
   // ---- what comes from elsewhere ------------------------------------------------------------------------------------
   function onRemote(change) {
@@ -152,7 +162,7 @@
       drafts.delete(id);
       board.remove(id);
       renderer.remove(id);
-      if (selected === id) select(null);
+      unpick(id);
     } else {
       const b = change.block;
       if (held.has(b.id)) { waiting.set(b.id, change); return; }
@@ -162,10 +172,18 @@
     }
     updateStatus();
   }
-  function onRefused(err) {
-    const text = err && err.status === 403 ? 'You may not change this whiteboard.' : `That change was not saved. ${(err && err.message) || ''}`.trim();
+  // One note at a time: a change to many blocks that is refused is refused once for each, and is said once.
+  let noted = { text: '', t: 0 };
+  function note(text) {
+    const now = Date.now();
+    if (text === noted.text && now - noted.t < 5000) return;
+    noted = { text, t: now };
     host.ui.toast(text).catch(() => {});
   }
+  function onRefused(err) {
+    note(err && err.status === 403 ? 'You may not change this whiteboard.' : `That change was not saved. ${(err && err.message) || ''}`.trim());
+  }
+  function onBusy() { note('Saving a lot at once. The rest is saved in a few seconds.'); }
   async function reload() {
     let list;
     try { list = await sync.load(); } catch (err) { host.ui.toast('The whiteboard could not be read again. Reload the page.').catch(() => {}); return; }
@@ -180,16 +198,34 @@
     updateStatus();
   }
 
-  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, onRemote, onReload: reload, onRefused });
+  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, onRemote, onReload: reload, onRefused, onBusy });
 
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;
-  function select(id) {
-    selected = id && board.has(id) ? id : null;
-    renderer.select(selected, handlesOf(selected));
-    const can = Boolean(selected) && policy.canDelete(board.get(selected));
-    if (can && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => { if (selected) remove(selected); } });
+  // Pick exactly these blocks (an array of ids; [] or null for none).
+  function select(ids) {
+    sel.clear();
+    for (const id of ids || []) if (board.has(id)) sel.add(id);
+    renderer.select([...sel], handlesOf(one()));
+    const can = [...sel].some((id) => policy.canDelete(board.get(id)));
+    if (can && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
+    updateStatus();
+  }
+  // Every block a rectangle on the board (board units, any two corners) touches, by each block type's box.
+  function blocksIn(r) {
+    const x0 = Math.min(r.x0, r.x1); const x1 = Math.max(r.x0, r.x1);
+    const y0 = Math.min(r.y0, r.y1); const y1 = Math.max(r.y0, r.y1);
+    const out = [];
+    for (const b of board.all()) {
+      if (drafts.has(b.id)) continue;
+      const box = blockTypes.get(b.type).box(b);
+      const el = renderer.element(b.id);
+      const h = box.h === null ? (el ? el.offsetHeight : 0) : box.h;
+      const bx = b.x + box.x; const by = b.y + box.y;
+      if (bx <= x1 && bx + box.w >= x0 && by <= y1 && by + h >= y0) out.push(b.id);
+    }
+    return out;
   }
 
   // The handles the one picked block shows: its type's (resize), only with Select and only to someone who may change it.
@@ -241,19 +277,20 @@
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
-    renderer.select(selected, handlesOf(selected));
+    renderer.select([...sel], handlesOf(one()));
     if (toolSwitch) toolSwitch.set(tool.id);
     updateHint();
   }
   surface.dataset.tool = tool.id;
 
   // ---- colours, widths and layers ----------------------------------------------------------------------------------
-  // The Colour and Width menus change the picked block, or, with none picked, what new blocks get (for the active tool's
-  // block type when it makes one). The current choice is the marked row. Each change is one whole save.
+  // The Colour and Width menus change the picked blocks (each that has that colour or a width), or, with none picked, what
+  // new blocks get (for the active tool's block type when it makes one). The current choice is the marked row; with
+  // several blocks that differ, no row is marked. Each change is one whole save of each block.
   const toolbarAt = (e) => ({ at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 } });
   const NAMED = { none: { label: 'None', icon: 'ban' }, auto: { label: 'Matching', icon: 'circle-half-stroke' } };
-  // The block the menus work on: the one given, else the picked one, when this person may change it.
-  const target = (only) => { const b = (only || selected) && board.get(only || selected); return b && policy.canChange(b) ? b : null; };
+  // The blocks the menus work on: the one given, else every picked one this person may change.
+  const targets = (only) => (only ? [only] : [...sel]).map((id) => board.get(id)).filter((b) => b && policy.canChange(b));
   const roleLabel = (def, role) => (def && def.paint && def.paint[role.id] && def.paint[role.id].label) || role.label;
   const choiceRow = (id, label, now, onPick, extra = {}) => ({
     id: id || 'usual',
@@ -268,30 +305,48 @@
     const c = WB_PALETTE_BY_ID.get(id);
     return c ? { icon: 'circle', iconColor: c.token } : { icon: 'circle', regular: true };
   };
-  // Whose colours a menu shows: "this note", "the Pen tool" (what it draws next), "new blocks".
-  const whoseOf = (b, def) => (b ? `this ${def.noun ? def.noun(b) : def.label.toLowerCase()}` : def ? `the ${tool.label} tool` : 'new blocks');
-  const nameOf = (id) => (NAMED[id] ? NAMED[id].label : WB_PALETTE_BY_ID.has(id) ? WB_PALETTE_BY_ID.get(id).label : 'Usual');
+  const defOf = (b) => blockTypes.get(b.type);
+  const nounOf = (b) => { const def = defOf(b); return def.noun ? def.noun(b) : def.label.toLowerCase(); };
+  // The one value every block has, or undefined when they differ.
+  const agreed = (list, field) => { const vals = new Set(list.map((b) => b[field])); return vals.size === 1 ? [...vals][0] : undefined; };
+  // Whose colours a menu shows: "this note", "the 3 picked blocks", "the Pen tool" (what it draws next), "new blocks".
+  const whoseOf = (list, def) => (list.length > 1 ? `the ${list.length} picked blocks` : list.length ? `this ${nounOf(list[0])}` : def ? `the ${tool.label} tool` : 'new blocks');
+  const nameOf = (id) => (id === undefined ? 'Mixed' : NAMED[id] ? NAMED[id].label : WB_PALETTE_BY_ID.has(id) ? WB_PALETTE_BY_ID.get(id).label : 'Usual');
 
   function colourMenu(where, only) {
-    const b = target(only);
-    const def = b ? blockTypes.get(b.type) : tool.makes ? blockTypes.get(tool.makes) : null;
-    // A role's rows: on a block its extra choices and the palette; for new blocks "Usual" and the palette.
-    const groups = WB_ROLES.filter((role) => (b ? def.paint && def.paint[role.id] : !def || takesNext(def, role.id))).map((role) => {
-      const now = b ? b[role.id] : next[role.id];
-      const usual = !b && def ? def.create()[role.id] : null;
-      const pick = (v) => () => {
-        if (b) ctx.change(b.id, { [role.id]: v }, { save: 'now' });
-        if (!b || WB_PALETTE_BY_ID.has(v)) next[role.id] = v;
-      };
-      const rows = b
-        ? (def.paint[role.id].extra || []).map((v) => choiceRow(v, NAMED[v].label, now, pick(v), swatch(v)))
-        : [choiceRow(null, 'Usual', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
-      for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
-      return { role, label: roleLabel(def, role), now: now === null ? usual : now, rows };
-    });
+    const list = targets(only);
+    const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
+    let groups;
+    if (list.length) {
+      // A role's rows on blocks: the extra choices every one of them takes, then the palette.
+      groups = WB_ROLES.map((role) => {
+        const having = list.filter((b) => { const d = defOf(b); return d.paint && d.paint[role.id]; });
+        if (!having.length) return null;
+        const now = agreed(having, role.id);
+        const extras = having.map((b) => defOf(b).paint[role.id].extra || []).reduce((a, x) => a.filter((v) => x.includes(v)));
+        const pick = (v) => () => {
+          for (const b of having) ctx.change(b.id, { [role.id]: v }, { save: 'now' });
+          if (WB_PALETTE_BY_ID.has(v)) next[role.id] = v;
+        };
+        const rows = extras.map((v) => choiceRow(v, NAMED[v].label, now, pick(v), swatch(v)));
+        for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
+        const same = new Set(having.map((b) => b.type)).size === 1 ? defOf(having[0]) : null;
+        return { role, label: roleLabel(same, role), now, rows };
+      }).filter(Boolean);
+    } else {
+      // For new blocks: "Usual" and the palette.
+      groups = WB_ROLES.filter((role) => !def || takesNext(def, role.id)).map((role) => {
+        const now = next[role.id];
+        const usual = def ? def.create()[role.id] : null;
+        const pick = (v) => () => { next[role.id] = v; };
+        const rows = [choiceRow(null, 'Usual', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
+        for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
+        return { role, label: roleLabel(def, role), now: now === null ? usual : now, rows };
+      });
+    }
     if (!groups.length) return;
-    const whose = whoseOf(b, def);
-    const prep = b ? 'of' : 'for';
+    const whose = whoseOf(list, def);
+    const prep = list.length ? 'of' : 'for';
     const items = groups.length === 1
       ? [{ heading: groups[0].role.id === 'ink' ? `Colour of the words ${prep} ${whose}` : `Colour ${prep} ${whose}` }, ...groups[0].rows]
       : [{ heading: `Colours ${prep} ${whose}` }, ...groups.map((g) => ({ id: g.role.id, label: g.label, hint: nameOf(g.now), ...swatch(g.now), items: g.rows }))];
@@ -299,30 +354,32 @@
   }
 
   function widthMenu(where, only) {
-    const b = target(only);
-    const def = b ? blockTypes.get(b.type) : tool.makes ? blockTypes.get(tool.makes) : null;
-    if (b && !def.weight) return;
-    if (!b && def && !takesNext(def, 'weight')) {
+    const all = targets(only);
+    const list = all.filter((b) => defOf(b).weight);
+    const def = list.length ? (new Set(list.map((b) => b.type)).size === 1 ? defOf(list[0]) : null) : tool.makes ? blockTypes.get(tool.makes) : null;
+    if (all.length && !list.length) return;
+    if (!list.length && def && !takesNext(def, 'weight')) {
       // A note's or a text block's border is set on the block itself, not for the next one.
       host.menu.show({ id: 'width', ...where, items: [{ label: `Pick a ${def.noun ? def.noun(def.create()) : def.label.toLowerCase()} to change its border width`, disabled: true }] });
       return;
     }
-    const now = b ? b.weight : next.weight;
+    const now = list.length ? agreed(list, 'weight') : next.weight;
     const pick = (v) => () => {
-      if (b) ctx.change(b.id, { weight: v }, { save: 'now' });
-      if (!b || takesNext(def, 'weight')) next.weight = v;
+      for (const b of list) ctx.change(b.id, { weight: v }, { save: 'now' });
+      if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) next.weight = v;
     };
-    const border = b ? b.type !== 'line' && b.type !== 'stroke' : def && def.type !== 'line' && def.type !== 'stroke';
-    const whose = b || def ? whoseOf(b, def) : 'new lines and borders';
-    const items = [{ heading: `${border ? 'Border width' : 'Width'} ${b ? 'of' : 'for'} ${whose}` }];
+    const lines = (t) => t === 'line' || t === 'stroke';
+    const border = list.length ? !list.every((b) => lines(b.type)) : def && !lines(def.type);
+    const whose = list.length || def ? whoseOf(list, def) : 'new lines and borders';
+    const items = [{ heading: `${border ? 'Border width' : 'Width'} ${list.length ? 'of' : 'for'} ${whose}` }];
     const samples = []; // the weight each choice row draws, in row order
-    if (!b) {
+    if (!list.length) {
       const usual = def ? def.create().weight : null;
       items.push(choiceRow(null, 'Usual', now, pick(null), { hint: usual ? wbWeightName(usual) : '' }));
       samples.push(usual);
     }
     for (const w of WB_WEIGHTS) { items.push(choiceRow(w, wbWeightName(w), now, pick(w))); samples.push(w); }
-    if (b && b.stroke === 'none') items.push({ separator: true }, { label: 'Pick a border colour to show it', disabled: true });
+    if (list.some((b) => b.stroke === 'none')) items.push({ separator: true }, { label: 'Pick a border colour to show it', disabled: true });
     host.menu.show({ id: 'width', className: 'wb-width-menu', ...where, items });
     // The menu has no picture slot but an icon, so each choice row gets a small line drawn at its weight.
     const menu = surface.getRootNode().querySelector('.wb-width-menu');
@@ -337,7 +394,8 @@
   }
 
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'
-  // z are too close to split is every block numbered again, once.
+  // z are too close to split is every block numbered again, once. Several picked blocks move together and keep their
+  // order among themselves: to the front or back as a stack, a layer up or down each past the next block not picked.
   function boxOf(b) {
     const el = renderer.element(b.id);
     return el ? { x0: el.offsetLeft, y0: el.offsetTop, x1: el.offsetLeft + el.offsetWidth, y1: el.offsetTop + el.offsetHeight } : null;
@@ -353,16 +411,33 @@
     { id: 'backward', label: 'Back one layer', icon: 'arrow-down', hint: '[' },
     { id: 'back', label: 'Send to back', icon: 'angles-down', hint: 'Shift [' },
   ];
-  const canLayer = (id, to) => Boolean(wbBetween(board.all(), id, to, overlaps));
-  function layer(id, to) {
-    const b = board.get(id);
-    if (!b || !policy.canChange(b)) return;
-    let r = wbBetween(board.all(), id, to, overlaps);
-    if (r && r.renumber) {
-      board.all().forEach((x, i) => { if (x.z !== i + 1 && !drafts.has(x.id) && policy.canChange(x)) commit({ ...x, z: i + 1 }, 'now'); });
-      r = wbBetween(board.all(), id, to, overlaps);
+  const layerable = (ids) => ids.map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && policy.canChange(b)).sort((a, b) => a.z - b.z);
+  function canLayer(ids, to) {
+    const list = layerable(ids);
+    if (!list.length) return false;
+    const mine = new Set(list.map((b) => b.id));
+    const others = board.all().filter((b) => !mine.has(b.id));
+    if (to === 'front') return others.some((o) => o.z >= list[0].z);
+    if (to === 'back') return others.some((o) => o.z <= list[list.length - 1].z);
+    const past = (a, b) => !mine.has(b.id) && overlaps(a, b);
+    return list.some((b) => Boolean(wbBetween(board.all(), b.id, to, past)));
+  }
+  function layer(ids, to) {
+    if (!canLayer(ids, to)) return;
+    const list = layerable(ids);
+    const mine = new Set(list.map((b) => b.id));
+    if (to === 'front') { const top = Math.floor(board.topZ()); list.forEach((b, i) => ctx.change(b.id, { z: top + 1 + i })); return; }
+    if (to === 'back') { const bottom = Math.ceil(board.bottomZ()); list.forEach((b, i) => ctx.change(b.id, { z: bottom - list.length + i })); return; }
+    const past = (a, b) => !mine.has(b.id) && overlaps(a, b);
+    // Up: the top one first, so each stays under the one above it; down: the bottom one first.
+    for (const b of to === 'forward' ? list.reverse() : list) {
+      let r = wbBetween(board.all(), b.id, to, past);
+      if (r && r.renumber) {
+        board.all().forEach((x, i) => { if (x.z !== i + 1 && !drafts.has(x.id) && policy.canChange(x)) commit({ ...x, z: i + 1 }, 'now'); });
+        r = wbBetween(board.all(), b.id, to, past);
+      }
+      if (r && !r.renumber) ctx.change(b.id, { z: r.z });
     }
-    if (r && !r.renumber) ctx.change(id, { z: r.z });
   }
 
   if (policy.canEdit) {
@@ -410,6 +485,7 @@
       statusFrame = 0;
       const n = board.size - drafts.size;
       const items = [{ text: n === 1 ? '1 block' : `${n} blocks`, icon: 'shapes' }];
+      if (sel.size > 1) items.push({ text: `${sel.size} selected` });
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
@@ -429,6 +505,7 @@
   const pointers = new Map(); // pointer id -> its last point on the screen
   let down = null; // the pointer the tool is following
   let pinch = null; // two fingers on the board: { d, s, mx, my }
+  let pointerFocus = false; // a press is moving the focus
   const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
     const [a, b] = [...pointers.values()];
@@ -452,7 +529,9 @@
     }
     if (pointers.size > 2) return;
     const el = p.id && renderer.element(p.id);
+    pointerFocus = true; // the tool picks what a press picks, not the focus
     (el || surface).focus({ preventScroll: true, focusVisible: false }); // the ring is for the keyboard
+    pointerFocus = false;
     if (tool.edits && !policy.canUseTool(tool)) return;
     down = e.pointerId;
     tool.down(p, ctx);
@@ -489,64 +568,70 @@
     updateStatus();
   }, { passive: false });
 
-  // Right-click (or a long press) on a block: what can be done with it.
+  // Right-click (or a long press) on a block: what can be done with it, and with the others picked with it.
   surface.addEventListener('contextmenu', (e) => {
     const id = renderer.blockAt(e.target);
     if (!id || e.target.closest('.wb-text-edit')) return;
     e.preventDefault();
-    select(id);
-    const b = board.get(id);
-    const def = blockTypes.get(b.type);
+    if (!sel.has(id)) select([id]);
+    const ids = [...sel];
+    const list = targets();
     const box = host.rootElement.getBoundingClientRect();
     const at = { x: e.clientX - box.left, y: e.clientY - box.top };
-    if (!policy.canChange(b)) return;
+    if (!list.length) return;
+    const single = list.length === 1 ? list[0] : null;
+    const def = single && defOf(single);
     host.menu.show({
       id: 'block',
       at,
       items: [
-        ...(def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', onClick: () => edit(id) }] : []),
-        { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }, id), 0); } },
-        ...(def.weight ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }, id), 0); } }] : []),
+        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: 'Enter', onClick: () => edit(single.id) }] : []),
+        { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
+        ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
-        ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(id, l.id), onClick: () => layer(id, l.id) })),
+        ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
-        { id: 'delete', label: 'Delete', icon: 'trash', danger: true, onClick: () => remove(id) },
+        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: 'Delete', danger: true, onClick: () => removeMany(ids) },
       ],
     });
   });
 
   // ---- the keyboard -----------------------------------------------------------------------------------------------------
-  // Tab reaches the board and then each block in turn; a block that takes the focus is selected.
+  // Tab reaches the board and then each block in turn; a block that takes the focus is selected (alone, unless it is one
+  // of those picked already).
   surface.addEventListener('focusin', (e) => {
     const id = renderer.blockAt(e.target);
-    if (id && id !== selected && !e.target.closest('.wb-text-edit')) select(id);
+    if (id && !pointerFocus && !sel.has(id) && !e.target.closest('.wb-text-edit')) select([id]);
   });
   surface.addEventListener('keydown', (e) => {
     if (e.target.closest('.wb-text-edit') || e.altKey) return;
-    const b = selected && board.get(selected);
+    const picked = targets(); // the picked blocks this person may change
+    const b = one() && board.get(one());
     const k = e.key;
-    if ((k === 'Delete' || k === 'Backspace') && b) { e.preventDefault(); remove(b.id); surface.focus({ preventScroll: true }); return; }
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); select(board.all().filter((x) => !drafts.has(x.id)).map((x) => x.id)); return; }
+    if ((k === 'Delete' || k === 'Backspace') && picked.length) { e.preventDefault(); removeMany(picked.map((x) => x.id)); surface.focus({ preventScroll: true }); return; }
     if (k === 'Escape') {
       if (tool.id !== 'select') setTool('select'); else select(null);
       surface.focus({ preventScroll: true });
       return;
     }
     if (k === 'Enter' && b) { e.preventDefault(); edit(b.id); return; }
-    if (k.startsWith('Arrow') && b && policy.canChange(b) && !e.ctrlKey && !e.metaKey) {
+    if (k.startsWith('Arrow') && picked.length && !mod) {
       e.preventDefault();
       const step = e.shiftKey ? 1 : 10;
       const dx = k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0;
       const dy = k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0;
-      ctx.change(b.id, { x: b.x + dx, y: b.y + dy }, { save: 'soon' });
+      for (const x of picked) ctx.change(x.id, { x: x.x + dx, y: x.y + dy }, { save: 'soon' });
       return;
     }
-    if (e.ctrlKey || e.metaKey) return;
+    if (mod) return;
     // ] forward one layer, [ back one; with Shift, to the front and to the back (by the key's place, so any keyboard layout).
     const bracket = e.code === 'BracketRight' || k === ']' || k === '}' ? 'up' : e.code === 'BracketLeft' || k === '[' || k === '{' ? 'down' : null;
-    if (bracket && b && policy.canChange(b)) {
+    if (bracket && picked.length) {
       e.preventDefault();
       const ends = e.shiftKey || k === '}' || k === '{';
-      layer(b.id, bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
+      layer(picked.map((x) => x.id), bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
       return;
     }
     if (k === '+' || k === '=') { renderer.zoomBy(1.25); updateStatus(); return; }

@@ -10,9 +10,11 @@
   // What comes in is checked before anyone draws it: a change whose version is not newer than the one this page last saw
   // for that key is this page's own echo or a repeat, and is skipped; a change that arrives while this page is writing
   // the same key waits until the write is done and is then judged the same way; a value that is not a block is left out.
+  // A write the server turns away for now (429: too many saves in a minute, as when many blocks move at once) is sent
+  // again after the wait it names, unless a newer one for that key has come meanwhile; onBusy hears it once per refusal.
   // Two writes to one block at once: the last write wins (no version is sent). Conflict handling, when it comes, sends the
   // version this page saw ({ version } on set) and resolves a 409 here.
-  function createSync({ host, board, clean, onRemote, onReload, onRefused }) {
+  function createSync({ host, board, clean, onRemote, onReload, onRefused, onBusy = () => {} }) {
     const PREFIX = `block:${board}:`;
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
@@ -59,6 +61,7 @@
 
     async function pump(key) {
       const l = lane(key);
+      let tries = 0;
       while (l.next !== undefined) {
         const value = l.next;
         l.next = undefined;
@@ -72,6 +75,13 @@
             if (r && Number.isFinite(r.version)) seen.set(key, Math.max(seen.get(key) || 0, r.version));
           }
         } catch (err) {
+          if (err && err.status === 429 && tries < 8) {
+            tries += 1;
+            onBusy(err);
+            await new Promise((r) => { setTimeout(r, Math.max(1, Number(err.retryAfter) || 5) * 1000); });
+            if (l.next === undefined) l.next = value; // nothing newer came: send this one again
+            continue;
+          }
           onRefused(err, idOf(key));
           await refetch(key);
         } finally {

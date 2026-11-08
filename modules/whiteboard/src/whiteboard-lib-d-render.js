@@ -9,8 +9,10 @@
     const view = { x: 0, y: 0, s: 1 };
     const MIN = 0.2;
     const MAX = 4;
-    let selected = null;
-    let grips = null; // the selected block's handles: 'corners', 'ends' or null
+    let selected = new Set(); // the picked blocks' ids
+    let grips = null; // the one picked block's handles: 'corners', 'ends' or null
+    const eachFrames = new Map(); // block id -> its own frame, while more than one block is picked
+    let marqueeEl = null; // the rectangle dragged to pick blocks, while it is dragged
 
     function applyView() {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
@@ -78,7 +80,7 @@
       if (!el.classList.contains('wb-editing')) def.render(block, el);
       place(el, block, def);
       el.setAttribute('aria-label', def.describe(block));
-      if (selected === block.id) showFrame();
+      if (selected.has(block.id)) frameSoon();
       return el;
     }
 
@@ -87,32 +89,60 @@
       if (el) el.remove();
       els.delete(id);
       if (shown.delete(id)) restack();
-      if (selected === id) select(null);
+      if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
     }
 
     function clear() { for (const id of [...els.keys()]) remove(id); }
 
-    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own. Its
-    // handles (when the page asks for them) sit on the frame's corners or on a line's ends, each at a point of the block's
+    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own; with more
+    // than one block picked, a frame round each and one dashed box round them all (#frame), with no handles. The handles
+    // (when the page asks for them, for one block) sit on the frame's corners or on a line's ends, each at a point of the block's
     // element in board units (--hx, --hy) pushed out by --ox, --oy screen steps; whiteboard.css keeps their size on the
     // screen the same at any zoom. Which handle is pressed is its data-handle (the select tool reads it).
     const CORNERS = [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]];
     function handlePoints(el) {
       if (grips === 'corners') return CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 }));
-      const b = shown.get(selected);
+      const b = shown.get([...selected][0]);
       const def = b && blockTypes.get(b.type);
       if (grips !== 'ends' || !def) return [];
       const box = def.box(b);
       return [{ id: 'start', x: -box.x, y: -box.y, ox: 0, oy: 0 }, { id: 'end', x: -box.x + b.dx, y: -box.y + b.dy, ox: 0, oy: 0 }];
     }
+    let framePending = false;
+    function frameSoon() {
+      if (framePending) return;
+      framePending = true;
+      queueMicrotask(() => { framePending = false; showFrame(); });
+    }
+    const boxIn = (el) => ({ x0: el.offsetLeft, y0: el.offsetTop, x1: el.offsetLeft + el.offsetWidth, y1: el.offsetTop + el.offsetHeight });
+    const putBox = (node, r) => {
+      node.style.left = `${r.x0}px`;
+      node.style.top = `${r.y0}px`;
+      node.style.width = `${r.x1 - r.x0}px`;
+      node.style.height = `${r.y1 - r.y0}px`;
+    };
     function showFrame() {
-      const el = selected && els.get(selected);
-      if (!el) { frame.hidden = true; frame.replaceChildren(); return; }
+      const picked = [...selected].map((id) => els.get(id)).filter(Boolean);
+      const group = picked.length > 1;
+      for (const [id, f] of eachFrames) if (!group || !selected.has(id)) { f.remove(); eachFrames.delete(id); }
+      if (!picked.length) { frame.hidden = true; frame.replaceChildren(); frame.classList.remove('wb-frame-group'); return; }
       frame.hidden = false;
-      frame.style.left = `${el.offsetLeft}px`;
-      frame.style.top = `${el.offsetTop}px`;
-      frame.style.width = `${el.offsetWidth}px`;
-      frame.style.height = `${el.offsetHeight}px`;
+      frame.classList.toggle('wb-frame-group', group);
+      if (group) {
+        const all = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        for (const el of picked) {
+          const r = boxIn(el);
+          all.x0 = Math.min(all.x0, r.x0); all.y0 = Math.min(all.y0, r.y0); all.x1 = Math.max(all.x1, r.x1); all.y1 = Math.max(all.y1, r.y1);
+          let f = eachFrames.get(el.dataset.id);
+          if (!f) { f = document.createElement('div'); f.className = 'wb-frame-each'; f.setAttribute('aria-hidden', 'true'); world.insertBefore(f, frame); eachFrames.set(el.dataset.id, f); }
+          putBox(f, r);
+        }
+        putBox(frame, all);
+        frame.replaceChildren();
+        return;
+      }
+      const el = picked[0];
+      putBox(frame, boxIn(el));
       const points = handlePoints(el);
       if (frame.children.length !== points.length || [...frame.children].some((h, i) => h.dataset.handle !== points[i].id)) {
         frame.replaceChildren(...points.map((pt) => {
@@ -131,10 +161,17 @@
         h.style.setProperty('--oy', String(pt.oy));
       });
     }
-    function select(id, handles = null) {
-      selected = id && els.has(id) ? id : null;
-      grips = selected ? handles : null;
+    // Pick the blocks with these ids (an array; [] for none); handles only when it is one block.
+    function select(ids, handles = null) {
+      selected = new Set((ids || []).filter((id) => els.has(id)));
+      grips = selected.size === 1 ? handles : null;
       showFrame();
+    }
+    // The rectangle being dragged to pick blocks, in board units ({ x0, y0, x1, y1 }), or null to take it away.
+    function marquee(r) {
+      if (!r) { if (marqueeEl) marqueeEl.remove(); marqueeEl = null; return; }
+      if (!marqueeEl) { marqueeEl = document.createElement('div'); marqueeEl.className = 'wb-marquee'; marqueeEl.setAttribute('aria-hidden', 'true'); world.append(marqueeEl); }
+      putBox(marqueeEl, { x0: Math.min(r.x0, r.x1), y0: Math.min(r.y0, r.y1), x1: Math.max(r.x0, r.x1), y1: Math.max(r.y0, r.y1) });
     }
 
     // A point on the screen (a pointer event's clientX and clientY) on the board, in board units.
@@ -191,6 +228,7 @@
       remove,
       clear,
       select,
+      marquee,
       element: (id) => els.get(id) || null,
       refreshFrame: showFrame,
       toBoard,

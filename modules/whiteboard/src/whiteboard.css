@@ -128,6 +128,33 @@
   transform: translate(calc(-2px / var(--wb-scale, 1)), calc(-2px / var(--wb-scale, 1)));
 }
 
+/* more than one block picked: a thin frame on each, and the dashed frame round them all */
+.wb-frame-each {
+  position: absolute;
+  z-index: 2147482999;
+  margin: calc(-3px / var(--wb-scale, 1));
+  padding: calc(3px / var(--wb-scale, 1));
+  box-sizing: content-box;
+  border: calc(1px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  pointer-events: none;
+  transform: translate(calc(-1px / var(--wb-scale, 1)), calc(-1px / var(--wb-scale, 1)));
+}
+.wb-frame-group {
+  margin: calc(-10px / var(--wb-scale, 1));
+  padding: calc(10px / var(--wb-scale, 1));
+}
+
+/* the rectangle dragged on the board to pick every block it touches */
+.wb-marquee {
+  position: absolute;
+  z-index: 2147483001;
+  border: calc(1px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+
 /* the picked block's handles, on the frame's corners or a line's ends: --hx, --hy is the point in the block (board units),
    --ox, --oy pushes it out onto the frame. Each is 24px on the screen to press (32px on a touch screen) round a 10px mark,
    the same at any zoom. */

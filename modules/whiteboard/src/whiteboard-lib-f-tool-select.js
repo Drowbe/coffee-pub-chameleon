@@ -1,6 +1,9 @@
   // ---- whiteboard-lib-f-tool-select.js: pick, move and open blocks; move the board --------------------------------------
   // Press a block to pick it and drag it to move it (saved once, where it is dropped); press it twice quickly to edit it.
-  // Press the board itself and drag to move the whole board. Someone who may only look can pick and move the board.
+  // With Shift, Ctrl or Cmd a press adds the block to what is picked, or takes it out. Drag a picked block and every picked
+  // block moves with it, each by the same amount (each saved once, on the drop). Press the board itself and drag to move
+  // the whole board; with Shift, drag a rectangle instead and every block it touches is picked too.
+  // Someone who may only look can pick and move the board.
   // Drag a handle of the picked block to change its size (Shift keeps its shape) or to move a line's end; the new box is
   // saved once, when it is let go. What a handle does is the block type's resize (lib-a); showing the handles is the page's.
   {
@@ -9,6 +12,10 @@
     let hold = null; // { kind: 'block' | 'board' | 'resize', ... } while the pointer is down
     let last = { id: null, t: 0 };
     const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    // Shift, Ctrl or Cmd: add to what is picked, or take out.
+    const adds = (p) => Boolean(p.event && (p.event.shiftKey || p.event.ctrlKey || p.event.metaKey));
+    // A press on the board itself: move the board, or drag a rectangle to pick blocks.
+    const emptyPress = (p) => (p.event && p.event.shiftKey ? 'marquee' : 'board');
 
     // The new box for a handle dragged (mx, my) board units from where it was pressed, inside the type's minimum size.
     function resized(r, start, handle, mx, my, keep) {
@@ -48,6 +55,7 @@
       edits: false,
       down(p, ctx) {
         const picked = p.handle && ctx.selected() ? ctx.get(ctx.selected()) : null;
+        if (p.id && adds(p)) { last = { id: null, t: 0 }; hold = null; ctx.toggle(p.id); return; }
         const r = picked && blockTypes.get(picked.type).resize;
         if (r && ctx.policy.canChange(picked)) {
           last = { id: null, t: 0 };
@@ -56,20 +64,32 @@
           return;
         }
         if (p.id) {
-          const b = ctx.get(p.id);
-          ctx.select(p.id);
+          // A press on a block already picked with others keeps them all, to move together.
+          if (!ctx.isSelected(p.id) || ctx.selection().length < 2) ctx.select(p.id);
           const now = Date.now();
-          if (last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.edit(p.id); return; }
-          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, ox: b.x, oy: b.y, moved: false, moves: ctx.policy.canChange(b) };
-          if (hold.moves) ctx.hold(p.id, true);
+          if (last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id); return; }
+          const blocks = ctx.selection().map((id) => ctx.get(id)).filter((b) => b && ctx.policy.canChange(b));
+          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ id: b.id, x: b.x, y: b.y })), moved: false, moves: blocks.length > 0, group: ctx.selection().length > 1 };
+          for (const s of hold.starts) ctx.hold(s.id, true);
+        } else if (emptyPress(p, ctx) === 'marquee') {
+          hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p) ? ctx.selection() : [], moved: false };
+          if (!hold.keep.length) ctx.select(null);
         } else {
-          ctx.select(null);
+          if (!adds(p)) ctx.select(null);
           hold = { kind: 'board', sx: p.sx, sy: p.sy, lx: p.sx, ly: p.sy };
         }
       },
       move(p, ctx) {
         if (!hold) return;
         if (hold.kind === 'board') { ctx.panBy(p.sx - hold.lx, p.sy - hold.ly); hold.lx = p.sx; hold.ly = p.sy; return; }
+        if (hold.kind === 'marquee') {
+          if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
+          hold.moved = true;
+          const r = { x0: hold.x, y0: hold.y, x1: p.x, y1: p.y };
+          ctx.marquee(r);
+          ctx.setSelection([...new Set([...hold.keep, ...ctx.blocksIn(r)])]);
+          return;
+        }
         if (hold.kind === 'resize') {
           if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
           hold.moved = true;
@@ -82,7 +102,9 @@
         if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
         hold.moved = true;
         const s = ctx.scale();
-        ctx.change(hold.id, { x: hold.ox + (p.sx - hold.sx) / s, y: hold.oy + (p.sy - hold.sy) / s }, { save: false });
+        const dx = (p.sx - hold.sx) / s;
+        const dy = (p.sy - hold.sy) / s;
+        for (const b of hold.starts) ctx.change(b.id, { x: b.x + dx, y: b.y + dy }, { save: false });
       },
       up(p, ctx) {
         if (hold && hold.kind === 'resize') {
@@ -90,10 +112,13 @@
           ctx.hold(hold.id, false);
         }
         if (hold && hold.kind === 'block') {
-          if (hold.moved) ctx.save(hold.id); // the drop is saved first, so a change from elsewhere held meanwhile is overtaken
-          if (hold.moves) ctx.hold(hold.id, false);
+          // The drop is saved first, so a change from elsewhere held meanwhile is overtaken. Every block moved, in one go.
+          if (hold.moved) for (const b of hold.starts) ctx.save(b.id);
+          for (const b of hold.starts) ctx.hold(b.id, false);
+          if (!hold.moved && hold.group) ctx.select(hold.id); // a click, not a drag, on one of several picks just it
           last = hold.moved ? { id: null, t: 0 } : { id: hold.id, t: Date.now() };
         }
+        if (hold && hold.kind === 'marquee') ctx.marquee(null);
         hold = null;
       },
       cancel(ctx) {
@@ -101,10 +126,15 @@
           if (hold.moved) ctx.change(hold.id, before(hold.r, hold.start), { save: false });
           ctx.hold(hold.id, false);
         }
-        if (hold && hold.kind === 'block' && hold.moved) ctx.change(hold.id, { x: hold.ox, y: hold.oy }, { save: false });
-        if (hold && hold.kind === 'block' && hold.moves) ctx.hold(hold.id, false);
+        if (hold && hold.kind === 'block') {
+          for (const b of hold.starts) {
+            if (hold.moved) ctx.change(b.id, { x: b.x, y: b.y }, { save: false });
+            ctx.hold(b.id, false);
+          }
+        }
+        if (hold && hold.kind === 'marquee') { ctx.marquee(null); ctx.setSelection(hold.keep); }
         hold = null;
       },
-      deactivate() { hold = null; last = { id: null, t: 0 }; },
+      deactivate(ctx) { this.cancel(ctx); last = { id: null, t: 0 }; },
     });
   }

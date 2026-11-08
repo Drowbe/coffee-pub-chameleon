@@ -11,11 +11,11 @@
 <body>
 <!--
   The board fills the module. #world is the layer the view moves and scales; each block is a .wb-block in it, drawn by its
-  block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block.
+  block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   The host draws the title bar (the +), the toolbar (the tools, Colour, Zoom, Delete) and the status line.
 -->
 <div id="app" class="app sdk-slot" hidden>
-  <div id="board" class="board" tabindex="0" role="application" aria-roledescription="whiteboard" aria-label="Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move it, Delete takes it away.">
+  <div id="board" class="board" tabindex="0" role="application" aria-roledescription="whiteboard" aria-label="Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, Ctrl A selects all, Escape clears.">
     <div id="world" class="world">
       <div id="frame" class="wb-frame" hidden></div>
     </div>
