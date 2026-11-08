@@ -13,6 +13,12 @@
     let grips = null; // the one picked block's handles: 'corners', 'ends' or null
     const eachFrames = new Map(); // block id -> its own frame, while more than one block is picked
     let marqueeEl = null; // the rectangle dragged to pick blocks, while it is dragged
+    // Connectors (attached block types): what each was last drawn as (its layout), and, for each block, the connectors
+    // attached to it, so moving, resizing or removing a block draws them again. A connector whose block is not on the board
+    // is kept in that list (it comes back with the block, an undo) but not drawn.
+    const geoms = new Map(); // connector id -> its layout, or null while it is not drawn
+    const deps = new Map(); // block id -> Set of the ids of connectors attached to it
+    const refsOf = new Map(); // connector id -> the block ids it is attached to
 
     function applyView() {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
@@ -57,6 +63,34 @@
       if (def.weight) el.style.setProperty('--wb-weight', `${block.weight}px`); else el.style.removeProperty('--wb-weight');
     }
 
+    // A block's box on the board ({ x, y, w, h, in? }), for a connector attached to it, or null when it is not on the board
+    // or cannot take one. The height of a block whose words set it is read from its element.
+    function boxOf(id) {
+      const b = shown.get(id);
+      const def = b && blockTypes.get(b.type);
+      if (!wbAttachable(def)) return null;
+      const box = def.box(b);
+      let h = box.h;
+      if (h === null) { const el = els.get(id); h = el ? el.offsetHeight : 0; }
+      const r = { x: b.x + box.x, y: b.y + box.y, w: box.w, h };
+      if (def.anchorIn) r.in = def.anchorIn(b);
+      return r;
+    }
+    const find = (id) => shown.get(id) || null;
+    function linkRefs(block, def) {
+      const now = def.refs ? def.refs(block) : [];
+      const was = refsOf.get(block.id) || [];
+      if (was.length === now.length && was.every((id, i) => id === now[i])) return;
+      for (const id of was) { const s = deps.get(id); if (s) { s.delete(block.id); if (!s.size) deps.delete(id); } }
+      if (!now.length) { refsOf.delete(block.id); return; }
+      refsOf.set(block.id, now);
+      for (const id of now) { let s = deps.get(id); if (!s) { s = new Set(); deps.set(id, s); } s.add(block.id); }
+    }
+    // The connectors attached to a block, drawn again (it moved, changed size, came or went).
+    function redrawDeps(id) {
+      for (const cid of [...(deps.get(id) || [])]) { const c = shown.get(cid); if (c) draw(c); }
+    }
+
     function draw(block) {
       const def = blockTypes.get(block.type);
       if (!def) return null;
@@ -77,10 +111,26 @@
         restack();
       }
       paint(el, block, def);
-      if (!el.classList.contains('wb-editing')) def.render(block, el);
-      place(el, block, def);
-      el.setAttribute('aria-label', def.describe(block));
+      if (def.attached) {
+        // Drawn from the boxes of the blocks it is attached to; not at all while one of them is not on the board.
+        linkRefs(block, def);
+        const g = def.layout(block, boxOf);
+        geoms.set(block.id, g);
+        el.hidden = !g;
+        if (g) {
+          if (!el.classList.contains('wb-editing')) def.render(block, el, g);
+          el.style.left = `${g.box.x}px`;
+          el.style.top = `${g.box.y}px`;
+          el.style.width = `${g.box.w}px`;
+          el.style.height = `${g.box.h}px`;
+        }
+      } else {
+        if (!el.classList.contains('wb-editing')) def.render(block, el);
+        place(el, block, def);
+      }
+      el.setAttribute('aria-label', def.describe(block, find));
       if (selected.has(block.id)) frameSoon();
+      if (!def.attached) redrawDeps(block.id);
       return el;
     }
 
@@ -88,11 +138,15 @@
       const el = els.get(id);
       if (el) el.remove();
       els.delete(id);
+      const was = shown.get(id);
       if (shown.delete(id)) restack();
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
+      if (refsOf.has(id)) linkRefs({ id }, {});
+      geoms.delete(id);
+      if (was) redrawDeps(id); // its connectors are not drawn while it is gone
     }
 
-    function clear() { for (const id of [...els.keys()]) remove(id); }
+    function clear() { for (const id of [...els.keys()]) remove(id); deps.clear(); refsOf.clear(); }
 
     // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own; with more
     // than one block picked, a frame round each and one dashed box round them all (#frame), with no handles. The handles
@@ -105,6 +159,13 @@
       const b = shown.get([...selected][0]);
       const def = b && blockTypes.get(b.type);
       if (grips !== 'ends' || !def) return [];
+      if (def.attached) {
+        const g = geoms.get(b.id);
+        if (!g) return [];
+        const first = g.points[0];
+        const last = g.points[g.points.length - 1];
+        return [{ id: 'start', x: first.x - g.box.x, y: first.y - g.box.y, ox: 0, oy: 0 }, { id: 'end', x: last.x - g.box.x, y: last.y - g.box.y, ox: 0, oy: 0 }];
+      }
       const box = def.box(b);
       return [{ id: 'start', x: -box.x, y: -box.y, ox: 0, oy: 0 }, { id: 'end', x: -box.x + b.dx, y: -box.y + b.dy, ox: 0, oy: 0 }];
     }
@@ -122,7 +183,7 @@
       node.style.height = `${r.y1 - r.y0}px`;
     };
     function showFrame() {
-      const picked = [...selected].map((id) => els.get(id)).filter(Boolean);
+      const picked = [...selected].map((id) => els.get(id)).filter((el) => el && !el.hidden);
       const group = picked.length > 1;
       for (const [id, f] of eachFrames) if (!group || !selected.has(id)) { f.remove(); eachFrames.delete(id); }
       if (!picked.length) { frame.hidden = true; frame.replaceChildren(); frame.classList.remove('wb-frame-group'); return; }
@@ -172,6 +233,28 @@
       if (!r) { if (marqueeEl) marqueeEl.remove(); marqueeEl = null; return; }
       if (!marqueeEl) { marqueeEl = document.createElement('div'); marqueeEl.className = 'wb-marquee'; marqueeEl.setAttribute('aria-hidden', 'true'); world.append(marqueeEl); }
       putBox(marqueeEl, { x0: Math.min(r.x0, r.x1), y0: Math.min(r.y0, r.y1), x1: Math.max(r.x0, r.x1), y1: Math.max(r.y0, r.y1) });
+    }
+
+    // The connection points of some blocks (the Connector tool, and dragging a connector's end): a small square on the
+    // middle of each side. list: [{ block, side }] ('auto', or the side that is marked), [] to take them away.
+    let portEls = [];
+    function ports(list) {
+      for (const p of portEls) p.remove();
+      portEls = [];
+      for (const { block, side } of list || []) {
+        const r = boxOf(block);
+        if (!r) continue;
+        for (const s of WB_SIDES) {
+          const pt = wbSidePoint(r, s);
+          const dot = document.createElement('div');
+          dot.className = `wb-port${s === side ? ' wb-port-on' : ''}`;
+          dot.setAttribute('aria-hidden', 'true');
+          dot.style.left = `${pt.x}px`;
+          dot.style.top = `${pt.y}px`;
+          world.insertBefore(dot, frame);
+          portEls.push(dot);
+        }
+      }
     }
 
     // A picture on its way (lib-i): a placeholder where its block will be, with a spinner and a word for how far it is.
@@ -229,9 +312,10 @@
     function fit() {
       const w = surface.clientWidth || 400;
       const h = surface.clientHeight || 300;
-      if (!els.size) { view.s = 1; view.x = w / 2; view.y = h / 2; applyView(); return; }
+      const seen = [...els.values()].filter((el) => !el.hidden);
+      if (!seen.length) { view.s = 1; view.x = w / 2; view.y = h / 2; applyView(); return; }
       let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-      for (const el of els.values()) {
+      for (const el of seen) {
         x0 = Math.min(x0, el.offsetLeft); y0 = Math.min(y0, el.offsetTop);
         x1 = Math.max(x1, el.offsetLeft + el.offsetWidth); y1 = Math.max(y1, el.offsetTop + el.offsetHeight);
       }
@@ -253,6 +337,12 @@
       marquee,
       pending,
       element: (id) => els.get(id) || null,
+      // A connector as it is drawn now ({ points, box, mid, head }), or null while it is not drawn.
+      geometry: (id) => geoms.get(id) || null,
+      // The ids of the connectors attached to a block.
+      attachedTo: (id) => [...(deps.get(id) || [])],
+      boxOf,
+      ports,
       refreshFrame: showFrame,
       toBoard,
       blockAt,

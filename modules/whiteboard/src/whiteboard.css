@@ -69,20 +69,21 @@
 .wb-type-text[data-stroke="none"] { border-style: none; }
 .wb-type-text .wb-words:empty { min-height: 1.35em; }
 
-/* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line */
-.wb-type-rect, .wb-type-ellipse, .wb-type-line, .wb-type-stroke { pointer-events: none; }
+/* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line (.wb-shape: every closed shape) */
+.wb-shape, .wb-type-line, .wb-type-stroke, .wb-type-connector { pointer-events: none; }
 .wb-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .wb-svg .wb-hit { pointer-events: visiblePainted; cursor: grab; }
 .wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: max(16px, calc(var(--wb-weight) + 8px)); stroke-linecap: round; pointer-events: stroke; }
 /* a shape is picked anywhere inside it, with or without a fill */
-.wb-svg .wb-shape-body { fill: color-mix(in srgb, var(--wb-fill, var(--text-primary)) 14%, transparent); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); pointer-events: visible; }
+.wb-svg .wb-shape-body { fill: color-mix(in srgb, var(--wb-fill, var(--text-primary)) 14%, transparent); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linejoin: round; pointer-events: visible; }
 .wb-block[data-fill="none"] .wb-shape-body { fill: none; }
 .wb-block[data-stroke="none"] .wb-shape-body { stroke: none; }
 .wb-svg .wb-stroke { fill: none; stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .wb-svg .wb-head { fill: var(--wb-stroke); pointer-events: none; }
-.wb-type-rect .wb-words, .wb-type-ellipse .wb-words {
+/* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type) */
+.wb-shape .wb-words {
   position: absolute;
-  inset: 8px;
+  inset: var(--wb-inset, 8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,7 +189,30 @@
   color: var(--text-primary);
   font-size: var(--text-14);
 }
-.wb-type-rect .wb-text-edit, .wb-type-ellipse .wb-text-edit { position: absolute; inset: 8px; width: auto; height: auto; text-align: center; font-size: var(--text-16); }
+.wb-shape .wb-text-edit { position: absolute; inset: var(--wb-inset, 8px); width: auto; height: auto; text-align: center; font-size: var(--text-16); }
+
+/* a connector: its line and arrowheads are the SVG rules above; its label sits over the middle of the line, on the
+   board's own colour so the line does not run through the words, and is not there while it has none */
+.wb-conn-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 16em;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-small);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: grab;
+}
+.wb-conn-label .wb-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-type-connector:not(.wb-editing) .wb-conn-label[data-empty] { display: none; }
+.wb-type-connector .wb-text-edit { width: 12em; text-align: center; font-size: var(--text-14); }
+.wb-type-connector.wb-editing .wb-conn-label .wb-words { display: none; }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
 .wb-frame {
@@ -219,6 +243,22 @@
   margin: calc(-10px / var(--wb-scale, 1));
   padding: calc(10px / var(--wb-scale, 1));
 }
+
+/* a block's connection points, while a connector is drawn or its end dragged: a small square on the middle of each side,
+   filled on the side the end goes to; the same size on the screen at any zoom */
+.wb-port {
+  position: absolute;
+  z-index: 2147482998;
+  width: calc(10px / var(--wb-scale, 1));
+  height: calc(10px / var(--wb-scale, 1));
+  box-sizing: border-box;
+  border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  background: var(--surface-card);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.wb-port-on { background: var(--accent); }
 
 /* the rectangle dragged on the board to pick every block it touches */
 .wb-marquee {
