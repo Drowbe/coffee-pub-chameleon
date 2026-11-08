@@ -312,7 +312,7 @@ async function fromHost() {
         slug: slugInput.value.trim(),
         name: document.getElementById('signup-name').value.trim(),
         ...(templateBox.querySelector('input:checked')?.value ? { template: templateBox.querySelector('input:checked').value } : {}),
-        owner: { login: document.getElementById('signup-login').value.trim(), displayName: document.getElementById('signup-display').value.trim(), password: document.getElementById('signup-password').value },
+        owner: { login: document.getElementById('signup-login').value.trim(), displayName: document.getElementById('signup-display').value.trim() },
       };
       status.classList.remove('error');
       status.textContent = 'Making it...';
@@ -321,7 +321,7 @@ async function fromHost() {
         const res = await fetch('/api/product/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `could not create it (${res.status})`);
-        status.textContent = `Made. Taking you to ${body.slug}.${product.baseDomain} to sign in...`;
+        status.textContent = `Made. Taking you to ${body.slug}.${product.baseDomain} to choose your password...`;
         location.href = data.url || envUrl(body.slug, '/login');
       } catch (err) {
         status.classList.add('error');

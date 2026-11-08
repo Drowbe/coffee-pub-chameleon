@@ -127,13 +127,12 @@ test('the bar names no environment', () => {
 });
 
 // plan-product-site.md, slice 0 (decisions 1 and 3): Sign in is a typed address and Go. No page lists environments, takes a
-// password to sign in, or posts a form to an environment's /login. The one password field left is sign-up's, for the new
-// owner's account, posted to this host's own /api/product/signup.
+// password, or posts a form to an environment's /login. Sign-up takes no password either: the new owner chooses it on the
+// environment's own page (plan-first-password.md), so there is no password field anywhere.
 export function signinProblems(name, html) {
   const problems = [];
   const section = one(html, /<section id="signin"[\s\S]*?<\/section>/) || '';
-  const outsideSignup = html.replace(/<form class="signup-form"[\s\S]*?<\/form>/, '');
-  if (/type="password"/i.test(outsideSignup)) problems.push(`${name}: it has a password field outside sign-up.`);
+  if (/type="password"/i.test(html)) problems.push(`${name}: it has a password field.`);
   if (/current-password/i.test(html)) problems.push(`${name}: it asks for a current password.`);
   if (/<form\b[^>]*\baction="[^"]*login/i.test(html)) problems.push(`${name}: a form posts to a sign-in.`);
   if (/<form\b[^>]*\bmethod="post"/i.test(html)) problems.push(`${name}: a form posts by itself, not through the page's script.`);
@@ -148,10 +147,17 @@ test('Sign in is a typed address: no list, no password, no form post to /login',
   assert.ok(/\/api\/product\/environment\?slug=/.test(js), 'landing.js does not check the typed address');
   assert.ok(!/form\.action\s*=/.test(js), 'landing.js points a form somewhere');
 });
+test('the password check fails on a password field in sign-up too', () => {
+  const withField = pages['landing.html'].replace('<div class="signup-owner">', '<div class="signup-owner"><input id="signup-password" type="password">');
+  assert.notEqual(withField, pages['landing.html'], 'the change did not apply');
+  assert.ok(signinProblems('old.html', withField).some((p) => /password field/.test(p)));
+  const js = fs.readFileSync(path.join(PUBLIC, 'landing.js'), 'utf8');
+  assert.ok(!/password\s*:/.test(js), 'landing.js sends a password');
+});
 test('the Sign in check fails on the old dropdown and password post', () => {
   const old = '<section id="signin" class="signin"><form class="signin-form" id="signin-form" method="post" action="https://x.example.com/login"><select id="signin-env"></select><input id="signin-password" name="password" type="password" autocomplete="current-password"></form></section>';
   const found = signinProblems('old.html', pages['landing.html'].replace(/<section id="signin"[\s\S]*?<\/section>/, old));
-  for (const re of [/password field outside sign-up/, /current password/, /posts to a sign-in/, /posts by itself/, /list to choose from/, /no typed address/]) assert.ok(found.some((p) => re.test(p)), `${re}: ${found.join(' | ')}`);
+  for (const re of [/password field/, /current password/, /posts to a sign-in/, /posts by itself/, /list to choose from/, /no typed address/]) assert.ok(found.some((p) => re.test(p)), `${re}: ${found.join(' | ')}`);
 });
 
 // Go opens only the checked environment: the Sign in handler (public/landing.js) cleans the field to a slug once, tests

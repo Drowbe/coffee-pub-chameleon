@@ -17,7 +17,8 @@
  *     (plan-product-site.md, slice 0);
  *   - the rule runs before any body parser;
  *   - the domains (plan-domains.md): with one domain the product pages stay on the bare base; with PRODUCT_DOMAIN they
- *     are served at that host, sign-up there passes the rule and answers the new environment's /login?login=, the bare
+ *     are served at that host, sign-up there passes the rule and answers the new environment's first-password link
+ *     (/login/first-password#<token>, plan-first-password.md), the bare
  *     base redirects (302) there keeping path and query, and the console stays at admin.<base>; without BASE_DOMAIN
  *     both settings are ignored with a line.
  */
@@ -411,13 +412,13 @@ try {
       assert.deepEqual([settings.baseDomain, settings.productDomain, 'consoleHost' in settings], [BASE, PRODUCT, false]);
       assert.equal((await at('GET', `admin.${PRODUCT}`, '/')).status, 404, 'no console under the product host');
     });
-    await test('PRODUCT_DOMAIN: sign-up from the product host passes the origin rule and answers the new environment\'s sign-in, its login filled in', async () => {
-      const body = { slug: 'newone', name: 'New one', owner: { login: 'Maker', password: 'makerpass1234' } };
+    await test('PRODUCT_DOMAIN: sign-up from the product host passes the origin rule and answers the new environment\'s first-password link', async () => {
+      const body = { slug: 'newone', name: 'New one', owner: { login: 'Maker' } };
       // A stray cookie from the product host's own origin: the rule lets it through.
       const r = await at('POST', PRODUCT, '/api/product/signup', { headers: { cookie: 'x=1', origin: productOrigin, 'sec-fetch-site': 'same-origin' }, body });
       assert.equal(r.status, 201, r.text);
-      assert.equal(r.json.url, `http://newone.${BASE}:${p2}/login?login=maker`);
-      assert.equal((await at('GET', `newone.${BASE}`, '/login?login=maker', { headers: { accept: 'text/html' } })).status, 200, 'the sign-in page is there');
+      assert.match(r.json.url, new RegExp(`^http://newone\\.${BASE.replace('.', '\\.')}:${p2}/login/first-password#[A-Za-z0-9_-]{43}$`));
+      assert.ok(!r.json.url.includes('login=') && !r.json.url.includes('?'), 'no login and no query in the address');
       assert.deepEqual((await at('GET', PRODUCT, '/api/product/address?slug=newone')).json, { slug: 'newone', free: false, reason: 'taken' });
       // The same post from another origin with a cookie is refused, as any write.
       const cross = await at('POST', PRODUCT, '/api/product/signup', { headers: { cookie: 'x=1', origin: `http://newone.${BASE}:${p2}`, 'sec-fetch-site': 'cross-site' }, body: { ...body, slug: 'other' } });

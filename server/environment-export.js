@@ -9,7 +9,8 @@
 //   app.json   secrets (session signing key and stream key: a restore always makes new ones), invites (sign-up links);
 //              on each person passwordHash, linkToken (personal link), mfa (two-step secret, pending secret and
 //              recovery-code hashes), externalCalendars (addresses sealed with a key the copy does not carry) and
-//              calendarFeed (their calendar address), also per space; on each space guestToken (guest link: a new one
+//              calendarFeed (their calendar address), also per space, and firstPassword (a new owner's first-password
+//              link: the hash of a one-time token and its end); on each space guestToken (guest link: a new one
 //              is made when asked for); settings.publishedCalendarFeed (the published calendar's address).
 //   ai.json    key (sealed with the same key): emptied, so the AI service has to be given its key again.
 //   files      everything not on FILE_RULES: among them secrets.key (the key a single install sealed with), pre-names/
@@ -35,7 +36,7 @@ const APP_FIELDS = ['version', 'migrations', 'template', 'templateHistory', 'tem
 const APP_LEFT_OUT = ['secrets', 'invites'];
 // A person (Store#sanitizeUser).
 const USER_FIELDS = ['key', 'login', 'displayName', 'role', 'hostAdmin', 'images', 'spaces', 'player', 'callPrefs', 'themeMode', 'createdAt'];
-const USER_LEFT_OUT = ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 'calendarFeed'];
+const USER_LEFT_OUT = ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 'calendarFeed', 'firstPassword'];
 // A person's own record for one space (user.spaces[<space id>]).
 const USER_SPACE_FIELDS = ['images', 'useDefaultImages', 'permissions'];
 const USER_SPACE_LEFT_OUT = ['calendarFeed'];

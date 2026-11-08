@@ -64,7 +64,9 @@ function seededApp(secrets = strong) {
         spaces: { trip01: { images: { player: 'p.png' }, useDefaultImages: false, permissions: {}, calendarFeed: feed() } },
       },
       // A host admin's stand-in, as a zip a person wrote by hand might give it: a password, a link and a factor of its own.
-      { key: 'bosskey1', login: 'boss', displayName: 'boss', role: 'admin', hostAdmin: true, passwordHash: `scrypt$${hex(16)}`, linkToken: token(24), mfa, createdAt: '2026-01-01T00:00:00.000Z' },
+      { key: 'bosskey1', login: 'boss', displayName: 'boss', role: 'admin', hostAdmin: true, passwordHash: `scrypt$${hex(16)}`, linkToken: token(24), mfa, firstPassword: { hash: hex(32), expiresAt: '2099-01-01T00:00:00.000Z' }, createdAt: '2026-01-01T00:00:00.000Z' },
+      // A new owner who has not set a first password yet (plan-first-password.md): the hash of a one-time link.
+      { key: 'newowner', login: 'newowner', displayName: 'New', role: 'owner', passwordHash: null, firstPassword: { hash: hex(32), expiresAt: '2099-01-01T00:00:00.000Z' }, createdAt: '2026-01-01T00:00:00.000Z' },
     ],
     spaces: [
       { id: 'lobby', name: 'Lobby', members: ['ownerkey'], createdAt: '2026-01-01T00:00:00.000Z' },
@@ -148,14 +150,15 @@ test('the copy carries only allowed fields, keeps each of them as it is, and non
   // No secret value of the seed is anywhere in the copy.
   const text = JSON.stringify(copy);
   assert.ok(!text.includes('aesgcm$') && !text.includes('scrypt$'), 'no sealed value or hash');
-  for (const v of [data.secrets.session, data.secrets.stream, data.invites[0].token, data.spaces[1].guestToken, data.users[0].linkToken, data.users[0].calendarFeed.hash, data.settings.publishedCalendarFeed.hash, data.users[0].spaces.trip01.calendarFeed.hash]) {
+  for (const v of [data.secrets.session, data.secrets.stream, data.invites[0].token, data.spaces[1].guestToken, data.users[0].linkToken, data.users[0].calendarFeed.hash, data.settings.publishedCalendarFeed.hash, data.users[0].spaces.trip01.calendarFeed.hash, data.users[2].firstPassword.hash]) {
     assert.ok(!text.includes(v), `the copy carries ${v}`);
   }
   // The live data is unchanged.
   assert.ok(data.users[0].passwordHash && data.secrets.session && data.spaces[1].guestToken);
   // A restore of the copy reads back every person and space as they were, less what was left out.
   const back = loadStore(copy).store.data;
-  assert.deepEqual(back.users.map((u) => [u.key, u.login, u.role, u.themeMode, u.passwordHash, u.linkToken, u.mfa]), [['ownerkey', 'owner', 'owner', 'light', null, null, null], ['bosskey1', 'boss', 'admin', undefined, null, null, null]]);
+  assert.deepEqual(back.users.map((u) => [u.key, u.login, u.role, u.themeMode, u.passwordHash, u.linkToken, u.mfa]), [['ownerkey', 'owner', 'owner', 'light', null, null, null], ['bosskey1', 'boss', 'admin', undefined, null, null, null], ['newowner', 'newowner', 'owner', undefined, null, null, null]]);
+  assert.ok(back.users.every((u) => !('firstPassword' in u)), 'a restored copy carries no first-password link');
   assert.deepEqual(back.spaces.map((s) => ({ ...s, guestToken: undefined })), data.spaces.map((s) => ({ ...s, guestToken: undefined })));
 });
 
@@ -168,6 +171,31 @@ test("a host admin's stand-in keeps no password, personal link or second factor 
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'app.json'), 'utf8')).users.find((u) => u.login === 'boss');
   assert.deepEqual([onDisk.passwordHash, onDisk.linkToken, onDisk.mfa], [null, null, null]);
   assert.equal(store.userByLinkToken(seededApp().users[1].linkToken), null);
+  assert.ok(!('firstPassword' in boss) && !('firstPassword' in onDisk), 'nor a first-password link');
+});
+
+// plan-first-password.md: the link's hash is kept across a load (a restart between sign-up and the exchange keeps it
+// working), in its two shapes only, and never on an account with a password or on the stand-in.
+test('a first-password link is kept when loaded, in its two shapes only, and only on an account with no password', () => {
+  const hash = hex(32);
+  const app = seededApp();
+  app.users.push(
+    { key: 'claimed1', login: 'claimed', role: 'owner', firstPassword: { claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' } },
+    { key: 'haspass1', login: 'haspass', role: 'owner', passwordHash: `scrypt$${hex(16)}`, firstPassword: { hash, expiresAt: '2099-01-01T00:00:00.000Z' } },
+    { key: 'badhash1', login: 'badhash', role: 'owner', firstPassword: { hash: 'short', expiresAt: '2099-01-01T00:00:00.000Z' } },
+    { key: 'noends01', login: 'noends', role: 'owner', firstPassword: { hash } },
+    { key: 'tokenkp1', login: 'tokenkept', role: 'owner', firstPassword: { hash, expiresAt: '2099-01-01T00:00:00.000Z', token: 'plain-token' } },
+  );
+  const { store } = loadStore(app);
+  const fp = (login) => store.userByLogin(login).firstPassword;
+  assert.deepEqual(fp('newowner'), app.users[2].firstPassword);
+  assert.deepEqual(fp('claimed'), { claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' });
+  for (const login of ['haspass', 'badhash', 'noends']) assert.equal(fp(login), undefined, login);
+  assert.deepEqual(fp('tokenkept'), { hash, expiresAt: '2099-01-01T00:00:00.000Z' }, 'only the hash and the end are kept');
+  assert.ok(store.awaitingFirstPassword());
+  // A password set any other way ends the link.
+  store.updateUser(store.userByLogin('newowner').key, { passwordHash: `scrypt$${hex(16)}` });
+  assert.equal(fp('newowner'), undefined);
 });
 
 test('a session or stream key weaker than the ones the server makes is replaced when loaded; a strong one is kept', () => {
@@ -203,7 +231,7 @@ test("a restore turns every admin that is not the host admin's stand-in into an 
     src.users.push({ key: 'madeadm1', login: 'madeadmin', displayName: 'Made', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
     const [[, out]] = ex.restoreEntries([[file, Buffer.from(JSON.stringify(src))]]);
     const back = loadStore(JSON.parse(out.toString('utf8'))).store;
-    assert.deepEqual(back.data.users.map((u) => [u.login, u.role, u.hostAdmin]), [['owner', 'owner', false], ['boss', 'admin', true], ['madeadmin', 'owner', false]], file);
+    assert.deepEqual(back.data.users.map((u) => [u.login, u.role, u.hostAdmin]), [['owner', 'owner', false], ['boss', 'admin', true], ['newowner', 'owner', false], ['madeadmin', 'owner', false]], file);
     assert.deepEqual(back.serverAdmins(), [], `${file}: no admin but the stand-in`);
   }
 });
