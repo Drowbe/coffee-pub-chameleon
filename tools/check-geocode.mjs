@@ -91,7 +91,7 @@ test('the collection survives a restart', () => {
   try {
     await askService(`http://127.0.0.1:${server.address().port}/api`, 'faro', null);
     assert.equal(seen, `Testname/${version} (+${REPOSITORY_URL})`);
-    assert.equal(REPOSITORY_URL, 'https://github.com/Drowbe/coffee-pub-collaborator');
+    assert.equal(REPOSITORY_URL, 'https://github.com/Drowbe/coffee-pub-chameleon');
     // A name a header can't carry (above Latin-1) still sends a valid user-agent: printable ASCII kept, spaces as
     // hyphens, the default when nothing is left.
     const { DEFAULT_PRODUCT_NAME } = require('../server/product-name.js');
