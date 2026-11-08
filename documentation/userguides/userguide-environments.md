@@ -47,4 +47,4 @@ you switch to another template or to none. See [Templates](userguide-templates.m
 
 ## Signing up
 
-On the host's product page, **Get started** makes an environment on the free plan in a minute: an address (letters, digits and hyphens, three to thirty, checked as you type, and fixed once chosen), a name, and the owner's login, display name and password. It takes you straight to the new environment's sign-in.
+On the host's product page, **Get started** makes an environment on the free plan in a minute: an address (letters, digits and hyphens, three to thirty, checked as you type, and fixed once chosen), a name, and the owner's login and display name. There is no password on this page. When you press the button, it takes you to your new environment's own page, where you choose your password (8 to 200 characters) and are signed in. Do it within 15 minutes: the link works once. If it has expired or was used, the page says so; ask whoever runs the host for a new one.

@@ -177,14 +177,73 @@ first-party and nothing is posted across sites.
   Both keep the `next` address only through `sameSiteNext` in `public/next-address.js`: it must start with a single
   `/` and stay on this site; `//evil`, `/\evil`, absolute addresses and tab or newline tricks fall back to `/`.
 - `POST /api/product/signup` (main app only, in `PRODUCT_HOST_PATHS`, so it is served at the product host; off
-  unless `SIGNUP=on`) makes the environment on the free plan and its owner, and answers 201
-  `{ url }`, `<scheme>://<slug>.<BASE_DOMAIN>[:port]/login?login=<login>`. The person is not signed in (the product
-  host is another site, and no one-time sign-in link exists), so they land on the new environment's sign-in with
-  the login filled in. A reserved name is a 400 `"<slug>" is reserved. Pick another.`; a taken one a 409.
+  unless `SIGNUP=on`; five tries an hour per address) makes the environment on the free plan and its owner, and
+  answers 201 `{ url }` with `Cache-Control: no-store`. It takes `{ slug, name, template, owner: { login, displayName } }`
+  and **no password**: any `owner.password` or `password` is a 400 `Sign-up takes no password. You choose it on your
+  new environment's own page.` The owner's login is checked first, before anything is made: 400
+  `Sign-up needs the owner's login.`, and 400 `The owner's name must be text.` for a display name that is not text.
+  A reserved name is a 400 `"<slug>" is reserved. Pick another.`; a taken one a 409 `"<slug>" is already in use`.
+  A folder already in `DATA_DIR/environments/<slug>` with no registry entry (left behind) is answered the same 409 and
+  is never read, changed or removed. If the owner cannot be made, the environment made a moment before is undone.
+  The `url` is `<scheme>://<slug>.<BASE_DOMAIN>[:port]/login/first-password#<token>`: see "The first password" below.
 
 Because `AsyncLocalStorage` context follows the real async causality chain (promises, `await`, timers,
 `EventEmitter.emit`), a route handler can `await` anything, register a `setInterval`, or call `moduleBus.on(...)`
 and the Proxy still resolves correctly inside all of it, with one exception below.
+
+## The first password
+
+A new owner made at sign-up has no password. They choose it on the new environment's own page, with a link that works
+once. The start page is another site from the environment, so no cookie can carry the person across, and the start
+page never sees a password. Plan: [plan-first-password](../plans/plan-first-password.md).
+
+**The link.** The token is 32 random bytes in base64url (43 characters), made by `auth.oneTimeToken()`. It is in the
+address's **fragment** (after `#`), never the query, so a browser does not send it to a server or a proxy, and it
+cannot appear in an access log or a `Referer`. The server keeps only its SHA-256, on the owner's account, as
+`firstPassword: { hash, expiresAt }`; after the link is used it is `{ claimedAt, expiresAt }`. The token is never stored
+or logged. The link made by sign-up lives 15 minutes. The field is never made for the host admin's stand-in account, is
+left out of the owner's export (`USER_LEFT_OUT`), and the host's backup, which is not filtered, keeps the hash only.
+Setting a password any other way ends the link.
+
+**The routes**, on a hosted install only (without `BASE_DOMAIN` they do nothing, and the single-environment install is
+unchanged):
+
+| Route | What it does |
+|---|---|
+| `GET /login/first-password` | The page (`public/login-first-password.html` and `.js`). It never redirects, signed in or not, because a redirect would carry the fragment on. `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. |
+| `POST /api/login/first-password` `{ token }` | The exchange. Hashes the token, finds the owner whose link matches and is not ended, and spends it. Sets the `mfa_pending` cookie (10 minutes, purpose `first-password`) bound to the owner, the environment and this claim. 200 `{ login, displayName, environmentName }`. |
+| `POST /api/login/first-password/set` `{ password }` | Reads the pending cookie only (never the body). 8 to 200 characters, enforced here: 400 `A password needs at least 8 characters.` or `A password can have at most 200 characters.` Hashes with scrypt as every password is, stores it, then runs the normal second-step gate (`mfaGate()`): `{ mfaRequired: true, enrol: true }` when the environment requires a second step, else a session and 200 `{ user }`. |
+| `POST /api/host/environments/:slug/owners/:login/first-password` | Host admin only (on `hostRouter`). A new link for an owner with no password, valid 24 hours, single use, no-store, answering `{ url }` once. It replaces older links and any step already begun from them. 404 `no such environment` or `no owner with that login there`; 400 when the owner has a password already. |
+
+**Every failure of the two login routes** (no such token, ended, already used, a bad, missing or foreign pending cookie, a
+step from an older claim) is the same 401 `This link has expired or was already used. Ask whoever runs this host for a new
+one.` The environment's own sign-in limit applies to them: after the limit, 429 `too many attempts, try again in a few
+minutes`. A good use clears the count.
+
+**The window and its closed doors.** From sign-up until the password is set, the environment has an owner with no
+password. Nothing else can use that gap: an account with no password never signs in by password; the owner has no
+personal link and no second factor; and `POST /api/register` answers 403 `sign-up is turned off` while any owner waits
+(`Store#awaitingFirstPassword()`), even if the environment allows self sign-up. The sign-in page says nothing about the
+wait.
+
+**Framing.** `/login/first-password` and `/login-first-password.html` are in `FRAMED_HERE_PATHS` on a hosted install, so
+every variant of the path (case, trailing slash) answers with the framed-here headers. The page carries its own
+Content-Security-Policy and loads only its own script.
+
+**The page.** It reads the token from the fragment, removes it from the address at once (`history.replaceState`), and
+keeps it in memory only. It has one password field with **Show**, and the hint "8 to 200 characters". A reload within
+the 10 minutes still works because the cookie, not the address, says who it is.
+
+**The console.** `GET /api/host/environments` lists, for each environment, `awaitingFirstPassword`: the logins of its
+owners with no password (logins only, never a link, a hash or a time). The card shows **New first-password link** for
+each, and shows the link it gets back once, with **Copy**: "This link works once, for 24 hours. Send it to the owner."
+
+**Other ways to set a password** are unchanged and still checked only for "not empty" on the server; only a new host admin
+is held to 8 characters.
+
+**Not verified.** That the fragment survives the move from the product host to an environment on separate domains, and a
+proxy redirect, in Chromium, Firefox and Safari; that the token is absent from the proxy's access log; that password
+managers offer to save the login.
 
 ## The one gotcha: a callback that outlives the request
 
@@ -567,6 +626,7 @@ one. The old `/api/host/tenants...` paths are gone and answer 404; there is no a
 | `GET /api/host/templates/:id/export` | the template file (`Content-Disposition` `<name>.template.json`), bundled ones included; an edited bundled template's file is the template in use plus `"edited": true`, which every import ignores without listing it in `dropped`; 404 as above |
 | `POST /api/host/templates/import[?id=<new id>]`, the file's text as the body (any content type) | 201 `{ template, dropped }`, keeping the file's `version`; `?id=` saves it under another id. 400 `That isn't a <product> template file.`, `This template was made by a newer version of <product>.`, `That template file is in an older format. Export the template again and import the new file.` or `{ error, problems }` (<product> is `PRODUCT_NAME`); 409 `There is already a template called <id>.`; 403 from another origin with a cookie (`sameOriginOnly`) |
 | `POST /api/host/themes/check`, a theme file's text (or its JSON) as the body, at most 16 KB | For the template editor's theme picker: reads the file exactly as `POST /api/themes/import` does and stores nothing. 200 `{ theme: { name, author?, light, dark }, dropped }`, `dropped` listing the keys left out; 400 `{ error }` with the theme file's sentence (`That isn't a <product> theme file.`, also for a body over 16 KB or one the parser can't read; `This theme was made by a newer version of <product>.`; `That theme file is in an older format. Export the theme again and import the new file.`; or the no complete set sentence); 403 from another origin with a cookie (`sameOriginOnly`) |
+| `POST /api/host/environments/:slug/owners/:login/first-password` | 200 `{ url }`, a new first-password link (24 hours, single use); see "The first password". The list's `awaitingFirstPassword` is the owners it is for |
 | `POST /api/host/environments` `{ slug, name, plan?, template?, owner?: { login, displayName, password } }` | 201 `{ environment }`; 409 `"<slug>" is already in use`; a bad slug answers `cleanSlug`'s own error; 400 `There is no template called <id>.` or `A template is named by its id, such as travel.` |
 | `PATCH /api/host/environments/:slug` `{ name?, plan?, status?, template? }` | `{ environment }`; 404 `no such environment`; 400 for a status not in the list. With `template` (an id, or `"none"`) it switches the environment's template, building the environment if it isn't built yet, and `environment` also carries `template` and `offer` (see "Templates"); 400 `There is no template called <id>.` or `A template is named by its id, or "none" for no template.` |
 | `GET /api/host/environments/:slug/template` | `{ template, offer, choices }`, as the owner's `GET /api/environment/template`; read-only; 404 `no such environment` |
@@ -622,7 +682,7 @@ or a file is in the copy only when the module names it, so anything added later 
 The host's backup is not filtered.
 
 - **Left out of `app.json`:** `secrets` (the session key and the stream key), `invites`; on each person `passwordHash`,
-  `linkToken`, `mfa`, `externalCalendars`, `calendarFeed`; on each space `guestToken`; `settings.publishedCalendarFeed`.
+  `linkToken`, `mfa`, `externalCalendars`, `calendarFeed`, `firstPassword`; on each space `guestToken`; `settings.publishedCalendarFeed`.
   `ai.json` is kept with its `key` emptied.
 - **Left out of the files:** `secrets.key`, the pre-names copies, `chat-private.json`, `ai-threads.moved.json`, each person's
   module data, hold and uploads (`modules/<id>/data|trash/person-<key>.json`, `modules/<id>/uploads/person-<key>/`), a library
