@@ -595,6 +595,42 @@ const refused = (input, pattern, label, options) => {
 }
 function stackedOf(modules) { return modules.some((m) => 'stack' in m || 'at' in m || 'h' in m || 'folded' in m); }
 
+// --- stacks, the page's half (plan-panel-stacking.md, step 6): public/layouts.js saves what cleanLayout() keeps -------
+// layoutOf() saves a stack top first where its column is, with an id of its own in the layout and shares the server
+// keeps as they are; placeLayout() reads it back, closing a stack up where a module is left out (one left is a column of
+// its own) and taking equal heights where the server dropped the shares. The limits are the server's.
+{
+  const dir = tmp('stack-page');
+  fs.copyFileSync(path.join(ROOT, 'public/snap-grid.js'), path.join(dir, 'snap-grid.mjs'));
+  fs.writeFileSync(path.join(dir, 'layouts.mjs'), fs.readFileSync(path.join(ROOT, 'public/layouts.js'), 'utf8').replace("from '/snap-grid.js'", "from './snap-grid.mjs'"));
+  const page = await import(pathToFileURL(path.join(dir, 'layouts.mjs')).href);
+  fs.rmSync(dir, { recursive: true, force: true });
+  for (const k of ['stackMax', 'stackHMin', 'stackHMax', 'stackHSum', 'modules', 'dockWMin', 'dockWMax']) assert.equal(page.LAYOUT_LIMITS[k], LAYOUT_LIMITS[k], `the page's LAYOUT_LIMITS.${k} is the server's`);
+  const area = { x: 0, y: 0, w: 1200, h: 800 };
+  const open = [
+    { id: 'travel', mode: 'dock', order: 1, width: 400 },
+    { id: 'polls', mode: 'dock', order: 3, width: 300, stack: 'k2x9', at: 1, h: 0.3 },
+    { id: 'todo', mode: 'dock', order: 2, width: 300, stack: 'k2x9', at: 0, h: 0.7, folded: true },
+    { id: 'notes', mode: 'float', order: 4, box: { x: 10, y: 10, w: 300, h: 300 }, stack: 'k2x9', at: 2 },
+  ];
+  const saved = page.layoutOf(open, area);
+  assert.deepEqual(saved.modules.map((m) => [m.id, m.stack, m.at, m.h, m.folded]), [['travel', undefined, undefined, undefined, undefined], ['todo', 's1', 0, 0.7, true], ['polls', 's1', 1, 0.3, false], ['notes', undefined, undefined, undefined, undefined]], 'layoutOf() saves the stack top first where its column is, and never a floating module in it');
+  const kept = cleanLayout({ name: 'Stacked', ...saved }).layout;
+  assert.deepEqual(kept.modules, saved.modules, 'the server keeps what the page saves, as it is');
+  const back = page.placeLayout(kept, area);
+  assert.deepEqual(back.modules.filter((m) => m.stack).map((m) => [m.id, m.at, m.h, m.folded]), [['todo', 0, 0.7, true], ['polls', 1, 0.3, false]], 'placeLayout() reads the stack back');
+  const one = page.placeLayout(kept, area, (id) => id !== 'polls');
+  assert.ok(!one.modules.some((m) => 'stack' in m) && one.left.includes('polls'), 'a stack left with one module is an ordinary column');
+  const three = page.placeLayout({ modules: [{ id: 'a', mode: 'dock', stack: 'q', at: 0, h: 0.2 }, { id: 'b', mode: 'dock', stack: 'q', at: 1, h: 0.3 }, { id: 'c', mode: 'dock', stack: 'q', at: 2, h: 0.5 }] }, area, (id) => id !== 'b');
+  assert.deepEqual(three.modules.map((m) => [m.id, m.at, m.h]), [['a', 0, 0.2857], ['c', 1, 0.7143]], 'one left out of three: the other two close up, their shares made whole');
+  const dropped = cleanLayout({ name: 'x', modules: [{ id: 'a', mode: 'dock', stack: 'q', at: 0, h: 0.3 }, { id: 'b', mode: 'dock', stack: 'q', at: 1, h: 0.3 }] }).layout;
+  assert.deepEqual(page.placeLayout(dropped, area).modules.map((m) => m.h), [0.5, 0.5], 'shares the server dropped are equal heights');
+  const twenty = page.layoutOf(Array.from({ length: 21 }, (_, i) => ({ id: `m${i}`, mode: 'dock', order: i, ...(i >= 19 ? { stack: 'z', at: i - 19 } : {}) })), area);
+  assert.ok(twenty.modules.length === 20 && !twenty.modules.some((m) => 'stack' in m), 'a stack cut by the 20 module limit is no stack');
+  assert.ok(cleanLayout({ name: 'x', ...twenty }).layout, 'and the server takes it');
+  n += 9;
+}
+
 // --- the store: a space's default layout (step 4) -----------------------------------------------------------------
 
 {

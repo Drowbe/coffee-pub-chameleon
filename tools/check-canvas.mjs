@@ -715,6 +715,75 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/\n    captureLayout,\n    loadLayout,\n/.test(canvasJs)) fail(C, 'the canvas must offer captureLayout() and loadLayout()');
 }
 
+// Panel stacking (plan-panel-stacking.md, GitHub #387): the stack's arithmetic in public/layouts.js (grouping, the heights
+// with the 156 px least, the short canvas, the divider, refusals) and how canvas.js uses it: a stack is one column of the
+// docked limit, only installed modules that are not composites stack, the frame's menu carries the stack entries, the
+// Layout menu's Arrange has Unstack all, the divider is the column splitter's own classes, the zones are for the eye only.
+// tools/check-stacking.mjs drives all of it in a browser.
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-stacks-'));
+  fs.copyFileSync(path.join(ROOT, 'public/snap-grid.js'), path.join(tmp, 'snap-grid.mjs'));
+  fs.writeFileSync(path.join(tmp, 'layouts.mjs'), fs.readFileSync(path.join(ROOT, 'public/layouts.js'), 'utf8').replace("from '/snap-grid.js'", "from './snap-grid.mjs'"));
+  const L = await import(pathToFileURL(path.join(tmp, 'layouts.mjs')).href);
+  const { fitDock } = await import(pathToFileURL(path.join(tmp, 'snap-grid.mjs')).href);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  const F = 'public/layouts.js';
+  if (L.STACK.max !== 3 || L.STACK.sectionMin !== 156 || L.STACK.titleH + L.STACK.contentMin !== 156) fail(F, `a stack holds three at most and a section never under 156 px (its title bar and 120): ${JSON.stringify(L.STACK)}`);
+  // Grouping: a stack is one column, where its first module is, its modules top first; one alone is no stack; a fourth is a column of its own.
+  const g = L.groupColumns([{ id: 'a', order: 1 }, { id: 'b', order: 2, stack: 'x', at: 1 }, { id: 'c', order: 5, stack: 'x', at: 0 }, { id: 'd', order: 3 }, { id: 'e', order: 4, stack: 'y', at: 0 }]);
+  if (JSON.stringify(g.map((c) => c.ids)) !== JSON.stringify([['a'], ['c', 'b'], ['d'], ['e']])) fail(F, `groupColumns(): a stack is one column where its first module is, top first; a stack id on one module is none: ${JSON.stringify(g)}`);
+  const four = L.groupColumns(['p', 'q', 'r', 's'].map((id, i) => ({ id, order: i, stack: 'z', at: i })));
+  if (JSON.stringify(four.map((c) => c.ids)) !== JSON.stringify([['p', 'q', 'r'], ['s']])) fail(F, `groupColumns(): a fourth is a column of its own: ${JSON.stringify(four)}`);
+  // The docked limit counts a stack once (decision 7): three modules in two columns at 700 px, where the limit is two.
+  const cols = L.groupColumns([{ id: 'planner', order: 1 }, { id: 'todo', order: 2, stack: 's', at: 0 }, { id: 'polls', order: 3, stack: 's', at: 1 }]);
+  if (fitDock(700, cols.map((c) => ({ id: c.key, width: 300 }))).waiting.length || fitDock(700, ['planner', 'todo', 'polls'].map((id) => ({ id, width: 300 }))).waiting.length !== 1) fail(F, 'a stack is one column of the docked limit: the Planner and a stack of two fit at 700 px, three columns do not');
+  // Heights: equal at the start, filling the column; the least kept; collapsed is a title bar; the last one open stays open.
+  const even = L.splitHeights(700, { h: L.evenShares(2) });
+  if (even.px.join() !== '350,350') fail(F, `splitHeights(): two equal sections in 700 px, not ${even.px}`);
+  const lean = L.splitHeights(700, { h: [0.95, 0.05] });
+  if (lean.px[1] < 156 || lean.px[0] + lean.px[1] !== 700) fail(F, `splitHeights(): a section never under 156 px and the column filled: ${lean.px}`);
+  const folded = L.splitHeights(700, { h: [0.5, 0.5], folded: [true, false] });
+  if (folded.px.join() !== '36,664' || folded.open.join() !== '1') fail(F, `splitHeights(): a collapsed section is its title bar, the open one takes the rest: ${folded.px}`);
+  const allShut = L.splitHeights(700, { h: [0.5, 0.5], folded: [true, true] });
+  if (allShut.open.length !== 1) fail(F, 'splitHeights(): the last section stays open, even when every one is marked collapsed');
+  // A short canvas: the lowest open one collapses by itself, never the one opened last, never the last one open.
+  const short = L.splitHeights(420, { h: L.evenShares(3) });
+  if (short.auto.join() !== 'false,false,true' || short.px.join() !== '192,192,36') fail(F, `splitHeights(): at 420 px of three the lowest collapses by itself: ${JSON.stringify(short)}`);
+  const keep = L.splitHeights(420, { h: L.evenShares(3), keep: 2 });
+  if (keep.auto.join() !== 'false,true,false') fail(F, `splitHeights(): the section opened last is not the next to collapse: ${JSON.stringify(keep.auto)}`);
+  const tiny = L.splitHeights(200, { h: L.evenShares(3) });
+  if (tiny.open.length !== 1) fail(F, 'splitHeights(): the last one open never collapses by itself');
+  // The divider: only the two beside it change, within the least.
+  const moved = L.dragShares({ px: [233, 233, 234], h: [1 / 3, 1 / 3, 1 / 3], i: 0, upper: 10 });
+  if (Math.round(moved.upper) !== 156 || Math.abs(moved.h[2] - 1 / 3) > 1e-9 || Math.abs(moved.h[0] + moved.h[1] - 2 / 3) > 1e-9) fail(F, `dragShares(): the upper section stops at 156 px and only the pair changes: ${JSON.stringify(moved)}`);
+  const sh = L.cleanShares([0.02, 0.98]);
+  if (sh.join() !== '0.1,0.9' || L.cleanShares([1, 1, 1]).reduce((a, x) => a + x, 0) !== 1) fail(F, `cleanShares(): each from 0.1 to 0.9, together 1: ${sh}`);
+  // Refusals.
+  const R = L.stackRefusal;
+  const refusals = [R({ mover: false }), R({ target: false }), R({ n: 3 }), R({ n: 2, height: 400 }), R({ n: 3, inIt: true }), R({ n: 1, height: 800 })];
+  if (refusals.join() !== 'mover,target,full,short,,') fail(F, `stackRefusal(): mover, target, full, short, and allowed: ${refusals}`);
+  const tidy = L.tidyStacks([{ id: 'a', mode: 'dock', stack: 'q', at: 1, h: 0.2, folded: true }, { id: 'b', mode: 'float', stack: 'q', at: 0 }, { id: 'c', mode: 'dock', stack: 'q', at: 0, h: 0.2, folded: true }]);
+  if (JSON.stringify(tidy.map((e) => [e.id, e.at, e.h, e.folded])) !== JSON.stringify([['a', 1, 0.5, false], ['b', undefined, undefined, undefined], ['c', 0, 0.5, true]])) fail(F, `tidyStacks(): docked only, at renumbered, shares whole, never every one collapsed: ${JSON.stringify(tidy)}`);
+
+  const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
+  const C = 'public/canvas.js';
+  if (!/const canStack = \(p\) => Boolean\(p\) && p\.kind === 'module' && !compositeOf\(p\.m\) && supports\(p, 'dock'\);/.test(canvasJs)) fail(C, 'only an installed module that can dock and is not a composite stacks (never the conference or Chat; decision 2)');
+  const dock = canvasJs.slice(canvasJs.indexOf('  function dockBlocked(p) {'), canvasJs.indexOf('  // A waiting module\'s box says so'));
+  if (!/columnsFrom\(/.test(dock)) fail(C, 'Dock as a panel counts columns, a stack as one (decision 7)');
+  if (!/const planColumns = \(extra = \[\]\) => \{\n\s*const cols = columnsFrom\(/.test(canvasJs)) fail(C, 'the fit (planColumns) runs fitDock over columns, a stack as one');
+  if (!/extra: \(\) => stackMenu\(m\.id\)/.test(canvasJs)) fail(C, 'a module\'s frame carries the stack entries in its title bar menu (titlebar.extra)');
+  for (const words of ["'Stack with...'", "'Move up'", "'Move down'", "'Move out of the stack'", "'Equal heights'", "label: 'Unstack all'"]) if (!canvasJs.includes(words)) fail(C, `the menus say ${words}`);
+  if (!/if \(isNarrow\(\) \|\| !docked\.length\) \{\n\s*canvas\.style\.removeProperty\('--canvas-cols'\);\n\s*paintStacks\(\[\]\);/.test(canvasJs)) fail(C, 'no stack is drawn on a phone (syncDock paints none there)');
+  if (!/dv\.className = 'side-column-splitter side-column-splitter-h stack-divider';/.test(canvasJs) || !/dv\.setAttribute\('role', 'separator'\);/.test(canvasJs)) fail(C, 'the divider is the call and chat column\'s splitter, a separator');
+  if (!/zoneLayer\.setAttribute\('aria-hidden', 'true'\);/.test(canvasJs)) fail(C, 'the drop zones are for the eye only (aria-hidden)');
+  if (!/const left = dropFromStack\(id\);/.test(canvasJs.slice(canvasJs.indexOf('  function closeModule(id) {'), canvasJs.indexOf('  function closeAllModules() {')))) fail(C, 'closing a module leaves its stack (one left is an ordinary column, decision 8)');
+  if (!/if \(suspended \|\| restoring\) return null;/.test(canvasJs.slice(canvasJs.indexOf('  function dropFromStack(id) {')))) fail(C, 'entering, leaving and a canvas popped out keep what is remembered (dropFromStack waits)');
+  if (!/el\.style\.gridColumn = `\$\{1 \+ i\} \/ \$\{2 \+ i\}`;/.test(canvasJs)) fail(C, 'a column\'s parts name both grid lines (a stacked section is laid in its area absolutely, where a missing end line is the canvas\'s edge)');
+  const sty = css.slice(css.indexOf('/* A stack (plan-panel-stacking.md'), css.indexOf('.stack-chip > i'));
+  if (!/\.canvas > \.module-docked\.in-stack > \.mod-content \{ position: absolute;/.test(sty) || !/\.canvas > \.stack-divider \{ display: block;/.test(sty)) fail('public/style.css', 'a stacked section lies in its column\'s area; the divider shows the splitter in the canvas');
+  if (!/\.canvas > \.module-docked\.stack-folded > \.mod-content > \.mf > :not\(\.mf-titlebar\) \{ display: none; \}/.test(sty)) fail('public/style.css', 'a collapsed section is its title bar, the rest not drawn (so not in the tab order)');
+}
+
 // Composites on the Workspace (public/composites.js; plan-calendar-todo.md step 3, reused by plan-map-places.md step 3):
 // one module, `dest:calendar`, in the Calendar's place while the Calendar is on in a space, the To-do's own surface left
 // out there; a stored `calendar` or `todo` reads as the composite and is never written back; where the Calendar is off,
