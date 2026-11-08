@@ -102,11 +102,13 @@ function paintProductMarks() {
 // The product's lockup: the mark and the product's name as live text on one line, so it follows PRODUCT_NAME. A name
 // that starts with "Coffee Pub " shows the brand in the display face (Fraunces 700) and the rest in the interface face
 // (Figtree 600), the same size; any other name (a branded version's own) is all Figtree. The colours are the theme's
-// text colour for both words: the brand's coral is for large text only, and this is drawn at the bar's size.
+// text colour for both words: the brand's coral (--ink-brand) is for large text only (24px and up), so a lockup drawn at the
+// bar's size is ink; one asked for { large: true } draws the product's word in it.
 const BRAND_PREFIX = 'Coffee Pub ';
-export function productLockup(name = product) {
+export function productLockup(name = product, { large = false } = {}) {
   const box = document.createElement('span');
   box.className = 'product-lockup';
+  if (large) box.dataset.size = 'large'; // 24px and up: the product's word takes --ink-brand (style.css)
   const mark = document.createElement('img');
   mark.className = 'product-lockup-mark';
   mark.alt = '';

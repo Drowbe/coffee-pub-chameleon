@@ -215,6 +215,8 @@
   --fill-chosen: var(--accent-fill);
   --text-on-chosen: var(--text-on-accent);
   --ink-chosen: var(--accent-fill);
+  /* The second word of the product's lockup (the brand's coral): the accent until a theme sets it. Large text only, 24px and up. */
+  --ink-brand: var(--accent-fill);
   --fill-chosen-hover: color-mix(in srgb, var(--fill-chosen) 85%, white);
   --wash-selected: 28%;
   --wash-today: 14%;
@@ -5704,7 +5706,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
   border-bottom: 1px solid var(--mf-edge);
   background: var(--mf-surface-title);
 }
-.mf-titlebar-icon { display: inline-flex; flex: none; color: var(--text-accent); font-size: var(--icon-16); }
+.mf-titlebar-icon { display: inline-flex; flex: none; color: var(--ink-chosen); font-size: var(--icon-16); }
 .mf-titlebar-icon[hidden] { display: none; }
 .mf-titlebar-title { flex: 1 1 auto; min-width: var(--mf-title-min); margin: 0; overflow: hidden; font-size: var(--text-14); font-weight: var(--weight-strong); line-height: var(--leading-title); white-space: nowrap; text-overflow: ellipsis; }
 .mf-titlebar-tools { display: flex; flex: none; align-items: center; gap: var(--space-0); }

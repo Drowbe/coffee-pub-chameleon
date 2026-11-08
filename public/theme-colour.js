@@ -60,6 +60,7 @@
     'fill-chosen': 'var(--accent-fill)',
     'text-on-chosen': 'var(--text-on-accent)',
     'ink-chosen': 'var(--accent-fill)',
+    'ink-brand': 'var(--accent-fill)',
     'mf-surface-title': 'color-mix(in srgb, var(--surface-panel) 70%, black)',
     'mf-surface-toolbar': 'color-mix(in srgb, var(--surface-panel) 93%, var(--text-primary))',
     'mf-surface-row': 'color-mix(in srgb, var(--surface-panel) 94%, var(--accent-fill))',
