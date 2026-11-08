@@ -103,6 +103,8 @@ async function main() {
     const y = (tab) => tab.eval('Math.round(window.scrollY)');
     if (process.argv.includes('--maps-only')) { await checkMaps(browser, server); return true; } // reported below, after the browser is closed
 
+    if (process.argv.includes('--start-only')) { await checkStartPage(browser, server); return false; }
+
     for (const size of [390, 500, 700, 1280]) {
       for (const mode of ['light', 'dark']) {
         const label = `${size} ${mode}`;
@@ -434,6 +436,7 @@ async function main() {
       } finally { await tab.close(); }
     }
     if (!process.argv.includes('--skip-maps')) await checkMaps(browser, server);
+    await checkStartPage(browser, server);
   } finally {
     if (browser) { try { browser.child.kill('SIGTERM'); } catch { /* gone */ } }
     if (server) await stopServer(server);
@@ -444,6 +447,40 @@ async function main() {
 }
 
 // ---- 6. Maps: the map themes and Map options (plan-map-options.md, step 0) ----
+// The Start page section (public/design-system/prototype-start-page.js): in A (the address checked as you type) Enter pressed at once, before the
+// check ends, waits for it and then opens (the dashed destination note shows); and every field marked invalid has a visible sentence.
+async function checkStartPage(browser, server) {
+  const tab = new Tab(browser.cdp, {});
+  await tab.open(1280, 'light');
+  const send = (m, p) => browser.cdp.send(m, p, tab.sid);
+  try {
+    await send('Page.navigate', { url: `${server.base}/design-system/prototype.html?theme=strong-coffee&mode=light&w=1280` }, tab.sid);
+    const cellOf = (n) => `(document.querySelectorAll('#sp-choices .sp-cells')[${n}].querySelector('.sp-cell'))`;
+    let there = false;
+    for (let i = 0; i < 100 && !there; i += 1) { there = await tab.eval(`!!document.querySelectorAll('#sp-choices .sp-cells')[3]`).catch(() => false); if (!there) await sleep(150); }
+    if (!there) { fail('start page: the Choices drawings are not on the page'); return; }
+    await tab.eval(`(() => { const i = ${cellOf(2)}.querySelector('input[type=text]'); i.scrollIntoView({ block: 'center' }); i.focus(); })()`);
+    await send('Input.insertText', { text: 'mossfield' });
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+    let shown = false;
+    for (let i = 0; i < 20 && !shown; i += 1) { await sleep(150); shown = await tab.eval(`(() => { const p = ${cellOf(2)}.querySelector('.sp-proto'); return !!p && !p.hidden && /Go would open/.test(p.textContent) && getComputedStyle(p).display !== 'none'; })()`); }
+    if (!shown) fail('start page: in A, typing a valid name and pressing Enter at once does not open it after the check');
+    // The sign-up form: Make my environment with an empty name says why, and the sentence goes when the person types.
+    const r = await tab.eval(`(() => {
+      ${cellOf(3)}.querySelector('button[type=submit]').click();
+      const bad = [...document.querySelectorAll('#pp-start-page [aria-invalid="true"]')];
+      const unsaid = bad.filter((f) => !(f.getAttribute('aria-describedby') || '').split(' ').map((id) => document.getElementById(id)).filter(Boolean).some((n) => n.textContent.trim() && n.getClientRects().length)).map((f) => f.id || f.placeholder || f.outerHTML.slice(0, 120));
+      return { count: bad.length, unsaid };
+    })()`);
+    if (!r.count) fail('start page: an empty name did not mark the field invalid');
+    if (r.unsaid.length) fail(`start page: a field marked invalid has no visible sentence (${r.unsaid.join(', ')})`);
+    await tab.eval(`(() => { const f = ${cellOf(3)}.querySelector('[aria-invalid="true"]'); window.__f = f; if (f) f.focus(); })()`);
+    await send('Input.insertText', { text: 'x' });
+    if (await tab.eval(`!window.__f || window.__f.getAttribute('aria-invalid') === 'true'`)) fail('start page: the invalid state does not clear when the person types');
+    say('Start page: Enter at once in A opens after the check; an empty name has its sentence, cleared on typing');
+  } finally { await tab.close(); }
+}
+
 async function checkMaps(browser, server) {
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
   const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
