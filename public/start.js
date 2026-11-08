@@ -33,19 +33,22 @@ function line(el, kind, icon, parts) {
   el.textContent = '';
   if (kind) el.dataset.kind = kind; else delete el.dataset.kind;
   if (!parts || !parts.length) return;
-  if (icon === 'spin') { const s = h('span', 'sdk-spinner sdk-spinner-sm'); s.setAttribute('aria-hidden', 'true'); el.append(s); } else if (icon) el.append(fa(icon));
+  if (icon === 'spin') { const s = h('span', 'sp-spin'); s.setAttribute('aria-hidden', 'true'); el.append(s); } else if (icon) el.append(fa(icon));
   const t = h('span');
   for (const p of parts) t.append(typeof p === 'string' ? D.createTextNode(p) : p);
   el.append(t);
 }
 
 // ---- light or dark ----
-// Light unless this browser picked dark (theme-head.js reads the same key the app's other pages write). The round button flips it.
+// The browser's own preference unless this person picked (theme-head.js reads the same key the app's other pages write). The round button flips it.
 const MODE_KEY = 'app.themeMode';
-function shownMode() { return D.documentElement.dataset.themeMode === 'dark' ? 'dark' : 'light'; }
+function shownMode() {
+  const picked = D.documentElement.dataset.themeMode;
+  if (picked === 'light' || picked === 'dark') return picked;
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 function paintMode() {
   const mode = shownMode();
-  D.documentElement.dataset.modeShown = mode;
   const b = $('sp-theme');
   const word = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   b.setAttribute('aria-label', word); b.title = word;
@@ -105,7 +108,7 @@ function drawRecent(focusAt) {
   recent.forEach((env, i) => {
     const li = h('li', 'sp-chip');
     const main = h('span', 'sp-chip-main');
-    const a = h('a', 'sdk-open sp-chip-name', env.name);
+    const a = h('a', 'sp-chip-name', env.name);
     a.href = envUrl(env.slug);
     a.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -122,7 +125,7 @@ function drawRecent(focusAt) {
       goTo(r);
     });
     main.append(a, h('span', 'sp-chip-addr', addr(env.slug)));
-    const x = h('button', 'sdk-icon-btn btn-quiet btn-small');
+    const x = h('button', 'sp-chip-x');
     x.type = 'button'; x.setAttribute('aria-label', `Remove ${env.name} from Recent`); x.title = 'Remove from Recent';
     x.append(fa('xmark'));
     x.addEventListener('click', () => {
@@ -174,7 +177,7 @@ function drawFind() {
   const slug = clean(input.value);
   const busy = find.phase === 'opening';
   go.textContent = '';
-  if (busy) { const s = h('span', 'sdk-spinner sdk-spinner-sm'); s.setAttribute('aria-hidden', 'true'); go.append(s, h('span', '', 'Go')); } else go.append(h('span', '', 'Go'));
+  if (busy) { const s = h('span', 'sp-spin'); s.setAttribute('aria-hidden', 'true'); go.append(s, h('span', '', 'Go')); } else go.append(h('span', '', 'Go'));
   go.setAttribute('aria-busy', String(busy));
   go.disabled = !product || busy; // always on once the host has answered; off only while a go is in progress
   input.setAttribute('aria-invalid', String(find.phase === 'none' || find.phase === 'bad'));
