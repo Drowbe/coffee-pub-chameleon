@@ -137,7 +137,7 @@ for (const [label, patch] of PRESETS) {
   presets.append(b);
 }
 
-const theme = () => ({ ph: 'theme', theme: D.documentElement.dataset.ppTheme || 'strong-coffee', mode: D.documentElement.dataset.themeMode || 'dark', light: D.documentElement.dataset.ppLight || '' });
+const theme = () => ({ ph: 'theme', theme: D.documentElement.dataset.ppTheme || 'chameleon', mode: D.documentElement.dataset.themeMode || 'dark', light: D.documentElement.dataset.ppLight || '' });
 function post(msg, only, list) { for (const f of list || frames) if (f.contentWindow && (!only || f === only)) f.contentWindow.postMessage(msg, '*'); }
 function pushState(only) { post({ ph: 'state', state: { call: state.call, view: state.view, sheet: state.sheet, kb: state.kb === '1', module: state.module, ...(state.pins ? { pins: state.pins, replace: state.replace } : {}) } }, only); }
 

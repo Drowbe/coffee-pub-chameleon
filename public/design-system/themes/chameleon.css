@@ -1,0 +1,76 @@
+/* Written by tools/design-system-themes.mjs from the theme "Chameleon" (server/theme-css.js): do not edit. */
+/* default mode: dark */
+:root:not([data-theme-mode="light"]) {
+  --surface-page: #0e1a2b;
+  --surface-panel: #182c47;
+  --edge-hairline: #2a4162;
+  --text-primary: #f4ecdd;
+  --text-muted: #b9c3d3;
+  --accent-fill: #5cc8cf;
+  --surface-card: #213655;
+  --bg-card: #213655;
+  --surface-bar-top: #13243b;
+  --surface-bar-nav: #13243b;
+  --wash-ink: #4d6c99;
+  --fill-chosen: #4d6c99;
+  --text-on-chosen: #f4ecdd;
+  --ink-chosen: #f4ecdd;
+  --wash-selected: 30%;
+  --wash-today: 8%;
+  --wash-own: 7%;
+  --wash-pick: 12%;
+  --card-head-step: 8%;
+  --text-on-accent: #0e1a2b;
+  --text-accent: #5cc8cf;
+  --status-ok-mark: #6fae6b;
+  --status-danger-text: #cd8776;
+  --status-danger-on-fill: #ffffff;
+  --status-ok-text: #97c18d;
+  --status-ok-on-fill: #0a0a0a;
+  --status-warn-text: #e1bd6c;
+  --status-warn-on-fill: #0a0a0a;
+  --status-info-text: #93bbe5;
+  --status-info-on-fill: #0a0a0a;
+}
+:root[data-theme-mode="light"] {
+  --surface-page: #fbf6ec;
+  --surface-panel: #ffffff;
+  --edge-hairline: #e2d3b3;
+  --text-primary: #14243b;
+  --text-muted: #475569;
+  --accent-fill: #0b7a84;
+  --surface-card: #ffffff;
+  --bg-card: #ffffff;
+  --fill-secondary: #ffffff;
+  --secondary: #ffffff;
+  --fill-secondary-hover: #f3e9d4;
+  --secondary-hover: #f3e9d4;
+  --surface-field: #ffffff;
+  --bg-input: #ffffff;
+  --surface-menu: #ffffff;
+  --edge-field: #9a937e;
+  --wash-ink: #cfae6c;
+  --mf-surface-title: #f7f0e0;
+  --mf-surface-toolbar: #fbf6ec;
+  --mf-surface-row: #fbf6ec;
+  --mf-surface-row-hover: #f3e9d4;
+  --fill-chosen: #cfae6c;
+  --text-on-chosen: #14243b;
+  --ink-chosen: #14243b;
+  --wash-selected: 30%;
+  --wash-today: 8%;
+  --wash-own: 7%;
+  --wash-pick: 12%;
+  --card-head-step: 8%;
+  --text-on-accent: #ffffff;
+  --text-accent: #0b7a84;
+  --status-ok-mark: #639c65;
+  --status-danger-text: #87433e;
+  --status-danger-on-fill: #ffffff;
+  --status-ok-text: #4c7858;
+  --status-ok-on-fill: #0a0a0a;
+  --status-warn-text: #6e5419;
+  --status-warn-on-fill: #ffffff;
+  --status-info-text: #234f8d;
+  --status-info-on-fill: #ffffff;
+}
