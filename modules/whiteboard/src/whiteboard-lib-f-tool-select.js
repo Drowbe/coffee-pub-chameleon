@@ -6,7 +6,7 @@
   // finger on the board moves the board instead, unless "Select many" is on (ctx.many()): then it drags the rectangle,
   // and a tap on a block adds it or takes it out. Moving the board otherwise is the page's (Space, the middle button, the
   // wheel, two fingers) or the Hand tool's. Someone who may only look can pick, and move the board.
-  // Drag a handle of the picked block to change its size (Shift keeps its shape) or to move a line's end; the new box is
+  // Drag a handle of the picked block to change its size (Shift keeps its shape; a picture always does) or to move a line's end; the new box is
   // saved once, when it is let go. What a handle does is the block type's resize (lib-a); showing the handles is the page's.
   {
     const SLOP = 4; // screen pixels a press may wander and still be a press, not a drag
@@ -101,7 +101,7 @@
           if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
           hold.moved = true;
           const s = ctx.scale();
-          const keep = Boolean(p.event && p.event.shiftKey);
+          const keep = Boolean(hold.r.keep || (p.event && p.event.shiftKey)); // a picture always keeps its shape
           ctx.change(hold.id, resized(hold.r, hold.start, hold.handle, (p.sx - hold.sx) / s, (p.sy - hold.sy) / s, keep), { save: false });
           return;
         }

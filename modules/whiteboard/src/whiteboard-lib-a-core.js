@@ -94,9 +94,12 @@
   // element, describe(block) -> words for a screen reader, noun?(block) -> what a person calls it ("arrow"; else the
   // label in lower case), paint?: { role: { label?, extra?: ['none', 'auto'] } } (the
   // colour roles it has, see the top of this file), weight?: true (it has a line or border width), edit?: 'text' |
-  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, resize?: how it
+  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
+  // field edited, 'text' unless named: a picture's 'alt'), textLine? (one line: Enter keeps it), textLabel? (the field's
+  // name for a screen reader), textMax? (most characters), editLabel? (the menu's word for it, else "Edit"), resize?: how it
   // changes size when it is the one block picked:
-  // { handles: 'corners', min: { w, h }, height?: false } (x, y, w, h; height false: only w, the words set the height) or
+  // { handles: 'corners', min: { w, h }, height?: false, keep?: true } (x, y, w, h; height false: only w, the words set the
+  // height; keep: a corner always keeps the block's shape, as Shift does for the others) or
   // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }, linked?: [[field, ...], ...] (fields that only
   // make sense together, such as a box's x, y, w and h: an undo puts them back together or leaves them all, see lib-g),
   // and, for a block that points at other blocks (a

@@ -174,6 +174,28 @@
       putBox(marqueeEl, { x0: Math.min(r.x0, r.x1), y0: Math.min(r.y0, r.y1), x1: Math.max(r.x0, r.x1), y1: Math.max(r.y0, r.y1) });
     }
 
+    // A picture on its way (lib-i): a placeholder where its block will be, with a spinner and a word for how far it is.
+    // box in board units ({ x, y, w, h }), or null to take it away. It is not a block: nothing picks, moves or saves it.
+    const pendings = new Map(); // job id -> its placeholder
+    function pending(id, box, text = '') {
+      let el = pendings.get(id);
+      if (!box) { if (el) el.remove(); pendings.delete(id); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'wb-pending';
+        el.setAttribute('aria-hidden', 'true'); // the status line says how many are on their way
+        const spin = document.createElement('span');
+        spin.className = 'sdk-spinner sdk-spinner-lg';
+        const words = document.createElement('span');
+        words.className = 'wb-pending-text';
+        el.append(spin, words);
+        world.insertBefore(el, frame);
+        pendings.set(id, el);
+      }
+      el.lastChild.textContent = text;
+      putBox(el, { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h });
+    }
+
     // A point on the screen (a pointer event's clientX and clientY) on the board, in board units.
     function toBoard(cx, cy) {
       const r = surface.getBoundingClientRect();
@@ -229,6 +251,7 @@
       clear,
       select,
       marquee,
+      pending,
       element: (id) => els.get(id) || null,
       refreshFrame: showFrame,
       toBoard,
@@ -246,12 +269,15 @@
   // Editing a block's words in place: a text box over the words, the same size and look. Enter makes a new line; leaving
   // the box, or Ctrl or Cmd with Enter, keeps what was typed; Escape puts the words back. done(text) is called once, with
   // the words to keep (the same words when nothing changed). grow: the box grows with the words (a text block); else it
-  // fills the block (a note, a shape's label).
-  function wbEditText(el, target, value, done, { grow: grows = false } = {}) {
+  // fills the block (a note, a shape's label). line: one line (a picture's description), where Enter keeps it; label: the
+  // box's name for a screen reader; max: the most characters.
+  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0 } = {}) {
     const box = document.createElement('textarea');
-    box.className = 'wb-text-edit';
+    box.className = `wb-text-edit${line ? ' wb-text-line' : ''}`;
     box.value = value;
-    box.setAttribute('aria-label', 'Words');
+    box.setAttribute('aria-label', label);
+    if (line) { box.rows = 1; box.placeholder = label; }
+    if (max) box.maxLength = max;
     box.spellcheck = true;
     el.classList.add('wb-editing');
     target.after(box);
@@ -265,11 +291,14 @@
       el.classList.remove('wb-editing');
       done(text);
     };
-    box.addEventListener('input', grow);
+    box.addEventListener('input', () => {
+      if (line && /[\r\n]/.test(box.value)) box.value = box.value.replace(/[\r\n]+/g, ' '); // pasted lines become one
+      grow();
+    });
     box.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); finish(false); el.focus(); }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); el.focus(); }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); el.focus(); }
     });
     box.addEventListener('pointerdown', (e) => e.stopPropagation());
     box.addEventListener('blur', () => finish(true));
