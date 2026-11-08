@@ -103,8 +103,8 @@
 .pps-poll { display: flex; flex-direction: column; gap: var(--space-1); }
 .pps-poll-q { margin: 0; font-weight: var(--weight-strong); }
 .pps-opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px var(--space-2); }
-.pps-meter { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-round); background: var(--fill-hover); overflow: hidden; }
-.pps-meter > span { display: block; height: 100%; border-radius: var(--radius-round); background: var(--accent-fill); }
+.pps-meter { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-small); background: var(--fill-hover); overflow: hidden; }
+.pps-meter > span { display: block; height: 100%; border-radius: var(--radius-small); background: var(--accent-fill); }
 .pps-budget { display: flex; flex-direction: column; gap: var(--space-2); }
 .pps-big { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
 .pps-row { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; padding: 0 var(--space-2); border-radius: var(--radius-small); background: var(--mf-surface-row); }
