@@ -82,7 +82,7 @@ async function finishByCall(slug, url, password) {
   const ex = await call('POST', slug, '/api/login/first-password', { token });
   assert.equal(ex.status, 200, ex.text);
   const pending = ex.cookies.find((c) => c.startsWith('mfa_pending='));
-  const set = await call('POST', slug, '/api/login/first-password/set', { password }, { cookie: pending });
+  const set = await call('POST', slug, '/api/login/first-password/set', { login: ex.json.login, password }, { cookie: pending });
   assert.equal(set.status, 200, set.text);
 }
 

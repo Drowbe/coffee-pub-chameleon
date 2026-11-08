@@ -15,7 +15,9 @@
  *     text/plain, ended or other environment's token gets the same 401 and sentence; two at once: exactly one wins;
  *     failures count on the sign-in limit (429), shared with wrong passwords; a restart keeps the token working;
  *   - the set step (POST /api/login/first-password/set) needs the exchange's own pending cookie: none, another
- *     environment's, an enrol or verify one, or one from an older claim is 401; the password is 8 to 200 characters
+ *     environment's, an enrol or verify one, or one from an older claim is 401; and the login the page names (`login`,
+ *     compared cleaned): another owner's, none, or one that is not text is the same 401, counted on the sign-in limit;
+ *     the password is 8 to 200 characters
  *     (400); then it signs in, or with a second step required, starts enrolment and gives no session;
  *   - after the password is set the token and the pending cookie are dead and POST /api/login works;
  *   - each use of a link is its own random claim: a step from an older claim never finishes a newer one, even when both
@@ -178,7 +180,8 @@ async function signup(slug, login = `own${slug}`, extra = {}) {
 }
 const exchange = (slug, token, opts = {}) => call(slug, 'POST', '/api/login/first-password', { body: token === undefined ? {} : { token }, from: opts.from || nextIp(), ...opts });
 const pendingOf = (r) => (r.jar.mfa_pending ? `mfa_pending=${r.jar.mfa_pending}` : null);
-const setPassword = (slug, cookie, password, opts = {}) => call(slug, 'POST', '/api/login/first-password/set', { body: { password }, cookie, from: opts.from || nextIp(), ...opts });
+// The set step, sending the login the page names: `own<slug>` unless `login` says otherwise (null: none sent).
+const setPassword = (slug, cookie, password, { login = `own${slug}`, ...opts } = {}) => call(slug, 'POST', '/api/login/first-password/set', { body: login === null ? { password } : { login, password }, cookie, from: opts.from || nextIp(), ...opts });
 const isDead = (r) => r.status === 401 && r.json?.error === DEAD && Object.keys(r.json).length === 1;
 async function hostCookie() {
   const res = await call('admin', 'POST', '/api/host/login', { body: { login: HOST_LOGIN, password: HOST_PASSWORD }, from: nextIp() });
@@ -454,6 +457,20 @@ try {
     assert.equal(ownerOnDisk(dataDir, 'alpha').passwordHash, null);
   });
 
+  await test('the set step needs the login the page names to be the step\'s owner: another, none or not text is the same 401, counted on the limit', async () => {
+    const from = '203.0.113.41';
+    const refusals = [['another owner\'s', 'ownbravo'], ['an unknown one', 'nobody'], ['none', null], ['an empty one', ''], ['only spaces', '   '], ['a number', 12345678], ['a list', ['ownalpha']], ['an object', { login: 'ownalpha' }], ['a longer one', 'ownalpha2'], ['another owner\'s', 'ownbravo']];
+    for (const [what, login] of refusals) {
+      const res = await setPassword('alpha', pendingA, 'longenough123', { login, from });
+      assert.ok(isDead(res), `${what}: ${res.status} ${res.text}`);
+    }
+    // Ten refusals: the address is held, even with the right login (the limit is the sign-in's).
+    const held = await setPassword('alpha', pendingA, 'longenough123', { from });
+    assert.equal(held.status, 429, held.text);
+    assert.equal(ownerOnDisk(dataDir, 'alpha').passwordHash, null, 'nothing set');
+    assert.ok(ownerOnDisk(dataDir, 'alpha').firstPassword?.claim, 'and the step is still open');
+  });
+
   await test('a first-password pending cookie opens neither the enrolment nor the verify step', async () => {
     for (const p of ['/api/me/mfa/start', '/api/me/mfa/enable', '/api/login/verify']) {
       const res = await call('alpha', 'POST', p, { cookie: pendingA, body: { code: '123456' }, from: nextIp() });
@@ -472,7 +489,7 @@ try {
 
   const PASSWORD_A = `${'p'.repeat(199)}!`; // 200 characters: the longest allowed
   await test('a good password signs the owner in; then the token and the pending cookie are dead and POST /api/login works', async () => {
-    const res = await setPassword('alpha', pendingA, PASSWORD_A);
+    const res = await setPassword('alpha', pendingA, PASSWORD_A, { login: ' OwnAlpha ' }); // compared as cleaned
     assert.equal(res.status, 200, res.text);
     assert.equal(res.json.user.login, 'ownalpha');
     assert.equal(res.json.user.hasPassword, true);

@@ -3413,7 +3413,8 @@ app.post('/api/login/verify', (req, res) => {
 
 // The first password (plan-first-password.md), on a hosted install only. The exchange uses the link's token once and
 // starts a ten-minute step (the pending cookie, purpose first-password, naming this owner, this environment and this
-// claim); the set step chooses the password and then finishes the sign-in as POST /api/login does (mfaGate). Every
+// claim); the set step ({ login, password }) chooses the password and then finishes the sign-in as POST /api/login
+// does (mfaGate). Every
 // refusal of either is the same 401 and sentence, and counts against this environment's sign-in limit.
 app.post('/api/login/first-password', (req, res, next) => {
   if (!BASE_DOMAIN) return next();
@@ -3438,7 +3439,10 @@ app.post('/api/login/first-password/set', (req, res, next) => {
   const pendingToken = auth.parseCookies(req.get('cookie'))[auth.PENDING_COOKIE] || null; // the cookie only, never the body
   const pend = pendingToken && auth.readPending(store.sessionSecret, pendingToken, { env: currentEnvironment().slug || '', purpose: 'first-password' });
   const user = pend && store.userByKey(pend.u);
-  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claim !== pend.c) {
+  // The login the page names, sent with the password: the step must be that owner's. The browser keeps only the newest
+  // step's cookie, so a page still naming an older link's owner (another tab, a slower answer) never sets this one's.
+  const named = typeof req.body?.login === 'string' ? cleanLogin(req.body.login) : '';
+  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claim !== pend.c || !named || named !== user.login) {
     limiter.fail(ip);
     return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
   }
