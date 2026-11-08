@@ -1177,7 +1177,7 @@ try {
     // The product host is also a previous base here: its own pages answer, never a 301; a host under it still moves.
     const front = await call(server, 'product', 'GET', '/', { accept: 'text/html' });
     assert.equal(front.status, 200, front.text.slice(0, 120));
-    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
+    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'start.html'), 'utf8'));
     assert.equal((await call(server, 'product', 'GET', '/api/product')).json.productDomain, 'product.localhost');
     const moved = await call(server, 'acme.product', 'GET', '/login?x=1');
     assert.equal(moved.status, 301);

@@ -1,5 +1,5 @@
 // The Start page section of the Prototype (plan-product-site.md, slice 3): the page at the product host's "/" that replaces today's
-// product pages (landing.html), drawn for Thomas to judge and lock before anything is built. Design-process only: nothing here ships,
+// product pages (the old landing page), drawn for Thomas to judge and lock before anything is built. Design-process only: nothing here ships,
 // nothing is fetched and nothing is stored. The page is drawn with the app's own system (public/sdk/system.css) and theme tokens, in the
 // current default theme, light or dark from the switch at the top of the Prototype; the Chameleon theme, once built, restyles it.
 // What is real: the address field (typing builds the address, the check runs on made-up environments, Go and Enter go), Recent (choose a
@@ -297,7 +297,7 @@ function ownPart(ctx, { own = 'open', fold = false, password = false, slug = '',
   if (password) { const pw = inp({ type: 'password', autocomplete: 'new-password', minLength: 8 }); form.append(field('Your password', pw)); }
   form.append(foot, status);
   if (!password) form.append(h('p', 'sdk-hint', 'Next you choose your password, on your new environment\'s own page.'));
-  // The address check as you type (as landing.js does today): the shape hint, then free, taken or reserved after a short pause.
+  // The address check as you type (as the old landing page did): the shape hint, then free, taken or reserved after a short pause.
   let token = 0; let timer = null;
   const sayCheck = (text, kind) => { slugSay.textContent = text; slugSay.className = kind === 'error' ? 'sdk-error' : 'sdk-hint'; slugIn.setAttribute('aria-invalid', String(kind === 'error')); };
   const check = (now) => {

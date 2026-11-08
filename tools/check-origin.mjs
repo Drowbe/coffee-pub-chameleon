@@ -256,57 +256,28 @@ try {
       assert.equal(r.headers['access-control-allow-origin'], undefined, `${p} must not carry the CORS header`);
     }
   });
-  // plan-product-pages.md, decisions 7, 8, 10 and the contract: the use pages at the bare base domain.
+  // plan-product-site.md, slice 5: the use pages are gone, and /api/product no longer lists pages.
   const same = (sub) => ({ cookie: hostCookie, origin: originOf(sub), 'sec-fetch-site': 'same-origin' });
-  await test('/travel and /games answer 200 with their pages while their templates are offered; /projects (no template) answers 404', async () => {
-    const travel = await call('GET', '', '/travel', { headers: { accept: 'text/html' } });
-    assert.equal(travel.status, 200, travel.text.slice(0, 120));
-    assert.equal(travel.text, fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'), 'the page is public/travel.html');
-    const games = await call('GET', '', '/games', { headers: { accept: 'text/html' } });
-    assert.equal(games.status, 200, games.text.slice(0, 120));
-    assert.equal(games.text, fs.readFileSync(path.join(ROOT, 'public', 'games.html'), 'utf8'), 'the page is public/games.html');
-    for (const p of ['/projects', '/travel/', '/travel.html', '/games/', '/games.html']) assert.equal((await call('GET', '', p)).status, 404, p);
-    const info = await call('GET', '', '/api/product');
-    assert.deepEqual(info.json.pages, [{ path: '/travel', template: 'travel' }, { path: '/games', template: 'games' }]);
+  await test('/travel, /games and /projects are 404 everywhere, and /api/product has no `pages` (and no list of environments)', async () => {
+    for (const sub of ['', 'aaa', 'admin']) {
+      for (const p of ['/travel', '/games', '/projects', '/travel/', '/travel.html', '/games.html', '/landing.html', '/landing.js', '/landing.css']) assert.equal((await call('GET', sub, p, { headers: { accept: 'text/html' } })).status, 404, `${sub || 'bare'} ${p}`);
+    }
+    const info = (await call('GET', '', '/api/product')).json;
+    assert.equal('pages' in info, false, 'no pages');
+    assert.equal(info.productSiteUrl, null, 'no PRODUCT_SITE_URL, no link');
   });
-  await test('a use page is only at the bare base domain: an environment and the console do not send it', async () => {
-    const file = fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8');
-    for (const sub of ['aaa', 'admin']) assert.notEqual((await call('GET', sub, '/travel', { headers: { accept: 'text/html' } })).text, file, sub);
-  });
-  await test('hiding the travel template takes /travel to 404 and out of `pages`; showing it brings it back', async () => {
+  await test('hiding a template takes it out of the templates the start page offers; showing it brings it back', async () => {
     const hide = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: true } });
     assert.equal(hide.status, 200, hide.text);
-    assert.equal((await call('GET', '', '/travel')).status, 404, 'hidden: 404');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [{ path: '/games', template: 'games' }], 'games stays');
-    assert.equal((await call('GET', '', '/games')).status, 200, 'games still 200');
     assert.deepEqual((await call('GET', '', '/api/product')).json.templates.map((t) => t.id), ['games']);
-    const hideGames = await call('PATCH', 'admin', '/api/host/templates/games', { headers: same('admin'), body: { hidden: true } });
-    assert.equal(hideGames.status, 200, hideGames.text);
-    assert.equal((await call('GET', '', '/games')).status, 404, 'games hidden: 404');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [], 'both hidden: none');
-    const showGames = await call('PATCH', 'admin', '/api/host/templates/games', { headers: same('admin'), body: { hidden: false } });
-    assert.equal(showGames.status, 200, showGames.text);
     const show = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: false } });
     assert.equal(show.status, 200, show.text);
-    assert.equal((await call('GET', '', '/travel')).status, 200, 'shown again: 200');
-    assert.deepEqual((await call('GET', '', '/api/product')).json.pages, [{ path: '/travel', template: 'travel' }, { path: '/games', template: 'games' }]);
-  });
-  await test('the bundled games template, and a host template called projects, (a template with no file gives no page)', async () => {
-    assert.equal((await call('GET', '', '/games')).status, 200);
-    assert.ok((await call('GET', '', '/api/product')).json.pages.some((p) => p.path === '/games'));
-    assert.ok((await call('GET', '', '/api/product')).json.templates.some((t) => t.id === 'games'), 'the games template is offered');
-    assert.equal((await call('POST', 'admin', '/api/host/templates', { headers: same('admin'), body: { id: 'games', name: 'Games', description: 'A test.', modules: ['chat'] } })).status, 409, 'its id is taken');
-    const made = await call('POST', 'admin', '/api/host/templates', { headers: same('admin'), body: { id: 'projects', name: 'Projects', description: 'A test.', modules: ['chat'] } });
-    assert.equal(made.status, 201, made.text);
-    const projectsPage = fs.existsSync(path.join(ROOT, 'public', 'projects.html'));
-    assert.equal((await call('GET', '', '/projects')).status, projectsPage ? 200 : 404);
-    assert.equal((await call('GET', '', '/api/product')).json.pages.some((p) => p.path === '/projects'), projectsPage);
-    await call('DELETE', 'admin', '/api/host/templates/projects', { headers: same('admin') });
+    assert.ok((await call('GET', '', '/api/product')).json.templates.some((t) => t.id === 'travel'), 'shown again');
   });
   await test('one domain, no PRODUCT_DOMAIN: the product pages stay on the bare base domain, never redirected, and productDomain is the base', async () => {
     const front = await call('GET', '', '/', { headers: { accept: 'text/html' } });
     assert.equal(front.status, 200);
-    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
+    assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'start.html'), 'utf8'));
     const info = (await call('GET', '', '/api/product')).json;
     assert.deepEqual([info.baseDomain, info.productDomain], [BASE, BASE]);
     assert.deepEqual((await call('GET', '', '/api/product/address?slug=aaa')).json, { slug: 'aaa', free: false, reason: 'taken' });
@@ -325,7 +296,7 @@ try {
   const two = fs.mkdtempSync(path.join(os.tmpdir(), 'check-origin-product-'));
   const srv = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: two, BASE_DOMAIN: BASE, PRODUCT_DOMAIN: PRODUCT, SIGNUP: 'on', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: two, BASE_DOMAIN: BASE, PRODUCT_DOMAIN: PRODUCT, PRODUCT_SITE_URL: 'https://example.com/products/thing', SIGNUP: 'on', ADMIN_LOGIN: 'host', ADMIN_PASSWORD: 'hostpass1234' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let srvOut = '';
@@ -359,15 +330,15 @@ try {
       });
     };
     const productOrigin = `http://${PRODUCT}:${p2}`;
-    await test('PRODUCT_DOMAIN: the product host serves the front page, the use pages and the product API, and nothing else', async () => {
+    await test('PRODUCT_DOMAIN: the product host serves the start page and the product API, and nothing else', async () => {
       assert.ok(srvOut.includes(`host console at admin.${BASE}, product pages at ${PRODUCT}`), srvOut);
       const front = await at('GET', PRODUCT, '/', { headers: { accept: 'text/html' } });
       assert.equal(front.status, 200);
-      assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'landing.html'), 'utf8'));
-      assert.equal((await at('GET', PRODUCT, '/travel', { headers: { accept: 'text/html' } })).text, fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'));
-      for (const p of ['/landing.js', '/landing.css', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
+      assert.equal(front.text, fs.readFileSync(path.join(ROOT, 'public', 'start.html'), 'utf8'));
+      for (const p of ['/travel', '/games', '/landing.js', '/landing.css', '/start.html']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
+      for (const p of ['/start.js', '/start.css', '/theme-head.js', '/assets/images/brand/mark.svg', '/assets/images/brand/mark-dark.svg', '/style.css', '/theme.css', '/fonts/figtree/latin.woff2']) assert.equal((await at('GET', PRODUCT, p)).status, 200, p);
       const info = (await at('GET', PRODUCT, '/api/product')).json;
-      assert.deepEqual([info.baseDomain, info.productDomain, info.signup], [BASE, PRODUCT, true]);
+      assert.deepEqual([info.baseDomain, info.productDomain, info.signup, info.productSiteUrl, 'pages' in info], [BASE, PRODUCT, true, 'https://example.com/products/thing', false]);
       assert.deepEqual((await at('GET', PRODUCT, '/api/product/address?slug=fresh')).json, { slug: 'fresh', free: true, reason: null });
       for (const p of ['/app.js', '/login', '/api/me', '/admin', '/api/product/environments']) assert.equal((await at('GET', PRODUCT, p)).status, 404, p);
       // The design system pages and what they import are open; the app is not.
@@ -458,7 +429,7 @@ try {
   const one = fs.mkdtempSync(path.join(os.tmpdir(), 'check-origin-single-'));
   const solo = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: one, ADMIN_PASSWORD: 'testpass1234', PRODUCT_DOMAIN: 'product.test', RESERVED_SLUGS: 'studio' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: one, ADMIN_PASSWORD: 'testpass1234', PRODUCT_DOMAIN: 'product.test', RESERVED_SLUGS: 'studio', PRODUCT_SITE_URL: 'https://example.com/products/thing' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let soloOut = '';
@@ -471,14 +442,13 @@ try {
       solo.stdout.on('data', look);
       solo.stderr.on('data', look);
     });
-    await test('without BASE_DOMAIN (PRODUCT_DOMAIN and RESERVED_SLUGS set, and ignored with a line): /travel, /games and /projects are not pages, and /api/product lists no pages', async () => {
+    await test('without BASE_DOMAIN (PRODUCT_DOMAIN and RESERVED_SLUGS set, and ignored with a line): /travel, /games and /projects are not pages, and /api/product lists no templates', async () => {
       for (const p of ['/travel', '/games', '/projects']) {
         const r = await fetch(`http://127.0.0.1:${soloPort}${p}`, { redirect: 'manual' });
         assert.equal(r.status, 404, p);
-        assert.notEqual(await r.text(), fs.readFileSync(path.join(ROOT, 'public', 'travel.html'), 'utf8'), p);
       }
       const info = await (await fetch(`http://127.0.0.1:${soloPort}/api/product`)).json();
-      assert.deepEqual([info.pages, info.templates, info.baseDomain], [[], [], null]);
+      assert.deepEqual([info.templates, info.baseDomain, 'pages' in info], [[], null, false]);
       assert.equal(info.productDomain, null);
       assert.ok(soloOut.includes('PRODUCT_DOMAIN and RESERVED_SLUGS are ignored without BASE_DOMAIN: this server has one environment, at its own address.'), soloOut);
       // Every host is the one environment, the product host's name included.

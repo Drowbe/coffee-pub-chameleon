@@ -66,7 +66,7 @@ const { ModuleHooks, HOST_SOURCE } = require('./module-hooks');
 const moduleNotices = require('./module-notices');
 const themeCssLib = require('./theme-css');
 const { eraseSpace } = require('./space-erase');
-const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, cleanLogin, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
+const { DEFAULT_THEME, Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, cleanLogin, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
 // The phase timeline rule (plan-one-bar.md, step 1), the one copy the pages use too.
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
@@ -101,6 +101,9 @@ const {
   RESERVED_SLUGS = '',
   MIGRATE_ENVIRONMENT_SLUG = '',
   CONTACT_EMAIL = '',
+  // The product's page on its website, the one link the start page offers (plan-product-site.md): an absolute http(s)
+  // address; unset, no link. Checked at start, below.
+  PRODUCT_SITE_URL = '',
   // Seed the host's managed AI service, per company (documentation/plans/plan-environments.md, "Managed AI, per
   // company"): AI_OPENAI_KEY/AI_ANTHROPIC_KEY name a company's key directly; AI_PROVIDER (with AI_ADDRESS,
   // AI_MODEL, AI_KEY) is the older one-company form, filling whichever company it names -- both still work.
@@ -375,6 +378,19 @@ if (domains.stop) {
   console.error(domains.stop);
   process.exit(1);
 }
+// The product's page on its website (PRODUCT_SITE_URL): an absolute http or https address, or nothing. A value that is not one
+// stops the start with one sentence, as a bad PRODUCT_DOMAIN does.
+const PRODUCT_SITE = (() => {
+  const raw = String(PRODUCT_SITE_URL || '').trim();
+  if (!raw) return null;
+  let url = null;
+  try { url = new URL(raw); } catch { /* not an address: refused below */ }
+  if (!url || !/^https?:$/.test(url.protocol) || !url.hostname || url.username || url.password) {
+    console.error(`PRODUCT_SITE_URL=${raw} is not a web address (like https://www.example.com/page). Fix or remove it.`);
+    process.exit(1);
+  }
+  return url.href;
+})();
 // The product host's own label may be an existing environment's slug (the product pages would hide it): read host.json
 // as it is, without opening the registry, so the start that stops writes nothing.
 if (BASE_DOMAIN && domains.productLabel) {
@@ -1775,9 +1791,9 @@ const publicDir = path.join(__dirname, '..', 'public');
 const clientDist = path.join(__dirname, '..', 'node_modules', 'livekit-client', 'dist');
 const page = (name) => path.join(publicDir, name);
 // Pages the static files never serve by their file name: only their own route sends them, with that route's headers
-// (the first-password page: GET /login/first-password, on a hosted install only -- plan-first-password.md). Matched as
+// (the first-password page: GET /login/first-password, on a hosted install only -- plan-first-password.md; the start page: the product host's /). Matched as
 // the static files would find them: decoded, with ./, ../ and doubled slashes resolved, and in any case.
-const ROUTE_ONLY_FILES = new Set(['login-first-password.html']);
+const ROUTE_ONLY_FILES = new Set(['login-first-password.html', 'start.html']);
 function routeOnlyFile(reqPath) {
   let decoded;
   try { decoded = decodeURIComponent(reqPath); } catch { return false; } // the static files refuse it themselves
@@ -2633,7 +2649,7 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
 
 hostRouter.get('/api/host/settings', requireHostAdmin, (_req, res) => {
   res.json({
-    baseDomain: BASE_DOMAIN, productDomain: PRODUCT_HOST, version: VERSION, hostAdmins: hostRegistry.listAdmins(), productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contactEmail: CONTACT_EMAIL || null,
+    baseDomain: BASE_DOMAIN, productDomain: PRODUCT_HOST, version: VERSION, hostAdmins: hostRegistry.listAdmins(), productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contactEmail: CONTACT_EMAIL || null, productSiteUrl: PRODUCT_SITE,
     plans: hostRegistry.plansCatalog(), signup: signupEnabled, billingSecretSet: Boolean(BILLING_SECRET),
     // The modules this image ships, for the template editor: the built-in two, then the bundled ones by id.
     modules: [...BUILTIN_MODULES, ...bundledModules(BUNDLED_DIR)].map((m) => ({ id: m.id, name: m.name || m.id, icon: m.icon || null })),
@@ -2869,30 +2885,17 @@ hostRouter.delete('/api/host/admins/:key', requireHostAdmin, (req, res) => {
     sendHostError(err, res);
   }
 });
-// The product's use pages at the product host: each address, its file in public/ and the template it advertises.
-// A page is live only while that template is among the host's offered ones (templateChoices(null)) and its file exists;
-// otherwise the address answers 404 like any unknown path (plan-product-pages.md, decisions 7, 8 and 10).
-const PRODUCT_PAGES = [
-  { path: '/travel', file: 'travel.html', template: 'travel' },
-  { path: '/games', file: 'games.html', template: 'games' },
-  { path: '/projects', file: 'projects.html', template: 'projects' },
-];
-const livePages = () => {
-  if (!BASE_DOMAIN) return [];
-  const offered = new Set(templateChoices(null).map((t) => t.id));
-  return PRODUCT_PAGES.filter((p) => offered.has(p.template) && fs.existsSync(page(p.file)));
-};
-// The product itself, for the landing page (the product host) and the console (admin.<base>): public, no
+// The product itself, for the start page (the product host) and the console (admin.<base>): public, no
 // session needed, and harmless anywhere else it happens to be reached. name and contact are configuration, never
 // code, since the product's own name is still being chosen. Registered on hostRouter here (admin.<base> only
 // ever reaches it through here anyway); the main app's own copy is registered after the resolver below, not
 // here, so an old-base-domain request still 301s instead of this one route quietly bypassing that.
-// `pages`: the use pages live on this host ([{ path, template }]), so the front page links only those.
+// `productSiteUrl`: the product's page on its website (PRODUCT_SITE_URL), or null; the start page's one link out.
 function productInfo(_req, res) {
   const plans = hostRegistry ? Object.entries(hostRegistry.plansCatalog()).map(([id, p]) => ({ id, name: p.name, caps: p.caps, checkoutUrl: checkoutUrlFor(id) })) : [];
   // `templates`: what a new environment can be made from ([{ id, name, description }]), for the sign-up form.
   // `productDomain`: where the product pages live (PRODUCT_DOMAIN, else the bare base domain); null without a base domain.
-  res.json({ name: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contact: CONTACT_EMAIL || null, baseDomain: BASE_DOMAIN || null, productDomain: PRODUCT_HOST || null, version: VERSION, signup: signupEnabled, plans, templates: BASE_DOMAIN ? templateChoices(null).map(({ id, name, description }) => ({ id, name, description })) : [], pages: livePages().map(({ path: p, template }) => ({ path: p, template })) });
+  res.json({ name: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contact: CONTACT_EMAIL || null, baseDomain: BASE_DOMAIN || null, productDomain: PRODUCT_HOST || null, version: VERSION, signup: signupEnabled, plans, templates: BASE_DOMAIN ? templateChoices(null).map(({ id, name, description }) => ({ id, name, description })) : [], productSiteUrl: PRODUCT_SITE });
 }
 hostRouter.get('/api/product', productInfo);
 // One environment's public name, for the product page's typed address (a slug is an address already, so confirming
@@ -2938,8 +2941,8 @@ hostRouter.use((_req, res) => res.status(404).json({ error: 'not found' }));
 // With no BASE_DOMAIN every request is the one environment (today's behaviour, unchanged). With BASE_DOMAIN set, the
 // hostname picks one branch, in this order (documentation/plans/plan-domains.md, "The door"):
 //   1. admin.<base> is the host console above;
-//   2. the product host (PRODUCT_DOMAIN, else the bare <base>) serves the product's own pages: the front page, the use
-//      pages and sign-up, never any one environment's;
+//   2. the product host (PRODUCT_DOMAIN, else the bare <base>) serves the product's start page (public/start.html) and
+//      sign-up, never any one environment's;
 //   3. a host at an old base domain (PREVIOUS_BASE_DOMAINS) is redirected (301) to the same path at the current one --
 //      after the product host, so an old base that is now the product host never catches it;
 //   4. the bare <base>, when the product pages live elsewhere, is redirected (302) there, path and query kept;
@@ -2957,11 +2960,11 @@ function requestPort(req) {
 function redirectToHost(req, res, status, newHost) {
   return res.redirect(status, `${auth.isSecure(req) ? 'https' : 'http'}://${newHost}${newHost.includes(':') ? '' : requestPort(req)}${req.originalUrl}`);
 }
-// The paths the product host lets through beside / and the use pages: what those pages load and ask.
+// The paths the product host lets through beside /: what the start page loads and asks.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
-const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
+const PRODUCT_HOST_PATHS = ['/start.css', '/start.js', '/theme-head.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
   app.use((req, res, next) => {
     const host = (req.hostname || '').toLowerCase();
@@ -2969,13 +2972,11 @@ if (BASE_DOMAIN) {
     // outside hostRouter (mounted on `app`, below, since the product host needs it too) -- let through to
     // there rather than into hostRouter, whose own catch-all would otherwise 404 it before it ever arrived.
     if (host === CONSOLE_HOST) return (req.path.startsWith('/fa/') || req.path.startsWith('/fonts/')) ? next() : hostRouter(req, res, next);
-    // The product's own landing page (public/landing.html), never any one environment's page -- no store is ever
+    // The product's own start page (public/start.html), never any one environment's page -- no store is ever
     // resolved here (see the "no environment" fallback in /theme.css and siteIcon above). Only the handful of paths
-    // those pages actually need are let through; anything else is a plain 404, same as an unknown subdomain.
+    // the page actually needs are let through; anything else is a plain 404, same as an unknown subdomain.
     if (host === PRODUCT_HOST) {
-      if (req.path === '/') return res.sendFile(page('landing.html'), { dotfiles: 'allow' });
-      const useSite = livePages().find((p) => p.path === req.path);
-      if (useSite) return res.sendFile(page(useSite.file), { dotfiles: 'allow' });
+      if (req.path === '/') return res.sendFile(page('start.html'), { dotfiles: 'allow' });
       // A folder of the design system pages (/design-system/, /design-system/legacy/inventory/) is its index.html; a folder without one is a 404.
       if (/^\/design-system\/(?:[a-z0-9-]+\/)*$/.test(req.path)) return res.sendFile(path.join(publicDir, req.path, 'index.html'), { dotfiles: 'allow' }, (err) => { if (err) res.status(404).type('text').send('not found'); });
       if (req.path.startsWith('/design-system/') || req.path.startsWith('/sdk/') || DESIGN_SYSTEM_FILES.includes(req.path)) return designSystemStatic(req, res, () => res.status(404).type('text').send('not found'));
@@ -3185,7 +3186,7 @@ app.get('/admin', (req, res) => {
 const BRAND_DIR = path.join(publicDir, 'assets', 'images', 'brand');
 function brandIconFile(reqPath) { return path.join(BRAND_DIR, reqPath === '/favicon.ico' ? 'favicon.ico' : 'favicon.svg'); }
 function siteIcon(req, res) {
-  // No environment at the bare base domain (the landing page): the bundled default, same as any environment
+  // No environment at the product host (the start page): the bundled default, same as any environment
   // that has not set its own.
   const env = envContext.getStore();
   const file = env && env.store.iconPath();
@@ -3341,9 +3342,10 @@ for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req
 app.get('/theme.css', (req, res) => {
   res.set('Content-Type', 'text/css');
   res.set('Cache-Control', 'no-cache');
-  // No environment at the bare base domain (the landing page): no theme there either, same as one that has not set one.
+  // No environment at the product host (the start page): the bundled default theme, light unless the browser picked dark
+  // (public/theme-head.js), since there is no owner's theme to follow.
   const env = envContext.getStore();
-  if (!env) return res.send('');
+  if (!env) return res.send(themeCssLib.themeCss({ light: DEFAULT_THEME.light, dark: DEFAULT_THEME.dark }, 'light'));
   // Both modes, each under its own <html data-theme-mode> (server/theme-css.js); a page without the attribute shows
   // the signed-in person's own mode, else the environment's default, so the first paint is already right.
   const person = currentUser(req);

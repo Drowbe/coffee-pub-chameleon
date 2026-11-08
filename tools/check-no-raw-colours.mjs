@@ -15,14 +15,14 @@
 // or MapLibre. A colour a script keeps as plain data (a palette array) is not in a declaration and is not read.
 //
 // The admin theme editor's native colour inputs (public/admin.html, type="color") hold a colour the person picks and the code draws none, so there is nothing to read there.
-// Pages with their own palette (OWN_PALETTE in tools/lib/drift.mjs, today public/landing.css) are not read, and the check prints which; @font-face blocks are not read.
+// No page has a palette of its own: the start page too reads the theme tokens. @font-face blocks are not read.
 // Today's offenders are recorded per file and kind in tools/check-no-raw-colours-allow.json. The check passes while no
 // count is higher, fails on a higher count or a new file, and says when a count has dropped.
 //   node tools/check-no-raw-colours.mjs                 the check
 //   node tools/check-no-raw-colours.mjs --list          also print every hit, file:line
 //   node tools/check-no-raw-colours.mjs --update        lower the allow-list to today's counts (never raises)
 //   node tools/check-no-raw-colours.mjs --update --force-raise   also allow raising (how it was first made)
-import { collectFiles, declarations, Tally, runRatchet, summary, ownPaletteSplit } from './lib/drift.mjs';
+import { collectFiles, declarations, Tally, runRatchet, summary } from './lib/drift.mjs';
 
 const TOKEN_FILES = new Set(['public/style.css', 'public/sdk/host.css', 'public/sdk/system.css']);
 // :root, optionally with attribute and :not() parts, and nothing else (no descendant): a token definition.
@@ -90,7 +90,7 @@ function blackOrWhite(c) {
 
 const LIST = process.argv.includes("--list"); // print every hit, file:line
 const tally = new Tally();
-const [files, ownLines] = ownPaletteSplit(collectFiles());
+const files = collectFiles();
 for (const file of files) {
   for (const d of declarations(file)) {
     if (d.prop === 'value' || d.prop === 'css-text') continue; // an input's value; cssText is read as the declarations inside it
@@ -118,5 +118,5 @@ runRatchet({
   about: 'check-no-raw-colours: today\'s hard-coded colours outside the token blocks, per file. "raw" is a real colour to move onto a token; "shadow-scrim" is pure black or white used as a shadow or scrim (allowed for now). Counts may only fall; lower them with: node tools/check-no-raw-colours.mjs --update',
   tally,
   unit: 'hard-coded colours',
-  extraReport: [...ownLines, `  raw: ${by.get('raw') || 0}, shadow-scrim: ${by.get('shadow-scrim') || 0}`, ...summary(tally, 'kind')],
+  extraReport: [`  raw: ${by.get('raw') || 0}, shadow-scrim: ${by.get('shadow-scrim') || 0}`, ...summary(tally, 'kind')],
 });
