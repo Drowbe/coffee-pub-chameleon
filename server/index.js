@@ -1943,13 +1943,31 @@ const FIRST_PASSWORD_DEAD = 'This link has expired or was already used. Ask whoe
 function firstPasswordUrl(req, slug, token) {
   return `${auth.isSecure(req) ? 'https' : 'http'}://${slug}.${BASE_DOMAIN}${requestPort(req)}/login/first-password#${token}`;
 }
+// The slug of a folder already on disk for this address (DATA_DIR/environments/<slug>, whether or not the registry
+// names it), or null: also null for an address that is not a slug or is reserved, which addEnvironment refuses itself.
+function addressOnDisk(value) {
+  let slug;
+  try { slug = cleanSlug(value); } catch { return null; }
+  if (hostRegistry.isReserved(slug)) return null;
+  try { fs.lstatSync(path.join(DATA_DIR, 'environments', slug)); return slug; } catch { return null; }
+}
 // Undoes an environment made a moment ago in the same request (sign-up, when its owner cannot be made): the registry
-// entry, its services and its fresh folder, so nothing is left behind.
+// entry, its services and the folder this request made (the caller checked none was there before), so nothing is left
+// behind. The environment's first build also starts work in the background (the template, the automatic module
+// installs) that writes into its folder, so the folder is removed again once that work is done -- unless the address
+// has been taken again in the meantime, when the folder is the new environment's.
 function discardNewEnvironment(slug) {
   try { hostRegistry.removeEnvironment(slug); } catch { /* not in the registry */ }
   const env = environments.get(slug);
   if (env) { setAsideEnvironment(env); environments.delete(slug); }
-  fs.rmSync(path.join(DATA_DIR, 'environments', slug), { recursive: true, force: true });
+  const dir = path.join(DATA_DIR, 'environments', slug);
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (env?.templateReady) {
+    env.templateReady.finally(() => {
+      if (hostRegistry.findEnvironment(slug) || environments.has(slug)) return;
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
 }
 // "New first-password link" (the console): for an owner who still has no password, a fresh link that lives 24 hours,
 // used once. It replaces any older link, which stops working, as does any step begun from it. Answered once, never kept.
@@ -1979,6 +1997,14 @@ function environmentUsage(slug) {
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
   return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
+}
+// The logins of an environment's owners who have no password yet: whom the console's "New first-password link" is for
+// (the route below refuses everyone else). None for an environment that does not open.
+function ownersAwaitingFirstPassword(slug) {
+  if (refusalView(slug)) return [];
+  let env;
+  try { env = environmentFor(slug); } catch { return []; }
+  return env.store.users.filter((u) => u.role === 'owner' && !u.hostAdmin && !u.passwordHash).map((u) => u.login);
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -2010,7 +2036,9 @@ hostRouter.get('/api/host/environments', requireHostAdmin, async (_req, res) => 
   // `template`: the template it was made from, with what was skipped (templateView), or null.
   const list = hostRegistry.listEnvironments();
   const callsNow = await hostCallsNow(list);
-  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t) }; }) });
+  // `awaitingFirstPassword`: the logins of its owners who have no password yet, for the card's "New first-password link"
+  // (plan-first-password.md, Decision 4); never the link, its hash or its times.
+  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t), awaitingFirstPassword: ownersAwaitingFirstPassword(t.slug) }; }) });
 });
 // The templates an environment can be made from, for the console's create form.
 // Every template, with where it comes from, its version, whether it is hidden and which environments use it.
@@ -2883,7 +2911,9 @@ function productAddress(req, res) {
   const ip = req.ip || 'unknown';
   if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
   addressLimiter.fail(ip);
-  res.json(hostRegistry.addressFor(req.query.slug));
+  const answer = hostRegistry.addressFor(req.query.slug);
+  // A folder left on disk with no registry entry is taken too, as sign-up treats it (and says no more than that).
+  res.json(answer.free && addressOnDisk(answer.slug) ? { slug: answer.slug, free: false, reason: 'taken' } : answer);
 }
 hostRouter.get('/api/product/address', productAddress);
 hostRouter.use((_req, res) => res.status(404).json({ error: 'not found' }));
@@ -2969,15 +2999,22 @@ app.post('/api/product/signup', (req, res) => {
     const owner = req.body?.owner;
     const has = (obj, key) => Boolean(obj) && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key);
     if (has(owner, 'password') || has(req.body, 'password')) throw new HostError(`Sign-up takes no password. You choose it on your new ${word('environment')}'s own page.`);
-    const login = owner && typeof owner === 'object' ? cleanLogin(owner.login) : '';
+    // Only text is cleaned: anything else (an object, a list, a number) is refused, never turned into words.
+    const login = owner && typeof owner === 'object' && typeof owner.login === 'string' ? cleanLogin(owner.login) : '';
     if (!login) throw new HostError(`Sign-up needs the ${word('owner')}'s login.`);
+    if (owner.displayName != null && typeof owner.displayName !== 'string') throw new HostError(`The ${word('owner')}'s name must be text.`);
     const free = hostRegistry.plansCatalog().free;
     const template = chosenTemplate(req.body?.template);
+    // A folder already on disk for this address with no registry entry (left behind) is someone's data: refused as the
+    // address being taken, with the same answer, and never read, changed or removed.
+    const asked = addressOnDisk(req.body?.slug);
+    if (asked) throw new HostError(`"${asked}" is already in use`, 409);
     const environment = hostRegistry.addEnvironment({ slug: req.body?.slug, name: req.body?.name, plan: { name: 'free', ...free.caps }, template });
     const token = auth.oneTimeToken();
     try {
       environmentFor(environment.slug).store.addUser({ login, displayName: owner.displayName || login, role: 'owner', passwordHash: null, firstPassword: { hash: auth.tokenHash(token), expiresAt: new Date(Date.now() + FIRST_PASSWORD_SIGNUP_MS).toISOString() } });
     } catch (err) {
+      // The folder was checked to be absent above, with nothing in between that waits, so this request made it.
       discardNewEnvironment(environment.slug); // nothing is left behind: no environment without its owner
       throw err;
     }
@@ -3009,11 +3046,17 @@ const FRAMED_HERE_PATHS = new Set([
   '/profile.html', '/admin.html', '/module-config.html', '/login.html', '/login-step.html', '/register.html', '/module.html', '/destination.html',
   ...(BASE_DOMAIN ? ['/login/first-password', '/login-first-password.html'] : []), // a hosted install's only (plan-first-password.md)
   ...destinations.DESTINATIONS.map((d) => d.path),
-]);
+].map((p) => framingPath(p)));
+// A path as the router matches it: the router ignores case and a trailing slash (Express's defaults), so the framing
+// decision must too, or /Login/ would reach the sign-in page without its headers.
+function framingPath(p) {
+  return String(p).toLowerCase().replace(/\/+$/, '') || '/';
+}
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path === '/space.html') res.set(NOT_FRAMED);
-  else if (FRAMED_HERE_PATHS.has(req.path) || /^\/profile\/[^/]+$/.test(req.path) || /^\/invite\/[^/]+$/.test(req.path)) res.set(FRAMED_HERE);
+  const p = framingPath(req.path);
+  if (p === '/space.html') res.set(NOT_FRAMED);
+  else if (FRAMED_HERE_PATHS.has(p) || /^\/profile\/[^/]+$/.test(p) || /^\/invite\/[^/]+$/.test(p)) res.set(FRAMED_HERE);
   next();
 });
 // A page a frame asked for that would otherwise redirect a framed request into a page that refuses frames (/, a guest

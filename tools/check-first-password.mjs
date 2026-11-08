@@ -3,7 +3,10 @@
  * check-first-password.mjs -- sign-up with no password, and the owner's first password chosen on the new environment's
  * own page through a one-time link (documentation/plans/plan-first-password.md). A real hosted server (BASE_DOMAIN and
  * SIGNUP=on) on a throwaway DATA_DIR, reached by Host header, plus a single-environment server:
- *   - sign-up refuses a posted password (400) and a login of only spaces (400), and leaves no environment behind;
+ *   - sign-up refuses a posted password (400), a login of only spaces (400), and an owner login or name that is not text
+ *     (400), and leaves no environment and no folder behind;
+ *   - a folder already on disk for the address with no registry entry (left behind) is refused as taken (409, the same
+ *     answer), the address check says taken, and the folder is never touched: no data lost, none taken over, nothing added;
  *     it answers 201 with Cache-Control: no-store and <scheme>://<slug>.<base>:<port>/login/first-password#<43 characters>,
  *     with no login and no query in the address; only the token's SHA-256 is kept;
  *   - before the first password every other way in is shut: POST /api/login (as an unknown login, any password), a
@@ -20,7 +23,8 @@
  *   - the token is never in the server's output, in clear in any file under DATA_DIR, or in any later answer (/api/me,
  *     /api/users, the console's list, the owner's export); the export leaves out its hash too, the host backup keeps it;
  *   - GET /login/first-password never redirects, signed in or not, and carries no-store, no-referrer and the
- *     framed-here headers;
+ *     framed-here headers, however the path is written (case, a trailing slash), as do the sign-in pages;
+ *   - the console's list names the owners still waiting for their first password (awaitingFirstPassword, logins only);
  *   - the console's "New first-password link" (POST /api/host/environments/:slug/owners/:login/first-password): host
  *     admin only, refuses an owner with a password, lives 24 hours, used once, and ends any older link and any step
  *     begun from it;
@@ -48,6 +52,7 @@ const HOST_PASSWORD = 'check-first-password-host-1';
 const DEAD = 'This link has expired or was already used. Ask whoever runs this host for a new one.';
 const NO_PASSWORD = "Sign-up takes no password. You choose it on your new environment's own page.";
 const NO_LOGIN = "Sign-up needs the owner's login.";
+const NO_NAME = "The owner's name must be text.";
 const ORIGIN_SENTENCE = 'This request came from another site, so it was refused.';
 const PAGE_BUILT = fs.existsSync(path.join(ROOT, 'public', 'login-first-password.html'));
 
@@ -210,8 +215,58 @@ try {
     assert.ok(!list.json.environments.some((e) => e.slug === 'spaces'), 'not in the registry');
   });
 
+  await test('sign-up with an owner login or name that is not text is 400 and makes nothing', async () => {
+    for (const owner of [{ login: { a: 1 } }, { login: ['x'] }, { login: 12345 }, { login: true }, { login: 'fine', displayName: { a: 1 } }, { login: 'fine', displayName: ['x'] }, { login: 'fine', displayName: 7 }]) {
+      const res = await call('', 'POST', '/api/product/signup', { body: { slug: 'nottext', name: 'Not text', owner }, from: nextIp() });
+      const error = typeof owner.login === 'string' ? NO_NAME : NO_LOGIN;
+      assert.deepEqual([res.status, res.json], [400, { error }], JSON.stringify(owner));
+    }
+    assert.deepEqual((await call('', 'GET', '/api/product/address?slug=nottext')).json, { slug: 'nottext', free: true, reason: null });
+    assert.ok(!fs.existsSync(path.join(dataDir, 'environments', 'nottext')), 'no folder');
+  });
+
   const A = await signup('alpha');
   const B = await signup('bravo');
+
+  await test("a folder left on disk with no registry entry is refused as taken, and is never touched", async () => {
+    // A leftover: an environment's folder with data in it, but no entry in the registry.
+    const left = path.join(dataDir, 'environments', 'leftover');
+    fs.mkdirSync(path.join(left, 'notes'), { recursive: true });
+    fs.copyFileSync(path.join(dataDir, 'environments', 'alpha', 'app.json'), path.join(left, 'app.json'));
+    fs.writeFileSync(path.join(left, 'notes', 'keep.txt'), 'old data');
+    const empty = path.join(dataDir, 'environments', 'emptyleft');
+    fs.mkdirSync(empty);
+    const snapshot = (dir) => filesUnder(dir).map((f) => [path.relative(dir, f), fs.readFileSync(f, 'utf8')]).sort();
+    const listing = (dir) => fs.readdirSync(dir).sort();
+    const before = snapshot(left);
+    const taken = await call('', 'POST', '/api/product/signup', { body: { slug: 'alpha', name: 'Again', owner: { login: 'someone' } }, from: nextIp() });
+    assert.deepEqual([taken.status, taken.json], [409, { error: '"alpha" is already in use' }], 'the taken answer');
+    // The same login as the old data's owner (addUser would refuse it), a new login (it would take the old data over),
+    // and an empty leftover folder.
+    const answers = [];
+    for (const [slug, login] of [['leftover', 'ownalpha'], ['leftover', 'newperson'], ['emptyleft', 'newperson']]) {
+      answers.push([slug, login, await call('', 'POST', '/api/product/signup', { body: { slug, name: 'Take over', owner: { login } }, from: nextIp() })]);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500)); // anything begun in the background has had its time
+    assert.ok(fs.existsSync(left), 'the old folder is still there');
+    assert.deepEqual(snapshot(left), before, 'the old data is untouched');
+    assert.deepEqual(listing(left), ['app.json', 'notes'], 'nothing added beside it (no modules folder)');
+    assert.deepEqual(listing(empty), [], 'the empty folder stays empty');
+    for (const [slug, login, res] of answers) {
+      assert.deepEqual([res.status, res.json], [409, { error: `"${slug}" is already in use` }], `${slug} as ${login}: ${res.text}`);
+      assert.equal(res.headers['content-type'], taken.headers['content-type']);
+    }
+    assert.deepEqual((await call('', 'GET', '/api/product/address?slug=leftover')).json, { slug: 'leftover', free: false, reason: 'taken' });
+    const list = await call('admin', 'GET', '/api/host/environments', { cookie: host });
+    assert.ok(!list.json.environments.some((e) => ['leftover', 'emptyleft'].includes(e.slug)), 'not in the registry');
+    fs.rmSync(left, { recursive: true });
+    fs.rmSync(empty, { recursive: true });
+  });
+
+  await test('a refused sign-up leaves no folder behind, not even an empty modules folder, after the background work', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (const slug of ['withpw', 'spaces', 'nottext']) assert.ok(!fs.existsSync(path.join(dataDir, 'environments', slug)), `${slug}: no folder`);
+  });
   await test('sign-up answers the first-password link: the token in the fragment only, no-store, only its hash kept', async () => {
     for (const [slug, s] of [['alpha', A], ['bravo', B]]) {
       assert.equal(s.res.status, 201, s.res.text);
@@ -439,6 +494,10 @@ try {
   await test('the console\'s "New first-password link": host admin only, 24 hours, once, and it ends any older link and step', async () => {
     const H = await signup('hotel');
     const hostNow = await hostCookie();
+    // The console's list says which owners are still waiting for their first password: their logins only.
+    const waiting = async () => Object.fromEntries((await call('admin', 'GET', '/api/host/environments', { cookie: hostNow })).json.environments.map((e) => [e.slug, e.awaitingFirstPassword]));
+    const w0 = await waiting();
+    assert.deepEqual([w0.hotel, w0.alpha], [['ownhotel'], []], JSON.stringify(w0));
     const make = (slug, login, opts = {}) => call('admin', 'POST', `/api/host/environments/${slug}/owners/${login}/first-password`, opts);
     assert.equal((await make('hotel', 'ownhotel')).status, 401, 'no session');
     assert.equal((await make('hotel', 'ownhotel', { cookie: ownerSession })).status, 401, "an environment owner's session is not the host admin's");
@@ -476,6 +535,7 @@ try {
     assert.equal(done.status, 200, done.text);
     assert.ok(isDead(await exchange('hotel', t2)));
     assert.equal((await make('hotel', 'ownhotel', { cookie: hostNow })).status, 400, 'once the password is set there is none to make');
+    assert.deepEqual((await waiting()).hotel, [], 'and the list no longer names the owner');
   });
 
   await test('GET /login/first-password never redirects, signed in or not, and carries no-store, no-referrer and the framed-here headers', async () => {
@@ -490,6 +550,22 @@ try {
       assert.match(res.headers['content-security-policy'] || '', /frame-ancestors 'self'/, what);
     }
     assert.equal((await call('', 'GET', '/login/first-password', { headers: { accept: 'text/html' } })).status, 404, 'not at the product host');
+    // The router ignores case and a trailing slash, so the framing headers must too: every way of writing the path
+    // that reaches the page gets them.
+    for (const p of ['/login/first-password/', '/Login/First-Password', '/LOGIN/FIRST-PASSWORD/', '/login/first-password/?x=1']) {
+      const res = await call('alpha', 'GET', p, { headers: { accept: 'text/html' } });
+      assert.equal(res.status, PAGE_BUILT ? 200 : 404, `${p}: ${res.status}`);
+      assert.ok(!res.headers.location, `${p}: no Location`);
+      assert.equal(res.headers['cache-control'], 'no-store', p);
+      assert.equal(res.headers['referrer-policy'], 'no-referrer', p);
+      assert.equal(res.headers['x-frame-options'], 'SAMEORIGIN', p);
+      assert.match(res.headers['content-security-policy'] || '', /frame-ancestors 'self'/, p);
+    }
+    for (const p of ['/login/', '/Login', '/LOGIN/', '/login/verify/', '/Login/Verify', '/login/enrol/', '/Login/ENROL', '/Register/', '/Profile/']) {
+      const res = await call('alpha', 'GET', p, { headers: { accept: 'text/html' } });
+      assert.equal(res.headers['x-frame-options'], 'SAMEORIGIN', `${p}: ${res.status}`);
+      assert.match(res.headers['content-security-policy'] || '', /frame-ancestors 'self'/, p);
+    }
     if (!PAGE_BUILT) console.log('check-first-password: public/login-first-password.html is not built yet (plan step 2): the page route answers 404 until it is.');
   });
 
