@@ -1,0 +1,48 @@
+{
+  "id": "whiteboard",
+  "name": "Whiteboard",
+  "version": "0.1.2",
+  "icon": "chalkboard",
+  "color": "teal",
+  "content": "flush",
+  "description": "A shared board for the {space}: draw, add notes, text and shapes, and move them around together.",
+  "author": "Coffee Pub",
+  "scope": [
+    "space"
+  ],
+  "surfaces": {
+    "canvas": {
+      "entry": "canvas.html",
+      "width": 640,
+      "height": 520,
+      "mode": [
+        "dock",
+        "float"
+      ]
+    }
+  },
+  "permissions": [
+    {
+      "key": "view",
+      "label": "See the whiteboard",
+      "default": {
+        "member": true,
+        "guest": true,
+        "moderator": true
+      }
+    },
+    {
+      "key": "edit",
+      "label": "Draw on the whiteboard and change what is on it",
+      "default": {
+        "member": true,
+        "guest": false,
+        "moderator": true
+      }
+    }
+  ],
+  "access": {
+    "read": "view",
+    "write": "edit"
+  }
+}

@@ -1,0 +1,161 @@
+/*
+ * The Whiteboard module's look. Every colour is a theme token (public/sdk/host.css): a block's colour is stored as a name
+ * (ink or one of the eight tints) and mapped to its token here, so the board follows the theme and both modes. Nothing has
+ * a fixed pixel height: the board fills the module. The narrow layout keys on `.app.narrow`, set from the module's width.
+ */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.msg { padding: 16px; color: var(--text-muted); }
+
+/* the board: a dotted ground that moves with the view (the script sets --wb-grid and its offset) */
+.board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--surface-page);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--text-primary) 16%, transparent) 1px, transparent 1.5px);
+  background-size: var(--wb-grid, 24px) var(--wb-grid, 24px);
+  background-position: var(--wb-grid-x, 0) var(--wb-grid-y, 0);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+.board:focus-visible { box-shadow: inset 0 0 0 2px var(--focus-ring, var(--accent)); }
+.world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  max-width: calc(100% - 32px);
+  color: var(--text-muted);
+  font-size: var(--text-14);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* a block: where it is and how big is set by the renderer; how it looks is here, by its type and colour */
+.wb-block { position: absolute; --c: var(--text-primary); color: var(--text-primary); }
+.wb-block:focus { outline: none; }
+.wb-block:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 4px; }
+.wb-block[data-tint="gold"] { --c: var(--tint-gold); }
+.wb-block[data-tint="orange"] { --c: var(--tint-orange); }
+.wb-block[data-tint="red"] { --c: var(--tint-red); }
+.wb-block[data-tint="pink"] { --c: var(--tint-pink); }
+.wb-block[data-tint="purple"] { --c: var(--tint-purple); }
+.wb-block[data-tint="blue"] { --c: var(--tint-blue); }
+.wb-block[data-tint="teal"] { --c: var(--tint-teal); }
+.wb-block[data-tint="green"] { --c: var(--tint-green); }
+.wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; }
+
+/* a note: a square of its colour, words on it */
+.wb-type-note {
+  padding: 12px;
+  border-radius: var(--radius-min);
+  background: color-mix(in srgb, var(--c) 38%, var(--surface-card));
+  box-shadow: var(--shadow-1);
+  font-size: var(--text-16);
+  overflow: hidden;
+  cursor: grab;
+}
+.wb-type-note .wb-words { height: 100%; overflow: hidden; }
+
+/* words on their own */
+.wb-type-text { padding: 4px; color: var(--c); font-size: var(--text-22); cursor: grab; }
+.wb-type-text[data-tint="ink"] { color: var(--text-primary); }
+.wb-type-text .wb-words:empty { min-height: 1.35em; }
+
+/* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line */
+.wb-type-rect, .wb-type-ellipse, .wb-type-line, .wb-type-stroke { pointer-events: none; }
+.wb-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.wb-svg .wb-hit { pointer-events: visiblePainted; cursor: grab; }
+.wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: 16px; stroke-linecap: round; pointer-events: stroke; }
+.wb-shape-body { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); stroke-width: 3px; }
+.wb-svg .wb-stroke { fill: none; stroke: var(--c); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.wb-svg .wb-head { fill: var(--c); pointer-events: none; }
+.wb-type-rect .wb-words, .wb-type-ellipse .wb-words {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: var(--text-16);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* editing words: a text box in the block's own place and look */
+.wb-editing .wb-words { visibility: hidden; }
+.wb-text-edit {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.35;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.wb-type-note .wb-text-edit { position: absolute; inset: 12px; width: auto; height: auto; }
+.wb-type-text .wb-text-edit { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); }
+.wb-type-rect .wb-text-edit, .wb-type-ellipse .wb-text-edit { position: absolute; inset: 8px; width: auto; height: auto; text-align: center; font-size: var(--text-16); }
+
+/* the selection's frame, a mark on the board kept the same thickness at any zoom */
+.wb-frame {
+  position: absolute;
+  z-index: 2147483000;
+  margin: calc(-6px / var(--wb-scale, 1));
+  padding: calc(6px / var(--wb-scale, 1));
+  box-sizing: content-box;
+  border: calc(2px / var(--wb-scale, 1)) dashed var(--accent);
+  border-radius: var(--radius-small);
+  pointer-events: none;
+  transform: translate(calc(-2px / var(--wb-scale, 1)), calc(-2px / var(--wb-scale, 1)));
+}
+
+/* the picked block's handles, on the frame's corners or a line's ends: --hx, --hy is the point in the block (board units),
+   --ox, --oy pushes it out onto the frame. Each is 24px on the screen to press (32px on a touch screen) round a 10px mark,
+   the same at any zoom. */
+.wb-handle {
+  --hit: 24px;
+  position: absolute;
+  left: calc(var(--hx) * 1px + (6px + var(--ox) * 7px) / var(--wb-scale, 1));
+  top: calc(var(--hy) * 1px + (6px + var(--oy) * 7px) / var(--wb-scale, 1));
+  width: calc(var(--hit) / var(--wb-scale, 1));
+  height: calc(var(--hit) / var(--wb-scale, 1));
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+.wb-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(10px / var(--wb-scale, 1));
+  height: calc(10px / var(--wb-scale, 1));
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  background: var(--surface-card);
+}
+.wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
+.wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
+.wb-handle-start, .wb-handle-end { cursor: move; }
+.wb-handle-start::after, .wb-handle-end::after { border-radius: var(--radius-small); }
+@media (pointer: coarse) { .wb-handle { --hit: 32px; } }
+.app.narrow .wb-handle { --hit: 32px; }
+
+.app.narrow .wb-svg .wb-hit-wide { stroke-width: 24px; }

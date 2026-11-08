@@ -1,0 +1,17 @@
+  // ---- whiteboard-lib-b-policy.js: who may do what, in one place -----------------------------------------------------
+  //
+  // The module's two permissions (module.json): view (see the board) and edit (change it). The server decides again on
+  // every save (access.write is edit), so this only shapes the screen. Tools and block types never ask host.can
+  // themselves; the page asks here. A finer rule later (only the one who made a block may move it, a block only some
+  // people see) goes in these functions and nowhere else.
+  function createPolicy(host) {
+    const edit = host.can('edit');
+    return {
+      canEdit: edit,
+      canUseTool: (tool) => Boolean(tool) && (!tool.edits || edit),
+      canCreate: () => edit,
+      canChange: (block) => edit && Boolean(block),
+      canDelete: (block) => edit && Boolean(block),
+      canSee: () => true,
+    };
+  }
