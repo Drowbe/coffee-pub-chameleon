@@ -3,8 +3,8 @@
   "counts": {
     "modules/budget/src/budget.css": {
       "3px": 1,
-      "6px": 3,
-      "10px": 4,
+      "6px": 1,
+      "10px": 1,
       "14px": 1
     },
     "modules/calendar/src/calendar-widget.css": {
@@ -15,7 +15,7 @@
     "modules/calendar/src/calendar.css": {
       "3px": 2,
       "5px": 1,
-      "6px": 5,
+      "6px": 4,
       "10px": 3
     },
     "modules/places/src/places.css": {
@@ -24,21 +24,20 @@
       "6px": 7,
       "7px": 3,
       "10px": 2,
-      "14px": 3
+      "14px": 2
     },
     "modules/polls/src/polls-widget.css": {
       "5px": 1
     },
     "modules/polls/src/polls.css": {
-      "6px": 5,
-      "10px": 3
+      "6px": 3,
+      "10px": 2
     },
     "modules/research/src/research.css": {
       "5px": 1,
-      "6px": 6,
+      "6px": 5,
       "7px": 1,
-      "10px": 6,
-      "74px": 1
+      "10px": 5
     },
     "modules/stream/src/stream-keyed.css": {
       "10px": 1
@@ -52,22 +51,17 @@
     },
     "modules/todo/src/todo.css": {
       "5px": 1,
-      "6px": 4,
-      "7px": 2,
-      "10px": 1
+      "6px": 1,
+      "7px": 2
     },
     "modules/travel/src/travel-lib-cards.css": {
       "-6px": 3,
       "-28px": 1,
       "3px": 2,
       "5px": 1,
-      "6px": 19,
-      "7px": 2,
-      "9px": 2,
-      "10px": 24,
-      "14px": 18,
-      "26px": 1,
-      "28px": 1
+      "6px": 14,
+      "10px": 7,
+      "14px": 5
     },
     "modules/travel/src/travel-lib-editor.css": {
       "6px": 1,
@@ -78,8 +72,8 @@
     },
     "modules/travel/src/travel.css": {
       "5px": 1,
-      "6px": 8,
-      "10px": 4,
+      "6px": 4,
+      "10px": 2,
       "18px": 1
     },
     "public/layout-debug.js": {
@@ -90,16 +84,35 @@
       "9px": 1,
       "10px": 1
     },
+    "public/start.css": {
+      "3px": 1,
+      "6px": 4,
+      "9px": 1,
+      "10px": 6,
+      "14px": 7,
+      "15px": 1,
+      "18px": 3,
+      "22px": 1,
+      "28px": 3,
+      "36px": 1,
+      "44px": 2,
+      "56px": 2,
+      "64px": 1,
+      "72px": 2,
+      "80px": 2,
+      "96px": 3,
+      "120px": 1
+    },
     "public/style.css": {
       "-6px": 1,
       "-10px": 4,
       "3px": 7,
       "5px": 4,
-      "6px": 59,
+      "6px": 56,
       "7px": 3,
-      "10px": 51,
-      "14px": 13,
-      "18px": 10,
+      "10px": 49,
+      "14px": 12,
+      "18px": 9,
       "28px": 1
     }
   }
