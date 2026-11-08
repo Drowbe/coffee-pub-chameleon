@@ -10,6 +10,10 @@
  *   - the page then, reloaded, shows the form (the step lives in a cookie the page cannot read), and setting a password
  *     gets the dead-link sentence; the page asks the server nothing until the form is sent;
  *   - a link opened a second time, and a page with no link, show the dead-link sentence;
+ *   - a 201-character password is kept whole (the field cuts nothing) and gets the "at most 200" sentence;
+ *   - a new link opened in a tab that already shows the page (only the fragment changes, so the browser stays on the
+ *     page) is used: the password can be set, and the fragment is gone from the address and the tab's history; and this
+ *     check fails on the page served without its hashchange listener;
  *   - too many tries from one address show the limit's sentence and a Try again button, and leave the link unspent;
  *   - with a second step required, the password leads to the enrolment step;
  *   - every request the page makes is to its own origin, carries no Referer and never the token; the only calls to
@@ -32,6 +36,7 @@ import { findBrowser, launch, freePort, sleep } from './shots.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEAD = 'This link has expired or was already used. Ask whoever runs this host for a new one.';
 const SHORT = 'A password needs at least 8 characters.';
+const LONG = 'A password can have at most 200 characters.';
 const HOST_LOGIN = 'boss';
 const HOST_PASSWORD = 'check-first-password-page-1';
 const shotsArg = process.argv.find((a) => a.startsWith('--shots='));
@@ -324,6 +329,13 @@ try {
       await tab.waitFor(tab.visible('fp-password'), 'the form');
       await sleep(300);
       assert.ok(!pageRequests(tab, origin).some((r) => r.method === 'POST'), 'nothing sent before the form is');
+      // A password longer than the rule allows is kept whole (no silent cut) and gets the rule's sentence.
+      await tab.type('#fp-password', 'x'.repeat(201));
+      assert.equal(await tab.evaluate("document.getElementById('fp-password').value.length"), 201, 'the whole password is kept');
+      await tab.evaluate("document.getElementById('fp-submit').click()");
+      await tab.waitFor(tab.visible('fp-error'), 'the rule sentence for a long password');
+      assert.equal(await tab.evaluate("document.getElementById('fp-error').textContent"), LONG);
+      assert.ok(!pageRequests(tab, origin).some((r) => r.method === 'POST'), 'nothing sent for a password the rule refuses');
       await tab.type('#fp-password', 'longenough-1');
       await tab.evaluate("document.getElementById('fp-submit').click()");
       await tab.waitFor(tab.visible('fp-dead-text'), 'the dead-link sentence');
@@ -381,7 +393,7 @@ try {
 
   // --- the fragment check is real: the page without its replaceState fails it ---------------------------------------
   await test('the fragment check fails on a page that leaves the fragment in the address', async () => {
-    const without = (js) => js.replace(/^if \(.*\) history\.replaceState\([^;]*\);$/m, '');
+    const without = (js) => js.replace(/^\s*if \(.*\) history\.replaceState\([^;]*\);$/m, '');
     assert.notEqual(without(PAGE_JS), PAGE_JS, 'the replaceState line was found to take out');
     const url = await signupByCall('foxtrot');
     tokens.push(url.split('#')[1]);
@@ -390,6 +402,52 @@ try {
       await tab.go(url);
       await tab.waitFor(tab.visible('fp-password'), 'the form (from the changed page)');
       assert.equal(await fragmentGone(tab, originOf('foxtrot')), false, 'the check did not notice the fragment left in the address');
+    } finally { await tab.close(); }
+  });
+
+  // --- a new link opened in a tab that already shows the page (only the fragment changes: no new page) --------------
+  // Opens the page with a dead link, then the same tab at a new, good link's address. Returns what went wrong: the new
+  // link not used, or its fragment left in the address or in the tab's history.
+  const sameTabNewLink = async (tab, slug, ms) => {
+    const out = [];
+    const origin = originOf(slug);
+    const url = await signupByCall(slug);
+    const token = url.split('#')[1];
+    tokens.push(token);
+    await tab.go(`${origin}/login/first-password#${'d'.repeat(43)}`);
+    await tab.waitFor(tab.visible('fp-dead-text'), 'the dead-link sentence');
+    assert.ok(await fragmentGone(tab, origin), 'the dead link is out of the address');
+    await tab.evaluate('window.samePage = true');
+    await tab.go(url);
+    try {
+      await tab.waitFor(`${tab.visible('fp-password')} && document.getElementById('fp-login').value === ${JSON.stringify(`own${slug}`)}`, 'the form for the new link', ms);
+    } catch { out.push('the new link was not used'); }
+    assert.equal(await tab.evaluate('window.samePage === true'), true, 'the browser stayed on the page (a jump within it, not a new page)');
+    if (!(await fragmentGone(tab, origin))) out.push('the address keeps the fragment');
+    const { entries } = await tab.s('Page.getNavigationHistory', {});
+    if (entries.some((e) => e.url.includes('#') || e.url.includes(token))) out.push('the history keeps the fragment');
+    if (requestProblems(tab, origin, token).length) out.push(...requestProblems(tab, origin, token));
+    return out;
+  };
+  await test('a new link opened in a tab already on the page is used, and taken out of the address and history', async () => {
+    const tab = await openTab({ width: 390 });
+    try {
+      assert.deepEqual(await sameTabNewLink(tab, 'golf', 15000), []);
+      await tab.type('#fp-password', 'golf-password-1');
+      await tab.evaluate("document.getElementById('fp-submit').click()");
+      await tab.waitFor(`location.origin === ${JSON.stringify(originOf('golf'))} && location.pathname === '/'`, 'Home, signed in');
+      assert.equal((await call('POST', 'golf', '/api/login', { login: 'owngolf', password: 'golf-password-1' })).status, 200, 'the password was set');
+    } finally { await tab.close(); }
+  });
+  await test('the same-tab check fails on a page that does not listen for a new fragment', async () => {
+    const without = (js) => js.replace(/^window\.addEventListener\('hashchange', takeNewLink\);$/m, '');
+    assert.notEqual(without(PAGE_JS), PAGE_JS, 'the hashchange listener was found to take out');
+    const tab = await openTab({ mutate: without });
+    try {
+      const out = await sameTabNewLink(tab, 'hotel', 3000);
+      assert.ok(out.includes('the new link was not used'), JSON.stringify(out));
+      assert.ok(out.includes('the address keeps the fragment'), JSON.stringify(out));
+      assert.ok(out.includes('the history keeps the fragment'), JSON.stringify(out));
     } finally { await tab.close(); }
   });
 

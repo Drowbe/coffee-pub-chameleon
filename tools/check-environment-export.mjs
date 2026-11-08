@@ -180,7 +180,9 @@ test('a first-password link is kept when loaded, in its two shapes only, and onl
   const hash = hex(32);
   const app = seededApp();
   app.users.push(
-    { key: 'claimed1', login: 'claimed', role: 'owner', firstPassword: { claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' } },
+    { key: 'claimed1', login: 'claimed', role: 'owner', firstPassword: { claim: 'a'.repeat(32), claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' } },
+    { key: 'noclaim1', login: 'noclaim', role: 'owner', firstPassword: { claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' } },
+    { key: 'badclaim', login: 'badclaim', role: 'owner', firstPassword: { claim: '2026-01-02T00:00:00.000Z', claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' } },
     { key: 'haspass1', login: 'haspass', role: 'owner', passwordHash: `scrypt$${hex(16)}`, firstPassword: { hash, expiresAt: '2099-01-01T00:00:00.000Z' } },
     { key: 'badhash1', login: 'badhash', role: 'owner', firstPassword: { hash: 'short', expiresAt: '2099-01-01T00:00:00.000Z' } },
     { key: 'noends01', login: 'noends', role: 'owner', firstPassword: { hash } },
@@ -189,8 +191,8 @@ test('a first-password link is kept when loaded, in its two shapes only, and onl
   const { store } = loadStore(app);
   const fp = (login) => store.userByLogin(login).firstPassword;
   assert.deepEqual(fp('newowner'), app.users[2].firstPassword);
-  assert.deepEqual(fp('claimed'), { claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' });
-  for (const login of ['haspass', 'badhash', 'noends']) assert.equal(fp(login), undefined, login);
+  assert.deepEqual(fp('claimed'), { claim: 'a'.repeat(32), claimedAt: '2026-01-02T00:00:00.000Z', expiresAt: '2026-01-02T00:15:00.000Z' });
+  for (const login of ['haspass', 'badhash', 'noends', 'noclaim', 'badclaim']) assert.equal(fp(login), undefined, login);
   assert.deepEqual(fp('tokenkept'), { hash, expiresAt: '2099-01-01T00:00:00.000Z' }, 'only the hash and the end are kept');
   assert.ok(store.awaitingFirstPassword());
   // A password set any other way ends the link.

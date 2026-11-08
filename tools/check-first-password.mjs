@@ -3,8 +3,8 @@
  * check-first-password.mjs -- sign-up with no password, and the owner's first password chosen on the new environment's
  * own page through a one-time link (documentation/plans/plan-first-password.md). A real hosted server (BASE_DOMAIN and
  * SIGNUP=on) on a throwaway DATA_DIR, reached by Host header, plus a single-environment server:
- *   - sign-up refuses a posted password (400), a login of only spaces (400), and an owner login or name that is not text
- *     (400), and leaves no environment and no folder behind;
+ *   - sign-up refuses a posted password (400), a login of only spaces (400), an owner login or name that is not text
+ *     (400), and an environment name that is not text (400), and leaves no environment and no folder behind;
  *   - a folder already on disk for the address with no registry entry (left behind) is refused as taken (409, the same
  *     answer), the address check says taken, and the folder is never touched: no data lost, none taken over, nothing added;
  *     it answers 201 with Cache-Control: no-store and <scheme>://<slug>.<base>:<port>/login/first-password#<43 characters>,
@@ -18,12 +18,16 @@
  *     environment's, an enrol or verify one, or one from an older claim is 401; the password is 8 to 200 characters
  *     (400); then it signs in, or with a second step required, starts enrolment and gives no session;
  *   - after the password is set the token and the pending cookie are dead and POST /api/login works;
+ *   - each use of a link is its own random claim: a step from an older claim never finishes a newer one, even when both
+ *     were claimed in the same millisecond;
  *   - a first-password pending cookie opens neither the enrolment nor the verify step;
  *   - a cross-site POST with a cookie is refused (403), and a text/plain body is not read;
  *   - the token is never in the server's output, in clear in any file under DATA_DIR, or in any later answer (/api/me,
  *     /api/users, the console's list, the owner's export); the export leaves out its hash too, the host backup keeps it;
  *   - GET /login/first-password never redirects, signed in or not, and carries no-store, no-referrer and the
  *     framed-here headers, however the path is written (case, a trailing slash), as do the sign-in pages;
+ *   - the page's file is never served by its file name (/login-first-password.html, however written): 404 everywhere,
+ *     on an environment, the console, the product host and a single-environment install;
  *   - the console's list names the owners still waiting for their first password (awaitingFirstPassword, logins only);
  *   - the console's "New first-password link" (POST /api/host/environments/:slug/owners/:login/first-password): host
  *     admin only, refuses an owner with a password, lives 24 hours, used once, and ends any older link and any step
@@ -53,6 +57,8 @@ const DEAD = 'This link has expired or was already used. Ask whoever runs this h
 const NO_PASSWORD = "Sign-up takes no password. You choose it on your new environment's own page.";
 const NO_LOGIN = "Sign-up needs the owner's login.";
 const NO_NAME = "The owner's name must be text.";
+const NO_ENV_NAME = "The environment's name must be text.";
+const { Store } = require('../server/store.js');
 const ORIGIN_SENTENCE = 'This request came from another site, so it was refused.';
 const PAGE_BUILT = fs.existsSync(path.join(ROOT, 'public', 'login-first-password.html'));
 
@@ -61,6 +67,8 @@ let failed = 0;
 const test = async (name, fn) => {
   try { await fn(); n += 1; } catch (err) { failed += 1; console.error(`check-first-password: ${name}: ${err.stack || err.message}`); }
 };
+// The page's file asked for by its file name, however written.
+const FILE_PATHS = ['/login-first-password.html', '/Login-First-Password.HTML', '/LOGIN-FIRST-PASSWORD.HTML', '/login-first-password.html/', '/login-first-password.html?x=1', '//login-first-password.html', '/login-first-password%2ehtml', '/login-first-password%2Ehtml', '/%6Cogin-first-password.html', '/./login-first-password.html', '/login/../login-first-password.html'];
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // --- unit: the pending step names its purpose and its claim ---------------------------------------------------
@@ -79,6 +87,35 @@ await test('a pending token is read only for its own purpose, environment and cl
   assert.match(t, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(auth.tokenHash(t), sha256(t));
   assert.equal(auth.tokenHash(undefined), sha256(''), 'anything that is not a string hashes as the empty string');
+});
+
+// --- unit: each use of a link is its own random claim ------------------------------------------------------------
+await test('a claim is random: a step from an older claim made in the same millisecond cannot finish a newer one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-first-password-store-'));
+  try {
+    const store = new Store(dir);
+    const ends = new Date(Date.now() + 3600000).toISOString();
+    const t1 = auth.oneTimeToken();
+    const owner = store.addUser({ login: 'claimer', displayName: 'Claimer', role: 'owner', passwordHash: null, firstPassword: { hash: auth.tokenHash(t1), expiresAt: ends } });
+    const now = Date.now();
+    const one = store.claimFirstPassword(auth.tokenHash(t1), now);
+    assert.ok(one, 'the first link is claimed');
+    assert.match(String(one.claim), /^[0-9a-f]{32}$/, 'the claim is 128 random bits');
+    assert.ok(!store.claimFirstPassword(auth.tokenHash(t1), now), 'a link is claimed once');
+    // A newer link, claimed in the very same millisecond: the older claim must not finish it.
+    const t2 = auth.oneTimeToken();
+    store.setFirstPassword(owner.key, { hash: auth.tokenHash(t2), expiresAt: ends });
+    const two = store.claimFirstPassword(auth.tokenHash(t2), now);
+    assert.ok(two, 'the newer link is claimed');
+    assert.notEqual(two.claim, one.claim, 'two claims in one millisecond differ');
+    assert.equal(store.userByKey(owner.key).firstPassword.claim, two.claim, 'the newer claim is the one kept');
+    assert.equal(store.finishFirstPassword(owner.key, one.claim, 'scrypt$x'), null, 'the older claim finishes nothing');
+    assert.equal(store.finishFirstPassword(owner.key, one.claimedAt, 'scrypt$x'), null, 'nor does the claim time');
+    assert.equal(store.finishFirstPassword(owner.key, undefined, 'scrypt$x'), null, 'nor does no claim');
+    assert.ok(!store.userByKey(owner.key).passwordHash, 'no password yet');
+    assert.ok(store.finishFirstPassword(owner.key, two.claim, 'scrypt$x'), 'the newer claim finishes it');
+    assert.equal(store.userByKey(owner.key).firstPassword, undefined, 'and the link is gone');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // --- the server ----------------------------------------------------------------------------------------------------
@@ -225,6 +262,17 @@ try {
     assert.ok(!fs.existsSync(path.join(dataDir, 'environments', 'nottext')), 'no folder');
   });
 
+  await test("sign-up with an environment name that is not text is 400 and makes nothing", async () => {
+    for (const name of [{ toString: 1 }, { toString: null }, { a: 1 }, ['x'], ['a', 'b'], 12345, true]) {
+      const res = await call('', 'POST', '/api/product/signup', { body: { slug: 'namenottext', name, owner: { login: 'fine' } }, from: nextIp() });
+      assert.deepEqual([res.status, res.json], [400, { error: NO_ENV_NAME }], JSON.stringify(name));
+    }
+    assert.deepEqual((await call('', 'GET', '/api/product/address?slug=namenottext')).json, { slug: 'namenottext', free: true, reason: null });
+    assert.ok(!fs.existsSync(path.join(dataDir, 'environments', 'namenottext')), 'no folder');
+    const list = await call('admin', 'GET', '/api/host/environments', { cookie: host });
+    assert.ok(!list.json.environments.some((e) => e.slug === 'namenottext'), 'not in the registry');
+  });
+
   const A = await signup('alpha');
   const B = await signup('bravo');
 
@@ -334,7 +382,8 @@ try {
     assert.ok(!ok.jar.app_session, 'no session yet');
     assert.ok(!ok.text.includes(ok.jar.mfa_pending), 'the pending token is not in the body');
     const owner = ownerOnDisk(dataDir, 'alpha');
-    assert.deepEqual(Object.keys(owner.firstPassword).sort(), ['claimedAt', 'expiresAt'], 'the hash is gone once used');
+    assert.deepEqual(Object.keys(owner.firstPassword).sort(), ['claim', 'claimedAt', 'expiresAt'], 'the hash is gone once used');
+    assert.match(owner.firstPassword.claim, /^[0-9a-f]{32}$/, 'the claim is random');
     const answers = [];
     for (const token of [A.token, crypto.randomBytes(32).toString('base64url'), '', undefined, 'not a token', 12345, { token: A.token }, [A.token], null, A.token.slice(0, 42), `${A.token}x`, 'x'.repeat(5000)]) {
       answers.push([JSON.stringify(token)?.slice(0, 30), await exchange('alpha', token, { from: nextIp() })]);
@@ -566,6 +615,18 @@ try {
       assert.equal(res.headers['x-frame-options'], 'SAMEORIGIN', `${p}: ${res.status}`);
       assert.match(res.headers['content-security-policy'] || '', /frame-ancestors 'self'/, p);
     }
+    // The page's own file, by its file name, is not a second way to the page: 404 wherever it is asked for.
+    const unknown = await call('alpha', 'GET', '/no-such-file.html', { headers: { accept: 'text/html' } });
+    for (const p of FILE_PATHS) {
+      for (const where of ['alpha', 'admin', '']) {
+        for (const method of ['GET', 'HEAD']) {
+          const res = await call(where, method, p, { headers: { accept: 'text/html' } });
+          assert.equal(res.status, 404, `${method} ${p} at ${where || 'the product host'}: ${res.status}`);
+          assert.ok(!res.text.includes('fp-password'), `${p} at ${where || 'the product host'}: the page`);
+          if (where === 'alpha' && method === 'GET') assert.equal(res.text.replaceAll(p.split('?')[0], ''), unknown.text.replaceAll('/no-such-file.html', ''), `${p}: answered as an unknown file is`);
+        }
+      }
+    }
     if (!PAGE_BUILT) console.log('check-first-password: public/login-first-password.html is not built yet (plan step 2): the page route answers 404 until it is.');
   });
 
@@ -627,6 +688,14 @@ try {
         assert.ok(!a.headers['referrer-policy'], `${p}: no new header`);
       }
       assert.equal((await at('POST', '/api/product/signup', { slug: 'x', owner: { login: 'x' } })).status, 404, 'no sign-up');
+      // The page's file is not served by its file name here either.
+      const unknown = await at('GET', '/no-such-file.html');
+      for (const p of FILE_PATHS) {
+        const res = await at('GET', p);
+        assert.equal(res.status, 404, `${p}: ${res.status}`);
+        assert.equal(res.text.replaceAll(p.split('?')[0], ''), unknown.text.replaceAll('/no-such-file.html', ''), `${p}: answered as an unknown file is`);
+        assert.ok(!res.headers['x-frame-options'] && !res.headers['referrer-policy'], `${p}: no page headers`);
+      }
       // Self sign-up behaves as before: refused while it is turned off, whoever asks.
       assert.deepEqual((await at('POST', '/api/register', { login: 'x', password: 'longenough123' })).json, { error: 'sign-up is turned off' });
     });

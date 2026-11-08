@@ -7,7 +7,8 @@
  *     environment whose owner has a password has none;
  *   - pressed (from the keyboard), it shows the link once in a read-only field, with focus on it, the sentence "This link
  *     works once, for 24 hours. Send it to the owner." and Copy and Close; Copy copies it; Escape and Close hide it, clear
- *     the field and give focus back to the button; nothing on the page keeps the link after;
+ *     the field and give focus back to the button; neither while it shows nor after is the link in the page's markup,
+ *     localStorage or sessionStorage; and that check fails on a console that writes the link to sessionStorage;
  *   - the link works once at the environment's own page (the owner chooses a password and is signed in) and is dead the
  *     second time; a link replaced by a newer one is dead too; the card then no longer offers the button;
  *   - at 390 and 1280 wide: no sideways scroll, no console error, and at 390 every control of the first-password box
@@ -31,6 +32,7 @@ const HOST_LOGIN = 'boss';
 const HOST_PASSWORD = 'check-first-password-console-1';
 const shotsArg = process.argv.find((a) => a.startsWith('--shots='));
 const SHOTS = shotsArg ? path.resolve(shotsArg.slice('--shots='.length)) : '';
+const HOST_JS = fs.readFileSync(path.join(ROOT, 'public', 'host.js'), 'utf8');
 
 let n = 0;
 let failed = 0;
@@ -87,8 +89,8 @@ async function finishByCall(slug, url, password) {
 let browser = null;
 
 // A tab of its own (its own cookies and storage), `width` wide, dark, from its own address. Records console errors and
-// exceptions.
-async function openTab({ width = 1280, from = nextIp() } = {}) {
+// exceptions. `mutate`: the console's script served changed (the proof that the storage check notices a kept link).
+async function openTab({ width = 1280, from = nextIp(), mutate = null } = {}) {
   const { browserContextId } = await browser.cdp.send('Target.createBrowserContext');
   const { targetId } = await browser.cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await browser.cdp.send('Target.attachToTarget', { targetId, flatten: true });
@@ -99,6 +101,11 @@ async function openTab({ width = 1280, from = nextIp() } = {}) {
     if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') problems.push(`console: ${m.params.args.map((a) => a.value ?? a.description).join(' ')}`);
     else if (m.method === 'Runtime.exceptionThrown') problems.push(`exception: ${m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text}`);
     else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error' && m.params.entry.source !== 'network') problems.push(`log: ${m.params.entry.text} ${m.params.entry.url || ''}`);
+    else if (m.method === 'Fetch.requestPaused') {
+      if (new URL(m.params.request.url).pathname !== '/host.js') { s('Fetch.continueRequest', { requestId: m.params.requestId }).catch(() => {}); return; }
+      const body = Buffer.from(mutate(HOST_JS)).toString('base64');
+      s('Fetch.fulfillRequest', { requestId: m.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }, { name: 'Cache-Control', value: 'no-store' }], body }).catch(() => {});
+    }
   };
   browser.cdp.listeners.push(listener);
   await s('Page.enable');
@@ -109,6 +116,7 @@ async function openTab({ width = 1280, from = nextIp() } = {}) {
   await s('Emulation.setDeviceMetricsOverride', { width, height: width <= 640 ? 844 : 800, deviceScaleFactor: 1, mobile: width <= 640 });
   await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   await s('Emulation.setFocusEmulationEnabled', { enabled: true });
+  if (mutate) await s('Fetch.enable', { patterns: [{ urlPattern: '*/host.js', requestStage: 'Request' }] });
   const evaluate = async (expr) => {
     const r = await s('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true, userGesture: true });
     if (r.exceptionDetails) throw new Error(`page error: ${r.exceptionDetails.exception?.description || r.exceptionDetails.text}`);
@@ -181,6 +189,16 @@ const madeState = (tab, slug) => tab.evaluate(`(() => {
   const field = made.querySelector('[data-slot="first-password-url"]');
   return { shown: !made.closest('[hidden]'), value: field.value, readOnly: field.readOnly, hint: made.querySelector('.hint').textContent, label: field.closest('label').textContent.trim(), focused: document.activeElement === field };
 })()`);
+// Where the page keeps a link's token: its markup, localStorage, sessionStorage (keys or values). [] when nowhere.
+const linkKept = (tab, url) => tab.evaluate(`(() => {
+  const t = ${JSON.stringify(url.split('#')[1])};
+  const out = [];
+  if (document.documentElement.outerHTML.includes(t)) out.push('the page');
+  const holds = (store) => { for (let i = 0; i < store.length; i += 1) { const k = store.key(i); if (k.includes(t) || String(store.getItem(k)).includes(t)) return true; } return false; };
+  if (holds(localStorage)) out.push('localStorage');
+  if (holds(sessionStorage)) out.push('sessionStorage');
+  return out;
+})()`);
 const focusedIsButton = (tab, slug, login) => tab.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(`${card(slug)} [data-action="first-password"][data-login="${login}"]`)})`);
 
 try {
@@ -221,6 +239,7 @@ try {
         assert.match(made.value, new RegExp(`^http://${waiting}\\.localhost:${port}/login/first-password#[A-Za-z0-9_-]{43}$`));
         assert.deepEqual([made.readOnly, made.hint, made.label, made.focused], [true, SENTENCE, `Link for ${login}`, true]);
         const first = made.value;
+        assert.deepEqual(await linkKept(tab, first), [], 'while it shows, the link is only in the field: not in the markup or storage');
         await tab.shot('console-link');
         assert.deepEqual(await tab.layoutProblems(`${card(waiting)} [data-slot="first-password"]`), [], 'the link, its field and its buttons');
 
@@ -236,7 +255,7 @@ try {
         made = await madeState(tab, waiting);
         assert.deepEqual([made.shown, made.value], [false, ''], 'Escape closes it');
         assert.ok(await focusedIsButton(tab, waiting, login), 'focus is back on the button');
-        assert.ok(!(await tab.evaluate('document.documentElement.outerHTML')).includes(first.split('#')[1]), 'the page keeps no link');
+        assert.deepEqual(await linkKept(tab, first), [], 'the page keeps no link, in its markup or its storage');
         await tab.shot('console-closed');
 
         // A second link replaces the first; Close hides it.
@@ -248,6 +267,8 @@ try {
         made = await madeState(tab, waiting);
         assert.deepEqual([made.shown, made.value], [false, ''], 'Close closes it');
         assert.ok(await focusedIsButton(tab, waiting, login), 'focus is back on the button after Close');
+        assert.deepEqual(await linkKept(tab, second), [], 'after Close the page keeps no link, in its markup or its storage');
+        assert.deepEqual(await linkKept(tab, first), [], 'nor the first one');
         assert.deepEqual(await tab.layoutProblems(`${card(waiting)} [data-slot="first-password"]`), [], 'the console');
 
         // The replaced link is dead; the newer one works once, at the environment's own page.
@@ -278,6 +299,23 @@ try {
       } finally { await tab.close(); }
     });
   }
+
+  await test('the storage check fails on a console that writes the link to sessionStorage', async () => {
+    const keep = (js) => js.replace('  field.value = url;\n', "  field.value = url;\n  sessionStorage.setItem('kept', url);\n");
+    assert.notEqual(keep(HOST_JS), HOST_JS, 'the line that shows the link was found');
+    await signupByCall('foxtrot');
+    const tab = await openTab({ mutate: keep });
+    try {
+      await signInToConsole(tab);
+      await tab.evaluate(`document.querySelector(${JSON.stringify(`${card('foxtrot')} [data-action="first-password"]`)}).click()`);
+      await tab.waitFor(`document.querySelector(${JSON.stringify(`${card('foxtrot')} [data-slot="first-password-url"]`)}).value !== ''`, 'the link');
+      const url = (await madeState(tab, 'foxtrot')).value;
+      assert.deepEqual(await linkKept(tab, url), ['sessionStorage'], 'while it shows');
+      await tab.evaluate(`document.querySelector(${JSON.stringify(`${card('foxtrot')} [data-action="first-password-close"]`)}).click()`);
+      assert.equal((await madeState(tab, 'foxtrot')).value, '', 'Close cleared the field');
+      assert.deepEqual(await linkKept(tab, url), ['sessionStorage'], 'after Close');
+    } finally { await tab.close(); }
+  });
 
   await test('a refusal shows its sentence on the card', async () => {
     // The owner sets the password in another way while the card still offers the button: the server's sentence shows.

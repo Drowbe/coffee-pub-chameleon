@@ -1774,6 +1774,20 @@ app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && M
 const publicDir = path.join(__dirname, '..', 'public');
 const clientDist = path.join(__dirname, '..', 'node_modules', 'livekit-client', 'dist');
 const page = (name) => path.join(publicDir, name);
+// Pages the static files never serve by their file name: only their own route sends them, with that route's headers
+// (the first-password page: GET /login/first-password, on a hosted install only -- plan-first-password.md). Matched as
+// the static files would find them: decoded, with ./, ../ and doubled slashes resolved, and in any case.
+const ROUTE_ONLY_FILES = new Set(['login-first-password.html']);
+function routeOnlyFile(reqPath) {
+  let decoded;
+  try { decoded = decodeURIComponent(reqPath); } catch { return false; } // the static files refuse it themselves
+  return ROUTE_ONLY_FILES.has(path.posix.basename(path.posix.normalize(decoded)).toLowerCase());
+}
+// express.static, passing over the route-only pages, which go on to whatever answers an unknown path.
+function publicStatic(options) {
+  const serve = express.static(publicDir, options);
+  return (req, res, next) => (routeOnlyFile(req.path) ? next() : serve(req, res, next));
+}
 // A template file's text, whatever type it is sent as (the JSON body parser reads it when it is JSON).
 const templateFileText = express.text({ type: () => true, limit: 64 * 1024 });
 // A theme file's text (POST /api/themes/import, POST /api/host/themes/check). Its own 16 KB limit: a JSON body is parsed
@@ -1804,7 +1818,7 @@ function sendHostError(err, res) {
   throw err;
 }
 
-hostRouter.use(express.static(publicDir, { index: false }));
+hostRouter.use(publicStatic({ index: false }));
 hostRouter.get('/', (_req, res) => res.sendFile(page('host.html')));
 
 // The host admins' own second step (documentation/plans/plan-mfa.md): HOST_MFA_REQUIRED makes it mandatory,
@@ -2944,7 +2958,7 @@ function redirectToHost(req, res, status, newHost) {
 // The paths the product host lets through beside / and the use pages: what those pages load and ask.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
-const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
+const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
   app.use((req, res, next) => {
@@ -3003,6 +3017,7 @@ app.post('/api/product/signup', (req, res) => {
     const login = owner && typeof owner === 'object' && typeof owner.login === 'string' ? cleanLogin(owner.login) : '';
     if (!login) throw new HostError(`Sign-up needs the ${word('owner')}'s login.`);
     if (owner.displayName != null && typeof owner.displayName !== 'string') throw new HostError(`The ${word('owner')}'s name must be text.`);
+    if (req.body?.name != null && typeof req.body.name !== 'string') throw new HostError(`The ${word('environment')}'s name must be text.`);
     const free = hostRegistry.plansCatalog().free;
     const template = chosenTemplate(req.body?.template);
     // A folder already on disk for this address with no registry entry (left behind) is someone's data: refused as the
@@ -3044,7 +3059,7 @@ const FRAMED_HERE = { 'Content-Security-Policy': "frame-ancestors 'self'", 'X-Fr
 const FRAMED_HERE_PATHS = new Set([
   '/profile', '/admin', '/login', '/login/verify', '/login/enrol', '/register',
   '/profile.html', '/admin.html', '/module-config.html', '/login.html', '/login-step.html', '/register.html', '/module.html', '/destination.html',
-  ...(BASE_DOMAIN ? ['/login/first-password', '/login-first-password.html'] : []), // a hosted install's only (plan-first-password.md)
+  ...(BASE_DOMAIN ? ['/login/first-password'] : []), // a hosted install's only, and never by its file name (ROUTE_ONLY_FILES; plan-first-password.md)
   ...destinations.DESTINATIONS.map((d) => d.path),
 ].map((p) => framingPath(p)));
 // A path as the router matches it: the router ignores case and a trailing slash (Express's defaults), so the framing
@@ -3336,7 +3351,7 @@ app.get('/theme.css', (req, res) => {
 // public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
 mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html'), makerCan: shareMakerCan });
 
-app.use(express.static(publicDir, { index: false }));
+app.use(publicStatic({ index: false }));
 
 // Public API ------------------------------------------------------------------
 
@@ -3412,7 +3427,7 @@ app.post('/api/login/first-password', (req, res, next) => {
     return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
   }
   limiter.clear(ip);
-  auth.setPendingCookie(req, res, auth.issuePending(store.sessionSecret, { userKey: claimed.user.key, env: currentEnvironment().slug || '', purpose: 'first-password', claim: claimed.claimedAt }));
+  auth.setPendingCookie(req, res, auth.issuePending(store.sessionSecret, { userKey: claimed.user.key, env: currentEnvironment().slug || '', purpose: 'first-password', claim: claimed.claim }));
   res.json({ login: claimed.user.login, displayName: claimed.user.displayName, environmentName: store.settings.environmentName });
 });
 app.post('/api/login/first-password/set', (req, res, next) => {
@@ -3423,7 +3438,7 @@ app.post('/api/login/first-password/set', (req, res, next) => {
   const pendingToken = auth.parseCookies(req.get('cookie'))[auth.PENDING_COOKIE] || null; // the cookie only, never the body
   const pend = pendingToken && auth.readPending(store.sessionSecret, pendingToken, { env: currentEnvironment().slug || '', purpose: 'first-password' });
   const user = pend && store.userByKey(pend.u);
-  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claimedAt !== pend.c) {
+  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claim !== pend.c) {
     limiter.fail(ip);
     return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
   }

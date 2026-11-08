@@ -890,7 +890,7 @@ class Store {
       // plain; left off while they have none.
       ...(cleanExternalCalendars(u.externalCalendars).length ? { externalCalendars: cleanExternalCalendars(u.externalCalendars) } : {}),
       // A new owner's first-password link (plan-first-password.md): { hash, expiresAt } until it is used, then
-      // { claimedAt, expiresAt } until the password is set; only the SHA-256 of the token, never the token. Never on a
+      // { claim, claimedAt, expiresAt } until the password is set (claim: a random id for that use); only the SHA-256 of the token, never the token. Never on a
       // host admin's stand-in or an account that has a password; left off otherwise.
       ...(cleanFirstPassword(u) ? { firstPassword: cleanFirstPassword(u) } : {}),
       createdAt: typeof u.createdAt === 'string' ? u.createdAt : new Date().toISOString(),
@@ -1613,25 +1613,27 @@ class Store {
   }
 
   // Uses a link: the owner here whose unused link has this hash, has not ended, and who still has no password. The hash
-  // is removed at once and the claim's time kept instead. Returns { user, claimedAt }, or null for any other case.
+  // is removed at once and a random id for this use (the claim) kept instead, with its time. Returns
+  // { user, claim, claimedAt }, or null for any other case.
   claimFirstPassword(hash, now = Date.now()) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     const user = this.data.users.find((u) => u.firstPassword?.hash === hash);
     if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
     const ends = Date.parse(user.firstPassword.expiresAt);
     if (!(ends > now)) return null;
+    const claim = crypto.randomBytes(16).toString('hex');
     const claimedAt = new Date(now).toISOString();
-    user.firstPassword = { claimedAt, expiresAt: user.firstPassword.expiresAt };
+    user.firstPassword = { claim, claimedAt, expiresAt: user.firstPassword.expiresAt };
     this.save();
-    return { user, claimedAt };
+    return { user, claim, claimedAt };
   }
 
-  // Sets the first password of the owner whose link was claimed at `claimedAt`, and removes the link. Returns the
+  // Sets the first password of the owner whose link's current claim is `claim`, and removes the link. Returns the
   // account, or null when it is not (or no longer) that claim.
-  finishFirstPassword(key, claimedAt, passwordHash) {
+  finishFirstPassword(key, claim, passwordHash) {
     const user = this.userByKey(key);
     if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
-    if (!user.firstPassword?.claimedAt || user.firstPassword.claimedAt !== claimedAt) return null;
+    if (typeof claim !== 'string' || !user.firstPassword?.claim || user.firstPassword.claim !== claim) return null;
     if (typeof passwordHash !== 'string' || !passwordHash) return null;
     user.passwordHash = passwordHash;
     delete user.firstPassword;
@@ -2486,16 +2488,17 @@ function cleanCalendarFeed(raw) {
   return { hash: raw.hash, made: when(raw.made) || new Date().toISOString(), readAt: when(raw.readAt) };
 }
 
-// A first-password link as stored (plan-first-password.md): { hash, expiresAt } (not used yet) or { claimedAt, expiresAt }
-// (used, the password not set yet), the times ISO. Null for anything else, and for an account that may never have one: a
-// host admin's stand-in, or one with a password already.
+// A first-password link as stored (plan-first-password.md): { hash, expiresAt } (not used yet) or
+// { claim, claimedAt, expiresAt } (used, the password not set yet; claim: the random id of that use, 32 hex characters),
+// the times ISO. Null for anything else, and for an account that may never have one: a host admin's stand-in, or one
+// with a password already.
 function cleanFirstPassword(u) {
   const raw = u?.firstPassword;
   if (!raw || typeof raw !== 'object' || u.hostAdmin || typeof u.passwordHash === 'string') return null;
   const when = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null);
   if (!when(raw.expiresAt)) return null;
   if (typeof raw.hash === 'string' && /^[0-9a-f]{64}$/.test(raw.hash)) return { hash: raw.hash, expiresAt: raw.expiresAt };
-  if (when(raw.claimedAt)) return { claimedAt: raw.claimedAt, expiresAt: raw.expiresAt };
+  if (typeof raw.claim === 'string' && /^[0-9a-f]{32}$/.test(raw.claim) && when(raw.claimedAt)) return { claim: raw.claim, claimedAt: raw.claimedAt, expiresAt: raw.expiresAt };
   return null;
 }
 
