@@ -7563,7 +7563,9 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
 /* The Show tab: the page's menu drawn in the panel, not floating over it. */
 .host-menu.host-menu-inline {
   position: static;
+  width: 100%; /* fills the panel's content: rows, descriptions and switches use the whole width, not the floating menu's cap */
   min-width: 0;
+  max-width: none;
   max-height: none;
   margin: 0;
   border: 0;
