@@ -104,18 +104,6 @@ const {
   // The product's page on its website, the one link the start page offers (plan-product-site.md): an absolute http(s)
   // address; unset, no link. Checked at start, below.
   PRODUCT_SITE_URL = '',
-  // Seed the host's managed AI service, per company (documentation/plans/plan-environments.md, "Managed AI, per
-  // company"): AI_OPENAI_KEY/AI_ANTHROPIC_KEY name a company's key directly; AI_PROVIDER (with AI_ADDRESS,
-  // AI_MODEL, AI_KEY) is the older one-company form, filling whichever company it names -- both still work.
-  AI_PROVIDER = '',
-  AI_ADDRESS = '',
-  AI_MODEL = '',
-  AI_KEY = '',
-  TAVERN_AI_KEY = '', // deprecated: use AI_KEY (used to be an environment's own key; it is the host's now)
-  AI_OPENAI_KEY = '',
-  AI_ANTHROPIC_KEY = '',
-  // An organisation-level Anthropic key needs its workspace id sent with every call (an id, not a secret).
-  AI_ANTHROPIC_WORKSPACE = '',
   // Self-serve and billing (plan-environments.md, "Phase 5"): SIGNUP gates POST /api/product/signup -- off unless a
   // host explicitly opts in with SIGNUP=on, so a freshly upgraded host never offers public self-service by
   // surprise. BILLING_SECRET signs the billing webhook (x-billing-signature, HMAC-SHA256 of the raw body) --
@@ -229,7 +217,6 @@ const liveStreamBufferBytes = (() => {
 // Writes the chunks to `res`, or drops the stream when they would put it over the limit (server/stream-write.js).
 const sseWrite = streamWriter(liveStreamBufferBytes);
 const adminPassword = ADMIN_PASSWORD;
-const aiKeyFromEnv = AI_KEY || TAVERN_AI_KEY;
 // The environment a single-environment install moves into on its first start with BASE_DOMAIN (plan-names decision 15).
 const migrateEnvironmentSlug = MIGRATE_ENVIRONMENT_SLUG;
 const signupEnabled = Boolean(BASE_DOMAIN) && SIGNUP === 'on';
@@ -596,37 +583,17 @@ function migrateSharedFolders() {
 }
 migrateSharedFolders();
 
-// A company's managed slot from the environment alone, before anything saved in host.json is applied:
-// AI_OPENAI_KEY/AI_ANTHROPIC_KEY name that company's key directly; AI_PROVIDER (with AI_ADDRESS, AI_MODEL,
-// AI_KEY) is the older one-company form, filling whichever company it names. Both still work; when both apply
-// to the same company either sets its key.
-function envSlot(provider) {
-  const fromOneCompanyForm = AI_PROVIDER === provider;
-  return {
-    key: (provider === 'openai' ? AI_OPENAI_KEY : provider === 'anthropic' ? AI_ANTHROPIC_KEY : '') || (fromOneCompanyForm ? aiKeyFromEnv : ''),
-    model: fromOneCompanyForm ? AI_MODEL : '',
-    address: provider === 'compatible' && fromOneCompanyForm ? AI_ADDRESS : '',
-    workspace: provider === 'anthropic' ? AI_ANTHROPIC_WORKSPACE : '',
-  };
-}
-// One company's managed slot, combining what is saved (host.json, when there is one -- a single-environment
-// install has none, so the environment variables are the only way to offer a company at all there) with its
-// live environment-variable override: the one place both managedAi (the Ai-facing offer list) and
-// hostAiServices (the host console's own view) start from, so they can never disagree about it.
+// One company's managed slot, as saved on the host (host.json, set on the host console's AI tab). A single-environment
+// install has no host.json, so it offers nothing: its admin sets up the environment's own AI on its AI configuration page.
+// The one place both managedAi (the Ai-facing offer list) and hostAiServices (the host console's own view) start from,
+// so they can never disagree about it.
 function managedSlot(provider) {
   const saved = hostRegistry ? hostRegistry.managedAi[provider] : null;
-  const env = envSlot(provider);
-  const address = provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '';
-  // The environment's key belongs to the environment's address (AI_ADDRESS): once a host admin saves another address for
-  // the compatible service, that key is never sent there; a key has to be saved with the new address.
-  const trim = (a) => String(a || '').trim().replace(/\/$/, '');
-  const envKeyHere = provider !== 'compatible' || trim(address) === trim(env.address);
   return {
-    model: (saved && saved.model) || env.model || '',
+    model: (saved && saved.model) || '',
     key: (saved && saved.key) || '',
-    address,
-    workspace: provider === 'anthropic' ? ((saved && saved.workspace) || env.workspace || '') : '',
-    envKey: envKeyHere ? env.key : '',
+    address: provider === 'compatible' ? ((saved && saved.address) || '') : '',
+    workspace: provider === 'anthropic' ? ((saved && saved.workspace) || '') : '',
   };
 }
 // The host's managed AI offer, every company at once, as an Ai instance reads it: real values, including keys,
@@ -636,24 +603,23 @@ function managedAi() {
   const offers = [];
   for (const provider of MANAGED_PROVIDERS) {
     const slot = managedSlot(provider);
-    const offer = managedOffer(provider, slot, slot.envKey);
+    const offer = managedOffer(provider, slot);
     if (offer) offers.push(offer);
   }
   return offers.length ? offers : null;
 }
-// The same, for the host console: { provider, model, address, workspace, keySet, keyFromEnvironment, offered },
+// The same, for the host console: { provider, model, address, workspace, keySet, offered },
 // one row per company, never a key.
 function hostAiServices() {
   return MANAGED_PROVIDERS.map((provider) => {
     const slot = managedSlot(provider);
-    const offer = managedOffer(provider, slot, slot.envKey);
+    const offer = managedOffer(provider, slot);
     return {
       provider,
       model: offer ? offer.model : slot.model,
       address: slot.address,
       workspace: slot.workspace, // an id, not a secret -- fine to show
-      keySet: !!(slot.envKey || slot.key),
-      keyFromEnvironment: !!slot.envKey,
+      keySet: !!slot.key,
       offered: !!offer,
     };
   });
@@ -748,11 +714,6 @@ function environmentFor(slug) {
   }
   environments.set(key, env);
   const pendingTemplate = useTemplate(env, slug, fresh);
-  // An environment that just migrated its own old custom AI setting to "managed" (see Ai's constructor) gives
-  // that company's own managed slot a starting point, once, if the host has nothing saved for it yet -- so what
-  // worked through the old per-environment AI_KEY keeps working through the host's now instead.
-  const aiSeed = env.ai.migrationSeed();
-  if (aiSeed && hostRegistry) hostRegistry.seedManagedAi(aiSeed.provider, aiSeed);
   // Fire-and-forget: install() reads a zip asynchronously (yauzl), and environmentFor must stay synchronous --
   // every caller, including the resolver middleware, expects an environment back at once. A few milliseconds'
   // delay before an auto-installed module is actually usable is fine today, since nothing yet depends on it
@@ -2709,9 +2670,9 @@ hostRouter.post('/api/host/ai/models', requireHostAdmin, async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');
     const slot = managedSlot(provider);
-    // A saved key (or the one from the environment) goes only to the address it belongs to: another address needs a key typed with it.
+    // A saved key goes only to the address it belongs to: another address needs a key typed with it.
     const sameAddress = provider !== 'compatible' || req.body?.address === undefined || String(req.body.address).trim().replace(/\/$/, '') === slot.address;
-    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.envKey || slot.key : '');
+    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.key : '');
     const workspace = typeof req.body?.workspace === 'string' ? req.body.workspace : slot.workspace;
     res.json({ models: await listModelsFor({ provider, address: req.body?.address ?? slot.address, key, workspace }) });
   } catch (err) {

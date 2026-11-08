@@ -62,12 +62,12 @@ const flightSchedule = wireFlightSchedule('/api/host/flight-schedule');
 
 // --- the managed AI services: one row per company ---------------------------------------------------------------
 // GET /api/host/ai lists every company with whether it is offered (a key, or an address for Other, and a model); a row
-// sets or replaces the key (write-only, or read from the server's environment), picks the model from the company's own
+// sets or replaces the key (write-only), picks the model from the company's own
 // list, and saves that one company (PUT /api/host/ai { provider, ... }).
 const AI_COMPANIES = [
-  { id: 'openai', name: 'OpenAI', env: 'AI_OPENAI_KEY' },
-  { id: 'anthropic', name: 'Anthropic', env: 'AI_ANTHROPIC_KEY' },
-  { id: 'compatible', name: 'Other (OpenAI-compatible)', env: 'AI_KEY' },
+  { id: 'openai', name: 'OpenAI' },
+  { id: 'anthropic', name: 'Anthropic' },
+  { id: 'compatible', name: 'Other (OpenAI-compatible)' },
 ];
 async function loadAiServices() {
   let services = [];
@@ -80,7 +80,7 @@ async function loadAiServices() {
   const box = $('ai-services');
   box.replaceChildren();
   for (const c of AI_COMPANIES) {
-    const s = services.find((x) => x.provider === c.id) || { provider: c.id, model: '', address: '', keySet: false, keyFromEnvironment: false, offered: false };
+    const s = services.find((x) => x.provider === c.id) || { provider: c.id, model: '', address: '', keySet: false, offered: false };
     box.appendChild(aiServiceRow(c, s));
   }
 }
@@ -103,13 +103,12 @@ function aiServiceRow(c, s) {
   const clearBtn = form.querySelector('[data-action="key-clear"]');
   const syncKey = () => {
     const set = (s.keySet || keyMode === 'replace') && keyMode !== 'clear';
-    keyState.textContent = s.keyFromEnvironment ? 'set by the server\'s environment' : keyMode === 'clear' ? 'will be removed' : set ? 'set' : 'not set';
+    keyState.textContent = keyMode === 'clear' ? 'will be removed' : set ? 'set' : 'not set';
     if (set) keyState.dataset.tone = 'ok'; else delete keyState.dataset.tone;
     keyInput.hidden = keyMode !== 'replace';
-    replaceBtn.hidden = Boolean(s.keyFromEnvironment);
     replaceBtn.textContent = keyMode === 'replace' ? 'Cancel' : s.keySet ? 'Replace the key' : 'Set a key';
-    clearBtn.hidden = Boolean(s.keyFromEnvironment) || !s.keySet || keyMode === 'clear';
-    slot(form, 'key-help').textContent = s.keyFromEnvironment ? `The key comes from the server's environment (${c.env}); change it there.` : c.id === 'compatible' ? 'Optional for a model on your own network. Kept on the host and never shown again.' : 'Kept on the host and never shown again.';
+    clearBtn.hidden = !s.keySet || keyMode === 'clear';
+    slot(form, 'key-help').textContent = c.id === 'compatible' ? 'Optional for a model on your own network. Kept on the host and never shown again.' : 'Kept on the host and never shown again.';
   };
   replaceBtn.addEventListener('click', () => { keyMode = keyMode === 'replace' ? 'keep' : 'replace'; keyInput.value = ''; syncKey(); if (keyMode === 'replace') keyInput.focus(); else loadModels(); });
   clearBtn.addEventListener('click', () => { keyMode = 'clear'; syncKey(); });
@@ -123,7 +122,7 @@ function aiServiceRow(c, s) {
   const syncModel = () => { sel.hidden = manual; text.hidden = !manual; refreshBtn.hidden = manual; };
   async function loadModels() {
     const wanted = manual ? text.value.trim() : sel.value || s.model || '';
-    const haveKey = s.keySet || s.keyFromEnvironment || (keyMode === 'replace' && keyInput.value);
+    const haveKey = s.keySet || (keyMode === 'replace' && keyInput.value);
     if (c.id !== 'compatible' && !haveKey) { sel.replaceChildren(new Option('Set a key to see the models', '')); hint.textContent = ''; manualBtn.hidden = false; return; }
     if (c.id === 'compatible' && !form.elements.address.value.trim()) { sel.replaceChildren(new Option('Enter the address first', '')); hint.textContent = ''; return; }
     sel.replaceChildren(new Option('Loading models...', ''));
