@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-mode-shown="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'">
+  <link rel="icon" href="/img/site/icon">
+  <title>Start</title>
+  <!-- The start page (documentation/plans/plan-product-site.md): the product host's one page. A person types the address of their
+       environment and goes to its own sign-in page, or makes an environment of their own. It lists no environments, takes no
+       password and carries no marketing. start.js reads the product's name, the base domain and the one link out from
+       GET /api/product, so none of them is written here. Light unless this browser picked dark (theme-head.js). -->
+  <link rel="stylesheet" href="/style.css">
+  <script src="/theme-head.js"></script>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/sdk/system.css">
+  <link rel="stylesheet" href="/fa/css/all.min.css">
+  <link rel="stylesheet" href="/start.css">
+</head>
+<body class="sp-body">
+  <header class="sp-top">
+    <a class="sp-brand" href="/" id="sp-brand" aria-label="Start page">
+      <img class="sp-mark sp-mark-light" src="/assets/images/brand/mark.svg" alt="" width="56" height="56">
+      <img class="sp-mark sp-mark-dark" src="/assets/images/brand/mark-dark.svg" alt="" width="56" height="56">
+      <span class="sp-lockup" id="sp-lockup"><span class="sdk-skel sdk-skel-title sp-skel-name" aria-hidden="true"></span></span>
+    </a>
+    <button class="sp-theme" type="button" id="sp-theme" aria-label="Switch to dark mode" title="Switch to dark mode"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
+  </header>
+
+  <main class="sp-page" id="sp-main">
+    <h1 class="visually-hidden" id="sp-title">Find your environment</h1>
+    <div class="sp-cols">
+      <!-- Shown only when this browser reached an environment through this page (start.js). -->
+      <section class="sdk-panel sp-part" id="sp-recent" aria-labelledby="sp-recent-h" hidden>
+        <h2 id="sp-recent-h">Recent</h2>
+        <ul class="sp-recent" id="sp-recent-list"></ul>
+        <p class="sp-line" id="sp-recent-say" aria-live="polite"></p>
+      </section>
+
+      <section class="sdk-panel sp-part" id="sp-find" aria-labelledby="sp-find-h">
+        <h2 id="sp-find-h">Find your environment</h2>
+        <form class="sp-form" id="sp-find-form" novalidate>
+          <label class="sdk-label" for="sp-find-input">Its address</label>
+          <div class="sp-go-row">
+            <div class="sp-address" id="sp-find-box">
+              <input id="sp-find-input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" enterkeyhint="go" placeholder="yourname" aria-describedby="sp-find-say">
+              <span class="sdk-skel sdk-skel-line sp-skel-suffix" id="sp-find-suffix" aria-hidden="true"></span>
+            </div>
+            <button class="btn btn-primary sp-go" type="submit" id="sp-go" disabled>Go</button>
+          </div>
+          <p class="sp-line" id="sp-find-say" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="sp-plain" id="sp-link" hidden>
+        <h2>Got a link?</h2>
+        <p>Open the link itself. A guest link or an invite takes you in on its own; there is nothing to choose here.</p>
+      </section>
+
+      <section class="sdk-panel sp-part" id="start" aria-labelledby="sp-own-h" hidden>
+        <h2 id="sp-own-h">Get your own</h2>
+        <p class="sp-quiet" id="sp-own-lede"></p>
+        <form class="sp-form" id="signup-form" novalidate hidden>
+          <div>
+            <label class="sdk-label" for="signup-slug">Address</label>
+            <div class="sp-address" id="signup-box">
+              <input id="signup-slug" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="30" placeholder="yourname" aria-describedby="signup-slug-say">
+              <span class="sp-suffix" id="signup-suffix"></span>
+            </div>
+            <span class="sdk-hint" id="signup-slug-say" aria-live="polite"></span>
+          </div>
+          <label><span class="sdk-label">Its name</span><input id="signup-name" type="text" autocomplete="off" maxlength="60" placeholder="The Elegant Eight" aria-describedby="signup-name-need"><span class="sdk-error" id="signup-name-need" aria-live="polite" hidden></span></label>
+          <fieldset id="signup-template" hidden>
+            <legend class="sdk-label">Template</legend>
+            <p class="sdk-hint">Set it up for one use: its words, home icon and modules. You can change anything it sets later.</p>
+            <div class="sdk-choice-list" id="signup-options"></div>
+          </fieldset>
+          <label><span class="sdk-label">Your login</span><input id="signup-login" type="text" autocomplete="off" autocapitalize="off" maxlength="40" aria-describedby="signup-login-need"><span class="sdk-error" id="signup-login-need" aria-live="polite" hidden></span></label>
+          <label><span class="sdk-label">Your name (optional)</span><input id="signup-display" type="text" autocomplete="off" maxlength="40"></label>
+          <div class="sp-form-foot"><button class="btn btn-primary" type="submit" id="signup-submit">Make my environment</button></div>
+          <p class="sp-line" id="signup-status" role="status"></p>
+          <p class="sdk-hint" id="signup-password-note">Next you choose your password, on your new environment's own page.</p>
+        </form>
+        <div class="sp-own-actions" id="sp-ask" hidden><a class="btn" id="sp-ask-link" href="#start">Ask for an environment</a></div>
+        <p class="sp-quiet" id="sp-ask-note" hidden></p>
+      </section>
+    </div>
+
+    <!-- The one link out, filled in from the host's PRODUCT_SITE_URL when it is set. -->
+    <footer class="sp-foot" id="sp-foot" hidden><a id="sp-about" rel="noopener"></a></footer>
+
+    <!-- If the host could not be asked. -->
+    <div class="sdk-empty" data-kind="error" id="sp-failed" hidden>
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <p class="sdk-empty-title">This page did not load</p>
+      <p class="sdk-empty-text">Check your connection, then try again.</p>
+      <div class="sdk-empty-actions"><button class="btn" type="button" id="sp-retry">Try again</button></div>
+    </div>
+  </main>
+
+  <script type="module" src="/start.js"></script>
+</body>
+</html>

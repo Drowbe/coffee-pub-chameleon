@@ -152,7 +152,7 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
 {
   const others = new Map();
   const note = (n, where) => { if (!others.has(n)) others.set(n, where); };
-  const files = ['public/style.css', 'public/sdk/host.css', 'public/landing.css', 'public/destination.css', 'public/diag.css'];
+  const files = ['public/style.css', 'public/sdk/host.css', 'public/start.css', 'public/destination.css', 'public/diag.css'];
   for (const dir of ['modules']) {
     const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
     walk(dir);
@@ -197,11 +197,11 @@ if (!/size-adjust:\s*100\.59%/.test(css) || !/size-adjust:\s*95\.67%/.test(css) 
   if (!/font-family:\s*var\(--font-ui\)/.test(rootBlock)) fail('public/style.css: the page font (:root) is not var(--font-ui)');
   if (!/font-family:\s*var\(--font-display\)/.test(style)) fail('public/style.css: no display text reads var(--font-display)');
   if (!/var\(--font-ui\b/.test(read('public/sdk/host.css'))) fail('public/sdk/host.css does not read --font-ui');
-  // The product page loads only landing.css: it carries the same six faces, word for word, and names the two families.
-  const landing = read('public/landing.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const facesOf = (t) => [...t.matchAll(/@font-face\s*\{[^}]*\}/g)].map((m) => m[0].replace(/\s+/g, ' '));
-  if (facesOf(landing).join('\n') !== facesOf(css).join('\n')) fail('public/landing.css: its @font-face rules are not system.css\'s, word for word');
-  if (!/body\.landing \{[^}]*"Figtree", "Figtree Fallback"/.test(landing) || !/\.hero h1 \{[^}]*"Fraunces", "Fraunces Fallback"/.test(landing)) fail('public/landing.css: the page is not Figtree, or its title not Fraunces');
+  // The start page takes its fonts from system.css (the six faces and the two families), not a copy: it links system.css and names no face of its own.
+  const start = read('public/start.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  if (!/href="\/sdk\/system\.css"/.test(read('public/start.html'))) fail('public/start.html: the page does not load system.css, where the fonts are');
+  if (/@font-face/.test(start)) fail('public/start.css: it names a font face of its own; the faces are system.css\'s');
+  if (!/\.sp-lockup-brand \{[^}]*var\(--font-display\)/.test(start) || !/\.sp-body \{[^}]*var\(--font-ui\)/.test(start)) fail('public/start.css: the page is not the UI face, or its lockup\'s brand word not the display face');
   const pages = fs.readdirSync(path.join(root, 'public')).filter((f) => /\.(css|html)$/.test(f)).map((f) => `public/${f}`);
   for (const f of [...pages, 'public/sdk/host.css', 'public/sdk/host.js', 'public/sdk/system.css']) {
     if (/fonts\.(googleapis|gstatic)\.com|use\.typekit|fonts\.bunny|@import\s+url\(\s*["']?https?:/i.test(read(f))) fail(`${f} names a font host; the fonts are ours (public/fonts)`);

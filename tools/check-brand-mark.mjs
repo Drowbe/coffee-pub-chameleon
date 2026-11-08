@@ -94,7 +94,7 @@ export function problemsOf(root, { full = true } = {}) {
     if (!brandJs.includes(src)) problems.push(`public/brand.js: ${src} is not used`);
   }
   if (!/replaceChildren\(productLockup\(/.test(read(root, 'public/host.js') || '')) problems.push('public/host.js: the host console bar shows productLockup()');
-  for (const page of ['landing.html', 'travel.html', 'games.html']) {
+  for (const page of ['start.html']) {
     const html = read(root, `public/${page}`);
     if (html && !(html.includes('/assets/images/brand/mark.svg') && html.includes('/assets/images/brand/mark-dark.svg'))) problems.push(`public/${page}: the bar's mark is mark.svg on light and mark-dark.svg on dark`);
   }

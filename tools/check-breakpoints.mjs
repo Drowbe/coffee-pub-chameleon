@@ -6,17 +6,17 @@
 // pixels at 16px to the em. It reads @media in the CSS files and in the CSS and window.matchMedia(...) strings inside the
 // .js files of public and modules/*/src; not public/design-system or MapLibre.
 //
-// Pages with their own palette (OWN_PALETTE in tools/lib/drift.mjs, today public/landing.css) are not read, and the check prints which; @font-face blocks are not read.
+// No page has a palette of its own: the start page too answers to these widths. @font-face blocks are not read.
 // Today's strays are recorded per file and width in tools/check-breakpoints-allow.json. The check passes while no
 // count is higher, fails on a higher count or a new file or width, and says when a count has dropped.
 //   node tools/check-breakpoints.mjs                 the check
 //   node tools/check-breakpoints.mjs --update        lower the allow-list to today's counts (never raises)
 //   node tools/check-breakpoints.mjs --update --force-raise   also allow raising (how it was first made)
-import { collectFiles, clean, lineOf, Tally, runRatchet, summary, ownPaletteSplit } from './lib/drift.mjs';
+import { collectFiles, clean, lineOf, Tally, runRatchet, summary } from './lib/drift.mjs';
 
 const OK = new Set([640, 641, 900, 901, 1200, 1201]);
 const tally = new Tally();
-const [files, ownLines] = ownPaletteSplit(collectFiles());
+const files = collectFiles();
 for (const file of files) {
   const text = clean(file.text, file.kind);
   // A media query's text: from @media (or matchMedia('...')) to its opening brace or closing quote.
@@ -43,5 +43,5 @@ runRatchet({
   about: 'check-breakpoints: today\'s media-query widths other than 640 641 900 901 1200 1201 px, per file. Counts may only fall; lower them with: node tools/check-breakpoints.mjs --update',
   tally,
   unit: 'off-list media-query widths',
-  extraReport: [...ownLines, ...summary(tally, 'width')],
+  extraReport: [...summary(tally, 'width')],
 });
