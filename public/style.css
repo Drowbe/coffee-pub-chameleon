@@ -7483,7 +7483,7 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   right: 0;
   bottom: 0;
   max-height: calc(100dvh - var(--setup-top, 44px)); /* never taller than what shows: the bar is always in view */
-  z-index: var(--z-menu);
+  z-index: calc(var(--z-toast) + 1); /* over the undo note, as a menu is: the Show tab's menu is drawn inside it */
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

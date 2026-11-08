@@ -209,7 +209,7 @@ try {
       if (o.composer) assert.equal(hit(o.toast, o.composer), false, `the note is clear of the composer ${JSON.stringify(o.composer)}`);
     } else {
       assert.equal(hit(o.toast, o.composer), false, 'the note is clear of the composer');
-      // The Layout menu (the header's button) opens over the note: it is the top thing where they meet.
+      // Set up (its Show tab holds the menu) opens over the note: it is the top thing where they meet.
       await tab.click('#setup').catch(() => {});
       await sleep(500);
       const m = await boxes();
