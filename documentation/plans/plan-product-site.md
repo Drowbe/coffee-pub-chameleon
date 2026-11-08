@@ -14,8 +14,10 @@ replaced with a functional page that will 1) have a link to the product page, an
 their specific environment, which should NOT be part of the product page. It will be our hook into the demo too."
 Thomas answered four questions in chat the same day (decisions 1 to 4) and four more on 2026-11-07 (decisions 5 to 8).
 Decisions 9 to 12 are the planner's suggestions, which Thomas said he will follow unless he objects; they are marked
-that way and are not his decisions. One question is still open: the rename of `PRODUCT_DOMAIN` and `/api/product*`.
-Nothing is built yet. Slice 0 can start when Thomas says.
+that way and are not his decisions. Thomas, 2026-11-08, looked at the start page on the Prototype (slice 3) and said "I
+like all the A options" (decisions 13 to 18). That changes the Go contract (decision 15) and adds a server slice, 3a
+(decision 17). Two things are open: the rename of `PRODUCT_DOMAIN` and `/api/product*`, and the design of the first
+password (slice 3a), which needs a security read. Nothing is built yet. Slice 0 can start when Thomas says.
 
 **Known privacy issue, live today.** `GET /api/product/environments` lists every active environment on the host, by
 address and name, to anyone. On 2026-11-07 it answered 200 with 5 environments at
@@ -153,15 +155,40 @@ a **suggestion, followed unless Thomas objects**, not a decision.
     than naming the two domains (naming them in the check would put them in code). *Suggestion, followed unless Thomas
     objects.*
 
+Thomas's, 2026-11-08, after looking at the start page on the Prototype: "I like all the A options." Each is the
+Prototype's own option A (its Choices section).
+
+13. **The layout is one column, 480px wide, at every width** (A). Not two columns from 900px. Reason: the page is a
+    doorway; almost everyone comes to type an address, and one column reads the same on a phone.
+14. **Recent sits above the address field** (A). The builder had recommended B (below the field); Thomas chose A. Reason:
+    a returning person's one click comes first. When there is no Recent, it is not drawn at all (no empty box), and the
+    address field is the first thing on the page.
+15. **The address is checked as you type** (A), after a short pause, and the environment's name shows before Go. This
+    **changes the Go contract** (see the contract below): Go is always enabled; Enter or Go before the name is found
+    waits for the check, then goes. Reason: a wrong address is caught on this page, not on a sign-in page that is not
+    the person's.
+16. **The sign-up form is shown open** (A), not folded behind a button (the builder had recommended B). Reason: Thomas
+    prefers it visible; the website's `#start` link lands on it either way.
+17. **The owner's password is not asked on the start page** (A). The new environment's own page asks for it first.
+    **This needs a server change** (slice 3a): sign-up's answer must carry a safe way to set the first password on the
+    environment's own page. Its design is open (Open questions 2). Reason: it keeps decision 3 whole (no password on
+    the start page, not even a new one).
+18. **The other Prototype notes stand:** the words, the states, the keyboard order, Recent kept in the browser only
+    (up to 5, each row removable) and the page not being a list, a password box, marketing or an account.
+
 ## What the start page is
 
-A plain page at the product host's `/`. It is not a product page and sells nothing. It does five things:
+A plain page at the product host's `/`, one 480px column at every width (decision 13). It is not a product page and
+sells nothing. It does five things, in this order:
 
-1. **Find your environment.** A field for the address, with `.<baseDomain>` shown after it, and Go.
-2. **Recent.** The environments this browser reached through this page, newest first, each one click.
+1. **Recent.** The environments this browser reached through this page, newest first, each one click. Above the address
+   field (decision 14); not drawn when there are none.
+2. **Find your environment.** A field for the address, with `.<baseDomain>` shown after it, and Go. The address is
+   checked as the person types, and the environment's name shows before Go (decision 15).
 3. **Got a link?** One line for guests and invited people: a space's guest link or an invite opens on its own; there is
    nothing to choose here.
-4. **Get your own.** Sign-up when it is open; otherwise the contact link, or "Coming soon" without one.
+4. **Get your own.** Sign-up when it is open, the form shown open and asking for no password (decisions 16 and 17);
+   otherwise the contact link, or "Coming soon" without one.
 5. **About the product.** A link to the product page on the website, when `PRODUCT_SITE_URL` is set.
 
 Later, once the demo exists: **Try the demo** (slice 6). Plans is a sixth part: a short list of the host's plans
@@ -189,8 +216,12 @@ pages. It uses the app's own design system (decision 7). How it looks is drawn o
 - `GET /api/product`, trimmed: `pages` is removed. It gains `productSiteUrl` (the setting, or `null`). Later it gains
   `demo` (slice 6). Public, no session, no CORS needed (the website reads it from its build, not a browser).
 - `GET /api/product/environment?slug=`: `{ slug, name }` for an active or past-due environment, 404 for anything else.
-  The start page's Go and its recent list use it. It reveals only what visiting the address would.
-- `GET /api/product/address?slug=` and `POST /api/product/signup`, as today.
+  The start page calls it **as the person types** (debounced), and again for Go and for a stale Recent row. It reveals
+  only what visiting the address would. It needs the same limit as the address check: the slice 0 fix-up adds 120 a
+  minute to this route, and a request over it answers 429 with the one sentence below. The page must stay inside the
+  limit (Pages).
+- `GET /api/product/address?slug=`, as today. `POST /api/product/signup`, as today except the owner's password: it no
+  longer takes one, and its answer carries the first-password step (slice 3a, Open questions 2).
 - The design-system pages, `/sdk/*` and the fonts, as today (decision 10).
 - The product host's allowed paths (`PRODUCT_HOST_PATHS`) become exactly what the start page loads.
 
@@ -224,25 +255,37 @@ exception goes entirely.
 
 - **`public/start.html` and `start.js`** (names in code stay as they are, decision 6), from the locked Prototype. What a person sees:
   - The product's name from `GET /api/product` (`name`), never written in the file.
-  - **Find your environment:** one text field, the suffix `.<baseDomain>` shown after it, and Go. Go cleans the text
-    (lower case, spaces trimmed; a full address pasted in is cut to its first label), asks
-    `GET /api/product/environment?slug=`, and on 200 opens `https://<slug>.<baseDomain>/login` in the same tab, with
-    the request's port kept as sign-up's answer keeps it. On 404 it says "There is nothing at that address. Check the
-    spelling." and keeps the text. It never says why (suspended and unknown look the same).
-  - **Recent:** written to the page's own browser storage when Go succeeds and after a successful sign-up; up to 5,
-    newest first, `{ slug, name }`; a key named by kind (for example `app.recentEnvironments`), never by the product.
-    Each row opens that environment's sign-in. Each row can be removed, for a shared computer. Hidden when empty. A
-    row whose environment now answers 404 is dropped when chosen, with the same sentence as Go.
+  - **Recent** (first, above the field, decision 14): written to the page's own browser storage when Go succeeds and
+    after a successful sign-up; up to 5, newest first, `{ slug, name }`; a key named by kind (for example
+    `app.recentEnvironments`), never by the product. Each row opens that environment's sign-in. Each row can be
+    removed, for a shared computer. Not drawn at all when empty. A row whose environment now answers 404 is dropped
+    when chosen, with the same sentence as Go.
+  - **Find your environment** (decision 15): one text field, the suffix `.<baseDomain>` shown after it, and Go. The
+    text is cleaned (lower case, spaces trimmed; a full address pasted in is cut to its first label). After a short
+    pause in typing the page asks `GET /api/product/environment?slug=`. On 200 it shows the environment's name before
+    Go. On 404 it says "There is nothing at that address. Check the spelling." and keeps the text. It never says why
+    (suspended and unknown look the same). **Go is always enabled** (it is off only while a go is in progress). Go, or
+    Enter in the field, with the name found opens `https://<slug>.<baseDomain>/login` in the same tab, with the
+    request's port kept as sign-up's answer keeps it. Pressed before the name is found, it waits for the running check
+    and then goes (or says the sentence on 404); after an error it tries again.
+  - **Staying inside the limit.** Debounce the typing (about 400 ms), ask only for a shape that can be an address
+    (the same shape test the sign-up check uses), send at most one request at a time and drop an answer that is not
+    for the text now in the field, and keep every answer (found or not) for the page's life so the same text is never
+    asked twice. Go uses the kept answer. When the route answers 429 the page says "Too many tries. Wait a minute, then
+    try again.", stops asking as the person types, and lets Go ask once when the person presses it.
   - **Got a link?** One sentence, no control.
-  - **Get your own:** the sign-up form when `signup` is true, with the template choice (product pages decision 5) and
-    `?template=<id>` preselecting one; otherwise the contact `mailto:` when `contact` is set, else "Coming soon".
+  - **Get your own:** the sign-up form when `signup` is true, shown open (decision 16): the address (checked as the
+    person types, as today), the environment's name, the template choice (product pages decision 5) with
+    `?template=<id>` preselecting one, the owner's login and an optional display name. **No password field**
+    (decision 17): on success the page saves the environment to Recent and opens what sign-up's answer says (slice 3a).
+    Otherwise the contact `mailto:` when `contact` is set, else "Coming soon".
   - **About:** a link to `productSiteUrl`, hidden when it is `null`.
   - **Plans:** a short list of the host's plans (decision 9). Fixed anchor `#plans`.
   - **Try the demo:** not in the page until slice 6. It opens the demo environment's sign-in with `?login=demo` and shows
     the public demo password beside it (decision 5).
   - Fixed anchors the website links to: `#start` (sign-up) and `#demo` (slice 6). They do not change without telling
     the website session.
-- No password field anywhere on the page.
+- No password field anywhere on the page, including sign-up (decisions 3 and 17).
 - Manage's Upgrade link (`public/admin.js`) and the console's facts line (`public/host.js`: "Start page" and "Product
   site") follow decision 9: Upgrade goes to `#plans` on the start page.
 
@@ -281,14 +324,16 @@ Each slice is built and checked on its own. Thomas names the kind of build for e
 | 0 | **The privacy fix and the no-password sign-in.** Remove `GET /api/product/environments` everywhere; the landing page's Sign in becomes the typed address and Go (no dropdown, no password); remove `POST /login` and `CROSS_ORIGIN_EXEMPT`; close the `check-brand-hosts` gap | server-development, then experience-design | Thomas's go. Small. The landing page it changes is deleted in slice 5; this ships first because the issue is live | Nothing |
 | 1 | **Facts for the website.** The product sheet; its check; the `product` shots tier from the demo data | content-manager (the sheet), server-development (the check and the tier) | The demo loader (done) | Nothing |
 | 2 | **The website page brought up to date** from the product sheet, the shots and `/api/product` | the website session; Thomas approves the words | Slice 1 | Outside this repository |
-| 3 | **The start page on the Prototype.** The five parts above, in the chosen look; Thomas locks it | experience-design | Slice 0 | Nothing |
-| 4 | **The start page built and served.** `start.html` and `start.js` from the lock; `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed | experience-design, server-development | Slice 3 locked | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now |
+| 3 | **The start page on the Prototype.** The five parts above, in the chosen look. Drawn; Thomas chose the A options on 2026-11-08 (decisions 13 to 18). Anything else Thomas wants changed is a new round on the Prototype | experience-design | Slice 0 | Nothing (done, pending the lock's wording) |
+| 3a | **The first password at the environment's own page.** Sign-up no longer takes the owner's password; its answer carries a one-time way to set it on the new environment's own sign-in page (decision 17). Also the 120 a minute limit on `GET /api/product/environment` (the slice 0 fix-up, if not already there). Then QA with a security read | server-development, then quality-assurance | Open question 2 decided, with a security review of the design | Open question 2. **Blocks slice 4's sign-up part** |
+| 4 | **The start page built and served.** `start.html` and `start.js` from the lock, to the Prototype's A options (decisions 13 to 16); `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed. Everything but sign-up can be built first; sign-up waits for slice 3a | experience-design, server-development | Slice 3 locked (done 2026-11-08, the A options); slice 0 (the typed address's limit); slice 3a for sign-up | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now; slice 3a for sign-up |
 | 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slices 2 and 4 | Nothing |
 | 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Nothing |
 | 7 | **Documentation.** architecture-environments (the door's product-host branch, the start page, the removed routes), userguide-getting-started, userguide-settings-reference (`PRODUCT_SITE_URL`), userguide-templates and userguide-environments (where they describe the product page), the compose file's comment (`PRODUCT_SITE_URL` with an `example.com` value), the CHANGELOG, and the status lines of the superseded plans below | content-manager | Slices 4 and 5 (and again after 6) | Nothing |
 
 Slices 0 and 1 can run beside each other. QA after each slice of a production build, with a security read on slice 0
-(the removed route, the removed exemption) and slice 6 (a public login).
+(the removed route, the removed exemption), slice 3a (the first password and its token, sign-in is security-sensitive)
+and slice 6 (a public login).
 
 **Plans that become records** (content-manager updates their status lines in slice 7): [plan-product-pages](plan-product-pages.md),
 superseded, including its step 5 (the front page cut down); steps 7 to 9 of [plan-template-games](plan-template-games.md)
@@ -312,11 +357,22 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
   is not bundled. The shots tier runs twice and gives the same images (`npm run shots:compare` on the tier).
 - **Slice 2.** Outside this repository; Thomas reads the page.
 - **Slice 3.** By tool: `check-prototype-page`, `check-prototype-words`, `check-prototype-parity`. By eye: Thomas.
+- **Slice 3a.** By tool, in `check-origin` or a new check by server-development: sign-up with a password field is
+  ignored or refused (as decided); the token (or setup state) works once, fails the second time, fails after its
+  lifetime, fails for another environment and another login, is not in any log line, any stored file in clear text or
+  any later response; the environment cannot be signed in to by any other way before the first password is set; a
+  wrong or missing token never reveals whether the login exists; the set-password step enforces the same password
+  rules as today; the limit on the exchange holds. Live on a local server (`BASE_DOMAIN=localhost`): sign up, land on
+  the choose-a-password step, set it, sign in. QA reads the code for the security points (nothing here can be
+  verified against real domains).
 - **Slice 4.** Live, headless Chromium against a local server with `BASE_DOMAIN=localhost`: the start page at 1280
-  and 390 px, light and dark; Go, the recent list (written, reused, removed, a stale row dropped), sign-up landing on
-  the new environment's sign-in with the login filled, the About link shown only when `PRODUCT_SITE_URL` is set. By
-  tool: `/api/product` has `productSiteUrl` and no `pages`; a bad `PRODUCT_SITE_URL` refuses to start; a single
-  install with `PRODUCT_SITE_URL` set behaves as before.
+  and 390 px (one 480px column at both), light and dark; Recent above the field and not drawn when empty; the name
+  shown as the address is typed; Enter before the name is found waits and then goes; typing fast asks once (debounce)
+  and the same text is not asked twice; a 429 shows the sentence; the recent list (written, reused, removed, a stale
+  row dropped); sign-up open, with no password field, landing as slice 3a says; the About link shown only when
+  `PRODUCT_SITE_URL` is set. By tool: `/api/product` has `productSiteUrl` and no `pages`; a bad `PRODUCT_SITE_URL`
+  refuses to start; a single install with `PRODUCT_SITE_URL` set behaves as before; `check-prototype-page`,
+  `check-prototype-words` and `check-prototype-parity` still pass with the page matching the Prototype.
 - **Slice 5.** By tool: `npm run check` passes with the files gone (as root, the two known `--migration` cases of
   `check-names` fail and are not a defect); `/travel` and `/games` are 404; `check-names` finds nothing new.
 - **Slice 6.** By tool: `demo` is absent while no environment has the demo flag, and present with one. Live: the
@@ -342,6 +398,13 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
 7. **The demo adds traffic to a public login that can post and upload** (demo plan decision 12, an accepted risk). The
    existing per-environment login limiter and the demo environment's plan caps are the limits.
 8. **Cross-browser sign-in across `.com` and `.live`** is unchecked (Verify).
+9. **The first password (slice 3a) is a sign-in path.** A token that leaks, lives too long, can be used twice or can be
+   guessed lets someone take a new environment. Between sign-up and the first password the environment must have no
+   other way in. Needs a security read before it ships.
+10. **Checking as the person types** sends a request per pause. Over 120 a minute the person is told to wait. The
+    debounce and the kept answers keep a normal visit far below it; a script is limited as intended.
+11. **The typed check tells anyone whether an address exists, and its name.** Only what visiting the address shows, and
+    the limit slows guessing; it is the same disclosure as Go had. A list cannot be built from it quickly.
 
 ## What is not decided
 
@@ -351,6 +414,33 @@ If a known-issues entry is wanted for the public list until slice 0 lands, that 
    name; the no-compatibility rule allows a clean rename. Decision 6 leaves them as they are. *Suggestion: Thomas's
    call; if renamed, do it in slice 4, with `PRODUCT_SITE_URL` named to match.* Blocks nothing now; it would block
    slice 4's setting names if Thomas renames.
+2. **How the owner sets the first password on the environment's own page** (decision 17, slice 3a). **Open for the
+   planner and a security review; blocks slice 4's sign-up part and slice 3a.** Sign-in is security-sensitive, so
+   nothing here is chosen. Two options:
+   - **A. A one-time token in sign-up's answer.** `POST /api/product/signup` returns a random, short-lived (for example
+     15 minutes), single-use token with the redirect. The page sends the person to the environment's sign-in, and the
+     token travels in the URL fragment (`#`), which is not sent to servers or written in their logs, not in the query.
+     The sign-in page reads it, removes it from the address bar at once, and exchanges it with a POST for a "choose
+     your password" step; setting the password signs the owner in and spends the token. Only a hash of the token is
+     stored. Costs: a token in a URL still reaches browser history until removed and any script on the page; a lost
+     tab loses the chance (needs a way to get another, which the plan does not have: no email); the environment
+     starts with no usable password, and what that means for the stored account must be settled.
+   - **B. A first-sign-in setup page keyed by the owner's login.** The environment starts "unlocked for setup": its
+     sign-in page, seeing an owner with no password, shows "choose your password" for that login only, until the
+     first password is set; after that the state is gone and the normal sign-in applies. No token travels. Costs: for
+     the time between sign-up and the first visit, anyone who reaches the address and knows (or guesses) the login can
+     set the password and own the environment. The login is chosen by the owner at sign-up and the address is not
+     secret, so this is the weaker design unless the window is short or tied to the browser that signed up (for
+     example a cookie set by sign-up's answer, which cannot be set across `.com` and `.live`).
+   - **Questions for the review.** Does the token live in the fragment, a POST body or a short-lived cookie on the
+     environment's host? How long, and what happens when it expires (the owner is locked out: who can reset it, with
+     no email)? Is there one token per sign-up, and may a second sign-up with the same address or login race it? What
+     does the account hold before the first password (no hash, or a random one nobody knows)? Does the "choose your
+     password" step use today's password rules and the login limiter? Should sign-in refuse every other path until it
+     is set (admin reset, API login, invites)? Where the start page's browser-storage Recent row points before the
+     password is set. *Suggestion: A, with the token in the fragment, a 15-minute life, a stored hash only, and a
+     reset by the admin when it lapses; B only if a short window tied to the signing browser can be made safe. Thomas
+     and the review decide.*
 
 ### Undecided and out of scope
 
