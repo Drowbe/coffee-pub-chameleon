@@ -540,6 +540,16 @@ try {
     assert.deepEqual(acme.users.map((u) => [u.login, u.role]), [['owner', 'owner'], ['pat', 'member'], ['boss', 'admin']]);
     assert.deepEqual(acme.settings.roles, { member: { startAside: true }, guest: { react: false } });
     assert.equal((await call(server, 'admin', 'GET', '/api/host/environments')).status, 401, 'signed out: refused');
+    // The console's tab icon: the product's mark at both icon paths (it has no environment, so no custom icon); an environment keeps its own route.
+    for (const [p, type] of [['/img/site/icon', /^image\/svg\+xml/], ['/favicon.ico', /^image\/(x-icon|vnd\.microsoft\.icon)/]]) {
+      const icon = await call(server, 'admin', 'GET', p, { accept: '*/*' });
+      assert.equal(icon.status, 200, `console ${p}`);
+      assert.match(icon.headers['content-type'], type, `console ${p} type`);
+      assert.equal(icon.headers['cache-control'], 'no-cache', `console ${p} cache`);
+      const envIcon = await call(server, 'acme', 'GET', p, { accept: '*/*' });
+      assert.equal(envIcon.status, 200, `environment ${p}`);
+      assert.deepEqual(envIcon.raw, icon.raw, `environment ${p}: the default is the same mark`);
+    }
     const made = await call(server, 'admin', 'POST', '/api/host/environments', { cookie, body: { slug: 'beta', name: 'Beta', owner: { login: 'owner', password: 'owner-password-1' } } });
     assert.equal(made.status, 201, made.text);
     assert.equal(made.json.environment.slug, 'beta');
