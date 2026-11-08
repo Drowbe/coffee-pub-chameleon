@@ -2,7 +2,7 @@
 /*
  * check-product-pages.mjs -- the product's pages at the bare base domain (documentation/plans/plan-product-pages.md,
  * decision 8): public/landing.html (the front page) and each use page (public/travel.html, games.html, projects.html) share one header, footer and
- * sign-in block, and the page head's fixed lines. They are plain files with no build step, so this check is what keeps
+ * sign-in block, and the page head's fixed lines. Sign in is a typed address and Go: no page lists environments or takes a password to sign in (plan-product-site.md, slice 0). They are plain files with no build step, so this check is what keeps
  * the copies the same. Also: every use page file is in server/index.js's PRODUCT_PAGES table, and each page has its own
  * <title> and description. The routing itself (200, 404, `pages`) is checked in check-origin.mjs.
  */
@@ -116,13 +116,39 @@ test('light or dark is chosen, not followed from the browser', () => {
   assert.ok(/return 'light';/.test(early), 'landing.js: light is not the default');
 });
 
-// The bar's Sign in reads "Sign in" for everyone and goes to the Sign in section: the environment this browser was last in
-// (env_hint) is only preselected in that section's chooser, never named in the bar of a public page.
+// The bar's Sign in reads "Sign in" for everyone and goes to the Sign in section; it never names an environment.
 test('the bar names no environment', () => {
   const js = fs.readFileSync(path.join(PUBLIC, 'landing.js'), 'utf8');
   for (const f of files) assert.ok(/<a class="btn btn-quiet" href="#signin" id="nav-signin">Sign in<\/a>/.test(pages[f]), `${f}: the bar's Sign in is not plain`);
   assert.ok(!/nav-signin/.test(js), 'landing.js changes the bar\'s Sign in');
-  assert.ok(/select\.value = recent/.test(js), 'landing.js no longer preselects the recent environment in the Sign in section');
+});
+
+// plan-product-site.md, slice 0 (decisions 1 and 3): Sign in is a typed address and Go. No page lists environments, takes a
+// password to sign in, or posts a form to an environment's /login. The one password field left is sign-up's, for the new
+// owner's account, posted to this host's own /api/product/signup.
+export function signinProblems(name, html) {
+  const problems = [];
+  const section = one(html, /<section id="signin"[\s\S]*?<\/section>/) || '';
+  const outsideSignup = html.replace(/<form class="signup-form"[\s\S]*?<\/form>/, '');
+  if (/type="password"/i.test(outsideSignup)) problems.push(`${name}: it has a password field outside sign-up.`);
+  if (/current-password/i.test(html)) problems.push(`${name}: it asks for a current password.`);
+  if (/<form\b[^>]*\baction="[^"]*login/i.test(html)) problems.push(`${name}: a form posts to a sign-in.`);
+  if (/<form\b[^>]*\bmethod="post"/i.test(html)) problems.push(`${name}: a form posts by itself, not through the page's script.`);
+  if (/<select\b/i.test(section)) problems.push(`${name}: Sign in has a list to choose from.`);
+  if (!/<label for="signin-env">[^<]+<\/label>/.test(section) || !/<input id="signin-env"[^>]*type="text"/.test(section) || !/data-signin-domain/.test(section)) problems.push(`${name}: Sign in has no typed address with the base domain after it.`);
+  return problems;
+}
+test('Sign in is a typed address: no list, no password, no form post to /login', () => {
+  for (const f of files) assert.deepEqual(signinProblems(f, pages[f]), [], f);
+  const js = fs.readFileSync(path.join(PUBLIC, 'landing.js'), 'utf8');
+  assert.ok(!/\/api\/product\/environments/.test(js), 'landing.js asks for the list of environments');
+  assert.ok(/\/api\/product\/environment\?slug=/.test(js), 'landing.js does not check the typed address');
+  assert.ok(!/form\.action\s*=/.test(js), 'landing.js points a form somewhere');
+});
+test('the Sign in check fails on the old dropdown and password post', () => {
+  const old = '<section id="signin" class="signin"><form class="signin-form" id="signin-form" method="post" action="https://x.example.com/login"><select id="signin-env"></select><input id="signin-password" name="password" type="password" autocomplete="current-password"></form></section>';
+  const found = signinProblems('old.html', pages['landing.html'].replace(/<section id="signin"[\s\S]*?<\/section>/, old));
+  for (const re of [/password field outside sign-up/, /current password/, /posts to a sign-in/, /posts by itself/, /list to choose from/, /no typed address/]) assert.ok(found.some((p) => re.test(p)), `${re}: ${found.join(' | ')}`);
 });
 
 // The sign-up name note (public/landing.js slugChecker) and the host console's Sign-up line (public/host.js signupFact),
@@ -135,6 +161,12 @@ const fromSource = (file, name) => {
 };
 const slugChecker = fromSource('landing.js', 'slugChecker');
 const signupFact = fromSource('host.js', 'signupFact');
+const addressSlug = fromSource('landing.js', 'addressSlug');
+test('Sign in cleans what is typed to a slug: lower case, trimmed, a pasted address cut to its first label', () => {
+  for (const [typed, slug] of [['acme', 'acme'], ['  Acme ', 'acme'], ['acme.example.com', 'acme'], ['https://Acme.example.com/login?x=1', 'acme'], ['acme.example.com:3000/', 'acme'], ['http://acme', 'acme'], ['', ''], ['   ', '']]) {
+    assert.equal(addressSlug(typed), slug, JSON.stringify(typed));
+  }
+});
 {
   const timers = [];
   const wait = (fn) => { timers.push(fn); return timers.length; };

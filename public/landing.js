@@ -114,6 +114,13 @@ function slugChecker({ say, hint, slugOk, baseDomain, get, wait, cancel }) {
   };
 }
 
+// What a person typed into Sign in, as an environment's slug: lower case, spaces trimmed, and a full address pasted in
+// (with or without https://, a path or a port) cut to its first label. Whether it is a slug at all is the caller's test.
+function addressSlug(text) {
+  const host = String(text || '').trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, '').split(/[/?#:@\s]/)[0];
+  return host.split('.')[0];
+}
+
 const fill = (sel, text) => { for (const el of document.querySelectorAll(sel)) el.textContent = text; };
 
 async function fromHost() {
@@ -170,65 +177,42 @@ async function fromHost() {
     hint.hidden = !hint.textContent;
   }
 
-  // --- Sign in: which environment? ---------------------------------------------------------------------------------
-  // The host's environments (GET /api/product/environments, public: on a host run for a handful of groups, naming them is
-  // fine) as a list to choose from. The host never knows who a visitor is, only where they have been: an environment leaves
-  // `env_hint=<slug>,<slug>...` on the parent domain when someone signs in there (most recent first), and that one is
-  // preselected, so a second visit is one click.
+  // --- Sign in: type the address ------------------------------------------------------------------------------------
+  // The page lists no environments (plan-product-site.md, decision 1) and takes no password (decision 3): a person types
+  // their environment's address, GET /api/product/environment?slug= confirms it is there (it reveals only what visiting
+  // the address would), and Go opens that environment's own sign-in page in this tab. Unknown and suspended look the same.
   const envUrl = (slug, path = '/login') => `${location.protocol}//${slug}.${product.baseDomain}${location.port ? `:${location.port}` : ''}${path}`;
   const slugOk = (s) => /^[a-z0-9-]{3,30}$/.test(s);
-  const cookie = (name) => { const m = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${name}=`)); return m ? decodeURIComponent(m.slice(name.length + 1)) : ''; };
   const note = document.getElementById('signin-note');
   const sayNote = (text) => { note.textContent = text; note.hidden = !text; };
-  const select = document.getElementById('signin-env');
-
-  (async () => {
-    let environments = [];
-    try {
-      const res = await fetch('/api/product/environments');
-      if (res.ok) environments = (await res.json()).environments || [];
-    } catch (err) {
-      environments = [];
-    }
-    environments = environments.filter((e) => e && slugOk(e.slug));
-    for (const env of environments) {
-      const o = document.createElement('option');
-      o.value = env.slug;
-      o.textContent = env.name || env.slug;
-      select.append(o);
-    }
-    if (!environments.length) {
-      sayNote(product.baseDomain ? 'No environments to sign in to yet.' : 'Sign-in from this page needs a base domain; this host has one environment, at its own address.');
-      select.disabled = true;
-      return;
-    }
-    // the one this browser was last in, if it is still here
-    // env_hint is set on the base domain: a product page on another site cannot read it
-    const onBase = Boolean(product.baseDomain) && (location.hostname === product.baseDomain || location.hostname.endsWith(`.${product.baseDomain}`));
-    const recent = !onBase ? undefined : cookie('env_hint').split(',').map((s) => s.trim()).find((s) => environments.some((e) => e.slug === s));
-    if (recent) {
-      select.value = recent;
-      // only here, in the Sign in section: the bar's Sign in names no environment, on a page anyone can see
-      chosen({ focus: false }); // preselected on arrival: no focus, so the page does not jump to the form
-    }
-  })();
-
-  // Choosing an environment reveals the login and password; the form then posts to that environment's own /login (a
-  // plain, top-level form post, so its session cookie is first-party), which signs the person in and sends them on.
-  const creds = document.getElementById('signin-creds');
-  const form = document.getElementById('signin-form');
-  function chosen({ focus = true } = {}) {
-    const slug = select.value;
-    const ok = slugOk(slug) && Boolean(product.baseDomain);
-    creds.hidden = !ok;
-    form.action = ok ? envUrl(slug) : '#signin';
-    if (ok) { sayNote(''); if (focus) document.getElementById('signin-login').focus(); }
+  const signinForm = document.getElementById('signin-form');
+  const field = document.getElementById('signin-env');
+  const go = document.getElementById('signin-go');
+  const nothingThere = 'There is nothing at that address. Check the spelling.';
+  document.querySelector('[data-signin-domain]').textContent = product.baseDomain ? `.${product.baseDomain}` : '';
+  if (!product.baseDomain) {
+    sayNote('Sign-in from this page needs a base domain; this host has one environment, at its own address.');
+    field.disabled = true;
+    go.disabled = true;
   }
-  select.addEventListener('change', () => chosen());
-  form.addEventListener('submit', (e) => {
-    const slug = select.value;
-    if (!slugOk(slug) || !product.baseDomain) { e.preventDefault(); sayNote('Choose an environment first.'); return; }
-    form.action = envUrl(slug); // and let the browser post it there
+  field.addEventListener('input', () => sayNote(''));
+  signinForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!product.baseDomain) return;
+    const slug = addressSlug(field.value);
+    if (!slug) { sayNote('Type your environment\'s address first.'); field.focus(); return; }
+    if (!slugOk(slug)) { sayNote(nothingThere); field.focus(); return; }
+    go.disabled = true;
+    try {
+      const res = await fetch(`/api/product/environment?slug=${encodeURIComponent(slug)}`);
+      if (res.status === 404) { sayNote(nothingThere); field.focus(); return; }
+      if (!res.ok) throw new Error(String(res.status));
+      location.href = envUrl(slug);
+    } catch (err) {
+      sayNote('That address could not be checked just now. Try again.');
+    } finally {
+      go.disabled = false;
+    }
   });
 
   // --- Plans, from the host's catalog ---------------------------------------------------------------------------------

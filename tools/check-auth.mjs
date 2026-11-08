@@ -361,9 +361,6 @@ await withServer({}, async (base) => {
   const right = await post(base, '/api/login', { login: 'admin', password: 'testpass1234' }, spoofed(20));
   assert.equal(right.status, 429, 'and the right password is refused too while the address is held');
   n += 1;
-  const form = await post(base, '/login', 'login=admin&password=testpass1234', { ...spoofed(21), 'content-type': 'application/x-www-form-urlencoded' });
-  assert.deepEqual([form.status, form.location], [303, '/login?error=1&login=admin'], 'the sign-in form is held for that address too');
-  n += 1;
   const other = await post(base, '/api/login', { login: 'admin', password: 'testpass1234' }, spoofed(22, '192.0.2.11'));
   assert.equal(other.status, 200, `another real address signs in: ${other.text}`);
   n += 1;

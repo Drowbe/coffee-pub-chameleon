@@ -959,8 +959,14 @@ try {
     fs.writeFileSync(appFile, JSON.stringify({ ...readJson(appFile), version: 2, migrations: [{ id: 'names-from-the-future', at: '', moved: [] }] }));
     server = await startServer(data, hostedEnv);
     assert.ok(server.output().includes(`names-from-the-future", which this version of ${PRODUCT} does not know: this data is from a newer version of ${PRODUCT}, so it will not be opened here. This environment is skipped and answers 503`), server.output());
-    const product = await call(server, '', 'GET', '/api/product/environments');
-    assert.deepEqual(product.json.environments.map((e) => e.slug), ['acme', 'bravo'], 'left out of the sign-in list');
+    // There is no list of environments anywhere (plan-product-site.md, slice 0): the product host (the bare base here),
+    // the console and an environment's address all answer 404, and none names an environment.
+    for (const host of ['', 'admin', 'acme']) {
+      const listed = await call(server, host, 'GET', '/api/product/environments');
+      assert.equal(listed.status, 404, `${host || 'the product host'}: ${listed.status} ${listed.text.slice(0, 120)}`);
+      assert.ok(!/acme|bravo|beta/i.test(listed.text), `${host || 'the product host'} names an environment`);
+    }
+    assert.ok(!('environments' in (await call(server, '', 'GET', '/api/product')).json), 'GET /api/product has no environments');
     const page = await call(server, 'beta', 'GET', '/', { accept: 'text/html' });
     assert.equal(page.status, 503);
     assert.match(page.headers['content-type'], /text\/html/);
@@ -979,7 +985,6 @@ try {
     assert.deepEqual([restored.status, restored.json], [200, { ok: true }]);
     const after = await call(server, 'admin', 'GET', '/api/host/environments', { cookie });
     assert.equal(after.json.environments.find((e) => e.slug === 'beta').refused, null);
-    assert.deepEqual((await call(server, '', 'GET', '/api/product/environments')).json.environments.map((e) => e.slug), ['acme', 'beta', 'bravo']);
     assert.equal((await call(server, 'beta', 'GET', '/api/me')).status, 401, 'opens again, without a restart');
   });
 

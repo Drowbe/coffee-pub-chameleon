@@ -1748,11 +1748,8 @@ app.use((req, res, next) => {
 // no-cors fetch needs no preflight. So a POST, PUT, PATCH or DELETE that carries a cookie is refused when the browser
 // says it came from anywhere but this origin (Sec-Fetch-Site), or its Origin isn't this one (baseUrl minds
 // X-Forwarded-*). Passes: a Bearer token (Studio; a page elsewhere can't add one without a preflight nobody answers),
-// no cookie at all (webhooks, server-to-server), and neither header (old browsers, curl).
-// Exempt: POST /login, the sign-in form, which the landing page at the bare base domain posts across origins by
-// design; it trusts only the login and password it is sent, never a cookie, and replaces whatever session there was.
+// no cookie at all (webhooks, server-to-server), and neither header (old browsers, curl). No path is exempt.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const CROSS_ORIGIN_EXEMPT = new Set(['/login']);
 function sameOriginOnly(req, res, next) {
   if (/^bearer\s/i.test(req.get('authorization') || '') || !req.get('cookie')) return next();
   const site = req.get('sec-fetch-site');
@@ -1762,7 +1759,7 @@ function sameOriginOnly(req, res, next) {
   }
   next();
 }
-app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEMPT.has(req.path) ? sameOriginOnly(req, res, next) : next()));
+app.use((req, res, next) => (WRITE_METHODS.has(req.method) ? sameOriginOnly(req, res, next) : next()));
 // verify stashes the exact bytes received, alongside the parsed req.body -- the billing webhook's signature
 // (plan-environments.md, "Phase 5") is an HMAC over those bytes, not a re-serialization of the parsed object, which
 // would not reliably reproduce what the sender actually signed (key order, whitespace).
@@ -2824,9 +2821,10 @@ function productInfo(_req, res) {
   res.json({ name: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contact: CONTACT_EMAIL || null, baseDomain: BASE_DOMAIN || null, productDomain: PRODUCT_HOST || null, version: VERSION, signup: signupEnabled, plans, templates: BASE_DOMAIN ? templateChoices(null).map(({ id, name, description }) => ({ id, name, description })) : [], pages: livePages().map(({ path: p, template }) => ({ path: p, template })) });
 }
 hostRouter.get('/api/product', productInfo);
-// One environment's public name, for the product page's own Sign in (a slug is an address already, so confirming
-// one exists reveals nothing): { slug, name } for an active or pastDue environment, 404 for anything else --
-// unknown, suspended, or a slug that does not even look like one (checked before it ever reaches the registry).
+// One environment's public name, for the product page's typed address (a slug is an address already, so confirming
+// one exists reveals only what visiting it would): { slug, name } for an active or pastDue environment, 404 for
+// anything else -- unknown, suspended, or a slug that does not even look like one (checked before the registry).
+// There is deliberately no list of environments: nobody is shown anyone else's (plan-product-site.md, decision 1).
 function productEnvironment(req, res) {
   if (!hostRegistry) return res.status(404).json({ error: 'not found' });
   let slug;
@@ -2840,18 +2838,6 @@ function productEnvironment(req, res) {
   res.json({ slug: environment.slug, name: environment.name });
 }
 hostRouter.get('/api/product/environment', productEnvironment);
-// The same, as a list, for the product page's own Sign in dropdown: every active or pastDue environment, sorted
-// by name, suspended ones left out entirely (not even a slug -- there is nothing for a visitor to do with one).
-function productEnvironments(_req, res) {
-  if (!hostRegistry) return res.json({ environments: [] });
-  const environments = hostRegistry
-    .listEnvironments()
-    .filter((t) => (t.status === 'active' || t.status === 'pastDue') && !refusals.has(t.slug)) // a refused one cannot be signed in to
-    .map((t) => ({ slug: t.slug, name: t.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  res.json({ environments });
-}
-hostRouter.get('/api/product/environments', productEnvironments);
 // Whether a name could be a new environment's, for the sign-up form's note as the name is typed (plan-domains.md):
 // { slug, free, reason }, reason 'shape', 'reserved' or 'taken', null when free. Public; an address gets 120 a minute.
 const addressLimiter = new auth.LoginLimiter(120, 60000);
@@ -2892,7 +2878,7 @@ function redirectToHost(req, res, status, newHost) {
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
-const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/environments', '/api/product/address', '/api/product/signup'];
+const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
   app.use((req, res, next) => {
     const host = (req.hostname || '').toLowerCase();
@@ -2928,7 +2914,6 @@ if (BASE_DOMAIN) {
 }
 app.get('/api/product', productInfo);
 app.get('/api/product/environment', productEnvironment);
-app.get('/api/product/environments', productEnvironments);
 app.get('/api/product/address', productAddress);
 // Sign-up at the product host (plan-environments.md, "Phase 5"): always the free plan -- any other named plan
 // needs billing first, so the sign-up form only ever offers it as the plan to move to afterwards, through the
@@ -3020,39 +3005,6 @@ app.get('/login/verify', (req, res) => {
 app.get('/login/enrol', (req, res) => {
   if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
   res.sendFile(page('login-step.html'));
-});
-
-// The product page's own Sign in ends here: a plain top-level form post (never JSON, so nothing crosses
-// origins), on success a session exactly like POST /api/login, then a redirect rather than a JSON body -- a
-// path on this environment, never off it (so a scheme, a host or even a second leading slash, which a browser
-// reads as scheme-relative, falls back to "/"). A wrong login and password looks the same as a wrong password,
-// same as the JSON route.
-const loginForm = express.urlencoded({ extended: false, limit: '8kb' });
-function safeNextPath(next) {
-  const value = String(next || '');
-  return value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\') ? value : '/';
-}
-app.post('/login', loginForm, (req, res) => {
-  const ip = req.ip || 'unknown';
-  const login = String(req.body?.login || '');
-  const fail = () => res.redirect(303, `/login?error=1&login=${encodeURIComponent(login)}`);
-  if (limiter.blocked(ip)) return fail();
-  const user = resolveLoginUser(login, String(req.body?.password || ''));
-  if (!user) {
-    limiter.fail(ip);
-    return fail();
-  }
-  limiter.clear(ip);
-  const gate = mfaGate(req, user);
-  if (gate) {
-    auth.setPendingCookie(req, res, gate.pending);
-    const next = encodeURIComponent(safeNextPath(req.body?.next));
-    return res.redirect(303, `/login/${gate.enrol ? 'enrol' : 'verify'}?next=${next}`);
-  }
-  const token = auth.issueSession(store.sessionSecret, user);
-  auth.setSessionCookie(req, res, token);
-  setEnvHint(req, res);
-  res.redirect(303, safeNextPath(req.body?.next));
 });
 
 // Self sign-up (only does anything once an admin turns it on in Settings)

@@ -271,8 +271,22 @@
    "id": "login-error",
    "family": "Forms and editor windows",
    "as": "none",
-   "url": "/login?error=1&login=mia",
+   "url": "/login?login=mia",
    "wait": "#login-name",
+   "steps": [
+    {
+     "type": [
+      "#password",
+      "not-the-password"
+     ]
+    },
+    {
+     "click": "#login button[type=submit]"
+    },
+    {
+     "wait": "#error:not([hidden])"
+    }
+   ],
    "tier": "state"
   },
   {
