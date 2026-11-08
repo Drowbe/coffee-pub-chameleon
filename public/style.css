@@ -1,16 +1,16 @@
 /* The colour roles (public/sdk/system.css, documentation/designsystem/design-theme.md). A theme sets seven base roles and may set
    the four status fills and a few more (server/store.js THEME_BASE and THEME_OPTIONAL; /theme.css writes them, and the colours it
-   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are Strong Coffee's
-   dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
+   picks itself: text on the accent and on each status fill, the accent and status colours as text). These are the default theme's
+   (the studio's, in server/store.js DEFAULT_THEME) dark values, the ones a page has before /theme.css says anything (and on a page that never gets one). system.css computes
    every other role from these with color-mix(). They are here, not in system.css, so a page that loads only this file still has them. */
 :root {
-  --surface-page: #1a1410;
-  --surface-panel: #241c16;
-  --edge-hairline: #3b2e24;
-  --text-primary: #f1e6d8;
-  --text-muted: #a8998a;
-  --accent-fill: #c8873a;
-  --text-on-accent: #1a1206; /* text/icons drawn on an --accent-fill background */
+  --surface-page: #0e1a2b;
+  --surface-panel: #182c47;
+  --edge-hairline: #2a4162;
+  --text-primary: #f4ecdd;
+  --text-muted: #b9c3d3;
+  --accent-fill: #5cc8cf;
+  --text-on-accent: #0e1a2b; /* text/icons drawn on an --accent-fill background */
   --status-ok-fill: #6fae6b;
   --status-danger-fill: #b8503f;
   --brand-teal: #5cc8cf; /* the brand kit's teal: the start page's main buttons and links */

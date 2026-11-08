@@ -6,14 +6,14 @@
  * documentation/designsystem/design-theme.md.
  */
 :root {
-  --bg: #1a1410;
-  --bg-section: #241c16;
-  --bg-card: #2a2119;
-  --border: #3b2e24;
-  --text: #f1e6d8;
-  --text-dim: #a8998a;
-  --accent: #c8873a;
-  --on-accent: #1a1206;
+  --bg: #0e1a2b;
+  --bg-section: #182c47;
+  --bg-card: #2a3b53;
+  --border: #2a4162;
+  --text: #f4ecdd;
+  --text-dim: #b9c3d3;
+  --accent: #5cc8cf;
+  --on-accent: #0e1a2b;
   /* The five corner radii; nothing else is ever written as a radius (tools/check-radius.mjs). Min: tiny tags, scrollbar
      thumbs, kbd, checkboxes, bar ends. Small: buttons, inputs, tabs, chips, menu items, view-switch segments. Medium:
      cards, menus, popovers, list rows that are boxes. Large: panels, windows, dialogs, sheets, kind lists. Round: true

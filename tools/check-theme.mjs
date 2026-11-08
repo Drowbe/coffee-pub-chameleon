@@ -77,13 +77,15 @@ test("a null set writes nothing; an odd default mode reads as dark", () => {
   assert.equal(themeCss({ light: null, dark: null }, 'dark'), '/* default mode: dark */\n');
 });
 
-test('an untouched environment: Strong Coffee, both its sets sent', () => withStore((store) => {
+test('an untouched environment: the default theme, the studio colours, both its sets sent', () => withStore((store) => {
   const sets = store.activeThemeSets();
   assert.equal(sets.dark['surface-page'], DEFAULT_THEME.dark['surface-page']);
-  assert.equal(sets.light['surface-page'], '#eeede8');
+  assert.equal(sets.light['surface-page'], DEFAULT_THEME.light['surface-page']);
+  assert.equal(DEFAULT_THEME.light['surface-page'], '#fbf6ec', 'the studio\'s cream');
+  assert.equal(DEFAULT_THEME.dark['surface-page'], '#0e1a2b', 'the studio\'s navy');
   assert.equal(store.settings.themeMode, 'dark');
   const css = themeCss(sets, 'dark');
-  assert.match(blockOf(css, ':root:not([data-theme-mode="light"])'), /--surface-page: #1a1410;/);
+  assert.match(blockOf(css, ':root:not([data-theme-mode="light"])'), /--surface-page: #0e1a2b;/);
 }));
 
 test('a theme with one set shows it in both modes', () => withStore((store) => {
@@ -188,7 +190,7 @@ test('a stored theme in the format from before the roles is dropped on load: one
   const teal = again.themes.find((t) => t.id === 'staying-blonde');
   assert.equal(teal.name, 'Calming Teal', 'a shipped theme is put back as shipped');
   assert.equal(teal.dark['accent-fill'], '#0dc9ca');
-  assert.equal(themeCss(again.activeThemeSets(), 'dark').includes('--surface-page: #1a1410;'), true, 'Strong Coffee is what /theme.css says');
+  assert.equal(themeCss(again.activeThemeSets(), 'dark').includes('--surface-page: #0e1a2b;'), true, 'the default theme is what /theme.css says');
   assert.equal(themeCss(new Store(dir).activeThemeSets(), 'dark'), themeCss(again.activeThemeSets(), 'dark'), 'and it stays that way');
 }));
 
@@ -206,9 +208,9 @@ test('the colours the server picks are written with the set, and reach their con
   assert.ok(TC.contrast(prop(body, '--status-ok-mark'), '#ffffff') >= 3);
   // A text on the accent that already reaches 4.5 : 1 is the theme's own, byte for byte.
   const coffee = themeCss({ light: null, dark: DEFAULT_THEME.dark }, 'dark');
-  assert.equal(prop(blockOf(coffee, ':root:not([data-theme-mode="light"])'), '--text-on-accent'), '#1a1206');
+  assert.equal(prop(blockOf(coffee, ':root:not([data-theme-mode="light"])'), '--text-on-accent'), '#0e1a2b');
   // The accent as text is the accent itself while it already reaches 4.5 : 1 on the page and on a panel.
-  assert.equal(prop(blockOf(coffee, ':root:not([data-theme-mode="light"])'), '--text-accent'), '#c8873a');
+  assert.equal(prop(blockOf(coffee, ':root:not([data-theme-mode="light"])'), '--text-accent'), '#5cc8cf');
 });
 
 test('when neither white nor near-black reaches 4.5 : 1 on the accent, the better one is written and the set says so', () => {
@@ -249,7 +251,7 @@ test('the old tokens that a role has its own default for are also written when t
   assert.deepEqual(Object.keys(TC.LEGACY).sort(), ['fill-secondary', 'fill-secondary-hover', 'icon-default', 'surface-card', 'surface-field']);
 });
 
-test('style.css has Strong Coffee dark as the default of the base roles, and the old tokens are defined from the roles', () => {
+test('style.css has the default theme dark set as the default of the base roles, and the old tokens are defined from the roles', () => {
   const style = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const root = /^:root \{([\s\S]*?)\n\}/m.exec(style)[1];
   for (const [key, value] of Object.entries(DEFAULT_THEME.dark)) assert.ok(root.includes(`--${key}: ${value};`), `--${key}: ${value}`);

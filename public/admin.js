@@ -736,11 +736,11 @@ $('save-features').addEventListener('click', () => saveSettings({
 $('save-login').addEventListener('click', () => saveSettings({ loginText: $('set-login-text').value, mfaRequired: $('set-mfa-required').checked }, $('login-status')));
 
 // --- theme -------------------------------------------------------------------
-// A chooser (Strong Coffee, the default, + every saved theme) and a
+// A chooser (the default theme, + every saved theme) and a
 // Light/Dark switch, plus the same seven color inputs, used to create/edit
 // whichever theme and mode is picked rather than a single live override.
 // Every theme holds a light and a dark set (either may be missing: the
-// other then stands in); Strong Coffee's two come from the server and
+// other then stands in); the default theme's two come from the server and
 // can't be edited.
 const TC = window.ThemeColour; // public/theme-colour.js (the picks and the Auto formulas, shared with the server), loaded by admin.html
 // The key of a theme set IS the colour role (server/store.js THEME_BASE and THEME_OPTIONAL), and the role is the CSS property.
@@ -824,7 +824,7 @@ function resolvedVar(cssVar) {
   return '#' + [1, 2, 3].map((i) => mix(i).toString(16).padStart(2, '0')).join('');
 }
 let themes = [];
-let defaultTheme = null; // Strong Coffee: { name, light, dark }
+let defaultTheme = null; // the default theme: { name, light, dark }
 let activeThemeId = null; // what's actually live right now (persisted)
 let activeMode = 'dark';
 let selectedThemeId = null; // whatever the dropdown/editor is showing -- may not be applied yet
@@ -1009,7 +1009,7 @@ function renderThemeChooser() {
   $('theme-update').hidden = !selected;
   $('theme-delete').hidden = !selected;
   $('theme-apply').disabled = selectedThemeId === activeThemeId && selectedMode === activeMode;
-  // Export: the saved theme in the chooser, as a file (Strong Coffee is "default"). The server names the download.
+  // Export: the saved theme in the chooser, as a file (the default theme is "default"). The server names the download.
   $('theme-export').href = `/api/themes/${encodeURIComponent(selectedThemeId || 'default')}/export`;
   // Who made an imported theme: shown, never edited here (plan-themes.md).
   $('theme-author').textContent = selected?.author ? `Made by ${selected.author}` : '';
