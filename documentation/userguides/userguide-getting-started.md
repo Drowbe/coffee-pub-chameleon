@@ -250,12 +250,11 @@ second factor** with the password, and Manage and the console show a banner unti
 **Plans, sign-up and billing.** The host console's **Plans** panel is the catalog: `free` (what sign-up
 makes, and what a lapsed environment goes back to) and any named plans, each with its caps (members,
 storage, assistant calls a month, calls at once, modules). An environment is put on a plan from its card,
-which fills its caps from the catalog to adjust on its own. The product page at the base domain lists the
-plans and, only when the server has `SIGNUP: "on"`, makes a free environment for anyone who asks (an
-address, a name, the owner's login and name; the owner chooses a password next, on the new environment's own page); without it the page offers no sign-up form, just the plans and a way to
+which fills its caps from the catalog to adjust on its own. The start page at the base domain does not list the
+plans yet. Only when the server has `SIGNUP: "on"` does it make a free environment for anyone who asks (an
+address, a name, the owner's login and name; the owner chooses a password next, on the new environment's own page); without it the page offers no sign-up form, just a way to
 write to you. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
-(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and the product page's
-plan buttons and an owner's Upgrade go there with `?environment=<slug>`. The provider tells the server
+(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and an owner's Upgrade goes there with `?environment=<slug>`. The provider tells the server
 what happened through the webhook at `https://admin.<base>/api/host/billing`: a JSON body
 `{ "slug", "plan", "event" }` with `event` one of `paid`, `lapsed` and `cancelled`, signed with
 `BILLING_SECRET` as an `x-billing-signature` header (HMAC-SHA256 of the raw body, in hex). A provider's
@@ -274,11 +273,11 @@ changes, the change is noted in `host.json`, and a copy of `host.json` as it was
 you want to keep one. If the start stops with a line saying `host.json` lists environments
 under both "tenants" and "environments", open `host.json`, remove whichever list is out of date, and start again.
 
-**The product page on another domain (optional).** By default the product page, the use pages and sign-up
+**The start page on another domain (optional).** By default the start page and sign-up
 are on the bare `https://<base>`, with the console at `admin.<base>` and each environment at `<slug>.<base>`.
-That is the layout above, and it needs nothing more. If you would rather have the product page on a separate
+That is the layout above, and it needs nothing more. If you would rather have the start page on a separate
 host, so that its name can change without touching any environment's address, give it its own domain with
-`PRODUCT_DOMAIN`. Say `<base>` is `example.live` and the product page is to be at `product.example.com`:
+`PRODUCT_DOMAIN`. Say `<base>` is `example.live` and the start page is to be at `product.example.com`:
 
 1. **DNS.** Add a record for the product host, `product.example.com`, to the same public address as your
    proxy. Leave the base domain's records as they are: the apex (an `A` record) and the wildcard `*`.
@@ -292,19 +291,20 @@ host, so that its name can change without touching any environment's address, gi
    PRODUCT_DOMAIN: "product.example.com"
    ```
    `PRODUCT_DOMAIN` is a host name only: no `https://`, no port, no path. Unset, or equal to `BASE_DOMAIN`, the
-   product page stays on the bare base. It is ignored, with a line in the log, when `BASE_DOMAIN` is not set.
+   start page stays on the bare base. It is ignored, with a line in the log, when `BASE_DOMAIN` is not set.
 
 What changes:
 
 - The bare `https://<base>` sends visitors on to the same path at the product host (a redirect that keeps the
   path and the query), so a base address typed by hand still works. The console stays at `admin.<base>`;
   there is no setting to move it.
-- Sign-up and **Sign in** on the product page work across the two sites. After sign-up the person arrives at the
-  new environment's sign-in with their login already filled in; they enter the password.
-- **Sign in** on the product page asks for your environment's address, not a password. Type it, press **Go**, and
-  you arrive at that environment's own sign-in page. The page lists no environments. If someone sent you a link,
-  just open it.
-- An owner's **Upgrade** link on Manage and the console's own facts name the product host.
+- Sign-up and **Go** on the start page work across the two sites. After sign-up the person arrives at the new
+  environment's own page, where they choose their password.
+- **Find your environment** on the start page asks for your environment's address, not a password. Type it, press
+  **Go**, and you arrive at that environment's own sign-in page. The page lists no environments. If someone sent
+  you a link, just open it.
+- An owner's **Upgrade** link on Manage and the console's own facts name the product host. The start page has no
+  plans list yet, so **Upgrade** opens the start page and not a list of plans.
 - LiveKit is unchanged. `LIVEKIT_HOST` is its own setting, and its DNS record, certificate, proxy host and the
   TURN domain stay where they are.
 - If the product host sits directly under the base (`www.<base>`), its first label is reserved for it, and the
@@ -329,7 +329,7 @@ that the name is now reserved. Without `BASE_DOMAIN`, both settings are ignored.
 **Moving a server's addresses.** To move a running server to new domains: take a copy of the data folder; add the
 DNS records, certificates and proxy hosts for the new domains while the old ones still work; set the new
 `BASE_DOMAIN` (and `PRODUCT_DOMAIN` if you want one), put the old base in `PREVIOUS_BASE_DOMAINS` and recreate
-the container; then check that an environment signs in, `admin.<base>` shows the console, the product page opens
+the container; then check that an environment signs in, `admin.<base>` shows the console, the start page opens
 and an old link redirects. Nothing stored holds a domain, so no data changes. Keep the old wildcard certificate
 and proxy host while `PREVIOUS_BASE_DOMAINS` is set, and remove all three together when nobody uses the old
 addresses (OBS browser sources and calendar feeds follow the redirect, so re-adding them once is the way to be
@@ -338,10 +338,11 @@ rid of it sooner). A host listed in `PREVIOUS_BASE_DOMAINS` that is also the pro
 From there: `https://admin.<base>` is the host console (create an environment with its first owner, set its
 plan, back it up and restore it, suspend it and **Resume** it, or delete it aside, which keeps its data under
 `environments-deleted/`), `https://<slug>.<base>` each environment, and the bare
-`https://<base>` the product page (at `PRODUCT_DOMAIN` when you set one). Two optional variables feed that page: `PRODUCT_NAME` (the full name it shows;
+`https://<base>` the start page (at `PRODUCT_DOMAIN` when you set one), where a person types their environment's address
+or, when `SIGNUP` is on, makes one. Three optional variables feed that page: `PRODUCT_NAME` (the full name it shows;
 the default is "Coffee Pub Chameleon", and Chameleon is used where the short form fits; a name such as "Travel Pub" shows
 that name everywhere. Environments that already have a name keep it. If your compose file still says
-`PRODUCT_NAME: "Collaborator"`, change it to the new name, because it overrides the default) and `CONTACT_EMAIL` (where "ask for an environment" writes to). If the base
+`PRODUCT_NAME: "Collaborator"`, change it to the new name, because it overrides the default) `CONTACT_EMAIL` (where "ask for an environment" writes to) and `PRODUCT_SITE_URL` (the address of the product's page on your website, for example `https://www.example.com/collaborator`; the start page shows an **About** link to it, and shows none when it is unset. A value that is not a web address stops the start). If the base
 domain ever changes, set the new one as `BASE_DOMAIN` and list the old one in `PREVIOUS_BASE_DOMAINS`;
 every old address redirects to the new.
 
