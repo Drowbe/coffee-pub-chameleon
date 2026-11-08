@@ -594,6 +594,44 @@ try {
     assert.ok(out.length > 0, 'the check did not notice the two links opened at once');
   });
 
+  // The same link opened twice in quick succession in one tab (only the fragment changes): the first exchange is good,
+  // a second exchange of the same, spent token would answer 401 and tell the owner the link is dead though the step is
+  // live. The second, identical link is ignored: the form stays, names the owner, and the password sets. `held`: the
+  // second link comes while the first is still being answered; otherwise after it was answered.
+  const sameLinkTwice = async (slug, held, mutate = null) => {
+    const url = await signupByCall(slug);
+    tokens.push(url.split('#')[1]);
+    const proxy = await delayingProxy();
+    const origin = `http://${slug}.localhost:${proxy.port}`;
+    const link = url.replace(`:${port}/`, `:${proxy.port}/`);
+    const tab = await openTab({ mutate });
+    const out = [];
+    try {
+      await tab.go(`${origin}/login/first-password`);
+      await tab.waitFor(tab.visible('fp-password'), 'the form, with no link yet');
+      if (held) { proxy.hold.token = url.split('#')[1]; proxy.hold.ms = 800; }
+      await tab.go(link);
+      if (held) await sleep(150);
+      else { const end = Date.now() + 10000; while (proxy.answers.length < 1 && Date.now() < end) await sleep(50); await sleep(300); }
+      await tab.go(link);
+      await sleep(held ? 1500 : 700);
+      if (await tab.evaluate(tab.visible('fp-dead'))) out.push('the dead-link sentence is showing though the step is live');
+      if (!(await tab.evaluate(tab.visible('fp-password')))) out.push('the form is not showing');
+      if ((await tab.evaluate("document.getElementById('fp-login').value")) !== `own${slug}`) out.push('the form does not name the owner');
+      if (!(await fragmentGone(tab, origin))) out.push('the address keeps the fragment');
+      if (out.length === 0) {
+        await sendForm(tab, `${slug}-same-1`);
+        if ((await signedInAs(tab, slug)) !== `own${slug}`) out.push('the password did not set');
+      }
+    } finally { await tab.close(); await proxy.close(); }
+    return out;
+  };
+  for (const held of [true, false]) {
+    await test(`the same link twice in one tab, the second ${held ? 'while the first is being answered' : 'after it was answered'}: the form stays and the password sets`, async () => {
+      assert.deepEqual(await sameLinkTwice(held ? 'lima' : 'mike', held), []);
+    });
+  }
+
   // Two tabs of one browser share the step's cookie: a link opened in the second tab replaces the first tab's step.
   // The first tab, still naming its owner, must not set the second owner's password: the set step refuses it.
   await test("two tabs of one browser, a link in each: the older tab's form cannot set the newer owner's password", async () => {

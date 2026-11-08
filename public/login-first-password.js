@@ -96,7 +96,8 @@ async function exchange() {
   const { status, data } = await post('/api/login/first-password', { token });
   busy = false;
   if (status === 200) {
-    token = ''; // spent: the cookie the server just set says who this is now
+    // Spent: the cookie the server just set says who this is now. `token` is kept (this page's memory only, gone when
+    // it unloads) so the same link opened again in this tab is recognised and ignored (takeNewLink), not sent to be refused.
     setNamed(typeof data.login === 'string' ? data.login : '');
     if (typeof data.environmentName === 'string' && data.environmentName) document.querySelectorAll('[data-brand="environmentName"]').forEach((el) => { el.textContent = data.environmentName; });
   }
@@ -159,6 +160,7 @@ $('fp-choose').addEventListener('submit', async (event) => {
 function takeNewLink() {
   const found = takeFragment();
   if (!LINK.test(found)) return;
+  if (found === token || found === queued) return; // the link in hand, in flight or just spent, or the one waiting: the form stays
   if (busy) { queued = found; return; } // opened once the link in hand is answered
   token = found;
   exchange();
