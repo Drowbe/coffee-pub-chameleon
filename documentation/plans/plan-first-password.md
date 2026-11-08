@@ -4,11 +4,10 @@
 the stored field and the checks; experience-design, who builds the "choose your password" page; quality-assurance, who
 runs a security read with live probing; and content-manager, who documents it.
 
-**Status:** drafted 2026-11-08 by the planner for slice 3a of [plan-product-site](plan-product-site.md) (its decision
-17 and open question 2). Thomas, 2026-11-08, looking at the start page on the Prototype: "I like all the A options",
-which includes option A for the owner's password: the start page's sign-up form has no password field, and the new
-environment's own page asks for the first password. How that page knows who it is talking to is not decided; this
-plan recommends a design (Design A below) for Thomas and the security read. Nothing is built.
+**Status:** approved for building, 2026-11-08. Drafted the same day by the planner for slice 3a of
+[plan-product-site](plan-product-site.md) (its decision 17 and open question 2). Thomas, 2026-11-08, looking at the
+start page on the Prototype: "I like all the A options". Then, in chat, he approved Design A as written and decided the
+recovery, the password rule and the register rule (Decisions 3 to 6). Nothing is built.
 
 ## What it is today
 
@@ -87,8 +86,27 @@ Thomas's, 2026-11-08 (product site decision 17, "I like all the A options"):
 2. **The new environment's own page asks for the first password.** Reason: the password is typed only on the
    environment's own address. It needs a server change (this plan).
 
-Nothing else here is decided. The recommended design, its numbers and the open questions below are the planner's
-suggestions for Thomas and the security read.
+Thomas, 2026-11-08, in chat:
+
+3. **Design A is approved as written:** a single-use token in the address fragment, 15 minutes, hashed in storage,
+   exchanged on the environment's own page for a "choose your password" step, the same 401 for every failure, and the
+   normal two-step gate after. Reason: the password is typed only on the environment's own address and the token
+   cannot be guessed or reused.
+4. **Recovery when the link is lost or expired** is a host-console action, "New first-password link", for that
+   environment. The host admin sends the owner the link. It lives 24 hours and is single use. No email. Reason: it does
+   not depend on the cross sign-in and the host admin never learns the password.
+5. **Password rule:** 8 to 200 characters, enforced on the server for the first password. Reason: the rule the old
+   form asked for.
+6. **Self sign-up (`/api/register`) is refused** while an environment is waiting for its owner's first password.
+   Reason: nobody should arrive before the owner.
+
+Recommendations, followed unless Thomas objects (2026-11-08):
+
+7. **The words a person reads** are as written in this plan; experience-design may tighten them on the page.
+8. **The sign-in page says nothing** during the window (no "waiting for its owner").
+
+Also noted: sign-up today makes the environment before it checks the owner's login, so a login of only spaces leaves an
+environment with no owner. Step 1 fixes it by checking the login first.
 
 ## The recommended design: Design A, a one-time token in the address's fragment
 
@@ -153,7 +171,7 @@ expiresAt }`). With no hash, every other door is shut or no different from any n
 | `/j/<token>` | No link exists; only an owner (none is signed in) or the host admin can make one |
 | `/invite/<token>` | No invite exists; only an owner can make one |
 | `/guest/<token>` | No space has a guest link; only a signed-in member can turn one on |
-| `/api/register` | Off unless the template turned it on; see open question 4 |
+| `/api/register` | Off unless the template turned it on; refused while the owner has no password (Decision 6) |
 | `/api/me/mfa/*`, `/api/login/verify` | Need a session or a `verify` or `enrol` pending token; a `first-password` pending token is refused by its purpose |
 | The host admin's cross sign-in | Works, as it does for every environment. It is the recovery path, not a hole |
 
@@ -162,7 +180,7 @@ expiresAt }`). With no hash, every other door is shut or no different from any n
 The sign-in page at the address looks like any other: it says nothing about "not set up yet". The address already
 shows the environment exists (the start page's check tells anyone that), so a note would reveal little, but it would
 tell a visitor the environment is new and its owner has not arrived, which helps nobody but an attacker. A wrong,
-expired, used or missing token on `/login/first-password` always gets the same answer (open question 6 for the words):
+expired, used or missing token on `/login/first-password` always gets the same answer (Decision 7 for the words):
 "This link has expired or was already used. Ask whoever runs this host for a new one." It never says whether a login
 or an owner exists.
 
@@ -170,7 +188,7 @@ or an owner exists.
 
 The person closed the tab, the address never loaded, or more than 15 minutes passed. There is no email, so the person
 cannot get a new link by themselves, and signing up again with the same address is refused (it is taken). Three ways
-back, which Thomas chooses between (open question 2):
+back were weighed; Thomas chose the second (Decision 4):
 - **The host admin's cross sign-in, as today:** the host admin signs in at the environment, opens the owner in Manage
   and sets a password or makes a personal link, and passes it on by hand. Nothing new to build. Costs: the host admin
   knows the password until the owner changes it; and it fails when the owner chose the same login as a host admin,
@@ -192,8 +210,8 @@ back, which Thomas chooses between (open question 2):
 ### Password rules and hashing
 
 Hashing is today's: `auth.hashPassword()`, scrypt. The rule: the old form asked for 8 to 200 characters in the browser,
-and the server checked only "not empty". This plan suggests the set step checks **8 to 200 characters on the server**,
-so the first password meets the rule the form used to ask for (open question 3).
+and the server checked only "not empty". The set step checks **8 to 200 characters on the server** (Decision 5),
+so the first password meets the rule the form used to ask for.
 
 ### Two-step sign-in
 
@@ -285,7 +303,7 @@ to the next page.
   'first-password' })`.
 - No valid pending token, or the account is not an owner with no password and a claimed `firstPassword`: 401
   `{ error: "Start again from your link." }`.
-- Password shorter than 8 or longer than 200 characters (if Thomas agrees, open question 3): 400 with one sentence
+- Password shorter than 8 or longer than 200 characters (Decision 5): 400 with one sentence
   ("A password needs at least 8 characters.").
 - Otherwise `updateUser(key, { passwordHash: auth.hashPassword(password) })`, `firstPassword` removed, the pending
   cookie cleared, then `mfaGate()`: `{ mfaRequired: true, enrol: true }` with the `enrol` pending cookie, or the session
@@ -297,12 +315,13 @@ and the exchange drops it and locks the owner out. Never on a host admin's stand
 it. `USER_LEFT_OUT` in `server/environment-export.js` lists it, so the owner's export leaves it out. The host admin's
 backup keeps it, as it keeps everything; it holds only a hash.
 
-**`/api/register`** while an owner of the environment has a `firstPassword`: as Thomas decides (open question 4).
+**`/api/register`** while an owner of the environment has a `firstPassword` (Decision 6): refused, with the same
+sentence as sign-up being off, so nobody arrives before the owner.
 
-**The recovery** (open question 2): if Thomas picks the console action,
+**The recovery** (Decision 4):
 `POST /api/host/environments/:slug/owners/:login/first-password` (host admin only) refuses an owner who already has a
 password (400), and otherwise stores a new `firstPassword` (replacing any old one) and answers `{ url }` once,
-`Cache-Control: no-store`. Its lifetime is open question 5.
+`Cache-Control: no-store`. Its lifetime is 24 hours, single use (Decision 4).
 
 ### Pages (experience-design)
 
@@ -330,7 +349,9 @@ base-domain server), against a throwaway server with `BASE_DOMAIN` and `SIGNUP=o
 where marked:
 - Sign-up with `owner.password` is 400 (fails today: it is accepted).
 - Sign-up with a login of only spaces is 400 and makes no environment (fails today: an environment with no owner is
-  left).
+  left). This fixes a defect the research found: sign-up makes the environment before it checks the owner's login.
+- While the owner has a `firstPassword`, `POST /api/register` is refused (Decision 6).
+- The console's "New first-password link" is refused for an owner with a password, and its link works once and lasts 24 hours.
 - Sign-up answers a `url` with `/login/first-password#` and a 43-character token, no `login=` and no query; the
   response has `Cache-Control: no-store`.
 - The owner cannot sign in by `POST /api/login` with any password, including an empty one, before the first password;
@@ -343,7 +364,7 @@ where marked:
 - Two exchanges of one token sent together: exactly one 200.
 - 11 bad tokens from one address: the eleventh is 429.
 - The set step: no pending cookie is 401; a pending cookie made for `enrol` or `verify`, or at another environment, is
-  401; a password of 7 or 201 characters is 400 (if decided); a good one signs in, and `POST /api/login` then works with
+  401; a password of 7 or 201 characters is 400; a good one signs in, and `POST /api/login` then works with
   it.
 - After the password is set: the original token, and the pending cookie captured before the set, are both 401.
 - A `first-password` pending cookie is refused by `/api/me/mfa/start` and `/api/login/verify`.
@@ -362,15 +383,15 @@ Existing checks that change: `check-origin`'s sign-up case (it posts a password 
 
 `architecture-environments.md` (sign-up, the new routes, the stored field, the window and its doors), the getting-started
 guide's sign-up part and `userguide-environments.md` (what a new owner sees), the CHANGELOG, and the product site plan's
-status line for slice 3a. If the console action is built, the host console's part of the getting-started guide.
+status line for slice 3a. The host console's part of the getting-started guide.
 
 ## Left to build, in order
 
 | # | Step | Agent | Needs |
 |---|---|---|---|
-| 1 | The server: sign-up without a password and with the login checked first, the token and `firstPassword`, `sanitizeUser`, `USER_LEFT_OUT`, the page route and its headers, the exchange and the set routes, the register rule (open question 4), the checks above | server-development | Thomas's go on Design A and open questions 3 and 4 |
+| 1 | The server: sign-up without a password and with the login checked first, the token and `firstPassword`, `sanitizeUser`, `USER_LEFT_OUT`, the page route and its headers, the exchange and the set routes, the register rule (Decision 6), the checks above | server-development | Nothing; Decisions 3, 5 and 6 are made |
 | 2 | The page: `login-first-password.html` and `.js`; the password field removed from the start page's sign-up (`landing.*` now) | experience-design | Step 1 |
-| 3 | The recovery Thomas chooses (open question 2): the console action and its button on the console's environment, or nothing new | server-development, then experience-design | Open question 2 |
+| 3 | The recovery (Decision 4): the console action "New first-password link" (24 hours, single use) and its button on the console's environment | server-development, then experience-design | Step 1 |
 | 4 | Security read with live probing: every attack under Checks tried by hand against a local base-domain server, and the code read for the window's doors | quality-assurance | Steps 1 to 3 |
 | 5 | Documentation | content-manager | Step 4 |
 
@@ -399,7 +420,7 @@ slice 4 waits for steps 1 and 2.
 
 ## Risks
 
-1. **A lost tab locks the owner out** until the recovery Thomas chooses is used, and the address stays taken.
+1. **A lost tab locks the owner out** until the console's "New first-password link" is used, and the address stays taken.
 2. **The window exists.** Between sign-up and the exchange the environment has an owner with no password. Design A
    closes it to anyone without the token; any door added later that reaches an account with no password hash must be
    checked against this.
@@ -409,29 +430,16 @@ slice 4 waits for steps 1 and 2.
 5. **The start page's own safety matters.** The token is in its sign-up answer for a moment; the start page must keep
    loading only its own scripts.
 6. **Login collisions break the cross sign-in recovery.** An owner who chose a host admin's login cannot be reached by
-   that host admin's cross sign-in; the console action (open question 2) does not have this problem.
+   that host admin's cross sign-in; the console action (Decision 4) does not have this problem.
 7. **The register door.** A template that turns `allowRegistration` on would let strangers in as members before the
-   owner arrives, unless open question 4 closes it. They cannot take the owner's account.
+   owner arrives, unless Decision 6 closes it, and it does. They cannot take the owner's account.
 
 ## What is not decided
 
 ### Open questions
 
-1. **Design A, and its numbers** (15 minutes, 256 bits, the two-step exchange, the 10-minute pending step).
-   *Suggestion: yes, as written.* Blocks step 1.
-2. **The recovery for a lost or expired link.** The cross sign-in only (nothing to build), the console action
-   "New first-password link", the removal of unclaimed environments, or more than one. *Suggestion: the console action,
-   because it does not depend on the cross sign-in and the host admin never learns the password; removal later if
-   squatting on addresses becomes a problem.* Blocks step 3 only.
-3. **The password rule.** 8 to 200 characters checked on the server for the first password, or "not empty" as the
-   server checks today. *Suggestion: 8 to 200, the rule the old form asked for.* Making the same rule apply to every
-   other way a password is set is a separate question, not in this plan. Blocks step 1.
-4. **Self sign-up during the window.** Refuse `/api/register` while an owner of the environment has not set a first
-   password, or leave it as the template set it. *Suggestion: refuse, with the same sentence as sign-up being off, so
-   nobody arrives before the owner.* Blocks step 1.
-5. **How long a link from the console lives,** if the console action is built. It is passed on by hand, so 15 minutes
-   may be too short. *Suggestion: 24 hours, still single use.* Blocks step 3.
-6. **The words** a person reads: the dead-link sentence, the page's heading and lede, the start page's hint.
-   *Suggestion: as written above; experience-design may tighten them on the page.* Blocks nothing.
-7. **What the sign-in page says during the window.** Nothing (as recommended), or "This environment is waiting for its
-   owner". *Suggestion: nothing.* Blocks nothing.
+None block the build. Two follow the plan's recommendation and stand unless Thomas objects (Decisions 7 and 8):
+the words a person reads (experience-design may tighten them on the page), and what the sign-in page says during the
+window (nothing).
+
+Still to check, not to decide: the fragment through a proxy redirect in each browser on the real domains (Risks, 3).
