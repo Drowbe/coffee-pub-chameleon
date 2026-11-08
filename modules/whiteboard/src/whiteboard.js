@@ -65,6 +65,9 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
+  // The line style and arrowheads picked for new connectors (null: the usual), the same way.
+  const nextLine = { style: null, head: null };
+  const CONNECTOR = 'connector'; // the block type the Line style and Arrowheads menus are for
   // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl. Keys are named (in menus, in a button's name) only
   // where there is a mouse or a trackpad: on a touch screen alone they are noise.
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
@@ -75,9 +78,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} With Snap to grid on, blocks land on the dots; hold ${MOD === 'Cmd' ? 'Option' : 'Alt'} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. With Snap to grid on, blocks land on the dots; hold ${MOD === 'Cmd' ? 'Option' : 'Alt'} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   const takesNext = (def, role) => {
     const usual = def.create();
@@ -121,6 +124,7 @@
       const def = blockTypes.get(type);
       const own = def.create();
       for (const role of Object.keys(next)) if (next[role] !== null && takesNext(def, role)) own[role] = next[role];
+      if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z: Math.floor(board.topZ()) + 1 });
       drafts.add(b.id);
       commit(b, false);
@@ -132,7 +136,13 @@
       const next = wbClean({ ...b, ...patch });
       if (next) commit(next, save);
     },
-    save(id) { const b = board.get(id); if (b) { persist(b, 'now'); updateStatus(); } },
+    // Save a block as it is now: once, at the end of a gesture; nothing when the gesture left it as it was.
+    save(id) {
+      const b = board.get(id);
+      if (!b || (!drafts.has(id) && sameBlock(known.get(id), b))) return;
+      persist(b, 'now');
+      updateStatus();
+    },
     discard(id) {
       if (!drafts.has(id)) return;
       drafts.delete(id);
@@ -151,7 +161,33 @@
     edit: (id, o) => edit(id, o),
     setTool: (id) => setTool(id),
     hold(id, on) { if (on) held.add(id); else release(id); },
+    // Where a connector's end goes for a pointer on the board ({ block, side } or null: the board), and the connection
+    // points to show ([{ block, side }], [] for none).
+    attachAt: (p, o) => attachAt(p, o),
+    ports: (list) => renderer.ports(list),
   };
+  // The same block, leaving aside who saved it and when.
+  function sameBlock(a, b) {
+    if (!a || !b) return a === b;
+    const { by: _a, at: _b, ...x } = a;
+    const { by: _c, at: _d, ...y } = b;
+    return JSON.stringify(x) === JSON.stringify(y);
+  }
+  // The block a connector's end goes on for a point on the board: the topmost one that can take a connector (not a draft,
+  // not one of `not`), the side whose middle is near the point, else 'auto'. Near is 12 screen pixels (20 for a finger).
+  function attachAt(p, { not = [] } = {}) {
+    const skip = new Set(not);
+    const boxes = [];
+    for (const b of board.all().reverse()) {
+      if (skip.has(b.id) || drafts.has(b.id) || !wbAttachable(blockTypes.get(b.type))) continue;
+      const r = renderer.boxOf(b.id);
+      if (r) boxes.push({ ...r, id: b.id });
+    }
+    return wbAttachAt(boxes, p, (p.pointerType === 'touch' ? 20 : 12) / renderer.view.s);
+  }
+  // The connectors attached to a block, and the blocks a connector is attached to that are not on the board.
+  const connectorsOf = (id) => board.all().filter((b) => { const d = blockTypes.get(b.type); return Boolean(d && d.refs && d.refs(b).includes(id)); }).map((b) => b.id);
+  const missingRefs = (b) => { const d = blockTypes.get(b.type); return d && d.refs ? d.refs(b).filter((id) => !board.has(id)) : []; };
 
   function release(id) {
     held.delete(id);
@@ -160,11 +196,14 @@
     if (w) onRemote(w);
   }
 
+  // Deleting a block deletes the connectors attached to it first, in the same undo step: one undo brings the block back,
+  // then them, each with its own id.
   function remove(id) {
     const b = board.get(id);
     if (!b) return;
     if (drafts.has(id)) { ctx.discard(id); return; }
     if (!policy.canDelete(b)) return;
+    for (const c of connectorsOf(id)) remove(c);
     if (history) history.record(id, known.get(id) || b, null);
     known.delete(id);
     board.remove(id);
@@ -180,6 +219,29 @@
   function unpick(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); }
 
   // ---- what comes from elsewhere ------------------------------------------------------------------------------------
+  // A connector whose block someone else deleted is not drawn (lib-d), and a page that may edit removes it a moment later,
+  // once the server says the block is not there (the block may only be late: a restore by someone's undo sends a block and
+  // its connectors one by one). That delete is no step of anyone's undo, and two pages doing it is one delete.
+  let sweepTimer = 0;
+  function sweepSoon() { if (policy.canEdit && !sweepTimer) sweepTimer = setTimeout(sweep, 2500); }
+  async function sweep() {
+    sweepTimer = 0;
+    const orphans = board.all().filter((b) => !drafts.has(b.id) && !held.has(b.id) && missingRefs(b).length);
+    for (const c of orphans) {
+      let gone = false;
+      for (const id of missingRefs(c)) if (!(await sync.exists(id))) gone = true;
+      const now = board.get(c.id);
+      if (!gone || !now || held.has(c.id) || !missingRefs(now).length) continue;
+      if (editing && editing.id === c.id) { const e = editing; editing = null; e.finish(false); }
+      known.delete(c.id);
+      board.remove(c.id);
+      renderer.remove(c.id);
+      waiting.delete(c.id);
+      sync.remove(c.id);
+      unpick(c.id);
+      updateStatus();
+    }
+  }
   function onRemote(change) {
     if (change.op === 'remove') {
       const { id } = change;
@@ -199,6 +261,7 @@
       board.put(b);
       renderer.draw(b);
     }
+    sweepSoon();
     updateStatus();
   }
   // One note at a time: a change to many blocks that is refused is refused once for each, and is said once.
@@ -226,6 +289,7 @@
     if (history) history.clear(); // the board was cleared or put back as a whole: older steps no longer fit it
     for (const b of list) { if (!policy.canSee(b)) continue; known.set(b.id, b); board.put(b); renderer.draw(b); }
     select(null);
+    sweepSoon();
     updateStatus();
   }
 
@@ -233,6 +297,7 @@
 
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;
+  let addCanConnect = false; // the +'s "Connect the 2 picked blocks" is on
   // Pick exactly these blocks (an array of ids; [] or null for none).
   function select(ids) {
     sel.clear();
@@ -241,7 +306,24 @@
     const can = [...sel].some((id) => policy.canDelete(board.get(id)));
     if (can && !deleteButton) { deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) }); if (snapButton) makeSnapButton(); }
     if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
+    if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
+  }
+  // The two picked blocks a connector can join (in the order they were picked), or null.
+  function pair() {
+    if (sel.size !== 2 || !policy.canCreate()) return null;
+    const list = [...sel].map((id) => board.get(id));
+    return list.every((b) => b && !drafts.has(b.id) && wbAttachable(blockTypes.get(b.type))) ? list : null;
+  }
+  // Join the two picked blocks with a connector, from the first picked to the second: one save, one undo step.
+  function connectPicked() {
+    const two = pair();
+    if (!two) return;
+    const b = ctx.draft(CONNECTOR, { from: { block: two[0].id, side: 'auto' }, to: { block: two[1].id, side: 'auto' } });
+    ctx.save(b.id);
+    select([b.id]);
+    const el = renderer.element(b.id);
+    if (el) el.focus({ preventScroll: true });
   }
   function selectAll() { select(board.all().filter((x) => !drafts.has(x.id)).map((x) => x.id)); }
   // Every block a rectangle on the board (board units, any two corners) touches, by each block type's box.
@@ -251,6 +333,8 @@
     const out = [];
     for (const b of board.all()) {
       if (drafts.has(b.id)) continue;
+      // A connector is picked when the rectangle touches its line, not just the box round it.
+      if (blockTypes.get(b.type).attached) { const g = renderer.geometry(b.id); if (g && wbPathTouches(g.points, r)) out.push(b.id); continue; }
       const box = blockTypes.get(b.type).box(b);
       const el = renderer.element(b.id);
       const h = box.h === null ? (el ? el.offsetHeight : 0) : box.h;
@@ -298,9 +382,14 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds 8).
+  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds 8),
+  // and the tools of a group (the Connector and the flowchart shapes) are the choices of one button's menu after it, the
+  // button on while one of them is the tool. A group's menu may offer a tool from the switch too (`also`, in `order`).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
-  const inSwitch = allowed.filter((t) => !t.apart);
+  const inSwitch = allowed.filter((t) => !t.apart && !t.group);
+  const GROUPS = [
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'] },
+  ];
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
     : null;
@@ -311,9 +400,26 @@
     tool: t,
     button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => toggleTool(t) }),
   }));
+  const groupButtons = GROUPS.map((g) => {
+    const list = g.order.map((id) => allowed.find((t) => t.id === id)).filter(Boolean);
+    if (!list.some((t) => t.group === g.id)) return null;
+    const menu = (e) => host.menu.show({
+      id: `tools-${g.id}`,
+      at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
+      items: [
+        { heading: g.label },
+        ...list.flatMap((t, i) => [
+          ...(i > 0 && t.makes !== CONNECTOR && list[i - 1].makes === CONNECTOR ? [{ separator: true }] : []),
+          { id: t.id, label: t.label, icon: t.icon, hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
+        ]),
+      ],
+    });
+    return { group: g, button: host.ui.toolbarButton({ id: `tools-${g.id}`, label: g.label, icon: g.icon, iconOnly: true, on: false, onClick: menu }) };
+  }).filter(Boolean);
   const showTool = () => {
-    if (toolSwitch) toolSwitch.set(tool.apart ? '' : tool.id);
+    if (toolSwitch) toolSwitch.set(tool.apart || tool.group ? '' : tool.id);
     for (const a of apartButtons) a.button.set({ on: a.tool === tool });
+    for (const g of groupButtons) g.button.set({ on: tool.group === g.group.id });
   };
   function setTool(id) {
     const next = tools.get(id);
@@ -421,7 +527,7 @@
       if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) next.weight = v;
       updateStatus();
     };
-    const lines = (t) => t === 'line' || t === 'stroke';
+    const lines = (t) => t === 'line' || t === 'stroke' || t === CONNECTOR;
     const border = list.length ? !list.every((b) => lines(b.type)) : def && !lines(def.type);
     const whose = list.length || def ? whoseOf(list, def) : 'new lines and borders';
     const items = [{ heading: `${border ? 'Border width' : 'Line width'} ${list.length ? 'of' : 'for'} ${whose}` }];
@@ -532,6 +638,32 @@
     paintStrip.hidden = !any;
   }
 
+  // Line style and arrowheads: of the picked connectors (each one whole save), or, with none picked, for new connectors.
+  // The current choice is the marked row; with several connectors that differ, none is.
+  const connectorsIn = (only) => targets(only).filter((b) => b.type === CONNECTOR);
+  function lineGroups(list) {
+    const usual = blockTypes.get(CONNECTOR).create();
+    const group = (field, label, icon, choices) => {
+      const now = list.length ? agreed(list, field) : nextLine[field] || usual[field];
+      const pick = (v) => () => {
+        for (const b of list) ctx.change(b.id, { [field]: v }, { save: 'now' });
+        nextLine[field] = v;
+      };
+      const chosen = choices.find((c) => c.id === now);
+      return { id: field, label, icon, hint: chosen ? chosen.label : 'Mixed', items: choices.map((c) => choiceRow(c.id, c.label, now, pick(c.id), { icon: c.icon })) };
+    };
+    return [group('style', 'Line style', 'stairs', WB_CONNECTOR_STYLES), group('head', 'Arrowheads', 'arrow-right-long', WB_CONNECTOR_HEADS)];
+  }
+  function lineMenu(where, only) {
+    const list = connectorsIn(only);
+    if (!list.length && targets(only).length) {
+      host.menu.show({ id: 'line', ...where, items: [{ label: 'Pick a connector to change its line style', disabled: true }] });
+      return;
+    }
+    const whose = list.length > 1 ? `the ${list.length} picked connectors` : list.length ? 'this connector' : 'new connectors';
+    host.menu.show({ id: 'line', ...where, items: [{ heading: `Line ${list.length ? 'of' : 'for'} ${whose}` }, ...lineGroups(list)] });
+  }
+
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'
   // z are too close to split is every block numbered again, once. Several picked blocks move together and keep their
   // order among themselves: to the front or back as a stack, a layer up or down each past the next block not picked.
@@ -583,9 +715,10 @@
   // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
   // edit. Only the fields the step changed are put back, and each only where the block still holds what this person left:
   // a field someone else has changed since keeps their change, and so does every field its block type links with it,
-  // changed by the step or not (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
-  // since, which the step needs, is left out. The person is told once, of both when both happened (wbUndoNote). A block
-  // this person deleted comes back whole, with its own id. The work is lib-g's (wbApplyChanges); this hands it the board.
+  // changed by the step or not (wbMergeBack); a block whose every such field someone else changed is left as it is. A
+  // block someone else deleted since, which the step needs, is left out, and so is a connector whose block is gone. The
+  // person is told once, of both when both happened (wbUndoNote). A block this person deleted comes back whole, with its
+  // own id, before the connectors attached to it. The work is lib-g's (wbApplyChanges); this hands it the board.
   let undoButton = null;
   let redoButton = null;
   function historyButtons() {
@@ -601,6 +734,8 @@
       canCreate: () => policy.canCreate(),
       clean: wbClean,
       linkedOf: (b) => { const def = blockTypes.get(b.type); return (def && def.linked) || []; },
+      pointsAt: (b) => { const def = blockTypes.get(b.type); return Boolean(def && def.refs); },
+      missing: (b) => missingRefs(b).length > 0,
     });
     select(r.touched.filter((id) => board.has(id)));
     return r;
@@ -628,6 +763,9 @@
   if (policy.canEdit) {
     undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
     redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
+    // Line style and arrowheads, for connectors: a toolbar button of its own after Redo (the colours and the width are on
+    // the board's strip; Snap to grid stays last).
+    if (tools.get('connector') && policy.canUseTool(tools.get('connector'))) host.ui.toolbarButton({ id: 'line', label: 'Line style and arrowheads', icon: 'stairs', iconOnly: true, onClick: (e) => lineMenu(toolbarAt(e)) });
   }
 
   // Zoom is the window's, in the title bar: Zoom out and Zoom in as icons, and the magnifier's menu with the rest. Toolbar
@@ -694,20 +832,42 @@
   // person told once (onRefused).
   const clipboard = createClipboard();
   let clipMarked = false; // the last copy here put the mark on the computer's clipboard (CLIP_MARK, below)
-  const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
+  // A connector that is not drawn (its block is gone) is never copied.
+  const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && !missingRefs(b).length);
+  // What a copy holds: the picked blocks and every connector whose blocks are all among them (picked or not); a picked
+  // connector with an end on a block left out has that end made a free point where it is drawn now (its type's loosen).
+  function copySet() {
+    const list = copyable();
+    const ids = new Set(list.map((b) => b.id));
+    for (const b of board.all()) {
+      const d = defOf(b);
+      const refs = d.refs ? d.refs(b) : [];
+      if (!ids.has(b.id) && !drafts.has(b.id) && refs.length && refs.every((id) => ids.has(id))) { list.push(b); ids.add(b.id); }
+    }
+    return list.map((b) => {
+      const d = defOf(b);
+      if (!d.loosen || d.refs(b).every((id) => ids.has(id))) return b;
+      const g = renderer.geometry(b.id); // its points run from its `from` end to its `to` end
+      return { ...b, ...d.loosen(b, ids, (which) => (g ? (which === 'from' ? g.points[0] : g.points[g.points.length - 1]) : null)) };
+    });
+  }
   // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
   function boundsOf(blocks) {
     const r = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
     for (const b of blocks) {
-      const box = blockTypes.get(b.type).box(b);
-      const x = b.x + box.x; const y = b.y + box.y;
+      const def = blockTypes.get(b.type);
+      if (def.attached && def.refs(b).length === 2) continue; // where it runs follows its blocks
+      const box = def.box(b);
+      const x = (b.x || 0) + box.x; const y = (b.y || 0) + box.y;
       r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x + box.w); r.y1 = Math.max(r.y1, y + (box.h === null ? 32 : box.h));
     }
+    if (!Number.isFinite(r.x0)) return { x0: 0, y0: 0, x1: 0, y1: 0 };
     return r;
   }
+  // Cut is a copy and a delete: the connectors attached to what is cut go too (the ones between them are in the copy).
   function copy({ cut = false } = {}) {
-    const list = copyable();
-    if (!policy.canEdit || !list.length) return;
+    if (!policy.canEdit || !copyable().length) return;
+    const list = copySet();
     clipboard.copy(list, { cut });
     clipMarked = false; // onCopyEvent sets it again when this copy put the mark on the computer's clipboard
     if (cut) removeMany(list.map((b) => b.id));
@@ -728,7 +888,8 @@
   // Duplicate: copies of what is picked, a step along, without touching what was copied.
   function duplicate() {
     if (!policy.canCreate()) return;
-    placeCopies(wbCopies(copyable(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
+    if (!copyable().length) return;
+    placeCopies(wbCopies(copySet(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
   }
   const clipRows = (at) => [
     { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), onClick: () => copy({ cut: true }) },
@@ -800,12 +961,24 @@
 
   // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there),
   // and a picture from the computer. Paste is there too, greyed until something is copied.
+  // The flowchart shapes are a category of their own, with "Connect the 2 picked blocks" (on while two blocks that can take
+  // a connector are picked).
   function setAdd() {
     if (!policy.canEdit || !host.add) return;
+    addCanConnect = Boolean(pair());
+    const shape = (id) => { const t = tools.get(id); return t ? [{ id, label: t.label, icon: t.icon, hint: t.key ? keyHint(t.key.toUpperCase()) : undefined }] : []; };
     host.add.set([
       { id: 'note', label: 'Add a note', icon: 'note-sticky' },
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
+      {
+        label: 'Add a flowchart shape',
+        icon: 'diagram-project',
+        items: [
+          ...['rounded', 'diamond', 'pill', 'parallelogram'].flatMap(shape),
+          { id: 'connect', label: 'Connect the 2 picked blocks', icon: 'arrows-turn-right', disabled: !addCanConnect },
+        ],
+      },
       ...(pictures ? [{ id: 'picture', label: 'Add a picture', icon: 'image' }] : []),
       { divider: true },
       { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has() },
@@ -816,8 +989,9 @@
     host.on('add', ({ id }) => {
       if (id === 'paste') { paste(); return; }
       if (id === 'picture') { if (pictures) $('picker').click(); return; }
+      if (id === 'connect') { connectPicked(); return; }
       const def = blockTypes.get(id);
-      if (!def) return;
+      if (!def || def.attached) return;
       const c = renderer.center();
       const box = def.box({ ...def.create(), x: 0, y: 0 });
       const at = { x: c.x - box.w / 2, y: c.y - (box.h || 24) / 2 };
@@ -852,7 +1026,8 @@
     if (hint.hidden) return;
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
       : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
-        : tool.id === 'pen' ? 'Press and drag to draw.' : 'Click the board to put it there.';
+        : tool.id === 'pen' ? 'Press and drag to draw.'
+          : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
   // ---- the pointer ------------------------------------------------------------------------------------------------------
@@ -990,7 +1165,7 @@
     contextMenu(e);
   });
   function contextMenu(e) {
-    const id = renderer.blockAt(e.target);
+    const id = renderer.blockAt(e.target) || (renderer.handleAt(e.target) ? one() : null); // a handle is its block's
     const box = host.rootElement.getBoundingClientRect();
     const at = { x: e.clientX - box.left, y: e.clientY - box.top };
     if (!id) {
@@ -1012,6 +1187,7 @@
     if (!list.length) return;
     const single = list.length === 1 ? list[0] : null;
     const def = single && defOf(single);
+    const lines = connectorsIn();
     host.menu.show({
       id: 'block',
       className: 'wb-block-menu',
@@ -1020,6 +1196,8 @@
         ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
+        ...(lines.length ? lineGroups(lines) : []),
+        ...(pair() ? [{ id: 'connect', label: 'Connect them', icon: 'arrows-turn-right', onClick: () => connectPicked() }] : []),
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
@@ -1074,7 +1252,7 @@
       const dx = k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0;
       const dy = k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0;
       if (history) history.tag(`nudge:${picked.map((x) => x.id).sort().join(',')}`); // a run of presses is one step
-      for (const x of picked) ctx.change(x.id, { x: x.x + dx, y: x.y + dy }, { save: 'soon' });
+      for (const x of picked) ctx.change(x.id, wbMoved(x, dx, dy), { save: 'soon' });
       return;
     }
     if (mod) return;
@@ -1135,8 +1313,13 @@
   }
   // Where the pointer is over the board (a mouse or a pen hovering), for a paste.
   let hover = null;
-  surface.addEventListener('pointermove', (e) => { if (e.pointerType !== 'touch') hover = { cx: e.clientX, cy: e.clientY }; });
-  surface.addEventListener('pointerleave', () => { hover = null; });
+  surface.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    hover = { cx: e.clientX, cy: e.clientY };
+    // A tool that shows something under a resting pointer (the Connector: the connection points of the block there).
+    if (tool.hover && down === null && !panning && !pinch && !editing) tool.hover(pointOf(e), ctx);
+  });
+  surface.addEventListener('pointerleave', () => { hover = null; if (tool.hover && down === null) tool.hover(null, ctx); });
   surface.addEventListener('paste', (e) => {
     if (inField(e) || !policy.canEdit) return;
     clearTimeout(clipTimer);
@@ -1192,6 +1375,7 @@
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
+  sweepSoon();
   $('loading').hidden = true;
   $('app').hidden = false;
   if (surface.clientWidth > 0) { fitted = true; renderer.fit(); }

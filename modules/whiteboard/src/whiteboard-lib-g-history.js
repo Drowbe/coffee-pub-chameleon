@@ -49,13 +49,17 @@
   }
   // Put a step's changes (as undo and redo hand them) on the board. What it needs from the page: get(id) -> the block or
   // null, remove(id), put(block) (saved as a new change), canChange(block), canCreate(), clean(raw) -> a block or null,
-  // linkedOf(block) -> its type's linked fields. Answers { left: blocks someone else deleted since (left out), kept:
-  // blocks whose every field to put back someone else changed (left as they are), touched: the ids put back }.
-  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf }) {
+  // linkedOf(block) -> its type's linked fields, and for blocks that point at others (a connector): pointsAt(block) ->
+  // whether it does (they are put back after the rest, so one never comes back before its block) and missing(block) ->
+  // whether a block it points at is not on the board (someone else deleted it: it is left out too). Answers { left:
+  // blocks someone else deleted since, or whose block they did (left out), kept: blocks whose every field to put back
+  // someone else changed (left as they are), touched: the ids put back }.
+  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf, pointsAt = () => false, missing = () => false }) {
     let left = 0;
     let kept = 0;
     const touched = [];
-    for (const { id, target, source, fields } of list) {
+    const late = (c) => (c.target && pointsAt(c.target) ? 1 : 0);
+    for (const { id, target, source, fields } of list.slice().sort((a, b) => late(a) - late(b))) {
       const now = get(id);
       if (!target) { if (now) remove(id); continue; }
       if (!now && source) { left += 1; continue; } // someone else deleted it since
@@ -63,6 +67,7 @@
       if (!merged) { kept += 1; continue; } // someone else changed all of it since
       const b = clean(merged);
       if (!b || (now && !canChange(now)) || (!now && !canCreate())) continue;
+      if (missing(b)) { left += 1; continue; }
       put(b);
       touched.push(id);
     }
