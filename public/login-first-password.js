@@ -21,8 +21,8 @@ const $ = (id) => document.getElementById(id);
 // once the token is out of the address.
 import('/brand.js').then((brand) => brand.loadBranding()).catch(() => {});
 
-function show(panel) {
-  for (const id of ['fp-wait', 'fp-choose', 'fp-dead']) $(id).hidden = id !== panel;
+function show(part) {
+  for (const id of ['fp-wait', 'fp-choose', 'fp-dead']) $(id).hidden = id !== part;
 }
 
 function dead() {

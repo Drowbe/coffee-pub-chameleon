@@ -284,7 +284,7 @@ try {
         assert.equal(await tab.evaluate("document.activeElement?.id"), 'fp-signin', 'the way on has focus');
         assert.equal(await tab.evaluate("document.querySelector('#fp-dead a.btn').getAttribute('href')"), '/login');
         assert.deepEqual(requestProblems(tab, origin, null), []);
-        assert.deepEqual(await tab.layoutProblems(), [], 'the dead-link panel');
+        assert.deepEqual(await tab.layoutProblems(), [], 'the dead-link view');
       } finally { await tab.close(); }
     });
   }
