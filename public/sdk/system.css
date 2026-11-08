@@ -102,10 +102,11 @@
   --font-ui: "Figtree", "Figtree Fallback", var(--font-system);
   --font-display: "Fraunces", "Fraunces Fallback", "Figtree", "Figtree Fallback", var(--font-system);
 
-  /* ---- Elevation: three shadows and one scrim (black in dark; the text colour at a low strength in light, below) ---- */
+  /* ---- Elevation: three shadows, a stronger one for a flyout, and one scrim (black in dark; the text colour at a low strength in light, below) ---- */
   --shadow-1: 0 1px 4px rgba(0, 0, 0, 0.35);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-4: -14px 0 44px color-mix(in srgb, black 65%, transparent), -2px 0 8px color-mix(in srgb, black 45%, transparent); /* a flyout over the page, on its open (left) side: the Set up panel */
   --scrim: rgba(0, 0, 0, 0.55);
 
   /* ---- Layers between blocks (content inside a block uses 0 to 9). --z-menu (26) is defined in style.css. ---- */
@@ -267,6 +268,7 @@
   --shadow-1: 0 1px 4px color-mix(in srgb, var(--text-primary) 8%, transparent);
   --shadow-2: 0 2px 8px color-mix(in srgb, var(--text-primary) 10%, transparent);
   --shadow-3: 0 4px 16px color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --shadow-4: -14px 0 44px color-mix(in srgb, var(--text-primary) 32%, transparent), -2px 0 8px color-mix(in srgb, var(--text-primary) 22%, transparent);
   --shadow-color: color-mix(in srgb, black 10%, transparent);
   --text-danger: color-mix(in srgb, var(--status-danger-fill) 70%, var(--text-primary));
   --map-land: var(--surface-panel);
