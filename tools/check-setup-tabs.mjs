@@ -130,6 +130,12 @@ try {
     assert.equal(b.setupLabel, 'Trip Configuration');
     assert.equal(b.setupTip, 'Trip Configuration');
     assert.equal(b.next, true, 'Manage sits just before Set up');
+    await tab.click('[data-nav-tool="setup"]');
+    await tab.waitFor('#space-setup .setup-tab');
+    const title = await tab.eval(`({ h: document.getElementById('space-setup-title').textContent, row: document.getElementById('setup-tabs').getAttribute('aria-label'), labelled: document.getElementById('space-setup').getAttribute('aria-labelledby') })`);
+    assert.equal(title.h, b.setupLabel, 'the panel title and the button say the same words');
+    assert.equal(title.row, b.setupLabel, 'and so does the tab row\'s name');
+    assert.equal(title.labelled, 'space-setup-title');
     await tab.click('#whoami-link');
     await sleep(500);
     const items = await tab.eval(`[...document.querySelectorAll('.host-menu .host-menu-item')].map((e) => e.textContent.trim())`);
@@ -137,6 +143,10 @@ try {
     assert.ok(!items.some((t) => /^Manage/.test(t)), `no Manage in the profile menu: ${JSON.stringify(items)}`);
     const member = await inSpace('sam', 1280);
     assert.equal(await member.eval(`Boolean(document.querySelector('[data-nav-tool="manage-tool"]')?.getClientRects().length)`), false, 'a member has no Manage button');
+    await member.click('[data-nav-tool="setup"]');
+    await member.waitFor('#space-setup');
+    await sleep(600);
+    assert.equal(await member.eval(`document.getElementById('space-setup-title').textContent`), 'Modules', 'a person who cannot configure has only the Modules tab, and its title');
     const home = await open('/', 'admin', 1280);
     await home.waitFor('#whoami-link');
     await sleep(800);

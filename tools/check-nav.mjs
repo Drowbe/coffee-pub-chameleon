@@ -527,7 +527,7 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   assert.match(space, /const canShowTab = \(\) => Boolean\(currentSpace\) && !viewingHome && !phoneWidth\(\);/);
   assert.match(space, /show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/);
   assert.match(space, /icon: 'sliders', label: setupLabel\(\), toggleable: true, active: false, visible: setupShown, onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\{ tab: '#show' \}\)\)/);
-  assert.match(space, /function setupLabel\(\) \{\n\s*return `\$\{word\(inAside\(\) \? 'aside' : 'space', \{ cap: true \}\)\} Configuration`;/, 'Set up\'s tooltip and name are "<space word> Configuration" in the template\'s word, the aside\'s word in an aside');
+  assert.match(space, /function setupLabel\(\) \{\n\s*return configurationLabel\(word, inAside\(\)\);/, 'Set up\'s tooltip and name come from configurationLabel, the panel\'s title helper');
   assert.match(space, /function registerWordTools\(\) \{\n\s*nameModuleChooser\(\);\n\s*paintSetupLabel\(\);/, 'and follow the environment\'s words once they are in');
   assert.ok(!/label: 'Set up'/.test(space), 'no fixed "Set up" label on the tool');
   // The menu is the shared one (host-menu.js), drawn from the canvas's items: Show, then Arrange, then the page's
@@ -2317,7 +2317,7 @@ fs.copyFileSync(path.join(ROOT, 'public/space-setup.js'), setupCopy);
   copyImports('space-setup.js');
   assert.ok(['action-bar.js', 'phase-sheet.js', 'ai-sees.js'].every((f) => copied.has(f)), 'the panel\'s imports are copied with it');
 }
-const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
+const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, configurationLabel, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 
 test('Set up: a right-zone tool after your picture, before the window controls, for owners, the admin and moderators; Save and Cancel are the panel\'s action bar, not the top bar\'s', () => {
@@ -2391,6 +2391,10 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.match(setup, /<span class="setup-tab-dot" aria-hidden="true" hidden><\/span><span class="visually-hidden setup-tab-unsaved"><\/span>/);
   assert.match(setup, /textContent = on \? ', unsaved changes' : '';/, 'the dot is said to a screen reader');
   assert.match(setup, /ArrowRight: at \+ 1, ArrowLeft: at - 1, Home: 0, End: all\.length - 1/, 'the arrows move between tabs');
+  assert.equal(configurationLabel((k, o) => (k === 'aside' ? 'whisper' : 'campaign').replace(/^./, (c) => (o && o.cap ? c.toUpperCase() : c))), 'Campaign Configuration', 'the space word');
+  assert.equal(configurationLabel((k, o) => (k === 'aside' ? 'whisper' : 'campaign').replace(/^./, (c) => (o && o.cap ? c.toUpperCase() : c)), true), 'Whisper Configuration', 'the aside\'s word in an aside');
+  assert.match(setup, /<h2 id="space-setup-title">\$\{esc\(one \? tabLabel\(tabs\[0\]\) : configLabel\(\)\)\}<\/h2>/, 'the panel\'s title is the button\'s name; a person with only the Modules tab sees "Modules"');
+  assert.match(setup, /aria-label="\$\{esc\(configLabel\(\)\)\}"/, 'the tab row is named the same');
   assert.match(setup, /show: modulesWord\(true\), space: word\('space', \{ cap: true \}\), members: membersWord\(true\), phases: 'Phases', modules: 'Settings' \}\)\[id\]/, 'tab labels: Modules and the space and Members in the environment\'s words, Phases, Settings');
   assert.ok(!/setup-full|Full settings/.test(setup), 'the panel\'s Full settings link is gone (step 6)');
   assert.match(setup, /discardWords: 'Discard your changes\?',/, 'Escape and Cancel ask host.ui.editor\'s question');

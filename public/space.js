@@ -3,7 +3,7 @@ import { Room, RoomEvent, Track, createLocalTracks } from '/lib/livekit-client.e
 import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPresentSpace, setInSpace, openSwitcher as openSpaceSwitcher, refreshNotices, iconClasses, spaceCrumbIcon, hasOwnerRights, word, verb, applyWords, followTheme, getIcons } from '/brand.js';
 import { anchorSegments, layoutTabs, tabOverflow, layoutIconChoices, iconMatches, gridStep, pageOpens, isHere, hereCount, asidePlaceholder, whereWords, offStream } from '/primary-nav.js';
 import { openPhaseSheet, FACT_CHIPS_HIDDEN_AT } from '/phase-sheet.js';
-import { createSpaceSetup, setupAddress } from '/space-setup.js';
+import { createSpaceSetup, setupAddress, configurationLabel } from '/space-setup.js';
 import { renderModuleSettings } from '/module-settings.js';
 import { actionBar } from '/action-bar.js';
 import { createCanvas } from '/canvas.js';
@@ -2666,7 +2666,7 @@ nav.register({ id: 'setup', bar: 'primary', zone: 'right', group: 'space', group
 // the template's word; in an aside, where it holds only the Modules tab, the aside's word. Home has no Set up button.
 // Registered again once the environment's words are in, and when the page enters a space or an aside.
 function setupLabel() {
-  return `${word(inAside() ? 'aside' : 'space', { cap: true })} Configuration`;
+  return configurationLabel(word, inAside());
 }
 function paintSetupLabel() {
   const tool = nav.get('setup');

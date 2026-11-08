@@ -39,6 +39,10 @@ import { actionBar } from './action-bar.js';
 import { mountSees, fullSees, sameSees } from './ai-sees.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
 
+// The name of the Set up button and of the panel's title: "<space word> Configuration" (Trip Configuration), in the
+// template's word; in an aside, the aside's word. `word` is the page's word helper. One helper, so the two say the same.
+export const configurationLabel = (word, aside = false) => `${word(aside ? 'aside' : 'space', { cap: true })} Configuration`;
+
 // The tabs, in the order shown, by rights.
 export const SETUP_TABS = Object.freeze(['space', 'members', 'phases', 'modules']);
 export const OWNER_TABS = SETUP_TABS;
@@ -272,6 +276,7 @@ export function createSpaceSetup(deps) {
   const spaceWord = () => word('space');
   const membersWord = (cap = false) => word('member', { many: true, cap });
   const modulesWord = (cap = false) => word('module', { many: true, cap });
+  const configLabel = () => configurationLabel(word, Boolean(state && state.space && state.space.isAside)); // the button's name too (space.js setupLabel)
   const tabLabel = (id) => ({ show: modulesWord(true), space: word('space', { cap: true }), members: membersWord(true), phases: 'Phases', modules: 'Settings' })[id];
   const sectionHtml = (id, title, inner, { hidden = false, cls = '' } = {}) => `<section class="setup-section${cls ? ` ${cls}` : ''}" data-section="${id}"${hidden ? ' hidden' : ''}><h3 class="setup-heading">${title}</h3>${inner}</section>`;
 
@@ -448,9 +453,9 @@ export function createSpaceSetup(deps) {
     const contents = tabs.map((id) => `<div role="tabpanel" class="setup-tab-content" id="setup-content-${id}" data-tab="${id}" aria-labelledby="setup-tab-${id}" tabindex="-1" hidden>${TAB_HTML[id]()}${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}</div>`).join('');
     el.innerHTML = `
       <div class="setup-head">
-        <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : 'Set up')}</h2>
+        <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : configLabel())}</h2>
         <p class="setup-which" id="space-setup-which"></p>
-        <div class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist" aria-label="Set up"${one ? ' hidden' : ''}>${tabButtons}<button type="button" class="core-link layout-tabs-more" id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></div>
+        <div class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist" aria-label="${esc(configLabel())}"${one ? ' hidden' : ''}>${tabButtons}<button type="button" class="core-link layout-tabs-more" id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></div>
       </div>
       <div class="setup-body">${contents}</div>
       <p class="setup-status status" id="space-setup-status" role="status" aria-live="polite"></p>`;
@@ -1333,7 +1338,7 @@ export function createSpaceSetup(deps) {
     return words;
   }
   function refused(saved, failed, problem) {
-    say(setupSaidWords({ saved, failed, problem }, { words: fieldWords() }));
+    say(setupSaidWords({ saved, failed, problem }, { setUp: configLabel(), words: fieldWords() }));
     const tab = tabOfField(failed, state.tabs);
     if (tab && state.tabs.includes(tab)) select(tab);
     const moduleId = String(failed).startsWith('module:') ? failed.slice(7) : null;
@@ -1412,7 +1417,7 @@ export function createSpaceSetup(deps) {
     } finally {
       if (state) { state.saving = false; el.classList.remove('saving'); }
     }
-    const said = setupSaidWords({ saved }, { words: fieldWords() });
+    const said = setupSaidWords({ saved }, { setUp: configLabel(), words: fieldWords() });
     const onDone = opts.onDone;
     close();
     if (typeof onDone === 'function') onDone(answered, said, saved);
