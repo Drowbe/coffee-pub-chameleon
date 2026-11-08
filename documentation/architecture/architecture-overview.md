@@ -148,9 +148,8 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   anywhere but this origin (`Sec-Fetch-Site`), or its `Origin` isn't this one (`baseUrl()`, which minds
   `X-Forwarded-*`). A `SameSite=Lax` cookie still rides along from another origin on the same site (every
   environment is `*.BASE_DOMAIN`), which is why this is needed. Passed through: a `Bearer` token (Studio), a request
-  with no cookie (webhooks, server-to-server), one with neither header (old browsers, curl), and `POST /login`, which
-  the landing page at the bare base domain posts across origins by design and which trusts only the login and
-  password it is sent. `sameOriginOnly` in `server/index.js`; `tools/check-origin.mjs` covers it. Follow-ups are
+  with no cookie (webhooks, server-to-server) and one with neither header (old browsers, curl). No path is exempt:
+  the product pages no longer post a sign-in across sites. `sameOriginOnly` in `server/index.js`; `tools/check-origin.mjs` covers it. Follow-ups are
   GitHub #70.
 - **Themes.** A theme is `{ id, name, author?, light, dark }` in the environment's settings, each set holding the
   seven base colours and thirteen optional ones by their stored names (`bg`, `bgSection`, `border`, `text`, `textDim`,
