@@ -1,39 +1,95 @@
-/* The start page (public/start.html, start.js; documentation/plans/plan-product-site.md). Built from the Prototype's Start page section
-   (public/design-system/prototype-start-page.css), locked by Thomas on 2026-11-08: one 480px column at every width. Theme tokens only,
-   on the app's own system (public/sdk/system.css: panels, rows, fields, buttons, choice rows, the spinner and the empty state). There
-   is no owner's theme at the product host, so /theme.css gives the bundled default: its light set (Cream) unless this browser picked dark. */
+/* The start page (public/start.html, start.js; documentation/plans/plan-product-site.md). It looks like the studio's product page: the studio's
+   header, a hero with the drawing, the sign-in, the ways to use the product and the studio's footer. The sign-in is built from the Prototype's
+   Start page section (public/design-system/prototype-start-page.css) on the app's own system (public/sdk/system.css: panels, rows, fields,
+   buttons, choice rows, the spinner and the empty state). Theme tokens only. There is no owner's theme at the product host, so /theme.css gives
+   the bundled default: its light set (Cream) unless this browser picked dark. */
 
 .sp-body { margin: 0; min-height: 100vh; background: var(--surface-page); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--text-14); }
 
-/* ---- the header: the studio's lockup. The mark 56px, "Coffee Pub" in Fraunces Bold in the text colour, the product's name in the
-   brand's coral at the same size (coral only at 24px and larger: the size is 28px at every width), a round button for light and dark ---- */
-.sp-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); box-sizing: border-box; max-width: 1120px; margin: 0 auto; padding: var(--space-4) var(--space-5); }
-.sp-brand { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; color: var(--text-primary); text-decoration: none; }
-.sp-brand:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+/* ---- the header: the studio's. The mark 56px, "Coffee Pub" in Fraunces Bold in the text colour, the product's name in the brand's coral at the
+   same size (2rem, coral only at 24px and larger), then Support, the teal pill and a round button for light and dark ---- */
+.sp-wrap { box-sizing: border-box; width: 100%; max-width: 1425px; margin: 0 auto; padding: 0 clamp(24px, 4.5vw, 60px); }
+.sp-top { border-bottom: 1px solid var(--edge-hairline); background: var(--surface-page); }
+.sp-top-in { display: flex; align-items: center; gap: 28px; height: 84px; }
+.sp-brand { display: inline-flex; align-items: center; gap: 12px; min-width: 0; color: var(--text-primary); text-decoration: none; }
+.sp-brand:focus-visible, .sp-nav a:focus-visible, .sp-btn:focus-visible, .sp-way:focus-visible, .sp-site a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
 .sp-mark { flex: none; width: 56px; height: 56px; }
 .sp-mark-dark { display: none; }
 :root[data-theme-mode="dark"] .sp-mark-light { display: none; }
 :root[data-theme-mode="dark"] .sp-mark-dark { display: inline-block; }
-.sp-lockup { min-width: 0; font-size: var(--text-28); line-height: 1; letter-spacing: -0.01em; }
+.sp-lockup { min-width: 0; font-size: 2rem; line-height: 1; letter-spacing: -0.01em; white-space: nowrap; }
 .sp-lockup-brand { font-family: var(--font-display); font-weight: 700; color: var(--text-primary); }
 .sp-lockup-product { font-family: var(--font-ui); font-weight: 600; letter-spacing: 0; color: var(--brand-coral); }
 .sp-skel-name { display: block; width: 220px; max-width: 100%; height: 28px; }
-.sp-theme { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--edge-hairline); border-radius: var(--radius-round); background: transparent; color: var(--text-primary); font-size: var(--text-16); cursor: pointer; }
+.sp-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.sp-nav-link { padding: 8px 14px; border-radius: var(--radius-small); color: var(--text-muted); font-weight: 500; font-size: var(--text-16); text-decoration: none; }
+.sp-nav-link:hover { background: var(--surface-panel); color: var(--text-primary); }
+.sp-pill, .sp-btn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border-radius: var(--radius-round); background: var(--brand-teal); color: var(--text-on-brand-teal); font-family: var(--font-ui); font-weight: 600; text-decoration: none; cursor: pointer; }
+.sp-pill { padding: 10px 20px; margin-left: 8px; font-size: 0.95rem; }
+.sp-btn { padding: 15px 28px; font-size: var(--text-16); }
+.sp-pill:hover, .sp-btn:hover { background: var(--brand-teal-hover); }
+.sp-theme { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: 8px; padding: 0; border: 1px solid var(--edge-field); border-radius: var(--radius-round); background: transparent; color: var(--text-primary); font-size: var(--text-16); cursor: pointer; }
 .sp-theme:hover { background: var(--surface-panel); }
 .sp-theme:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.sp-top [hidden], .sp-page [hidden], .sp-site[hidden] { display: none; }
 
-/* ---- the page: one column, 480px, at every width ---- */
-.sp-page { display: flex; flex-direction: column; gap: var(--space-6); box-sizing: border-box; min-width: 0; padding: var(--space-7) var(--space-5) var(--space-6); }
+/* ---- the hero: the product's mark and a badge, the title in Fraunces, the words, the button, and the drawing beside them ---- */
+.sp-page { display: flex; flex-direction: column; gap: 72px; box-sizing: border-box; min-width: 0; padding: 40px 0 72px; }
+.sp-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.sp-hero-text { min-width: 0; }
+.sp-eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.sp-hero-mark { width: 56px; height: 56px; }
+.sp-badge { padding: 4px 12px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--brand-coral) 18%, var(--surface-page)); color: var(--text-primary); font-size: var(--text-12); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.sp-hero h1 { margin: 0 0 24px; font-family: var(--font-display); font-weight: 600; font-size: clamp(2.5rem, 5.6vw, 4.2rem); line-height: 1.08; letter-spacing: -0.02em; color: var(--text-primary); }
+.sp-lead { max-width: 46rem; margin: 0; color: var(--text-muted); font-size: clamp(1.15rem, 1.5vw, 1.3rem); line-height: 1.6; }
+.sp-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 36px; }
+.sp-actions:has(> [hidden]:only-child) { display: none; }
+.sp-where { margin: 14px 0 0; color: var(--text-muted); font-size: var(--text-14); line-height: 1.7; overflow-wrap: anywhere; }
+.sp-where code { padding: 3px 9px; border-radius: var(--radius-medium); background: color-mix(in srgb, var(--brand-coral) 14%, var(--surface-page)); color: var(--text-primary); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em; }
+.sp-art { min-width: 0; --sand: color-mix(in srgb, var(--accent-fill) 24%, var(--surface-page)); --accent-soft: color-mix(in srgb, var(--brand-teal) 22%, var(--surface-page)); --sea: color-mix(in srgb, var(--brand-teal) 50%, var(--surface-page)); --accent: var(--brand-teal); --coral: var(--brand-coral); --bg: var(--surface-page); --surface: var(--surface-panel); --line: var(--edge-hairline); --line2: var(--edge-field); }
+.sp-scene { display: block; width: 100%; height: auto; overflow: visible; }
+.sp-scene .plane { offset-path: path("M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164"); offset-rotate: auto; offset-distance: 50%; }
+
+/* ---- the sign-in: one 480px column of cards, right after the hero ---- */
+.sp-signin { box-sizing: border-box; padding: 0 clamp(24px, 4.5vw, 60px); }
 .sp-cols { display: flex; flex-direction: column; gap: var(--space-5); box-sizing: border-box; width: 100%; max-width: 480px; margin: 0 auto; min-width: 0; }
+.sp-signin .sdk-panel { border-radius: var(--radius-large); padding: var(--space-5); }
 .sp-part { gap: var(--space-3); }
-.sp-part > h2 { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+.sp-part > h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: 600; }
 .sp-part > p { margin: 0; }
 .sp-quiet { color: var(--text-muted); font-size: var(--text-13); }
 .sp-plain { display: flex; flex-direction: column; gap: var(--space-2); padding-inline: var(--space-1); }
 .sp-plain > h2 { margin: 0; font-size: var(--text-14); font-weight: var(--weight-strong); }
 .sp-plain > p { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
-.sp-cols [hidden], .sp-page [hidden] { display: none; }
+.sp-cols [hidden] { display: none; }
 #start { scroll-margin-top: var(--space-4); }
+
+/* ---- the ways to use the product: cards, each a link to its page on the studio's site ---- */
+.sp-ways h2 { margin: 0 0 24px; font-family: var(--font-display); font-weight: 600; font-size: clamp(1.7rem, 3vw, 2.2rem); letter-spacing: -0.01em; color: var(--text-primary); }
+.sp-ways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+.sp-way { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 14px; border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--surface-panel); color: var(--text-primary); text-align: center; text-decoration: none; transition: transform 0.2s; }
+.sp-way:hover { transform: translateY(-2px); border-color: var(--brand-teal); }
+.sp-way img { width: 56px; height: 56px; }
+.sp-way b { font-family: var(--font-display); font-size: 1.05rem; }
+.sp-way-line { color: var(--text-muted); font-size: var(--text-14); line-height: 1.4; }
+.sp-soon { padding: 2px 10px; border-radius: var(--radius-small); background: color-mix(in srgb, var(--brand-coral) 18%, var(--surface-page)); color: var(--text-primary); font-size: var(--text-11); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ---- the footer: the studio's ---- */
+.sp-site { border-top: 1px solid var(--edge-hairline); background: var(--surface-panel); color: var(--text-muted); font-size: 0.98rem; }
+.sp-site-in { display: grid; gap: 16px; padding-top: 44px; padding-bottom: 44px; }
+.sp-foot-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 32px 40px; align-items: start; }
+.sp-foot-brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-primary); text-decoration: none; }
+.sp-foot-mark { width: 28px; height: 28px; }
+.sp-foot-wm { font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; line-height: 1; letter-spacing: -0.01em; white-space: nowrap; }
+.sp-foot-wm i { font-family: var(--font-ui); font-style: normal; font-weight: 600; letter-spacing: 0; color: var(--brand-coral); }
+.sp-foot-about p { max-width: 34ch; margin: 10px 0 0; line-height: 1.6; }
+.sp-site nav { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.sp-site nav h2 { margin: 0 0 4px; color: var(--text-primary); font: 700 0.8rem/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+.sp-site a { color: var(--text-muted); text-decoration: none; }
+.sp-site a:hover { color: var(--text-accent); }
+.sp-foot-base { display: grid; justify-items: center; gap: 8px; padding-top: 22px; border-top: 1px solid var(--edge-hairline); text-align: center; }
+.sp-foot-base p { margin: 0; }
+.sp-foot-base p:last-child { font-size: 0.9rem; }
 
 /* The address: one field, the base domain after it inside the same box, and Go beside it. */
 .sp-go-row { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
@@ -71,20 +127,24 @@
 .sp-own-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sp-form .sdk-error[hidden] { display: none; }
 
-/* The foot: the product's page on the website, the one link out. */
-.sp-foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2) var(--space-3); color: var(--text-muted); font-size: var(--text-13); }
-.sp-foot a { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-accent); }
-.sp-foot a > i { font-size: var(--text-11); }
 #sp-failed { max-width: 480px; margin: 0 auto; }
 
 /* ---- a phone: the system sets its 640px sizes (fields, checks and buttons 44px) on :root; the lockup stacks its two words beside the mark ---- */
+@media (max-width: 900px) { .sp-hero { grid-template-columns: 1fr; gap: 24px; } }
 @media (max-width: 640px) {
-  .sp-top { padding: var(--space-3) var(--space-4); }
+  .sp-wrap, .sp-signin { padding-inline: var(--space-4); }
+  .sp-top-in { height: auto; flex-wrap: wrap; gap: 10px; padding-block: 14px; }
+  .sp-lockup { font-size: var(--text-28); white-space: normal; }
   .sp-lockup-brand, .sp-lockup-product { display: block; }
-  .sp-page { gap: var(--space-5); padding: var(--space-5) var(--space-4) var(--space-5); }
+  .sp-nav { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .sp-nav .sp-theme { margin-left: auto; }
+  .sp-page { gap: 48px; padding: 24px 0 48px; }
+  .sp-hero { grid-template-columns: 1fr; gap: 24px; }
+  .sp-foot-grid { grid-template-columns: 1fr 1fr; }
+  .sp-foot-about { grid-column: 1 / -1; }
+  .sp-nav-link, .sp-pill, .sp-site a { min-height: 44px; display: inline-flex; align-items: center; }
   .sp-page .sdk-row { min-height: 44px; }
   .sp-page .sdk-choice-row { min-height: 44px; }
-  .sp-foot a { min-height: 44px; }
   .sp-page :where(.btn-small) { position: relative; }
   .sp-page .btn-small::after { content: ""; position: absolute; inset: var(--btn-hit) 0; }
   .sp-page .sdk-icon-btn.btn-small::after { inset: var(--btn-hit); }

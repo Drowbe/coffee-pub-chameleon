@@ -130,6 +130,7 @@ const ROUND_OK = [
   { file: 'public/style.css', sel: '.sdk-member .call-mark', why: 'the 15px on-the-call mark on a member tile' },
   { file: 'public/style.css', sel: '.whoami img', why: 'your picture in the top bar' },
   { file: 'public/start.css', sel: '.sp-theme', why: 'the start page\'s light and dark button: a 44px square box, a true circle' },
+  { file: 'public/start.css', sel: '.sp-pill, .sp-btn', why: 'the studio\'s teal pill buttons (Find Out More, Request an Invite): the start page matches the studio\'s header and hero, Thomas\'s brief of 2026-11-08, so these two stay pills' },
   { file: 'public/style.css', sel: '.tile.has-bg-image .placeholder', why: 'a call tile\'s round picture' },
   { file: 'public/style.css', sel: '.dot', why: 'a 10px status dot' },
   { file: 'public/style.css', sel: '.fbtn', why: 'the call toolbar\'s round buttons (check-buttons holds it)' },

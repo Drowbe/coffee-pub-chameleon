@@ -58,12 +58,17 @@ export function startProblems(root) {
   // no demo
   if (/demo/i.test(H + J + C)) out.push('start.html/start.js/start.css: the demo is named (it stays hidden)');
   // exactly one link out
-  const literal = [...(H + J).matchAll(/https?:\/\/[^\s"'`)<]*/g)].map((m) => m[0]).filter((u) => !/^https?:\/\/(?:\$\{|localhost)/.test(u));
+  // Every link out is the studio's address (productSiteUrl) with a path on it. The one exception: the footer's "Elsewhere" column, three
+  // pages that are not on the studio's address (listed here, exactly).
+  const ELSEWHERE = ['https://willhavebeen.com', 'https://www.patreon.com/cw/CoffeePub', 'https://github.com/Drowbe'];
+  const literal = [...(H + J).matchAll(/https?:\/\/[^\s"'`)<]*/g)].map((m) => m[0]).filter((u) => !/^https?:\/\/(?:\$\{|localhost)/.test(u) && !ELSEWHERE.includes(u.replace(/['",;\]]+$/, '')));
   if (literal.length) out.push(`start.html/start.js: an address is written in the page: ${literal.join(', ')}`);
   const hrefs = [...H.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((u) => !/^(#|\/|mailto:)/.test(u) && u !== '');
   if (hrefs.length) out.push(`start.html: links out that are not the page's own: ${hrefs.join(', ')}`);
   const external = [...J.matchAll(/\.href\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim()).filter((v) => !/^envUrl\(|^to\.href$|^`mailto:/.test(v));
-  if (external.length !== 1 || !/^product\.productSiteUrl$/.test(external[0])) out.push(`start.js: the one link out is not product.productSiteUrl alone (found: ${external.join(' | ') || 'none'})`);
+  const bad = external.filter((v) => !/^product\.productSiteUrl$|^siteLink\(|^outside \? to : siteLink\(to\)$/.test(v));
+  if (bad.length || !external.length || !J.includes('function siteLink(path) { return new URL(path, siteOrigin()).href; }') || !/new URL\(product\.productSiteUrl\)\.origin/.test(J)) out.push(`start.js: a link out is not built from product.productSiteUrl's origin (found: ${bad.join(' | ') || 'none'})`);
+  if (!/if \(!site\) return;/.test(J)) out.push('start.js: the studio\'s parts are drawn without PRODUCT_SITE_URL');
   // Go opens only envUrl(slug)
   const goes = [...J.matchAll(/location\.href\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim());
   if (goes.some((g) => !/^envUrl\(env\.slug\)$|^to\.href$/.test(g)) || !goes.some((g) => g === 'envUrl(env.slug)')) out.push(`start.js: a go that is not envUrl(slug) (found: ${goes.join(' | ')})`);
@@ -74,8 +79,8 @@ export function startProblems(root) {
   if (!/\.sp-mark \{[^}]*width: 56px; height: 56px/.test(C)) out.push('start.css: the mark is not 56px');
   if (!/\.sp-lockup-brand \{[^}]*font-family: var\(--font-display\); font-weight: 700; color: var\(--text-primary\)/.test(C)) out.push('start.css: "Coffee Pub" is not Fraunces Bold in the text colour');
   if (!/\.sp-lockup-product \{[^}]*color: var\(--brand-coral\)/.test(C)) out.push('start.css: the product\'s name is not the coral token');
-  const size = /\.sp-lockup \{[^}]*font-size: var\(--text-(\d+)\)/.exec(C);
-  if (!size || Number(size[1]) < 24) out.push('start.css: the lockup is under 24px, where coral may not be used');
+  const size = /\.sp-lockup \{[^}]*font-size: (?:var\(--text-(\d+)\)|(\d+(?:\.\d+)?)rem)/.exec(C);
+  if (!size || (size[1] ? Number(size[1]) : Number(size[2]) * 16) < 24) out.push('start.css: the lockup is under 24px, where coral may not be used');
   if (/\.sp-lockup-(?:brand|product) \{[^}]*font-size/.test(C)) out.push('start.css: the two words are not one size');
   if (!/\.sp-theme \{[^}]*border-radius: var\(--radius-round\)/.test(C) || !/id="sp-theme"/.test(H)) out.push('start.html/css: no round theme button');
   if (!/\.sp-body \{[^}]*background: var\(--surface-page\)/.test(C)) out.push('start.css: the page ground is not the theme\'s page colour');
@@ -107,9 +112,9 @@ function selfTest() {
   const cases = [
     ['a password box on sign-up', () => plant('public/start.html', '<label><span class="sdk-label">Your login</span>', '<label>Password<input type="password"></label><label><span class="sdk-label">Your login</span>'), /password field/],
     ['a dropdown of environments', () => plant('public/start.html', '<section class="sdk-panel sp-part" id="sp-find"', '<select><option>x</option></select><section class="sdk-panel sp-part" id="sp-find"'), /dropdown/],
-    ['a demo button', () => plant('public/start.html', '<footer class="sp-foot"', '<a class="btn" href="/">Try the demo</a><footer class="sp-foot"'), /demo/],
-    ['a second link out', () => plant('public/start.html', '<footer class="sp-foot"', '<a href="https://example.com/pricing">Pricing</a><footer class="sp-foot"'), /links out|address is written/],
-    ['an address written in the script', () => plant('public/start.js', "a.href = product.productSiteUrl;", "a.href = 'https://example.com/x';"), /one link out|address is written/],
+    ['a demo button', () => plant('public/start.html', '<footer class="sp-site"', '<a class="btn" href="/">Try the demo</a><footer class="sp-site"'), /demo/],
+    ['a second link out', () => plant('public/start.html', '<footer class="sp-site"', '<a href="https://example.com/pricing">Pricing</a><footer class="sp-site"'), /links out|address is written/],
+    ['an address written in the script', () => plant('public/start.js', "$('sp-nav-support').href = siteLink('/support');", "$('sp-nav-support').href = 'https://example.com/x';"), /one link out|address is written/],
     ['a check only on Go', () => plant('public/start.js', "find.timer = setTimeout(() => {", "find.timer = 0; (() => {"), /after a pause|check as you type/],
     ['Recent below the address', () => change('public/start.html', (t) => { const m = /(\s*<!-- Shown only when[\s\S]*?<\/section>)/.exec(t); return t.replace(m[1], '').replace('<section class="sp-plain"', `${m[1]}\n      <section class="sp-plain"`); }), /Recent is not above/],
     ['the sign-up folded', () => plant('public/start.html', '<form class="sp-form" id="signup-form"', '<details><form class="sp-form" id="signup-form"'), /not open/],
@@ -210,7 +215,7 @@ async function live() {
     const SAY = (id) => `document.getElementById(${JSON.stringify(id)}).textContent`;
 
     for (const width of [1280, 390]) {
-      await test(`${width}: the header, one 480px column, light, Recent absent, the field first, sign-up open with no password, one link out, no demo`, async () => {
+      await test(`${width}: the header, one 480px column, light, Recent absent, the field first, sign-up open with no password, every link out the studio's, no demo`, async () => {
         const tab = await openTab(width);
         try {
           await tab.go(front);
@@ -235,6 +240,7 @@ async function live() {
               external, text: document.body.innerText, active: document.activeElement && document.activeElement.id,
               suffix: document.getElementById('sp-find-suffix').textContent,
               title: document.title,
+              heroTitle: document.getElementById('sp-title').textContent, badge: document.querySelector('.sp-badge').textContent, inviteText: document.getElementById('sp-invite').textContent, waysHead: document.getElementById('sp-ways-h').textContent,
             };
           })()`);
           assert.ok(Math.abs(g.markW - 56) < 0.6 && Math.abs(g.markH - 56) < 0.6, `the mark is ${g.markW}x${g.markH}`);
@@ -257,7 +263,11 @@ async function live() {
           assert.equal(g.suffix, '.localhost');
           assert.ok(g.ownVisible, 'sign-up is open on the page');
           assert.equal(g.password, 0, 'no password field');
-          assert.deepEqual(g.external, ['https://example.com/products/thing'], 'exactly one link out');
+          const site = 'https://example.com';
+          assert.ok(g.external.length >= 14 && g.external.every((u) => u.startsWith(`${site}/`) || ['https://willhavebeen.com/', 'https://www.patreon.com/cw/CoffeePub', 'https://github.com/Drowbe'].includes(u)), `every link out is the studio's or one of the three elsewhere: ${g.external.join(' ')}`);
+          for (const want of ['/products/thing', '/contact', '/support', '/products/chameleon/travel', '/products/chameleon/games', '/products/chameleon/projects', '/products/chameleon/mentoring', '/products/chameleon/real-estate']) assert.ok(g.external.includes(`${site}${want}`), `a link to ${want}`);
+          assert.equal(g.heroTitle, `${g.brandText} ${g.prodText}`, 'the hero title is the product name');
+          assert.equal(g.badge, 'Private Beta'); assert.equal(g.inviteText, 'Request an Invite'); assert.equal(g.waysHead, `Ways to use ${g.prodText}`);
           assert.ok(!/demo/i.test(g.text), 'the demo is hidden');
           assert.deepEqual(tab.problems, [], 'console and exceptions');
         } finally { await tab.close(); }

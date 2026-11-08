@@ -6,10 +6,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'">
   <link rel="icon" href="/img/site/icon">
   <title>Start</title>
-  <!-- The start page (documentation/plans/plan-product-site.md): the product host's one page. A person types the address of their
-       environment and goes to its own sign-in page, or makes an environment of their own. It lists no environments, takes no
-       password and carries no marketing. start.js reads the product's name, the base domain and the one link out from
-       GET /api/product, so none of them is written here. Light unless this browser picked dark (theme-head.js). -->
+  <!-- The start page (documentation/plans/plan-product-site.md): the product host's one page. It looks like the studio's product page:
+       the studio's header, a hero, the sign-in (a typed address, Recent, a sign-up), the ways to use the product, the studio's footer.
+       A person types the address of their environment and goes to its own sign-in page, or makes an environment of their own. It
+       lists no environments and takes no password. start.js reads the product's name, the base domain and the studio's address
+       (productSiteUrl) from GET /api/product, so none of them is written here; every link out is built from that address, and
+       without it the studio's parts are not drawn. Light unless this browser picked dark (theme-head.js). -->
   <link rel="stylesheet" href="/style.css">
   <script src="/theme-head.js"></script>
   <link rel="stylesheet" href="/theme.css">
@@ -19,16 +21,83 @@
 </head>
 <body class="sp-body">
   <header class="sp-top">
-    <a class="sp-brand" href="/" id="sp-brand" aria-label="Start page">
-      <img class="sp-mark sp-mark-light" src="/assets/images/brand/mark.svg" alt="" width="56" height="56">
-      <img class="sp-mark sp-mark-dark" src="/assets/images/brand/mark-dark.svg" alt="" width="56" height="56">
-      <span class="sp-lockup" id="sp-lockup"><span class="sdk-skel sdk-skel-title sp-skel-name" aria-hidden="true"></span></span>
-    </a>
-    <button class="sp-theme" type="button" id="sp-theme" aria-label="Switch to dark mode" title="Switch to dark mode"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
+    <div class="sp-wrap sp-top-in">
+      <a class="sp-brand" href="/" id="sp-brand" aria-label="Start page">
+        <img class="sp-mark sp-mark-light" src="/assets/images/brand/mark.svg" alt="" width="56" height="56">
+        <img class="sp-mark sp-mark-dark" src="/assets/images/brand/mark-dark.svg" alt="" width="56" height="56">
+        <span class="sp-lockup" id="sp-lockup"><span class="sdk-skel sdk-skel-title sp-skel-name" aria-hidden="true"></span></span>
+      </a>
+      <nav class="sp-nav" aria-label="Main">
+        <!-- Both links are filled in from PRODUCT_SITE_URL (start.js) and stay hidden without it. -->
+        <a class="sp-nav-link" id="sp-nav-support" hidden>Support</a>
+        <a class="sp-pill" id="sp-nav-more" hidden>Find Out More</a>
+        <button class="sp-theme" type="button" id="sp-theme" aria-label="Switch to dark mode" title="Switch to dark mode"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
+      </nav>
+    </div>
   </header>
 
   <main class="sp-page" id="sp-main">
-    <h1 class="visually-hidden" id="sp-title">Find your environment</h1>
+    <section class="sp-wrap sp-hero" id="sp-hero" aria-labelledby="sp-title">
+      <div class="sp-hero-text">
+        <div class="sp-eyebrow">
+          <img class="sp-hero-mark sp-mark-light" src="/assets/images/brand/mark.svg" alt="" width="56" height="56">
+          <img class="sp-hero-mark sp-mark-dark" src="/assets/images/brand/mark-dark.svg" alt="" width="56" height="56">
+          <span class="sp-badge">Private Beta</span>
+        </div>
+        <h1 id="sp-title">Find your environment</h1>
+        <p class="sp-lead" id="sp-lead"></p>
+        <div class="sp-actions"><a class="sp-btn" id="sp-invite" hidden>Request an Invite</a></div>
+        <p class="sp-where" id="sp-where"></p>
+      </div>
+      <div class="sp-art">
+        <svg class="sp-scene" role="img" aria-label="A trip being planned together: a plan, a map and a call" viewBox="0 0 600 500" focusable="false">
+    <defs><clipPath id="hm1"><rect x="50" y="76" width="470" height="380" rx="34"/></clipPath></defs>
+    <rect x="50" y="76" width="470" height="380" rx="34" fill="var(--sand)"/>
+    <g clip-path="url(#hm1)">
+      <path d="M300 76 C320 150 380 140 420 190 C470 250 500 300 520 330 L520 76Z" fill="var(--accent-soft)"/>
+      <path d="M50 396 C110 356 190 366 240 456 L50 456Z" fill="var(--bg)" opacity=".6"/>
+      <path d="M340 90 C360 112 400 108 430 96 L430 76 L340 76Z" fill="var(--bg)" opacity=".55"/>
+      <g stroke="#fff" stroke-opacity=".7" stroke-width="2.5">
+        <path d="M170 76V456M290 76V456M410 76V456M50 170H520M50 270H520M50 370H520"/>
+      </g>
+      <path class="wave" d="M296 196 q30 -18 60 0 t60 0 t60 0" fill="none" stroke="var(--sea)" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <path d="M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164" fill="none" stroke="var(--coral)" stroke-width="6" stroke-linecap="round" stroke-dasharray="0.1 13"/>
+    <g fill="#fff" stroke="var(--coral)" stroke-width="5"><circle cx="100" cy="400" r="12"/><circle cx="270" cy="332" r="12" class="stop"/></g>
+    <g class="plane">
+      <path d="M-24 -4 L-4 -4 L-14 -26 L-6 -26 L10 -4 L24 -4 C30 -4 30 4 24 4 L10 4 L-6 26 L-14 26 L-4 4 L-24 4Z" fill="#14243B"/>
+    </g>
+    <g class="pin"><g transform="translate(470 164)">
+      <path d="M0 0 C-20 -26 -24 -44 -24 -52 a24 24 0 1 1 48 0 C24 -44 20 -26 0 0Z" fill="var(--coral)" stroke="#14243B" stroke-width="3.5" stroke-linejoin="round"/>
+      <circle cy="-52" r="9" fill="#fff"/>
+    </g></g>
+    <g class="sun" transform="translate(506 112)">
+      <g class="rays" stroke="#F6B35B" stroke-width="5" stroke-linecap="round">
+        <path d="M0 -50V-38M0 38V50M-50 0H-38M38 0H50M-35 -35l8 8M27 27l8 8M35 -35l-8 8M-27 27l-8 8"/>
+      </g>
+      <circle r="27" fill="#F6B35B"/>
+    </g>
+    <g class="card" transform="translate(22 38)">
+      <rect width="218" height="136" rx="20" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/>
+      <path d="M0 40V20a20 20 0 0 1 20-20H198a20 20 0 0 1 20 20V40Z" fill="var(--accent)"/>
+      <circle cx="26" cy="20" r="11" fill="#fff"/><rect x="48" y="15" width="78" height="10" rx="5" fill="#fff" opacity=".85"/>
+      <path d="M26 62V102" stroke="var(--line2)" stroke-width="3"/>
+      <circle cx="26" cy="62" r="7" fill="var(--accent)"/><circle cx="26" cy="82" r="7" fill="var(--coral)"/><circle cx="26" cy="102" r="7" fill="var(--accent)"/>
+      <rect x="46" y="57" width="130" height="10" rx="5" fill="var(--line)"/><rect x="46" y="77" width="100" height="10" rx="5" fill="var(--line)"/><rect x="46" y="97" width="146" height="10" rx="5" fill="var(--line)"/>
+    </g>
+    <g class="call" transform="translate(335 340)">
+  <rect width="230" height="118" rx="22" fill="#14243B"/>
+  <path d="M30 116 L10 150 L72 116Z" fill="#14243B"/>
+  <rect x="12" y="12" width="98" height="72" rx="12" fill="#213A5E"/>
+  <rect x="120" y="12" width="98" height="72" rx="12" fill="#213A5E"/>
+  <g class="av a1"><circle cx="61" cy="40" r="15" fill="#F26B52"/><path d="M34 84 C34 62 88 62 88 84Z" fill="#F26B52"/></g>
+  <g class="av a2"><circle cx="169" cy="40" r="15" fill="#8FD0D3"/><path d="M142 84 C142 62 196 62 196 84Z" fill="#8FD0D3"/></g>
+  <circle cx="92" cy="101" r="7" fill="#DDD3BE"/><circle cx="115" cy="101" r="7" fill="#DDD3BE"/><circle cx="138" cy="101" r="7" fill="#F26B52" class="rec"/>
+</g>  </svg>
+      </div>
+    </section>
+
+    <section class="sp-signin" aria-label="Sign in">
     <div class="sp-cols">
       <!-- Shown only when this browser reached an environment through this page (start.js). -->
       <section class="sdk-panel sp-part" id="sp-recent" aria-labelledby="sp-recent-h" hidden>
@@ -86,8 +155,13 @@
       </section>
     </div>
 
-    <!-- The one link out, filled in from the host's PRODUCT_SITE_URL when it is set. -->
-    <footer class="sp-foot" id="sp-foot" hidden><a id="sp-about" rel="noopener"></a></footer>
+    </section>
+
+    <!-- The studio's other uses of the product, when PRODUCT_SITE_URL is set. Every link is built from its origin (start.js). -->
+    <section class="sp-wrap sp-ways" id="sp-ways" aria-labelledby="sp-ways-h" hidden>
+      <h2 id="sp-ways-h"></h2>
+      <div class="sp-ways-grid" id="sp-ways-grid"></div>
+    </section>
 
     <!-- If the host could not be asked. -->
     <div class="sdk-empty" data-kind="error" id="sp-failed" hidden>
@@ -97,6 +171,24 @@
       <div class="sdk-empty-actions"><button class="btn" type="button" id="sp-retry">Try again</button></div>
     </div>
   </main>
+
+  <footer class="sp-site" id="sp-site" hidden>
+    <div class="sp-wrap sp-site-in">
+      <div class="sp-foot-grid">
+        <div class="sp-foot-about">
+          <a class="sp-foot-brand" id="sp-foot-brand" aria-label="Studio home"><img class="sp-foot-mark sp-mark-light" src="/assets/images/brand/start/studio-mark.svg" alt="" width="32" height="32"><img class="sp-foot-mark sp-mark-dark" src="/assets/images/brand/start/studio-mark-dark.svg" alt="" width="32" height="32"><span class="sp-foot-wm"><b>Coffee Pub</b> <i>Studio</i></span></a>
+          <p>Boutique design and development. I build apps and Foundry VTT modules for people who plan trips, stream and run tabletop games.</p>
+        </div>
+        <nav aria-label="Products" id="sp-foot-products"><h2>Products</h2></nav>
+        <nav aria-label="Studio" id="sp-foot-studio"><h2>Studio</h2></nav>
+        <nav aria-label="Elsewhere" id="sp-foot-else"><h2>Elsewhere</h2></nav>
+      </div>
+      <div class="sp-foot-base">
+        <p>Passion-driven products fueled by coffee, fever dreams, and a chronic lack of sleep.</p>
+        <p id="sp-legal"></p>
+      </div>
+    </div>
+  </footer>
 
   <script type="module" src="/start.js"></script>
 </body>
