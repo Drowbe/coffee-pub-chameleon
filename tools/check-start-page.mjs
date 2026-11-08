@@ -4,16 +4,16 @@
  * slices 4 and 5) that replaced the product host's marketing pages. Two parts.
  *
  * 1. Read from the files (startProblems). The page is: a typed address with the base domain after it and Go, checked as the person
- *    types (GET /api/product/environment?slug=, after a pause); Recent above the address, not drawn when empty; the sign-up form open
- *    on the page with no password field anywhere; exactly one link out, from PRODUCT_SITE_URL (nothing written in the page); no demo;
+ *    types (GET /api/product/environment?slug=, after a pause); Recent under the address in one wide band, not drawn when empty; no sign-up
+ *    form on the page and no password field anywhere; exactly one link out, from PRODUCT_SITE_URL (nothing written in the page); no demo;
  *    Go and Recent open only envUrl(slug); the header is the studio's (the 56px mark, "Coffee Pub" in the display face and bold, the
  *    product's name in coral at 24px or larger, a round theme button). The server has no use pages (PRODUCT_PAGES, livePages), no
  *    `pages` in /api/product, and the old files are gone. The same rules are run on planted copies of the OLD front page's habits
  *    (a password box, a dropdown of environments, a demo button, several links out, a check only on Go) and must fail on each.
  * 2. Live, in headless Chromium against a throwaway hosted server (BASE_DOMAIN=localhost, SIGNUP=on, PRODUCT_SITE_URL set; Chromium
- *    sends localhost and every *.localhost to this machine): at 1280 and 390 wide, the header, the one 480px column, no sideways scroll,
+ *    sends localhost and every *.localhost to this machine): at 1280 and 390 wide, the header (sticky), the one wide band, no sideways scroll,
  *    the name shown as the address is typed, one request for a fast typist, Enter before the name is found waiting and going,
- *    Recent (written, above the field, removed), the 429 sentence, light and dark, sign-up landing on the first-password page, one
+ *    Recent (written, under the field, removed), the 429 sentence, light and dark, one
  *    external link, no password field. And a bad PRODUCT_SITE_URL refuses to start.
  * With no Chromium the live part says SKIPPED (not a pass), and fails when CI is set.
  */
@@ -47,14 +47,13 @@ export function startProblems(root) {
   if (!/addEventListener\('input'[\s\S]{0,700}setTimeout\([\s\S]{0,400}\b400\)/.test(J)) out.push('start.js: no check as you type after a pause (about 400 ms)');
   if (!/answers\s*=\s*new Map\(\)/.test(J) || !/while \(running\)/.test(J)) out.push('start.js: an answer is not kept, or two requests can run at once');
   if (!/status === 429/.test(J) || !/Too many tries\. Wait a minute, then try again\./.test(J)) out.push('start.js: a 429 is not told with the sentence');
-  // Recent above the address, not drawn when empty, kept in the browser by kind
-  if (!(H.indexOf('id="sp-recent"') > -1 && H.indexOf('id="sp-recent"') < H.indexOf('id="sp-find"'))) out.push('start.html: Recent is not above the address');
+  // Recent under the address, in the same band, not drawn when empty, kept in the browser by kind
+  if (!(H.indexOf('id="sp-recent"') > -1 && H.indexOf('id="sp-recent"') > H.indexOf('id="sp-find"'))) out.push('start.html: Recent is not under the address');
   if (!/id="sp-recent"[^>]*\bhidden\b/.test(H)) out.push('start.html: Recent is drawn when empty (it should be hidden)');
   if (!/RECENT_KEY = 'app\.recentEnvironments'/.test(J) || !/RECENT_MAX = 5/.test(J)) out.push('start.js: Recent is not the browser\'s own list of up to 5 under a key named by kind');
-  // sign-up open on the page, no password anywhere
-  if (!/id="signup-form"/.test(H) || /id="signup-form"[^>]*\bdetails\b/.test(H) || /<details\b/i.test(H)) out.push('start.html: the sign-up form is not open on the page');
+  // no sign-up on the page, no password anywhere
+  if (/id="signup-|id="start"|Get your own/.test(H) || /signup|api\/product\/signup/i.test(J)) out.push('start.html/start.js: the sign-up is still on the start page');
   if (/type="password"|new-password|current-password|name="password"/i.test(H + J)) out.push('start.html/start.js: a password field (the owner chooses it on the environment\'s own page)');
-  if (/password:/.test(J.replace(/Sign-up takes no password/g, '')) || /owner:\s*\{[^}]*password/.test(J)) out.push('start.js: the sign-up sends a password');
   // no demo
   if (/demo/i.test(H + J + C)) out.push('start.html/start.js/start.css: the demo is named (it stays hidden)');
   // exactly one link out
@@ -72,7 +71,6 @@ export function startProblems(root) {
   // Go opens only envUrl(slug)
   const goes = [...J.matchAll(/location\.href\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim());
   if (goes.some((g) => !/^envUrl\(env\.slug\)$|^to\.href$/.test(g)) || !goes.some((g) => g === 'envUrl(env.slug)')) out.push(`start.js: a go that is not envUrl(slug) (found: ${goes.join(' | ')})`);
-  if (!/to\.hostname !== addr\(s\)/.test(J)) out.push('start.js: the sign-up answer\'s link is not held to the new address');
   if (!/form-action 'none'/.test(html) || /<form[^>]*\baction=/i.test(H)) out.push('start.html: a form can post somewhere (form-action must be none)');
   // the studio's header
   if (!/class="sp-mark sp-mark-light"[^>]*width="56" height="56"/.test(H) || !/class="sp-mark sp-mark-dark"[^>]*width="56" height="56"/.test(H)) out.push('start.html: the header\'s mark is not the 56px Chameleon mark, light and dark');
@@ -110,14 +108,14 @@ function selfTest() {
   const change = (rel, fn) => { const dir = copy(); fs.writeFileSync(path.join(dir, rel), fn(fs.readFileSync(path.join(dir, rel), 'utf8'))); return startProblems(dir); };
   const plant = (rel, a, b) => change(rel, (t) => { assert.ok(t.includes(a) || a instanceof RegExp, `self-test: ${rel} has no ${a}`); return t.replace(a, b); });
   const cases = [
-    ['a password box on sign-up', () => plant('public/start.html', '<label><span class="sdk-label">Your login</span>', '<label>Password<input type="password"></label><label><span class="sdk-label">Your login</span>'), /password field/],
-    ['a dropdown of environments', () => plant('public/start.html', '<section class="sdk-panel sp-part" id="sp-find"', '<select><option>x</option></select><section class="sdk-panel sp-part" id="sp-find"'), /dropdown/],
+    ['a password box', () => plant('public/start.html', '<label class="sdk-label" for="sp-find-input">', '<label>Password<input type="password"></label><label class="sdk-label" for="sp-find-input">'), /password field/],
+    ['a dropdown of environments', () => plant('public/start.html', '<section class="sp-find" id="sp-find"', '<select><option>x</option></select><section class="sp-find" id="sp-find"'), /dropdown/],
     ['a demo button', () => plant('public/start.html', '<footer class="sp-site"', '<a class="btn" href="/">Try the demo</a><footer class="sp-site"'), /demo/],
     ['a second link out', () => plant('public/start.html', '<footer class="sp-site"', '<a href="https://example.com/pricing">Pricing</a><footer class="sp-site"'), /links out|address is written/],
     ['an address written in the script', () => plant('public/start.js', "$('sp-nav-support').href = siteLink('/support');", "$('sp-nav-support').href = 'https://example.com/x';"), /one link out|address is written/],
     ['a check only on Go', () => plant('public/start.js', "find.timer = setTimeout(() => {", "find.timer = 0; (() => {"), /after a pause|check as you type/],
-    ['Recent below the address', () => change('public/start.html', (t) => { const m = /(\s*<!-- Shown only when[\s\S]*?<\/section>)/.exec(t); return t.replace(m[1], '').replace('<section class="sp-plain"', `${m[1]}\n      <section class="sp-plain"`); }), /Recent is not above/],
-    ['the sign-up folded', () => plant('public/start.html', '<form class="sp-form" id="signup-form"', '<details><form class="sp-form" id="signup-form"'), /not open/],
+    ['Recent above the address', () => change('public/start.html', (t) => { const m = /(\s*<!-- Shown only when[\s\S]*?<\/section>)/.exec(t); return t.replace(m[1], '').replace('<section class="sp-find" id="sp-find"', `${m[1]}\n        <section class="sp-find" id="sp-find"`); }), /Recent is not under/],
+    ['the sign-up back on the page', () => plant('public/start.html', '<footer class="sp-site"', '<form id="signup-form"></form><footer class="sp-site"'), /sign-up is still/],
     ['a go to another address', () => plant('public/start.js', 'location.href = envUrl(env.slug);', "location.href = 'https://example.com/' + env.slug;"), /not envUrl|address is written/],
     ['the product name in the page', () => plant('public/start.css', 'color: var(--brand-coral)', 'color: var(--text-primary)'), /coral/],
     ['a coloured hex in the style', () => plant('public/start.css', 'color: var(--brand-coral)', 'color: #ff8264'), /coral|colour written/],
@@ -215,7 +213,7 @@ async function live() {
     const SAY = (id) => `document.getElementById(${JSON.stringify(id)}).textContent`;
 
     for (const width of [1280, 390]) {
-      await test(`${width}: the header, one 480px column, light, Recent absent, the field first, sign-up open with no password, every link out the studio's, no demo`, async () => {
+      await test(`${width}: the header, one wide band, light, Recent absent, the field first, no sign-up, no password, every link out the studio's, no demo`, async () => {
         const tab = await openTab(width);
         try {
           await tab.go(front);
@@ -223,8 +221,8 @@ async function live() {
             const cs = (el) => getComputedStyle(el);
             const mark = [...document.querySelectorAll('.sp-mark')].find((m) => m.getClientRects().length);
             const brand = document.querySelector('.sp-lockup-brand'); const prod = document.querySelector('.sp-lockup-product');
-            const theme = document.getElementById('sp-theme'); const cols = document.querySelector('.sp-cols'); const doc = document.documentElement;
-            const find = document.getElementById('sp-find'); const own = document.getElementById('start');
+            const theme = document.getElementById('sp-theme'); const cols = document.querySelector('.sp-find-band'); const doc = document.documentElement;
+            const find = document.getElementById('sp-find');
             const vis = (e) => Boolean(e) && e.getClientRects().length > 0;
             const external = [...document.querySelectorAll('a[href]')].map((a) => a.href).filter((h) => /^https?:/.test(h) && new URL(h).origin !== location.origin);
             return {
@@ -232,10 +230,10 @@ async function live() {
               brandText: brand && brand.textContent, brandFont: brand && cs(brand).fontFamily, brandWeight: brand && cs(brand).fontWeight, brandColour: brand && cs(brand).color, brandSize: brand && cs(brand).fontSize,
               prodText: prod && prod.textContent, prodColour: prod && cs(prod).color, prodSize: prod && cs(prod).fontSize,
               textColour: cs(document.body).color, themeW: theme.getBoundingClientRect().width, themeH: theme.getBoundingClientRect().height, themeRadius: cs(theme).borderTopLeftRadius,
-              ground: cs(document.body).backgroundColor, mode: doc.dataset.themeMode || null,
+              ground: cs(document.body).backgroundColor, band: cs(document.querySelector('.sp-band')).backgroundColor, headerPos: cs(document.querySelector('.sp-top')).position, headerTop: cs(document.querySelector('.sp-top')).top, mode: doc.dataset.themeMode || null,
               colW: cols.getBoundingClientRect().width, scroll: doc.scrollWidth - doc.clientWidth,
               recentShown: vis(document.getElementById('recent') || document.getElementById('sp-recent')),
-              findTop: find.getBoundingClientRect().top, ownVisible: vis(own) && vis(document.getElementById('signup-form')),
+              findTop: find.getBoundingClientRect().top, signup: document.querySelectorAll('[id^=signup-], #start').length,
               password: document.querySelectorAll('input[type=password]').length,
               external, text: document.body.innerText, active: document.activeElement && document.activeElement.id,
               suffix: document.getElementById('sp-find-suffix').textContent,
@@ -255,13 +253,15 @@ async function live() {
           assert.ok(Math.abs(g.themeW - g.themeH) < 0.6 && g.themeW >= 44, 'a round theme button, 44px');
           assert.ok(parseFloat(g.themeRadius) >= g.themeW / 2 - 0.6, `its radius is ${g.themeRadius}`);
           assert.equal(g.ground, 'rgb(238, 237, 232)', 'the cream ground (the theme\'s page colour)');
+          assert.equal(g.headerPos + ' ' + g.headerTop, 'sticky 0px', 'the header sticks at the top');
+          assert.notEqual(g.band, g.ground, 'the hero band is not the page ground');
           assert.equal(g.mode, null, 'light with no pick, though the browser prefers dark');
           assert.equal(g.title, `${g.brandText} ${g.prodText}`, 'the tab is named by the product');
-          assert.equal(g.colW, width === 1280 ? 480 : width - 32, 'one column: 480px wide, or the window less its edges on a phone');
+          assert.equal(g.colW, width === 1280 ? 760 : width - 32, 'one wide band: 760px wide, or the window less its edges on a phone');
           assert.ok(g.scroll <= 0, `sideways scroll ${g.scroll}`);
           assert.equal(g.recentShown, false, 'Recent is not drawn when empty');
           assert.equal(g.suffix, '.localhost');
-          assert.ok(g.ownVisible, 'sign-up is open on the page');
+          assert.equal(g.signup, 0, 'no sign-up on the page');
           assert.equal(g.password, 0, 'no password field');
           const site = 'https://example.com';
           assert.ok(g.external.length >= 14 && g.external.every((u) => u.startsWith(`${site}/`) || ['https://willhavebeen.com/', 'https://www.patreon.com/cw/CoffeePub', 'https://github.com/Drowbe'].includes(u)), `every link out is the studio's or one of the three elsewhere: ${g.external.join(' ')}`);
@@ -297,7 +297,7 @@ async function live() {
       } finally { await tab.close(); }
     });
 
-    await test('1280: Enter before the name is found waits and then goes to that environment\'s own sign-in; Recent keeps it, above the field, and can drop it', async () => {
+    await test('1280: Enter before the name is found waits and then goes to that environment\'s own sign-in; Recent keeps it, under the field, and can drop it', async () => {
       const tab = await openTab(1280);
       try {
         await tab.go(front);
@@ -306,8 +306,8 @@ async function live() {
         await tab.waitFor(`location.origin === 'http://alpha.localhost:${port}' && location.pathname === '/login'`, 'the environment\'s sign-in');
         assert.equal(lookups(tab), 1);
         await tab.go(front); // back to the start page in the same browser
-        const r = await tab.evaluate(`(() => { const s = document.getElementById('sp-recent'); const f = document.getElementById('sp-find'); return { shown: s.getClientRects().length > 0, above: s.getBoundingClientRect().bottom <= f.getBoundingClientRect().top, rows: [...s.querySelectorAll('li')].map((li) => li.textContent.trim()), href: s.querySelector('a').href, stored: localStorage.getItem('app.recentEnvironments') }; })()`);
-        assert.ok(r.shown && r.above, 'Recent is drawn above the address');
+        const r = await tab.evaluate(`(() => { const s = document.getElementById('sp-recent'); const f = document.getElementById('sp-find'); return { shown: s.getClientRects().length > 0, above: s.getBoundingClientRect().top >= f.getBoundingClientRect().bottom, rows: [...s.querySelectorAll('li')].map((li) => li.textContent.trim()), href: s.querySelector('a').href, stored: localStorage.getItem('app.recentEnvironments') }; })()`);
+        assert.ok(r.shown && r.above, 'Recent is drawn under the address');
         assert.match(r.rows[0], /The Alpha Crew/);
         assert.equal(r.href, `http://alpha.localhost:${port}/login`);
         assert.deepEqual(JSON.parse(r.stored), [{ slug: 'alpha', name: 'The Alpha Crew' }]);
@@ -355,26 +355,6 @@ async function live() {
         assert.equal(await tab.evaluate('document.documentElement.dataset.themeMode'), 'dark');
         await tab.evaluate("document.getElementById('sp-theme').click()");
         assert.equal(await tab.evaluate('document.documentElement.dataset.themeMode'), 'light');
-        assert.deepEqual(tab.problems, []);
-      } finally { await tab.close(); }
-    });
-
-    await test('1280: sign-up (no password) lands on the new environment\'s first-password page; the environment is in Recent', async () => {
-      const tab = await openTab(1280);
-      try {
-        await tab.go(`${front}?template=travel#start`);
-        assert.equal(await tab.evaluate("document.querySelector('#signup-options input:checked')?.value"), 'travel', '?template= preselects it');
-        await tab.typeKeys('#signup-slug', 'bravo');
-        await tab.waitFor(`document.getElementById('signup-slug-say').textContent.includes('bravo.localhost is free')`, 'free');
-        await tab.typeKeys('#signup-name', 'Bravo Co');
-        await tab.typeKeys('#signup-login', 'ownbravo');
-        await tab.evaluate("document.getElementById('signup-submit').click()");
-        await tab.waitFor(`location.origin === 'http://bravo.localhost:${port}' && location.pathname === '/login/first-password'`, 'the first-password page');
-        await tab.go(front);
-        assert.match(await tab.evaluate("document.querySelector('#sp-recent li').textContent"), /Bravo Co/);
-        // an address that is taken, and a refusal, are said under the form
-        await tab.typeKeys('#signup-slug', 'alpha');
-        await tab.waitFor(`document.getElementById('signup-slug-say').textContent.includes('alpha.localhost is taken')`, 'taken');
         assert.deepEqual(tab.problems, []);
       } finally { await tab.close(); }
     });
