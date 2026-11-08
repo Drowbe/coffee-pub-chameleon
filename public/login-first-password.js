@@ -44,7 +44,9 @@ function setNamed(login) {
 
 // The app's own pieces (the environment's name, icon, background and light or dark; the Show button), loaded only
 // once the token is out of the address.
-import('/brand.js').then((brand) => brand.loadBranding()).catch(() => {});
+// The form is shown only once the module has loaded (appPieces), because the Show button's click handler lives in it:
+// a person who pressed Show before then would get nothing.
+const appPieces = import('/brand.js').then((brand) => { brand.loadBranding().catch(() => {}); }).catch(() => {});
 
 function show(part) {
   for (const id of ['fp-wait', 'fp-choose', 'fp-dead']) $(id).hidden = id !== part;
@@ -70,7 +72,7 @@ async function post(url, body) {
   }
 }
 
-function choose(login) {
+async function choose(login) {
   $('fp-error').hidden = true;
   $('fp-error').textContent = '';
   $('fp-password').removeAttribute('aria-invalid');
@@ -78,6 +80,8 @@ function choose(login) {
   $('fp-submit').disabled = false;
   $('fp-login').value = login || '';
   $('fp-lede').textContent = login ? `Choose the password you will sign in with as ${login}.` : 'Choose the password you will sign in with.';
+  await appPieces;
+  if (busy) return; // a newer link began meanwhile; its own answer shows the form
   show('fp-choose');
   $('fp-password').focus();
 }
