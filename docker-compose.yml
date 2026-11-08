@@ -52,8 +52,9 @@ services:
       ADMIN_LOGIN: "CHANGE_ME_ADMIN_LOGIN"
       ADMIN_PASSWORD: "CHANGE_ME_ADMIN_PASSWORD"
       PRODUCT_NAME: "Coffee Pub Chameleon"
-      # CONTACT_EMAIL: "you@example.com" # optional: where the product page's "ask" writes to
-      # Several environments: set the base domain (unset, one environment). PRODUCT_DOMAIN puts the product page on its own host.
+      # CONTACT_EMAIL: "you@example.com" # optional: where the start page's "ask" writes to
+      # PRODUCT_SITE_URL: "https://www.example.com/collaborator" # optional: the start page's "About" link to the product's page on your website (an http or https address)
+      # Several environments: set the base domain (unset, one environment). PRODUCT_DOMAIN puts the start page on its own host.
       # BASE_DOMAIN: "CHANGE_ME_BASE_DOMAIN"
       # PRODUCT_DOMAIN: "CHANGE_ME_PRODUCT_HOST"
       # Two-step sign-in. If an owner or admin is locked out: bypass "true", sign in, reset the factor, set it back.

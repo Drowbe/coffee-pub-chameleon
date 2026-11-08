@@ -117,8 +117,8 @@ Workaround: none is needed for owners, since no offer is made to them. Ignore th
 
 ## The logo still reads the old name
 
-The logo on the landing page and on the host console's bar reads "COFFEE PUB MAGPIE", the product's old name.
-The words on those pages say Chameleon. GitHub #110.
+The logo on the host console's bar reads "COFFEE PUB MAGPIE", the product's old name.
+The words on that page say Chameleon. GitHub #110.
 
 Workaround: none.
 
