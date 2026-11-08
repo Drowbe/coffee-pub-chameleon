@@ -758,7 +758,7 @@ export function createSpaceSetup(deps) {
       r.disabled = !layouts.canSetDefault;
     }
     const note = q('#setup-layout-note');
-    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the Modules tab, for everyone in this ${word('space')}.`;
+    note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the ${modulesWord(true)} tab, for everyone in this ${word('space')}.`;
     note.hidden = !note.textContent;
     paintLayoutLine();
   }
