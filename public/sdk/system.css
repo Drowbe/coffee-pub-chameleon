@@ -215,6 +215,7 @@
   --fill-chosen: var(--accent-fill);
   --text-on-chosen: var(--text-on-accent);
   --ink-chosen: var(--accent-fill);
+  --fill-chosen-hover: color-mix(in srgb, var(--fill-chosen) 85%, white);
   --wash-selected: 28%;
   --wash-today: 14%;
   --wash-own: 10%;
@@ -1928,7 +1929,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   /* The chosen day: solid accent with the text on it in the dark modes; in the light mode a lighter fill (a state is a fill, never a
      ring), so the brown is not the heaviest thing on the page. Today wears a ring in both. A phase's wash is lighter in the light mode, so chips stay readable. */
   --cal-sel-bg: var(--fill-chosen);
-  --cal-sel-bg-hover: color-mix(in srgb, var(--fill-chosen) 85%, white);
+  --cal-sel-bg-hover: var(--fill-chosen-hover);
   --cal-sel-text: var(--text-on-chosen);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 16%;
@@ -4705,7 +4706,7 @@ html[data-dialog-open] { overflow: hidden; }
 
 /* The chosen day: the one place a selection is a solid accent fill. On its own focus the ring is the on-accent colour. */
 .sdk-dp-day.sel { background: var(--fill-chosen); color: var(--text-on-chosen); font-weight: var(--weight-strong); }
-.sdk-dp-day.sel:hover { background: color-mix(in srgb, var(--fill-chosen) 85%, white); }
+.sdk-dp-day.sel:hover { background: var(--fill-chosen-hover); }
 .sdk-dp-day.sel:focus-visible { background: var(--fill-chosen); outline-color: var(--text-on-chosen); }
 
 .sdk-dp-foot { display: flex; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
