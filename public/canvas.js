@@ -15,7 +15,7 @@
 import { api, markModuleRead, followTheme, word, noticeToast } from '/brand.js';
 import { mountModule, createFrameLift, openClearMenu, clearWithUndo, followClearable, registerDragRelay, createFrameBands, relayStreamToFrame, joinStream } from '/module-host.js';
 import { createModuleFrame } from '/module-frame.js';
-import { openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu } from '/host-menu.js';
+import { mountHostMenu } from '/host-menu.js';
 import { fileWindowCount, closeAllFiles, openFile } from '/file-viewer.js';
 import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
@@ -65,8 +65,8 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 export function createCanvas({ guestToken = null, onChatAsk = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
-  // Wider than a phone the Layout menu (openMenu, below) is the one place to show and hide modules, drawn with the page's
-  // shared menu under the top bar's Layout button (#modules-toggle, a nav tool of space.js).
+  // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
+  // the page's shared menu (host-menu.js), opened from the top bar's Set up button (#setup, a nav tool of space.js).
   const menu = document.getElementById('modules-menu');
   // An inline menu (the tab bar) is always shown: it is never hidden or positioned by this file, only kept up to date.
   const inline = () => Boolean(menu && menu.classList.contains('sdk-tabbar-tabs'));
@@ -1295,7 +1295,6 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
 
   function closeAllModules() {
     for (const p of [...opened.values()]) if (p.kind === 'module') closeModule(p.id);
-    if (menuOpen()) closeHostMenu();
   }
 
   function setMode(id, mode) {
@@ -1831,26 +1830,28 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (noteEl) items.push({ element: noteEl });
     return items;
   }
-  let menuTrigger = null;
-  const menuOpen = () => Boolean(menuTrigger) && hostMenuOpen(menuTrigger);
-  // Open the menu under `trigger` (the top bar's Layout button), or close it when it is open from there. Never on a
-  // phone, where the tab bar is the list.
-  function toggleMenu(trigger) {
-    if (inline() || !trigger) return;
-    if (menuOpen()) { closeHostMenu(); return; }
-    menuTrigger = trigger;
+  let menuView = null;
+  const menuOpen = () => Boolean(menuView);
+  // Draw the menu into `container` (the Set up panel's Modules tab) and keep it there until the handle's destroy(). Never
+  // on a phone, where the tab bar is the list. It is drawn again on every change (refreshMenu).
+  function mountMenu(container) {
+    if (inline() || !container) return null;
+    menuView?.destroy();
     onMenu?.(true);
-    openHostMenu(trigger, layoutMenuItems);
+    const view = mountHostMenu(container, layoutMenuItems);
+    const handle = { redraw: () => view.redraw(), destroy: () => { view.destroy(); if (menuView === handle) menuView = null; } };
+    menuView = handle;
+    return handle;
   }
   function refreshMenu() {
-    if (menuOpen()) refreshHostMenu();
+    menuView?.redraw();
   }
 
   // The Layout button's count (unread in modules not shown), the phone's tabs, and the open menu drawn again.
   function update() {
     const total = available.reduce((sum, m) => sum + unreadOf(m.id), 0)
       + [...builtins.keys()].reduce((sum, id) => sum + (opened.has(id) ? 0 : builtinUnread[id] || 0), 0);
-    nav.setBadge('modules-toggle', total);
+    nav.setBadge('setup', total);
     snapshot();
     paintDockButtons();
     if (canvasEmpty) canvasEmpty.hidden = onCanvas();
@@ -2089,9 +2090,9 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     // The arrange mode (Thomas, 2026-10-13): 'panel' or 'window', and choosing one.
     arrangeMode,
     setArrangeMode,
-    // The Layout menu under the top bar's Layout button: open or close it from `trigger`, whether it is open, and draw
+    // The Show tab of Set up: draw the menu into a container (gives { redraw, destroy }), whether it is drawn, and draw
     // it again (the layouts arrived, a note was written) while it is.
-    toggleMenu,
+    mountMenu,
     menuOpen,
     refreshMenu,
     // Saved layouts (plan-saved-layouts.md): the canvas as a layout to save, and a saved layout put on the canvas.

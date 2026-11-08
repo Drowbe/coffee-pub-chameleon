@@ -427,6 +427,10 @@ function registerSystemTools(header) {
   const offers = (entry) => profileFor().includes(entry);
   nav.register({ id: 'account-profile', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'user', label: 'View profile', visible: inMenu, onClick: viewProfile });
   if (bar.withThemeSwitch) nav.register({ id: 'theme-mode-switch', bar: 'primary', zone: 'right', group: 'you', order: 999, element: themeSwitch(doc), visible: () => inMenu() && offers('theme') });
+  // Manage, wider than a phone: a gear button in the top bar beside Set up (group 'space', just before it, in the last run),
+  // for owners and the admin, on every page that has the bar (not the profile menu any more). On a phone it is the menu's
+  // entry below, as Set up is.
+  nav.register({ id: 'manage-tool', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 0, place: 'end', icon: 'gear', label: 'Manage', href: keepingQuery(bar.adminHref), visible: () => !onPhone() && signedInHere() && offers('manage'), onClick: (event) => { event.preventDefault(); openManage(); } });
   nav.register({ id: 'admin-link', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'gear', label: 'Manage', href: keepingQuery(bar.adminHref), visible: () => inMenu() && offers('manage'), onClick: (event) => { event.preventDefault(); openManage(); } });
   nav.register({ id: 'account-host-console', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'server', label: 'Host console', visible: () => inMenu() && offers('host-console'), onClick: openHostConsole });
   nav.register({ id: 'account-install', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'download', label: 'Install as an app', visible: () => inMenu() && Boolean(installPromptEvent) && !installBarred, onClick: installFromPrompt });
@@ -641,8 +645,7 @@ function signOut() {
 }
 
 // The profile menu under your picture, on a wider screen, by role (decisions 4 and 17; profileEntries() in
-// primary-nav.js): View profile, Dark mode, the environment's Global Calendar and Global Map (plan-one-bar.md, decision 6), Manage
-// for owners and the admin, Host console for the host admin's stand-in on a hosted server, Install as an app only
+// primary-nav.js): View profile, Dark mode, the environment's Global Calendar and Global Map (plan-one-bar.md, decision 6), Host console for the host admin's stand-in on a hosted server, Install as an app only
 // while the browser offers it (never a guest), Sign out last.
 function accountMenuItems() {
   const has = new Set(profileFor());
@@ -650,7 +653,6 @@ function accountMenuItems() {
     { icon: 'user', label: 'View profile', onPick: viewProfile },
     ...(has.has('theme') ? [{ icon: 'moon', label: 'Dark mode', checked: modeNow() === 'dark', onPick: toggleThemeMode }] : []),
     ...destinationList.filter((d) => has.has(`dest-${d.id}`)).map((d) => ({ icon: d.icon, label: profileDestinationLabel(d.id, d.name), onPick: () => openDestination(d.href) })),
-    ...(has.has('manage') ? [{ icon: 'gear', label: 'Manage', ...manageBadgeItem(), onPick: () => openManage() }] : []),
     ...(has.has('host-console') ? [{ icon: 'server', label: 'Host console', onPick: openHostConsole }] : []),
     ...(installPromptEvent && !installBarred ? [{ icon: 'download', label: 'Install as an app', onPick: installFromPrompt }] : []),
     { icon: 'right-from-bracket', label: 'Sign out', onPick: signOut },
@@ -1309,19 +1311,15 @@ export function setUpdateBadge(count) {
   updatesWaiting = Math.max(0, Number(count) || 0);
   paintBell();
 }
-// What needs a look in Manage > Modules: updates plus new modules, as a green count on Manage (the profile menu, the
+// What needs a look in Manage > Modules: updates plus new modules, as a green count on Manage (the top bar button, the
 // phone menu, a page bar's link) and on that tab. Nothing at zero. The words repeat the number for a screen reader.
 export function manageBadgeLabel(updates, fresh) {
   return [updates ? `${updates} ${updates === 1 ? 'update' : 'updates'} available` : '', fresh ? `${fresh} available` : ''].filter(Boolean).join(', ');
 }
-function manageBadgeItem() {
-  const n = updatesWaiting + freshModules;
-  return n ? { badge: n, badgeTone: 'ok', badgeLabel: manageBadgeLabel(updatesWaiting, freshModules) } : {};
-}
 function paintManageBadge() {
   const n = updatesWaiting + freshModules;
   const opts = n ? { tone: 'ok', label: manageBadgeLabel(updatesWaiting, freshModules) } : {};
-  for (const id of ['admin-link', 'page-bar-manage']) nav.setBadge(id, n, opts);
+  for (const id of ['manage-tool', 'admin-link', 'page-bar-manage']) nav.setBadge(id, n, opts);
 }
 export function setManageBadge(updates, fresh) {
   updatesWaiting = Math.max(0, Number(updates) || 0);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Proves what the drift guards leave out is only what they should (tools/lib/drift.mjs):
-//   - no page is left out: the start page (public/start.css) fails those checks like any other file;
+//   - no page is left out: the start page (public/start.css) fails those checks like any other file; its one allowance is the raw colours in its
+//     own :root blocks (the studio's palette, light and dark), nothing else in the file and no other file;
 //   - an @font-face block (weight ranges such as 100 900) is not read, but a real font-weight 300 elsewhere still fails.
 // Each case runs the real check on a throwaway tree (DRIFT_ROOT) with an empty allow-list (DRIFT_ALLOW_DIR).
 import assert from 'node:assert/strict';
@@ -30,6 +31,12 @@ function run(check, files) {
 for (const check of ['check-no-raw-colours', 'check-type-scale', 'check-breakpoints', 'check-spacing']) {
   for (const file of ['public/start.css', 'public/other.css']) assert.ok(!run(check, { [file]: BAD }).ok, `${check}: ${file} is read like any other file`);
 }
+
+// The start page's palette: raw colours in start.css's :root blocks (also the browser's dark in a media query) pass; the same colour in a rule, or in another file's :root, fails.
+const PALETTE = ':root { --sp-bg: #FBF6EC; }\n:root[data-theme-mode="dark"] { --sp-bg: #0E1A2B; }\n@media (prefers-color-scheme: dark) { :root:not([data-theme-mode="light"]) { --sp-bg: #0E1A2B; } }\n';
+assert.ok(run('check-no-raw-colours', { 'public/start.css': PALETTE }).ok, 'the start page\'s palette blocks are allowed');
+assert.ok(!run('check-no-raw-colours', { 'public/start.css': `${PALETTE}.a { color: #123456; }\n` }).ok, 'a raw colour in a start.css rule still fails');
+assert.ok(!run('check-no-raw-colours', { 'public/other.css': PALETTE }).ok, 'the same blocks in another file still fail');
 
 const FACE = '@font-face { font-family: "F"; font-weight: 100 900; src: local("Arial"); }\n@font-face { font-family: "G"; font-weight: 300; src: local("Arial"); }\n';
 assert.ok(run('check-type-scale', { 'public/sdk/system.css': FACE }).ok, 'font-weight inside @font-face is not read');

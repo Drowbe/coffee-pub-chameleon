@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-mode-shown="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,10 +12,8 @@
        lists no environments and takes no password. start.js reads the product's name, the base domain and the studio's address
        (productSiteUrl) from GET /api/product, so none of them is written here; every link out is built from that address, and
        without it the studio's parts are not drawn. Light unless this browser picked dark (theme-head.js). -->
-  <link rel="stylesheet" href="/style.css">
   <script src="/theme-head.js"></script>
-  <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/sdk/system.css">
+  <link rel="stylesheet" href="/sdk/system.css"><!-- the two font families only -->
   <link rel="stylesheet" href="/fa/css/all.min.css">
   <link rel="stylesheet" href="/start.css">
 </head>
@@ -25,7 +23,7 @@
       <a class="sp-brand" href="/" id="sp-brand" aria-label="Start page">
         <img class="sp-mark sp-mark-light" src="/assets/images/brand/mark.svg" alt="" width="56" height="56">
         <img class="sp-mark sp-mark-dark" src="/assets/images/brand/mark-dark.svg" alt="" width="56" height="56">
-        <span class="sp-lockup" id="sp-lockup"><span class="sdk-skel sdk-skel-title sp-skel-name" aria-hidden="true"></span></span>
+        <span class="sp-lockup" id="sp-lockup"><span class="sp-skel sp-skel-name" aria-hidden="true"></span></span>
       </a>
       <nav class="sp-nav" aria-label="Main">
         <!-- Both links are filled in from PRODUCT_SITE_URL (start.js) and stay hidden without it. -->
@@ -37,7 +35,7 @@
   </header>
 
   <main class="sp-page" id="sp-main">
-    <div class="sp-band">
+    <div class="sp-herowrap">
     <section class="sp-wrap sp-hero" id="sp-hero" aria-labelledby="sp-title">
       <div class="sp-hero-text">
         <div class="sp-eyebrow">
@@ -53,23 +51,23 @@
       <div class="sp-art">
         <svg class="sp-scene" role="img" aria-label="A trip being planned together: a plan, a map and a call" viewBox="0 0 600 500" focusable="false">
     <defs><clipPath id="hm1"><rect x="50" y="76" width="470" height="380" rx="34"/></clipPath></defs>
-    <rect x="50" y="76" width="470" height="380" rx="34" fill="var(--sand)"/>
+    <rect x="50" y="76" width="470" height="380" rx="34" fill="var(--art-sand)"/>
     <g clip-path="url(#hm1)">
-      <path d="M300 76 C320 150 380 140 420 190 C470 250 500 300 520 330 L520 76Z" fill="var(--accent-soft)"/>
-      <path d="M50 396 C110 356 190 366 240 456 L50 456Z" fill="var(--bg)" opacity=".6"/>
-      <path d="M340 90 C360 112 400 108 430 96 L430 76 L340 76Z" fill="var(--bg)" opacity=".55"/>
+      <path d="M300 76 C320 150 380 140 420 190 C470 250 500 300 520 330 L520 76Z" fill="var(--art-soft)"/>
+      <path d="M50 396 C110 356 190 366 240 456 L50 456Z" fill="var(--art-bg)" opacity=".6"/>
+      <path d="M340 90 C360 112 400 108 430 96 L430 76 L340 76Z" fill="var(--art-bg)" opacity=".55"/>
       <g stroke="#fff" stroke-opacity=".7" stroke-width="2.5">
         <path d="M170 76V456M290 76V456M410 76V456M50 170H520M50 270H520M50 370H520"/>
       </g>
-      <path class="wave" d="M296 196 q30 -18 60 0 t60 0 t60 0" fill="none" stroke="var(--sea)" stroke-width="4" stroke-linecap="round"/>
+      <path class="wave" d="M296 196 q30 -18 60 0 t60 0 t60 0" fill="none" stroke="var(--art-sea)" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <path d="M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164" fill="none" stroke="var(--coral)" stroke-width="6" stroke-linecap="round" stroke-dasharray="0.1 13"/>
-    <g fill="#fff" stroke="var(--coral)" stroke-width="5"><circle cx="100" cy="400" r="12"/><circle cx="270" cy="332" r="12" class="stop"/></g>
+    <path d="M100 400 C180 384 220 346 270 332 S360 252 400 212 S440 172 470 164" fill="none" stroke="var(--art-coral)" stroke-width="6" stroke-linecap="round" stroke-dasharray="0.1 13"/>
+    <g fill="#fff" stroke="var(--art-coral)" stroke-width="5"><circle cx="100" cy="400" r="12"/><circle cx="270" cy="332" r="12" class="stop"/></g>
     <g class="plane">
       <path d="M-24 -4 L-4 -4 L-14 -26 L-6 -26 L10 -4 L24 -4 C30 -4 30 4 24 4 L10 4 L-6 26 L-14 26 L-4 4 L-24 4Z" fill="#14243B"/>
     </g>
     <g class="pin"><g transform="translate(470 164)">
-      <path d="M0 0 C-20 -26 -24 -44 -24 -52 a24 24 0 1 1 48 0 C24 -44 20 -26 0 0Z" fill="var(--coral)" stroke="#14243B" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M0 0 C-20 -26 -24 -44 -24 -52 a24 24 0 1 1 48 0 C24 -44 20 -26 0 0Z" fill="var(--art-coral)" stroke="#14243B" stroke-width="3.5" stroke-linejoin="round"/>
       <circle cy="-52" r="9" fill="#fff"/>
     </g></g>
     <g class="sun" transform="translate(506 112)">
@@ -79,12 +77,12 @@
       <circle r="27" fill="#F6B35B"/>
     </g>
     <g class="card" transform="translate(22 38)">
-      <rect width="218" height="136" rx="20" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/>
-      <path d="M0 40V20a20 20 0 0 1 20-20H198a20 20 0 0 1 20 20V40Z" fill="var(--accent)"/>
+      <rect width="218" height="136" rx="20" fill="var(--art-surface)" stroke="var(--art-line)" stroke-width="2"/>
+      <path d="M0 40V20a20 20 0 0 1 20-20H198a20 20 0 0 1 20 20V40Z" fill="var(--art-accent)"/>
       <circle cx="26" cy="20" r="11" fill="#fff"/><rect x="48" y="15" width="78" height="10" rx="5" fill="#fff" opacity=".85"/>
-      <path d="M26 62V102" stroke="var(--line2)" stroke-width="3"/>
-      <circle cx="26" cy="62" r="7" fill="var(--accent)"/><circle cx="26" cy="82" r="7" fill="var(--coral)"/><circle cx="26" cy="102" r="7" fill="var(--accent)"/>
-      <rect x="46" y="57" width="130" height="10" rx="5" fill="var(--line)"/><rect x="46" y="77" width="100" height="10" rx="5" fill="var(--line)"/><rect x="46" y="97" width="146" height="10" rx="5" fill="var(--line)"/>
+      <path d="M26 62V102" stroke="var(--art-line2)" stroke-width="3"/>
+      <circle cx="26" cy="62" r="7" fill="var(--art-accent)"/><circle cx="26" cy="82" r="7" fill="var(--art-coral)"/><circle cx="26" cy="102" r="7" fill="var(--art-accent)"/>
+      <rect x="46" y="57" width="130" height="10" rx="5" fill="var(--art-line)"/><rect x="46" y="77" width="100" height="10" rx="5" fill="var(--art-line)"/><rect x="46" y="97" width="146" height="10" rx="5" fill="var(--art-line)"/>
     </g>
     <g class="call" transform="translate(335 340)">
   <rect width="230" height="118" rx="22" fill="#14243B"/>
@@ -99,18 +97,19 @@
     </section>
     </div>
 
+    <div class="sp-band">
     <section class="sp-wrap sp-signin" aria-label="Sign in">
-      <div class="sdk-panel sp-find-band">
+      <div class="sp-find-band">
         <section class="sp-find" id="sp-find" aria-labelledby="sp-find-h">
           <h2 id="sp-find-h">Find your environment</h2>
           <form class="sp-form" id="sp-find-form" novalidate>
-            <label class="sdk-label" for="sp-find-input">Its address</label>
+            <label class="sp-label" for="sp-find-input">Its address</label>
             <div class="sp-go-row">
               <div class="sp-address" id="sp-find-box">
                 <input id="sp-find-input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" enterkeyhint="go" placeholder="yourname" aria-describedby="sp-find-say">
-                <span class="sdk-skel sdk-skel-line sp-skel-suffix" id="sp-find-suffix" aria-hidden="true"></span>
+                <span class="sp-skel sp-skel-suffix" id="sp-find-suffix" aria-hidden="true"></span>
               </div>
-              <button class="btn btn-primary sp-go" type="submit" id="sp-go" disabled>Go</button>
+              <button class="sp-btn sp-go" type="submit" id="sp-go" disabled>Go</button>
             </div>
             <p class="sp-line" id="sp-find-say" aria-live="polite"></p>
           </form>
@@ -125,6 +124,7 @@
         </section>
       </div>
     </section>
+    </div>
 
     <!-- The studio's other uses of the product, when PRODUCT_SITE_URL is set. Every link is built from its origin (start.js). -->
     <section class="sp-wrap sp-ways" id="sp-ways" aria-labelledby="sp-ways-h" hidden>
@@ -133,11 +133,10 @@
     </section>
 
     <!-- If the host could not be asked. -->
-    <div class="sdk-empty" data-kind="error" id="sp-failed" hidden>
-      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-      <p class="sdk-empty-title">This page did not load</p>
-      <p class="sdk-empty-text">Check your connection, then try again.</p>
-      <div class="sdk-empty-actions"><button class="btn" type="button" id="sp-retry">Try again</button></div>
+    <div class="sp-failed" id="sp-failed" hidden>
+      <p class="sp-failed-title">This page did not load</p>
+      <p>Check your connection, then try again.</p>
+      <button class="sp-btn sp-btn-ghost" type="button" id="sp-retry">Try again</button>
     </div>
   </main>
 
