@@ -52,14 +52,14 @@
 .sp-go-row { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .sp-address { position: relative; display: flex; flex: 1 1 auto; align-items: center; min-width: 0; height: var(--field-h); box-sizing: border-box; border: 1px solid var(--edge-field); border-radius: var(--radius-small); background: var(--surface-field); cursor: text; }
 .sp-address:hover { background: var(--field-fill-hover); }
-.sp-address > input { flex: 1 1 auto; width: auto; min-width: 4ch; height: 100%; padding-right: 0; border: 0; background: transparent; }
+.sp-address > input { flex: 1 1 0; width: auto; min-width: 0; height: 100%; padding-right: 0; border: 0; background: transparent; }
 .sp-address > input:hover { background: transparent; }
 .sp-address > input:focus { border: 0; outline: 0; box-shadow: none; }
 .sp-address:focus-within { box-shadow: 0 0 0 2px var(--field-ring); outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sp-address:has(> input[aria-invalid="true"]) { outline: 2px solid var(--status-danger-fill); outline-offset: -2px; }
 .sp-address:has(> input[aria-invalid="true"]):focus-within { box-shadow: 0 0 0 2px var(--field-ring-danger); }
 .sp-address:has(> input:disabled) { opacity: 0.5; }
-.sp-suffix { flex: 0 1 auto; min-width: 0; padding-right: var(--field-pad-x); overflow: hidden; color: var(--text-muted); font-size: var(--field-font); text-overflow: ellipsis; white-space: nowrap; }
+.sp-suffix { flex: 0 1 auto; min-width: 0; max-width: 65%; padding-right: var(--field-pad-x); overflow: hidden; color: var(--text-muted); font-size: var(--field-font); text-overflow: ellipsis; white-space: nowrap; }
 .sp-go { flex: none; min-width: 64px; }
 .sp-go .sdk-spinner { color: inherit; }
 .sp-line { display: flex; align-items: flex-start; gap: var(--space-2); min-height: 16px; margin: 0; color: var(--text-muted); font-size: var(--text-13); line-height: 18px; overflow-wrap: anywhere; }
@@ -105,7 +105,7 @@
 
 /* The keyboard drawing: a number on each stop, in the order Tab reaches them. */
 .sp-keys { position: relative; }
-.sp-badge { position: absolute; z-index: 2; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 var(--space-1); box-sizing: border-box; border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-11); font-weight: var(--weight-strong); pointer-events: none; transform: translate(-40%, -40%); }
+.sp-badge { position: absolute; z-index: 2; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 var(--space-1); box-sizing: border-box; border-radius: var(--radius-small); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--text-11); font-weight: var(--weight-strong); pointer-events: none; transform: translate(-105%, -30%); }
 
 /* The section's own switch (the address check, A or B). */
 .sp-switchbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
@@ -118,6 +118,10 @@
   .sp-page .sdk-row { min-height: 44px; }
   .sp-page .sdk-choice-row { min-height: 44px; }
   .sp-foot a { min-height: 44px; }
+  /* the system's small button on a phone: its look kept, a 44px target past the box */
+  .sp-page :where(.btn-small) { position: relative; }
+  .sp-page .btn-small::after { content: ""; position: absolute; inset: var(--btn-hit) 0; }
+  .sp-page .sdk-icon-btn.btn-small::after { inset: var(--btn-hit); }
   .sp-demo-row > .btn, .sp-own-actions > .btn { flex: 1 1 auto; }
 }
 @media (max-width: 640px) {

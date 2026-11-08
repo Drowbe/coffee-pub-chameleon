@@ -32,7 +32,7 @@ const signIn = (slug, login) => `https://${addr(slug)}/login${login ? `?login=${
 // Go's cleaning (the plan): lower case, spaces trimmed, a full address pasted in cut to its first label.
 const clean = (raw) => {
   let s = String(raw).trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
-  s = s.split(/[/?#\s]/)[0];
+  s = s.split(/[/?#]/)[0];
   return s.includes('.') ? s.split('.')[0] : s;
 };
 const shapeOk = (s) => /^[a-z0-9-]{3,30}$/.test(s);
@@ -263,7 +263,9 @@ function ownPart(ctx, { own = 'open', fold = false, password = false, slug = '',
   slugIn.setAttribute('autocapitalize', 'off');
   const slugSay = h('span', 'sdk-hint');
   slugSay.id = nid('slugsay'); slugSay.setAttribute('aria-live', 'polite'); slugIn.setAttribute('aria-describedby', slugSay.id);
-  const slugLab = h('label'); slugLab.append(h('span', 'sdk-label', 'Address'), addressBox(slugIn), slugSay);
+  slugIn.id = nid('slug');
+  const slugWord = h('label', 'sdk-label', 'Address'); slugWord.htmlFor = slugIn.id;
+  const slugLab = h('div'); slugLab.append(slugWord, addressBox(slugIn), slugSay);
   const nameIn = inp({ maxLength: 60, placeholder: 'The Elegant Eight' });
   const loginIn = inp({ maxLength: 40 }); loginIn.setAttribute('autocapitalize', 'off');
   const displayIn = inp({ maxLength: 40 });
