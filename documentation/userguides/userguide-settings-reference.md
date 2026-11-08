@@ -15,13 +15,14 @@ the compose file.
 | Setting | Default | What it does |
 |---|---|---|
 | `BASE_DOMAIN` | unset (one environment) | Several environments on one server, at `<slug>.<base domain>`. A commented example in the file. See [Getting Started](userguide-getting-started.md), "Environments: one server, several groups". |
-| `PRODUCT_DOMAIN` | unset | Puts the product page, the use pages and sign-up on a host of their own, so their name can change without touching any environment's address. A host name only: no `https://`, no port. It needs its own DNS record, an ordinary certificate and a proxy host to port 3000; the base domain keeps the wildcard. The console stays at `admin.<base domain>`. Ignored without `BASE_DOMAIN`. A commented example in the file. |
+| `PRODUCT_DOMAIN` | unset | Puts the start page and sign-up on a host of their own, so their name can change without touching any environment's address. A host name only: no `https://`, no port. It needs its own DNS record, an ordinary certificate and a proxy host to port 3000; the base domain keeps the wildcard. The console stays at `admin.<base domain>`. Ignored without `BASE_DOMAIN`. A commented example in the file. |
+| `PRODUCT_SITE_URL` | unset; for example `https://www.example.com/collaborator` | The address of the product's page on your website. When it is set, the start page shows an **About** link to it, below the other parts. A full `http://` or `https://` address. Unset means no link. A value that is not a web address stops the start with one line naming it. Only for a server with `BASE_DOMAIN`. A commented example in the file. |
 | `MIGRATE_ENVIRONMENT_SLUG` | unset | For one start only: the environment that the data already here becomes, when you turn a single-environment install into several. Remove it afterwards. |
 | `PREVIOUS_BASE_DOMAINS` | empty | Old base domains whose links redirect to the new one while you move a server's addresses ("Moving a server's addresses" in the guide). |
 | `RESERVED_SLUGS` | empty; for example `studio,shop` | Names no new environment may take, on top of the built-in list (`www`, `api`, `admin`, `mail`, `livekit` and others). Comma separated. An environment that already has one keeps working. |
 | `TEMPLATE` | unset; for example `travel` | One environment set up for one use, from a template in `templates/`: its words, icons, modules and Lobby. Only on a fresh data folder, and only without `BASE_DOMAIN` (with it, the host console and sign-up pick a template for each new environment). Ignored, with a line in the log, on data that already exists. |
-| `SIGNUP` | off | `on` lets anyone make a free environment from the product page. Needs `BASE_DOMAIN`. |
-| `CONTACT_EMAIL` | unset | Where the product page's "ask" writes to. A commented example in the file. |
+| `SIGNUP` | off | `on` lets anyone make a free environment from the start page. Needs `BASE_DOMAIN`. |
+| `CONTACT_EMAIL` | unset | Where the start page's "ask" writes to. A commented example in the file. |
 
 ## AI
 

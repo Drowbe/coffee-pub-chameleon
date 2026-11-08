@@ -17,7 +17,18 @@ Decisions 9 to 12 are the planner's suggestions, which Thomas said he will follo
 that way and are not his decisions. Thomas, 2026-11-08, looked at the start page on the Prototype (slice 3) and said "I
 like all the A options" (decisions 13 to 18). That changes the Go contract (decision 15) and adds a server slice, 3a
 (decision 17). Two things are open: the rename of `PRODUCT_DOMAIN` and `/api/product*`, and the design of the first
-password (slice 3a), which needs a security read. Nothing is built yet. Slice 0 can start when Thomas says.
+password (slice 3a), which needs a security read.
+
+**Built, 2026-11-08:** slices 4 and 5, on main in b7fb8cc (PR #447, a try build for Thomas's review), together with the
+first-password work of slice 3a. The start page is `public/start.html`, `start.js` and `start.css`; the old front page,
+`/travel`, `/games`, `PRODUCT_PAGES`, `livePages()`, the screenshots folder, `check-product-pages` and `landing-preview`
+are gone; `GET /api/product` has no `pages` and gains `productSiteUrl`; `PRODUCT_SITE_URL` is read at start; the console's
+facts show **Start page** and **Product site**; the product host's `/theme.css` sends the bundled default theme; and the
+start page's product name uses the new `--brand-coral` token. The checks are `tools/check-start-page.mjs` and the
+changed cases of `check-origin`. **Not built:** slice 6, the demo hook (`/api/product` has no `demo`, the page has no
+**Try the demo**). **Not done from slice 4:** Manage's **Upgrade** link still points at `<productDomain>/#plans`
+(`public/admin.js`), and the start page has no Plans list for it to reach. Slice 7, the documentation, is written for
+slices 4 and 5 and needs another pass after slice 6. Slices 1 and 2 are outside this record.
 
 **Known privacy issue, live today.** `GET /api/product/environments` lists every active environment on the host, by
 address and name, to anyone. On 2026-11-07 it answered 200 with 5 environments at
@@ -326,10 +337,10 @@ Each slice is built and checked on its own. Thomas names the kind of build for e
 | 2 | **The website page brought up to date** from the product sheet, the shots and `/api/product` | the website session; Thomas approves the words | Slice 1 | Outside this repository |
 | 3 | **The start page on the Prototype.** The five parts above, in the chosen look. Drawn; Thomas chose the A options on 2026-11-08 (decisions 13 to 18). Anything else Thomas wants changed is a new round on the Prototype | experience-design | Slice 0 | Nothing (done, pending the lock's wording) |
 | 3a | **The first password at the environment's own page.** Sign-up no longer takes the owner's password; its answer carries a one-time way to set it on the new environment's own sign-in page (decision 17). Also the 120 a minute limit on `GET /api/product/environment` (the slice 0 fix-up, if not already there). Then QA with a security read | server-development, then quality-assurance | Open question 2 decided (it is) | **Built on the branch `pm/first-password-server`, held for Thomas's merge:** sign-up takes no password, the one-time link, the page, the console's "New first-password link", the checks, two independent security reads with their fixes. Waits for the merge; the fragment through the real domains and a proxy is not verified. **Blocks slice 4's sign-up part until merged** |
-| 4 | **The start page built and served.** `start.html` and `start.js` from the lock, to the Prototype's A options (decisions 13 to 16); `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed. Everything but sign-up can be built first; sign-up waits for slice 3a | experience-design, server-development | Slice 3 locked (done 2026-11-08, the A options); slice 0 (the typed address's limit); slice 3a for sign-up | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now; slice 3a for sign-up |
-| 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slices 2 and 4 | Nothing |
-| 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Nothing |
-| 7 | **Documentation.** architecture-environments (the door's product-host branch, the start page, the removed routes), userguide-getting-started, userguide-settings-reference (`PRODUCT_SITE_URL`), userguide-templates and userguide-environments (where they describe the product page), the compose file's comment (`PRODUCT_SITE_URL` with an `example.com` value), the CHANGELOG, and the status lines of the superseded plans below | content-manager | Slices 4 and 5 (and again after 6) | Nothing |
+| 4 | **The start page built and served.** `start.html` and `start.js` from the lock, to the Prototype's A options (decisions 13 to 16); `/` sends it; `PRODUCT_SITE_URL` and `productSiteUrl`; `pages` removed from `/api/product`; the console's facts line; Upgrade re-pointed. Everything but sign-up can be built first; sign-up waits for slice 3a | experience-design, server-development | Slice 3 locked (done 2026-11-08, the A options); slice 0 (the typed address's limit); slice 3a for sign-up | Open question 1, only if Thomas renames `PRODUCT_DOMAIN` now; slice 3a for sign-up. **Built** (see Status), except the Upgrade re-point |
+| 5 | **The marketing pages removed.** `landing.*`, `travel.html`, `games.html`, the screenshots folder, `PRODUCT_PAGES`, `livePages()`, and the checks, tools and allow-list entries listed under the contract | server-development, experience-design | Slices 2 and 4 | Nothing. **Built** (see Status) |
+| 6 | **The demo hook.** `/api/product` gains `demo` from the environment with the demo flag; the start page's Try the demo at `#demo`; the website links it | server-development, experience-design | #416 slices 4, 6 and 7 | Nothing. **Not built** |
+| 7 | **Documentation.** architecture-environments (the door's product-host branch, the start page, the removed routes), userguide-getting-started, userguide-settings-reference (`PRODUCT_SITE_URL`), userguide-templates and userguide-environments (where they describe the product page), the compose file's comment (`PRODUCT_SITE_URL` with an `example.com` value), the CHANGELOG, and the status lines of the superseded plans below | content-manager | Slices 4 and 5 (and again after 6) | Nothing. **Written for slices 4 and 5** |
 
 Slices 0 and 1 can run beside each other. QA after each slice of a production build, with a security read on slice 0
 (the removed route, the removed exemption), slice 3a (the first password and its token, sign-in is security-sensitive)

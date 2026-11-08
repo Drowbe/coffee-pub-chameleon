@@ -86,7 +86,7 @@ async function main() {
     let tab = await canvas(1280, 'dark');
     try {
       if (!(await opened(tab, 'travel'))) {
-        await tab.eval(`(() => { const b = __q('[data-open-module=travel]') || __q('#modules-toggle'); if (b) b.click(); })()`).catch(() => {});
+        await tab.eval(`(() => { const b = __q('[data-open-module=travel]') || __q('#setup'); if (b) b.click(); })()`).catch(() => {});
       }
       await tab.waitFor('[data-module-root=travel] >>> .sdk-file-chip', '', 15000).catch(() => {});
       const chips = await chipsOf(tab);

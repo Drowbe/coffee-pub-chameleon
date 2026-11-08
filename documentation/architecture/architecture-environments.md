@@ -74,16 +74,18 @@ The "door" is one middleware, registered right after `express.json()`, before an
   1. `admin.<base>`, the console host, dispatches to `hostRouter` (a separate `express.Router()`, never mounted
      on `app` directly, so a request there can never fall through to a route that needs an environment). The
      console is always at `admin.<base>`; there is no setting to move it.
-  2. The **product host** serves the product's own pages: `public/landing.html` for `/`, the use pages
-     (`PRODUCT_PAGES`) and a short allowlist of other paths (`PRODUCT_HOST_PATHS`: `/landing.css`, `/landing.js`,
-     `/style.css`, `/theme.css`, `/img/site/icon`, `/favicon.ico`, `/api/product`, `/api/product/environment`,
-     `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
-     `/assets/images/brand/*`). The product host is `PRODUCT_DOMAIN`, or the bare `<base>` when that is unset or
-     equal to the base. No environment is ever resolved there, so `/theme.css` and `siteIcon` both fall back to
-     "nothing set" when `envContext.getStore()` is empty, the same as any environment that has not set its own
-     (for `siteIcon` that bundled default, and the one `/manifest.webmanifest` offers alongside any environment's
-     own custom icon, is `public/assets/images/brand/brandmark-color.png` -- the one file a rebrand replaces, not
-     a copy of it). Anything else on that host is a plain 404.
+  2. The **product host** serves one page, the start page (`public/start.html`, `start.js` and `start.css`, see
+     "The start page" below), for `/`, and a short allowlist of other paths (`PRODUCT_HOST_PATHS`: `/start.css`,
+     `/start.js`, `/theme-head.js`, `/style.css`, `/theme.css`, `/img/site/icon`, `/favicon.ico`, `/api/product`,
+     `/api/product/environment`, `/api/product/address`, `/api/product/signup`, and `/fa/*`, `/fonts/*` and
+     `/assets/images/brand/*`), beside the design system pages and the SDK as static files. The product host is
+     `PRODUCT_DOMAIN`, or the bare `<base>` when that is unset or equal to the base. No environment is ever
+     resolved there, so `siteIcon` falls back to "nothing set" when `envContext.getStore()` is empty, the same as
+     any environment that has not set its own (that bundled default, and the one `/manifest.webmanifest` offers
+     alongside any environment's own custom icon, is `public/assets/images/brand/brandmark-color.png` -- the one
+     file a rebrand replaces, not a copy of it). `/theme.css` there sends the bundled default theme, light and
+     dark (`DEFAULT_THEME`), since there is no owner's theme to follow. There are no use pages: `/travel` and
+     `/games` answer 404 like anything else on that host.
   3. A hostname under `PREVIOUS_BASE_DOMAINS` gets a 301 to the same path at the current base. It comes after the
      product host, so an old base that is now the product host is never redirected.
   4. The bare `<base>`, when the product host is elsewhere, gets a 302 to the same path and query at the product
@@ -96,7 +98,7 @@ The "door" is one middleware, registered right after `express.json()`, before an
   is implicit, in local development it matters.
 
   **The settings.** `PRODUCT_DOMAIN` is a host name, lower-cased: no scheme, no port, no path. A value that is
-  not a host name logs a line and is ignored (the product pages stay at the base). It equal to `admin.<base>`
+  not a host name logs a line and is ignored (the start page stays at the base). It equal to `admin.<base>`
   stops the start. `RESERVED_SLUGS` is a comma list of names. Both are ignored without `BASE_DOMAIN`, with one
   start line naming those that were set. Nothing about them is written to `host.json`; they are read on every
   start. The start line names the console host and the product host.
@@ -111,12 +113,12 @@ The "door" is one middleware, registered right after `express.json()`, before an
   which also runs when `host.json` is read, so a name reserved later never drops an existing environment: it keeps
   working, and the start logs once per such environment that it "is now reserved". The one start check is
   that `PRODUCT_DOMAIN`'s own label, when directly under the base, is not an existing environment's slug (the
-  product pages would hide it); the start stops with a line naming it. All of these checks run before `host.json`
+  start page would hide it); the start stops with a line naming it. All of these checks run before `host.json`
   is written.
 
   `PRODUCT_NAME` (default "Coffee Pub Chameleon") and `CONTACT_EMAIL` (default none) are
   configuration, never code -- `GET /api/product` (registered on
-  both the main app and `hostRouter`, never behind a session) answers `{ name, contact, baseDomain, productDomain, version, signup, plans, templates, pages }`
+  both the main app and `hostRouter`, never behind a session) answers `{ name, productShortName, contact, baseDomain, productDomain, version, signup, plans, templates, productSiteUrl }`
   wherever it is reached; `productDomain` is the product host (`PRODUCT_DOMAIN`, else the base), null without a base domain. `PRODUCT_NAME` unset, empty or only spaces means the default, everywhere: `productName()`
   in `server/product-name.js` is the one rule, and `DEFAULT_PRODUCT_NAME` there is the only place the default is
   written. `PRODUCT_NAME` holds the full name; `shortProductName()` in the same file derives the short form by dropping a
@@ -142,7 +144,35 @@ with code 1. Without it, such a start built a second, empty single-environment i
 the AI files, `secrets.key`) beside the environments, and every later start with `BASE_DOMAIN` refused (GitHub
 #90). `tools/check-host-registry.mjs` covers it.
 
-Two more pieces let the product page's **Sign in** send someone to the right place, without the host ever learning
+**The start page.** `/` on the product host is the start page, the only page it serves. It carries no marketing,
+screenshots or demo. Its parts, top to bottom (`public/start.html`, `start.js`, `start.css`):
+
+- **Recent.** The environments this browser reached through the page, newest first, up to five, kept in the browser
+  under the key `app.recentEnvironments`; the server stores nothing for it. Each row opens that environment's sign-in
+  and has a button to remove it. The part is not drawn when the list is empty.
+- **Find your environment.** The address is typed, with the base domain after the field. The page asks
+  `GET /api/product/environment?slug=` about 400 ms after the last keystroke, one request at a time, and shows the
+  environment's name when it exists. **Go** opens only that environment's own sign-in address, built from the slug the
+  lookup returned, in the same tab.
+- **Got a link?** A line saying to open the link itself; a guest link or an invite takes a person in on its own.
+- **Get your own.** The sign-up form (`POST /api/product/signup`), open on the page when `SIGNUP=on`: address, name,
+  template when the host offers any, login and an optional display name. It asks for **no password**; the owner
+  chooses it on the new environment's own page (see "The first password"). With sign-up off but `CONTACT_EMAIL`
+  set, it offers to write to that address; with neither, it says it is coming soon.
+- **About {short name}.** One link to `PRODUCT_SITE_URL`, drawn only when that is set (the page reads
+  `productSiteUrl` from `GET /api/product`). It is the page's one link out.
+
+If `GET /api/product` cannot be reached the page shows "This page did not load" and **Try again**. The page uses the
+app's own design system: `style.css`, the default theme from `/theme.css`, `sdk/system.css`, and the `--brand-coral`
+token for the product's name in the header ([design-theme](../designsystem/design-theme.md)).
+`tools/check-start-page.mjs` reads the files for these rules and runs the page in headless Chromium.
+
+`PRODUCT_SITE_URL` is read once at start. Unset or empty means no link. A value that is not an absolute `http` or
+`https` address, or that carries a user name or password, stops the start with one line naming it, as a bad
+`PRODUCT_DOMAIN` does. It is configuration, never code. `GET /api/host/settings` carries `productSiteUrl` too, and the
+console's facts show it as **Product site**, beside **Start page** (the product host).
+
+Two more pieces let the start page's **Go** send someone to the right place, without the host ever learning
 who anyone is (accounts live inside each environment, not in `host.json`). The page lists no environments and takes no
 password: a person types their environment's address (the base domain is shown after the field) and presses **Go**,
 and the page opens `<slug>.<base>/login` in the same tab once the lookup below finds it. A line under the form says
@@ -153,7 +183,7 @@ first-party and nothing is posted across sites.
   `POST /api/invites/:token/accept` -- never the host admin's own `POST /api/host/login`), `setEnvHint(req, res)`
   sets a cookie `env_hint` on the parent `BASE_DOMAIN`: a comma-separated list of slugs, most recent first,
   deduplicated, capped at five, `Path=/`, `SameSite=Lax`, `Secure` when the request is, a year long, **not**
-  `HttpOnly`. Never cleared on sign-out. A no-op without `BASE_DOMAIN`. **Nothing reads it now**: the product page
+  `HttpOnly`. Never cleared on sign-out. A no-op without `BASE_DOMAIN`. **Nothing reads it now**: the old product page
   used to preselect from it and no longer does (plan-product-site.md, decision 11).
 - `GET /api/product/environment?slug=` (registered on both the main app and `hostRouter`, and in
   `BARE_BASE_PATHS`, so it answers at the bare base domain too) answers `{ slug, name }` for an `active` or
@@ -638,7 +668,7 @@ one. The old `/api/host/tenants...` paths are gone and answer 404; there is no a
 | Route | Answer |
 |---|---|
 | `GET /api/host/environments` | `{ environments: [{ ...the registry record, usage: { members, storageBytes, aiCallsThisMonth, spaces }, refused, template }] }`, `template` being `{ id, name, source, version, appliedVersion, appliedAt, offerOpen, skipped: [{ id, name, why }] }` or null, read from the environment itself (see "Templates"); every field is present even for an environment that isn't open |
-| `GET /api/host/settings` | `{ baseDomain, productDomain, version, hostAdmins, productName, contactEmail, plans, signup, billingSecretSet, modules }`; `modules` is `[{ id, name, icon }]`, the conference and the chat first, then the bundled modules by id, for the template editor; `productDomain` is the product host (`PRODUCT_DOMAIN`, else the base), and the console is always `admin.<baseDomain>`, so there is no console field |
+| `GET /api/host/settings` | `{ baseDomain, productDomain, version, hostAdmins, productName, contactEmail, productSiteUrl, plans, signup, billingSecretSet, modules }`; `modules` is `[{ id, name, icon }]`, the conference and the chat first, then the bundled modules by id, for the template editor; `productDomain` is the product host (`PRODUCT_DOMAIN`, else the base), and the console is always `admin.<baseDomain>`, so there is no console field |
 | `PUT /api/host/plans` `{ free: { name, caps }, ...named plans }` | `{ plans }`, the saved catalog. 400 `Give the plan a name.` when a plan's name is empty or only spaces (nothing is saved). Loading is lenient: a stored plan with no name loads under its id, and the next save asks for a name |
 | `GET /api/host/templates` | `{ templates: [{ id, name, description, source, version, hidden, edited, update, usedBy: [slugs] }] }`, every template the host can see (see "Templates"); `edited` is true for a bundled template with the host's edits, and `update` is `{ shippedVersion }` while its "updated in this image" notice is open, else null |
 | `GET /api/host/templates/:id` | `{ template }`, the template in full, with `source`, `version`, `hidden`, `createdAt` and `updatedAt`; an edited bundled template adds `shipped`, the shipped template in full, for compare; 404 `There is no template called <id>.` |

@@ -40,7 +40,7 @@ More bundled templates may come later, and the host admin can make their own (be
 4. Under **Plan**, choose the plan, or leave "No caps, every module".
 5. Click **Create**.
 
-When the host has templates, the product page's sign-up form offers the same choice to someone making their
+When the host has templates, the start page's sign-up form offers the same choice to someone making their
 own environment.
 
 **On a single server,** set `TEMPLATE` in the compose file (for example `TEMPLATE: "travel"`) before the first

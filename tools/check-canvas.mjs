@@ -1049,10 +1049,10 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const click = canvasJs.slice(canvasJs.indexOf('  function flipShown(id'), canvasJs.indexOf('  function layoutMenuItems() {'));
   if (!/hiddenByView\(id\)\) setView\(id\)/.test(click)) fail('public/canvas.js', 'a switch on a module hidden behind the narrow canvas\'s view must show it (setView), not close it');
   if (!/checked: shown\(def\.id\)/.test(canvasJs)) fail('public/canvas.js', 'a switch reads off while its module is hidden behind the narrow canvas\'s view');
-  // The Layout button opens the page's shared menu (Thomas, 2026-10-13): an icon button beside Set up that says so.
-  if (!/id: 'modules-toggle' \}\);\nnav\.elementOf\('modules-toggle'\)\?\.setAttribute\('aria-haspopup', 'menu'\);/.test(spaceJs)) fail('public/space.js', '#modules-toggle is a nav tool beside Set up that opens a menu (aria-haspopup="menu")');
-  if (!/onClick: \(event\) => canvas\.toggleMenu\(event\.currentTarget\)/.test(spaceJs)) fail('public/space.js', 'the Layout button opens the canvas\'s menu (canvas.toggleMenu)');
-  if (!/openHostMenu\(trigger, layoutMenuItems\);/.test(canvasJs)) fail('public/canvas.js', 'the Layout menu is the page\'s shared menu (host-menu.js openHostMenu), drawn from layoutMenuItems()');
+  // The Show menu is the first tab of Set up (Thomas, 2026-11-08): Set up's button opens it, drawn by canvas.mountMenu.
+  if (/modules-toggle/.test(spaceJs)) fail('public/space.js', 'the Layout button is gone: no #modules-toggle');
+  if (!/show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/.test(spaceJs)) fail('public/space.js', 'Set up draws the canvas\'s menu in its Show tab (canvas.mountMenu)');
+  if (!/mountHostMenu\(container, layoutMenuItems\);/.test(canvasJs)) fail('public/canvas.js', 'the Show menu is the page\'s shared menu (host-menu.js mountHostMenu), drawn from layoutMenuItems()');
   for (const needle of ["{ heading: 'Show' }", "{ heading: 'Arrange' }", "label: 'Panel Mode'", "label: 'Window Mode'", "label: 'Snap to grid'", "label: 'Clean up'"]) if (!canvasJs.includes(needle)) fail('public/canvas.js', `the Layout menu has ${needle}`);
   const arrangeItems = canvasJs.slice(canvasJs.indexOf("{ heading: 'Arrange' }"), canvasJs.indexOf("const extra = typeof menuItems"));
   if (!/if \(windowMode\) \{[\s\S]*label: 'Snap to grid'[\s\S]*label: 'Clean up'[\s\S]*\}/.test(arrangeItems)) fail('public/canvas.js', 'Snap to grid and Clean up are offered in Window Mode only');
