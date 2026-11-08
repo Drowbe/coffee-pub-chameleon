@@ -148,13 +148,13 @@
   transform: translate(-50%, -50%);
   box-sizing: border-box;
   border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
-  border-radius: calc(2px / var(--wb-scale, 1));
+  border-radius: var(--radius-min);
   background: var(--surface-card);
 }
 .wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
 .wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
 .wb-handle-start, .wb-handle-end { cursor: move; }
-.wb-handle-start::after, .wb-handle-end::after { border-radius: 50%; }
+.wb-handle-start::after, .wb-handle-end::after { border-radius: var(--radius-small); }
 @media (pointer: coarse) { .wb-handle { --hit: 32px; } }
 .app.narrow .wb-handle { --hit: 32px; }
 
