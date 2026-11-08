@@ -42,5 +42,9 @@
   "vault": {
     "version": "0.3.5",
     "hash": "5ce50a96c6e7bbc5"
+  },
+  "whiteboard": {
+    "version": "0.1.0",
+    "hash": "eee3f7cad42a7039"
   }
 }
