@@ -1,7 +1,7 @@
 // The host console (admin.<base domain>): the deployment's own door. The environments (each its own people, spaces,
 // settings and modules), their plans against their use, the host admins, the host itself. It shows no environment's
 // data beyond the counts. The API is /api/host/ (documentation/plans/plan-environments.md, "Phase 1 in detail").
-import { loadBranding, api, renderTopbar } from '/brand.js';
+import { loadBranding, api, renderTopbar, productLockup } from '/brand.js';
 import { wireRegionCut } from '/region-cut.js';
 import { mountEnrolment, mountDisable } from '/mfa-enrol.js';
 import { renderOffer, switchConfirm } from '/template-offer.js';
@@ -899,14 +899,12 @@ $('host-logout').addEventListener('click', async () => {
 
 renderTopbar({ location: '', themeSwitch: false });
 await loadBranding();
-// The console is the product's own door, so its bar wears the product's logo, not any environment's name and icon.
+// The console is the product's own door, so its bar wears the product's lockup (the mark and the product's name), not
+// any environment's name and icon. The console has no /api/branding: the name is /api/product's (PRODUCT_NAME).
 const brandHome = document.querySelector('.topbar .brand-home');
 if (brandHome) {
-  const logo = document.createElement('img');
-  logo.className = 'host-logo';
-  logo.src = '/assets/images/brand/logo-light.png';
-  logo.alt = 'Host console';
-  brandHome.replaceChildren(logo);
+  const product = await fetch('/api/product').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  brandHome.replaceChildren(productLockup(product.name || ''));
   brandHome.href = '/';
   brandHome.title = 'Host console';
 }

@@ -89,6 +89,51 @@ export function productName() {
   return product;
 }
 
+// The product's mark (public/assets/images/brand/): the full-colour one on a light page, the -dark one on a dark page,
+// where the full-colour one's navy shape would not show. Never recoloured; the default only, since an environment's
+// own icon wins wherever it has one. Any <img data-product-mark> follows the mode showing, and changes with it.
+const PRODUCT_MARK = { light: '/assets/images/brand/mark.svg', dark: '/assets/images/brand/mark-dark.svg' };
+const APPLE_TOUCH_ICON = '/assets/images/brand/apple-touch-icon.png';
+export const productMarkSrc = () => PRODUCT_MARK[modeNow() === 'light' ? 'light' : 'dark'];
+function paintProductMarks() {
+  const src = productMarkSrc();
+  for (const img of qsa('img[data-product-mark]')) if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+}
+// The product's lockup: the mark and the product's name as live text on one line, so it follows PRODUCT_NAME. A name
+// that starts with "Coffee Pub " shows the brand in the display face (Fraunces 700) and the rest in the interface face
+// (Figtree 600), the same size; any other name (a branded version's own) is all Figtree. The colours are the theme's
+// text colour for both words: the brand's coral is for large text only, and this is drawn at the bar's size.
+const BRAND_PREFIX = 'Coffee Pub ';
+export function productLockup(name = product) {
+  const box = document.createElement('span');
+  box.className = 'product-lockup';
+  const mark = document.createElement('img');
+  mark.className = 'product-lockup-mark';
+  mark.alt = '';
+  mark.dataset.productMark = '';
+  mark.src = productMarkSrc();
+  const text = document.createElement('span');
+  text.className = 'product-lockup-name';
+  const full = String(name || '').trim();
+  const rest = full.startsWith(BRAND_PREFIX) ? full.slice(BRAND_PREFIX.length).trim() : '';
+  if (rest) {
+    const brandWord = document.createElement('span');
+    brandWord.className = 'product-lockup-brand';
+    brandWord.textContent = BRAND_PREFIX.trim();
+    const productWord = document.createElement('span');
+    productWord.className = 'product-lockup-product';
+    productWord.textContent = rest;
+    text.append(brandWord, ' ', productWord);
+  } else {
+    const productWord = document.createElement('span');
+    productWord.className = 'product-lockup-product';
+    productWord.textContent = full;
+    text.append(productWord);
+  }
+  box.append(mark, text);
+  return box;
+}
+
 // Fills in the environment's name and icon on every page from /api/branding.
 export async function loadBranding() {
   let b = { environmentName: 'Coffee Pub', loginText: '', hasIcon: false };
@@ -132,7 +177,18 @@ export async function loadBranding() {
     document.head.appendChild(icon);
   }
   icon.href = `/img/site/icon?v=${Date.now()}`;
-  document.querySelectorAll('img[data-brand="icon"]').forEach((el) => (el.src = icon.href));
+  // The environment's own icon where it set one; else the product's mark, in the variant for the mode showing.
+  document.querySelectorAll('img[data-brand="icon"]').forEach((el) => {
+    if (b.hasIcon) {
+      delete el.dataset.productMark;
+      el.src = icon.href;
+    } else {
+      el.dataset.productMark = '';
+    }
+  });
+  paintProductMarks();
+  // The phone's home-screen icon (Safari reads a PNG only): the environment's own, else the mark on its cream square.
+  document.querySelectorAll('link[rel="apple-touch-icon"]').forEach((link) => (link.href = b.hasIcon ? icon.href : APPLE_TOUCH_ICON));
   // A page marked data-brand="background" (the sign-in page) gets the
   // background picture when one is set. It goes on the root element: the
   // root has its own colour, so a picture on the body would stop at the
@@ -150,6 +206,7 @@ export async function loadBranding() {
 // as in this document.
 let headerEl = null;
 const qsa = (sel) => [...new Set([...document.querySelectorAll(sel), ...(headerEl ? headerEl.querySelectorAll(sel) : [])])];
+document.addEventListener('app:theme', () => paintProductMarks()); // the mark follows light and dark (productMarkSrc)
 const byId = (id) => document.getElementById(id) || headerEl?.querySelector(`#${id}`) || null;
 
 // What the bar knows about who is looking: undefined until /api/me answers, null with no account (a guest, a keyed

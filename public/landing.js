@@ -78,9 +78,27 @@ function tour() {
   });
 }
 
+// The bar's lockup: the mark, then the product's name as live text (it follows PRODUCT_NAME). A name that starts with
+// "Coffee Pub " shows the brand in Fraunces and the rest in Figtree, the same size; any other name is all Figtree.
+function lockup() {
+  for (const el of document.querySelectorAll('.brand .brand-name')) {
+    const full = el.textContent.trim();
+    const rest = full.startsWith('Coffee Pub ') ? full.slice('Coffee Pub '.length).trim() : '';
+    if (!rest) { el.textContent = full; continue; }
+    const brandWord = document.createElement('span');
+    brandWord.className = 'brand-word';
+    brandWord.textContent = 'Coffee Pub '; // the space is the word's own, so a phone can drop the word and its space
+    const productWord = document.createElement('span');
+    productWord.className = 'product-word';
+    productWord.textContent = rest;
+    el.replaceChildren(brandWord, productWord);
+  }
+}
+
 function pageParts() {
   themeSwitch();
   tour();
+  lockup();
 }
 
 // --- The host line: below here the page talks to the host ------------------------------------------------------------
@@ -133,6 +151,7 @@ async function fromHost() {
   }
 
   fill('[data-product]', product.name);
+  lockup();
   // A use page names its own title: <title data-title="Plan trips together: {name}">; the front page's is the name alone.
   document.title = document.querySelector('title[data-title]')?.dataset.title.replace('{name}', product.name) || product.name;
   for (const img of document.querySelectorAll('[data-product-alt]')) {

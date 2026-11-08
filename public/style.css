@@ -703,11 +703,50 @@ body.host-console .topbar .nav-toggle {
   display: none;
 }
 
-body.host-console .host-logo {
-  display: block;
-  height: 60px; /* the file has wide transparent margins; the bar's own height is unchanged */
-  width: auto;
-  margin: -12px 0;
+/* The product's lockup (brand.js, productLockup()): the mark and the product's name as live text, one line. The kit's
+   proportions, by the text's size: the mark 1.75 times the text (56 units for 32), 0.375 of it between them (12 for 32).
+   "Coffee Pub" is Fraunces 700, the rest Figtree 600; both take the theme's text colour here (the kit's coral name is for
+   large text only). On the host console's bar it is the wordmark's size: 18px, 16px on a phone. */
+.product-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375em;
+  min-width: 0;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.product-lockup-mark {
+  flex: none;
+  width: 1.75em;
+  height: 1.75em;
+}
+
+.product-lockup-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--leading-section);
+}
+
+.product-lockup-brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.product-lockup-product {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-strong);
+}
+
+body.host-console .topbar .brand-home .product-lockup {
+  font-size: var(--text-18);
+}
+
+@media (max-width: 640px) {
+  body.host-console .topbar .brand-home .product-lockup {
+    font-size: var(--text-16);
+  }
 }
 
 body.host-console .environment .section-head h2 code {

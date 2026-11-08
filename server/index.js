@@ -3161,18 +3161,18 @@ app.get('/admin', (req, res) => {
 
 // Images ---------------------------------------------------------------------
 
-// The server icon: the one set on the Settings tab, else the Coffee Pub
-// brandmark. Also mounted at the conventional /favicon.ico path -- pages set
-// their own <link rel="icon"> (see brand.js), but plenty of browsers and
-// tools still fetch that path directly (bookmarks, tab previews, before any
-// page JS has run) and got a bare 404 without this.
-function siteIcon(_req, res) {
+// The server icon: the one set on the Settings tab, else the product's mark (public/assets/images/brand/: favicon.svg,
+// which turns to the mark's dark colours when the browser is dark). Also mounted at the conventional /favicon.ico path,
+// where the default is the mark as a real .ico -- pages set their own <link rel="icon"> (see brand.js), but plenty of
+// browsers and tools still fetch that path directly (bookmarks, tab previews, before any page JS has run).
+const BRAND_DIR = path.join(publicDir, 'assets', 'images', 'brand');
+function siteIcon(req, res) {
   // No environment at the bare base domain (the landing page): the bundled default, same as any environment
   // that has not set its own.
   const env = envContext.getStore();
   const file = env && env.store.iconPath();
   if (file) return sendImage(res, file);
-  res.set('Cache-Control', 'no-cache').sendFile(path.join(publicDir, 'assets', 'images', 'brand', 'brandmark-color.png'));
+  res.set('Cache-Control', 'no-cache').sendFile(path.join(BRAND_DIR, req.path === '/favicon.ico' ? 'favicon.ico' : 'favicon.svg'));
 }
 app.get('/img/site/icon', siteIcon);
 app.get('/favicon.ico', siteIcon);
@@ -3250,10 +3250,16 @@ app.get('/manifest.webmanifest', (_req, res) => {
   const custom = store.iconPath();
   const icons = [];
   if (custom && /\.png$/.test(custom)) icons.push({ src: '/img/site/icon', sizes: 'any', type: 'image/png' });
-  icons.push({ src: '/assets/images/brand/brandmark-color.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' });
+  // The product's mark on its cream square, as the brand kit draws its app icons.
+  icons.push(
+    { src: '/assets/images/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/assets/images/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/assets/images/brand/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+  );
   res.set('Cache-Control', 'no-cache').type('application/manifest+json').json({
     name: s.environmentName,
-    short_name: s.environmentName.length > 12 ? s.environmentName.slice(0, 12) : s.environmentName,
+    // An environment still called by the product's name gets the product's short name ("Chameleon"), not a cut one.
+    short_name: s.environmentName === PRODUCT_NAME ? PRODUCT_SHORT_NAME : s.environmentName.length > 12 ? s.environmentName.slice(0, 12) : s.environmentName,
     description: `${s.environmentName}: voice and video calls`,
     start_url: '/',
     scope: '/',
