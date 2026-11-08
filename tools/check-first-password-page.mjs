@@ -267,28 +267,18 @@ try {
   const front = `http://localhost:${port}/`;
   const originOf = (slug) => `http://${slug}.localhost:${port}`;
 
-  // --- sign up in the browser, follow the link, choose a password, signed in; then reload --------------------------
+  // --- sign up by call (the start page has no form), open the link, choose a password, signed in; then reload --------------------------
   for (const [width, slug] of [[1280, 'alpha'], [390, 'bravo']]) {
-    await test(`${width}: sign up, the fragment is gone, a short password, a good one, signed in; a reload is dead`, async () => {
+    await test(`${width}: sign up by call, open the link, the fragment is gone, a short password, a good one, signed in; a reload is dead`, async () => {
       const tab = await openTab({ width });
       try {
         const origin = originOf(slug);
-        await tab.go(`${front}#start`);
-        await tab.waitFor(tab.visible('signup-form'), 'the sign-up form');
-        assert.equal(await tab.evaluate("document.getElementById('signup-password-note')?.textContent"), "Next you choose your password, on your new environment's own page.");
-        assert.equal(await tab.evaluate("document.querySelectorAll('#signup-form input[type=password]').length"), 0, 'no password on the sign-up form');
-        await tab.type('#signup-slug', slug);
-        await tab.type('#signup-name', `Env ${slug}`);
-        await tab.type('#signup-login', `own${slug}`);
-        await tab.evaluate("document.getElementById('signup-submit').click()");
-        await tab.waitFor(`location.origin === ${JSON.stringify(origin)} && ${tab.visible('fp-password')}`, 'the choose-your-password form');
-        const signupCall = tab.requests.find((r) => r.url.endsWith('/api/product/signup'));
-        assert.ok(signupCall, 'the sign-up was sent');
-        assert.equal(tab.signupAnswers.length, 1, 'the sign-up answer was read');
-        const answer = JSON.parse(tab.signupAnswers[0]);
-        const token = String(answer.url || '').split('#')[1];
+        const url = await signupByCall(slug); // the sign-up form is gone from the start page: the call is made directly, the link is opened in the browser
+        const token = String(url || '').split('#')[1];
         assert.match(token || '', /^[A-Za-z0-9_-]{43}$/, 'the sign-up answered a link');
         tokens.push(token);
+        await tab.go(url);
+        await tab.waitFor(`location.origin === ${JSON.stringify(origin)} && ${tab.visible('fp-password')}`, 'the choose-your-password form');
         const doc = tab.requests.find((r) => r.type === 'Document' && r.url.startsWith(`${origin}/login/first-password`));
         assert.ok(doc, 'the page was opened');
         assert.ok(!doc.url.includes('#'), 'the fragment is not part of the page request');

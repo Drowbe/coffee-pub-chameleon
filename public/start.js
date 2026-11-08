@@ -1,9 +1,8 @@
 // The start page (public/start.html; documentation/plans/plan-product-site.md, slices 4 and 5), drawn first on the Prototype's Start page
 // section and locked there. The product host's one page: a person types the address of their environment and goes to its own sign-in
-// page, or makes an environment of their own. It lists no environments, takes no password and carries no marketing.
+// page. It lists no environments, takes no password and carries no marketing.
 // What it asks the host (all public): GET /api/product (the name, the base domain, whether sign-up is open, the templates and the one link
-// out), GET /api/product/environment?slug= (as the person types), GET /api/product/address?slug= (the sign-up's address check) and
-// POST /api/product/signup. Recent is this browser's own: the server keeps nothing for it.
+// out) and GET /api/product/environment?slug= (as the person types). Recent is this browser's own: the server keeps nothing for it.
 const D = document;
 const $ = (id) => D.getElementById(id);
 const h = (tag, cls, text) => { const e = D.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -27,7 +26,6 @@ const SAY = {
   bad: 'An address is 3 to 30 letters, digits or hyphens.',
   net: 'Could not reach the server. Try again.',
   limit: 'Too many tries. Wait a minute, then try again.',
-  signupHint: 'Letters, digits and hyphens, 3 to 30. It cannot be changed later.',
 };
 
 // A status line: an icon (or a spinner) and some words; kind is '', 'ok' or 'error'. No parts empties it.
@@ -105,9 +103,9 @@ function drawRecent(focusAt) {
   }
   sec.hidden = false;
   recent.forEach((env, i) => {
-    const li = h('li', 'sdk-row');
-    const main = h('span', 'sdk-row-main');
-    const a = h('a', 'sdk-open sdk-row-title', env.name);
+    const li = h('li', 'sp-chip');
+    const main = h('span', 'sp-chip-main');
+    const a = h('a', 'sdk-open sp-chip-name', env.name);
     a.href = envUrl(env.slug);
     a.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -123,7 +121,7 @@ function drawRecent(focusAt) {
       if (r.error) { line(say, 'error', 'circle-exclamation', [SAY[r.error]]); return; }
       goTo(r);
     });
-    main.append(a, h('span', 'sdk-row-sub', addr(env.slug)));
+    main.append(a, h('span', 'sp-chip-addr', addr(env.slug)));
     const x = h('button', 'sdk-icon-btn btn-quiet btn-small');
     x.type = 'button'; x.setAttribute('aria-label', `Remove ${env.name} from Recent`); x.title = 'Remove from Recent';
     x.append(fa('xmark'));
@@ -236,120 +234,6 @@ $('sp-find-form').addEventListener('submit', (e) => {
 // Back to the page from the environment (the browser keeps pages): Go is ready again.
 addEventListener('pageshow', (e) => { if (e.persisted && find.phase === 'opening') { find.phase = 'idle'; find.env = null; drawFind(); } });
 
-// ---- Get your own ----
-function drawOwn() {
-  const sec = $('start');
-  sec.hidden = false;
-  const lede = $('sp-own-lede');
-  const open = Boolean(product.signup && product.baseDomain);
-  if (open) {
-    lede.textContent = 'Your own environment on the free plan: its own address, people and spaces. It takes a minute.';
-    $('signup-form').hidden = false;
-    setupSignup();
-    return;
-  }
-  if (product.contact) {
-    lede.textContent = 'Making your own environment here is not open yet. Ask, and we will set one up.';
-    const a = $('sp-ask-link');
-    a.href = `mailto:${product.contact}?subject=${encodeURIComponent(`An environment on ${product.name}`)}`;
-    $('sp-ask').hidden = false;
-    const note = $('sp-ask-note');
-    note.textContent = `Writes to ${product.contact}.`; note.hidden = false;
-  } else {
-    lede.textContent = 'Coming soon.';
-  }
-}
-let signupReady = false;
-function setupSignup() {
-  if (signupReady) return;
-  signupReady = true;
-  const slugIn = $('signup-slug');
-  const slugSay = $('signup-slug-say');
-  const nameIn = $('signup-name');
-  const loginIn = $('signup-login');
-  const make = $('signup-submit');
-  const status = $('signup-status');
-  $('signup-suffix').textContent = `.${product.baseDomain}`;
-  // Boxes: a click anywhere in the address box puts the cursor in its field.
-  $('signup-box').addEventListener('mousedown', (e) => { if (e.target !== slugIn) { e.preventDefault(); slugIn.focus(); } });
-  // The Template choice: None, then each of the host's templates; ?template=<id> preselects one the host offers.
-  const templates = (Array.isArray(product.templates) ? product.templates : []).filter((t) => t && typeof t.id === 'string');
-  if (templates.length) {
-    const list = $('signup-options');
-    const group = 'sp-template';
-    const row = ([id, word, desc]) => {
-      const r = h('label', 'sdk-choice-row sdk-choice-boxed');
-      const i = h('input'); i.type = 'radio'; i.name = group; i.value = id; i.checked = !id;
-      const t = h('span', 'sdk-choice-text'); t.append(h('span', 'sdk-choice-label', word), h('span', 'sdk-choice-desc', desc));
-      r.append(i, t);
-      return r;
-    };
-    list.replaceChildren(...[['', 'None', 'Start plain: the usual words and settings.'], ...templates.map((t) => [t.id, t.name || t.id, t.description || ''])].map(row));
-    const wanted = new URLSearchParams(location.search).get('template');
-    const pick = wanted && [...list.querySelectorAll('input')].find((i) => i.value === wanted);
-    if (pick) pick.checked = true;
-    $('signup-template').hidden = false;
-  }
-  // The address check as you type: the shape hint, then free, taken or reserved after a short pause.
-  let token = 0; let timer = null;
-  const sayCheck = (text, kind) => { slugSay.textContent = text; slugSay.className = kind === 'error' ? 'sdk-error' : 'sdk-hint'; slugIn.setAttribute('aria-invalid', String(kind === 'error')); };
-  const checkSlug = () => {
-    clearTimeout(timer); const mine = ++token; const s = slugIn.value;
-    sayCheck(SAY.signupHint);
-    if (!shapeOk(s)) return;
-    timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/product/address?slug=${encodeURIComponent(s)}`);
-        if (mine !== token) return;
-        if (!res.ok) return; // the hint stays; the server says on Make
-        const data = await res.json();
-        if (mine !== token) return;
-        if (data.free) sayCheck(`${addr(s)} is free.`, 'ok');
-        else if (data.reason === 'reserved') sayCheck(`"${s}" is reserved. Pick another.`, 'error');
-        else if (data.reason === 'taken') sayCheck(`${addr(s)} is taken.`, 'error');
-      } catch { /* the hint stays */ }
-    }, 250);
-  };
-  slugIn.addEventListener('input', () => { slugIn.value = slugIn.value.toLowerCase().replace(/[^a-z0-9-]/g, ''); checkSlug(); });
-  sayCheck(SAY.signupHint);
-  // An empty required field says so under itself and clears when the person types.
-  const need = (input, id, text) => {
-    const p = $(id);
-    input.addEventListener('input', () => { input.removeAttribute('aria-invalid'); p.hidden = true; p.textContent = ''; });
-    return () => { input.setAttribute('aria-invalid', 'true'); p.textContent = text; p.hidden = false; input.focus(); };
-  };
-  const nameNeed = need(nameIn, 'signup-name-need', 'Give your environment a name.');
-  const loginNeed = need(loginIn, 'signup-login-need', 'Choose a login.');
-  $('signup-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (make.disabled) return;
-    const s = slugIn.value;
-    if (!shapeOk(s)) { sayCheck(SAY.signupHint, 'error'); slugIn.focus(); return; }
-    if (!nameIn.value.trim()) { nameNeed(); return; }
-    if (!loginIn.value.trim()) { loginNeed(); return; }
-    const template = $('signup-template').querySelector('input:checked')?.value;
-    // No password: the owner chooses it on the new environment's own page, through the link the answer carries.
-    const body = { slug: s, name: nameIn.value.trim(), ...(template ? { template } : {}), owner: { login: loginIn.value.trim(), displayName: $('signup-display').value.trim() } };
-    make.disabled = true;
-    line(status, '', 'spin', ['Making it']);
-    try {
-      const res = await fetch('/api/product/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Could not make it (${res.status}).`);
-      // The answer's link must be the new environment's own page and nobody else's.
-      let to = null;
-      try { to = new URL(data.url); } catch { /* refused below */ }
-      if (!to || to.hostname !== addr(s) || !/^https?:$/.test(to.protocol)) throw new Error('The answer did not name the new address. Try again.');
-      line(status, 'ok', 'circle-check', [`Made. Taking you to ${addr(s)}.`]);
-      addRecent({ slug: s, name: body.name });
-      location.href = to.href;
-    } catch (err) {
-      make.disabled = false;
-      line(status, 'error', 'circle-exclamation', [err.message || 'Could not make it.']);
-    }
-  });
-}
-
 // ---- the page ----
 // The studio's parts: the hero's button, the header's links, the ways to use the product and the footer. Every link is the studio's
 // address (product.productSiteUrl, from PRODUCT_SITE_URL) with a path on it; without that address none of them is drawn.
@@ -422,10 +306,8 @@ async function load() {
   $('sp-link').hidden = false;
   drawFind();
   drawRecent();
-  drawOwn();
   drawStudio(drawHero());
-  if (location.hash === '#start') $('start').scrollIntoView({ block: 'start' });
-  else if (matchMedia('(pointer: fine)').matches) $('sp-find-input').focus(); // not on a phone: the keyboard would cover the page
+  if (matchMedia('(pointer: fine)').matches) $('sp-find-input').focus(); // not on a phone: the keyboard would cover the page
 }
 $('sp-retry').addEventListener('click', async () => { await load(); });
 load();
