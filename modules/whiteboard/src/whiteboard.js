@@ -13,6 +13,8 @@
 //   lib-i pictures  pictures from the computer, sent as uploads
 //   lib-j markup    what the formatting bar does to the words being edited
 //   lib-k table     rows copied from a spreadsheet, read as a table's cells
+//   lib-l export    the board as a picture, and ready to print
+//   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
 (async () => {
   'use strict';
 
@@ -55,7 +57,7 @@
   const me = (info.user && info.user.key) || '';
   const board = createBoard();
   const surface = $('board');
-  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame') });
+  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name) });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
@@ -64,6 +66,7 @@
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish, cell? ({ r, c, td }: a table's cell) }
   let many = false; // "Select many" (a touch screen): one finger drags a rectangle and a tap adds, rather than moving the board
+  let presenting = null; // while the frames are presented: lib-e-block-frame's state ({ order, i, view }), see "presenting"
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
@@ -98,9 +101,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -162,13 +165,17 @@
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
       if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null) own[k] = v;
-      const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z: Math.floor(board.topZ()) + 1 });
+      // A frame goes under the other blocks (lib-e-block-frame, wbFrameZ); everything else on top.
+      const z = def.container ? wbFrameZ(board.all()) : Math.floor(board.topZ()) + 1;
+      const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z });
       drafts.add(b.id);
       commit(b, false);
       return b;
     },
     change(id, patch, { save = 'now' } = {}) {
+      if (presenting) return; // the board is not changed while the frames are presented
       const b = board.get(id);
+      if (b && !drafts.has(id) && b.locked && policy.canLock(b)) { lockedNote(1, 1); return; }
       if (!b || (!drafts.has(id) && !policy.canChange(b))) return;
       const next = wbClean({ ...b, ...patch });
       if (next) commit(next, save);
@@ -191,15 +198,33 @@
     remove: (id) => remove(id),
     select: (id) => select(id ? [id] : []),
     setSelection: (ids) => select(ids),
-    toggle(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); else select([...sel, id]); },
+    // A block of a group goes in or out with its whole group.
+    toggle(id) {
+      const unit = new Set(wbExpandGroups([id], board.all()));
+      if (sel.has(id)) select([...sel].filter((x) => !unit.has(x))); else select([...sel, ...unit]);
+    },
     marquee: (r) => renderer.marquee(r),
     many: () => many,
     blocksIn: (r) => blocksIn(r),
+    // The blocks a drag of these blocks takes along (the ones inside a frame among them) that may be moved, and how many
+    // locked ones inside stay (lib-e-block-frame, wbFrameFollow).
+    contentsOf(ids) {
+      const r = wbFrameFollow(ids.map((id) => ({ id, dx: 0, dy: 0 })), live(), { measure: heightOf });
+      return { blocks: r.moves.map((m) => board.get(m.id)).filter((b) => b && policy.canChange(b)), locked: r.locked };
+    },
     edit: (id, o) => edit(id, o),
     // A block's element, for a tool to measure what is drawn (a table's rows).
     element: (id) => renderer.element(id),
     // A short note instead of a change that cannot be made (a table's last row deleted).
     refuseWith: (words) => note(words),
+    // Locked blocks left as they are: n of the `of` blocks a gesture was for (lib-m's words).
+    lockedNote: (n, of) => lockedNote(n, of),
+    // Guides while blocks are dragged (lib-f-tool-select): whether this drag has them (Snap to grid off, Alt not held),
+    // the box round the dragged blocks and the boxes near what is in sight to line it up with (once a drag), and the
+    // lines to draw ([] for none).
+    guiding: (event) => !snapOn && !(event && event.altKey),
+    guideBoxes: (ids) => guideBoxes(ids),
+    guides: (lines) => renderer.guides(lines),
     setTool: (id) => setTool(id),
     hold(id, on) { if (on) held.add(id); else release(id); },
     // Where a connector's end goes for a pointer on the board ({ block, side } or null: the board), and the connection
@@ -261,13 +286,14 @@
   }
 
   // Deleting a block deletes the connectors attached to it first, in the same undo step: one undo brings the block back,
-  // then them, each with its own id.
-  function remove(id) {
+  // then them, each with its own id. A connector goes with its block even when it is locked (force: a locked block taken
+  // away all the same), so none is left pointing at nothing.
+  function remove(id, { force = false } = {}) {
     const b = board.get(id);
     if (!b) return;
     if (drafts.has(id)) { ctx.discard(id); return; }
-    if (!policy.canDelete(b)) return;
-    for (const c of connectorsOf(id)) remove(c);
+    if (!(force ? policy.canLock(b) : policy.canDelete(b))) return;
+    for (const c of connectorsOf(id)) remove(c, { force: true });
     if (history) history.record(id, known.get(id) || b, null);
     known.delete(id);
     board.remove(id);
@@ -278,7 +304,13 @@
     unpick(id);
     updateStatus();
   }
-  function removeMany(ids) { for (const id of ids) remove(id); }
+  // A delete of several blocks (lib-m, wbDeleteSet): the locked ones stay, and the person is told.
+  function removeMany(ids) {
+    if (presenting) return;
+    const r = wbDeleteSet(ids, board.all(), { canDelete: (b) => drafts.has(b.id) || policy.canDelete(b), refsOf: (b) => { const d = defOf(b); return d && d.refs ? d.refs(b) : []; } });
+    for (const id of r.ids) remove(id, { force: true });
+    if (r.locked) lockedNote(r.locked, ids.length);
+  }
   // A block gone from the board is gone from what is picked.
   function unpick(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); }
 
@@ -328,6 +360,7 @@
       if (editing && editing.cell && editing.id === b.id && !editing.cell.td.isConnected) { const e = editing; editing = null; e.finish(true); }
     }
     sweepSoon();
+    presentSync();
     updateStatus();
   }
   // One note at a time: a change to many blocks that is refused is refused once for each, and is said once.
@@ -356,25 +389,80 @@
     for (const b of list) { if (!policy.canSee(b)) continue; known.set(b.id, b); board.put(b); renderer.draw(b); }
     select(null);
     sweepSoon();
+    presentSync();
     updateStatus();
   }
 
   const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
 
+  // ---- the board's background -------------------------------------------------------------------------------------------
+  // One setting for the whole board, seen by everyone (lib-a, WB_BOARD_PREFIX): its own sync, the same as the blocks' (one
+  // write per change, changes from elsewhere drawn as they come, a missing key the usual Default). Anyone who may edit the
+  // board changes it; a change is one undo step of its own (WB_BOARD_STEP), put back field by field like a block's.
+  let boardSettings = WB_BOARD_USUAL;
+  function showBackdrop() {
+    const d = wbBackdrop(boardSettings.background);
+    surface.style.setProperty('--wb-ground', d.ground);
+    surface.style.setProperty('--wb-dot', d.dot);
+    surface.dataset.background = d.id;
+  }
+  function takeBoard(change) {
+    boardSettings = change.op === 'put' ? change.block : WB_BOARD_USUAL;
+    showBackdrop();
+  }
+  async function reloadBoard() {
+    try { const list = await boardSync.load(); boardSettings = list[0] || WB_BOARD_USUAL; } catch { return; }
+    showBackdrop();
+  }
+  const boardSync = createSync({ host, board: WB_BOARD, prefix: WB_BOARD_PREFIX, clean: wbCleanBoard, me, onRemote: takeBoard, onReload: reloadBoard, onRefused, onBusy });
+  // Put the settings as `next` (a background picked, or an undo): drawn at once, saved whole, told to the history.
+  function commitBoard(next) {
+    const stamped = { ...wbCleanBoard(next), by: me, at: new Date().toISOString() };
+    if (history) history.record(WB_BOARD_STEP, boardSettings, stamped);
+    boardSettings = stamped;
+    showBackdrop();
+    boardSync.save(stamped);
+  }
+  function setBackground(id) {
+    if (!policy.canEdit || presenting || id === boardSettings.background) return;
+    commitBoard({ ...boardSettings, background: id });
+  }
+  // A Clear (the title bar's) takes every key, the background's too; the page of the person who cleared puts the
+  // background back at once, so a Clear empties the board of blocks and leaves its colour. Its Undo keeps what is there.
+  function keepBackground(e) {
+    if (!e || !e.cleared || (e.scope && e.scope !== 'space') || !policy.canEdit || !me || e.by !== me) return;
+    if (boardSettings.background === 'default') return;
+    boardSync.save({ ...boardSettings, by: me, at: new Date().toISOString() });
+  }
+
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;
   let addCanConnect = false; // the +'s "Connect the 2 picked blocks" is on
   // Pick exactly these blocks (an array of ids; [] or null for none).
+  // Picking a block of a group picks the whole group (lib-m, wbExpandGroups).
   function select(ids) {
     sel.clear();
-    for (const id of ids || []) if (board.has(id)) sel.add(id);
+    const want = (ids || []).filter((id) => board.has(id));
+    for (const id of want.length ? wbExpandGroups(want, board.all()) : []) if (board.has(id)) sel.add(id);
     if (cellNav && !(sel.size === 1 && sel.has(cellNav.id))) leaveCells(); // the cells are the one picked table's
     renderer.select([...sel], handlesOf(one()));
-    const can = [...sel].some((id) => policy.canDelete(board.get(id)));
-    if (can && !deleteButton) { deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) }); if (snapButton) makeSnapButton(); }
-    if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
+    toolbarTail();
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
+  }
+  // The toolbar's buttons for what is picked, always in this order before Snap to grid: Delete (something picked may be
+  // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
+  // goes, then Snap to grid after them.
+  let arrangeButton = null;
+  function toolbarTail() {
+    const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
+    const wantArrange = policy.canEdit && sel.size > 1;
+    if (Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
+    if (arrangeButton) { arrangeButton.destroy(); arrangeButton = null; }
+    if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
+    if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
+    if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
+    if (snapButton) makeSnapButton();
   }
   // The two picked blocks a connector can join (in the order they were picked), or null.
   function pair() {
@@ -404,6 +492,8 @@
       if (blockTypes.get(b.type).attached) { const g = renderer.geometry(b.id); if (g && wbPathTouches(g.points, r)) out.push(b.id); continue; }
       // All it draws: a note's pointer too.
       const def = blockTypes.get(b.type);
+      // A frame only when the rectangle covers it whole: one dragged inside it picks what is in it.
+      if (def.container) { if (wbFrameInRect(wbRect(b), r)) out.push(b.id); continue; }
       const box = def.reach ? def.reach(b) : def.box(b);
       const el = renderer.element(b.id);
       const h = box.h === null ? (el ? el.offsetHeight : 0) : box.h;
@@ -411,6 +501,93 @@
       if (bx <= x1 && bx + box.w >= x0 && by <= y1 && by + h >= y0) out.push(b.id);
     }
     return out;
+  }
+
+  // ---- locks, groups, align and distribute ------------------------------------------------------------------------------
+  // What they change is lib-m's to work out; each command is one undo step (every block it changes is saved in the same
+  // turn), for someone who may change the board. Locked blocks are left as they are and the person is told (note).
+  const lockedNote = (n, of) => { const t = wbLockedNote(n, of); if (t) note(t); };
+  // Every block on the board but the drafts (one being drawn, a new one before its words).
+  const live = () => board.all().filter((b) => !drafts.has(b.id));
+  const pickedBlocks = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
+  const heightOf = (b) => { const el = renderer.element(b.id); return el ? el.offsetHeight : 0; };
+  // The picked blocks align and distribute would move: placed (not connectors) and not locked.
+  const arrangeable = () => pickedBlocks().filter((b) => !defOf(b).attached && b.locked !== true);
+  function arrange(how) {
+    if (!policy.canEdit || presenting) return;
+    const list = pickedBlocks();
+    const r = wbArrangeChanges(list, how, { measure: heightOf });
+    if (!r.enough) { note(r.locked ? wbLockedNote(r.locked, list.length) : 'Pick more blocks to do that.'); return; }
+    // A frame moved takes the blocks inside it along, in the same step.
+    const f = wbFrameMoveChanges(r.moves, live(), { measure: heightOf });
+    for (const c of f.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    if (r.locked || f.locked) lockedNote(r.locked + f.locked, list.length + f.changes.length - r.changes.length + f.locked);
+  }
+  // The rows of Arrange, in the toolbar's menu and the right-click menu: each greyed while too few blocks can move.
+  const arrangeRows = () => {
+    const n = arrangeable().length;
+    return WB_ARRANGE.flatMap((a, i) => [
+      ...(i > 0 && a.distribute && !WB_ARRANGE[i - 1].distribute ? [{ separator: true }] : []),
+      { id: `arrange-${a.id}`, label: a.label, icon: a.icon, disabled: n < (a.distribute ? 3 : 2), onClick: () => arrange(a.id) },
+    ]);
+  };
+  function arrangeMenu(where) {
+    if (!policy.canEdit || sel.size < 2) return;
+    host.menu.show({ id: 'arrange', ...where, items: [{ heading: `Arrange the ${sel.size} picked blocks` }, ...arrangeRows()] });
+  }
+  // Lock or unlock what is picked: lock it all when any of it is unlocked, else unlock it all. A lock is written without
+  // the usual leave (a locked block may still be unlocked), one save each.
+  function lockPicked() {
+    if (!policy.canEdit || !sel.size || presenting) return;
+    if (editing && sel.has(editing.id)) { const e = editing; editing = null; e.finish(true); }
+    const r = wbLockChanges([...sel], pickedBlocks());
+    for (const c of r.changes) {
+      const b = board.get(c.id);
+      const next = b && policy.canLock(b) ? wbClean({ ...b, ...c.fields }) : null;
+      if (next) commit(next, 'now');
+    }
+    select([...sel]); // no handles on a locked block; Delete and Arrange as they now are
+    say(r.on ? 'Locked.' : 'Unlocked.');
+  }
+  const canGroup = () => policy.canEdit && wbGroupChanges([...sel], board.all(), { newGroup: () => 'x' }).changes.length > 0;
+  const inGroup = () => { const groups = wbGroupsOf(board.all()); return [...sel].some((id) => groups.has(wbGroupOf(board.get(id)))); };
+  function groupPicked() {
+    if (!policy.canEdit || !sel.size) return;
+    const r = wbGroupChanges([...sel], board.all());
+    if (!r.changes.length) { if (r.locked) lockedNote(r.locked, sel.size); return; }
+    for (const c of r.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    select([...sel]);
+    if (r.locked) lockedNote(r.locked, r.locked + r.changes.length);
+    say(`Grouped ${r.changes.length} blocks.`);
+  }
+  function ungroupPicked() {
+    if (!policy.canEdit || !sel.size) return;
+    const r = wbUngroupChanges([...sel], board.all());
+    for (const c of r.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    if (r.locked) lockedNote(r.locked, r.locked + r.changes.length);
+    if (r.changes.length) say('Ungrouped.');
+  }
+  // Guides: the box round the dragged blocks (their boxes as drawn; connectors follow them), and the boxes of the other
+  // blocks in sight or near it (half a screen round it), found once when a drag begins.
+  function guideBoxes(ids) {
+    const mine = new Set(ids);
+    let box = null;
+    for (const id of ids) {
+      const b = board.get(id);
+      const r = b && !defOf(b).attached ? renderer.rectOf(id) : null;
+      if (!r) continue;
+      box = box ? { x0: Math.min(box.x0, r.x0), y0: Math.min(box.y0, r.y0), x1: Math.max(box.x1, r.x1), y1: Math.max(box.y1, r.y1) } : { ...r };
+    }
+    const v = viewBox();
+    const mx = (v.x1 - v.x0) / 2;
+    const my = (v.y1 - v.y0) / 2;
+    const near = [];
+    for (const b of board.all()) {
+      if (mine.has(b.id) || drafts.has(b.id) || defOf(b).attached) continue;
+      const r = renderer.rectOf(b.id);
+      if (r && r.x1 >= v.x0 - mx && r.x0 <= v.x1 + mx && r.y1 >= v.y0 - my && r.y0 <= v.y1 + my) near.push(r);
+    }
+    return { box, near };
   }
 
   // The handles the one picked block shows: its type's (resize), only with Select and only to someone who may change it.
@@ -427,7 +604,7 @@
     const def = b && blockTypes.get(b.type);
     const el = renderer.element(id);
     if (!def || !el || !def.edit) return;
-    if (!drafts.has(id) && !policy.canChange(b)) return;
+    if (!drafts.has(id) && !policy.canChange(b)) { if (b.locked && policy.canLock(b)) lockedNote(1, 1); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (def.edit === 'cells') {
       // A table: the cell pressed, else the active one, else the first.
@@ -515,7 +692,7 @@
     const def = b && blockTypes.get(b.type);
     const el = renderer.element(id);
     if (!def || def.edit !== 'cells' || !el) return;
-    if (!drafts.has(id) && !policy.canChange(b)) return;
+    if (!drafts.has(id) && !policy.canChange(b)) { if (b.locked && policy.canLock(b)) lockedNote(1, 1); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     const td = def.cellEl(el, r, c);
     if (!td) return;
@@ -620,15 +797,15 @@
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
   // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
-  // holds 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker, the
+  // holds 8), and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
   // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
   // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices
-  // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table).
+  // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table and the Frame).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
   const GROUPS = [
     { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
-    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table'], split: [1, 6] },
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table', 'frame'], split: [1, 6] },
   ];
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
@@ -684,7 +861,7 @@
   // new blocks get (for the active tool's block type when it makes one). The current choice is the marked row; with
   // several blocks that differ, no row is marked. Each change is one whole save of each block.
   const toolbarAt = (e) => ({ at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 } });
-  const NAMED = { none: { label: 'None', icon: 'ban' }, auto: { label: 'Matching', icon: 'circle-half-stroke' } };
+  const NAMED = { none: { label: 'None', icon: 'ban' }, auto: { label: 'Matching', icon: 'circle-half-stroke' }, usual: { label: 'Default', icon: 'circle-dot' } };
   // The blocks the menus work on: the one given, else every picked one this person may change.
   const targets = (only) => (only ? [only] : [...sel]).map((id) => board.get(id)).filter((b) => b && policy.canChange(b));
   const roleLabel = (def, role) => (def && def.paint && def.paint[role.id] && def.paint[role.id].label) || role.label;
@@ -758,6 +935,17 @@
       : [{ heading: `Colours ${prep} ${whose}` }, ...groups.map((g) => ({ id: g.role.id, label: g.label, hint: nameOf(g.now), ...swatch(g.now), items: g.rows }))];
     host.menu.show({ id: 'colour', ...where, items });
   }
+
+  // The board's background (one for everyone, see "the board's background"): Default (the theme's own board colour) and
+  // the palette, the current one marked. One pick is one save and one undo step.
+  function backgroundMenu(where) {
+    if (!policy.canEdit) return;
+    const now = boardSettings.background;
+    const rows = [choiceRow('default', 'Default', now, () => setBackground('default'), { icon: 'circle', regular: true })];
+    for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, () => setBackground(c.id), swatch(c.id)));
+    host.menu.show({ id: 'background', ...where, items: [{ heading: 'Background colour of the board' }, ...rows] });
+  }
+  const backgroundRow = (at) => ({ id: 'background', label: 'Background colour', icon: 'palette', hint: nameOf(boardSettings.background), onClick: () => { setTimeout(() => backgroundMenu({ at }), 0); } });
 
   function widthMenu(where, only) {
     const all = targets(only);
@@ -876,6 +1064,8 @@
   }
   function updatePaint() {
     if (!paintButtons.size) return;
+    // Only locked blocks picked: nothing of theirs to change, and the strip is not about new blocks then either.
+    if (sel.size && !targets().length) { paintStrip.hidden = true; return; }
     const shown = paintShown();
     let any = false;
     for (const [key, p] of paintButtons) {
@@ -939,9 +1129,9 @@
         nextText[field] = v;
       };
       const rows = choices.map((c) => choiceRow(c.id, c.label, now, pick(c.id), c.icon ? { icon: c.icon } : {}));
-      if (!list.length) rows.unshift(choiceRow(null, 'Usual', now, pick(null)));
+      if (!list.length) rows.unshift(choiceRow(null, 'Default', now, pick(null)));
       const chosen = choices.find((c) => c.id === now);
-      return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Usual', rows };
+      return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Default', rows };
     };
     return [group('size', 'Text size', WB_SIZES), group('align', 'Align', WB_ALIGNS)];
   }
@@ -988,6 +1178,8 @@
     return list.some((b) => Boolean(wbBetween(board.all(), b.id, to, past)));
   }
   function layer(ids, to) {
+    const locked = ids.filter((id) => { const b = board.get(id); return b && b.locked; }).length;
+    if (locked && policy.canEdit) lockedNote(locked, ids.length);
     if (!canLayer(ids, to)) return;
     const list = layerable(ids);
     const mine = new Set(list.map((b) => b.id));
@@ -1020,16 +1212,24 @@
     if (redoButton) redoButton.set({ disabled: !history.canRedo() });
   }
   function applyChanges(list) {
+    // The board's settings (WB_BOARD_STEP, the background) go through the same work: as a block whose value is never
+    // missing (no key: the usual), put back with commitBoard.
+    const isBoard = (id) => id === WB_BOARD_STEP;
+    const boardy = (b) => Boolean(b && b.type === 'board');
     const r = wbApplyChanges(list, {
-      get: (id) => board.get(id),
-      remove,
-      put: (b) => commit(b, 'now'),
-      canChange: (b) => policy.canChange(b),
+      get: (id) => (isBoard(id) ? boardSettings : board.get(id)),
+      remove: (id) => { if (!isBoard(id)) remove(id); },
+      put: (b) => (boardy(b) ? commitBoard(b) : commit(b, 'now')),
+      // A step that only locked or unlocked a block is undone on it while it is locked; nothing else is.
+      canChange: (b, fields) => (boardy(b) ? policy.canEdit : fields && fields.length && fields.every((f) => f === 'locked') ? policy.canLock(b) : policy.canChange(b)),
+      canRemove: (b) => boardy(b) || drafts.has(b.id) || policy.canDelete(b),
+      locked: (b) => Boolean(b && b.locked === true),
       canCreate: () => policy.canCreate(),
-      clean: wbClean,
+      clean: (raw) => (boardy(raw) ? wbCleanBoard(raw) : wbClean(raw)),
       linkedOf: (b) => { const def = blockTypes.get(b.type); return (def && def.linked) || []; },
       pointsAt: (b) => { const def = blockTypes.get(b.type); return Boolean(def && def.refs); },
-      missing: (b) => missingRefs(b).length > 0,
+      missing: (b) => !boardy(b) && missingRefs(b).length > 0,
+      isBoard,
     });
     select(r.touched.filter((id) => board.has(id)));
     return r;
@@ -1046,7 +1246,7 @@
     requestAnimationFrame(look);
   }
   function undoRedo(which) {
-    if (!history || down !== null) return; // not in the middle of a drag or a stroke
+    if (!history || down !== null || presenting) return; // not in the middle of a drag or a stroke, nor while presenting
     if (editing) { const ed = editing; editing = null; ed.finish(true); }
     const r = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
     const told = wbUndoNote(r);
@@ -1065,16 +1265,17 @@
 
   // Zoom is the window's, in the title bar: Zoom out and Zoom in as icons, and the magnifier's menu with the rest. Toolbar
   // buttons placed in the title bar (host.toolbar.set), so a click comes as the 'toolbar' event with where the button is.
-  const zoomIn = () => { renderer.zoomBy(1.25); updateStatus(); };
-  const zoomOut = () => { renderer.zoomBy(0.8); updateStatus(); };
-  const zoomMenu = (e) => host.menu.show({
+  // Not while presenting: the view moves with the frames alone.
+  const zoomIn = () => { if (presenting) return; renderer.zoomBy(1.25); updateStatus(); };
+  const zoomOut = () => { if (presenting) return; renderer.zoomBy(0.8); updateStatus(); };
+  const zoomMenu = (e) => !presenting && host.menu.show({
     id: 'zoom',
     ...toolbarAt(e),
     items: [
       { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: zoomIn },
       { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: zoomOut },
-      { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { renderer.fit(); updateStatus(); } },
-      { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { renderer.reset(); updateStatus(); } },
+      { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { if (!presenting) { renderer.fit(); updateStatus(); } } },
+      { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { if (!presenting) { renderer.reset(); updateStatus(); } } },
     ],
   });
   host.toolbar.set([
@@ -1127,12 +1328,17 @@
   // person told once (onRefused).
   const clipboard = createClipboard();
   let clipMarked = false; // the last copy here put the mark on the computer's clipboard (CLIP_MARK, below)
-  // A connector that is not drawn (its block is gone) is never copied.
-  const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && !missingRefs(b).length);
+  // A connector that is not drawn (its block is gone) is never copied. A frame takes the blocks inside it (locked ones
+  // too: a copy is never locked; a cut leaves them, see copy).
+  const copyable = () => {
+    const picked = [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
+    const along = wbFrameFollow(picked.map((b) => ({ id: b.id, dx: 0, dy: 0 })), live(), { measure: heightOf, keepLocked: true });
+    return [...picked, ...along.moves.map((m) => board.get(m.id))].filter((b) => b && !missingRefs(b).length);
+  };
   // What a copy holds: the picked blocks and every connector whose blocks are all among them (picked or not); a picked
   // connector with an end on a block left out has that end made a free point where it is drawn now (its type's loosen).
-  function copySet() {
-    const list = copyable();
+  function copySet(picked = copyable()) {
+    const list = picked.slice();
     const ids = new Set(list.map((b) => b.id));
     for (const b of board.all()) {
       const d = defOf(b);
@@ -1162,19 +1368,24 @@
     return r;
   }
   // Cut is a copy and a delete: the connectors attached to what is cut go too (the ones between them are in the copy).
+  // A locked block is copied, never cut: a cut takes the others and leaves it (the person is told).
   function copy({ cut = false } = {}) {
     if (!policy.canEdit || !copyable().length) return;
-    const list = copySet();
+    const picked = cut ? copyable().filter((b) => policy.canDelete(b)) : copyable();
+    if (cut) lockedNote(copyable().length - picked.length, copyable().length);
+    if (!picked.length) return;
+    const list = copySet(picked);
     clipboard.copy(list, { cut });
     clipMarked = false; // onCopyEvent sets it again when this copy put the mark on the computer's clipboard
     if (cut) removeMany(list.map((b) => b.id));
     setAdd();
   }
   function placeCopies(copies) {
-    if (!policy.canCreate() || !copies.length) return;
-    const top = Math.floor(board.topZ());
+    if (!policy.canCreate() || !copies.length || presenting) return;
+    let top = Math.floor(board.topZ());
     const made = [];
-    copies.forEach((c, i) => { const b = wbClean({ ...c, z: top + 1 + i }); if (b) { commit(b, 'now'); made.push(b.id); } });
+    // On top of everything, in their order; a frame's copy under the blocks (over the frames there), as a new frame goes.
+    copies.forEach((c) => { const b = wbClean({ ...c, z: wbIsFrame(c) ? wbFrameZ(board.all()) : (top += 1) }); if (b) { commit(b, 'now'); made.push(b.id); } });
     select(made);
   }
   // Paste: a step along from the last paste, or, given a point on the board, round it.
@@ -1188,8 +1399,8 @@
     if (!copyable().length) return;
     placeCopies(wbCopies(copySet(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
   }
-  const clipRows = (at) => [
-    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), onClick: () => copy({ cut: true }) },
+  const clipRows = (at, { cut = true } = {}) => [
+    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), disabled: !cut, onClick: () => copy({ cut: true }) },
     { id: 'copy', label: 'Copy', icon: 'copy', hint: keyHint(`${MOD} C`), onClick: () => copy() },
     { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste(at) },
     { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
@@ -1206,17 +1417,23 @@
   let muted = false;
   try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* no storage: not muted */ }
   timerDef.now = () => sync.now();
-  timerDef.controls = (b) => policy.canChange(b);
+  // A locked timer still runs: its controls are using it, not changing it (lib-b, canLock).
+  timerDef.controls = (b) => policy.canLock(b);
+  const useTimer = (id, fields) => {
+    const b = board.get(id);
+    const next = b && b.type === 'timer' && policy.canLock(b) ? wbClean({ ...b, ...fields }) : null;
+    if (next) commit(next, 'now');
+  };
   timerDef.icon = (name) => iconSvg(name);
   timerDef.say = (text) => say(text);
   timerDef.done = () => { say('Time is up.'); if (!muted) chime(); };
   timerDef.act = (id, what, button) => {
     const b = board.get(id);
-    if (!b || b.type !== 'timer' || !policy.canChange(b)) return;
+    if (!b || b.type !== 'timer' || !policy.canLock(b)) return;
     const now = sync.now();
-    if (what === 'start') ctx.change(id, wbTimerStart(b, now));
-    else if (what === 'pause') ctx.change(id, wbTimerPause(b, now));
-    else if (what === 'reset') ctx.change(id, wbTimerReset(b));
+    if (what === 'start') useTimer(id, wbTimerStart(b, now));
+    else if (what === 'pause') useTimer(id, wbTimerPause(b, now));
+    else if (what === 'reset') useTimer(id, wbTimerReset(b));
     else if (what === 'length') timerMenu(id, button);
   };
   // Words read out once (started, paused, time is up), never the seconds ticking.
@@ -1230,7 +1447,7 @@
   function timerMenu(id, button) {
     const b = board.get(id);
     if (!b) return;
-    const set = (secs) => () => { const now = board.get(id); if (now && policy.canChange(now)) ctx.change(id, wbTimerSetLength(secs)); };
+    const set = (secs) => () => useTimer(id, wbTimerSetLength(secs));
     host.menu.show({
       id: 'timer',
       anchor: button,
@@ -1267,7 +1484,7 @@
     }
     const f = customFor;
     const b = f && board.get(f.id);
-    if (b && policy.canChange(b)) ctx.change(b.id, wbTimerSetLength(total));
+    if (b) useTimer(b.id, wbTimerSetLength(total));
     customEditor.close();
   }
   if (customEditor) {
@@ -1376,6 +1593,7 @@
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
       { id: 'timer', label: 'Add a timer', icon: 'stopwatch', hint: keyHint('Y') },
       ...(tools.get('table') ? [{ id: 'table', label: 'Add a table', icon: 'table', hint: keyHint('G') }] : []),
+      ...(tools.get('frame') ? [{ id: 'frame', label: 'Add a frame', icon: 'crop-simple', hint: keyHint('S') }] : []),
       {
         label: 'Add a flowchart shape',
         icon: 'diagram-project',
@@ -1392,6 +1610,7 @@
   if (policy.canEdit && host.add) {
     setAdd();
     host.on('add', ({ id }) => {
+      if (presenting) return;
       if (id === 'paste') { paste(); return; }
       if (id === 'picture') { if (pictures) $('picker').click(); return; }
       if (id === 'connect') { connectPicked(); return; }
@@ -1415,10 +1634,16 @@
       statusFrame = 0;
       const n = board.size - drafts.size;
       const items = [{ text: n === 1 ? '1 block' : `${n} blocks`, icon: 'shapes' }];
-      if (sel.size > 1) items.push({ text: `${sel.size} selected` });
+      if (sel.size > 1) {
+        // What is picked is one group: said so (a group looks like any blocks picked together).
+        const groups = new Set([...sel].map((id) => wbGroupOf(board.get(id))));
+        const grouped = groups.size === 1 && !groups.has(null);
+        items.push({ text: grouped ? `${sel.size} selected, grouped` : `${sel.size} selected` });
+      }
       const coming = pictures ? pictures.count : 0;
       if (coming) items.push({ text: coming === 1 ? 'Adding a picture' : `Adding ${coming} pictures`, icon: 'image' });
       if (exporting) items.push({ text: `${exporting}…`, icon: 'file-image' });
+      if (presenting) items.push({ text: `Presenting ${presenting.i + 1} of ${presenting.order.length}`, icon: 'play' });
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
@@ -1436,6 +1661,7 @@
           : tool.makes === 'highlight' ? `Press and drag over what to highlight.${KEYS ? ' Hold Shift for a straight band.' : ''}`
           : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
           : tool.id === 'table' ? `${KEYS ? 'Click' : 'Tap'} the board to put a table there, or drag to give it a size.`
+          : tool.id === 'frame' ? `Drag on the board to draw a frame, or ${KEYS ? 'click' : 'tap'} for one.`
             : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
@@ -1469,7 +1695,10 @@
       return { id: b.id, rect: renderer.reachOf(b.id), refs: d.refs ? d.refs(b) : [] };
     });
     const rectOf = new Map(list.map((x) => [x.id, x.rect]));
-    const view = viewBox();
+    // A frame's picture: the frame's own box, with all of the board in it.
+    const fr = kind === 'frame' ? pickedFrame() : null;
+    if (kind === 'frame' && !fr) return { ids: [], extent: null, items: [] };
+    const view = fr ? wbRect(fr) : viewBox();
     const ids = wbExportPick(kind, list, { picked: sel, view });
     const extent = ids.length ? wbExportExtent(kind, ids.map((id) => rectOf.get(id)), { view }) : null;
     return { ids, extent, items: ids.map((id) => ({ block: board.get(id), el: renderer.element(id) })) };
@@ -1493,7 +1722,9 @@
     setTimeout(() => URL.revokeObjectURL(address), 60000);
     return true;
   }
-  const EXPORT_EMPTY = { all: 'There is nothing on the board to save.', selection: 'Select what to save first.', view: 'There is nothing in sight to save.' };
+  const EXPORT_EMPTY = { all: 'There is nothing on the board to save.', selection: 'Select what to save first.', view: 'There is nothing in sight to save.', frame: 'Pick a frame first.' };
+  // The one picked frame, or null.
+  const pickedFrame = () => { const b = one() && board.get(one()); return b && wbIsFrame(b) ? b : null; };
   async function saveImage({ kind, background, scale }) {
     const plan = exportPlan(kind);
     if (!plan.ids.length) throw new Error(EXPORT_EMPTY[kind] || EXPORT_EMPTY.all);
@@ -1528,14 +1759,16 @@
   }
   function openExport(kind = null) {
     const what = $('export-what');
-    what.replaceChildren(...WB_EXPORT_KINDS.map((k) => {
+    // With one frame picked, "This frame" too: the frame's own box (Save frame as image).
+    const kinds = [...WB_EXPORT_KINDS, ...(pickedFrame() ? [{ id: 'frame', label: 'This frame' }] : [])];
+    what.replaceChildren(...kinds.map((k) => {
       const o = document.createElement('option');
       o.value = k.id;
       o.textContent = k.label;
       if (k.id === 'selection' && !sel.size) o.disabled = true;
       return o;
     }));
-    what.value = kind && (kind !== 'selection' || sel.size) ? kind : sel.size > 1 ? 'selection' : 'all';
+    what.value = kind && kinds.some((k) => k.id === kind) && (kind !== 'selection' || sel.size) ? kind : sel.size > 1 ? 'selection' : 'all';
     $('export-error').hidden = true;
     exportSizeNote();
     exportEditor.open({ focus: what, returnTo: () => surface });
@@ -1565,8 +1798,16 @@
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
   if (host.header) {
-    host.header.set([{ id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true }]).catch(() => {});
-    host.on('header', (e) => { if (e && e.id === 'export') openExport(); });
+    host.header.set([
+      ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
+      { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
+      { id: 'present', icon: 'play', title: 'Present', overflow: true },
+    ]).catch(() => {});
+    host.on('header', (e) => {
+      if (e && e.id === 'export') openExport();
+      if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
+      if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
+    });
   }
 
   // Print: the whole board in an SVG the width of the paper (whiteboard.css, .wb-print), put back once the host has printed.
@@ -1574,7 +1815,9 @@
   async function preparePrint() {
     const plan = exportPlan('all');
     if (!plan.ids.length) { note('There is nothing on the board to print.'); return false; }
-    const { svg } = await exporter.scene(plan.items, plan.extent, { live: true });
+    // On the board's background when one is picked (Default: the paper, as before).
+    const d = wbBackdrop(boardSettings.background);
+    const { svg } = await exporter.scene(plan.items, plan.extent, { live: true, background: d.id === 'default' ? '' : d.ground });
     svg.setAttribute('class', 'wb-print-svg');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     $('print').replaceChildren(svg);
@@ -1585,6 +1828,129 @@
     host.standard.set({ print: { run: preparePrint } }).catch(() => {});
     host.on('printed', endPrint);
   }
+
+  // ---- presenting ---------------------------------------------------------------------------------------------------------
+  // Present (the title bar's menu, the board's right-click menu, or a frame's: from that frame) shows the frames one at a
+  // time, each fitted in the view, in reading order (lib-e-block-frame, wbFrameOrder: top to bottom in rows, left to right
+  // in a row). Each person presents on their own: it reads the board and changes nothing, so someone who may only look can
+  // present too. A small bar at the bottom of the board has Back, "2 of 5", Next and Exit; the keys: the right and down
+  // arrows, Page Down and Space go on, the left and up arrows and Page Up go back, Home and End go to the first and the
+  // last, Escape stops. Each frame is said ("Frame 2 of 5: Plan"). Meanwhile the board can't be changed (a press, a key, a
+  // paste, the + do nothing; a timer's own buttons still work) and the view moves only with the frames: the wheel, a pinch,
+  // a drag and the zoom buttons are ignored rather than ending it, so a slip of the hand does not lose the place. The view
+  // glides to each frame (or jumps, for someone who asks for less motion). Exit puts back the view there was. Frames added,
+  // moved or deleted meanwhile by others: the frame shown stays while it is there, else the one now in its place; with
+  // none left it stops. ("Everyone follows me" waits for the live channel.)
+  const reduceMotion = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let glide = 0;
+  // Move the view to `to` ({ x, y, s }): the middle of the screen and the zoom glide together (the zoom evenly).
+  function showView(to) {
+    cancelAnimationFrame(glide);
+    glide = 0;
+    const from = { x: renderer.view.x, y: renderer.view.y, s: renderer.view.s };
+    const W = surface.clientWidth / 2;
+    const H = surface.clientHeight / 2;
+    if (reduceMotion() || !(from.s > 0)) { renderer.setView(to); updateStatus(); return; }
+    const mid = (v) => ({ x: (W - v.x) / v.s, y: (H - v.y) / v.s }); // the board point in the middle of the screen
+    const a = mid(from);
+    const b = mid(to);
+    const t0 = performance.now();
+    const T = 320;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / T);
+      const e = 1 - (1 - k) ** 3;
+      const s = Math.exp(Math.log(from.s) + (Math.log(to.s) - Math.log(from.s)) * e);
+      const c = { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e };
+      renderer.setView(k < 1 ? { x: W - c.x * s, y: H - c.y * s, s } : to);
+      if (k < 1) glide = requestAnimationFrame(step); else { glide = 0; updateStatus(); }
+    };
+    glide = requestAnimationFrame(step);
+  }
+  const PRESENT_ICONS = [['present-back', 'chevron-left'], ['present-next', 'chevron-right'], ['present-exit', 'xmark']];
+  for (const [id, name] of PRESENT_ICONS) {
+    const ic = $(id).querySelector('.ic');
+    iconSvg(name).then((svg) => { if (svg) ic.innerHTML = svg; }, () => {}); // the host's own icon SVG
+  }
+  // The bar as the state is: which frame of how many, and Back or Next marked off at an end.
+  function presentBar() {
+    const n = presenting.order.length;
+    $('present-count').textContent = `${presenting.i + 1} of ${n}`;
+    $('present-back').setAttribute('aria-disabled', String(presenting.i === 0));
+    $('present-next').setAttribute('aria-disabled', String(presenting.i === n - 1));
+    updateStatus();
+  }
+  // Show the frame the state is at, with the tab over it, and say it.
+  function presentFrame() {
+    const b = board.get(presenting.order[presenting.i]);
+    presentBar();
+    if (!b) return;
+    const q = defOf(b).reach(b);
+    showView(wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max }));
+    say(wbPresentWords(presenting, b.title));
+  }
+  function startPresenting(at = null) {
+    if (presenting) { if (at) presentTo(at); return; }
+    const state = wbPresentStart(live(), renderer.view, at);
+    if (!state) { note('No frames to present. Add a frame first.'); return; }
+    if (editing) { const e = editing; editing = null; e.finish(true); }
+    if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
+    presenting = state;
+    select(null);
+    $('app').classList.add('wb-presenting');
+    $('present').hidden = false;
+    surface.focus({ preventScroll: true });
+    presentFrame();
+  }
+  function presentTo(id) {
+    const i = presenting.order.indexOf(id);
+    if (i < 0 || i === presenting.i) return;
+    presenting = { ...presenting, i };
+    presentFrame();
+  }
+  function presentGo(how) {
+    if (!presenting) return;
+    const next = wbPresentGo(presenting, how);
+    if (next.i === presenting.i) return;
+    presenting = next;
+    presentFrame();
+  }
+  function stopPresenting() {
+    if (!presenting) return;
+    const back = presenting.view;
+    presenting = null;
+    $('app').classList.remove('wb-presenting');
+    $('present').hidden = true;
+    showView(back);
+    surface.focus({ preventScroll: true });
+    say('Stopped presenting.');
+    updateStatus();
+  }
+  // The frames changed while presenting (a change from elsewhere, a reload).
+  function presentSync() {
+    if (!presenting) return;
+    const next = wbPresentSync(presenting, live());
+    if (!next) { stopPresenting(); note('There are no frames left to present.'); return; }
+    presenting = next;
+    if (next.same) presentBar(); else presentFrame();
+  }
+  // A key while presenting: the bar's buttons keep Enter and Space, Tab moves between them and the board, the rest is
+  // the presentation's or nothing.
+  function presentKey(e) {
+    const onButton = Boolean(e.target.closest && e.target.closest('.wb-present button'));
+    const k = e.key;
+    if (k === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (onButton && (k === 'Enter' || k === ' ')) return;
+    e.preventDefault();
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') presentGo('next');
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') presentGo('back');
+    else if (k === 'Home') presentGo('first');
+    else if (k === 'End') presentGo('last');
+    else if (k === 'Escape') stopPresenting();
+  }
+  $('present-back').addEventListener('click', () => presentGo('back'));
+  $('present-next').addEventListener('click', () => presentGo('next'));
+  $('present-exit').addEventListener('click', () => stopPresenting());
+  const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
 
   // ---- links in the words ------------------------------------------------------------------------------------------------
   // A link in a block's words opens in a new tab: with Ctrl or Cmd and a click (that click is the link's, it picks
@@ -1637,6 +2003,8 @@
   surface.addEventListener('pointerdown', (e) => {
     endAfterRight(); // a new press: any menu after it is its own
     if (e.target.closest('.wb-text-edit') || onControl(e)) return;
+    // Presenting: the bar's buttons are pressed as buttons; a press anywhere else does nothing (see "presenting").
+    if (presenting) { if (!e.target.closest('.wb-present')) e.preventDefault(); return; }
     const middle = e.pointerType === 'mouse' && e.button === 1;
     const right = e.pointerType === 'mouse' && e.button === 2;
     if (e.pointerType === 'mouse' && e.button !== 0 && !middle && !right) return;
@@ -1744,6 +2112,7 @@
   const WHEEL_STEP = Math.log(1.12); // the most one wheel step zooms: 12%
   surface.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (presenting) return; // the view moves with the frames alone
     const r = surface.getBoundingClientRect();
     // In pixels, whatever the wheel counts in (lines, pages).
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? surface.clientHeight : 1;
@@ -1761,6 +2130,7 @@
   surface.addEventListener('contextmenu', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
     e.preventDefault();
+    if (presenting) return;
     // A right press still down may yet be a drag: its menu waits for the release. One just after a right drag is not shown.
     if (panning && panning.right) { panning.menu = { target: panning.target, clientX: e.clientX, clientY: e.clientY }; return; }
     // The menu key (and Shift F10) asks with no mouse button: always shown.
@@ -1773,7 +2143,7 @@
     const at = { x: e.clientX - box.left, y: e.clientY - box.top };
     if (!id) {
       // Someone who may only look: Save as image.
-      if (!policy.canEdit) { host.menu.show({ id: 'board', at, items: [exportRow()] }); return; }
+      if (!policy.canEdit) { host.menu.show({ id: 'board', at, items: [exportRow(), presentRow()] }); return; }
       const there = renderer.toBoard(e.clientX, e.clientY);
       host.menu.show({
         id: 'board',
@@ -1782,7 +2152,9 @@
           { id: 'paste', label: 'Paste here', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
           { id: 'all', label: 'Select all', icon: 'object-group', hint: keyHint(`${MOD} A`), disabled: board.size === 0, onClick: () => selectAll() },
           { separator: true },
+          backgroundRow(at),
           exportRow(),
+          presentRow(),
         ],
       });
       return;
@@ -1791,12 +2163,22 @@
     const ids = [...sel];
     const list = targets();
     const links = ids.length === 1 ? linkRows(id) : [];
-    if (!list.length) {
-      // Someone who may only look: the links, if there are any, and Save as image (what is selected).
-      host.menu.show({ id: 'block', at, items: [...links, ...(links.length ? [{ separator: true }] : []), exportRow('selection')] });
+    // A frame, picked alone: present from it, and save it as a picture (its own box, with all of the board in it).
+    const frameRows = pickedFrame() ? [
+      { id: 'present-here', label: 'Present from this frame', icon: 'play', onClick: () => startPresenting(id) },
+      { id: 'export-frame', label: 'Save frame as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport('frame'), 0); } },
+    ] : [];
+    if (!policy.canEdit) {
+      // Someone who may only look: the links, if there are any, a frame's own rows, and Save as image (what is selected).
+      const own = [...links, ...frameRows];
+      host.menu.show({ id: 'block', at, items: [...own, ...(own.length ? [{ separator: true }] : []), exportRow('selection')] });
       return;
     }
-    const single = list.length === 1 ? list[0] : null;
+    // Locked blocks are in `ids` and not in `list` (what may be changed): they get Unlock, Copy, Duplicate and Save as
+    // image, and the rest of the menu works on the others.
+    const single = list.length === 1 && ids.length === 1 ? list[0] : null;
+    const lockOn = wbLockChanges(ids, pickedBlocks()).on;
+    const deletable = ids.filter((x) => policy.canDelete(board.get(x))).length;
     const def = single && defOf(single);
     // A table's cell: the one pressed (it becomes the active one), else the active one (Shift F10), else the first.
     let cell = null;
@@ -1815,19 +2197,25 @@
         ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         // The block type's own entries (a note's Add pointer, Remove pointer): each one save of the fields it names.
         ...(cell ? cellRows(single, cell) : def && def.actions ? def.actions(single).map((a) => ({ id: a.id, label: a.label, icon: a.icon, onClick: () => ctx.change(single.id, a.fields, { save: 'now' }) })) : []),
-        { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
+        ...(list.length ? [{ id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } }] : []),
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         ...(lines.length ? lineGroups(lines) : []),
         ...(worded.length ? textGroups(worded).map((g) => ({ id: g.id, label: g.label, icon: g.id === 'text-size' ? 'text-height' : 'align-left', hint: g.hint, items: g.rows })) : []),
         ...links,
         ...(pair() ? [{ id: 'connect', label: 'Connect them', icon: 'arrows-turn-right', onClick: () => connectPicked() }] : []),
+        // Two or more picked: align and distribute them, group them; and for any picked, ungroup, lock or unlock.
+        ...(ids.length > 1 ? [{ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', items: arrangeRows() }] : []),
+        ...(ids.length > 1 && canGroup() ? [{ id: 'group', label: 'Group', icon: 'object-group', hint: keyHint(`${MOD} G`), onClick: () => groupPicked() }] : []),
+        ...(inGroup() ? [{ id: 'ungroup', label: 'Ungroup', icon: 'object-ungroup', hint: keyHint(`${MOD} Shift G`), onClick: () => ungroupPicked() }] : []),
+        { id: 'lock', label: lockOn ? 'Lock' : 'Unlock', icon: lockOn ? 'lock' : 'lock-open', hint: keyHint(`${MOD} L`), onClick: () => lockPicked() },
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
-        ...clipRows(null),
+        ...clipRows(null, { cut: list.length > 0 }),
         exportRow('selection'),
+        ...frameRows,
         { separator: true },
-        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
+        { id: 'delete', label: deletable > 1 ? `Delete ${deletable} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, disabled: !deletable, onClick: () => removeMany(ids) },
       ],
     });
     // Line width has no icon that reads as it: a short line is drawn in the icon's place instead.
@@ -1844,6 +2232,7 @@
     if (id && !pointerFocus && !sel.has(id) && !e.target.closest('.wb-text-edit')) select([id]);
   });
   surface.addEventListener('keydown', (e) => {
+    if (presenting) { if (!onControl(e)) presentKey(e); return; }
     if (e.target.closest('.wb-text-edit') || e.altKey) return;
     if (onControl(e) && e.key !== 'Escape' && e.key !== 'Tab') return;
     if (e.key === ' ') { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; panCursor(true); } return; } // held: drag moves the board
@@ -1865,6 +2254,11 @@
     // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
     const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
     if (zy && history) { e.preventDefault(); undoRedo(zy === 'z' && !e.shiftKey ? 'undo' : 'redo'); return; }
+    // Lock (Ctrl or Cmd L, again to unlock), group (Ctrl or Cmd G) and ungroup (with Shift): only with something picked,
+    // so with nothing picked the browser keeps the keys (by the key's place too, so any keyboard layout).
+    const named = mod ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
+    if (named === 'l' && !e.shiftKey && policy.canEdit && sel.size) { e.preventDefault(); lockPicked(); return; }
+    if (named === 'g' && policy.canEdit && sel.size) { e.preventDefault(); if (e.shiftKey) ungroupPicked(); else groupPicked(); return; }
     // Copy, cut, paste and duplicate (by the key's place too, so any keyboard layout).
     const letter = mod && !e.shiftKey ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
     if (letter && 'cxvd'.includes(letter) && policy.canEdit) {
@@ -1874,29 +2268,39 @@
       clipKey(letter);
       return;
     }
-    if ((k === 'Delete' || k === 'Backspace') && picked.length) { e.preventDefault(); removeMany(picked.map((x) => x.id)); surface.focus({ preventScroll: true }); return; }
+    // Locked blocks among those picked stay, and the person is told (removeMany, the arrows and the brackets).
+    const lockedPicked = policy.canEdit ? [...sel].filter((id) => { const x = board.get(id); return x && x.locked; }).length : 0;
+    if ((k === 'Delete' || k === 'Backspace') && (picked.length || lockedPicked)) { e.preventDefault(); removeMany([...sel]); surface.focus({ preventScroll: true }); return; }
     if (k === 'Escape') {
       if (tool.id !== 'select') setTool('select'); else select(null);
       surface.focus({ preventScroll: true });
       return;
     }
-    if (k === 'Enter' && b) { e.preventDefault(); edit(b.id); return; }
+    // Enter edits the one picked block, or the block of a picked group that has the keyboard.
+    const focused = renderer.blockAt(e.target);
+    const toEdit = b || (focused && sel.has(focused) ? board.get(focused) : null);
+    if (k === 'Enter' && toEdit) { e.preventDefault(); edit(toEdit.id); return; }
+    if (k.startsWith('Arrow') && lockedPicked && !mod) lockedNote(lockedPicked, sel.size);
+    if (k.startsWith('Arrow') && !picked.length && lockedPicked && !mod) { e.preventDefault(); return; }
     if (k.startsWith('Arrow') && picked.length && !mod) {
       e.preventDefault();
       const step = e.shiftKey ? 1 : 10;
       const dx = k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0;
       const dy = k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0;
-      if (history) history.tag(`nudge:${picked.map((x) => x.id).sort().join(',')}`); // a run of presses is one step
-      for (const x of picked) ctx.change(x.id, wbMoved(x, dx, dy), { save: 'soon' });
+      // A frame takes the blocks inside it along (a locked one stays, and the person is told).
+      const f = wbFrameMoveChanges(picked.map((x) => ({ id: x.id, dx, dy })), live(), { measure: heightOf });
+      if (history) history.tag(`nudge:${f.changes.map((c) => c.id).sort().join(',')}`); // a run of presses is one step
+      for (const c of f.changes) ctx.change(c.id, c.fields, { save: 'soon' });
+      if (f.locked) lockedNote(f.locked, f.changes.length + f.locked);
       return;
     }
     if (mod) return;
     // ] forward one layer, [ back one; with Shift, to the front and to the back (by the key's place, so any keyboard layout).
     const bracket = e.code === 'BracketRight' || k === ']' || k === '}' ? 'up' : e.code === 'BracketLeft' || k === '[' || k === '{' ? 'down' : null;
-    if (bracket && picked.length) {
+    if (bracket && (picked.length || lockedPicked)) {
       e.preventDefault();
       const ends = e.shiftKey || k === '}' || k === '{';
-      layer(picked.map((x) => x.id), bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
+      layer([...sel], bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
       return;
     }
     if (k === '+' || k === '=') { renderer.zoomBy(1.25); updateStatus(); return; }
@@ -1928,7 +2332,7 @@
   }
   const inField = (e) => Boolean(e.target && e.target.closest && e.target.closest('.wb-text-edit'));
   function onCopyEvent(e, cut) {
-    if (inField(e) || !policy.canEdit) return;
+    if (inField(e) || !policy.canEdit || (cut && presenting)) return;
     clearTimeout(clipTimer);
     clipTimer = 0;
     if (!copyable().length) return;
@@ -1957,7 +2361,7 @@
   });
   surface.addEventListener('pointerleave', () => { hover = null; if (tool.hover && down === null) tool.hover(null, ctx); });
   surface.addEventListener('paste', (e) => {
-    if (inField(e) || !policy.canEdit) return;
+    if (inField(e) || !policy.canEdit || presenting) return;
     clearTimeout(clipTimer);
     clipTimer = 0;
     const data = e.clipboardData;
@@ -1981,7 +2385,7 @@
     $('drop').hidden = !on;
   }
   $('drop-sub').textContent = 'JPEG, PNG, WebP or GIF pictures. Everyone who can see the board sees them.';
-  surface.addEventListener('dragenter', (e) => { if (!pictures || !carriesFiles(e)) return; dragDepth += 1; showDropOver(true); });
+  surface.addEventListener('dragenter', (e) => { if (!pictures || !carriesFiles(e) || presenting) return; dragDepth += 1; showDropOver(true); });
   surface.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) showDropOver(false); });
   surface.addEventListener('dragover', (e) => {
     if (!carriesFiles(e)) return;
@@ -1993,7 +2397,7 @@
     e.preventDefault();
     dragDepth = 0;
     showDropOver(false);
-    if (!pictures) return;
+    if (!pictures || presenting) return;
     const p = renderer.toBoard(e.clientX, e.clientY);
     addPictures(filesOf(e.dataTransfer), { x: p.x, y: p.y });
   });
@@ -2006,13 +2410,14 @@
     $('app').classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); updateStatus(); }
   }).observe(host.rootElement);
-  window.addEventListener('pagehide', () => sync.flush());
+  window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
   // ---- start ------------------------------------------------------------------------------------------------------------
-  host.on('change', (e) => sync.handle(e));
-  host.on('changes', (e) => sync.handleMany(e));
+  host.on('change', (e) => { sync.handle(e); boardSync.handle(e); });
+  host.on('changes', (e) => { keepBackground(e); sync.handleMany(e); boardSync.handleMany(e); });
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
+  await reloadBoard(); // the background (Default when it cannot be read)
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
   sweepSoon();
   $('loading').hidden = true;

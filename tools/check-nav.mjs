@@ -552,7 +552,8 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   // (dockAll), Window Mode floats what can float, new modules follow the mode, a loaded layout sets it.
   assert.match(canvasJs, /const arrangeMode = \(\) => \(saved\.__mode === 'window' \? 'window' : 'panel'\);/);
   const setMode = canvasJs.slice(canvasJs.indexOf('  function setArrangeMode(mode) {'), canvasJs.indexOf('  function dockAll() {'));
-  assert.match(setMode, /saved\.__mode = want;\n\s*persist\(\);\n\s*if \(want === 'panel'\) \{ dockAll\(\); return; \}/);
+  // Panel Mode docks every floating module, then brings back the stacks Window Mode put away (plan-panel-stacking.md).
+  assert.match(setMode, /saved\.__mode = want;\n\s*persist\(\);\n\s*if \(want === 'panel'\) \{[\s\S]*?\n\s*dockAll\(\);\n\s*if \(!isNarrow\(\)\) restoreStacks\(floating\);\n\s*return;\n\s*\}/);
   assert.match(setMode, /for \(const p of columns\) setMode\(p\.id, 'float'\);/);
   assert.match(setMode, /tidyBoxes\(live\.map/, 'a module with no place of its own is tidied around the rest');
   assert.match(canvasJs, /if \(arrangeMode\(\) === 'window'\) return supports\(p, 'float'\) \? 'float' : 'dock';/, 'preferredMode follows the mode');

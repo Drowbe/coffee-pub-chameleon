@@ -5,7 +5,7 @@
 // space's canvas (canvas.js).
 
 import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, progressNote, undoToast } from '/brand.js';
-import { confirmDialog } from '/confirm.js';
+import { confirmDialog, cleanConfirm } from '/confirm.js';
 import { pickObjects } from '/object-pick.js';
 import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
@@ -1482,7 +1482,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // A question for the person (host.ui.confirm): the styled confirm over the page. true for the action, false for anything else.
     async 'ui.confirm'(o) {
-      return confirmDialog(o);
+      return confirmDialog(cleanConfirm(o)); // only the fields a module may ask for (not a page's own list or solid)
     },
     // The object picker (host.objects.pick): a window the page draws, searching with this module's own permissions (the same search as
     // 'objects.search'). Resolves with a pointer, a list of them (multiple), or null when the person cancels.
@@ -1757,9 +1757,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     async 'library.list'() {
       return api('GET', libraryUrl());
     },
-    async 'library.add'({ file, name, keepPosition, token }) {
+    async 'library.add'({ file, name, keepPosition, visibility, people, token }) {
       if (!(file instanceof Blob)) throw Object.assign(new Error('send a file'), { status: 400 });
-      const target = libraryUrl('', { name: String(name ?? file.name ?? '').slice(0, 200), keepPosition: keepPosition ? '1' : '' });
+      // Who may see it goes as the server wants it; the server checks both (an unknown word or a person not in the space is refused).
+      // Anything but undefined goes on as it is, so the server refuses a shape it does not know (null, a list, a number, an object) instead of
+      // the page quietly sending no word, which the server reads as everyone.
+      if (visibility !== undefined && (typeof visibility !== 'string' || !visibility || visibility.length > 20)) throw Object.assign(new Error('visibility must be everyone, only-me or people'), { status: 400 });
+      if (people !== undefined && (!Array.isArray(people) || people.length > 201 || people.some((k) => typeof k !== 'string'))) throw Object.assign(new Error('people must be a list of user keys'), { status: 400 });
+      const who = visibility !== undefined ? { visibility, people: people === undefined ? '' : people.join(',') } : people !== undefined ? { people: people.join(',') } : {};
+      const target = libraryUrl('', { name: String(name ?? file.name ?? '').slice(0, 200), keepPosition: keepPosition ? '1' : '', ...who });
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', target);
@@ -1779,6 +1785,18 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         if (token) libraryUploads.set(token, xhr);
         xhr.send(file);
       });
+    },
+    // The people picker over the page (host.library.pickPeople): the space's people, who is ticked, and the keys the person chose (null: cancelled).
+    async 'library.pickPeople'({ chosen }) {
+      // The same gate as the other library calls: a module without `library: true`, or a person who may not see the library, is refused by the
+      // server here. The adder is the page's own signed-in person, never a key the module sends.
+      await api('GET', libraryUrl());
+      const adder = (await api('GET', '/api/me')).user?.key;
+      const holder = pageMode ? container : frame;
+      const { choosePeople, loadMembers, LIMIT } = await import('/vault-privacy.js');
+      const members = await loadMembers(spaceId);
+      const keys = (Array.isArray(chosen) ? chosen : []).filter((k) => typeof k === 'string').slice(0, LIMIT);
+      return choosePeople({ doc: holder.ownerDocument, members, chosen: keys, adder: typeof adder === 'string' ? adder : '', you: true, subject: 'what you add', returnFocus: () => holder });
     },
     async 'library.cancel'({ token }) {
       const xhr = libraryUploads.get(token);

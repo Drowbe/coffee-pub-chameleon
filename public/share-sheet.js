@@ -87,6 +87,18 @@ function actions(doc, ...buttons) {
   row.append(...buttons);
   return row;
 }
+// A restricted file (not for everyone in the space) says so in the sheet: a link reaches people it is not shared with, and ends when its maker can no longer see it.
+// `visibility` comes with a file only for the person who added it, owners and the admin (the server's rule).
+const restricted = (files) => files.some((f) => f.visibility && f.visibility !== 'everyone');
+function restrictLine(asLink) {
+  const box = h('div', 'sh-restrict');
+  const mk = h('div', 'sdk-banner');
+  mk.dataset.kind = 'info';
+  const ic = h('span', 'sdk-banner-icon'); ic.append(fa('circle-info'));
+  mk.append(ic, h('span', 'sdk-banner-text', asLink ? 'The link ends if you can no longer see this file.' : 'Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with. The link ends if you can no longer see the file.'));
+  box.append(mk);
+  return box;
+}
 const tag = (icon, text) => { const t = h('span', 'sdk-chip-tag'); t.append(fa(icon), text); return t; };
 function filesStrip(place, files) {
   const sum = h('div', 'sh-files');
@@ -128,6 +140,7 @@ export async function shareFiles({ doc = document, place, ids, onChange, returnF
 
   const { dlg, form } = makeDialog(doc, files.length === 1 ? 'Share a file' : `Share ${files.length} files`);
   form.append(filesStrip(place, files));
+  if (restricted(files)) form.append(restrictLine(false));
   const nameField = h('label', 'sdk-field');
   const nameIn = h('input');
   nameIn.type = 'text'; nameIn.maxLength = 80; nameIn.autocomplete = 'off';
@@ -225,6 +238,7 @@ export async function shareFiles({ doc = document, place, ids, onChange, returnF
     dlg.setAttribute('aria-labelledby', 'sh-made-title');
     title.id = 'sh-made-title';
     form.append(title, filesStrip(place, files));
+    if (restricted(files)) form.append(restrictLine(true));
     form.append(h('p', '', 'Anyone with this address can open these files, without an account. This is the only time it is shown. Copy it now.'));
     const field = h('label', 'sdk-field');
     const input = h('input', 'sh-address');

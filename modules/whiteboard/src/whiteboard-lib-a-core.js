@@ -40,6 +40,40 @@
     { id: 'fill', label: 'Background' },
     { id: 'ink', label: 'Words' },
   ];
+  // The board's own settings: one value for the whole board, shared by everyone who sees it, saved whole under one key
+  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, by, at }. The key starts
+  // with "_" (the module's bookkeeping, not an object): a Clear takes it and its Undo puts it back without counting it,
+  // and a board with only a background has nothing to clear. background is a palette id (WB_PALETTE) or 'default' (the
+  // theme's own board colour); a key that is missing, or holds anything else, reads as 'default' (wbCleanBoard). The page
+  // keeps it in the undo history under WB_BOARD_STEP, an id no block can have (lib-a's wb.id refuses ':').
+  const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
+  const WB_BOARD_ID = 'settings';
+  const WB_BOARD_STEP = ':board';
+  function wbCleanBoard(raw) {
+    if (!raw || typeof raw !== 'object' || raw.id !== WB_BOARD_ID) return null;
+    return {
+      id: WB_BOARD_ID,
+      type: 'board',
+      background: WB_PALETTE_BY_ID.has(raw.background) ? raw.background : 'default',
+      by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
+      at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
+    };
+  }
+  const WB_BOARD_USUAL = Object.freeze(wbCleanBoard({ id: WB_BOARD_ID }));
+  // How the board is drawn on a background: `ground` its colour, `dot` its grid's dots, both theme tokens (so they follow
+  // light and dark mode). A palette colour is a wash of its tint on the page's colour, never the tint itself: a block in
+  // that colour, or in Ink, stays readable on it, as a note's face is a wash of its fill. The dots are the words' colour,
+  // stronger on a wash than on the plain page (a wash is darker in light mode, lighter in dark mode, so a faint dot would
+  // sink into it), strongest on Ink (a grey wash, nearest the dots' own colour). An unknown id is 'default'.
+  const WB_WASH = 18; // per cent of the tint in a background
+  const WB_DOT = { default: 16, tint: 26, ink: 34 }; // per cent of the words' colour in a dot
+  function wbBackdrop(id) {
+    const c = WB_PALETTE_BY_ID.get(id);
+    const dot = (n) => `color-mix(in srgb, var(--text-primary) ${n}%, transparent)`;
+    if (!c) return { id: 'default', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
+    const strength = c.id === 'ink' ? WB_DOT.ink : WB_DOT.tint;
+    return { id: c.id, ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
+  }
   // The widths a line or a border can have, in board units.
   const WB_WEIGHTS = [1, 2, 3, 4, 8, 12];
   // The words a menu shows for them.
@@ -138,7 +172,9 @@
   // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
   // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
   // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
-  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
+  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h), and container?: true (a
+  // frame, lib-e-block-frame.js: it sits under the other blocks, is picked by its tab and border only, holds the blocks
+  // inside it when it is moved or copied, and takes no connector).
   // A block that draws outside its box (a note's pointer) has reach?(block) -> the box of all it draws, relative to x, y
   // ({ x, y, w, h }): the group frame, "Show everything", the rectangle that picks blocks, layers and a paste's middle use
   // it; the box stays what is resized and what a connector attaches to. grips?(block) -> more handles for the one block
@@ -183,9 +219,9 @@
   // last drawn for while the block is not on the board. refs, remap and loosen as for the pointer above; a move of the
   // highlight alone changes dx, dy (its type's move).
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
-  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
-  // another connector.
-  const wbAttachable = (def) => Boolean(def && !def.attached && def.resize && def.resize.handles === 'corners');
+  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing,
+  // another connector or a frame (a container).
+  const wbAttachable = (def) => Boolean(def && !def.attached && !def.container && def.resize && def.resize.handles === 'corners');
   // The fields that change when a block is moved by dx, dy: its type's move, else x and y.
   function wbMoved(b, dx, dy) {
     const def = blockTypes.get(b.type);
@@ -224,15 +260,48 @@
     }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;
+    const group = wbGroupOf(raw);
     return {
       ...own,
       id,
       type: def.type,
       ...(placed ? { x, y } : {}),
       z,
+      // Any block may be locked (it stays where it is and as it is) and be in a group; a block that is neither has
+      // neither field (see "locks and groups" below).
+      ...(raw.locked === true ? { locked: true } : {}),
+      ...(group ? { group } : {}),
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
     };
+  }
+
+  // Locks and groups, two fields any block may have, each stored with the block like its colours:
+  //   locked: true   the block stays where it is and as it is: no move, resize, delete, edit, colour, layer or cut (lib-b
+  //                  refuses them; lib-m's arrange and delete skip it). It can still be picked, copied (the copy is not
+  //                  locked), saved as a picture, and unlocked by anyone who may change the board.
+  //   group: '<id>'  a short id ([a-z0-9], at most 24) its group's members share: picking one picks them all, and what is
+  //                  done to the picked blocks is done to each. A group of fewer than two blocks on the board is no group
+  //                  (nothing is rewritten: it is just not one when read, wbGroupsOf).
+  const WB_GROUP_RE = /^[a-z0-9]{1,24}$/;
+  const wbGroupOf = (b) => (b && typeof b.group === 'string' && WB_GROUP_RE.test(b.group) ? b.group : null);
+  // A new group's id: 12 letters and digits.
+  function wbGroupId(random = Math.random) {
+    let out = '';
+    while (out.length < 12) out += Math.floor(random() * 36).toString(36);
+    return out;
+  }
+  // The groups among some blocks: group id -> the ids of its members, only those with two or more.
+  function wbGroupsOf(blocks) {
+    const all = new Map();
+    for (const b of blocks) {
+      const g = wbGroupOf(b);
+      if (!g) continue;
+      if (!all.has(g)) all.set(g, []);
+      all.get(g).push(b.id);
+    }
+    for (const [g, ids] of all) if (ids.length < 2) all.delete(g);
+    return all;
   }
 
   // The board's state: the blocks by id. It draws nothing and saves nothing.

@@ -12,8 +12,11 @@
       canCreate: () => edit,
       // Adding a picture from the computer: the same as adding any block, where the host keeps uploads.
       canAddPicture: () => edit && Boolean(host.uploads),
-      canChange: (block) => edit && Boolean(block),
-      canDelete: (block) => edit && Boolean(block),
+      // A locked block (lib-a) is not changed or deleted by anyone until it is unlocked; locking and unlocking it, and
+      // using a timer's controls, is for anyone who may change the board (canLock).
+      canChange: (block) => edit && Boolean(block) && block.locked !== true,
+      canDelete: (block) => edit && Boolean(block) && block.locked !== true,
+      canLock: (block) => edit && Boolean(block),
       canSee: () => true,
     };
   }

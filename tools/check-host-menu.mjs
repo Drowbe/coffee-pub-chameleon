@@ -164,7 +164,7 @@ test('a module\'s title bar: Dock, Window and Pop out are in its "..."', () => {
   const src = read('public/canvas.js');
   assert.ok(!/data-popout|data-mode="(float|dock)"/.test(src), 'no Dock, Window or Pop out button in a title bar');
   const make = src.slice(src.indexOf('  function makeFrame('), src.indexOf('  // The page a composite holds'));
-  assert.ok(make.includes('titlebar: { close: true, standard: () => standardFor(m.id), onAction: (e) => titlebarAction(m.id, e) }'), 'every module, a composite too, has the frame\'s "..." (standard actions) and Close');
+  assert.ok(make.includes('titlebar: { close: true, standard: () => standardFor(m.id), extra: () => stackMenu(m.id), onAction: (e) => titlebarAction(m.id, e) }'), 'every module, a composite too, has the frame\'s "..." (standard actions, then the stack entries: plan-panel-stacking.md) and Close');
   const frameJs = read('public/module-frame.js');
   const drawTb = frameJs.slice(frameJs.indexOf('  function drawTitlebar() {'), frameJs.indexOf('  function showMenuButton() {'));
   assert.ok(drawTb.indexOf("'mf-icon-btn mf-titlebar-btn mf-titlebar-menu'") < drawTb.indexOf("'mf-icon-btn mf-titlebar-btn mf-close-btn'"), 'Close last');
@@ -183,6 +183,7 @@ test('a module\'s title bar: Dock, Window and Pop out are in its "..."', () => {
   assert.ok(frameJs.includes("{ id: 'popout', label: 'Open in its own window', icon: 'up-right-from-square', tip: 'Pop out of this page' },"));
   assert.ok(frameJs.includes("{ id: 'clear', label: 'Clear', icon: 'trash', danger: true, off: true },"));
   assert.ok(frameJs.includes('return runs.flatMap((r, at) => (at ? [{ divider: true }, ...r] : r));'), 'after the module\'s own entries, below a line');
+  assert.ok(frameJs.includes("const runs = [own, standard, Array.isArray(extra) ? extra : [], danger].filter((r) => r.length);"), 'the window\'s own entries (titlebar.extra: the stack entries) after the standard ones, before the destructive ones');
   assert.ok(frameJs.includes("menu.addEventListener('click', () => openHostMenu(menu, titlebarMenu));"), 'on the shared menu');
   assert.ok(read('public/host-menu.js').includes('if (item.tip) b.title = item.tip;'), 'the old tooltips, on the entries');
 });

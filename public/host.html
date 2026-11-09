@@ -11,13 +11,13 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/theme.css" id="theme-link">
   <link rel="stylesheet" href="/sdk/system.css">
+  <link rel="stylesheet" href="/host.css">
 </head>
 <body class="host-console">
   <header class="topbar"></header>
 
-  <main class="admin">
-    <!-- the host admin's own sign-in: a separate kind of account, a member of no environment -->
-    <section class="panel" id="host-login" hidden>
+  <main class="hc-page">
+    <section class="panel hc-login" id="host-login" hidden>
       <h2>Host console</h2>
       <p class="hint">Sign in as a host admin. This is the deployment's own door, not any environment's.</p>
       <form id="login-form" class="fields">
@@ -45,455 +45,612 @@
       </div>
     </section>
 
-    <div id="host-main" hidden>
-      <!-- The console in tabs, the same bar Manage uses, so a host with many environments reads one thing at a time. -->
-      <nav class="subtabs" id="subtabs">
-        <button class="subtab" data-tab="host" type="button">Host</button>
-        <button class="subtab" data-tab="plans" type="button">Plans</button>
-        <button class="subtab active" data-tab="environments" type="button">Environments</button>
-        <button class="subtab" data-tab="templates" type="button">Templates</button>
-        <button class="subtab" data-tab="ai" type="button">AI</button>
-        <button class="subtab" data-tab="maps" type="button">Maps</button>
+    <!-- The console (plan-host-console.md): a left navigation of five sections, one shown at a time and named in the address
+         (the section's name after the #, and environments/<slug> for one environment). At 640 px and under the navigation is
+         one strip of tabs that scrolls inside itself. -->
+    <div class="hc-body" id="host-main" hidden>
+      <nav class="subtabs hc-nav" id="hc-nav" aria-label="Host console sections">
+        <button class="subtab" type="button" data-section="environments"><i class="fa-solid fa-layer-group fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+        <button class="subtab" type="button" data-section="templates"><i class="fa-solid fa-clone fa-fw" aria-hidden="true"></i><span>Templates</span></button>
+        <button class="subtab" type="button" data-section="modules"><i class="fa-solid fa-puzzle-piece fa-fw" aria-hidden="true"></i><span>Modules</span></button>
+        <button class="subtab" type="button" data-section="plans"><i class="fa-solid fa-tags fa-fw" aria-hidden="true"></i><span>Plans</span></button>
+        <button class="subtab" type="button" data-section="server"><i class="fa-solid fa-server fa-fw" aria-hidden="true"></i><span>Server</span></button>
       </nav>
 
-      <section class="tab-stack" id="tab-host" hidden>
-      <section class="panel">
-        <h2>The host</h2>
-        <dl class="facts" id="host-facts"></dl>
-        <div class="row"><button class="btn" id="host-logout" type="button">Sign out of the host</button></div>
-      </section>
-      <section class="panel" id="host-mfa-panel" hidden>
-        <div class="section-head">
-          <h2>Your two-step sign-in</h2>
-          <span class="sdk-status" id="host-mfa-state">off</span>
-          <span class="status" id="host-mfa-status"></span>
-        </div>
-        <p class="hint" id="host-mfa-hint">A code from an authenticator app after the password, for this host admin account. HOST_MFA_REQUIRED on the server makes it mandatory for every host admin.</p>
-        <div class="row">
-          <button class="btn btn-primary btn-small" id="host-mfa-on" type="button" hidden>Turn on</button>
-          <button class="btn btn-small" id="host-mfa-off" type="button" hidden>Turn off</button>
-          <button class="btn btn-danger btn-small" id="host-mfa-reset" type="button" hidden>Reset my second factor</button>
-        </div>
-        <div class="mfa-block" id="host-mfa-block" hidden></div>
-      </section>
-      <section class="panel">
-        <div class="section-head">
-          <h2>Host admins</h2>
-          <span class="status" id="admins-status"></span>
-        </div>
-        <div id="admins" class="list"></div>
-        <form id="admin-form" class="fields" autocomplete="off">
-          <label>Login<input id="admin-login" type="text" maxlength="40" required autocapitalize="off"></label>
-          <label>Password<span class="row reveal-row"><input id="admin-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="admin-password" aria-pressed="false">Show</button></span></label>
-          <div class="row"><button class="btn" type="submit">Add a host admin</button></div>
-        </form>
-      </section>
-      <!-- The flight schedule (plan-flight-lookup.md, step 5): one for the whole host, learned from every environment's saved flights; drawn by /flight-schedule.js on /api/host/flight-schedule. -->
-      <section class="panel flight-schedule sdk-groups" id="flight-schedule-section" hidden>
-        <div class="sdk-stack">
-        <div class="section-head">
-          <h2>Flight schedule</h2>
-          <span class="status" id="flight-schedule-status" role="status" aria-live="polite"></span>
-        </div>
-        <p id="flight-schedule-count">This server has learned 0 flights from saved trips.</p>
-        <p class="hint">Flights people save in their trips teach this server when each flight number usually flies, so a later lookup can fill it in. It keeps the airline, the airports, the times and the terminal, never who flew.</p>
-        </div>
-        <form class="flight-forget" id="flight-forget-form" autocomplete="off">
-          <label class="field-label" for="flight-forget-number">Flight number</label>
-          <div class="row">
-            <input id="flight-forget-number" type="text" maxlength="20" placeholder="WN 2483" autocapitalize="characters" spellcheck="false">
-            <button class="btn" type="submit">Forget a flight</button>
-          </div>
-        </form>
-        <div class="row danger-row"><button class="btn btn-small btn-danger" id="flight-clear" type="button">Clear all</button></div>
-      </section>
-
-      </section>
-
-      <section class="tab-stack" id="tab-plans" hidden>
-      <section class="panel" id="plans-panel">
-        <div class="section-head">
-          <h2>Plans</h2>
-          <span class="status" id="plans-status"></span>
-          <button class="btn btn-small" id="plan-add" type="button">Add a plan</button>
-        </div>
-        <p class="hint">What an environment may use, by plan: the caps an environment takes when it is put on the plan (and may then be adjusted on its own card). <code>free</code> is what sign-up makes and what a past-due environment goes back to after 14 days; it cannot be removed. Empty caps mean no cap. A plan is sold online when the server has <code>BILLING_CHECKOUT_&lt;PLAN&gt;</code> set to the provider's checkout page for it.</p>
-        <div class="plans-editor" id="plans-editor"></div>
-        <div class="row"><button class="btn btn-primary btn-small" id="plans-save" type="button">Save plans</button></div>
-      </section>
-
-      <template id="tpl-plan-row">
-        <div class="sdk-card plan-row">
-          <div class="fields">
-            <label>Id<input name="id" type="text" class="plan-id" maxlength="20" pattern="[a-z0-9\-]+" required></label>
-            <label>Name<input name="name" type="text" maxlength="40" required></label>
-            <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
-            <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="0.5" step="0.5" placeholder="no cap"></label>
-            <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
-            <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
-            <label>Modules <span class="sdk-optional">(optional)</span><input name="modules" type="text" placeholder="all, or ids separated by spaces"></label>
-          </div>
-          <div class="row"><button class="btn btn-small danger" data-action="plan-remove" type="button">Remove this plan</button></div>
-        </div>
-      </template>
-
-      </section>
-
-      <section class="tab-stack" id="tab-environments">
-      <section class="panel">
-        <div class="section-head">
-          <h1>Environments</h1>
-          <span class="status" id="environments-status" tabindex="-1" aria-live="polite"></span>
-          <button class="btn btn-primary btn-small" id="create-toggle" type="button">New environment</button>
-        </div>
-        <p class="hint">Each environment is its own people, spaces, settings and modules, at <code id="base-hint"></code>. The counts are the whole of what the host sees of one.</p>
-      </section>
-
-      <form class="panel" id="create-form" hidden>
-        <h2>New environment</h2>
-        <div class="fields">
-          <label>Slug<input id="new-slug" type="text" minlength="3" maxlength="30" pattern="[a-z0-9\-]+" placeholder="stayingblonde" required autocapitalize="off" autocomplete="off"></label>
-          <label>Name<input id="new-name" type="text" maxlength="60" placeholder="Staying Blonde" required autocomplete="off"></label>
-          <label>Plan<select id="new-plan"><option value="">No caps, every module</option></select></label>
-        </div>
-        <!-- What it is set up for (plan-environment-templates): None, then each template. Filled by host.js; hidden when the host has none. -->
-        <fieldset class="template-choice" id="new-template" hidden>
-          <legend>Template</legend>
-          <p class="hint">Sets it up for one use: its words, home icon, module names and which modules are on. Picked now only; the owner can change anything it sets. A module the plan leaves out is skipped.</p>
-          <div class="sdk-choice-list" data-slot="options"></div>
-        </fieldset>
-        <h3>The first owner</h3>
-        <div class="fields">
-          <label>Login<input id="new-owner-login" type="text" maxlength="40" required autocapitalize="off" autocomplete="off"></label>
-          <label>Display name <span class="sdk-optional">(optional)</span><input id="new-owner-name" type="text" maxlength="40" autocomplete="off"></label>
-          <label>Password<span class="row reveal-row"><input id="new-owner-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="new-owner-password" aria-pressed="false">Show</button></span></label>
-        </div>
-        <p class="hint">The slug is the environment's address and is fixed once made: letters, digits and hyphens, 3 to 30. The owner signs in there with these.</p>
-        <div class="row">
-          <button class="btn btn-primary" type="submit">Create</button>
-          <button class="btn btn-quiet" id="create-cancel" type="button">Cancel</button>
-          <span class="status error" id="create-error" hidden></span>
-        </div>
-      </form>
-
-      <div id="environments" class="environments"></div>
-      </section>
-
-      <!-- Templates (plan-environment-templates, addendum 2): the list (bundled, the host's own, hidden or not, used by
-           which environments), Import, New, and the editor for a host template. Drawn by /host-templates.js. -->
-      <section class="tab-stack" id="tab-templates" hidden>
-      <section class="panel">
-        <div class="section-head">
-          <h2>Templates</h2>
-          <span class="status" id="templates-status" role="status" hidden></span>
-          <span class="grow"></span>
-          <button class="btn btn-small" id="template-import" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i> Import…</button>
-          <input id="template-import-file" type="file" accept=".json,application/json" hidden>
-          <button class="btn btn-small btn-primary" id="template-new" type="button">New template</button>
-        </div>
-        <p class="hint">What a new environment can be made from. Edits to a bundled template stay over the one <span id="template-shipped-by">shipped</span>. Hidden templates aren't offered for new environments; the ones using them keep them.</p>
-        <ul class="template-notices" id="template-notices"></ul>
-        <ul class="template-list" id="template-list"></ul>
-      </section>
-
-      <section class="panel" id="template-compare" hidden>
-        <h2 id="template-compare-title">Review</h2>
-        <p class="hint">The shipped template is on the left. Yours is on the right.</p>
-        <div class="template-compare-head"><span></span><span>Shipped</span><span>Yours</span></div>
-        <div id="template-compare-fields"></div>
-        <div class="row-actions">
-          <button class="btn btn-small" id="template-take-shipped" type="button">Take the new version</button>
-          <button class="btn btn-small btn-primary" id="template-keep-mine" type="button">Keep mine</button>
-          <button class="btn btn-small" id="template-compare-close" type="button">Close</button>
-        </div>
-      </section>
-
-      <form class="panel template-editor" id="template-editor" hidden novalidate>
-        <h2 id="template-editor-title">New template</h2>
-        <p class="hint" id="te-bundled-hint" hidden>Your edits are kept over the shipped template.</p>
-        <p class="hint">Words, phases, the home icon and module names and icons reach every environment using the template at once. The rest is applied once: owners are offered it, never forced.</p>
-        <ul class="problems" id="tp-problems"></ul>
-        <div class="fields">
-          <label id="te-id-label">Id<input id="te-id" type="text" maxlength="32" pattern="[a-z][a-z0-9\-]*" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="travel"></label>
-          <label>Name<input id="te-name" type="text" maxlength="40" autocomplete="off"></label>
-          <label class="wide">Description <span class="sdk-optional">(optional)</span><input id="te-description" type="text" maxlength="200" autocomplete="off"></label>
-        </div>
-        <ul class="problems" data-problems="id name description"></ul>
-
-        <fieldset>
-          <legend>Words</legend>
-          <p class="hint">Leave a word blank for the default. Give both the singular and the plural.</p>
-          <div id="te-words"></div>
-          <div id="te-verbs"></div>
-          <ul class="problems" data-problems="words verbs"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Home icon</legend>
-          <div class="icon-field"><i class="fa-solid fa-house fa-fw" id="te-home-preview" aria-hidden="true"></i><input id="te-home" type="text" maxlength="40" placeholder="house (a Font Awesome name)" aria-label="Home icon, a Font Awesome name" autocapitalize="off" spellcheck="false"></div>
-          <ul class="problems" data-problems="icons"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Modules</legend>
-          <p class="hint">Turned on in every space of a new environment. The Lobby keeps only chat, the call and modules made for it.</p>
-          <div class="template-modules" id="te-modules"></div>
-          <ul class="problems" data-problems="modules"></ul>
-          <details class="te-module-display">
-            <summary>Module names and icons</summary>
-            <p class="hint">Blank for the module's own.</p>
-            <div id="te-module-display"></div>
-          </details>
-          <ul class="problems" data-problems="moduleNames moduleIcons"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>New environments</legend>
-          <div class="fields">
-            <label>Lobby name<input id="te-lobby-name" type="text" maxlength="40" placeholder="Lobby"></label>
-            <label>New spaces use<select id="te-profile"><option value="">The usual profile</option><option value="roleplaying">Roleplaying</option><option value="participants">Participants</option><option value="characters">Characters</option></select></label>
-            <label class="wide">Lobby description <span class="sdk-optional">(optional)</span><input id="te-lobby-description" type="text" maxlength="300"></label>
-          </div>
-          <p class="hint">What a new space opens, in this order. The ticks are the template's modules, including chat and the conference.</p>
-          <div id="te-opens"></div>
-          <ul class="problems" data-problems="lobby spaceDefaults settings"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Phases</legend>
-          <p class="hint">Up to 12. An id is lowercase letters, digits and dashes. One may be the main phase.</p>
-          <div id="te-phases"></div>
-          <button class="btn btn-small" id="te-phase-add" type="button">Add phase</button>
-          <ul class="problems" data-problems="phases"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Reactions</legend>
-          <label class="sdk-choice-row"><input id="te-reactions-on" type="checkbox"><span class="sdk-choice-text">Give reactions</span></label>
-          <div id="te-reactions-box" hidden>
-            <div class="reactions-list" id="te-reactions"></div>
-            <button class="btn btn-small" id="te-reaction-add" type="button">Add reaction</button>
-          </div>
-          <ul class="problems" data-problems="reactions"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Theme</legend>
-          <p class="hint" id="te-theme-name">None: environments keep their own theme.</p>
-          <div class="row">
-            <button class="btn btn-small" id="te-theme-pick" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i> Choose a theme file…</button>
-            <input id="te-theme-file" type="file" accept=".json,application/json" hidden>
-            <button class="btn btn-small" id="te-theme-clear" type="button" hidden>No theme</button>
-          </div>
-          <ul class="problems" data-problems="theme"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Icons</legend>
-          <p class="hint">Font Awesome names, separated by spaces, added to an environment's icon list. At most 60.</p>
-          <textarea id="te-icon-set" rows="2" autocapitalize="off" spellcheck="false" aria-label="Icons, Font Awesome names separated by spaces" placeholder="dice compass map"></textarea>
-          <div class="offer-icons" id="te-icon-preview" aria-hidden="true"></div>
-          <ul class="problems" data-problems="iconSet"></ul>
-        </fieldset>
-
-        <div class="row">
-          <button class="btn btn-primary" type="submit" id="te-save">Save</button>
-          <button class="btn btn-quiet" type="button" id="te-cancel">Cancel</button>
-          <span class="status" id="te-status" role="status"></span>
-        </div>
-      </form>
-
-      <template id="tpl-te-reaction">
-        <div class="reaction-row">
-          <input class="reaction-glyph" type="text" maxlength="8" placeholder="🙂" aria-label="Emoji">
-          <input class="reaction-label" type="text" maxlength="40" placeholder="Label" aria-label="Label">
-          <button class="btn btn-small danger" data-action="te-reaction-remove" type="button">Remove</button>
-        </div>
-      </template>
-      </section>
-
-      <section class="tab-stack" id="tab-ai" hidden>
-      <section class="panel module-config" id="ai-panel">
-        <div class="section-head">
-          <h2>Managed AI</h2>
-          <span class="status" id="ai-status"></span>
-        </div>
-        <p class="hint">The AI services this host offers every environment, one per company: set a key here and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key is set here only; it stays on the host and is never shown to an environment.</p>
-        <div id="ai-services" class="ai-services"></div>
-      </section>
-
-      <template id="tpl-ai-service">
-        <form class="sdk-card ai-service" autocomplete="off">
-          <div class="ai-service-head">
-            <strong data-slot="name"></strong>
-            <span class="sdk-status" data-slot="offered"></span>
-          </div>
-          <div class="ai-key" data-slot="address-row" hidden>
-            <label class="ai-label" for="ai-address-compatible">Address</label>
-            <input id="ai-address-compatible" name="address" type="url" maxlength="300" placeholder="https://">
-            <p class="hint">The server's root, or ending in /v1.</p>
-          </div>
-          <div class="ai-key" data-slot="workspace-row" hidden>
-            <label class="ai-label" for="ai-workspace-anthropic">Workspace id</label>
-            <input id="ai-workspace-anthropic" name="workspace" type="text" maxlength="100" placeholder="wrkspc_..." autocomplete="off" spellcheck="false">
-            <p class="hint">Only for a key made at the organisation level in the Anthropic console, which Anthropic then asks to name a workspace. A key made inside a workspace needs nothing here.</p>
-          </div>
-          <div class="ai-key">
-            <div class="ai-label">Key</div>
-            <div class="ai-key-row">
-              <span class="sdk-status" data-slot="key-state">not set</span>
-              <input name="key" type="password" maxlength="300" placeholder="paste a new key" autocomplete="new-password" hidden>
-              <button class="btn btn-small" type="button" data-action="key-replace">Set a key</button>
-              <button class="btn btn-small btn-danger" type="button" data-action="key-clear" hidden>Remove the key</button>
+      <div class="hc-main">
+        <section class="hc-section" id="section-environments" data-section="environments" hidden>
+          <!-- The table (#environments): the needs-attention strip, search, filter, sort, rows and a More menu per row. -->
+          <div class="hc-view" id="environments-list">
+            <div class="hc-head">
+              <h1 class="hc-title" id="environments-title" tabindex="-1">Environments</h1>
+              <button class="btn btn-primary" id="create-toggle" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>New environment</span></button>
             </div>
-            <p class="hint" data-slot="key-help"></p>
-          </div>
-          <div class="ai-model">
-            <div class="ai-label">Model</div>
-            <div class="ai-model-row">
-              <select name="model" aria-label="Model"></select>
-              <input name="model-text" type="text" maxlength="100" placeholder="the model's name" hidden>
-              <button class="btn btn-small" type="button" data-action="models-refresh" title="Load the list of models again"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
-            </div>
-            <p class="hint" data-slot="models-hint"></p>
-            <button class="linklike" type="button" data-action="model-manual" hidden>Type a model name instead</button>
-          </div>
-          <div class="row"><button class="btn btn-primary btn-small" type="submit">Save</button><span class="status" data-slot="status" role="status"></span></div>
-        </form>
-      </template>
-
-      </section>
-
-      <section class="tab-stack" id="tab-maps" hidden>
-      <section class="panel module-config" id="shared-panel" hidden>
-        <div class="section-head">
-          <h2 id="shared-title">Maps</h2>
-          <span class="status" id="shared-status"></span>
-        </div>
-        <p class="hint" id="shared-hint">The map every environment shows: the files in the host's own folder, all of them together. Only a host admin puts files here or cuts a region. Copy a PMTiles file into the folder below, or cut one from a world file.</p>
-        <p class="hint"><code id="shared-folder"></code></p>
-        <div id="shared-files"></div>
-        <form class="shared-address" id="shared-address-form">
-          <label class="field-label" for="shared-address">World map address</label>
-          <div class="row">
-            <input id="shared-address" type="url" maxlength="500" placeholder="https://build.protomaps.com/20260924.pmtiles" autocomplete="off">
-            <button class="btn btn-small" type="submit">Save address</button>
-          </div>
-          <p class="hint">The world PMTiles file that regions are cut from. Protomaps publishes a daily build at <code>https://build.protomaps.com/YYYYMMDD.pmtiles</code>, where YYYYMMDD is the build's date, such as 20260924; any recent date works.</p>
-        </form>
-        <!-- the same region-cut block as module-config.html, driven by public/region-cut.js -->
-        <div class="region-section" id="cfg-region" hidden>
-          <h3>Add a region</h3>
-          <p class="hint">Type a place — a country, a city, a region — and the host will find it, show roughly how large the cut would be, and add it to the files above once you confirm. Nothing downloads until you say so. For basic coverage everywhere, skip the search and <button type="button" class="linklike" id="region-world-btn">cover the whole world</button> instead, at a low zoom — meant to sit underneath detailed regional cuts, not replace them.</p>
-          <form class="row" id="region-find-form">
-            <input type="text" id="region-q" placeholder="Mexico, Lisbon, the Algarve..." maxlength="200" autocomplete="off">
-            <button class="btn btn-primary btn-small" type="submit" id="region-find-btn">Find it</button>
-            <span class="status" id="region-find-status" role="status"></span>
-          </form>
-          <div class="region-confirm" id="region-confirm" hidden>
-            <p id="region-confirm-name"></p>
-            <div class="row">
-              <label>Minimum zoom <input type="number" id="region-min-zoom" min="0" max="15" value="0" step="1"></label>
-              <label>Maximum zoom <input type="number" id="region-zoom" min="0" max="15" value="14" step="1"></label>
-              <label>File name <input type="text" id="region-filename" maxlength="100"></label>
-              <label class="sdk-choice-row"><input type="checkbox" id="region-replace"><span class="sdk-choice-text">Replace a file already there with that name</span></label>
-            </div>
-            <p class="hint">Maximum zoom is how much detail the cut keeps, not how far it covers. 10 or below shows towns and the roads between them, not individual streets; 14, the default, shows streets and buildings; 15 is the most detail this can offer. Higher means a far bigger file for the same area. Minimum zoom trims the shallow end: leave it at 0 for a file meant to stand alone, or raise it when a wider, lower-zoom file already covers those zooms. Check size shows the real cost before anything downloads.</p>
-            <div class="row">
-              <button class="btn btn-small" type="button" id="region-estimate-btn">Check size</button>
-              <span class="status" id="region-estimate-status" role="status"></span>
-            </div>
-            <div class="row">
-              <button class="btn btn-primary btn-small" type="button" id="region-cut-btn" disabled>Cut and add</button>
-              <button class="btn btn-small" type="button" id="region-cancel-btn">Cancel</button>
+            <p class="status hc-status" id="environments-status" tabindex="-1" role="status" aria-live="polite"></p>
+            <section class="sdk-panel hc-part" id="environments-empty" aria-labelledby="environments-empty-title" hidden>
+              <h2 class="hc-part-name" id="environments-empty-title">No environments yet</h2>
+              <p class="sdk-hint">An environment is a group of people with their own spaces, at its own address. Make the first one with New environment.</p>
+            </section>
+            <div class="hc-column" id="environments-filled">
+              <section class="sdk-card hc-attention" aria-label="Needs attention">
+                <div class="hc-attention-row" id="attention"></div>
+              </section>
+              <div class="hc-tools">
+                <div class="sdk-search hc-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="env-search" type="search" placeholder="Search name or address" aria-label="Search environments" autocomplete="off" spellcheck="false"></div>
+                <button class="btn hc-filter-btn" id="env-tools-toggle" type="button" aria-expanded="false" aria-controls="env-tools-more"><i class="fa-solid fa-sliders fa-fw" aria-hidden="true"></i><span>Filter and sort</span></button>
+                <div class="hc-tools-more" id="env-tools-more">
+                  <select id="env-filter" aria-label="Status"></select>
+                  <select id="env-sort" aria-label="Sort">
+                    <option value="attention">Needs attention first</option>
+                    <option value="name">Name</option>
+                    <option value="plan">Plan</option>
+                    <option value="newest">Newest</option>
+                    <option value="use">Highest use</option>
+                  </select>
+                </div>
+                <div class="mf-switch hc-density" id="env-density" role="radiogroup" aria-label="Rows">
+                  <button class="mf-switch-btn" type="button" role="radio" data-density="comfortable">Comfortable</button>
+                  <button class="mf-switch-btn" type="button" role="radio" data-density="compact">Compact</button>
+                </div>
+                <p class="hc-count" id="env-count" role="status" aria-live="polite"></p>
+              </div>
+              <div class="hc-listbox">
+                <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+                <div class="sdk-table-wrap hc-wrap">
+                  <table class="sdk-table hc-envs" id="env-list" aria-label="Environments">
+                    <thead><tr><th scope="col">Name</th><th scope="col">Plan</th><th scope="col">Status</th><th scope="col" class="hc-use-col">Use</th><th scope="col">Template</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody id="env-rows"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="region-progress" id="region-progress" hidden>
-            <p id="region-progress-name"></p>
-            <progress class="sdk-progress" max="100" value="0" id="region-progress-bar" aria-label="Progress"></progress>
-            <p class="hint" id="region-progress-message"></p>
-          </div>
-        </div>
-      </section>
 
-      </section>
+          <!-- New environment (#environments/new) -->
+          <div class="hc-view" id="environment-new" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="environments"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+            <div class="hc-head"><h1 class="hc-title" id="create-title" tabindex="-1">New environment</h1></div>
+            <form class="sdk-panel hc-part hc-form" id="create-form">
+              <div class="fields">
+                <label>Address<input id="new-slug" type="text" minlength="3" maxlength="30" pattern="[a-z0-9\-]+" placeholder="harbour-club" required autocapitalize="off" autocomplete="off" aria-describedby="new-slug-hint"></label>
+                <label>Name<input id="new-name" type="text" maxlength="60" placeholder="Harbour Club" required autocomplete="off"></label>
+                <label>Plan<select id="new-plan"><option value="">No caps, every module</option></select></label>
+              </div>
+              <p class="sdk-hint" id="new-slug-hint">It becomes <code id="base-hint"></code>: letters, digits and hyphens, 3 to 30, fixed once made.</p>
+              <!-- What it is set up for (plan-environment-templates): None, then each template. Filled by host.js; hidden when the host has none. -->
+              <fieldset class="template-choice" id="new-template" hidden>
+                <legend>Template</legend>
+                <p class="sdk-hint">Sets it up for one use: its words, home icon, module names and which modules are on. Picked now only; the owner can change anything it sets. A module the plan leaves out is skipped.</p>
+                <div class="sdk-choice-list" data-slot="options"></div>
+              </fieldset>
+              <h2 class="hc-part-name">The first owner</h2>
+              <div class="fields">
+                <label>Login<input id="new-owner-login" type="text" maxlength="40" required autocapitalize="off" autocomplete="off"></label>
+                <label>Display name <span class="sdk-optional">(optional)</span><input id="new-owner-name" type="text" maxlength="40" autocomplete="off"></label>
+                <label>Password<span class="row reveal-row"><input id="new-owner-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="new-owner-password" aria-pressed="false">Show</button></span></label>
+              </div>
+              <p class="sdk-hint">The owner signs in at the new address with these.</p>
+              <div class="row">
+                <button class="btn btn-primary" type="submit">Create environment</button>
+                <button class="btn" id="create-cancel" type="button">Cancel</button>
+                <span class="status error" id="create-error" role="alert" hidden></span>
+              </div>
+            </form>
+          </div>
+
+          <!-- One environment's page (#environments/<slug>, and /<tab> for a tab other than Overview) -->
+          <div class="hc-view" id="environment-page" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="environments"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+            <div class="hc-env-head">
+              <div class="hc-env-id">
+                <h1 class="hc-title" id="env-title" tabindex="-1"></h1>
+                <code class="hc-slug" id="env-address"></code>
+                <div class="hc-chips" id="env-chips"></div>
+              </div>
+              <a class="btn" id="env-open" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square fa-fw" aria-hidden="true"></i><span>Open environment</span></a>
+            </div>
+            <div class="subtabs hc-tabs" id="env-tabs" role="tablist">
+              <button class="subtab" type="button" role="tab" id="env-tab-overview" data-tab="overview" aria-controls="env-sheet-overview">Overview</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-plan" data-tab="plan" aria-controls="env-sheet-plan">Plan and modules</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-template" data-tab="template" aria-controls="env-sheet-template">Template</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-owners" data-tab="owners" aria-controls="env-sheet-owners">Owners and two-step</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-backups" data-tab="backups" aria-controls="env-sheet-backups">Backups</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-danger" data-tab="danger" aria-controls="env-sheet-danger">Danger zone</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-domain" aria-disabled="true" disabled tabindex="-1">Domain<span class="sdk-tab-badge">later</span></button>
+            </div>
+            <p class="status hc-status" id="env-status" tabindex="-1" role="status" aria-live="polite"></p>
+
+            <div class="hc-sheet" id="env-sheet-overview" role="tabpanel" aria-labelledby="env-tab-overview" hidden>
+              <div class="hc-banners" id="env-banners"></div>
+              <div class="hc-grid">
+                <section class="sdk-panel hc-part" aria-labelledby="env-status-title">
+                  <h2 class="hc-part-name" id="env-status-title">Status</h2>
+                  <dl class="hc-facts" id="env-facts"></dl>
+                </section>
+                <section class="sdk-panel hc-part" aria-labelledby="env-use-title">
+                  <h2 class="hc-part-name" id="env-use-title">Use against its caps</h2>
+                  <div class="hc-caps" id="env-caps"></div>
+                  <p class="sdk-hint">Storage is shown here only, not in the table.</p>
+                </section>
+              </div>
+            </div>
+
+            <div class="hc-sheet" id="env-sheet-plan" role="tabpanel" aria-labelledby="env-tab-plan" hidden>
+              <form class="sdk-panel hc-part hc-form" id="plan-form" novalidate>
+                <h2 class="hc-part-name">Plan and modules</h2>
+                <p class="sdk-hint">The name is what the environment calls itself; its address is fixed. Choosing a plan fills the caps from it; change them here for this environment alone. Empty means no cap.</p>
+                <div class="fields">
+                  <label>Name<input name="name" type="text" maxlength="60" required></label>
+                  <label>Plan<select name="planName"></select></label>
+                </div>
+                <h3 class="sdk-label hc-sub">Its own caps</h3>
+                <div class="fields">
+                  <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
+                  <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="1" step="0.5" placeholder="no cap"></label>
+                  <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
+                  <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
+                </div>
+                <fieldset class="hc-fieldset">
+                  <legend class="sdk-label">Modules it may run</legend>
+                  <label class="sdk-choice-row"><input type="radio" name="modules" value="all"><span class="sdk-choice-text">All installed</span></label>
+                  <label class="sdk-choice-row"><input type="radio" name="modules" value="list"><span class="sdk-choice-text">Only these</span></label>
+                  <div class="hc-checks" id="plan-module-list"></div>
+                </fieldset>
+                <div class="row">
+                  <button class="btn btn-primary" type="submit">Save</button>
+                  <span class="status" id="plan-status" role="status"></span>
+                </div>
+              </form>
+            </div>
+
+            <!-- Switching its template, and the offer after a switch (plan-environment-templates, the switching addendum), drawn
+                 with /template-offer.js. -->
+            <div class="hc-sheet" id="env-sheet-template" role="tabpanel" aria-labelledby="env-tab-template" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-template-title">
+                <h2 class="hc-part-name" id="env-template-title">Template</h2>
+                <dl class="hc-facts" id="env-template-facts"></dl>
+                <div class="template-skipped" id="env-template-skipped" hidden></div>
+                <div class="hc-inline" id="env-template-switch">
+                  <select id="env-template-select" aria-label="Template"></select>
+                  <button class="btn" id="env-template-switch-btn" type="button" disabled>Switch template</button>
+                </div>
+                <p class="status" id="env-template-status" role="status" hidden></p>
+              </section>
+              <section class="sdk-panel hc-part" aria-labelledby="env-offer-title">
+                <h2 class="hc-part-name" id="env-offer-title">What the template offers</h2>
+                <p class="sdk-hint" id="env-offer-none"></p>
+                <div class="sdk-banner" data-kind="info" id="env-offer-note" role="status" hidden>
+                  <span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
+                  <span class="sdk-banner-text" id="env-offer-note-text"></span>
+                  <button class="btn btn-small sdk-banner-action" id="env-offer-review" type="button">Review</button>
+                </div>
+                <div id="env-offer" hidden></div>
+              </section>
+            </div>
+
+            <div class="hc-sheet" id="env-sheet-owners" role="tabpanel" aria-labelledby="env-tab-owners" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-owners-title">
+                <h2 class="hc-part-name" id="env-owners-title">Owners and two-step</h2>
+                <p class="sdk-hint">An owner locked out of their authenticator app: reset their second factor by their login.</p>
+                <form class="hc-inline" id="owner-reset" autocomplete="off">
+                  <input name="login" type="text" maxlength="40" placeholder="their login" aria-label="Owner login" autocapitalize="off" required>
+                  <button class="btn" type="submit">Reset their second factor</button>
+                </form>
+                <p class="status" id="owner-reset-status" role="status" hidden></p>
+                <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, from the list's
+                     awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
+                <div class="first-password" data-slot="first-password" hidden>
+                  <div data-slot="first-password-rows"></div>
+                  <div class="first-password-made" data-slot="first-password-made" hidden>
+                    <div class="row">
+                      <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
+                      <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
+                      <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
+                    </div>
+                    <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
+                  </div>
+                  <span class="status" data-slot="first-password-status" role="status" hidden></span>
+                </div>
+              </section>
+            </div>
+
+            <div class="hc-sheet" id="env-sheet-backups" role="tabpanel" aria-labelledby="env-tab-backups" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-download-title">
+                <h2 class="hc-part-name" id="env-download-title">Download</h2>
+                <p class="sdk-hint">A zip of everything in this environment.</p>
+                <button class="btn" id="env-backup" type="button"><i class="fa-solid fa-download fa-fw" aria-hidden="true"></i><span>Download a backup</span></button>
+              </section>
+              <section class="sdk-panel hc-part" aria-labelledby="env-restore-title">
+                <h2 class="hc-part-name" id="env-restore-title">Restore</h2>
+                <p class="sdk-hint">Replaces everything in the environment with the backup.</p>
+                <input id="env-restore-file" type="file" accept=".zip,application/zip" aria-label="Backup file">
+                <button class="btn btn-danger" id="env-restore" type="button" disabled><i class="fa-solid fa-rotate-left fa-fw" aria-hidden="true"></i><span>Restore a backup</span></button>
+              </section>
+              <p class="sdk-hint">Backups are a download. Nothing is kept on the host, and there is no schedule.</p>
+            </div>
+
+            <div class="hc-sheet" id="env-sheet-danger" role="tabpanel" aria-labelledby="env-tab-danger" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-danger-title">
+                <h2 class="hc-part-name" id="env-danger-title">Danger zone</h2>
+                <div class="hc-danger-row">
+                  <div class="hc-danger-text"><b id="env-suspend-title"></b><span class="sdk-hint" id="env-suspend-text"></span></div>
+                  <button class="btn" id="env-suspend" type="button"></button>
+                </div>
+                <div class="hc-danger-row">
+                  <div class="hc-danger-text"><b>Delete this environment</b><span class="sdk-hint">It is moved aside, not erased.</span></div>
+                  <button class="btn btn-danger" id="env-delete" type="button"><i class="fa-solid fa-trash fa-fw" aria-hidden="true"></i><span>Delete</span></button>
+                </div>
+                <p class="sdk-hint">To bring back a backup, see <button class="linklike" type="button" data-env-tab="backups">Backups</button>.</p>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======== Templates (plan-environment-templates, addendum 2): the list, Import, New, and the editor ======== -->
+        <section class="hc-section" id="section-templates" data-section="templates" aria-labelledby="templates-title" hidden>
+          <div class="hc-view" id="templates-list-view">
+            <div class="hc-head">
+              <h1 class="hc-title" id="templates-title" tabindex="-1">Templates</h1>
+              <div class="hc-head-actions">
+                <button class="btn" id="template-import" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i><span>Import file</span></button>
+                <input id="template-import-file" type="file" accept=".json,application/json" hidden>
+                <button class="btn btn-primary" id="template-new" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>New template</span></button>
+              </div>
+            </div>
+            <p class="sdk-hint">What a new environment can be made from. Edits to a bundled template stay over the one <span id="template-shipped-by">shipped</span>. Hidden templates aren't offered for new environments; the ones using them keep them.</p>
+            <p class="status hc-status" id="templates-status" role="status" hidden></p>
+            <ul class="template-notices" id="template-notices"></ul>
+            <section class="sdk-panel hc-part" id="template-compare" aria-labelledby="template-compare-title" hidden>
+              <h2 class="hc-part-name" id="template-compare-title">Review</h2>
+              <p class="sdk-hint">The shipped template is on the left. Yours is on the right.</p>
+              <div class="template-compare-head"><span></span><span>Shipped</span><span>Yours</span></div>
+              <div id="template-compare-fields"></div>
+              <div class="row-actions">
+                <button class="btn btn-small" id="template-take-shipped" type="button">Take the new version</button>
+                <button class="btn btn-small btn-primary" id="template-keep-mine" type="button">Keep mine</button>
+                <button class="btn btn-small" id="template-compare-close" type="button">Close</button>
+              </div>
+            </section>
+            <div class="hc-listbox">
+              <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+              <div class="sdk-table-wrap hc-wrap">
+                <table class="sdk-table hc-tpls" aria-label="Templates">
+                  <thead><tr><th scope="col">Template</th><th scope="col">Kind</th><th scope="col">Version</th><th scope="col">Used by</th><th scope="col">Hidden</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                  <tbody id="template-list"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- The editor (#templates/<id>, or #templates/new): its parts with a jump list at the side (a strip on a phone). -->
+          <div class="hc-view" id="template-editor-view" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="templates"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Templates</span></button>
+            <form class="hc-column template-editor" id="template-editor" novalidate>
+              <div class="hc-head">
+                <h1 class="hc-title" id="template-editor-title" tabindex="-1">New template</h1>
+                <div class="hc-head-actions">
+                  <button class="btn btn-primary" type="submit" id="te-save"><i class="fa-solid fa-floppy-disk fa-fw" aria-hidden="true"></i><span>Save template</span></button>
+                  <button class="btn" type="button" id="te-cancel">Cancel</button>
+                </div>
+              </div>
+              <p class="status" id="te-status" role="status"></p>
+              <p class="sdk-hint" id="te-bundled-hint" hidden>Your edits are kept over the shipped template.</p>
+              <p class="sdk-hint">Words, phases, the home icon and module names and icons reach every environment using the template at once. The rest is applied once: owners are offered it, never forced.</p>
+              <ul class="problems" id="tp-problems"></ul>
+              <div class="hc-editor">
+                <nav class="subtabs hc-jump" id="te-jump" aria-label="Parts of the template">
+                  <button class="subtab" type="button" data-part="te-part-basics">Basics</button>
+                  <button class="subtab" type="button" data-part="te-part-words">Words and verbs</button>
+                  <button class="subtab" type="button" data-part="te-part-home">Home icon</button>
+                  <button class="subtab" type="button" data-part="te-part-modules">Modules</button>
+                  <button class="subtab" type="button" data-part="te-part-new">New environments</button>
+                  <button class="subtab" type="button" data-part="te-part-phases">Phases</button>
+                  <button class="subtab" type="button" data-part="te-part-reactions">Reactions</button>
+                  <button class="subtab" type="button" data-part="te-part-theme">Theme</button>
+                  <button class="subtab" type="button" data-part="te-part-icons">Icons</button>
+                </nav>
+                <div class="hc-parts">
+                  <fieldset class="sdk-panel hc-part" id="te-part-basics" tabindex="-1">
+                    <legend class="hc-part-name">Basics</legend>
+                    <div class="fields">
+                      <label id="te-id-label">Id<input id="te-id" type="text" maxlength="32" pattern="[a-z][a-z0-9\-]*" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="travel"></label>
+                      <label>Name<input id="te-name" type="text" maxlength="40" autocomplete="off"></label>
+                      <label class="wide">Description <span class="sdk-optional">(optional)</span><input id="te-description" type="text" maxlength="200" autocomplete="off"></label>
+                    </div>
+                    <ul class="problems" data-problems="id name description"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-words" tabindex="-1">
+                    <legend class="hc-part-name">Words and verbs</legend>
+                    <p class="sdk-hint">Leave a word blank for the default. Give both the singular and the plural.</p>
+                    <div id="te-words"></div>
+                    <div id="te-verbs"></div>
+                    <ul class="problems" data-problems="words verbs"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-home" tabindex="-1">
+                    <legend class="hc-part-name">Home icon</legend>
+                    <div class="icon-field"><i class="fa-solid fa-house fa-fw" id="te-home-preview" aria-hidden="true"></i><input id="te-home" type="text" maxlength="40" placeholder="house (a Font Awesome name)" aria-label="Home icon, a Font Awesome name" autocapitalize="off" spellcheck="false"></div>
+                    <ul class="problems" data-problems="icons"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-modules" tabindex="-1">
+                    <legend class="hc-part-name">Modules</legend>
+                    <p class="sdk-hint">Turned on in every space of a new environment. The Lobby keeps only chat, the call and modules made for it.</p>
+                    <div class="template-modules" id="te-modules"></div>
+                    <ul class="problems" data-problems="modules"></ul>
+                    <details class="te-module-display">
+                      <summary>Module names and icons</summary>
+                      <p class="sdk-hint">Blank for the module's own.</p>
+                      <div id="te-module-display"></div>
+                    </details>
+                    <ul class="problems" data-problems="moduleNames moduleIcons"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-new" tabindex="-1">
+                    <legend class="hc-part-name">New environments</legend>
+                    <div class="fields">
+                      <label>Lobby name<input id="te-lobby-name" type="text" maxlength="40" placeholder="Lobby"></label>
+                      <label>New spaces use<select id="te-profile"><option value="">The usual profile</option><option value="roleplaying">Roleplaying</option><option value="participants">Participants</option><option value="characters">Characters</option></select></label>
+                      <label class="wide">Lobby description <span class="sdk-optional">(optional)</span><input id="te-lobby-description" type="text" maxlength="300"></label>
+                    </div>
+                    <p class="sdk-hint">What a new space opens, in this order. The ticks are the template's modules, including chat and the conference.</p>
+                    <div id="te-opens"></div>
+                    <ul class="problems" data-problems="lobby spaceDefaults settings"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-phases" tabindex="-1">
+                    <legend class="hc-part-name">Phases</legend>
+                    <p class="sdk-hint">Up to 12. An id is lowercase letters, digits and dashes. One may be the main phase.</p>
+                    <div id="te-phases"></div>
+                    <button class="btn btn-small" id="te-phase-add" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>Add a phase</span></button>
+                    <ul class="problems" data-problems="phases"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-reactions" tabindex="-1">
+                    <legend class="hc-part-name">Reactions</legend>
+                    <label class="sdk-choice-row"><input id="te-reactions-on" type="checkbox"><span class="sdk-choice-text">Give reactions</span></label>
+                    <div id="te-reactions-box" hidden>
+                      <div class="reactions-list" id="te-reactions"></div>
+                      <button class="btn btn-small" id="te-reaction-add" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>Add a reaction</span></button>
+                    </div>
+                    <ul class="problems" data-problems="reactions"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-theme" tabindex="-1">
+                    <legend class="hc-part-name">Theme</legend>
+                    <p class="sdk-hint" id="te-theme-name">None: environments keep their own theme.</p>
+                    <div class="row">
+                      <button class="btn btn-small" id="te-theme-pick" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i><span>Choose a theme file</span></button>
+                      <input id="te-theme-file" type="file" accept=".json,application/json" hidden>
+                      <button class="btn btn-small" id="te-theme-clear" type="button" hidden>No theme</button>
+                    </div>
+                    <ul class="problems" data-problems="theme"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-icons" tabindex="-1">
+                    <legend class="hc-part-name">Icons</legend>
+                    <p class="sdk-hint">Font Awesome names, separated by spaces, added to an environment's icon list. At most 60.</p>
+                    <textarea id="te-icon-set" rows="2" autocapitalize="off" spellcheck="false" aria-label="Icons, Font Awesome names separated by spaces" placeholder="dice compass map"></textarea>
+                    <div class="offer-icons" id="te-icon-preview" aria-hidden="true"></div>
+                    <ul class="problems" data-problems="iconSet"></ul>
+                  </fieldset>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <template id="tpl-te-reaction">
+            <div class="reaction-row">
+              <input class="reaction-glyph" type="text" maxlength="8" placeholder="🙂" aria-label="Emoji">
+              <input class="reaction-label" type="text" maxlength="40" placeholder="Label" aria-label="Label">
+              <button class="btn btn-small danger" data-action="te-reaction-remove" type="button">Remove</button>
+            </div>
+          </template>
+        </section>
+        <!-- ======== Modules: read only for now (plan-host-console.md, decision 2) ======== -->
+        <section class="hc-section" id="section-modules" data-section="modules" aria-labelledby="modules-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="modules-title" tabindex="-1">Modules</h1></div>
+          <p class="sdk-hint">The modules this host ships. Read only: installing and updating come later. Each environment installs and turns on its own, in its Manage.</p>
+          <div class="hc-listbox">
+            <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+            <div class="sdk-table-wrap hc-wrap">
+              <table class="sdk-table" aria-label="Modules">
+                <thead><tr><th scope="col">Module</th><th scope="col">Kind</th></tr></thead>
+                <tbody id="module-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======== Plans: read only for now ======== -->
+        <section class="hc-section" id="section-plans" data-section="plans" aria-labelledby="plans-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="plans-title" tabindex="-1">Plans</h1></div>
+          <p class="sdk-hint">What an environment may use, by plan. Read only: changing plans comes later. One environment's own caps are on its page. Free is what sign-up makes and what a past-due environment goes back to after 14 days.</p>
+          <div class="hc-listbox">
+            <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+            <div class="sdk-table-wrap hc-wrap">
+              <table class="sdk-table hc-plans" aria-label="Plans">
+                <thead><tr><th scope="col">Plan</th><th scope="col" class="num">Members</th><th scope="col" class="num">Storage (GB)</th><th scope="col" class="num">AI calls a month</th><th scope="col" class="num">Calls at once</th><th scope="col">Modules</th><th scope="col" class="num">Environments</th></tr></thead>
+                <tbody id="plan-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======== Server: the host, your two-step sign-in, host admins, AI, Maps, the flight schedule ======== -->
+        <section class="hc-section" id="section-server" data-section="server" aria-labelledby="server-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="server-title" tabindex="-1">Server</h1></div>
+          <nav class="subtabs hc-jump hc-jump-row" id="server-jump" aria-label="Parts of the server">
+            <button class="subtab" type="button" data-part="server-host">The host</button>
+            <button class="subtab" type="button" data-part="host-mfa-panel">Your two-step sign-in</button>
+            <button class="subtab" type="button" data-part="server-admins">Host admins</button>
+            <button class="subtab" type="button" data-part="ai-panel">AI</button>
+            <button class="subtab" type="button" data-part="shared-panel">Maps</button>
+            <button class="subtab" type="button" data-part="flight-schedule-section">Flight schedule</button>
+          </nav>
+          <div class="hc-parts">
+            <section class="sdk-panel hc-part" id="server-host" tabindex="-1" aria-labelledby="server-host-title">
+              <h2 class="hc-part-name" id="server-host-title">The host</h2>
+              <dl class="hc-facts" id="host-facts"></dl>
+              <div class="row"><button class="btn" id="host-logout" type="button"><i class="fa-solid fa-right-from-bracket fa-fw" aria-hidden="true"></i><span>Sign out of the host</span></button></div>
+            </section>
+            <section class="sdk-panel hc-part" id="host-mfa-panel" tabindex="-1" aria-labelledby="host-mfa-title" hidden>
+              <div class="section-head">
+                <h2 class="hc-part-name" id="host-mfa-title">Your two-step sign-in</h2>
+                <span class="sdk-status" id="host-mfa-state">off</span>
+                <span class="status" id="host-mfa-status"></span>
+              </div>
+              <p class="sdk-hint" id="host-mfa-hint">A code from an authenticator app after the password, for this host admin account. HOST_MFA_REQUIRED on the server makes it mandatory for every host admin.</p>
+              <div class="row">
+                <button class="btn btn-primary btn-small" id="host-mfa-on" type="button" hidden>Turn on</button>
+                <button class="btn btn-small" id="host-mfa-off" type="button" hidden>Turn off</button>
+                <button class="btn btn-danger btn-small" id="host-mfa-reset" type="button" hidden>Reset my second factor</button>
+              </div>
+              <div class="mfa-block" id="host-mfa-block" hidden></div>
+            </section>
+            <section class="sdk-panel hc-part" id="server-admins" tabindex="-1" aria-labelledby="server-admins-title">
+              <div class="section-head">
+                <h2 class="hc-part-name" id="server-admins-title">Host admins</h2>
+                <span class="status" id="admins-status" role="status"></span>
+              </div>
+              <div class="sdk-table-wrap hc-wrap">
+                <table class="sdk-table" aria-label="Host admins">
+                  <thead><tr><th scope="col">Login</th><th scope="col">Two-step</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                  <tbody id="admins"></tbody>
+                </table>
+              </div>
+              <form id="admin-form" class="fields" autocomplete="off">
+                <label>Login<input id="admin-login" type="text" maxlength="40" required autocapitalize="off"></label>
+                <label>Password<span class="row reveal-row"><input id="admin-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="admin-password" aria-pressed="false">Show</button></span></label>
+                <div class="row"><button class="btn" type="submit">Add a host admin</button></div>
+              </form>
+            </section>
+
+            <section class="sdk-panel hc-part module-config" id="ai-panel" tabindex="-1" aria-labelledby="ai-title">
+              <div class="section-head">
+                <h2 class="hc-part-name" id="ai-title">AI</h2>
+                <span class="status" id="ai-status"></span>
+              </div>
+              <p class="sdk-hint">The AI services this host offers every environment, one per company: set a key here and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key is set here only; it stays on the host and is never shown to an environment.</p>
+              <div id="ai-services" class="ai-services"></div>
+            </section>
+
+            <section class="sdk-panel hc-part module-config" id="shared-panel" tabindex="-1" aria-labelledby="shared-title" hidden>
+              <div class="section-head">
+                <h2 class="hc-part-name" id="shared-title">Maps</h2>
+                <span class="status" id="shared-status"></span>
+              </div>
+              <p class="sdk-hint" id="shared-hint">The map every environment shows: the files in the host's own folder, all of them together. Only a host admin puts files here or cuts a region. Copy a PMTiles file into the folder below, or cut one from a world file.</p>
+              <p class="sdk-hint hc-folder"><code id="shared-folder"></code></p>
+              <div id="shared-files"></div>
+              <form class="shared-address" id="shared-address-form">
+                <label class="field-label" for="shared-address">World map address</label>
+                <div class="hc-inline">
+                  <input id="shared-address" type="url" maxlength="500" placeholder="https://build.protomaps.com/20260924.pmtiles" autocomplete="off">
+                  <button class="btn btn-small" type="submit">Save address</button>
+                </div>
+                <p class="sdk-hint">The world PMTiles file that regions are cut from. Protomaps publishes a daily build at <code>https://build.protomaps.com/YYYYMMDD.pmtiles</code>, where YYYYMMDD is the build's date, such as 20260924; any recent date works.</p>
+              </form>
+              <!-- the same region-cut block as module-config.html, driven by public/region-cut.js -->
+              <div class="region-section" id="cfg-region" hidden>
+                <h3>Add a region</h3>
+                <p class="sdk-hint">Type a place — a country, a city, a region — and the host will find it, show roughly how large the cut would be, and add it to the files above once you confirm. Nothing downloads until you say so. For basic coverage everywhere, skip the search and <button type="button" class="linklike" id="region-world-btn">cover the whole world</button> instead, at a low zoom — meant to sit underneath detailed regional cuts, not replace them.</p>
+                <form class="hc-inline" id="region-find-form">
+                  <input type="text" id="region-q" placeholder="Mexico, Lisbon, the Algarve..." maxlength="200" autocomplete="off" aria-label="Find a region">
+                  <button class="btn btn-primary btn-small" type="submit" id="region-find-btn">Find it</button>
+                  <span class="status" id="region-find-status" role="status"></span>
+                </form>
+                <div class="region-confirm" id="region-confirm" hidden>
+                  <p id="region-confirm-name"></p>
+                  <div class="row">
+                    <label>Minimum zoom <input type="number" id="region-min-zoom" min="0" max="15" value="0" step="1"></label>
+                    <label>Maximum zoom <input type="number" id="region-zoom" min="0" max="15" value="14" step="1"></label>
+                    <label>File name <input type="text" id="region-filename" maxlength="100"></label>
+                    <label class="sdk-choice-row"><input type="checkbox" id="region-replace"><span class="sdk-choice-text">Replace a file already there with that name</span></label>
+                  </div>
+                  <p class="sdk-hint">Maximum zoom is how much detail the cut keeps, not how far it covers. 10 or below shows towns and the roads between them, not individual streets; 14, the default, shows streets and buildings; 15 is the most detail this can offer. Higher means a far bigger file for the same area. Minimum zoom trims the shallow end: leave it at 0 for a file meant to stand alone, or raise it when a wider, lower-zoom file already covers those zooms. Check size shows the real cost before anything downloads.</p>
+                  <div class="row">
+                    <button class="btn btn-small" type="button" id="region-estimate-btn">Check size</button>
+                    <span class="status" id="region-estimate-status" role="status"></span>
+                  </div>
+                  <div class="row">
+                    <button class="btn btn-primary btn-small" type="button" id="region-cut-btn" disabled>Cut and add</button>
+                    <button class="btn btn-small" type="button" id="region-cancel-btn">Cancel</button>
+                  </div>
+                </div>
+                <div class="region-progress" id="region-progress" hidden>
+                  <p id="region-progress-name"></p>
+                  <progress class="sdk-progress" max="100" value="0" id="region-progress-bar" aria-label="Progress"></progress>
+                  <p class="sdk-hint" id="region-progress-message"></p>
+                </div>
+              </div>
+            </section>
+
+            <!-- The flight schedule (plan-flight-lookup.md, step 5): one for the whole host, learned from every environment's saved flights; drawn by /flight-schedule.js on /api/host/flight-schedule. -->
+            <section class="sdk-panel hc-part flight-schedule sdk-groups" tabindex="-1" id="flight-schedule-section" hidden>
+              <div class="sdk-stack">
+              <div class="section-head">
+                <h2>Flight schedule</h2>
+                <span class="status" id="flight-schedule-status" role="status" aria-live="polite"></span>
+              </div>
+              <p id="flight-schedule-count">This server has learned 0 flights from saved trips.</p>
+              <p class="sdk-hint">Flights people save in their trips teach this server when each flight number usually flies, so a later lookup can fill it in. It keeps the airline, the airports, the times and the terminal, never who flew.</p>
+              </div>
+              <form class="flight-forget" id="flight-forget-form" autocomplete="off">
+                <label class="field-label" for="flight-forget-number">Flight number</label>
+                <div class="hc-inline">
+                  <input id="flight-forget-number" type="text" maxlength="20" placeholder="WN 2483" autocapitalize="characters" spellcheck="false">
+                  <button class="btn" type="submit">Forget a flight</button>
+                </div>
+              </form>
+              <div class="row danger-row"><button class="btn btn-small btn-danger" id="flight-clear" type="button">Clear all</button></div>
+            </section>
+          </div>
+
+          <template id="tpl-ai-service">
+            <form class="ai-service" autocomplete="off">
+              <div class="ai-service-head">
+                <strong data-slot="name"></strong>
+                <span class="sdk-status" data-slot="offered"></span>
+              </div>
+              <div class="ai-key" data-slot="address-row" hidden>
+                <label class="ai-label" for="ai-address-compatible">Address</label>
+                <input id="ai-address-compatible" name="address" type="url" maxlength="300" placeholder="https://">
+                <p class="sdk-hint">The server's root, or ending in /v1.</p>
+              </div>
+              <div class="ai-key" data-slot="workspace-row" hidden>
+                <label class="ai-label" for="ai-workspace-anthropic">Workspace id</label>
+                <input id="ai-workspace-anthropic" name="workspace" type="text" maxlength="100" placeholder="wrkspc_..." autocomplete="off" spellcheck="false">
+                <p class="sdk-hint">Only for a key made at the organisation level in the Anthropic console, which Anthropic then asks to name a workspace. A key made inside a workspace needs nothing here.</p>
+              </div>
+              <div class="ai-key">
+                <div class="ai-label">Key</div>
+                <div class="ai-key-row">
+                  <span class="sdk-status" data-slot="key-state">not set</span>
+                  <input name="key" type="password" maxlength="300" placeholder="paste a new key" autocomplete="new-password" aria-label="Key" hidden>
+                  <button class="btn btn-small" type="button" data-action="key-replace">Set a key</button>
+                  <button class="btn btn-small btn-danger" type="button" data-action="key-clear" hidden>Remove the key</button>
+                </div>
+                <p class="sdk-hint" data-slot="key-help"></p>
+              </div>
+              <div class="ai-model">
+                <div class="ai-label">Model</div>
+                <div class="ai-model-row">
+                  <select name="model" aria-label="Model"></select>
+                  <input name="model-text" type="text" maxlength="100" placeholder="the model's name" aria-label="Model" hidden>
+                  <button class="btn btn-small" type="button" data-action="models-refresh" title="Load the list of models again"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
+                </div>
+                <p class="sdk-hint" data-slot="models-hint"></p>
+                <button class="linklike" type="button" data-action="model-manual" hidden>Type a model name instead</button>
+              </div>
+              <div class="row"><button class="btn btn-primary btn-small" type="submit">Save</button><span class="status" data-slot="status" role="status"></span></div>
+            </form>
+          </template>
+        </section>
+      </div>
     </div>
   </main>
 
-  <template id="tpl-environment">
-    <section class="panel environment">
-      <div class="section-head">
-        <h2><a data-slot="link" target="_blank" rel="noopener"><span data-slot="name"></span></a> <code data-slot="slug"></code></h2>
-        <span class="sdk-status" data-slot="status"></span>
-        <span class="grow"></span>
-        <button class="btn btn-small" data-action="plan" type="button">Edit</button>
-        <button class="btn btn-small" data-action="backup" type="button">Backup</button>
-        <button class="btn btn-small" data-action="restore" type="button">Restore backup</button>
-        <input type="file" accept=".zip,application/zip" data-slot="restore-file" hidden>
-        <button class="btn btn-small" data-action="suspend" type="button">Suspend</button>
-        <button class="btn btn-small danger" data-action="delete" type="button">Delete</button>
-      </div>
-      <div class="refused" data-slot="refused" role="status" hidden></div>
-      <dl class="facts" data-slot="facts"></dl>
-      <div class="template-skipped" data-slot="template-skipped" hidden></div>
-      <!-- Switching its template, and the offer after a switch (plan-environment-templates, the switching addendum):
-           drawn by host.js with /template-offer.js; hidden when the host has no templates. -->
-      <div class="env-template" data-slot="template-box" hidden>
-        <div class="row">
-          <label class="env-template-pick">Template <select data-slot="template-select"></select></label>
-          <button class="btn btn-small" data-action="template-switch" type="button" disabled>Switch</button>
-          <span class="status" data-slot="template-status" role="status" hidden></span>
-        </div>
-        <div class="row" data-slot="template-offer-note" hidden>
-          <span class="hint" data-slot="template-offer-note-text"></span>
-          <button class="btn btn-small btn-primary" data-action="template-review" type="button">Review</button>
-        </div>
-        <div data-slot="template-offer" hidden></div>
-      </div>
-      <form class="row owner-reset" data-slot="owner-reset" autocomplete="off">
-        <span class="hint">An owner locked out of their authenticator app:</span>
-        <input name="login" type="text" maxlength="40" placeholder="their login" autocapitalize="off" required>
-        <button class="btn btn-small danger" type="submit">Reset their second factor</button>
-        <span class="status" data-slot="owner-reset-status"></span>
-      </form>
-      <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, drawn by host.js from the
-           list's awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
-      <div class="first-password" data-slot="first-password" hidden>
-        <div data-slot="first-password-rows"></div>
-        <div class="first-password-made" data-slot="first-password-made" hidden>
-          <div class="row">
-            <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
-            <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
-            <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
-          </div>
-          <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
-        </div>
-        <span class="status" data-slot="first-password-status" role="status" hidden></span>
-      </div>
-      <form class="plan-form" data-slot="plan-form" hidden>
-        <h3>Edit</h3>
-        <p class="hint">The name is what the environment calls itself and what the product page lists; the slug (its address) is fixed. Choosing a plan fills the caps from the catalog; adjust them here for this environment alone. Empty caps mean no cap.</p>
-        <div class="fields">
-          <label>Name<input name="name" type="text" maxlength="60" required></label>
-          <label>Plan<select name="planName"></select></label>
-          <label>Modules<select name="modules"><option value="all">All installed</option><option value="list">Only these</option></select></label>
-          <label class="modules-list" data-slot="modules-list" hidden>Allowed modules (ids, one per line)<textarea name="moduleIds" rows="3"></textarea></label>
-        </div>
-        <div class="fields">
-          <label>Members (cap) <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
-          <label>Storage (GB, cap) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="1" step="0.5" placeholder="no cap"></label>
-          <label>AI calls per month (cap) <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
-          <label>Concurrent calls (cap) <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-primary" type="submit">Save</button>
-          <button class="btn btn-quiet" data-action="plan-cancel" type="button">Cancel</button>
-          <span class="status" data-slot="plan-status"></span>
-        </div>
-      </form>
-    </section>
-  </template>
-  <template id="tpl-admin"><div class="sdk-row list-row"><span data-slot="login"></span><span class="grow"></span><button class="btn btn-small" data-action="remove-admin" type="button">Remove</button></div></template>
 
   <script type="module" src="/host.js"></script>
 </body>
