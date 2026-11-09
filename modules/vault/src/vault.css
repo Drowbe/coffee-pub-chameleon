@@ -115,7 +115,6 @@
 .vt-where { align-self: stretch; }
 /* Who can see what is added: the label, three choices, then Choose people with the names, and one sentence */
 .vt-who { display: flex; flex-direction: column; gap: var(--space-2); }
-.vt-who .sdk-choice-list { gap: var(--space-2); }
 .vt-who-label { color: var(--vt-dim); }
 .vt-who-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .vt-who-names { min-width: 0; color: var(--text-primary); font-size: var(--text-13); overflow-wrap: anywhere; }
@@ -143,7 +142,4 @@
 /* Touch and narrow: the Vault's own small buttons are 44px targets (the name is the whole row or card: its cover is the target). */
 @media (pointer: coarse), (max-width: 640px) {
   .vt-app :is(.menu-btn, .vt-up .btn, .vt-up .sdk-icon-btn, #add-close, .vt-more .btn, #who-change) { --btn-h: 44px; }
-}
-@container vault (max-width: 430px) {
-  .vt-who .sdk-choice-row { min-height: 44px; }
 }

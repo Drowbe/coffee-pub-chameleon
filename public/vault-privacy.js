@@ -18,6 +18,7 @@ import { api, word } from '/brand.js';
 import { openHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
 import { h, fa, btn } from '/file-viewer-views.js';
+import { actionBar } from '/action-bar.js';
 
 export const LIMIT = 200;
 const SHOWN = 30; // people listed at a time in the picker; a search finds the rest
@@ -81,11 +82,15 @@ export async function choosePeople({ doc = document, members, chosen = [], adder
     closeBtn.append(fa('xmark'));
     head.append(title, closeBtn);
     const body = h('div', 'sdk-dialog-body vp-pickbody');
-    const foot = h('div', 'sdk-dialog-foot');
-    const cancel = h('button', 'btn', 'Cancel'); cancel.type = 'button'; cancel.dataset.close = '';
-    const done = h('button', 'btn btn-primary', 'Done'); done.type = 'button'; done.dataset.ok = '';
-    foot.append(cancel, done);
-    dlg.append(head, body, foot);
+    const first = [...st.chosen].sort().join('\n');
+    // The shared action bar: Done is on once the choice changed; Cancel, Close and Escape ask first when it was changed.
+    const bar = actionBar({
+      label: 'Who can see this', doc, saveLabel: 'Done',
+      dirty: () => [...st.chosen].sort().join('\n') !== first,
+      onCancel: () => { if (!busy) end(null); },
+      onSave: () => accept(),
+    });
+    dlg.append(head, body, bar.el);
 
     const fail = h('div', 'sdk-banner vp-error');
     fail.dataset.kind = 'danger'; fail.setAttribute('role', 'alert'); fail.hidden = true;
@@ -181,28 +186,31 @@ export async function choosePeople({ doc = document, members, chosen = [], adder
       resolve(value);
     };
     async function accept() {
-      if (busy) return;
+      if (busy) return false;
       const keys = [...st.chosen];
-      if (!save) { end(keys); return; }
-      busy = true; done.disabled = true; dlg.setAttribute('aria-busy', 'true'); fail.hidden = true;
+      if (!save) { end(keys); return true; }
+      busy = true; dlg.setAttribute('aria-busy', 'true'); fail.hidden = true;
       try {
         const out = await save(keys);
-        if (out === false) return;
+        if (out === false) return false;
         end(keys);
+        return true;
       } catch {
         fail.hidden = false;
         body.scrollTop = 0;
+        return false;
       } finally {
-        busy = false; done.disabled = false; dlg.removeAttribute('aria-busy');
-        if (!ended) done.focus({ preventScroll: true });
+        busy = false; dlg.removeAttribute('aria-busy');
+        if (!ended) bar.saveButton.focus({ preventScroll: true });
       }
     }
-    dlg.addEventListener('cancel', (e) => { e.preventDefault(); if (!busy) end(null); });
-    dlg.addEventListener('click', (e) => {
-      if (e.target === dlg) return; // a click outside does not close it: a long choice is not lost by a slip
-      if (e.target.closest('[data-close]') && !busy) end(null);
-      else if (e.target.closest('[data-ok]')) accept();
-    });
+    bar.bindEscape(dlg);
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); bar.requestCancel(); });
+    // A click outside the dialog does nothing: only the buttons and Escape close it.
+    closeBtn.addEventListener('click', () => bar.requestCancel());
+    const redraw = () => bar.refresh();
+    chips.addEventListener('click', redraw);
+    list.addEventListener('change', redraw);
     drawChips(); drawList();
     doc.body.append(dlg);
     root.style.overflow = 'hidden';
