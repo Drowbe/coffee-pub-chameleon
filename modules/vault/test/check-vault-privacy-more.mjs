@@ -92,13 +92,13 @@ try {
   r.check((await tab.eval(COUNT('.vp-who-info'))) === 0, 'a file for everyone has no "Who can see this" block for a member');
   await tab.close();
 
-  // The share sheet for a restricted file says the link ends.
+  // The share sheet for a restricted file says the link stops showing it.
   tab = await openVault(env, browser, 'lee');
   await openWindow(tab, 'Only for Lee.png');
   await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => /Share/.test(b.innerText)).click()`);
   await tab.waitFor('dialog.sh-sheet[open] .sh-restrict');
   const sh = await tab.eval(TEXT('dialog.sh-sheet .sh-restrict'));
-  r.check(/Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with\. The link ends if you can no longer see the file\./.test(sh), `the share sheet says it (${sh})`);
+  r.check(/Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with\. If you can no longer see it, the link stops showing it\./.test(sh), `the share sheet says it (${sh})`);
   await inBoth(tab, async (mode) => { await shot(tab, `share-sheet-1280-${mode}`); });
   await tab.close();
 

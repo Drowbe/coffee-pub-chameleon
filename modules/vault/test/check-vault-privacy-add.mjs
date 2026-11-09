@@ -89,7 +89,10 @@ try {
   r.check((await tab.eval(TEXT('.vp-count'))) === '3 of 200 chosen', 'Space ticks the focused person');
   await key(tab, 'Escape', 'Escape', 27);
   await sleep(300);
-  r.check((await tab.eval(COUNT(PICKER))) === 0, 'Escape closes the picker');
+  r.check((await tab.eval(COUNT(PICKER))) === 1 && (await tab.eval(`!document.querySelector('${PICKER} .action-bar-ask').hidden`)), 'Escape on a changed choice asks "Discard changes?" first');
+  await tab.click(`${PICKER} .action-bar-discard`);
+  await sleep(300);
+  r.check((await tab.eval(COUNT(PICKER))) === 0, 'Discard closes the picker');
   r.check(/Choose people/.test(await tab.eval(TEXT('#who-change'))), 'cancelling changes nothing (still Choose people)');
   await tab.click('#module-frame >>> #who-change');
   await tab.waitFor(PICKER);
@@ -190,7 +193,7 @@ try {
   await tab.click('#module-frame >>> #who-change');
   await tab.waitFor(PICKER);
   await sleep(300);
-  const ph = await tab.eval(`(() => { const d = document.querySelector('${PICKER}'); const b = d.getBoundingClientRect(); const rows = [...d.querySelectorAll('.vp-person')].map((e) => e.getBoundingClientRect().height); const btn = [...d.querySelectorAll('.btn')].map((e) => e.getBoundingClientRect().height); return { w: Math.round(b.width), vw: innerWidth, rows: Math.min(...rows), btn: Math.min(...btn) }; })()`);
+  const ph = await tab.eval(`(() => { const d = document.querySelector('${PICKER}'); const b = d.getBoundingClientRect(); const rows = [...d.querySelectorAll('.vp-person')].map((e) => e.getBoundingClientRect().height); const btn = [...d.querySelectorAll('.btn')].map((e) => e.getBoundingClientRect().height).filter((h) => h > 0); return { w: Math.round(b.width), vw: innerWidth, rows: Math.min(...rows), btn: Math.min(...btn) }; })()`);
   r.check(ph.w >= ph.vw - 40 && ph.rows >= 44 && ph.btn >= 44, `390: a sheet that fills the width, rows and buttons 44px (${JSON.stringify(ph)})`);
   await inBoth(tab, async (mode) => { await shot(tab, `picker-390-${mode}`); });
   await tab.close();

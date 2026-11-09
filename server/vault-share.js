@@ -208,6 +208,12 @@ function mountVaultShares(app, deps) {
     if (s.by !== ctx.by && !ctx.owner) return res.status(403).json({ error: `Only the person who made this share link, or ${word('owner', { a: true })}, can change it.` });
     const b = body(req);
     if (b.files !== undefined && s.download && !ctx.can('download')) return res.status(403).json({ error: `Your role can't download from ${ctx.name}, so you can't change the files of a link that allows it.` });
+    // A file the link's maker can't see is not one it can hold (openShare would never serve it): refused only when the change ADDS it (a file already on the link stays as it is) and the person changing it can see it, so the
+    // answer tells them nothing new; a file they can't see, or an unknown id, still gets the store's own "no such file".
+    if (Array.isArray(b.files) && b.files.length) {
+      const makerSees = makerCan(s.by, ctx.spaceId, ctx.manifest.id, s.download ? ['share', 'download'] : ['share']);
+      if (b.files.some((fid) => { if (s.files.includes(String(fid))) return false; const r = vault.get(ctx.manifest.id, ctx.spaceId, String(fid)); return Boolean(r) && ctx.sees(r) && !(makerSees && makerSees(r)); })) return res.status(400).json({ error: "The person who made this link can't see that file." });
+    }
     try {
       res.json({ share: seenShare(ctx, vault.updateShare(ctx.manifest.id, ctx.spaceId, s.id, { name: b.name, files: b.files, visible: ctx.sees })) });
     } catch (err) {

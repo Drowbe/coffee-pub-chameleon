@@ -493,6 +493,8 @@ try {
   same((await pub(kimLink.json.token, '', { ip: '10.0.10.1' })).status, 200, 'back in the space, it opens again');
   same((await send(S, 'DELETE', `/api/users/${kim.key}`, { cookie: admin })).status, 200, 'kim is deleted');
   same((await pub(kimLink.json.token, '', { ip: '10.0.10.1' })).json, ENDED, 'a maker who no longer exists: the link has ended');
+  same((await json('PATCH', shares(trip.id, kimLink.json.share.id), people.ola.token, { name: 'Kim\'s, renamed', files: [md.id] })).status, 200, 'a maker who no longer exists: an owner re-sends the unchanged list with a new name: 200');
+  same((await json('PATCH', shares(trip.id, kimLink.json.share.id), people.ola.token, { files: [md.id, pic.id] })).json, { error: "The person who made this link can't see that file." }, 'and adding a file to it: 400');
   await json('PATCH', `/api/spaces/${trip.id}`, admin, { members });
   // Pat is a plain member, so Roles decides what they may do (the moderators' space role grants everything).
   same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': true, 'module.vault.download': true })).status, 200, 'Roles: members may share and download');
@@ -541,6 +543,23 @@ try {
     same(bothNow.status, 200, 'the two-file link still opens');
     same(bothNow.json, { ...bothBefore.json, files: bothBefore.json.files.filter((f) => f.id !== seeA.id) }, 'with the file its maker can no longer see dropped out, and nothing else changed');
     ok(!bothNow.text.includes(seeA.id) && !bothNow.text.includes('sight-a'), 'its id and name are nowhere in the answer');
+    // An owner's PATCH may not name a file the link's maker can't see: it would never be served (and could leave the maker only able to turn the link off).
+    {
+      const HIDDEN_FROM_MAKER = { error: "The person who made this link can't see that file." };
+      const mine = await make(people.mo.token, { name: 'Sight patch', files: [seeB.id] });
+      const refusedHidden = await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeA.id] });
+      same([refusedHidden.status, refusedHidden.json], [400, HIDDEN_FROM_MAKER], 'an owner naming a file the maker can\'t see: 400, said plainly');
+      const refusedMixed = await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, seeA.id] });
+      same(refusedMixed.status, 400, 'also when it is one of several');
+      same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, md.id] })).status, 200, 'files the maker sees still go through');
+      same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { name: 'Sight patch 2' })).status, 200, 'and a rename');
+      const resent = await json('PATCH', shares(trip.id, both.json.share.id), people.ola.token, { name: 'Sight both, renamed', files: [seeA.id, seeB.id] });
+      same([resent.status, resent.json.share.name], [200, 'Sight both, renamed'], 'an owner re-sends the unchanged list with a new name while the maker has lost sight of one file: 200 (the share sheet always sends the list)');
+      same((await json('PATCH', shares(trip.id, both.json.share.id), people.ola.token, { name: 'Sight both' })).status, 200, 'and its name goes back, so the cases below see the link as made');
+      same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, seeA.id] })).json, HIDDEN_FROM_MAKER, 'adding that file to another link of the same maker is still refused');
+      same((await json('PATCH', shares(trip.id, ownerBoth.json.share.id), people.ola.token, { files: [seeA.id, seeB.id] })).status, 200, 'an owner-made link is unaffected: its maker sees every file');
+      await send(S, 'DELETE', shares(trip.id, mine.json.share.id), { cookie: admin });
+    }
     const notInSet = 'eeeeeeeeeeeeeeeeeeeeeeee';
     for (const rest of ['/content', '/content?download=1', '/thumb']) {
       const hidden = await pub(both.json.token, `/files/${seeA.id}${rest}`, ip);
