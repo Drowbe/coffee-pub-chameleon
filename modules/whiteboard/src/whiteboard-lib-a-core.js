@@ -107,8 +107,9 @@
   // { handles: 'ends', attach?: true } (a line: x, y, dx, dy; attach: a connector, whose ends are re-attached); no resize,
   // no handles }, linked?: [[field, ...], ...] (fields that only make sense together, such as a box's x, y, w and h: an
   // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
-  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline), and
-  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved).
+  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
+  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
+  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
   //
   // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
   // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,
