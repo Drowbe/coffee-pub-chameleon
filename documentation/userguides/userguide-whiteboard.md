@@ -24,13 +24,14 @@ The server checks both permissions on every save, so the board's buttons are a h
 
 The Whiteboard is a module like the others: open it from the **Layout** menu, under **Show**, and it opens on the canvas. It works only in a space; anywhere else it says it opens in a space.
 
-The board fills the module. The toolbar above it holds, from the left: the tool switch (**Select**, **Pen**, **Note**, **Text**, **Rectangle**, **Ellipse**, **Line** and **Arrow**), then the **Hand** and **Timer** buttons, the **Paint** and **Flowchart** menu buttons, **Undo**, **Redo**, **Text size and alignment**, **Line style and arrowheads**, **Select many** (touch screens only), **Delete** (while blocks are picked), **Arrange** (while two or more are picked) and **Snap to grid**, in that order. The title bar holds the **+**, which adds blocks, the zoom buttons and a menu with **Present**, **Background colour…**, **Save as image…** and **Print**. A small strip under the left end of the toolbar shows the colours and the line width (see "Colours and widths"). The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first.
+The board fills the module. The toolbar above it holds, from the left: one switch named **Tools** (**Select**, **Hand**, **Pen**, **Note**, **Text**, **Rectangle**, **Ellipse**, **Line** and **Arrow**, and **Select many** on touch screens only), then the **Timer** button, the **Paint** and **Flowchart** menu buttons, **Undo**, **Redo**, **Text size and alignment**, **Line style and arrowheads**, **Delete** (while blocks are picked) and **Arrange** (while two or more are picked). **Snap to grid** is the button at the far right. When the board is narrow, the last choices of **Tools** and then the other buttons fold into the toolbar's **More** menu, and the tool you are using stays in the row. The title bar holds the **+**, which adds blocks, the zoom buttons and a menu with **Present**, **Find**, **Show overview** (**Hide overview** once it is on), **Background colour…**, **Save as image…** and **Print**. A small strip under the left end of the toolbar shows the colours and the line width (see "Colours and widths"). The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first. The board's help, read out to a screen reader, is short; this guide has the rest.
 
 ## Draw and add blocks
 
 Pick a tool in the toolbar, then click or drag on the board.
 
 - **Select** (V): pick and move blocks. This is the usual tool.
+- **Hand** (H): drag the board without picking or moving anything. Press **H** or **Hand** again to go back to the tool you had (see "Move the board").
 - **Pen** (P): press and drag to draw. The tool stays on for the next line.
 - **Note** (N): click to put a sticky note there, then type its words.
 - **Text** (T): click to put words there, then type them. A text block left empty is taken away.
@@ -132,7 +133,7 @@ Changing a table while someone else changes the same table: the cell you edit is
 
 ## Snap to grid
 
-The board shows a grid of dots. **Snap to grid** in the toolbar (the grid button, last in the row) puts blocks on those dots as you make, move or resize them:
+The board shows a grid of dots. **Snap to grid** in the toolbar (the grid button, at the far right of the row) puts blocks on those dots as you make, move or resize them:
 
 - A new note or text block lands with its corner on a dot. A shape or a table you drag has its corners on dots, and a line or an arrow its ends. So does a block added with the **+**.
 - A connector's free end, made or moved, lands on a dot. An end on a block follows the block.
@@ -286,6 +287,26 @@ The zoom goes from 20% to 400%, and the status line shows it. On a touch screen,
 
 The zoom buttons are in the title bar: **Zoom out**, **Zoom in**, and the magnifier, whose menu has **Zoom in**, **Zoom out**, **Show everything** and **Actual size**. **Show everything** fits the whole board in sight, but never zooms in past 100%. **Actual size** goes back to 100%.
 
+## Find
+
+Choose **Find** in the title bar's menu, or press **/** while the board has the keyboard and no block is being edited. A bar opens at the top right of the board. Type the words to look for.
+
+- It searches the words in notes, text blocks and shapes, frame titles, table cells, connector labels and picture descriptions. It ignores capital letters and accents, so "cafe" finds "Café".
+- The bar says "2 of 7", or "No matches". **Enter** or **Next** goes to the next match and **Shift+Enter** or **Previous** to the one before; both wrap round at the ends.
+- Every match is outlined, and the current one more strongly. If the current match is out of sight the view glides to it; it never zooms in. What you had picked stays picked.
+- **Escape** or **Close** shuts the bar and gives the keyboard back to the board. Inside a note or a table cell that you are editing, **/** types a slash as usual.
+- A screen reader hears "Match 2 of 7:" and the words found.
+- Find is off while you present. Someone who may only look can use it.
+
+## Overview
+
+**Show overview** in the title bar's menu puts a small map of the whole board at the bottom right: every block as a small box, frames as outlines, and the part you are looking at as a rectangle in the accent colour. Click or tap the map to put the middle of your view there, at the same zoom, or drag the rectangle to move the view. **Hide overview** takes it away.
+
+- It is 160 by 110 pixels, or 120 by 84 on a narrow screen (under 520 pixels).
+- It is off at first. Your choice is your own: your browser keeps it for next time, and other people and the board's data do not see it.
+- It is hidden while you present, when the board is empty, and when the module is smaller than 360 by 320 pixels.
+- Someone who may only look can use it.
+
 ## Select several blocks
 
 - **Shift-click**, **Ctrl-click** or **Cmd-click** a block to add it to what is picked, or to take it out.
@@ -329,7 +350,7 @@ With any tool:
 - Turn the mouse wheel, or scroll with two fingers on a trackpad.
 - On a touch screen, drag with one finger on the empty board, or with two fingers anywhere.
 
-Or pick the **Hand** tool (H) in the toolbar and drag anywhere, over blocks too; nothing is picked or moved. Press **H** or the Hand button again to go back to the tool you had.
+Or pick **Hand** (H) in the **Tools** switch and drag anywhere, over blocks too; nothing is picked or moved. Press **H** or the Hand button again to go back to the tool you had.
 
 ### Drag with the right mouse button
 
@@ -451,6 +472,7 @@ These work while the board has the keyboard (click it, or Tab to it). Key names 
 | Undo | Ctrl+Z | Cmd+Z |
 | Redo | Ctrl+Shift+Z or Ctrl+Y | Cmd+Shift+Z or Cmd+Y |
 | Hand tool, on and off | H | H |
+| Find in the board (when no block is being edited) | / | / |
 | Move the board | Hold Space and drag | Hold Space and drag |
 | Lock, unlock what is picked | Ctrl+L | Cmd+L |
 | Group, ungroup what is picked | Ctrl+G, Ctrl+Shift+G | Cmd+G, Cmd+Shift+G |
@@ -458,4 +480,4 @@ These work while the board has the keyboard (click it, or Tab to it). Key names 
 | Zoom with the wheel | Ctrl+wheel | Cmd+wheel, or pinch on the trackpad |
 | Snap the other way, for one drag or click | Alt while dragging | Option while dragging |
 
-The Brush, the Pill, the Parallelogram, Snap to grid, Save as image, Print and Actual size have no key.
+The Brush, the Pill, the Parallelogram, Snap to grid, Overview, Save as image, Print and Actual size have no key.
