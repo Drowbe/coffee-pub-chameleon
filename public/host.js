@@ -7,7 +7,7 @@ import { mountEnrolment, mountDisable } from '/mfa-enrol.js';
 import { renderOffer, switchConfirm } from '/template-offer.js';
 import { confirmDialog } from '/confirm.js';
 import { openHostMenu } from '/host-menu.js';
-import { initTemplates } from '/host-templates.js';
+import { initTemplates, showTemplatesView } from '/host-templates.js';
 import { wireFlightSchedule } from '/flight-schedule.js';
 
 const $ = (id) => document.getElementById(id);
@@ -50,7 +50,7 @@ async function load() {
   followTemplates();
   renderCreateChoices();
   // Templates: a change there (new, edited, hidden, deleted, imported) reaches the create form and the environments.
-  initTemplates(templates, (next) => { templates = next; renderCreateChoices(); renderEnvironments(); }, settings.productName);
+  initTemplates(templates, (next) => { templates = next; renderCreateChoices(); renderEnvironments(); }, settings.productName, (slug) => (environments.find((t) => t.slug === slug) || {}).name || slug);
   renderAdmins();
   renderFacts();
   renderPlans();
@@ -467,6 +467,7 @@ async function reloadEnvironments() {
 
 function renderEnvironments() {
   renderTable();
+  if (loaded) renderPlans(); // its count of environments per plan
   if (page.slug) renderPage();
 }
 
@@ -954,7 +955,7 @@ function readAddress() {
 function go(address) { if (location.hash !== `#${address}`) location.hash = address; else showAddress(); }
 function showAddress({ focus = false } = {}) {
   const { section, rest } = readAddress();
-  for (const el of document.querySelectorAll('.hc-section')) el.hidden = el.dataset.section !== section;
+  for (const el of document.querySelectorAll('.hc-section[data-section]')) el.hidden = el.dataset.section !== section;
   for (const b of $('hc-nav').querySelectorAll('[data-section]')) {
     if (b.dataset.section === section) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   }
@@ -972,6 +973,7 @@ function showAddress({ focus = false } = {}) {
 }
 // Within a section, which view: filled in by the sections that have more than one.
 function showView(section, rest) {
+  if (section === 'templates') { showTemplatesView(rest[0] || ''); return; }
   if (section !== 'environments') return;
   const [first] = rest;
   const view = !first ? 'list' : first === 'new' ? 'new' : 'one';
@@ -1012,68 +1014,18 @@ function renderModules() {
   $('module-rows').innerHTML = rows.length ? rows.join('') : '<tr class="sdk-table-empty"><td colspan="2">No modules are listed.</td></tr>';
 }
 
-// --- the plans catalog ----------------------------------------------------------------------------------------------
-// One row per plan (free first and never removed); Save plans sends the whole catalog (PUT /api/host/plans).
-function planRow(id, plan) {
-  const row = clone('tpl-plan-row');
-  const f = row.querySelector.bind(row);
-  f('[name="id"]').value = id;
-  f('[name="id"]').readOnly = id === 'free';
-  f('[name="name"]').value = plan.name || id;
-  const c = plan.caps || {};
-  f('[name="members"]').value = c.members || '';
-  f('[name="storageGb"]').value = c.storageBytes ? String(c.storageBytes / 1e9) : '';
-  f('[name="aiCallsPerMonth"]').value = c.aiCallsPerMonth ?? '';
-  f('[name="calls"]').value = c.calls || '';
-  f('[name="modules"]').value = Array.isArray(c.modules) ? c.modules.join(' ') : 'all';
-  if (id === 'free') f('[data-action="plan-remove"]').disabled = true;
-  return row;
-}
+// --- Plans: the catalog, read only (changing plans comes later) -------------------------------------------------------
+// One row per plan, Free first: its caps (empty is no cap) and how many environments are on it.
 function renderPlans() {
-  const box = $('plans-editor');
   const plans = settings.plans && Object.keys(settings.plans).length ? settings.plans : { free: { name: 'Free', caps: {} } };
-  box.replaceChildren(...PLAN_ORDER(plans).map((id) => planRow(id, plans[id])));
+  const capCell = (v) => `<td class="num${v == null ? ' sdk-table-dim' : ''}">${v == null ? 'No cap' : escapeHtml(num(v))}</td>`;
+  $('plan-rows').innerHTML = PLAN_ORDER(plans).map((id) => {
+    const c = plans[id].caps || {};
+    const mods = Array.isArray(c.modules) ? `${c.modules.length} ${c.modules.length === 1 ? 'module' : 'modules'}` : 'All';
+    const on = environments.filter((t) => t.plan && t.plan.name === id).length;
+    return `<tr><th scope="row">${escapeHtml(plans[id].name || id)}<span class="sdk-table-sub">${escapeHtml(id)}</span></th>${capCell(c.members)}${capCell(c.storageBytes == null ? null : c.storageBytes / 1e9)}${capCell(c.aiCallsPerMonth)}${capCell(c.calls)}<td${Array.isArray(c.modules) ? ` title="${escapeHtml(c.modules.join(', '))}"` : ''}>${escapeHtml(mods)}</td><td class="num">${on}</td></tr>`;
+  }).join('');
 }
-$('plan-add').addEventListener('click', () => { $('plans-editor').appendChild(planRow('', { name: '', caps: {} })); $('plans-editor').lastElementChild.querySelector('[name="id"]').focus(); });
-$('plans-editor').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-action="plan-remove"]');
-  if (b && !b.disabled) b.closest('.plan-row').remove();
-});
-$('plans-save').addEventListener('click', async () => {
-  // The rows are not a form, so each is checked here: the first field the browser rejects (an id that is not lower-case
-  // letters, digits and hyphens, a cap under its minimum) says why and nothing is saved. A new row left without an id is
-  // skipped, as before.
-  for (const row of $('plans-editor').querySelectorAll('.plan-row')) {
-    if (!row.querySelector('[name="id"]').value.trim()) continue;
-    if (!row.querySelector('[name="name"]').value.trim()) { say($('plans-status'), 'Give the plan a name.', true); row.querySelector('[name="name"]').focus(); return; }
-    const bad = [...row.querySelectorAll('input')].find((i) => !i.checkValidity());
-    if (bad) { bad.reportValidity(); bad.focus(); return; }
-  }
-  const plans = {};
-  for (const row of $('plans-editor').querySelectorAll('.plan-row')) {
-    const v = (name) => row.querySelector(`[name="${name}"]`).value.trim();
-    const id = v('id').toLowerCase();
-    if (!id) continue;
-    const num = (name) => (v(name) === '' ? null : Number(v(name)));
-    const mods = v('modules');
-    plans[id] = {
-      name: v('name'),
-      caps: {
-        modules: !mods || mods === 'all' ? 'all' : mods.split(/[\s,]+/).filter(Boolean),
-        members: num('members'),
-        storageBytes: v('storageGb') === '' ? null : Math.round(Number(v('storageGb')) * 1e9),
-        aiCallsPerMonth: num('aiCallsPerMonth'),
-        calls: num('calls'),
-      },
-    };
-  }
-  if (!plans.free) plans.free = { name: 'Free', caps: { modules: 'all', members: null, storageBytes: null, aiCallsPerMonth: null, calls: null } };
-  try {
-    await api('PUT', '/api/host/plans', plans); // the body is the catalog itself
-    say($('plans-status'), 'saved');
-    await load();
-  } catch (err) { say($('plans-status'), err.message, true); }
-});
 
 // --- the host admins -------------------------------------------------------------------------------------------
 $('admin-form').addEventListener('submit', async (e) => {

@@ -1,11 +1,14 @@
-// The host console's Templates tab (plan-environment-templates.md, addendum 3, GitHub #91): every template (bundled,
-// the host's own), with its source, version, whether it is hidden and which environments use it. A bundled template
-// can be edited in place (an Edited badge, Reset to shipped, and a notice when a newer image changed the file).
-// Duplicate makes a host template. Export for any; Import… from a file (a clashing id asks for another).
+// The host console's Templates section (plan-environment-templates.md, addendum 3, GitHub #91; plan-host-console.md): a
+// table of every template (bundled, the host's own), with its kind, version, the environments that use it by name, the
+// Hidden switch and a More menu (Edit, Export, Duplicate, Reset to shipped, Delete). A bundled template can be edited in
+// place (an Edited badge, Reset to shipped, and a notice when a newer image changed the file). Duplicate makes a host
+// template. Import file from a file (a clashing id asks for another). The editor is its own view (#templates/<id>, or
+// /new), its parts with a jump list beside them.
 import { api, escapeHtml, word } from '/brand.js';
 import { CHANGEABLE, DEFAULTS, homeDefault, VERBS, DEFAULT_VERBS } from '/words.js';
 import { fileText } from '/file-text.js';
 import { confirmDialog } from '/confirm.js';
+import { openHostMenu } from '/host-menu.js';
 
 const $ = (id) => document.getElementById(id);
 const say = (el, text, error = false) => { el.textContent = text; el.classList.toggle('error', error); el.hidden = !text; };
@@ -13,12 +16,15 @@ let product = ''; // the product's name (PRODUCT_NAME), from the host console's 
 // "That isn't a <product> theme file.", or "a theme file" before the name is known.
 const fileOfKind = (kind) => (product ? `${product} ${kind} file` : `${kind} file`);
 const BUILT_IN = ['conference', 'chat'];
-const SOURCE = { bundled: 'Bundled', host: 'Yours', imported: 'Imported' };
+const SOURCE = { bundled: 'Bundled', host: 'Own', imported: 'Imported' };
 const DEFAULT_HOME_ICON = 'couch';
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 let list = []; // GET /api/host/templates: [{ id, name, description, source, version, hidden, edited, update, usedBy }]
 let onChange = () => {};
+let nameOf = (slug) => slug; // an environment's name, from host.js's list
+let ready = false; // the list has come from host.js
+let pendingView = null; // an editor asked for (#templates/<id>) before the list came
 let editing = null; // the template being edited in full, or null for a new one
 let comparing = null; // the bundled id whose update is open in the compare panel
 let theme = null; // the editor's embedded theme ({ name, author?, light, dark }) or null
@@ -28,13 +34,34 @@ const moduleName = (id) => (shipped || []).find((m) => m.id === id)?.name || id;
 const moduleIcon = (id) => (shipped || []).find((m) => m.id === id)?.icon || 'puzzle-piece';
 
 // host.js hands over the list it loaded, and is told when it changes (the create form uses it too).
-export function initTemplates(templates, changed, name) {
+export function initTemplates(templates, changed, name, environmentName) {
   if (typeof name === 'string' && name.trim()) product = name.trim();
+  if (typeof environmentName === 'function') nameOf = environmentName;
   const by = $('template-shipped-by');
   if (by && product) by.textContent = `${product} ships`; // "the one shipped" until the name is known
   onChange = changed || onChange;
   list = templates || [];
   renderList();
+  ready = true;
+  if (pendingView !== null) { const id = pendingView; pendingView = null; showTemplatesView(id); }
+}
+
+// Which view: the table (''), or the editor of one template ('new' for a new one). host.js calls it from the address.
+let shownId = '';
+export async function showTemplatesView(id) {
+  if (!ready) { pendingView = id; return; }
+  $('templates-list-view').hidden = Boolean(id);
+  $('template-editor-view').hidden = !id;
+  if (!id) { editing = null; shownId = ''; return; }
+  if (id === shownId) return;
+  shownId = id;
+  if (id === 'new') { await openEditor(null); return; }
+  try {
+    await openEditor((await api('GET', `/api/host/templates/${encodeURIComponent(id)}`)).template);
+  } catch (err) {
+    location.hash = 'templates';
+    say($('templates-status'), err.message, true);
+  }
 }
 async function reload() {
   list = (await api('GET', '/api/host/templates')).templates || [];
@@ -42,28 +69,27 @@ async function reload() {
   onChange(list);
 }
 
+const chipOf = (word, tone = 'neutral') => `<span class="sdk-status" data-tone="${tone}">${escapeHtml(word)}</span>`;
 function renderList() {
   const box = $('template-list');
   const notices = $('template-notices');
   const updates = list.filter((t) => t.update);
-  notices.innerHTML = updates.map((t) => `<li class="sdk-banner" data-kind="info" data-id="${escapeHtml(t.id)}"><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><span class="sdk-banner-text">${escapeHtml(t.name || t.id)} was updated in this image: review</span><button class="btn btn-small sdk-banner-action" type="button" data-action="review">Review</button></li>`).join('');
-  if (!list.length) { box.innerHTML = '<li class="hint">No templates yet.</li>'; return; }
+  notices.innerHTML = updates.map((t) => `<li class="sdk-banner" data-kind="info" data-id="${escapeHtml(t.id)}"><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span><span class="sdk-banner-text">The ${escapeHtml(t.name || t.id)} template has a new version.</span><button class="btn btn-small sdk-banner-action" type="button" data-action="review">Review</button></li>`).join('');
+  if (!list.length) { box.innerHTML = '<tr class="sdk-table-empty"><td colspan="6">No templates yet.</td></tr>'; return; }
   box.innerHTML = list.map((t) => {
-    const own = t.source === 'host';
-    const bundled = t.source === 'bundled';
-    const used = (t.usedBy || []).length;
+    const editable = t.source === 'host' || t.source === 'bundled';
     const id = escapeHtml(t.id);
-    const badge = t.edited ? ' <span class="template-edited">Edited</span>' : '';
-    return `<li class="sdk-row list-row" data-id="${id}">
-      <span class="template-list-name"><strong>${escapeHtml(t.name || t.id)}</strong>${badge} <code>${id}</code>
-        <span class="hint">${escapeHtml(SOURCE[t.source] || t.source)}, version ${escapeHtml(String(t.version || 1))}, <span title="${escapeHtml((t.usedBy || []).join(', '))}">used by ${used}</span>${t.hidden ? ', hidden' : ''}</span></span>
-      ${own || bundled ? `<label class="sdk-choice-row"><input type="checkbox" data-action="hide"${t.hidden ? ' checked' : ''}><span class="sdk-choice-text">Hidden</span></label>` : ''}
-      <a class="btn btn-small" href="/api/host/templates/${encodeURIComponent(t.id)}/export" download>Export</a>
-      ${own || bundled ? `<button class="btn btn-small" type="button" data-action="edit">Edit</button>` : ''}
-      ${own || bundled ? `<button class="btn btn-small" type="button" data-action="duplicate">Duplicate</button>` : ''}
-      ${bundled && t.edited ? `<button class="btn btn-small" type="button" data-action="reset">Reset to shipped</button>` : ''}
-      ${own ? `<button class="btn btn-small danger" type="button" data-action="delete">Delete</button>` : ''}
-    </li>`;
+    const name = escapeHtml(t.name || t.id);
+    const used = t.usedBy || [];
+    // Used by: the environments by name, each a link to its page; past four, "and N more".
+    const names = used.slice(0, 4).map((slug) => `<a class="hc-link" href="#environments/${encodeURIComponent(slug)}">${escapeHtml(nameOf(slug))}</a>`).join('<span class="hc-sep">, </span>');
+    return `<tr data-id="${id}">`
+      + `<th scope="row" class="hc-name-cell">${editable ? `<a class="hc-link" href="#templates/${encodeURIComponent(t.id)}">${name}</a>` : name}<span class="sdk-table-sub">${id}</span></th>`
+      + `<td class="hc-chips-cell">${chipOf(SOURCE[t.source] || t.source)}${t.edited ? chipOf('Edited', 'info') : ''}</td>`
+      + `<td class="sdk-table-dim">v${escapeHtml(String(t.version || 1))}</td>`
+      + `<td class="hc-used">${used.length ? `${names}${used.length > 4 ? `<span class="hc-more-names"> and ${used.length - 4} more</span>` : ''}` : '<span class="sdk-table-dim">None</span>'}</td>`
+      + `<td>${editable ? `<input class="sdk-switch" type="checkbox" role="switch" data-action="hide"${t.hidden ? ' checked' : ''} aria-label="Hide ${name} from new environments">` : ''}</td>`
+      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="template-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis fa-fw" aria-hidden="true"></i></button></td></tr>`;
   }).join('');
 }
 
@@ -74,41 +100,58 @@ $('template-list').addEventListener('change', async (e) => {
     await api('PATCH', `/api/host/templates/${encodeURIComponent(id)}`, { hidden: e.target.checked });
     await reload();
     say($('templates-status'), e.target.checked ? `${id} is hidden from new ${word('environment', { many: true })}.` : `${id} is offered again.`);
+    $('template-list').querySelector(`[data-id="${CSS.escape(id)}"] [data-action="hide"]`)?.focus();
   } catch (err) {
     e.target.checked = !e.target.checked;
     say($('templates-status'), err.message, true);
   }
 });
-$('template-list').addEventListener('click', async (e) => {
-  const b = e.target.closest('button[data-action]');
-  if (!b) return;
-  const id = b.closest('[data-id]').dataset.id;
-  const t = list.find((x) => x.id === id);
-  if (b.dataset.action === 'edit') {
-    try {
-      openEditor((await api('GET', `/api/host/templates/${encodeURIComponent(id)}`)).template);
-    } catch (err) { say($('templates-status'), err.message, true); }
-  } else if (b.dataset.action === 'duplicate') {
-    await duplicateTemplate(t);
-  } else if (b.dataset.action === 'reset') {
-    if (!await confirmDialog({ title: `Reset ${t.name || id} to the shipped version?`, message: 'Your edits are removed.', action: 'Reset', kind: 'destructive' })) return;
-    try {
-      await api('DELETE', `/api/host/templates/${encodeURIComponent(id)}/edits`);
-      closeCompare();
-      await reload();
-      say($('templates-status'), `${t.name || id} is back to the shipped version.`);
-    } catch (err) { say($('templates-status'), err.message, true); }
-  } else if (b.dataset.action === 'delete') {
-    if ((t.usedBy || []).length) return say($('templates-status'), `In use by ${t.usedBy.join(', ')}. Hide it instead.`, true);
-    if (!await confirmDialog({ title: `Delete the ${t.name || id} template?`, action: 'Delete', kind: 'destructive' })) return;
-    try {
-      await api('DELETE', `/api/host/templates/${encodeURIComponent(id)}`);
-      await reload();
-      say($('templates-status'), `Deleted ${t.name || id}.`);
-      $('template-new').focus();
-    } catch (err) { say($('templates-status'), err.message, true); }
-  }
+$('template-list').addEventListener('click', (e) => {
+  const row = e.target.closest('tr[data-id]');
+  if (!row) return;
+  const t = list.find((x) => x.id === row.dataset.id);
+  const more = e.target.closest('[data-action="template-menu"]');
+  if (more && t) templateMenu(more, t);
 });
+function templateMenu(trigger, t) {
+  const editable = t.source === 'host' || t.source === 'bundled';
+  const unused = !(t.usedBy || []).length;
+  openHostMenu(trigger, [
+    ...(editable ? [{ label: 'Edit', icon: 'pen', onPick: () => { location.hash = `templates/${t.id}`; } }] : []),
+    { label: 'Export', icon: 'file-export', onPick: () => exportTemplate(t) },
+    ...(editable ? [{ label: 'Duplicate', icon: 'copy', onPick: () => duplicateTemplate(t) }] : []),
+    ...(t.source === 'bundled' && t.edited ? [{ label: 'Reset to shipped', icon: 'rotate-left', onPick: () => resetTemplate(t) }] : []),
+    ...(t.source === 'host' ? [{ divider: true }, { label: 'Delete', icon: 'trash', danger: true, disabled: !unused, tip: unused ? '' : 'In use: hide it instead', onPick: () => deleteTemplate(t) }] : []),
+  ]);
+}
+// Export: the file download, as the old link did.
+function exportTemplate(t) {
+  const a = document.createElement('a');
+  a.href = `/api/host/templates/${encodeURIComponent(t.id)}/export`;
+  a.download = '';
+  a.click();
+}
+async function resetTemplate(t) {
+  const name = t.name || t.id;
+  if (!await confirmDialog({ title: `Reset ${name} to the shipped version?`, message: 'Your edits are removed.', action: 'Reset', kind: 'destructive' })) return;
+  try {
+    await api('DELETE', `/api/host/templates/${encodeURIComponent(t.id)}/edits`);
+    closeCompare();
+    await reload();
+    say($('templates-status'), `${name} is back to the shipped version.`);
+  } catch (err) { say($('templates-status'), err.message, true); }
+}
+async function deleteTemplate(t) {
+  const name = t.name || t.id;
+  if ((t.usedBy || []).length) return say($('templates-status'), `In use by ${t.usedBy.map(nameOf).join(', ')}. Hide it instead.`, true);
+  if (!await confirmDialog({ title: `Delete the ${name} template?`, message: 'No environment uses it.', action: 'Delete', kind: 'destructive' })) return;
+  try {
+    await api('DELETE', `/api/host/templates/${encodeURIComponent(t.id)}`);
+    await reload();
+    say($('templates-status'), `Deleted ${name}.`);
+    $('template-new').focus();
+  } catch (err) { say($('templates-status'), err.message, true); }
+}
 
 $('template-notices').addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-action="review"]');
@@ -128,8 +171,8 @@ async function duplicateTemplate(t) {
   try {
     const made = await api('POST', `/api/host/templates/${encodeURIComponent(t.id)}/duplicate`, { id: id.trim().toLowerCase(), name: name.trim() });
     await reload();
-    openEditor((await api('GET', `/api/host/templates/${encodeURIComponent(made.template.id)}`)).template);
     say($('templates-status'), `Duplicated ${t.name || t.id} as ${made.template.name}.`);
+    location.hash = `templates/${made.template.id}`;
   } catch (err) { say($('templates-status'), err.message, true); }
 }
 
@@ -212,13 +255,16 @@ $('template-import-file').addEventListener('change', async () => {
 });
 
 // --- the editor -----------------------------------------------------------------------------------------------------
-$('template-new').addEventListener('click', () => openEditor(null));
-$('te-cancel').addEventListener('click', closeEditor);
-function closeEditor() {
-  $('template-editor').hidden = true;
-  editing = null;
-  $('template-new').focus();
-}
+$('template-new').addEventListener('click', () => { location.hash = 'templates/new'; });
+$('te-cancel').addEventListener('click', () => { location.hash = 'templates'; $('templates-title').focus({ preventScroll: true }); });
+// The jump list: the part comes into view and takes the keyboard focus.
+$('te-jump').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-part]');
+  if (!b) return;
+  const part = $(b.dataset.part);
+  part.scrollIntoView({ block: 'start' });
+  part.focus({ preventScroll: true });
+});
 
 // The modules a template can name: the ones this image ships (by name), then any other module a template lists.
 async function loadModuleIds() {
@@ -235,7 +281,6 @@ const iconField = (value, label, placeholder) => `<span class="icon-field"><i cl
 
 async function openEditor(t) {
   editing = t;
-  const form = $('template-editor');
   clearProblems();
   say($('te-status'), '');
   await loadModuleIds();
@@ -287,9 +332,8 @@ async function openEditor(t) {
   renderTheme();
   $('te-icon-set').value = ((t && t.iconSet) || []).join(' ');
   previewIconSet();
-  form.hidden = false;
-  form.scrollIntoView({ block: 'start' });
-  (t ? $('te-name') : $('te-id')).focus();
+  window.scrollTo(0, 0);
+  $('template-editor-title').focus({ preventScroll: true });
 }
 
 const MAX_PHASES = 12;
@@ -367,7 +411,7 @@ function renderOpens(saved) {
 function readOpens() {
   return [...$('te-opens').querySelectorAll('.opens-row')].filter((row) => row.querySelector('[data-opens]').checked).map((row) => row.dataset.open);
 }
-$('te-modules').addEventListener('change', () => { if (!$('template-editor').hidden) renderOpens(); });
+$('te-modules').addEventListener('change', () => { if (!$('template-editor-view').hidden) renderOpens(); });
 $('te-opens').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-open-move]');
   if (!btn) return;
@@ -506,11 +550,11 @@ $('template-editor').addEventListener('submit', async (e) => {
     const { template } = editing
       ? await api('PATCH', `/api/host/templates/${encodeURIComponent(editing.id)}`, body)
       : await api('POST', '/api/host/templates', body);
-    $('template-editor').hidden = true;
     editing = null;
     await reload();
+    location.hash = 'templates';
     say($('templates-status'), `Saved ${template.name}, version ${template.version}.`);
-    $('template-list').querySelector(`[data-id="${CSS.escape(template.id)}"] [data-action="edit"]`)?.focus();
+    $('template-list').querySelector(`[data-id="${CSS.escape(template.id)}"] a`)?.focus();
   } catch (err) {
     say($('te-status'), err.problems && err.problems.length > 1 ? `${err.problems.length} things to fix, shown above.` : err.message, true);
     showProblems(err.problems || [err.message]);

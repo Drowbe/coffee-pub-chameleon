@@ -10,14 +10,14 @@
 .hc-nav.subtabs { position: sticky; top: 0; flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-5) var(--space-3); overflow: visible; }
 .hc-nav.subtabs > .subtab { justify-content: flex-start; width: 100%; }
 .hc-main { display: flex; flex-direction: column; min-width: 0; padding: var(--space-5) var(--space-5) var(--space-6); }
-.hc-section, .hc-view { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.hc-section[hidden], .hc-view[hidden] { display: none; }
+.hc-section, .hc-view, .hc-column { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-section[hidden], .hc-view[hidden], .hc-column[hidden] { display: none; }
 
 .hc-head, .hc-env-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-width: 0; }
 .hc-head-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .hc-title { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
-.hc-title:focus { outline: none; }
-.hc-title:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+.hc-title:focus { outline: none; } /* a heading takes the focus only so a screen reader starts there */
+.hc-column > .status:empty, .hc-part > .status:empty { display: none; }
 .hc-back { align-self: flex-start; margin-left: calc(-1 * var(--space-2)); }
 .hc-env-id { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .hc-slug { color: var(--text-muted); font-size: var(--text-12); overflow-wrap: anywhere; }
@@ -47,8 +47,6 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-sub { margin: 0; }
 .hc-folder code { overflow-wrap: anywhere; }
 
-/* ---- the jump lists: the Server's parts (a row) ---- */
-.hc-jump-row.subtabs { flex-direction: row; align-items: center; }
 
 /* ---- the Server's own pieces ---- */
 .ai-services { display: flex; flex-direction: column; }
@@ -119,6 +117,46 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-danger-text { display: flex; flex: 1 1 220px; flex-direction: column; gap: var(--space-1); min-width: 0; }
 #env-pane-backups .hc-part > input[type="file"] { max-width: 420px; }
 
+/* ---- Templates: the notices, the review, and the editor's rows ---- */
+.template-notices { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); }
+.template-notices:empty { display: none; }
+.template-compare-head,
+.template-compare-row { display: grid; grid-template-columns: 8em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
+.template-compare-head { margin: 8px 0 4px; color: var(--text-dim); font-size: var(--text-12); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.template-compare-row { padding: 8px 0; border-top: 1px solid var(--border); }
+.template-compare-row pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-12); }
+#template-compare .row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+#te-icon-set { width: 100%; box-sizing: border-box; }
+.template-editor .problems { color: var(--danger-text); margin: 8px 0 0; padding-left: 16px; font-size: var(--text-13); }
+.template-editor .problems:empty { display: none; }
+/* The name column is one fixed width (10em) in every row, and the fields may shrink, so a long name or icon never pushes a
+   row's fields out of line with the rows around it. */
+.word-row, .module-display-row { display: grid; grid-template-columns: 10em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; margin-bottom: 8px; }
+.word-row > strong, .module-display-row > strong { min-width: 0; overflow-wrap: anywhere; }
+.module-display-row input[type="text"] { max-width: none; order: 0; }
+.icon-field { display: flex; align-items: center; gap: 8px; }
+.icon-field input { flex: 1; min-width: 0; }
+.icon-field i { width: 1.4em; text-align: center; flex: none; }
+.template-modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }
+.phase-row, .opens-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.phase-row input[type="text"] { flex: 1 1 8rem; min-width: 0; }
+.opens-row .sdk-choice-row { flex: 1; width: auto; min-width: 8rem; }
+@media (max-width: 640px) {
+  .word-row, .module-display-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .word-row > :first-child, .module-display-row > :first-child { grid-column: 1 / -1; }
+}
+
+.hc-chips-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
+.hc-used { min-width: 180px; }
+.hc-more-names { color: var(--text-muted); }
+.hc-tpls tbody tr { height: 52px; }
+/* the editor: its parts in a column, the jump list beside them */
+.hc-editor { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: var(--space-4); min-width: 0; }
+.hc-jump.subtabs { position: sticky; top: var(--space-4); flex-direction: column; align-items: stretch; gap: var(--space-1); overflow: visible; }
+.hc-jump.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-jump-row.subtabs { position: static; flex-direction: row; align-items: center; }
+.hc-jump-row.subtabs > .subtab { width: auto; }
+
 /* ---- 900 px and under ---- */
 @media (max-width: 900px) {
   .hc-body { grid-template-columns: 180px minmax(0, 1fr); }
@@ -141,7 +179,13 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
   .hc-title { font-size: var(--text-18); }
   .hc-tabs.subtabs { overflow-x: auto; }
   .hc-checks { margin-left: var(--space-3); }
-  .hc-jump-row.subtabs { overflow-x: auto; }
+  .hc-editor { grid-template-columns: minmax(0, 1fr); }
+  .hc-jump.subtabs { position: static; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; }
+  .hc-jump.subtabs > .subtab { width: auto; }
+  /* a link inside a cell is a 44 pixel tap: one under another */
+  .hc-used { display: flex; flex-direction: column; align-items: flex-start; }
+  .hc-used > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .hc-sep { display: none; }
   .hc-swipe:not([hidden]) { display: block; }
   .hc-facts, #host-facts { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
   .hc-facts > dd + dt, #host-facts > dd + dt { margin-top: var(--space-2); }
@@ -166,6 +210,3 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
   .hc-envs[data-density="compact"] .hc-name-cell { max-width: 200px; }
   .hc-envs[data-density="compact"] .hc-name-cell .sdk-table-sub { display: none; }
 }
-
-/* The cards and editors not yet redrawn (plan-host-console.md, slices 4 to 6) keep their panels at the column's width. */
-.hc-main .panel { max-width: none; margin: 0; }

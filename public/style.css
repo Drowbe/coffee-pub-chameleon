@@ -771,10 +771,6 @@ body.host-console .topbar .brand-home .product-lockup {
   }
 }
 
-body.host-console .grow {
-  flex: 1;
-}
-
 /* The server icon, its own small configurable icon, and the server name
    together are the "go home" link -- what "Spaces" used to be as its own
    separate crumb segment, since going home already lands on the space
@@ -6502,41 +6498,6 @@ body.chat-window {
 .template-file-name { flex: 1; min-width: 12em; }
 .offer-glyphs { margin-left: 4px; }
 .offer-icons { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; color: var(--text-dim); }
-
-/* The host console's Templates tab: the list and the editor. */
-body.host-console .template-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
-body.host-console .template-list .list-row { flex-wrap: wrap; }
-body.host-console .template-list-name { flex: 1; min-width: 12em; }
-body.host-console .template-edited { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: var(--radius-medium); background: var(--accent); color: var(--on-accent); font-size: var(--text-11); font-weight: var(--weight-strong); line-height: 16px; vertical-align: 1px; }
-body.host-console .template-notices { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); }
-body.host-console .template-notices:empty { display: none; }
-body.host-console .template-compare-head,
-body.host-console .template-compare-row { display: grid; grid-template-columns: 8em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
-body.host-console .template-compare-head { margin: 8px 0 4px; color: var(--text-dim); font-size: var(--text-12); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
-body.host-console .template-compare-row { padding: 8px 0; border-top: 1px solid var(--border); }
-body.host-console .template-compare-row pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-12); }
-body.host-console #template-compare .row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-body.host-console #te-icon-set { width: 100%; box-sizing: border-box; }
-body.host-console .template-editor fieldset { border: 1px solid var(--border); border-radius: var(--radius-medium); padding: 12px 12px; margin: 12px 0 0; min-width: 0; }
-body.host-console .template-editor legend { padding: 0 4px; color: var(--text-dim); font-size: var(--text-12); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
-body.host-console .template-editor .problems { color: var(--danger-text); margin: 8px 0 0; padding-left: 16px; font-size: var(--text-13); }
-body.host-console .template-editor .problems:empty { display: none; }
-/* The name column is one fixed width (10em) in every row, and the fields may shrink, so a long name or icon never pushes a
-   row's fields out of line with the rows around it. */
-body.host-console .word-row, body.host-console .module-display-row { display: grid; grid-template-columns: 10em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; margin-bottom: 8px; }
-body.host-console .word-row > strong, body.host-console .module-display-row > strong { min-width: 0; overflow-wrap: anywhere; }
-body.host-console .module-display-row input[type="text"] { max-width: none; order: 0; }
-body.host-console .icon-field { display: flex; align-items: center; gap: 8px; }
-body.host-console .icon-field input { flex: 1; min-width: 0; }
-body.host-console .icon-field i { width: 1.4em; text-align: center; flex: none; }
-body.host-console .template-modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }
-body.host-console .phase-row, body.host-console .opens-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-body.host-console .phase-row input[type="text"] { flex: 1 1 8rem; min-width: 0; }
-body.host-console .opens-row .sdk-choice-row { flex: 1; width: auto; min-width: 8rem; }
-@media (max-width: 640px) {
-  body.host-console .word-row, body.host-console .module-display-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  body.host-console .word-row > :first-child, body.host-console .module-display-row > :first-child { grid-column: 1 / -1; }
-}
 
 /* Manage > Template > Words: the verb's row under the ten words (addendum 4), one field across the three word columns.
    On a phone it stacks like a word's row: the name and Reset across the top, the field beneath. */

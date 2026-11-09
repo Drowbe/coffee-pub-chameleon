@@ -70,7 +70,7 @@
               <h2 class="hc-part-name" id="environments-empty-title">No environments yet</h2>
               <p class="sdk-hint">An environment is a group of people with their own spaces, at its own address. Make the first one with New environment.</p>
             </section>
-            <div class="hc-section" id="environments-filled">
+            <div class="hc-column" id="environments-filled">
               <section class="sdk-card hc-attention" aria-label="Needs attention">
                 <div class="hc-attention-row" id="attention"></div>
               </section>
@@ -285,137 +285,168 @@
           </div>
         </section>
 
-        <section class="hc-section tab-stack" id="section-templates" data-section="templates" hidden>
-      <section class="panel">
-        <div class="section-head">
-          <h2>Templates</h2>
-          <span class="status" id="templates-status" role="status" hidden></span>
-          <span class="grow"></span>
-          <button class="btn btn-small" id="template-import" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i> Import…</button>
-          <input id="template-import-file" type="file" accept=".json,application/json" hidden>
-          <button class="btn btn-small btn-primary" id="template-new" type="button">New template</button>
-        </div>
-        <p class="hint">What a new environment can be made from. Edits to a bundled template stay over the one <span id="template-shipped-by">shipped</span>. Hidden templates aren't offered for new environments; the ones using them keep them.</p>
-        <ul class="template-notices" id="template-notices"></ul>
-        <ul class="template-list" id="template-list"></ul>
-      </section>
-
-      <section class="panel" id="template-compare" hidden>
-        <h2 id="template-compare-title">Review</h2>
-        <p class="hint">The shipped template is on the left. Yours is on the right.</p>
-        <div class="template-compare-head"><span></span><span>Shipped</span><span>Yours</span></div>
-        <div id="template-compare-fields"></div>
-        <div class="row-actions">
-          <button class="btn btn-small" id="template-take-shipped" type="button">Take the new version</button>
-          <button class="btn btn-small btn-primary" id="template-keep-mine" type="button">Keep mine</button>
-          <button class="btn btn-small" id="template-compare-close" type="button">Close</button>
-        </div>
-      </section>
-
-      <form class="panel template-editor" id="template-editor" hidden novalidate>
-        <h2 id="template-editor-title">New template</h2>
-        <p class="hint" id="te-bundled-hint" hidden>Your edits are kept over the shipped template.</p>
-        <p class="hint">Words, phases, the home icon and module names and icons reach every environment using the template at once. The rest is applied once: owners are offered it, never forced.</p>
-        <ul class="problems" id="tp-problems"></ul>
-        <div class="fields">
-          <label id="te-id-label">Id<input id="te-id" type="text" maxlength="32" pattern="[a-z][a-z0-9\-]*" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="travel"></label>
-          <label>Name<input id="te-name" type="text" maxlength="40" autocomplete="off"></label>
-          <label class="wide">Description <span class="sdk-optional">(optional)</span><input id="te-description" type="text" maxlength="200" autocomplete="off"></label>
-        </div>
-        <ul class="problems" data-problems="id name description"></ul>
-
-        <fieldset>
-          <legend>Words</legend>
-          <p class="hint">Leave a word blank for the default. Give both the singular and the plural.</p>
-          <div id="te-words"></div>
-          <div id="te-verbs"></div>
-          <ul class="problems" data-problems="words verbs"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Home icon</legend>
-          <div class="icon-field"><i class="fa-solid fa-house fa-fw" id="te-home-preview" aria-hidden="true"></i><input id="te-home" type="text" maxlength="40" placeholder="house (a Font Awesome name)" aria-label="Home icon, a Font Awesome name" autocapitalize="off" spellcheck="false"></div>
-          <ul class="problems" data-problems="icons"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Modules</legend>
-          <p class="hint">Turned on in every space of a new environment. The Lobby keeps only chat, the call and modules made for it.</p>
-          <div class="template-modules" id="te-modules"></div>
-          <ul class="problems" data-problems="modules"></ul>
-          <details class="te-module-display">
-            <summary>Module names and icons</summary>
-            <p class="hint">Blank for the module's own.</p>
-            <div id="te-module-display"></div>
-          </details>
-          <ul class="problems" data-problems="moduleNames moduleIcons"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>New environments</legend>
-          <div class="fields">
-            <label>Lobby name<input id="te-lobby-name" type="text" maxlength="40" placeholder="Lobby"></label>
-            <label>New spaces use<select id="te-profile"><option value="">The usual profile</option><option value="roleplaying">Roleplaying</option><option value="participants">Participants</option><option value="characters">Characters</option></select></label>
-            <label class="wide">Lobby description <span class="sdk-optional">(optional)</span><input id="te-lobby-description" type="text" maxlength="300"></label>
+        <!-- ======== Templates (plan-environment-templates, addendum 2): the list, Import, New, and the editor ======== -->
+        <section class="hc-section" id="section-templates" data-section="templates" aria-labelledby="templates-title" hidden>
+          <div class="hc-view" id="templates-list-view">
+            <div class="hc-head">
+              <h1 class="hc-title" id="templates-title" tabindex="-1">Templates</h1>
+              <div class="hc-head-actions">
+                <button class="btn" id="template-import" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i><span>Import file</span></button>
+                <input id="template-import-file" type="file" accept=".json,application/json" hidden>
+                <button class="btn btn-primary" id="template-new" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>New template</span></button>
+              </div>
+            </div>
+            <p class="sdk-hint">What a new environment can be made from. Edits to a bundled template stay over the one <span id="template-shipped-by">shipped</span>. Hidden templates aren't offered for new environments; the ones using them keep them.</p>
+            <p class="status hc-status" id="templates-status" role="status" hidden></p>
+            <ul class="template-notices" id="template-notices"></ul>
+            <section class="sdk-panel hc-part" id="template-compare" aria-labelledby="template-compare-title" hidden>
+              <h2 class="hc-part-name" id="template-compare-title">Review</h2>
+              <p class="sdk-hint">The shipped template is on the left. Yours is on the right.</p>
+              <div class="template-compare-head"><span></span><span>Shipped</span><span>Yours</span></div>
+              <div id="template-compare-fields"></div>
+              <div class="row-actions">
+                <button class="btn btn-small" id="template-take-shipped" type="button">Take the new version</button>
+                <button class="btn btn-small btn-primary" id="template-keep-mine" type="button">Keep mine</button>
+                <button class="btn btn-small" id="template-compare-close" type="button">Close</button>
+              </div>
+            </section>
+            <div class="hc-tablebox">
+              <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+              <div class="sdk-table-wrap hc-wrap">
+                <table class="sdk-table hc-tpls" aria-label="Templates">
+                  <thead><tr><th scope="col">Template</th><th scope="col">Kind</th><th scope="col">Version</th><th scope="col">Used by</th><th scope="col">Hidden</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                  <tbody id="template-list"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          <p class="hint">What a new space opens, in this order. The ticks are the template's modules, including chat and the conference.</p>
-          <div id="te-opens"></div>
-          <ul class="problems" data-problems="lobby spaceDefaults settings"></ul>
-        </fieldset>
 
-        <fieldset>
-          <legend>Phases</legend>
-          <p class="hint">Up to 12. An id is lowercase letters, digits and dashes. One may be the main phase.</p>
-          <div id="te-phases"></div>
-          <button class="btn btn-small" id="te-phase-add" type="button">Add phase</button>
-          <ul class="problems" data-problems="phases"></ul>
-        </fieldset>
+          <!-- The editor (#templates/<id>, or #templates/new): its parts with a jump list at the side (a strip on a phone). -->
+          <div class="hc-view" id="template-editor-view" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="templates"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Templates</span></button>
+            <form class="hc-column template-editor" id="template-editor" novalidate>
+              <div class="hc-head">
+                <h1 class="hc-title" id="template-editor-title" tabindex="-1">New template</h1>
+                <div class="hc-head-actions">
+                  <button class="btn btn-primary" type="submit" id="te-save"><i class="fa-solid fa-floppy-disk fa-fw" aria-hidden="true"></i><span>Save template</span></button>
+                  <button class="btn" type="button" id="te-cancel">Cancel</button>
+                </div>
+              </div>
+              <p class="status" id="te-status" role="status"></p>
+              <p class="sdk-hint" id="te-bundled-hint" hidden>Your edits are kept over the shipped template.</p>
+              <p class="sdk-hint">Words, phases, the home icon and module names and icons reach every environment using the template at once. The rest is applied once: owners are offered it, never forced.</p>
+              <ul class="problems" id="tp-problems"></ul>
+              <div class="hc-editor">
+                <nav class="subtabs hc-jump" id="te-jump" aria-label="Parts of the template">
+                  <button class="subtab" type="button" data-part="te-part-basics">Basics</button>
+                  <button class="subtab" type="button" data-part="te-part-words">Words and verbs</button>
+                  <button class="subtab" type="button" data-part="te-part-home">Home icon</button>
+                  <button class="subtab" type="button" data-part="te-part-modules">Modules</button>
+                  <button class="subtab" type="button" data-part="te-part-new">New environments</button>
+                  <button class="subtab" type="button" data-part="te-part-phases">Phases</button>
+                  <button class="subtab" type="button" data-part="te-part-reactions">Reactions</button>
+                  <button class="subtab" type="button" data-part="te-part-theme">Theme</button>
+                  <button class="subtab" type="button" data-part="te-part-icons">Icons</button>
+                </nav>
+                <div class="hc-parts">
+                  <fieldset class="sdk-panel hc-part" id="te-part-basics" tabindex="-1">
+                    <legend class="hc-part-name">Basics</legend>
+                    <div class="fields">
+                      <label id="te-id-label">Id<input id="te-id" type="text" maxlength="32" pattern="[a-z][a-z0-9\-]*" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="travel"></label>
+                      <label>Name<input id="te-name" type="text" maxlength="40" autocomplete="off"></label>
+                      <label class="wide">Description <span class="sdk-optional">(optional)</span><input id="te-description" type="text" maxlength="200" autocomplete="off"></label>
+                    </div>
+                    <ul class="problems" data-problems="id name description"></ul>
+                  </fieldset>
 
-        <fieldset>
-          <legend>Reactions</legend>
-          <label class="sdk-choice-row"><input id="te-reactions-on" type="checkbox"><span class="sdk-choice-text">Give reactions</span></label>
-          <div id="te-reactions-box" hidden>
-            <div class="reactions-list" id="te-reactions"></div>
-            <button class="btn btn-small" id="te-reaction-add" type="button">Add reaction</button>
+                  <fieldset class="sdk-panel hc-part" id="te-part-words" tabindex="-1">
+                    <legend class="hc-part-name">Words and verbs</legend>
+                    <p class="sdk-hint">Leave a word blank for the default. Give both the singular and the plural.</p>
+                    <div id="te-words"></div>
+                    <div id="te-verbs"></div>
+                    <ul class="problems" data-problems="words verbs"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-home" tabindex="-1">
+                    <legend class="hc-part-name">Home icon</legend>
+                    <div class="icon-field"><i class="fa-solid fa-house fa-fw" id="te-home-preview" aria-hidden="true"></i><input id="te-home" type="text" maxlength="40" placeholder="house (a Font Awesome name)" aria-label="Home icon, a Font Awesome name" autocapitalize="off" spellcheck="false"></div>
+                    <ul class="problems" data-problems="icons"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-modules" tabindex="-1">
+                    <legend class="hc-part-name">Modules</legend>
+                    <p class="sdk-hint">Turned on in every space of a new environment. The Lobby keeps only chat, the call and modules made for it.</p>
+                    <div class="template-modules" id="te-modules"></div>
+                    <ul class="problems" data-problems="modules"></ul>
+                    <details class="te-module-display">
+                      <summary>Module names and icons</summary>
+                      <p class="sdk-hint">Blank for the module's own.</p>
+                      <div id="te-module-display"></div>
+                    </details>
+                    <ul class="problems" data-problems="moduleNames moduleIcons"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-new" tabindex="-1">
+                    <legend class="hc-part-name">New environments</legend>
+                    <div class="fields">
+                      <label>Lobby name<input id="te-lobby-name" type="text" maxlength="40" placeholder="Lobby"></label>
+                      <label>New spaces use<select id="te-profile"><option value="">The usual profile</option><option value="roleplaying">Roleplaying</option><option value="participants">Participants</option><option value="characters">Characters</option></select></label>
+                      <label class="wide">Lobby description <span class="sdk-optional">(optional)</span><input id="te-lobby-description" type="text" maxlength="300"></label>
+                    </div>
+                    <p class="sdk-hint">What a new space opens, in this order. The ticks are the template's modules, including chat and the conference.</p>
+                    <div id="te-opens"></div>
+                    <ul class="problems" data-problems="lobby spaceDefaults settings"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-phases" tabindex="-1">
+                    <legend class="hc-part-name">Phases</legend>
+                    <p class="sdk-hint">Up to 12. An id is lowercase letters, digits and dashes. One may be the main phase.</p>
+                    <div id="te-phases"></div>
+                    <button class="btn btn-small" id="te-phase-add" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>Add a phase</span></button>
+                    <ul class="problems" data-problems="phases"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-reactions" tabindex="-1">
+                    <legend class="hc-part-name">Reactions</legend>
+                    <label class="sdk-choice-row"><input id="te-reactions-on" type="checkbox"><span class="sdk-choice-text">Give reactions</span></label>
+                    <div id="te-reactions-box" hidden>
+                      <div class="reactions-list" id="te-reactions"></div>
+                      <button class="btn btn-small" id="te-reaction-add" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>Add a reaction</span></button>
+                    </div>
+                    <ul class="problems" data-problems="reactions"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-theme" tabindex="-1">
+                    <legend class="hc-part-name">Theme</legend>
+                    <p class="sdk-hint" id="te-theme-name">None: environments keep their own theme.</p>
+                    <div class="row">
+                      <button class="btn btn-small" id="te-theme-pick" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i><span>Choose a theme file</span></button>
+                      <input id="te-theme-file" type="file" accept=".json,application/json" hidden>
+                      <button class="btn btn-small" id="te-theme-clear" type="button" hidden>No theme</button>
+                    </div>
+                    <ul class="problems" data-problems="theme"></ul>
+                  </fieldset>
+
+                  <fieldset class="sdk-panel hc-part" id="te-part-icons" tabindex="-1">
+                    <legend class="hc-part-name">Icons</legend>
+                    <p class="sdk-hint">Font Awesome names, separated by spaces, added to an environment's icon list. At most 60.</p>
+                    <textarea id="te-icon-set" rows="2" autocapitalize="off" spellcheck="false" aria-label="Icons, Font Awesome names separated by spaces" placeholder="dice compass map"></textarea>
+                    <div class="offer-icons" id="te-icon-preview" aria-hidden="true"></div>
+                    <ul class="problems" data-problems="iconSet"></ul>
+                  </fieldset>
+                </div>
+              </div>
+            </form>
           </div>
-          <ul class="problems" data-problems="reactions"></ul>
-        </fieldset>
 
-        <fieldset>
-          <legend>Theme</legend>
-          <p class="hint" id="te-theme-name">None: environments keep their own theme.</p>
-          <div class="row">
-            <button class="btn btn-small" id="te-theme-pick" type="button"><i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i> Choose a theme file…</button>
-            <input id="te-theme-file" type="file" accept=".json,application/json" hidden>
-            <button class="btn btn-small" id="te-theme-clear" type="button" hidden>No theme</button>
-          </div>
-          <ul class="problems" data-problems="theme"></ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Icons</legend>
-          <p class="hint">Font Awesome names, separated by spaces, added to an environment's icon list. At most 60.</p>
-          <textarea id="te-icon-set" rows="2" autocapitalize="off" spellcheck="false" aria-label="Icons, Font Awesome names separated by spaces" placeholder="dice compass map"></textarea>
-          <div class="offer-icons" id="te-icon-preview" aria-hidden="true"></div>
-          <ul class="problems" data-problems="iconSet"></ul>
-        </fieldset>
-
-        <div class="row">
-          <button class="btn btn-primary" type="submit" id="te-save">Save</button>
-          <button class="btn btn-quiet" type="button" id="te-cancel">Cancel</button>
-          <span class="status" id="te-status" role="status"></span>
-        </div>
-      </form>
-
-      <template id="tpl-te-reaction">
-        <div class="reaction-row">
-          <input class="reaction-glyph" type="text" maxlength="8" placeholder="🙂" aria-label="Emoji">
-          <input class="reaction-label" type="text" maxlength="40" placeholder="Label" aria-label="Label">
-          <button class="btn btn-small danger" data-action="te-reaction-remove" type="button">Remove</button>
-        </div>
-      </template>
+          <template id="tpl-te-reaction">
+            <div class="reaction-row">
+              <input class="reaction-glyph" type="text" maxlength="8" placeholder="🙂" aria-label="Emoji">
+              <input class="reaction-label" type="text" maxlength="40" placeholder="Label" aria-label="Label">
+              <button class="btn btn-small danger" data-action="te-reaction-remove" type="button">Remove</button>
+            </div>
+          </template>
         </section>
-
         <!-- ======== Modules: read only for now (plan-host-console.md, decision 2) ======== -->
         <section class="hc-section" id="section-modules" data-section="modules" aria-labelledby="modules-title" hidden>
           <div class="hc-head"><h1 class="hc-title" id="modules-title" tabindex="-1">Modules</h1></div>
@@ -431,32 +462,19 @@
           </div>
         </section>
 
-        <section class="hc-section tab-stack" id="section-plans" data-section="plans" hidden>
-      <section class="panel" id="plans-panel">
-        <div class="section-head">
-          <h2>Plans</h2>
-          <span class="status" id="plans-status"></span>
-          <button class="btn btn-small" id="plan-add" type="button">Add a plan</button>
-        </div>
-        <p class="hint">What an environment may use, by plan: the caps an environment takes when it is put on the plan (and may then be adjusted on its own card). <code>free</code> is what sign-up makes and what a past-due environment goes back to after 14 days; it cannot be removed. Empty caps mean no cap. A plan is sold online when the server has <code>BILLING_CHECKOUT_&lt;PLAN&gt;</code> set to the provider's checkout page for it.</p>
-        <div class="plans-editor" id="plans-editor"></div>
-        <div class="row"><button class="btn btn-primary btn-small" id="plans-save" type="button">Save plans</button></div>
-      </section>
-
-      <template id="tpl-plan-row">
-        <div class="sdk-card plan-row">
-          <div class="fields">
-            <label>Id<input name="id" type="text" class="plan-id" maxlength="20" pattern="[a-z0-9\-]+" required></label>
-            <label>Name<input name="name" type="text" maxlength="40" required></label>
-            <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
-            <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="0.5" step="0.5" placeholder="no cap"></label>
-            <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
-            <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
-            <label>Modules <span class="sdk-optional">(optional)</span><input name="modules" type="text" placeholder="all, or ids separated by spaces"></label>
+        <!-- ======== Plans: read only for now ======== -->
+        <section class="hc-section" id="section-plans" data-section="plans" aria-labelledby="plans-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="plans-title" tabindex="-1">Plans</h1></div>
+          <p class="sdk-hint">What an environment may use, by plan. Read only: changing plans comes later. One environment's own caps are on its page. Free is what sign-up makes and what a past-due environment goes back to after 14 days.</p>
+          <div class="hc-tablebox">
+            <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+            <div class="sdk-table-wrap hc-wrap">
+              <table class="sdk-table hc-plans" aria-label="Plans">
+                <thead><tr><th scope="col">Plan</th><th scope="col" class="num">Members</th><th scope="col" class="num">Storage (GB)</th><th scope="col" class="num">AI calls a month</th><th scope="col" class="num">Calls at once</th><th scope="col">Modules</th><th scope="col" class="num">Environments</th></tr></thead>
+                <tbody id="plan-rows"></tbody>
+              </table>
+            </div>
           </div>
-          <div class="row"><button class="btn btn-small danger" data-action="plan-remove" type="button">Remove this plan</button></div>
-        </div>
-      </template>
         </section>
 
         <!-- ======== Server: the host, your two-step sign-in, host admins, AI, Maps, the flight schedule ======== -->
@@ -569,7 +587,7 @@
             </section>
 
             <!-- The flight schedule (plan-flight-lookup.md, step 5): one for the whole host, learned from every environment's saved flights; drawn by /flight-schedule.js on /api/host/flight-schedule. -->
-            <section class="sdk-panel hc-part flight-schedule sdk-groups" id="flight-schedule-section" tabindex="-1" hidden>
+            <section class="sdk-panel hc-part flight-schedule sdk-groups" tabindex="-1" id="flight-schedule-section" hidden>
               <div class="sdk-stack">
               <div class="section-head">
                 <h2>Flight schedule</h2>
