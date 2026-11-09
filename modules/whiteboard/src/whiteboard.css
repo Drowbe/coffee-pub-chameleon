@@ -286,8 +286,10 @@
   border-left: 0;
   border-bottom-right-radius: var(--radius-medium);
   background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  /* The strip lets presses through to the board; only its buttons take them. */
+  pointer-events: none;
 }
-.wb-paint-btn { position: relative; }
+.wb-paint-btn { position: relative; pointer-events: auto; }
 .wb-sw { position: relative; display: block; width: 16px; height: 16px; border-radius: var(--radius-min); }
 /* Border: a frame of the colour; Background: a square filled with it (with a hairline, so a pale one shows); Words: an A
    with a bar of the colour under it. */
