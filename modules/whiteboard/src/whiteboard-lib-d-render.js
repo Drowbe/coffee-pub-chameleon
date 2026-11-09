@@ -61,6 +61,10 @@
         if (c) el.style.setProperty(`--wb-${role.id}`, c.token); else el.style.removeProperty(`--wb-${role.id}`);
       }
       if (def.weight) el.style.setProperty('--wb-weight', `${block.weight}px`); else el.style.removeProperty('--wb-weight');
+      // The words' size (a type token) and how they line up, for a block whose words take markup.
+      const size = def.markup && WB_SIZE_BY_ID.get(block.size);
+      if (size) el.style.setProperty('--wb-size', size.token); else el.style.removeProperty('--wb-size');
+      if (def.markup && WB_ALIGN_BY_ID.has(block.align)) { el.dataset.align = block.align; el.style.setProperty('--wb-align', block.align); } else { delete el.dataset.align; el.style.removeProperty('--wb-align'); }
     }
 
     // A block's box on the board ({ x, y, w, h, in? }), for a connector attached to it, or null when it is not on the board

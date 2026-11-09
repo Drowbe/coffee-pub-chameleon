@@ -90,6 +90,8 @@
     paint(v, extra, fallback) { return WB_PALETTE_BY_ID.has(v) || (extra && extra.includes(v)) ? v : fallback; },
     // One of the widths, or the fallback.
     weight(v, fallback) { return WB_WEIGHTS.includes(v) ? v : fallback; },
+    // One of a closed list's ids (a Map by id), or the fallback.
+    choice(v, byId, fallback) { return typeof v === 'string' && byId.has(v) ? v : fallback; },
     id(v) { return typeof v === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(v) ? v : null; },
     svg(tag, attrs = {}) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -120,7 +122,8 @@
   // element, describe(block) -> words for a screen reader, noun?(block) -> what a person calls it ("arrow"; else the
   // label in lower case), paint?: { role: { label?, extra?: ['none', 'auto'] } } (the
   // colour roles it has, see the top of this file), weight?: true (it has a line or border width), edit?: 'text' |
-  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
+  // 'colour' (what opening it does), markup?: true (its `text` is markup, drawn with wbShowWords, edited with the
+  // formatting bar, and it has a size and an align: its create() gives their usual, wbClean cleans them), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
   // field edited, 'text' unless named: a picture's 'alt'), textLine? (one line: Enter keeps it), textLabel? (the field's
   // name for a screen reader), textMax? (most characters), editLabel? (the menu's word for it, else "Edit"), resize?: how it
   // changes size when it is the one block picked:
@@ -180,6 +183,10 @@
     const usual = def.create();
     for (const [role, spec] of Object.entries(def.paint || {})) own[role] = wb.paint(raw[role], spec.extra, usual[role]);
     if (def.weight) own.weight = wb.weight(raw.weight, usual.weight);
+    if (def.markup) {
+      own.size = wb.choice(raw.size, WB_SIZE_BY_ID, usual.size);
+      own.align = wb.choice(raw.align, WB_ALIGN_BY_ID, usual.align);
+    }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;
     return {
