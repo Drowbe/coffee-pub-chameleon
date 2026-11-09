@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boot, stop, openVault, openWindow, showInfo, intercept, reporter, findBrowser, launch, TEXT, COUNT, until, shot, inBoth, sleep, CONTRAST, Tab } from './lib/privacy-lib.mjs';
+import { boot, stop, openVault, openWindow, showInfo, intercept, reporter, findBrowser, startBrowser, TEXT, COUNT, until, shot, inBoth, sleep, CONTRAST, Tab } from './lib/privacy-lib.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const r = reporter('check-vault-privacy-more');
@@ -42,7 +42,7 @@ try {
   const only = await env.file('lee', 'Only for Lee.png', 'only-me');
   const forSam = await env.file('lee', 'For Sam.png', 'people', ['sam']);
   const open = await env.file('lee', 'For everyone.png');
-  browser = await launch(bin);
+  browser = await startBrowser(bin);
 
   // 200 of 200, at 1280 and on a phone.
   for (const size of [1280, 390]) {

@@ -41,6 +41,27 @@ const test = (name, fn) => {
 const base = { module: 'todo', kind: 'task', id: 'abc' };
 const inSpace = { ...base, scope: 'space', space: 'gq2zb7pq' };
 
+// host.library.add sends who may see a file as given: a shape the server does not know is refused or passed on, never turned into "no word"
+// (which the server reads as everyone). Run the handler's own lines up to the request, with the request stubbed.
+test('library.add never sends a visibility that is not a word as no visibility', async () => {
+  const src = slice('public/module-host.js', "async 'library.add'({ file, name, keepPosition, visibility, people, token }) {", "const target = libraryUrl(");
+  const body = src.slice(src.indexOf('{', src.indexOf('token })')) + 1, src.lastIndexOf('const target = libraryUrl('));
+  class Blob {}
+  const run = new Function('Blob', 'Object', `return async (file, visibility, people) => { ${body.replace('(file instanceof Blob)', '(file instanceof Blob)')} return who; };`)(Blob, Object);
+  for (const bad of [null, ['only-me'], 7, { a: 1 }, true, 'x'.repeat(21)]) await assert.rejects(() => run(new Blob(), bad), (e) => e.status === 400, `visibility ${JSON.stringify(bad)} reached the server as no word`);
+  for (const bad of [null, 'a,b', { 0: 'a' }, [1], new Array(202).fill('k')]) await assert.rejects(() => run(new Blob(), 'people', bad), (e) => e.status === 400, `people ${JSON.stringify(bad)} was passed on`);
+  assert.deepEqual(await run(new Blob(), undefined, undefined), {});
+  assert.deepEqual(await run(new Blob(), 'only-me', undefined), { visibility: 'only-me', people: '' });
+  assert.deepEqual(await run(new Blob(), 'people', ['a', 'b']), { visibility: 'people', people: 'a,b' });
+});
+test('library.pickPeople takes the adder from the page and asks the library gate first', () => {
+  const src = slice('public/module-host.js', "async 'library.pickPeople'({ chosen }) {", 'returnFocus: () => holder });');
+  assert.ok(src.indexOf("api('GET', libraryUrl())") > 0 && src.indexOf("api('GET', libraryUrl())") < src.indexOf('loadMembers'), 'the library gate must come before the people are read');
+  assert.match(src, /api\('GET', '\/api\/me'\)/, 'the adder must be read from the page\'s own sign-in');
+  assert.ok(!/\badder\b[^:]*\}\)/.test(src.split('\n')[0]), 'the handler must not take an adder from the module');
+  assert.ok(!/call\('library\.pickPeople', \{[^}]*adder/.test(fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8')), 'host.js must not send an adder');
+});
+
 test('a pointer in a space, the environment or a person is accepted by both sides', () => {
   for (const p of [inSpace, { ...base, scope: 'environment' }, { ...base, scope: 'person' }]) {
     assert.ok(REF_SHAPE(p), `module-host refused ${JSON.stringify(p)}`);

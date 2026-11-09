@@ -6,7 +6,7 @@
  * Added by choices, nor in any text, title, label or value on the page, and an empty list reads exactly as a Vault with no files.
  * With no Chromium it says SKIPPED (set CHROME_PATH); that is not a pass. VAULT_SHOTS=<folder> keeps a picture of each state.
  */
-import { boot, stop, openVault, reporter, findBrowser, launch, TEXT, COUNT, EVERYTHING, until, shot, inBoth, sleep } from './lib/privacy-lib.mjs';
+import { boot, stop, openVault, reporter, findBrowser, startBrowser, TEXT, COUNT, EVERYTHING, until, shot, inBoth, sleep } from './lib/privacy-lib.mjs';
 
 const r = reporter('check-vault-privacy-list');
 const bin = findBrowser();
@@ -24,7 +24,7 @@ try {
   const hiddenTrip = (await env.ok('admin', 'POST', '/api/spaces', { name: 'Hidden trip', members: [env.keys.lee, env.keys.sam] })).space.id;
   const emptyTrip = (await env.ok('admin', 'POST', '/api/spaces', { name: 'Empty trip', members: [env.keys.lee, env.keys.sam] })).space.id;
   await env.file('lee', 'Lee alone.png', 'only-me', null, hiddenTrip);
-  browser = await launch(bin);
+  browser = await startBrowser(bin);
 
   // The adder (Lee): marks on his own files only, in both themes, at 1280.
   tab = await openVault(env, browser, 'lee');

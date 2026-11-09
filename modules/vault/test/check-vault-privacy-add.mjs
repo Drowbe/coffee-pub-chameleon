@@ -6,7 +6,7 @@
  * shown as Always can, searching, no match, no one to choose, N of 200, the keyboard, a phone's picker (chips wrap whole, rows 44px), light
  * and dark. With no Chromium it says SKIPPED (set CHROME_PATH); that is not a pass. VAULT_SHOTS=<folder> keeps a picture of each state.
  */
-import { boot, stop, openVault, reporter, findBrowser, launch, TEXT, COUNT, PRESS, until, shot, inBoth, sleep, ROOTS } from './lib/privacy-lib.mjs';
+import { boot, stop, openVault, reporter, findBrowser, startBrowser, TEXT, COUNT, PRESS, until, shot, inBoth, sleep, ROOTS } from './lib/privacy-lib.mjs';
 
 const r = reporter('check-vault-privacy-add');
 const bin = findBrowser();
@@ -23,7 +23,7 @@ const choose = async (t, word) => { await t.click('#module-frame >>> #who-choice
 try {
   env = await boot('vault-privacy-add');
   const solo = (await env.ok('admin', 'POST', '/api/spaces', { name: 'Just Lee', members: [env.keys.lee] })).space.id;
-  browser = await launch(bin);
+  browser = await startBrowser(bin);
   tab = await openVault(env, browser, 'lee', { wait: '#module-frame >>> .vt-empty-in' });
   await openAdd(tab);
 
@@ -118,6 +118,32 @@ try {
   await until(tab, `(async () => (await (await fetch('/api/modules/vault/library?space=${env.trip}')).json()).files.map((f) => f.name).join())`, (v) => /Mine only/.test(v));
   r.check((await env.listOf('lee')).find((f) => f.name === 'Mine only.png')?.visibility === 'only-me', 'Only me is held as only-me');
   r.check(!(await env.listOf('sam')).some((f) => f.name === 'Mine only.png'), 'Sam does not get it');
+  await tab.close();
+
+  // A batch still going up: the choices are off, so a file is never published wider than the screen said when it started.
+  tab = await openVault(env, browser, 'lee');
+  await openAdd(tab);
+  await choose(tab, 'Only me');
+  const slowed = [];
+  const hold = (m) => {
+    if (m.method !== 'Fetch.requestPaused' || m.sessionId !== tab.sid) return;
+    const q = m.params;
+    if (q.request.method === 'POST' && /\/library\?/.test(q.request.url)) setTimeout(() => tab.cdp.send('Fetch.continueRequest', { requestId: q.requestId }, tab.sid).catch(() => {}), 3000);
+    else tab.cdp.send('Fetch.continueRequest', { requestId: q.requestId }, tab.sid).catch(() => {});
+  };
+  tab.cdp.listeners.push(hold);
+  await tab.cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*/library?*', requestStage: 'Request' }] }, tab.sid);
+  for (let i = 1; i <= 4; i += 1) { await tab.eval(give(`Slow ${i}.png`)); slowed.push(`Slow ${i}.png`); }
+  await sleep(200);
+  const locked = await tab.eval(`(() => { const root = document.querySelector('#module-frame').shadowRoot; return { off: [...root.querySelectorAll('#who-choices input')].every((i) => i.disabled), pick: root.querySelector('#who-change').disabled, line: root.querySelector('#add-line').innerText }; })()`);
+  r.check(locked.off && locked.pick, 'while files are waiting or going up the three choices and Choose people are off');
+  r.check(/keep this until they are done/.test(locked.line) && !/applies to every file you add now/.test(locked.line), `the sentence says the waiting files keep their choice (${locked.line})`);
+  await tab.eval(`(() => { const i = document.querySelector('#module-frame').shadowRoot.querySelector('#who-choices input[value=everyone]'); i.disabled = false; i.click(); })()`).catch(() => {});
+  await until(tab, `(async () => (await (await fetch('/api/modules/vault/library?space=${env.trip}')).json()).files.filter((f) => /^Slow /.test(f.name)).length)()`, (v) => v === 4, 30000);
+  const heldFiles = (await env.listOf('lee')).filter((f) => /^Slow /.test(f.name));
+  r.check(heldFiles.length === 4 && heldFiles.every((f) => f.visibility === 'only-me'), `all four slowed files were held as only-me, as the screen said when they were picked (${heldFiles.map((f) => f.visibility)})`);
+  await tab.cdp.send('Fetch.disable', {}, tab.sid);
+  tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== hold);
   await tab.close();
 
   // No one to choose.

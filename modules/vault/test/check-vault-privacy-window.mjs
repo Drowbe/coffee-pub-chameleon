@@ -6,7 +6,7 @@
  * nothing; the danger button's contrast), widening that asks nothing, the failed change in the window and the failed save in the picker,
  * light and dark. With no Chromium it says SKIPPED (set CHROME_PATH); that is not a pass. VAULT_SHOTS=<folder> keeps a picture of each state.
  */
-import { boot, stop, openVault, openWindow, showInfo, intercept, press, reporter, findBrowser, launch, TEXT, COUNT, until, shot, inBoth, sleep, CONTRAST } from './lib/privacy-lib.mjs';
+import { boot, stop, openVault, openWindow, showInfo, intercept, press, reporter, findBrowser, startBrowser, TEXT, COUNT, until, shot, inBoth, sleep, CONTRAST } from './lib/privacy-lib.mjs';
 
 const r = reporter('check-vault-privacy-window');
 const bin = findBrowser();
@@ -30,7 +30,7 @@ try {
   const share = await env.api('mia', 'POST', `/api/modules/vault/library/shares?space=${env.trip}`, { name: 'Rome, October', files: [linked.id], days: 7 });
   r.check(share.status === 201 || share.status === 200, `Mia made a share link (${share.status} ${JSON.stringify(share.json).slice(0, 80)})`);
   const now = async (f, who = 'lee') => (await env.listOf(who)).find((x) => x.id === f.id);
-  browser = await launch(bin);
+  browser = await startBrowser(bin);
   tab = await openVault(env, browser, 'lee');
   await openWindow(tab, 'Hotel Roma booking.png');
   await showInfo(tab);

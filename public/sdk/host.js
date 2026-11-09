@@ -2667,7 +2667,7 @@
         out.cancel = () => { call('library.cancel', { token }).catch(() => {}); };
         return out;
       },
-      pickPeople: (o) => call('library.pickPeople', { chosen: o && o.chosen, adder: info && info.user && info.user.key }),
+      pickPeople: (o) => call('library.pickPeople', { chosen: o && o.chosen }),
       rename: (id, name) => call('library.rename', { id, name }),
       remove: (id) => call('library.remove', { id }),
       uses: (id) => call('library.uses', { id }),

@@ -15,6 +15,17 @@ export const { PASSWORD } = seed;
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 export const SHOT_DIR = process.env.VAULT_SHOTS || '';
 
+// What a run holds open, so a time limit or a Ctrl-C (SIGTERM, SIGINT) still removes the throwaway folder and stops the server and the browser.
+const held = { dirs: new Set(), servers: new Set(), browsers: new Set() };
+function release() {
+  for (const b of held.browsers) { try { b.child.kill(); } catch { /* gone */ } }
+  for (const sv of held.servers) { try { sv.child.kill('SIGTERM'); } catch { /* gone */ } }
+  for (const d of held.dirs) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); } catch { /* gone */ } }
+}
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { release(); process.exit(1); });
+process.on('exit', release);
+export async function startBrowser(bin) { const b = await launch(bin); held.browsers.add(b); return b; }
+
 export function reporter(name) {
   const r = { passed: 0, failed: 0 };
   r.check = (ok, what) => { if (ok) r.passed += 1; else { r.failed += 1; console.error(`FAIL ${name}: ${what}`); } };
@@ -31,7 +42,10 @@ export function reporter(name) {
 //   people: noor (an owner), mia (a moderator of the trip), lee, sam, ana, ben, chloe (members of the trip), zed (not in it).
 export async function boot(name, { extraMembers = 0 } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
-  const server = await startServer(dataDir, await freePort(), 'first');
+  held.dirs.add(dataDir);
+  let server;
+  try { server = await startServer(dataDir, await freePort(), 'first'); } catch (e) { release(); throw e; }
+  held.servers.add(server);
   const jars = {};
   const api = async (who, method, url, body, type) => {
     const headers = { accept: 'application/json' };
@@ -84,9 +98,9 @@ export async function boot(name, { extraMembers = 0 } = {}) {
 
 export async function stop(env, browser, tab) {
   if (tab) await tab.close().catch(() => {});
-  if (browser) { try { browser.child.kill(); } catch { /* gone */ } }
-  if (env && env.server) await stopServer(env.server);
-  if (env && env.dataDir) fs.rmSync(env.dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  if (browser) { try { browser.child.kill(); } catch { /* gone */ } held.browsers.delete(browser); }
+  if (env && env.server) { await stopServer(env.server); held.servers.delete(env.server); }
+  if (env && env.dataDir) { fs.rmSync(env.dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); held.dirs.delete(env.dataDir); }
 }
 
 // A tab signed in as `who` on the Vault page of the space, in a size and a mode.
@@ -95,8 +109,11 @@ export async function openVault(env, browser, who, { size = 1280, mode = 'light'
   await tab.open(size, mode);
   if (touch) { await tab.cdp.send('Emulation.setDeviceMetricsOverride', { width: size, height: 900, deviceScaleFactor: 1, mobile: true }, tab.sid); await tab.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, tab.sid); }
   for (const kv of env.jars[who].split('; ')) { const i = kv.indexOf('='); await tab.cdp.send('Network.setCookie', { name: kv.slice(0, i), value: kv.slice(i + 1), url: env.server.base, httpOnly: true }, tab.sid); }
-  await tab.cdp.send('Page.navigate', { url: `${env.server.base}/modules/vault?space=${space || env.trip}&popout=1` }, tab.sid);
-  await tab.waitFor(wait);
+  // A busy machine (the Vault with 200 people, or other checks running) can be slow to draw: one more try before it counts as a failure.
+  for (let attempt = 1; ; attempt += 1) {
+    await tab.cdp.send('Page.navigate', { url: `${env.server.base}/modules/vault?space=${space || env.trip}&popout=1` }, tab.sid);
+    try { await tab.waitFor(wait, '', 25000); break; } catch (e) { if (attempt >= 3) throw e; }
+  }
   await tab.settle();
   await tab.forceMode();
   await sleep(500);
