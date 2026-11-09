@@ -155,7 +155,7 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   seven base colours and thirteen optional ones by their stored names (`bg`, `bgSection`, `border`, `text`, `textDim`,
   `accent`, `onAccent`, `card`, `headerBg`, `headerText`, `navBrandBg`, `navBrandText`, `navRightBg`, `navRightText`, `icon`, `iconHover`, `primaryHover`, `secondary`,
   `secondaryText`, `secondaryHover`), `null` for Auto (a stored theme, a theme file or a template's theme without a key reads it as Auto, so it looks as before); `server/theme-css.js` is the one place that maps them to CSS (`navBrandBg` to `--nav-brand-bg`, `navBrandText` to `--nav-brand-text`, `navRightBg` to `--nav-right-bg`, `navRightText` to `--nav-right-text`; the top bar's colour areas, see [design-theme](../designsystem/design-theme.md)). A file exported here carries the four nav keys (`null` on Auto); an older server reading it drops them and names them in `dropped`, so `formatVersion` stays 1.
-  `GET /api/themes/:id/export` (owner; `default` is Strong Coffee) answers the file
+  `GET /api/themes/:id/export` (owner; `default` is the built-in default theme, Chameleon) answers the file
   `{ format: "theme", formatVersion: 1, name, author?, light, dark }` with every key in each set, as
   `<name>.theme.json`, or 404 "no such theme". The marker pair is named by kind, never by the product, and read by
   one rule for all three file formats (`server/file-format.js`, [plan-kind-names](../plans/plan-kind-names.md)).
