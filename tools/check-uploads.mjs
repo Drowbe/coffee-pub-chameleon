@@ -152,7 +152,7 @@ test('the store: per scope, limits, thumbnails and removal', () => {
   assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2', words: W }), /Error: This space already keeps the most files this module may keep \(2\)\.$/);
   assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2', words: { ...W, space: 'trip' } }), /Error: This trip already keeps/);
   assert.throws(() => u.put('research', 'person:u1u1u1', { ...rule, maxFiles: 0 }, { bytes: png(), by: 'u2', words: W }), /Error: You already keep the most files/);
-  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2' }), /needs the words/);
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2' }), /the words from the route are missing/);
   assert.throws(() => u.put('research', 'space:../x', rule, { bytes: png(), by: 'u2' }), /bad scope/);
   assert.equal(u.read('research', 'space:abcd1234', '../../etc/passwd', false), null);
   assert.ok(u.usage('research').bytes > 0);
