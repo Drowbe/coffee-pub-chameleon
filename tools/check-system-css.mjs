@@ -107,7 +107,7 @@ const { DEFAULT_THEME } = require('../server/store.js');
 const BASE = ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent', 'status-danger-fill', 'status-ok-fill'];
 // The roles system.css derives (formulas), some of which /theme.css also writes (the picks) or a theme may set.
 const DERIVED = [
-  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own',
+  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own', 'surface-message',
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',

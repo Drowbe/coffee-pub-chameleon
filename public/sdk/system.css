@@ -178,6 +178,7 @@
   --surface-popover: var(--surface-menu);
   --surface-toast: var(--surface-card);
   --surface-tooltip: var(--text-primary); /* the inverse of the page */
+  --surface-message: color-mix(in srgb, var(--ink-neutral) 5%, transparent); /* a chat message's box: a step off the window until a theme sets it (the studio's is a white card) */
   --surface-chat-own: color-mix(in srgb, var(--wash-ink) var(--wash-own), transparent);
   --surface-toolbar: var(--surface-field);
   --surface-bar-top: var(--surface-page);
@@ -461,7 +462,7 @@
 }
 
 .sdk-icon-btn.btn-quiet {
-  --b-fg: var(--text-muted);
+  --b-fg: var(--icon-default);
 }
 
 /* Selected, on, pressed: the selected fill, never an edge. */
@@ -3931,7 +3932,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   --msg-quote-fill: color-mix(in srgb, var(--ink-neutral) 7%, transparent);
   --msg-portrait: 24px;
   --msg-meta: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); /* the time and the command: 4.5 to 1 on both message fills */
-  --msg-fill: color-mix(in srgb, var(--ink-neutral) 5%, transparent); /* the box's own surface: a step off the window */
+  --msg-fill: var(--surface-message); /* the box's own surface: a step off the window */
   --composer-lines: 5;
   --composer-lh: 20px;
   --composer-pad-y: var(--space-2);
