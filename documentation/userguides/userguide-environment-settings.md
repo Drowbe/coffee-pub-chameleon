@@ -7,7 +7,7 @@ Open the Manage page from the menu under your picture in the top bar: choose **M
 
 ## Environment
 
-- **Environment** (a hosted server only). The plan's name, each cap with what is used, the overdue banner when a payment has lapsed, **Upgrade**, **Download a copy** and **Ask for deletion**. See [Your environment](userguide-environments.md).
+- **Environment** (a hosted server only). The plan's name, each cap with what is used, the overdue banner when a payment has lapsed, **Download a copy** and **Ask for deletion**. See [Your environment](userguide-environments.md).
 - **Name and icon.** The **Name** shows in the top bar and the browser tab. The icon is any image;
   it is used in the top bar's logo box (in place of the home icon), as the favicon, and on the sign-in page. Click it to change it, or paste a
   picture (see "Set a picture" in [Participant and Character Images](userguide-images.md)), and the

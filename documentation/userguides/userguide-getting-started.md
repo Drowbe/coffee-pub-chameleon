@@ -251,10 +251,8 @@ second factor** with the password, and Manage and the console show a banner unti
 makes, and what a lapsed environment goes back to) and any named plans, each with its caps (members,
 storage, assistant calls a month, calls at once, modules). An environment is put on a plan from its card,
 which fills its caps from the catalog to adjust on its own. The start page at the base domain does not list the
-plans yet. Only when the server has `SIGNUP: "on"` does it make a free environment for anyone who asks (an
-address, a name, the owner's login and name; the owner chooses a password next, on the new environment's own page); without it the page offers no sign-up form, just a way to
-write to you. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
-(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and an owner's Upgrade goes there with `?environment=<slug>`. The provider tells the server
+plans yet. The start page has no sign-up form: it takes a person to an environment that exists. The server's sign-up route (`SIGNUP: "on"`, which makes a free environment from an address, a name and the owner's login) is still there, but no page uses it yet, so the host console's **New environment** is how an environment is made. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
+(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and an owner's **Upgrade** goes there with `?environment=<slug>` once the link is shown (it is hidden until the start page has a plans list). The provider tells the server
 what happened through the webhook at `https://admin.<base>/api/host/billing`: a JSON body
 `{ "slug", "plan", "event" }` with `event` one of `paid`, `lapsed` and `cancelled`, signed with
 `BILLING_SECRET` as an `x-billing-signature` header (HMAC-SHA256 of the raw body, in hex). A provider's
@@ -298,13 +296,12 @@ What changes:
 - The bare `https://<base>` sends visitors on to the same path at the product host (a redirect that keeps the
   path and the query), so a base address typed by hand still works. The console stays at `admin.<base>`;
   there is no setting to move it.
-- Sign-up and **Go** on the start page work across the two sites. After sign-up the person arrives at the new
-  environment's own page, where they choose their password.
+- **Go** on the start page works across the two sites.
 - **Find your environment** on the start page asks for your environment's address, not a password. Type it, press
   **Go**, and you arrive at that environment's own sign-in page. The page lists no environments. If someone sent
   you a link, just open it.
-- An owner's **Upgrade** link on Manage and the console's own facts name the product host. The start page has no
-  plans list yet, so **Upgrade** opens the start page and not a list of plans.
+- The console's own facts name the product host. Manage's **Upgrade** link is hidden until a plans page exists, so
+  an owner sees no link yet.
 - LiveKit is unchanged. `LIVEKIT_HOST` is its own setting, and its DNS record, certificate, proxy host and the
   TURN domain stay where they are.
 - If the product host sits directly under the base (`www.<base>`), its first label is reserved for it, and the

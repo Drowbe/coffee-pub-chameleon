@@ -40,8 +40,8 @@ More bundled templates may come later, and the host admin can make their own (be
 4. Under **Plan**, choose the plan, or leave "No caps, every module".
 5. Click **Create**.
 
-When the host has templates, the start page's sign-up form offers the same choice to someone making their
-own environment.
+When the host has templates, the server's sign-up route accepts the same choice, but the start page has no sign-up form
+now.
 
 **On a single server,** set `TEMPLATE` in the compose file (for example `TEMPLATE: "travel"`) before the first
 start, on a fresh data folder. It is used only when the environment is made: on a data folder that already has

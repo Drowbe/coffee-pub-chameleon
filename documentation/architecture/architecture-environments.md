@@ -144,28 +144,43 @@ with code 1. Without it, such a start built a second, empty single-environment i
 the AI files, `secrets.key`) beside the environments, and every later start with `BASE_DOMAIN` refused (GitHub
 #90). `tools/check-host-registry.mjs` covers it.
 
-**The start page.** `/` on the product host is the start page, the only page it serves. It carries no marketing,
-screenshots or demo. Its parts, top to bottom (`public/start.html`, `start.js`, `start.css`):
+**The start page.** `/` on the product host is the start page, the only page it serves. It is the product's front
+door: a person types the address of their environment and goes to its sign-in. Its parts, top to bottom
+(`public/start.html`, `start.js`, `start.css`):
 
-- **Recent.** The environments this browser reached through the page, newest first, up to five, kept in the browser
-  under the key `app.recentEnvironments`; the server stores nothing for it. Each row opens that environment's sign-in
-  and has a button to remove it. The part is not drawn when the list is empty.
+- **The header.** The studio's: the mark, the lockup (the studio's name, then the product's name in coral), a round
+  light and dark button, and, when `PRODUCT_SITE_URL` is set, **Support** and **Find Out More**. It stays at the top
+  while the page scrolls.
+- **The hero.** The badge **Private Beta**, the product's name, one lead paragraph, the line "Your own environment at
+  `yourname.<base domain>`" and, when `PRODUCT_SITE_URL` is set, **Request an Invite** (the studio's contact page),
+  beside a drawing.
 - **Find your environment.** The address is typed, with the base domain after the field. The page asks
   `GET /api/product/environment?slug=` about 400 ms after the last keystroke, one request at a time, and shows the
   environment's name when it exists. **Go** opens only that environment's own sign-in address, built from the slug the
-  lookup returned, in the same tab.
-- **Got a link?** A line saying to open the link itself; a guest link or an invite takes a person in on its own.
-- **Get your own.** The sign-up form (`POST /api/product/signup`), open on the page when `SIGNUP=on`: address, name,
-  template when the host offers any, login and an optional display name. It asks for **no password**; the owner
-  chooses it on the new environment's own page (see "The first password"). With sign-up off but `CONTACT_EMAIL`
-  set, it offers to write to that address; with neither, it says it is coming soon.
-- **About {short name}.** One link to `PRODUCT_SITE_URL`, drawn only when that is set (the page reads
-  `productSiteUrl` from `GET /api/product`). It is the page's one link out.
+  lookup returned, in the same tab. Under it, **Got a link?** says that a guest link or an invite takes a person in
+  on its own.
+- **Recent.** In the same band, under the address. The environments this browser reached through the page, newest
+  first, up to five, kept in the browser under the key `app.recentEnvironments`; the server stores nothing for it.
+  Each is a chip that opens that environment's sign-in and has a button to remove it. The part is not drawn when
+  the list is empty.
+- **Ways to use** (the product's short name). Five cards (Travel, Gaming, then Projects, Mentoring and Real estate,
+  marked **Coming soon**), each a link to a page on the studio's site.
+- **The footer.** The studio's: an About paragraph and the columns Products, Studio and Elsewhere, then the legal line.
 
-If `GET /api/product` cannot be reached the page shows "This page did not load" and **Try again**. The page uses the
-app's own design system: `style.css`, the default theme from `/theme.css`, `sdk/system.css`, and the `--brand-coral`
-token for the product's name in the header ([design-theme](../designsystem/design-theme.md)).
-`tools/check-start-page.mjs` reads the files for these rules and runs the page in headless Chromium.
+Every link out is built from the origin of `PRODUCT_SITE_URL` (`siteLink()` in `start.js`), with a path of the
+studio's. With it unset, the header's two links, **Request an Invite**, the Ways to use cards and the footer are not
+drawn, and the page is the address and Recent alone. The Elsewhere column is the exception: its three links are
+written out in the script, since they are not on the studio's site.
+
+There is no sign-up on the page. `POST /api/product/signup` and the `signup` field of `GET /api/product` remain on
+the server (see "The first password"), but nothing on the start page calls them.
+
+If `GET /api/product` cannot be reached the page shows "This page did not load" and **Try again**. The page does not
+use the app's theme. It has its own palette, taken from the studio's design system: the `--sp-*` names, written once
+in three `:root` blocks at the top of `start.css` (light, the picked dark, and the browser's dark), with the same
+values in the two dark blocks. It loads `sdk/system.css` for the two font families only, and light mode is the
+default unless the browser picked dark (`theme-head.js`). `tools/check-start-page.mjs` reads the files for these rules
+and runs the page in headless Chromium.
 
 `PRODUCT_SITE_URL` is read once at start. Unset or empty means no link. A value that is not an absolute `http` or
 `https` address, or that carries a user name or password, stops the start with one line naming it, as a bad
@@ -986,7 +1001,7 @@ Now `GET /api/me` and `GET /api/status` answer a bearer request exactly as they 
 
 Two things are the host's, above every environment, decided in the plan's "Managed AI" and "Shared files" sections.
 
-- **Managed AI.** The host registry keeps one AI service per company (`host.json`'s `ai`: `openai`, `anthropic` and `compatible`, each with a model and a key, the last with an address), set on the console's Managed AI panel (`GET`/`PUT /api/host/ai` one company at a time, `POST /api/host/ai/models`, a key never in a view) or taken from `AI_OPENAI_KEY` and `AI_ANTHROPIC_KEY` when none is saved; a company with a key and no saved model uses the built-in default model for it (`DEFAULT_MODELS` in `server/ai.js`), so a key alone is enough. A company with a key (an address, for `compatible`) and a model is offered. Each environment's `Ai` is built with a `managed()` function that answers with the offered companies, and its own `ai.json` carries `source: 'managed' | 'custom'` and `managedProvider`: managed calls go out with that company's model and the host's key, custom ones with the environment's own; the enable step, the monthly allowance and the usage stay the environment's. A fresh environment starts managed on the first offered company. `AI_KEY` (with `AI_PROVIDER`, `AI_MODEL`, `AI_ADDRESS`) was the one-company form of this and still fills that company's slot; an `ai.json` that only ever worked through it becomes `managed` on first start and seeds that slot from its provider and model.
+- **Managed AI.** The host registry keeps one AI service per company (`host.json`'s `ai`: `openai`, `anthropic` and `compatible`, each with a model and a key, the last with an address), set on the console's Managed AI panel (`GET`/`PUT /api/host/ai` one company at a time, `POST /api/host/ai/models`, a key never in a view) only (no environment variable sets a key, a provider, an address or a model); a company with a key and no saved model uses the built-in default model for it (`DEFAULT_MODELS` in `server/ai.js`), so a key alone is enough. A company with a key (an address, for `compatible`) and a model is offered. Each environment's `Ai` is built with a `managed()` function that answers with the offered companies, and its own `ai.json` carries `source: 'managed' | 'custom'` and `managedProvider`: managed calls go out with that company's model and the host's key, custom ones with the environment's own; the enable step, the monthly allowance and the usage stay the environment's. A fresh environment starts managed on the first offered company. A fresh environment with no offered company starts `custom`. An `ai.json` that has a provider and a model but no key, which once worked only through a variable, now stays `custom`: nothing seeds the host's slot from it.
 - **Shared files.** A `files` setting a module declares `"shared": "host"` (Maps' `map`) lives in `DATA_DIR/shared/<module>/<folder>/` for every environment, or in the module's own folder as before when there is no `BASE_DOMAIN`. The environment's settings view marks it `shared: true` and lists the host's files, its values answer every file, its file and region-cut routes refuse for that folder, and the host router carries the folder's own API (`/api/host/shared`, files, the region source address, the region cut). On the first start with `BASE_DOMAIN`, a missing shared folder takes the files of the one environment that has any.
 
 The console page for both is `public/host.js` with the form and the region cut shared with the environment's pages (`public/ai-form.js`, `public/region-cut.js`), so a host admin and an environment admin see the same controls where they overlap.
