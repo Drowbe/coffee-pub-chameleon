@@ -10,6 +10,8 @@ with its Save as image PNG of the selection; later the Vault's pictures, chat pi
 the Assistant as an attachment in Chat's input, and the AI explains it. On approving, Thomas decided that the words
 version of the Whiteboard's "Send to Assistant" must not send at once: he chose to wait for the staged version (attach
 to Chat's input, the person presses Send), so the attach piece carries words as well as a picture and lands first.
+Later the same day the project manager, under Thomas's delegation, settled the three questions left (decisions 10 to
+12).
 
 Each fact below is marked **verified in code** (read in this worktree on 2026-11-09, never run against a real service)
 or **inferred**. Nothing about the providers could be checked offline; what must be checked against their own
@@ -107,29 +109,26 @@ Thomas, 2026-11-09, approving the plan. Items 4 to 9 are the draft's suggestions
 9. **Vault pictures come later**, by pointer, and only with the Vault's `download` permission (and `fileVisible`).
    Chat pictures and uploads come later too, by pointer.
 
+Decided by the project manager on 2026-11-09, under Thomas's delegation, choosing among the suggestions made on
+approval:
+
+10. **Attached words are their own part, up to 8,000 characters.** They are not the question: they ride in the data
+    like an attached object's text, counted in the 5,000-token material share. The question box keeps its
+    1,000-character limit and may be left empty; the server then asks "Explain this.". Reason: 8,000 is the cut an
+    attached object's text already has; at most 4 bytes a character that is 32 KB, so with the question the request
+    stays inside the 64 KB JSON limit and nothing about that limit changes. The question message stores them
+    (private, as a typed question is), within `MAX_AI_TEXT`.
+11. **`host.chat.ask` is kept, not retired now.** It stays exactly as it is today: a question and object pointers, sent
+    at once. It never takes attached words or a picture. Research's **Research this** and the `askAssistant` action
+    and its shortcuts stay as they are, with no change to Research or the Assistant. `host.chat.attach` is the path for
+    words and pictures, and for objects when a module wants to stage them. Known cost: two paths from a module to the
+    Assistant, one that sends at once and one that waits for Send.
+12. **The manifest declaration names pictures only:** `"chat": { "attach": ["picture"] }`. Attaching words or an object
+    needs nothing, as typing needs nothing.
+
 Carried from the draft as how the build handles them (not separate choices): a compatible service that refuses
 pictures is remembered for that provider, address and model (`picturesRefused`, as `toolsRefused`) and pictures are
 not offered after that; a question with a picture is one turn and one call, and its estimate includes the picture.
-
-## Recommendations for Thomas to confirm
-
-Asked for on approval; these are suggestions, not decisions (see Still open for what each holds up).
-
-- **Attached words and the limits.** The attached words are not the question: they ride as their own part of the
-  data (like an attached object's text), and the question box keeps its 1,000-character limit and may be left empty
-  (the server then asks "Explain this."). Attached words may be up to **8,000 characters**, the cut an attached
-  object's text already has, counted in the 5,000-token material share. At most 4 bytes a character, that is 32 KB,
-  so with the question the request stays inside the 64 KB JSON limit and nothing about the body limit changes. The
-  question message stores them (private, as a typed question is), within `MAX_AI_TEXT`. Alternative: the words fill the
-  question box and are cut to 1,000; simpler, but the Whiteboard's selection often runs longer and the person would
-  edit inside one large box.
-- **`host.chat.ask` is retired.** Once attach exists, every caller moves to it and `chat.ask` is removed (the product is
-  not released, so no alias): Research's **Research this** attaches its object; the `askAssistant` action and its
-  shortcut attach. Each now waits for Send. Reason: one rule, "a module never sends", with no exception to police.
-  Research and the Assistant get version bumps. Alternative: keep `chat.ask` for objects only (no words, no picture);
-  it keeps today's one-click **Research this**, at the cost of a second path.
-- **The manifest declaration names pictures only:** `"chat": { "attach": ["picture"] }`. Attaching words or an object
-  needs nothing, as typing needs nothing.
 
 ## The contract
 
@@ -183,7 +182,9 @@ Asked for on approval; these are suggestions, not decisions (see Still open for 
 
 ## Security
 
-- **A module never sends.** `attach` only stages; the person's Send sends. A bundled module runs in the page and could
+- **A module never sends words or a picture it attaches.** `attach` only stages; the person's Send sends.
+  `host.chat.ask` still sends a question and object pointers at once (decision 11), and the check proves it can carry
+  neither attached words nor a picture. A bundled module runs in the page and could
   call the page's routes directly, as every bundled module can today, so the server's checks decide what is allowed.
 - **A module never reads someone else's picture.** With a Blob it sends only what it holds; with a pointer (later) the
   server reads the picture as the person asking, through the same checks as opening it.
@@ -204,41 +205,41 @@ independent security read before merge.
    experience-design for the chip)
 2. **The Whiteboard's Send to Assistant, on attach.** Leaves working: the words tutoring case end to end. (experience-design;
    Whiteboard version bump)
-3. **Retire `host.chat.ask`** (if Thomas confirms): Research's **Research this** and `askAssistant` move to attach;
-   `chat.ask` and its shortcuts are removed. Leaves working: every ask from a module waits for Send.
-   **Security-sensitive.** (experience-design; Research and Assistant version bumps)
-4. **The providers' picture parts and the stand-in.** Image parts for each family, `picturesRefused`, and
+3. **The providers' picture parts and the stand-in.** Image parts for each family, `picturesRefused`, and
    `tools/fake-model.mjs` taking image parts in both shapes. Leaves working: everything as before; the adapters are
    ready. **Security-sensitive.** (server-development)
-5. **The picture hold, the switch, `ask@4`, counting.** Leaves working: a picture can be asked about by calling the
+4. **The picture hold, the switch, `ask@4`, counting.** Leaves working: a picture can be asked about by calling the
    routes, only where the owner turned the switch on. **Security-sensitive.** (server-development)
-6. **The switch on the pages:** the AI configuration page and a space's Set up, "Pictures a person attaches", with "A
+5. **The switch on the pages:** the AI configuration page and a space's Set up, "Pictures a person attaches", with "A
    picture a person attaches goes to the AI service with their question. It is never kept here." (experience-design)
-7. **Attach, pictures:** `picture` on `host.chat.attach`, the manifest declaration, the picture chip with its preview
+6. **Attach, pictures:** `picture` on `host.chat.attach`, the manifest declaration, the picture chip with its preview
    and company line. **Security-sensitive.** (experience-design, with server-development for the bridge's checks)
-8. **The Whiteboard's Ask the Assistant about this picture.** Leaves working: the picture tutoring case end to end.
+7. **The Whiteboard's Ask the Assistant about this picture.** Leaves working: the picture tutoring case end to end.
    (experience-design; Whiteboard version bump)
-9. **Documentation.** (content-manager)
-10. **Later, each its own slice:** a Vault picture by pointer (after the Vault privacy build has merged), a chat
-    picture, a module's upload, and a picture pasted straight into the Assistant view.
+8. **Documentation.** (content-manager)
+9. **Later, each its own slice:** a Vault picture by pointer (after the Vault privacy build has merged), a chat
+   picture, a module's upload, and a picture pasted straight into the Assistant view.
+
+Not in this order: retiring `host.chat.ask` (moving **Research this** and `askAssistant` to attach). Decision 11 keeps
+it; see Still open.
 
 ## Verify
 
 - **Step 1** (`tools/check-module-host.mjs`, `tools/check-prompts.mjs`, `tools/check-ai-page.mjs`): `attach` sends
   nothing to `/ai` until Send; one of `text`, `picture`, `ref` and a `label` are required; words over 8,000 characters
   are refused; `ask@3` golden files, with a fixture whose attached words carry instructions; the chip, its remove and
-  the hidden line; an empty question with attached words asks "Explain this.".
-- **Step 2 and 8:** the Whiteboard's own tests (the entries show only with a selection, the picture one only when
+  the hidden line; an empty question with attached words asks "Explain this."; `chat.ask` still sends at once, unchanged,
+  and refuses attached words and a picture; Research and the Assistant pass their checks untouched.
+- **Steps 2 and 7:** the Whiteboard's own tests (the entries show only with a selection, the picture one only when
   pictures are available).
-- **Step 3:** no module or page calls `chat.ask`; Research and the Assistant pass their checks with attach.
-- **Steps 4, 5 and 7, a new `tools/check-ai-pictures.mjs`** (against the stand-in): the image part in each provider's
+- **Steps 3, 4 and 6, a new `tools/check-ai-pictures.mjs`** (against the stand-in): the image part in each provider's
   shape; the refusals and their sentences (guest, role, space off, switch off in the environment, off in the space only,
   too large, too many pixels, a GIF or a non-picture with a picture's name); another person's, another space's and an
   expired id give the same 404 text; the position and text chunks are gone from what the stand-in received; after the
   question nothing of the picture is in `DATA_DIR` (a byte search of every file), `ai-log.jsonl`, the chat files or the
   log with `AI_LOG_PROMPTS=1`; the estimate includes the picture; a refusal is remembered and then not offered; no
   tools with a picture; a module without the declaration is refused a picture.
-- **Step 6:** `tools/check-ai-page.mjs` for the switch on both pages.
+- **Step 5:** `tools/check-ai-page.mjs` for the switch on both pages.
 - **Not checkable here:** a real provider reading a picture, its real cost, its real refusal for a model that cannot
   read pictures, and how well it resists words in a picture. These need one real key with a spending limit, as
   `plan-ai-integration.md` sets out for its first real try. Nothing here needs a LiveKit call.
@@ -246,12 +247,11 @@ independent security read before merge.
 ## Documentation to update
 
 `architecture-ai.md` (what is sent, the switch, the adapters, records, variables), the AI routes in `api-modules.md`,
-the SDK guide (`host.chat.attach`, and `host.chat.ask` gone), `userguide-assistant.md`, `userguide-modules.md` ("The AI
-service", What AI may see), `userguide-whiteboard.md`, `userguide-chat.md` ("Ask the AI"), `userguide-research.md`
-(**Research this** waits for Send), and the README and `docker-compose.yml` for `AI_PICTURE_MAX_MB` and
-`AI_PICTURE_KEEP_MINUTES`.
+the SDK guide (`host.chat.attach`, and when to use it rather than `host.chat.ask`), `userguide-assistant.md`,
+`userguide-modules.md` ("The AI service", What AI may see), `userguide-whiteboard.md`, `userguide-chat.md` ("Ask the
+AI"), and the README and `docker-compose.yml` for `AI_PICTURE_MAX_MB` and `AI_PICTURE_KEEP_MINUTES`.
 
 ## Still open
 
-Thomas to confirm the three recommendations above (attached words up to 8,000 characters as their own part, retiring
-`host.chat.ask`, the declaration naming pictures only); the first blocks step 1, the second step 3.
+Revisit retiring `host.chat.ask` later (decision 11's known cost: two paths, one sending at once). Nothing blocks the
+build.
