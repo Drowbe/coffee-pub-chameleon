@@ -2054,7 +2054,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
       x.className = 'sdk-chip-x';
       x.setAttribute('aria-label', `Do not send ${aiWords.label}`);
       x.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-      x.addEventListener('click', () => { aiWords = null; paintContext(); input().focus(); });
+      x.addEventListener('click', () => { if (aiWords) aiWords.removed = true; aiWords = null; paintContext(); input().focus(); });
       chip.append(text, x);
       wrap.appendChild(chip);
     }
@@ -2074,7 +2074,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
       x.className = 'sdk-chip-x';
       x.setAttribute('aria-label', `Do not ask about ${label}`);
       x.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-      x.addEventListener('click', () => { aiContext.splice(i, 1); paintContext(); input().focus(); });
+      x.addEventListener('click', () => { c.removed = true; aiContext.splice(i, 1); paintContext(); input().focus(); });
       chip.append(text, x);
       wrap.appendChild(chip);
     });
@@ -2091,8 +2091,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   // server returns, never a copy made here. Nothing is posted to the chat; the author makes the answer public with its
   // badge.
   // `held`: { refs, attached } handed in by a module's ask, used as given. Without it this is the person's own Send, which takes
-  // what is held in the box, read ONCE here before any wait and sent only for what is still held when the wait ends (a chip taken
-  // off meanwhile is not sent; one attached meanwhile is not taken and stays for the next Send). Only what was sent is cleared.
+  // what is held in the box, read ONCE here before any wait; a chip the person takes off during the wait is not sent, and one a
+  // module attaches or replaces meanwhile is not taken by this Send and stays for the next. Only what was sent is cleared.
   async function runAi(question, held = null) {
     const id = spaceId();
     if (!id) { setNote(`AI is only in ${word('space', { a: true })}.`); return false; }
@@ -2111,9 +2111,11 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     if (aiState.known && !aiState.available) { setNote(aiLine(), true); return false; }
     // Sent at once, as in any chat: the question is on the page with a waiting line, the box is the caller's to empty, and
     // nothing here holds it. Several may be on their way; each answer comes under its own question.
-    const sendContext = own ? snapContext.filter((c) => aiContext.includes(c)) : [];
+    // A chip the person took off during the wait is not sent; one that was replaced or added by a module meanwhile does not change
+    // what this Send takes (the snapshot) and stays for the next.
+    const sendContext = own ? snapContext.filter((c) => !c.removed) : [];
     const refs = own ? sendContext.map((c) => c.ref).filter(Boolean) : startRefs;
-    const sendWords = own ? (snapWords && aiWords === snapWords ? snapWords : null) : startWords;
+    const sendWords = own ? (snapWords && !snapWords.removed ? snapWords : null) : startWords;
     if (!String(question || '').trim() && !refs.length && !sendWords) { setNote('Type your question after /ai.', true); return false; }
     const attached = sendWords ? { label: sendWords.label, text: sendWords.text } : null;
     if (own) {
