@@ -101,6 +101,25 @@ const cases = {
       check(!host.calls.some((c) => c[0] === 'remove'), `onPlaced -> ${answer}: no upload removed`);
     }
   },
+  async 'each picture spends one counted upload call'() {
+    const host = fakeHost();
+    const { q } = queue(host, { onPlaced: () => true });
+    q.add([fileOf('a.png', 'image/png', PNG), fileOf('b.jpg', 'image/jpeg', JPEG), fileOf('c.webp', 'image/webp', WEBP)], { x: 0, y: 0 });
+    await settle();
+    check(host.counted() === 3, `three pictures: three counted calls (got ${host.counted()}: ${JSON.stringify(host.calls.map((c) => c[0]))})`);
+    check(!host.calls.some((c) => c[0] === 'inspect'), 'the server is not asked what a picture is');
+  },
+  async 'a picture\'s true type comes from its first bytes'() {
+    need('wbSniffType');
+    const t = lib.wbSniffType;
+    check(t(new Uint8Array(PNG)) === 'image/png' && t(new Uint8Array(JPEG)) === 'image/jpeg' && t(new Uint8Array(WEBP)) === 'image/webp' && t(new Uint8Array(GIF)) === 'image/gif', 'PNG, JPEG, WebP and GIF are known by their first bytes');
+    check(t(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x41, 0x56, 0x49, 0x20])) === null && t(new Uint8Array([1, 2, 3])) === null && t(new Uint8Array(0)) === null && t(null) === null, 'anything else (a RIFF that is not WebP, a few bytes, none) is none of them');
+    const host = fakeHost();
+    const { q, prepared } = queue(host, { onPlaced: () => true });
+    q.add([fileOf('wrong.png', 'image/png', JPEG), fileOf('anim.png', 'image/png', GIF), fileOf('odd.webp', 'image/webp', [1, 2, 3, 4])], { x: 0, y: 0 });
+    await settle();
+    check(JSON.stringify(prepared) === JSON.stringify(['image/jpeg', 'image/gif', 'image/webp']), `the bytes win over the name; no known bytes: the name's type (got ${JSON.stringify(prepared)})`);
+  },
 };
 
 for (const [name, run] of Object.entries(cases)) {

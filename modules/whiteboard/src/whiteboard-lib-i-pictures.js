@@ -1,8 +1,10 @@
   // ---- whiteboard-lib-i-pictures.js: pictures from the person's computer ----------------------------------------------
   //
   // A picture pasted, dropped or chosen with "Add a picture" becomes an image block (lib-e-block-image) in four steps, one
-  // picture at a time: its facts are read from the start of the file (host.uploads.inspect), it is made smaller in the page
-  // (about 2000 px on its long edge, and a thumbnail of about 400 px), it is sent (host.uploads.put, host.uploads.thumb), and
+  // picture at a time: its true type is read from its first bytes in the page (wbSniffType; nothing else about it is kept
+  // on the board, so the server is not asked: each picture spends one of the server's uploads a minute, the put), it is
+  // made smaller in the page (about 2000 px on its long edge, and a thumbnail of about 400 px), it is sent
+  // (host.uploads.put, then host.uploads.thumb, which the server does not count), and
   // only then does the page put the block on the board, saved once (the pictures added together are one step of the undo
   // history: the page tags them so, lib-g). Until then the page
   // shows a placeholder where it will be; if anything fails, the placeholder goes and nothing is saved. A refusal for now
@@ -24,7 +26,7 @@
     min: 24, // board units on the short edge, at least
     maxBytes: 5 * 1024 * 1024, // the manifest's uploads.maxBytes
     maxThumb: 400 * 1024, // the server's limit for a thumbnail
-    head: 256 * 1024, // bytes read for the facts
+    head: 16, // bytes read for the type
     tries: 8, // waits on a 429 before giving up
   };
   // The pictures the board takes, and what each is sent as: a GIF becomes a PNG of its first frame (the server keeps JPEG,
@@ -41,6 +43,16 @@
     if (type && type !== 'application/octet-stream') return null;
     const m = /\.([a-z0-9]+)$/i.exec(String(file.name || ''));
     return (m && WB_PICTURE_ENDINGS[m[1].toLowerCase()]) || null;
+  }
+  // The type a picture's first bytes say it is (whatever its name or the browser says), or null when they say none of these.
+  function wbSniffType(bytes) {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+    const at = (i, list) => list.every((v, k) => b[i + k] === v);
+    if (at(0, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+    if (at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+    if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) return 'image/webp'; // RIFF....WEBP
+    if (at(0, [0x47, 0x49, 0x46, 0x38])) return 'image/gif'; // GIF8
+    return null;
   }
   // Files split into the pictures and how many others there were.
   function wbSplitPictures(files) {
@@ -134,13 +146,11 @@
       const type = wbPictureType(job.file);
       job.step = 'reading';
       onStep(job);
-      // The picture's own facts, read before the resize loses them: its true type (whatever its name says). Its place and
-      // time are not kept on the board. A GIF is not asked about (the server reads only JPEG, PNG and WebP).
-      let facts = {};
-      if (type !== 'image/gif') {
-        try { facts = (await retry(() => host.uploads.inspect(job.file.slice(0, WB_PICTURE.head, type), SCOPE))) || {}; } catch (err) { if (err && err.status === 429) throw err; facts = {}; }
-      }
-      const ready = await prepare(job.file, WB_PICTURE_TYPES[facts.type] ? facts.type : type);
+      // Its true type (whatever its name says), from its first bytes; the type its name or the browser gave when they say
+      // none of the four.
+      let real = null;
+      try { real = wbSniffType(await job.file.slice(0, WB_PICTURE.head).arrayBuffer()); } catch { real = null; }
+      const ready = await prepare(job.file, real || type);
       const size = wbPictureSize(ready.width, ready.height);
       job.box = wbCentred(job.at, size.w, size.h);
       job.step = 'sending';
