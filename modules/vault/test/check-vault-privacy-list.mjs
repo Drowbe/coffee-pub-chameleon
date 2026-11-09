@@ -64,7 +64,7 @@ try {
   await tab.close();
 
   // A member who can see nothing in a Vault that holds a file reads the same words as a Vault with none.
-  const emptyText = async (space) => { const t = await openVault(env, browser, 'sam', { space, wait: '#module-frame >>> .vt-empty-in' }); const v = await t.eval(TEXT('.vt-empty-in')); const s = await t.eval(TEXT('.mf-status')); const e = await t.eval(EVERYTHING); await t.close(); return { v, s, e }; };
+  const emptyText = async (space) => { const t = await openVault(env, browser, 'sam', { space, wait: '#module-frame >>> .vt-empty-in' }).catch(async (e) => { throw new Error(`${e.message}`); }); const v = await t.eval(TEXT('.vt-empty-in')); const s = await t.eval(TEXT('.mf-status')); const e = await t.eval(EVERYTHING); await t.close(); return { v, s, e }; };
   const a = await emptyText(hiddenTrip);
   const b = await emptyText(emptyTrip);
   r.check(a.v === b.v && a.s.replace(/Hidden trip|Empty trip/g, '') === b.s.replace(/Hidden trip|Empty trip/g, ''), `the empty list and status read the same with and without a hidden file ("${a.v.replace(/\n/g, ' ')}" / "${a.s}" vs "${b.v.replace(/\n/g, ' ')}" / "${b.s}")`);

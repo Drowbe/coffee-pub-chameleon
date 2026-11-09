@@ -359,7 +359,7 @@ export function whoBlock(file, ctx) {
   ];
   b.addEventListener('click', () => openHostMenu(b, items));
   box.append(b, problem);
-  if (vis === 'people' && !chosenNow.length) box.append(h('p', 'vp-none', 'No one chosen yet. Only you and the owners can see it.'));
+  if (vis === 'people' && !chosenNow.length) box.append(h('p', 'vp-none', `No one chosen yet. Only you and the ${word('owner', { many: true })} can see it.`));
   if (vis === 'people' && chosenNow.length) {
     const ul = h('ul', 'vp-namelist');
     ul.setAttribute('aria-label', 'People who can see this file');
