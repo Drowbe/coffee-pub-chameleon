@@ -151,6 +151,7 @@
         if (v !== null && takesNext(def, role)) own[role] = v;
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
+      if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null) own[k] = v;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z: Math.floor(board.topZ()) + 1 });
       drafts.add(b.id);
       commit(b, false);
@@ -744,6 +745,40 @@
     host.menu.show({ id: 'line', ...where, items: [{ heading: `Line ${list.length ? 'of' : 'for'} ${whose}` }, ...lineGroups(list)] });
   }
 
+  // The words' size and alignment: of the picked notes, text blocks and shapes (each one whole save, all of them one undo
+  // step), or, with none picked, for new ones. Picked on blocks, it is remembered for the next block too, as a colour is.
+  // The current choice is the marked row; with several blocks that differ, none is.
+  const wordedIn = (only) => targets(only).filter((b) => defOf(b).markup);
+  function textGroups(list) {
+    const group = (field, label, choices) => {
+      const now = list.length ? agreed(list, field) : nextText[field];
+      const pick = (v) => () => {
+        for (const b of list) ctx.change(b.id, { [field]: v }, { save: 'now' });
+        nextText[field] = v;
+      };
+      const rows = choices.map((c) => choiceRow(c.id, c.label, now, pick(c.id), c.icon ? { icon: c.icon } : {}));
+      if (!list.length) rows.unshift(choiceRow(null, 'Usual', now, pick(null)));
+      const chosen = choices.find((c) => c.id === now);
+      return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Usual', rows };
+    };
+    return [group('size', 'Text size', WB_SIZES), group('align', 'Align', WB_ALIGNS)];
+  }
+  function textMenu(where, only) {
+    const list = wordedIn(only);
+    if (!list.length && targets(only).length) {
+      host.menu.show({ id: 'text', ...where, items: [{ label: 'Pick a note, text or shape to change its words', disabled: true }] });
+      return;
+    }
+    const def = !list.length && tool.makes && blockTypes.get(tool.makes).markup ? blockTypes.get(tool.makes) : null;
+    const whose = list.length || def ? whoseOf(list, def) : 'new notes, text and shapes';
+    const [size, align] = textGroups(list);
+    host.menu.show({
+      id: 'text',
+      ...where,
+      items: [{ heading: `Text size ${list.length ? 'of' : 'for'} ${whose}` }, ...size.rows, { heading: 'Align' }, ...align.rows],
+    });
+  }
+
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'
   // z are too close to split is every block numbered again, once. Several picked blocks move together and keep their
   // order among themselves: to the front or back as a stack, a layer up or down each past the next block not picked.
@@ -843,8 +878,9 @@
   if (policy.canEdit) {
     undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
     redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
-    // Line style and arrowheads, for connectors: a toolbar button of its own after Redo (the colours and the width are on
-    // the board's strip; Snap to grid stays last).
+    // Text size and alignment, then Line style and arrowheads (for connectors): toolbar buttons of their own after Redo
+    // (the colours and the width are on the board's strip; Snap to grid stays last).
+    host.ui.toolbarButton({ id: 'text', label: 'Text size and alignment', icon: 'text-height', iconOnly: true, onClick: (e) => textMenu(toolbarAt(e)) });
     if (tools.get('connector') && policy.canUseTool(tools.get('connector'))) host.ui.toolbarButton({ id: 'line', label: 'Line style and arrowheads', icon: 'stairs', iconOnly: true, onClick: (e) => lineMenu(toolbarAt(e)) });
   }
 
@@ -1418,6 +1454,7 @@
     const single = list.length === 1 ? list[0] : null;
     const def = single && defOf(single);
     const lines = connectorsIn();
+    const worded = wordedIn();
     host.menu.show({
       id: 'block',
       className: 'wb-block-menu',
@@ -1427,6 +1464,7 @@
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         ...(lines.length ? lineGroups(lines) : []),
+        ...(worded.length ? textGroups(worded).map((g) => ({ id: g.id, label: g.label, icon: g.id === 'text-size' ? 'text-height' : 'align-left', hint: g.hint, items: g.rows })) : []),
         ...links,
         ...(pair() ? [{ id: 'connect', label: 'Connect them', icon: 'arrows-turn-right', onClick: () => connectPicked() }] : []),
         { heading: 'Layer' },

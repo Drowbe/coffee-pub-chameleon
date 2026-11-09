@@ -81,7 +81,7 @@
   border-radius: var(--radius-min);
   background: var(--wb-face);
   box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent);
-  font-size: var(--text-16);
+  font-size: var(--wb-size, var(--text-16));
   overflow: hidden;
   cursor: grab;
 }
@@ -90,7 +90,7 @@
 .wb-type-note .wb-words { height: 100%; overflow: hidden; }
 
 /* words on their own; a background (a light wash of its fill) and a border only when they are picked */
-.wb-type-text { padding: 4px; font-size: var(--text-22); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
+.wb-type-text { padding: 4px; font-size: var(--wb-size, var(--text-22)); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
 .wb-type-text:not([data-fill="none"]) { background: color-mix(in srgb, var(--wb-fill) 22%, transparent); }
 .wb-type-text[data-stroke="none"] { border-style: none; }
 .wb-type-text .wb-words:empty { min-height: 1.35em; }
@@ -110,15 +110,16 @@
    brush's stroke a filled shape, thinner at its ends */
 .wb-svg[data-brush="marker"] .wb-stroke { stroke: color-mix(in srgb, var(--wb-stroke) 55%, transparent); }
 .wb-svg .wb-brush { fill: var(--wb-stroke); stroke: none; pointer-events: none; }
-/* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type) */
+/* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type), in the middle from
+   top to bottom and lined up as the block says (centred at first); a link in them takes the pointer */
 .wb-shape .wb-words {
   position: absolute;
   inset: var(--wb-inset, 8px);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  text-align: center;
-  font-size: var(--text-16);
+  text-align: var(--wb-align, center);
+  font-size: var(--wb-size, var(--text-16));
   overflow: hidden;
   pointer-events: none;
 }
@@ -205,6 +206,7 @@
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
+  text-align: var(--wb-align, inherit);
 }
 .wb-type-note .wb-text-edit { position: absolute; inset: 12px; width: auto; height: auto; }
 .wb-type-text .wb-text-edit { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); }
