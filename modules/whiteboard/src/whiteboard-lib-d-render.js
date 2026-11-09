@@ -138,9 +138,16 @@
       return el;
     }
 
+    // A block taken away while it has the keyboard (an undo of the block just made) hands the keyboard to the board, so
+    // the next key (a redo) still reaches it.
     function remove(id) {
       const el = els.get(id);
-      if (el) el.remove();
+      if (el) {
+        const root = el.getRootNode();
+        const had = Boolean(root && root.activeElement && el.contains(root.activeElement));
+        el.remove();
+        if (had) surface.focus({ preventScroll: true });
+      }
       els.delete(id);
       const was = shown.get(id);
       if (shown.delete(id)) restack();
