@@ -21,7 +21,10 @@
 //   GET  /api/shared/<token>                200 { name, by: <first name>, ends, download, files: [file] }
 //                                           401 { error: "This link needs its password.", password: true }
 //                                           404 { error: "This link has ended.", ended: true }  for an unknown, wrong,
-//                                               ended, turned off or emptied link, the Vault turned off or the space gone
+//                                               ended, turned off or emptied link, the Vault turned off or the space gone,
+//                                               or a maker who can no longer see any of its files
+//      `files` holds only the files its maker can still see, checked on every open; one they can't is left out as a removed
+//      one is, and its routes below answer as for a file outside the set.
 //                                           429 { error: "Too many tries. Wait a few minutes." }  (Retry-After)
 //      file: { id, name, type, group, size, hasThumb, viewable?: false, content: <url>, thumb?: <url>, download?: <url> }
 //            or { id, removed: true } for a file of the set no longer there ("File removed")
@@ -240,8 +243,22 @@ function mountVaultShares(app, deps) {
     const on = modules.enabled(found.moduleId);
     if (!on || !on.manifest.library || !modules.isOnIn(found.moduleId, found.spaceId) || !store.spaceById(found.spaceId)) return null;
     // The link is its maker's: it ends when they are gone, out of the space, or no longer allowed to share (or to download).
-    if (!makerCan(found.share.by, found.spaceId, found.moduleId, found.share.download ? ['share', 'download'] : ['share'])) return null;
-    return { ...found, manifest: on.manifest };
+    const sees = makerCan(found.share.by, found.spaceId, found.moduleId, found.share.download ? ['share', 'download'] : ['share']);
+    if (!sees) return null;
+    // And it holds only the files its maker can still see, rechecked on every open (plan-vault-privacy.md, decision 8): one
+    // they can't drops out, as a removed file does (dropFromShares), and a link with no such file left has ended, as an
+    // emptied one has. A record gone but still listed stays as { removed: true }, as before. The stored link is untouched,
+    // so a file shown to the maker again comes back.
+    let open = 0;
+    const files = found.share.files.filter((fid) => {
+      const r = vault.get(found.moduleId, found.spaceId, fid);
+      if (!r) return true;
+      if (!sees(r)) return false;
+      open += 1;
+      return true;
+    });
+    if (!open) return null;
+    return { ...found, share: { ...found.share, files }, manifest: on.manifest };
   }
 
   const cookieMac = (found, exp) => crypto.createHmac('sha256', store.sessionSecret)
