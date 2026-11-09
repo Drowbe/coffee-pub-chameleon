@@ -457,7 +457,7 @@ until its step switches it to fail. The environment level (`tenant`, `tenants`) 
 from step 2. `--words` reports "room", "rooms" and "table" in what people read, and `--list[=level]` lists
 every hit. The allow-list is `tools/check-names-allow.json`: `{ file, level, pattern, line?, reason }`, the
 pattern tested against the hit's own name; an entry with no reason fails, `level: "*"` or a pattern that
-matches anything is allowed only for one exact file or under `tools/fixtures/`, and unused entries are listed.
+matches anything is allowed only for one exact file or under `tools/fixtures/`, and unused entries are listed. One entry is scoped to a folder: the word `table` (the Whiteboard's table block, an HTML table a person writes in, with its `WB_TABLE` limits and `wbTable*` names) is allowed in `modules/whiteboard/src/**` only. It is not the call, and the fence holds everywhere else; a case in `check-names` shows it.
 
 **The product name guard** (`productNameCheck`, run on every `check-names` mode). No product name is written into
 an identifier or into text in what the server ships and checks: the name comes only from `PRODUCT_NAME`, and
