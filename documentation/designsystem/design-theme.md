@@ -95,6 +95,10 @@ Pick the token for the kind of thing, not the size it happens to be. Two shapes 
 
 `tools/check-radius.mjs` (part of `npm run check`) fails on any `border-radius` that is not `var(--radius-*)`, `0`, `inherit` or `unset`, in every stylesheet and in the inline styles in scripts and pages, and when either file lacks a token. Its allow-list holds two things: the map pin, a teardrop drawn as `50% 50% 50% 4px` in the Maps and Planner stylesheets (a circle with one square corner, which a `999px` radius would round away), and MapLibre's own library files. SVG `rx` and `ry` are not read.
 
+## The segmented switch
+
+A switch of up to twelve choices in a module's toolbar (`.mf-switch`; `host.ui.viewSwitch`). Each choice shows its icon and its word, and only its icon when the row is too narrow for the words; the word stays as the tooltip and the name. When the row is still too narrow, the switch folds its last choices into the toolbar's **More** menu, which lists them under the switch's name; the chosen choice always stays in the row, and the whole switch moves into **More** only when even the chosen choice alone does not fit. A switch is named **Tools** to a screen reader and in **More** unless the module names it (**Whose**, **Show**, **View**, **Layout**). A module may put a switch, or an icon button, at the right end of the row (`zone: 'end'`); see [architecture-module-window](../architecture/architecture-module-window.md). Its selected choice follows "Selected states" below.
+
 ## Selected states
 
 A control that is selected, on, active or current (a layout tab, a view switch, a pressed tool, a chosen day, a checked

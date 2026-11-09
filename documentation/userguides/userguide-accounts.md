@@ -102,6 +102,7 @@ The permissions are grouped:
 - **Images**: change their own profile photo, call background, and each of the Participant and
   Character pictures. By default only owners change the OBS pictures; everyone else can change their
   own profile photo and call background.
+- **A module's own permissions** follow, under the module's name. The Vault's **See every file** lets a role open files that were not shared with it (the row says so under its name). It is off for every role to start with. The **Owner** box is locked on and the **Guest** box is locked off, because owners always see every file and a guest never can. Turning it on for **Moderator** lets moderators see files other people chose not to share with them; it does not let them change who sees a file. See [Vault](userguide-vault.md), "Who can see a file".
 
 A permission that is off for a role hides the control for that person, and the server refuses it even
 if someone tries the request by hand.
