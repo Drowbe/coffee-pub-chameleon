@@ -165,6 +165,11 @@
   // goes to that side's middle while the block is on the board, and falls back to dx, dy while it is not. The note then has
   // refs, remap and loosen like a connector (loosen writes the drawn tip back into dx, dy), and is redrawn with the block
   // it points at (the renderer's deps); it stays a placed block with its own x, y, so it is not `attached`.
+  // Later too: a highlight (lib-e-block-highlight.js) that locks onto what it highlights, so it moves with that block. It
+  // gains an optional target: { block, dx, dy }, its x, y's offset from that block's top left corner; when it is drawn,
+  // x, y become boxOf(target.block) + dx, dy (as a connector's ends are resolved), and it keeps its own x, y as they were
+  // last drawn for while the block is not on the board. refs, remap and loosen as for the pointer above; a move of the
+  // highlight alone changes dx, dy (its type's move).
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
   // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
   // another connector.
