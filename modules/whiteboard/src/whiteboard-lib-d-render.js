@@ -450,9 +450,9 @@
   // fills the block (a note, a shape's label). line: one line (a picture's description), where Enter keeps it; label: the
   // box's name for a screen reader; max: the most characters.
   // bar: words that take markup get a small formatting bar over the block ({ layer: the board, the element it sits in;
-  // icon(name) -> a promise of an icon's SVG; mod: 'Ctrl' or 'Cmd' }). Its buttons and Ctrl or Cmd with B, I, E and K
-  // change the words in the box (lib-j), the box's own undo keeps each change; the words are still saved once, when the
-  // editing ends. A press on the bar keeps the box open; Link asks for the address in a field of the bar.
+  // icon(name) -> a promise of an icon's SVG; mod: 'Ctrl' or 'Cmd', null to name no keys on a touch screen }). Its
+  // buttons and Ctrl or Cmd with B, I, E and K change the words in the box (lib-j), the box's own undo keeps each change;
+  // the words are still saved once, when the editing ends. A press on the bar keeps the box open; Link asks for the address in a field of the bar.
   function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0, bar = null } = {}) {
     const box = document.createElement('textarea');
     box.className = `wb-text-edit${line ? ' wb-text-line' : ''}`;
@@ -560,7 +560,7 @@
     }
 
     const buttons = WB_FORMATS.map((f) => {
-      const b = button(f.id, f.key ? `${f.label} (${mod} ${f.key})` : f.label, f.icon);
+      const b = button(f.id, f.key && mod ? `${f.label} (${mod} ${f.key})` : f.label, f.icon);
       b.addEventListener('click', () => run(f.id));
       return b;
     });
