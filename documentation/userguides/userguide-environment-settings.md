@@ -2,12 +2,12 @@
 
 **Audience:** an owner or the admin running a Coffee Pub Chameleon environment, working through the Manage page.
 
-Open the Manage page from the menu under your picture in the top bar: choose **Manage**. It has seven tabs, in this order: **Environment**,
+Open the Manage page with the gear button in the top bar, beside **Set up** (owners and the admin; in the narrow layout it is in the menu under your picture). It has seven tabs, in this order: **Environment**,
 **Template**, **Theme**, **Spaces**, **Roles**, **Users** and **Modules**, plus **About**. In the narrow layout the row of tabs scrolls sideways within itself. (Old addresses still work: `/admin#server` and `#settings` open Environment, `#rooms` opens Spaces, and `#words` and `#home-icon` open the Template tab at that section.) Manage's tabs are in the bar under the top bar. The pages reached from here (a person's profile, a module's configuration, the AI configuration) have **Manage** at the start of that bar, to come back. Only owners and the admin (on a hosted server, the host admin) see it; anyone else asking for it is told "Owners only."
 
 ## Environment
 
-- **Environment** (a hosted server only). The plan's name, each cap with what is used, the overdue banner when a payment has lapsed, **Upgrade**, **Download a copy** and **Ask for deletion**. See [Your environment](userguide-environments.md).
+- **Environment** (a hosted server only). The plan's name, each cap with what is used, the overdue banner when a payment has lapsed, **Download a copy** and **Ask for deletion**. See [Your environment](userguide-environments.md).
 - **Name and icon.** The **Name** shows in the top bar and the browser tab. The icon is any image;
   it is used in the top bar's logo box (in place of the home icon), as the favicon, and on the sign-in page. Click it to change it, or paste a
   picture (see "Set a picture" in [Participant and Character Images](userguide-images.md)), and the
@@ -110,7 +110,7 @@ space list and on the guest form. It is **Enter** unless the template or you set
 
 #### The button for the canvas layout
 
-The row **Button for the canvas layout** (with your environment's word for canvas) sets the word on the **Layout** button in the top bar, which shows and hides modules and arranges them on the canvas. It is **Layout** unless the template or you set another. Set it the same way: at most 20 characters, only letters, spaces, hyphens and apostrophes, then **Save**.
+The row **Button for the canvas layout** (with your environment's word for canvas) holds a word that no button reads now: the top bar's **Layout** button is gone, and Set up's **Modules** tab does its work. The setting is kept as it was. It is **Layout** unless the template or you set another; at most 20 characters, only letters, spaces, hyphens and apostrophes, then **Save**.
 
 Leave the field blank for the template's word, or **Enter** with no template. When the template gives a word, the
 row says "From the template", or "The template's: <word>" once you have set your own. **Reset** puts it back to

@@ -115,7 +115,7 @@ with write(out) as writer:
 
 ## Map in a space and Global Map
 
-In a space, the **Map** tab in the top bar shows the map and Places together for that space. It fills the Workspace, loads as saved each time you press its tab, and does not set you Away on the call. The filter at its left chooses whose places show: this space's, **Mine**, and the environment's own. Maps is also a module in the **Layout** menu, as **Maps**, with Places inside it.
+In a space, the **Map** tab in the top bar shows the map and Places together for that space. It fills the Workspace, loads as saved each time you press its tab, and does not set you Away on the call. The filter at its left chooses whose places show: this space's, **Mine**, and the environment's own. Maps is also a module on Set up's **Modules** tab, as **Maps**, with Places inside it.
 
 When an owner turns on **Show in the top bar** on Maps' configuration page (see [Manage](userguide-environment-settings.md), "Top bar"), **Global Map** is in the profile menu under your picture, with the Maps icon and the name your environment gives it after the word Global. It puts the map and the list of [Places](userguide-places.md) on one page, across the whole environment and every space you are in. In the narrow layout it is in the top bar's menu, after your spaces. It shows only while Maps is on, a map file or a picture map is set (see "Set it up" above), and you may see Maps for the whole environment. Guests never see it.
 

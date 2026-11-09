@@ -30,13 +30,13 @@ A module's command opens the same form as its own add button, filled in from wha
 
 What to know:
 
-- **The module must be open.** If it isn't, the text stays in the box and a line under it says so, for example "To-do isn't open". Switch it on from **Layout** in the top bar and press Enter again.
+- **The module must be open.** If it isn't, the text stays in the box and a line under it says so, for example "To-do isn't open". Switch it on from **Set up**, on the **Modules** tab, and press Enter again.
 - **An unknown command** stays in the box with "No command /x". Nothing is sent to the space. Text that starts with `/` is never sent as a message.
 - **Two modules with the same command** are both listed, each with its module's name. If both are open, the line under the box asks you to choose from the list.
 
 ## Ask the AI
 
-Type `/ai` and your question, then press Enter. Your question and the answer appear in the **Assistant** tab marked **private**: nobody else in the space sees them. The answer is from **AI**, in gold. Both are kept for you in this space, after a refresh or on another device, with your other private messages.
+Type `/ai` and your question, then press Enter. The question appears in the **Assistant** tab at once and the box is free, so you can ask another before the first is answered; several can be out together, and each answer comes under its own question. If a question cannot be sent, it stays in place as `Failed to send "<your question>"`, with the reason and a **Send again** button. The question and the answer appear in the **Assistant** tab with the one-person mark (private): nobody else in the space sees them. The answer is from **AI**, in gold. Both are kept for you in this space, after a refresh or on another device, with your other private messages.
 
 To show an answer to everyone, share it (see "Private, public and shared" below). Others then see it in their Discussion from **AI, for <your name>**, with your question above it.
 
@@ -47,7 +47,7 @@ Each answer has:
 
 Under each answer, a line starts **AI used:** and says what went to the AI with your question. It names the objects you attached as links that open them, then counts the rest: related objects found by the words of your question, linked objects, earlier questions, chat messages and people (the last two only if the owner allows them). When the AI searched or read objects in this space to answer, the line says **looked up N objects** and links the first few it read. "just your question" means nothing else was sent. A second line may say **Not sent:** and how many objects were from another space or kept out by the owner's setting, **Some objects were left out to fit** when the question was too long for everything to go, or **The answer was cut short** when the AI ran out of room. Where the answer cites an object as [1] or [2, 3], each number is a link that opens that object, whether you attached it, the AI found it as related or it looked it up.
 
-The AI can look things up only when the owner allows it (**Let AI look things up**, in **What AI may see**), and only in this space, and only objects you could open yourself. If an answer takes a few seconds, the note under the box changes from "Asking the AI..." to "Looking things up...". It may search and read up to 8 times and take up to two minutes; if it cannot finish, Chat says so ("The AI didn't finish its answer." or "The AI service took too long to answer. Try again in a moment."). Looking things up is still one question: it uses one of your six a minute. It cannot change anything.
+The AI can look things up only when the owner allows it (**Let AI look things up**, in **What AI may see**), and only in this space, and only objects you could open yourself. While an answer is on its way, the line under your question reads "Waiting for the answer...", and after a few seconds, if it is looking things up, "Looking things up...". It may search and read up to 8 times and take up to two minutes; if it cannot finish, Chat says so ("The AI didn't finish its answer." or "The AI service took too long to answer. Try again in a moment."). Looking things up is still one question: it uses one of your six a minute. The seventh in a minute is refused with "You have asked the AI too many times in a minute. Try again in a moment." It cannot change anything.
 
 When you share an answer with the space, others see it with their own **looked up N objects**: only the objects that person can open are counted and linked, so the number can differ from yours.
 
@@ -59,12 +59,12 @@ A question is 3 to 1,000 characters. A longer one is refused, not cut, with "A q
 
 ## Private, public and shared
 
-Every message has a **private**, **public** or **shared** badge in its header. A message is public when you type it plainly in Discussion, and private when it is a command or an AI answer. Only you see your private messages; not even an owner or the admin sees them. They are in your **Assistant** tab, and public ones are in **Discussion**.
+Every message has a small mark in its header that says who sees it: one person for a private message ("Only you"), three people for a public one ("Everyone"). Your own command or answer that you shared shows the three people too, with the tooltip "Shared with everyone". There are no words on the mark and no lock; hover over it, or let a screen reader read its label. A message is public when you type it plainly in Discussion, and private when it is a command or an AI answer. Only you see your private messages; not even an owner or the admin sees them. They are in your **Assistant** tab, and public ones are in **Discussion**.
 
-1. To show one of your private messages to the space, open its **⋮** menu and choose **Share**. The menu says "Everyone in this space sees it in Discussion". Or click the badge and choose **Make public**.
-2. To take it back, click its badge and choose **Make private**.
+1. To show one of your private messages to the space, open its **⋮** menu and choose **Share**. The menu says "Everyone in this space sees it in Discussion". Or click the mark and choose **Make public**.
+2. To take it back, click its mark and choose **Make private**.
 
-The message itself moves: nobody gets a copy. A command or an AI answer you shared shows in everyone's Discussion and stays in your Assistant too, marked **shared**. Made private again, it disappears from their chat. Only the person who wrote a message can change it, and guests can't. Pictures are always public and not kept.
+The message itself moves: nobody gets a copy. A command or an AI answer you shared shows in everyone's Discussion and stays in your Assistant too, marked as shared. Made private again, it disappears from their chat. Only the person who wrote a message can change it, and guests can't. Pictures are always public and not kept.
 
 With nothing in Assistant it says "Your commands, AI answers and what you bring in show here. Only you see them." The tab you were on is remembered for this space until you close the browser tab.
 
@@ -136,7 +136,7 @@ Chat keeps the space's last 500 public messages and each person's last 200 priva
 
 ## Colours
 
-Each module has a colour, and it shows in three places: on the messages its command made, on the module's icon in its titlebar, and on its line in the **Layout** menu. The AI is gold, Research blue, the To-do green, the Calendar red, the Planner teal, Polls purple, Places orange and Maps pink. Plain messages have none.
+Each module has a colour, and it shows in three places: on the messages its command made, on the module's icon in its titlebar, and on its line on Set up's **Modules** tab. The AI is gold, Research blue, the To-do green, the Calendar red, the Planner teal, Polls purple, Places orange and Maps pink. Plain messages have none.
 
 ## Bring in research from another AI
 
