@@ -516,6 +516,20 @@
 /* words read out (a timer started, paused, ended): heard, not seen */
 .wb-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
+/* Save as image (whiteboard-lib-l-export.js): the picture's size under the choices */
+.wb-export-size { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
+/* The copy of the board that is saved or printed: its page the size of what it shows, the blocks placed on it as on the
+   board. Print: only while the host prints, the board's copy in place of the board, as wide as the paper and at most a
+   page tall, the same shape (the host shows its light colours while it prints). */
+.wb-export { position: relative; margin: 0; overflow: hidden; }
+.wb-export-layer { position: absolute; width: 0; height: 0; }
+.wb-print { display: none; }
+@media print {
+  .app.wb-printing > :not(.wb-print) { display: none !important; }
+  .app.wb-printing > .wb-print { display: block; }
+  .wb-print-svg { display: block; width: 100%; height: auto; max-height: 96vh; overflow: hidden; }
+}
+
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }
 .board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }
