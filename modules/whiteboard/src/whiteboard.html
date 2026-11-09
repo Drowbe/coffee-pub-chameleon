@@ -14,6 +14,7 @@
   block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
   #paint is the strip of the colours and the line width, hung under the toolbar's left end (whiteboard.js fills it).
+  #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom).
   The host draws the title bar (the +, the zoom buttons), the toolbar (the tools, Undo, Redo, Delete, Snap to grid) and
   the status line. The board's spoken help (its aria-label) is set by whiteboard.js, in the words of the device: the keys
   only where there is a keyboard.
@@ -28,6 +29,21 @@
     <div id="drop" class="wb-drop" hidden><p class="wb-drop-title">Drop to add to the board</p><p id="drop-sub" class="wb-drop-sub"></p></div>
   </div>
   <input id="picker" type="file" accept="image/*" multiple hidden>
+  <p id="say" class="wb-say" aria-live="polite"></p>
+  <dialog id="editor" class="sdk-editor">
+    <form id="custom-form" class="sdk-form">
+      <h3 id="custom-title">Timer length</h3>
+      <div class="sdk-form-row">
+        <label class="sdk-field sdk-s"><span class="sdk-label">Minutes</span><input id="custom-min" type="number" min="0" max="1439" step="1" inputmode="numeric"><span class="sdk-hint"></span></label>
+        <label class="sdk-field sdk-s"><span class="sdk-label">Seconds</span><input id="custom-sec" type="number" min="0" max="59" step="1" inputmode="numeric"><span class="sdk-hint"></span></label>
+      </div>
+      <div class="sdk-form-error" id="custom-error" role="alert" hidden></div>
+      <div class="sdk-editor-actions">
+        <button class="btn btn-quiet" type="button" id="custom-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="custom-save">Set length</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 <div id="loading" class="msg" aria-busy="true"><div class="sdk-skel sdk-skel-block"></div></div>
 <div id="msg" class="sdk-empty" hidden></div>

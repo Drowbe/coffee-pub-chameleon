@@ -107,8 +107,9 @@
   // { handles: 'ends', attach?: true } (a line: x, y, dx, dy; attach: a connector, whose ends are re-attached); no resize,
   // no handles }, linked?: [[field, ...], ...] (fields that only make sense together, such as a box's x, y, w and h: an
   // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
-  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline), and
-  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved).
+  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
+  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
+  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
   //
   // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
   // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,
@@ -133,7 +134,9 @@
 
   // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), group? (one of the
   // choices in a toolbar button's menu, by the group's id: 'flowchart'), edits (it changes the board), makes? (the block
-  // type it puts on the board, for the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx),
+  // type it puts on the board, for the colour and width menus' "new blocks"), usual? (fields its new blocks get unless the
+  // person picked otherwise: a marker's brush and width), paints? (the colour role it gives a block it is clicked on: the
+  // Fill tool's 'fill'; the Colour menu then sets that colour), cursor?, down(p, ctx), move?(p, ctx),
   // up?(p, ctx), hover?(p, ctx) (a mouse or a pen over the board with nothing pressed; p null when it leaves),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
   // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType

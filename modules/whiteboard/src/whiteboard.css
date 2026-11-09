@@ -80,6 +80,10 @@
 .wb-block[data-stroke="none"] .wb-shape-body { stroke: none; }
 .wb-svg .wb-stroke { fill: none; stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .wb-svg .wb-head { fill: var(--wb-stroke); pointer-events: none; }
+/* the brushes (lib-e-block-stroke.js): a marker's line a little see-through, so strokes laid over one another show; a
+   brush's stroke a filled shape, thinner at its ends */
+.wb-svg[data-brush="marker"] .wb-stroke { stroke: color-mix(in srgb, var(--wb-stroke) 55%, transparent); }
+.wb-svg .wb-brush { fill: var(--wb-stroke); stroke: none; pointer-events: none; }
 /* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type) */
 .wb-shape .wb-words {
   position: absolute;
@@ -376,6 +380,81 @@
 /* Line width: a short line drawn at the width (up to 8px); dashed for Default with no type, or Mixed. */
 .wb-lw { display: block; width: 18px; height: var(--lw, 2px); border-radius: var(--radius-min); background: currentColor; }
 .wb-lw[data-state="default"], .wb-lw[data-state="mixed"] { height: 2px; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
+
+/* the Fill tool: the board's cursor over every block, the block under the pointer marked (a block with no background:
+   "not allowed"), and a swatch of the fill colour by the pointer */
+.board[data-tool="fill"] .wb-block, .board[data-tool="fill"] .wb-block * { cursor: inherit; }
+.board[data-tool="fill"] .wb-block[data-mark="no"], .board[data-tool="fill"] .wb-block[data-mark="no"] * { cursor: not-allowed; }
+.wb-block[data-mark="ok"] { outline: calc(2px / var(--wb-scale, 1)) solid var(--accent); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-block[data-mark="no"] { outline: calc(1px / var(--wb-scale, 1)) dashed var(--text-muted); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-swatch {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface-card);
+  border-radius: var(--radius-small);
+  background: var(--wb-swatch, var(--text-primary));
+  box-shadow: 0 0 0 1px var(--edge-hairline), 0 1px 3px var(--shadow-color);
+  transform: translate(12px, 12px);
+  pointer-events: none;
+}
+
+/* a timer: a card of a light wash of its fill, with the time left over a ring (stroke) that empties, and its controls
+   along the bottom for someone who may change it. Its size sets the time's size (a container). At the end the card
+   pulses a few times in its ring's colour, then stays marked; without the pulse for someone who asks for less motion. */
+.wb-type-timer {
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--wb-stroke) 45%, var(--edge-hairline));
+  border-radius: var(--radius-medium);
+  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--surface-card));
+  box-shadow: 0 1px 2px var(--shadow-color);
+  overflow: hidden;
+  cursor: grab;
+}
+.wb-timer-face { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.wb-timer-ring { position: absolute; left: 6%; top: 6%; width: 88%; height: 88%; overflow: visible; pointer-events: none; }
+.wb-timer-track { fill: none; stroke: color-mix(in srgb, var(--wb-stroke) 22%, transparent); stroke-width: 6; }
+.wb-timer-arc { fill: none; stroke: var(--wb-stroke); stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
+.wb-timer-time {
+  position: relative;
+  max-width: 72%;
+  color: var(--wb-ink);
+  font-size: clamp(var(--text-14), 19cqmin, var(--text-40));
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  text-align: center;
+}
+.wb-timer-length { position: relative; color: var(--text-muted); font-size: var(--text-12); }
+.wb-timer-ctl {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-top: 1px solid color-mix(in srgb, var(--wb-stroke) 25%, var(--edge-hairline));
+  cursor: default;
+}
+.wb-timer-len { font-variant-numeric: tabular-nums; }
+.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--surface-card)); animation: wb-timer-end 1.6s ease-in-out 4; }
+.wb-type-timer[data-done] .wb-timer-time { font-size: clamp(var(--text-14), 11cqmin, var(--text-28)); }
+.wb-type-timer[data-done] .wb-timer-length, .wb-type-timer[data-done] .wb-timer-arc { visibility: hidden; }
+/* the length is on its button for someone with the controls; under the time for everyone else */
+.wb-type-timer:has(.wb-timer-ctl) .wb-timer-length { display: none; }
+@keyframes wb-timer-end {
+  50% { box-shadow: 0 0 0 calc(8px / var(--wb-scale, 1)) color-mix(in srgb, var(--wb-stroke) 35%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-type-timer[data-done] { animation: none; }
+  .wb-timer-arc { transition: none; }
+}
+
+/* words read out (a timer started, paused, ended): heard, not seen */
+.wb-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }

@@ -65,12 +65,20 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
+  // A freehand stroke's width is picked for its brush alone (a marker is wide, a pen thin): brush id -> width, or null.
+  const nextWeights = { pen: null, marker: null, brush: null };
+  const nextWeightOf = (brush) => (brush && brush in nextWeights ? nextWeights[brush] : next.weight);
+  const setNextWeight = (brush, v) => { if (brush && brush in nextWeights) nextWeights[brush] = v; else next.weight = v; };
+  // The colour the Fill tool fills with: the fill picked for new blocks, else Yellow.
+  const FILL_USUAL = 'gold';
+  const nextFill = () => next.fill || FILL_USUAL;
   // The line style and arrowheads picked for new connectors (null: the usual), the same way.
   const nextLine = { style: null, head: null };
   const CONNECTOR = 'connector'; // the block type the Line style and Arrowheads menus are for
   // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl. Keys are named (in menus, in a button's name) only
   // where there is a mouse or a trackpad: on a touch screen alone they are noise.
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const ALT = MOD === 'Cmd' ? 'Option' : 'Alt'; // the Alt key, by its name on this device
   const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
   const keyHint = (keys) => (KEYS ? keys : undefined);
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
@@ -78,9 +86,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker and the Brush; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. With Snap to grid on, blocks land on the dots; hold ${MOD === 'Cmd' ? 'Option' : 'Alt'} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M) and the Brush. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   const takesNext = (def, role) => {
     const usual = def.create();
@@ -122,8 +130,13 @@
     panBy: (dx, dy) => renderer.panBy(dx, dy),
     draft(type, fields) {
       const def = blockTypes.get(type);
-      const own = def.create();
-      for (const role of Object.keys(next)) if (next[role] !== null && takesNext(def, role)) own[role] = next[role];
+      // The type's usual, then what the tool making it draws with (a marker's width), then what the person picked.
+      const own = { ...def.create(), ...(tool.makes === type && tool.usual ? tool.usual : {}) };
+      const brush = type === 'stroke' ? fields.brush || own.brush : null;
+      for (const role of Object.keys(next)) {
+        const v = role === 'weight' ? nextWeightOf(brush) : next[role];
+        if (v !== null && takesNext(def, role)) own[role] = v;
+      }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z: Math.floor(board.topZ()) + 1 });
       drafts.add(b.id);
@@ -165,7 +178,30 @@
     // points to show ([{ block, side }], [] for none).
     attachAt: (p, o) => attachAt(p, o),
     ports: (list) => renderer.ports(list),
+    // The Fill tool: the colour it fills with, taking a colour for it (Alt-click), the block under the pointer marked
+    // ('ok' or 'no'; null for none), the swatch by the pointer ({ sx, sy }, null to take it away), and a click on a block
+    // with nothing to fill (or, with alt, no colour to take).
+    nextFill: () => nextFill(),
+    setNextFill(v, { quiet = false } = {}) {
+      if (!WB_PALETTE_BY_ID.has(v)) return;
+      next.fill = v;
+      if (!quiet) note(`Fill colour: ${WB_PALETTE_BY_ID.get(v).label}.`); // taken from a block: say which
+      if (lastSwatch) showSwatch(lastSwatch);
+      updateStatus(); // the strip's swatch
+    },
+    mark: (id, kind) => renderer.mark(id, kind),
+    swatch: (at) => showSwatch(at),
+    refuse(b, alt) {
+      const d = blockTypes.get(b.type);
+      const noun = d.noun ? d.noun(b) : d.label.toLowerCase();
+      note(alt ? `This ${noun} has no colour to take.` : `${/^[aeiou]/.test(noun) ? 'An' : 'A'} ${noun} has no background to fill.`);
+    },
   };
+  let lastSwatch = null;
+  function showSwatch(at) {
+    lastSwatch = at;
+    renderer.swatch(at, WB_PALETTE_BY_ID.get(nextFill()).token);
+  }
   // The same block, leaving aside who saved it and when.
   function sameBlock(a, b) {
     if (!a || !b) return a === b;
@@ -382,13 +418,15 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds 8),
-  // and the tools of a group (the Connector and the flowchart shapes) are the choices of one button's menu after it, the
-  // button on while one of them is the tool. A group's menu may offer a tool from the switch too (`also`, in `order`).
+  // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
+  // holds 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker and the
+  // Brush) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
+  // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices.
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
   const GROUPS = [
-    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'] },
+    { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush'], split: 1 },
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'], split: 1 },
   ];
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
@@ -409,8 +447,9 @@
       items: [
         { heading: g.label },
         ...list.flatMap((t, i) => [
-          ...(i > 0 && t.makes !== CONNECTOR && list[i - 1].makes === CONNECTOR ? [{ separator: true }] : []),
-          { id: t.id, label: t.label, icon: t.icon, hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
+          ...(i > 0 && i === g.split ? [{ separator: true }] : []),
+          // The Fill row's icon is in the colour it fills with.
+          { id: t.id, label: t.label, icon: t.icon, ...(t.paints === 'fill' ? { iconColor: WB_PALETTE_BY_ID.get(nextFill()).token, tip: `${t.label}: ${WB_PALETTE_BY_ID.get(nextFill()).label}` } : {}), hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
         ]),
       ],
     });
@@ -473,6 +512,13 @@
   // `role`: only that colour role's rows (a swatch on the board's strip opens its own role).
   function colourMenu(where, only, role) {
     const list = targets(only);
+    if (!list.length && tool.paints === 'fill') {
+      // The Fill tool's colour (the fill new blocks get too): the palette, the current one marked.
+      const now = nextFill();
+      const rows = WB_PALETTE.map((c) => choiceRow(c.id, c.label, now, () => ctx.setNextFill(c.id, { quiet: true }), swatch(c.id)));
+      host.menu.show({ id: 'colour', ...where, items: [{ heading: 'Colour for the Fill tool' }, ...rows] });
+      return;
+    }
     const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
     let groups;
     if (list.length) {
@@ -521,10 +567,12 @@
       host.menu.show({ id: 'width', ...where, items: [{ label: `Pick a ${def.noun ? def.noun(def.create()) : def.label.toLowerCase()} to change its border width`, disabled: true }] });
       return;
     }
-    const now = list.length ? agreed(list, 'weight') : next.weight;
+    // A freehand tool's width, and a picked drawing's, is remembered for its brush alone.
+    const brushOf = list.length === 1 ? (list[0].type === 'stroke' ? list[0].brush : null) : !list.length && def && def.type === 'stroke' && tool.usual ? tool.usual.brush : null;
+    const now = list.length ? agreed(list, 'weight') : nextWeightOf(brushOf);
     const pick = (v) => () => {
       for (const b of list) ctx.change(b.id, { weight: v }, { save: 'now' });
-      if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) next.weight = v;
+      if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) setNextWeight(brushOf, v);
       updateStatus();
     };
     const lines = (t) => t === 'line' || t === 'stroke' || t === CONNECTOR;
@@ -533,7 +581,7 @@
     const items = [{ heading: `${border ? 'Border width' : 'Line width'} ${list.length ? 'of' : 'for'} ${whose}` }];
     const samples = []; // the weight each choice row draws, in row order
     if (!list.length) {
-      const usual = def ? def.create().weight : null;
+      const usual = def ? (tool.makes === def.type && tool.usual && tool.usual.weight) || def.create().weight : null;
       items.push(choiceRow(null, 'Default', now, pick(null), { hint: usual ? wbWeightName(usual) : '' }));
       samples.push(usual);
     }
@@ -596,6 +644,12 @@
     const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
     const sameDef = (bs) => (new Set(bs.map((b) => b.type)).size === 1 ? defOf(bs[0]) : null);
     const out = {};
+    // The Fill tool (nothing is picked while it is on): only its colour, which its swatch's menu sets.
+    if (!list.length && tool.paints === 'fill') {
+      for (const role of WB_ROLES) out[role.id] = role.id === 'fill' ? { value: nextFill(), label: 'Fill colour' } : null;
+      out.weight = null;
+      return out;
+    }
     for (const role of WB_ROLES) {
       if (list.length) {
         const having = list.filter((b) => { const d = defOf(b); return d.paint && d.paint[role.id]; });
@@ -607,7 +661,13 @@
     }
     const lined = list.filter((b) => defOf(b).weight);
     if (list.length) out.weight = lined.length ? { value: agreed(lined, 'weight') } : null;
-    else if (!def || takesNext(def, 'weight')) out.weight = { value: next.weight !== null ? next.weight : def ? def.create().weight : null, own: next.weight === null && Boolean(def) };
+    else if (!def || takesNext(def, 'weight')) {
+      // A freehand tool's width is its brush's own (the Marker draws wide until another width is picked for it).
+      const brush = def && def.type === 'stroke' && tool.usual ? tool.usual.brush : null;
+      const now = nextWeightOf(brush);
+      const usual = def ? (tool.makes === def.type && tool.usual && tool.usual.weight) || def.create().weight : null;
+      out.weight = { value: now !== null ? now : usual, own: now === null && Boolean(def) };
+    }
     else out.weight = null;
     return out;
   }
@@ -898,6 +958,113 @@
     { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
   ];
 
+  // ---- timers -------------------------------------------------------------------------------------------------------------
+  // What a timer's controls do (lib-e-block-timer.js): Start, Pause and Reset are one write and one undo step each, and
+  // anyone who may change the board may use them on any timer. The length menu sets a new length (the timer stops and
+  // waits at it), Custom asks for minutes and seconds, and Mute keeps this person's timers quiet in this browser. A
+  // timer reaching zero while the page watches is said once and, unless muted, plays one short soft tone (only once the
+  // person has pressed or typed on the page: browsers play no sound before that; where it cannot play it is skipped).
+  const timerDef = blockTypes.get('timer');
+  const MUTE_KEY = 'whiteboard-timer-mute';
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* no storage: not muted */ }
+  const icons = new Map(); // name -> a promise of its SVG
+  timerDef.now = () => sync.now();
+  timerDef.controls = (b) => policy.canChange(b);
+  timerDef.icon = (name) => { if (!icons.has(name)) icons.set(name, host.ui.icon(name).catch(() => '')); return icons.get(name); };
+  timerDef.say = (text) => say(text);
+  timerDef.done = () => { say('Time is up.'); if (!muted) chime(); };
+  timerDef.act = (id, what, button) => {
+    const b = board.get(id);
+    if (!b || b.type !== 'timer' || !policy.canChange(b)) return;
+    const now = sync.now();
+    if (what === 'start') ctx.change(id, wbTimerStart(b, now));
+    else if (what === 'pause') ctx.change(id, wbTimerPause(b, now));
+    else if (what === 'reset') ctx.change(id, wbTimerReset(b));
+    else if (what === 'length') timerMenu(id, button);
+  };
+  // Words read out once (started, paused, time is up), never the seconds ticking.
+  let sayTimer = 0;
+  function say(text) {
+    const el = $('say');
+    clearTimeout(sayTimer);
+    el.textContent = '';
+    sayTimer = setTimeout(() => { el.textContent = text; }, 50); // emptied first, so the same words are read again
+  }
+  function timerMenu(id, button) {
+    const b = board.get(id);
+    if (!b) return;
+    const set = (secs) => () => { const now = board.get(id); if (now && policy.canChange(now)) ctx.change(id, wbTimerSetLength(secs)); };
+    host.menu.show({
+      id: 'timer',
+      anchor: button,
+      items: [
+        { heading: 'Length' },
+        ...WB_TIMER_LENGTHS.map((secs) => choiceRow(secs, wbTimerShort(secs), b.length, set(secs))),
+        { id: 'custom', label: 'Custom…', icon: 'stopwatch', current: !WB_TIMER_LENGTHS.includes(b.length), hint: WB_TIMER_LENGTHS.includes(b.length) ? '' : wbTimerShort(b.length), onClick: () => { setTimeout(() => customLength(id, button), 0); } },
+        { separator: true },
+        { id: 'mute', label: 'Mute the sound', icon: muted ? 'volume-xmark' : 'volume-high', current: muted, ariaLabel: muted ? 'Mute the sound, on' : 'Mute the sound, off', tip: 'Only for you, in this browser', onClick: () => { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* kept until the page goes */ } } },
+      ],
+    });
+  }
+  // Custom: minutes and seconds, in the editor window.
+  let customFor = null; // { id, button }
+  const customEditor = policy.canEdit ? host.ui.editor($('editor'), { onClose: () => { customFor = null; $('custom-error').hidden = true; } }) : null;
+  function customLength(id, button) {
+    const b = board.get(id);
+    if (!b || !customEditor) return;
+    customFor = { id, button };
+    $('custom-min').value = String(Math.floor(b.length / 60));
+    $('custom-sec').value = String(b.length % 60);
+    $('custom-error').hidden = true;
+    customEditor.open({ focus: $('custom-min'), returnTo: () => (button && button.isConnected ? button : surface) });
+  }
+  function saveCustom() {
+    const m = Number($('custom-min').value || 0);
+    const sec = Number($('custom-sec').value || 0);
+    const total = Math.round(m) * 60 + Math.round(sec);
+    const err = $('custom-error');
+    if (!Number.isFinite(total) || m < 0 || sec < 0 || sec > 59 || total < 1 || total > WB_TIMER_MAX) {
+      err.textContent = 'Give a length from 1 second to 23:59:59, with seconds from 0 to 59.';
+      err.hidden = false;
+      return;
+    }
+    const f = customFor;
+    const b = f && board.get(f.id);
+    if (b && policy.canChange(b)) ctx.change(b.id, wbTimerSetLength(total));
+    customEditor.close();
+  }
+  if (customEditor) {
+    $('custom-form').addEventListener('submit', (e) => { e.preventDefault(); saveCustom(); });
+    $('custom-cancel').addEventListener('click', () => customEditor.cancel());
+  }
+  // One short soft tone (two gentle notes), after the person has pressed or typed on the page.
+  let gestured = false;
+  let audio = null;
+  for (const type of ['pointerdown', 'keydown']) host.rootElement.addEventListener(type, () => { gestured = true; }, { capture: true, passive: true });
+  function chime() {
+    if (!gestured) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audio) audio = new Ctx();
+      if (audio.state === 'suspended') audio.resume().catch(() => {});
+      const t = audio.currentTime + 0.02;
+      [[660, 0], [880, 0.22]].forEach(([hz, at]) => {
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = hz;
+        gain.gain.setValueAtTime(0.0001, t + at);
+        gain.gain.exponentialRampToValueAtTime(0.08, t + at + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.5);
+        osc.connect(gain).connect(audio.destination);
+        osc.start(t + at);
+        osc.stop(t + at + 0.55);
+      });
+    } catch { /* no sound here: the face still says it */ }
+  }
+
   // ---- pictures from the computer ---------------------------------------------------------------------------------------
   // Pasted, dropped on the board, or chosen with "Add a picture" in the +: each is made ready and sent one at a time (lib-i)
   // with a placeholder where it will be, and becomes an image block once its upload is there, saved once. The pictures
@@ -971,6 +1138,7 @@
       { id: 'note', label: 'Add a note', icon: 'note-sticky' },
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
+      { id: 'timer', label: 'Add a timer', icon: 'stopwatch', hint: keyHint('Y') },
       {
         label: 'Add a flowchart shape',
         icon: 'diagram-project',
@@ -1026,8 +1194,9 @@
     if (hint.hidden) return;
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
       : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
-        : tool.id === 'pen' ? 'Press and drag to draw.'
-          : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
+        : tool.makes === 'stroke' ? 'Press and drag to draw.'
+          : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
+            : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
   // ---- the pointer ------------------------------------------------------------------------------------------------------
@@ -1057,9 +1226,11 @@
     return { d: Math.max(1, Math.hypot(a.sx - b.sx, a.sy - b.sy)), mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2 };
   };
 
+  // A control on a block (a timer's buttons) is a button of its own: the board leaves its presses and keys alone.
+  const onControl = (e) => Boolean(e.target && e.target.closest && e.target.closest('.wb-ctl'));
   surface.addEventListener('pointerdown', (e) => {
     endAfterRight(); // a new press: any menu after it is its own
-    if (e.target.closest('.wb-text-edit')) return;
+    if (e.target.closest('.wb-text-edit') || onControl(e)) return;
     const middle = e.pointerType === 'mouse' && e.button === 1;
     const right = e.pointerType === 'mouse' && e.button === 2;
     if (e.pointerType === 'mouse' && e.button !== 0 && !middle && !right) return;
@@ -1221,6 +1392,7 @@
   });
   surface.addEventListener('keydown', (e) => {
     if (e.target.closest('.wb-text-edit') || e.altKey) return;
+    if (onControl(e) && e.key !== 'Escape' && e.key !== 'Tab') return;
     if (e.key === ' ') { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; panCursor(true); } return; } // held: drag moves the board
     const picked = targets(); // the picked blocks this person may change
     const b = one() && board.get(one());
