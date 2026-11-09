@@ -452,10 +452,10 @@
 
   // ---- the colours and width on show ------------------------------------------------------------------------------------
   // A toolbar button holds only an icon, never a colour or a drawing, so the colours and the width are shown on the board's
-  // own strip (#paint), hung under the toolbar's left end: a swatch for each colour role (Border a ring, Background a
+  // own strip (#paint), hung under the toolbar's left end: a swatch for each colour role (Border a frame, Background a
   // filled square, Words an A over a bar) and a line drawn at the width, each a button that opens its own menu. Each shows
-  // what its menu marks: the picked blocks' (several colours in a ring when they differ), else what new blocks get (the
-  // active tool's block type's own when Default is chosen; a dashed ring when no type is known). Hidden for a role the
+  // what its menu marks: the picked blocks' (several colours when they differ), else what new blocks get (the active
+  // tool's block type's own when Default is chosen; a dashed mark when no type is known). Hidden for a role the
   // picked blocks or the tool's type do not have, and for someone who may only look.
   const paintStrip = $('paint');
   const paintButtons = new Map(); // role id or 'weight' -> { button, mark }
