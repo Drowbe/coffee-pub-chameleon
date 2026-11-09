@@ -447,7 +447,11 @@
   // the words to keep (the same words when nothing changed). grow: the box grows with the words (a text block); else it
   // fills the block (a note, a shape's label). line: one line (a picture's description), where Enter keeps it; label: the
   // box's name for a screen reader; max: the most characters.
-  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0 } = {}) {
+  // bar: words that take markup get a small formatting bar over the block ({ layer: the board, the element it sits in;
+  // icon(name) -> a promise of an icon's SVG; mod: 'Ctrl' or 'Cmd' }). Its buttons and Ctrl or Cmd with B, I, E and K
+  // change the words in the box (lib-j), the box's own undo keeps each change; the words are still saved once, when the
+  // editing ends. A press on the bar keeps the box open; Link asks for the address in a field of the bar.
+  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0, bar = null } = {}) {
     const box = document.createElement('textarea');
     box.className = `wb-text-edit${line ? ' wb-text-line' : ''}`;
     box.value = value;
@@ -458,11 +462,14 @@
     el.classList.add('wb-editing');
     target.after(box);
     let over = false;
+    let marks = null; // the formatting bar, while there is one
+    const inside = (n) => Boolean(n && (n === box || (marks && marks.el.contains(n))));
     const grow = () => { if (!grows) return; box.style.height = 'auto'; box.style.height = `${box.scrollHeight}px`; };
     const finish = (keep) => {
       if (over) return;
       over = true;
       const text = keep ? box.value : value;
+      if (marks) marks.remove();
       box.remove();
       el.classList.remove('wb-editing');
       done(text);
@@ -470,16 +477,228 @@
     box.addEventListener('input', () => {
       if (line && /[\r\n]/.test(box.value)) box.value = box.value.replace(/[\r\n]+/g, ' '); // pasted lines become one
       grow();
+      if (marks) marks.update();
     });
     box.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Escape') { e.preventDefault(); finish(false); el.focus(); }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); el.focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); el.focus(); return; }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); el.focus(); return; }
+      if (marks && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        // By the key's place too, so any keyboard layout.
+        const k = (e.code && e.code.startsWith('Key') ? e.code.slice(3) : e.key || '').toUpperCase();
+        const f = WB_FORMATS.find((x) => x.key === k);
+        if (f) { e.preventDefault(); marks.run(f.id); }
+      }
     });
+    if (bar) for (const type of ['keyup', 'pointerup', 'select']) box.addEventListener(type, () => { if (marks) marks.update(); });
     box.addEventListener('pointerdown', (e) => e.stopPropagation());
-    box.addEventListener('blur', () => finish(true));
+    box.addEventListener('blur', (e) => { if (!inside(e.relatedTarget)) finish(true); });
+    if (bar) marks = wbFormatBar({ ...bar, anchor: el, box, max, inside, finish, escape: () => { finish(false); el.focus(); } });
     grow();
     box.focus();
     box.select();
+    if (marks) marks.place();
     return { finish };
+  }
+
+  // The formatting bar over a block being edited (see wbEditText). It sits just above the block (below it when there is
+  // no room above), inside the board and above a phone's on-screen keyboard, and wraps onto two rows when narrow.
+  function wbFormatBar({ layer, anchor, box, icon, mod = 'Ctrl', max = 0, inside, finish, escape }) {
+    const bar = document.createElement('div');
+    bar.className = 'wb-format';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Formatting');
+    let asking = null; // the link's address row, while it is asked for
+    let switching = false; // the focus is moved on purpose between the box and the address field
+
+    const iconSpan = (name) => {
+      const ic = document.createElement('span');
+      ic.className = 'ic';
+      ic.setAttribute('aria-hidden', 'true');
+      if (icon) Promise.resolve(icon(name)).then((svg) => { if (svg) ic.innerHTML = svg; }, () => {}); // the host's own icon SVG
+      return ic;
+    };
+    const button = (id, words, iconName) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sdk-icon-btn btn-quiet wb-format-btn';
+      b.dataset.format = id;
+      b.setAttribute('aria-label', words);
+      b.title = words;
+      b.append(iconSpan(iconName));
+      return b;
+    };
+
+    // Put new words in the box, as one change of the box's own (its undo takes it back), and select what they say.
+    function put(next) {
+      if (!next || (max && next.value.length > max)) return;
+      const old = box.value;
+      let p = 0;
+      while (p < old.length && p < next.value.length && old[p] === next.value[p]) p += 1;
+      let q = 0;
+      while (q < old.length - p && q < next.value.length - p && old[old.length - 1 - q] === next.value[next.value.length - 1 - q]) q += 1;
+      switching = true;
+      box.focus({ preventScroll: true });
+      switching = false;
+      box.setSelectionRange(p, old.length - q);
+      let ok = false;
+      try { ok = document.execCommand('insertText', false, next.value.slice(p, next.value.length - q)); } catch { ok = false; }
+      if (!ok || box.value !== next.value) box.value = next.value;
+      box.setSelectionRange(next.start, next.end);
+      box.dispatchEvent(new Event('input', { bubbles: false }));
+    }
+    function run(id) {
+      if (id === 'link') { askLink(); return; }
+      const v = box.value;
+      const a = box.selectionStart;
+      const z = box.selectionEnd;
+      if (id === 'bold' || id === 'italic' || id === 'code') put(wbToggleMark(v, a, z, id));
+      else if (id === 'ul' || id === 'ol') put(wbToggleList(v, a, z, id));
+      else if (id === 'heading') put(wbCycleHeading(v, a, z));
+    }
+
+    const buttons = WB_FORMATS.map((f) => {
+      const b = button(f.id, f.key ? `${f.label} (${mod} ${f.key})` : f.label, f.icon);
+      b.addEventListener('click', () => run(f.id));
+      return b;
+    });
+    const headingButton = buttons[WB_FORMATS.findIndex((f) => f.id === 'heading')];
+    const level = document.createElement('span');
+    level.className = 'wb-format-level';
+    level.setAttribute('aria-hidden', 'true');
+    headingButton.append(level);
+    const row = document.createElement('div');
+    row.className = 'wb-format-row';
+    row.append(...buttons);
+    bar.append(row);
+
+    // Link: the address in a field of the bar. Enter or the tick puts the link round the selection; Escape or the cross
+    // goes back to the words. Only an http or https address is taken (lib-j, wbLinkAddress).
+    function askLink() {
+      if (asking) return;
+      const a = box.selectionStart;
+      const z = box.selectionEnd;
+      const was = /^\[[^\]\n]+\]\(([^\s)]*)\)$/.exec(box.value.slice(a, z));
+      const field = document.createElement('input');
+      field.type = 'url';
+      field.inputMode = 'url';
+      field.className = 'wb-format-address';
+      field.placeholder = 'https://';
+      field.setAttribute('aria-label', 'Link address');
+      field.autocomplete = 'off';
+      field.spellcheck = false;
+      field.value = was ? was[1] : '';
+      const ok = button('link-ok', 'Add the link', 'check');
+      const no = button('link-cancel', 'Cancel', 'xmark');
+      const why = document.createElement('p');
+      why.className = 'wb-format-why';
+      why.setAttribute('aria-live', 'polite');
+      why.hidden = true;
+      const ask = document.createElement('div');
+      ask.className = 'wb-format-row wb-format-ask';
+      ask.append(field, ok, no);
+      asking = { a, z, field, ask, why };
+      row.hidden = true;
+      bar.append(ask, why);
+      const add = () => {
+        const href = wbLinkAddress(field.value);
+        if (!href) {
+          why.textContent = 'Only a web address (http or https) can be a link.';
+          why.hidden = false;
+          field.setAttribute('aria-invalid', 'true');
+          field.focus();
+          return;
+        }
+        back();
+        put(wbLinkMarkup(box.value, a, z, href));
+      };
+      field.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); add(); }
+        if (e.key === 'Escape') { e.preventDefault(); back(); }
+      });
+      field.addEventListener('input', () => { why.hidden = true; field.removeAttribute('aria-invalid'); });
+      ok.addEventListener('click', add);
+      no.addEventListener('click', () => back());
+      switching = true;
+      field.focus();
+      switching = false;
+      place();
+    }
+    // Back from the address to the words, with the same selection.
+    function back() {
+      if (!asking) return;
+      const { a, z, ask, why } = asking;
+      asking = null;
+      switching = true;
+      box.focus({ preventScroll: true });
+      box.setSelectionRange(a, z);
+      switching = false;
+      ask.remove();
+      why.remove();
+      row.hidden = false;
+      place();
+    }
+
+    // A press on the bar keeps the box open and its selection (not on the address field, which takes the focus).
+    for (const type of ['pointerdown', 'mousedown']) {
+      bar.addEventListener(type, (e) => {
+        e.stopPropagation();
+        if (!e.target.closest('input')) e.preventDefault();
+      });
+    }
+    for (const type of ['click', 'dblclick', 'contextmenu', 'wheel', 'pointerup', 'copy', 'cut', 'paste']) bar.addEventListener(type, (e) => e.stopPropagation());
+    bar.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); if (asking) back(); else escape(); }
+    });
+    // The focus leaving both the box and the bar ends the editing, as leaving the box always has.
+    bar.addEventListener('focusout', (e) => { if (!switching && !inside(e.relatedTarget)) finish(true); });
+
+    // Where it sits: above the block, else below it, kept inside the board and above the on-screen keyboard.
+    let frame = 0;
+    function place() {
+      if (!bar.isConnected) return;
+      const L = layer.getBoundingClientRect();
+      const r = anchor.getBoundingClientRect();
+      const w = bar.offsetWidth;
+      const h = bar.offsetHeight;
+      const vv = window.visualViewport;
+      const seen = vv ? Math.min(L.bottom, vv.offsetTop + vv.height) : L.bottom;
+      const gap = 8;
+      let top = r.top - L.top - h - gap;
+      if (top < 4) top = r.bottom - L.top + gap;
+      if (L.top + top + h > seen - 4) top = Math.max(4, Math.min(r.top - L.top - h - gap, seen - L.top - h - 4));
+      const left = Math.max(4, Math.min(r.left - L.left, L.width - w - 4));
+      bar.style.left = `${Math.round(left)}px`;
+      bar.style.top = `${Math.round(Math.max(4, top))}px`;
+    }
+    const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; place(); }); };
+    // The heading button shows the level of the line the caret is on.
+    function update() {
+      const n = wbHeadingOf(box.value, box.selectionStart, box.selectionEnd);
+      level.textContent = n ? String(n) : '';
+      const words = `Heading, now ${WB_HEADING_NAMES[n]}`;
+      headingButton.setAttribute('aria-label', words);
+      headingButton.title = words;
+      soon();
+    }
+    layer.append(bar);
+    layer.addEventListener('wheel', soon, { passive: true });
+    window.addEventListener('resize', soon);
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', soon); window.visualViewport.addEventListener('scroll', soon); }
+    update();
+    return {
+      el: bar,
+      run,
+      update,
+      place,
+      remove() {
+        layer.removeEventListener('wheel', soon);
+        window.removeEventListener('resize', soon);
+        if (window.visualViewport) { window.visualViewport.removeEventListener('resize', soon); window.visualViewport.removeEventListener('scroll', soon); }
+        if (frame) cancelAnimationFrame(frame);
+        bar.remove();
+      },
+    };
   }

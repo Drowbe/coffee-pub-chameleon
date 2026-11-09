@@ -14,7 +14,8 @@
   block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
   #paint is the strip of the colours and the line width, hung under the toolbar's left end (whiteboard.js fills it).
-  #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom).
+  #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom). While words are
+  edited, the formatting bar (.wb-format) is put on #board by the editor (whiteboard-lib-d-render.js).
   The host draws the title bar (the +, the zoom buttons), the toolbar (the tools, Undo, Redo, Delete, Snap to grid) and
   the status line. The board's spoken help (its aria-label) is set by whiteboard.js, in the words of the device: the keys
   only where there is a keyboard.

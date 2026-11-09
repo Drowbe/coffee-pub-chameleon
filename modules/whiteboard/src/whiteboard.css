@@ -220,7 +220,31 @@
   color: var(--text-primary);
   font-size: var(--text-14);
 }
-.wb-shape .wb-text-edit { position: absolute; inset: var(--wb-inset, 8px); width: auto; height: auto; text-align: center; font-size: var(--text-16); }
+.wb-shape .wb-text-edit { position: absolute; inset: var(--wb-inset, 8px); width: auto; height: auto; text-align: var(--wb-align, center); font-size: var(--wb-size, var(--text-16)); }
+
+/* the formatting bar over a block whose words are being edited (lib-d, wbFormatBar): a small raised strip of quiet icon
+   buttons on the board, above the block (below it when there is no room), that wraps onto two rows when narrow; Link
+   swaps the buttons for an address field */
+.wb-format {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: calc(100% - 8px);
+  padding: var(--space-1);
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-medium);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
+  touch-action: manipulation;
+}
+.wb-format-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.wb-format-btn { position: relative; }
+.wb-format-level { position: absolute; right: 3px; bottom: 2px; font-size: var(--text-11); font-weight: var(--weight-strong); line-height: 1; pointer-events: none; }
+.wb-format-address { flex: 1; min-width: 12em; font-size: var(--text-16); user-select: text; -webkit-user-select: text; }
+.wb-format-why { max-width: 22em; margin: 0; padding: 0 var(--space-1); color: var(--text-danger); font-size: var(--text-12); }
 
 /* a connector: its line and arrowheads are the SVG rules above; its label sits over the middle of the line, on the
    board's own colour so the line does not run through the words, and is not there while it has none */
