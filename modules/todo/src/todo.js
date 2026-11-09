@@ -348,6 +348,7 @@
   // As the destination's panel it is in the page's one toolbar row, while the panel shows.
   const filterSwitch = host.ui.viewSwitch({
     id: 'filter',
+    label: 'Show',
     options: FILTERS,
     value: show,
     onChange: (id) => { show = id; render(); },

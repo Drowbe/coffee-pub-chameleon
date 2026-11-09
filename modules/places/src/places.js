@@ -1725,7 +1725,7 @@
     { id: 'global', label: everyoneName(), icon: 'globe' },
   ].filter((o) => allowed[o.id]);
   if (!asPart) host.add.set(canAdd() ? [ADD_PLACE] : []).catch(() => {});
-  const viewSwitch = !asPart && VIEW_OPTIONS.length > 1 ? host.ui.viewSwitch({ id: 'whose', options: VIEW_OPTIONS, value: view, onChange: showView }) : null;
+  const viewSwitch = !asPart && VIEW_OPTIONS.length > 1 ? host.ui.viewSwitch({ id: 'whose', label: 'Whose', options: VIEW_OPTIONS, value: view, onChange: showView }) : null;
   function showView(next) {
     if (!allowed[next]) next = inSpace ? 'space' : 'my';
     view = next;

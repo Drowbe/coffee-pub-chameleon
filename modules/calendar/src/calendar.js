@@ -454,6 +454,7 @@
   if (part && !PART_VIEWS.includes(view)) view = prefs.defaultView === 'week' ? 'week' : 'month';
   const viewSwitch = part ? null : host.ui.viewSwitch({
     id: 'view',
+    label: 'View',
     options: VIEWS,
     value: view,
     onChange: (id) => { view = id; render(); },
