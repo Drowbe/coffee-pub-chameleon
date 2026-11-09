@@ -5947,6 +5947,22 @@ function aiQuestionOf(raw) {
   if (n && n < prompts.MIN_QUESTION) return { error: `Ask a question of at least ${prompts.MIN_QUESTION} characters.` };
   return { question: q };
 }
+// The words a module held in Chat's input and the person sent (host.chat.attach, plan-ai-pictures.md decision 10), checked:
+// { attached: { label, text } } (cleaned: plain text, no control or direction characters, the label one short line), { attached:
+// null } when none was sent, or { error } with its sentence. Over MAX_ATTACHED characters is refused, not cut, as a question
+// is. Redacted as the question is, so a link's secret never rides along.
+function aiAttachedOf(raw) {
+  if (raw === undefined || raw === null) return { attached: null };
+  if (typeof raw !== 'object' || Array.isArray(raw) || typeof raw.text !== 'string' || (raw.label !== undefined && typeof raw.label !== 'string')) return { error: 'The attached words must be text with a label.' };
+  const text = prompts.cleanAttachedText(raw.text);
+  const label = prompts.cleanAttachedLabel(raw.label);
+  if (!label) return { error: 'Name the attached words.' };
+  if (!text) return { error: 'The attached words are empty.' };
+  const n = [...text].length;
+  if (n > prompts.MAX_ATTACHED) return { error: `Attached words are at most ${prompts.MAX_ATTACHED.toLocaleString('en-US')} characters; these are ${n.toLocaleString('en-US')}.` };
+  const secrets = aiPolicy.secrets();
+  return { attached: { label: aiPolicy.redact(label, secrets), text: aiPolicy.redact(text, secrets) } };
+}
 // The pointers sent as `refs` (Chat) or `objects` (a module): up to 12, each an object.
 const aiRefsOf = (raw) => (Array.isArray(raw) ? raw.slice(0, prompts.MAX_MATERIAL).filter((r) => r && typeof r === 'object' && !Array.isArray(r)) : []);
 // An answer's numbers ([n] in `used`, `sources` in its objects) as the pointers they stand for.
@@ -5989,11 +6005,15 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   if (!allowed.ok) return refuseAi(res, allowed, { who, space, purpose: 'chat' });
   const asked = aiQuestionOf(req.body?.question);
   if (asked.error) return res.status(400).json({ error: asked.error });
+  const attachedWords = aiAttachedOf(req.body?.attached);
+  if (attachedWords.error) return res.status(400).json({ error: attachedWords.error });
   const refs = aiRefsOf(req.body?.refs);
-  if (!asked.question && !refs.length) return res.status(400).json({ error: 'Ask a question.' });
+  if (!asked.question && !refs.length && !attachedWords.attached) return res.status(400).json({ error: 'Ask a question.' });
   const template = prompts.template('ask');
-  const built = aiContext.build(who, space, { template, question: asked.question, refs, tz: req.body?.tz });
-  const question = asked.question || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
+  // A prompt version pinned from before attached words (AI_PROMPT_VERSIONS) cannot carry them: refused, never dropped.
+  if (attachedWords.attached && !template.inputs.includes('attached')) return res.status(400).json({ error: "Words can't be attached to a question just now." });
+  const built = aiContext.build(who, space, { template, question: asked.question, refs, tz: req.body?.tz, attached: attachedWords.attached });
+  const question = asked.question || (built.words ? template.defaultAttachedQuestion : '') || (built.material.length ? template.defaultQuestion(built.material[0].title) : '');
   if (!question) return res.status(400).json({ error: `Ask a question: the ${word('object')} you chose can't be sent to the AI.`, leftOut: built.leftOut });
   // A bad ask is refused before it is counted: only asks that are carried out use the person's turns.
   const turn = aiPolicy.takeTurn(who);
@@ -6001,7 +6021,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const me = who.user.key;
   const askedAt = Date.now();
   try {
-    const inputs = { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords() };
+    const inputs = { question: aiPolicy.redact(question, aiPolicy.secrets()), material: built.material, context: built.context, history: built.history, kinds: promptKinds(), words: aiWords(), ...(built.words ? { attached: built.words } : {}) };
     const toolbox = aiTools.toolbox(who, space, built, { words: aiWords(), contract: template.schema(inputs) });
     const out = await ai.run('ask', inputs, aiUse(who, space.id, 'chat', built), { secrets: aiPolicy.secrets(), toolbox });
     countAiCall();
@@ -6011,7 +6031,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
     const used = [];
     for (const r of [...aiPointers(out.used, numbered), ...(out.lookup ? out.lookup.read : [])]) if (!used.some((u) => objectKey(u) === objectKey(r))) used.push(r);
     const sent = out.lookup ? { ...built.sent, lookup: out.lookup } : built.sent;
-    const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt });
+    const q = chatHistory.add(space.id, { by: me, who: who.user.displayName, text: question, visibility: 'private', kind: 'command', command: 'ai', at: askedAt, attached: built.words || undefined });
     const a = chatHistory.add(space.id, { by: me, who: 'AI', text: out.text, visibility: 'private', kind: 'ai', summaries, replyTo: q ? q.id : undefined, prompt: out.prompt, sent, used, numbered, leftOut: built.leftOut, cut: out.cut });
     noteActivity('chat', `asked the AI (${AI_TASK_WORDS.ask}, ${out.tokens} tokens)`, me, space.id);
     res.json({ text: out.text, summaries, used, numbered, cut: out.cut, tokens: out.tokens, prompt: out.prompt, sent, leftOut: built.leftOut, shared: false, at: a && a.at, id: a && a.id, questionId: q && q.id, question: q, message: a });

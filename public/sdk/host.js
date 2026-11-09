@@ -2617,9 +2617,20 @@
     // `refs` are optional objects the answer may use, the same pointers host.ai.ask takes as `objects`. With a ref and no
     // question (`question: ''`) the server asks its own: What should I know about <the object's title>?
     //   available()  -> { available }   false off a space's canvas (a module's own page), where ask rejects: hide the button there.
+    //   attach({ label, text } or { label, ref })  -> { attached: true }
+    //                 Puts words or an object in Chat's box as one chip the person can take off, opens the Assistant view and
+    //                 sends NOTHING: the person presses Send, with or without a question, and only then does it go (an empty
+    //                 question with attached words asks "Explain this."). `label` is the chip's name (up to 60 characters);
+    //                 `text` is plain text up to 8,000 characters (control and direction characters are taken out, and it is
+    //                 drawn as text, never HTML); `ref` is a pointer to an object of this space. Exactly one of text or ref. It
+    //                 needs no permission. A second attach of words replaces the first. Rejects with a sentence off a space's
+    //                 canvas, for a guest or a space with the AI off, over the limit, or another space's object. A picture is
+    //                 not yet attachable. ask() never carries what attach held.
     chat: {
       available: () => call('chat.available', {}),
-      ask: (o) => call('chat.ask', { question: o && o.question, refs: o && o.refs }),
+      // ask() sends at once and takes a question and objects only; words or a picture given to it are refused (use attach).
+      ask: (o) => call('chat.ask', { question: o && o.question, refs: o && o.refs, attached: o && o.attached, text: o && o.text, picture: o && o.picture }),
+      attach: (o) => call('chat.attach', { label: o && o.label, text: o && o.text, ref: o && o.ref, picture: o && o.picture }),
     },
 
     // Pictures people add (a module declares `uploads` in module.json). The server checks each from its own bytes and takes out

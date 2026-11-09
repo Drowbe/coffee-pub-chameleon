@@ -7,7 +7,7 @@
 // version and the one before it; AI_PROMPT_VERSIONS (ask@1,tags@1) pins a template to a kept version, for rollback.
 'use strict';
 
-const { checkInputs, cleanData, cleanQuestion, InputError, MIN_QUESTION, MAX_QUESTION, MAX_MATERIAL, MAX_TURNS } = require('./inputs');
+const { checkInputs, cleanData, cleanQuestion, cleanAttachedText, cleanAttachedLabel, InputError, MIN_QUESTION, MAX_QUESTION, MAX_MATERIAL, MAX_TURNS, MAX_ATTACHED, MAX_ATTACHED_LABEL } = require('./inputs');
 const { parseSummaries, parseTags, citedItems, readAnswer, MAX_SUMMARIES, MAX_ANSWER_CHARS } = require('./parse');
 
 // Each template's kept versions, newest first: the current one and, once there is one, the one before it.
@@ -135,5 +135,5 @@ function pasteText(inputs, { product }) {
 
 module.exports = {
   IDS, TASKS, KEPT, nameOf, template, allTemplates, render, parse, pasteText, pinsFrom, setPins, numbered,
-  cleanQuestion, InputError, MIN_QUESTION, MAX_QUESTION, MAX_MATERIAL, MAX_TURNS, MAX_SUMMARIES,
+  cleanQuestion, cleanAttachedText, cleanAttachedLabel, InputError, MIN_QUESTION, MAX_QUESTION, MAX_MATERIAL, MAX_TURNS, MAX_ATTACHED, MAX_ATTACHED_LABEL, MAX_SUMMARIES,
 };

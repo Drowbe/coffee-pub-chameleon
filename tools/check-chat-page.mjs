@@ -79,7 +79,7 @@ test('one store: no local echo, no AI thread load, no second public post (no dup
     assert.ok(!/reflectCommand|addAiTurn|shareMode|threadId/.test(src), `${file}: the local echo and the share mode are gone`);
   }
   const run = fnBody(chat.replace(/^ {2}/gm, ''), 'async function runAi(question) {');
-  const ask = fnBody(chat.replace(/^ {2}/gm, ''), 'function askNow(text, refs) {');
+  const ask = fnBody(chat.replace(/^ {2}/gm, ''), 'function askNow(text, refs, attached = null) {');
   assert.ok(!/share/.test((run + ask).replace(/\/\/.*$/gm, '')), 'POST .../ai is not sent share');
   assert.match(ask, /const shown = \(m\) => \(m && addStored\(m\)/, 'the stored question and answer are drawn from the reply');
   assert.match(ask, /shown\(reply\.question\)[\s\S]*shown\(reply\.message\)/, 'the question, then the answer');

@@ -62,7 +62,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // handoff a page over the call gets: from=space and the names for its header), so a link inside it that leads on to
 // another page keeps its way back. `onCompositeLoad(frame)`: each page that loads in a composite's frame, so the page
 // can take the header links inside it (home, which must not navigate the top window away from the call).
-export function createCanvas({ guestToken = null, onChatAsk = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
+export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
   // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
@@ -1605,6 +1605,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       // A request for an action waits for the page of the module that carries it: open that module if it is on here.
       onOpenModule: (id) => { const target = available.find((x) => x.id === readId(id)); if (target && !opened.has(target.id)) openModule(target); },
       onChatAsk,
+      onChatAttach,
       // The data changed (someone cleared it, or put it back): whether Clear is offered, and for how long Undo lasts, are asked again.
       onChanges: followClearable(m.id, { spaceId, guestToken }, (entry) => { m.clear = entry.clear === true; m.undoSeconds = entry.undoSeconds; if (mod.frame) mod.frame.setTitlebar({}); }, () => m.clear === true),
       scope: 'space',

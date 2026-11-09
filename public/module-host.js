@@ -315,6 +315,18 @@ const REF_SHAPE = (r) => r && typeof r.module === 'string' && typeof r.kind === 
   && (r.scope === 'environment' || r.scope === 'person' || (r.scope === 'space' && typeof r.space === 'string' && r.space.length <= 64));
 // A pointer that passed REF_SHAPE, with only its own fields.
 const cleanPointer = (r) => ({ module: r.module, kind: r.kind, id: r.id, scope: r.scope, ...(r.scope === 'space' ? { space: r.space } : {}) });
+// What host.chat.attach takes (plan-ai-pictures.md, step 1): words up to what an attached object's text is cut to, a short label,
+// both plain text with control and direction characters taken out (the server cleans them again). Never HTML anywhere.
+export const ATTACH_TEXT_MAX = 8000;
+export const ATTACH_LABEL_MAX = 60;
+const DIRECTION_CHARS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+export const cleanAttachText = (t) => String(t).replace(/\r\n?|[\u2028\u2029]/g, '\n').replace(/(?![\n\t])\p{Cc}/gu, '').replace(DIRECTION_CHARS, '').trim();
+export const cleanAttachLabel = (t) => [...cleanAttachText(t).replace(/\s+/g, ' ')].slice(0, ATTACH_LABEL_MAX).join('').trim();
+// Chat's answer to an attach: { attached: true }, or its sentence as the error.
+function attachResult(r) {
+  if (r && r.ok) return { attached: true };
+  throw Object.assign(new Error((r && r.why) || "That can't be attached just now."), { status: 400 });
+}
 
 // The environment's name, as its header shows it (GET /api/branding, public, asked once per page): a module names the
 // environment's own list by it (info.context.environment.name), as the destination's filter does (decision 19).
@@ -1209,7 +1221,7 @@ export function createFrameBands(frame, { send, box = null, statusLimit = undefi
 // window); the calls answer true. Wherever a module is drawn the host draws its bands; only a dashboard widget (no
 // header, toolbar, add or status given) answers false. `module.content` is the manifest's ("flush" or nothing). Returns
 // { destroy, send, deliver }. The module hears the same names the server uses (plan-names step 5c).
-export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null, onChanges = null }) {
+export function mountModule({ module, frame = null, container = null, scope = 'environment', spaceId = null, guestToken = null, entry, onTitle, onResize, chrome = null, onOpenRef = null, onOpenPage = null, onOpenModule = null, onChatAsk = null, onChatAttach = null, keyed = null, destination = null, onAdd = null, onStatus = null, onHeader = null, onToolbarItems = null, lift = true, onLift = null, liftUp = null, onChanges = null }) {
   const base = `/api/modules/${encodeURIComponent(module.id)}`;
   let contextInfo = null;
   // A keyed page (public/keyed.js): the module's page about one person, opened with the access key and no
@@ -1721,12 +1733,41 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     async 'chat.available'() {
       return { available: typeof onChatAsk === 'function' };
     },
-    async 'chat.ask'({ question, refs }) {
+    async 'chat.ask'({ question, refs, attached, text, picture }) {
+      // ask sends at once, so it carries a question and objects and nothing a module held: words and pictures are only ever
+      // attached (chat.attach) and sent by the person pressing Send.
+      if (attached !== undefined || text !== undefined || picture !== undefined) throw Object.assign(new Error(`Ask takes a question and ${word('object', { many: true })}. To send words or a picture, attach them and let the person press Send.`), { status: 400 });
       if (typeof onChatAsk !== 'function') throw Object.assign(new Error(`Ask this from Chat in ${word('space', { a: true })}.`), { status: 400 });
       const q = String(question || '').trim().slice(0, 1000);
       const list = (Array.isArray(refs) ? refs : []).filter(REF_SHAPE).slice(0, 12).map(cleanPointer);
       if (!q && !list.length) throw Object.assign(new Error('Type a question.'), { status: 400 });
       return onChatAsk({ question: q, refs: list });
+    },
+    // Hold words or an object in Chat's box (host.chat.attach). Nothing is sent: the chip waits there and only the person
+    // pressing Send sends it, with their question. No permission and no manifest field: it is what typing is. Only on a space's
+    // canvas, only this space's objects, words as plain text up to ATTACH_TEXT_MAX; anything else is refused with a sentence.
+    async 'chat.attach'({ label, text, ref, picture }) {
+      const refuse = (message) => { throw Object.assign(new Error(message), { status: 400 }); };
+      if (typeof onChatAttach !== 'function') refuse(`Ask this from Chat in ${word('space', { a: true })}.`);
+      if (picture !== undefined && picture !== null) refuse("Pictures can't be attached yet.");
+      const haveText = text !== undefined && text !== null;
+      const haveRef = ref !== undefined && ref !== null;
+      if (haveText === haveRef) refuse(haveText ? `Attach words or ${word('object', { a: true })}, not both.` : `Give the words or ${word('object', { a: true })} to attach.`);
+      if (typeof label !== 'string') refuse('Name what you attach.');
+      const name = cleanAttachLabel(label);
+      if (!name) refuse('Name what you attach.');
+      if (haveText) {
+        if (typeof text !== 'string') refuse('The words to attach must be text.');
+        const words = cleanAttachText(text);
+        if (!words) refuse('There are no words to attach.');
+        const n = [...words].length;
+        if (n > ATTACH_TEXT_MAX) refuse(`Words to attach are at most ${ATTACH_TEXT_MAX.toLocaleString('en-US')} characters; these are ${n.toLocaleString('en-US')}.`);
+        return attachResult(await onChatAttach({ label: name, text: words }));
+      }
+      if (!REF_SHAPE(ref)) refuse(`Attach ${word('object', { a: true })} with its pointer.`);
+      // Another space's object is refused here; the server leaves it out too, whatever a page sends.
+      if (ref.scope === 'space' && (!spaceId || ref.space !== spaceId)) refuse(`That ${word('object')} is not in this ${word('space')}.`);
+      return attachResult(await onChatAttach({ label: name, ref: cleanPointer(ref) }));
     },
     // Uploaded pictures (a module whose manifest declares `uploads`): kept per scope, checked and cleaned by the server.
     async 'uploads.put'({ file, name, keepPosition, scope: s }) {

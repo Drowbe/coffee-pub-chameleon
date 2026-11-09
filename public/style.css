@@ -3539,6 +3539,27 @@ a.crumb-here:hover {
   padding: var(--space-2) var(--space-3) 0;
 }
 
+/* The label of what a module attached, under the question it went with. */
+.message-attached {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-12);
+}
+
+/* A chip is as wide as its label, up to the box: a long label (a module names it, up to 60 characters) is cut with an ellipsis
+   so the chip never pushes past a narrow Chat or a phone. */
+.chat-ai-chip {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.chat-ai-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-import-dropped {
   margin: 0;
   color: var(--text-muted);

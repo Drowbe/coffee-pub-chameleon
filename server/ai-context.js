@@ -2,12 +2,13 @@
 // for every question at the moment of asking and only read through the policy (server/ai-policy.js). Nothing it makes is
 // stored except the counts on the answer (`sent`) and the call's record.
 //
-// buildContext(who, space, { template, question, refs, tz }) answers
-//   { context, history, material, numbered, leftOut, sent, sees }
+// buildContext(who, space, { template, question, refs, tz, attached }) answers
+//   { context, history, material, words, numbered, leftOut, sent, sees }
 // - context: the rollup -- the space (name, its words), today in the asker's time zone, the phases and their dates, the
 //   asker, then the relevant objects, the linked objects, the chat and the members, each only as the owner's setting allows;
 // - history: the asker's own last turns here (a question and its answer), oldest first;
 // - material: the attached objects with their text, numbered from 1; the rollup's objects carry on the numbering;
+// - words: the words a module attached ({ label, text }, shortened with the material to its budget), or null; not numbered;
 // - numbered: the pointer behind each number (numbered[n - 1]), for `used` and `sources`;
 // - leftOut: [{ part, why, count }] for each cut: what the budget cut, what the setting kept out, what was from another space;
 // - sent: the counts per category and the pointers attached, kept on a stored answer so its AI used: line reads the same later.
@@ -107,7 +108,7 @@ function createContextBuilder(deps) {
 
   // `history: false`: no earlier turns even where the template takes them (a module's ask is not a conversation).
   // `from`: the module asking (a module's ask): only what that module may read is admitted (server/ai-policy.js admit).
-  function build(who, space, { template, question = '', refs = [], tz, history: withHistory = true, from = null } = {}) {
+  function build(who, space, { template, question = '', refs = [], tz, history: withHistory = true, from = null, attached = null } = {}) {
     const sees = policy.sees(space);
     const secretList = policy.secrets();
     const budget = template.budget;
@@ -229,20 +230,24 @@ function createContextBuilder(deps) {
     // History within its own budget, the oldest turns first to go.
     while (history.length && tokensOf(history) > budget.history) { history.shift(); note('history', 'budget'); }
     // The attached text within its own budget, shortened evenly.
-    const shortened = shortenEvenly(material, budget.material * 4);
+    // Words a module attached (host.chat.attach) share that budget with the objects' text; they are not numbered or cited.
+    // Only a template that takes them (ask@3) gets them.
+    const words = attached && template.inputs.includes('attached') ? { label: attached.label, text: attached.text } : null;
+    const shortened = shortenEvenly(words ? [...material, words] : material, budget.material * 4);
     if (shortened) note('attached', 'shortened', shortened);
 
     // The whole prompt within its budget, cut in the plan's order: chat, linked, relevant (lowest first), history (down to
     // the latest turn), then the attached text. The question is never cut.
-    const size = () => budget.instructions + tokensOf(context) + tokensOf(relevant.map((x) => x.s)) + tokensOf(linked.map((x) => x.s)) + tokensOf(chat) + tokensOf(members) + tokensOf(history) + tokensOf(material) + tokensOf(question);
+    const size = () => budget.instructions + tokensOf(context) + tokensOf(relevant.map((x) => x.s)) + tokensOf(linked.map((x) => x.s)) + tokensOf(chat) + tokensOf(members) + tokensOf(history) + tokensOf(material) + (words ? tokensOf(words) : 0) + tokensOf(question);
     while (size() > budget.total) {
       if (chat.length) { chat.shift(); note('chat', 'budget'); continue; }
       if (linked.length) { linked.pop(); note('linked', 'budget'); continue; }
       if (relevant.length) { relevant.pop(); note('relevant', 'budget'); continue; }
       if (history.length > 1) { history.shift(); note('history', 'budget'); continue; }
-      const spare = Math.max(0, (budget.total - (size() - tokensOf(material))) * 4 - material.length * 40);
-      if (!material.length || !shortenEvenly(material, spare)) break;
-      note('attached', 'shortened', material.length);
+      const given = words ? [...material, words] : material;
+      const spare = Math.max(0, (budget.total - (size() - tokensOf(given))) * 4 - given.length * 40);
+      if (!given.length || !shortenEvenly(given, spare)) break;
+      note('attached', 'shortened', given.length);
     }
 
     // The rollup's numbers carry on after the attached ones.
@@ -253,6 +258,7 @@ function createContextBuilder(deps) {
 
     const sent = {
       attached: attachedRefs,
+      ...(words ? { words: 1 } : {}),
       relevant: relevant.length,
       linked: linked.length,
       history: history.length,
@@ -261,7 +267,7 @@ function createContextBuilder(deps) {
       ...(notSent.length ? { notSent } : {}),
       ...(leftOut.some((l) => l.why === 'budget' || l.why === 'shortened') ? { cut: true } : {}),
     };
-    return { context, history, material, numbered, leftOut, sent, sees };
+    return { context, history, material, words, numbered, leftOut, sent, sees };
   }
 
   return { build, turnsOf };

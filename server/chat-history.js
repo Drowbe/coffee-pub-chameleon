@@ -49,6 +49,7 @@ const copy = (m) => ({
   ...(Array.isArray(m.summaries) ? { summaries: m.summaries.map((s) => ({ ...s })) } : {}),
   ...(m.preview && typeof m.preview === 'object' ? { preview: { ...m.preview } } : {}),
   ...(m.kept && typeof m.kept === 'object' ? { kept: { ...m.kept } } : {}),
+  ...(m.attached && typeof m.attached === 'object' ? { attached: { ...m.attached } } : {}),
   ...(m.sent && typeof m.sent === 'object' ? { sent: JSON.parse(JSON.stringify(m.sent)) } : {}),
   ...(Array.isArray(m.used) ? { used: m.used.map((r) => ({ ...r })) } : {}),
   ...(Array.isArray(m.numbered) ? { numbered: m.numbered.map((r) => ({ ...r })) } : {}),
@@ -215,7 +216,7 @@ class ChatHistory {
   // `command` (with `command` and, for a module's command, `module`) the echo of a command; `ai` an AI answer, with
   // `summaries` and `replyTo`. `link` (plan-chat-links.md): the ordinary message's link, found by the route with
   // findLink (server/chat-links.js), stored as `preview: { url }`.
-  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, numbered, leftOut, cut }) {
+  add(spaceId, { by, who, text, visibility, kind, command, module, summaries, replyTo, at, link, prompt, sent, used, numbered, leftOut, cut, attached }) {
     const ai = kind === 'ai' || command === 'ai';
     const clean = cleanText(text, ai ? MAX_AI_TEXT : MAX_TEXT);
     if (!clean) return null;
@@ -225,6 +226,12 @@ class ChatHistory {
     if (kind === 'command' || kind === 'ai') message.kind = kind;
     if (typeof command === 'string' && command) message.command = command.slice(0, 12);
     if (typeof module === 'string' && module) message.module = module.slice(0, 32);
+    // The words a module attached to an /ai question, as sent (plan-ai-pictures.md decision 10): private with the question.
+    if (command === 'ai' && kind === 'command' && attached && typeof attached === 'object' && typeof attached.text === 'string') {
+      const words = cleanText(attached.text, MAX_AI_TEXT);
+      const label = cleanText(attached.label, 60).replace(/\s+/g, ' ');
+      if (words && label) message.attached = { label, text: words };
+    }
     if (kind === 'ai' && Array.isArray(summaries) && summaries.length) message.summaries = summaries.slice(0, MAX_SUMMARIES);
     if (typeof replyTo === 'string' && ID_RE.test(replyTo)) message.replyTo = replyTo;
     // An AI answer's provenance (plan-ai-integration.md): the template version that made it, what was sent (counts and the
