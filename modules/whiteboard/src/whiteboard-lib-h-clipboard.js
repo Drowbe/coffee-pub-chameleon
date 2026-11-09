@@ -14,12 +14,17 @@
   const WB_PASTE_STEP = 24; // board units each paste moves along, so copies never hide one another
 
   // Copies of `blocks` (plain blocks, any order) with new ids from newId(), moved by dx, dy, pointers among them remapped,
-  // stacked in the order the originals were. z, by and at are the caller's to set.
-  function wbCopies(blocks, { newId, dx = 0, dy = 0 }) {
+  // stacked in the order the originals were. z, by and at are the caller's to set. A copy is never locked; the copies of
+  // a group's blocks are a new group of their own (each group copied gets one new id from newGroup()), and a block copied
+  // without any other of its group is in no group.
+  function wbCopies(blocks, { newId, dx = 0, dy = 0, newGroup = () => wbGroupId() }) {
     const list = blocks.slice().sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
     const idMap = new Map(list.map((b) => [b.id, newId()]));
+    const groupMap = new Map([...wbGroupsOf(list).keys()].map((g) => [g, newGroup()]));
     return list.map((b) => {
       const copy = { ...JSON.parse(JSON.stringify(b)), id: idMap.get(b.id), ...wbMoved(b, dx, dy) };
+      delete copy.locked;
+      if (groupMap.has(wbGroupOf(b))) copy.group = groupMap.get(wbGroupOf(b)); else delete copy.group;
       const def = blockTypes.get(b.type);
       if (def && def.remap && (!def.refs || def.refs(b).length)) Object.assign(copy, def.remap(copy, idMap));
       if (def && def.copied) Object.assign(copy, def.copied(copy)); // a running timer's copy is not running

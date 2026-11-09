@@ -57,25 +57,34 @@
   // background, lib-a) were to be put back and someone else had changed them since (left as they are) }. isBoard(id) ->
   // whether a change is the board's settings rather than a block: it merges field by field like a block (get never answers
   // null for it: a missing value is the usual one) and is told apart in the note.
-  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf, pointsAt = () => false, missing = () => false, isBoard = () => false }) {
+  // canChange(block, fields) is also handed the fields to put back (null: the whole block), so a step that only locked or
+  // unlocked a block can be undone on a locked block; canRemove(block) -> whether it may be taken away (an undo of a
+  // block made, since locked: it stays); locked(block) -> whether a block refused so is locked: counted in `locked`.
+  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf, pointsAt = () => false, missing = () => false, isBoard = () => false, canRemove = () => true, locked: isLocked = () => false }) {
     let left = 0;
     let kept = 0;
+    let locked = 0;
     let board = false;
     const touched = [];
     const late = (c) => (c.target && pointsAt(c.target) ? 1 : 0);
     for (const { id, target, source, fields } of list.slice().sort((a, b) => late(a) - late(b))) {
       const now = get(id);
-      if (!target) { if (now) remove(id); continue; }
+      if (!target) {
+        if (now && !canRemove(now)) { if (isLocked(now)) locked += 1; continue; }
+        if (now) remove(id);
+        continue;
+      }
       if (!now && source) { left += 1; continue; } // someone else deleted it since
       const merged = now && fields ? wbMergeBack(now, { target, source, fields }, linkedOf(now)) : target;
       if (!merged) { if (isBoard(id)) board = true; else kept += 1; continue; } // someone else changed all of it since
       const b = clean(merged);
-      if (!b || (now && !canChange(now)) || (!now && !canCreate())) continue;
+      if (b && now && !canChange(now, fields) && isLocked(now)) { locked += 1; continue; }
+      if (!b || (now && !canChange(now, fields)) || (!now && !canCreate())) continue;
       if (missing(b)) { left += 1; continue; }
       put(b);
       touched.push(id);
     }
-    return { left, kept, touched, board };
+    return { left, kept, locked, touched, board };
   }
   // What the person is told after an undo or a redo that could not put everything back ('' : nothing to tell). Both, when
   // both happened.
@@ -83,6 +92,7 @@
     const parts = [];
     if (r && r.left > 0) parts.push(`Left out ${r.left === 1 ? 'a block' : `${r.left} blocks`} someone else deleted.`);
     if (r && r.kept > 0) parts.push(r.kept === 1 ? 'Left a block as it is: someone else changed it since.' : `Left ${r.kept} blocks as they are: someone else changed them since.`);
+    if (r && r.locked > 0) parts.push(r.locked === 1 ? 'Left a locked block as it is.' : `Left ${r.locked} locked blocks as they are.`);
     if (r && r.board) parts.push('Left the background as it is: someone else changed it since.');
     return parts.join(' ');
   }

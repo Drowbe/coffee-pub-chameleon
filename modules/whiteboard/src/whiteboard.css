@@ -368,6 +368,34 @@
 }
 .wb-port-on { background: var(--accent); }
 
+/* a locked block's mark: a small padlock on a rounded square at its box's top right corner, the same size on the screen at any zoom,
+   over its own block and under the blocks above it (its z-index is its block's) */
+.wb-lock {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: calc(20px / var(--wb-scale, 1));
+  height: calc(20px / var(--wb-scale, 1));
+  box-sizing: border-box;
+  border: calc(1px / var(--wb-scale, 1)) solid var(--edge-hairline);
+  border-radius: var(--radius-small);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.wb-lock .ic { display: grid; width: calc(11px / var(--wb-scale, 1)); height: calc(11px / var(--wb-scale, 1)); }
+.wb-lock .ic svg { width: 100%; height: 100%; fill: currentColor; }
+
+/* guides while a block is dragged near others (Snap to grid off): a thin line where their edges or middles line up */
+.wb-guide {
+  position: absolute;
+  z-index: 2147483001;
+  pointer-events: none;
+}
+.wb-guide-x { border-left: calc(1px / var(--wb-scale, 1)) solid var(--accent); transform: translateX(calc(-0.5px / var(--wb-scale, 1))); }
+.wb-guide-y { border-top: calc(1px / var(--wb-scale, 1)) solid var(--accent); transform: translateY(calc(-0.5px / var(--wb-scale, 1))); }
+
 /* the rectangle dragged on the board to pick every block it touches */
 .wb-marquee {
   position: absolute;

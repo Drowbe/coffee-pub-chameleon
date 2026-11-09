@@ -258,15 +258,48 @@
     }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;
+    const group = wbGroupOf(raw);
     return {
       ...own,
       id,
       type: def.type,
       ...(placed ? { x, y } : {}),
       z,
+      // Any block may be locked (it stays where it is and as it is) and be in a group; a block that is neither has
+      // neither field (see "locks and groups" below).
+      ...(raw.locked === true ? { locked: true } : {}),
+      ...(group ? { group } : {}),
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
     };
+  }
+
+  // Locks and groups, two fields any block may have, each stored with the block like its colours:
+  //   locked: true   the block stays where it is and as it is: no move, resize, delete, edit, colour, layer or cut (lib-b
+  //                  refuses them; lib-m's arrange and delete skip it). It can still be picked, copied (the copy is not
+  //                  locked), saved as a picture, and unlocked by anyone who may change the board.
+  //   group: '<id>'  a short id ([a-z0-9], at most 24) its group's members share: picking one picks them all, and what is
+  //                  done to the picked blocks is done to each. A group of fewer than two blocks on the board is no group
+  //                  (nothing is rewritten: it is just not one when read, wbGroupsOf).
+  const WB_GROUP_RE = /^[a-z0-9]{1,24}$/;
+  const wbGroupOf = (b) => (b && typeof b.group === 'string' && WB_GROUP_RE.test(b.group) ? b.group : null);
+  // A new group's id: 12 letters and digits.
+  function wbGroupId(random = Math.random) {
+    let out = '';
+    while (out.length < 12) out += Math.floor(random() * 36).toString(36);
+    return out;
+  }
+  // The groups among some blocks: group id -> the ids of its members, only those with two or more.
+  function wbGroupsOf(blocks) {
+    const all = new Map();
+    for (const b of blocks) {
+      const g = wbGroupOf(b);
+      if (!g) continue;
+      if (!all.has(g)) all.set(g, []);
+      all.get(g).push(b.id);
+    }
+    for (const [g, ids] of all) if (ids.length < 2) all.delete(g);
+    return all;
   }
 
   // The board's state: the blocks by id. It draws nothing and saves nothing.

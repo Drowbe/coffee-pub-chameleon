@@ -3,7 +3,8 @@
   // The board is drawn with the page's own HTML and SVG: one element per block in a "world" layer that the view moves and
   // scales (pan and zoom), so words wrap and are edited as ordinary text, and every colour is a theme token in CSS. The
   // renderer owns the view and the elements; what a block looks like is its block type's render. It saves nothing.
-  function createRenderer({ surface, world, frame }) {
+  // icon(name) -> a promise of an icon's SVG (the lock mark's padlock).
+  function createRenderer({ surface, world, frame, icon = null }) {
     const els = new Map(); // block id -> its element
     const shown = new Map(); // block id -> the block as it was last drawn
     const view = { x: 0, y: 0, s: 1 };
@@ -48,8 +49,39 @@
       restackFrame = requestAnimationFrame(() => {
         restackFrame = 0;
         const order = [...shown.values()].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
-        order.forEach((b, i) => { const el = els.get(b.id); if (el) el.style.zIndex = String(i + 1); });
+        order.forEach((b, i) => {
+          const el = els.get(b.id);
+          if (el) el.style.zIndex = String(i + 1);
+          const lock = locks.get(b.id);
+          if (lock) lock.style.zIndex = String(i + 1); // over its own block (it comes later), under the blocks above it
+        });
       });
+    }
+
+    // A locked block's mark (lib-a): a small padlock on the top right corner of its box (a connector's: where it starts), over
+    // its block and under the blocks above it, never over its words. Not part of the block: a picture of the board leaves
+    // it out. The block's spoken description says "locked" instead.
+    const locks = new Map(); // block id -> its lock mark
+    let padlock = null; // the padlock's SVG, once it is in
+    function showLock(block, def, at) {
+      let m = locks.get(block.id);
+      if (!block.locked || !at) { if (m) { m.remove(); locks.delete(block.id); } return; }
+      if (!m) {
+        m = document.createElement('div');
+        m.className = 'wb-lock';
+        m.setAttribute('aria-hidden', 'true');
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        m.append(ic);
+        world.insertBefore(m, frame);
+        locks.set(block.id, m);
+        const el = els.get(block.id);
+        if (el && el.style.zIndex) m.style.zIndex = el.style.zIndex;
+        if (padlock) ic.innerHTML = padlock;
+        else if (icon) Promise.resolve(icon('lock')).then((svg) => { if (!svg) return; padlock = svg; for (const x of locks.values()) { const i = x.querySelector('.ic'); if (i && !i.innerHTML) i.innerHTML = svg; } }, () => {});
+      }
+      m.style.left = `${at.x}px`;
+      m.style.top = `${at.y}px`;
     }
 
     // A block's colours and width, as custom properties whiteboard.css draws with: --wb-fill, --wb-stroke and --wb-ink are
@@ -130,11 +162,14 @@
           el.style.width = `${g.box.w}px`;
           el.style.height = `${g.box.h}px`;
         }
+        showLock(block, def, g ? g.points[0] : null); // at its start: its label is at its middle
       } else {
         if (!el.classList.contains('wb-editing')) def.render(block, el);
         place(el, block, def);
+        const box = def.box(block);
+        showLock(block, def, { x: block.x + box.x + box.w, y: block.y + box.y });
       }
-      el.setAttribute('aria-label', def.describe(block, find));
+      el.setAttribute('aria-label', `${def.describe(block, find)}${block.locked ? ', locked' : ''}`);
       if (selected.has(block.id)) frameSoon();
       if (!def.attached) redrawDeps(block.id);
       return el;
@@ -151,6 +186,8 @@
         if (had) surface.focus({ preventScroll: true });
       }
       els.delete(id);
+      const lock = locks.get(id);
+      if (lock) { lock.remove(); locks.delete(id); }
       const was = shown.get(id);
       if (shown.delete(id)) restack();
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
@@ -284,6 +321,20 @@
       }
     }
 
+    // Guides (lib-m, wbGuideSnap) while a block is dragged: thin lines on the board, [{ axis, at, from, to }], [] for none.
+    const guideEls = [];
+    function guides(list) {
+      const want = list || [];
+      while (guideEls.length > want.length) guideEls.pop().remove();
+      want.forEach((g, i) => {
+        let el = guideEls[i];
+        if (!el) { el = document.createElement('div'); el.setAttribute('aria-hidden', 'true'); world.insertBefore(el, frame); guideEls.push(el); }
+        el.className = `wb-guide wb-guide-${g.axis}`;
+        if (g.axis === 'x') putBox(el, { x0: g.at, y0: g.from, x1: g.at, y1: g.to });
+        else putBox(el, { x0: g.from, y0: g.at, x1: g.to, y1: g.at });
+      });
+    }
+
     // A picture on its way (lib-i): a placeholder where its block will be, with a spinner and a word for how far it is.
     // box in board units ({ x, y, w, h }), or null to take it away. It is not a block: nothing picks, moves or saves it.
     const pendings = new Map(); // job id -> its placeholder
@@ -399,6 +450,9 @@
       boxOf,
       // All a block draws, on the board ({ x0, y0, x1, y1 }), or null when it is not drawn.
       reachOf: (id) => { const el = els.get(id); return el && !el.hidden ? reachIn(el) : null; },
+      // A block's box as drawn, on the board ({ x0, y0, x1, y1 }), or null when it is not drawn.
+      rectOf: (id) => { const el = els.get(id); return el && !el.hidden ? boxIn(el) : null; },
+      guides,
       ports,
       refreshFrame: showFrame,
       toBoard,
