@@ -15,7 +15,7 @@ import { hotkeyMatches, formatHotkey } from '/hotkeys.js';
 import { initDashboard } from '/dashboard.js';
 import { nav } from '/nav-bar.js';
 import { attachChatInput, viewOf, discussionWord, placeAbove, stripSummaryMarkers, clearChoices, ofClearType, inClearScope, clearTakesPicture, clearNoticeTakes, cleanPreview, cleanKept, siteName, linkKeeper, previewNoticeTakes, keptNoticeTakes } from '/chat-input.js';
-import { openHostMenu, openConfirmMenu, closeHostMenu } from '/module-host.js';
+import { openHostMenu, openConfirmMenu, closeHostMenu, setGuestPass } from '/module-host.js';
 import { confirmDialog } from '/confirm.js';
 import { foldCallToolbar, callTitle, callTime, callDuration } from '/call-toolbar.js';
 
@@ -690,6 +690,7 @@ $('guest-join').addEventListener('submit', async (event) => {
     const { spaceId: joinedId, spaceName: joinedName, permissions, guest } = await api('POST', '/api/guest-join', { token: guestToken, name });
     me = { key: guest.id, displayName: guest.name, role: 'guest', permissions };
     guestPass = guest.pass;
+    setGuestPass(guestToken, guestPass); // the module host's stream and live messages know this guest by it
     await joinAsGuest(joinedId, joinedName);
   } catch (err) {
     $('guest-join-error').textContent = err.message;

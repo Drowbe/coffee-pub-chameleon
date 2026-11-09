@@ -12,6 +12,7 @@ import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
 import { shareDialog, printFrame } from '/module-actions.js';
 import { createStreamHub, createStreamRelay, createStreamRelayClient } from '/module-stream.js';
+import { createLiveBridge } from '/module-live.js';
 
 // The design tokens a module's frame receives (see design-theme.md).
 const THEME_TOKENS = [
@@ -41,7 +42,18 @@ export function readTheme() {
 // so a stream per module, or per window frame, starves everything else. See GET /api/modules/stream in server/index.js.
 // A destination's page in a window frame on a space's Workspace (canvas.js marks that frame data-composite) opens no
 // stream: it hears the page's over postMessage (createStreamRelayClient; the page's side is relayStreamToFrame, below).
-const streamHub = createStreamHub();
+// A guest's pass (POST /api/guest-join), by their guest link's token: the space page hands it here (setGuestPass), and a
+// window frame gets it from the page with its stream's join answer. The guest's module stream and their modules' live
+// calls carry it, so the server knows each guest on a link apart (plan-module-live.md, step 3). Held in memory only.
+const guestPasses = new Map();
+const passFor = (guest) => (guest && guestPasses.get(guest)) || null;
+const streamHub = createStreamHub({ passFor });
+export function setGuestPass(guest, pass) {
+  if (typeof guest !== 'string' || !guest || typeof pass !== 'string' || !pass) return;
+  if (guestPasses.get(guest) === pass) return;
+  guestPasses.set(guest, pass);
+  streamHub.refresh(); // a connection opened without it is replaced by one with it
+}
 let frameRelay; // undefined: not asked yet; null: not in a window frame on the Workspace
 export function joinStream(space, guest, onEvent) {
   if (frameRelay === undefined) {
@@ -52,15 +64,20 @@ export function joinStream(space, guest, onEvent) {
       inComposite = false;
     }
     // A join the page never answers falls back to this frame's own stream (the hub), so live updates never stop.
-    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin, fallback: (space, guest, fn) => streamHub.join(space, guest, fn) }) : null;
+    frameRelay = inComposite ? createStreamRelayClient({ parent: window.parent, self: window, origin: location.origin, fallback: (space, guest, fn) => streamHub.join(space, guest, fn), onPass: setGuestPass }) : null;
   }
   return (frameRelay || streamHub).join(space, guest, onEvent);
 }
 // The page's side of the relay, for one window frame on the Workspace (canvas.js, compositeMount): the frame may hear
-// only `allow()`'s view ({ space, guest }: the space and guest token the frame was made for). `win` is the window the
-// frame is in (not this one when the call has been popped out). Answers stop(), for when the window closes.
+// only `allow()`'s view ({ space, guest }: the space and guest token the frame was made for), and is handed that guest's
+// pass. `win` is the window the frame is in (not this one when the call has been popped out). Answers stop(), for when
+// the window closes.
 export function relayStreamToFrame(frame, { win = window, allow }) {
-  return createStreamRelay({ win, frame, origin: win.location.origin, allow, join: (space, guest, fn) => streamHub.join(space, guest, fn) });
+  const allowWithPass = () => {
+    const may = allow() || {};
+    return { space: may.space || null, guest: may.guest || null, pass: passFor(may.guest) };
+  };
+  return createStreamRelay({ win, frame, origin: win.location.origin, allow: allowWithPass, join: (space, guest, fn) => streamHub.join(space, guest, fn) });
 }
 
 // --- watching one person's media (host.media.watch) ----------------------------------------------
@@ -1268,6 +1285,34 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     return p;
   };
 
+  // Live messages (host.live; plan-module-live.md): only on a space's canvas (and a window or a page about that space),
+  // never on an environment page or a keyed page. public/module-live.js cleans every call and event; this mount fixes the
+  // module and the space, so a module can't reach another's messages. A guest's calls carry their pass.
+  const liveSpace = scope === 'space' && spaceId && !keyed ? spaceId : null;
+  const liveRequest = (path, body, { keepalive = false } = {}) => {
+    const p = new URLSearchParams({ space: liveSpace });
+    if (guestToken) {
+      p.set('guest', guestToken);
+      const pass = passFor(guestToken);
+      if (pass) p.set('pass', pass);
+    }
+    const at = `${base}/live${path}?${p}`;
+    if (!keepalive) return api('POST', at, body);
+    return fetch(at, { method: 'POST', keepalive: true, headers: { ...accessKeyHeaders(), 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  };
+  const live = createLiveBridge({
+    moduleId: module.id,
+    spaceId: liveSpace,
+    request: liveRequest,
+    send: (event, data) => send(event, data),
+    notInSpace: `live messages are only in ${word('space', { a: true })}`,
+  });
+  let helloSeen = false; // the frame's first page said hello (see hello)
+  const onPageHide = () => live.pageHide();
+  const onPageShow = (e) => { if (e.persisted) live.pageShow(); };
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', onPageShow);
+
   // This module, as the drag brokering sees it (its `send` is defined below).
   const pageMode = Boolean(container);
   // `frame` in the drag brokering below is whichever element holds the module: its frame, or its container.
@@ -1418,6 +1463,11 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
   let lastAttach = { same: '', at: 0 };
   const handlers = {
     async hello() {
+      // Every new page in the frame says hello first, and its SDK makes no live call before the answer: a hello after the
+      // first is a new page, whose old live subscriptions went with the old one (it leaves until it subscribes again).
+      // Not on the frame's load event: that fires after the page's scripts ran, and could forget what it just subscribed.
+      if (helloSeen) live.reset();
+      helloSeen = true;
       const [answer, envName] = await Promise.all([api('GET', url('/context', scope)), environmentName()]);
       contextInfo = answer;
       ready = true;
@@ -1439,8 +1489,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         // How the content fills the slot (the manifest's `content`): the SDK marks the module's document with it.
         content: contentFit,
         debug: debugOn(),
+        // host.live.state as it is now ('connecting', 'open' or 'closed'); each change after it is the 'live.state' event.
+        live: live.state(),
       };
     },
+    // Live messages (host.live): cleaned and kept to this module and this space in public/module-live.js.
+    ...live.handlers,
     async 'storage.get'({ key, scope: s, space }) {
       try {
         return (await api('GET', url(`/data/${encodeURIComponent(key)}`, scopeOf(s, space)))).item;
@@ -2335,6 +2389,12 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
   // environment and the viewer's spaces (see the stream's scopes on the server). A keyed page has no session for the
   // event stream, so it asks after its settings now and then instead (the one live thing it needs).
   const leaveStream = keyed ? pollSettings() : joinStream(scope === 'space' ? spaceId : null, guestToken, (type, d) => {
+    // Live messages (plan-module-live.md): the stream's id, its loss, a message, someone joining or leaving. The bridge
+    // keeps to this module and this space.
+    if (type === 'ready' || type === 'lost' || type === 'live' || type === 'joined' || type === 'left') {
+      live.onStream(type, d);
+      return;
+    }
     // The person's own other calendars changed (plan-google-calendar.md, Part 2): only the modules the server named,
     // those with the approved `external` hook, hear it, and ask again for what they show.
     if (type === 'external') {
@@ -2505,6 +2565,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       if (phasesChannel) phasesChannel.close();
       if (phasesTimer) { clearInterval(phasesTimer); window.removeEventListener('focus', phasesLook); document.removeEventListener('visibilitychange', phasesLook); }
       leaveStream();
+      live.destroy(); // leaves its live messages
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
       leaveDestination();
       if (pageMode) container.shadowRoot?.replaceChildren();
       else frame.removeAttribute('src');
