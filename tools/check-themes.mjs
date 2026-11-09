@@ -155,7 +155,8 @@ await test('a theme file, a template\'s theme and the bundled templates that set
     const theme = store.themes.find((t) => t.id === id);
     for (const mode of ['light', 'dark']) for (const key of [...Object.keys(NAV), ...Object.keys(STATUS)]) assert.ok(theme[mode][key] == null, `${id} ${mode} ${key}`);
   }
-  for (const mode of ['light', 'dark']) for (const key of Object.keys(NAV)) assert.ok(DEFAULT_THEME[mode][key] == null, `the default theme ${mode} ${key}`);
+  // The default theme's light set writes the two bars' side zones (the sand a step off the ground); every other bar role follows the bar.
+  for (const mode of ['light', 'dark']) for (const key of Object.keys(NAV)) assert.ok(DEFAULT_THEME[mode][key] == null || (mode === 'light' && /^surface-bar-(brand|right)$/.test(key)), `the default theme ${mode} ${key}`);
 });
 
 await test('ink-brand, the colour of the lockup\'s second word: the default theme\'s coral, light and dark; no other built-in sets it (it follows the accent there); it round-trips', () => {

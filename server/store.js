@@ -430,6 +430,10 @@ const THEME_OPTIONAL = [
   'fill-chosen', 'text-on-chosen', 'ink-chosen',
   // The colour of the second word of the product's lockup (the brand's coral), the accent until a theme sets it. Large text only (24px and up).
   'ink-brand',
+  // The ink every neutral wash (a hover, a press, a card's head band, a track) is mixed from: the text colour until a theme sets it.
+  'ink-neutral',
+  // The eight tones modules and phases are tinted with (a module's colour, a phase's wash, the kind colours): what each is until a theme sets it.
+  'tone-gold', 'tone-blue', 'tone-green', 'tone-teal', 'tone-purple', 'tone-red', 'tone-orange', 'tone-pink',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
@@ -460,9 +464,17 @@ const DEFAULT_THEME = {
     'surface-page': '#fbf6ec', 'surface-panel': '#ffffff', 'edge-hairline': '#e2d3b3', 'text-primary': '#14243b', 'text-muted': '#475569', 'accent-fill': '#0b7a84', 'text-on-accent': '#ffffff',
     'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e',
     'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
-    'wash-ink': '#cfae6c', 'fill-chosen': '#cfae6c', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'wash-ink': '#cfae6c', 'fill-chosen': '#ebd9b3', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
     'ink-brand': '#e0553c',
     'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
+    // The light pass: every wash is cream or sand, never grey, black or teal. The bars' side zones are the sand a step off the ground; a hover is
+    // the studio's teal darkened (--accent-hover); a chosen segment is --sand itself; the neutral ink is the --sand family at full strength, so
+    // 8% reads as cream, 14% as sand, 20% as --band; the eight tones are the studio's hues (sea, sand, coral, teal) deepened to read as text and icons (4.5:1 on white) and,
+    // at the low strength modules and phases wash them, as soft tints (purple and pink, which the studio has none of, become taupe and coral); danger is --coral-text.
+    'surface-bar-brand': '#f7f0e0', 'surface-bar-right': '#f7f0e0', 'accent-fill-hover': '#096870',
+    'ink-neutral': '#c9962a',
+    'status-danger-fill': '#b83a26', 'status-ok-fill': '#2f7f77', 'status-warn-fill': '#8c6d2c', 'status-info-fill': '#2f6f8f',
+    'tone-gold': '#8c6d2c', 'tone-blue': '#2c6498', 'tone-green': '#2f7f77', 'tone-teal': '#0b7a84', 'tone-purple': '#7d6b4f', 'tone-red': '#b83a26', 'tone-orange': '#b8602a', 'tone-pink': '#b4614f',
   },
 };
 // Shipped pre-made (see the seeding in load()), fixed ids so seeding is idempotent -- colors read straight off each real site's

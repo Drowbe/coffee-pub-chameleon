@@ -111,7 +111,7 @@ const DERIVED = [
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',
-  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
+  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'ink-neutral', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
   'status-warn-fill', 'status-info-fill', 'status-ok-mark',
   ...['danger', 'ok', 'warn', 'info'].flatMap((k) => ['text', 'tint', 'on-fill'].map((p) => `status-${k}-${p}`)),
 ];
@@ -135,7 +135,7 @@ for (const key of BASE.filter((k) => k in DEFAULT_THEME.dark)) if (styleDefs.get
   if (dangerDark !== TC.STATUS_AUTO.dark.danger || dangerDark !== TC.STATUS_AUTO.light.danger) fail(`Auto danger fill: style.css ${dangerDark}, theme-colour.js ${TC.STATUS_AUTO.dark.danger}`);
   if (okDark !== TC.STATUS_AUTO.dark.ok || okDark !== TC.STATUS_AUTO.light.ok) fail(`Auto ok fill: style.css ${okDark}, theme-colour.js ${TC.STATUS_AUTO.dark.ok}`);
   for (const [k, tint] of [['warn', '--tint-gold'], ['info', '--tint-blue']]) {
-    const [dark, light] = styleDefs.get(tint) || [];
+    const [dark, light] = (styleDefs.get(tint) || []).map((v) => v.replace(/^var\(--tone-[a-z]+, (#[0-9a-f]{6})\)$/, '$1')); // a tint is its tone with the fixed colour as the fallback
     if (dark !== TC.STATUS_AUTO.dark[k] || light !== TC.STATUS_AUTO.light[k]) fail(`Auto ${k} fill: style.css ${tint} is ${dark} / ${light}, theme-colour.js ${TC.STATUS_AUTO.dark[k]} / ${TC.STATUS_AUTO.light[k]}`);
   }
 }
