@@ -244,7 +244,7 @@
       for (const m of `${css}\n${inline}`.matchAll(/var\(\s*(--[\w-]+)/g)) seen.add(m[1]);
       const cs = getComputedStyle(world);
       for (const name of seen) {
-        if (name.startsWith('--wb-')) continue; // the board's own, set by its rules and on each block
+        if (name.startsWith('--wb-') && !name.startsWith('--wb-fixed-')) continue; // the board's own, set by its rules and on each block
         const v = cs.getPropertyValue(name).trim();
         if (v) page.style.setProperty(name, wbXmlSafe(v));
       }

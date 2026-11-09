@@ -245,9 +245,9 @@
     // with nothing to fill (or, with alt, no colour to take).
     nextFill: () => nextFill(),
     setNextFill(v, { quiet = false } = {}) {
-      if (!WB_PALETTE_BY_ID.has(v)) return;
+      if (!isColour(v)) return;
       next.fill = v;
-      if (!quiet) note(`Fill colour: ${WB_PALETTE_BY_ID.get(v).label}.`); // taken from a block: say which
+      if (!quiet) note(`Fill colour: ${colourLabel(v)}.`); // taken from a block: say which
       if (lastSwatch) showSwatch(lastSwatch);
       updateStatus(); // the strip's swatch
     },
@@ -262,7 +262,7 @@
   let lastSwatch = null;
   function showSwatch(at) {
     lastSwatch = at;
-    renderer.swatch(at, WB_PALETTE_BY_ID.get(nextFill()).token);
+    renderer.swatch(at, colourOf(nextFill()));
   }
   // The same block, leaving aside who saved it and when.
   function sameBlock(a, b) {
@@ -411,6 +411,10 @@
   let boardSettings = WB_BOARD_USUAL;
   // The colour a fixed background holds in whiteboard.css (read by name from the board's own style).
   const fixedColour = (f) => getComputedStyle(surface).getPropertyValue(f.css).trim();
+  // A colour name's CSS colour for a swatch on the page: the tint's theme token, or the fixed colour itself ('' for neither).
+  const colourOf = (id) => { const f = WB_FIXED_BY_ID.get(id); if (f) return fixedColour(f); const c = WB_PALETTE_BY_ID.get(id); return c ? c.token : ''; };
+  const isColour = (id) => WB_PALETTE_BY_ID.has(id) || WB_FIXED_BY_ID.has(id);
+  const colourLabel = (id) => (WB_FIXED_BY_ID.get(id) || WB_PALETTE_BY_ID.get(id) || {}).label;
   const rgbOfColour = (css) => {
     const probe = document.createElement('span');
     probe.style.color = css;
@@ -959,9 +963,20 @@
   });
   const swatch = (id) => {
     if (NAMED[id]) return { icon: NAMED[id].icon };
-    const c = WB_PALETTE_BY_ID.get(id);
-    return c ? { icon: 'circle', iconColor: c.token } : { icon: 'circle', regular: true };
+    const col = colourOf(id);
+    return col ? { icon: 'circle', iconColor: col } : { icon: 'circle', regular: true };
   };
+  // A role's rows in the groups the background menu has (lib-a, wbColourMenuModel): its own rows first, then Light colours and
+  // Dark colours (fixed), Tinted colours (follow the theme) and the disabled Custom row. `pick(id)` makes a row's click.
+  function colourRows(specialRows, now, pick) {
+    return wbColourMenuModel(specialRows).map((e) => {
+      if (e.kind === 'special') return e.row;
+      if (e.kind === 'heading') return { heading: e.label };
+      if (e.kind === 'custom') return { id: 'custom', label: e.label, disabled: true };
+      const how = e.kind === 'fixed' ? 'fixed colour' : 'follows the theme';
+      return choiceRow(e.id, e.label, now, pick(e.id), { ...swatch(e.id), ariaLabel: `${e.label}, ${how}${e.id === now ? ', chosen' : ''}` });
+    });
+  }
   const defOf = (b) => blockTypes.get(b.type);
   const nounOf = (b) => { const def = defOf(b); return def.noun ? def.noun(b) : def.label.toLowerCase(); };
   // The one value every block has, or undefined when they differ.
@@ -970,7 +985,7 @@
   const whoseOf = (list, def) => (list.length > 1 ? `the ${list.length} picked blocks` : list.length ? `this ${nounOf(list[0])}` : def ? `the ${tool.label} tool` : 'new blocks');
   // A role's colour in words: a palette colour's name, None, Matching, Mixed (the picked blocks differ) or Default (each
   // block type's own colour, when no type is known).
-  const nameOf = (id) => (id === undefined ? 'Mixed' : NAMED[id] ? NAMED[id].label : WB_PALETTE_BY_ID.has(id) ? WB_PALETTE_BY_ID.get(id).label : 'Default');
+  const nameOf = (id) => (id === undefined ? 'Mixed' : NAMED[id] ? NAMED[id].label : isColour(id) ? colourLabel(id) : 'Default');
 
   // `role`: only that colour role's rows (a swatch on the board's strip opens its own role).
   function colourMenu(where, only, role) {
@@ -978,7 +993,7 @@
     if (!list.length && tool.paints === 'fill') {
       // The Fill tool's colour (the fill new blocks get too): the palette, the current one marked.
       const now = nextFill();
-      const rows = WB_PALETTE.map((c) => choiceRow(c.id, c.label, now, () => ctx.setNextFill(c.id, { quiet: true }), swatch(c.id)));
+      const rows = colourRows([], now, (id) => () => ctx.setNextFill(id, { quiet: true }));
       host.menu.show({ id: 'colour', ...where, items: [{ heading: 'Colour for the Fill tool' }, ...rows] });
       return;
     }
@@ -993,10 +1008,9 @@
         const extras = having.map((b) => defOf(b).paint[role.id].extra || []).reduce((a, x) => a.filter((v) => x.includes(v)));
         const pick = (v) => () => {
           for (const b of having) ctx.change(b.id, { [role.id]: v }, { save: 'now' });
-          if (WB_PALETTE_BY_ID.has(v)) for (const t of new Set(having.map((b) => b.type))) setNextColour(blockTypes.get(t), role.id, v);
+          if (isColour(v)) for (const t of new Set(having.map((b) => b.type))) setNextColour(blockTypes.get(t), role.id, v);
         };
-        const rows = extras.map((v) => choiceRow(v, NAMED[v].label, now, pick(v), swatch(v)));
-        for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
+        const rows = colourRows(extras.map((v) => choiceRow(v, NAMED[v].label, now, pick(v), swatch(v))), now, pick);
         const same = new Set(having.map((b) => b.type)).size === 1 ? defOf(having[0]) : null;
         return { role, label: roleLabel(same, role), now, rows };
       }).filter((g) => g && (!role || g.role.id === role));
@@ -1006,8 +1020,7 @@
         const now = nextColour(def, r.id);
         const usual = def ? def.create()[r.id] : null;
         const pick = (v) => () => { setNextColour(def, r.id, v); updateStatus(); };
-        const rows = [choiceRow(null, 'Default', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
-        for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
+        const rows = colourRows([choiceRow(null, 'Default', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })], now, pick);
         return { role: r, label: roleLabel(def, r), now: now === null ? usual : now, rows };
       });
     }
@@ -1497,9 +1510,9 @@
         p.mark.style.setProperty('--lw', `${Math.min(8, s.value || 2)}px`);
         words = `Line width: ${words}`;
       } else {
-        const c = WB_PALETTE_BY_ID.get(s.value);
+        const c = colourOf(s.value);
         p.mark.dataset.state = s.value === undefined ? 'mixed' : s.value === null ? 'default' : c ? 'colour' : s.value;
-        if (c) p.mark.style.setProperty('--wb-sw', c.token); else p.mark.style.removeProperty('--wb-sw');
+        if (c) p.mark.style.setProperty('--wb-sw', c); else p.mark.style.removeProperty('--wb-sw');
         words = `${s.label || p.label}: ${s.own ? `Default (${nameOf(s.value)})` : nameOf(s.value)}`;
       }
       p.button.setAttribute('aria-label', words);
