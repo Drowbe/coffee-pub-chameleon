@@ -16,6 +16,7 @@
 //   lib-l export    the board as a picture, and ready to print
 //   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
 //   lib-n overview  the small map of the whole board
+//   lib-o find      Find in the board: which blocks hold the words, in reading order
 (async () => {
   'use strict';
 
@@ -103,9 +104,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back. Show overview, in the title bar menu, puts a small map of the whole board in its corner: tap it or drag its rectangle to move the view.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back. Show overview, in the title bar menu, puts a small map of the whole board in its corner: tap it or drag its rectangle to move the view. Find, in the title bar menu, finds words on the board; tap Next and Previous to go through what it finds.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops. Show overview, in the title bar menu, puts a small map of the whole board in its corner: click it or drag its rectangle to move the view.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops. Show overview, in the title bar menu, puts a small map of the whole board in its corner: click it or drag its rectangle to move the view. Find, in the title bar menu or the slash key, finds words on the board: Enter goes to the next match, Shift Enter to the previous, Escape closes it.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1652,6 +1653,7 @@
       updateHint();
       updatePaint();
       overviewRefresh();
+      if (finding) findSoon(); // the matches, as the board now is
     });
   }
   function updateHint() {
@@ -1807,6 +1809,7 @@
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
+      { id: 'find', icon: 'magnifying-glass', title: 'Find', overflow: true },
       { id: 'overview', icon: 'map', title: overviewOn ? 'Hide overview' : 'Show overview', on: overviewOn, overflow: true },
     ]).catch(() => {});
   }
@@ -1816,6 +1819,7 @@
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
       if (e && e.id === 'overview') toggleOverview();
+      if (e && e.id === 'find') openFind();
     });
   }
 
@@ -1903,6 +1907,7 @@
     if (!state) { note('No frames to present. Add a frame first.'); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
+    closeFind({ quiet: true }); // Find is not used while presenting
     presenting = state;
     select(null);
     $('app').classList.add('wb-presenting');
@@ -2004,6 +2009,130 @@
     overviewRefresh();
   }
   setHeader();
+
+  // ---- find in the board ----------------------------------------------------------------------------------------------------
+  // Find, in the title bar's menu, or / on the board (when no words are being edited) opens the find bar at the top of the
+  // board: what is typed is found in the blocks' words (lib-o: notes, text, shapes, frame titles, table cells, connector
+  // labels, picture descriptions; case and accents aside), each block once, in reading order. Enter goes to the next match
+  // and Shift Enter to the previous, round at the ends; Escape or Close closes it and hands the keyboard back to the board.
+  // Every match has a thin accent outline and the one shown a stronger one, drawn on a layer of their own over the blocks
+  // (nothing in the blocks changes). The one shown is not picked: what the person picked stays picked, so a Delete or an
+  // arrow key after a search still acts on what they chose, and Find reads only, for someone who may only look too. The
+  // view glides to a match that is not in sight (or jumps, for someone who asks for less motion), keeping the zoom unless
+  // the block is too big to be seen whole (lib-o, wbFindView). Changes to the board, here or from elsewhere, are found
+  // again a moment later. Not while presenting.
+  let finding = null; // { ids, i } while the find bar is open: the matches in reading order, and the one shown (-1: none)
+  let findTimer = 0;
+  let findTyped = 0;
+  const findBar = $('find');
+  const findInput = $('find-input');
+  const findMarks = document.createElement('div'); // the outlines round the matches, a layer over the blocks
+  findMarks.className = 'wb-find-marks';
+  findMarks.setAttribute('aria-hidden', 'true');
+  $('world').insertBefore(findMarks, $('frame'));
+  for (const [id, name] of [['find-prev', 'chevron-up'], ['find-next', 'chevron-down'], ['find-close', 'xmark']]) {
+    const ic = $(id).querySelector('.ic');
+    iconSvg(name).then((svg) => { if (svg) ic.innerHTML = svg; }, () => {});
+  }
+  // Where a block is drawn, for reading order (null: not drawn, as a connector whose block is gone).
+  const findAt = (b) => { const r = renderer.rectOf(b.id); return r ? { x: r.x0, y: r.y0 } : null; };
+  // The outlines: one round each match (all it draws), the one shown stronger.
+  function drawFindMarks() {
+    const ids = finding ? finding.ids : [];
+    const kids = findMarks.children;
+    while (kids.length > ids.length) kids[kids.length - 1].remove();
+    ids.forEach((id, i) => {
+      let m = kids[i];
+      if (!m) { m = document.createElement('div'); m.className = 'wb-find-mark'; findMarks.append(m); }
+      const r = renderer.reachOf(id);
+      m.hidden = !r;
+      if (r) { m.style.left = `${r.x0}px`; m.style.top = `${r.y0}px`; m.style.width = `${r.x1 - r.x0}px`; m.style.height = `${r.y1 - r.y0}px`; }
+      m.classList.toggle('wb-find-now', i === finding.i);
+    });
+  }
+  function showFindCount() {
+    $('find-count').textContent = finding ? wbFindCount(findInput.value, finding.i, finding.ids.length) : '';
+  }
+  // Search again for what is typed. go: show the first match (what was typed changed); else keep the one shown.
+  function runFind({ go = false } = {}) {
+    if (!finding) return;
+    clearTimeout(findTimer);
+    findTimer = 0;
+    const ids = wbFindMatches(live(), findInput.value, { at: findAt });
+    const i = go ? (ids.length ? 0 : -1) : wbFindFollow(finding.ids, finding.i, ids);
+    finding = { ids, i };
+    showFindCount();
+    drawFindMarks();
+    if (go) { if (ids.length) showMatch(); else if (wbFindQuery(findInput.value)) say('No matches'); }
+  }
+  // The board changed: found again a moment after the last change, the view left where it is.
+  function findSoon() { if (!findTimer) findTimer = setTimeout(() => { findTimer = 0; runFind(); }, WB_FIND.wait); }
+  // Bring the match shown into sight, and say it.
+  function showMatch() {
+    const id = finding && finding.ids[finding.i];
+    const r = id && renderer.reachOf(id);
+    if (!r) return;
+    const to = wbFindView(r, renderer.view, surface.clientWidth, surface.clientHeight, { min: renderer.limits.min });
+    if (to) showView(to);
+    say(wbFindWordsSaid(finding.i, finding.ids.length, wbFindWords(board.get(id))));
+  }
+  // Next (1) or previous (-1). What was typed and not yet searched for is searched for first (its first match is the next).
+  function findGo(dir) {
+    if (!finding) return;
+    if (findTyped) { clearTimeout(findTyped); findTyped = 0; runFind({ go: true }); if (dir > 0) return; }
+    const i = wbFindStep(finding.i, finding.ids.length, dir);
+    if (i < 0) { say('No matches'); return; }
+    finding = { ...finding, i };
+    showFindCount();
+    drawFindMarks();
+    showMatch();
+  }
+  function openFind() {
+    if (presenting) return;
+    if (!finding) {
+      if (editing) { const e = editing; editing = null; e.finish(true); }
+      finding = { ids: [], i: -1 };
+      findBar.hidden = false;
+      placeFind();
+      if (findInput.value) runFind();
+    }
+    findInput.focus({ preventScroll: true });
+    findInput.select();
+  }
+  function closeFind({ quiet = false } = {}) {
+    if (!finding) return;
+    finding = null;
+    clearTimeout(findTimer);
+    clearTimeout(findTyped);
+    findTimer = 0;
+    findTyped = 0;
+    findBar.hidden = true;
+    showFindCount();
+    drawFindMarks();
+    if (!quiet) surface.focus({ preventScroll: true });
+  }
+  // Clear of the colour strip (top left): beside it where there is room, else under it.
+  function placeFind() {
+    findBar.style.top = '';
+    const strip = $('paint');
+    if (strip.hidden || !strip.offsetWidth) return;
+    const bar = findBar.getBoundingClientRect();
+    const st = strip.getBoundingClientRect();
+    if (bar.left < st.right && bar.top < st.bottom) findBar.style.top = `${st.bottom - surface.getBoundingClientRect().top + 4}px`;
+  }
+  findInput.addEventListener('input', () => {
+    clearTimeout(findTyped);
+    findTyped = setTimeout(() => { findTyped = 0; runFind({ go: true }); }, 150);
+  });
+  findBar.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // the board's keys are not the bar's
+    if (e.key === 'Escape') { e.preventDefault(); closeFind(); return; }
+    if (e.key === 'Enter' && e.target === findInput && !e.isComposing) { e.preventDefault(); findGo(e.shiftKey ? -1 : 1); }
+  });
+  for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) findBar.addEventListener(type, (e) => e.stopPropagation());
+  $('find-prev').addEventListener('click', () => findGo(-1));
+  $('find-next').addEventListener('click', () => findGo(1));
+  $('find-close').addEventListener('click', () => closeFind());
 
   // ---- links in the words ------------------------------------------------------------------------------------------------
   // A link in a block's words opens in a new tab: with Ctrl or Cmd and a click (that click is the link's, it picks
@@ -2303,6 +2432,7 @@
       if (k === 'Escape') { e.preventDefault(); leaveCells(); say('The arrow keys move the table again.'); return; }
       if (k.length === 1 && !e.isComposing) { e.preventDefault(); editCell(b.id, nav.r, nav.c, { typed: k }); return; }
     }
+    if (wbFindKey(e, { editing: Boolean(editing), presenting: Boolean(presenting) })) { e.preventDefault(); openFind(); return; }
     if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
     // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
     const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
@@ -2463,6 +2593,7 @@
     $('app').classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
     updateStatus(); // the overview: its size, and whether there is room for it
+    if (finding) placeFind(); // the find bar clear of the colour strip at the new width
   }).observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
