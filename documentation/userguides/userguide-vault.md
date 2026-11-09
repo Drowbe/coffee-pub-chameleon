@@ -2,9 +2,9 @@
 
 **Audience:** members, moderators and owners who keep a space's files (photos, audio, video, PDFs and notes) in one place, and anyone who opens them.
 
-The Vault holds the files of a space: tickets and confirmations as PDFs, photos, a voice note, a clip, a Markdown note. Everyone in the space sees the same files. In the Travel template the Vault is called Documents, and in the Games template it is called Handouts; the steps are the same. Other tools, such as the Planner, can link to a file, and a file can be shared by a link with people outside the space.
+The Vault holds the files of a space: tickets and confirmations as PDFs, photos, a voice note, a clip, a Markdown note. By default everyone in the space sees the same files, and you can limit who sees a file you add (see "Who can see a file"). In the Travel template the Vault is called Documents, and in the Games template it is called Handouts; the steps are the same. Other tools, such as the Planner, can link to a file, and a file can be shared by a link with people outside the space.
 
-**Nothing changes yet for who sees which file.** The server has the rule for letting only some people see a file, but the Vault has no screen for it, so everyone in the space still sees the same files. This guide will say more when the screens arrive.
+**Who sees a file.** A file you add can be for everyone in the space, for only you, or for people you choose. Owners and the admin can always see every file. See "Who can see a file" below.
 
 **Who can:** a member or a moderator can see, add and download files, and an owner always can. A guest never can: a guest sees no Vault, and the Roles tab cannot turn it on for guests. What each role may do is set on the **Roles** tab under the Vault ([Accounts, roles and permissions](userguide-accounts.md)):
 
@@ -13,6 +13,7 @@ The Vault holds the files of a space: tickets and confirmations as PDFs, photos,
 - **Download files** saves a file to your computer. It also lets you print a picture or a PDF.
 - **Remove files other people added** removes or renames any file. It starts on for moderators and off for members.
 - **Make share links** makes, changes and turns off share links (below). It starts on for moderators and off for members, and a guest never has it.
+- **See every file** lets a role open files that were not shared with it. It starts off for everyone but owners, who always can, and a guest never has it. It does not let anyone change who sees a file.
 
 ## Open the Vault
 
@@ -35,14 +36,15 @@ A file someone else adds, renames or removes appears at once, without reloading.
 ## Add files
 
 1. Choose the **+** in the Vault's title bar (**Add files**), or drag files onto the Vault anywhere. In an empty Vault there is also an **Add files** button.
-2. Drop the files in the area, or choose **Choose files**. You can add several; they go one after another, each with a bar that shows how far it has got. **Try again** repeats one that failed, and the cross beside a file stops it or clears it from the list.
-3. Optionally tick **Remove where it was taken** before you add pictures. It is off by default, so a picture keeps the place it was taken; tick it to take that place out of the picture. Your choice is remembered, for you only. Videos keep their details, which can include where they were taken, and the Vault says so.
+2. Under **Who can see this**, choose who may see the files you are about to add (see "Who can see a file" below). The choice is fixed when you pick the files, so make it first. It goes back to everyone in the space each time **Add files** opens.
+3. Drop the files in the area, or choose **Choose files**. You can add several; they go one after another, each with a bar that shows how far it has got. **Try again** repeats one that failed, and the cross beside a file stops it or clears it from the list.
+4. Optionally tick **Remove where it was taken** before you add pictures. It is off by default, so a picture keeps the place it was taken; tick it to take that place out of the picture. Your choice is remembered, for you only. Videos keep their details, which can include where they were taken, and the Vault says so.
 
 Press **Esc** to close **Add files**; the keyboard goes back to the **+** that opened it.
 
 What it takes: pictures (JPEG, PNG, WebP and GIF, up to 25 MB), audio (MP3, OGG, WAV and M4A, up to 200 MB), video (MP4, WebM and MOV, up to 2 GB), PDF (up to 100 MB) and Markdown (up to 1 MB). The Vault looks inside each file, not at its name, so a file whose name says one thing and whose contents say another is refused. It refuses what it does not take, such as SVG, web pages, Office files and programs; HEIC pictures are refused with "Save it as a JPEG."
 
-Everyone in the space can see what you add. There is no private file.
+Who can see what you add is your choice, below the drop area (see "Who can see a file").
 
 **Adding many at once.** A person can add 400 files and their small pictures in a minute, and one environment 1,500 together, so a drop of a few hundred files goes through. If the Vault is told to wait ("<Vault> is busy. Wait N seconds and it will carry on.", or "You have sent a lot in the last minute. Wait N seconds and try again."), it waits as long as the server asked (up to two minutes) and tries that file again, up to eight times, before it shows a failure. A file that fails shows the server's own sentence, and **Try again** repeats it.
 
@@ -79,12 +81,42 @@ You can have up to four windows open at once. Opening a file that already has a 
 Each window's bar has:
 
 - **Previous** and **Next**, with "3 of 12", to walk the files in the order the Vault's list showed them. The left and right arrow keys do the same.
-- **Info**, which shows the file's type, size, who added it and when, and **Where it is used**. A window that is very short has no Info.
+- **Info**, which shows the file's type, size, who added it and when, **Where it is used** and **Who can see this** (below). A window that is very short has no Info.
 - **Download**, **Print**, **Full screen** (not on a download-only PDF) and, in the window's menu, **Rename**, **Where it is used**, **Close all** and **Remove**.
 
 **Print.** **Print** is for pictures and PDFs, for people who have **Download files**. It opens your browser's print dialog; choose "Save as PDF" there to keep a copy instead of printing. Other kinds of file have no **Print**. On a phone there is no **Print**, as there is no **Download**, and the public share page has none. A download-only PDF is not printed from the menu. Printing a PDF may not work from a pop-out window ([known issues](../known-issues.md)).
 
 Close a window with its close button or **Esc**; focus goes back to where you opened it. **Close all** closes every file window. It is in each window's menu and on Set up's **Modules** tab, under **Open files**, where the number open is shown. On a phone only one window shows at a time, as a full screen sheet, and opening another file replaces it.
+
+## Who can see a file
+
+Each file is for **Everyone in this space** (the start; "space" is your environment's word), **Only me**, or **Chosen people**. The person who added a file, the space's owners and the admin can always see it, whatever is chosen. A person who may not see a file gets nothing of it: no row in the list or grid, no place in a search, no part of a count, and a link to it from another tool shows as hidden, never as "File removed". Nobody is told that a file they cannot see exists.
+
+**Who can choose.** The person who added a file, an owner and the admin. A moderator who has **Remove files other people added** can remove a file they can see, but cannot change who sees it.
+
+**Marks under a file's name.** In the list and the grid, a small mark sits under the name:
+
+- **Only me** on a file you added that only you (and the owners and the admin) can see.
+- **2 people** (or whatever the number is) on a file you added for chosen people. It counts the people still in the space.
+- **Not shared with you** on a file an owner or the admin can open but was not shared with them.
+
+A file for everyone has no mark. Nobody else sees a mark.
+
+**Choose when you add.**
+
+1. Open **Add files** and find **Who can see this**. It has three choices: **Everyone in this space**, **Only me** and **Chosen people**. A line below says what the choice means.
+2. For **Chosen people**, choose **Choose people**. A window lists the people in the space, each with their picture or initial. Tick the people who may see the files. Type in **Search people** to find one; the list shows 30 at a time and says how many more there are. You can choose up to 200: the window counts "3 of 200 chosen", and at 200 you take someone off to add another. Owners are listed with **Always can**, because they can see every file. Choose **Done** to keep your choice or **Cancel**.
+3. Choose or drop the files.
+
+The choice is fixed when you pick a file. It goes back to everyone in the space each time **Add files** opens. While files are waiting, going up, or waiting for **Try again**, the choices are switched off and a line says so: a file keeps the choice it was picked with, and you change the choice for the next files after the queue is done. Choosing **Chosen people** and then no one is the same as **Only me**.
+
+**Change it later.** Open the file, choose **Info**, and under **Who can see this** choose the button. Its menu offers **Everyone in this space**, **Only me** and **Chosen people** (which opens the same window, with **Done**). The note "Who can see this changed" confirms it. If you are an owner or the admin and the file was not shared with you, the Info says so: "This file is not shared with you. You can open it because you are an owner."
+
+**When a change takes sight from people.** The question is asked only when two things are true: the change would stop some people seeing the file, and the file has something that would change for them (a link from another tool, or a share link made by one of them). The window is headed **Change who can see this file?** It names the people who can no longer see it, the places in other tools that link to it (which will show as hidden to those people), and the share links the Vault says will end because their maker can no longer see the file (see **Share links** below: the server does not end them yet). Choose **Make it only me** (when you chose **Only me**) or **Remove those people** (any other narrowing), or **Cancel**. When nobody loses sight, or nobody has a link to lose, nothing is asked; showing a file to more people never asks. The Vault works out the numbers itself from what it can read, so they are an estimate: a moderator who has **See every file** keeps sight and may still be named, and a link the Vault cannot read is described in general words.
+
+**Share links.** A share link reaches people outside the space, so the share sheet adds a sentence for a restricted file: "Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with. The link ends if you can no longer see the file." After the link is made, a shorter line says "The link ends if you can no longer see this file." **Today this is a promise the server does not yet keep:** a share link to a file that was later narrowed keeps working until its end date or until you turn it off. If you narrow a file that is in a share link, turn the link off yourself under **Share links**. It is listed in the known issues.
+
+**What is not shown to everyone.** The Vault tells only the person who added a file, the owners and the admin what a file's setting is. Another member sees a file shared with them as an ordinary file, with no mark and no line about who else can see it.
 
 ## Where a file is used
 
