@@ -104,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Flowchart joins shapes you place in a row. Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many (click or drag round blocks), Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; every tool shows its own strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many (click or drag round blocks), Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Flowchart joins shapes you place in a row. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -119,6 +119,8 @@
 
   // The size and alignment picked for the words of new blocks (null: each type's usual).
   const nextText = { size: null, align: null };
+  // What new tables start with, for this visit only (the Table properties menu with no table picked).
+  const nextTable = { align: 'center', valign: 'middle', head: true };
   const takesNext = (def, role) => {
     const usual = def.create();
     const colour = (v) => WB_PALETTE_BY_ID.has(v) || v === 'usual'; // a frame's colours are 'usual' until one is picked
@@ -169,6 +171,7 @@
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
       if (def.markup) Object.assign(own, wbNextWords(def, nextText));
+      if (type === 'table') Object.assign(own, nextTable);
       // A frame goes under the other blocks (lib-e-block-frame, wbFrameZ); everything else on top.
       const z = def.container ? wbFrameZ(board.all()) : Math.floor(board.topZ()) + 1;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z });
@@ -200,6 +203,7 @@
       updateStatus();
     },
     remove: (id) => remove(id),
+    placed: (id) => flowPlaced(id),
     select: (id) => select(id ? [id] : []),
     setSelection: (ids) => select(ids),
     // A block of a group goes in or out with its whole group.
@@ -492,6 +496,23 @@
     if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
     if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
+  }
+  // Auto-connect: the last flowchart shape this person placed with the Flowchart tool (cleared when another tool is chosen),
+  // and whether a new one is joined to it when they are in a row (wbAutoConnect). The choice is this browser's.
+  const FLOW_KEY = 'whiteboard-auto-connect';
+  let autoConnect = true;
+  try { autoConnect = window.localStorage.getItem(FLOW_KEY) !== '0'; } catch { /* no browser storage: on */ }
+  let lastFlow = null;
+  function flowPlaced(id) {
+    const b = board.get(id);
+    const was = lastFlow && lastFlow !== id ? board.get(lastFlow) : null;
+    lastFlow = b ? id : null;
+    if (!b || !was || !autoConnect || !policy.canCreate()) return;
+    if (!wbAttachable(blockTypes.get(b.type)) || !wbAttachable(blockTypes.get(was.type))) return;
+    const sides = wbAutoConnect({ x: was.x, y: was.y, w: was.w, h: was.h }, { x: b.x, y: b.y, w: b.w, h: b.h });
+    if (!sides) return;
+    const c = ctx.draft(CONNECTOR, { from: { block: was.id, side: sides.from }, to: { block: b.id, side: sides.to } });
+    ctx.save(c.id); // in the same turn as the shape's save: one undo step for both
   }
   // The two picked blocks a connector can join (in the order they were picked), or null.
   function pair() {
@@ -902,6 +923,7 @@
     if (!next.mode && next.id !== 'select') many = false; // Select many is Select's: a drawing tool ends it, the Hand does not
     tool = next;
     family = nextFamily;
+    if (!(tool.makes && blockTypes.get(tool.makes) && ['rounded', 'diamond', 'pill', 'parallelogram'].includes(tool.makes))) lastFlow = null;
     if (family) lastKind[family] = tool.id;
     if (tool.id !== 'select' && !tool.mode && sel.size) select(null); // a tool's strip is about the tool, not what was picked before
     if (tool.activate) tool.activate(ctx);
@@ -1098,6 +1120,11 @@
   lineBox.setAttribute('role', 'group');
   lineBox.setAttribute('aria-label', 'Line');
   lineBox.hidden = true;
+  const tableBox = document.createElement('div');
+  tableBox.className = 'wb-paint-group wb-tablegroup';
+  tableBox.setAttribute('role', 'group');
+  tableBox.setAttribute('aria-label', 'Table');
+  tableBox.hidden = true;
   const coloursBox = document.createElement('div');
   coloursBox.className = 'wb-paint-group wb-colours';
   coloursBox.setAttribute('role', 'group');
@@ -1127,7 +1154,7 @@
     endcapName = icon;
     iconSvg(icon).then((svg) => { if (svg && endcapName === icon) endcapIc.innerHTML = svg; });
   }
-  const stripGroups = [selectionBox, kindsBox, fontsBox, lineBox, presentBox, coloursBox];
+  const stripGroups = [selectionBox, kindsBox, fontsBox, tableBox, lineBox, presentBox, coloursBox];
   const stripSeps = [];
   for (let i = 1; i < stripGroups.length; i += 1) {
     const sep = document.createElement('span');
@@ -1136,7 +1163,7 @@
     sep.hidden = true;
     stripSeps.push(sep);
   }
-  paintStrip.append(endcap, selectionBox, stripSeps[0], kindsBox, stripSeps[1], fontsBox, stripSeps[2], lineBox, stripSeps[3], presentBox, stripSeps[4], coloursBox);
+  paintStrip.append(endcap, selectionBox, stripSeps[0], kindsBox, stripSeps[1], fontsBox, stripSeps[2], tableBox, stripSeps[3], lineBox, stripSeps[4], presentBox, stripSeps[5], coloursBox);
   // A divider shows between two groups that both show.
   function stripDividers() {
     stripSeps.forEach((sep, i) => { sep.hidden = !(!stripGroups[i + 1].hidden && stripGroups.slice(0, i + 1).some((g) => !g.hidden)); });
@@ -1212,6 +1239,8 @@
   let sizeLabel = null;
   let presentButton = null;
   let valignBox = null;
+  let autoButton = null;
+  let tableButton = null;
   let singleButton = null;
   let manyButton = null;
   let allButton = null;
@@ -1299,6 +1328,17 @@
       }
       lineBox.appendChild(box);
     }
+    autoButton = pressButton('Auto-connect', 'link', () => {
+      autoConnect = !autoConnect;
+      try { window.localStorage.setItem(FLOW_KEY, autoConnect ? '1' : '0'); } catch { /* kept for this visit only */ }
+      updatePaint();
+    });
+    autoButton.dataset.tip = 'Join new shapes to the last one';
+    lineBox.appendChild(autoButton);
+    tableButton = pressButton('Table properties', 'table-cells-large', () => tableMenu({ anchor: tableButton }));
+    tableButton.removeAttribute('aria-pressed');
+    tableButton.setAttribute('aria-haspopup', 'menu');
+    tableBox.appendChild(tableButton);
   }
   // The picked blocks (or the next ones) the fonts group works on.
   const fontsOf = () => targets().filter((b) => defOf(b).markup);
@@ -1328,6 +1368,35 @@
     nextLine[field] = v;
     updatePaint();
   }
+  // The Table properties button: for the Table tool with nothing picked, or when a table is picked.
+  const tablesPicked = () => targets().filter((b) => b.type === 'table');
+  function updateTable() {
+    tableBox.hidden = !(tableButton && (sel.size ? tablesPicked().length > 0 : tool.id === 'table'));
+  }
+  // The Table properties menu: alignment, vertical alignment, header row and text size of the whole table, as the strip's
+  // buttons do (one save of each picked table, all one undo step); with no table picked, what new tables start with.
+  function setTable(field, v) {
+    const list = tablesPicked();
+    if (!list.length) { nextTable[field] = v; if (field === 'size') nextText.size = v; updatePaint(); return; }
+    for (const b of list) ctx.change(b.id, { [field]: v }, { save: 'now' });
+    updatePaint();
+  }
+  function tableMenu(where) {
+    const list = tablesPicked();
+    const now = wbTableProps(list, { ...nextTable, size: nextText.size || blockTypes.get('table').create().size });
+    const sub = (id, label, choices, field) => ({ id, label, hint: (choices.find((c) => c.id === now[field]) || { label: 'Mixed' }).label, items: choices.map((c) => choiceRow(c.id, c.label, now[field], () => setTable(field, c.id), c.icon ? { icon: c.icon } : {})) });
+    host.menu.show({
+      id: 'table-properties',
+      ...where,
+      items: [
+        { heading: list.length ? (list.length > 1 ? `Properties of the ${list.length} picked tables` : 'Properties of this table') : 'Properties of new tables' },
+        sub('cell-align', 'Cell alignment', WB_ALIGNS, 'align'),
+        sub('cell-valign', 'Vertical alignment', WB_VALIGNS, 'valign'),
+        sub('text-size', 'Text size', WB_SIZES, 'size'),
+        { id: 'head', label: 'Header row', icon: 'heading', current: now.head === true, ariaLabel: `Header row, ${now.head === true ? 'on' : 'off'}`, onClick: () => setTable('head', now.head !== true) },
+      ],
+    });
+  }
   function updateFonts() {
     const s = fontsNow();
     fontsBox.hidden = !s;
@@ -1346,6 +1415,8 @@
     const c = lineNow();
     lineBox.hidden = !c;
     if (!c) return;
+    autoButton.hidden = c.length > 0 || tool.id === CONNECTOR; // for the shapes the Flowchart tool places
+    autoButton.setAttribute('aria-pressed', String(autoConnect));
     const usual = blockTypes.get(CONNECTOR).create();
     for (const [key, b] of lineButtons) {
       const [field, id] = key.split(':');
@@ -1435,6 +1506,7 @@
     const kinds = showKinds();
     updateFonts();
     updateLine();
+    updateTable();
     presentBox.hidden = !(plan && plan.present);
     if (!presentBox.hidden) {
       const none = !live().some((b) => b.type === 'frame');
@@ -1445,7 +1517,7 @@
     }
     coloursBox.hidden = !any;
     stripDividers();
-    paintStrip.hidden = !any && !kinds && selectionBox.hidden && fontsBox.hidden && lineBox.hidden && presentBox.hidden;
+    paintStrip.hidden = !any && !kinds && selectionBox.hidden && fontsBox.hidden && tableBox.hidden && lineBox.hidden && presentBox.hidden;
     // The endcap: the tool's icon, or the kind of the one block picked (the Select arrow for several).
     const picked = targets();
     const one1 = picked.length === 1 ? picked[0] : null;
