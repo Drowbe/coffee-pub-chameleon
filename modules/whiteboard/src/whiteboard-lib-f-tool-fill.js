@@ -14,10 +14,10 @@
     if (!block || !def) return { kind: 'no' };
     const has = (role) => Boolean(def.paint && def.paint[role]);
     if (alt) {
-      for (const role of ['fill', 'stroke']) if (has(role) && WB_PALETTE_BY_ID.has(block[role])) return { kind: 'pick', colour: block[role] };
+      for (const role of ['fill', 'stroke']) if (has(role) && (WB_PALETTE_BY_ID.has(block[role]) || WB_FIXED_BY_ID.has(block[role]))) return { kind: 'pick', colour: block[role] };
       return { kind: 'no' };
     }
-    if (!has('fill') || !WB_PALETTE_BY_ID.has(colour)) return { kind: 'no' };
+    if (!has('fill') || !(WB_PALETTE_BY_ID.has(colour) || WB_FIXED_BY_ID.has(colour))) return { kind: 'no' };
     return block.fill === colour ? { kind: 'same' } : { kind: 'fill', fill: colour };
   }
   {

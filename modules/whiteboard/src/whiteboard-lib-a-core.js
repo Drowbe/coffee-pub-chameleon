@@ -66,6 +66,21 @@
     { id: 'dark-purple', label: 'Dark Purple', family: 'dark', css: '--wb-fixed-dark-purple' },
   ];
   const WB_FIXED_BY_ID = new Map(WB_FIXED_BACKGROUNDS.map((c) => [c.id, c]));
+  // A block's colour menus (fill, border, words, line) offer the same groups as the background menu: the role's own rows
+  // (`specials`, opaque entries the page builds: Default, None...), Light colours and Dark colours (fixed: the same in both
+  // modes), Tinted colours (follow the theme), then the disabled Custom row. Returns the entries in order:
+  // { kind: 'special', row }, { kind: 'heading', label }, { kind: 'fixed', id, label }, { kind: 'tint', id, label }, { kind: 'custom', label }.
+  function wbColourMenuModel(specials) {
+    const out = (specials || []).map((row) => ({ kind: 'special', row }));
+    for (const family of ['light', 'dark']) {
+      out.push({ kind: 'heading', label: family === 'light' ? 'Light colours' : 'Dark colours' });
+      for (const f of WB_FIXED_BACKGROUNDS) if (f.family === family) out.push({ kind: 'fixed', id: f.id, label: f.label });
+    }
+    out.push({ kind: 'heading', label: 'Tinted colours' });
+    for (const c of WB_PALETTE) out.push({ kind: 'tint', id: c.id, label: c.label });
+    out.push({ kind: 'custom', label: 'Custom colour (coming with the colour picker)' });
+    return out;
+  }
   const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
   const WB_BOARD_ID = 'settings';
   const WB_BOARD_STEP = ':board';
@@ -278,7 +293,8 @@
     },
     text(v) { return typeof v === 'string' ? v.slice(0, WB_LIMITS.text) : ''; },
     // A role's colour: a palette name, or one of the role's extra choices ('none', 'auto'), or the fallback.
-    paint(v, extra, fallback) { return WB_PALETTE_BY_ID.has(v) || (extra && extra.includes(v)) ? v : fallback; },
+    // A fixed colour (WB_FIXED_BACKGROUNDS, the board background's own list) is a palette name too.
+    paint(v, extra, fallback) { return WB_PALETTE_BY_ID.has(v) || WB_FIXED_BY_ID.has(v) || (extra && extra.includes(v)) ? v : fallback; },
     // One of the widths, or the fallback.
     weight(v, fallback) { return WB_WEIGHTS.includes(v) ? v : fallback; },
     // One of a closed list's ids (a Map by id), or the fallback.

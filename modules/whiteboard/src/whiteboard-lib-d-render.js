@@ -96,7 +96,12 @@
         const v = def.paint && def.paint[role.id] ? block[role.id] : undefined;
         const c = v && WB_PALETTE_BY_ID.get(v);
         if (v) el.dataset[role.id] = v; else delete el.dataset[role.id];
-        if (c) el.style.setProperty(`--wb-${role.id}`, c.token); else el.style.removeProperty(`--wb-${role.id}`);
+        // A fixed colour is used as it is (full strength, whatever the theme); a fixed fill also tells the stylesheet whether it
+        // is light or dark (data-fixed-fill), which gives the block its own readable words and lines.
+        const f = v && WB_FIXED_BY_ID.get(v);
+        if (f) el.style.setProperty(`--wb-${role.id}`, `var(${f.css})`);
+        else if (c) el.style.setProperty(`--wb-${role.id}`, c.token); else el.style.removeProperty(`--wb-${role.id}`);
+        if (role.id === 'fill') { if (f) el.dataset.fixedFill = f.family; else delete el.dataset.fixedFill; }
       }
       if (def.weight) el.style.setProperty('--wb-weight', `${block.weight}px`); else el.style.removeProperty('--wb-weight');
       // The words' size (a type token) and how they line up, for a block whose words take markup.

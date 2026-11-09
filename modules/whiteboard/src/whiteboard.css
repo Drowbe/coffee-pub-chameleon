@@ -51,6 +51,23 @@
   --wb-fixed-ink-light: #1c2024; /* the usual ink on a light fixed background */
   --wb-fixed-ink-dark: #eceff3; /* the usual ink on a dark fixed background */
 }
+/* A block with a fixed fill (renderer: data-fixed-fill is "light" or "dark") shows that colour at full strength, in both modes,
+   and has its own readable words, lines and edges: the usual ink of the colour's family, as on a fixed background. A words,
+   border or line colour that was picked stays as picked. */
+.wb-block[data-fixed-fill] {
+  --wb-face: var(--wb-fill);
+  --wb-edge: color-mix(in srgb, var(--text-primary) 30%, var(--wb-fill));
+  --edge-hairline: color-mix(in srgb, var(--text-primary) 18%, var(--wb-fill));
+  --text-muted: color-mix(in srgb, var(--text-primary) 68%, var(--wb-fill));
+}
+.wb-block[data-fixed-fill="light"] { --text-primary: var(--wb-fixed-ink-light); color-scheme: light; }
+.wb-block[data-fixed-fill="dark"] { --text-primary: var(--wb-fixed-ink-dark); color-scheme: dark; }
+.wb-block.wb-type-text[data-fixed-fill] { background: var(--wb-fill); }
+.wb-block[data-fixed-fill] .wb-shape-body { fill: var(--wb-fill); }
+.wb-block.wb-type-table[data-fixed-fill] .wb-tbl { background: var(--wb-fill); }
+.wb-block.wb-type-frame[data-fixed-fill] .wb-fr-face { background: var(--wb-fill); }
+.wb-block.wb-type-frame[data-fixed-fill] .wb-fr-tab { background: var(--wb-fill); }
+
 /* On a fixed background (the board's data-ground, set from the background) the words, lines and borders left at their usual
    colour follow the ground, not the theme: the blocks' own copies of the theme's text, edge and surface tokens are the
    ground's. A colour a person picked is still its tint. The strip, menus, find bar and the rest keep the theme's. */
@@ -63,6 +80,7 @@
   --edge-hairline: color-mix(in srgb, var(--wb-usual) 18%, var(--wb-ground));
   --surface-page: var(--wb-ground);
   --wb-face: color-mix(in srgb, var(--wb-usual) 4%, var(--wb-ground));
+  --wb-ground-face: var(--wb-face);
 }
 .board:focus-visible { box-shadow: inset 0 0 0 2px var(--focus-ring, var(--accent)); }
 .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
@@ -115,7 +133,7 @@
    with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
 .wb-type-note {
   --wb-fill: var(--tint-gold);
-  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--wb-face, var(--surface-card)));
+  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--wb-ground-face, var(--surface-card))); /* not var(--wb-face): a property that names itself is invalid, and the note had no fill on the Default background */
   padding: 12px;
   border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-min);
