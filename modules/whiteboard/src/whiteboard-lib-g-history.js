@@ -53,10 +53,14 @@
   // whether it does (they are put back after the rest, so one never comes back before its block) and missing(block) ->
   // whether a block it points at is not on the board (someone else deleted it: it is left out too). Answers { left:
   // blocks someone else deleted since, or whose block they did (left out), kept: blocks whose every field to put back
-  // someone else changed (left as they are), touched: the ids put back }.
-  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf, pointsAt = () => false, missing = () => false }) {
+  // someone else changed (left as they are), touched: the ids put back, board: true when the board's own settings (the
+  // background, lib-a) were to be put back and someone else had changed them since (left as they are) }. isBoard(id) ->
+  // whether a change is the board's settings rather than a block: it merges field by field like a block (get never answers
+  // null for it: a missing value is the usual one) and is told apart in the note.
+  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf, pointsAt = () => false, missing = () => false, isBoard = () => false }) {
     let left = 0;
     let kept = 0;
+    let board = false;
     const touched = [];
     const late = (c) => (c.target && pointsAt(c.target) ? 1 : 0);
     for (const { id, target, source, fields } of list.slice().sort((a, b) => late(a) - late(b))) {
@@ -64,14 +68,14 @@
       if (!target) { if (now) remove(id); continue; }
       if (!now && source) { left += 1; continue; } // someone else deleted it since
       const merged = now && fields ? wbMergeBack(now, { target, source, fields }, linkedOf(now)) : target;
-      if (!merged) { kept += 1; continue; } // someone else changed all of it since
+      if (!merged) { if (isBoard(id)) board = true; else kept += 1; continue; } // someone else changed all of it since
       const b = clean(merged);
       if (!b || (now && !canChange(now)) || (!now && !canCreate())) continue;
       if (missing(b)) { left += 1; continue; }
       put(b);
       touched.push(id);
     }
-    return { left, kept, touched };
+    return { left, kept, touched, board };
   }
   // What the person is told after an undo or a redo that could not put everything back ('' : nothing to tell). Both, when
   // both happened.
@@ -79,6 +83,7 @@
     const parts = [];
     if (r && r.left > 0) parts.push(`Left out ${r.left === 1 ? 'a block' : `${r.left} blocks`} someone else deleted.`);
     if (r && r.kept > 0) parts.push(r.kept === 1 ? 'Left a block as it is: someone else changed it since.' : `Left ${r.kept} blocks as they are: someone else changed them since.`);
+    if (r && r.board) parts.push('Left the background as it is: someone else changed it since.');
     return parts.join(' ');
   }
   function createHistory({ cap = 100, onChange = () => {} } = {}) {
