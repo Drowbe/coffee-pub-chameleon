@@ -71,7 +71,11 @@ if (!missing.length && !fails.length) {
   for (const t of ['stroke', 'line', 'highlight', 'connector', 'frame', 'image']) check(!wbBearsWords(blockTypes.get(t)), `${t} bears no words`);
   check(wbFontsShown([], defOf, blockTypes.get('stroke')) === null && wbFontsShown([], defOf, blockTypes.get('line')) === null, 'the Pen and Line tools show no fonts group');
   const plan = (id, makes, extra = {}, family = null) => wbStripPlan({ id, ...extra }, makes ? blockTypes.get(makes) : null, family);
-  check(plan('hand', null, { mode: true }) === null && plan('select', null) === null, 'Hand and Select: no strip with nothing picked');
+  check(plan('hand', null, { mode: true }) === null, 'Hand: no strip');
+  const selPlan = plan('select', null);
+  check(selPlan && selPlan.selection && !selPlan.fonts && !selPlan.line && !selPlan.present && !selPlan.colours, 'Select with nothing picked: the selection group only');
+  check(!plan('pen', 'stroke').selection && !plan('note', 'note').selection, 'a drawing tool has no selection group');
+  check(wbFontsShown([{ type: 'note' }], defOf, null) !== null, 'Select with a note picked: the fonts group follows (colours come with the pick)');
   check(!plan('pen', 'stroke').fonts && plan('pen', 'stroke').colours, 'Pen: colours, no fonts');
   check(plan('text', 'text').fonts && plan('note', 'note').fonts && plan('table', 'table').fonts && plan('rect', 'rect').fonts, 'Text, Note, Table, Rectangle: fonts');
   check(!plan('arrow', 'line').fonts && !plan('highlight', 'highlight').fonts, 'Arrow and Highlighter: no fonts');

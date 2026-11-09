@@ -936,3 +936,5 @@
 .wb-size-btn .ic svg, .wb-present-btn .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .wb-present-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-1); }
 .wb-present-btn[aria-disabled="true"] { opacity: 0.5; }
+.wb-selectgroup { gap: var(--space-1); }
+.wb-selectgroup > .wb-paint-btn[aria-disabled="true"] { opacity: 0.4; }
