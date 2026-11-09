@@ -98,9 +98,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Send to Assistant, when you press a block long, asks the Assistant in Chat about the words of what is selected.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Send to Assistant, in the right-click menu, asks the Assistant in Chat about the words of what is selected. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1564,6 +1564,28 @@
     }
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
+
+  // Send to Assistant (lib-m-ask.js): the picked blocks' words, asked in the space's Chat (host.chat.ask). Only where Chat
+  // is (a space's canvas: host.chat.available), only when the picked blocks have words, and for anyone who may see the
+  // board (it only reads). Too long: said, and nothing is sent.
+  let canAsk = false;
+  if (host.chat && typeof host.chat.available === 'function') host.chat.available().then((r) => { canAsk = Boolean(r && r.available); }).catch(() => {});
+  function askRect(b) {
+    const d = defOf(b);
+    if (!d || d.attached || !d.box) return renderer.reachOf(b.id);
+    const box = d.box(b);
+    const el = box.h === null ? renderer.element(b.id) : null;
+    const x = (b.x || 0) + box.x; const y = (b.y || 0) + box.y;
+    return { x0: x, y0: y, x1: x + box.w, y1: y + (box.h === null ? (el ? el.offsetHeight : 32) : box.h) };
+  }
+  const askQuestion = () => wbAskText([...sel].map((id) => board.get(id)).filter(Boolean).map((b) => ({ block: b, rect: askRect(b) })));
+  async function sendToAssistant() {
+    const q = askQuestion();
+    if (!q.text) return;
+    if (q.over) { note(`That is ${q.over} character${q.over === 1 ? '' : 's'} too long for the Assistant (limit ${WB_ASK.max}). Pick fewer blocks.`); return; }
+    try { await host.chat.ask({ question: q.text }); } catch (err) { note(sentence(err && err.message) || 'The Assistant could not be asked.'); }
+  }
+  const askRows = () => (canAsk && askQuestion().text ? [{ id: 'ask', label: 'Send to Assistant', icon: 'wand-magic-sparkles', onClick: () => { sendToAssistant(); } }] : []);
   if (host.header) {
     host.header.set([{ id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true }]).catch(() => {});
     host.on('header', (e) => { if (e && e.id === 'export') openExport(); });
@@ -1793,7 +1815,7 @@
     const links = ids.length === 1 ? linkRows(id) : [];
     if (!list.length) {
       // Someone who may only look: the links, if there are any, and Save as image (what is selected).
-      host.menu.show({ id: 'block', at, items: [...links, ...(links.length ? [{ separator: true }] : []), exportRow('selection')] });
+      host.menu.show({ id: 'block', at, items: [...links, ...(links.length ? [{ separator: true }] : []), exportRow('selection'), ...askRows()] });
       return;
     }
     const single = list.length === 1 ? list[0] : null;
@@ -1826,6 +1848,7 @@
         { separator: true },
         ...clipRows(null),
         exportRow('selection'),
+        ...askRows(),
         { separator: true },
         { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
