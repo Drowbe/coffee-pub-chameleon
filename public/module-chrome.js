@@ -224,11 +224,17 @@ export function topmostAt(candidates, x, y) {
 // Anything else is dropped. A function `send` on an item (the host page's own items, never a module's: a module's go through
 // postMessage or this cleaning first) is kept, so the page can mix its own items into a part's row.
 export const TOOLBAR_LIMITS = { items: 16, tabs: 8, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
-// Where the host page puts an item of its own (never a module's: only an item with a `send` function keeps it): `zone: 'end'`
-// is the row's right zone, after the search and Filters (the Calendar destination's panel switch and the panel's items),
-// `pin` that the item is never moved into "More". Any item with a zone also makes the page's order the row's: the items
-// are kept in the order given, not sorted switches first.
-const pageZone = (i) => (typeof i.send === 'function' ? { ...(i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {}), ...(i.pin === true ? { pin: true } : {}) } : {});
+// `zone` (exactly 'start' or 'end'; anything else is left out): a module's toolbar item goes in the row's left zone ('start',
+// the default) or its right zone ('end', after the search and Filters, at the far right). A module's right-zone item is held
+// in place when the row is narrow (the left zone folds and goes into "More" first); `pin` is the host page's alone, only an
+// item with a `send` function keeps it (the Calendar destination's panel switch and the panel's items), and a host page's
+// right-zone item is moved into "More" only when it is not pinned. A page's item with any zone also makes the page's order
+// the row's: its items are kept in the order given, not sorted switches first (a module's zone never does).
+const pageZone = (i) => {
+  const page = typeof i.send === 'function';
+  const zone = i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {};
+  return { ...zone, ...(page ? (i.pin === true ? { pin: true } : {}) : zone.zone === 'end' ? { pin: true } : {}) };
+};
 export function cleanToolbarItems(items) {
   const s = (v, n) => String(v ?? '').slice(0, n);
   const id = (v) => s(v, 40);
@@ -376,7 +382,7 @@ export function frameToolbar(clean) {
   const end = [];
   const tail = []; // the right zone: items the page gave `zone: 'end'`
   const groups = [];
-  const zoned = (clean || []).some((i) => i.zone);
+  const zoned = (clean || []).some((i) => i.zone && i.send); // only a host page's zones fix the order
   const place = (e, i) => (i.zone === 'end' ? tail : start).push(i.zone === 'end' ? { ...e, zone: 'end', ...(i.pin ? { pin: true } : {}) } : e);
   for (const i of clean || []) {
     if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: 'View', value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);

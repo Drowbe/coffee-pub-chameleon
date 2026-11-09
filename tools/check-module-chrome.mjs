@@ -441,7 +441,7 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.ok(!R.frameToolbar(R.cleanToolbarItems([{ type: 'search', id: 'q' }])).some((e) => e.type === 'filters'), 'no chips: no Filters button');
   // The Calendar destination's zones (Thomas, 2026-11-02): a host page's own items (they carry `send`) may say `zone: 'end'` (the
   // row's right zone, after the search and Filters) and `pin` (never moved into More); any zone keeps the order given instead
-  // of sorting switches first. A module's own item has no say: the same words from a module are dropped.
+  // of sorting switches first. A module's own item may say `zone` too, but never `pin` (below).
   const noop = () => {};
   const zoned = R.cleanToolbarItems([
     { type: 'title', text: 'October 2026', send: noop, zone: 'start' },
@@ -455,9 +455,33 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.equal(zrow[4].zone, 'end');
   assert.equal(zrow[4].pin, true);
   assert.equal(zrow[4].options[1].count, 4, 'a switch choice keeps its count, which stays when its words fold');
-  const stranger = R.cleanToolbarItems([{ type: 'tabs', id: 'part', value: 'a', options: [{ id: 'a', label: 'A' }], zone: 'end', pin: true }]);
-  assert.equal(stranger[0].zone, undefined, 'a module cannot put itself in the right zone');
-  assert.equal(stranger[0].pin, undefined);
+  // A module's own items (no `send`) may say `zone: 'end'` too (Thomas, 2026-11-09): default stays left in the order made, 'end'
+  // goes right after the search and Filters in the order made, a value other than 'start' or 'end' is ignored, and a module can
+  // neither pin nor change the order of the left zone.
+  const mod = R.frameToolbar(R.cleanToolbarItems([
+    { id: 'snap', label: 'Snap', icon: 'border-all', on: false, zone: 'end' },
+    { id: 'a', label: 'A' },
+    { type: 'tabs', id: 'view', value: 'x', options: [{ id: 'x', label: 'X' }] },
+    { id: 'grid', label: 'Grid', zone: 'end' },
+    { id: 'b', label: 'B', zone: 'start' },
+    { id: 'bad1', label: 'Bad 1', zone: 'END' },
+    { id: 'bad2', label: 'Bad 2', zone: 'right' },
+    { id: 'bad3', label: 'Bad 3', zone: { x: 1 } },
+    { type: 'search', id: 'q', zone: 'end' },
+    { type: 'chips', id: 'f', label: 'Show', options: [{ id: 'a', label: 'A' }], zone: 'end' },
+  ]));
+  assert.deepEqual(mod.map((e) => e.id || e.type), ['view', 'a', 'b', 'bad1', 'bad2', 'bad3', 'q', 'filters', 'snap', 'grid'], 'left zone sorted as ever, search and Filters, then the module\'s right zone in the order made');
+  assert.deepEqual(mod.filter((e) => e.zone === 'end').map((e) => e.id), ['snap', 'grid'], 'only exactly "end" goes right; a bad value stays left');
+  assert.ok(mod.filter((e) => e.zone === 'end').every((e) => e.pin === true), 'a module\'s right zone is held while the left folds');
+  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', pin: true }])[0].pin, undefined, 'a module cannot pin a left item');
+  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', zone: 'end', pin: false }])[0].pin, true);
+  const modOnly = R.frameToolbar(R.cleanToolbarItems([{ id: 'x', label: 'X' }, { type: 'tabs', id: 'v', value: 'a', options: [{ id: 'a', label: 'A' }] }, { id: 'r', label: 'R', zone: 'end' }]));
+  assert.deepEqual(modOnly.map((e) => e.id), ['v', 'x', 'r'], 'a module right-zone item does not stop the switches leading the left zone');
+  // host.ui.toolbarButton / viewSwitch pass the same whitelisted field to host.toolbar.set.
+  const hostSrc = read('public/sdk/host.js');
+  assert.ok(/const zoneOf = \(z\) => \(z === 'start' \|\| z === 'end' \? \{ zone: z \} : \{\}\);/.test(hostSrc), 'the SDK whitelists zone to start or end');
+  assert.ok(/toolbarButton: \(\{[^}]*\bzone\b[^}]*\}\) =>/.test(hostSrc) && /viewSwitch: \(\{[^}]*\bzone\b[^}]*\}\) =>/.test(hostSrc), 'toolbarButton and viewSwitch take zone');
+  assert.equal((hostSrc.match(/\.\.\.zoneOf\(zone\)/g) || []).length, 2, 'both draw the whitelisted zone');
   assert.deepEqual(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` })), 6).length, 6, 'a page may keep more status items than the default');
   assert.equal(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` }))).length, 4, 'the default is four');
   // The title bar's actions: the header's icons, then the toolbar buttons placed there; past five, the menu.
