@@ -73,7 +73,7 @@ await test('the setting: the key is kept and never shown', () => {
   const { source, managed, managedProvider, active, ...custom } = v;
   assert.deepEqual(active, { provider: 'compatible', model: 'local' }); // custom: the service in use is the custom slot
   const { sees, ...rest } = custom;
-  assert.deepEqual(rest, { provider: 'compatible', address, model: 'local', workspace: '', monthlyTokens: 0, keySet: true, keyUnreadable: false, keyProblem: null, keyFromEnvironment: false, enabled: true });
+  assert.deepEqual(rest, { provider: 'compatible', address, model: 'local', workspace: '', monthlyTokens: 0, keySet: true, keyUnreadable: false, keyProblem: null, enabled: true });
   assert.deepEqual(sees, { attached: true, relevant: true, linked: true, history: true, chat: false, members: false, lookup: true, environment: 'attached', modules: 'all' }, 'What AI may see: the safe defaults');
   assert.equal(managedProvider, '');
   assert.equal(source, 'custom'); // no host offer: an environment can only be custom
@@ -81,8 +81,11 @@ await test('the setting: the key is kept and never shown', () => {
   assert.ok(!JSON.stringify(ai.view()).includes('sk-secret'));
   assert.equal(ai.set({ model: 'local2' }).keySet, true); // a page that sends no key keeps the one saved
   assert.equal(ai.set({ clearKey: true }).keySet, false);
-  // An environment's own Ai no longer reads a key from the environment variables: that key is the host's managed service now.
-  assert.equal(new Ai(dir, { AI_KEY: 'from-env', TAVERN_AI_KEY: 'from-env' }).view().keyFromEnvironment, false);
+  assert.ok(!('keyFromEnvironment' in ai.view()), 'the key comes from what is saved, never from the server\'s environment');
+  // A setting saved before the managed/custom choice existed is custom, even with a provider and model but no key.
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-'));
+  fs.writeFileSync(path.join(old, 'ai.json'), JSON.stringify({ provider: 'anthropic', model: 'claude', key: '' }));
+  assert.equal(new Ai(old, {}, undefined, () => [{ provider: 'openai', address: '', model: 'm', key: 'k' }]).view().source, 'custom');
 });
 
 await test('the source: the host\'s managed service, or the environment\'s own', () => {

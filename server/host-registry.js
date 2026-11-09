@@ -312,7 +312,7 @@ class HostRegistry {
   // The host's own managed AI service, above every environment, per company: real values (including the key),
   // for server/index.js's managedSlot to build both an Ai instance's `managed()` callback and the host
   // console's own view from -- never returned from a route as-is (GET /api/host/ai answers keySet/
-  // keyFromEnvironment/offered instead). A shallow copy, always with an entry for openai/anthropic/compatible
+  // offered instead). A shallow copy, always with an entry for openai/anthropic/compatible
   // (empty when nothing is saved for it), so a caller never has to guard against a missing key.
   get managedAi() {
     const out = {};
@@ -329,18 +329,6 @@ class HostRegistry {
     this.data.ai[provider] = { ...next, key: sealKey(next.key, this.keyBuf()) };
     this.save();
     return next;
-  }
-
-  // Used only by index.js's migration seeding: an environment's old provider/address/model, worked only
-  // through the old per-environment AI_KEY, becomes that company's own starting point -- with no key of its
-  // own, since the env var is this host's own live override now (managedSlot in index.js), not something to
-  // demand here. Never overwrites a company's slot that already has something saved (the caller checks too,
-  // but a second migrating environment landing on the same company in the same start should not win a race
-  // against the first).
-  seedManagedAi(provider, { address, model }) {
-    if (!MANAGED_PROVIDERS.includes(provider) || this.data.ai[provider]) return;
-    this.data.ai[provider] = cleanHostAi({ [provider]: { address, model, key: '' } })[provider];
-    this.save();
   }
 
   // templates (addendum 2) ------------------------------------------------------------------------------------
