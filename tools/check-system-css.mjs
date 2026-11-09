@@ -154,7 +154,7 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   const note = (n, where) => { if (!others.has(n)) others.set(n, where); };
   const files = ['public/style.css', 'public/sdk/host.css', 'public/start.css', 'public/destination.css', 'public/diag.css'];
   for (const dir of ['modules']) {
-    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
+    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'test') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
     walk(dir);
   }
   // The Buttons block's per-button properties (--b-*, --btn-h) are meant to be set on one button by a rule that lays it out.

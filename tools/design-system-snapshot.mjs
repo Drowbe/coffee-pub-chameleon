@@ -2,12 +2,14 @@
 /*
  * design-system-snapshot.mjs -- the design system page (public/design-system/) as a self-contained static folder, for a
  * private review copy (documentation/plans/plan-design-system.md, "The review copy"). Reads only the fixed list of files
- * below (public/, each module's src stylesheets, the Font Awesome package) and never DATA_DIR.
+ * below (public/, server/, each module's src stylesheets, the Font Awesome package) and never DATA_DIR.
  *
  *   node tools/design-system-snapshot.mjs            builds the folder OUT (default /tmp/ds-snapshot) and prints its files and size
- *   node tools/design-system-snapshot.mjs --sources  rewrites public/design-system/sources.js (the module stylesheets, the icons
- *                                                    the product uses and their SVGs), which the page itself reads when it is
- *                                                    served by the app; the snapshot always rebuilds it
+ *   node tools/design-system-snapshot.mjs --sources  rewrites public/design-system/sources.js (the icons
+ *                                                    the product uses in public/ and server/, and their SVGs), which the page itself reads when it is
+ *                                                    served by the app; the snapshot always rebuilds it. It holds nothing from modules/:
+ *                                                    the modules' stylesheets and icons come from module-sources.js (served at run time by
+ *                                                    server/index.js, written beside the page in a snapshot; server/design-system-modules.js)
  *
  *   PAGE=proposed OUT=/tmp/ds-proposed node tools/design-system-snapshot.mjs
  *                                                    builds System v1 instead (public/design-system/legacy/system-v1/proposed.html,
@@ -19,7 +21,7 @@
  *                                                    into index.html (window.DS_PROPOSED_MANIFEST), so the folder works from a file on disk
  *
  * The folder of the default page (PAGE=today, the Design System page, index.html) holds: index.html (paths made relative), ds.css,
- * pages.css, ds.js, components*.js, sources.js (every stylesheet and the SDK as text, so the page works from disk and from any static
+ * pages.css, ds.js, components*.js, sources.js and module-sources.js (every stylesheet and the SDK as text, so the page works from disk and from any static
  * host), style.css, theme.css (the default theme's light set; the dark set is style.css's own), fa/ (Font Awesome's stylesheet and fonts),
  * no external script. Its page links (Proposed, Prototype, Legacy) point to pages the folder does not hold. Stylesheets are the only
  * thing the page loads by link. Fails above 12 MB.
@@ -31,6 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
+const dsModules = require('../server/design-system-modules.js');
 const LIMIT = 12 * 1024 * 1024;
 const FA = path.join(root, 'node_modules', '@fortawesome', 'fontawesome-free');
 const DS = path.join(root, 'public', 'design-system');
@@ -49,35 +52,18 @@ export function proposedManifest() {
   return m;
 }
 
-// ---- module stylesheets, in the order a module page carries them (server/module-build.js): lib css, then its own ----
-export function moduleStyles() {
-  const out = {};
-  for (const id of fs.readdirSync(path.join(root, 'modules')).sort()) {
-    const src = path.join(root, 'modules', id, 'src');
-    if (!fs.existsSync(src)) continue;
-    const css = fs.readdirSync(src).filter((f) => f.endsWith('.css')).sort();
-    if (!css.length) continue;
-    const lib = css.filter((f) => f.startsWith(`${id}-lib-`));
-    const own = css.filter((f) => f === `${id}.css`);
-    const other = css.filter((f) => !lib.includes(f) && !own.includes(f));
-    out[id] = { files: [...lib, ...own].map((f) => ({ file: `modules/${id}/src/${f}`, text: fs.readFileSync(path.join(src, f), 'utf8'), page: true }))
-      .concat(other.map((f) => ({ file: `modules/${id}/src/${f}`, text: fs.readFileSync(path.join(src, f), 'utf8'), page: false }))) };
-  }
-  return out;
-}
+// ---- module stylesheets: read from server/design-system-modules.js (run time; not in the committed sources.js) ----
+export const moduleStyles = () => dsModules.moduleStyles(root);
 
 // ---- the icons the product uses ----
-const SKIP = new Set(['solid', 'regular', 'brands', 'fw', 'spin', 'pulse', 'lg', 'xs', 'sm', 'xl', '2x', '3x', '4x', '5x', 'rotate-90', 'rotate-180', 'rotate-270', 'flip-horizontal', 'flip-vertical', 'flip-both', 'stack', 'stack-1x', 'stack-2x', 'inverse', 'border', 'pull-left', 'pull-right', 'beat', 'fade', 'bounce', 'shake', 'beat-fade', 'spin-pulse', 'spin-reverse', 'li', 'ul', 'sharp', 'duotone', 'classic', 'light', 'thin', 'beat', 'width-auto', 'width-fixed', 'swap-opacity']);
 function scanFiles() {
   const list = [];
   const walk = (dir, filter) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) { if (['design-system', 'node_modules', 'models', 'maps-glyphs', 'assets'].includes(e.name)) continue; walk(p, filter); } else if (filter(e.name)) list.push(p); } };
   walk(path.join(root, 'public'), (n) => /\.(css|js|mjs|html)$/.test(n));
-  walk(path.join(root, 'modules'), (n) => /\.(css|js|html|json)$/.test(n));
   for (const n of fs.readdirSync(path.join(root, 'server'))) if (/\.(js|json)$/.test(n) && n !== 'airports.json') list.push(path.join(root, 'server', n));
-  return list.filter((p) => !rel(p).startsWith('modules/dist') && fs.statSync(p).size < 3_000_000);
+  return list.filter((p) => fs.statSync(p).size < 3_000_000);
 }
 function groupOf(file) {
-  if (/^modules\//.test(file)) return 'Modules';
   if (/^server\//.test(file)) return 'Server pages and templates';
   if (/(nav-bar|primary-nav|brand|host-menu|menu-flyout|action-bar|environment-banner|theme-mode)/.test(file)) return 'Navigation and the top bar';
   if (/(chat|message)/.test(file)) return 'Chat';
@@ -89,20 +75,12 @@ function groupOf(file) {
 export function iconsUsed() {
   const names = new Map(); // name -> { count, files: Map(file -> n) }
   const add = (name, file) => {
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(name) || SKIP.has(name)) return;
     const e = names.get(name) || { count: 0, files: new Map() };
     e.count += 1; e.files.set(file, (e.files.get(file) || 0) + 1); names.set(name, e);
   };
-  const rxs = [
-    /\bfa-(?:solid|regular|brands)\s+fa-([a-z0-9-]+)/g,
-    /\bfa-([a-z0-9]+(?:-[a-z0-9]+)*)(?=[\s"'`<.:,;)\]}])/g,
-  ];
-  const named = [/\bdata-icon="([a-z0-9-]+)"/g, /\bicon:\s*['"]([a-z0-9-]+)['"]/g, /"icon":\s*"([a-z0-9-]+)"/g, /\bui\.icon\(\s*['"]([a-z0-9-]+)['"]/g, /\bglyph:\s*['"]([a-z0-9-]+)['"]/g];
   for (const p of scanFiles()) {
-    const text = fs.readFileSync(p, 'utf8');
     const file = rel(p);
-    for (const rx of rxs) for (const m of text.matchAll(rx)) add(m[1], file);
-    if (!/\.css$/.test(file)) for (const rx of named) for (const m of text.matchAll(rx)) add(m[1], file);
+    for (const n of dsModules.iconNamesIn(fs.readFileSync(p, 'utf8'), /\.css$/.test(file))) add(n, file);
   }
   const have = (n) => fs.existsSync(path.join(FA, 'svgs', 'solid', `${n}.svg`));
   const icons = []; const unknown = [];
@@ -121,7 +99,7 @@ export function iconsUsed() {
 
 export function buildSources({ withFiles } = {}) {
   const { icons, svgs, unknown } = iconsUsed();
-  const data = { generated: 'by tools/design-system-snapshot.mjs', modules: moduleStyles(), icons, svgs };
+  const data = { generated: 'by tools/design-system-snapshot.mjs', icons, svgs };
   if (withFiles) {
     const { themeCss } = require('../server/theme-css.js');
     const { DEFAULT_THEME } = require('../server/store.js');
@@ -185,6 +163,8 @@ export function buildSnapshot(out, page = 'today') {
     const built = buildSources({ withFiles: true });
     data = built.data; unknown = built.unknown;
     fs.writeFileSync(path.join(out, 'sources.js'), built.js);
+    // The modules' stylesheets and icons, which the committed sources.js does not carry (the page loads this after sources.js).
+    fs.writeFileSync(path.join(out, 'module-sources.js'), dsModules.moduleSourcesJs(root, FA));
   }
   // system.css names its fonts from the server root (/fonts/...): in the snapshot they sit beside it (fonts/), and the Design System page reads
   // system.css as text too (sources.js), so it gets the same relative copy.
@@ -209,7 +189,7 @@ async function main() {
   if (process.argv.includes('--sources')) {
     const { js, data, unknown } = buildSources();
     fs.writeFileSync(path.join(DS, 'sources.js'), js);
-    console.log(`design-system-snapshot: wrote public/design-system/sources.js (${Math.round(js.length / 1024)} KB: ${Object.keys(data.modules).length} modules, ${data.icons.length} icons${unknown.length ? `; not in Font Awesome Free: ${unknown.join(', ')}` : ''})`);
+    console.log(`design-system-snapshot: wrote public/design-system/sources.js (${Math.round(js.length / 1024)} KB: ${data.icons.length} icons from public/ and server/ only; the modules' stylesheets and icons are added at run time${unknown.length ? `; not in Font Awesome Free: ${unknown.join(', ')}` : ''})`);
     return 0;
   }
   const out = path.resolve(process.env.OUT || (process.env.PAGE === 'proposed' ? '/tmp/ds-proposed' : '/tmp/ds-snapshot'));
