@@ -1057,6 +1057,7 @@ function layoutNote(text) {
 }
 // The space's canvas: the Modules menu and every module open on it, docked, floating or in a window.
 let askInChat = null;
+let attachInChat = null;
 let paintCallTab = () => {}; // the phone's call item (Online), set with who is here below
 let micLive = false; // the microphone is live (reflectMic): the call item says so on a phone
 const canvas = createCanvas({
@@ -1076,6 +1077,16 @@ const canvas = createCanvas({
     if (!askInChat) return Promise.reject(Object.assign(new Error('Chat is not ready.'), { status: 400 }));
     toggleChat(true);
     return askInChat(input);
+  },
+  // host.chat.attach: the chip goes in Chat's box and nothing is sent; the person's Send sends it.
+  onChatAttach: (input) => {
+    if (!attachInChat) return Promise.reject(Object.assign(new Error('Chat is not ready.'), { status: 400 }));
+    // Someone busy in the page (typing, or in a form) keeps their view and their cursor: the chip is held and says so in Chat.
+    if (!chatInput.attachBusy()) {
+      toggleChat(true);
+      canvas.show('chat'); // on a phone Chat is a tab: bring it forward, as its tab does
+    }
+    return attachInChat(input);
   },
 });
 window.hostModules = canvas; // for debugging and tests
@@ -3826,6 +3837,8 @@ function storedEntry(m, { local = false } = {}) {
   };
   if (kind && typeof m.command === 'string' && m.command) entry.command = m.command;
   if (kind && typeof m.module === 'string' && m.module) entry.module = m.module;
+  // The words a module attached to an /ai question: the page keeps only their label (the words stay with the server).
+  if (kind === 'command' && m.attached && typeof m.attached.label === 'string' && m.attached.label) entry.attached = { label: m.attached.label.slice(0, 60) };
   if (kind === 'ai' && Array.isArray(m.summaries)) entry.summaries = m.summaries;
   if (kind === 'ai' && typeof m.replyTo === 'string') entry.replyTo = m.replyTo;
   // What the answer used (the server keeps it with the answer): the AI used: line under it.
@@ -4598,6 +4611,13 @@ function messageEl(entry, own) {
     body.className = 'message-body text';
     if (entry.kind === 'command') look = chatInput.commandLook(entry);
     body.innerHTML = renderMarkup(entry.kind ? entry.text : stripSummaryMarkers(entry.text));
+    // The words a module attached to an /ai question: its label under the question, as text (the words stay on the server).
+    if (entry.kind === 'command' && entry.attached && typeof entry.attached.label === 'string' && entry.attached.label) {
+      const line = document.createElement('p');
+      line.className = 'message-attached';
+      line.textContent = `Attached: ${entry.attached.label}`;
+      body.appendChild(line);
+    }
     const link = entry.kind ? null : linkBox(entry);
     if (link) { stackBody(body); body.appendChild(link); }
   }
@@ -6265,6 +6285,7 @@ chatNoteFn = (text, error) => chatInput.note(text, error);
 paintChatConn();
 document.addEventListener('chat-tools-changed', () => fitChatChrome());
 askInChat = (input) => chatInput.askAbout(input);
+attachInChat = (input) => chatInput.attach(input);
 $('chat-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = $('chat-input').value.trim();

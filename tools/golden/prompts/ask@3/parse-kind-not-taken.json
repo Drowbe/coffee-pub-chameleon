@@ -1,0 +1,28 @@
+{
+  "structured": {
+    "text": "Book it.",
+    "summaries": [
+      {
+        "icon": "landmark",
+        "title": "Flight",
+        "content": "About Flight.",
+        "basis": "general"
+      }
+    ],
+    "used": [],
+    "cut": false
+  },
+  "text": {
+    "text": "Book it.\n\n{{summary:0}}",
+    "summaries": [
+      {
+        "icon": "plane",
+        "title": "Flight",
+        "basis": "general",
+        "content": "Flight"
+      }
+    ],
+    "used": [],
+    "cut": false
+  }
+}
