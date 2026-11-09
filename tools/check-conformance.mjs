@@ -131,7 +131,7 @@ const COLLECT = String.raw`(() => {
       if (!shown(b) || b.closest('.sdk-search, .mf-search') || (b.matches('.mf-switch-btn, .tb-tab') && b.closest('.mf-switch'))) continue;
       if (b.matches('.mf-chip') && b.closest('.mf-quickset, .mf-chips')) { out.buttons.push({ h: px(R(b).height), chip: true, what: (b.textContent || '').trim().slice(0, 24) }); continue; }
       if (b.matches('.tb-tab, .mf-tab')) continue; // a tab is measured with its strip
-      out.buttons.push({ h: px(R(b).height), chip: b.matches('.mf-chip, .mf-chips-menu:not(.mf-filters)'), what: (b.getAttribute('aria-label') || b.textContent || b.className).trim().replace(/\s+/g, ' ').slice(0, 24) });
+      out.buttons.push({ h: px(R(b).height), chip: b.matches('.mf-chip, .mf-chips-menu:not(.mf-filters)'), sw: b.matches('.mf-switch'), what: (b.getAttribute('aria-label') || b.textContent || b.className).trim().replace(/\s+/g, ' ').slice(0, 24) });
     }
     // The tap areas of its buttons (on a phone, each button's ::after; elsewhere the button itself), in the top page's
     // coordinates: the title bar's buttons, and the toolbar's (not the search field's own close button).
@@ -509,7 +509,7 @@ function judge(context, phone, windows) {
       for (const x of b.buttons) {
         // Every control in a band is the frame's --mf-ctl-h, on every width (the Prototype at 390 too), the Filters button too; a
         // filter chip is the chip's --mf-chip-h.
-        const should = x.chip ? want.chip : phone && /^Tools$/.test(x.what) ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
+        const should = x.chip ? want.chip : phone && x.sw ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
         if (Math.abs(x.h - should) > 0.5) bad(`control in the ${b.band} (${x.what})`, x.h, should);
       }
     }
