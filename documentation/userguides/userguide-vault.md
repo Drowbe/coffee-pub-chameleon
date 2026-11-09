@@ -4,6 +4,8 @@
 
 The Vault holds the files of a space: tickets and confirmations as PDFs, photos, a voice note, a clip, a Markdown note. Everyone in the space sees the same files. In the Travel template the Vault is called Documents, and in the Games template it is called Handouts; the steps are the same. Other tools, such as the Planner, can link to a file, and a file can be shared by a link with people outside the space.
 
+**Nothing changes yet for who sees which file.** The server has the rule for letting only some people see a file, but the Vault has no screen for it, so everyone in the space still sees the same files. This guide will say more when the screens arrive.
+
 **Who can:** a member or a moderator can see, add and download files, and an owner always can. A guest never can: a guest sees no Vault, and the Roles tab cannot turn it on for guests. What each role may do is set on the **Roles** tab under the Vault ([Accounts, roles and permissions](userguide-accounts.md)):
 
 - **See the space's files** shows the list and opens a file.
@@ -69,7 +71,7 @@ Choose a file (or **Open** in its menu). It opens in a window of its own over th
 - **A picture** fits the window; zoom with the buttons, the wheel or a pinch, and drag to move it.
 - **Audio and video** play with the browser's controls.
 - **Markdown** is drawn as text. Anything in it that looks like a web page is shown as plain text, never run.
-- **A PDF** opens in the Vault's own PDF viewer, with page buttons, a page number, **Fit width**, and **Search in the PDF**. The viewer runs apart from the rest of Collaborator and has no network, so a PDF cannot reach anything.
+- **A PDF** opens in the Vault's own PDF viewer, with page buttons, a page number, **Fit width**, and **Search in the PDF**. The viewer runs apart from the rest of Coffee Pub Chameleon and has no network, so a PDF cannot reach anything.
 - **A download-only PDF** shows **This PDF can't be opened here. Download it.** with a **Download** button (or says your role can't download it).
 
 You can have up to four windows open at once. Opening a file that already has a window brings that window forward. With four open, opening another says **Four windows are open**, "Close a window to open another."

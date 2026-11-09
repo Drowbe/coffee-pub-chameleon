@@ -1,9 +1,9 @@
 # Architecture Overview
 
-**Audience:** a developer changing Collaborator, who needs the shape of the whole system and
+**Audience:** a developer changing Coffee Pub Chameleon, who needs the shape of the whole system and
 where each part lives.
 
-Collaborator is a small Node web app, plus a LiveKit media server if you want voice and video. LiveKit carries audio and video
+Chameleon is a small Node web app, plus a LiveKit media server if you want voice and video. LiveKit carries audio and video
 and nothing else; entering a space, who is here, chat and asides run through the app itself and work without it. There is no build step and no front-end
 framework: the pages are plain HTML, CSS and JavaScript served as they are.
 
@@ -17,16 +17,16 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
         ^                                             ^
         | pages and API                               | access tokens
 +--------------------------------------------------------------+
-| Collaborator (Node/Express): pages, accounts, images, API    |
+| Chameleon (Node/Express): pages, accounts, images, API       |
 +--------------------------------------------------------------+
 ```
 
 - **LiveKit server** is open source and runs as its own container. It is a selective forwarding unit:
   each player uploads once and the server fans the stream out. It has a built-in TURN relay for players
-  behind strict routers. Collaborator calls its server API for the calls cap, the microphone and camera marks, kick and mute.
+  behind strict routers. Chameleon calls its server API for the calls cap, the microphone and camera marks, kick and mute.
   It is optional: with no LiveKit keys the server starts, logs "No LiveKit: voice and video are off." and the call, the
   Conference and asides are off ([Hosting](#hosting)).
-- **Collaborator web app** serves the pages, mints LiveKit access tokens for the call, and keeps accounts, spaces,
+- **Chameleon web app** serves the pages, mints LiveKit access tokens for the call, and keeps accounts, spaces,
   images and settings. It never touches media. It also keeps who is where in memory and sends it, with chat and the
   asides' nudges, on a server-sent stream per page (`GET /api/live`).
 - **Coffee Pub Studio** signs in as an owner and creates one OBS Browser Source per player, pointing at
@@ -34,7 +34,7 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
 
 ## Technology
 
-- **LiveKit** on both sides, with `livekit-client` served by Collaborator itself from `/lib/`. It was chosen
+- **LiveKit** on both sides, with `livekit-client` served by Chameleon itself from `/lib/`. It was chosen
   over a hand-rolled mesh, whose upload cost grows with every person in the call, and over Jitsi, where per-participant
   OBS views would need low-level work.
 - **Node 22 and Express 5.** One app serves every page and the JSON API.
@@ -123,7 +123,7 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   `data-title`); call `applyWords(el)` after cloning a `<template>`. The browser caches an environment's own words
   under `app.words`. Modules get the words from `host.locale().words`, `host.util.word` and `host.util.fillWords`
   (see [api-module-sdk](../api/api-module-sdk.md)). `tools/check-names.mjs --words` fails, in `server/`, `public/` and
-  `modules/`, on a changeable word typed into text people read; the host console and the product page use the
+  `modules/`, on a changeable word typed into text people read; the host console and the start page use the
   host's own words and are allow-listed.
   Beside the words, `branding()` carries `verbs`, the actions a person reads on a button: `enter` (default
   "Enter"), the word on a space's main button and the guest form, and `layout` (default "Layout"), the space bar's
@@ -148,9 +148,8 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   anywhere but this origin (`Sec-Fetch-Site`), or its `Origin` isn't this one (`baseUrl()`, which minds
   `X-Forwarded-*`). A `SameSite=Lax` cookie still rides along from another origin on the same site (every
   environment is `*.BASE_DOMAIN`), which is why this is needed. Passed through: a `Bearer` token (Studio), a request
-  with no cookie (webhooks, server-to-server), one with neither header (old browsers, curl), and `POST /login`, which
-  the landing page at the bare base domain posts across origins by design and which trusts only the login and
-  password it is sent. `sameOriginOnly` in `server/index.js`; `tools/check-origin.mjs` covers it. Follow-ups are
+  with no cookie (webhooks, server-to-server) and one with neither header (old browsers, curl). No path is exempt:
+  the start page does not post a sign-in across sites. `sameOriginOnly` in `server/index.js`; `tools/check-origin.mjs` covers it. Follow-ups are
   GitHub #70.
 - **Themes.** A theme is `{ id, name, author?, light, dark }` in the environment's settings, each set holding the
   seven base colours and thirteen optional ones by their stored names (`bg`, `bgSection`, `border`, `text`, `textDim`,
@@ -299,7 +298,7 @@ someone outside the aside only which space they stepped out of.
 
 ## Hosting
 
-`docker-compose.yml` has two services, meant to be pasted into Container Station. `collaborator` is the app and is all
+`docker-compose.yml` has two services, meant to be pasted into Container Station. `chameleon` is the app (container `chameleon-app`) and is all
 that most things need; `livekit` is the part you add for voice and video. The app starts without it: leave out the
 `livekit` service and the three `LIVEKIT_` settings (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST`;
 `LIVEKIT_API_URL` is optional too) and it logs "No LiveKit: voice and video are off." instead of refusing to start. If
@@ -309,8 +308,8 @@ video are not set up on this server", the Conference can't be switched on (`PATC
 pages hide the call, the Conference and asides; Manage > Modules says "Voice and video are not set up on this server"
 with the switch off. `livekit` is from the
 official image, configured entirely through an environment variable (keys, TURN, ports 7880 for
-signaling, 7881 TCP and 7882 UDP for media, 3478 for TURN), and `collaborator`, the Node app from
-`ghcr.io/drowbe/coffee-pub-collaborator`, built by GitHub Actions. A reverse proxy terminates TLS for both
+signaling, 7881 TCP and 7882 UDP for media, 3478 for TURN), and `chameleon`, the Node app from
+`ghcr.io/drowbe/coffee-pub-chameleon`, built by GitHub Actions. A reverse proxy terminates TLS for both
 hostnames, because browsers only allow camera access over HTTPS.
 
 **The address a request came from.** `TRUST_PROXY_HOPS` (default 1; a whole number of 0 or more, else a line in the log and 1) is how many reverse proxies stand in front of the container, and is given to Express as `trust proxy`. `req.ip` is then the address the nearest trusted proxy saw, never the leftmost `X-Forwarded-For` entry, which the client writes; `X-Forwarded-Proto` and `-Host` (`req.protocol`, `req.hostname`, so `BASE_DOMAIN`'s host matching) are read only from a trusted proxy's connection. Every limit by address (sign-in among them, and guests in chat) counts by it. With `0` the connection's own address is used. The share links of a library ([api-modules](../api/api-modules.md), "Share links") are the one public route that depends on it most: their limits on wrong passwords count by this address, so the number must equal the proxies actually in front of the container (`0` when it is reached directly). Too high lets a visitor write their own address and dodge the limits; too low gives every visitor the proxy's address, so they limit each other. It used to be `true`, which let a client choose its own address. `LIVE_STREAMS_PER_PERSON` (50), `LIVE_STREAMS_PER_GUEST_LINK` (25) and `GUEST_CHAT_POSTS_PER_MINUTE` (20) are the limits on the live stream and on a guest's chat ([api-modules](../api/api-modules.md), "The live stream"); a value that is not a whole number above 0 means the default. All four are commented examples in `docker-compose.yml`. `LIVE_STREAMS_PER_PERSON` and `LIVE_STREAMS_PER_GUEST_LINK` were `CHAT_STREAMS_PER_PERSON` and `CHAT_STREAMS_PER_GUEST_LINK`; the old names are not read. `CHAT_PICTURE_MAX_MB` (default 3) is the most one chat picture may weigh.

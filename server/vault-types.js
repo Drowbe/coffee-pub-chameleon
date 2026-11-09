@@ -447,6 +447,6 @@ function structureRefusal(file, type) {
 // A library module's permissions that a guest never has and that Roles can't turn on for guests (plan section 6: "off,
 // and cannot be turned on"); the library routes refuse guests whatever Roles says, and with these off the module's data
 // routes do too. `remove_any` is only off by default there.
-const GUEST_LOCKED = ['view', 'add', 'download', 'share'];
+const GUEST_LOCKED = ['view', 'see_all', 'add', 'download', 'share'];
 
 module.exports = { TYPES, LIMITS, MAX_BYTES, HEAD_BYTES, MAX_PIXELS, GUEST_LOCKED, STRUCTURED, claimRefusal, claimedType, mismatch, sniff, picturePixels, structureRefusal, markdownRefusal };

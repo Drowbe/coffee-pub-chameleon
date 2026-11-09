@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const words = require('./words');
+const { shortProductName } = require('./product-name');
 const { Layouts } = require('./layouts');
 const { LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
 const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEFAULT_ICONS, sameList } = require('./default-lists');
@@ -341,10 +342,10 @@ const DEFAULT_SETTINGS = {
   // Saved color themes (see /theme.css and the :root comment in style.css)
   // -- each one a light and a dark set of the same seven colors, named and
   // kept around so an admin can switch back without re-picking them.
-  // activeThemeId null means Strong Coffee, the built-in default (see
+  // activeThemeId null means the product's own theme, the built-in default (see
   // DEFAULT_THEME): dark, it is style.css's own palette byte for byte,
   // rather than round-tripping the same colors back through an extra
-  // stylesheet. The two in BUILTIN_THEMES ship pre-made -- an admin can
+  // stylesheet. The three in BUILTIN_THEMES ship pre-made -- an admin can
   // edit or delete either exactly like one of their own. themeMode picks
   // the light or the dark set of whichever theme is live.
   themes: [],
@@ -424,26 +425,78 @@ const THEME_OPTIONAL = [
   // tints a chosen card or day, today and your own chat message in place of the accent (server/theme-css.js writes its quieter steps).
   'surface-field', 'surface-menu', 'surface-bar-nav', 'edge-field', 'wash-ink',
   'mf-surface-title', 'mf-surface-toolbar', 'mf-surface-row', 'mf-surface-row-hover',
+  // A chat message's box (a step off the window until a theme sets it).
+  'surface-message',
+  // What a chosen thing is drawn with, apart from the accent that marks an action (public/sdk/system.css): the fill of a chosen segment or
+  // day and the base of the tints under a chosen, hovered or pressed thing; the text on that fill; the ink chosen text is mixed from.
+  'fill-chosen', 'text-on-chosen', 'ink-chosen',
+  // The colour of the second word of the product's lockup (the brand's coral), the accent until a theme sets it. Large text only (24px and up).
+  'ink-brand',
+  // The ink every neutral wash (a hover, a press, a card's head band, a track) is mixed from: the text colour until a theme sets it.
+  'ink-neutral',
+  // The colour of the icons and links in the top bar (the bar text at 75% until a theme sets it).
+  'icon-bar',
+  // The eight tones modules and phases are tinted with (a module's colour, a phase's wash, the kind colours): what each is until a theme sets it.
+  'tone-gold', 'tone-blue', 'tone-green', 'tone-teal', 'tone-purple', 'tone-red', 'tone-orange', 'tone-pink',
 ];
 // Every theme has a light and a dark set of those colors (either may be
 // missing; the other then shows in both modes), and the server's themeMode
 // picks which one is live.
-// Strong Coffee is the built-in default ("Default" in the chooser, no
-// stored theme): its dark set is the palette public/style.css's :root starts from (tools/check-theme.mjs holds the two equal),
-// and its light set is this one.
+// The product's own theme is the built-in default ("Default" in the chooser, no stored theme), named by the product's short
+// name. It is the Coffee Pub Studio's design system read into our roles: the studio's cream ground (--bg), band (--band), surface, line, ink, muted and teal, light and
+// dark. Its dark set is the palette public/style.css's :root starts from (tools/check-theme.mjs holds the two equal).
+// The studio has no status colours, so the four status fills stay on Auto. Where a studio colour fell short of our
+// contrast rule it is adjusted by a stated rule, noted beside the value.
 const DEFAULT_THEME = {
-  name: 'Strong Coffee',
-  dark: { 'surface-page': '#1a1410', 'surface-panel': '#241c16', 'edge-hairline': '#3b2e24', 'text-primary': '#f1e6d8', 'text-muted': '#a8998a', 'accent-fill': '#c8873a', 'text-on-accent': '#1a1206' },
-  // Light is Cream (Thomas, 2026-10-31): a warm off-white of very low chroma, strong ink, the accent only on actions and markers.
+  get name() { return shortProductName(); },
+  // Dark: navy ground (--bg), the studio's surface for panels, its line for edges, cream ink. The bars are the band, a step off the
+  // ground; a card is a step lighter than its panel (--surface mixed 50% with --line). Teal is the accent: the primary buttons, a switch
+  // that is on, the focus ring, links. What is chosen (a tab, a chip, a segment, a day) is a lighter navy with cream ink, not teal.
+  // The seven base roles are also style.css's :root (tools/check-theme.mjs holds them equal).
+  dark: {
+    'surface-page': '#0e1a2b', 'surface-panel': '#182c47', 'edge-hairline': '#2a4162', 'text-primary': '#f4ecdd', 'text-muted': '#b9c3d3', 'accent-fill': '#5cc8cf', 'text-on-accent': '#0e1a2b',
+    'surface-card': '#213655', 'surface-bar-top': '#13243b', 'surface-bar-nav': '#13243b',
+    'wash-ink': '#4d6c99', 'fill-chosen': '#4d6c99', 'text-on-chosen': '#f4ecdd', 'ink-chosen': '#f4ecdd',
+    'ink-brand': '#ff8264',
+  },
+  // Light: the studio's page. Cream ground (--bg); panels, cards, menus and fields white (--surface) on a tan hairline; the bars are the
+  // ground itself (the studio's header is cream with a line), so the band tan stays for a deliberate band and the module title bars.
+  // Teal (--accent) only on the primary buttons, a switch that is on, the focus ring and links. What is chosen is sand with navy ink:
+  // fill-chosen is the --sand family deepened so that a 30% wash over white or cream reads as the studio's sand (#EEE0C6).
+  // The field edge is --line2 with 30% ink mixed in (the least that reaches 3:1 on a white field; --line2 alone is 1.75:1).
   light: {
-    'surface-page': '#eeede8', 'surface-panel': '#f7f6f2', 'edge-hairline': '#c9c7bf', 'text-primary': '#181714', 'text-muted': '#55534b', 'accent-fill': '#9a5518', 'text-on-accent': '#ffffff',
-    'surface-card': '#fffffd', 'surface-bar-top': '#dad8d0', 'surface-field': '#ffffff', 'surface-menu': '#fffffd', 'surface-bar-nav': '#dad8d0', 'edge-field': '#8a877d', 'wash-ink': '#181714',
-    'mf-surface-title': '#dad8d0', 'mf-surface-toolbar': '#e9e8e2', 'mf-surface-row': '#fffffd', 'mf-surface-row-hover': '#eeede7',
+    'surface-page': '#fbf6ec', 'surface-panel': '#ffffff', 'edge-hairline': '#e2d3b3', 'text-primary': '#14243b', 'text-muted': '#475569', 'accent-fill': '#0b7a84', 'text-on-accent': '#ffffff',
+    'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e', 'icon-default': '#14243b', 'icon-bar': '#14243b',
+    'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
+    'wash-ink': '#cfae6c', 'fill-chosen': '#f3e9d4', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'ink-brand': '#e0553c',
+    'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
+    'surface-message': '#ffffff',
+    // The light pass: every wash is cream or sand, never grey, black or teal. The bars' side zones are the sand a step off the ground; a hover is
+    // the studio's teal darkened (--accent-hover); a chosen segment is --sand itself; the neutral ink is the --sand family at full strength, so
+    // 8% reads as cream, 14% as sand, 20% as --band; the eight tones are the studio's hues (sea, sand, coral, teal) deepened to read as text and icons (4.5:1 on white) and,
+    // at the low strength modules and phases wash them, as soft tints (purple and pink, which the studio has none of, become taupe and coral); danger is --coral-text.
+    'surface-bar-brand': '#f7f0e0', 'surface-bar-right': '#f7f0e0', 'accent-fill-hover': '#096870',
+    'ink-neutral': '#c9962a',
+    'status-danger-fill': '#b83a26', 'status-ok-fill': '#2f7f77', 'status-warn-fill': '#8c6d2c', 'status-info-fill': '#2f6f8f',
+    'tone-gold': '#8c6d2c', 'tone-blue': '#2c6498', 'tone-green': '#2f7f77', 'tone-teal': '#0b7a84', 'tone-purple': '#7d6b4f', 'tone-red': '#b83a26', 'tone-orange': '#b8602a', 'tone-pink': '#b4614f',
   },
 };
 // Shipped pre-made (see the seeding in load()), fixed ids so seeding is idempotent -- colors read straight off each real site's
-// own computed styles (button/link accent, body text, page background), not eyeballed.
+// own computed styles (button/link accent, body text, page background), not eyeballed. Strong Coffee, the default before the
+// product's own theme, is the first of them, as it was (its dark set is what public/style.css held).
 const BUILTIN_THEMES = [
+  {
+    id: 'strong-coffee',
+    name: 'Strong Coffee',
+    dark: { 'surface-page': '#1a1410', 'surface-panel': '#241c16', 'edge-hairline': '#3b2e24', 'text-primary': '#f1e6d8', 'text-muted': '#a8998a', 'accent-fill': '#c8873a', 'text-on-accent': '#1a1206' },
+    // Light is Cream (Thomas, 2026-10-31): a warm off-white of very low chroma, strong ink, the accent only on actions and markers.
+    light: {
+      'surface-page': '#eeede8', 'surface-panel': '#f7f6f2', 'edge-hairline': '#c9c7bf', 'text-primary': '#181714', 'text-muted': '#55534b', 'accent-fill': '#9a5518', 'text-on-accent': '#ffffff',
+      'surface-card': '#fffffd', 'surface-bar-top': '#dad8d0', 'surface-field': '#ffffff', 'surface-menu': '#fffffd', 'surface-bar-nav': '#dad8d0', 'edge-field': '#8a877d', 'wash-ink': '#181714',
+      'mf-surface-title': '#dad8d0', 'mf-surface-toolbar': '#e9e8e2', 'mf-surface-row': '#fffffd', 'mf-surface-row-hover': '#eeede7',
+    },
+  },
   {
     id: 'staying-blonde',
     name: 'Calming Teal',
@@ -558,6 +611,14 @@ function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
+// The environment's session signing key and stream key: randomToken(SESSION_KEY_BYTES) and randomToken(STREAM_KEY_BYTES).
+const SESSION_KEY_BYTES = 32;
+const STREAM_KEY_BYTES = 18;
+// Whether a stored key is at least as strong as the ones made here: base64url, and as long as `bytes` random bytes make.
+function strongKey(value, bytes) {
+  return typeof value === 'string' && value.length >= Math.ceil((bytes * 4) / 3) && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 function cleanText(value, max = 60) {
   return String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')
@@ -648,9 +709,11 @@ class Store {
       ...(cleanTemplateHistory(raw.templateHistory).length ? { templateHistory: cleanTemplateHistory(raw.templateHistory) } : {}),
       // Templates an owner imported on a single install (addendum 2), checked by server/templates.js before saving.
       ...(Array.isArray(raw.templates) && raw.templates.length ? { templates: raw.templates.filter((t) => t && typeof t === 'object' && typeof t.id === 'string') } : {}),
+      // A key that is not the shape this server makes (a hand-edited file, say) is replaced with a new one: nobody
+      // chooses the key that signs this environment's sessions or opens its stream. A new session key signs everyone out.
       secrets: {
-        session: raw.secrets?.session || randomToken(32),
-        stream: raw.secrets?.stream || randomToken(18),
+        session: strongKey(raw.secrets?.session, SESSION_KEY_BYTES) ? raw.secrets.session : randomToken(SESSION_KEY_BYTES),
+        stream: strongKey(raw.secrets?.stream, STREAM_KEY_BYTES) ? raw.secrets.stream : randomToken(STREAM_KEY_BYTES),
       },
       settings: { ...DEFAULT_SETTINGS, ...migrateMfaSettings(raw.settings) },
       users: Array.isArray(raw.users) ? raw.users.map((u) => this.sanitizeUser(u)).filter(Boolean) : [],
@@ -733,7 +796,9 @@ class Store {
       data.settings.homeIconChoiceSeeded = true;
       clearedHomeIcon = true;
     }
-    if (!raw.secrets?.session || !raw.secrets?.stream || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
+    // A host admin's stand-in stored with a sign-in of its own (dropped by sanitizeUser) is written back without it.
+    const standInSignIn = Array.isArray(raw.users) && raw.users.some((u) => u && typeof u === 'object' && u.hostAdmin && (u.passwordHash || u.linkToken || u.mfa));
+    if (data.secrets.session !== raw.secrets?.session || data.secrets.stream !== raw.secrets?.stream || standInSignIn || !Array.isArray(raw.spaces) || seededThemes || seededIcons || clearedHomeIcon || curatedLists) {
       this.data = data;
       this.save();
     }
@@ -857,13 +922,14 @@ class Store {
       // The stand-in is always `admin`; anything else reads as it is stored, or as a member when it is no role at all
       // (the names-roles migration has already renamed the old values, so this only ever meets them in hand-made data).
       role: u.hostAdmin ? 'admin' : ROLES.includes(u.role) ? u.role : 'member',
-      passwordHash: typeof u.passwordHash === 'string' ? u.passwordHash : null,
-      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js): its own
-      // passwordHash is always null, so nothing inside the environment can ever authenticate as it directly -- the
-      // check always goes back to the host registry.
+      // A user record that stands in for a host admin signed in here (see resolveLoginUser in index.js) never has a
+      // password, a personal link or a second factor of its own, whatever the stored record says (one restored from a
+      // zip, say): nothing inside the environment can ever authenticate as it directly -- the check always goes back
+      // to the host registry.
+      passwordHash: !u.hostAdmin && typeof u.passwordHash === 'string' ? u.passwordHash : null,
       hostAdmin: Boolean(u.hostAdmin),
-      linkToken: typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
-      mfa: sanitizeMfa(u.mfa),
+      linkToken: !u.hostAdmin && typeof u.linkToken === 'string' && u.linkToken ? u.linkToken : null,
+      mfa: u.hostAdmin ? null : sanitizeMfa(u.mfa),
       images,
       spaces,
       player: {}, // borders and the plate are server-wide now; older per-user values are dropped
@@ -876,6 +942,10 @@ class Store {
       // Their other calendars (plan-google-calendar.md, Part 2): each address sealed with the secrets key, never kept
       // plain; left off while they have none.
       ...(cleanExternalCalendars(u.externalCalendars).length ? { externalCalendars: cleanExternalCalendars(u.externalCalendars) } : {}),
+      // A new owner's first-password link (plan-first-password.md): { hash, expiresAt } until it is used, then
+      // { claim, claimedAt, expiresAt } until the password is set (claim: a random id for that use); only the SHA-256 of the token, never the token. Never on a
+      // host admin's stand-in or an account that has a password; left off otherwise.
+      ...(cleanFirstPassword(u) ? { firstPassword: cleanFirstPassword(u) } : {}),
       createdAt: typeof u.createdAt === 'string' ? u.createdAt : new Date().toISOString(),
     };
   }
@@ -928,7 +998,7 @@ class Store {
   }
 
   regenerateStreamKey() {
-    this.data.secrets.stream = randomToken(18);
+    this.data.secrets.stream = randomToken(STREAM_KEY_BYTES);
     this.save();
     return this.data.secrets.stream;
   }
@@ -1286,7 +1356,7 @@ class Store {
     return this.data.settings.themes;
   }
 
-  // Strong Coffee, the built-in default: its name and both sets, for the chooser.
+  // The product's own theme, the built-in default: its name and both sets, for the chooser.
   get defaultTheme() {
     return this.sanitizeTheme({ ...DEFAULT_THEME, id: null });
   }
@@ -1345,7 +1415,7 @@ class Store {
     return theme;
   }
 
-  // `name`, or "name (2)", "(3)"... when a theme (Strong Coffee included) already has it, ignoring case; the
+  // `name`, or "name (2)", "(3)"... when a theme (the default included) already has it, ignoring case; the
   // number always fits inside the 40 characters a name may have.
   freeThemeName(name) {
     const lower = (x) => String(x || '').trim().toLowerCase();
@@ -1368,7 +1438,7 @@ class Store {
   }
 
   // Both of the live theme's sets, for /theme.css to send at once (server/theme-css.js): { light, dark }, a theme
-  // with only one set showing it in both modes. Strong Coffee, when no saved theme is live, gives both of its sets.
+  // with only one set showing it in both modes. The default theme, when no saved theme is live, gives both of its sets.
   activeThemeSets() {
     const s = this.data.settings;
     const theme = s.activeThemeId ? s.themes.find((t) => t.id === s.activeThemeId) : null;
@@ -1519,7 +1589,7 @@ class Store {
     return key;
   }
 
-  addUser({ login, displayName, role, passwordHash, hostAdmin }) {
+  addUser({ login, displayName, role, passwordHash, hostAdmin, firstPassword }) {
     const cleaned = cleanLogin(login);
     if (!cleaned) throw new StoreError('username is required');
     if (role !== undefined && !hostAdmin && !ASSIGNABLE_ROLES.includes(role)) throw new StoreError('role must be owner or member');
@@ -1531,6 +1601,7 @@ class Store {
       role,
       passwordHash: passwordHash || null,
       hostAdmin,
+      firstPassword,
       images: {},
       createdAt: new Date().toISOString(),
     });
@@ -1568,6 +1639,57 @@ class Store {
     if (patch.passwordHash !== undefined) draft.passwordHash = patch.passwordHash || null;
     if (patch.linkToken !== undefined) draft.linkToken = patch.linkToken || null;
     Object.assign(user, draft);
+    if (user.passwordHash) delete user.firstPassword; // a password set any other way ends a first-password link
+    this.save();
+    return user;
+  }
+
+  // --- the first password (plan-first-password.md) ----------------------------------------------------------------
+  // A new owner made with no password holds firstPassword: the SHA-256 of a one-time token and when it ends. Each
+  // method is synchronous from its check to its write, so one token can be used once only.
+
+  // Whether an owner here is still waiting to set their first password (the link used or not, ended or not).
+  awaitingFirstPassword() {
+    return this.data.users.some((u) => u.firstPassword);
+  }
+
+  // A new link for an owner with no password, replacing any old one (and so ending it, and any step begun from it).
+  setFirstPassword(key, { hash, expiresAt }) {
+    const user = this.userByKey(key);
+    if (!user) throw new StoreError('no such user', 404);
+    if (user.role !== 'owner' || user.hostAdmin || user.passwordHash) throw new StoreError('only an owner with no password can have a first-password link');
+    const next = cleanFirstPassword({ firstPassword: { hash, expiresAt } });
+    if (!next?.hash) throw new StoreError('a first-password link is kept by its hash and its end');
+    user.firstPassword = next;
+    this.save();
+    return next;
+  }
+
+  // Uses a link: the owner here whose unused link has this hash, has not ended, and who still has no password. The hash
+  // is removed at once and a random id for this use (the claim) kept instead, with its time. Returns
+  // { user, claim, claimedAt }, or null for any other case.
+  claimFirstPassword(hash, now = Date.now()) {
+    if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
+    const user = this.data.users.find((u) => u.firstPassword?.hash === hash);
+    if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
+    const ends = Date.parse(user.firstPassword.expiresAt);
+    if (!(ends > now)) return null;
+    const claim = crypto.randomBytes(16).toString('hex');
+    const claimedAt = new Date(now).toISOString();
+    user.firstPassword = { claim, claimedAt, expiresAt: user.firstPassword.expiresAt };
+    this.save();
+    return { user, claim, claimedAt };
+  }
+
+  // Sets the first password of the owner whose link's current claim is `claim`, and removes the link. Returns the
+  // account, or null when it is not (or no longer) that claim.
+  finishFirstPassword(key, claim, passwordHash) {
+    const user = this.userByKey(key);
+    if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash) return null;
+    if (typeof claim !== 'string' || !user.firstPassword?.claim || user.firstPassword.claim !== claim) return null;
+    if (typeof passwordHash !== 'string' || !passwordHash) return null;
+    user.passwordHash = passwordHash;
+    delete user.firstPassword;
     this.save();
     return user;
   }
@@ -2419,6 +2541,20 @@ function cleanCalendarFeed(raw) {
   return { hash: raw.hash, made: when(raw.made) || new Date().toISOString(), readAt: when(raw.readAt) };
 }
 
+// A first-password link as stored (plan-first-password.md): { hash, expiresAt } (not used yet) or
+// { claim, claimedAt, expiresAt } (used, the password not set yet; claim: the random id of that use, 32 hex characters),
+// the times ISO. Null for anything else, and for an account that may never have one: a host admin's stand-in, or one
+// with a password already.
+function cleanFirstPassword(u) {
+  const raw = u?.firstPassword;
+  if (!raw || typeof raw !== 'object' || u.hostAdmin || typeof u.passwordHash === 'string') return null;
+  const when = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null);
+  if (!when(raw.expiresAt)) return null;
+  if (typeof raw.hash === 'string' && /^[0-9a-f]{64}$/.test(raw.hash)) return { hash: raw.hash, expiresAt: raw.expiresAt };
+  if (typeof raw.claim === 'string' && /^[0-9a-f]{32}$/.test(raw.claim) && when(raw.claimedAt)) return { claim: raw.claim, claimedAt: raw.claimedAt, expiresAt: raw.expiresAt };
+  return null;
+}
+
 // A person's other calendars as stored: at most five, each with its address sealed (an "aesgcm$" value); one with a
 // plain or missing address is dropped rather than kept.
 const MAX_EXTERNAL_CALENDARS = 5;
@@ -2447,5 +2583,5 @@ module.exports = {
   LEGACY_SLOTS, ROLES, ASSIGNABLE_ROLES, hasOwnerRights, ROLE_PERMISSIONS, IMAGE_TYPES, MAX_IMAGE_BYTES, DEFAULT_BORDER_COLOR, LOBBY, randomToken, cleanText, cleanLogin,
   sanitizeMfa, CURRENCIES, QUALITY_OPTIONS, LANGUAGES, BUILTIN_THEME_IDS: BUILTIN_THEMES.map((t) => t.id), displayNameProblem,
   THEME_BASE, THEME_OPTIONAL, DEFAULT_THEME, cleanColor, cleanAuthor, cleanReactions, cleanThemeName, MAX_THEMES,
-  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS,
+  DEFAULT_HOME_ICON, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS, DEFAULT_SETTINGS,
 };

@@ -245,6 +245,14 @@ const mounted = new Set(); // every module frame the host has on this page: { fr
 // in a frame on the Workspace) and a window it opened (a pop-out): they share one record, `window.__modulePage`
 // ({ id, open }), found through the parent or the opener. `open` holds the mounts in the page, so host.actions.list can
 // say which actions a module open here answers (`open: true`).
+// When a key was last changed: the server sends `updatedAt` with each change as an ISO date string. A module hears it
+// only when it is a date that reads (a string of at most 40 characters, or a finite number of milliseconds); anything
+// else leaves the field out of the 'change' event.
+export function changeStamp(d) {
+  const t = d && d.updatedAt;
+  const ok = typeof t === 'string' ? t.length <= 40 && Number.isFinite(Date.parse(t)) : typeof t === 'number' && Number.isFinite(t);
+  return ok ? { updatedAt: t } : {};
+}
 export const PAGE_WAIT_MS = 5000;
 export function pageInput(input, here, pageId, now) {
   const out = input && typeof input === 'object' && !Array.isArray(input) ? { ...input } : {};
@@ -2276,7 +2284,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     const here = scope === 'space' ? 'space' : 'environment';
     if (type === 'change') {
       if (onChanges) onChanges({ deleted: d.deleted === true });
-      send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId });
+      send('change', { key: d.key, value: d.value, version: d.version, deleted: d.deleted, by: d.by, scope: d.scope, spaceId: d.spaceId, ...changeStamp(d) });
     // Many keys at once (a Clear, its Undo): one event, which the SDK hands to a 'changes' listener once, else key by key.
     } else if (type === 'changes') {
       if (onChanges) onChanges({ many: true });

@@ -20,7 +20,7 @@
   const FILES = SRC.files || {};
   const PATHS = {
     'style.css': '/style.css', 'system.css': '/sdk/system.css', 'host.css': '/sdk/host.css', 'theme.css': '/theme.css', 'host.js': '/sdk/host.js', 'tooltip.js': '/tooltip.js',
-    'destination.css': '/destination.css', 'landing.css': '/landing.css', 'diag.css': '/diag.css',
+    'destination.css': '/destination.css', 'diag.css': '/diag.css',
   };
   const stats = { frames: 0, loaded: 0, families: 0, variants: 0, examples: 0, errors: [], notLoaded: [], forcedRules: 0, tokens: 0, icons: 0, orphans: [] };
   window.__dsStats = stats;
@@ -522,7 +522,7 @@ window.__dsLog = [];
 
     // What the stylesheets use today
     const sheets = [
-      ['public/style.css', text['style.css']], ['public/sdk/host.css', text['host.css']], ['public/destination.css', text['destination.css']], ['public/landing.css', text['landing.css']], ['public/diag.css', text['diag.css']],
+      ['public/style.css', text['style.css']], ['public/sdk/host.css', text['host.css']], ['public/destination.css', text['destination.css']], ['public/diag.css', text['diag.css']],
       ...Object.keys(MODS).sort().flatMap((id) => (MODS[id].files || []).map((f) => [f.file, f.text])),
     ].filter(([, t]) => t);
     const tally = (prop, pick) => {
@@ -581,7 +581,8 @@ window.__dsLog = [];
     sec.innerHTML = `<h2>Icons</h2><p class="ds-lead">The Font Awesome Free solid icons the product uses: ${list.length} names found in the stylesheets, scripts, pages, module sources and server templates. Each is written <code>&lt;i class="fa-solid fa-name" aria-hidden="true"&gt;&lt;/i&gt;</code> on an app page; a module asks the SDK for an SVG with host.ui.icon(name). Click one to copy its markup.</p>`;
     stats.icons = list.length;
     const groups = new Map();
-    for (const i of list) { if (!groups.has(i.group)) groups.set(i.group, []); groups.get(i.group).push(i); }
+    for (const i of list) { if (!i.group) i.group = 'Modules'; // an icon only a module uses has no group from sources.js (module-sources.js adds it)
+      if (!groups.has(i.group)) groups.set(i.group, []); groups.get(i.group).push(i); }
     for (const [g, items] of [...groups.entries()].sort((a, b) => b[1].length - a[1].length)) {
       sec.appendChild(mk('h3', 'ds-group', `${h(g)} <span class="ds-count">${items.length}</span>`));
       const grid = mk('div', 'ds-icons');
@@ -648,7 +649,7 @@ window.__dsLog = [];
 
   async function init() {
     FA_HREF = $('link[data-ds="fa"]').href;
-    await Promise.all(['style.css', 'system.css', 'host.css', 'theme.css', 'host.js', 'tooltip.js', 'destination.css', 'landing.css', 'diag.css'].map(load));
+    await Promise.all(['style.css', 'system.css', 'host.css', 'theme.css', 'host.js', 'tooltip.js', 'destination.css', 'diag.css'].map(load));
     $('#ds-status').textContent = 'Drawing the examples';
 
     for (const m of (text['system.css'] || '').matchAll(/\/\* ([a-z][a-z0-9-]*):start \*\//g)) SYS_BLOCKS.add(m[1]);

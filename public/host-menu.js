@@ -96,15 +96,27 @@ let hintCount = 0;
 
 // Opens the menu under `trigger`, or closes it when it is already open from that same trigger.
 export function openHostMenu(trigger, items) {
-  const reopening = open && open.trigger === trigger;
-  close();
+  build(trigger, items, false);
+}
+
+// The same entries drawn into `container` and left there (the Set up panel's Modules tab): no position, no closing on a
+// press outside or Escape, the keyboard roves between the rows (one tab stop), a category's flyout is the menu's own.
+// Another menu opening does not close it. Gives { redraw, destroy }; redraw draws it again from `items` (a function).
+export function mountHostMenu(container, items) {
+  return build(container, items, true);
+}
+
+function build(trigger, items, inline) {
+  const reopening = !inline && open && open.trigger === trigger;
+  if (!inline) close();
   const list = typeof items === 'function' ? items() : items;
-  if (reopening || !list || !list.length) return;
+  if (reopening || (!inline && (!list || !list.length))) return null;
   const doc = trigger.ownerDocument;
   const view = doc.defaultView;
   const menu = doc.createElement('div');
-  menu.className = 'host-menu';
+  menu.className = inline ? 'host-menu host-menu-inline' : 'host-menu';
   menu.setAttribute('role', 'menu');
+  const alive = () => (inline ? menu.isConnected : Boolean(open && open.menu === menu));
   let rows = []; // the entries the arrow keys move between, in order
   let sub = null; // { items, back, label? } while a row's "..." entries (or a drilled-in category's) are shown
   let fly = null; // { el, rows, row, exit } while a category's flyout is open
@@ -113,6 +125,7 @@ export function openHostMenu(trigger, items) {
   let listening = false;
 
   const place = () => {
+    if (inline) return;
     const t = trigger.getBoundingClientRect();
     let x = t.left;
     let y = t.bottom + 4;
@@ -126,14 +139,14 @@ export function openHostMenu(trigger, items) {
   // A pick: the menu closes first (focus back on the button), unless the item keeps it open, when it is drawn again
   // once the pick has run, the keyboard on the same row. A pick in a flyout always closes the whole menu.
   const pick = (item, at, inFlyout = false) => {
-    if (inFlyout) { close({ refocus: true }); item.onPick?.(); return; }
+    if (inFlyout) { if (inline) closeFly(); else close({ refocus: true }); item.onPick?.(); return; }
     if (item.keepOpen || item.toggle) {
       const result = item.onPick?.();
-      const again = () => { if (open && open.menu === menu) draw({ focus: at }); };
+      const again = () => { if (alive()) draw({ focus: at }); };
       if (result && typeof result.then === 'function') result.then(again, again); else again();
       return;
     }
-    close({ refocus: true });
+    if (inline) closeFly(); else close({ refocus: true });
     item.onPick?.();
   };
 
@@ -185,7 +198,7 @@ export function openHostMenu(trigger, items) {
     const onWay = fly && inSafeZone({ x: event.clientX, y: event.clientY }, fly.exit, fly.el.getBoundingClientRect(), fly.side);
     const wait = onWay ? 320 : 120;
     hoverTimer = view.setTimeout(() => {
-      if (!open || open.menu !== menu) return;
+      if (!alive()) return;
       if (isCategory(item)) openFly(item, b); else closeFly();
     }, wait);
   };
@@ -345,7 +358,7 @@ export function openHostMenu(trigger, items) {
 
   // Draw the entries (`list`, or the sub-list's with Back first) into the menu. `focus`: the row to put the keyboard
   // on, by its place among the rows.
-  const draw = ({ focus = 0 } = {}) => {
+  const draw = ({ focus = 0, quiet = false } = {}) => {
     closeFly();
     const back = sub ? [{ icon: 'arrow-left', label: 'Back', onPick: () => { const at = sub.back; sub = null; draw({ focus: at }); }, keepOpen: true }, ...(sub.label ? [{ heading: sub.label }] : [])] : [];
     const current = sub ? [...back, ...sub.items] : (typeof items === 'function' ? items() : list);
@@ -358,6 +371,11 @@ export function openHostMenu(trigger, items) {
     menu.moreOf = moreOf;
     place();
     const at = Math.max(0, Math.min(rows.length - 1, want));
+    if (inline) {
+      rows.forEach((r, i) => { r.tabIndex = i === at ? 0 : -1; });
+      if (!quiet && rows[at] && (Number.isFinite(focus) || had >= 0)) rows[at].focus();
+      return;
+    }
     if (rows[at]) rows[at].focus();
   };
 
@@ -377,11 +395,13 @@ export function openHostMenu(trigger, items) {
     return b.classList.contains('host-menu-category') ? b : null;
   };
   const onKey = (e) => {
+    if (inline && !menu.contains(e.target) && !(fly && fly.el.contains(e.target))) return;
     if (e.target && e.target !== menu && menu.contains(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.key !== 'Escape' && e.key !== 'Tab') return; // a slider's own keys
     const inFlyout = Boolean(fly && fly.el.contains(doc.activeElement));
     const onCategory = Boolean(categoryOf(doc.activeElement));
     const action = menuKeyAction(e.key, { inFlyout, onCategory, drilled: Boolean(sub && sub.label) });
     if (action === 'close') {
+      if (inline) { if (inFlyout) { e.stopPropagation(); closeFly({ refocus: true }); } return; }
       if (e.key === 'Escape') { e.stopPropagation(); close({ refocus: true }); } else close();
     } else if (action === 'next' || action === 'prev' || action === 'first' || action === 'last') {
       e.preventDefault();
@@ -402,7 +422,30 @@ export function openHostMenu(trigger, items) {
       if (pair) { e.preventDefault(); pair[0].focus(); }
     }
   };
-  const onOutside = (e) => { if (!menu.contains(e.target) && !trigger.contains(e.target) && !(fly && fly.el.contains(e.target))) close(); };
+  const onOutside = (e) => {
+    if (menu.contains(e.target) || (fly && fly.el.contains(e.target))) return;
+    if (inline) closeFly(); else if (!trigger.contains(e.target)) close();
+  };
+
+  if (inline) {
+    menu.addEventListener('focusin', (e) => {
+      const at = rows.indexOf(e.target);
+      if (at >= 0) rows.forEach((r, i) => { r.tabIndex = i === at ? 0 : -1; });
+    });
+    trigger.appendChild(menu);
+    doc.addEventListener('pointerdown', onOutside, true);
+    doc.addEventListener('keydown', onKey, true);
+    draw({ focus: 0, quiet: true });
+    return {
+      redraw: () => { if (alive()) draw({ focus: NaN }); },
+      destroy: () => {
+        closeFly();
+        menu.remove();
+        doc.removeEventListener('keydown', onKey, true);
+        doc.removeEventListener('pointerdown', onOutside, true);
+      },
+    };
+  }
 
   doc.body.appendChild(menu);
   // The click that opened this menu has already happened. Listening on the next frame keeps that same
@@ -430,4 +473,5 @@ export function openHostMenu(trigger, items) {
     },
   };
   draw({ focus: 0 });
+  return null;
 }

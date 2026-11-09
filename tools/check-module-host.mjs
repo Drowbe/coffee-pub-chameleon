@@ -30,6 +30,7 @@ const { REF_SHAPE, cleanPointer } = new Function(`${hostSrc}\nreturn { REF_SHAPE
 const sdkSrc = slice('public/sdk/host.js', 'function cleanRef(ref) {', '\n  }\n');
 const cleanRef = new Function(`${sdkSrc}\nreturn cleanRef;`)();
 
+const { changeStamp } = new Function(`${slice('public/module-host.js', 'export function changeStamp(d) {', '\n}\n').replace('export ', '')}\nreturn { changeStamp };`)();
 let failed = 0;
 let n = 0;
 const pending = [];
@@ -672,12 +673,13 @@ test('host.facts (plan-space-story-strip.md step 5): set and clear in the SDK, a
   assert.ok(!/facts[^\n]*guest=/.test(src), 'no guest token on the facts route');
 });
 
-test('the module objects the pages read carry content: flush for Maps, padded for the rest', () => {
+test('the module objects the pages read carry content: flush for Maps and Whiteboard, padded for the rest', () => {
   const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.match(read('server/index.js'), /return \{ name: d\.name \|\| m\.name, icon: d\.icon \|\| m\.icon, content: m\.content === 'flush' \? 'flush' : 'padded' \};/, 'shownModule (spread into nav, for-space, the parts and the context) gives content');
   const content = (id) => JSON.parse(read(`modules/${id}/module.json`)).content ?? 'padded';
-  assert.equal(content('maps'), 'flush', 'Maps is flush');
-  for (const id of fs.readdirSync(new URL('../modules/', import.meta.url)).filter((d) => d !== 'maps' && fs.existsSync(new URL(`../modules/${d}/module.json`, import.meta.url)))) assert.equal(content(id), 'padded', `${id} is padded`);
+  const flush = ['maps', 'whiteboard'];
+  for (const id of flush) assert.equal(content(id), 'flush', `${id} is flush`);
+  for (const id of fs.readdirSync(new URL('../modules/', import.meta.url)).filter((d) => !flush.includes(d) && fs.existsSync(new URL(`../modules/${d}/module.json`, import.meta.url)))) assert.equal(content(id), 'padded', `${id} is padded`);
 });
 
 test('the budget target: a module is let in by its manifest flag, which the mounts hand the host; set() never clears by omission', () => {
@@ -759,6 +761,25 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
   assert.ok(!/await (api|fetch|import)\(/.test(printSrc.slice(0, waits)), 'host.library.print must not wait on a request before the others have started');
   const viewerSrc = slice('public/file-viewer.js', 'async function printIt(w, f) {', 'finally { stop(); }');
   assert.ok(viewerSrc.includes("progressNote('Preparing to print...')") && viewerSrc.indexOf('progressNote(') < viewerSrc.indexOf('fetch('), 'the file window\'s Print must show its note before it fetches');
+}
+// A live 'change' carries the server's `updatedAt` on to the module (changeStamp in public/module-host.js).
+{
+  const test2 = (name, fn) => { try { fn(); n += 1; } catch (err) { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); } };
+  test2('a change carries the updatedAt the server sent, as sent', () => {
+    const at = '2026-11-09T10:20:30.456Z';
+    assert.deepEqual(changeStamp({ key: 'k', updatedAt: at }), { updatedAt: at });
+    assert.equal(changeStamp({ updatedAt: at }).updatedAt, at);
+    assert.deepEqual(changeStamp({ updatedAt: 1762683630456 }), { updatedAt: 1762683630456 });
+  });
+  test2('a change without a usable updatedAt carries none', () => {
+    for (const d of [{}, null, undefined, { updatedAt: null }, { updatedAt: '' }, { updatedAt: 'soon' }, { updatedAt: NaN }, { updatedAt: Infinity }, { updatedAt: {} }, { updatedAt: true }, { updatedAt: '2026-11-09T10:20:30Z'.padEnd(60, ' ') }]) {
+      assert.deepEqual(changeStamp(d), {}, JSON.stringify(d));
+      assert.equal('updatedAt' in changeStamp(d), false);
+    }
+  });
+  test2('the change event sends it through changeStamp', () => {
+    assert.match(fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8'), /send\('change', \{[^}]*\.\.\.changeStamp\(d\) \}\)/);
+  });
 }
 await Promise.all(pending);
 if (failed) process.exit(1);

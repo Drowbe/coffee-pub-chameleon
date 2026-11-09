@@ -7,14 +7,14 @@
 // It reads public/*.css, public/sdk/*.css, modules/*/src/*.css and the CSS inside the .js files of public and
 // modules/*/src; not public/design-system or MapLibre.
 //
-// Pages with their own palette (OWN_PALETTE in tools/lib/drift.mjs, today public/landing.css) are not read, and the check prints which; @font-face blocks are not read.
+// No page has a palette of its own: the start page too is on the scale. @font-face blocks are not read.
 // Today's offenders are recorded per file in tools/check-type-scale-allow.json under keys like "size 15px" and
 // "weight 650". The check passes while no count is higher, fails on a higher count or a new file or key, and says when
 // a count has dropped.
 //   node tools/check-type-scale.mjs                 the check
 //   node tools/check-type-scale.mjs --update        lower the allow-list to today's counts (never raises)
 //   node tools/check-type-scale.mjs --update --force-raise   also allow raising (how it was first made)
-import { collectFiles, declarations, stripCalls, Tally, runRatchet, summary, ownPaletteSplit } from './lib/drift.mjs';
+import { collectFiles, declarations, stripCalls, Tally, runRatchet, summary } from './lib/drift.mjs';
 
 const SIZES = new Set([9, 11, 12, 13, 14, 16, 18, 22, 28, 40]);
 const WEIGHTS = new Set([400, 500, 600, 700]);
@@ -24,7 +24,7 @@ const SIZE_RE = /(?<![\w.$#-])(\d*\.?\d+)px\b/g;
 const tally = new Tally();
 const size = (file, d, v) => { if (!SIZES.has(Number(v))) tally.add(file.rel, `size ${Number(v)}px`, d.line); };
 const weight = (file, d, w) => { if (!WEIGHTS.has(w)) tally.add(file.rel, `weight ${w}`, d.line); };
-const [files, ownLines] = ownPaletteSplit(collectFiles());
+const files = collectFiles();
 for (const file of files) {
   for (const d of declarations(file)) {
     const value = stripCalls(d.value).trim().toLowerCase();
@@ -52,5 +52,5 @@ runRatchet({
   about: 'check-type-scale: today\'s font sizes (not 9 11 12 13 14 16 18 22 28 40 px) and font weights (not 400 500 600 700), per file. Counts may only fall; lower them with: node tools/check-type-scale.mjs --update',
   tally,
   unit: 'off-scale type values',
-  extraReport: [...ownLines, ...summary(tally, 'value')],
+  extraReport: [...summary(tally, 'value')],
 });

@@ -1,6 +1,6 @@
-# Collaborator
+# Coffee Pub Chameleon
 
-**Audience:** anyone deciding whether to run Collaborator, or looking for where to read more
+**Audience:** anyone deciding whether to run Chameleon, or looking for where to read more
 about it.
 
 Self-hosted voice and video for a tabletop game. Each player signs in once with a login and password, or
@@ -11,10 +11,12 @@ Coffee Pub Studio, and it runs on your own server; nothing about your calls is s
 
 Known defects and their workarounds are in [Known issues](known-issues.md).
 
-## Running Collaborator
+## Running Chameleon
 
 - [Getting started](userguides/userguide-getting-started.md) -- running the server, signing in
   for the first time and a first look around.
+- [Settings reference](userguides/userguide-settings-reference.md) -- the optional server settings that are not in
+  the compose file, with their defaults.
 - [The call](userguides/userguide-call.md) -- joining a space, the always-on column of call and chat, the
   controls, layouts, reactions, away, and the pop-out window.
 - [Accounts, roles and permissions](userguides/userguide-accounts.md) -- who can do what, guests,
@@ -22,7 +24,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [Spaces](userguides/userguide-spaces.md) -- Home, the top bar, the status strip, phases, Set up, and stepping aside.
 - [Participant and Character images](userguides/userguide-images.md) -- the pictures OBS shows for
   each player.
-- [Collaborator in OBS](userguides/userguide-obs.md) -- adding a player to OBS by hand.
+- [Chameleon in OBS](userguides/userguide-obs.md) -- adding a player to OBS by hand.
 - [Manage](userguides/userguide-environment-settings.md) -- every tab of the Manage page, where an environment is set up.
 - [Creating themes](userguides/userguide-themes.md) -- the colours, light and dark, and sharing a theme as a file.
 - [Your environment](userguides/userguide-environments.md) -- an owner's view on a hosted server: the plan, the caps, a copy, leaving.
@@ -63,5 +65,5 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [AI architecture](architecture/architecture-ai.md) -- how the AI is asked: the prompt registry, what is sent and what it may see, who may ask, refunds, records, the key and the address guard.
 - [The demo seeder and the checks](architecture/architecture-demo-site.md) -- filling a server with demo data, a demo site that resets itself, and the checks added since 0.4.
 
-See the [repository README](https://github.com/Drowbe/coffee-pub-collaborator) for requirements and the
+See the [repository README](https://github.com/Drowbe/coffee-pub-chameleon) for requirements and the
 short install summary.

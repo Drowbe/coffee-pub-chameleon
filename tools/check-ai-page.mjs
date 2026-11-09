@@ -4,7 +4,8 @@
  * service is a stand-in on a local port (no network). From the AI audit (ai-01, 09, 10, 11, 20, 23):
  *   - /ai <question> typed in the Discussion asks the AI and the answer shows (it was refused as "No command /ai");
  *   - an object dropped on Chat shows as a chip, goes with one question only, and a chip can be taken off;
- *   - a second Enter while a question is out sends nothing more;
+ *   - Enter sends at once: the box is empty and open, several questions can be out, each answer lands under its own question in
+ *     any order; a failed send shows in the chat with the words, why and Send again; a reload leaves no ghost of a question out;
  *   - with the AI not set up the Assistant says so before anything is typed, offers no question, and sends nothing;
  *   - a guest is not invited to ask and sends nothing;
  *   - Research's standalone page does not offer "Research this".
@@ -32,6 +33,7 @@ const expect = (ok, text) => { if (!ok) failures.push(text); };
 
 const seen = [];
 let scripted = null;
+const held = {};
 const stub = http.createServer((req, res) => {
   let body = '';
   req.on('data', (d) => { body += d; });
@@ -42,10 +44,16 @@ const stub = http.createServer((req, res) => {
     if (req.url.endsWith('/models')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: [{ id: 'stub-model' }] })); }
     seen.push(user);
     if (/SLOWANSWER/.test(user)) await sleep(2500);
+    // HOLD<tag>: the stand-in keeps the answer until the check lets it go (held[tag] = release), so answers can come in any order.
+    // Earlier questions come back in the history, so the one asked now is the last tag in the prompt.
+    const tag = [...user.matchAll(/(HOLD([A-Z])|FAILME)\b/g)].pop();
+    const hold = tag && tag[2] ? [tag[0], tag[2]] : null;
+    if (hold) await new Promise((go) => { held[hold[1]] = go; });
+    if (tag && tag[1] === 'FAILME') { res.statusCode = 500; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ error: { message: 'stand-in broke' } })); }
     res.setHeader('content-type', 'application/json');
     // A scripted answer, once: { answer, used, cut }, as the structured contract holds it.
     const script = scripted; scripted = null;
-    const content = script ? JSON.stringify({ answer: script.answer, objects: [], used: script.used || [] }) : 'A plain stub answer.';
+    const content = script ? JSON.stringify({ answer: script.answer, objects: [], used: script.used || [] }) : hold ? `Held answer ${hold[1]}.` : 'A plain stub answer.';
     // Offered the tools (the read tools and `answer`), a service answers a scripted answer by calling `answer`, as a real one does.
     const hasAnswerTool = Array.isArray(j.tools) && j.tools.some((x) => x && x.function && x.function.name === 'answer');
     const message = script && hasAnswerTool
@@ -74,7 +82,7 @@ const jsonPut = (S, cookie, url, method, body) => fetch(`${S.base}${url}`, { met
 async function answered(t) {
   await sleep(300);
   for (let i = 0; i < 50; i += 1) {
-    if (!(await t.eval(`document.getElementById('chat-input').hasAttribute('aria-busy')`)) && !/Asking/.test(await t.eval(NOTE))) break;
+    if (!(await t.eval(`document.querySelectorAll('#messages .chat-pending').length`))) break;
     await sleep(300);
   }
   await sleep(500);
@@ -178,7 +186,7 @@ async function lookupChecks(open, S, workspace) {
     await t.typeInto('#chat-input', 'what did we plan for the ferry');
     await t.key('Enter');
     await sleep(6800);
-    const waiting = await t.eval(NOTE);
+    const waiting = await t.eval(`(document.querySelector('#messages .chat-pending .chat-pending-line')?.textContent || '').trim()`);
     expect(waiting === 'Looking things up...', `a long wait does not say "Looking things up..." ("${waiting}")`);
     await snap(t, 'chat-looking');
     await answered(t);
@@ -516,21 +524,64 @@ async function main() {
       expect(await t.eval(chips) === 0, 'the chip stayed after the question was sent');
       say(`context: refs per question ${sent.map((b) => b.refs.length).join(', ')}`);
 
-      // One question out at a time.
-      const out = await t.eval('window.__sent.length');
-      await t.typeInto('#chat-input', 'SLOWANSWER please');
-      await t.key('Enter');
-      await sleep(300);
-      await t.key('Enter');
-      await sleep(300);
-      const busyNote = await t.eval(NOTE);
-      await sleep(3200);
-      const twice = (await t.eval('window.__sent.length')) - out;
-      expect(twice === 1, `Enter during a question sent ${twice} requests, not 1`);
-      expect(/Still asking/.test(busyNote), `no "Still asking" note while a question was out ("${busyNote}")`);
-      say(`one at a time: ${twice} request, note "${busyNote}"`);
       await newAskChecks(t, S, admin);
       await hostileChecks(t);
+      // Six asks a minute is the server's limit for one person: wait until the earlier ones have left the minute.
+      await sleep(61000);
+      await t.click('#chat-view-assistant');
+      // Sent at once, several at a time: the box is empty and open the moment Enter is pressed, each answer comes under its
+      // own question whatever the order, and the waiting ends per message.
+      await t.typeInto('#chat-input', 'HOLDA first question');
+      await t.key('Enter');
+      await sleep(300);
+      const boxA = await t.eval(`(() => { const i = document.getElementById('chat-input'); return { value: i.value, disabled: i.disabled, busy: i.hasAttribute('aria-busy'), pending: document.querySelectorAll('#messages .chat-pending').length, text: document.querySelector('#messages .chat-pending')?.textContent || '' }; })()`);
+      expect(boxA.value === '' && !boxA.disabled && !boxA.busy, `the box was not empty and open right after Enter (${JSON.stringify(boxA)})`);
+      expect(boxA.pending === 1 && /HOLDA first question/.test(boxA.text) && /Waiting for the answer/.test(boxA.text), `the question did not show at once with a waiting line (${JSON.stringify(boxA)})`);
+      await t.typeInto('#chat-input', 'HOLDB second question');
+      await t.key('Enter');
+      await sleep(300);
+      expect(await t.eval(`document.querySelectorAll('#messages .chat-pending').length`) === 2 && await t.eval(`document.getElementById('chat-input').value`) === '', 'a second question could not be sent while the first was out');
+      await snap(t, 'chat-two-pending');
+      for (let i = 0; i < 20 && !(held.A && held.B); i += 1) await sleep(200);
+      expect(Boolean(held.A && held.B), 'both questions did not reach the AI at once');
+      if (!(held.A && held.B)) throw new Error(failures.join('; '));
+      const order = `(() => [...document.querySelectorAll('#messages .message')].map((m) => m.querySelector('.message-body')?.textContent.trim().replace(/\\s+/g, ' ')).filter((x) => /HOLD[AB] |Held answer/.test(x || '')).map((x) => /^HOLDA/.test(x) ? 'QA' : /^HOLDB/.test(x) ? 'QB' : x.includes('answer A') ? 'AA' : x.includes('answer B') ? 'AB' : x).join(','))()`;
+      held.B(); // the second question is answered first
+      await sleep(1200);
+      expect(await t.eval(`document.querySelectorAll('#messages .chat-pending').length`) === 1, 'the waiting did not end for the answered question alone');
+      expect(await t.eval(order) === 'QA,QB,AB', `the answer B is not under question B (${await t.eval(order)})`);
+      held.A();
+      await sleep(1200);
+      expect(await t.eval(`document.querySelectorAll('#messages .chat-pending').length`) === 0, 'a question stayed waiting after its answer');
+      expect(await t.eval(order) === 'QA,AA,QB,AB', `each answer is not under its own question (${await t.eval(order)})`);
+      say(`several at once: box empty and open at Enter, answers in the order ${await t.eval(order)}`);
+
+      // A failed send shows in the chat: the words, why, Send again; the box stays usable and nothing is lost.
+      await t.typeInto('#chat-input', 'FAILME please');
+      await t.key('Enter');
+      for (let i = 0; i < 40 && !(await t.eval(`document.querySelectorAll('#messages .chat-failed').length`)); i += 1) await sleep(250);
+      const failed = await t.eval(`(() => { const m = document.querySelector('#messages .chat-failed'); const i = document.getElementById('chat-input'); return m ? { text: m.querySelector('.chat-failed-line')?.textContent, why: m.querySelector('.chat-failed-why')?.textContent, again: [...m.querySelectorAll('button')].some((b) => b.textContent === 'Send again'), value: i.value, disabled: i.disabled, pending: document.querySelectorAll('#messages .chat-pending').length } : null; })()`);
+      expect(failed && failed.text === 'Failed to send "FAILME please"' && failed.why && !/^HTTP \d+$/.test(failed.why) && failed.again, `a failed send does not show the words, why and Send again (${JSON.stringify(failed)})`);
+      expect(failed && failed.value === '' && !failed.disabled && failed.pending === 0, `after a failed send the box is not usable (${JSON.stringify(failed)})`);
+      await snap(t, 'chat-failed');
+      const sentBefore = await t.eval('window.__sent.length');
+      await t.eval(`[...document.querySelectorAll('#messages .chat-failed button')].find((b) => b.textContent === 'Send again').click()`);
+      await sleep(300);
+      for (let i = 0; i < 40 && !(await t.eval(`document.querySelectorAll('#messages .chat-failed').length`)); i += 1) await sleep(250);
+      expect((await t.eval('window.__sent.length')) === sentBefore + 1 && await t.eval(`document.querySelectorAll('#messages .chat-failed').length`) === 1, 'Send again did not send the same question once more in the failed one\'s place');
+      say(`failed send: "${failed && failed.text}" / "${failed && failed.why}"`);
+
+      // A question still out when the page is loaded again is not drawn again (nothing is stored until it is answered).
+      await t.typeInto('#chat-input', 'HOLDC ghost question');
+      await t.key('Enter');
+      await sleep(500);
+      expect(await t.eval(`document.querySelectorAll('#messages .chat-pending').length`) === 1, 'the third question was not waiting');
+      await t.eval('location.reload()');
+      await sleep(3500);
+      const ghost = await t.eval(`({ pending: document.querySelectorAll('#messages .chat-pending, #messages .chat-failed').length, text: /HOLDC ghost/.test(document.getElementById('messages').textContent) })`);
+      expect(ghost.pending === 0 && !ghost.text, `a question out at reload came back as a ghost (${JSON.stringify(ghost)})`);
+      if (held.C) held.C();
+      say('reload with a question out: nothing drawn again');
     } finally { await t.close(); }
     await cutChecks(open, workspace);
     await chipAndCiteChecks(open, S, workspace);

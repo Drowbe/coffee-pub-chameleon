@@ -30,7 +30,7 @@ const { RegionCutJobs, RegionCutError } = require('./region-cut');
 const { pmtilesInfo, pmtilesWhyNot } = require('./pmtiles-header');
 const { ModuleUploads } = require('./module-uploads');
 const { inspectHead } = require('./image-clean');
-const { cleanName, nameForType, folderBytes } = require('./vault-store');
+const { cleanName, nameForType, folderBytes, VISIBILITIES, PEOPLE_MAX } = require('./vault-store');
 const vaultTypes = require('./vault-types');
 const { createScanner } = require('./vault-scan');
 const pdfViewer = require('./pdf-viewer');
@@ -57,7 +57,7 @@ if (process.env.AI_LOG_PROMPTS === '1') {
   console.warn(process.env.BASE_DOMAIN ? 'AI_LOG_PROMPTS is ignored on a hosted install (BASE_DOMAIN is set): prompts are not logged.' : 'AI_LOG_PROMPTS is on: every prompt sent to the AI service is written to this log, without the key.');
 }
 const themeFile = require('./theme-file');
-const { productName } = require('./product-name');
+const { productName, shortProductName } = require('./product-name');
 const templateFile = require('./template-file');
 const { EventEmitter } = require('events');
 const { ModuleData, isBookkeeping } = require('./module-data');
@@ -66,11 +66,12 @@ const { ModuleHooks, HOST_SOURCE } = require('./module-hooks');
 const moduleNotices = require('./module-notices');
 const themeCssLib = require('./theme-css');
 const { eraseSpace } = require('./space-erase');
-const { Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
+const { DEFAULT_THEME, Store, StoreError, SLOTS, PARTICIPANT_SLOTS, CHARACTER_SLOTS, SPACE_PROFILES, SPACE_PROFILE_SLOTS, LEGACY_SLOTS, ROLE_PERMISSIONS, hasOwnerRights, IMAGE_TYPES, MAX_IMAGE_BYTES, LOBBY, randomToken, cleanText, cleanLogin, UNNAMED_ENVIRONMENT, MAX_EXTERNAL_CALENDARS } = require('./store');
 // The phase timeline rule (plan-one-bar.md, step 1), the one copy the pages use too.
 const phaseRule = require('../public/phases.js');
 const auth = require('./auth');
 const { buildEnvironment, flushEnvironment, setAsideEnvironment } = require('./environment');
+const { exportEntries, restoreEntries } = require('./environment-export');
 const { HostRegistry, HostError, cleanSlug, reservedSentence } = require('./host-registry');
 const { domainSettings } = require('./domains');
 const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, MigrationError, recordedParts, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
@@ -100,18 +101,9 @@ const {
   RESERVED_SLUGS = '',
   MIGRATE_ENVIRONMENT_SLUG = '',
   CONTACT_EMAIL = '',
-  // Seed the host's managed AI service, per company (documentation/plans/plan-environments.md, "Managed AI, per
-  // company"): AI_OPENAI_KEY/AI_ANTHROPIC_KEY name a company's key directly; AI_PROVIDER (with AI_ADDRESS,
-  // AI_MODEL, AI_KEY) is the older one-company form, filling whichever company it names -- both still work.
-  AI_PROVIDER = '',
-  AI_ADDRESS = '',
-  AI_MODEL = '',
-  AI_KEY = '',
-  TAVERN_AI_KEY = '', // deprecated: use AI_KEY (used to be an environment's own key; it is the host's now)
-  AI_OPENAI_KEY = '',
-  AI_ANTHROPIC_KEY = '',
-  // An organisation-level Anthropic key needs its workspace id sent with every call (an id, not a secret).
-  AI_ANTHROPIC_WORKSPACE = '',
+  // The product's page on its website, the one link the start page offers (plan-product-site.md): an absolute http(s)
+  // address; unset, no link. Checked at start, below.
+  PRODUCT_SITE_URL = '',
   // Self-serve and billing (plan-environments.md, "Phase 5"): SIGNUP gates POST /api/product/signup -- off unless a
   // host explicitly opts in with SIGNUP=on, so a freshly upgraded host never offers public self-service by
   // surprise. BILLING_SECRET signs the billing webhook (x-billing-signature, HMAC-SHA256 of the raw body) --
@@ -203,6 +195,7 @@ const {
 // The product's own name -- configuration, never code: PRODUCT_NAME, or the default when it is unset, empty or only
 // spaces. One rule, productName() in server/product-name.js, for everything the server answers and says.
 const PRODUCT_NAME = productName();
+const PRODUCT_SHORT_NAME = shortProductName();
 
 // The server's admin (plan-names decisions 7, 15 and 20): ADMIN_LOGIN and ADMIN_PASSWORD, on every kind of install.
 // The old names that went in plan-names step 10 (decision 20), and after it TAVERN_ADMIN_PASSWORD, TAVERN_ADMIN_KEY
@@ -224,7 +217,6 @@ const liveStreamBufferBytes = (() => {
 // Writes the chunks to `res`, or drops the stream when they would put it over the limit (server/stream-write.js).
 const sseWrite = streamWriter(liveStreamBufferBytes);
 const adminPassword = ADMIN_PASSWORD;
-const aiKeyFromEnv = AI_KEY || TAVERN_AI_KEY;
 // The environment a single-environment install moves into on its first start with BASE_DOMAIN (plan-names decision 15).
 const migrateEnvironmentSlug = MIGRATE_ENVIRONMENT_SLUG;
 const signupEnabled = Boolean(BASE_DOMAIN) && SIGNUP === 'on';
@@ -373,6 +365,19 @@ if (domains.stop) {
   console.error(domains.stop);
   process.exit(1);
 }
+// The product's page on its website (PRODUCT_SITE_URL): an absolute http or https address, or nothing. A value that is not one
+// stops the start with one sentence, as a bad PRODUCT_DOMAIN does.
+const PRODUCT_SITE = (() => {
+  const raw = String(PRODUCT_SITE_URL || '').trim();
+  if (!raw) return null;
+  let url = null;
+  try { url = new URL(raw); } catch { /* not an address: refused below */ }
+  if (!url || !/^https?:$/.test(url.protocol) || !url.hostname || url.username || url.password) {
+    console.error(`PRODUCT_SITE_URL=${raw} is not a web address (like https://www.example.com/page). Fix or remove it.`);
+    process.exit(1);
+  }
+  return url.href;
+})();
 // The product host's own label may be an existing environment's slug (the product pages would hide it): read host.json
 // as it is, without opening the registry, so the start that stops writes nothing.
 if (BASE_DOMAIN && domains.productLabel) {
@@ -578,37 +583,17 @@ function migrateSharedFolders() {
 }
 migrateSharedFolders();
 
-// A company's managed slot from the environment alone, before anything saved in host.json is applied:
-// AI_OPENAI_KEY/AI_ANTHROPIC_KEY name that company's key directly; AI_PROVIDER (with AI_ADDRESS, AI_MODEL,
-// AI_KEY) is the older one-company form, filling whichever company it names. Both still work; when both apply
-// to the same company either sets its key.
-function envSlot(provider) {
-  const fromOneCompanyForm = AI_PROVIDER === provider;
-  return {
-    key: (provider === 'openai' ? AI_OPENAI_KEY : provider === 'anthropic' ? AI_ANTHROPIC_KEY : '') || (fromOneCompanyForm ? aiKeyFromEnv : ''),
-    model: fromOneCompanyForm ? AI_MODEL : '',
-    address: provider === 'compatible' && fromOneCompanyForm ? AI_ADDRESS : '',
-    workspace: provider === 'anthropic' ? AI_ANTHROPIC_WORKSPACE : '',
-  };
-}
-// One company's managed slot, combining what is saved (host.json, when there is one -- a single-environment
-// install has none, so the environment variables are the only way to offer a company at all there) with its
-// live environment-variable override: the one place both managedAi (the Ai-facing offer list) and
-// hostAiServices (the host console's own view) start from, so they can never disagree about it.
+// One company's managed slot, as saved on the host (host.json, set on the host console's AI tab). A single-environment
+// install has no host.json, so it offers nothing: its admin sets up the environment's own AI on its AI configuration page.
+// The one place both managedAi (the Ai-facing offer list) and hostAiServices (the host console's own view) start from,
+// so they can never disagree about it.
 function managedSlot(provider) {
   const saved = hostRegistry ? hostRegistry.managedAi[provider] : null;
-  const env = envSlot(provider);
-  const address = provider === 'compatible' ? ((saved && saved.address) || env.address || '') : '';
-  // The environment's key belongs to the environment's address (AI_ADDRESS): once a host admin saves another address for
-  // the compatible service, that key is never sent there; a key has to be saved with the new address.
-  const trim = (a) => String(a || '').trim().replace(/\/$/, '');
-  const envKeyHere = provider !== 'compatible' || trim(address) === trim(env.address);
   return {
-    model: (saved && saved.model) || env.model || '',
+    model: (saved && saved.model) || '',
     key: (saved && saved.key) || '',
-    address,
-    workspace: provider === 'anthropic' ? ((saved && saved.workspace) || env.workspace || '') : '',
-    envKey: envKeyHere ? env.key : '',
+    address: provider === 'compatible' ? ((saved && saved.address) || '') : '',
+    workspace: provider === 'anthropic' ? ((saved && saved.workspace) || '') : '',
   };
 }
 // The host's managed AI offer, every company at once, as an Ai instance reads it: real values, including keys,
@@ -618,24 +603,23 @@ function managedAi() {
   const offers = [];
   for (const provider of MANAGED_PROVIDERS) {
     const slot = managedSlot(provider);
-    const offer = managedOffer(provider, slot, slot.envKey);
+    const offer = managedOffer(provider, slot);
     if (offer) offers.push(offer);
   }
   return offers.length ? offers : null;
 }
-// The same, for the host console: { provider, model, address, workspace, keySet, keyFromEnvironment, offered },
+// The same, for the host console: { provider, model, address, workspace, keySet, offered },
 // one row per company, never a key.
 function hostAiServices() {
   return MANAGED_PROVIDERS.map((provider) => {
     const slot = managedSlot(provider);
-    const offer = managedOffer(provider, slot, slot.envKey);
+    const offer = managedOffer(provider, slot);
     return {
       provider,
       model: offer ? offer.model : slot.model,
       address: slot.address,
       workspace: slot.workspace, // an id, not a secret -- fine to show
-      keySet: !!(slot.envKey || slot.key),
-      keyFromEnvironment: !!slot.envKey,
+      keySet: !!slot.key,
       offered: !!offer,
     };
   });
@@ -730,11 +714,6 @@ function environmentFor(slug) {
   }
   environments.set(key, env);
   const pendingTemplate = useTemplate(env, slug, fresh);
-  // An environment that just migrated its own old custom AI setting to "managed" (see Ai's constructor) gives
-  // that company's own managed slot a starting point, once, if the host has nothing saved for it yet -- so what
-  // worked through the old per-environment AI_KEY keeps working through the host's now instead.
-  const aiSeed = env.ai.migrationSeed();
-  if (aiSeed && hostRegistry) hostRegistry.seedManagedAi(aiSeed.provider, aiSeed);
   // Fire-and-forget: install() reads a zip asynchronously (yauzl), and environmentFor must stay synchronous --
   // every caller, including the resolver middleware, expects an environment back at once. A few milliseconds'
   // delay before an auto-installed module is actually usable is fine today, since nothing yet depends on it
@@ -1415,8 +1394,8 @@ function currentUser(req) {
 }
 
 // A hint, not a session: on a real sign-in at this environment (never the host admin's own), remembers which
-// slugs this browser has used, most recent first, so the product page's own Sign in can offer them back without
-// the host ever learning who anyone is (see "Sign in from the product page" in plan-environments.md). Only set with a
+// slugs this browser has used, most recent first, in the env_hint cookie on the base domain. Nothing but this reads it now: the
+// product page's Sign in is a typed address and offers nothing back (plan-product-site.md, slice 0). Only set with a
 // base domain; never cleared on sign-out, since it names no person, just a short list of addresses.
 function setEnvHint(req, res) {
   if (!BASE_DOMAIN) return;
@@ -1671,7 +1650,7 @@ function branding() {
   const s = store.settings;
   // The template's ordered phases, for the phase chip (plan-one-bar.md, step 3); [] with no template or none in it.
   const phases = (Array.isArray(store.templatePhases) ? store.templatePhases : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
-  return { environmentName: s.environmentName, productName: PRODUCT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
+  return { environmentName: s.environmentName, productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
 }
 
 function initials(name) {
@@ -1746,11 +1725,8 @@ app.use((req, res, next) => {
 // no-cors fetch needs no preflight. So a POST, PUT, PATCH or DELETE that carries a cookie is refused when the browser
 // says it came from anywhere but this origin (Sec-Fetch-Site), or its Origin isn't this one (baseUrl minds
 // X-Forwarded-*). Passes: a Bearer token (Studio; a page elsewhere can't add one without a preflight nobody answers),
-// no cookie at all (webhooks, server-to-server), and neither header (old browsers, curl).
-// Exempt: POST /login, the sign-in form, which the landing page at the bare base domain posts across origins by
-// design; it trusts only the login and password it is sent, never a cookie, and replaces whatever session there was.
+// no cookie at all (webhooks, server-to-server), and neither header (old browsers, curl). No path is exempt.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const CROSS_ORIGIN_EXEMPT = new Set(['/login']);
 function sameOriginOnly(req, res, next) {
   if (/^bearer\s/i.test(req.get('authorization') || '') || !req.get('cookie')) return next();
   const site = req.get('sec-fetch-site');
@@ -1760,7 +1736,7 @@ function sameOriginOnly(req, res, next) {
   }
   next();
 }
-app.use((req, res, next) => (WRITE_METHODS.has(req.method) && !CROSS_ORIGIN_EXEMPT.has(req.path) ? sameOriginOnly(req, res, next) : next()));
+app.use((req, res, next) => (WRITE_METHODS.has(req.method) ? sameOriginOnly(req, res, next) : next()));
 // verify stashes the exact bytes received, alongside the parsed req.body -- the billing webhook's signature
 // (plan-environments.md, "Phase 5") is an HMAC over those bytes, not a re-serialization of the parsed object, which
 // would not reliably reproduce what the sender actually signed (key order, whitespace).
@@ -1775,6 +1751,20 @@ app.use(express.json({ limit: '64kb', type: (req) => !(req.method === 'PUT' && M
 const publicDir = path.join(__dirname, '..', 'public');
 const clientDist = path.join(__dirname, '..', 'node_modules', 'livekit-client', 'dist');
 const page = (name) => path.join(publicDir, name);
+// Pages the static files never serve by their file name: only their own route sends them, with that route's headers
+// (the first-password page: GET /login/first-password, on a hosted install only -- plan-first-password.md; the start page: the product host's /). Matched as
+// the static files would find them: decoded, with ./, ../ and doubled slashes resolved, and in any case.
+const ROUTE_ONLY_FILES = new Set(['login-first-password.html', 'start.html']);
+function routeOnlyFile(reqPath) {
+  let decoded;
+  try { decoded = decodeURIComponent(reqPath); } catch { return false; } // the static files refuse it themselves
+  return ROUTE_ONLY_FILES.has(path.posix.basename(path.posix.normalize(decoded)).toLowerCase());
+}
+// express.static, passing over the route-only pages, which go on to whatever answers an unknown path.
+function publicStatic(options) {
+  const serve = express.static(publicDir, options);
+  return (req, res, next) => (routeOnlyFile(req.path) ? next() : serve(req, res, next));
+}
 // A template file's text, whatever type it is sent as (the JSON body parser reads it when it is JSON).
 const templateFileText = express.text({ type: () => true, limit: 64 * 1024 });
 // A theme file's text (POST /api/themes/import, POST /api/host/themes/check). Its own 16 KB limit: a JSON body is parsed
@@ -1805,7 +1795,9 @@ function sendHostError(err, res) {
   throw err;
 }
 
-hostRouter.use(express.static(publicDir, { index: false }));
+// The console's tab icon: no environment here, so only the product's mark (the same files siteIcon falls back to).
+hostRouter.get(['/img/site/icon', '/favicon.ico'], (req, res) => res.set('Cache-Control', 'no-cache').sendFile(brandIconFile(req.path)));
+hostRouter.use(publicStatic({ index: false }));
 hostRouter.get('/', (_req, res) => res.sendFile(page('host.html')));
 
 // The host admins' own second step (documentation/plans/plan-mfa.md): HOST_MFA_REQUIRED makes it mandatory,
@@ -1935,6 +1927,54 @@ hostRouter.delete('/api/host/environments/:slug/owners/:login/mfa', requireHostA
   res.json({ ok: true });
 });
 
+// --- the first password (documentation/plans/plan-first-password.md) ----------------------------------------------
+// A new owner made at sign-up has no password: a one-time link lets them choose it on the environment's own page. The
+// link's token is in the address's fragment only; only its SHA-256 is kept (firstPassword on the account).
+const FIRST_PASSWORD_SIGNUP_MS = 15 * 60000; // from sign-up, which opens the link at once
+const FIRST_PASSWORD_CONSOLE_MS = 24 * 3600000; // from the console, passed on by hand
+const FIRST_PASSWORD_DEAD = 'This link has expired or was already used. Ask whoever runs this host for a new one.';
+function firstPasswordUrl(req, slug, token) {
+  return `${auth.isSecure(req) ? 'https' : 'http'}://${slug}.${BASE_DOMAIN}${requestPort(req)}/login/first-password#${token}`;
+}
+// The slug of a folder already on disk for this address (DATA_DIR/environments/<slug>, whether or not the registry
+// names it), or null: also null for an address that is not a slug or is reserved, which addEnvironment refuses itself.
+function addressOnDisk(value) {
+  let slug;
+  try { slug = cleanSlug(value); } catch { return null; }
+  if (hostRegistry.isReserved(slug)) return null;
+  try { fs.lstatSync(path.join(DATA_DIR, 'environments', slug)); return slug; } catch { return null; }
+}
+// Undoes an environment made a moment ago in the same request (sign-up, when its owner cannot be made): the registry
+// entry, its services and the folder this request made (the caller checked none was there before), so nothing is left
+// behind. The environment's first build also starts work in the background (the template, the automatic module
+// installs) that writes into its folder, so the folder is removed again once that work is done -- unless the address
+// has been taken again in the meantime, when the folder is the new environment's.
+function discardNewEnvironment(slug) {
+  try { hostRegistry.removeEnvironment(slug); } catch { /* not in the registry */ }
+  const env = environments.get(slug);
+  if (env) { setAsideEnvironment(env); environments.delete(slug); }
+  const dir = path.join(DATA_DIR, 'environments', slug);
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (env?.templateReady) {
+    env.templateReady.finally(() => {
+      if (hostRegistry.findEnvironment(slug) || environments.has(slug)) return;
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+}
+// "New first-password link" (the console): for an owner who still has no password, a fresh link that lives 24 hours,
+// used once. It replaces any older link, which stops working, as does any step begun from it. Answered once, never kept.
+hostRouter.post('/api/host/environments/:slug/owners/:login/first-password', requireHostAdmin, (req, res) => {
+  if (!hostRegistry.findEnvironment(req.params.slug)) return res.status(404).json({ error: 'no such environment' });
+  const env = environmentFor(req.params.slug);
+  const owner = env.store.userByLogin(req.params.login);
+  if (!owner || owner.role !== 'owner') return res.status(404).json({ error: 'no owner with that login there' });
+  if (owner.passwordHash) return res.status(400).json({ error: `This ${env.store.word('owner')} has a password already, so there is no first password to set.` });
+  const token = auth.oneTimeToken();
+  env.store.setFirstPassword(owner.key, { hash: auth.tokenHash(token), expiresAt: new Date(Date.now() + FIRST_PASSWORD_CONSOLE_MS).toISOString() });
+  res.set('Cache-Control', 'no-store').json({ url: firstPasswordUrl(req, req.params.slug, token) });
+});
+
 // What an environment is using, from its own already-built services (building them if it is not running yet -- an
 // admin looking at the list is reason enough to have it up). Storage isn't walked here (a real figure needs
 // reading the whole directory); left null until that is worth the cost.
@@ -1950,6 +1990,14 @@ function environmentUsage(slug) {
     return { members: null, storageBytes: null, aiCallsThisMonth: null, spaces: null };
   }
   return { members: env.store.users.length, storageBytes: null, aiCallsThisMonth: hostRegistry.aiCallsThisMonth(slug), spaces: env.store.spaces.length };
+}
+// The logins of an environment's owners who have no password yet: whom the console's "New first-password link" is for
+// (the route below refuses everyone else). None for an environment that does not open.
+function ownersAwaitingFirstPassword(slug) {
+  if (refusalView(slug)) return [];
+  let env;
+  try { env = environmentFor(slug); } catch { return []; }
+  return env.store.users.filter((u) => u.role === 'owner' && !u.hostAdmin && !u.passwordHash).map((u) => u.login);
 }
 // usage.callsNow for the console, for an environment whose plan caps calls: its running calls counted by the same rule
 // as the cap (runningCalls: someone on the call, not merely in the space), from one list of LiveKit's calls for the
@@ -1981,7 +2029,9 @@ hostRouter.get('/api/host/environments', requireHostAdmin, async (_req, res) => 
   // `template`: the template it was made from, with what was skipped (templateView), or null.
   const list = hostRegistry.listEnvironments();
   const callsNow = await hostCallsNow(list);
-  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t) }; }) });
+  // `awaitingFirstPassword`: the logins of its owners who have no password yet, for the card's "New first-password link"
+  // (plan-first-password.md, Decision 4); never the link, its hash or its times.
+  res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t), awaitingFirstPassword: ownersAwaitingFirstPassword(t.slug) }; }) });
 });
 // The templates an environment can be made from, for the console's create form.
 // Every template, with where it comes from, its version, whether it is hidden and which environments use it.
@@ -2296,12 +2346,14 @@ hostRouter.delete('/api/host/environments/:slug', requireHostAdmin, (req, res) =
 
 // An environment's whole directory, walked into [name, bytes] pairs for zipFiles (server/module-build.js), or read back
 // out of a zip on restore (a general-purpose reader, not modules.js's own readZip -- an environment's own data is
-// whatever shape it is, not the narrow set of file types a module's zip is allowed).
+// whatever shape it is, not the narrow set of file types a module's zip is allowed). A symbolic link is never followed
+// (the server writes none here): it and what it points to stay out of the zip, and the log says which link was skipped.
 function walkFiles(dir, base = dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
-    const st = fs.statSync(full);
-    if (st.isDirectory()) walkFiles(full, base, out);
+    const st = fs.lstatSync(full);
+    if (st.isSymbolicLink()) console.warn(`Left a link out of the zip, not followed: ${full}`);
+    else if (st.isDirectory()) walkFiles(full, base, out);
     else if (st.isFile()) out.push([path.relative(base, full).split(path.sep).join('/'), fs.readFileSync(full)]);
   }
   return out;
@@ -2521,13 +2573,16 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
   if (!hostRegistry.findEnvironment(req.params.slug)) return res.status(404).json({ error: 'no such environment' });
   if (!req.body || !req.body.length) return res.status(400).json({ error: 'choose a zip file to restore' });
   try {
-    const files = await readEnvironmentZip(req.body);
+    let files = await readEnvironmentZip(req.body);
     // A backup whose data (app.json, or the older LEGACY_ENVIRONMENT_RECORD when there is no app.json) cannot be read, or
     // whose app.json (or that older record) records a Names migration part this server does not know (made by a newer version of the product), is
     // refused before anything is replaced. Checked on what would actually land: names as written to disk, the last
     // of any repeated entry.
     const refusal = backupRefusal(files);
     if (refusal) return res.status(400).json({ error: refusal });
+    // The session and stream keys are never taken from a zip: the restored environment makes new ones (everyone signs
+    // in again, and the stream's sources need its new key).
+    files = restoreEntries(files);
     const env = environments.get(req.params.slug);
     if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
     const dir = path.join(DATA_DIR, 'environments', req.params.slug);
@@ -2555,7 +2610,7 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
 
 hostRouter.get('/api/host/settings', requireHostAdmin, (_req, res) => {
   res.json({
-    baseDomain: BASE_DOMAIN, productDomain: PRODUCT_HOST, version: VERSION, hostAdmins: hostRegistry.listAdmins(), productName: PRODUCT_NAME, contactEmail: CONTACT_EMAIL || null,
+    baseDomain: BASE_DOMAIN, productDomain: PRODUCT_HOST, version: VERSION, hostAdmins: hostRegistry.listAdmins(), productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contactEmail: CONTACT_EMAIL || null, productSiteUrl: PRODUCT_SITE,
     plans: hostRegistry.plansCatalog(), signup: signupEnabled, billingSecretSet: Boolean(BILLING_SECRET),
     // The modules this image ships, for the template editor: the built-in two, then the bundled ones by id.
     modules: [...BUILTIN_MODULES, ...bundledModules(BUNDLED_DIR)].map((m) => ({ id: m.id, name: m.name || m.id, icon: m.icon || null })),
@@ -2615,9 +2670,9 @@ hostRouter.post('/api/host/ai/models', requireHostAdmin, async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');
     const slot = managedSlot(provider);
-    // A saved key (or the one from the environment) goes only to the address it belongs to: another address needs a key typed with it.
+    // A saved key goes only to the address it belongs to: another address needs a key typed with it.
     const sameAddress = provider !== 'compatible' || req.body?.address === undefined || String(req.body.address).trim().replace(/\/$/, '') === slot.address;
-    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.envKey || slot.key : '');
+    const key = (typeof req.body?.key === 'string' && req.body.key.trim()) || (sameAddress ? slot.key : '');
     const workspace = typeof req.body?.workspace === 'string' ? req.body.workspace : slot.workspace;
     res.json({ models: await listModelsFor({ provider, address: req.body?.address ?? slot.address, key, workspace }) });
   } catch (err) {
@@ -2791,37 +2846,32 @@ hostRouter.delete('/api/host/admins/:key', requireHostAdmin, (req, res) => {
     sendHostError(err, res);
   }
 });
-// The product's use pages at the product host: each address, its file in public/ and the template it advertises.
-// A page is live only while that template is among the host's offered ones (templateChoices(null)) and its file exists;
-// otherwise the address answers 404 like any unknown path (plan-product-pages.md, decisions 7, 8 and 10).
-const PRODUCT_PAGES = [
-  { path: '/travel', file: 'travel.html', template: 'travel' },
-  { path: '/games', file: 'games.html', template: 'games' },
-  { path: '/projects', file: 'projects.html', template: 'projects' },
-];
-const livePages = () => {
-  if (!BASE_DOMAIN) return [];
-  const offered = new Set(templateChoices(null).map((t) => t.id));
-  return PRODUCT_PAGES.filter((p) => offered.has(p.template) && fs.existsSync(page(p.file)));
-};
-// The product itself, for the landing page (the product host) and the console (admin.<base>): public, no
+// The product itself, for the start page (the product host) and the console (admin.<base>): public, no
 // session needed, and harmless anywhere else it happens to be reached. name and contact are configuration, never
 // code, since the product's own name is still being chosen. Registered on hostRouter here (admin.<base> only
 // ever reaches it through here anyway); the main app's own copy is registered after the resolver below, not
 // here, so an old-base-domain request still 301s instead of this one route quietly bypassing that.
-// `pages`: the use pages live on this host ([{ path, template }]), so the front page links only those.
+// `productSiteUrl`: the product's page on its website (PRODUCT_SITE_URL), or null; the start page's one link out.
 function productInfo(_req, res) {
   const plans = hostRegistry ? Object.entries(hostRegistry.plansCatalog()).map(([id, p]) => ({ id, name: p.name, caps: p.caps, checkoutUrl: checkoutUrlFor(id) })) : [];
   // `templates`: what a new environment can be made from ([{ id, name, description }]), for the sign-up form.
   // `productDomain`: where the product pages live (PRODUCT_DOMAIN, else the bare base domain); null without a base domain.
-  res.json({ name: PRODUCT_NAME, contact: CONTACT_EMAIL || null, baseDomain: BASE_DOMAIN || null, productDomain: PRODUCT_HOST || null, version: VERSION, signup: signupEnabled, plans, templates: BASE_DOMAIN ? templateChoices(null).map(({ id, name, description }) => ({ id, name, description })) : [], pages: livePages().map(({ path: p, template }) => ({ path: p, template })) });
+  res.json({ name: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, contact: CONTACT_EMAIL || null, baseDomain: BASE_DOMAIN || null, productDomain: PRODUCT_HOST || null, version: VERSION, signup: signupEnabled, plans, templates: BASE_DOMAIN ? templateChoices(null).map(({ id, name, description }) => ({ id, name, description })) : [], productSiteUrl: PRODUCT_SITE });
 }
 hostRouter.get('/api/product', productInfo);
-// One environment's public name, for the product page's own Sign in (a slug is an address already, so confirming
-// one exists reveals nothing): { slug, name } for an active or pastDue environment, 404 for anything else --
-// unknown, suspended, or a slug that does not even look like one (checked before it ever reaches the registry).
+// One environment's public name, for the product page's typed address (a slug is an address already, so confirming
+// one exists reveals only what visiting it would): { slug, name } for an active or pastDue environment, 404 for
+// anything else -- unknown, suspended, refused at startup (its data could not be opened, so it cannot be signed in to),
+// or a slug that does not even look like one (checked before the registry).
+// There is deliberately no list of environments: nobody is shown anyone else's (plan-product-site.md, decision 1).
+// It shares the address check's limit (addressLimiter, below): 120 a minute from one address, then 429.
+const addressLimiter = new auth.LoginLimiter(120, 60000);
+const TOO_MANY_CHECKS = 'Too many checks from this address; try again in a minute.';
 function productEnvironment(req, res) {
   if (!hostRegistry) return res.status(404).json({ error: 'not found' });
+  const ip = req.ip || 'unknown';
+  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
+  addressLimiter.fail(ip);
   let slug;
   try {
     slug = cleanSlug(req.query.slug);
@@ -2829,31 +2879,21 @@ function productEnvironment(req, res) {
     return res.status(404).json({ error: 'not found' });
   }
   const environment = hostRegistry.findEnvironment(slug);
-  if (!environment || (environment.status !== 'active' && environment.status !== 'pastDue')) return res.status(404).json({ error: 'not found' });
+  if (!environment || (environment.status !== 'active' && environment.status !== 'pastDue') || refusals.has(environment.slug)) return res.status(404).json({ error: 'not found' });
   res.json({ slug: environment.slug, name: environment.name });
 }
 hostRouter.get('/api/product/environment', productEnvironment);
-// The same, as a list, for the product page's own Sign in dropdown: every active or pastDue environment, sorted
-// by name, suspended ones left out entirely (not even a slug -- there is nothing for a visitor to do with one).
-function productEnvironments(_req, res) {
-  if (!hostRegistry) return res.json({ environments: [] });
-  const environments = hostRegistry
-    .listEnvironments()
-    .filter((t) => (t.status === 'active' || t.status === 'pastDue') && !refusals.has(t.slug)) // a refused one cannot be signed in to
-    .map((t) => ({ slug: t.slug, name: t.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  res.json({ environments });
-}
-hostRouter.get('/api/product/environments', productEnvironments);
 // Whether a name could be a new environment's, for the sign-up form's note as the name is typed (plan-domains.md):
-// { slug, free, reason }, reason 'shape', 'reserved' or 'taken', null when free. Public; an address gets 120 a minute.
-const addressLimiter = new auth.LoginLimiter(120, 60000);
+// { slug, free, reason }, reason 'shape', 'reserved' or 'taken', null when free. Public; an address gets 120 a minute,
+// counted together with the lookup above.
 function productAddress(req, res) {
   if (!hostRegistry) return res.status(404).json({ error: 'not found' });
   const ip = req.ip || 'unknown';
-  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: 'Too many checks from this address; try again in a minute.' });
+  if (addressLimiter.blocked(ip)) return res.status(429).json({ error: TOO_MANY_CHECKS });
   addressLimiter.fail(ip);
-  res.json(hostRegistry.addressFor(req.query.slug));
+  const answer = hostRegistry.addressFor(req.query.slug);
+  // A folder left on disk with no registry entry is taken too, as sign-up treats it (and says no more than that).
+  res.json(answer.free && addressOnDisk(answer.slug) ? { slug: answer.slug, free: false, reason: 'taken' } : answer);
 }
 hostRouter.get('/api/product/address', productAddress);
 hostRouter.use((_req, res) => res.status(404).json({ error: 'not found' }));
@@ -2862,8 +2902,8 @@ hostRouter.use((_req, res) => res.status(404).json({ error: 'not found' }));
 // With no BASE_DOMAIN every request is the one environment (today's behaviour, unchanged). With BASE_DOMAIN set, the
 // hostname picks one branch, in this order (documentation/plans/plan-domains.md, "The door"):
 //   1. admin.<base> is the host console above;
-//   2. the product host (PRODUCT_DOMAIN, else the bare <base>) serves the product's own pages: the front page, the use
-//      pages and sign-up, never any one environment's;
+//   2. the product host (PRODUCT_DOMAIN, else the bare <base>) serves the product's start page (public/start.html) and
+//      sign-up, never any one environment's;
 //   3. a host at an old base domain (PREVIOUS_BASE_DOMAINS) is redirected (301) to the same path at the current one --
 //      after the product host, so an old base that is now the product host never catches it;
 //   4. the bare <base>, when the product pages live elsewhere, is redirected (302) there, path and query kept;
@@ -2881,11 +2921,20 @@ function requestPort(req) {
 function redirectToHost(req, res, status, newHost) {
   return res.redirect(status, `${auth.isSecure(req) ? 'https' : 'http'}://${newHost}${newHost.includes(':') ? '' : requestPort(req)}${req.originalUrl}`);
 }
-// The paths the product host lets through beside / and the use pages: what those pages load and ask.
+// The paths the product host lets through beside /: what the start page loads and asks.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
-const designSystemStatic = express.static(publicDir, { index: false }); // static files only, a miss is a plain 404 here
-const PRODUCT_HOST_PATHS = ['/landing.css', '/landing.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/environments', '/api/product/address', '/api/product/signup'];
+// The modules' stylesheets and icons, for the Design System pages: read from modules/*/src on each request, so the committed
+// public/design-system/sources.js holds nothing from a module (server/design-system-modules.js).
+app.get('/design-system/module-sources.js', (req, res) => {
+  try {
+    res.type('application/javascript').set('Cache-Control', 'no-cache').send(require('./design-system-modules').moduleSourcesJs(path.join(__dirname, '..'), path.dirname(require.resolve('@fortawesome/fontawesome-free/package.json'))));
+  } catch (err) {
+    res.status(500).type('text').send('The sources for the Design System could not be read.');
+  }
+});
+const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
+const PRODUCT_HOST_PATHS = ['/start.css', '/start.js', '/theme-head.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
   app.use((req, res, next) => {
     const host = (req.hostname || '').toLowerCase();
@@ -2893,13 +2942,11 @@ if (BASE_DOMAIN) {
     // outside hostRouter (mounted on `app`, below, since the product host needs it too) -- let through to
     // there rather than into hostRouter, whose own catch-all would otherwise 404 it before it ever arrived.
     if (host === CONSOLE_HOST) return (req.path.startsWith('/fa/') || req.path.startsWith('/fonts/')) ? next() : hostRouter(req, res, next);
-    // The product's own landing page (public/landing.html), never any one environment's page -- no store is ever
+    // The product's own start page (public/start.html), never any one environment's page -- no store is ever
     // resolved here (see the "no environment" fallback in /theme.css and siteIcon above). Only the handful of paths
-    // those pages actually need are let through; anything else is a plain 404, same as an unknown subdomain.
+    // the page actually needs are let through; anything else is a plain 404, same as an unknown subdomain.
     if (host === PRODUCT_HOST) {
-      if (req.path === '/') return res.sendFile(page('landing.html'), { dotfiles: 'allow' });
-      const useSite = livePages().find((p) => p.path === req.path);
-      if (useSite) return res.sendFile(page(useSite.file), { dotfiles: 'allow' });
+      if (req.path === '/') return res.sendFile(page('start.html'), { dotfiles: 'allow' });
       // A folder of the design system pages (/design-system/, /design-system/legacy/inventory/) is its index.html; a folder without one is a 404.
       if (/^\/design-system\/(?:[a-z0-9-]+\/)*$/.test(req.path)) return res.sendFile(path.join(publicDir, req.path, 'index.html'), { dotfiles: 'allow' }, (err) => { if (err) res.status(404).type('text').send('not found'); });
       if (req.path.startsWith('/design-system/') || req.path.startsWith('/sdk/') || DESIGN_SYSTEM_FILES.includes(req.path)) return designSystemStatic(req, res, () => res.status(404).type('text').send('not found'));
@@ -2921,7 +2968,6 @@ if (BASE_DOMAIN) {
 }
 app.get('/api/product', productInfo);
 app.get('/api/product/environment', productEnvironment);
-app.get('/api/product/environments', productEnvironments);
 app.get('/api/product/address', productAddress);
 // Sign-up at the product host (plan-environments.md, "Phase 5"): always the free plan -- any other named plan
 // needs billing first, so the sign-up form only ever offers it as the plan to move to afterwards, through the
@@ -2935,17 +2981,34 @@ app.post('/api/product/signup', (req, res) => {
   if (signupLimiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a bit' });
   signupLimiter.fail(ip);
   try {
+    // No password at sign-up (plan-first-password.md): the owner chooses it on the new environment's own page, through
+    // a one-time link. The owner's login is checked before anything is made, so a refusal leaves nothing behind.
     const owner = req.body?.owner;
-    if (!owner?.login || !owner?.password) throw new HostError('an owner login and password are required');
+    const has = (obj, key) => Boolean(obj) && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key);
+    if (has(owner, 'password') || has(req.body, 'password')) throw new HostError(`Sign-up takes no password. You choose it on your new ${word('environment')}'s own page.`);
+    // Only text is cleaned: anything else (an object, a list, a number) is refused, never turned into words.
+    const login = owner && typeof owner === 'object' && typeof owner.login === 'string' ? cleanLogin(owner.login) : '';
+    if (!login) throw new HostError(`Sign-up needs the ${word('owner')}'s login.`);
+    if (owner.displayName != null && typeof owner.displayName !== 'string') throw new HostError(`The ${word('owner')}'s name must be text.`);
+    if (req.body?.name != null && typeof req.body.name !== 'string') throw new HostError(`The ${word('environment')}'s name must be text.`);
     const free = hostRegistry.plansCatalog().free;
     const template = chosenTemplate(req.body?.template);
+    // A folder already on disk for this address with no registry entry (left behind) is someone's data: refused as the
+    // address being taken, with the same answer, and never read, changed or removed.
+    const asked = addressOnDisk(req.body?.slug);
+    if (asked) throw new HostError(`"${asked}" is already in use`, 409);
     const environment = hostRegistry.addEnvironment({ slug: req.body?.slug, name: req.body?.name, plan: { name: 'free', ...free.caps }, template });
-    const made = environmentFor(environment.slug).store.addUser({ login: owner.login, displayName: owner.displayName || owner.login, role: 'owner', passwordHash: auth.hashPassword(owner.password) });
-    // The new environment's sign-in, its login filled in (plan-domains.md, decision 10): the product host is another
-    // site from the environment, so no session comes along. The port is carried the same way the door's redirects
-    // carry it (requestPort, above).
-    const newHost = `${environment.slug}.${BASE_DOMAIN}`;
-    res.status(201).json({ url: `${auth.isSecure(req) ? 'https' : 'http'}://${newHost}${requestPort(req)}/login?login=${encodeURIComponent(made.login)}` });
+    const token = auth.oneTimeToken();
+    try {
+      environmentFor(environment.slug).store.addUser({ login, displayName: owner.displayName || login, role: 'owner', passwordHash: null, firstPassword: { hash: auth.tokenHash(token), expiresAt: new Date(Date.now() + FIRST_PASSWORD_SIGNUP_MS).toISOString() } });
+    } catch (err) {
+      // The folder was checked to be absent above, with nothing in between that waits, so this request made it.
+      discardNewEnvironment(environment.slug); // nothing is left behind: no environment without its owner
+      throw err;
+    }
+    // The new environment's first-password page, the token in the fragment only (never sent to a server, a log or a
+    // Referer). Not kept in any cache. The product host is another site from the environment, so no session comes along.
+    res.set('Cache-Control', 'no-store').status(201).json({ url: firstPasswordUrl(req, environment.slug, token) });
   } catch (err) {
     sendHostError(err, res);
   }
@@ -2969,12 +3032,19 @@ const FRAMED_HERE = { 'Content-Security-Policy': "frame-ancestors 'self'", 'X-Fr
 const FRAMED_HERE_PATHS = new Set([
   '/profile', '/admin', '/login', '/login/verify', '/login/enrol', '/register',
   '/profile.html', '/admin.html', '/module-config.html', '/login.html', '/login-step.html', '/register.html', '/module.html', '/destination.html',
+  ...(BASE_DOMAIN ? ['/login/first-password'] : []), // a hosted install's only, and never by its file name (ROUTE_ONLY_FILES; plan-first-password.md)
   ...destinations.DESTINATIONS.map((d) => d.path),
-]);
+].map((p) => framingPath(p)));
+// A path as the router matches it: the router ignores case and a trailing slash (Express's defaults), so the framing
+// decision must too, or /Login/ would reach the sign-in page without its headers.
+function framingPath(p) {
+  return String(p).toLowerCase().replace(/\/+$/, '') || '/';
+}
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path === '/space.html') res.set(NOT_FRAMED);
-  else if (FRAMED_HERE_PATHS.has(req.path) || /^\/profile\/[^/]+$/.test(req.path) || /^\/invite\/[^/]+$/.test(req.path)) res.set(FRAMED_HERE);
+  const p = framingPath(req.path);
+  if (p === '/space.html') res.set(NOT_FRAMED);
+  else if (FRAMED_HERE_PATHS.has(p) || /^\/profile\/[^/]+$/.test(p) || /^\/invite\/[^/]+$/.test(p)) res.set(FRAMED_HERE);
   next();
 });
 // A page a frame asked for that would otherwise redirect a framed request into a page that refuses frames (/, a guest
@@ -3014,38 +3084,13 @@ app.get('/login/enrol', (req, res) => {
   if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
   res.sendFile(page('login-step.html'));
 });
-
-// The product page's own Sign in ends here: a plain top-level form post (never JSON, so nothing crosses
-// origins), on success a session exactly like POST /api/login, then a redirect rather than a JSON body -- a
-// path on this environment, never off it (so a scheme, a host or even a second leading slash, which a browser
-// reads as scheme-relative, falls back to "/"). A wrong login and password looks the same as a wrong password,
-// same as the JSON route.
-const loginForm = express.urlencoded({ extended: false, limit: '8kb' });
-function safeNextPath(next) {
-  const value = String(next || '');
-  return value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\') ? value : '/';
-}
-app.post('/login', loginForm, (req, res) => {
-  const ip = req.ip || 'unknown';
-  const login = String(req.body?.login || '');
-  const fail = () => res.redirect(303, `/login?error=1&login=${encodeURIComponent(login)}`);
-  if (limiter.blocked(ip)) return fail();
-  const user = resolveLoginUser(login, String(req.body?.password || ''));
-  if (!user) {
-    limiter.fail(ip);
-    return fail();
-  }
-  limiter.clear(ip);
-  const gate = mfaGate(req, user);
-  if (gate) {
-    auth.setPendingCookie(req, res, gate.pending);
-    const next = encodeURIComponent(safeNextPath(req.body?.next));
-    return res.redirect(303, `/login/${gate.enrol ? 'enrol' : 'verify'}?next=${next}`);
-  }
-  const token = auth.issueSession(store.sessionSecret, user);
-  auth.setSessionCookie(req, res, token);
-  setEnvHint(req, res);
-  res.redirect(303, safeNextPath(req.body?.next));
+// A new owner's first-password page (plan-first-password.md), on a hosted install only. It never redirects, signed in
+// or not: a redirect would carry the address's fragment, the one-time token, on to the next page. Kept in no cache and
+// sends no Referer.
+app.get('/login/first-password', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res.sendFile(page('login-first-password.html'), (err) => { if (err && !res.headersSent) res.status(404).type('text').send('not found'); });
 });
 
 // Self sign-up (only does anything once an admin turns it on in Settings)
@@ -3104,18 +3149,19 @@ app.get('/admin', (req, res) => {
 
 // Images ---------------------------------------------------------------------
 
-// The server icon: the one set on the Settings tab, else the Coffee Pub
-// brandmark. Also mounted at the conventional /favicon.ico path -- pages set
-// their own <link rel="icon"> (see brand.js), but plenty of browsers and
-// tools still fetch that path directly (bookmarks, tab previews, before any
-// page JS has run) and got a bare 404 without this.
-function siteIcon(_req, res) {
-  // No environment at the bare base domain (the landing page): the bundled default, same as any environment
+// The server icon: the one set on the Settings tab, else the product's mark (public/assets/images/brand/: favicon.svg,
+// which turns to the mark's dark colours when the browser is dark). Also mounted at the conventional /favicon.ico path,
+// where the default is the mark as a real .ico -- pages set their own <link rel="icon"> (see brand.js), but plenty of
+// browsers and tools still fetch that path directly (bookmarks, tab previews, before any page JS has run).
+const BRAND_DIR = path.join(publicDir, 'assets', 'images', 'brand');
+function brandIconFile(reqPath) { return path.join(BRAND_DIR, reqPath === '/favicon.ico' ? 'favicon.ico' : 'favicon.svg'); }
+function siteIcon(req, res) {
+  // No environment at the product host (the start page): the bundled default, same as any environment
   // that has not set its own.
   const env = envContext.getStore();
   const file = env && env.store.iconPath();
   if (file) return sendImage(res, file);
-  res.set('Cache-Control', 'no-cache').sendFile(path.join(publicDir, 'assets', 'images', 'brand', 'brandmark-color.png'));
+  res.set('Cache-Control', 'no-cache').sendFile(brandIconFile(req.path));
 }
 app.get('/img/site/icon', siteIcon);
 app.get('/favicon.ico', siteIcon);
@@ -3193,16 +3239,22 @@ app.get('/manifest.webmanifest', (_req, res) => {
   const custom = store.iconPath();
   const icons = [];
   if (custom && /\.png$/.test(custom)) icons.push({ src: '/img/site/icon', sizes: 'any', type: 'image/png' });
-  icons.push({ src: '/assets/images/brand/brandmark-color.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' });
+  // The product's mark on its cream square, as the brand kit draws its app icons.
+  icons.push(
+    { src: '/assets/images/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/assets/images/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/assets/images/brand/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+  );
   res.set('Cache-Control', 'no-cache').type('application/manifest+json').json({
     name: s.environmentName,
-    short_name: s.environmentName.length > 12 ? s.environmentName.slice(0, 12) : s.environmentName,
+    // An environment still called by the product's name gets the product's short name ("Chameleon"), not a cut one.
+    short_name: s.environmentName === PRODUCT_NAME ? PRODUCT_SHORT_NAME : s.environmentName.length > 12 ? s.environmentName.slice(0, 12) : s.environmentName,
     description: `${s.environmentName}: voice and video calls`,
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    background_color: '#1a1410',
-    theme_color: '#1a1410',
+    background_color: '#0e1a2b',
+    theme_color: '#0e1a2b',
     icons,
   });
 });
@@ -3250,7 +3302,7 @@ for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req
 // admin has set (Manage > Settings > Theme), both its light and its dark set
 // (server/theme-css.js), as :root overrides -- linked
 // after style.css on every page, so the cascade lets it win without
-// touching style.css itself. Nothing set yet means only Strong Coffee's
+// touching style.css itself. Nothing set yet means only the default theme's
 // light set, under data-theme-mode="light", so an untouched server still
 // looks exactly like style.css's own built-in defaults.
 // This is also why the popped-out call window (space.js clones every
@@ -3260,9 +3312,10 @@ for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req
 app.get('/theme.css', (req, res) => {
   res.set('Content-Type', 'text/css');
   res.set('Cache-Control', 'no-cache');
-  // No environment at the bare base domain (the landing page): no theme there either, same as one that has not set one.
+  // No environment at the product host (the start page): the bundled default theme, light unless the browser picked dark
+  // (public/theme-head.js), since there is no owner's theme to follow.
   const env = envContext.getStore();
-  if (!env) return res.send('');
+  if (!env) return res.send(themeCssLib.themeCss({ light: DEFAULT_THEME.light, dark: DEFAULT_THEME.dark }, 'light'));
   // Both modes, each under its own <html data-theme-mode> (server/theme-css.js); a page without the attribute shows
   // the signed-in person's own mode, else the environment's default, so the first paint is already right.
   const person = currentUser(req);
@@ -3273,7 +3326,7 @@ app.get('/theme.css', (req, res) => {
 // public page and routes a link opens, with no session. Ahead of the static files, so /shared.html has its headers too.
 mountVaultShares(app, { express, vault, modules, store, auth, word, libraryAccess, libraryHeaders, dropUploadBody, noteActivity, slugOf: () => currentEnvironment().slug || '', sharePage: page('shared.html'), makerCan: shareMakerCan });
 
-app.use(express.static(publicDir, { index: false }));
+app.use(publicStatic({ index: false }));
 
 // Public API ------------------------------------------------------------------
 
@@ -3333,11 +3386,68 @@ app.post('/api/login/verify', (req, res) => {
   res.json({ user: publicUser(req, fresh, { self: true }), token });
 });
 
+// The first password (plan-first-password.md), on a hosted install only. The exchange uses the link's token once and
+// starts a ten-minute step (the pending cookie, purpose first-password, naming this owner, this environment and this
+// claim); the set step ({ login, password }) chooses the password and then finishes the sign-in as POST /api/login
+// does (mfaGate). Every
+// refusal of either is the same 401 and sentence, and counts against this environment's sign-in limit.
+app.post('/api/login/first-password', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set('Cache-Control', 'no-store');
+  const ip = req.ip || 'unknown';
+  if (limiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a few minutes' });
+  const hash = auth.tokenHash(typeof req.body?.token === 'string' ? req.body.token : ''); // hashed before anything is looked up
+  const claimed = store.claimFirstPassword(hash);
+  if (!claimed) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  limiter.clear(ip);
+  auth.setPendingCookie(req, res, auth.issuePending(store.sessionSecret, { userKey: claimed.user.key, env: currentEnvironment().slug || '', purpose: 'first-password', claim: claimed.claim }));
+  res.json({ login: claimed.user.login, displayName: claimed.user.displayName, environmentName: store.settings.environmentName });
+});
+app.post('/api/login/first-password/set', (req, res, next) => {
+  if (!BASE_DOMAIN) return next();
+  res.set('Cache-Control', 'no-store');
+  const ip = req.ip || 'unknown';
+  if (limiter.blocked(ip)) return res.status(429).json({ error: 'too many attempts, try again in a few minutes' });
+  const pendingToken = auth.parseCookies(req.get('cookie'))[auth.PENDING_COOKIE] || null; // the cookie only, never the body
+  const pend = pendingToken && auth.readPending(store.sessionSecret, pendingToken, { env: currentEnvironment().slug || '', purpose: 'first-password' });
+  const user = pend && store.userByKey(pend.u);
+  // The login the page names, sent with the password: the step must be that owner's. The browser keeps only the newest
+  // step's cookie, so a page still naming an older link's owner (another tab, a slower answer) never sets this one's.
+  const named = typeof req.body?.login === 'string' ? cleanLogin(req.body.login) : '';
+  if (!user || user.role !== 'owner' || user.hostAdmin || user.passwordHash || !pend.c || user.firstPassword?.claim !== pend.c || !named || named !== user.login) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  const password = req.body?.password;
+  if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'A password needs at least 8 characters.' });
+  if (password.length > 200) return res.status(400).json({ error: 'A password can have at most 200 characters.' });
+  const fresh = store.finishFirstPassword(user.key, pend.c, auth.hashPassword(password));
+  if (!fresh) {
+    limiter.fail(ip);
+    return res.status(401).json({ error: FIRST_PASSWORD_DEAD });
+  }
+  limiter.clear(ip);
+  const gate = mfaGate(req, fresh);
+  if (gate) {
+    auth.setPendingCookie(req, res, gate.pending); // replaces the first-password step with the second step's
+    return res.json({ mfaRequired: true, enrol: gate.enrol });
+  }
+  auth.clearSessionCookie(req, res, auth.PENDING_COOKIE);
+  auth.setSessionCookie(req, res, auth.issueSession(store.sessionSecret, fresh));
+  setEnvHint(req, res);
+  res.json({ user: publicUser(req, fresh, { self: true }) });
+});
+
 // Self sign-up: only works while an admin has it turned on. A self-signed
 // account is a normal user, in the Lobby like everyone (that's automatic,
 // not something to grant).
 app.post('/api/register', (req, res) => {
-  if (!store.settings.allowRegistration) return res.status(403).json({ error: 'sign-up is turned off' });
+  // Also off while an owner here has not yet set their first password, so nobody arrives before the owner
+  // (plan-first-password.md).
+  if (!store.settings.allowRegistration || store.awaitingFirstPassword()) return res.status(403).json({ error: 'sign-up is turned off' });
   if (refuseOverMembers(res)) return;
   const { login, displayName, password } = req.body || {};
   if (!password) throw new StoreError('a password is required');
@@ -6760,23 +6870,32 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
   if (manifest.library && !who.user) throw Object.assign(refError(403, `your role can't see that ${word('module')}`), { unseen: true });
   if (shutFromGuests(who, manifest, scope === 'space' ? String(space) : null)) throw Object.assign(refError(403, guestsShutRefusal(manifest)), { unseen: true });
   // `hide`: the provider's fields this viewer may not see there (hiddenFor), left out of every summary made from it.
-  return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) } };
+  // `sees`: for a library's files, which of them this viewer may see there (fileSight); objectRows and objectValue ask it.
+  return { manifest, produce, scopeKey, hide: hiddenFor(who, manifest, scope === 'space' ? String(space) : null), ref: { module: provider, kind, scope: scope === 'space' ? 'space' : scope === 'person' ? 'person' : 'environment', ...(scope === 'space' ? { space: String(space) } : {}) }, ...(manifest.library && produce.kind === 'file' && scope === 'space' ? { sees: fileSight(who, String(space), manifest.id) } : {}) };
 }
 
 // A library module's files are its objects of kind `file` (plan-attachments-vault.md, section 4): their records are in
 // DATA_DIR/modules/<id>/library/, not in the module's data, so every reader of "the objects of a kind" goes through these.
 const isFileKind = (manifest, produce) => Boolean(manifest.library) && produce.kind === 'file';
-// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records.
+// The rows of a produced kind in one scope, [{ key, value }]: the module's data under the kind's key, or a library's records
+// this viewer may see (a file hidden from them is not a row: search, the AI's pool and every list leave it out).
 function objectRows(at, prefix) {
   if (isFileKind(at.manifest, at.produce)) {
-    if (at.ref.scope !== 'space') return [];
-    return vault.list(at.manifest.id, at.ref.space).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
+    if (at.ref.scope !== 'space' || !at.sees) return [];
+    return vault.list(at.manifest.id, at.ref.space).filter(at.sees).map((r) => ({ key: `${prefix}${r.id}`, value: r }));
   }
   return moduleData.list(at.manifest.id, at.scopeKey, prefix);
 }
+// A library file that is there but hidden from this viewer (plan-vault-privacy.md, decision 7): 403 and unseen, so a link
+// to it reads hidden, never gone, and nothing of it is said. `hiddenFile` lets a link that holds it keep it.
+const HIDDEN_FILE = 'that file is not shared with you';
 // One stored object's value (a library's record for a file), or null.
 function objectValue(at, id) {
-  if (isFileKind(at.manifest, at.produce)) return at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+  if (isFileKind(at.manifest, at.produce)) {
+    const r = at.ref.scope === 'space' ? vault.get(at.manifest.id, at.ref.space, id) : null;
+    if (r && !(at.sees && at.sees(r))) throw Object.assign(refError(403, HIDDEN_FILE), { unseen: true, hiddenFile: true });
+    return r;
+  }
   const item = moduleData.get(at.manifest.id, at.scopeKey, at.produce.key.replace('{id}', String(id)));
   return item ? item.value : null;
 }
@@ -7331,7 +7450,15 @@ app.post('/api/objects/links', (req, res) => {
   for (const to of (Array.isArray(req.body?.to) ? req.body.to : []).slice(0, 20)) {
     if (to && to.scope === 'person') continue; // a shared link never points into someone's private data
     if (only !== null && !(to && to.kind === only)) return res.status(400).json({ error: `every link must be to a ${only}` });
-    if (mode === 'remove') { if (refShape(to)) tos.push(to); continue; } // taking a link out needs no sight of what it pointed at
+    if (mode === 'remove') {
+      // Taking a link out needs no sight of what it pointed at, except a library file hidden from this person: they can't
+      // take out a link to it, and it is passed over as quietly as one the object doesn't hold, so the answer is the same
+      // whether it is held or not (plan-vault-privacy.md). A link to a removed file ("File removed") can still be taken out.
+      if (!refShape(to)) continue;
+      if (isLibraryFileRef(to) && held.some((h) => objectKey(h) === objectKey(to)) && !refFileSeen(who, to, true)) continue;
+      tos.push(to);
+      continue;
+    }
     try {
       resolveRef(who, to, asker);
       tos.push(to);
@@ -7341,8 +7468,23 @@ app.post('/api/objects/links', (req, res) => {
       if (err.status === 404 && refShape(to) && held.some((h) => objectKey(h) === objectKey(to)) && modules.enabled(to.module)?.manifest.library && to.kind === 'file') tos.push(to);
     }
   }
+  // A link this person can't see (a file not shared with them) is not theirs to drop: replacing the object's links keeps
+  // it, so a booking keeps the file someone else attached. Only someone who can see it, or names it in op remove, takes it out.
+  if (mode === 'replace') {
+    for (const h of held) {
+      if ((only !== null && h.kind !== only) || tos.some((t) => refShape(t) && objectKey(t) === objectKey(h))) continue;
+      try {
+        resolveRef(who, h, asker);
+      } catch (err) {
+        if (!err.status) throw err;
+        if (err.hiddenFile) tos.push(h);
+      }
+    }
+  }
   moduleLinks.set(from, tos, who.user?.key || 'guest', only, mode);
-  res.json({ links: mode === 'replace' ? tos.length : moduleLinks.from(from).filter((l) => l.kind === only).length });
+  // Only the links this person can see are counted.
+  const counted = mode === 'replace' ? tos : moduleLinks.from(from).filter((l) => l.kind === only);
+  res.json({ links: counted.filter((l) => !isLibraryFileRef(l) || refFileSeen(who, l, true)).length });
 });
 
 // What points at an item (`dir=to`, for the module that owns it, if it shows backlinks) or what it
@@ -8342,7 +8484,65 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   const perms = modulePerms(who, space.id);
   const can = (key) => Boolean(perms[`module.${manifest.id}.${key}`]);
   if (need && !can(need)) return refuse(403, `Your role can't do that in ${name}.`);
-  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space) };
+  return { manifest, entry, name, who, space, spaceId: space.id, by: who.user.key, can, owner: hasOwnerRights(who.user), moderator: moderates(who.user, space), sees: fileSight(who, space.id, manifest.id) };
+}
+
+// --- who may see a library file (documentation/plans/plan-vault-privacy.md) --------------------------------------------
+// The one place the rule is written. A record's `visibility` is 'everyone' (also when it has none), 'only-me' or
+// 'people' (with `people`, user keys); anything else is read as 'only-me', so a damaged record shows to fewer people,
+// never more. `fileSight(who, spaceId, moduleId)` answers the test for one viewer in one space, worked out once for a
+// whole list; `fileVisible` asks it for one record. A file shows to:
+//   1. the person who added it;
+//   2. an owner or the admin (hasOwnerRights);
+//   and, for a current member of the space only:
+//   3. everyone, when it is 'everyone';
+//   4. someone whose role there has the module's `see_all` ("See every file");
+//   5. someone listed in `people`, when it is 'people' (a listed key that is not a member now grants nothing).
+// Nobody else: a signed-out visitor, the access key and a guest see no file. Every route, the object chokepoint and the
+// live streams ask this; a file someone can't see answers as one that is not there (library routes) or as hidden (objects).
+const visibilityOf = (r) => (r.visibility === undefined || r.visibility === 'everyone' ? 'everyone' : r.visibility === 'people' ? 'people' : 'only-me');
+function fileSight(who, spaceId, moduleId) {
+  const user = who && !who.keyed ? who.user : null;
+  if (!user) return () => false;
+  if (hasOwnerRights(user)) return (r) => Boolean(r);
+  const space = store.spaceById(String(spaceId || ''));
+  const member = Boolean(space && space.members.includes(user.key));
+  const seesAll = member && Boolean(store.spacePermissions(user.key, space.id)[`module.${moduleId}.see_all`]);
+  return (r) => {
+    if (!r) return false;
+    if (r.by === user.key) return true;
+    if (!member) return false;
+    const vis = visibilityOf(r);
+    if (vis === 'everyone' || seesAll) return true;
+    return vis === 'people' && Array.isArray(r.people) && r.people.includes(user.key);
+  };
+}
+const fileVisible = (who, spaceId, moduleId, r) => fileSight(who, spaceId, moduleId)(r);
+// A pointer to a library file, and whether this viewer may know of it: they see the file's record as it is now. A file
+// that is gone answers `whenGone` (a link to it reads "File removed" for those who could see it; a live tell leaves it out).
+const isLibraryFileRef = (ref) => Boolean(ref) && ref.kind === 'file' && ref.scope === 'space' && Boolean(modules.enabled(ref.module)?.manifest.library);
+function refFileSeen(who, ref, whenGone) {
+  const r = vault.get(ref.module, ref.space, ref.id);
+  return r ? fileVisible(who, ref.space, ref.module, r) : whenGone;
+}
+// Who may change who sees a file: the person who added it, an owner or the admin. Nobody else, whatever their role.
+const fileManageable = (who, r) => Boolean(who && who.user && r && (r.by === who.user.key || hasOwnerRights(who.user)));
+// The visibility a request asks for, checked: { visibility, people } or { error } (one sentence, a 400). `people` comes as
+// a list of user keys or one text of keys split by commas; each must be a member of the space now, at most PEOPLE_MAX.
+function askedVisibility(rawVisibility, rawPeople, space) {
+  // Only a missing field means "not asked"; null, empty or any other shape is refused, never read as a default (a private
+  // file is not published by a request that is merely odd). Only an exact word counts: no padding, no capitals.
+  const visibility = rawVisibility === undefined ? 'everyone' : rawVisibility;
+  if (typeof visibility !== 'string' || !VISIBILITIES.includes(visibility)) return { error: 'Who can see a file is everyone, only-me or people.' };
+  const given = rawPeople === undefined ? [] : rawPeople;
+  const list = typeof given === 'string' ? given.split(',').map((k) => k.trim()).filter(Boolean) : given;
+  if (!Array.isArray(list) || list.some((k) => typeof k !== 'string') || (typeof given === 'string' && !given.trim())) return { error: 'People are a list of people\'s keys.' };
+  if (visibility !== 'people') return list.length ? { error: 'People are chosen only when a file is shown to chosen people.' } : { visibility, people: [] };
+  const people = [...new Set(list)];
+  if (!people.length) return { error: 'Choose the people who can see it.' };
+  if (people.length > PEOPLE_MAX) return { error: `A file can be shown to at most ${PEOPLE_MAX} people.` };
+  if (people.some((k) => !space.members.includes(k))) return { error: `Everyone chosen must be in this ${word('space')}.` };
+  return { visibility, people };
 }
 // Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
 // permission in `keys` of the module there. The public routes ask this on every open.
@@ -8356,7 +8556,8 @@ function shareMakerCan(userKey, spaceId, moduleId, keys) {
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
 // `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.
-const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}) });
+// `visibility` and `people` only for someone who may change them (fileManageable): nobody else learns who else sees a file.
+const fileView = (ctx, r, present = null) => ({ id: r.id, name: r.name, type: r.type, group: r.group, size: r.size, by: r.by, at: r.at, ...(r.taken ? { taken: r.taken } : {}), hasThumb: Boolean(r.thumb), uses: moduleLinks.to(fileRef(ctx, r.id)).length, ...(r.viewable === false ? { viewable: false } : {}), ...((present ? !present.has(`${r.id}.bin`) : vault.isMissing(ctx.spaceId, r.id)) ? { missing: true } : {}), ...(fileManageable(ctx.who, r) ? { visibility: visibilityOf(r), ...(visibilityOf(r) === 'people' ? { people: [...(r.people || [])] } : {}) } : {}) });
 // The owner's lower quotas, when the module declares them as `number` settings for the environment: spaceMaxGb and
 // personMaxGb, in GB; 0 or unset leaves the server's.
 function libraryQuotas(manifest) {
@@ -8551,25 +8752,32 @@ function receiveUpload(req, part, declared, onHead, onSlow = () => {}, handle = 
   });
 }
 
-// GET /api/modules/:id/library?space= -- the space's files, and what they use of the space's quota.
+// GET /api/modules/:id/library?space= -- the space's files this person may see, and what those use of the space's quota
+// (the bytes of the files they see only: a file hidden from them moves no number they are shown; the quota itself is
+// still kept on the space's real total).
 app.get('/api/modules/:id/library', (req, res) => {
   const ctx = libraryAccess(req, res, 'view');
   if (!ctx) return;
   const present = vault.present(ctx.spaceId);
   // `shared` (in a share link that still opens) only for someone who may make share links.
   const shared = ctx.can('share') ? vault.sharedFileIds(ctx.manifest.id, ctx.spaceId) : null;
-  const files = vault.list(ctx.manifest.id, ctx.spaceId).map((r) => (shared ? { ...fileView(ctx, r, present), shared: shared.has(r.id) } : fileView(ctx, r, present)));
-  res.json({ files, usage: { bytes: vault.usage().spaces.get(ctx.spaceId) || 0, maxBytes: libraryQuotas(ctx.manifest).space } });
+  const seen = vault.list(ctx.manifest.id, ctx.spaceId).filter(ctx.sees);
+  const files = seen.map((r) => (shared ? { ...fileView(ctx, r, present), shared: shared.has(r.id) } : fileView(ctx, r, present)));
+  res.json({ files, usage: { bytes: seen.reduce((sum, r) => sum + vault.bytesOf(r), 0), maxBytes: libraryQuotas(ctx.manifest).space } });
 });
 
-// POST /api/modules/:id/library?space=&name=[&keepPosition=1] -- add one file, the raw body with its Content-Length.
-// A picture loses where it was taken unless keepPosition=1 (the person's choice, "Remove where it was taken", on by default).
+// POST /api/modules/:id/library?space=&name=[&keepPosition=1][&visibility=everyone|only-me|people&people=<key>,<key>] --
+// add one file, the raw body with its Content-Length. A picture loses where it was taken unless keepPosition=1 (the
+// person's choice, "Remove where it was taken", on by default). Who may see it is everyone unless `visibility` says
+// otherwise (askedVisibility; `people` members of the space, at most 200).
 app.post('/api/modules/:id/library', async (req, res) => {
   const refuse = (status, error, headers = {}) => { if (!res.headersSent) res.set(headers).status(status).json({ error }); dropUploadBody(req); };
   const ctx = libraryAccess(req, res, 'add');
   if (!ctx) return dropUploadBody(req);
   const name = cleanName(req.query.name);
   if (!name) return refuse(400, 'Name the file in ?name=.');
+  const sight = askedVisibility(req.query.visibility, req.query.people, ctx.space);
+  if (sight.error) return refuse(400, sight.error);
   if (req.headers['transfer-encoding'] || !/^\d{1,15}$/.test(String(req.headers['content-length'] || ''))) return refuse(411, 'Send the file with its size (Content-Length).');
   const declared = Number(req.headers['content-length']);
   if (!declared) return refuse(400, 'There is no file in that.');
@@ -8652,7 +8860,7 @@ app.post('/api/modules/:id/library', async (req, res) => {
     // (Thomas, 2026-10-30: that overshoot is accepted).
     const fullNow = vaultFullOnDisk(ctx, keys, kept.size);
     if (fullNow) { dropPart(); return refuse(413, fullNow.error); }
-    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null };
+    const record = { id: vault.newId(), name: nameForType(name, vaultTypes.TYPES[type].exts), type, group, size: kept.size, sha256: kept.sha256, by: ctx.by, at: new Date().toISOString(), ...(kept.taken ? { taken: kept.taken } : {}), ...(kept.camera ? { camera: kept.camera } : {}), ...(viewable ? {} : { viewable: false }), thumb: null, ...(sight.visibility !== 'everyone' ? { visibility: sight.visibility } : {}), ...(sight.visibility === 'people' ? { people: sight.people } : {}) };
     if (flight.stopped) { dropPart(); return refuse(404, removedWhileArriving); }
     try {
       vault.commit(ctx.manifest.id, ctx.spaceId, part, record);
@@ -8662,7 +8870,8 @@ app.post('/api/modules/:id/library', async (req, res) => {
       return refuse(500, LIBRARY_NOT_SAVED);
     }
     part = null;
-    noteActivity(ctx.manifest.id, `added a file to ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
+    // A file not everyone may see writes no activity line: the line alone would tell the others something was added.
+    if (sight.visibility === 'everyone') noteActivity(ctx.manifest.id, `added a file to ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
     res.status(201).json({ file: fileView(ctx, record) });
   } finally {
     flight.done();
@@ -8697,10 +8906,10 @@ function libraryHeaders(type, name, kind) {
 // If-Range), from disk through the response with its backpressure: a slow reader is sent only as fast as it reads.
 function sendLibraryFile(req, res, thumb) {
   const download = !thumb && req.query.download === '1';
-  const ctx = libraryAccess(req, res, 'view', { file: true });
-  if (!ctx) return;
-  const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r || (thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
+  const found = libraryFile(req, res);
+  if (!found) return;
+  const { ctx, r } = found;
+  if ((thumb && !r.thumb) || (download && !ctx.can('download'))) return res.status(404).json({ error: NO_SUCH_FILE });
   // A PDF kept as download only (decision 18) is sent only as a download (download=1, with `download`); asked for inline
   // it answers 404, with the note the viewer shows, to someone who may see the file at all.
   if (!thumb && !download && r.viewable === false) return res.status(404).json({ error: PDF_DOWNLOAD_ONLY });
@@ -8736,10 +8945,9 @@ app.get('/api/modules/:id/library/:fid/thumb', (req, res) => sendLibraryFile(req
 // a JPEG, PNG or WebP of at most 300 KB, from the person who added the file. Checked and cleaned like a picture.
 app.put('/api/modules/:id/library/:fid/thumb', async (req, res) => {
   const refuse = (status, error, headers = {}) => { if (!res.headersSent) res.set(headers).status(status).json({ error }); dropUploadBody(req); };
-  const ctx = libraryAccess(req, res, 'add', { file: true });
-  if (!ctx) return dropUploadBody(req);
-  const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r) return refuse(404, NO_SUCH_FILE);
+  const found = libraryFile(req, res, 'add');
+  if (!found) return dropUploadBody(req);
+  const { ctx, r } = found;
   if (r.by !== ctx.by) return refuse(403, 'Only the person who added it can give it a small picture.');
   if (r.group !== 'image' && r.group !== 'video') return refuse(400, 'Only pictures and videos have a small picture.');
   if (req.headers['transfer-encoding'] || !/^\d{1,15}$/.test(String(req.headers['content-length'] || ''))) return refuse(411, 'Send the picture with its size (Content-Length).');
@@ -8785,28 +8993,41 @@ app.put('/api/modules/:id/library/:fid/thumb', async (req, res) => {
   res.json({ file: fileView(ctx, vault.putThumb(ctx.manifest.id, ctx.spaceId, r.id, clean.bytes, clean.type)) });
 });
 
-// The file a route names, for someone who may see it, and whether they may change it (its adder, or someone with
-// remove_any); null after the 404.
-function libraryFile(req, res) {
-  const ctx = libraryAccess(req, res, 'view', { file: true });
+// The one door of every route that names a file (`:fid`): the file, for someone who may use the library with `need` and may
+// see that file (fileVisible), and whether they may rename or remove it (its adder, or someone with remove_any) and change
+// who sees it (fileManageable); null after the refusal. A file that is not there and a file hidden from this person get the
+// same answer, byte for byte (404, NO_SUCH_FILE). No route reads a record any other way (tools/check-vault-visibility.mjs).
+function libraryFile(req, res, need = 'view') {
+  const ctx = libraryAccess(req, res, need, { file: true });
   if (!ctx) return null;
   const r = vault.get(ctx.manifest.id, ctx.spaceId, req.params.fid);
-  if (!r) return void res.status(404).json({ error: NO_SUCH_FILE });
-  return { ctx, r, mayChange: r.by === ctx.by || ctx.can('remove_any') };
+  if (!r || !ctx.sees(r)) return void res.status(404).json({ error: NO_SUCH_FILE });
+  return { ctx, r, mayChange: r.by === ctx.by || ctx.can('remove_any'), manageable: fileManageable(ctx.who, r) };
 }
-// PATCH /api/modules/:id/library/:fid?space= { name } -- rename it (the adder, or remove_any). The name keeps the type's
-// extension. Its small JSON body is read only once that is decided.
+// PATCH /api/modules/:id/library/:fid?space= { name?, visibility?, people? } -- rename it (the adder, or remove_any; the
+// name keeps the type's extension), and change who may see it (the adder, an owner or the admin: askedVisibility). Its
+// JSON body is read only once the file is found; nothing changes unless all of it may.
 app.patch('/api/modules/:id/library/:fid', (req, res, next) => {
   const found = libraryFile(req, res);
   if (!found) return dropUploadBody(req);
-  if (!found.mayChange) { res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can rename it.` }); return dropUploadBody(req); }
+  if (!found.mayChange && !found.manageable) { res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can change it.` }); return dropUploadBody(req); }
   req.libraryFile = found;
   next();
-}, express.json({ limit: '4kb' }), (req, res) => {
-  const { ctx, r } = req.libraryFile;
-  const name = cleanName(req.body?.name);
-  if (!name) return res.status(400).json({ error: 'Give the file a name.' });
-  res.json({ file: fileView(ctx, vault.rename(ctx.manifest.id, ctx.spaceId, r.id, nameForType(name, vaultTypes.TYPES[r.type].exts))) });
+}, express.json({ limit: '16kb' }), (req, res) => {
+  const { ctx, r, mayChange, manageable } = req.libraryFile;
+  const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const renaming = b.name !== undefined;
+  const showing = b.visibility !== undefined || b.people !== undefined;
+  if (!renaming && !showing) return res.status(400).json({ error: 'Give the file a name.' });
+  const name = renaming ? cleanName(b.name) : '';
+  if (renaming && !name) return res.status(400).json({ error: 'Give the file a name.' });
+  if (renaming && !mayChange) return res.status(403).json({ error: `Only the person who added it, or someone who may remove other people's files, can rename it.` });
+  if (showing && !manageable) return res.status(403).json({ error: `Only the person who added it, ${word('owner', { a: true })} or the admin can change who can see it.` });
+  const sight = showing ? askedVisibility(b.visibility === undefined ? visibilityOf(r) : b.visibility, b.people, ctx.space) : null;
+  if (sight && sight.error) return res.status(400).json({ error: sight.error });
+  if (renaming) vault.rename(ctx.manifest.id, ctx.spaceId, r.id, nameForType(name, vaultTypes.TYPES[r.type].exts));
+  if (sight) vault.setVisibility(ctx.manifest.id, ctx.spaceId, r.id, sight);
+  res.json({ file: fileView(ctx, vault.get(ctx.manifest.id, ctx.spaceId, r.id)) });
 });
 // DELETE /api/modules/:id/library/:fid?space= -- remove it: its record, bytes and small picture (the adder, or remove_any).
 // Links to it stay on the objects that hold them, and read "File removed".
@@ -8816,10 +9037,12 @@ app.delete('/api/modules/:id/library/:fid', (req, res) => {
   const { ctx, r, mayChange } = found;
   if (!mayChange) return res.status(403).json({ error: 'Only the person who added it, or someone who may remove other people\'s files, can remove it.' });
   const holders = moduleLinks.to(fileRef(ctx, r.id));
+  const was = { ...r };
   vault.remove(ctx.manifest.id, ctx.spaceId, r.id);
-  // The objects that link to it are told, so their chips read "File removed" at once; their links stay.
-  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))] });
-  noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
+  // The objects that link to it are told, so their chips read "File removed" at once; their links stay. `file` (never
+  // sent) lets each stream tell only the viewers who could see the file.
+  if (holders.length) moduleLinks.emit('change', { refs: [fileRef(ctx, r.id), ...holders.map((h) => ({ ...h }))], file: { module: ctx.manifest.id, spaceId: ctx.spaceId, record: was } });
+  if (visibilityOf(was) === 'everyone') noteActivity(ctx.manifest.id, `removed a file from ${ctx.name}`, ctx.by, `space:${ctx.spaceId}`);
   res.json({ ok: true });
 });
 // GET /api/modules/:id/library/:fid/uses?space= -- where it is linked: the summaries of the objects this person may see,
@@ -10025,6 +10248,20 @@ function changesText(batch) {
 // loop, by every open stream together: a big Clear or Undo asks for them for each stream and each kind, and they cannot change
 // in between. Dropped at the end of the turn.
 const permsTurns = new Map(); // environment -> "user|space" -> permissions
+// What a library change (vault-store's tell) is to one viewer, by whether they could see the file before it and can see it
+// after (fileVisible, plan-vault-privacy.md): its own op when both, 'removed' when they lose sight of it, 'added' when they
+// gain it, and null -- nothing is sent -- when they could see it neither before nor after, so nobody hears of a hidden
+// file's id, its arrival or its change.
+function libraryOpFor(who, c) {
+  const sight = c.sight || {};
+  const sees = fileSight(who, c.spaceId, c.module);
+  const before = Boolean(sight.before) && sees(sight.before);
+  const after = Boolean(sight.after) && sees(sight.after);
+  if (before && after) return c.op;
+  if (before) return 'removed';
+  if (after) return 'added';
+  return null;
+}
 function permsThisTurn(env, who, spaceId) {
   let turn = permsTurns.get(env);
   if (!turn) {
@@ -10109,8 +10346,15 @@ app.get('/api/modules/stream', (req, res) => {
     }
   });
   // What points at (or from) an item changed: only the pointers go, and the module asks again for what it may see.
-  const onLinks = listenIn(env, ({ refs }) => {
+  const onLinks = listenIn(env, ({ refs, file }) => {
+    // A removed file's links: told only to a viewer who could see that file (plan-vault-privacy.md).
+    if (file && !fileVisible(who, file.spaceId, file.module, file.record)) return;
+    // A pointer to a library file goes only to a viewer who can see that file as it is now (plan-vault-privacy.md); the
+    // holder's own pointer goes as before.
     for (const ref of refs) {
+      // (A removed file's own pointer was checked against its last record above.)
+      const removed = file && ref.module === file.module && ref.space === file.spaceId && ref.id === file.record.id;
+      if (!removed && isLibraryFileRef(ref) && !refFileSeen(who, ref, false)) continue;
       for (const v of views) {
         const at = place(v, ref.module, refScopeKey(ref));
         if (at) send(v, 'links', ref, { module: ref.module, ref, ...at });
@@ -10194,12 +10438,14 @@ app.get('/api/modules/stream', (req, res) => {
   // look again. Only ids and the kind of change go: no name, since a file's name is for those who may read the library.
   const onLibrary = listenIn(env, (c) => {
     if (!who.user) return;
+    const op = libraryOpFor(who, c);
+    if (!op) return;
     const scopeKey = `space:${c.spaceId}`;
     for (const v of views) {
       const at = place(v, c.module, scopeKey);
       if (!at) continue;
       const hearing = [c.module, ...modules.enabledAll().filter((m) => m.manifest.id !== c.module && consumerMayLink(m, c.module, 'file') && place(v, m.manifest.id, scopeKey)).map((m) => m.manifest.id)];
-      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op: c.op, id: c.id, modules: hearing, scope: at.scope });
+      send(v, 'library', c, { module: c.module, spaceId: c.spaceId, op, id: c.id, modules: hearing, scope: at.scope });
     }
   });
   vault.on('change', onLibrary);
@@ -10233,6 +10479,7 @@ app.get('/api/modules/:id/events', (req, res) => {
   const ctx = all ? { manifest: all.manifest, scopeKey: null } : moduleAccess(req, res, 'read');
   if (!ctx) return;
   const spaceIds = all ? new Set(all.spaces.map((r) => r.id)) : null;
+  const viewer = ctx.who || moduleViewer(req); // who is listening, for which library files they may hear of
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
@@ -10264,7 +10511,9 @@ app.get('/api/modules/:id/events', (req, res) => {
   const onLibrary = listenIn(env, (c) => {
     if (c.module !== ctx.manifest.id || (ctx.who && !ctx.who.user)) return;
     if (spaceIds ? !spaceIds.has(c.spaceId) : `space:${c.spaceId}` !== ctx.scopeKey) return;
-    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op: c.op, id: c.id })}\n\n`);
+    const op = libraryOpFor(viewer, c);
+    if (!op) return;
+    sseWrite(res, `event: library\ndata: ${JSON.stringify({ module: c.module, spaceId: c.spaceId, op, id: c.id })}\n\n`);
   });
   moduleData.on('change', onChange);
   moduleData.on('changes', onChanges);
@@ -10392,14 +10641,23 @@ app.get('/api/environment', requireOwner, async (req, res) => {
     },
   });
 });
-// The environment's own copy of its data, the same zip the host console's own backup makes -- any environment admin
-// may ask for it, not only a host admin (plan-environments.md, "Phase 2": Download a copy).
+// The environment's own copy of its data (plan-environments.md, "Phase 2": Download a copy): the host console's backup
+// built from allow-lists, so no sign-in secret, link, sealed value or other person's private chat is in it
+// (server/environment-export.js says what goes in); an owner may ask for it.
 app.get('/api/environment/export', requireOwner, (req, res) => {
   if (!BASE_DOMAIN) return res.status(404).json({ error: 'not hosted' });
   const env = currentEnvironment();
   flushEnvironment(env); // every debounced write on disk before it is zipped
-  const zip = zipFiles(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : []);
-  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${env.slug}-export.zip"` });
+  // The folders each installed module declares for the files an owner places (its manifest's file settings).
+  const declared = (id) => {
+    try {
+      const manifest = env.modules.manifestOf(id, env.modules.get(id).version);
+      return (manifest?.settings || []).filter((d) => d.type === 'file' || d.type === 'files').map((d) => d.folder);
+    } catch { return []; }
+  };
+  const zip = zipFiles(exportEntries(fs.existsSync(env.dataDir) ? walkFiles(env.dataDir) : [], env.store.data, { declared }));
+  // Personal data: never kept by a browser or a proxy on the way.
+  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${env.slug}-export.zip"`, 'Cache-Control': 'private, no-store' });
   res.send(zip);
 });
 // Asked for by the environment's own admin, carried out by a host admin on the console (the existing Delete) --
@@ -10432,7 +10690,7 @@ app.delete('/api/themes/:id', requireOwner, (req, res) => {
   res.json({ ok: true });
 });
 // A theme as a file (documentation/plans/plan-themes.md; server/theme-file.js). Export: any theme, or `default` for
-// Strong Coffee with its dark palette written out, as a download. Import: the file's JSON as the body (sent as JSON,
+// the default theme with its dark palette written out, as a download. Import: the file's JSON as the body (sent as JSON,
 // or as the file's own text with any other type), checked and added as a new theme -- never applied.
 app.get('/api/themes/:id/export', requireOwner, (req, res) => {
   const theme = req.params.id === 'default' ? null : store.themes.find((t) => t.id === req.params.id);

@@ -521,18 +521,20 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
   // Not registered with the bars: the modes, the snap switch and Clean up are the menu's.
   for (const id of ['dock-all', 'snap-all', 'snap-size', 'clean-up']) assert.ok(!new RegExp(`nav\\.register\\([^\\n]*id: '${id}'`).test(space), `${id} is not a bar tool`);
-  // The button: a nav tool in the bell's group, right before it (Thomas, 2026-10-13: "the layout button should be next to
-  // the notification bell"), an icon alone (no label, no caret), the same look as Set up (the registry draws both as
-  // icon-link buttons); a menu button for a screen reader; never folds; not on a phone.
-  assert.match(space, /nav\.register\(\{ bar: 'secondary', zone: 'right', group: 'notices', groupOrder: 90, order: 89, fold: false, icon: 'object-group', label: verb\('layout'\), visible: \(\) => !phoneWidth\(\) && !settingUp, onClick: \(event\) => canvas\.toggleMenu\(event\.currentTarget\), workspace: 'only', place: 'own', id: 'modules-toggle' \}\);/);
-  assert.match(space, /nav\.elementOf\('modules-toggle'\)\?\.setAttribute\('aria-haspopup', 'menu'\);/);
-  assert.ok(!/labelled: true[^\n]*id: 'modules-toggle'|id: 'modules-toggle'[^\n]*labelled: true/.test(space), 'an icon alone, as Set up is');
-  assert.ok(!/module-chooser-toggle|module-chooser-label|fa-caret-down[^\n]*modules-toggle/.test(space), 'the old button with its label and caret is gone');
+  // The button is gone (Thomas, 2026-11-08: the Show menu is the first tab of Set up): Set up's button opens on that tab,
+  // for everyone wider than a phone; nothing registers a Layout button.
+  assert.ok(!/modules-toggle/.test(space), 'no Layout button, no #modules-toggle');
+  assert.match(space, /const canShowTab = \(\) => Boolean\(currentSpace\) && !viewingHome && !phoneWidth\(\);/);
+  assert.match(space, /show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/);
+  assert.match(space, /icon: 'sliders', label: setupLabel\(\), toggleable: true, active: false, visible: setupShown, onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\{ tab: '#show' \}\)\)/);
+  assert.match(space, /function setupLabel\(\) \{\n\s*return configurationLabel\(word, inAside\(\)\);/, 'Set up\'s tooltip and name come from configurationLabel, the panel\'s title helper');
+  assert.match(space, /function registerWordTools\(\) \{\n\s*nameModuleChooser\(\);\n\s*paintSetupLabel\(\);/, 'and follow the environment\'s words once they are in');
+  assert.ok(!/label: 'Set up'/.test(space), 'no fixed "Set up" label on the tool');
   // The menu is the shared one (host-menu.js), drawn from the canvas's items: Show, then Arrange, then the page's
   // (the Layouts section), then the note.
-  assert.match(canvasJs, /import \{ openHostMenu, closeHostMenu, hostMenuOpen, refreshHostMenu \} from '\/host-menu\.js';/);
-  assert.match(canvasJs, /openHostMenu\(trigger, layoutMenuItems\);/);
-  const items = canvasJs.slice(canvasJs.indexOf('  function layoutMenuItems() {'), canvasJs.indexOf('  let menuTrigger = null;'));
+  assert.match(canvasJs, /import \{ mountHostMenu \} from '\/host-menu\.js';/);
+  assert.match(canvasJs, /mountHostMenu\(container, layoutMenuItems\);/);
+  const items = canvasJs.slice(canvasJs.indexOf('  function layoutMenuItems() {'), canvasJs.indexOf('  let menuView = null;'));
   assert.ok(items.indexOf("{ heading: 'Show' }") < items.indexOf("{ heading: 'Arrange' }") && items.indexOf("{ heading: 'Arrange' }") < items.indexOf('const extra = typeof menuItems') && items.indexOf('const extra') < items.indexOf('if (noteEl) items.push({ element: noteEl });'), 'Show, Arrange, the page\'s entries, the note');
   // Show: a switch per module (toggle items, the shared switch look), on while the module is shown, flipping it.
   assert.match(items, /items\.push\(\{ toggle: true, checked: shown\(m\.id\), icon: m\.icon, tint: colorOf\(m\.id\), label: m\.name, \.\.\.\(m\.description \? \{ hint: m\.description, clamp: true \} : \{\}\), badge: unreadOf\(m\.id\), onPick: \(\) => flipShown\(m\.id\) \}\);/);
@@ -566,7 +568,7 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   assert.match(canvasJs, /const snapping = \(\) => snapAllOn\(\);/, 'snapping is the space-wide switch alone');
   assert.ok(!/remember\([^)]*\bsnap:/.test(canvasJs) && !/before: \{\}/.test(canvasJs), 'a module\'s own snap and __snap.before are never written');
   // host-menu.js: the item kinds the Layout menu needs, in the one shared component.
-  for (const needle of ['item.toggle', 'item.radio', 'item.keepOpen', 'item.heading', 'item.element', 'item.more', "'menuitemcheckbox'", "'menuitemradio'", 'export function refreshHostMenu()', 'export function hostMenuOpen(trigger)']) assert.ok(menuJs.includes(needle), `host-menu.js has ${needle}`);
+  for (const needle of ['item.toggle', 'item.radio', 'item.keepOpen', 'item.heading', 'item.element', 'item.more', "'menuitemcheckbox'", "'menuitemradio'", 'export function refreshHostMenu()', 'export function hostMenuOpen(trigger)', 'export function mountHostMenu(container, items)']) assert.ok(menuJs.includes(needle), `host-menu.js has ${needle}`);
   assert.match(menuJs, /if \(item\.keepOpen \|\| item\.toggle\) \{/, 'a switch or a keepOpen item leaves the menu open and draws it again');
   // The switch look is the Fields' switch (36 by 20, thumb 14), drawn by the Menus block of system.css at the row's end.
   const menusCss = fs.readFileSync(path.join(ROOT, 'public/sdk/system.css'), 'utf8');
@@ -670,16 +672,17 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   assert.doesNotMatch(adminSrc, /data-module-all-spaces|Available in every|allSpaces/, 'Manage > Modules has no availability checkbox');
   assert.match(adminSrc, /m\.lobby === false \? `<span class="hint">\$\{escapeHtml\(notInLobby\(\)\)\}<\/span>`/, 'the not-in-Lobby note stays, beside Enable');
   assert.doesNotMatch(settings, /allSpaces|\.spaces\b|on for every|data-module|switchRowHtml/, 'the Set up panel has no availability switches ("off in this" left out: Turn AI off in this space is the panel\'s own AI switch)');
-  assert.match(settings, /<ul class="setup-module-list" id="setup-module-list">/, 'the Modules tab lists what is on');
+  assert.doesNotMatch(settings, /setup-module-list|paintModuleList|keeps only chat, the call/, 'the Settings tab has no read-only module list (Thomas): not the list, its loading state, nor the Lobby hint');
+  assert.doesNotMatch(settings, /Turn one on or off on the/, 'the old line under the list is gone from Settings');
+  assert.match(settings, /<p class="hint setup-modules-note" id="setup-modules-note">\$\{esc\(modulesWord\(true\)\)\} are turned on for the whole \$\{esc\(word\('environment'\)\)\} in Manage\.<\/p>/, 'the Modules tab says at its foot where modules are turned on');
+  assert.match(settings, /\$\{state\.owner \? `<p class="hint setup-modules-note"/, 'and only to owners and the admin');
   assert.doesNotMatch(settingsHtml, /Switch one on|marked on for every/, 'the Modules hint no longer offers a switch');
-  // #237: a module is chosen or reviewed with its one-line description beside its name: the Set up list (title and a
-  // two-line clamp), the Layout menu's Show rows (hint, clamped, read after the name) and the composite keeps it.
-  assert.match(settings, /setup-module-about hint/, 'the Modules tab shows each module\'s description');
-  assert.match(settings, /const about = String\(m\.description \|\| ''\)\.trim\(\);/, 'a module without one shows nothing');
+  // #237: a module is reviewed with its one-line description beside its name: the Layout menu's Show rows (hint, clamped,
+  // read after the name) and the composite keeps it. (The Set up panel's own read-only list is gone.)
   assert.match(canvasJs, /\.\.\.\(m\.description \? \{ hint: m\.description, clamp: true \} : \{\}\)/, 'the Layout menu\'s Show rows carry the description');
   assert.match(fs.readFileSync(path.join(ROOT, 'public/host-menu.js'), 'utf8'), /aria-describedby/, 'the menu reads the description after the name');
   assert.match(fs.readFileSync(path.join(ROOT, 'public/composites.js'), 'utf8'), /icon: m\.icon, description: m\.description,/, 'a composite keeps its main\'s description');
-  assert.match(fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8'), /\.setup-module-about \{[^}]*-webkit-line-clamp: 2;/, 'two lines at most');
+  assert.doesNotMatch(fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8'), /\.setup-module-(about|list|text)/, 'the list\'s styles went with it');
   // Space settings: the line and Stop using it; a list set by hand refreshes it from the answered space.
   assert.match(settingsHtml, /<button type="button" class="btn btn-small" id="setup-opens-with-layout-stop">Stop using it<\/button>/);
   assert.ok(settingsHtml.indexOf('id="setup-opens-with-layout"') < settingsHtml.indexOf('id="setup-opens-with"'), 'above the switches');
@@ -980,8 +983,6 @@ test('the space bar in two zones: Layout (the module chooser), then Online, on t
   // its own icon: not the snap switch's border-all, the dock columns or the conference's view grid) is the top bar's,
   // and its menu opens with a Show heading.
   assert.match(space, /id: 'module-chooser', order: 1, fold: false, icon: 'object-group', label: word\('module', \{ many: true, cap: true \}\), element: moduleChooser, visible: \(\) => phoneWidth\(\), workspace: 'only' \}\);/);
-  assert.match(space, /icon: 'object-group', label: verb\('layout'\),[^\n]*id: 'modules-toggle'/);
-  assert.ok(!/id: 'modules-toggle'[^\n]*(puzzle-piece|border-all)|(puzzle-piece|border-all)[^\n]*id: 'modules-toggle'/.test(space), 'the Layout button\'s icon is its own');
   assert.match(space, /function nameModuleChooser\(\) \{\n  moduleChooser\.querySelector\('#modules-menu'\)\.setAttribute\('aria-label', word\('module', \{ many: true, cap: true \}\)\);/);
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
   assert.match(canvasJs, /const items = \[\{ heading: 'Show' \}\];/);
@@ -1222,14 +1223,16 @@ test('no Modules slot in the top bar (Thomas, 2026-10-02): no modules-nav, no mo
   assert.match(space, /id: 'module-chooser'/);
 });
 
-test('gone from the top bar: the clock, the lock or luggage icon beside the logo, the theme switch and Manage on a wider screen, the module page links', () => {
+test('gone from the top bar: the clock, the lock or luggage icon beside the logo, the theme switch, the module page links', () => {
   const brand = fs.readFileSync(path.join(ROOT, 'public/brand.js'), 'utf8');
   assert.ok(!/topbar-clock|startClock/.test(brand), 'no clock');
   assert.ok(!/id: 'spaces-link'|spacesTool/.test(brand), 'the Spaces slot replaced the spaces-link tool');
   assert.ok(!/zone: 'middle'/.test(brand), 'nothing of the system\'s in the middle zone');
   assert.ok(!/zone: 'middle'/.test(fs.readFileSync(path.join(ROOT, 'public/primary-nav.js'), 'utf8')), 'the destinations are not in the middle zone either (plan-two-zone-nav.md)');
   assert.match(brand, /id: 'theme-mode-switch'[^\n]*visible: \(\) => inMenu\(\) && offers\('theme'\)/, 'the theme switch is in the phone menu only; the profile menu has Dark mode');
-  assert.match(brand, /id: 'admin-link'[^\n]*visible: \(\) => inMenu\(\) && offers\('manage'\)/, 'Manage is in the phone menu only; the profile menu has it');
+  assert.match(brand, /id: 'admin-link'[^\n]*visible: \(\) => inMenu\(\) && offers\('manage'\)/, 'on a phone Manage is the menu\'s entry (as Set up is)');
+  assert.match(brand, /id: 'manage-tool', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 0, place: 'end', icon: 'gear', label: 'Manage'[^\n]*visible: \(\) => !onPhone\(\) && signedInHere\(\) && offers\('manage'\)/, 'wider than a phone Manage is a gear button in the top bar beside Set up, for those profileEntries gives Manage (owners and the admin)');
+  assert.ok(!/id: 'setup'[^\n]*icon: 'gear'/.test(fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8')), 'Set up keeps its own icon, apart from Manage\'s gear');
   assert.match(brand, /<img data-brand="icon"[^>]*><i [^>]*data-brand="home-icon"/, 'the uploaded logo and the home icon share one box');
   assert.match(brand, /if \(img\) img\.hidden = !b\.hasIcon;/, 'the uploaded logo shows only when there is one');
   assert.match(brand, /if \(icon\) icon\.hidden = Boolean\(b\.hasIcon\);/, 'never both');
@@ -1272,7 +1275,8 @@ test('the profile menu by role: owners get Manage; the single install\'s admin M
   assert.match(menu, /new Set\(profileFor\(\)\)/, 'the menu under your picture follows profileEntries');
   assert.match(menu, /label: 'Dark mode', checked: modeNow\(\) === 'dark'/, 'Dark mode is a checkbox entry');
   assert.match(menu, /\.\.\.destinationList\.filter\(\(d\) => has\.has\(`dest-\$\{d\.id\}`\)\)\.map\(\(d\) => \(\{ icon: d\.icon, label: profileDestinationLabel\(d\.id, d\.name\), onPick: \(\) => openDestination\(d\.href\) \}\)\)/, 'Global Calendar and Global Map after Dark mode, each what the server lists');
-  assert.ok(menu.indexOf('destinationList.filter') < menu.indexOf("has.has('manage')"), 'before Manage');
+  assert.ok(!/Manage|manage/.test(menu), 'the profile menu no longer holds Manage: it is a button in the top bar');
+  assert.ok(menu.indexOf('destinationList.filter') < menu.indexOf("has.has('host-console')"), 'destinations before the Host console');
   assert.match(brand, /destinations: destinationList\.map\(\(d\) => d\.id\)/, 'profileFor passes the destinations');
   assert.match(brand, /function openDestination\(href\) \{\n\s*openPage\(keepingQuery\(href\), 'destination'\);/, 'opened as a page: over the space while present, else the page itself');
   assert.equal(pageOpens({ kind: 'destination', present: false }), 'page');
@@ -1343,17 +1347,17 @@ test('the Workspace\'s controls in the top bar (Thomas, 2026-10-13): Workspace t
   const t = (id, zone, extra = {}) => ({ id, bar: 'primary', zone, ...extra });
   const byZone = {
     left: [t('space-switcher', 'left', { group: 'where', order: 9.5 }), t('layout-tabs', 'left', { group: 'views', groupOrder: 12, order: 10 })],
-    right: [t('setup', 'right', { group: 'space', groupOrder: 85, order: 1, place: 'end' }), t('notifications-bell', 'right', { group: 'notices', groupOrder: 90, order: 90 }), t('fullscreen-toggle', 'right', { group: 'space', groupOrder: 1, order: 11, workspace: 'only', place: 'end' }), t('todo:mine', 'right', { group: 'todo:own', groupOrder: 500, order: 500, workspace: 'only' }), t('topbar-more', 'right', { group: 'more', groupOrder: 999, order: 998, workspace: 'every', more: 'primary' }), t('whoami-link', 'right', { group: 'you', groupOrder: 999, order: 999 }), t('recall-button', 'right', { group: 'space', groupOrder: 1, order: 51, workspace: 'every' }), t('modules-toggle', 'right', { group: 'notices', groupOrder: 90, order: 89, workspace: 'only', place: 'own' }), t('popout', 'right', { group: 'space', groupOrder: 1, order: 12, workspace: 'only', place: 'end' })],
+    right: [t('setup', 'right', { group: 'space', groupOrder: 85, order: 1, place: 'end' }), t('notifications-bell', 'right', { group: 'notices', groupOrder: 90, order: 90 }), t('fullscreen-toggle', 'right', { group: 'space', groupOrder: 1, order: 11, workspace: 'only', place: 'end' }), t('todo:mine', 'right', { group: 'todo:own', groupOrder: 500, order: 500, workspace: 'only' }), t('topbar-more', 'right', { group: 'more', groupOrder: 999, order: 998, workspace: 'every', more: 'primary' }), t('whoami-link', 'right', { group: 'you', groupOrder: 999, order: 999 }), t('recall-button', 'right', { group: 'space', groupOrder: 1, order: 51, workspace: 'every' }), t('popout', 'right', { group: 'space', groupOrder: 1, order: 12, workspace: 'only', place: 'end' })],
   };
   const w = wideZones(byZone);
   assert.deepEqual(w.left.map((run) => run.map((x) => x.id)), [['space-switcher', 'layout-tabs'], []], 'the left zone: the bar\'s own (the layout tabs after the switcher; the chip is the status strip\'s), then the Workspace\'s (none now)');
-  assert.deepEqual(w.right.map((run) => run.map((x) => x.id)), [['todo:mine', 'topbar-more', 'recall-button'], ['notifications-bell', 'whoami-link', 'modules-toggle'], ['setup', 'fullscreen-toggle', 'popout']], 'the right zone: the Workspace\'s tools and the "..." first, then the bar\'s own with Layout (no favorites: they are tabs now), then Set up, Full screen and Pop out');
+  assert.deepEqual(w.right.map((run) => run.map((x) => x.id)), [['todo:mine', 'topbar-more', 'recall-button'], ['notifications-bell', 'whoami-link'], ['setup', 'fullscreen-toggle', 'popout']], 'the right zone: the Workspace\'s tools and the "..." first, then the bar\'s own with Layout (no favorites: they are tabs now), then Set up, Full screen and Pop out');
   assert.deepEqual(w.bar, [], 'nothing in the phone\'s place');
   assert.deepEqual(ids(arrange(w.right[0])), [['recall-button'], ['todo:mine'], ['topbar-more']], 'within the run: the space\'s group, a module\'s groups, then the "..."');
-  assert.deepEqual(ids(arrange(w.right[1])), [['modules-toggle', 'notifications-bell'], ['whoami-link']], 'the bar\'s own run: Layout and the bell together (no divider), then you (Thomas, 2026-10-13)');
+  assert.deepEqual(ids(arrange(w.right[1])), [['notifications-bell'], ['whoami-link']], 'the bar\'s own run: Layout and the bell together (no divider), then you (Thomas, 2026-10-13)');
   assert.deepEqual(ids(arrange(w.right[2])), [['setup', 'fullscreen-toggle', 'popout']], 'the last run, one group: Set up, Full screen, then Pop out');
   // The whole right end as drawn, left to right.
-  assert.deepEqual(w.right.flatMap((run) => arrange(run).flat()).map((x) => x.id).slice(3), ['modules-toggle', 'notifications-bell', 'whoami-link', 'setup', 'fullscreen-toggle', 'popout'], 'Layout, the bell, you, Set up, Full screen, Pop out');
+  assert.deepEqual(w.right.flatMap((run) => arrange(run).flat()).map((x) => x.id).slice(3), ['notifications-bell', 'whoami-link', 'setup', 'fullscreen-toggle', 'popout'], 'the bell, you, Set up, Full screen, Pop out');
   // On a phone `place` is not read: Set up keeps its place, before the bell and you (these test tools name no `phone`).
   const ph = navApi.phoneZones({ left: [], right: byZone.right.filter((x) => !x.workspace) });
   assert.deepEqual(ph.right[1].length ? arrange(ph.right[1]).flat().map((x) => x.id) : [], ['setup', 'notifications-bell', 'whoami-link'], 'the phone\'s order: Set up, the bell, you, as before');
@@ -1405,8 +1409,7 @@ test('the Workspace\'s controls in the top bar (Thomas, 2026-10-13): Workspace t
   assert.match(space, /id: 'rejoin-call', order: 52, phone: 'bar', short: 'Rejoin',[^\n]*visible: \(\) => Boolean\(currentSpace && currentSpace\.isAside && currentSpace\.origin\) && phoneWidth\(\),/);
   assert.match(space, /const workspaceShown = \(\) => phoneWidth\(\) \|\| !inAside\(\);\nnav\.setWorkspace\(\{ shown: workspaceShown \}\);/, 'the Layout menu, Full screen and Pop out on every layout tab, hidden only in an aside (plan-layout-views.md, decision 5: "the layout menu stays where it is and as it is")');
   assert.ok(!/workspaceShown = [^\n]*currentLayoutTab/.test(space), 'which tab is shown never hides the Workspace\'s tools');
-  assert.match(space, /id: 'modules-toggle' \}\);/, 'the Layout button is still a Workspace tool');
-  assert.match(space, /visible: \(\) => !phoneWidth\(\) && !settingUp, onClick: \(event\) => canvas\.toggleMenu\(event\.currentTarget\), workspace: 'only', place: 'own', id: 'modules-toggle'/, 'its own rule does not read the tab either');
+  assert.ok(!/modules-toggle/.test(space), 'the Layout button is gone: Set up\'s Show tab holds the menu');
   const placeSub = space.slice(space.indexOf('function placeSubnav()'), space.indexOf('\nplaceSubnav();'));
   assert.match(placeSub, /nav\.setWorkspace\(\{ bar: tabs \? 'secondary' : 'primary' \}\);/, 'placeSubnav() names the bar by the header\'s own window');
   const pressed = space.slice(space.indexOf('function pressLayoutTab('), space.indexOf("layoutTabsEl.addEventListener('click'"));
@@ -1556,7 +1559,8 @@ test('the bell: unread notices for everyone, and module updates for owners and t
   assert.deepEqual(bellState({ unread: 2, updates: 3, role: 'owner', moduleWord: 'module' }), { count: 5, updates: 3, title: 'Notifications, 2 unread, 3 module updates' });
   assert.deepEqual(bellState({ unread: 0, updates: 1, role: 'admin', moduleWord: 'tool' }), { count: 1, updates: 1, title: 'Notifications, 0 unread, 1 tool update' });
   const brand = fs.readFileSync(path.join(ROOT, 'public/brand.js'), 'utf8');
-  assert.ok(!/nav\.setBadge\('admin-link'/.test(brand), 'the update count is off Manage and your picture: it is on the bell');
+  assert.ok(!/nav\.setBadge\('admin-link'/.test(brand), 'the update count is off your picture: it is on the bell');
+  assert.match(brand, /for \(const id of \['manage-tool', 'admin-link', 'page-bar-manage'\]\) nav\.setBadge/, 'and on the Manage button');
 });
 
 test('the breadcrumb: nothing on home; a space\'s name; an aside\'s parent (Rejoin call) then the aside word and the others\' first names', () => {
@@ -1988,6 +1992,8 @@ test('the page bar: one shared builder, its name first, a Manage link for owners
   assert.ok(!/renderPageBar/.test(read('host.js')), 'the host console has no page bar');
   // The tabs keep their ids; the page bar's look.
   for (const f of ['admin.html', 'profile.html']) assert.match(read(f), /<nav class="subtabs" id="subtabs">/, `${f} keeps #subtabs`);
+  assert.doesNotMatch(read('admin.html'), /MIT licen[sc]e/i, 'About does not call the product MIT-licensed');
+  assert.match(read('admin.html'), /<p>Proprietary software\. All rights reserved\.<\/p>/, 'About says the product is proprietary');
   const css = read('style.css');
   assert.match(css, /\.subnav\.page-bar \.nav-left > \.subtabs \{\s*flex: 0 1 auto;\s*min-width: 0;/, 'the tabs give way inside the bar and scroll sideways');
   assert.match(read('sdk/system.css'), /:is\(\[hidden\], \.layout-tab-out\) \{ display: none; \}/, 'a hidden tab stays hidden (space settings\' Modules), in the Tabs component');
@@ -2311,15 +2317,16 @@ fs.copyFileSync(path.join(ROOT, 'public/space-setup.js'), setupCopy);
   copyImports('space-setup.js');
   assert.ok(['action-bar.js', 'phase-sheet.js', 'ai-sees.js'].every((f) => copied.has(f)), 'the panel\'s imports are copied with it');
 }
-const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
+const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, configurationLabel, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 
 test('Set up: a right-zone tool after your picture, before the window controls, for owners, the admin and moderators; Save and Cancel are the panel\'s action bar, not the top bar\'s', () => {
   const space = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
-  assert.match(space, /nav\.register\(\{ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', [^\n]*toggleable: true, active: false, visible: setupShown, onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\)\) \}\)/, 'wider than a phone in the last run, first of the window controls\' group (Thomas, 2026-10-13: "Settings should go right before the window controls"); on a phone still before the bell (90) and the you group (999)');
+  assert.match(space, /nav\.register\(\{ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', [^\n]*toggleable: true, active: false, visible: setupShown, onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\{ tab: '#show' \}\)\) \}\)/, 'wider than a phone in the last run, first of the window controls\' group (Thomas, 2026-10-13: "Settings should go right before the window controls"); on a phone still before the bell (90) and the you group (999)');
   assert.ok(!/id: 'setup-done'|id: 'setup-cancel'/.test(space), 'Done and Cancel left the top bar: the panel\'s action bar has Save and Cancel (Thomas, 2026-10-13)');
   assert.match(space, /const canSetUp = \(\) => Boolean\(currentSpace\) && !inAside\(\) && !viewingHome && !guestToken && Boolean\(me\) && me\.role !== 'guest' && \(hasOwnerRights\(me\) \|\| isModeratorHere\(\)\)/, 'owners, the admin and this space\'s moderators; never a guest, an aside or home over the space');
-  assert.match(space, /const setupShown = \(\) => canSetUp\(\);/, 'the tool stays while the panel is open');
+  assert.match(space, /const setupShown = \(\) => canOpenSetup\(\);/, 'the tool stays while the panel is open');
+  assert.match(space, /const canOpenSetup = \(\) => canSetUp\(\) \|\| canShowTab\(\);/, 'a person who may not set up still has the Modules tab');
   assert.match(space, /nav\.setActive\('setup', true\);/, 'and shows pressed');
   assert.match(space, /settingUp = false;\n\s*document\.body\.classList\.remove\('setting-up'\);\n\s*nav\.setActive\('setup', false\);/, 'not pressed once it closes');
   assert.match(space, /function enterSetup\(\{ tab = location\.hash \} = \{\}\) \{/, 'the address fragment picks the tab, unless an address opening Set up asked for one');
@@ -2332,23 +2339,26 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.ok(!/data-edit/.test(html) && !/data-edit/.test(space), 'the card has no Set up button (Thomas, 2026-10-14); Set up is the top bar tool inside the space, or /?setup=<id>');
   assert.ok(!/data-module-settings|title="Full settings"/.test(html), 'the moderators\' sliders link and Full settings are gone');
   assert.ok(!/module-settings\?space=|`\/spaces\/\$\{/.test(space), 'space.js links to neither old page');
-  assert.deepEqual(setupTabs({ owner: true }), ['space', 'members', 'phases', 'opens-with', 'modules']);
-  assert.deepEqual(setupTabs({ owner: true, moderator: true }), ['space', 'members', 'phases', 'opens-with', 'modules'], 'an owner who is also ticked moderator sees everything');
-  assert.deepEqual(setupTabs({ moderator: true }), ['phases', 'opens-with', 'modules'], 'what the server lets a moderator PATCH (phases, opensWith, defaultLayout), and the module settings');
-  assert.deepEqual(setupTabs({ owner: true, phases: false }), ['space', 'members', 'opens-with', 'modules'], 'no phases in the template: no Phases tab');
-  assert.deepEqual(setupTabs({ moderator: true, phases: false }), ['opens-with', 'modules']);
-  assert.deepEqual(setupTabs({ moderator: true, modules: false }), ['phases', 'opens-with'], 'no module settings for a moderator: no modules tab');
+  // The order: Modules (id show) | the space's own | Members | Phases | Settings (id modules); no First visit tab.
+  assert.deepEqual(setupTabs({ owner: true, show: true }), ['show', 'space', 'members', 'phases', 'modules'], 'tab order: Modules, the space, Members, Phases, Settings');
+  assert.deepEqual(setupTabs({ owner: true }), ['space', 'members', 'phases', 'modules']);
+  assert.ok(!setupTabs({ owner: true, show: true }).includes('opens-with'), 'no First visit tab: it is a section of Settings');
+  assert.deepEqual(setupTabs({ owner: true, moderator: true }), ['space', 'members', 'phases', 'modules'], 'an owner who is also ticked moderator sees everything');
+  assert.deepEqual(setupTabs({ moderator: true }), ['phases', 'modules'], 'what the server lets a moderator PATCH (phases, opensWith, defaultLayout): Settings holds First visit and the module settings');
+  assert.deepEqual(setupTabs({ owner: true, phases: false }), ['space', 'members', 'modules'], 'no phases in the template: no Phases tab');
+  assert.deepEqual(setupTabs({ moderator: true, phases: false }), ['modules'], 'a moderator always has Settings: First visit is in it');
   assert.deepEqual(setupTabs({}), [], 'a member has no panel');
   assert.equal(tabOfField('aiOff'), 'modules');
-  assert.equal(tabOfField('module:todo'), 'modules', 'a module\'s settings live on the modules tab');
+  assert.equal(tabOfField('module:todo'), 'modules', 'a module\'s settings live on the Settings tab');
+  assert.equal(tabOfField('opensWith'), 'modules', 'First visit is a section of the Settings tab');
+  assert.equal(tabOfField('defaultLayout'), 'modules');
   assert.equal(tabOfField('phases'), 'phases');
   assert.deepEqual([...MODERATOR_FIELDS], ['phases', 'opensWith', 'defaultLayout', 'budget'], 'the server\'s MODERATOR_SPACE_FIELDS');
   const owner = setupTabs({ owner: true });
   assert.equal(pickTab(owner, '#members'), 'members', 'the fragment picks the tab');
-  assert.equal(pickTab(owner, 'opens-with'), 'opens-with');
-  assert.equal(pickTab(owner, '#modules'), 'modules', 'the old page\'s #modules lands on the modules tab');
+  assert.equal(pickTab(owner, '#modules'), 'modules', 'the old page\'s #modules lands on the Settings tab');
   assert.equal(pickTab(owner, '#space'), 'space', 'and #space on the space tab');
-  assert.equal(pickTab(setupTabs({ owner: true, modules: false }), '#modules'), 'space', 'a tab left out: the first tab');
+  assert.equal(pickTab(setupTabs({ owner: true, phases: false }), '#phases'), 'space', 'a tab left out: the first tab');
   assert.equal(pickTab(owner, '#join=abcd'), 'space', 'an unknown fragment: the first tab, never an error');
   assert.equal(pickTab(owner, ''), 'space');
   assert.equal(pickTab(setupTabs({ moderator: true }), '#members'), 'phases', 'a tab the person may not see: their first');
@@ -2372,13 +2382,20 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.ok(!/`\/spaces\/\$\{/.test(adminJs), 'Manage no longer links to the old page');
   const setup = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
   // The tab row and the panels: role="tablist", a tab per id with aria-controls, the dot and its words for a reader.
-  assert.match(setup, /class="setup-tabs" id="setup-tabs" role="tablist"/);
+  assert.match(setup, /class="setup-tabs setup-tabs-fit" id="setup-tabs" role="tablist"/);
+  assert.match(setup, /id="setup-tabs-more" data-tip="More tabs" aria-label="More tabs" aria-haspopup="menu" aria-expanded="false" hidden/, "tabs that do not fit go into a ... (More) menu");
+  assert.match(setup, /fitTabs\(\); \/\/ the tab shown never stays in the "..."/);
+  assert.match(setup, /const TAB_HTML = \{ show:/, "the Modules tab (id show) is the first tab of Set up");
   assert.match(setup, /role="tab" class="setup-tab" id="setup-tab-\$\{id\}" data-tab="\$\{id\}" aria-controls="setup-content-\$\{id\}"/);
   assert.match(setup, /role="tabpanel" class="setup-tab-content" id="setup-content-\$\{id\}"/);
   assert.match(setup, /<span class="setup-tab-dot" aria-hidden="true" hidden><\/span><span class="visually-hidden setup-tab-unsaved"><\/span>/);
   assert.match(setup, /textContent = on \? ', unsaved changes' : '';/, 'the dot is said to a screen reader');
   assert.match(setup, /ArrowRight: at \+ 1, ArrowLeft: at - 1, Home: 0, End: all\.length - 1/, 'the arrows move between tabs');
-  assert.match(setup, /space: word\('space', \{ cap: true \}\), members: membersWord\(true\), phases: 'Phases', 'opens-with': 'First visit', modules: modulesWord\(true\)/, 'tab labels in the environment\'s words');
+  assert.equal(configurationLabel((k, o) => (k === 'aside' ? 'whisper' : 'campaign').replace(/^./, (c) => (o && o.cap ? c.toUpperCase() : c))), 'Campaign Configuration', 'the space word');
+  assert.equal(configurationLabel((k, o) => (k === 'aside' ? 'whisper' : 'campaign').replace(/^./, (c) => (o && o.cap ? c.toUpperCase() : c)), true), 'Whisper Configuration', 'the aside\'s word in an aside');
+  assert.match(setup, /<h2 id="space-setup-title">\$\{esc\(one \? tabLabel\(tabs\[0\]\) : configLabel\(\)\)\}<\/h2>/, 'the panel\'s title is the button\'s name; a person with only the Modules tab sees "Modules"');
+  assert.match(setup, /aria-label="\$\{esc\(configLabel\(\)\)\}"/, 'the tab row is named the same');
+  assert.match(setup, /show: modulesWord\(true\), space: word\('space', \{ cap: true \}\), members: membersWord\(true\), phases: 'Phases', modules: 'Settings' \}\)\[id\]/, 'tab labels: Modules and the space and Members in the environment\'s words, Phases, Settings');
   assert.ok(!/setup-full|Full settings/.test(setup), 'the panel\'s Full settings link is gone (step 6)');
   assert.match(setup, /discardWords: 'Discard your changes\?',/, 'Escape and Cancel ask host.ui.editor\'s question');
   // The space tab (step 2) and the members tab (step 3).
@@ -2386,6 +2403,9 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
     assert.match(setup, new RegExp(`id="${id}"`), `the panel has #${id}`);
   }
   assert.match(setup, /if \(!space\.isLobby\) \{\n\s*parts\.push\(sectionHtml\('calendar'/, 'the Lobby has no calendar switch and no Delete');
+  assert.match(setup, /\$\{id === 'space' && !space\.isLobby \? dangerSectionHtml\(\) : ''\}<\/div>`/, 'Delete is drawn last on the space tab, after the budget section, and not on the Lobby');
+  assert.ok(setup.indexOf("${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}${id === 'space'") > 0, 'Budget comes before Delete');
+  assert.ok(!/parts\.push\(sectionHtml\('danger'/.test(setup), 'spaceTabHtml no longer puts Delete in the middle');
   assert.match(setup, /space\.isLobby\n\s*\? `<p class="hint">Everyone belongs to the/, 'the Lobby has no member switches');
   assert.match(setup, /Delete \$\{state\.space\.name\}\? Its \$\{membersWord\(\)\} stay in the Lobby\./, 'Delete\'s question names the space');
   assert.match(setup, />Delete<\/button>\n\s*<button type="button" class="btn btn-small" id="setup-delete-keep">Keep<\/button>/);
@@ -2399,7 +2419,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.ok(!/conference character/i.test(setup), 'the panel never says "conference character"');
   assert.ok(!/switchRowHtml\([^)]*'module'\)|data-module-switch|\{ spaces \}/.test(setup), 'no module switches: availability per space was removed (an enabled module is on in every space)');
   // Phases inline (step 4): the sheet's rows, every edit through the rule, a draft in the one PATCH.
-  for (const id of ['setup-phase-list', 'setup-phase-first', 'setup-phase-first-day', 'setup-phase-first-go', 'setup-phases-status', 'setup-opens-with-layout', 'setup-opens-with-layout-stop', 'setup-module-list', 'setup-ai-off', 'setup-module-settings']) {
+  for (const id of ['setup-phase-list', 'setup-phase-first', 'setup-phase-first-day', 'setup-phase-first-go', 'setup-phases-status', 'setup-opens-with-layout', 'setup-opens-with-layout-stop', 'setup-ai-off', 'setup-module-settings']) {
     assert.match(setup, new RegExp(`id="${id}"`), `the panel has #${id}`);
   }
   assert.match(setup, /state\.rule\.setPhaseDate\(state\.phaseList, state\.draft\.phases, id, edge, day, \{ created \}\)/);
@@ -2416,7 +2436,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.match(setup, /`Opens with the layout \$\{known\.name\}`/);
   assert.match(setup, /function stopUsingLayout\(\) \{\n\s*state\.draft\.defaultLayout = null;/, 'Stop using it is a draft, as every field is');
   // The modules tab (step 5): what is on, Turn AI off (an owner's space field), the module settings in the draft mode.
-  assert.match(setup, /if \(!state\.owner\) dropTab\('modules'\);/, 'a moderator with no module settings has no modules tab');
+  assert.ok(!/dropTab/.test(setup), 'Settings is never dropped: the First visit section is always in it');
   assert.match(setup, /aiSection\.hidden = !ai \|\| !ai\.active \|\| ai\.active\.provider === 'none';/, 'Turn AI off only with an AI service');
   // First visit (plan-layout-views.md, step 5): one choice, radios of one name in a fieldset named by the heading; the
   // Workspace first with the Opens with switches directly under it, then Calendar and Map from the layouts' `system`
@@ -2480,11 +2500,11 @@ test('Set up: the budget (#216) goes in the one PATCH only when it changed, as n
   assert.deepEqual(setupPatch(set, { ...set, budget: { amount: 'lots', currency: '' } }), { budget: { amount: null } }, 'not a number: sent so the server says why');
   assert.deepEqual(setupPatch({ name: 'Lisbon' }, { name: 'Lisbon' }), {}, 'a draft without the field is no change');
   assert.deepEqual([...dirtyTabs({ budget: null })], ['phases'], 'the phases tab\'s');
-  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['phases', 'opens-with'] })], ['phases']);
-  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['space', 'members', 'opens-with', 'modules'] })], ['space'], 'no phases in the template: an owner\'s space tab');
-  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['opens-with', 'modules'] })], ['opens-with'], 'and a moderator\'s first visit tab');
+  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['phases', 'modules'] })], ['phases']);
+  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['space', 'members', 'modules'] })], ['space'], 'no phases in the template: an owner\'s space tab');
+  assert.deepEqual([...dirtyTabs({ budget: null }, { tabs: ['modules'] })], ['modules'], 'and a moderator\'s Settings tab');
   assert.equal(tabOfField('budget'), 'phases');
-  assert.equal(tabOfField('budget', ['opens-with']), 'opens-with');
+  assert.equal(tabOfField('budget', ['modules']), 'modules');
   assert.ok(setupTabs({ moderator: true }).includes(tabOfField('budget', setupTabs({ moderator: true }))), 'a tab a moderator has');
   assert.equal(problemField({ name: 'P', budget: { amount: 0 } }, 'The budget must be an amount above zero.'), 'budget');
   assert.equal(problemField({ link: 'x', budget: { amount: 5, currency: 'QQQ' } }, 'QQQ is not a currency this server knows. Choose one from the list, such as USD.'), 'budget');
@@ -2496,7 +2516,7 @@ test('Set up: the budget (#216) goes in the one PATCH only when it changed, as n
   assert.match(setup, /<input type="number" id="setup-budget-amount"/, 'a number field');
   assert.match(setup, /<select id="setup-budget-currency"><\/select>/, 'and the currency');
   assert.match(setup, /id === budgetTabOf\(tabs\) && !space\.isLobby \? budgetSectionHtml\(\)/, 'drawn on the tab budgetTabOf names');
-  assert.match(setup, /else if \(!space\.isLobby\) loadModeratorParts\(space\);/, 'a moderator reads the stored target from their own answer');
+  assert.match(setup, /else if \(opts\.moderator && !space\.isLobby\) loadModeratorParts\(space\);/, 'a moderator reads the stored target from their own answer');
   assert.ok(!/const entry = state\.owner/.test(setup), 'a moderator\'s unreadable entry is refused too');
   const page = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
   assert.match(page, /budget: budgetReported\(\) \? budgetSource\(\) : null,/, 'the page offers it while a module here reports a fact marked budget');
@@ -2553,7 +2573,8 @@ test('Set up: the new fields go in the one PATCH only when changed; the dots nam
   assert.deepEqual(setupPatch({ ...before, publishCalendar: undefined }, { ...before, publishCalendar: true }), {}, 'in the calendar unless false');
   assert.deepEqual(setupPatch(before, { ...before, allowGuests: false }), { allowGuests: false });
   assert.deepEqual([...dirtyTabs(setupPatch(before, { ...before, name: 'Porto', allowGuests: false }))].sort(), ['members', 'space'], 'two tabs, two dots');
-  assert.deepEqual([...dirtyTabs({ opensWith: ['chat'] })], ['opens-with']);
+  assert.deepEqual([...dirtyTabs({ opensWith: ['chat'] })], ['modules'], 'First visit changes mark the Settings tab');
+  assert.deepEqual([...dirtyTabs({ defaultLayout: 'map' })], ['modules']);
   assert.deepEqual([...dirtyTabs({}, { image: true })], ['space'], 'a picture chosen is the space tab\'s');
   assert.deepEqual([...dirtyTabs({})], []);
   assert.equal(problemField({ name: 'P', link: 'ftp://x' }, 'link must be a valid http(s) URL'), 'link');

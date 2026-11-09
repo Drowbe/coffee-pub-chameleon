@@ -1,6 +1,6 @@
 # To do
 
-GitHub issues are the work list: <https://github.com/Drowbe/coffee-pub-collaborator/issues>, on the board at
+GitHub issues are the work list: <https://github.com/Drowbe/coffee-pub-chameleon/issues>, on the board at
 <https://github.com/users/Drowbe/projects/8>. This page is an index of the open issues, grouped, with a few words
 each; the issue holds the detail. See the Studio repository for that app's side of things.
 
@@ -174,6 +174,7 @@ The open issues labelled `priority: now` or `priority: next`:
 - #50 An environment's own domain, and one identity across environments.
 - The calls cap is enforced by the page only: the page asks `POST /api/call/join` before joining, but a token can publish as soon as it is minted, so a modified page could skip the check, as it could before. Making the cap binding means granting publish only after the check.
 - The host console's environment list waits on LiveKit when any environment's plan caps calls (it counts each one's running calls, up to two seconds a request).
+- The product site ([plan-product-site](plans/plan-product-site.md)): the start page is built. Still to do: the demo hook (slice 6, **Try the demo** and `demo` in `GET /api/product`) and a Plans list on the start page, which Manage's **Upgrade** link (`<product domain>/#plans`) waits for.
 - #57 An About page.
 
 ## Streaming and OBS

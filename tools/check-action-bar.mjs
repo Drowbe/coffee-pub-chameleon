@@ -125,7 +125,7 @@ test('the Set up panel: Save and Cancel are the panel\'s bar, not the top bar\'s
   assert.match(setup, /dirty: isDirty,/);
   assert.match(setup, /discardWords: 'Discard your changes\?',/, 'the panel asks host.ui.editor\'s question');
   assert.match(setup, /if \(hideDeleteConfirm\(\{ focus: true \}\)\) return;\n\s*state\.bar\.requestCancel\(\);/, 'Escape: Keep on the Delete question first, else Cancel (which asks when dirty)');
-  assert.match(space, /onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\)\)/, 'the pressed Set up tool is Cancel too, asking when dirty');
+  assert.match(space, /onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\{ tab: '#show' \}\)\)/, 'the pressed Set up tool is Cancel too, asking when dirty');
   // Every field is a draft: the panel sends nothing but from Save, Delete, and the invite and guest link actions.
   const sends = [...setup.matchAll(/api\('(PATCH|PUT|POST|DELETE)', `([^`]*)`/g)].map((m) => `${m[1]} ${m[2]}`);
   assert.deepEqual(sends.sort(), [

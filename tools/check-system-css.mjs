@@ -107,11 +107,11 @@ const { DEFAULT_THEME } = require('../server/store.js');
 const BASE = ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent', 'status-danger-fill', 'status-ok-fill'];
 // The roles system.css derives (formulas), some of which /theme.css also writes (the picks) or a theme may set.
 const DERIVED = [
-  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own',
+  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own', 'surface-message',
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',
-  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
+  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'ink-neutral', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
   'status-warn-fill', 'status-info-fill', 'status-ok-mark',
   ...['danger', 'ok', 'warn', 'info'].flatMap((k) => ['text', 'tint', 'on-fill'].map((p) => `status-${k}-${p}`)),
 ];
@@ -127,15 +127,15 @@ for (const r of BASE) {
 }
 if (!styleDefs.has('--icon-hover')) fail('--icon-hover (a role a theme may set) is not defined in style.css');
 for (const r of DERIVED) if (!defs.has(`--${r}`)) fail(`derived colour role --${r} is missing from system.css`);
-// The base defaults in style.css are Strong Coffee's dark set.
-for (const key of Object.keys(DEFAULT_THEME.dark)) if (styleDefs.get(`--${key}`)?.[0] !== DEFAULT_THEME.dark[key]) fail(`style.css --${key} is ${styleDefs.get(`--${key}`)?.[0]}, Strong Coffee's dark set says ${DEFAULT_THEME.dark[key]}`);
+// The base defaults in style.css are the default theme's dark base roles (an optional role of its dark set is written by /theme.css; in :root it would leak into every other theme).
+for (const key of BASE.filter((k) => k in DEFAULT_THEME.dark)) if (styleDefs.get(`--${key}`)?.[0] !== DEFAULT_THEME.dark[key]) fail(`style.css --${key} is ${styleDefs.get(`--${key}`)?.[0]}, the default theme's dark set says ${DEFAULT_THEME.dark[key]}`);
 // The Auto status fills the server and the editor use are the ones style.css draws.
 {
   const [dangerDark, okDark] = [styleDefs.get('--status-danger-fill')?.[0], styleDefs.get('--status-ok-fill')?.[0]];
   if (dangerDark !== TC.STATUS_AUTO.dark.danger || dangerDark !== TC.STATUS_AUTO.light.danger) fail(`Auto danger fill: style.css ${dangerDark}, theme-colour.js ${TC.STATUS_AUTO.dark.danger}`);
   if (okDark !== TC.STATUS_AUTO.dark.ok || okDark !== TC.STATUS_AUTO.light.ok) fail(`Auto ok fill: style.css ${okDark}, theme-colour.js ${TC.STATUS_AUTO.dark.ok}`);
   for (const [k, tint] of [['warn', '--tint-gold'], ['info', '--tint-blue']]) {
-    const [dark, light] = styleDefs.get(tint) || [];
+    const [dark, light] = (styleDefs.get(tint) || []).map((v) => v.replace(/^var\(--tone-[a-z]+, (#[0-9a-f]{6})\)$/, '$1')); // a tint is its tone with the fixed colour as the fallback
     if (dark !== TC.STATUS_AUTO.dark[k] || light !== TC.STATUS_AUTO.light[k]) fail(`Auto ${k} fill: style.css ${tint} is ${dark} / ${light}, theme-colour.js ${TC.STATUS_AUTO.dark[k]} / ${TC.STATUS_AUTO.light[k]}`);
   }
 }
@@ -152,9 +152,9 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
 {
   const others = new Map();
   const note = (n, where) => { if (!others.has(n)) others.set(n, where); };
-  const files = ['public/style.css', 'public/sdk/host.css', 'public/landing.css', 'public/destination.css', 'public/diag.css'];
+  const files = ['public/style.css', 'public/sdk/host.css', 'public/start.css', 'public/destination.css', 'public/diag.css'];
   for (const dir of ['modules']) {
-    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
+    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'test') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
     walk(dir);
   }
   // The Buttons block's per-button properties (--b-*, --btn-h) are meant to be set on one button by a rule that lays it out.
@@ -197,11 +197,11 @@ if (!/size-adjust:\s*100\.59%/.test(css) || !/size-adjust:\s*95\.67%/.test(css) 
   if (!/font-family:\s*var\(--font-ui\)/.test(rootBlock)) fail('public/style.css: the page font (:root) is not var(--font-ui)');
   if (!/font-family:\s*var\(--font-display\)/.test(style)) fail('public/style.css: no display text reads var(--font-display)');
   if (!/var\(--font-ui\b/.test(read('public/sdk/host.css'))) fail('public/sdk/host.css does not read --font-ui');
-  // The product page loads only landing.css: it carries the same six faces, word for word, and names the two families.
-  const landing = read('public/landing.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const facesOf = (t) => [...t.matchAll(/@font-face\s*\{[^}]*\}/g)].map((m) => m[0].replace(/\s+/g, ' '));
-  if (facesOf(landing).join('\n') !== facesOf(css).join('\n')) fail('public/landing.css: its @font-face rules are not system.css\'s, word for word');
-  if (!/body\.landing \{[^}]*"Figtree", "Figtree Fallback"/.test(landing) || !/\.hero h1 \{[^}]*"Fraunces", "Fraunces Fallback"/.test(landing)) fail('public/landing.css: the page is not Figtree, or its title not Fraunces');
+  // The start page takes its fonts from system.css (the six faces and the two families), not a copy: it links system.css and names no face of its own.
+  const start = read('public/start.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  if (!/href="\/sdk\/system\.css"/.test(read('public/start.html'))) fail('public/start.html: the page does not load system.css, where the fonts are');
+  if (/@font-face/.test(start)) fail('public/start.css: it names a font face of its own; the faces are system.css\'s');
+  if (!/\.sp-lockup-brand \{[^}]*var\(--font-display\)/.test(start) || !/\.sp-body \{[^}]*var\(--font-ui\)/.test(start)) fail('public/start.css: the page is not the UI face, or its lockup\'s brand word not the display face');
   const pages = fs.readdirSync(path.join(root, 'public')).filter((f) => /\.(css|html)$/.test(f)).map((f) => `public/${f}`);
   for (const f of [...pages, 'public/sdk/host.css', 'public/sdk/host.js', 'public/sdk/system.css']) {
     if (/fonts\.(googleapis|gstatic)\.com|use\.typekit|fonts\.bunny|@import\s+url\(\s*["']?https?:/i.test(read(f))) fail(`${f} names a font host; the fonts are ours (public/fonts)`);

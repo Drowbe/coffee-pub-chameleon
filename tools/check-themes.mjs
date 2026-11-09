@@ -57,7 +57,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-themes-'));
 const store = new Store(dir);
 const sanitize = (t) => store.sanitizeTheme(t);
 
-await test('export: every key of each set, null for Auto and for a set the theme lacks; Strong Coffee\'s dark written out', () => {
+await test('export: every key of each set, null for Auto and for a set the theme lacks; the default theme\'s dark written out', () => {
   for (const id of BUILTIN_THEME_IDS) {
     const theme = store.themes.find((t) => t.id === id);
     const out = tf.themeToFile(theme);
@@ -65,10 +65,11 @@ await test('export: every key of each set, null for Auto and for a set the theme
     assert.deepEqual([out.format, out.formatVersion], ['theme', 1]);
     for (const mode of ['light', 'dark']) assert.deepEqual(Object.keys(out[mode]), tf.SET_KEYS, `${id} ${mode}: every key`);
   }
-  const coffee = tf.themeToFile(null);
-  assert.equal(coffee.name, 'Strong Coffee');
-  assert.equal(coffee.dark['surface-page'], DEFAULT_THEME.dark['surface-page']);
-  assert.equal(coffee.dark['fill-secondary'], null);
+  const own = tf.themeToFile(null);
+  assert.equal(own.name, PRODUCT, 'the default theme is named by the product\'s short name (a made-up one here)');
+  assert.equal(own.dark['surface-page'], DEFAULT_THEME.dark['surface-page']);
+  assert.equal(own.dark['fill-secondary'], null);
+  assert.equal(store.themes.find((t) => t.id === 'strong-coffee').name, 'Strong Coffee', 'Strong Coffee is still shipped, as a built-in');
   const one = tf.themeToFile({ name: 'Only light', light: set(), dark: null });
   assert.equal(one.dark, null);
   assert.equal(tf.themeFileName('Strong Coffee'), 'strong-coffee.theme.json');
@@ -154,7 +155,22 @@ await test('a theme file, a template\'s theme and the bundled templates that set
     const theme = store.themes.find((t) => t.id === id);
     for (const mode of ['light', 'dark']) for (const key of [...Object.keys(NAV), ...Object.keys(STATUS)]) assert.ok(theme[mode][key] == null, `${id} ${mode} ${key}`);
   }
-  for (const mode of ['light', 'dark']) for (const key of Object.keys(NAV)) assert.ok(DEFAULT_THEME[mode][key] == null, `Strong Coffee ${mode} ${key}`);
+  // The default theme's light set writes the two bars' side zones (the sand a step off the ground); every other bar role follows the bar.
+  for (const mode of ['light', 'dark']) for (const key of Object.keys(NAV)) assert.ok(DEFAULT_THEME[mode][key] == null || (mode === 'light' && /^surface-bar-(brand|right)$/.test(key)), `the default theme ${mode} ${key}`);
+});
+
+await test('ink-brand, the colour of the lockup\'s second word: the default theme\'s coral, light and dark; no other built-in sets it (it follows the accent there); it round-trips', () => {
+  assert.equal(DEFAULT_THEME.light['ink-brand'], '#e0553c');
+  assert.equal(DEFAULT_THEME.dark['ink-brand'], '#ff8264');
+  for (const id of BUILTIN_THEME_IDS) {
+    const theme = store.themes.find((t) => t.id === id);
+    for (const mode of ['light', 'dark']) assert.ok(theme[mode]['ink-brand'] == null, `${id} ${mode} ink-brand is Auto`);
+  }
+  const out = tf.themeToFile(null);
+  for (const mode of ['light', 'dark']) assert.equal(out[mode]['ink-brand'], DEFAULT_THEME[mode]['ink-brand'], `exported ${mode}`);
+  const back = tf.readThemeFile(out, sanitize);
+  assert.deepEqual(back.dropped, []);
+  assert.equal(back.light['ink-brand'], '#e0553c');
 });
 
 await test('Store.importTheme: a new id, "Name (2)" on a clash (Strong Coffee\'s name too), author kept, nothing applied', () => {
@@ -163,11 +179,13 @@ await test('Store.importTheme: a new id, "Name (2)" on a clash (Strong Coffee\'s
   const b = store.importTheme(tf.readThemeFile(file({ name: 'harbour' }), sanitize));
   const c = store.importTheme(tf.readThemeFile(file(), sanitize));
   const d = store.importTheme(tf.readThemeFile(file({ name: 'Strong Coffee' }), sanitize));
+  const e = store.importTheme(tf.readThemeFile(file({ name: PRODUCT }), sanitize));
   const long = store.importTheme(tf.readThemeFile(file({ name: 'L'.repeat(40) }), sanitize));
   const long2 = store.importTheme(tf.readThemeFile(file({ name: 'L'.repeat(40) }), sanitize));
   assert.deepEqual([a.name, b.name, c.name, d.name], ['Harbour', 'harbour (2)', 'Harbour (3)', 'Strong Coffee (2)']);
+  assert.equal(e.name, `${PRODUCT} (2)`, 'the default theme\'s name is taken too');
   assert.equal(long2.name, `${'L'.repeat(36)} (2)`);
-  assert.equal(new Set([a.id, b.id, c.id, d.id, long.id]).size, 5);
+  assert.equal(new Set([a.id, b.id, c.id, d.id, e.id, long.id]).size, 6);
   assert.equal(a.author, 'Thomas');
   assert.deepEqual({ active: store.settings.activeThemeId || null, mode: store.settings.themeMode }, before);
   // Kept on disk, and cleaned by sanitizeTheme like everything else about a theme.
@@ -219,10 +237,9 @@ await test('Store.importTheme: the 101st theme is refused with its sentence, and
 });
 
 // Only these parsers in the app read a body a page on another origin can send without asking first (text/plain, a
-// form, multipart): the sign-in form, which signs in rather than trusting a cookie, and the theme import and the host's
-// theme file check, the template and objects imports (a module's check, and Chat's), which refuse anything but their own origin. Every other body is JSON, which the browser won't send cross-origin without a
+// form, multipart): the theme import and the host's theme file check, the template and objects imports (a module's check, and Chat's), which refuse anything but their own origin. Every other body is JSON, which the browser won't send cross-origin without a
 // preflight the server never answers. A new parser taking one of those types must be added here, with its guard.
-await test('only /login, /api/themes/import, the host\'s theme check, the two template imports and the objects checks read a body another origin can send; each is behind sameOriginOnly', () => {
+await test('only /api/themes/import, the host\'s theme check, the two template imports and the objects checks read a body another origin can send; each is behind sameOriginOnly', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
   const SIMPLE = /text\/|x-www-form-urlencoded|multipart\/form-data|\*\/\*|=>/;
   const found = [];
@@ -232,16 +249,15 @@ await test('only /login, /api/themes/import, the host\'s theme check, the two te
     const takesSimple = type ? SIMPLE.test(type) : kind === 'text' || kind === 'urlencoded';
     if (takesSimple) found.push(name);
   }
-  assert.deepEqual(found.sort(), ['loginForm', 'objectsFileText', 'templateFileText', 'themeFileText']);
-  const uses = [...src.matchAll(/(?:app|hostRouter)\.(?:post|put|patch|delete)\(([^\n]*?\b(?:loginForm|themeFileText|templateFileText|objectsFileText)\b[^\n]*)/g)].map((m) => m[1]);
+  assert.deepEqual(found.sort(), ['objectsFileText', 'templateFileText', 'themeFileText']);
+  const uses = [...src.matchAll(/(?:app|hostRouter)\.(?:post|put|patch|delete)\(([^\n]*?\b(?:themeFileText|templateFileText|objectsFileText)\b[^\n]*)/g)].map((m) => m[1]);
   assert.equal(uses.filter((u) => u.includes('templateFileText')).length, 2, 'the template file parser is used by the two imports only');
   assert.equal(uses.filter((u) => u.includes('objectsFileText')).length, 2, 'the objects file parser is used by the module and Chat checks only');
   assert.equal(uses.filter((u) => u.includes('themeFileText')).length, 2, 'the theme file parser is used by the import and the host\'s theme check only');
   for (const u of uses) {
     if (u.includes('themeFileText')) assert.match(u, /^'\/api\/(themes\/import', requireOwner|host\/themes\/check', requireHostAdmin), sameOriginOnly, themeFileText,/);
     else if (u.includes('objectsFileText')) assert.match(u, /^'\/api\/(modules|spaces)\/:id\/objects\/check', sameOriginOnly, objectsFileType, objectsFileText,/);
-    else if (u.includes('templateFileText')) assert.match(u, /^'\/api\/(templates\/import', requireOwner|host\/templates\/import', requireHostAdmin), sameOriginOnly, templateFileText,/);
-    else assert.match(u, /^'\/login', loginForm,/);
+    else assert.match(u, /^'\/api\/(templates\/import', requireOwner|host\/templates\/import', requireHostAdmin), sameOriginOnly, templateFileText,/);
   }
 });
 fs.rmSync(dir, { recursive: true, force: true });
@@ -292,8 +308,8 @@ try {
   assert.equal(login.status, 200, login.text);
   cookie = `app_session=${login.json.token}`;
 
-  await test('live: export answers a download for every built-in and Strong Coffee; 404 for an unknown id; owners only', async () => {
-    for (const [id, name] of [['default', 'strong-coffee'], ['staying-blonde', 'calming-teal'], ['willhavebeen', 'burnt-orange']]) {
+  await test('live: export answers a download for every built-in and the default theme; 404 for an unknown id; owners only', async () => {
+    for (const [id, name] of [['default', PRODUCT.toLowerCase()], ['strong-coffee', 'strong-coffee'], ['staying-blonde', 'calming-teal'], ['willhavebeen', 'burnt-orange']]) {
       const r = await call('GET', `/api/themes/${id}/export`);
       assert.equal(r.status, 200, r.text);
       assert.equal(r.headers.get('content-disposition'), `attachment; filename="${name}.theme.json"`);

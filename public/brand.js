@@ -89,6 +89,53 @@ export function productName() {
   return product;
 }
 
+// The product's mark (public/assets/images/brand/): the full-colour one on a light page, the -dark one on a dark page,
+// where the full-colour one's navy shape would not show. Never recoloured; the default only, since an environment's
+// own icon wins wherever it has one. Any <img data-product-mark> follows the mode showing, and changes with it.
+const PRODUCT_MARK = { light: '/assets/images/brand/mark.svg', dark: '/assets/images/brand/mark-dark.svg' };
+const APPLE_TOUCH_ICON = '/assets/images/brand/apple-touch-icon.png';
+export const productMarkSrc = () => PRODUCT_MARK[modeNow() === 'light' ? 'light' : 'dark'];
+function paintProductMarks() {
+  const src = productMarkSrc();
+  for (const img of qsa('img[data-product-mark]')) if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+}
+// The product's lockup: the mark and the product's name as live text on one line, so it follows PRODUCT_NAME. A name
+// that starts with "Coffee Pub " shows the brand in the display face (Fraunces 700) and the rest in the interface face
+// (Figtree 600), the same size; any other name (a branded version's own) is all Figtree. The colours are the theme's
+// text colour for both words: the brand's coral (--ink-brand) is for large text only (24px and up), so a lockup drawn at the
+// bar's size is ink; one asked for { large: true } draws the product's word in it.
+const BRAND_PREFIX = 'Coffee Pub ';
+export function productLockup(name = product, { large = false } = {}) {
+  const box = document.createElement('span');
+  box.className = 'product-lockup';
+  if (large) box.dataset.size = 'large'; // 24px and up: the product's word takes --ink-brand (style.css)
+  const mark = document.createElement('img');
+  mark.className = 'product-lockup-mark';
+  mark.alt = '';
+  mark.dataset.productMark = '';
+  mark.src = productMarkSrc();
+  const text = document.createElement('span');
+  text.className = 'product-lockup-name';
+  const full = String(name || '').trim();
+  const rest = full.startsWith(BRAND_PREFIX) ? full.slice(BRAND_PREFIX.length).trim() : '';
+  if (rest) {
+    const brandWord = document.createElement('span');
+    brandWord.className = 'product-lockup-brand';
+    brandWord.textContent = BRAND_PREFIX.trim();
+    const productWord = document.createElement('span');
+    productWord.className = 'product-lockup-product';
+    productWord.textContent = rest;
+    text.append(brandWord, ' ', productWord);
+  } else {
+    const productWord = document.createElement('span');
+    productWord.className = 'product-lockup-product';
+    productWord.textContent = full;
+    text.append(productWord);
+  }
+  box.append(mark, text);
+  return box;
+}
+
 // Fills in the environment's name and icon on every page from /api/branding.
 export async function loadBranding() {
   let b = { environmentName: 'Coffee Pub', loginText: '', hasIcon: false };
@@ -132,7 +179,18 @@ export async function loadBranding() {
     document.head.appendChild(icon);
   }
   icon.href = `/img/site/icon?v=${Date.now()}`;
-  document.querySelectorAll('img[data-brand="icon"]').forEach((el) => (el.src = icon.href));
+  // The environment's own icon where it set one; else the product's mark, in the variant for the mode showing.
+  document.querySelectorAll('img[data-brand="icon"]').forEach((el) => {
+    if (b.hasIcon) {
+      delete el.dataset.productMark;
+      el.src = icon.href;
+    } else {
+      el.dataset.productMark = '';
+    }
+  });
+  paintProductMarks();
+  // The phone's home-screen icon (Safari reads a PNG only): the environment's own, else the mark on its cream square.
+  document.querySelectorAll('link[rel="apple-touch-icon"]').forEach((link) => (link.href = b.hasIcon ? icon.href : APPLE_TOUCH_ICON));
   // A page marked data-brand="background" (the sign-in page) gets the
   // background picture when one is set. It goes on the root element: the
   // root has its own colour, so a picture on the body would stop at the
@@ -150,6 +208,7 @@ export async function loadBranding() {
 // as in this document.
 let headerEl = null;
 const qsa = (sel) => [...new Set([...document.querySelectorAll(sel), ...(headerEl ? headerEl.querySelectorAll(sel) : [])])];
+document.addEventListener('app:theme', () => paintProductMarks()); // the mark follows light and dark (productMarkSrc)
 const byId = (id) => document.getElementById(id) || headerEl?.querySelector(`#${id}`) || null;
 
 // What the bar knows about who is looking: undefined until /api/me answers, null with no account (a guest, a keyed
@@ -370,6 +429,10 @@ function registerSystemTools(header) {
   const offers = (entry) => profileFor().includes(entry);
   nav.register({ id: 'account-profile', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'user', label: 'View profile', visible: inMenu, onClick: viewProfile });
   if (bar.withThemeSwitch) nav.register({ id: 'theme-mode-switch', bar: 'primary', zone: 'right', group: 'you', order: 999, element: themeSwitch(doc), visible: () => inMenu() && offers('theme') });
+  // Manage, wider than a phone: a gear button in the top bar beside Set up (group 'space', just before it, in the last run),
+  // for owners and the admin, on every page that has the bar (not the profile menu any more). On a phone it is the menu's
+  // entry below, as Set up is.
+  nav.register({ id: 'manage-tool', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 0, place: 'end', icon: 'gear', label: 'Manage', href: keepingQuery(bar.adminHref), visible: () => !onPhone() && signedInHere() && offers('manage'), onClick: (event) => { event.preventDefault(); openManage(); } });
   nav.register({ id: 'admin-link', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'gear', label: 'Manage', href: keepingQuery(bar.adminHref), visible: () => inMenu() && offers('manage'), onClick: (event) => { event.preventDefault(); openManage(); } });
   nav.register({ id: 'account-host-console', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'server', label: 'Host console', visible: () => inMenu() && offers('host-console'), onClick: openHostConsole });
   nav.register({ id: 'account-install', bar: 'primary', zone: 'right', group: 'you', order: 999, icon: 'download', label: 'Install as an app', visible: () => inMenu() && Boolean(installPromptEvent) && !installBarred, onClick: installFromPrompt });
@@ -584,8 +647,7 @@ function signOut() {
 }
 
 // The profile menu under your picture, on a wider screen, by role (decisions 4 and 17; profileEntries() in
-// primary-nav.js): View profile, Dark mode, the environment's Global Calendar and Global Map (plan-one-bar.md, decision 6), Manage
-// for owners and the admin, Host console for the host admin's stand-in on a hosted server, Install as an app only
+// primary-nav.js): View profile, Dark mode, the environment's Global Calendar and Global Map (plan-one-bar.md, decision 6), Host console for the host admin's stand-in on a hosted server, Install as an app only
 // while the browser offers it (never a guest), Sign out last.
 function accountMenuItems() {
   const has = new Set(profileFor());
@@ -593,7 +655,6 @@ function accountMenuItems() {
     { icon: 'user', label: 'View profile', onPick: viewProfile },
     ...(has.has('theme') ? [{ icon: 'moon', label: 'Dark mode', checked: modeNow() === 'dark', onPick: toggleThemeMode }] : []),
     ...destinationList.filter((d) => has.has(`dest-${d.id}`)).map((d) => ({ icon: d.icon, label: profileDestinationLabel(d.id, d.name), onPick: () => openDestination(d.href) })),
-    ...(has.has('manage') ? [{ icon: 'gear', label: 'Manage', ...manageBadgeItem(), onPick: () => openManage() }] : []),
     ...(has.has('host-console') ? [{ icon: 'server', label: 'Host console', onPick: openHostConsole }] : []),
     ...(installPromptEvent && !installBarred ? [{ icon: 'download', label: 'Install as an app', onPick: installFromPrompt }] : []),
     { icon: 'right-from-bracket', label: 'Sign out', onPick: signOut },
@@ -1252,19 +1313,15 @@ export function setUpdateBadge(count) {
   updatesWaiting = Math.max(0, Number(count) || 0);
   paintBell();
 }
-// What needs a look in Manage > Modules: updates plus new modules, as a green count on Manage (the profile menu, the
+// What needs a look in Manage > Modules: updates plus new modules, as a green count on Manage (the top bar button, the
 // phone menu, a page bar's link) and on that tab. Nothing at zero. The words repeat the number for a screen reader.
 export function manageBadgeLabel(updates, fresh) {
   return [updates ? `${updates} ${updates === 1 ? 'update' : 'updates'} available` : '', fresh ? `${fresh} available` : ''].filter(Boolean).join(', ');
 }
-function manageBadgeItem() {
-  const n = updatesWaiting + freshModules;
-  return n ? { badge: n, badgeTone: 'ok', badgeLabel: manageBadgeLabel(updatesWaiting, freshModules) } : {};
-}
 function paintManageBadge() {
   const n = updatesWaiting + freshModules;
   const opts = n ? { tone: 'ok', label: manageBadgeLabel(updatesWaiting, freshModules) } : {};
-  for (const id of ['admin-link', 'page-bar-manage']) nav.setBadge(id, n, opts);
+  for (const id of ['manage-tool', 'admin-link', 'page-bar-manage']) nav.setBadge(id, n, opts);
 }
 export function setManageBadge(updates, fresh) {
   updatesWaiting = Math.max(0, Number(updates) || 0);

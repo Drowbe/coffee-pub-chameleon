@@ -4,15 +4,102 @@
 who builds the door, the settings and the checks; experience-design, who changes the product page, Manage and the
 console; content-manager, who updates the deployment guide and the architecture.
 
-**Status:** built (steps 1 to 6, 2026-10-21); QA pending; step 7, the move of Thomas's install, is Thomas's and not done. Nothing here has been verified on the real domains or in Firefox and Safari. The documentation is in [userguide-getting-started](../userguides/userguide-getting-started.md) ("Environments: one server, several groups") and [architecture-environments](../architecture/architecture-environments.md). Where the build differs from the contract below: the API contract lives in architecture-environments (there is no separate API document for these routes), and the stored `consoleHost` field was never added (decision 6). Before the build: approved with three open lines, 2026-10-21. Thomas answered the twelve questions the same day (see
+**Status:** built (steps 1 to 6, 2026-10-21); QA pending. Step 7, the move of Thomas's install, was done by Thomas on 2026-11-07, to different addresses than this plan first named (see "What changed on 2026-11-07"; the earlier example addresses below are superseded). The product is now Coffee Pub Chameleon. An environment on a customer's own domain is not built (GitHub #50). Thomas has used the new layout on his production server, but a sign-in from the product host into an environment in Chromium, Firefox and Safari, and a real LiveKit call, are not recorded as checked here. The documentation is in [userguide-getting-started](../userguides/userguide-getting-started.md) ("Environments: one server, several groups") and [architecture-environments](../architecture/architecture-environments.md). Where the build differs from the contract below: the API contract lives in architecture-environments (there is no separate API document for these routes), and the stored `consoleHost` field was never added (decision 6). Before the build: approved with three open lines, 2026-10-21. Thomas answered the twelve questions the same day (see
 Decisions). Still to be given by Thomas: his own `RESERVED_SLUGS` names, the current value of `LIVEKIT_HOST`, and whether
-the install has environments other than `thepub`. None of the three blocks steps 1 to 6. Thomas: today's install is
+the install has environments other than `thepub`. None of the three blocks steps 1 to 6. Thomas (2026-10-21, superseded by the 2026-11-07 section): today's install is
 `thepub.collaborator.coffeepub.ai`, which is long, and "collaborator" is a temporary product name. He owns
 `coffeepub.ai`, the brand home for all his apps (Studio, Collaborator, 13 FoundryVTT modules, product pages at
 `<product>.coffeepub.ai`), and `coffeepub.live`: environments at `<environment>.coffeepub.live`, the product page at
 `collaborator.coffeepub.ai`. The server will also be sold stand-alone, so every address must bend to a buyer's own
 domains. The design-system build-out (`plan-design-system.md`) and this plan touch different files, so they may run at
 the same time.
+
+## What changed on 2026-11-07
+
+Thomas moved his production server and decided the following. This section wins over the example addresses
+elsewhere in this plan (`coffeepub.live`, `collaborator.coffeepub.ai`, `livekit.coffeepub.ai`), which were written on
+2026-10-21 before the product's name and domains were settled and are superseded. The mechanism they describe
+(three settings, the door's order, reserved names) is unchanged and is what runs.
+
+**The product is Coffee Pub Chameleon.** Its name comes from `PRODUCT_NAME` only, as `CLAUDE.md` says.
+
+**The layout that is live:**
+
+| Setting | Value | What lives there |
+|---|---|---|
+| `BASE_DOMAIN` | `coffeepubstudio.live` | environments at `<slug>.coffeepubstudio.live`; the host console at `admin.coffeepubstudio.live` |
+| `PRODUCT_DOMAIN` | `chameleon.coffeepubstudio.com` | the app's front door: sign-up now, and later perhaps an environment chooser |
+| `LIVEKIT_HOST` | `livekit.coffeepubstudio.live` | its own proxy host to port 7880, Websockets on |
+
+`coffeepubstudio.com` is the studio's product website. The app does not serve it; its reverse proxy goes to port 8183.
+The protective domains (`coffeepub.ai`, `coffeepub.studio`) are redirected at Namecheap to
+`https://coffeepubstudio.com` (URL redirect records for `@` and `*`, with their A records removed).
+
+**Decisions (Thomas, 2026-11-07):**
+
+17. **Environments live on a separate registrable domain,** `coffeepubstudio.live` (bought 2026-11-07), not under the
+    studio's website domain. Reasons:
+    - customer environments are not the same site as the studio's website and its other products (cookies and sign-in
+      are kept apart; the `env_hint` cookie is scoped to `BASE_DOMAIN`)
+    - no collision with the names of other products
+    - short customer addresses, such as `thepub.coffeepubstudio.live`
+
+    It is reversible through `PREVIOUS_BASE_DOMAINS`.
+18. **`PRODUCT_DOMAIN` is on another registrable domain than `BASE_DOMAIN`** (`coffeepubstudio.com` against
+    `coffeepubstudio.live`). This is the two-domain case decisions 5 and 7 already allow, so the recent shortcut is
+    skipped on the product page (decision 11).
+19. **The old base `collaborator.coffeepub.ai` was retired the same day,** with no `PREVIOUS_BASE_DOMAINS` redirect
+    period, because the product is unreleased and has six users (the no-compatibility rule in `CLAUDE.md`). This replaces
+    the plan's earlier advice to set `PREVIOUS_BASE_DOMAINS` for a few weeks (decision 13 and option 6): it stays in the
+    code as a general feature, but Thomas's install does not use it. A leftover `PREVIOUS_BASE_DOMAINS` line in his
+    compose file is harmless and is to be removed.
+20. **Certificates and DNS are at Namecheap.** The wildcard certificate `*.coffeepubstudio.live` is issued through
+    Nginx Proxy Manager with the DNS challenge over Namecheap's API. Single-name certificates (HTTP challenge) cover
+    `chameleon.coffeepubstudio.com`, `livekit.coffeepubstudio.live` and the website. Renewal risk: Namecheap's API
+    needs the server's public IP on its allow-list, and Thomas's home IP is dynamic.
+
+**Possible later hardening, not decided:** registering `coffeepubstudio.live` on the Public Suffix List. That makes every
+environment its own site in browsers. It needs proof of ownership.
+
+**Checked against the code (`server/domains.js`, `server/host-registry.js`):**
+
+- `PRODUCT_DOMAIN` may be any host name, including one under another registrable domain. It is refused only when it is
+  not a host name or equals `admin.<BASE_DOMAIN>`.
+- `livekit`, `turn`, `stun`, `console`, `signup` and `login` are built-in reserved names. In addition, the first label
+  of `LIVEKIT_HOST` is reserved automatically when it sits directly under `BASE_DOMAIN`. Here it does
+  (`livekit.coffeepubstudio.live`), so `livekit` is reserved twice over. `PRODUCT_DOMAIN`'s label is reserved
+  automatically only when it sits under the base, which `chameleon.coffeepubstudio.com` does not.
+
+### An environment on its own domain (not built, GitHub #50)
+
+On 2026-11-07 Thomas asked whether an environment can be pointed at a specific domain, such as a customer's `xyz.com`.
+Today it cannot: an environment is always `<slug>.<BASE_DOMAIN>`. The same is true of `thepub.coffeepub.live`, which
+Thomas floated for his Foundry group: `coffeepub.live` is not the base, so it is not possible today.
+
+Thomas's wish, recorded as a wish and not yet a decision: a paying customer could use their own domain.
+
+[plan-environments](plan-environments.md) already names the shape of it (the tenant-era words there are the old names
+for environments): a hostname-to-slug mapping in the registry, a CNAME at the base, and a certificate the host obtains
+itself. It is marked "later" and for the top plan. The open question for that plan is how the certificates are
+obtained:
+
+- **A front proxy that obtains certificates on demand** (Caddy or Traefik): a customer's name gets a certificate the
+  first time it is asked for, with nothing to do by hand. Costs a change of proxy and a check that the server only
+  asks for names it has in the mapping.
+- **Nginx Proxy Manager as it is today:** a manual certificate per customer domain, plus the DNS-challenge wildcard for
+  the base. Costs nothing new now, and does not scale past a few customers.
+
+No lean is given here. The app side (the mapping, the door resolving a hostname to a slug, the session cookie staying
+host-only, `baseUrl(req)` already following the request's host) can be planned once Thomas picks the proxy.
+
+## What we learned moving the production server
+
+- **LiveKit's hostname must match in two places:** `LIVEKIT_HOST` in the app and the `domain` in the LiveKit config
+  (TURN). If they differ, the page connects but media does not.
+- **The old host's certificate renewals fail once a name stops pointing at the server.** Delete the certificates for
+  names you retire.
+- **A dynamic home IP has to be followed twice:** the DNS records must follow it (Thomas runs an updater), and so must
+  Namecheap's API allow-list, or the wildcard renewal fails.
 
 ## Why
 
@@ -445,7 +532,7 @@ wait on the others.
 
 ## Open questions
 
-Three lines are open. None blocks steps 1 to 6.
+Three lines from 2026-10-21 are answered or moot (see below), and the 2026-11-07 questions follow. None blocks anything built.
 
 1. **`RESERVED_SLUGS`:** which of Thomas's own names go in it (`studio`, and the other apps)? He sets it in the
    container's settings; the build needs no list. Blocks only the move.
@@ -453,5 +540,19 @@ Three lines are open. None blocks steps 1 to 6.
    reserved label and for the move's checklist. Blocks only the move.
 3. **Other environments:** does the install have environments other than `thepub`? Decision 14 moves the data as it is
    either way; the answer only adds names to the move's check. Blocks only the move.
+
+Answered by the move of 2026-11-07: the value of `LIVEKIT_HOST` (question 2) is `livekit.coffeepubstudio.live`. Thomas's
+`RESERVED_SLUGS` names (question 1) and his other environments (question 3) are not recorded here.
+
+New, 2026-11-07 (none is decided):
+
+4. **An environment on its own domain** (GitHub #50): how certificates are obtained, a front proxy that does it on demand
+   (Caddy or Traefik) or Nginx Proxy Manager with manual certificates. See "An environment on its own domain".
+5. **The app's front door as an environment chooser.** `PRODUCT_DOMAIN` serves sign-up now; Thomas has floated an
+   environment chooser there later. This overlaps the website and product pages, so it belongs to the product-site plan
+   (`plan-product-site.md`, being written separately) and is not decided here.
+6. **`thepub.coffeepub.live` for the Foundry group.** Not possible today, for the same reason as question 4: an environment
+   is always under `BASE_DOMAIN`.
+7. **Public Suffix List registration** of `coffeepubstudio.live`: wanted or not, and when.
 
 Nothing is left open about the build.

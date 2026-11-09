@@ -43,20 +43,6 @@ export function collectFiles(exts = /\.(css|js)$/, root = process.env.DRIFT_ROOT
   }));
 }
 
-// Pages with a palette, type sizes and breakpoints of their own, on purpose. check-no-raw-colours, check-type-scale and
-// check-breakpoints leave these files out (ownPaletteSplit) and print which; check-spacing and check-radius still read them.
-// One line of reason per file. A file is added here only for a standalone page that is not the app's UI.
-export const OWN_PALETTE = {
-  'public/landing.css': 'the host\'s product page has its own travel palette, type sizes and breakpoints; spacing and radius still follow the app scale',
-};
-
-// Split the files into [the ones to check, report lines naming the exempted ones present].
-export function ownPaletteSplit(files) {
-  const kept = files.filter((f) => !(f.rel in OWN_PALETTE));
-  const lines = files.filter((f) => f.rel in OWN_PALETTE).map((f) => `  own palette, not read: ${f.rel} (${OWN_PALETTE[f.rel]})`);
-  return [kept, lines];
-}
-
 // Blank out comments and `${...}` placeholders, keeping every other character in place so line numbers stay right.
 const blank = (s) => s.replace(/[^\n]/g, ' ');
 export function clean(text, kind) {

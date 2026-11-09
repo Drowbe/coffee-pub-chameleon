@@ -13,11 +13,11 @@ import { createModuleFrame } from '/module-frame.js';
 
 const D = document;
 const q = new URLSearchParams(location.search);
-const THEMES = ['strong-coffee', 'calming-teal', 'burnt-orange'];
+const THEMES = ['chameleon', 'strong-coffee', 'calming-teal', 'burnt-orange'];
 const SCENES = ['map', 'menu', 'options', 'later', 'picture', 'guest'];
 const S = {
   id: q.get('id') || '',
-  theme: THEMES.includes(q.get('theme')) ? q.get('theme') : 'strong-coffee',
+  theme: THEMES.includes(q.get('theme')) ? q.get('theme') : 'chameleon',
   mode: q.get('mode') === 'light' ? 'light' : 'dark',
   choice: ['default', 'light', 'dark'].includes(q.get('map')) ? q.get('map') : 'default',
   scene: SCENES.includes(q.get('scene')) ? q.get('scene') : 'map',
