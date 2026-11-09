@@ -136,11 +136,11 @@
     cells[r][c] = wbCellText(text);
     // The others first, so a cell that does not fit is this one, cut, never someone else's.
     const others = cells.map((row, i) => row.map((t, j) => (i === r && j === c ? '' : t)));
-    const room = WB_TABLE.textMax - JSON.stringify(wbTrimCells(others)).length - 4;
+    const spare = WB_TABLE.textMax - JSON.stringify(wbTrimCells(others)).length - 4;
     let t = cells[r][c];
     let cut = false;
-    if (t && JSON.stringify(t).length > room) { t = t.slice(0, Math.max(0, room - 2)); cut = true; }
-    while (t && JSON.stringify(t).length > room) t = t.slice(0, -1);
+    if (t && JSON.stringify(t).length > spare) { t = t.slice(0, Math.max(0, spare - 2)); cut = true; }
+    while (t && JSON.stringify(t).length > spare) t = t.slice(0, -1);
     cells[r][c] = t;
     return { cells: wbTrimCells(cells), cut };
   }
