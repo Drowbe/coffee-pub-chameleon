@@ -1716,9 +1716,6 @@
   let snapOn = false;
   try { snapOn = window.localStorage.getItem(SNAP_KEY) === '1'; } catch { /* no browser storage: off */ }
   const snapping = (event) => snapOn !== Boolean(event && event.altKey);
-  // The overview's button comes first, then Snap's: the host holds a module's first two icon-only right-zone buttons at the
-  // far right, so these two stay there, Snap the last, whatever comes and goes on the left (Delete, Arrange). Overview is
-  // for everyone who can see the board (it only reads); Snap is for editors.
   // Grid: dots, graph paper or off, with its size, colour and opacity; each person's own, kept in this browser (wbGrid, lib-a),
   // for everyone who can see the board. The size is also Snap to grid's step. The panel is the small bar at the board's top right.
   const gridPanel = $('grid-panel');
@@ -1776,11 +1773,14 @@
     if (e.key === 'Escape') { e.preventDefault(); closeGrid(); }
   });
   for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) gridPanel.addEventListener(type, (e) => e.stopPropagation());
-  document.addEventListener('pointerdown', (e) => { if (!gridPanel.hidden && !gridPanel.contains(e.target)) closeGrid(); }, true);
-  host.ui.toolbarButton({ id: 'grid', label: 'Grid', icon: 'table-cells', iconOnly: true, zone: 'end', onClick: () => { if (gridPanel.hidden) openGrid(); else closeGrid(); } });
+  document.addEventListener('pointerdown', (e) => { if (!gridPanel.hidden && !gridPanel.contains(e.target) && !(e.target.closest && e.target.closest('[data-key="btn:grid"]'))) closeGrid(); }, true); // the Grid button toggles it itself
+  // The right zone's buttons are made in this order: Overview, Grid, Snap. The host draws the last one at the far right, so Snap
+  // stays there whatever comes and goes on the left (Delete, Arrange); a view-only person has no Snap, so Grid is last. Overview
+  // and Grid are for everyone who can see the board (they only change the view); Snap is for editors.
   const overviewStore = () => window.localStorage;
   let overviewOn = wbOverviewLoad(overviewStore);
   const overviewButton = host.ui.toolbarButton({ id: 'overview', label: 'Overview', icon: 'map', iconOnly: true, on: overviewOn, zone: 'end', onClick: () => toggleOverview() });
+  host.ui.toolbarButton({ id: 'grid', label: 'Grid', icon: 'table-cells', iconOnly: true, zone: 'end', onClick: () => { if (gridPanel.hidden) openGrid(); else closeGrid(); } });
   if (policy.canEdit) {
     const snapButton = host.ui.toolbarButton({
       id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn, zone: 'end',
