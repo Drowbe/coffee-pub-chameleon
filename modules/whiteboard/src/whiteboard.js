@@ -104,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip, which also has text size, alignment, line style and colours for what is picked. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip, which also has text size, alignment, line style and colours for what is picked. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier; Enter, Shift Enter, Escape). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1522,12 +1522,14 @@
   host.toolbar.set([
     { type: 'button', id: 'zoom-out', title: withKey('Zoom out', '-'), icon: 'magnifying-glass-minus', placement: 'titlebar' },
     { type: 'button', id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus', placement: 'titlebar' },
-    { type: 'button', id: 'zoom', title: 'Zoom', icon: 'magnifying-glass', placement: 'titlebar' },
+    { type: 'button', id: 'zoom', title: 'Zoom', icon: 'up-right-and-down-left-from-center', placement: 'titlebar' },
+    { type: 'button', id: 'find', title: 'Find in the board', icon: 'magnifying-glass', placement: 'titlebar' },
   ]).catch(() => {});
   host.on('toolbar', (e) => {
     if (e.id === 'zoom-in') zoomIn();
     else if (e.id === 'zoom-out') zoomOut();
     else if (e.id === 'zoom') zoomMenu(e);
+    else if (e.id === 'find') { if (finding) closeFind(); else openFind(); }
   });
 
   // Snap to grid: blocks made, moved and resized land on the board's dots (WB_GRID); Alt (Option on a Mac) held during a
@@ -1537,7 +1539,12 @@
   let snapOn = false;
   try { snapOn = window.localStorage.getItem(SNAP_KEY) === '1'; } catch { /* no browser storage: off */ }
   const snapping = (event) => snapOn !== Boolean(event && event.altKey);
-  // Its button is in the row's right zone, at the far right, whatever comes and goes on the left (Delete, Arrange).
+  // The overview's button comes first, then Snap's: the host holds a module's first two icon-only right-zone buttons at the
+  // far right, so these two stay there, Snap the last, whatever comes and goes on the left (Delete, Arrange). Overview is
+  // for everyone who can see the board (it only reads); Snap is for editors.
+  const overviewStore = () => window.localStorage;
+  let overviewOn = wbOverviewLoad(overviewStore);
+  const overviewButton = host.ui.toolbarButton({ id: 'overview', label: 'Overview', icon: 'map', iconOnly: true, on: overviewOn, zone: 'end', onClick: () => toggleOverview() });
   if (policy.canEdit) {
     const snapButton = host.ui.toolbarButton({
       id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn, zone: 'end',
@@ -2027,15 +2034,13 @@
     }
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
-  // The title bar's menu: set again when Show overview turns into Hide overview (see "the overview").
+  // The title bar's menu: set again when the pointers entry changes.
   function setHeader() {
     if (!host.header) return;
     host.header.set([
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
-      { id: 'find', icon: 'magnifying-glass', title: 'Find', overflow: true },
-      { id: 'overview', icon: 'map', title: overviewOn ? 'Hide overview' : 'Show overview', on: overviewOn, overflow: true },
       { id: 'pointers', icon: 'arrow-pointer', title: pointersOn ? 'Hide other people\'s pointers' : 'Show other people\'s pointers', on: pointersOn, overflow: true },
     ]).catch(() => {});
   }
@@ -2044,8 +2049,6 @@
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
-      if (e && e.id === 'overview') toggleOverview();
-      if (e && e.id === 'find') openFind();
       if (e && e.id === 'pointers') togglePointers();
     });
   }
@@ -2195,17 +2198,15 @@
   const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
 
   // ---- the overview -------------------------------------------------------------------------------------------------------
-  // A small map of the whole board at the bottom right of the board (lib-n): Show overview and Hide overview in the title
-  // bar's menu turn it on and off, each person's own choice kept in this browser when it can be (off at first), never in
+  // A small map of the whole board at the bottom right of the board (lib-n): the Overview button at the right of the toolbar
+  // turns it on and off, each person's own choice kept in this browser when it can be (off at first), never in
   // the board's data. It shows every block, the frames as outlines, and what is in sight; a press on it puts the middle of
   // the view there at the same zoom, and a drag moves the view along. It is hidden while presenting, in a module smaller
   // than 360 x 320 pixels, and while the board is empty. It is a picture to the keyboard and a screen reader (no tab stop,
   // no key): the keyboard moves the board itself. It reads the board only, so someone who may only look can use it.
-  const overviewStore = () => window.localStorage;
   // Other people's pointers shown (see "other people's pointers"): this browser's choice, on at first.
   const pointersStore = () => window.localStorage;
   let pointersOn = wbLiveLoad(pointersStore);
-  let overviewOn = wbOverviewLoad(overviewStore);
   overview = createOverview({
     layer: surface,
     centre(p) {
@@ -2236,13 +2237,13 @@
   function toggleOverview() {
     overviewOn = !overviewOn;
     wbOverviewSave(overviewStore, overviewOn); // where it cannot be kept, it lasts until the page goes
-    setHeader();
+    overviewButton.set({ on: overviewOn });
     overviewRefresh();
   }
   setHeader();
 
   // ---- find in the board ----------------------------------------------------------------------------------------------------
-  // Find, in the title bar's menu, or / on the board (when no words are being edited) opens the find bar at the top of the
+  // Find, the title bar's Find button, or / on the board (when no words are being edited) opens the find bar at the top of the
   // board: what is typed is found in the blocks' words (lib-o: notes, text, shapes, frame titles, table cells, connector
   // labels, picture descriptions; case and accents aside), each block once, in reading order. Enter goes to the next match
   // and Shift Enter to the previous, round at the ends; Escape or Close closes it and hands the keyboard back to the board.
