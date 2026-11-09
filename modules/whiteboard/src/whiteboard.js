@@ -861,7 +861,7 @@
   // new blocks get (for the active tool's block type when it makes one). The current choice is the marked row; with
   // several blocks that differ, no row is marked. Each change is one whole save of each block.
   const toolbarAt = (e) => ({ at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 } });
-  const NAMED = { none: { label: 'None', icon: 'ban' }, auto: { label: 'Matching', icon: 'circle-half-stroke' }, usual: { label: 'Usual', icon: 'circle-dot' } };
+  const NAMED = { none: { label: 'None', icon: 'ban' }, auto: { label: 'Matching', icon: 'circle-half-stroke' }, usual: { label: 'Default', icon: 'circle-dot' } };
   // The blocks the menus work on: the one given, else every picked one this person may change.
   const targets = (only) => (only ? [only] : [...sel]).map((id) => board.get(id)).filter((b) => b && policy.canChange(b));
   const roleLabel = (def, role) => (def && def.paint && def.paint[role.id] && def.paint[role.id].label) || role.label;
@@ -1129,9 +1129,9 @@
         nextText[field] = v;
       };
       const rows = choices.map((c) => choiceRow(c.id, c.label, now, pick(c.id), c.icon ? { icon: c.icon } : {}));
-      if (!list.length) rows.unshift(choiceRow(null, 'Usual', now, pick(null)));
+      if (!list.length) rows.unshift(choiceRow(null, 'Default', now, pick(null)));
       const chosen = choices.find((c) => c.id === now);
-      return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Usual', rows };
+      return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Default', rows };
     };
     return [group('size', 'Text size', WB_SIZES), group('align', 'Align', WB_ALIGNS)];
   }
