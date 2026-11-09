@@ -1413,6 +1413,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     else queued.push([event, data]);
   };
 
+  // What this module has attached lately (host.chat.attach's rate cap).
+  let attachTimes = [];
+  let lastAttach = { same: '', at: 0 };
   const handlers = {
     async hello() {
       const [answer, envName] = await Promise.all([api('GET', url('/context', scope)), environmentName()]);
@@ -1748,6 +1751,17 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // canvas, only this space's objects, words as plain text up to ATTACH_TEXT_MAX; anything else is refused with a sentence.
     async 'chat.attach'({ label, text, ref, picture }) {
       const refuse = (message) => { throw Object.assign(new Error(message), { status: 400 }); };
+      // One module cannot flood Chat: the same attachment again within 100 ms is taken as one, and past 10 accepted in a second
+      // the next is refused. Counted for what passed the checks below, just before it goes to Chat.
+      const throttle = (same) => {
+        const now = Date.now();
+        attachTimes = attachTimes.filter((t) => now - t < 1000);
+        if (attachTimes.length >= 10) refuse('Too many attachments at once. Wait a moment.');
+        const again = same === lastAttach.same && now - lastAttach.at < 100;
+        lastAttach = { same, at: now };
+        if (!again) attachTimes.push(now);
+        return again;
+      };
       if (typeof onChatAttach !== 'function') refuse(`Ask this from Chat in ${word('space', { a: true })}.`);
       if (picture !== undefined && picture !== null) refuse("Pictures can't be attached yet.");
       const haveText = text !== undefined && text !== null;
@@ -1762,11 +1776,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         if (!words) refuse('There are no words to attach.');
         const n = [...words].length;
         if (n > ATTACH_TEXT_MAX) refuse(`Words to attach are at most ${ATTACH_TEXT_MAX.toLocaleString('en-US')} characters; these are ${n.toLocaleString('en-US')}.`);
+        if (throttle(JSON.stringify([name, words]))) return { attached: true };
         return attachResult(await onChatAttach({ label: name, text: words }));
       }
       if (!REF_SHAPE(ref)) refuse(`Attach ${word('object', { a: true })} with its pointer.`);
       // Another space's object is refused here; the server leaves it out too, whatever a page sends.
       if (ref.scope === 'space' && (!spaceId || ref.space !== spaceId)) refuse(`That ${word('object')} is not in this ${word('space')}.`);
+      if (throttle(JSON.stringify([name, cleanPointer(ref)]))) return { attached: true };
       return attachResult(await onChatAttach({ label: name, ref: cleanPointer(ref) }));
     },
     // Uploaded pictures (a module whose manifest declares `uploads`): kept per scope, checked and cleaned by the server.

@@ -5975,7 +5975,9 @@ function refuseAi(res, r, { who, space, purpose }) {
 // refuses one over 1,000 characters rather than cutting it (ai-22).
 function aiQuestionOf(raw) {
   if (raw !== undefined && raw !== null && typeof raw !== 'string') return { error: 'The question must be text.' };
-  const q = prompts.cleanQuestion(raw);
+  // Redacted before it is counted: taking a secret out can make the text longer ("&s=a" becomes "&s=[removed]"), and a question
+  // over its limit would otherwise reach the prompt as a server error instead of this sentence.
+  const q = aiPolicy.redact(prompts.cleanQuestion(raw), aiPolicy.secrets());
   const n = [...q].length;
   if (n > prompts.MAX_QUESTION) return { error: `A question is at most ${prompts.MAX_QUESTION.toLocaleString('en-US')} characters; this one is ${n.toLocaleString('en-US')}.` };
   if (n && n < prompts.MIN_QUESTION) return { error: `Ask a question of at least ${prompts.MIN_QUESTION} characters.` };
@@ -5988,14 +5990,16 @@ function aiQuestionOf(raw) {
 function aiAttachedOf(raw) {
   if (raw === undefined || raw === null) return { attached: null };
   if (typeof raw !== 'object' || Array.isArray(raw) || typeof raw.text !== 'string' || (raw.label !== undefined && typeof raw.label !== 'string')) return { error: 'The attached words must be text with a label.' };
-  const text = prompts.cleanAttachedText(raw.text);
-  const label = prompts.cleanAttachedLabel(raw.label);
+  const secrets = aiPolicy.secrets();
+  // Redacted first, counted after: taking a secret out can make the words longer, so a count made before could pass words the
+  // prompt then refuses as a server error. The label is cut to its limit after redaction for the same reason.
+  const text = aiPolicy.redact(prompts.cleanAttachedText(raw.text), secrets).trim();
+  const label = prompts.cleanAttachedLabel(aiPolicy.redact(prompts.cleanAttachedLabel(raw.label), secrets));
   if (!label) return { error: 'Name the attached words.' };
   if (!text) return { error: 'The attached words are empty.' };
   const n = [...text].length;
   if (n > prompts.MAX_ATTACHED) return { error: `Attached words are at most ${prompts.MAX_ATTACHED.toLocaleString('en-US')} characters; these are ${n.toLocaleString('en-US')}.` };
-  const secrets = aiPolicy.secrets();
-  return { attached: { label: aiPolicy.redact(label, secrets), text: aiPolicy.redact(text, secrets) } };
+  return { attached: { label, text } };
 }
 // The pointers sent as `refs` (Chat) or `objects` (a module): up to 12, each an object.
 const aiRefsOf = (raw) => (Array.isArray(raw) ? raw.slice(0, prompts.MAX_MATERIAL).filter((r) => r && typeof r === 'object' && !Array.isArray(r)) : []);

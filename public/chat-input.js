@@ -1051,6 +1051,11 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   // Words a module held with host.chat.attach, { label, text }: one chip beside the object chips, sent with the next question
   // when the person presses Send and not before. A second attach replaces the first.
   let aiWords = null;
+  // When the person last typed in the box, and when a module's attach last landed: a module's attach never takes the cursor or
+  // the view from someone typing, and an Enter right after one is not a Send (attachBusy, canAskEmpty).
+  let lastTypedAt = 0;
+  let lastAttachAt = 0;
+  if (input()) for (const type of ['input', 'keydown']) input().addEventListener(type, () => { lastTypedAt = Date.now(); });
   let lastActions = [];
 
   function spaceId() {
@@ -1193,7 +1198,6 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     paintModeTools();
     syncEmpty();
     paintAiState();
-    paintContext(); // what is attached goes with a question to the AI, so it shows only where that is asked
     if (view === 'assistant' && id && !isHome()) checkAi();
     if (list) list.scrollTop = list.scrollHeight;
   }
@@ -1945,47 +1949,54 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     const q = String(question || '').trim();
     const kept = (refs || []).filter((r) => r && r.module && r.id);
     if (!q && !kept.length) { setNote('Type a question first.'); return { ok: false }; }
-    // A module's ask sends at once and never what another module held: attached words wait for the person's own Send.
-    const prev = aiContext;
-    const prevWords = aiWords;
-    aiWords = null;
-    aiContext = kept.map((ref) => ({ ref }));
     setView('assistant'); // a module's question is answered where answers go
-    paintContext();
-    try {
-      input().focus();
-      const ok = await runAi(q);
-      return { ok };
-    } finally {
-      aiContext = prev;
-      aiWords = prevWords;
-      paintContext();
-    }
+    input().focus();
+    // Its own question and objects, and no words, handed to the send as they are: nothing held in the box is read, before or after
+    // any wait, so what another module attached (or the person is about to send) is never sent by this ask and never lost by it.
+    const ok = await runAi(q, { refs: kept, attached: null });
+    return { ok };
   }
 
   // A module's attach (host.chat.attach): holds words or an object as a chip in the box and sends NOTHING. Only the person
   // pressing Send sends, with whatever chips are still there. Opens the Assistant, where a question to the AI is typed, and
   // puts the cursor in the box. { label, text } or { label, ref }; the bridge (module-host.js) has already checked and
   // cleaned them, and this checks the shape again because it is the one door to what Send posts.
+  // True while the person is busy in the page: words in the box, typing in the last two seconds, or the cursor in another editable
+  // control (a module's form). A module's attach then holds its chip and says so, and takes neither the view nor the cursor.
+  function attachBusy() {
+    const el = input();
+    if (el && el.value.trim()) return true;
+    if (Date.now() - lastTypedAt < 2000) return true;
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return Boolean(a && a !== el && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)));
+  }
   async function attach({ label, text, ref } = {}) {
     const name = String(label || '').trim().slice(0, ATTACH_LABEL_MAX);
     const words = typeof text === 'string' && text.trim() ? text : '';
     const pointer = ref && ref.module && ref.id ? ref : null;
     if (!name || (!words && !pointer) || (words && pointer)) return { ok: false, why: 'Nothing to attach.' };
     if ([...words].length > ATTACH_TEXT_MAX) return { ok: false, why: `Words to attach are at most ${ATTACH_TEXT_MAX.toLocaleString('en-US')} characters.` };
-    // Where a question to the AI is typed. A guest, or a space with the AI off, has no Assistant to attach to: say why.
-    setView('assistant');
-    if (view !== 'assistant') return { ok: false, why: aiLine() || "The Assistant isn't available here." };
-    await checkAi();
-    if (aiState.known && !aiState.available) return { ok: false, why: aiLine() };
+    if (!spaceId() || isHome()) return { ok: false, why: "The Assistant isn't available here." };
+    // Asked afresh every time (not the 30 second memory): a guest, a space with the AI off, or an owner who turned it off has no
+    // Assistant to attach to, and the sentence says why. Whether the person is busy is read after this wait, not before.
+    await checkAi(true);
+    if (aiState.known && !aiState.available) return { ok: false, why: aiLine() || "The Assistant isn't available here." };
+    const quiet = attachBusy();
     if (words) aiWords = { label: name, text: words };
     else if (!aiContext.some((c) => c.ref.module === pointer.module && c.ref.id === pointer.id && c.ref.kind === pointer.kind)) {
       if (aiContext.length >= ATTACH_REFS_MAX) return { ok: false, why: `A question takes at most ${ATTACH_REFS_MAX} ${word('object', { many: true })}.` };
       aiContext.push({ ref: pointer, label: name });
     }
-    setNote('');
+    lastAttachAt = Date.now();
     paintContext();
-    input().focus();
+    if (quiet) {
+      setNote(`Ready to send: ${name}`);
+    } else {
+      setView('assistant');
+      setNote('');
+      input().focus();
+    }
     return { ok: true };
   }
 
@@ -2026,8 +2037,8 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     const wrap = $('chat-ai-context');
     if (!wrap) return;
     wrap.replaceChildren();
-    // Attached words and objects go with a question to the AI, so they show in the Assistant only (the Discussion's Send is a message).
-    wrap.hidden = (aiContext.length === 0 && !aiWords) || view !== 'assistant';
+    // Shown wherever a send can take them (a typed /ai goes from either view), so the person sees what will go.
+    wrap.hidden = aiContext.length === 0 && !aiWords;
     // Words a module attached: one chip with its label (textContent only: the label is a module's text). The words themselves
     // are in the chip's tooltip, so the person can see what will go before it goes.
     if (aiWords) {
@@ -2051,10 +2062,12 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
       chip.className = 'sdk-chip-removable chat-ai-chip';
       const kind = String(c.ref.kind || word('object'));
       const mod = canvas.list().find((m) => m.id === c.ref.module);
-      const label = c.label || `${kind[0].toUpperCase()}${kind.slice(1)}${mod ? ` from ${mod.displayName || mod.name}` : ''}`;
+      // The host's own name for it ("Place from Travel"); what a module called it is only a tooltip, never the name.
+      const label = `${kind[0].toUpperCase()}${kind.slice(1)}${mod ? ` from ${mod.displayName || mod.name}` : ''}`;
       const text = document.createElement('span');
       text.className = 'chat-ai-chip-text';
       text.textContent = label;
+      if (c.label) chip.title = c.label;
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'sdk-chip-x';
@@ -2076,10 +2089,18 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   // The question and the answer come back stored, both private (plan-chat-model.md, decision 1): drawn from what the
   // server returns, never a copy made here. Nothing is posted to the chat; the author makes the answer public with its
   // badge.
-  async function runAi(question) {
+  // `held`: { refs, attached } handed in by a module's ask, used as given. Without it this is the person's own Send, which takes
+  // what is held in the box, read ONCE here before any wait and sent only for what is still held when the wait ends (a chip taken
+  // off meanwhile is not sent; one attached meanwhile is not taken and stays for the next Send). Only what was sent is cleared.
+  async function runAi(question, held = null) {
     const id = spaceId();
     if (!id) { setNote(`AI is only in ${word('space', { a: true })}.`); return false; }
-    if (!String(question || '').trim() && !aiContext.length && !aiWords) { setNote('Type your question after /ai.', true); return false; }
+    const own = held === null;
+    const snapContext = own ? aiContext.slice() : [];
+    const snapWords = own ? aiWords : null;
+    const startRefs = own ? snapContext.map((c) => c.ref).filter(Boolean) : held.refs;
+    const startWords = own ? snapWords : held.attached;
+    if (!String(question || '').trim() && !startRefs.length && !startWords) { setNote('Type your question after /ai.', true); return false; }
     const q0 = String(question || '').trim();
     if (q0 && [...q0].length < 3) { setNote('Ask a question of at least 3 characters.', true); return false; }
     const tooLong = questionTooLong(question);
@@ -2088,13 +2109,17 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     if (aiState.known && !aiState.available && !isGuest()) await checkAi(true);
     if (aiState.known && !aiState.available) { setNote(aiLine(), true); return false; }
     // Sent at once, as in any chat: the question is on the page with a waiting line, the box is the caller's to empty, and
-    // nothing here holds it. Several may be on their way; each answer comes under its own question. What was attached
-    // goes with this question only.
-    const refs = aiContext.map((c) => c.ref).filter(Boolean);
-    const attached = aiWords ? { label: aiWords.label, text: aiWords.text } : null;
-    aiContext = [];
-    aiWords = null;
-    paintContext();
+    // nothing here holds it. Several may be on their way; each answer comes under its own question.
+    const sendContext = own ? snapContext.filter((c) => aiContext.includes(c)) : [];
+    const refs = own ? sendContext.map((c) => c.ref).filter(Boolean) : startRefs;
+    const sendWords = own ? (snapWords && aiWords === snapWords ? snapWords : null) : startWords;
+    if (!String(question || '').trim() && !refs.length && !sendWords) { setNote('Type your question after /ai.', true); return false; }
+    const attached = sendWords ? { label: sendWords.label, text: sendWords.text } : null;
+    if (own) {
+      aiContext = aiContext.filter((c) => !sendContext.includes(c));
+      if (aiWords === sendWords) aiWords = null;
+      paintContext();
+    }
     setNote('');
     askNow(String(question || '').trim(), refs, attached);
     return true;
@@ -2573,12 +2598,13 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     importText: (text) => checkObjects(text),
     // Words typed in the Assistant: asked of the AI. True when the answer came.
     // The Assistant is showing and an object waits to go with the next question: an empty box may send (routeLine).
-    canAskEmpty: () => view === 'assistant' && (aiContext.length > 0 || aiWords !== null),
+    canAskEmpty: () => view === 'assistant' && (aiContext.length > 0 || aiWords !== null) && Date.now() - lastAttachAt >= 400, // an Enter just after an attach is not a Send
     ask: (text) => { setNote(''); if (view !== 'assistant') setView('assistant'); return runAi(text); },
     checkAi,
     note: setNote,
     askAbout,
     attach,
+    attachBusy,
     // Send to... (plan-object-handoff.md): whether a message's menu offers it, from the actions held now; and the menu.
     canSendTo: (entry) => Boolean(sendPlan(entry)),
     sendTo,

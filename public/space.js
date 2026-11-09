@@ -1080,8 +1080,11 @@ const canvas = createCanvas({
   // host.chat.attach: the chip goes in Chat's box and nothing is sent; the person's Send sends it.
   onChatAttach: (input) => {
     if (!attachInChat) return Promise.reject(Object.assign(new Error('Chat is not ready.'), { status: 400 }));
-    toggleChat(true);
-    canvas.show('chat'); // on a phone Chat is a tab: bring it forward, as its tab does
+    // Someone busy in the page (typing, or in a form) keeps their view and their cursor: the chip is held and says so in Chat.
+    if (!chatInput.attachBusy()) {
+      toggleChat(true);
+      canvas.show('chat'); // on a phone Chat is a tab: bring it forward, as its tab does
+    }
     return attachInChat(input);
   },
 });

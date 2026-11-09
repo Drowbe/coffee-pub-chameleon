@@ -55,7 +55,7 @@ const makeBridge = ({ spaceId = 'sp1', attachTo = 'ok', askTo = true } = {}) => 
   const onChatAttach = attachTo ? async (input) => { seen.attach.push(input); return attachTo === 'ok' ? { ok: true } : { ok: false, why: attachTo }; } : null;
   const onChatAsk = askTo ? async (input) => { seen.ask.push(input); return { ok: true }; } : null;
   const api = async (...args) => { seen.api.push(args); return {}; };
-  const handlers = new Function('word', 'spaceId', 'onChatAttach', 'onChatAsk', 'api', `${helpers}\nconst h = { ${attachSrc},\n${askSrc} };\nreturn h;`)(wordStub, spaceId, onChatAttach, onChatAsk, api);
+  const handlers = new Function('word', 'spaceId', 'onChatAttach', 'onChatAsk', 'api', `let attachTimes = []; let lastAttach = { same: '', at: 0 };\n${helpers}\nconst h = { ${attachSrc},\n${askSrc} };\nreturn h;`)(wordStub, spaceId, onChatAttach, onChatAsk, api);
   return { seen, attach: handlers['chat.attach'], ask: handlers['chat.ask'] };
 };
 const refuses = async (fn, re, why) => {
@@ -135,6 +135,17 @@ await test('bridge: an object is held by its pointer; another space\'s is refuse
   // A mount with no space (a module's own page) cannot name a space's object.
   const off = makeBridge({ spaceId: null });
   await refuses(() => off.attach({ label: 'A note', ref: mine }), /not in this space/, 'a mount with no space');
+});
+
+await test('bridge: the same attachment again within 100 ms is one; past 10 a second is refused with a sentence', async () => {
+  const b = makeBridge();
+  await b.attach({ label: 'Same', text: 'same words' });
+  await b.attach({ label: 'Same', text: 'same words' });
+  assert.equal(b.seen.attach.length, 1, 'a repeat within 100 ms did not reach Chat again');
+  for (let i = 0; i < 9; i += 1) await b.attach({ label: 'Different', text: `words ${i}` });
+  assert.equal(b.seen.attach.length, 10);
+  await refuses(() => b.attach({ label: 'Different', text: 'one more' }), /^Too many attachments at once\. Wait a moment\.$/, 'the eleventh in a second');
+  assert.equal(b.seen.attach.length, 10, 'the eleventh was not taken');
 });
 
 await test('bridge: off a space\'s canvas it says so; Chat\'s own refusal comes back as the sentence', async () => {
@@ -322,6 +333,19 @@ try {
     assert.ok(w.text.includes('Bearer [removed]'), w.text);
     assert.ok(!/z{12}/.test(w.text.replace(/\[removed\]/g, '')) || w.text.includes('[removed]'), w.text);
     assert.ok([...w.label].length <= 60 && !/[\n\u202E]/.test(w.label) && w.label.startsWith('A very long'), w.label);
+  });
+
+  await test('server: a secret taken out cannot push words, a label or a question over their limits into a 500', async () => {
+    fake.clear();
+    // "&s=a" is taken out as "&s=[removed]": longer than it was. Counted after, so the sentence is a 400, never a server error.
+    const wide = await ask('a9', { attached: { label: 'L', text: '&s=a'.repeat(1700) } });
+    assert.deepEqual([wide.status, wide.json.error.startsWith('Attached words are at most 8,000 characters; these are ')], [400, true], wide.text.slice(0, 200));
+    const lab = await ask('a9', { attached: { label: '&s=a '.repeat(12), text: 'fine' } });
+    assert.equal(lab.status, 200, lab.text.slice(0, 200));
+    assert.ok([...dataOf(fake.last()).attachedWords.label].length <= 60);
+    const q = await ask('a9', { question: '&s=a'.repeat(240) });
+    assert.deepEqual([q.status, q.json.error.startsWith('A question is at most 1,000 characters; this one is ')], [400, true], q.text.slice(0, 200));
+    assert.equal(fake.seen.length, 1, 'only the label case reached the model');
   });
 
   await test('server: a bad attachment is refused with a sentence, and a request with nothing at all still needs a question', async () => {
@@ -571,7 +595,8 @@ async function pageCases(shots, bin) {
       const r = await fromModule(`return host.chat.attach({ label: 'A research note', ref: ${JSON.stringify(ref)} });`);
       assert.deepEqual(r, { attached: true });
       await sleep(300);
-      assert.deepEqual((await chips()).map((x) => x.text), ['A research note']);
+      assert.deepEqual((await chips()).map((x) => x.text), ['Note from Research'], "the host's name for it, never the module's label");
+      assert.equal((await chips())[0].title, 'A research note', 'what the module called it is only a tooltip');
       assert.equal(posts(), 0);
       const bad = await fromModule(`try { await host.chat.attach({ label: 'Elsewhere', ref: ${JSON.stringify({ ...ref, space: ctx.second })} }); return 'attached'; } catch (e) { return e.message; }`);
       assert.match(bad, /^That object is not in this \w+\.$/);
@@ -584,6 +609,124 @@ async function pageCases(shots, bin) {
       const sent = pageFake.last().body.messages;
       assert.equal(JSON.parse(sent[1].content).attached[0].title, 'Where to eat near the hotel', 'the object went by its pointer');
       assert.equal(sent.at(-1).content, 'What should I know about Where to eat near the hotel?', 'the question the server asks for an object alone');
+    });
+
+    // --- what a module's attach may and may not do to someone using the page (the security read) ---
+    const view = () => tab.eval(`document.getElementById('chat').dataset.view`);
+    const clearChips = async () => { while ((await chips()).length) { await tab.eval(`document.querySelector('#chat-ai-context .chat-ai-chip .sdk-chip-x').click()`); await sleep(100); } };
+    const idle = async () => { await tab.eval(`(() => { const b = document.getElementById('chat-input'); b.value = ''; if (document.activeElement) document.activeElement.blur(); return true; })()`); await sleep(2200); };
+    const waitPosts = async (n, ms = 15000) => { const t = Date.now(); while (posts() < n && Date.now() - t < ms) await sleep(100); };
+
+    await test('page: with the AI off, attach is refused with the sentence and nothing is held', async () => {
+      const patch = (aiOff) => fetch(`${server.base}/api/spaces/${ctx.trip}`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: JSON.stringify({ aiOff }) });
+      assert.equal((await patch(true)).status, 200);
+      const msg = await fromModule(`try { await host.chat.attach({ label: 'Words from Whiteboard', text: 'x words' }); return 'attached'; } catch (e) { return e.message; }`);
+      assert.equal(msg, 'AI is turned off in this space.');
+      assert.equal((await chips()).length, 0, 'nothing was held');
+      assert.equal((await patch(false)).status, 200);
+    });
+
+    await test('page: a guest\'s module is refused an attach too', async () => {
+      const link = (await (await fetch(`${server.base}/api/spaces/${ctx.trip}/guest-link`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: '{}' })).json()).space.guestToken;
+      const gt = new Tab(browser.cdp, ctx);
+      await gt.open(WIDTH, MODE);
+      tabs.push(gt);
+      await gt.cdp.send('Page.navigate', { url: `${server.base}/guest/${encodeURIComponent(link)}` }, gt.sid);
+      await gt.waitFor('#chat-input');
+      await sleep(2500);
+      await gt.eval(`(() => { const make = window.createHost; window.__hosts = []; window.createHost = (o) => { const built = make(o); window.__hosts.push(built.host); return built; }; return true; })()`);
+      await gt.eval(`(async () => { for (const m of window.hostModules.list()) { if (window.hostModules.isOpen(m.id)) window.hostModules.close(m.id); } await new Promise((r) => setTimeout(r, 400)); for (const m of window.hostModules.list()) { window.hostModules.open(m.id); if (window.__hosts.length) break; } return true; })()`);
+      const t = Date.now();
+      while (Date.now() - t < 10000 && !(await gt.eval(`window.__hosts.length > 0`))) await sleep(200);
+      assert.ok(await gt.eval(`window.__hosts.length > 0`), 'a module opened in the guest page');
+      const msg = await gt.eval(`window.__hosts.at(-1).chat.attach({ label: 'Words', text: 'guest words' }).then(() => 'attached', (e) => e.message)`);
+      assert.match(msg, /uest/, msg);
+      assert.equal(await gt.eval(`document.querySelectorAll('#chat-ai-context .chat-ai-chip').length`), 0);
+      await gt.close();
+    });
+
+    await test('page: an ask during the wait for the AI\'s state does not send words attached in that wait, and does not lose them', async () => {
+      pageFake.clear();
+      await clearChips();
+      const patch = (aiOff) => fetch(`${server.base}/api/spaces/${ctx.trip}`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: JSON.stringify({ aiOff }) });
+      // The page learns the AI is off (an attach is refused), then it is turned on again; the ask's own look is held back 900 ms.
+      await patch(true);
+      await fromModule(`try { await host.chat.attach({ label: 'Probe', text: 'probe words' }); } catch (e) { /* refused */ } return true;`);
+      await patch(false);
+      await tab.eval(`(() => { const real = window.fetch; let first = true; window.fetch = async (url, init) => { if (first && /\/api\/spaces\/[^/]+\/ai$/.test(String(url)) && (!init || !init.method || init.method === 'GET')) { first = false; await new Promise((r) => setTimeout(r, 900)); } return real(url, init); }; return true; })()`);
+      await fromModule(`window.__ask = host.chat.ask({ question: 'Where is Faro?', refs: [] }).catch((e) => e.message); return true;`);
+      await sleep(150);
+      await fromModule(`return host.chat.attach({ label: 'Late words', text: 'LATEWORDS' });`);
+      await fromModule(`return window.__ask;`);
+      await waitPosts(1);
+      assert.equal(posts(), 1, 'the ask went');
+      assert.ok(!JSON.stringify(pageFake.last().body).includes('LATEWORDS'), 'the words attached during its wait did not go with it');
+      await sleep(600);
+      assert.deepEqual((await chips()).map((x) => x.text), ['Late words'], 'and they are still held for the person');
+      await clearChips();
+    });
+
+    await test('page: held chips show in the Discussion too, where a typed /ai can take them', async () => {
+      await idle();
+      await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'discussion words' });`);
+      await sleep(300);
+      await tab.click('#chat-view-discussion');
+      await sleep(300);
+      assert.equal(await view(), 'discussion');
+      assert.equal(await tab.eval(`document.getElementById('chat-ai-context').hidden`), false, 'the chip is in sight in the Discussion');
+      assert.equal((await chips()).length, 1);
+      await tab.click('#chat-view-assistant');
+      await clearChips();
+    });
+
+    await test('page: someone with words in the box keeps their view and cursor; the chip is held and says it is ready', async () => {
+      await idle();
+      const before = posts();
+      await tab.click('#chat-view-discussion');
+      await sleep(200);
+      await tab.typeInto('#chat-input', 'half a line');
+      await tab.eval(`document.activeElement.blur()`);
+      await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'busy words' });`);
+      await sleep(400);
+      assert.equal(await view(), 'discussion', 'the view was not switched');
+      assert.notEqual(await tab.eval(`document.activeElement && document.activeElement.id`), 'chat-input', 'the cursor was not taken');
+      assert.equal(await tab.eval(`document.getElementById('chat-input').value`), 'half a line');
+      assert.equal((await chips()).length, 1, 'the chip is held and in sight');
+      assert.equal(await tab.eval(`document.getElementById('chat-note').textContent`), 'Ready to send: Words from Whiteboard');
+      assert.equal(posts(), before, 'nothing was sent');
+      await clearChips();
+      await tab.eval(`document.getElementById('chat-input').value = ''`);
+      await tab.click('#chat-view-assistant');
+    });
+
+    await test('page: someone in another form control keeps the cursor and the view', async () => {
+      await idle();
+      await tab.click('#chat-view-discussion');
+      await tab.eval(`(() => { const i = document.createElement('input'); i.id = '__other'; document.body.appendChild(i); i.focus(); return true; })()`);
+      await sleep(2300);
+      await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'form words' });`);
+      await sleep(300);
+      assert.equal(await tab.eval(`document.activeElement && document.activeElement.id`), '__other');
+      assert.equal(await view(), 'discussion');
+      assert.equal((await chips()).length, 1);
+      await tab.eval(`document.getElementById('__other').remove()`);
+      await clearChips();
+      await tab.click('#chat-view-assistant');
+    });
+
+    await test('page: with the box empty and idle, attach brings the Assistant forward and takes the cursor; an Enter within 400 ms is not a Send', async () => {
+      await idle();
+      await tab.click('#chat-view-discussion');
+      await sleep(200);
+      const before = posts();
+      await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'idle words' });`);
+      assert.equal(await view(), 'assistant', 'brought forward');
+      assert.equal(await tab.eval(`document.activeElement && document.activeElement.id`), 'chat-input', 'the cursor is in the box');
+      await tab.key('Enter'); // a double press or a stray Enter just after the attach
+      await sleep(900);
+      assert.equal(posts(), before, 'that Enter sent nothing');
+      assert.equal((await chips()).length, 1, 'and the chip is still held');
+      await clearChips();
     });
 
     await test('page: at 390 wide the chip fits the box, the remove button is a touch target, and keyboard reaches it', async () => {
