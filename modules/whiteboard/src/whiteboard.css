@@ -373,7 +373,7 @@
 .wb-fr-tab[data-empty] .wb-words { font-style: italic; font-weight: var(--weight-medium); }
 .wb-type-frame.wb-editing .wb-fr-tab { max-width: none; }
 .wb-type-frame.wb-editing .wb-fr-tab .wb-words { display: none; }
-.wb-type-frame .wb-text-edit { width: 16em; line-height: 1.2; color: var(--text-primary); }
+.wb-type-frame .wb-text-edit { width: 16em; height: 1.3em; min-height: 0; line-height: 1.2; white-space: nowrap; color: var(--text-primary); }
 
 /* presenting the frames: a small bar at the bottom of the board (Back, "2 of 5", Next, Exit) that lets presses through
    but on its buttons; the colours strip goes while it shows, and nothing on the board looks pressable */
@@ -402,6 +402,7 @@
 .app.wb-presenting .board, .app.wb-presenting .wb-block, .app.wb-presenting .wb-block * { cursor: default; }
 .app.wb-presenting .wb-ctl { cursor: pointer; }
 .app.narrow .wb-present-label { display: none; }
+.app.narrow .wb-present button { min-width: 44px; }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
 .wb-frame {
