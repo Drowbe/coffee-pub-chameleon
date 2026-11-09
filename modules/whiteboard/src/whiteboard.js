@@ -1045,6 +1045,8 @@
   }
   function updatePaint() {
     if (!paintButtons.size) return;
+    // Only locked blocks picked: nothing of theirs to change, and the strip is not about new blocks then either.
+    if (sel.size && !targets().length) { paintStrip.hidden = true; return; }
     const shown = paintShown();
     let any = false;
     for (const [key, p] of paintButtons) {
@@ -1604,7 +1606,12 @@
       statusFrame = 0;
       const n = board.size - drafts.size;
       const items = [{ text: n === 1 ? '1 block' : `${n} blocks`, icon: 'shapes' }];
-      if (sel.size > 1) items.push({ text: `${sel.size} selected` });
+      if (sel.size > 1) {
+        // What is picked is one group: said so (a group looks like any blocks picked together).
+        const groups = new Set([...sel].map((id) => wbGroupOf(board.get(id))));
+        const grouped = groups.size === 1 && !groups.has(null);
+        items.push({ text: grouped ? `${sel.size} selected, grouped` : `${sel.size} selected` });
+      }
       const coming = pictures ? pictures.count : 0;
       if (coming) items.push({ text: coming === 1 ? 'Adding a picture' : `Adding ${coming} pictures`, icon: 'image' });
       if (exporting) items.push({ text: `${exporting}…`, icon: 'file-image' });
