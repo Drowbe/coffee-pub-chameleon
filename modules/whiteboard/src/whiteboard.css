@@ -52,10 +52,10 @@
 .board:is([data-ground="light"], [data-ground="dark"]) .world {
   --text-primary: var(--wb-usual);
   --text-muted: color-mix(in srgb, var(--wb-usual) 68%, var(--wb-ground));
-  --edge-field: color-mix(in srgb, var(--wb-usual) 30%, var(--wb-ground));
+  --wb-edge: color-mix(in srgb, var(--wb-usual) 30%, var(--wb-ground));
   --edge-hairline: color-mix(in srgb, var(--wb-usual) 18%, var(--wb-ground));
   --surface-page: var(--wb-ground);
-  --surface-card: color-mix(in srgb, var(--wb-usual) 4%, var(--wb-ground));
+  --wb-card: color-mix(in srgb, var(--wb-usual) 4%, var(--wb-ground));
 }
 .board:focus-visible { box-shadow: inset 0 0 0 2px var(--focus-ring, var(--accent)); }
 .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
@@ -108,7 +108,7 @@
    with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
 .wb-type-note {
   --wb-fill: var(--tint-gold);
-  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--surface-card));
+  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--wb-card, var(--surface-card)));
   padding: 12px;
   border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-min);
@@ -190,7 +190,7 @@
   background: var(--surface-page);
   color: var(--wb-ink);
 }
-.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--surface-card)); }
+.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--wb-card, var(--surface-card))); }
 .wb-tbl td {
   padding: 4px 8px;
   border-right: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
@@ -364,11 +364,11 @@
   inset: 0;
   border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--wb-fill, var(--surface-card)) 12%, transparent);
+  background: color-mix(in srgb, var(--wb-fill, var(--wb-card, var(--surface-card))) 12%, transparent);
 }
-.wb-type-frame[data-fill="usual"] .wb-fr-face { background: color-mix(in srgb, var(--surface-card) 55%, transparent); }
+.wb-type-frame[data-fill="usual"] .wb-fr-face { background: color-mix(in srgb, var(--wb-card, var(--surface-card)) 55%, transparent); }
 .wb-type-frame[data-fill="none"] .wb-fr-face { background: none; }
-.wb-type-frame[data-stroke="usual"] .wb-fr-face { border-color: var(--edge-field, var(--text-muted)); }
+.wb-type-frame[data-stroke="usual"] .wb-fr-face { border-color: var(--wb-edge, var(--edge-field, var(--text-muted))); }
 .wb-type-frame[data-stroke="none"] .wb-fr-face { border-style: none; }
 .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-hit, 8px) / var(--wb-scale, 1)); position: absolute; pointer-events: auto; cursor: grab; }
 @media (pointer: coarse) { .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-touch, 16px) / var(--wb-scale, 1)); } }
@@ -390,7 +390,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--edge-hairline);
   border-radius: var(--radius-small);
-  background: var(--surface-card);
+  background: var(--wb-card, var(--surface-card));
   color: var(--wb-ink);
   font-size: var(--text-14);
   font-weight: var(--weight-strong);
@@ -400,7 +400,7 @@
   cursor: grab;
 }
 .wb-type-frame[data-ink="usual"] .wb-fr-tab { color: var(--text-muted); }
-.wb-type-frame:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: color-mix(in srgb, var(--wb-fill) 22%, var(--surface-card)); }
+.wb-type-frame:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: color-mix(in srgb, var(--wb-fill) 22%, var(--wb-card, var(--surface-card))); }
 .wb-fr-tab .wb-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-fr-tab[data-empty] .wb-words { font-style: italic; font-weight: var(--weight-medium); }
 .wb-type-frame.wb-editing .wb-fr-tab { max-width: none; }
@@ -802,7 +802,7 @@
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--wb-stroke) 45%, var(--edge-hairline));
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--surface-card));
+  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--wb-card, var(--surface-card)));
   box-shadow: 0 1px 2px var(--shadow-color);
   overflow: hidden;
   cursor: grab;
@@ -833,7 +833,7 @@
   cursor: default;
 }
 .wb-timer-len { font-variant-numeric: tabular-nums; }
-.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--surface-card)); animation: wb-timer-end 1.6s ease-in-out 4; }
+.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--wb-card, var(--surface-card))); animation: wb-timer-end 1.6s ease-in-out 4; }
 .wb-type-timer[data-done] .wb-timer-time { font-size: clamp(var(--text-14), 11cqmin, var(--text-28)); }
 .wb-type-timer[data-done] .wb-timer-length, .wb-type-timer[data-done] .wb-timer-arc { visibility: hidden; }
 /* the length is on its button for someone with the controls; under the time for everyone else */

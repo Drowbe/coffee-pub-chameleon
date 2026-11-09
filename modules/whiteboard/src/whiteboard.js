@@ -991,7 +991,7 @@
       { heading: 'Background colour of the board' },
       choiceRow('default', 'Default', now, pick('default'), { icon: 'circle', regular: true, ariaLabel: `Default background, follows the theme${now === 'default' ? ', chosen' : ''}` }),
       { heading: 'Custom background' },
-      { id: 'custom', label: 'Custom colour (coming with the colour picker)', icon: 'palette', disabled: true },
+      { id: 'custom', label: 'Custom colour (coming with the colour picker)', disabled: true },
       { heading: 'Light backgrounds' },
       ...WB_FIXED_BACKGROUNDS.filter((f) => f.family === 'light').map(fixedRow),
       { heading: 'Dark backgrounds' },
