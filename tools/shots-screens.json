@@ -271,8 +271,22 @@
    "id": "login-error",
    "family": "Forms and editor windows",
    "as": "none",
-   "url": "/login?error=1&login=mia",
+   "url": "/login?login=mia",
    "wait": "#login-name",
+   "steps": [
+    {
+     "type": [
+      "#password",
+      "not-the-password"
+     ]
+    },
+    {
+     "click": "#login button[type=submit]"
+    },
+    {
+     "wait": "#error:not([hidden])"
+    }
+   ],
    "tier": "state"
   },
   {
@@ -1500,7 +1514,7 @@
    "wait": "button.sdk-strip-fact[data-module=budget]",
    "steps": [
     {
-     "click": "#modules-toggle"
+     "click": "#setup"
     }
    ],
    "space": true,
@@ -1607,7 +1621,62 @@
      "click": "#setup"
     },
     {
+     "click": "#setup-tab-space"
+    },
+    {
      "sleep": 2000
+    }
+   ],
+   "space": true,
+   "sizes": [
+    1280
+   ],
+   "tier": "state"
+  },
+  {
+   "id": "space-setup-tabs-narrow",
+   "family": "Profile and Set up tabs",
+   "as": "admin",
+   "url": "/#join={trip}",
+   "wait": "button.sdk-strip-fact[data-module=budget]",
+   "steps": [
+    {
+     "click": "#setup"
+    },
+    {
+     "click": "#setup-tab-phases"
+    },
+    {
+     "eval": "document.getElementById('space-setup').style.width = '250px'"
+    },
+    {
+     "sleep": 400
+    },
+    {
+     "click": "#setup-tabs-more"
+    }
+   ],
+   "space": true,
+   "sizes": [
+    1280
+   ],
+   "tier": "state"
+  },
+  {
+   "id": "space-show-layout-more",
+   "family": "Menus",
+   "as": "admin",
+   "url": "/#join={trip}",
+   "wait": "button.sdk-strip-fact[data-module=budget]",
+   "steps": [
+    {
+     "click": "#setup"
+    },
+    {
+     "click": "#space-setup .host-menu-inline .host-menu-more"
+    },
+    {
+     "sleep": 400
     }
    ],
    "space": true,
@@ -1699,42 +1768,7 @@
    "tier": "state"
   },
   {
-   "id": "space-setup-opens-with",
-   "family": "Profile and Set up tabs",
-   "as": "admin",
-   "url": "/#join={trip}",
-   "wait": "button.sdk-strip-fact[data-module=budget]",
-   "steps": [
-    {
-     "click": "#setup"
-    },
-    {
-     "sleep": 2000
-    },
-    {
-     "click": "#setup-tab-opens-with"
-    }
-   ],
-   "space": true,
-   "sizes": [
-    1280
-   ],
-   "tier": "state"
-  },
-  {
-   "id": "space-setup-opens-with-phone",
-   "family": "Profile and Set up tabs",
-   "as": "admin",
-   "url": "/?setup={trip}#opens-with",
-   "wait": "#space-setup",
-   "space": true,
-   "sizes": [
-    390
-   ],
-   "tier": "state"
-  },
-  {
-   "id": "space-setup-modules",
+   "id": "space-setup-settings",
    "family": "Profile and Set up tabs",
    "as": "admin",
    "url": "/#join={trip}",
@@ -1757,7 +1791,7 @@
    "tier": "state"
   },
   {
-   "id": "space-setup-modules-phone",
+   "id": "space-setup-settings-phone",
    "family": "Profile and Set up tabs",
    "as": "admin",
    "url": "/?setup={trip}#modules",
@@ -1844,7 +1878,7 @@
    "wait": "button.sdk-strip-fact[data-module=budget]",
    "steps": [
     {
-     "click": "#modules-toggle"
+     "click": "#setup"
     },
     {
      "click": "button.host-menu-item",

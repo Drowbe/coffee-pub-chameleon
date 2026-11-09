@@ -33,6 +33,13 @@
     dark: ['#b8503f', '#6fae6b', '#d9a93c', '#6aa6e8'],
     light: ['#b8503f', '#6fae6b', '#94680a', '#2a62b0'],
   };
+  // What each tone is while a theme leaves it on Auto, per mode (the same values as the --tint-* in public/style.css; tools/check-theme.mjs holds them together).
+  const TONES = ['gold', 'blue', 'green', 'teal', 'purple', 'red', 'orange', 'pink'];
+  const TONE_FILLS = {
+    dark: ['#d9a93c', '#6aa6e8', '#6fbf73', '#4fbfb2', '#b18be0', '#e07a6e', '#e8964a', '#e58ab8'],
+    light: ['#94680a', '#2a62b0', '#2e7d32', '#00796b', '#6a3fb0', '#b3372b', '#b35a00', '#ad3a78'],
+  };
+  const TONE_AUTO = Object.fromEntries(Object.entries(TONE_FILLS).map(([mode, list]) => [mode, Object.fromEntries(TONES.map((k, i) => [k, list[i]]))]));
   const STATUS_AUTO = Object.fromEntries(Object.entries(AUTO_FILLS).map(([mode, list]) => [mode, Object.fromEntries(STATUSES.map((k, i) => [k, list[i]]))]));
 
   // The formula public/sdk/system.css gives each optional role while a theme leaves it on Auto, as CSS. The editor sets these on the
@@ -57,9 +64,16 @@
     'surface-bar-nav': 'var(--surface-page)',
     'edge-field': 'color-mix(in srgb, var(--edge-hairline) 80%, var(--text-primary))',
     'wash-ink': 'var(--accent-fill)',
+    'fill-chosen': 'var(--accent-fill)',
+    'text-on-chosen': 'var(--text-on-accent)',
+    'ink-chosen': 'var(--accent-fill)',
+    'ink-brand': 'var(--accent-fill)',
+    'ink-neutral': 'var(--text-primary)',
+    'icon-bar': 'color-mix(in srgb, var(--text-bar) 75%, transparent)',
     'mf-surface-title': 'color-mix(in srgb, var(--surface-panel) 70%, black)',
     'mf-surface-toolbar': 'color-mix(in srgb, var(--surface-panel) 93%, var(--text-primary))',
     'mf-surface-row': 'color-mix(in srgb, var(--surface-panel) 94%, var(--accent-fill))',
+    'surface-message': 'color-mix(in srgb, var(--ink-neutral) 5%, transparent)',
     'mf-surface-row-hover': 'color-mix(in srgb, var(--surface-panel) 88%, var(--accent-fill))',
   };
 
@@ -188,5 +202,5 @@
     return { picks, fills, report, flags };
   }
 
-  return { WHITE, NEAR_BLACK, MIN_TEXT, MIN_MARK, STATUSES, STATUS_WORD, STATUS_AUTO, AUTO_CSS, LEGACY, LEGACY_AUTO, hexOf, contrast, pickOn, pickMix, resolve };
+  return { WHITE, NEAR_BLACK, MIN_TEXT, MIN_MARK, STATUSES, STATUS_WORD, STATUS_AUTO, TONE_AUTO, AUTO_CSS, LEGACY, LEGACY_AUTO, hexOf, contrast, pickOn, pickMix, resolve };
 }));

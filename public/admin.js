@@ -736,11 +736,11 @@ $('save-features').addEventListener('click', () => saveSettings({
 $('save-login').addEventListener('click', () => saveSettings({ loginText: $('set-login-text').value, mfaRequired: $('set-mfa-required').checked }, $('login-status')));
 
 // --- theme -------------------------------------------------------------------
-// A chooser (Strong Coffee, the default, + every saved theme) and a
+// A chooser (the default theme, + every saved theme) and a
 // Light/Dark switch, plus the same seven color inputs, used to create/edit
 // whichever theme and mode is picked rather than a single live override.
 // Every theme holds a light and a dark set (either may be missing: the
-// other then stands in); Strong Coffee's two come from the server and
+// other then stands in); the default theme's two come from the server and
 // can't be edited.
 const TC = window.ThemeColour; // public/theme-colour.js (the picks and the Auto formulas, shared with the server), loaded by admin.html
 // The key of a theme set IS the colour role (server/store.js THEME_BASE and THEME_OPTIONAL), and the role is the CSS property.
@@ -785,9 +785,24 @@ const THEME_OPTIONAL_FIELDS = [
   ['theme-mf-toolbar', 'mf-surface-toolbar'],
   ['theme-mf-row', 'mf-surface-row'],
   ['theme-mf-row-hover', 'mf-surface-row-hover'],
+  ['theme-message', 'surface-message'],
+  ['theme-chosen', 'fill-chosen'],
+  ['theme-chosen-text', 'text-on-chosen'],
+  ['theme-chosen-ink', 'ink-chosen'],
+  ['theme-brand-ink', 'ink-brand'],
+  ['theme-neutral', 'ink-neutral'],
+  ['theme-icon-bar', 'icon-bar'],
+  ['theme-tone-gold', 'tone-gold'],
+  ['theme-tone-blue', 'tone-blue'],
+  ['theme-tone-green', 'tone-green'],
+  ['theme-tone-teal', 'tone-teal'],
+  ['theme-tone-purple', 'tone-purple'],
+  ['theme-tone-red', 'tone-red'],
+  ['theme-tone-orange', 'tone-orange'],
+  ['theme-tone-pink', 'tone-pink'],
 ].map(([id, key]) => [id, `--${key}`, key, TC.AUTO_CSS[key] ?? null]);
 // What an Auto field is set to on the page while previewing: its formula, or for a status fill the Auto fill of the mode being edited.
-const autoCssFor = (key, formula) => formula ?? TC.STATUS_AUTO[selectedMode][key.split('-')[1]];
+const autoCssFor = (key, formula) => formula ?? (key.startsWith('tone-') ? TC.TONE_AUTO[selectedMode][key.slice(5)] : TC.STATUS_AUTO[selectedMode][key.split('-')[1]]);
 const autoBox = (id) => document.querySelector(`[data-auto-for="${id}"]`);
 const isAuto = (id) => autoBox(id).checked;
 let colorProbeCtx = null;
@@ -824,7 +839,7 @@ function resolvedVar(cssVar) {
   return '#' + [1, 2, 3].map((i) => mix(i).toString(16).padStart(2, '0')).join('');
 }
 let themes = [];
-let defaultTheme = null; // Strong Coffee: { name, light, dark }
+let defaultTheme = null; // the default theme: { name, light, dark }
 let activeThemeId = null; // what's actually live right now (persisted)
 let activeMode = 'dark';
 let selectedThemeId = null; // whatever the dropdown/editor is showing -- may not be applied yet
@@ -1009,7 +1024,7 @@ function renderThemeChooser() {
   $('theme-update').hidden = !selected;
   $('theme-delete').hidden = !selected;
   $('theme-apply').disabled = selectedThemeId === activeThemeId && selectedMode === activeMode;
-  // Export: the saved theme in the chooser, as a file (Strong Coffee is "default"). The server names the download.
+  // Export: the saved theme in the chooser, as a file (the default theme is "default"). The server names the download.
   $('theme-export').href = `/api/themes/${encodeURIComponent(selectedThemeId || 'default')}/export`;
   // Who made an imported theme: shown, never edited here (plan-themes.md).
   $('theme-author').textContent = selected?.author ? `Made by ${selected.author}` : '';
@@ -2480,6 +2495,9 @@ $('template-imported').addEventListener('click', async (e) => {
 // The plan and its use (GET /api/environment): each cap as a bar, the past-due banner with its date, the way to a bigger
 // plan (the product page's plans), a copy of the environment, and a request to delete it.
 let envInfo = null;
+// Whether the product site has a page of plans for Upgrade to open. It has none today (the start page lists no plans), so
+// Upgrade is not drawn. Set this to true when a Plans list is added and the link comes back, pointing at #plans.
+const plansPage = false;
 const gb = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(bytes < 1e10 ? 1 : 0)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
 async function loadEnvironment() {
   const card = $('env-panel');
@@ -2487,7 +2505,7 @@ async function loadEnvironment() {
   try {
     envInfo = await api('GET', '/api/environment');
     // The product page's address (Upgrade goes to its plans): the public product facts carry the base domain.
-    if (!envInfo.baseDomain || !envInfo.productDomain) {
+    if (plansPage && (!envInfo.baseDomain || !envInfo.productDomain)) {
       const facts = await api('GET', '/api/product').catch(() => ({}));
       if (!envInfo.baseDomain) envInfo.baseDomain = facts.baseDomain || '';
       envInfo.productDomain = facts.productDomain || envInfo.productDomain || '';
@@ -2527,7 +2545,7 @@ function renderEnvironment() {
     banner.hidden = false;
   } else banner.hidden = true;
   const up = $('env-upgrade');
-  if (e.baseDomain) { up.href = `${location.protocol}//${e.productDomain || e.baseDomain}${location.port ? ':' + location.port : ''}/#plans`; up.hidden = false; } else up.hidden = true;
+  if (plansPage && e.baseDomain) { up.href = `${location.protocol}//${e.productDomain || e.baseDomain}${location.port ? ':' + location.port : ''}/#plans`; up.hidden = false; } else up.hidden = true;
   const requested = Boolean(e.deleteRequestedAt);
   $('env-delete').hidden = requested;
   $('env-delete-cancel').hidden = !requested;

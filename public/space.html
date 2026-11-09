@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-RSFQ4kBODG/uIrLH6ZkOwXOV5IL1fQqU0V3hyYny3xM='; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: https:; media-src 'self' blob: mediastream:; img-src 'self' data: blob:; worker-src 'self' blob:; child-src 'self' blob:">
-  <meta name="theme-color" content="#1a1410">
+  <meta name="theme-color" content="#0e1a2b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/img/site/icon">
-  <link rel="apple-touch-icon" href="/img/site/icon">
+  <link rel="apple-touch-icon" href="/assets/images/brand/apple-touch-icon.png">
   <title>Coffee Pub</title>
   <link rel="stylesheet" href="/fa/css/all.min.css">
   <link rel="stylesheet" href="/style.css">
@@ -324,6 +324,7 @@
       <div class="chat-resize" id="chat-resize" title="Drag to resize"></div>
       <div class="mod-content" id="chat-content">
       <header class="mf-titlebar chat-head">
+        <span class="mf-titlebar-icon" aria-hidden="true"><i class="fa-solid fa-message fa-fw" data-module-icon></i></span>
         <span class="mf-titlebar-title" data-module-name>Chat</span>
         <span class="mf-titlebar-tools chat-tools">
           <button class="mf-icon-btn mf-titlebar-btn" id="chat-more" type="button" data-tip="More" aria-label="More" aria-haspopup="menu"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button>

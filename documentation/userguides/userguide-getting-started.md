@@ -1,9 +1,9 @@
 # Getting Started
 
-**Audience:** someone setting up a Collaborator server for the first time and signing in as its
+**Audience:** someone setting up a Coffee Pub Chameleon server for the first time and signing in as its
 admin.
 
-Collaborator is the Collaborator web app, plus a LiveKit media server if you want voice and video. The app is all you
+Chameleon is a web app, plus a LiveKit media server if you want voice and video. The app is all you
 need for spaces, chat, who is here and the modules; LiveKit is the part you add for the call. Without it the server
 starts and says "No LiveKit: voice and video are off." in its log, and the call, the Conference and asides are left out
 of every space. This guide sets both up on a QNAP NAS with Container Station and Nginx Proxy Manager, then
@@ -11,8 +11,13 @@ signs in. Any machine that runs Docker works the same way; only the router and p
 
 ## Set it up
 
-Everything the NAS needs is in `docker-compose.yml`, which you paste into Container Station. The app
-image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator`.
+Everything the NAS needs is in `docker-compose.yml`, which you paste into Container Station. It is short on
+purpose: it holds the settings you must change, and the optional ones are in the
+[Settings reference](userguide-settings-reference.md). It has two services: `chameleon`, the app (container
+`chameleon-app`), and `livekit`, the media server (container `chameleon-livekit`). The app image is built by GitHub and
+pulled from `ghcr.io/drowbe/coffee-pub-chameleon`.
+
+**If you installed before the rename.** The old image name, `ghcr.io/drowbe/coffee-pub-collaborator`, gets no new builds. The old image keeps running but is never updated. When you next update, change the image line in your compose file to the new name, with an exact `:sha-` tag.
 
 1. **Make the secrets** in Terminal on your Mac and keep them in a note. The first two are for video only:
    ```bash
@@ -25,17 +30,24 @@ image is built by GitHub and pulled from `ghcr.io/drowbe/coffee-pub-collaborator
    (Cloudflare's orange cloud), turn it off for these: media has to reach the NAS directly.
 3. **Router.** For video, forward to the NAS's LAN address: `7881` TCP, `7882` UDP, `3478` UDP. Ports 80 and 443
    already reach Nginx Proxy Manager.
-4. **Container Station.** Applications, Create, give it the name `collaborator`, paste the contents of
+4. **Container Station.** Applications, Create, give it the name `chameleon`, paste the contents of
    `docker-compose.yml`, replace the `CHANGE_ME` values (domain, API key, API secret, the
-   admin's login and password), and click Create. Both containers should show green within a minute. To run without
-   video, delete the `livekit` service and the three `LIVEKIT_` lines of `collaborator` first (and the API key and
-   secret are not needed); add them later and recreate the app to turn video on.
+   admin's login and password, and the image tag, below), and click Create. Both containers should show green within a
+   minute. To run without video, delete the `livekit` service and the three `LIVEKIT_` lines of `chameleon` first (and
+   the API key and secret are not needed); add them later and recreate the app to turn video on. The server starts
+   without LiveKit: spaces, chat, who is here and the modules all work, and the call, the Conference and asides are
+   missing until you add it. Set both the LiveKit key and secret, or neither.
 5. **Nginx Proxy Manager.** A proxy host for each address, each with a Let's Encrypt certificate and Force SSL:
    - For video, `livekit.<domain>` to scheme http, forward host = NAS LAN address, port `7880`, **Websockets
      Support on**.
    - `collaborator.<domain>` to scheme http, NAS LAN address, port `3000`.
 
-**Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data) and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`; the example is `/share/appdata/coffee-pub-collaborator-vault`). The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are commented examples in the compose file ([Vault](userguide-vault.md), "Notes for the person running the server").
+**The image tag.** The file names the image as `ghcr.io/drowbe/coffee-pub-chameleon:sha-CHANGE_ME`. Replace
+`CHANGE_ME` with the first 7 characters of the commit you want: on GitHub, open the repository's **Actions** tab, pick the
+run that built the image you want, and copy the first 7 characters of its commit (for example `sha-1a2b3c4`). Do not use
+`:latest` on a NAS: it reuses the copy it cached, and you keep running an old build. To update, change the tag.
+
+**Two folders to keep.** The compose file mounts two volumes for the app: the data folder (`/app/data`: users, settings, pictures and module data), which is `/share/appdata/coffee-pub-chameleon` on the NAS, and a second one for the Vault's files (`/app/vault`, named by `VAULT_DIR`), which is `/share/appdata/coffee-pub-chameleon-vault`. The files are big, so they are kept apart and the in-app backups do not carry them. Back up both folders together, and keep the Vault's volume when you move or recreate the container. If you leave the second volume line out, Docker makes an anonymous volume for it from the image's `VOLUME` line, which is easy to lose track of when you recreate the container. The Vault's limits are in the [Settings reference](userguide-settings-reference.md) ([Vault](userguide-vault.md), "Notes for the person running the server").
 
 **Space on the NAS.** The image needs several GB free. If creating the container fails with "no space left on device", clear unused images and stopped containers in Container Station, then create it again. If the NAS keeps an old copy of `:latest`, it may start the old version. Pin an exact tag, such as `:sha-` followed by the first 7 characters of the commit, or remove the old image before you create the container.
 
@@ -45,7 +57,9 @@ Camera access requires HTTPS, which the proxy provides. Players need nothing but
 
 ## Sign in as the admin
 
-The compose file holds one account, the server's **admin**: `ADMIN_LOGIN` and `ADMIN_PASSWORD`. Open
+The compose file holds one account, the server's **admin**: `ADMIN_LOGIN` and `ADMIN_PASSWORD`. On one environment this
+admin runs it (owners are made in **Manage**); with several environments it is the host admin, who signs in to the host
+console at `admin.<base domain>`. Open
 `https://collaborator.<domain>/`, sign in with them, and choose **Manage** in the menu under your picture, at the right of the top bar. Add your
 players under **Users** and send each of them a login and password, or a personal link; see
 [Accounts, roles and permissions](userguide-accounts.md). If someone else will run the server day to day, make
@@ -110,7 +124,7 @@ the warnings below).
    login and talks to the app at `http://localhost:3000` inside the container.
 
    ```
-   docker exec -it collaborator-app npm run seed:demo
+   docker exec -it chameleon-app npm run seed:demo
    ```
 
 2. A hosted environment (a server with a base domain): the seeder refuses unless you say which environment
@@ -120,7 +134,7 @@ the warnings below).
    ```
    docker exec -it -e SEED_URL=https://<slug>.<base domain> -e DEMO_ALLOW_HOSTED=1 \
      -e DEMO_ENVIRONMENT=<slug> -e ADMIN_LOGIN=<an owner of that environment> \
-     -e ADMIN_PASSWORD=<that owner's password> collaborator-app node tools/seed-demo.mjs
+     -e ADMIN_PASSWORD=<that owner's password> chameleon-app node tools/seed-demo.mjs
    ```
 
    The public address must be reachable from inside the container. A hosted run makes no map file.
@@ -159,12 +173,13 @@ Warnings:
 An install made before the product's rename keeps its old names: the containers `tavern-app` /
 `magpie-app` and `tavern-livekit` / `magpie-livekit`, and the data paths `/share/appdata/tavern` or
 `/share/appdata/magpie`, all still work if the compose volume still points at that folder. The
-`TAVERN_ADMIN_*` variables do not: see **Older names** above.
+`TAVERN_ADMIN_*` variables do not: see **Older names** above. An install made before the Chameleon rename keeps
+`collaborator-app` and `collaborator-livekit`, and its paths, working as long as its compose file still names them.
 Do not change the volume path until you have moved the folder: the data lives there.
 
-In Container Station, pull the new image for the `collaborator` application
-(`ghcr.io/drowbe/coffee-pub-collaborator`) and recreate it. Users, images and settings live in the
-folder the volume names (`/share/appdata/coffee-pub-collaborator` on a new install).
+In Container Station, change the image tag of the `chameleon` application
+(`ghcr.io/drowbe/coffee-pub-chameleon:sha-...`) to the new commit's and recreate it. Users, images and settings live in the
+folder the volume names (`/share/appdata/coffee-pub-chameleon` on a new install).
 
 Take a copy of that data folder, and of the Vault's folder (`/app/vault`), before you update. An update can bring the data up to date for the
 new version, and an older version then refuses to open it rather than misread it: going back to an older
@@ -205,11 +220,11 @@ To switch environments on, with the server already running as above:
    `ADMIN_PASSWORD`. `MIGRATE_TENANT_SLUG` moves nothing: use `MIGRATE_ENVIRONMENT_SLUG`.
 
 **Behind a proxy, and the limits.** `TRUST_PROXY_HOPS` says how many reverse proxies stand in front of the container.
-It defaults to `1`, the Nginx Proxy Manager in the compose file. Sign-in and guest limits count by the address the
+It defaults to `1`, the Nginx Proxy Manager. Sign-in and guest limits count by the address the
 nearest proxy saw, so nobody can choose their own with a made-up header. Two in a row (say Cloudflare, then Nginx Proxy
 Manager) is `2`; reached directly with no proxy, `0`. A value that is not a whole number logs a line and uses `1`. If
 the count is wrong, every visitor can look like the proxy's own address and share one limit. The Vault's public share links depend on it most: their limit on wrong passwords counts by this address, so set it to the real number of proxies, and to `0` when the container is exposed directly. `SHARE_UNLOCKS_PER_MINUTE` (60) caps how many password checks the environment does a minute. Four more switches are in
-the compose file, commented, and the defaults are usually right: `LIVE_STREAMS_PER_PERSON` (50, the live streams
+the [Settings reference](userguide-settings-reference.md), and the defaults are usually right: `LIVE_STREAMS_PER_PERSON` (50, the live streams
 one signed-in person may hold open, about one a browser tab), `LIVE_STREAMS_PER_GUEST_LINK` (25, for one guest link in
 all; one address gets 40% of it) and `GUEST_CHAT_POSTS_PER_MINUTE` (20, the messages one guest link may post a minute;
 one address gets half). The first two were `CHAT_STREAMS_PER_PERSON` and `CHAT_STREAMS_PER_GUEST_LINK`; the old names
@@ -235,12 +250,11 @@ second factor** with the password, and Manage and the console show a banner unti
 **Plans, sign-up and billing.** The host console's **Plans** panel is the catalog: `free` (what sign-up
 makes, and what a lapsed environment goes back to) and any named plans, each with its caps (members,
 storage, assistant calls a month, calls at once, modules). An environment is put on a plan from its card,
-which fills its caps from the catalog to adjust on its own. The product page at the base domain lists the
-plans and, only when the server has `SIGNUP: "on"`, makes a free environment for anyone who asks (an
-address, a name, an owner account); without it the page offers no sign-up form, just the plans and a way to
+which fills its caps from the catalog to adjust on its own. The start page at the base domain does not list the
+plans yet. Only when the server has `SIGNUP: "on"` does it make a free environment for anyone who asks (an
+address, a name, the owner's login and name; the owner chooses a password next, on the new environment's own page); without it the page offers no sign-up form, just a way to
 write to you. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
-(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and the product page's
-plan buttons and an owner's Upgrade go there with `?environment=<slug>`. The provider tells the server
+(the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and an owner's Upgrade goes there with `?environment=<slug>`. The provider tells the server
 what happened through the webhook at `https://admin.<base>/api/host/billing`: a JSON body
 `{ "slug", "plan", "event" }` with `event` one of `paid`, `lapsed` and `cancelled`, signed with
 `BILLING_SECRET` as an `x-billing-signature` header (HMAC-SHA256 of the raw body, in hex). A provider's
@@ -259,11 +273,11 @@ changes, the change is noted in `host.json`, and a copy of `host.json` as it was
 you want to keep one. If the start stops with a line saying `host.json` lists environments
 under both "tenants" and "environments", open `host.json`, remove whichever list is out of date, and start again.
 
-**The product page on another domain (optional).** By default the product page, the use pages and sign-up
+**The start page on another domain (optional).** By default the start page and sign-up
 are on the bare `https://<base>`, with the console at `admin.<base>` and each environment at `<slug>.<base>`.
-That is the layout above, and it needs nothing more. If you would rather have the product page on a separate
+That is the layout above, and it needs nothing more. If you would rather have the start page on a separate
 host, so that its name can change without touching any environment's address, give it its own domain with
-`PRODUCT_DOMAIN`. Say `<base>` is `example.live` and the product page is to be at `product.example.com`:
+`PRODUCT_DOMAIN`. Say `<base>` is `example.live` and the start page is to be at `product.example.com`:
 
 1. **DNS.** Add a record for the product host, `product.example.com`, to the same public address as your
    proxy. Leave the base domain's records as they are: the apex (an `A` record) and the wildcard `*`.
@@ -277,18 +291,20 @@ host, so that its name can change without touching any environment's address, gi
    PRODUCT_DOMAIN: "product.example.com"
    ```
    `PRODUCT_DOMAIN` is a host name only: no `https://`, no port, no path. Unset, or equal to `BASE_DOMAIN`, the
-   product page stays on the bare base. It is ignored, with a line in the log, when `BASE_DOMAIN` is not set.
+   start page stays on the bare base. It is ignored, with a line in the log, when `BASE_DOMAIN` is not set.
 
 What changes:
 
 - The bare `https://<base>` sends visitors on to the same path at the product host (a redirect that keeps the
   path and the query), so a base address typed by hand still works. The console stays at `admin.<base>`;
   there is no setting to move it.
-- Sign-up and **Sign in** on the product page work across the two sites. After sign-up the person arrives at the
-  new environment's sign-in with their login already filled in; they enter the password.
-- The product page cannot offer the "Sign in to ..." shortcut for the environment this browser was last in,
-  because that is remembered for the base domain only. The environment list and the sign-in form are there.
-- An owner's **Upgrade** link on Manage and the console's own facts name the product host.
+- Sign-up and **Go** on the start page work across the two sites. After sign-up the person arrives at the new
+  environment's own page, where they choose their password.
+- **Find your environment** on the start page asks for your environment's address, not a password. Type it, press
+  **Go**, and you arrive at that environment's own sign-in page. The page lists no environments. If someone sent
+  you a link, just open it.
+- An owner's **Upgrade** link on Manage and the console's own facts name the product host. The start page has no
+  plans list yet, so **Upgrade** opens the start page and not a list of plans.
 - LiveKit is unchanged. `LIVEKIT_HOST` is its own setting, and its DNS record, certificate, proxy host and the
   TURN domain stay where they are.
 - If the product host sits directly under the base (`www.<base>`), its first label is reserved for it, and the
@@ -313,7 +329,7 @@ that the name is now reserved. Without `BASE_DOMAIN`, both settings are ignored.
 **Moving a server's addresses.** To move a running server to new domains: take a copy of the data folder; add the
 DNS records, certificates and proxy hosts for the new domains while the old ones still work; set the new
 `BASE_DOMAIN` (and `PRODUCT_DOMAIN` if you want one), put the old base in `PREVIOUS_BASE_DOMAINS` and recreate
-the container; then check that an environment signs in, `admin.<base>` shows the console, the product page opens
+the container; then check that an environment signs in, `admin.<base>` shows the console, the start page opens
 and an old link redirects. Nothing stored holds a domain, so no data changes. Keep the old wildcard certificate
 and proxy host while `PREVIOUS_BASE_DOMAINS` is set, and remove all three together when nobody uses the old
 addresses (OBS browser sources and calendar feeds follow the redirect, so re-adding them once is the way to be
@@ -322,14 +338,30 @@ rid of it sooner). A host listed in `PREVIOUS_BASE_DOMAINS` that is also the pro
 From there: `https://admin.<base>` is the host console (create an environment with its first owner, set its
 plan, back it up and restore it, suspend it and **Resume** it, or delete it aside, which keeps its data under
 `environments-deleted/`), `https://<slug>.<base>` each environment, and the bare
-`https://<base>` the product page (at `PRODUCT_DOMAIN` when you set one). Two optional variables feed that page: `PRODUCT_NAME` (the name it shows;
-the default is the app's own) and `CONTACT_EMAIL` (where "ask for an environment" writes to). If the base
+`https://<base>` the start page (at `PRODUCT_DOMAIN` when you set one), where a person types their environment's address
+or, when `SIGNUP` is on, makes one. Three optional variables feed that page: `PRODUCT_NAME` (the full name it shows;
+the default is "Coffee Pub Chameleon", and Chameleon is used where the short form fits; a name such as "Travel Pub" shows
+that name everywhere. Environments that already have a name keep it. If your compose file still says
+`PRODUCT_NAME: "Collaborator"`, change it to the new name, because it overrides the default) `CONTACT_EMAIL` (where "ask for an environment" writes to) and `PRODUCT_SITE_URL` (the address of the product's page on your website, for example `https://www.example.com/collaborator`; the start page shows an **About** link to it, and shows none when it is unset. A value that is not a web address stops the start). If the base
 domain ever changes, set the new one as `BASE_DOMAIN` and list the old one in `PREVIOUS_BASE_DOMAINS`;
 every old address redirects to the new.
 
 Once a server has environments, keep `BASE_DOMAIN` set on every start, and set it on any server you move the
 data folder to. A start without it stops with "This data folder belongs to a server with environments: set
 BASE_DOMAIN." and changes nothing: set it and start again.
+
+## Send an owner their first password link
+
+A person who signs up chooses their own password on their new environment's page, from a link that works for 15
+minutes. If they lose it, close the page too soon or wait too long, a host admin makes a new one. Only a host admin can.
+
+1. Sign in to the host console at `admin.<base domain>` and open the **Environments** tab.
+2. On the environment's card, find the owner and click **New first-password link**. The button is there only for an
+   owner who has no password yet.
+3. Click **Copy**. The link is shown once. It works once, for 24 hours, and a new link replaces any older one.
+4. Send it to the owner yourself. You never see the password they choose.
+
+If the owner already has a password, there is no button; use their sign-in instead.
 
 ## Back up and restore an environment
 
@@ -351,16 +383,16 @@ To restore one from a backup:
    "<slug> was restored from <file>." when it worked, or "<slug> was not restored:" and the reason when it
    did not, in which case nothing was changed.
 
-A backup made by a newer version of Collaborator than the one running is refused ("This backup is from a newer
-version of Collaborator."), and the environment is left as it was.
+A backup made by a newer version of Chameleon than the one running is refused ("This backup is from a newer
+version of Coffee Pub Chameleon."), and the environment is left as it was.
 
 ## An environment that won't open
 
 An environment's card can carry the tag **won't open**, with a red edge and a dash for every count. Its
-people see a page saying the environment's data is from a newer version of Collaborator, or could not be updated;
+people see a page saying the environment's data is from a newer version of Chameleon, or could not be updated;
 every other environment keeps working. The card says which, and names the file and when it happened:
 
-- **Won't open: its data is from a newer version of Collaborator.** A newer version of Collaborator has run on this
+- **Won't open: its data is from a newer version of Chameleon.** A newer version of Chameleon has run on this
   environment's data, and this one cannot read it. Run the newer version again, or restore a backup made
   before it.
 - **Won't open: its data could not be updated.** The data could not be brought up to date on this start.

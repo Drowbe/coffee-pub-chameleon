@@ -306,6 +306,7 @@ async function serverChecks(S, jar, api) {
   const inBoth = pick(both);
   assert.ok(inSpace && inPage, 'each stream of its own heard the change');
   assert.equal(inSpace.data.scope, 'space');
+  assert.ok(typeof inSpace.data.updatedAt === 'string' && Number.isFinite(Date.parse(inSpace.data.updatedAt)), 'the server sends the change\'s updatedAt (a date string), which the host passes on to the module');
   assert.equal(inPage.data.scope, 'spaces');
   assert.equal(inBoth.length, 2, 'the combined stream: once for each view');
   assert.deepEqual(inBoth.map((e) => [e.data.scope, e.data.view]), [['space', undefined], ['spaces', 'page']], 'the page view\'s labelled, the space\'s as before');

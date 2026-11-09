@@ -1,6 +1,6 @@
 # AI
 
-**Audience:** developers and operators who need to know how Collaborator asks an AI service, who may ask, what is sent, what the server refuses and where the code lives.
+**Audience:** developers and operators who need to know how Coffee Pub Chameleon asks an AI service, who may ask, what is sent, what the server refuses and where the code lives.
 
 This describes what is built: slice 1 of [plan-ai-integration](../plans/plan-ai-integration.md), the prompt layer, and slice 2's steps 8 to 10 and 12: the look-up tools and the loop that runs them in Chat's `/ai`, the pages that show a look-up, and the catalog of write tools made from the modules' manifests. Not built, and not described as if it were: step 13 (the AI proposing a change, with **Keep** and **Drop**, and the request on Keep), tokens for outside AI apps and an MCP endpoint. Nothing the AI is offered can change anything. **Everything here has run only against the stand-in service on this machine. No real provider has answered a question with tools or without them;** see "Not yet tried against a real service" at the end.
 

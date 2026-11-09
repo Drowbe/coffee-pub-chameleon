@@ -224,7 +224,7 @@ async function main() {
       const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
       try {
         if (which === 'real') await driveScreen(tab, { id: 'planner', as: 'mia', url: '/modules/travel?space={trip}', wait: '#module-frame >>> .day-add' }, S.base, S.cookies, S.ctx);
-        else await driveScreen(tab, { id: 'proto', as: 'none', url: `/design-system/prototype.html?theme=strong-coffee&mode=${mode}&w=${protoW.id}&look=current`, wait: '.pp-planner >>> .day-add' }, S.base, S.cookies, S.ctx);
+        else await driveScreen(tab, { id: 'proto', as: 'none', url: `/design-system/prototype.html?theme=chameleon&mode=${mode}&w=${protoW.id}&look=current`, wait: '.pp-planner >>> .day-add' }, S.base, S.cookies, S.ctx);
         // The Prototype's frame is as wide as the real panel (its own 1 px border included), so both bodies are the same width.
         if (which === 'proto' && protoW.px) {
           await tab.eval(`document.documentElement.style.setProperty('--pp-w', '${protoW.px}px')`);

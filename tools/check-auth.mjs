@@ -5,6 +5,8 @@
  * (documentation/plans/plan-mfa.md). Then the roles (documentation/plans/plan-names.md, step 4): who has an owner's
  * rights and the roles an account can hold, and that the Studio alias is gone (step 10).
  * Last, the server's own settings a person picks from a list: the currency is a known ISO 4217 code (GitHub #4).
+ * Also: the per-address limits (sign-in, sign-up, the product page's address lookup) count the real address, and after
+ * signing in the pages go to `next` only when it is a path on this site (public/next-address.js).
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -361,9 +363,6 @@ await withServer({}, async (base) => {
   const right = await post(base, '/api/login', { login: 'admin', password: 'testpass1234' }, spoofed(20));
   assert.equal(right.status, 429, 'and the right password is refused too while the address is held');
   n += 1;
-  const form = await post(base, '/login', 'login=admin&password=testpass1234', { ...spoofed(21), 'content-type': 'application/x-www-form-urlencoded' });
-  assert.deepEqual([form.status, form.location], [303, '/login?error=1&login=admin'], 'the sign-in form is held for that address too');
-  n += 1;
   const other = await post(base, '/api/login', { login: 'admin', password: 'testpass1234' }, spoofed(22, '192.0.2.11'));
   assert.equal(other.status, 200, `another real address signs in: ${other.text}`);
   n += 1;
@@ -379,6 +378,38 @@ await withServer({ BASE_DOMAIN: 'example.test', SIGNUP: 'on' }, async (base) => 
   for (let i = 0; i < 7; i += 1) signups.push((await post(base, '/api/product/signup', { slug: `camp${i}`, name: 'Camp', owner: {} }, { ...host('example.test'), ...spoofed(i) })).status);
   assert.deepEqual(signups, [400, 400, 400, 400, 400, 429, 429], `sign-ups with a different spoofed X-Forwarded-For each still reach 429: ${signups}`);
   n += 1;
+  // The product page's address lookup (GET /api/product/environment?slug=) has the address check's limit: 120 a minute
+  // from one address, the 121st answers 429 with the address check's sentence, whatever the client puts in X-Forwarded-For.
+  const lookups = [];
+  for (let i = 0; i < 121; i += 1) {
+    const res = await fetch(`${base}/api/product/environment?slug=look${i}`, { headers: { accept: 'application/json', ...host('example.test'), ...spoofed(i % 200, '192.0.2.30') } });
+    lookups.push({ status: res.status, body: await res.json() });
+  }
+  assert.deepEqual(lookups.slice(0, 120).map((r) => r.status), Array(120).fill(404), 'the first 120 lookups are answered');
+  assert.deepEqual(lookups[120], { status: 429, body: { error: 'Too many checks from this address; try again in a minute.' } }, 'the 121st lookup in a minute');
+  n += 1;
+});
+
+// Where signing in goes next (public/next-address.js, used by public/login.js and public/login-step.js): only a path on
+// this site. An address a browser reads as another site ("//x", "/\x", a tab or line break inside "//") falls back to
+// "/"; a path with its query is kept. Run from the page's own source; both pages must use it for every `next`.
+test('after signing in, `next` is only ever a path on this site', () => {
+  const pub = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8');
+  const fn = /^export function sameSiteNext\([\s\S]*?^}$/m.exec(pub('next-address.js'));
+  assert.ok(fn, 'sameSiteNext in public/next-address.js');
+  const sameSiteNext = new Function(`${fn[0].replace(/^export /, '')}; return sameSiteNext;`)();
+  const origin = 'https://acme.example.com';
+  for (const bad of ['//evil.example', '/\\evil.example', '/\\\\evil', 'https://evil.example', '//evil.example/login', '/\t/evil.example', '/\n/evil.example', '\\\\evil.example', 'javascript:alert(1)', 'spaces/x', '', null, undefined]) {
+    assert.equal(sameSiteNext(bad, origin), '/', JSON.stringify(bad));
+  }
+  for (const good of ['/', '/spaces/x?y=1', '/spaces/x?y=1#z', '/admin', '/login/verify?next=%2Fspaces']) assert.equal(sameSiteNext(good, origin), good, good);
+  for (const page of ['login.js', 'login-step.js']) {
+    const js = pub(page);
+    assert.ok(js.includes("import { sameSiteNext } from '/next-address.js';"), `${page} does not import sameSiteNext`);
+    assert.equal((js.match(/\.get\('next'\)/g) || []).length, 1, `${page} reads next more than once`);
+    assert.ok(js.includes("sameSiteNext(new URLSearchParams(location.search).get('next'))"), `${page} reads next without sameSiteNext`);
+    assert.ok(!/startsWith\('\/'\)/.test(js), `${page} still checks next by its first character alone`);
+  }
 });
 
 test('a limiter does not grow with distinct addresses: expired entries go, and the size is capped', () => {

@@ -1,6 +1,6 @@
 # Calendar
 
-**Audience:** a player or game master using the Calendar module in a Collaborator environment, and an owner setting it up.
+**Audience:** a player or game master using the Calendar module in a Coffee Pub Chameleon environment, and an owner setting it up.
 
 The Calendar keeps sessions and events. There is one for the whole environment, and one for each space. An event can remind people before it starts. Install and enable it first; see [Modules](userguide-modules.md).
 
@@ -133,7 +133,7 @@ Outlook through a private address made on your profile's **Calendars** tab: an *
 
 ## Your other calendars
 
-While the owner has **Other calendars and busy times** on, events from your own other calendars (added on your profile; see "Your other calendars in Collaborator" in
+While the owner has **Other calendars and busy times** on, events from your own other calendars (added on your profile; see "Your other calendars in Chameleon" in
 [Accounts, roles and permissions](userguide-accounts.md)) show on the Calendar's own page and on Calendar in the top
 bar, for you alone. They look muted and italic, with a coloured edge and a tag naming the calendar; in the narrow layout's month
 they are hollow dots. Opening one says "From your <name> calendar. Only you see this." and it can't be changed. Each

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1410">
+  <meta name="theme-color" content="#0e1a2b">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:">
   <link rel="icon" href="/img/site/icon">
   <title>Host console</title>
@@ -318,7 +318,7 @@
           <h2>Managed AI</h2>
           <span class="status" id="ai-status"></span>
         </div>
-        <p class="hint">The AI services this host offers every environment, one per company: set a key (or give the server <code>AI_OPENAI_KEY</code> or <code>AI_ANTHROPIC_KEY</code>) and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key stays here and is never shown to an environment.</p>
+        <p class="hint">The AI services this host offers every environment, one per company: set a key here and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key is set here only; it stays on the host and is never shown to an environment.</p>
         <div id="ai-services" class="ai-services"></div>
       </section>
 
@@ -456,6 +456,20 @@
         <button class="btn btn-small danger" type="submit">Reset their second factor</button>
         <span class="status" data-slot="owner-reset-status"></span>
       </form>
+      <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, drawn by host.js from the
+           list's awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
+      <div class="first-password" data-slot="first-password" hidden>
+        <div data-slot="first-password-rows"></div>
+        <div class="first-password-made" data-slot="first-password-made" hidden>
+          <div class="row">
+            <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
+            <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
+            <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
+          </div>
+          <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
+        </div>
+        <span class="status" data-slot="first-password-status" role="status" hidden></span>
+      </div>
       <form class="plan-form" data-slot="plan-form" hidden>
         <h3>Edit</h3>
         <p class="hint">The name is what the environment calls itself and what the product page lists; the slug (its address) is fixed. Choosing a plan fills the caps from the catalog; adjust them here for this environment alone. Empty caps mean no cap.</p>

@@ -267,7 +267,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
       await tab.eval(`__q('[data-module-root=vault] >>> .vt-row .sdk-open', 'plain.pdf').click()`);
       const winOn = await until(tab, WINS, (v) => v === 1, 8000);
       if (winOn !== 1) fail('a file did not open in a window over the space\'s canvas');
-      await tab.click('#modules-toggle');
+      await tab.click('#setup');
       await until(tab, `[...document.querySelectorAll('[role=menuitem]')].some((e) => /Close all/.test(e.innerText))`, Boolean);
       const hasClose = await tab.eval(`[...document.querySelectorAll('[role=menuitem]')].some((e) => /Close all/.test(e.innerText))`);
       if (!hasClose) fail('the Layout menu has no Close all while a file window is open');

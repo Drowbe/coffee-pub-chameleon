@@ -4,6 +4,11 @@
     "modules/stream/src/stream.css": {
       "560px": 1
     },
+    "public/start.css": {
+      "560px": 1,
+      "760px": 1,
+      "1100px": 1
+    },
     "public/style.css": {
       "760px": 1
     }

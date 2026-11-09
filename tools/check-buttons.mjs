@@ -109,7 +109,7 @@ const sheets = ['public/style.css', 'public/sdk/host.css', 'public/destination.c
 for (const rel of sheets) {
   for (const r of rules(read(rel))) {
     for (const sel of r.selector.split(',').map((x) => x.trim())) {
-      if (!BTN.test(sel) || /^\.landing /.test(sel) || /nav-text/.test(sel)) continue;
+      if (!BTN.test(sel) || /nav-text/.test(sel)) continue;
       if (LAYOUT_OK.some((re) => re.test(sel))) continue;
       const bad = r.decls.filter(([k]) => LOOK.test(k));
       if (bad.length) fail(`${rel}: "${sel}" sets ${bad.map(([k]) => k).join(', ')}; a button's look is the Buttons block in system.css (use a role or a size class; --b-* and --btn-h are the exceptions)`);

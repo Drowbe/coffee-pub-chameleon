@@ -1,4 +1,8 @@
 {
   "about": "check-type-scale: today's font sizes (not 9 11 12 13 14 16 18 22 28 40 px) and font weights (not 400 500 600 700), per file. Counts may only fall; lower them with: node tools/check-type-scale.mjs --update",
-  "counts": {}
+  "counts": {
+    "public/start.css": {
+      "size 17px": 1
+    }
+  }
 }

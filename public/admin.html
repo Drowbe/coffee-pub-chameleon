@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1410">
+  <meta name="theme-color" content="#0e1a2b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:">
@@ -90,7 +90,7 @@
       <div class="panel sdk-groups">
       <div class="sdk-stack">
       <h2>Theme</h2>
-      <p class="hint">Recolor the app to match your own branding -- this is colors only, nothing about layout changes. Strong Coffee is how the app has always looked. Every theme has a light and a dark version. The switch here picks the default: what everyone sees until they pick their own with the light or dark switch at the top of any page. Apply puts the theme and the default live on every open page.</p>
+      <p class="hint">Recolor the app to match your own branding -- this is colors only, nothing about layout changes. Every theme has a light and a dark version. The switch here picks the default: what everyone sees until they pick their own with the light or dark switch at the top of any page. Apply puts the theme and the default live on every open page.</p>
       <div class="row">
         <select id="theme-select" aria-label="Theme"></select>
         <a class="btn" id="theme-export" href="/api/themes/default/export" download title="Download the theme in the chooser as a file"><i class="fa-solid fa-file-export fa-fw" aria-hidden="true"></i> Export</a>
@@ -165,6 +165,21 @@
         <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> toolbar background<input id="theme-mf-toolbar" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-toolbar"><span class="sdk-choice-text">Auto</span></label></div>
         <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> row background<input id="theme-mf-row" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row"><span class="sdk-choice-text">Auto</span></label></div>
         <div class="theme-opt"><label><span data-word="module" data-word-form="cap"></span> row hover background<input id="theme-mf-row-hover" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-mf-row-hover"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Chosen fill (segment, day)<input id="theme-chosen" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-chosen"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Text on chosen fill<input id="theme-chosen-text" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-chosen-text"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Chosen text ink<input id="theme-chosen-ink" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-chosen-ink"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Brand name ink (large text only)<input id="theme-brand-ink" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-brand-ink"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Chat message background<input id="theme-message" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-message"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Top bar icons<input id="theme-icon-bar" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-icon-bar"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Neutral wash ink (hover, press, quiet fills)<input id="theme-neutral" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-neutral"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: gold<input id="theme-tone-gold" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-gold"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: blue<input id="theme-tone-blue" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-blue"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: green<input id="theme-tone-green" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-green"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: teal<input id="theme-tone-teal" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-teal"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: purple<input id="theme-tone-purple" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-purple"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: red<input id="theme-tone-red" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-red"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: orange<input id="theme-tone-orange" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-orange"><span class="sdk-choice-text">Auto</span></label></div>
+        <div class="theme-opt"><label>Tone: pink<input id="theme-tone-pink" type="color"></label><label class="sdk-choice-row"><input type="checkbox" data-auto-for="theme-tone-pink"><span class="sdk-choice-text">Auto</span></label></div>
       </div>
       </div>
       <div class="sdk-stack">
@@ -408,12 +423,11 @@
     <section class="tab-stack" id="tab-about" hidden>
       <div class="panel about">
         <h2 data-brand="productName"></h2>
-        <p class="hint">A Coffee Pub product</p>
         <p class="hint"><span data-brand="version"></span></p>
         <p>Voice and video for a group, such as a tabletop game or a trip. It runs on your own server; nothing about your calls is sent to anyone else.</p>
         <p data-fill>Beside the call, on the {canvas}, you open tools called {modules}. {An environment} is made from a template. The travel template gives you trips with phases, an Itinerary, a Calendar, Maps and Places, and a Budget. Every player can also be an OBS source.</p>
         <p>It is still in development and is not live yet. Calls and phones have not been tested end to end.</p>
-        <p>Released under the MIT license.</p>
+        <p>Proprietary software. All rights reserved.</p>
       </div>
       <div class="panel about">
         <h2>Troubleshooting</h2>

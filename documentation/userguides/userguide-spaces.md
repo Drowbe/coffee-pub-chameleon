@@ -1,6 +1,6 @@
 # Spaces
 
-**Audience:** a game master or owner setting up spaces in Collaborator, and players moving between
+**Audience:** a game master or owner setting up spaces in Coffee Pub Chameleon, and players moving between
 them.
 
 Each space is its own place: its people, its chat, its modules and its call. After signing in, a player lands on Home,
@@ -264,17 +264,17 @@ still go to their space. While you are in a space (with Home shown over it), the
 instead of leaving it: the call keeps running, you are marked Away on it, and **Back to <space>** returns you. A card's
 own "open in full" link, a link to a module inside a card, and an entry that isn't in any space open the same way.
 Ctrl-click, Cmd-click, Shift-click, a middle click, or Ctrl or Cmd with Enter, opens a new tab instead, and leaves
-Home and the call alone. The cards are laid out by Collaborator, the same for everyone. Guests do not see them.
+Home and the call alone. The cards are laid out by Chameleon, the same for everyone. Guests do not see them.
 
 ## Who is online, and inviting someone to talk
 
-The **Who's around** strip, above the space cards, shows everyone who is online: signed in with Collaborator open in a
+The **Who's around** strip, above the space cards, shows everyone who is online: signed in with Chameleon open in a
 page you are looking at, whether or not they are in a space. Each person shows where they are, with the same words as
 the space cards: "in <space>" for a space you belong to, "in an aside", "in a private conversation", "in another
 space" for one you don't belong to, or "online" when they are in no space; and a video mark while they are in the
 call. Beside everyone but you is a **people arrows** button: click it to invite them to a private conversation. It
 makes a private aside for the two of you, off the record like a pull-aside, and takes you into it; they get a notice
-wherever they have Collaborator open with **Join** and **Decline**. Join takes them straight into the aside. The
+wherever they have Chameleon open with **Join** and **Decline**. Join takes them straight into the aside. The
 invitation lasts a couple of minutes, and the aside goes away when nobody is left in it. A person who is not online
 cannot be invited, and you need the permission to start a private conversation (and the environment must allow them).
 

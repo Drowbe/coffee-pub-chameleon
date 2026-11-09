@@ -1,6 +1,6 @@
 # Accounts, Roles and Permissions
 
-**Audience:** a game master or owner adding players to a Collaborator environment and deciding what
+**Audience:** a game master or owner adding players to a Coffee Pub Chameleon environment and deciding what
 each of them can do.
 
 ## Add people
@@ -75,7 +75,7 @@ that) and hold 25 live chat streams open; past that the chat says to try again i
 for a guest the moment the link is turned off or replaced. An operator can change these numbers (see
 [Getting started](userguide-getting-started.md), "Behind a proxy, and the limits").
 
-Guests can't install Collaborator as an app. On a guest link there is no install hint, and the browser does not
+Guests can't install Chameleon as an app. On a guest link there is no install hint, and the browser does not
 offer to install; see "Install it as an app, and pop it out" in
 [The call](userguide-call.md).
 
@@ -129,8 +129,8 @@ guest has no picture there and no profile menu.
      [Manage](userguide-environment-settings.md).
    - **Host console** (a host admin signed in to one of the environments on a hosted server) opens the host
      console. From a space it opens in a new tab, so the call keeps running.
-   - **Install as an app** runs Collaborator in its own window, without browser bars. It is there only while your
-     browser offers to install (Chrome and Edge, before Collaborator is installed), and never for a guest; see
+   - **Install as an app** runs Chameleon in its own window, without browser bars. It is there only while your
+     browser offers to install (Chrome and Edge, before Chameleon is installed), and never for a guest; see
      "Install it as an app, and pop it out" in [The call](userguide-call.md).
    - **Sign out**, last. It also forgets the light or dark choice made in this browser, so the next person here
      starts from the default.
@@ -155,7 +155,7 @@ work the same way; see "Set a picture" in [Participant and Character Images](use
 
 Your profile has a **Calendars** tab, between **Profile** and **Spaces**, with everything about your calendars in one place. It shows when the Calendar is on and an owner has turned on **Private addresses** or **Other calendars and busy times** (on the Calendar's configuration page; see "Calendar sharing (owner)" in [Calendar](userguide-calendar.md)); owners see it whenever the Calendar is on, so they can read where to turn a switch on; and anyone keeps it while they still hold an address or an other calendar. Guests have no profile. One line at the top says which way each section goes: "Calendars coming in are only for you. Addresses going out let your calendar app show events from here." Then two sections:
 
-1. **Your calendars, coming in**: your own Google, Apple or other calendars, shown in the Calendar for you alone. See "Your other calendars in Collaborator" below.
+1. **Your calendars, coming in**: your own Google, Apple or other calendars, shown in the Calendar for you alone. See "Your other calendars in Chameleon" below.
 2. **Addresses, going out**: private addresses your calendar app reads to show events from here. See "Your calendar in a calendar app" below.
 
 Sharing when you are busy with a space's members is not built yet; it will be a third section here.
@@ -187,7 +187,7 @@ An everything address holds the environment's events and those of the spaces you
 
 **For owners:** a person's profile has the **Calendars** tab too, showing each of their addresses on or off with "Made … Last read …" and **Turn off**: "<name>'s private addresses: whether each is on and when their calendar app last read it. You can turn one off; they can make a new one." Manage > **Users** also marks who has an everything address, with **Turn off feed**. You never see anyone's address.
 
-## Your other calendars in Collaborator
+## Your other calendars in Chameleon
 
 The other way round: show events from your own Google, Apple or other calendar in the Calendar, for you alone. It is
 the first section of your profile's **Calendars** tab, **Your calendars, coming in**, while the owner has **Other calendars and busy
@@ -210,7 +210,7 @@ When other calendars can't be used, the section says why, and what to do:
 - The Calendar needs to be approved, turned on, updated or installed in Manage > **Modules**. When it needs to be
   installed, updated or approved and the switch is also off, the section names that step first, then the switch,
   since the switch can't be turned on until the step is done.
-- The Calendar can't run: it was built for an older version of Collaborator and needs an update (from a newer copy on
+- The Calendar can't run: it was built for an older version of Chameleon and needs an update (from a newer copy on
   this server, or from its author), or a module it needs is off or needs an update itself.
 
 An owner is told to do it; anyone else is told their owner needs to. Calendars you already added stay listed with

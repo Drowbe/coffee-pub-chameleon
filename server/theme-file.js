@@ -34,7 +34,7 @@ class ThemeFileError extends Error {
 // Every key of a set, in the stored order, null for any the set leaves on Auto; null for no set at all.
 const fullSet = (set) => (set ? Object.fromEntries(SET_KEYS.map((key) => [key, set[key] || null])) : null);
 
-// The file for a stored theme ({ name, author?, light, dark }), or for Strong Coffee when `theme` is null -- its dark
+// The file for a stored theme ({ name, author?, light, dark }), or for the default theme when `theme` is null -- its dark
 // set written out (style.css's own palette, which the store keeps as null) rather than left empty (decision 6).
 function themeToFile(theme) {
   const t = theme || DEFAULT_THEME;

@@ -13,8 +13,10 @@
 // renamed into place, so a crash leaves the old file or the new one, never half of one. On start the store removes the
 // parts and temp files a restart left, and bytes with no record (a crash between the two steps) once they are a week old.
 //
-// A record: { id, name, type, group, size, sha256, by, at, taken?, camera?, thumb: { type, size } | null }. `size` is the
-// bytes of the .bin; what a space or a person uses counts the thumbnail too.
+// A record: { id, name, type, group, size, sha256, by, at, taken?, camera?, thumb: { type, size } | null, visibility?,
+// people? }. `size` is the bytes of the .bin; what a space or a person uses counts the thumbnail too. `visibility` (who may
+// see it, documentation/plans/plan-vault-privacy.md) is 'only-me' or 'people' (with `people`, user keys); a record
+// without it is seen by everyone in the space, so it is written only when it is not. The rule is index.js's fileVisible.
 'use strict';
 
 const fs = require('fs');
@@ -34,6 +36,8 @@ const SHARE_DAYS = [1, 7, 30];
 const SHARES_MAX = 200; // share links in one space
 const SHARE_FILES_MAX = 500; // files in one share link
 const SHARE_PASSWORD_MIN = 8;
+const VISIBILITIES = ['everyone', 'only-me', 'people'];
+const PEOPLE_MAX = 200; // people one file is shared with
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
 class VaultError extends Error {
@@ -189,7 +193,7 @@ class VaultStore extends EventEmitter {
       throw err;
     }
     this.count(spaceId, record.by, this.bytesOf(record));
-    this.tell(moduleId, spaceId, 'added', record.id);
+    this.tell(moduleId, spaceId, 'added', record.id, null, record);
     return record;
   }
 
@@ -202,14 +206,16 @@ class VaultStore extends EventEmitter {
     r.thumb = { type, size: bytes.length };
     this.save(moduleId, spaceId);
     this.count(spaceId, r.by, this.bytesOf(r) - before);
-    this.tell(moduleId, spaceId, 'thumb', fid);
+    this.tell(moduleId, spaceId, 'thumb', fid, r, r);
     return r;
   }
 
-  // Tell whoever listens that a file of a space was added, renamed, removed or given a thumbnail (the live stream sends it to
-  // the people who may read that library there). Only the ids go; a listener asks for what it may see.
-  tell(moduleId, spaceId, op, id) {
-    this.emit('change', { module: moduleId, spaceId, op, id });
+  // Tell whoever listens that a file of a space was added, renamed, removed, given a thumbnail or shown to other people
+  // (the live streams send it to the people who may see that file there). Only the ids go out; `sight` carries the record
+  // before and after the change (null when there was none) so a stream can ask, per viewer, whether they could see it
+  // before or can now, and is never sent.
+  tell(moduleId, spaceId, op, id, before = null, after = null) {
+    this.emit('change', { module: moduleId, spaceId, op, id, sight: { before: before && { ...before }, after: after && { ...after } } });
   }
 
   rename(moduleId, spaceId, fid, name) {
@@ -217,7 +223,29 @@ class VaultStore extends EventEmitter {
     if (!r) throw new VaultError('no such file', 404);
     r.name = name;
     this.save(moduleId, spaceId);
-    this.tell(moduleId, spaceId, 'renamed', fid);
+    this.tell(moduleId, spaceId, 'renamed', fid, r, r);
+    return r;
+  }
+
+  // Who may see a file (plan-vault-privacy.md): 'everyone' (the field is removed), 'only-me', or 'people' with the list of
+  // user keys, already checked against the space's members by the caller. Answers the record.
+  setVisibility(moduleId, spaceId, fid, { visibility, people = [] }) {
+    const r = this.get(moduleId, spaceId, fid);
+    if (!r) throw new VaultError('no such file', 404);
+    if (!VISIBILITIES.includes(visibility)) throw new VaultError('not a visibility');
+    const before = { ...r };
+    delete r.visibility;
+    delete r.people;
+    if (visibility !== 'everyone') r.visibility = visibility;
+    if (visibility === 'people') r.people = [...new Set(people.map(String))].slice(0, PEOPLE_MAX);
+    try {
+      this.save(moduleId, spaceId);
+    } catch (err) {
+      for (const k of Object.keys(r)) delete r[k];
+      Object.assign(r, before);
+      throw err;
+    }
+    this.tell(moduleId, spaceId, 'visibility', fid, before, r);
     return r;
   }
 
@@ -230,7 +258,7 @@ class VaultStore extends EventEmitter {
     this.dropFromShares(moduleId, spaceId, fid);
     for (const thumb of [false, true]) fs.rmSync(this.filePath(spaceId, fid, thumb), { force: true });
     this.count(spaceId, r.by, -this.bytesOf(r));
-    this.tell(moduleId, spaceId, 'removed', fid);
+    this.tell(moduleId, spaceId, 'removed', fid, r, null);
     return true;
   }
 
@@ -268,15 +296,16 @@ class VaultStore extends EventEmitter {
   }
 
   // A new share link for files of the space: { share (its view), token } -- the token only here, never again.
-  // `days` is 1, 7 or 30 (plan decision 15); `password` optional; every file must be one of the space's.
-  createShare(moduleId, spaceId, { name, files, by, days = 7, download = false, password = '' }) {
+  // `days` is 1, 7 or 30 (plan decision 15); `password` optional; every file must be one of the space's that `visible`
+  // (the maker's sight, plan-vault-privacy.md) passes: one they can't see answers as one that is not there.
+  createShare(moduleId, spaceId, { name, files, by, days = 7, download = false, password = '', visible = () => true }) {
     const clean = typeof name === 'string' ? cleanName(name) : '';
     if (!clean) throw new VaultError('Give the share link a name.');
     if (!SHARE_DAYS.includes(days)) throw new VaultError('A share link ends after 1, 7 or 30 days.');
     const list = [...new Set(Array.isArray(files) ? files.map(String) : [])];
     if (!list.length) throw new VaultError('Choose the files to share.');
     if (list.length > SHARE_FILES_MAX) throw new VaultError(`A share link holds at most ${SHARE_FILES_MAX} files.`);
-    if (list.some((fid) => !this.get(moduleId, spaceId, fid))) throw new VaultError('There is no such file.', 404);
+    if (list.some((fid) => { const r = this.get(moduleId, spaceId, fid); return !r || !visible(r); })) throw new VaultError('There is no such file.', 404);
     if (typeof password !== 'string' || password.length > 200) throw new VaultError('That password is too long.');
     if (password && password.length < SHARE_PASSWORD_MIN) throw new VaultError(`A password needs at least ${SHARE_PASSWORD_MIN} characters.`);
     const map = this.shareMap(moduleId, spaceId);
@@ -315,8 +344,8 @@ class VaultStore extends EventEmitter {
   }
 
   // A share's name or its set of files changed (its maker or an owner, plan section 7): answers its view. Every file
-  // must be one of the space's; a set may not be emptied (Turn off ends a link).
-  updateShare(moduleId, spaceId, id, { name, files } = {}) {
+  // must be one of the space's that `visible` passes; a set may not be emptied (Turn off ends a link).
+  updateShare(moduleId, spaceId, id, { name, files, visible = () => true } = {}) {
     const s = this.getShare(moduleId, spaceId, id);
     if (!s || !(Date.parse(s.ends) > this.now())) throw new VaultError('There is no such share link.', 404);
     let nextName = s.name;
@@ -329,7 +358,7 @@ class VaultStore extends EventEmitter {
       nextFiles = [...new Set(Array.isArray(files) ? files.map(String) : [])];
       if (!nextFiles.length) throw new VaultError('Choose the files to share.');
       if (nextFiles.length > SHARE_FILES_MAX) throw new VaultError(`A share link holds at most ${SHARE_FILES_MAX} files.`);
-      if (nextFiles.some((fid) => !this.get(moduleId, spaceId, fid))) throw new VaultError('There is no such file.', 404);
+      if (nextFiles.some((fid) => { const r = this.get(moduleId, spaceId, fid); return !r || !visible(r); })) throw new VaultError('There is no such file.', 404);
     }
     const before = { name: s.name, files: s.files };
     s.name = nextName;
@@ -622,4 +651,4 @@ function folderBytes(dir) {
   return total;
 }
 
-module.exports = { VaultStore, VaultError, cleanName, extensionOf, nameForType, folderBytes, FILE_ID_RE, PART_PREFIX, NAME_MAX };
+module.exports = { VaultStore, VaultError, cleanName, extensionOf, nameForType, folderBytes, FILE_ID_RE, PART_PREFIX, NAME_MAX, VISIBILITIES, PEOPLE_MAX };

@@ -13,6 +13,7 @@ const TOKENS = ['--radius-min', '--radius-small', '--radius-medium', '--radius-l
 
 // What cannot use a token, each with its reason. A whole file (a vendored library) or one exact value in one file.
 const ALLOW_FILES = {
+  'public/start.css': 'the start page has the studio\'s own shapes (cards and panels 24px, inputs 16px, pills and buttons fully round, a circle button), as it has the studio\'s own palette; Thomas, 2026-11-08',
   'modules/maps/src/maps-lib-a-maplibre.css': 'MapLibre GL\'s own minified stylesheet (third-party, replaced whole on upgrade)',
   'modules/maps/src/maps-lib-a-maplibre.js': 'MapLibre GL\'s own minified bundle (third-party, replaced whole on upgrade)',
 };
@@ -87,7 +88,6 @@ console.log(`check-radius: ${seen} radii in ${files.length} files, all tokens`);
 // selector with the reason it is a circle, and only as many times as listed: a new use fails, and an entry no longer used
 // fails too (take it out), so the list only shrinks.
 const ROUND_SKIP = {
-  'public/landing.css': 'the product pages (landing, travel, games) are Thomas\'s own look, with their own radii; not the shared system',
   'public/design-system/sources.js': 'a generated snapshot of the modules\' sources (tools/design-system-snapshot.mjs), not CSS that is served',
 };
 const ROUND_SKIP_DIRS = ['public/design-system/legacy/']; // the archived first proposals, kept as they were

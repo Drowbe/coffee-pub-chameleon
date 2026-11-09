@@ -149,7 +149,7 @@ export function measure() {
 function drawNumbers() {
   const m = measure();
   tbl.textContent = '';
-  const cap = el('caption', 'ci-variant-note', `${D.documentElement.dataset.ppTheme || 'strong-coffee'}, ${D.documentElement.dataset.themeMode}`);
+  const cap = el('caption', 'ci-variant-note', `${D.documentElement.dataset.ppTheme || 'chameleon'}, ${D.documentElement.dataset.themeMode}`);
   cap.style.textAlign = 'left';
   const thead = el('thead');
   const r1 = el('tr');

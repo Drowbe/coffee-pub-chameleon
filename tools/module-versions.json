@@ -8,12 +8,12 @@
     "hash": "ef1ed3b92060ad0c"
   },
   "calendar": {
-    "version": "1.24.37",
-    "hash": "fb8f7c9982d9800b"
+    "version": "1.24.38",
+    "hash": "44ded14980553dc3"
   },
   "maps": {
-    "version": "0.9.14",
-    "hash": "11a7133554650305"
+    "version": "0.9.15",
+    "hash": "6931e39de5f68c99"
   },
   "places": {
     "version": "0.12.21",
@@ -40,7 +40,11 @@
     "hash": "893b6d48439a5c9b"
   },
   "vault": {
-    "version": "0.3.4",
-    "hash": "2e8a10ecc293e7c2"
+    "version": "0.3.5",
+    "hash": "5ce50a96c6e7bbc5"
+  },
+  "whiteboard": {
+    "version": "0.1.4",
+    "hash": "fa1d523f243597ad"
   }
 }

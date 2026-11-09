@@ -82,10 +82,21 @@ function readSession(secret, token, lookup) {
 // replayed at another, even if it somehow reached the wrong cookie jar) and what for (`verify`, an existing
 // factor, or `enrol`, none yet but the policy requires one). Ten minutes, not thirty days -- a much shorter
 // version of issueSession/readSession's own signed-payload shape, not the same function, since the payload
-// and the lifetime both differ.
-function issuePending(secret, { userKey, env, purpose }) {
-  const payload = Buffer.from(JSON.stringify({ u: userKey, e: env || '', p: purpose, t: Date.now() })).toString('base64url');
+// and the lifetime both differ. `claim` (optional, kept as `c`): the one claim of a first-password link this step
+// belongs to (documentation/plans/plan-first-password.md), so a step from an older claim of the same account is dead
+// once a newer link is made or claimed.
+function issuePending(secret, { userKey, env, purpose, claim }) {
+  const payload = Buffer.from(JSON.stringify({ u: userKey, e: env || '', p: purpose, t: Date.now(), ...(claim ? { c: String(claim) } : {}) })).toString('base64url');
   return `${payload}.${sign(secret, payload)}`;
+}
+
+// A one-time sign-in token (the first-password link): 32 random bytes, base64url (43 characters). Only its SHA-256
+// (tokenHash, hex) is ever kept; the token itself is given out once and never stored or logged.
+function oneTimeToken() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+function tokenHash(token) {
+  return crypto.createHash('sha256').update(typeof token === 'string' ? token : '').digest('hex');
 }
 function readPending(secret, token, { env, purpose } = {}) {
   if (typeof token !== 'string') return null;
@@ -331,6 +342,8 @@ module.exports = {
   readSession,
   issuePending,
   readPending,
+  oneTimeToken,
+  tokenHash,
   parseCookies,
   setSessionCookie,
   setPendingCookie,

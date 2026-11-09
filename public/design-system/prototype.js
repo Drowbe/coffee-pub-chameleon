@@ -6,6 +6,7 @@ import { createPlanner, jumpList, PLANNER_VIEWS, PLANNER_TITLE, plannerStatus } 
 
 const D = document;
 const THEMES = [
+  { id: 'chameleon', label: 'Chameleon' },
   { id: 'strong-coffee', label: 'Strong Coffee' },
   { id: 'calming-teal', label: 'Calming Teal' },
   { id: 'burnt-orange', label: 'Burnt Orange' },
@@ -17,7 +18,7 @@ let planner = null;
 
 const q = new URLSearchParams(location.search);
 const state = {
-  theme: THEMES.some((t) => t.id === q.get('theme')) ? q.get('theme') : 'strong-coffee',
+  theme: THEMES.some((t) => t.id === q.get('theme')) ? q.get('theme') : 'chameleon',
   mode: q.get('mode') === 'light' ? 'light' : 'dark',
   w: WIDTHS.some((w) => w.id === q.get('w')) ? q.get('w') : '700',
 };

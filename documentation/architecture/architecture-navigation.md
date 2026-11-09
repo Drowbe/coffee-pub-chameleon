@@ -1,6 +1,6 @@
 # Navigation Architecture
 
-**Audience:** developers changing the header on any page of Collaborator (`public/brand.js`, `public/primary-nav.js`, `public/nav-bar.js`, `public/space.js`, `public/style.css`), or adding a control to it.
+**Audience:** developers changing the header on any page of Coffee Pub Chameleon (`public/brand.js`, `public/primary-nav.js`, `public/nav-bar.js`, `public/space.js`, `public/style.css`), or adding a control to it.
 
 In a space the header is **one bar** ([plan-one-bar](../plans/plan-one-bar.md), Thomas, 2026-10-13: the primary and secondary bars become "one title bar"; [plan-two-zone-nav](../plans/plan-two-zone-nav.md), 2026-10-02: "we have overcomplicated the nav layout"). It has two zones, a left zone justified to the start and a right zone justified to the end, with no middle. The second row of the header is not a second bar of controls: wider than the narrow layout it is only the **status strip** (the phase chip and its journey bar, [architecture-canvas](architecture-canvas.md), "The status strip"), and it is hidden when the space has nothing to show there. In the narrow layout the second bar is the tab bar at the foot of the page (below). A control belongs to exactly one zone, chosen by what it is about and what it does, never by where it happens to fit.
 
