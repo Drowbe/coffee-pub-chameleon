@@ -100,6 +100,7 @@
       // The words' size (a type token) and how they line up, for a block whose words take markup.
       const size = def.markup && WB_SIZE_BY_ID.get(block.size);
       if (size) el.style.setProperty('--wb-size', size.token); else el.style.removeProperty('--wb-size');
+      if (def.valign && WB_VALIGN_BY_ID.has(block.valign)) el.dataset.valign = block.valign; else delete el.dataset.valign;
       if (def.markup && WB_ALIGN_BY_ID.has(block.align)) { el.dataset.align = block.align; el.style.setProperty('--wb-align', block.align); } else { delete el.dataset.align; el.style.removeProperty('--wb-align'); }
     }
 
@@ -599,7 +600,7 @@
 
   // The formatting bar over a block being edited (see wbEditText). It sits just above the block (below it when there is
   // no room above), inside the board and above a phone's on-screen keyboard, and wraps onto two rows when narrow.
-  function wbFormatBar({ layer, anchor, box, icon, mod = 'Ctrl', max = 0, inside, finish, escape }) {
+  function wbFormatBar({ layer, anchor, box, icon, mod = 'Ctrl', max = 0, align = null, inside, finish, escape }) {
     const bar = document.createElement('div');
     bar.className = 'wb-format';
     bar.setAttribute('role', 'group');
@@ -665,7 +666,39 @@
     headingButton.append(level);
     const row = document.createElement('div');
     row.className = 'wb-format-row';
-    row.append(...buttons);
+    const marks = document.createElement('div');
+    marks.className = 'wb-format-group';
+    marks.append(...buttons);
+    row.append(marks);
+    // Alignment, its own group: align = { read() -> { align, valign } (valign null: the block has none), set(field, value) }
+    // for the block being edited. The chosen one is pressed.
+    const alignButtons = [];
+    if (align) {
+      const groupFor = (field, choices, name) => {
+        const g = document.createElement('div');
+        g.className = 'wb-format-group';
+        g.setAttribute('role', 'group');
+        g.setAttribute('aria-label', name);
+        for (const c of choices) {
+          const b = button(`${field}-${c.id}`, `Align ${c.label.toLowerCase()}`, c.icon);
+          b.setAttribute('aria-pressed', 'false');
+          b.addEventListener('click', () => { align.set(field, c.id); showAlign(); });
+          alignButtons.push({ field, id: c.id, b });
+          g.append(b);
+        }
+        return g;
+      };
+      const h = groupFor('align', WB_ALIGNS, 'Align');
+      const v = groupFor('valign', WB_VALIGNS, 'Vertical align');
+      row.append(h);
+      if (align.read() && align.read().valign !== null) row.append(v);
+    }
+    function showAlign() {
+      const now = align && align.read();
+      if (!now) return;
+      for (const { field, id, b } of alignButtons) b.setAttribute('aria-pressed', String(now[field] === id));
+    }
+    showAlign();
     bar.append(row);
 
     // Link: the address in a field of the bar. Enter or the tick puts the link round the selection; Escape or the cross
@@ -774,6 +807,7 @@
     function update() {
       const n = wbHeadingOf(box.value, box.selectionStart, box.selectionEnd);
       level.textContent = n ? String(n) : '';
+      showAlign();
       const words = `Heading, now ${WB_HEADING_NAMES[n]}`;
       headingButton.setAttribute('aria-label', words);
       headingButton.title = words;
