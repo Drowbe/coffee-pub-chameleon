@@ -384,6 +384,62 @@
     };
   }
 
+
+  // The words of a block that takes markup (a note, a text block, a shape), drawn into its words element. This is the one
+  // place on the board that sets HTML from what a person wrote, and the HTML is only ever the host's markdown()
+  // (public/sdk/host.js), which escapes everything first and makes only its own few elements, with links only to http and
+  // https addresses. Words with no markup in them go in as text, as they always did. Each link is checked again (anything
+  // but http or https becomes its words), cannot be dragged and is not in the Tab order; the browser never follows one on
+  // a click: the page does, by its own rule (whiteboard.js, "links").
+  const wbShown = new WeakMap(); // words element -> the words last drawn in it, so a drag does not draw them again
+  function wbShowWords(words, text) {
+    const t = typeof text === 'string' ? text : '';
+    if (wbShown.get(words) === t) return;
+    wbShown.set(words, t);
+    if (!wbMarkup.html || !wbHasMarkup(t)) {
+      words.textContent = t;
+      words.classList.remove('wb-md');
+      return;
+    }
+    words.innerHTML = wbMarkup.html(t); // the host's markdown: escaped first, the one sanctioned HTML
+    words.classList.add('wb-md');
+    for (const a of words.querySelectorAll('a')) {
+      const href = a.getAttribute('href') || '';
+      if (!/^https?:\/\//i.test(href)) { a.replaceWith(...a.childNodes); continue; }
+      a.draggable = false;
+      a.tabIndex = -1;
+      a.title = wbMarkup.linkTip ? `${href}\n${wbMarkup.linkTip}` : href;
+    }
+  }
+  // The address of the link under a pointer (an event's target) in a block's words, or null.
+  function wbLinkAt(target) {
+    const a = target && target.closest ? target.closest('.wb-words a[href]') : null;
+    const href = a ? a.getAttribute('href') : '';
+    return a && /^https?:\/\//i.test(href) ? href : null;
+  }
+  // The addresses of the links in a block's words (at most `most`), for the right-click menu.
+  function wbLinksIn(el, most = 3) {
+    const out = [];
+    for (const a of el ? el.querySelectorAll('.wb-words a[href]') : []) {
+      const href = a.getAttribute('href') || '';
+      if (/^https?:\/\//i.test(href) && !out.includes(href)) out.push(href);
+      if (out.length >= most) break;
+    }
+    return out;
+  }
+
+  // The formatting bar's buttons, in order: what each does to the words (lib-j) and its key with Ctrl or Cmd.
+  const WB_FORMATS = [
+    { id: 'bold', label: 'Bold', icon: 'bold', key: 'B' },
+    { id: 'italic', label: 'Italic', icon: 'italic', key: 'I' },
+    { id: 'code', label: 'Code', icon: 'code', key: 'E' },
+    { id: 'ul', label: 'Bulleted list', icon: 'list-ul' },
+    { id: 'ol', label: 'Numbered list', icon: 'list-ol' },
+    { id: 'heading', label: 'Heading', icon: 'heading' },
+    { id: 'link', label: 'Link', icon: 'link', key: 'K' },
+  ];
+  const WB_HEADING_NAMES = ['none', 'large', 'medium', 'small'];
+
   // Editing a block's words in place: a text box over the words, the same size and look. Enter makes a new line; leaving
   // the box, or Ctrl or Cmd with Enter, keeps what was typed; Escape puts the words back. done(text) is called once, with
   // the words to keep (the same words when nothing changed). grow: the box grows with the words (a text block); else it

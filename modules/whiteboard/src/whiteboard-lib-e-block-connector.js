@@ -282,7 +282,7 @@
     // The words a block shows, for a screen reader: its own (a shape's, a note's, a picture's description), else what it is.
     const wordsOf = (o) => {
       if (!o) return 'a point';
-      const t = String(o.text || o.alt || '').replace(/\s+/g, ' ').trim();
+      const t = (o.text ? wbPlain(o.text) : String(o.alt || '')).replace(/\s+/g, ' ').trim(); // a block's words without their markup
       if (t) return t.slice(0, 60);
       const def = blockTypes.get(o.type);
       const noun = def ? (def.noun ? def.noun(o) : def.label.toLowerCase()) : 'block';

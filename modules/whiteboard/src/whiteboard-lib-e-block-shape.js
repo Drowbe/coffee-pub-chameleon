@@ -50,6 +50,7 @@
         type: shape.type,
         label: shape.label,
         edit: 'text',
+        markup: true,
         paint: { stroke: { extra: ['none'] }, fill: { extra: ['none'] }, ink: {} },
         weight: true,
         create: () => ({ w: shape.w, h: shape.h, text: '', stroke: 'ink', fill: 'ink', ink: 'ink', weight: 3 }),
@@ -66,13 +67,13 @@
           svg.append(body);
           const words = document.createElement('div');
           words.className = 'wb-words';
-          words.textContent = b.text;
+          wbShowWords(words, b.text);
           const inset = shape.inset ? shape.inset(b.w, b.h) : [8, 8, 8, 8];
           el.style.setProperty('--wb-inset', inset.map((n) => `${Math.round(n)}px`).join(' '));
           el.replaceChildren(svg, words);
         },
         textOf: (el) => el.querySelector('.wb-words'),
-        describe: (b) => (b.text ? `${shape.label}: ${b.text.slice(0, 80)}` : shape.label),
+        describe: (b) => { const t = wbPlain(b.text); return t ? `${shape.label}: ${t.slice(0, 80)}` : shape.label; },
       });
     }
   }

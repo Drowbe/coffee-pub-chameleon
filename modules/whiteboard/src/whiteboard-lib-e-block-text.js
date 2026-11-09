@@ -7,6 +7,7 @@
     label: 'Text',
     noun: () => 'text block',
     edit: 'text',
+    markup: true,
     textEmpty: 'remove',
     paint: { stroke: { extra: ['none'] }, fill: { extra: ['none'] }, ink: {} },
     weight: true,
@@ -18,8 +19,8 @@
     render(b, el) {
       let words = el.querySelector('.wb-words');
       if (!words) { words = document.createElement('div'); words.className = 'wb-words'; el.replaceChildren(words); }
-      words.textContent = b.text;
+      wbShowWords(words, b.text);
     },
     textOf: (el) => el.querySelector('.wb-words'),
-    describe: (b) => (b.text ? `Text: ${b.text.slice(0, 80)}` : 'Empty text'),
+    describe: (b) => { const t = wbPlain(b.text); return t ? `Text: ${t.slice(0, 80)}` : 'Empty text'; },
   });
