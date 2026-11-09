@@ -354,6 +354,11 @@
         });
         markCell(el);
       },
+      // Saved as a picture or printed (lib-l): without the active cell's ring.
+      exported(b, el) {
+        delete el.dataset.cell;
+        for (const td of el.querySelectorAll('td.wb-cell-on')) td.classList.remove('wb-cell-on');
+      },
       describe: (b) => wbTableName(b),
     });
   }
