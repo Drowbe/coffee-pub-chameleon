@@ -23,6 +23,8 @@ const MAX_BYTES = Math.max(...Object.values(LIMITS).map((l) => l.bytes));
 const HEAD_BYTES = 4096;
 // A picture whose header says more than this many pixels is refused, so no viewer is handed a decompression bomb.
 const MAX_PIXELS = 100 * 1000 * 1000;
+// What a person is told when a picture is over it (the Vault's and a module's uploads).
+const PICTURE_LARGE = 'That picture is too large to show.';
 
 // type -> { group (what the list shows), limit (a key of LIMITS), exts (the first is the one a name is given),
 // claims (the types a browser may send it as) }
@@ -449,4 +451,4 @@ function structureRefusal(file, type) {
 // routes do too. `remove_any` is only off by default there.
 const GUEST_LOCKED = ['view', 'see_all', 'add', 'download', 'share'];
 
-module.exports = { TYPES, LIMITS, MAX_BYTES, HEAD_BYTES, MAX_PIXELS, GUEST_LOCKED, STRUCTURED, claimRefusal, claimedType, mismatch, sniff, picturePixels, structureRefusal, markdownRefusal };
+module.exports = { TYPES, LIMITS, MAX_BYTES, HEAD_BYTES, MAX_PIXELS, PICTURE_LARGE, GUEST_LOCKED, STRUCTURED, claimRefusal, claimedType, mismatch, sniff, picturePixels, structureRefusal, markdownRefusal };
