@@ -50,7 +50,7 @@
   }
   // The words of an HTML cell: its text, a line end for a <br> and between blocks (paragraphs, list entries), spaces run
   // together as a page shows them. What is never shown (script, style, template ...) is left out.
-  const WB_HTML_SKIP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'TITLE', 'HEAD', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'SELECT', 'TEXTAREA', 'BUTTON']);
+  const WB_HTML_SKIP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'TITLE', 'HEAD', 'IFRAME', 'EMBED', 'SVG', 'MATH', 'SELECT', 'TEXTAREA', 'BUTTON']);
   const WB_HTML_BLOCK = /^(P|DIV|LI|TR|H[1-6]|BLOCKQUOTE|PRE|UL|OL|TABLE|SECTION|ARTICLE)$/;
   function wbHtmlText(node) {
     let out = '';

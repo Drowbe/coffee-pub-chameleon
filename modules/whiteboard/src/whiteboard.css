@@ -411,11 +411,12 @@
 /* a note's pointer tip: moved like a line's end */
 .wb-handle-tip { cursor: move; }
 /* a picked table's grab bars on the lines between its columns and its rows (--hl: the bar's length in board units), a
-   faint line until the pointer is over one, at least 12px across on the screen (16px on a touch screen); and its two +
-   handles, below the last row and right of the last column, that add one */
+   faint line until the pointer is over one, 12px across on the screen (16px on a touch screen), but never more than 16
+   board units, so zoomed far out the cells between them can still be pressed; and its two + handles, below the last row
+   and right of the last column, that add one */
 .wb-handle-col, .wb-handle-row { --bar: 12px; }
-.wb-handle-col { width: calc(var(--bar) / var(--wb-scale, 1)); height: calc(var(--hl, 0) * 1px); cursor: col-resize; }
-.wb-handle-row { width: calc(var(--hl, 0) * 1px); height: calc(var(--bar) / var(--wb-scale, 1)); cursor: row-resize; }
+.wb-handle-col { width: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); height: calc(var(--hl, 0) * 1px); cursor: col-resize; }
+.wb-handle-row { width: calc(var(--hl, 0) * 1px); height: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); cursor: row-resize; }
 .wb-handle-col::after, .wb-handle-row::after { border: none; border-radius: 0; background: var(--accent); opacity: 0.3; }
 .wb-handle-col::after { width: calc(2px / var(--wb-scale, 1)); height: 100%; }
 .wb-handle-row::after { width: 100%; height: calc(2px / var(--wb-scale, 1)); }
@@ -424,7 +425,7 @@
 .wb-handle-add::after {
   width: calc(18px / var(--wb-scale, 1));
   height: calc(18px / var(--wb-scale, 1));
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-small);
   background:
     linear-gradient(var(--accent), var(--accent)) center / calc(10px / var(--wb-scale, 1)) calc(2px / var(--wb-scale, 1)) no-repeat,
     linear-gradient(var(--accent), var(--accent)) center / calc(2px / var(--wb-scale, 1)) calc(10px / var(--wb-scale, 1)) no-repeat,
