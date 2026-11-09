@@ -9,6 +9,9 @@
 //   kind     'plain' (easy to take back: the Primary button, focus on it), 'destructive' (soft Danger, focus on Cancel so Enter
 //            does not delete) or 'final' (cannot be undone: solid Danger, focus on Cancel). Default 'plain'.
 //   typed    final only: a name the person types before the action turns on.
+//   list     optional, a page's own: [[icon, text], ...] drawn under the message, one line each with its Font Awesome icon (the Vault's
+//            question before a change takes sight of a file from people). Never from a module: host.ui.confirm passes cleanConfirm's fields only.
+//   solid    optional, a page's own: the action is the solid Danger button even when the kind is 'destructive' (focus still on Cancel).
 //   run      optional function (a page's own, never a module's): the action runs it while the dialog stays open; if it throws,
 //            the dialog stays and shows the error's message under the question (so a refusal is read where it was asked), and
 //            the action can be pressed again; if it returns, the dialog closes and the promise resolves true.
@@ -68,12 +71,25 @@ export function confirmDialog(options, doc = document) {
       label.appendChild(input);
       body.appendChild(label);
     }
-    if (!paras.length && !input) body.hidden = true;
+    const rows = Array.isArray(options.list) ? options.list.filter((r) => Array.isArray(r) && typeof r[1] === 'string').slice(0, 8) : [];
+    if (rows.length) {
+      const ul = make('ul', 'sdk-confirm-effects');
+      for (const [icon, text] of rows) {
+        const li = make('li');
+        const i = make('i', `fa-solid fa-${/^[a-z0-9-]{1,40}$/.test(icon) ? icon : 'circle-info'} fa-fw`);
+        i.setAttribute('aria-hidden', 'true');
+        li.append(i, make('span', '', text));
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+      if (!paras.length) { body.id = `${id}-d`; dlg.setAttribute('aria-describedby', body.id); }
+    }
+    if (!paras.length && !rows.length && !input) body.hidden = true;
     const foot = make('div', 'sdk-dialog-foot');
     const cancel = make('button', 'btn', o.cancel);
     cancel.type = 'button';
     cancel.dataset.close = '';
-    const ok = make('button', `btn ${o.kind === 'plain' ? 'btn-primary' : o.kind === 'final' ? 'btn-danger solid' : 'btn-danger'}`, o.action);
+    const ok = make('button', `btn ${o.kind === 'plain' ? 'btn-primary' : o.kind === 'final' || options.solid === true ? 'btn-danger solid' : 'btn-danger'}`, o.action);
     ok.type = 'button';
     ok.dataset.ok = '';
     if (input) ok.disabled = true;

@@ -144,6 +144,7 @@
     view: 'list', sort: 'new', query: '', types: new Set(), by: 'all', linked: new Set(),
     shared: false, selecting: false, sel: new Set(), adding: false, queue: [], loaded: false,
     people: new Map(), removeWhere: false, notice: null, dropping: false, limit: PAGE,
+    who: { visibility: 'everyone', people: [] }, // who can see the files added now (Add files); not remembered: Everyone is the default each time
   };
 
   // What a person chose here stays with them (their own data, not the space's): the List or Grid and Remove where it was taken.
@@ -217,7 +218,7 @@
 
   // ---- loading ------------------------------------------------------------------------------------------------------------------------
   let lastSig = '';
-  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses, f.shared === true, durations[f.id] || 0]), state.usage]);
+  const signature = () => JSON.stringify([state.files.map((f) => [f.id, f.name, f.size, f.hasThumb, f.uses, f.shared === true, durations[f.id] || 0, f.visibility || '', f.people ? f.people.join(',') : '']), state.usage]);
   async function loadPeople() {
     try { for (const p of await host.people()) state.people.set(p.key, p.name); } catch { /* names are a nicety */ }
   }
@@ -415,7 +416,11 @@
     else if (id === 'sel-remove') removeFiles(chosen(), endSelecting);
   });
   host.on('header', (e) => { if (e.id === 'share-links') { host.library.shares().catch(fail); return; } if (e.id === 'select') { if (state.selecting) endSelecting(); else { state.selecting = true; state.sel.clear(); render(); } } });
-  host.on('add', (e) => { if (e.id === 'add' && mayAdd) { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); } });
+  function openAdd() {
+    if (!state.adding) resetWho();
+    state.adding = true; render(); setTimeout(() => $('choose').focus(), 0);
+  }
+  host.on('add', (e) => { if (e.id === 'add' && mayAdd) openAdd(); });
   host.on('links', () => { refresh({ quiet: true }); });
   // Share links (public/share-sheet.js): the sheet and the list open over the page; a link made, changed or turned off arrives as 'sharechanged'.
   host.on('sharechanged', () => { refresh({ quiet: true }); });
@@ -565,9 +570,36 @@
     }
     return box;
   }
+  // ---- who can see a file: the small marks under its name (plan-vault-privacy.md) ----------------------------------------------------
+  // Only what the server returned is drawn. The person who added a file that is not for everyone sees "Only me" or the number of people
+  // on it, and nobody else does. An owner or the admin looking at a file that was not shared with them sees "Not shared with you". A
+  // person who cannot see a file never gets it here, so there is no row, no gap and no count to draw: nothing of it is on the page.
+  const peopleWord = (n) => (n === 1 ? '1 person' : `${n} people`);
+  function notShared(f) {
+    if (f.notShared === true) return true;
+    if (f.by === me || !f.visibility || f.visibility === 'everyone') return false;
+    if (f.visibility === 'only-me') return true;
+    return Array.isArray(f.people) ? !f.people.includes(me) : false;
+  }
+  function visEl(icon, text, kind) {
+    const t = el('span', 'vt-vis');
+    if (kind) t.dataset.kind = kind;
+    t.append(ic(icon), text);
+    return t;
+  }
+  function visMarks(f) {
+    const out = [];
+    if (f.by === me && f.visibility && f.visibility !== 'everyone') {
+      const n = (f.people || []).filter((k) => k === me || state.people.has(k)).length;
+      out.push(f.visibility === 'people' && n ? visEl('user-group', peopleWord(n)) : visEl('lock', 'Only me'));
+    }
+    if (notShared(f)) out.push(visEl('eye', 'Not shared with you', 'rights'));
+    return out;
+  }
   function sub(f) {
     const s = el('span', 'sdk-row-sub vt-sub');
     s.append(el('span', 'vt-sub-kind', `${KINDS[kindOf(f)].word} · `), size(f.size));
+    for (const m of visMarks(f)) s.append(' · ', m);
     s.append(el('span', 'vt-sub-narrow', ` · ${byWord(f)} · ${when(f.at)}`));
     return s;
   }
@@ -608,6 +640,8 @@
       const subl = el('span', 'vt-card-sub');
       subl.append(el('span', 'vt-x-kind', `${k.word} · `), size(f.size), el('span', 'vt-x-by', ` · ${byWord(f)}`));
       meta.append(openButton(f, 'vt-card-name'), subl, badges(f));
+      const marks = visMarks(f);
+      if (marks.length) { const m = el('p', 'vt-card-line vt-card-marks'); m.append(...marks); meta.append(m); }
       c.append(thumb(f), over, meta);
       return c;
     }
@@ -630,6 +664,8 @@
     const body = el('div', 'sdk-card-body vt-stack');
     const line = el('p', 'vt-card-line', `${size(f.size)} · ${byWord(f)} · ${when(f.at)}`);
     body.append(thumb(f), line, badges(f));
+    const marks = visMarks(f);
+    if (marks.length) { const m = el('p', 'vt-card-line vt-card-marks'); m.append(...marks); body.append(m); }
     c.append(head, body);
     return c;
   }
@@ -637,7 +673,7 @@
     const e = el('div', 'sdk-empty vt-empty-in');
     if (!state.files.length) {
       e.append(ic('folder-open'), el('p', 'sdk-empty-title', `Nothing in ${MODULE} yet.`), el('p', 'sdk-empty-text', mayAdd ? `Add pictures, audio, video and documents for this ${SPACE}.` : `Nothing has been added to this ${SPACE}'s ${MODULE} yet.`));
-      if (mayAdd && !state.adding) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', () => { state.adding = true; render(); setTimeout(() => $('choose').focus(), 0); }); e.append(b); }
+      if (mayAdd && !state.adding) { const b = button('btn btn-primary', { label: 'Add files', icon: 'plus' }); b.addEventListener('click', openAdd); e.append(b); }
     } else {
       e.append(ic('magnifying-glass'), el('p', 'sdk-empty-title', 'No files match.'));
       const b = button('btn', { label: 'Clear filters', icon: 'xmark' });
@@ -773,7 +809,7 @@
     $('drop-title').textContent = full ? `This ${SPACE}'s ${MODULE} is full` : state.dropping ? 'Drop to add them' : 'Drop files here';
     $('drop-sub').textContent = full ? 'Remove some files to add more.' : 'or';
     $('add-title').textContent = `Add files`;
-    $('add-line').textContent = `Everyone in this ${SPACE} can see what you add.`;
+    drawWho();
     $('remove-where').checked = state.removeWhere;
     $('quota-label').textContent = `Used in this ${SPACE}`;
     const u = usedBytes(); const cap = capBytes();
@@ -789,6 +825,60 @@
     q.replaceChildren(...state.queue.map(uploadRow));
     if (keptAt >= 0 && q.children.length) { const b = q.children[Math.min(keptAt, q.children.length - 1)].querySelector('button:last-of-type'); if (b) b.focus(); }
   }
+  // ---- Who can see this: the choice for the files being added now ----------------------------------------------------------------------
+  const OWNERS = word('owner', { many: true });
+  const CHOICES = [
+    ['everyone', `Everyone in this ${SPACE}`, `The default. Every ${word('member')} can see them.`],
+    ['only-me', 'Only me', `You and the ${OWNERS} can see them.`],
+    ['people', 'Chosen people', `You, the ${OWNERS} and the people you pick.`],
+  ];
+  const whoPeople = () => state.who.people.filter((k) => k !== me);
+  // What goes to the server: Chosen people with no one chosen is Only me (the server refuses an empty list, and the two read the same).
+  const whoNow = () => (state.who.visibility === 'people' && whoPeople().length ? { visibility: 'people', people: whoPeople() } : state.who.visibility === 'everyone' ? { visibility: 'everyone', people: [] } : { visibility: 'only-me', people: [] });
+  function whoSentence(applies = true) {
+    const tail = applies ? ' It applies to every file you add now.' : '';
+    const w = state.who;
+    if (w.visibility === 'everyone') return `Everyone in this ${SPACE} can see what you add.${applies ? ` This is the default.${tail}` : ''}`;
+    if (w.visibility === 'only-me') return `Only you and the ${OWNERS} can see what you add.${tail}`;
+    return whoPeople().length ? `You, the ${OWNERS} and ${peopleWord(whoPeople().length)} can see what you add.${tail}` : `Only you and the ${OWNERS} until you choose someone.${tail}`;
+  }
+  function resetWho() { state.who = { visibility: 'everyone', people: [] }; drawWho(); }
+  let whoMade = false;
+  function drawWho() {
+    const box = $('who-choices');
+    if (!whoMade) {
+      whoMade = true;
+      for (const [key, label, desc] of CHOICES) {
+        const row = el('label', 'sdk-choice-row sdk-choice-boxed');
+        const input = el('input');
+        input.type = 'radio'; input.name = 'who'; input.value = key;
+        input.addEventListener('change', () => { if (input.checked) { state.who.visibility = key; drawWho(); } });
+        const text = el('span', 'sdk-choice-text');
+        text.append(el('span', 'sdk-choice-label', label), el('span', 'sdk-choice-desc', desc));
+        row.append(input, text);
+        box.append(row);
+      }
+    }
+    // While a file is waiting or going up its sight is fixed (it was set when the file was chosen), so the choices are off until the batch is
+    // done: the screen never says a choice applies to a file it no longer can change.
+    const busy = state.queue.some((x) => x.status === 'queued' || x.status === 'uploading' || (x.status === 'refused' && x.retry && x.file)); // a file that can be tried again keeps its choice too
+    for (const input of box.querySelectorAll('input')) { input.checked = input.value === state.who.visibility; input.disabled = busy; }
+    $('who-change').disabled = busy;
+    box.setAttribute('aria-disabled', busy ? 'true' : 'false');
+    $('who-pick').hidden = state.who.visibility !== 'people';
+    const chosen = whoPeople();
+    $('who-change-word').textContent = chosen.length ? 'Change people' : 'Choose people';
+    const names = chosen.map(nameOf);
+    $('who-names').textContent = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names.join('');
+    $('add-line').textContent = busy ? `${whoSentence(false)} Files being added, or waiting to be tried again, keep the choice they were picked with.` : whoSentence();
+  }
+  $('who-change').addEventListener('click', () => {
+    host.library.pickPeople({ chosen: whoPeople() }).then((keys) => {
+      if (Array.isArray(keys)) { state.who.people = keys.filter((k) => k !== me); drawWho(); }
+      $('who-change').focus();
+    }, fail);
+  });
+
   function uploadRow(it) {
     const li = el('li', 'sdk-row vt-up');
     li.dataset.status = it.status;
@@ -843,7 +933,7 @@
     state.notice = null;
     for (const f of files) {
       const kind = (() => { const e = (f.name.split('.').pop() || '').toLowerCase(); return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(e) ? 'picture' : ['mp3', 'ogg', 'oga', 'wav', 'm4a'].includes(e) ? 'audio' : ['mp4', 'webm', 'mov'].includes(e) ? 'video' : e === 'pdf' ? 'pdf' : 'text'; })();
-      state.queue.push({ file: f, name: f.name, size: f.size || 1, kind, status: 'queued', pct: 0, msg: '', tries: 0, waiting: false, retry: false });
+      state.queue.push({ file: f, name: f.name, size: f.size || 1, kind, status: 'queued', pct: 0, msg: '', tries: 0, waiting: false, retry: false, sight: whoNow() }); // who sees it is fixed when the file is chosen
     }
     state.adding = true;
     render();
@@ -868,7 +958,7 @@
     closeTimer = setTimeout(() => {
       if (running || pending().length || !state.queue.every((x) => x.status === 'done')) return;
       state.queue = [];
-      if ($('add').contains(root.activeElement)) closeAdd(); else { state.adding = false; render(); }
+      if ($('add').contains(root.activeElement)) closeAdd(); else { state.adding = false; resetWho(); render(); }
     }, 1200);
   }
   // A video's small picture goes up after the file; when the host says too often, it is tried again a little later.
@@ -894,7 +984,7 @@
     it.waiting = false;
     renderAdd();
     try {
-      it.job = host.library.add(it.file, { name: it.name, keepPosition: !state.removeWhere, onProgress: ({ loaded, total }) => { it.pct = total ? Math.min(99, (loaded / total) * 100) : 0; paintProgress(it); } });
+      it.job = host.library.add(it.file, { name: it.name, keepPosition: !state.removeWhere, visibility: it.sight.visibility, ...(it.sight.visibility === 'people' ? { people: it.sight.people } : {}), onProgress: ({ loaded, total }) => { it.pct = total ? Math.min(99, (loaded / total) * 100) : 0; paintProgress(it); } });
       const rec = await it.job;
       it.status = 'done'; it.pct = 100;
       const named = state.files.some((x) => x.id === rec.id);
@@ -946,7 +1036,7 @@
   $('picker').addEventListener('change', () => { const files = [...$('picker').files]; $('picker').value = ''; if (files.length) startFiles(files); });
   // Closing Add files puts the keyboard back on the "+" that opened it (the host's), never the page.
   function closeAdd() {
-    state.adding = false; render();
+    state.adding = false; resetWho(); render();
     const back = host.add && typeof host.add.focus === 'function' ? host.add.focus() : Promise.resolve(false);
     back.then((ok) => { if (!ok) { const b = $('body'); b.tabIndex = -1; b.focus({ preventScroll: true }); } }, () => {});
   }
@@ -969,7 +1059,7 @@
     state.dropping = on;
     $('dropover').hidden = !on || state.adding;
     $('dropover-title').textContent = `Drop to add to the ${MODULE}`;
-    $('dropover-sub').textContent = `Everyone in this ${SPACE} can see what you add.`;
+    $('dropover-sub').textContent = whoSentence(false);
     if (state.adding) renderAdd();
   }
 

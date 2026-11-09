@@ -1,0 +1,63 @@
+/* Who can see which Vault file, the parts drawn in the page (public/vault-privacy.js; documentation/plans/plan-vault-privacy.md, slice 3; the
+   Prototype's "Vault privacy" section): the people picker, the file window's "Who can see this", and the question before a change takes sight
+   of a file from people. Theme tokens only. */
+
+/* Small quiet words that still pass 4.5 to 1 (--text-muted alone does not in the two light themes). */
+.vp-sheet, .vp-who-info, .sdk-confirm-effects { --vp-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary)); }
+
+/* ---- the people picker (a dialog) ---- */
+dialog.vp-sheet { --dlg-w: var(--dlg-w-form); }
+.vp-pickbody { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.vp-chosen-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.vp-count { color: var(--vp-dim); font-size: var(--text-13); font-variant-numeric: tabular-nums; }
+.vp-chosen { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); max-height: 92px; overflow: auto; }
+.vp-chosen .sdk-avatar { flex: none; }
+.vp-chosen :is(.sdk-chip-tag, .sdk-chip-removable) { max-width: 100%; }
+.vp-people { display: flex; flex-direction: column; gap: var(--space-1); max-height: 248px; overflow: auto; padding: 0; }
+.vp-person { align-items: center; }
+.vp-person .sdk-avatar { flex: none; }
+.vp-locked { cursor: default; }
+.vp-role { margin-left: auto; color: var(--vp-dim); font-size: var(--text-12); }
+.vp-limit[hidden], .vp-error[hidden] { display: none; }
+.vp-none { margin: 0; color: var(--vp-dim); font-size: var(--text-13); overflow-wrap: anywhere; }
+/* A phone: a full-width sheet, rows and buttons of 44px, and the chosen chips wrap in whole rows (three show, the rest scroll a row at a time). */
+@media (max-width: 640px) {
+  dialog.vp-sheet { --dlg-w: 100vw; }
+  .vp-sheet :is(.sdk-choice-row, .vp-person) { min-height: 44px; }
+  .vp-sheet :is(.btn, .sdk-dialog-close, .sdk-chip-x) { min-height: 44px; }
+  .vp-sheet .sdk-dialog-close, .vp-sheet .sdk-chip-x { min-width: 44px; }
+  .vp-sheet .sdk-search > input { min-height: 44px; font-size: var(--text-16); }
+  .vp-people { max-height: 340px; }
+  .vp-chosen { max-height: 140px; scroll-snap-type: y proximity; }
+  .vp-chosen > * { scroll-snap-align: start; }
+  .vp-sheet .sdk-chip-removable { min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .vp-sheet .sdk-search > input { font-size: var(--text-16); }
+}
+
+/* ---- the file window's Info ---- */
+.vp-who-info { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--edge-hairline); }
+.vp-who-info .vp-none { font-size: var(--text-13); }
+.vp-change { align-self: flex-start; max-width: 100%; }
+.vp-change .vp-caret { margin-left: var(--space-1); font-size: var(--text-11); }
+.vp-namelist { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; font-size: var(--text-13); }
+.vp-namelist > li { display: flex; align-items: center; gap: var(--space-2); }
+.vp-namelist .sdk-avatar { flex: none; }
+.vp-readonly { margin: 0; font-size: var(--text-13); }
+.vp-who-info.vp-after { padding: var(--space-3) 0 0; border-bottom: 0; border-top: 1px solid var(--edge-hairline); }
+.vp-rights { margin-bottom: var(--space-1); }
+.vp-save-error { margin: 0; }
+.vp-save-error[hidden] { display: none; }
+.vp-save-error > i { margin-right: var(--space-1); }
+@container (max-width: 430px) {
+  .vp-change { min-height: 44px; }
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .vp-change { --btn-h: 44px; }
+}
+
+/* ---- the question before a change: what it takes away ---- */
+.sdk-confirm-effects { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.sdk-confirm-effects > li { display: flex; align-items: flex-start; gap: var(--space-3); overflow-wrap: anywhere; }
+.sdk-confirm-effects > li > i { flex: none; margin-top: var(--space-1); color: var(--vp-dim); }

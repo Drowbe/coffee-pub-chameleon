@@ -40,6 +40,40 @@
     { id: 'fill', label: 'Background' },
     { id: 'ink', label: 'Words' },
   ];
+  // The board's own settings: one value for the whole board, shared by everyone who sees it, saved whole under one key
+  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, by, at }. The key starts
+  // with "_" (the module's bookkeeping, not an object): a Clear takes it and its Undo puts it back without counting it,
+  // and a board with only a background has nothing to clear. background is a palette id (WB_PALETTE) or 'default' (the
+  // theme's own board colour); a key that is missing, or holds anything else, reads as 'default' (wbCleanBoard). The page
+  // keeps it in the undo history under WB_BOARD_STEP, an id no block can have (lib-a's wb.id refuses ':').
+  const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
+  const WB_BOARD_ID = 'settings';
+  const WB_BOARD_STEP = ':board';
+  function wbCleanBoard(raw) {
+    if (!raw || typeof raw !== 'object' || raw.id !== WB_BOARD_ID) return null;
+    return {
+      id: WB_BOARD_ID,
+      type: 'board',
+      background: WB_PALETTE_BY_ID.has(raw.background) ? raw.background : 'default',
+      by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
+      at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
+    };
+  }
+  const WB_BOARD_USUAL = Object.freeze(wbCleanBoard({ id: WB_BOARD_ID }));
+  // How the board is drawn on a background: `ground` its colour, `dot` its grid's dots, both theme tokens (so they follow
+  // light and dark mode). A palette colour is a wash of its tint on the page's colour, never the tint itself: a block in
+  // that colour, or in Ink, stays readable on it, as a note's face is a wash of its fill. The dots are the words' colour,
+  // stronger on a wash than on the plain page (a wash is darker in light mode, lighter in dark mode, so a faint dot would
+  // sink into it), strongest on Ink (a grey wash, nearest the dots' own colour). An unknown id is 'default'.
+  const WB_WASH = 18; // per cent of the tint in a background
+  const WB_DOT = { default: 16, tint: 26, ink: 34 }; // per cent of the words' colour in a dot
+  function wbBackdrop(id) {
+    const c = WB_PALETTE_BY_ID.get(id);
+    const dot = (n) => `color-mix(in srgb, var(--text-primary) ${n}%, transparent)`;
+    if (!c) return { id: 'default', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
+    const strength = c.id === 'ink' ? WB_DOT.ink : WB_DOT.tint;
+    return { id: c.id, ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
+  }
   // The widths a line or a border can have, in board units.
   const WB_WEIGHTS = [1, 2, 3, 4, 8, 12];
   // The words a menu shows for them.
