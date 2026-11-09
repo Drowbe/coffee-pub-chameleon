@@ -64,8 +64,20 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
-  // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl.
+  // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl. Keys are named (in menus, in a button's name) only
+  // where there is a mouse or a trackpad: on a touch screen alone they are noise.
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+  const keyHint = (keys) => (KEYS ? keys : undefined);
+  const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
+  // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
+  // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
+  const MOVE_HELP = 'Drag the board to move it; hold Shift and drag to select the blocks in a rectangle.';
+  const boardHelp = () => {
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
+    const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP}`;
+  };
   const takesNext = (def, role) => {
     const usual = def.create();
     if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
@@ -298,6 +310,7 @@
     updateHint();
   }
   surface.dataset.tool = tool.id;
+  surface.setAttribute('aria-label', boardHelp());
 
   // ---- colours, widths and layers ----------------------------------------------------------------------------------
   // The Colour and Width menus change the picked blocks (each that has that colour or a width), or, with none picked, what
@@ -422,10 +435,10 @@
     return Boolean(p && q && p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1);
   }
   const LAYERS = [
-    { id: 'front', label: 'Bring to front', icon: 'angles-up', hint: 'Shift ]' },
-    { id: 'forward', label: 'Forward one layer', icon: 'arrow-up', hint: ']' },
-    { id: 'backward', label: 'Back one layer', icon: 'arrow-down', hint: '[' },
-    { id: 'back', label: 'Send to back', icon: 'angles-down', hint: 'Shift [' },
+    { id: 'front', label: 'Bring to front', icon: 'angles-up', hint: keyHint('Shift ]') },
+    { id: 'forward', label: 'Forward one layer', icon: 'arrow-up', hint: keyHint(']') },
+    { id: 'backward', label: 'Back one layer', icon: 'arrow-down', hint: keyHint('[') },
+    { id: 'back', label: 'Send to back', icon: 'angles-down', hint: keyHint('Shift [') },
   ];
   const layerable = (ids) => ids.map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && policy.canChange(b)).sort((a, b) => a.z - b.z);
   function canLayer(ids, to) {
@@ -482,6 +495,17 @@
     select(r.touched.filter((id) => board.has(id)));
     return r;
   }
+  // Undo or Redo pressed for the last time turns itself off, and the keyboard would fall to the page: it goes to the board
+  // instead (the toolbar is drawn again a moment later, so it is looked for over a few frames).
+  function keepKeyboard() {
+    let frames = 0;
+    const look = () => {
+      const a = document.activeElement;
+      if (!a || a === document.body) { surface.focus({ preventScroll: true }); return; }
+      if (frames++ < 20) requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  }
   function undoRedo(which) {
     if (!history || down !== null) return; // not in the middle of a drag or a stroke
     if (editing) { const ed = editing; editing = null; ed.finish(true); }
@@ -492,8 +516,8 @@
   }
 
   if (policy.canEdit) {
-    undoButton = host.ui.toolbarButton({ id: 'undo', label: `Undo (${MOD} Z)`, icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => undoRedo('undo') });
-    redoButton = host.ui.toolbarButton({ id: 'redo', label: `Redo (${MOD} Shift Z)`, icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => undoRedo('redo') });
+    undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
+    redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
     host.ui.toolbarButton({ id: 'colour', label: 'Colour', icon: 'palette', iconOnly: true, onClick: (e) => colourMenu(toolbarAt(e)) });
     host.ui.toolbarButton({ id: 'width', label: 'Width', icon: 'grip-lines', iconOnly: true, onClick: (e) => widthMenu(toolbarAt(e)) });
   }
@@ -503,9 +527,9 @@
       id: 'zoom',
       at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
       items: [
-        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: '+', onClick: () => { renderer.zoomBy(1.25); updateStatus(); } },
-        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: '-', onClick: () => { renderer.zoomBy(0.8); updateStatus(); } },
-        { id: 'fit', label: 'Show everything', icon: 'expand', hint: '0', onClick: () => { renderer.fit(); updateStatus(); } },
+        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: () => { renderer.zoomBy(1.25); updateStatus(); } },
+        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: () => { renderer.zoomBy(0.8); updateStatus(); } },
+        { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { renderer.fit(); updateStatus(); } },
         { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { renderer.reset(); updateStatus(); } },
       ],
     }),
@@ -553,10 +577,10 @@
     placeCopies(wbCopies(copyable(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
   }
   const clipRows = (at) => [
-    { id: 'cut', label: 'Cut', icon: 'scissors', hint: `${MOD} X`, onClick: () => copy({ cut: true }) },
-    { id: 'copy', label: 'Copy', icon: 'copy', hint: `${MOD} C`, onClick: () => copy() },
-    { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste(at) },
-    { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: `${MOD} D`, onClick: () => duplicate() },
+    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), onClick: () => copy({ cut: true }) },
+    { id: 'copy', label: 'Copy', icon: 'copy', hint: keyHint(`${MOD} C`), onClick: () => copy() },
+    { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste(at) },
+    { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
   ];
 
   // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there).
@@ -568,7 +592,7 @@
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
       { divider: true },
-      { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has() },
+      { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has() },
     ]).catch(() => {});
   }
   if (policy.canEdit && host.add) {
@@ -699,8 +723,8 @@
         id: 'board',
         at,
         items: [
-          { id: 'paste', label: 'Paste here', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
-          { id: 'all', label: 'Select all', icon: 'object-group', hint: `${MOD} A`, disabled: board.size === 0, onClick: () => selectAll() },
+          { id: 'paste', label: 'Paste here', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
+          { id: 'all', label: 'Select all', icon: 'object-group', hint: keyHint(`${MOD} A`), disabled: board.size === 0, onClick: () => selectAll() },
         ],
       });
       return;
@@ -716,7 +740,7 @@
       id: 'block',
       at,
       items: [
-        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: 'Enter', onClick: () => edit(single.id) }] : []),
+        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
@@ -724,7 +748,7 @@
         { separator: true },
         ...clipRows(null),
         { separator: true },
-        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: 'Delete', danger: true, onClick: () => removeMany(ids) },
+        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
     });
   });
