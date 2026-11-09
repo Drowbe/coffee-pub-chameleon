@@ -659,7 +659,7 @@ async function pageCases(shots, bin) {
       await patch(true);
       await fromModule(`try { await host.chat.attach({ label: 'Probe', text: 'probe words' }); } catch (e) { /* refused */ } return true;`);
       await patch(false);
-      await tab.eval(`(() => { const real = window.fetch; let first = true; window.fetch = async (url, init) => { if (first && /\/api\/spaces\/[^/]+\/ai$/.test(String(url)) && (!init || !init.method || init.method === 'GET')) { first = false; await new Promise((r) => setTimeout(r, 900)); } return real(url, init); }; return true; })()`);
+      await tab.eval(`(() => { const real = window.fetch; let first = true; window.fetch = async (url, init) => { if (first && new RegExp('/api/spaces/[^/]+/ai$').test(String(url)) && (!init || !init.method || init.method === 'GET')) { first = false; await new Promise((r) => setTimeout(r, 900)); } return real(url, init); }; return true; })()`);
       await fromModule(`window.__ask = host.chat.ask({ question: 'Where is Faro?', refs: [] }).catch((e) => e.message); return true;`);
       await sleep(150);
       await fromModule(`return host.chat.attach({ label: 'Late words', text: 'LATEWORDS' });`);

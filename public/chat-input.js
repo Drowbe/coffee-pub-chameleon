@@ -1053,9 +1053,10 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   let aiWords = null;
   // When the person last typed in the box, and when a module's attach last landed: a module's attach never takes the cursor or
   // the view from someone typing, and an Enter right after one is not a Send (attachBusy, canAskEmpty).
-  let lastTypedAt = 0;
-  let lastAttachAt = 0;
-  if (input()) for (const type of ['input', 'keydown']) input().addEventListener(type, () => { lastTypedAt = Date.now(); });
+  // (performance.now: a steady clock that nothing sets, unlike the date.)
+  let lastTypedAt = -1e9;
+  let lastAttachAt = -1e9;
+  if (input()) for (const type of ['input', 'keydown']) input().addEventListener(type, () => { lastTypedAt = performance.now(); });
   let lastActions = [];
 
   function spaceId() {
@@ -1966,7 +1967,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
   function attachBusy() {
     const el = input();
     if (el && el.value.trim()) return true;
-    if (Date.now() - lastTypedAt < 2000) return true;
+    if (performance.now() - lastTypedAt < 2000) return true;
     let a = document.activeElement;
     while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
     return Boolean(a && a !== el && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)));
@@ -1988,7 +1989,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
       if (aiContext.length >= ATTACH_REFS_MAX) return { ok: false, why: `A question takes at most ${ATTACH_REFS_MAX} ${word('object', { many: true })}.` };
       aiContext.push({ ref: pointer, label: name });
     }
-    lastAttachAt = Date.now();
+    lastAttachAt = performance.now();
     paintContext();
     if (quiet) {
       setNote(`Ready to send: ${name}`);
@@ -2598,7 +2599,7 @@ export function attachChatInput({ $, api, word, openObject = null, getSpace, get
     importText: (text) => checkObjects(text),
     // Words typed in the Assistant: asked of the AI. True when the answer came.
     // The Assistant is showing and an object waits to go with the next question: an empty box may send (routeLine).
-    canAskEmpty: () => view === 'assistant' && (aiContext.length > 0 || aiWords !== null) && Date.now() - lastAttachAt >= 400, // an Enter just after an attach is not a Send
+    canAskEmpty: () => view === 'assistant' && (aiContext.length > 0 || aiWords !== null) && performance.now() - lastAttachAt >= 400, // an Enter just after an attach is not a Send
     ask: (text) => { setNote(''); if (view !== 'assistant') setView('assistant'); return runAi(text); },
     checkAi,
     note: setNote,

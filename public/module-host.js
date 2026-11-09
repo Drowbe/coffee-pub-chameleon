@@ -1754,7 +1754,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       // One module cannot flood Chat: the same attachment again within 100 ms is taken as one, and past 10 accepted in a second
       // the next is refused. Counted for what passed the checks below, just before it goes to Chat.
       const throttle = (same) => {
-        const now = Date.now();
+        const now = performance.now();
         attachTimes = attachTimes.filter((t) => now - t < 1000);
         if (attachTimes.length >= 10) refuse('Too many attachments at once. Wait a moment.');
         const again = same === lastAttach.same && now - lastAttach.at < 100;
