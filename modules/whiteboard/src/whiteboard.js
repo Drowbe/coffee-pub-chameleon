@@ -17,6 +17,7 @@
 //   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
 //   lib-n overview  the small map of the whole board
 //   lib-o find      Find in the board: which blocks hold the words, in reading order
+//   lib-p pointers  other people's pointers, live: what is sent, what is heard, how long each is shown
 (async () => {
   'use strict';
 
@@ -103,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Flowchart menu: Connector (drag from one block to another), shapes, Table (tap a cell twice to write), Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Paint menu: Fill (tap a block), Pen, Marker, Brush, Highlighter. Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous).';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Flowchart menu: Connector (drag from one block to another), shapes, Table (tap a cell twice to write), Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Paint menu: Fill (tap a block), Pen, Marker, Brush, Highlighter. Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Connector (C): drag block to block; Enter edits its label. Paint menu: Fill (F; ${ALT}-click takes a colour), Pen (P), Marker (M), Brush, Highlighter (U; Shift: straight). Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Flowchart menu: Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape).`;
+    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Connector (C): drag block to block; Enter edits its label. Paint menu: Fill (F; ${ALT}-click takes a colour), Pen (P), Marker (M), Brush, Highlighter (U; Shift: straight). Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Flowchart menu: Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Other people's pointers show where they point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1810,6 +1811,7 @@
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
       { id: 'find', icon: 'magnifying-glass', title: 'Find', overflow: true },
       { id: 'overview', icon: 'map', title: overviewOn ? 'Hide overview' : 'Show overview', on: overviewOn, overflow: true },
+      { id: 'pointers', icon: 'arrow-pointer', title: pointersOn ? 'Hide other people\'s pointers' : 'Show other people\'s pointers', on: pointersOn, overflow: true },
     ]).catch(() => {});
   }
   if (host.header) {
@@ -1819,6 +1821,7 @@
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
       if (e && e.id === 'overview') toggleOverview();
       if (e && e.id === 'find') openFind();
+      if (e && e.id === 'pointers') togglePointers();
     });
   }
 
@@ -1907,6 +1910,7 @@
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
     closeFind({ quiet: true }); // Find is not used while presenting
+    liveLeave(); // a person's own read-through: their pointer is not sent meanwhile
     presenting = state;
     select(null);
     $('app').classList.add('wb-presenting');
@@ -1973,6 +1977,9 @@
   // than 360 x 320 pixels, and while the board is empty. It is a picture to the keyboard and a screen reader (no tab stop,
   // no key): the keyboard moves the board itself. It reads the board only, so someone who may only look can use it.
   const overviewStore = () => window.localStorage;
+  // Other people's pointers shown (see "other people's pointers"): this browser's choice, on at first.
+  const pointersStore = () => window.localStorage;
+  let pointersOn = wbLiveLoad(pointersStore);
   let overviewOn = wbOverviewLoad(overviewStore);
   overview = createOverview({
     layer: surface,
@@ -2583,6 +2590,134 @@
     const p = renderer.toBoard(e.clientX, e.clientY);
     addPictures(filesOf(e.dataTransfer), { x: p.x, y: p.y });
   });
+
+  // ---- other people's pointers ------------------------------------------------------------------------------------------
+  // Live (lib-p, host.live): while this person's pointer moves over the board, its place in board units and the tool in
+  // hand go to everyone else on the board (at most 20 a second, the last place always), nothing while it rests, and one
+  // "gone" when it leaves the board, the page is hidden or goes, or presenting starts (a person's own read-through sends
+  // nothing). A touch sends only while the finger is down. Everyone else's pointer is drawn on a layer of its own in the
+  // world (it moves and zooms with the board, the same size on the screen): an arrow in their colour and their name, a
+  // guest's marked. Quiet for 5 seconds it dims, for 20 it goes; it goes at once when they leave the board or the live
+  // messages close. Hide other people's pointers (the title bar's menu) is this person's own choice in this browser, never
+  // in the board's data; it hides only what they see: their own pointer still goes to the others. Nothing here changes
+  // the board, its history, Find, the overview, Save as image or Print. Someone who may only look sends and sees too.
+  const liveApi = host.live && typeof host.live.publish === 'function' ? host.live : null;
+  const liveStore = createWbLiveStore();
+  const liveLayer = document.createElement('div');
+  liveLayer.className = 'wb-live';
+  liveLayer.setAttribute('aria-hidden', 'true');
+  liveLayer.hidden = true;
+  $('world').append(liveLayer);
+  const liveEls = new Map(); // a person's key -> { el, name, tool, x, y, toolId, faded }
+  const liveState = () => (liveApi ? liveApi.state : 'closed');
+  const guestWord = host.util.word('guest');
+  const ARROW = 'M1 1 L1 17 L5.5 13 L8.5 20 L11.5 18.7 L8.6 12 L14.5 12 Z';
+  function livePointerEl(p) {
+    const el = document.createElement('div');
+    el.className = 'wb-live-pointer';
+    if (p.tint) el.style.setProperty('--wb-live', `var(--tint-${p.tint})`); // one of the eight (lib-p checked it)
+    const mark = document.createElement('div');
+    mark.className = 'wb-live-mark';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'wb-live-arrow');
+    svg.setAttribute('viewBox', '0 0 18 22');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', ARROW);
+    svg.append(path);
+    const tag = document.createElement('span');
+    tag.className = 'wb-live-tag';
+    const name = document.createElement('span');
+    name.className = 'wb-live-name';
+    name.textContent = wbLiveLabel(p, guestWord);
+    const toolEl = document.createElement('span');
+    toolEl.className = 'wb-live-tool';
+    tag.append(name, toolEl);
+    mark.append(svg, tag);
+    el.append(mark);
+    return { el, name, tool: toolEl, x: null, y: null, toolId: null, label: name.textContent, faded: false };
+  }
+  // Drawn once a frame at most: each pointer's place (one transform), its dimming and its tool; gone ones taken away.
+  let liveFrame = 0;
+  function liveDraw() { if (!liveFrame) liveFrame = requestAnimationFrame(liveFlush); }
+  function liveFlush() {
+    liveFrame = 0;
+    const drawn = wbLiveDrawn({ on: pointersOn, state: liveState() });
+    if (!drawn && liveStore.size) liveStore.clear();
+    for (const [k, v] of liveEls) if (!liveStore.get(k)) { v.el.remove(); liveEls.delete(k); }
+    liveLayer.hidden = !drawn || !liveStore.size;
+    if (!drawn) return;
+    const now = Date.now();
+    for (const p of liveStore.list()) {
+      let v = liveEls.get(p.key);
+      if (!v) { v = livePointerEl(p); liveEls.set(p.key, v); }
+      if (v.x !== p.x || v.y !== p.y) { v.el.style.transform = `translate(${p.x}px, ${p.y}px)`; v.x = p.x; v.y = p.y; }
+      if (!v.el.isConnected) liveLayer.append(v.el); // placed first, so it does not glide in from the corner
+      const label = wbLiveLabel(p, guestWord);
+      if (v.label !== label) { v.name.textContent = label; v.label = label; }
+      const faded = liveStore.faded(p, now);
+      if (v.faded !== faded) { v.el.classList.toggle('wb-live-faded', faded); v.faded = faded; }
+      const toolId = p.tool && p.tool !== 'select' && tools.get(p.tool) ? p.tool : null;
+      if (v.toolId !== toolId) {
+        v.toolId = toolId;
+        v.tool.replaceChildren();
+        if (toolId) {
+          const box = v.tool;
+          iconSvg(tools.get(toolId).icon).then((s) => { if (s && v.toolId === toolId) box.innerHTML = s; }, () => {}); // the host's own icon SVG
+        }
+      }
+    }
+    liveSweepSoon();
+  }
+  // While any pointer is drawn, once a second: dim the quiet ones and take away the long-quiet ones. No timer otherwise.
+  let liveSweep = 0;
+  function liveSweepSoon() {
+    if (liveSweep || !liveStore.size) return;
+    liveSweep = setTimeout(() => { liveSweep = 0; liveStore.sweep(Date.now()); liveDraw(); }, 1000);
+  }
+  function togglePointers() {
+    pointersOn = !pointersOn;
+    wbLiveSave(pointersStore, pointersOn); // where it cannot be kept, it lasts until the page goes
+    if (!pointersOn) liveStore.clear();
+    setHeader();
+    liveDraw();
+  }
+
+  // Sending. Not over the find bar, the presenting bar, the overview or the formatting bar: only the board itself.
+  const NOT_BOARD = '.wb-find, .wb-present, .wb-overview, .wb-format, .wb-drop';
+  const liveSender = liveApi ? createWbLiveSender({ send: (data) => liveApi.publish(WB_LIVE.topic, data) }) : null;
+  const liveLeave = () => { if (liveSender) liveSender.leave(); };
+  function livePoint(e) {
+    if (!liveSender || !e.isPrimary) return;
+    const over = !(e.target && e.target.closest && e.target.closest(NOT_BOARD));
+    if (!wbLiveMaySend({ state: liveState(), hidden: document.visibilityState === 'hidden', presenting, over })) { liveLeave(); return; }
+    const cx = e.clientX;
+    const cy = e.clientY;
+    const using = tool.id;
+    liveSender.move(() => wbLivePayload(renderer.toBoard(cx, cy), using)); // worked out when it goes
+  }
+  if (liveApi) {
+    surface.addEventListener('pointermove', livePoint);
+    surface.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') livePoint(e); }); // a finger is down
+    surface.addEventListener('pointerup', (e) => { if (e.pointerType === 'touch' && e.isPrimary) liveLeave(); }); // and lifted
+    surface.addEventListener('pointercancel', (e) => { if (e.isPrimary) liveLeave(); });
+    surface.addEventListener('pointerleave', (e) => { if (e.isPrimary) liveLeave(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') liveLeave(); });
+    window.addEventListener('pagehide', liveLeave);
+    // Hearing. Only the fields a pointer sends, each checked (lib-p); a message that is not one is ignored.
+    try {
+      liveApi.subscribe(WB_LIVE.topic, (data, from) => {
+        const msg = wbLiveRead(data, from, { me, tint: (k) => liveApi.tint(k) });
+        if (!msg || (!pointersOn && !msg.gone)) return;
+        liveStore.put(msg, Date.now());
+        liveDraw();
+      });
+      liveApi.on('people', (e) => {
+        const left = e && e.left;
+        if (left && typeof left.key === 'string' && liveStore.remove(left.key)) liveDraw();
+      });
+      liveApi.on('state', (s) => { if (s !== 'open') { liveStore.clear(); liveLeave(); } liveDraw(); });
+    } catch { /* no live messages here: nothing is drawn */ }
+  }
 
   // ---- the width ------------------------------------------------------------------------------------------------------
   // The module's width, not the window's (a bundled module runs in the page). The stylesheet keys on `.app.narrow`.
