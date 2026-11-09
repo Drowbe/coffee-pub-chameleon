@@ -1072,10 +1072,12 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
       if (!stacked(c)) continue;
       const shares = cleanShares(c.mods.map((p) => saved[p.id]?.h), c.mods.length);
       const allFolded = c.mods.every((p) => saved[p.id]?.folded === true);
-      const width = dockWidthOf(c.mods[0]); // one column, one width: the top module's
+      const width = dockWidthOf(c.mods[0]); // one column, one width: the top module's (as drawn, clamped to this window)
+      // What is stored is the top module's own remembered width, not the drawn one: a phone's clamp must not shrink a stack's width for the day the window is wide again.
+      const keptW = Number.isFinite(saved[c.mods[0].id]?.dockW) ? saved[c.mods[0].id].dockW : width;
       c.mods.forEach((p, at) => {
         if (p.mode === 'dock') p.width = width;
-        saved[p.id] = { ...saved[p.id], at, h: shares[at], dockW: width, folded: saved[p.id]?.folded === true && !(allFolded && at === c.mods.length - 1) };
+        saved[p.id] = { ...saved[p.id], at, h: shares[at], dockW: keptW, folded: saved[p.id]?.folded === true && !(allFolded && at === c.mods.length - 1) };
         kept.add(p.id);
       });
     }

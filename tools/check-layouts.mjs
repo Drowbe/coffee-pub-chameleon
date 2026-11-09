@@ -589,6 +589,23 @@ const refused = (input, pattern, label, options) => {
   const twenty = Array.from({ length: 20 }, (_, i) => dock(`m${i}`, i < 3 ? { stack: 's1', at: i } : {}));
   assert.equal(mods(twenty).length, 20, '20 entries with a stack of three is allowed');
   assert.ok(cleanLayout({ name: 'x', modules: [...twenty, dock('m20')] }).error, 'the 21st is refused, stacked or not');
+  // Nothing is lost to a bad stack: an entry a stack does not keep stays as an ordinary column, and the count is the same.
+  const first = mods([dock('polls', { stack: 's1', at: 2 }), dock('todo', { stack: 's1', at: 0 }), dock('budget', { stack: 's1', at: 1 }), dock('notes', { stack: 's1', at: 0 })]);
+  assert.equal(first.length, 4, 'the first-listed entry cut by the three-member limit is not lost');
+  assert.deepEqual(first.map((m) => m.id).sort(), ['budget', 'notes', 'polls', 'todo'], 'every module is still there');
+  assert.deepEqual(first.filter((m) => m.stack).map((m) => m.id), ['todo', 'notes', 'budget'], 'the three kept are the stack, in at order');
+  assert.ok(!('stack' in first.find((m) => m.id === 'polls')), 'and the one cut is an ordinary column');
+  const badAt = mods([dock('todo', { stack: 's1', at: 'x' }), dock('polls', { stack: 's1', at: 0 }), dock('notes', { stack: 's1', at: 1 }), dock('budget', { stack: 's1', at: 2 })]);
+  assert.equal(badAt.length, 4, 'a first-listed entry with a bad at is not lost');
+  assert.deepEqual(badAt.map((m) => m.id).sort(), ['budget', 'notes', 'polls', 'todo'], 'every module is still there (bad at)');
+  const crafted = Array.from({ length: 20 }, (_, i) => dock(`m${i}`, { stack: 's1', at: 19 - i }));
+  const craftedOut = mods(crafted);
+  assert.equal(craftedOut.length, 20, 'twenty modules all in one stack come back as twenty');
+  assert.deepEqual(craftedOut.map((m) => m.id).sort(), crafted.map((m) => m.id).sort(), 'none of the twenty is lost');
+  assert.equal(craftedOut.filter((m) => m.stack).length, 3, 'three of them are the stack');
+  // h is kept only when the members' own values add up to 1, before any clamping.
+  same([dock('todo', { stack: 's1', at: 0, h: 1e308 }), dock('polls', { stack: 's1', at: 1, h: -1e308 })], [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h of 1e308 and -1e308 is ignored');
+  same([dock('todo', { stack: 's1', at: 0, h: 0.95 }), dock('polls', { stack: 's1', at: 1, h: 0.95 })], [dock('todo', { stack: 's1', at: 0 }), dock('polls', { stack: 's1', at: 1 })], 'h of 0.95 and 0.95 is ignored, not clamped to a sum of 1.8');
   const patched = cleanLayout({ modules: stacked }, { partial: true }).layout;
   assert.deepEqual(patched, { modules: stacked }, 'a PUT carries a stack too');
   n += 3;

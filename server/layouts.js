@@ -98,9 +98,9 @@ function cleanStacks(entries) {
     const members = order.slice(0, LAYOUT_LIMITS.stackMax).map((o) => o.i);
     if (members.length < 2) continue;
     const hs = members.map((i) => entries[i].raw.h);
-    const heights = hs.every((h) => typeof h === 'number' && Number.isFinite(h))
-      ? hs.map((h) => Math.round(Math.min(LAYOUT_LIMITS.stackHMax, Math.max(LAYOUT_LIMITS.stackHMin, h)) * 10000) / 10000) : null;
-    const sound = heights && Math.abs(heights.reduce((a, b) => a + b, 0) - 1) <= LAYOUT_LIMITS.stackHSum + 1e-9;
+    // Kept only when the members' own values add up to 1, checked before they are clamped.
+    const sound = hs.every((h) => typeof h === 'number' && Number.isFinite(h)) && Math.abs(hs.reduce((a, b) => a + b, 0) - 1) <= LAYOUT_LIMITS.stackHSum + 1e-9;
+    const heights = sound ? hs.map((h) => Math.round(Math.min(LAYOUT_LIMITS.stackHMax, Math.max(LAYOUT_LIMITS.stackHMin, h)) * 10000) / 10000) : null;
     members.forEach((i, at) => {
       const k = entries[i].kept;
       k.stack = stack;
@@ -109,12 +109,12 @@ function cleanStacks(entries) {
       if (typeof entries[i].raw.folded === 'boolean') k.folded = entries[i].raw.folded;
       inStack.add(i);
     });
-    placed.set(Math.min(...idx), members);
+    placed.set(Math.min(...members), members);
   }
   const out = [];
   entries.forEach((e, i) => {
     if (placed.has(i)) placed.get(i).forEach((m) => out.push(entries[m].kept));
-    else if (!inStack.has(i)) out.push(e.kept);
+    else if (!inStack.has(i)) out.push(e.kept); // an entry cut from a stack stays, an ordinary column
   });
   return out;
 }

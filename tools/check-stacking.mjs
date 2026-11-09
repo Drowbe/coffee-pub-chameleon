@@ -472,6 +472,24 @@ async function main() {
         const back2 = (backSaved?.modules || []).filter((m) => m.stack);
         expect(back2.map((m) => `${m.id}:${m.at}`).join() === 'places:0,polls:1' && Math.abs(back2.reduce((a, m) => a + (m.h || 0), 0) - 1) <= 0.01, `${L} the layout saved after Panel Mode does not carry the stack as the server keeps it: ${JSON.stringify(backSaved?.modules)}`);
         expect(!('__stacks' in (await stored())), `${L} the stacks put away are still kept after they came back`);
+        // A phone keeps the stack's remembered width: reloading at 390 px (where a column is clamped) and then at 1280 gives the same dockW.
+        const widths = async () => { const r = await stored(); return ['places', 'polls'].map((id) => r[id]?.dockW).join(); };
+        await tab.eval(`(() => { const k = ${JSON.stringify(KEY)}; const r = JSON.parse(localStorage.getItem(k) || '{}'); for (const id of ['places', 'polls']) if (r[id]) r[id].dockW = 460; localStorage.setItem(k, JSON.stringify(r)); })()`);
+        await tab.cdp.send('Page.reload', {}, tab.sid);
+        await tab.waitFor('#canvas .module-docked.in-stack');
+        await sleep(1500);
+        expect(await widths() === '460,460', `${L} before the phone the stack's stored width is ${await widths()}, not 460,460`);
+        await size(390, 844);
+        await tab.cdp.send('Page.reload', {}, tab.sid);
+        await tab.waitFor('#canvas .module-docked');
+        await sleep(1500);
+        expect(await widths() === '460,460', `${L} a reload at 390 px rewrote the stack's stored width: ${await widths()}`);
+        await size(1280, 900);
+        await tab.cdp.send('Page.reload', {}, tab.sid);
+        await tab.waitFor('#canvas .module-docked.in-stack');
+        await sleep(1500);
+        expect(await widths() === '460,460', `${L} after 390 px and a reload at 1280 the stack's stored width is ${await widths()}, not 460,460`);
+
         if (errors.length) failures.push(`${L} the page threw: ${errors.slice(0, 3).join(' | ')}`);
         say(`${mode}: stacked by menu and drag, divider 8 px within 156 px by pointer and keys, collapse and the last one open, a fourth refused, one column of the limit, out by the drag, reload, close to one, composites refused, short canvas, phone, a saved layout's stack, Unstack all, Window Mode and back`);
       } finally {
