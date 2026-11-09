@@ -146,6 +146,15 @@
   // grip(block, id, at) -> the fields to change while one of them is dragged to `at` (a point on the board); saved once,
   // on the drop. actions?(block) -> entries of its own for the right-click menu ([{ id, label, icon, fields }]): a choice
   // sets those fields, one save.
+  // A block made of cells (a table, lib-e-block-table.js) has edit: 'cells' (the page edits one cell at a time, see
+  // whiteboard.js "cells"), role (its element's role: 'group', round a table of its own, rather than 'button'), and more of
+  // the hooks above: grips(block, el) (its element, to measure what is drawn; a grip may have kind 'col' | 'row' (a grab
+  // bar len units long) | 'add' (a +), and ox, oy to push it out from the box), gripBase?(block, id, el) -> what a grip's
+  // drag starts from (handed to grip as a 4th argument), tap?(block, id) -> the fields a press on a grip without a drag
+  // changes (one save), actions(block, cell) (the cell pressed, { r, c }; an entry may be { refuse: words } in its fields
+  // for a short note instead of a save, and current, ariaLabel, disabled), and in resize: minOf?(block) -> its least
+  // { w, h }, measure?(block, el) -> what a corner's drag starts from beside the block ({ h, ... } as drawn), and
+  // scale?(start, box) -> the fields a corner's drag changes for the new box (else the box itself).
   //
   // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
   // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,

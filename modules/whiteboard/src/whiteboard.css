@@ -144,6 +144,37 @@
 }
 .wb-shape .wb-words a { pointer-events: auto; }
 
+/* a table (lib-e-block-table.js): cells on the board's own colour (or a light wash of their fill), the lines in the
+   stroke colour (the ones inside a little lighter than the outer border), the header row on a faint wash of the lines'
+   colour with strong words. A row is at least its stored height and grows to fit its words. The active cell (moved
+   through with the arrow keys) has the accent's ring; the cell being edited shows its text box in place of its words. */
+.wb-type-table { font-size: var(--wb-size, var(--text-14)); cursor: grab; }
+.wb-tbl {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: var(--wb-weight) solid var(--wb-stroke);
+  background: var(--surface-page);
+  color: var(--wb-ink);
+}
+.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--surface-card)); }
+.wb-tbl td {
+  padding: 4px 8px;
+  border-right: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
+  border-bottom: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
+  vertical-align: top;
+  text-align: var(--wb-align, left);
+  overflow: hidden;
+}
+.wb-tbl td:last-child { border-right: none; }
+.wb-tbl tr:last-child > td { border-bottom: none; }
+.wb-type-table[data-stroke="none"] .wb-tbl, .wb-type-table[data-stroke="none"] .wb-tbl td { border-style: none; }
+.wb-tbl tr.wb-head > td { background: color-mix(in srgb, var(--wb-stroke) 10%, transparent); font-weight: var(--weight-strong); }
+.wb-tbl td.wb-cell-on { box-shadow: inset 0 0 0 calc(2px / var(--wb-scale, 1)) var(--accent); }
+.wb-tbl .wb-words { min-height: 1.35em; }
+.wb-tbl td.wb-editing > .wb-words { display: none; }
+.wb-tbl .wb-text-edit { text-align: var(--wb-align, left); }
+
 /* a picture: the upload drawn to its box, with a border only when one is picked; "Picture not found" when it is gone */
 .wb-type-image { border: var(--wb-weight) solid var(--wb-stroke); cursor: grab; }
 .wb-type-image[data-stroke="none"] { border-style: none; }
@@ -379,8 +410,31 @@
 .wb-handle-start::after, .wb-handle-end::after, .wb-handle-tip::after { border-radius: var(--radius-small); }
 /* a note's pointer tip: moved like a line's end */
 .wb-handle-tip { cursor: move; }
-@media (pointer: coarse) { .wb-handle { --hit: 32px; } }
+/* a picked table's grab bars on the lines between its columns and its rows (--hl: the bar's length in board units), a
+   faint line until the pointer is over one, 12px across on the screen (16px on a touch screen), but never more than 16
+   board units, so zoomed far out the cells between them can still be pressed; and its two + handles, below the last row
+   and right of the last column, that add one */
+.wb-handle-col, .wb-handle-row { --bar: 12px; }
+.wb-handle-col { width: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); height: calc(var(--hl, 0) * 1px); cursor: col-resize; }
+.wb-handle-row { width: calc(var(--hl, 0) * 1px); height: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); cursor: row-resize; }
+.wb-handle-col::after, .wb-handle-row::after { border: none; border-radius: 0; background: var(--accent); opacity: 0.3; }
+.wb-handle-col::after { width: calc(2px / var(--wb-scale, 1)); height: 100%; }
+.wb-handle-row::after { width: 100%; height: calc(2px / var(--wb-scale, 1)); }
+.wb-handle-col:hover::after, .wb-handle-row:hover::after, .wb-handle-col:active::after, .wb-handle-row:active::after { opacity: 1; }
+.wb-handle-add { cursor: pointer; }
+.wb-handle-add::after {
+  width: calc(18px / var(--wb-scale, 1));
+  height: calc(18px / var(--wb-scale, 1));
+  border-radius: var(--radius-small);
+  background:
+    linear-gradient(var(--accent), var(--accent)) center / calc(10px / var(--wb-scale, 1)) calc(2px / var(--wb-scale, 1)) no-repeat,
+    linear-gradient(var(--accent), var(--accent)) center / calc(2px / var(--wb-scale, 1)) calc(10px / var(--wb-scale, 1)) no-repeat,
+    var(--surface-card);
+}
+.wb-handle-add:hover::after { background-color: color-mix(in srgb, var(--accent) 16%, var(--surface-card)); }
+@media (pointer: coarse) { .wb-handle { --hit: 32px; } .wb-handle-col, .wb-handle-row { --bar: 16px; } }
 .app.narrow .wb-handle { --hit: 32px; }
+.app.narrow .wb-handle-col, .app.narrow .wb-handle-row { --bar: 16px; }
 
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
 

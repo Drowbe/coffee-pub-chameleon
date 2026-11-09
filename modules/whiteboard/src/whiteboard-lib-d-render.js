@@ -111,7 +111,7 @@
         el.dataset.id = block.id;
         el.dataset.type = block.type;
         el.tabIndex = 0;
-        el.setAttribute('role', 'button');
+        el.setAttribute('role', def.role || 'button'); // a table is a group round a table of its own
         world.insertBefore(el, frame);
         els.set(block.id, el);
         restack();
@@ -140,9 +140,16 @@
       return el;
     }
 
+    // A block taken away while it has the keyboard (an undo of the block just made) hands the keyboard to the board, so
+    // the next key (a redo) still reaches it.
     function remove(id) {
       const el = els.get(id);
-      if (el) el.remove();
+      if (el) {
+        const root = el.getRootNode();
+        const had = Boolean(root && root.activeElement && el.contains(root.activeElement));
+        el.remove();
+        if (had) surface.focus({ preventScroll: true });
+      }
       els.delete(id);
       const was = shown.get(id);
       if (shown.delete(id)) restack();
@@ -164,8 +171,9 @@
     function handlePoints(el) {
       const b = shown.get([...selected][0]);
       const def = b && blockTypes.get(b.type);
-      // A block type's own handles (a note's pointer tip), after its resize handles.
-      const own = def && def.grips && grips ? def.grips(b).map((g) => ({ id: g.id, x: g.x, y: g.y, ox: 0, oy: 0 })) : [];
+      // A block type's own handles (a note's pointer tip, a table's lines and its +), after its resize handles: kind 'col'
+      // or 'row' is a grab bar len board units long, 'add' a +; ox, oy push it out from the box as a corner's are.
+      const own = def && def.grips && grips ? def.grips(b, el).map((g) => ({ id: g.id, x: g.x, y: g.y, ox: g.ox || 0, oy: g.oy || 0, kind: g.kind || '', len: g.len || 0 })) : [];
       if (grips === 'corners') return [...CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 })), ...own];
       if (grips !== 'ends' || !def) return [];
       if (def.attached) {
@@ -226,7 +234,7 @@
       if (frame.children.length !== points.length || [...frame.children].some((h, i) => h.dataset.handle !== points[i].id)) {
         frame.replaceChildren(...points.map((pt) => {
           const h = document.createElement('div');
-          h.className = `wb-handle wb-handle-${pt.id}`;
+          h.className = `wb-handle wb-handle-${pt.id}${pt.kind ? ` wb-handle-${pt.kind}` : ''}`;
           h.dataset.handle = pt.id;
           h.setAttribute('aria-hidden', 'true');
           return h;
@@ -238,6 +246,7 @@
         h.style.setProperty('--hy', String(pt.y));
         h.style.setProperty('--ox', String(pt.ox));
         h.style.setProperty('--oy', String(pt.oy));
+        if (pt.len) h.style.setProperty('--hl', String(pt.len)); else h.style.removeProperty('--hl');
       });
     }
     // Pick the blocks with these ids (an array; [] for none); handles only when it is one block.
@@ -464,12 +473,14 @@
   // the box, or Ctrl or Cmd with Enter, keeps what was typed; Escape puts the words back. done(text) is called once, with
   // the words to keep (the same words when nothing changed). grow: the box grows with the words (a text block); else it
   // fills the block (a note, a shape's label). line: one line (a picture's description), where Enter keeps it; label: the
-  // box's name for a screen reader; max: the most characters.
+  // box's name for a screen reader; max: the most characters; home: what takes the focus back when the editing is ended
+  // by a key (else el); keys(e, finish): a key of the caller's first, true when it took it (a table's Tab and Enter).
   // bar: words that take markup get a small formatting bar over the block ({ layer: the board, the element it sits in;
   // icon(name) -> a promise of an icon's SVG; mod: 'Ctrl' or 'Cmd', null to name no keys on a touch screen }). Its
   // buttons and Ctrl or Cmd with B, I, E and K change the words in the box (lib-j), the box's own undo keeps each change;
-  // the words are still saved once, when the editing ends. A press on the bar keeps the box open; Link asks for the address in a field of the bar.
-  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0, bar = null } = {}) {
+  // the words are still saved once, when the editing ends. A press on the bar keeps the box open; Link asks for the
+  // address in a field of the bar.
+  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0, bar = null, home = null, keys = null } = {}) {
     const box = document.createElement('textarea');
     box.className = `wb-text-edit${line ? ' wb-text-line' : ''}`;
     box.value = value;
@@ -497,10 +508,12 @@
       grow();
       if (marks) marks.update();
     });
+    const back = () => (home || el).focus();
     box.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Escape') { e.preventDefault(); finish(false); el.focus(); return; }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); el.focus(); return; }
+      if (keys && !e.isComposing && keys(e, finish)) return;
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); back(); return; }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); back(); return; }
       if (marks && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
         // By the key's place too, so any keyboard layout.
         const k = (e.code && e.code.startsWith('Key') ? e.code.slice(3) : e.key || '').toUpperCase();
@@ -511,7 +524,7 @@
     if (bar) for (const type of ['keyup', 'pointerup', 'select']) box.addEventListener(type, () => { if (marks) marks.update(); });
     box.addEventListener('pointerdown', (e) => e.stopPropagation());
     box.addEventListener('blur', (e) => { if (!inside(e.relatedTarget)) finish(true); });
-    if (bar) marks = wbFormatBar({ ...bar, anchor: el, box, max, inside, finish, escape: () => { finish(false); el.focus(); } });
+    if (bar) marks = wbFormatBar({ ...bar, anchor: el, box, max, inside, finish, escape: () => { finish(false); back(); } });
     grow();
     box.focus();
     box.select();

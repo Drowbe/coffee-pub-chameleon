@@ -158,6 +158,7 @@ const cases = {
         snapping: () => true,
         change: (id, patch) => changes.push(patch),
         select() {}, isSelected: () => true, selection: () => ['p'], many: () => false,
+        element: () => null, // the block's element on the page (a table measures its rows from it); none here
       };
       const ev = { shiftKey: false };
       select.down({ x: 0, y: 0, sx: 0, sy: 0, id: 'p', handle, pointerType: 'mouse', event: ev }, ctx);
