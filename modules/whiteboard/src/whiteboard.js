@@ -506,6 +506,17 @@
     select(touched.filter((id) => board.has(id)));
     return { left, kept };
   }
+  // Undo or Redo pressed for the last time turns itself off, and the keyboard would fall to the page: it goes to the board
+  // instead (the toolbar is drawn again a moment later, so it is looked for over a few frames).
+  function keepKeyboard() {
+    let frames = 0;
+    const look = () => {
+      const a = document.activeElement;
+      if (!a || a === document.body) { surface.focus({ preventScroll: true }); return; }
+      if (frames++ < 20) requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  }
   function undoRedo(which) {
     if (!history || down !== null) return; // not in the middle of a drag or a stroke
     if (editing) { const ed = editing; editing = null; ed.finish(true); }
@@ -516,8 +527,8 @@
   }
 
   if (policy.canEdit) {
-    undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => undoRedo('undo') });
-    redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => undoRedo('redo') });
+    undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
+    redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
     host.ui.toolbarButton({ id: 'colour', label: 'Colour', icon: 'palette', iconOnly: true, onClick: (e) => colourMenu(toolbarAt(e)) });
     host.ui.toolbarButton({ id: 'width', label: 'Width', icon: 'grip-lines', iconOnly: true, onClick: (e) => widthMenu(toolbarAt(e)) });
   }
