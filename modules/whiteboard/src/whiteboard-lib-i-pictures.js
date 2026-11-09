@@ -119,10 +119,11 @@
   }
 
   // The queue of pictures being added. host: the SDK (uploads); onStart(job), onStep(job) (its step or its box
-  // changed), onPlaced(job, file),
-  // onFailed(job, err), onBusy(err): the page's (job: { id, at, box, name, step }; box: where its placeholder is, in board
-  // units; file: the upload's facts). newId() gives the block's id. prepare is wbPreparePicture unless a test gives its own.
-  function createPictures({ host, newId, onStart = () => {}, onStep = () => {}, onPlaced = () => {}, onFailed = () => {}, onBusy = () => {}, prepare = wbPreparePicture, wait }) {
+  // changed), onPlaced(job, file) -> false when no block could be put on the board for it (its upload is then removed,
+  // see forget), onFailed(job, err), onBusy(err): the page's (job: { id, at, box, name, step }; box: where its placeholder
+  // is, in board units; file: the upload's facts). inUse(uploadId): whether a block on the board uses it (the page's).
+  // newId() gives the block's id. prepare is wbPreparePicture unless a test gives its own.
+  function createPictures({ host, newId, onStart = () => {}, onStep = () => {}, onPlaced = () => {}, onFailed = () => {}, onBusy = () => {}, inUse = () => false, prepare = wbPreparePicture, wait }) {
     const SCOPE = { scope: 'space' };
     const mine = new Set(); // ids of the uploads this page added
     const jobs = [];
@@ -159,13 +160,21 @@
         try {
           const file = await run(job);
           jobs.shift();
-          onPlaced(job, file);
+          if (onPlaced(job, file) === false) await forget(file.id, inUse);
         } catch (err) {
           jobs.shift();
           onFailed(job, err);
         }
       }
       running = false;
+    }
+
+    // An upload this page added whose block never reached the board: removed, unless some block uses it after all
+    // (inUse(id)). Any other upload is never removed here (see the top of this file).
+    async function forget(id, used = inUse) {
+      if (!mine.has(id) || used(id)) return false;
+      mine.delete(id);
+      try { await host.uploads.remove(id, SCOPE); return true; } catch { return false; }
     }
 
     return {
@@ -182,12 +191,6 @@
       },
       get count() { return jobs.length; },
       mine: (id) => mine.has(id),
-      // An upload this page added whose block never reached the board: removed, unless some block uses it after all
-      // (inUse(id), the page's). Any other upload is never removed here (see the top of this file).
-      async forget(id, inUse) {
-        if (!mine.has(id) || inUse(id)) return false;
-        mine.delete(id);
-        try { await host.uploads.remove(id, SCOPE); return true; } catch { return false; }
-      },
+      forget,
     };
   }

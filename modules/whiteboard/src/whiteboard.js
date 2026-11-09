@@ -751,12 +751,15 @@
     newId: () => host.util.id(),
     onStart(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); updateStatus(); },
     onStep(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); },
+    inUse: (u) => board.all().some((b) => b.upload === u),
+    // false: no block for it (no longer allowed, or not a picture block after all), so lib-i removes the upload again.
     onPlaced(job, file) {
       renderer.pending(job.id, null);
-      if (!policy.canCreate()) { pictures.forget(file.id, (u) => board.all().some((b) => b.upload === u)); updateStatus(); return; }
+      updateStatus();
+      if (!policy.canCreate()) return false;
       const def = blockTypes.get('image');
       const b = wbClean({ ...def.create(), id: job.id, type: 'image', x: job.box.x, y: job.box.y, w: job.box.w, h: job.box.h, upload: file.id, z: Math.floor(board.topZ()) + 1 });
-      if (!b) { updateStatus(); return; }
+      if (!b) return false;
       // Saved once, the upload there already. The pictures added together are one step of the undo history, however long
       // apart their uploads finish.
       const batch = job.batch;
@@ -769,7 +772,7 @@
         if (same) select(batch.made.slice());
         batch.picked = [...sel];
       }
-      updateStatus();
+      return true;
     },
     onFailed(job, err) {
       renderer.pending(job.id, null);
