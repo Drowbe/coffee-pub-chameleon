@@ -654,6 +654,7 @@
 .wb-find .ic { display: block; width: 1em; height: 1em; }
 .wb-find .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .app.narrow .wb-find { left: var(--space-2); }
+.app.narrow:has(.wb-paint:not([hidden])) .wb-find { top: calc(var(--space-2) + 48px); } /* under the colour strip, which floats at the top left */
 .app.narrow .wb-find-input { font-size: var(--text-16); }
 .app.narrow .wb-find button { min-width: 36px; min-height: 36px; }
 .app.wb-presenting .wb-find { display: none; }
