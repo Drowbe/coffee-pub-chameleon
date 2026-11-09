@@ -13,8 +13,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const { startServer, stopServer, freePort, findBrowser, launch, Tab, sleep } = await import('./shots.mjs');
-const { PASSWORD } = await import('./shots-seed.mjs');
+const { startServer, stopServer, freePort, findBrowser, launch, Tab, sleep } = await import('../../../tools/shots.mjs');
+const { PASSWORD } = await import('../../../tools/shots-seed.mjs');
 
 const bin = findBrowser();
 if (!bin) {

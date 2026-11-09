@@ -8,13 +8,13 @@
  * fake server, fake pages and fake timers: every reply and change event is handed over by the check in an order it picks,
  * so nothing depends on time; then a fuzz over fixed seeds (three pages, random writes, deletes, undos, reloads, delivery
  * orders and missed own-delete echoes) must end with every page showing what the server holds. No network, no sleeps.
- * Usage: node tools/check-whiteboard-sync.mjs [path to whiteboard-lib-c-sync.js]. Exits 1 on any failure.
+ * Usage: node modules/whiteboard/test/check-whiteboard-sync.mjs [path to whiteboard-lib-c-sync.js]. Exits 1 on any failure.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const file = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src/whiteboard-lib-c-sync.js'));
 const src = fs.readFileSync(file, 'utf8');
 

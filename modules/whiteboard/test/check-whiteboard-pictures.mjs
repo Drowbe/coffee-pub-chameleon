@@ -7,13 +7,13 @@
  * the server could have made, a short one-line description and a sane size; its box goes back together on an undo. It
  * runs the module's own libs (lib-a, lib-e-*, lib-g, lib-i) in one scope as the page has them, with a fake host. No
  * network, no sleeps.
- * Usage: node tools/check-whiteboard-pictures.mjs [path to the module's src folder]. Exits 1 on any failure.
+ * Usage: node modules/whiteboard/test/check-whiteboard-pictures.mjs [path to the module's src folder]. Exits 1 on any failure.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
 const NAMES = ['blockTypes', 'tools', 'wbClean', 'createPictures', 'wbSniffType', 'createHistory', 'wbApplyChanges'];
 

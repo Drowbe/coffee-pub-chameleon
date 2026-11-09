@@ -8,14 +8,14 @@
  * any field in it since, whether the step changed that field or not (a line A moved and B stretched stays as B left it).
  * It runs the module's own code: the block format and the block types (lib-a, lib-e-*: wbClean and each type's
  * `linked`), and lib-g's createHistory and wbApplyChanges, the same apply the page uses, against a board kept in a Map. No network, no sleeps.
- * Usage: node tools/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js; lib-a and lib-e-* are read from its
- * folder]. Exits 1 on any failure; a lib that lacks one of the functions fails every case that needs it.
+ * Usage: node modules/whiteboard/test/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js; lib-a and
+ * lib-e-* are read from its folder]. Exits 1 on any failure; a lib that lacks one of the functions fails every case that needs it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const file = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src/whiteboard-lib-g-history.js'));
 const src = path.dirname(file); // the block format and block types are read from beside it
 const NAMES = ['createHistory', 'wbMergeBack', 'wbApplyChanges', 'wbUndoNote', 'wbClean', 'blockTypes'];
