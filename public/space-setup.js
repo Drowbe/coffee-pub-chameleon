@@ -308,7 +308,13 @@ export function createSpaceSetup(deps) {
     }
     if (!space.isLobby) {
       parts.push(sectionHtml('calendar', '<span id="setup-calendar-heading">Calendar</span>', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">In the published calendar</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-publish-calendar"></label><p class="hint">${esc(word('owner', { many: true, cap: true }))} can publish one calendar with every ${esc(spaceWord())}'s events. Turn this off to leave this ${esc(spaceWord())} out.</p>`, { hidden: true }));
-      parts.push(sectionHtml('danger', `Delete this ${esc(spaceWord())}`, `
+    }
+    return parts.join('');
+  }
+
+  // The Delete section: the last thing on the space tab, after the budget and everything else (draw adds it). Not for the Lobby.
+  function dangerSectionHtml() {
+    return sectionHtml('danger', `Delete this ${esc(spaceWord())}`, `
         <button type="button" class="btn btn-small btn-danger" id="setup-delete" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-trash fa-fw" aria-hidden="true"></i> Delete ${esc(spaceWord())}</button>
         <p class="hint">Happens at once; it does not wait for Save.</p>
         <div class="setup-confirm" id="setup-delete-confirm" role="alertdialog" aria-labelledby="setup-delete-words" hidden>
@@ -318,9 +324,7 @@ export function createSpaceSetup(deps) {
             <button type="button" class="btn btn-small" id="setup-delete-keep">Keep</button>
           </div>
           <p class="setup-confirm-problem" id="setup-delete-problem" role="status" aria-live="polite"></p>
-        </div>`, { cls: 'setup-danger' }));
-    }
-    return parts.join('');
+        </div>`, { cls: 'setup-danger' });
   }
 
   // The budget (#216): an amount and its currency, a draft saved with Save. Drawn for every space but the Lobby, on the
@@ -450,7 +454,7 @@ export function createSpaceSetup(deps) {
     const { tabs, space } = state;
     const one = tabs.length === 1;
     const tabButtons = tabs.map((id) => `<button type="button" role="tab" class="setup-tab" id="setup-tab-${id}" data-tab="${id}" aria-controls="setup-content-${id}" aria-selected="false" tabindex="-1"><span class="setup-tab-label">${esc(tabLabel(id))}</span><span class="setup-tab-dot" aria-hidden="true" hidden></span><span class="visually-hidden setup-tab-unsaved"></span></button>`).join('');
-    const contents = tabs.map((id) => `<div role="tabpanel" class="setup-tab-content" id="setup-content-${id}" data-tab="${id}" aria-labelledby="setup-tab-${id}" tabindex="-1" hidden>${TAB_HTML[id]()}${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}</div>`).join('');
+    const contents = tabs.map((id) => `<div role="tabpanel" class="setup-tab-content" id="setup-content-${id}" data-tab="${id}" aria-labelledby="setup-tab-${id}" tabindex="-1" hidden>${TAB_HTML[id]()}${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}${id === 'space' && !space.isLobby ? dangerSectionHtml() : ''}</div>`).join('');
     el.innerHTML = `
       <div class="setup-head">
         <h2 id="space-setup-title">${esc(one ? tabLabel(tabs[0]) : configLabel())}</h2>

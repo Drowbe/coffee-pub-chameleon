@@ -107,11 +107,11 @@ const { DEFAULT_THEME } = require('../server/store.js');
 const BASE = ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent', 'status-danger-fill', 'status-ok-fill'];
 // The roles system.css derives (formulas), some of which /theme.css also writes (the picks) or a theme may set.
 const DERIVED = [
-  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own',
+  'surface-card', 'surface-field', 'surface-menu', 'surface-popover', 'surface-toast', 'surface-tooltip', 'surface-chat-own', 'surface-message',
   'surface-toolbar', 'surface-bar-top', 'surface-bar-nav', 'surface-bar-brand', 'surface-bar-right', 'surface-canvas', 'surface-track',
   'text-disabled', 'text-bar', 'text-bar-brand', 'text-bar-right', 'text-on-secondary', 'text-accent', 'text-link', 'text-selected', 'text-tooltip', 'icon-default', 'icon-bar',
   'edge-field', 'edge-bar', 'edge-menu', 'scrollbar-thumb',
-  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
+  'accent-fill-hover', 'fill-hover', 'fill-selected', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'ink-neutral', 'fill-today', 'fill-secondary', 'fill-secondary-hover', 'focus-ring', 'overlay-scrim', 'shadow-color',
   'status-warn-fill', 'status-info-fill', 'status-ok-mark',
   ...['danger', 'ok', 'warn', 'info'].flatMap((k) => ['text', 'tint', 'on-fill'].map((p) => `status-${k}-${p}`)),
 ];
@@ -135,7 +135,7 @@ for (const key of BASE.filter((k) => k in DEFAULT_THEME.dark)) if (styleDefs.get
   if (dangerDark !== TC.STATUS_AUTO.dark.danger || dangerDark !== TC.STATUS_AUTO.light.danger) fail(`Auto danger fill: style.css ${dangerDark}, theme-colour.js ${TC.STATUS_AUTO.dark.danger}`);
   if (okDark !== TC.STATUS_AUTO.dark.ok || okDark !== TC.STATUS_AUTO.light.ok) fail(`Auto ok fill: style.css ${okDark}, theme-colour.js ${TC.STATUS_AUTO.dark.ok}`);
   for (const [k, tint] of [['warn', '--tint-gold'], ['info', '--tint-blue']]) {
-    const [dark, light] = styleDefs.get(tint) || [];
+    const [dark, light] = (styleDefs.get(tint) || []).map((v) => v.replace(/^var\(--tone-[a-z]+, (#[0-9a-f]{6})\)$/, '$1')); // a tint is its tone with the fixed colour as the fallback
     if (dark !== TC.STATUS_AUTO.dark[k] || light !== TC.STATUS_AUTO.light[k]) fail(`Auto ${k} fill: style.css ${tint} is ${dark} / ${light}, theme-colour.js ${TC.STATUS_AUTO.dark[k]} / ${TC.STATUS_AUTO.light[k]}`);
   }
 }
@@ -154,7 +154,7 @@ const OLD_COLOUR = ['--bg', '--bg-section', '--bg-card', '--bg-input', '--text',
   const note = (n, where) => { if (!others.has(n)) others.set(n, where); };
   const files = ['public/style.css', 'public/sdk/host.css', 'public/start.css', 'public/destination.css', 'public/diag.css'];
   for (const dir of ['modules']) {
-    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
+    const walk = (d) => { for (const e of fs.readdirSync(path.join(root, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'test') walk(p); } else if (/\.(css|html)$/.test(e.name) && !p.includes(`${path.sep}design${path.sep}`)) files.push(p); } };
     walk(dir);
   }
   // The Buttons block's per-button properties (--b-*, --btn-h) are meant to be set on one button by a rule that lays it out.

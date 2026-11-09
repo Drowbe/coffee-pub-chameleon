@@ -68,6 +68,15 @@ export function startProblems(root) {
   // no sign-up on the page, no password anywhere
   if (/id="signup-|id="start"|Get your own/.test(H) || /signup|api\/product\/signup/i.test(J)) out.push('start.html/start.js: the sign-up is still on the start page');
   if (/type="password"|new-password|current-password|name="password"/i.test(H + J)) out.push('start.html/start.js: a password field (the owner chooses it on the environment\'s own page)');
+  // Manage's Upgrade link goes to the start page's Plans, which does not exist: it is drawn only while `plansPage` is true, and that is false;
+  // no other file in public/ links to #plans (Thomas, ruling A, 2026-11-09). The Plans list, when added, flips the one constant.
+  const adminJs = nocomment(read(root, 'public/admin.js') || '');
+  if (!/^const plansPage = false;/m.test(adminJs)) out.push('admin.js: plansPage is missing or not false (Manage\'s Upgrade link has no Plans page to open)');
+  if (!/plansPage && e\.baseDomain\) \{ up\.href/.test(adminJs)) out.push('admin.js: the Upgrade link is not gated on plansPage');
+  for (const rel of ['public/admin.js', 'public/admin.html', 'public/host.js', 'public/host.html', 'public/start.js', 'public/start.html']) {
+    const t = nocomment(read(root, rel) || '').replace(/plansPage && e\.baseDomain\) \{ up\.href = `[^`]*#plans`/, '');
+    if (/#plans/.test(t)) out.push(`${rel}: a link to #plans (the start page has no Plans)`);
+  }
   // no demo
   if (/demo/i.test(H + J + C)) out.push('start.html/start.js/start.css: the demo is named (it stays hidden)');
   // exactly one link out
@@ -119,7 +128,7 @@ function selfTest() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'start-page-'));
   const copy = () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'tree-'));
-    for (const rel of ['public/start.html', 'public/start.js', 'public/start.css', 'server/index.js']) {
+    for (const rel of ['public/start.html', 'public/start.js', 'public/start.css', 'public/admin.js', 'public/admin.html', 'server/index.js']) {
       fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
       fs.writeFileSync(path.join(dir, rel), fs.readFileSync(path.join(ROOT, rel)));
     }
@@ -143,6 +152,9 @@ function selfTest() {
     ['the app theme loaded', () => plant('public/start.html', '<link rel="stylesheet" href="/sdk/system.css">', '<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/sdk/system.css">'), /app's theme/],
     ['a system component', () => plant('public/start.html', '<button class="sp-btn sp-go"', '<button class="btn btn-primary sdk-btn sp-go"'), /sdk-/],
     ['a dark palette that differs from the browser\'s dark', () => plant('public/start.css', '--sp-bg: #0E1A2B; --sp-band: #13243B; --sp-surface: #182C47;', '--sp-bg: #0E1A2C; --sp-band: #13243B; --sp-surface: #182C47;'), /palette/],
+    ['Upgrade drawn without a Plans page', () => plant('public/admin.js', 'const plansPage = false;', 'const plansPage = true;'), /plansPage is missing or not false/],
+    ['Upgrade not gated on plansPage', () => plant('public/admin.js', 'if (plansPage && e.baseDomain) {', 'if (e.baseDomain) {'), /not gated on plansPage/],
+    ['a second link to #plans', () => plant('public/admin.html', '</body>', '<a href="/#plans">Plans</a></body>'), /link to #plans/],
     ['the old pages in the server', () => plant('server/index.js', "page('start.html')", "page('landing.html')"), /old product pages|start\.html/],
   ];
   assert.deepEqual(startProblems(ROOT), [], 'the real start page has problems');

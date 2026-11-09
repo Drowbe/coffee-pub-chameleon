@@ -29,16 +29,17 @@
   /* The tints (plan-chat-model.md, decisions 17 to 20): a module's colour, on its icon and on its messages. Fixed, not
      set by a theme; these are the dark values, and the light ones follow under the light mode below. A module names
      one in its module.json ("color": "blue"); the AI is gold. See design-theme.md, "The tints". */
-  --tint-gold: #d9a93c;
-  --tint-blue: #6aa6e8;
-  --tint-green: #6fbf73;
-  --tint-teal: #4fbfb2;
-  --tint-purple: #b18be0;
-  --tint-red: #e07a6e;
-  --tint-orange: #e8964a;
-  --tint-pink: #e58ab8;
+  /* A theme may set the eight tones (tone-gold ... tone-pink, server/store.js THEME_OPTIONAL); these are what each is until it does. */
+  --tint-gold: var(--tone-gold, #d9a93c);
+  --tint-blue: var(--tone-blue, #6aa6e8);
+  --tint-green: var(--tone-green, #6fbf73);
+  --tint-teal: var(--tone-teal, #4fbfb2);
+  --tint-purple: var(--tone-purple, #b18be0);
+  --tint-red: var(--tone-red, #e07a6e);
+  --tint-orange: var(--tone-orange, #e8964a);
+  --tint-pink: var(--tone-pink, #e58ab8);
   --danger-text: var(--status-danger-text, var(--danger));
-  --accent-hover: color-mix(in srgb, var(--accent-fill) 85%, white);
+  --accent-hover: var(--accent-fill-hover);
   --bg-input: color-mix(in srgb, var(--surface-page) 85%, var(--edge-hairline) 15%);
   /* Card background: the small items inside a section (member tiles, facts,
      thumbnails). Follows the input shade until a theme sets it (/theme.css then writes this too). */
@@ -130,14 +131,14 @@
    theme-mode.js). */
 :root[data-theme-mode="light"],
 :root[data-mode-shown="light"]:not([data-theme-mode="dark"]) {
-  --tint-gold: #94680a;
-  --tint-blue: #2a62b0;
-  --tint-green: #2e7d32;
-  --tint-teal: #00796b;
-  --tint-purple: #6a3fb0;
-  --tint-red: #b3372b;
-  --tint-orange: #b35a00;
-  --tint-pink: #ad3a78;
+  --tint-gold: var(--tone-gold, #94680a);
+  --tint-blue: var(--tone-blue, #2a62b0);
+  --tint-green: var(--tone-green, #2e7d32);
+  --tint-teal: var(--tone-teal, #00796b);
+  --tint-purple: var(--tone-purple, #6a3fb0);
+  --tint-red: var(--tone-red, #b3372b);
+  --tint-orange: var(--tone-orange, #b35a00);
+  --tint-pink: var(--tone-pink, #ad3a78);
 }
 
 /* A tint by name: a message, a module's icon in its titlebar or the Layout menu (data-tint="<name>"). */
@@ -3564,7 +3565,7 @@ a.crumb-here:hover {
   gap: 8px;
   padding: 10px 12px;
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--ink-neutral) 5%, transparent);
 }
 
 .chat-closed-ask p {

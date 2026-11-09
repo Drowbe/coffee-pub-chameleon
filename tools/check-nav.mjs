@@ -2403,6 +2403,9 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
     assert.match(setup, new RegExp(`id="${id}"`), `the panel has #${id}`);
   }
   assert.match(setup, /if \(!space\.isLobby\) \{\n\s*parts\.push\(sectionHtml\('calendar'/, 'the Lobby has no calendar switch and no Delete');
+  assert.match(setup, /\$\{id === 'space' && !space\.isLobby \? dangerSectionHtml\(\) : ''\}<\/div>`/, 'Delete is drawn last on the space tab, after the budget section, and not on the Lobby');
+  assert.ok(setup.indexOf("${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}${id === 'space'") > 0, 'Budget comes before Delete');
+  assert.ok(!/parts\.push\(sectionHtml\('danger'/.test(setup), 'spaceTabHtml no longer puts Delete in the middle');
   assert.match(setup, /space\.isLobby\n\s*\? `<p class="hint">Everyone belongs to the/, 'the Lobby has no member switches');
   assert.match(setup, /Delete \$\{state\.space\.name\}\? Its \$\{membersWord\(\)\} stay in the Lobby\./, 'Delete\'s question names the space');
   assert.match(setup, />Delete<\/button>\n\s*<button type="button" class="btn btn-small" id="setup-delete-keep">Keep<\/button>/);

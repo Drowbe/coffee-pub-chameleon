@@ -170,6 +170,90 @@ try {
     assert.equal(await home.eval(`Boolean(document.querySelector('[data-nav-tool="setup"]')?.getClientRects().length)`), false, 'Home has no Set up button');
   });
 
+  // Delete is the last thing on the space tab (Thomas, 2026-11): after Budget and every other section, just before the footer.
+  const spaceTabEnd = (tab) => tab.eval(`(() => {
+    const panel = document.getElementById('space-setup');
+    const content = document.getElementById('setup-content-space');
+    const shown = (e) => e.getClientRects().length > 0 && !e.closest('[hidden]');
+    const sections = [...content.querySelectorAll(':scope > .setup-section')].filter(shown).map((e) => ({ id: e.dataset.section, heading: e.querySelector('.setup-heading')?.textContent.trim() }));
+    const all = [...document.querySelectorAll('#space-setup a[href], #space-setup button, #space-setup input, #space-setup select, #space-setup textarea, #space-setup [tabindex]')].filter((e) => !e.disabled && e.tabIndex >= 0 && shown(e) && !e.classList.contains('visually-hidden'));
+    const inTab = all.filter((e) => content.contains(e));
+    const last = inTab[inTab.length - 1];
+    const after = last ? all[all.indexOf(last) + 1] : null;
+    return { sections, delete: Boolean(document.getElementById('setup-delete')), lastControl: last ? last.id : null, nextControl: after ? (after.className + ' ' + after.id) : null, allIds: content.querySelectorAll('[data-section]').length, budgetSection: Boolean(content.querySelector('[data-section=budget]')), rawOrder: [...content.querySelectorAll(':scope > [data-section]')].map((e) => e.dataset.section), footer: Boolean(panel.querySelector('.action-bar-save')) };
+  })()`);
+
+  await test('space tab: for an owner the Delete section is last (after Budget) and its button is the last control before the footer', async () => {
+    const tab = await inSpace('admin', 1280);
+    await openSetup(tab);
+    await tab.click('#setup-tab-space');
+    await sleep(700);
+    const r = await spaceTabEnd(tab);
+    assert.ok(r.delete, 'an owner/admin has Delete');
+    assert.equal(r.sections[r.sections.length - 1].id, 'danger', `Delete is the last section shown: ${JSON.stringify(r.sections.map((x) => x.id))}`);
+    assert.match(r.sections[r.sections.length - 1].heading, /^Delete this /);
+    assert.equal(r.rawOrder[r.rawOrder.length - 1], 'danger', `last in the markup: ${JSON.stringify(r.rawOrder)}`);
+    const b = r.rawOrder.indexOf('budget');
+    if (b >= 0) assert.ok(b < r.rawOrder.indexOf('danger'), 'Budget comes before Delete');
+    assert.equal(r.lastControl, 'setup-delete', 'the Delete button is the last control on the tab');
+    assert.ok(/action-bar/.test(r.nextControl || ''), `the next control in tab order is in the footer: ${r.nextControl}`);
+  });
+
+  await test('space tab: the Lobby has no Delete, and a moderator has none', async () => {
+    // The Lobby is Home and has no Set up panel to open (plan-home-lobby.md, step 2): no Set up button, no Delete anywhere.
+    // The panel's own Lobby guard is read as code: Delete is drawn only for `id === 'space' && !space.isLobby`.
+    const lobby = await open('/#join=lobby', 'admin', 1280);
+    await lobby.waitFor('#whoami-link');
+    await sleep(1200);
+    assert.equal(await lobby.eval(`Boolean(document.querySelector('[data-nav-tool="setup"]')?.getClientRects().length) || Boolean(document.getElementById('setup-delete'))`), false, 'the Lobby has no Set up and no Delete');
+    assert.match(fs.readFileSync(new URL('../public/space-setup.js', import.meta.url), 'utf8'), /id === 'space' && !space\.isLobby \? dangerSectionHtml\(\)/, 'the panel draws no Delete for the Lobby');
+    const mod = await inSpace('mia', 1280);
+    await openSetup(mod);
+    // A moderator has Phases and Settings only (MODERATOR_TABS): no space tab, so no Delete anywhere in the panel.
+    const m = await mod.eval(`({ spaceTab: Boolean(document.getElementById('setup-tab-space')), spaceContent: Boolean(document.getElementById('setup-content-space')), del: Boolean(document.getElementById('setup-delete')), danger: Boolean(document.querySelector('#space-setup [data-section=danger]')), tabs: document.querySelectorAll('#setup-tabs > .setup-tab').length })`);
+    assert.ok(m.tabs > 0, 'a moderator has a Set up panel');
+    assert.deepEqual([m.spaceTab, m.spaceContent, m.del, m.danger], [false, false, false, false], 'a moderator has no Delete');
+  });
+
+  for (const [width, mode] of [[1280, 'dark'], [1280, 'light'], [390, 'dark']]) {
+    await test(`What AI may see, Only these, at ${width} ${mode}: every module switch is at the right edge, its label at the left`, async () => {
+      const tab = await inSpace('admin', width, mode);
+      // The section shows only when the server has an AI service: save one, as the admin does.
+      const put = await tab.eval(`fetch('/api/ai', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, provider: 'compatible', address: 'http://127.0.0.1:9', model: 'm', key: 'check-key' }) }).then((r) => r.status)`);
+      assert.equal(put, 200, 'the AI service is saved');
+      await tab.eval('location.reload()');
+      await tab.waitFor('button.sdk-strip-fact[data-module=budget]');
+      await sleep(600);
+      if (width < 600) { await tab.eval(`document.querySelector('[data-nav-tool="setup"]').click()`); await tab.waitFor('#space-setup .setup-tab'); await sleep(900); } else await openSetup(tab);
+      await tab.click('#setup-tab-modules');
+      await sleep(600);
+      assert.equal(await tab.eval(`document.getElementById('setup-ai-sees-follow').click() || document.getElementById('setup-ai-sees-follow').checked`), false, 'its own choice, not the environment\'s');
+      await sleep(300);
+      await tab.eval(`(() => { const r = document.getElementById('setup-ai-sees-modules-some'); r.scrollIntoView({ block: 'center' }); r.click(); return true; })()`);
+      await sleep(400);
+      if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, `ai-modules-${width}-${mode}.png`), await tab.shoot(false)); }
+      const m = await tab.eval(`(() => {
+        const list = document.getElementById('setup-ai-sees-module-list');
+        const rows = [...list.querySelectorAll('.sdk-choice-row')].map((row) => {
+          const r = row.getBoundingClientRect(); const sw = row.querySelector('.sdk-switch').getBoundingClientRect(); const lab = row.querySelector('.sdk-choice-label').getBoundingClientRect();
+          return { rowL: r.left, rowR: r.right, swR: sw.right, labL: lab.left, swL: sw.left };
+        });
+        return { rows, hidden: list.hidden };
+      })()`);
+      assert.equal(m.hidden, false, 'the list is open');
+      assert.ok(m.rows.length >= 5, `the module switches are listed (${m.rows.length})`);
+      const first = m.rows[0];
+      for (const r of m.rows) {
+        assert.ok(r.rowR - r.swR <= 16 + 3, `the switch sits at the row's right edge (gap ${r.rowR - r.swR}px)`);
+        assert.ok(Math.abs(r.swR - first.swR) <= 1, `every switch is in one column (${r.swR} vs ${first.swR})`);
+        assert.ok(r.labL - r.rowL <= 16 + 3, `the label starts at the row's left edge (gap ${r.labL - r.rowL}px)`);
+        assert.ok(r.swL > r.labL, 'the label comes before the switch');
+      }
+      const above = await tab.eval(`document.getElementById('setup-ai-sees-follow').getBoundingClientRect().right`);
+      assert.ok(Math.abs(above - first.swR) <= 3, `the module switches line up with the switches above (${first.swR} vs ${above})`);
+    });
+  }
+
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });
     for (const [width, mode] of [[1280, 'light'], [1280, 'dark'], [1024, 'light']]) {
@@ -179,6 +263,11 @@ try {
       await tab.eval(`document.querySelector('#space-setup .setup-body').scrollTop = 99999`);
       await sleep(300);
       fs.writeFileSync(path.join(SHOTS, `modules-bottom-${width}-${mode}.png`), await tab.shoot(false));
+      await tab.click('#setup-tab-space');
+      await sleep(500);
+      await tab.eval(`document.querySelector('#space-setup .setup-body').scrollTop = 99999`);
+      await sleep(300);
+      fs.writeFileSync(path.join(SHOTS, `space-bottom-${width}-${mode}.png`), await tab.shoot(false));
       await tab.click('#setup-tab-modules');
       await sleep(900);
       fs.writeFileSync(path.join(SHOTS, `settings-${width}-${mode}.png`), await tab.shoot(false));

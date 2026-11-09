@@ -9,7 +9,7 @@
  * with an index.html that loads no script and links nothing from outside or from the server root, with system.css linked, under 12 MB; the
  * System v1 snapshot carries its manifest inline and every file the manifest names, and none of the Design System's own files; index.html loads
  * nothing of System v1 and links the Proposed page; proposed.html loads nothing of the Design System and links back to it.
- * Warns (never fails) on a sources.js older than the module stylesheets.
+ * Fails when sources.js holds module stylesheets (they come from module-sources.js, read at run time).
  *
  * Browser, per scenario (a width, 1280 or 390, and a mode, light or dark), in one headless Chromium with one tab at a fixed viewport:
  *   the Design System page, served by the app and as its snapshot opened from disk: no console error, exception or page error; the page
@@ -76,7 +76,7 @@ for (const [label, dir, sn] of [['design system', out, snap], ['system v1', outP
   for (const m of html.matchAll(/<link\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)) {
     if (/^(https?:)?\/\//i.test(m[1]) || m[1].startsWith('/')) fail(`the ${label} snapshot's index.html links ${m[1]}, not a relative path`);
   }
-  for (const f of sn.files) if (/\.(js|html)$/.test(f.file) && f.file !== 'sources.js') {
+  for (const f of sn.files) if (/\.(js|html)$/.test(f.file) && f.file !== 'sources.js' && f.file !== 'module-sources.js') {
     const t = fs.readFileSync(path.join(dir, f.file), 'utf8');
     if (/<script\b[^>]*\bsrc\s*=\s*["'](https?:)?\/\//i.test(t)) fail(`${label}: ${f.file} loads an external script`);
   }
@@ -95,13 +95,11 @@ for (const [label, dir, sn] of [['design system', out, snap], ['system v1', outP
   if (!/href="proposed\.html"/.test(th)) fail('index.html has no link to proposed.html');
   if (snap.files.some((f) => /^proposed[.-]/.test(f.file))) fail('the design system snapshot holds a proposed.* or proposed-* file');
 }
-// sources.js is generated from the module stylesheets: a warning when it is older than they are.
+// sources.js holds nothing from modules/ (a module change must not make it stale); the module stylesheets and icons come from module-sources.js.
 {
-  const src = buildSources({ withFiles: true }).data;
-  const onDisk = JSON.stringify(Object.fromEntries(Object.entries(src.modules).map(([k, v]) => [k, v.files.map((f) => f.text)])));
   const c = { window: {} }; vm.createContext(c); vm.runInContext(fs.readFileSync(path.join(DS, 'sources.js'), 'utf8'), c);
-  const inPage = JSON.stringify(Object.fromEntries(Object.entries(c.window.DS_SOURCES.modules).map(([k, v]) => [k, v.files.map((f) => f.text)])));
-  if (onDisk !== inPage) warnings.push('public/design-system/sources.js is older than the module stylesheets: run node tools/design-system-snapshot.mjs --sources');
+  if (c.window.DS_SOURCES.modules) fail('public/design-system/sources.js holds module stylesheets; they come from module-sources.js at run time');
+  if (!snap.files.some((f) => f.file === 'module-sources.js')) fail('the design system snapshot has no module-sources.js (the modules\' stylesheets and icons)');
 }
 
 // ---- the browser ----

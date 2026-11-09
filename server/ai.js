@@ -154,14 +154,13 @@ function applyManagedFields(provider, current, patch) {
   return next;
 }
 
-// Whether a company's slot -- its saved model/key/address plus a live environment-variable key -- is offered
+// Whether a company's slot -- its model/key/address saved on the host -- is offered
 // right now: a key (or, for compatible, an address) and a model, falling back to DEFAULT_MODELS when a key is
 // set but no model has been saved yet (a key alone is enough to get going). `slot`: { model, key, address },
-// whatever applies right now (server/index.js's managedSlot combines what is saved with the live env vars
-// before calling this); `envKey`: the live override, already resolved, winning over a saved key when set.
+// what is saved on the host (server/index.js's managedSlot).
 // Returns the real offer -- including the key, for making calls -- or null.
-function managedOffer(provider, slot, envKey) {
-  const key = envKey || (slot && slot.key) || '';
+function managedOffer(provider, slot) {
+  const key = (slot && slot.key) || '';
   const address = provider === 'compatible' ? ((slot && slot.address) || '') : '';
   if (provider === 'compatible' ? !address : !key) return null;
   const model = (slot && slot.model) || DEFAULT_MODELS[provider] || '';
@@ -172,8 +171,6 @@ function managedOffer(provider, slot, envKey) {
 class Ai {
   // `managed` is a function returning the host's offered companies -- [{ provider, address, model, key }]
   // (real keys, for making calls; never exposed by view()), in offer order, or null when the host offers none.
-  // AI_KEY moved to the host: an environment's own custom slot no longer has an environment-variable fallback
-  // of its own.
   // `secretsKey`: a function returning (or a Buffer that is) the 32-byte key this environment's own AI key is
   // encrypted with in ai.json (server/index.js's secretsKeyBuf). Without one (a test) the key is kept as given.
   constructor(dataDir, env = process.env, hosts = HOSTS, managed = () => null, secretsKey = null) {
@@ -203,25 +200,12 @@ class Ai {
     if (this.config.provider === 'anthropic') this.config.address = '';
     // A setting saved before there was an enable step, with a service chosen, counts as enabled; nothing else does.
     if (typeof this.config.enabled !== 'boolean') this.config.enabled = this.config.provider !== 'none';
-    // The managed/custom choice, decided once and saved: a file from before it existed, with its own saved
-    // provider and model but no saved key (it worked only through the old per-environment AI_KEY), becomes
-    // managed, landing in that same company's own slot -- migrationSeed() below is read once by index.js to
-    // give the host's managed service a starting point there if it has nothing saved yet for it. A file with
-    // its own saved key stays custom. A brand-new environment (no file at all) starts managed on the first
-    // offered company (managed() returns them in offer order), else custom.
-    this._migrationSeed = null;
+    // The managed/custom choice, decided once and saved: a brand-new environment (no file at all) starts managed on
+    // the first offered company (managed() returns them in offer order), else custom; a file without one is custom.
     if (!SOURCES.includes(this.config.source)) {
-      if (!loaded) {
-        const offers = this.managed();
-        if (offers && offers.length) { this.config.source = 'managed'; this.config.managedProvider = offers[0].provider; }
-        else this.config.source = 'custom';
-      } else if (this.config.provider !== 'none' && this.config.model && !this.config.key) {
-        this._migrationSeed = { provider: this.config.provider, address: this.config.address, model: this.config.model };
-        this.config.source = 'managed';
-        this.config.managedProvider = this.config.provider;
-      } else {
-        this.config.source = 'custom';
-      }
+      const offers = loaded ? null : this.managed();
+      if (offers && offers.length) { this.config.source = 'managed'; this.config.managedProvider = offers[0].provider; }
+      else this.config.source = 'custom';
       this.saveConfig();
     }
     if (this.config.source === 'custom' && this.config.provider === 'none') this.config.enabled = false;
@@ -245,12 +229,6 @@ class Ai {
   keyBuf() {
     const k = typeof this.secretsKey === 'function' ? this.secretsKey() : this.secretsKey;
     return k || null;
-  }
-
-  // Read once by index.js right after construction, to seed the host's managed service from an environment
-  // that just migrated to it -- see the constructor. Never used again by the Ai instance itself.
-  migrationSeed() {
-    return this._migrationSeed;
   }
 
   // Whichever the host currently offers for the chosen managedProvider, or null. Takes a company to check
@@ -295,9 +273,7 @@ class Ai {
   // What the admin's page may see: never a key, only whether the active source has one. `provider`/`address`/
   // `model`/`keySet` describe this environment's own custom slot (kept even while managed is chosen, so
   // switching back to custom does not lose it); `managed` describes the host's offer (every company it has,
-  // never a key); `managedProvider` is which one this environment has chosen. `keyFromEnvironment` is always
-  // false now: AI_KEY (and AI_OPENAI_KEY/AI_ANTHROPIC_KEY) seed the host's managed service, not an
-  // environment's own custom one. `active` is the service actually in use, whichever the source: provider
+  // never a key); `managedProvider` is which one this environment has chosen. `active` is the service actually in use, whichever the source: provider
   // 'none' when nothing is (a page deciding "set up or not" reads this, not the custom slot's provider).
   view() {
     const c = this.config;
@@ -317,7 +293,6 @@ class Ai {
       keySet: !!c.key && !unreadable, // a saved key this server can't read counts as none: it has to be entered again
       keyUnreadable: unreadable,
       keyProblem: unreadable ? KEY_UNREADABLE : null, // one plain sentence for the AI settings to show, or null
-      keyFromEnvironment: false,
       enabled: c.enabled,
       // What AI may see, the environment's choice (server/ai-policy.js): every key, the defaults where none is saved.
       sees: { ...SEES_DEFAULTS, ...readSees(c.sees) },
