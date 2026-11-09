@@ -69,8 +69,10 @@ class ModuleUploads {
     if (bytes.length > rule.maxBytes) throw new StoreError(`that file is over the limit of ${Math.round(rule.maxBytes / 1048576)} MB`);
     const dir = this.scopeDir(id, scopeKey);
     if (this.list(id, scopeKey).length >= rule.maxFiles) {
-      const where = scopeKey === 'environment' ? `This ${words.environment || 'environment'}` : scopeKey.startsWith('space:') ? `This ${words.space || 'space'}` : 'You';
-      throw new StoreError(`${where} already ${where === 'You' ? 'keep' : 'keeps'} the most files this module may keep (${rule.maxFiles}).`);
+      // The level words are the environment's (the caller passes them); none is typed here.
+      if (!words.space || !words.environment || !words.module) throw new Error('put() needs the words for space, environment and module');
+      const where = scopeKey === 'environment' ? `This ${words.environment}` : scopeKey.startsWith('space:') ? `This ${words.space}` : 'You';
+      throw new StoreError(`${where} already ${where === 'You' ? 'keep' : 'keeps'} the most files this ${words.module} may keep (${rule.maxFiles}).`);
     }
     let clean = cleaned;
     if (!clean) {

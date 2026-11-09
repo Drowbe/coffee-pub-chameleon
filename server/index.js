@@ -8338,7 +8338,7 @@ app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res
   const keepPosition = req.query.keepPosition === '1';
   const cleaned = req.body.length ? await cleanPictureOffThread(req.body, ctx.manifest.uploads.types, keepPosition) : null;
   if (cleaned && cleaned.error) return res.status(400).json({ error: cleaned.error });
-  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean, words: { space: word('space'), environment: word('environment') } });
+  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean, words: { space: word('space'), environment: word('environment'), module: word('module') } });
   res.status(201).json({ file: uploadView(file) });
 });
 // What the start of a picture says about itself, for a page that will resize it (a resize loses the picture's own facts): send its
