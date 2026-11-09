@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-n-overview.js: the overview, a small map of the whole board ---------------------------------------
   //
-  // A small map at the bottom right of the board (Show overview, in the title bar's menu): every block as a small box,
+  // A small map at the bottom right of the board (the Overview button at the right of the toolbar): every block as a small box,
   // each frame as an outline, and the part of the board in sight as a rectangle in the accent colour. A press anywhere on
   // it puts the middle of the view there; dragging moves the view along. It only reads the board and the view, so someone
   // who may only look can use it. Each person's own choice, kept in this browser (off at first), never in the board's data.
