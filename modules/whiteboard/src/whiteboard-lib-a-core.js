@@ -188,6 +188,29 @@
     const usual = toolDef.create();
     return { size: next.size || usual.size, align: (!wbNextWords(toolDef, next).align ? null : next.align) || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
   }
+  // Flowchart auto-connect: whether a shape just placed (box `next`) is clearly in line with the one placed before it (box
+  // `last`), each { x, y, w, h }. In line: the new centre is within 45 degrees of the horizontal or vertical axis from the
+  // old centre (exactly 45 counts as across), the boxes do not touch, and the gap between them is at most 4 times the larger
+  // width (across) or height (down). Answers null, or the sides a connector uses: { from, to } ('right' then 'left' for a new
+  // shape to the right, and so on).
+  function wbAutoConnect(last, next) {
+    if (!last || !next) return null;
+    const dx = next.x + next.w / 2 - (last.x + last.w / 2);
+    const dy = next.y + next.h / 2 - (last.y + last.h / 2);
+    if (!dx && !dy) return null;
+    const across = Math.abs(dx) >= Math.abs(dy);
+    const gap = across ? Math.abs(dx) - (last.w + next.w) / 2 : Math.abs(dy) - (last.h + next.h) / 2;
+    if (gap <= 0 || gap > 4 * (across ? Math.max(last.w, next.w) : Math.max(last.h, next.h))) return null;
+    if (across) return dx > 0 ? { from: 'right', to: 'left' } : { from: 'left', to: 'right' };
+    return dy > 0 ? { from: 'bottom', to: 'top' } : { from: 'top', to: 'bottom' };
+  }
+  // What the Table properties menu shows for the picked tables (or, with none, for new ones: `next`): { align, valign, head,
+  // size }, each the one value they all have, undefined when they differ.
+  function wbTableProps(tables, next) {
+    if (!tables.length) return { align: next.align, valign: next.valign, head: next.head, size: next.size };
+    const one = (get) => { const v = new Set(tables.map(get)); return v.size === 1 ? [...v][0] : undefined; };
+    return { align: one((b) => b.align), valign: one((b) => wbValignOf(b, blockTypes.get('table'))), head: one((b) => Boolean(b.head)), size: one((b) => b.size) };
+  }
   // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
   // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.
   const wbMarkup = { html: null, plain: null };

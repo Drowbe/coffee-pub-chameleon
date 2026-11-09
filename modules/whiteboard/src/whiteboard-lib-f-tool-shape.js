@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-f-tool-shape.js: draw a shape, a line or an arrow -------------------------------------------------
   // Drag to draw it to size, or click for one of the usual size; it is saved when the pointer lifts and the tool stays on
-  // for the next one (Escape goes back to Select). With Snap to grid (ctx.snapping, turned round while Alt is held) its corners or ends go on the grid. Another
+  // for the next one (Escape goes back to Select); a flowchart shape is joined to the one placed before it when they are in a row (ctx.placed). With Snap to grid (ctx.snapping, turned round while Alt is held) its corners or ends go on the grid. Another
   // drawn shape is one more entry in SHAPE_TOOLS. The shapes are kinds of the Shape and Flowchart tools in the tool switch (FAMILIES in whiteboard.js).
   {
     const SHAPE_TOOLS = [
@@ -8,10 +8,10 @@
       { id: 'ellipse', type: 'ellipse', label: 'Ellipse', icon: 'circle', key: 'o', order: 60 },
       { id: 'line', type: 'line', label: 'Line', icon: 'minus', key: 'l', order: 70, line: true },
       { id: 'arrow', type: 'line', label: 'Arrow', icon: 'arrow-right-long', key: 'a', order: 80, line: true, arrow: true },
-      { id: 'rounded', type: 'rounded', label: 'Rounded box', icon: 'square', key: 'b', order: 92 },
-      { id: 'diamond', type: 'diamond', label: 'Diamond', icon: 'diamond', key: 'd', order: 93 },
-      { id: 'pill', type: 'pill', label: 'Pill', icon: 'capsules', order: 94 },
-      { id: 'parallelogram', type: 'parallelogram', label: 'Parallelogram', icon: 'arrow-right-arrow-left', order: 95 },
+      { id: 'rounded', type: 'rounded', flow: true, label: 'Rounded box', icon: 'square', key: 'b', order: 92 },
+      { id: 'diamond', type: 'diamond', flow: true, label: 'Diamond', icon: 'diamond', key: 'd', order: 93 },
+      { id: 'pill', type: 'pill', flow: true, label: 'Pill', icon: 'capsules', order: 94 },
+      { id: 'parallelogram', type: 'parallelogram', flow: true, label: 'Parallelogram', icon: 'arrow-right-arrow-left', order: 95 },
     ];
     for (const t of SHAPE_TOOLS) {
       let drag = null; // { id, x, y, sx, sy, moved }
@@ -51,6 +51,7 @@
           }
           drag = null;
           ctx.save(id); // the tool stays on for the next one (Escape goes back to Select)
+          if (t.flow) ctx.placed(id); // a flowchart shape: joined to the one placed before it when they are in a row (Auto-connect)
         },
         cancel(ctx) { if (drag) ctx.discard(drag.id); drag = null; },
         deactivate(ctx) { this.cancel(ctx); },
