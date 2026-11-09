@@ -137,10 +137,151 @@
             </form>
           </div>
 
-          <!-- One environment (#environments/<slug>) -->
+          <!-- One environment's page (#environments/<slug>, and /<tab> for a tab other than Overview) -->
           <div class="hc-view" id="environment-page" hidden>
             <button class="btn btn-quiet btn-small hc-back" type="button" data-go="environments"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Environments</span></button>
-            <div id="environments" class="environments"></div>
+            <div class="hc-env-head">
+              <div class="hc-env-id">
+                <h1 class="hc-title" id="env-title" tabindex="-1"></h1>
+                <code class="hc-slug" id="env-address"></code>
+                <div class="hc-chips" id="env-chips"></div>
+              </div>
+              <a class="btn" id="env-open" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square fa-fw" aria-hidden="true"></i><span>Open environment</span></a>
+            </div>
+            <div class="subtabs hc-tabs" id="env-tabs" role="tablist">
+              <button class="subtab" type="button" role="tab" id="env-tab-overview" data-tab="overview" aria-controls="env-pane-overview">Overview</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-plan" data-tab="plan" aria-controls="env-pane-plan">Plan and modules</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-template" data-tab="template" aria-controls="env-pane-template">Template</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-owners" data-tab="owners" aria-controls="env-pane-owners">Owners and two-step</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-backups" data-tab="backups" aria-controls="env-pane-backups">Backups</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-danger" data-tab="danger" aria-controls="env-pane-danger">Danger zone</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-domain" aria-disabled="true" disabled tabindex="-1">Domain<span class="sdk-tab-badge">later</span></button>
+            </div>
+            <p class="status hc-status" id="env-status" tabindex="-1" role="status" aria-live="polite"></p>
+
+            <div class="hc-pane" id="env-pane-overview" role="tabpanel" aria-labelledby="env-tab-overview" hidden>
+              <div class="hc-banners" id="env-banners"></div>
+              <div class="hc-grid">
+                <section class="sdk-panel hc-part" aria-labelledby="env-status-title">
+                  <h2 class="hc-part-name" id="env-status-title">Status</h2>
+                  <dl class="hc-facts" id="env-facts"></dl>
+                </section>
+                <section class="sdk-panel hc-part" aria-labelledby="env-use-title">
+                  <h2 class="hc-part-name" id="env-use-title">Use against its caps</h2>
+                  <div class="hc-caps" id="env-caps"></div>
+                  <p class="sdk-hint">Storage is shown here only, not in the table.</p>
+                </section>
+              </div>
+            </div>
+
+            <div class="hc-pane" id="env-pane-plan" role="tabpanel" aria-labelledby="env-tab-plan" hidden>
+              <form class="sdk-panel hc-part hc-form" id="plan-form" novalidate>
+                <h2 class="hc-part-name">Plan and modules</h2>
+                <p class="sdk-hint">The name is what the environment calls itself; its address is fixed. Choosing a plan fills the caps from it; change them here for this environment alone. Empty means no cap.</p>
+                <div class="fields">
+                  <label>Name<input name="name" type="text" maxlength="60" required></label>
+                  <label>Plan<select name="planName"></select></label>
+                </div>
+                <h3 class="sdk-label hc-sub">Its own caps</h3>
+                <div class="fields">
+                  <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
+                  <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="1" step="0.5" placeholder="no cap"></label>
+                  <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
+                  <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
+                </div>
+                <fieldset class="hc-fieldset">
+                  <legend class="sdk-label">Modules it may run</legend>
+                  <label class="sdk-choice-row"><input type="radio" name="modules" value="all"><span class="sdk-choice-text">All installed</span></label>
+                  <label class="sdk-choice-row"><input type="radio" name="modules" value="list"><span class="sdk-choice-text">Only these</span></label>
+                  <div class="hc-checks" id="plan-module-list"></div>
+                </fieldset>
+                <div class="row">
+                  <button class="btn btn-primary" type="submit">Save</button>
+                  <span class="status" id="plan-status" role="status"></span>
+                </div>
+              </form>
+            </div>
+
+            <!-- Switching its template, and the offer after a switch (plan-environment-templates, the switching addendum), drawn
+                 with /template-offer.js. -->
+            <div class="hc-pane" id="env-pane-template" role="tabpanel" aria-labelledby="env-tab-template" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-template-title">
+                <h2 class="hc-part-name" id="env-template-title">Template</h2>
+                <dl class="hc-facts" id="env-template-facts"></dl>
+                <div class="template-skipped" id="env-template-skipped" hidden></div>
+                <div class="hc-inline" id="env-template-switch">
+                  <select id="env-template-select" aria-label="Template"></select>
+                  <button class="btn" id="env-template-switch-btn" type="button" disabled>Switch template</button>
+                </div>
+                <p class="status" id="env-template-status" role="status" hidden></p>
+              </section>
+              <section class="sdk-panel hc-part" aria-labelledby="env-offer-title">
+                <h2 class="hc-part-name" id="env-offer-title">What the template offers</h2>
+                <p class="sdk-hint" id="env-offer-none"></p>
+                <div class="sdk-banner" data-kind="info" id="env-offer-note" role="status" hidden>
+                  <span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
+                  <span class="sdk-banner-text" id="env-offer-note-text"></span>
+                  <button class="btn btn-small sdk-banner-action" id="env-offer-review" type="button">Review</button>
+                </div>
+                <div id="env-offer" hidden></div>
+              </section>
+            </div>
+
+            <div class="hc-pane" id="env-pane-owners" role="tabpanel" aria-labelledby="env-tab-owners" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-owners-title">
+                <h2 class="hc-part-name" id="env-owners-title">Owners and two-step</h2>
+                <p class="sdk-hint">An owner locked out of their authenticator app: reset their second factor by their login.</p>
+                <form class="hc-inline" id="owner-reset" autocomplete="off">
+                  <input name="login" type="text" maxlength="40" placeholder="their login" aria-label="Owner login" autocapitalize="off" required>
+                  <button class="btn" type="submit">Reset their second factor</button>
+                </form>
+                <p class="status" id="owner-reset-status" role="status" hidden></p>
+                <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, from the list's
+                     awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
+                <div class="first-password" data-slot="first-password" hidden>
+                  <div data-slot="first-password-rows"></div>
+                  <div class="first-password-made" data-slot="first-password-made" hidden>
+                    <div class="row">
+                      <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
+                      <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
+                      <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
+                    </div>
+                    <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
+                  </div>
+                  <span class="status" data-slot="first-password-status" role="status" hidden></span>
+                </div>
+              </section>
+            </div>
+
+            <div class="hc-pane" id="env-pane-backups" role="tabpanel" aria-labelledby="env-tab-backups" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-download-title">
+                <h2 class="hc-part-name" id="env-download-title">Download</h2>
+                <p class="sdk-hint">A zip of everything in this environment.</p>
+                <button class="btn" id="env-backup" type="button"><i class="fa-solid fa-download fa-fw" aria-hidden="true"></i><span>Download a backup</span></button>
+              </section>
+              <section class="sdk-panel hc-part" aria-labelledby="env-restore-title">
+                <h2 class="hc-part-name" id="env-restore-title">Restore</h2>
+                <p class="sdk-hint">Replaces everything in the environment with the backup.</p>
+                <input id="env-restore-file" type="file" accept=".zip,application/zip" aria-label="Backup file">
+                <button class="btn btn-danger" id="env-restore" type="button" disabled><i class="fa-solid fa-rotate-left fa-fw" aria-hidden="true"></i><span>Restore a backup</span></button>
+              </section>
+              <p class="sdk-hint">Backups are a download. Nothing is kept on the host, and there is no schedule.</p>
+            </div>
+
+            <div class="hc-pane" id="env-pane-danger" role="tabpanel" aria-labelledby="env-tab-danger" hidden>
+              <section class="sdk-panel hc-part" aria-labelledby="env-danger-title">
+                <h2 class="hc-part-name" id="env-danger-title">Danger zone</h2>
+                <div class="hc-danger-row">
+                  <div class="hc-danger-text"><b id="env-suspend-title"></b><span class="sdk-hint" id="env-suspend-text"></span></div>
+                  <button class="btn" id="env-suspend" type="button"></button>
+                </div>
+                <div class="hc-danger-row">
+                  <div class="hc-danger-text"><b>Delete this environment</b><span class="sdk-hint">It is moved aside, not erased.</span></div>
+                  <button class="btn btn-danger" id="env-delete" type="button"><i class="fa-solid fa-trash fa-fw" aria-hidden="true"></i><span>Delete</span></button>
+                </div>
+                <p class="sdk-hint">To bring back a backup, see <button class="linklike" type="button" data-env-tab="backups">Backups</button>.</p>
+              </section>
+            </div>
           </div>
         </section>
 
@@ -492,79 +633,6 @@
     </div>
   </main>
 
-  <template id="tpl-environment">
-    <section class="panel environment">
-      <div class="section-head">
-        <h2><a data-slot="link" target="_blank" rel="noopener"><span data-slot="name"></span></a> <code data-slot="slug"></code></h2>
-        <span class="sdk-status" data-slot="status"></span>
-        <span class="grow"></span>
-        <button class="btn btn-small" data-action="plan" type="button">Edit</button>
-        <button class="btn btn-small" data-action="backup" type="button">Backup</button>
-        <button class="btn btn-small" data-action="restore" type="button">Restore backup</button>
-        <input type="file" accept=".zip,application/zip" data-slot="restore-file" hidden>
-        <button class="btn btn-small" data-action="suspend" type="button">Suspend</button>
-        <button class="btn btn-small danger" data-action="delete" type="button">Delete</button>
-      </div>
-      <div class="refused" data-slot="refused" role="status" hidden></div>
-      <dl class="facts" data-slot="facts"></dl>
-      <div class="template-skipped" data-slot="template-skipped" hidden></div>
-      <!-- Switching its template, and the offer after a switch (plan-environment-templates, the switching addendum):
-           drawn by host.js with /template-offer.js; hidden when the host has no templates. -->
-      <div class="env-template" data-slot="template-box" hidden>
-        <div class="row">
-          <label class="env-template-pick">Template <select data-slot="template-select"></select></label>
-          <button class="btn btn-small" data-action="template-switch" type="button" disabled>Switch</button>
-          <span class="status" data-slot="template-status" role="status" hidden></span>
-        </div>
-        <div class="row" data-slot="template-offer-note" hidden>
-          <span class="hint" data-slot="template-offer-note-text"></span>
-          <button class="btn btn-small btn-primary" data-action="template-review" type="button">Review</button>
-        </div>
-        <div data-slot="template-offer" hidden></div>
-      </div>
-      <form class="row owner-reset" data-slot="owner-reset" autocomplete="off">
-        <span class="hint">An owner locked out of their authenticator app:</span>
-        <input name="login" type="text" maxlength="40" placeholder="their login" autocapitalize="off" required>
-        <button class="btn btn-small danger" type="submit">Reset their second factor</button>
-        <span class="status" data-slot="owner-reset-status"></span>
-      </form>
-      <!-- An owner who has no password yet (plan-first-password.md, Decision 4): a row each, drawn by host.js from the
-           list's awaitingFirstPassword. The link the server answers is shown once, in the box below, until Close. -->
-      <div class="first-password" data-slot="first-password" hidden>
-        <div data-slot="first-password-rows"></div>
-        <div class="first-password-made" data-slot="first-password-made" hidden>
-          <div class="row">
-            <label class="first-password-field"><span data-slot="first-password-label">Link</span><input type="text" readonly data-slot="first-password-url" autocomplete="off" spellcheck="false"></label>
-            <button class="btn btn-small" data-action="first-password-copy" type="button">Copy</button>
-            <button class="btn btn-small" data-action="first-password-close" type="button">Close</button>
-          </div>
-          <p class="hint">This link works once, for 24 hours. Send it to the owner.</p>
-        </div>
-        <span class="status" data-slot="first-password-status" role="status" hidden></span>
-      </div>
-      <form class="plan-form" data-slot="plan-form" hidden>
-        <h3>Edit</h3>
-        <p class="hint">The name is what the environment calls itself and what the product page lists; the slug (its address) is fixed. Choosing a plan fills the caps from the catalog; adjust them here for this environment alone. Empty caps mean no cap.</p>
-        <div class="fields">
-          <label>Name<input name="name" type="text" maxlength="60" required></label>
-          <label>Plan<select name="planName"></select></label>
-          <label>Modules<select name="modules"><option value="all">All installed</option><option value="list">Only these</option></select></label>
-          <label class="modules-list" data-slot="modules-list" hidden>Allowed modules (ids, one per line)<textarea name="moduleIds" rows="3"></textarea></label>
-        </div>
-        <div class="fields">
-          <label>Members (cap) <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
-          <label>Storage (GB, cap) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="1" step="0.5" placeholder="no cap"></label>
-          <label>AI calls per month (cap) <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
-          <label>Concurrent calls (cap) <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-primary" type="submit">Save</button>
-          <button class="btn btn-quiet" data-action="plan-cancel" type="button">Cancel</button>
-          <span class="status" data-slot="plan-status"></span>
-        </div>
-      </form>
-    </section>
-  </template>
 
   <script type="module" src="/host.js"></script>
 </body>

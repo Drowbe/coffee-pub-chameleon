@@ -771,116 +771,6 @@ body.host-console .topbar .brand-home .product-lockup {
   }
 }
 
-body.host-console .environment .section-head h2 code {
-  margin-left: 8px;
-  color: var(--text-dim);
-  font-size: var(--text-12);
-  font-weight: var(--weight-regular);
-}
-
-/* The environments: spaced cards, each with an edge in its status's colour, the facts as tiles with a bar
-   where the plan has a cap, and the plan form opening under a rule. */
-body.host-console .environments {
-  display: grid;
-  gap: 16px;
-}
-
-body.host-console .environment {
-  border-left: 4px solid var(--ok);
-}
-
-body.host-console .environment[data-status="pastDue"] {
-  border-left-color: var(--danger);
-}
-
-body.host-console .environment[data-status="suspended"] {
-  border-left-color: var(--text-dim);
-}
-
-body.host-console .environment[data-status="refused"] {
-  border-left-color: var(--danger);
-}
-
-/* A refused environment: why it won't open, the file and since when, and what to do. */
-body.host-console .environment .refused {
-  margin-top: 16px;
-  padding: 12px 12px;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-small);
-  background: color-mix(in srgb, var(--danger) 10%, var(--bg-card));
-}
-
-body.host-console .environment .refused p {
-  margin: 0;
-}
-
-body.host-console .environment .refused p + p {
-  margin-top: 4px;
-}
-
-body.host-console .environment .refused-what {
-  font-weight: var(--weight-strong); /* in --text: the danger edge and wash carry the colour, readable on a light theme too */
-}
-
-body.host-console .environment .refused-where code {
-  overflow-wrap: anywhere;
-}
-
-body.host-console .environment .section-head {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-body.host-console .environment .section-head h2 {
-  margin: 0;
-  font-size: var(--text-18);
-}
-
-body.host-console .environment .section-head h2 a {
-  color: var(--text);
-  text-decoration: none;
-}
-
-body.host-console .environment .section-head h2 a:hover {
-  color: var(--accent);
-}
-
-body.host-console .environment .facts {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-body.host-console .fact-value {
-  font-size: var(--text-14);
-  font-weight: var(--weight-strong);
-}
-
-body.host-console .fact .env-cap-bar {
-  margin-top: 8px;
-  max-width: none;
-}
-
-body.host-console .fact-warn {
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 10%, var(--bg-card));
-}
-
-body.host-console .plan-form {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-body.host-console .plan-form > .hint {
-  margin: 0 0 12px;
-}
-
-body.host-console .plan-form .fields + .fields,
-body.host-console .plan-form .fields + .row {
-  margin-top: 12px;
-}
-
 body.host-console .grow {
   flex: 1;
 }
@@ -6467,8 +6357,6 @@ body.chat-window {
 .mfa-key .key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-13); padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-min); background: var(--bg); word-break: break-all; }
 .mfa-key input { max-width: 9em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: var(--tracking-caps); }
 .mfa-codes { list-style: none; margin: 8px 0; padding: 0; columns: 2; gap: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-14); line-height: var(--leading-body); }
-.owner-reset .hint { margin: 0; }
-.owner-reset input { max-width: 14em; }
 /* The console's "New first-password link" (plan-first-password.md): a row per owner with no password yet, then the link
    just made, in a box like the calendar feed's, its field taking the row's room and wrapping under on a phone. */
 .first-password .hint { margin: 0; }
@@ -6609,10 +6497,6 @@ body.chat-window {
 .module-shown-as .field-label { margin: 0; }
 #home-icon-section, #module-names-section, #words-panel, #template-panel, #reactions-section, #icons-section { scroll-margin-top: 80px; }
 /* The console's environment card: the same switch and offer, in its own box under the facts. */
-.env-template { margin-top: 12px; display: grid; gap: 8px; min-width: 0; }
-.env-template > .row:first-child { align-items: flex-end; }
-.env-template-pick { flex: 1 1 12rem; min-width: 0; max-width: 20rem; }
-.env-template-pick select { width: 100%; min-width: 0; }
 /* Manage > Template: template files (addendum 2), and the offer's reactions and icons. */
 .template-files .list-row { flex-wrap: wrap; }
 .template-file-name { flex: 1; min-width: 12em; }

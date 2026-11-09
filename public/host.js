@@ -19,10 +19,9 @@ const slot = (el, name) => el.querySelector(`[data-slot="${name}"]`);
 let settings = { baseDomain: '', version: '', hostAdmins: [], plans: {} };
 const PLAN_ORDER = (plans) => Object.keys(plans || {}).sort((a, b) => (a === 'free' ? -1 : b === 'free' ? 1 : a.localeCompare(b)));
 let environments = [];
+let loaded = false; // the list has come at least once
 let templates = []; // every template (GET /api/host/templates): [{ id, name, description, source, version, hidden, usedBy }]
 
-const gb = (bytes) => (bytes ? `${(bytes / 1e9).toFixed(bytes < 1e8 ? 2 : 1)} GB` : '0');
-const cap = (used, limit, unit = '') => (limit ? `${used}${unit} of ${limit}${unit}` : `${used}${unit}, no cap`);
 const environmentUrl = (slug) => `${location.protocol}//${slug}.${settings.baseDomain}${location.port ? `:${location.port}` : ''}`; // the port only in development
 
 let hostMe = null; // the signed-in host admin: mfaEnrolled, mfaRequired, mfaOffered, mfaBypass
@@ -41,6 +40,7 @@ async function load() {
     settings = await api('GET', '/api/host/settings');
     environments = (await api('GET', '/api/host/environments')).environments;
     templates = (await api('GET', '/api/host/templates').catch(() => ({ templates: [] }))).templates || [];
+    loaded = true;
   } catch (err) {
     say($('environments-status'), err.message, true);
     return;
@@ -49,7 +49,7 @@ async function load() {
   renderEnvironments();
   followTemplates();
   renderCreateChoices();
-  // The Templates tab: a change there (new, edited, hidden, deleted, imported) reaches the create form and the cards.
+  // Templates: a change there (new, edited, hidden, deleted, imported) reaches the create form and the environments.
   initTemplates(templates, (next) => { templates = next; renderCreateChoices(); renderEnvironments(); }, settings.productName);
   renderAdmins();
   renderFacts();
@@ -234,22 +234,6 @@ function signupFact(s) {
 function renderFacts() {
   const webhook = settings.baseDomain ? `${location.protocol}//admin.${settings.baseDomain}${location.port ? ':' + location.port : ''}/api/host/billing` : '';
   $('host-facts').innerHTML = `<dt>Base domain</dt><dd>${escapeHtml(settings.baseDomain || '(none: one environment)')}</dd><dt>Start page</dt><dd>${escapeHtml(settings.productDomain || settings.baseDomain || '(none)')}</dd><dt>Product site</dt><dd>${escapeHtml(settings.productSiteUrl || '(none)')}</dd><dt>Version</dt><dd>${escapeHtml(settings.version || '')}</dd><dt>Environments</dt><dd>${environments.length}</dd><dt>Sign-up</dt><dd>${escapeHtml(signupFact(settings))}</dd><dt>Billing webhook</dt><dd>${webhook ? `<code>${escapeHtml(webhook)}</code>, a JSON body { slug, plan, event: paid | lapsed | cancelled } signed with <code>BILLING_SECRET</code> (x-billing-signature, HMAC-SHA256 of the body, hex)${settings.billingSecretSet === false ? '; <strong>BILLING_SECRET is not set</strong>, so the webhook refuses everything' : ''}` : 'needs a base domain'}</dd>`;
-}
-
-function refusedCopy() {
-  const of = settings.productName ? ` of ${settings.productName}` : ''; // the name from the settings; none is written here
-  return {
-    words: {
-      newer: `Won't open: its data is from a newer version${of}.`,
-      failed: "Won't open: its data could not be updated.",
-      unreadable: "Won't open: its data could not be read.",
-    },
-    hints: {
-      newer: `Restore a good backup, or run a newer version${of}.`,
-      failed: 'Restore a good backup. The server log has the details.',
-      unreadable: 'Fix or restore this file (the server log names it), or restore a good backup.',
-    },
-  };
 }
 
 // --- Environments: the table ----------------------------------------------------------------------------------------
@@ -483,88 +467,301 @@ async function reloadEnvironments() {
 
 function renderEnvironments() {
   renderTable();
-  const shown = readAddress();
-  if (shown.section === 'environments' && shown.rest[0] && shown.rest[0] !== 'new') queueMicrotask(() => showEnvironment(shown.rest[0]));
-  const box = $('environments');
-  box.replaceChildren();
-  restoreFiles.clear(); // a fresh card has no zip chosen
-  if (!environments.length) { box.innerHTML = '<p class="hint">No environments yet.</p>'; return; }
-  for (const t of environments) {
-    const el = clone('tpl-environment');
-    el.dataset.slug = t.slug;
-    slot(el, 'name').textContent = t.name || t.slug;
-    slot(el, 'link').href = environmentUrl(t.slug);
-    slot(el, 'slug').textContent = `${t.slug}.${settings.baseDomain}`;
-    const status = slot(el, 'status');
-    status.textContent = t.status === 'pastDue' ? 'past due' : t.status || 'active';
-    if (t.status === 'pastDue') status.dataset.tone = 'danger';
-    else if (t.status === 'suspended') status.dataset.tone = 'neutral';
-    el.querySelector('[data-action="suspend"]').textContent = t.status === 'suspended' ? 'Resume' : 'Suspend';
-    // Refused (its data is from a newer version of the product, its app.json can't be read, or its data update could not finish): it answers its visitors with
-    // a 503 until a good backup is restored, so the card says so and why, and has nothing to count.
-    const refused = t.refused || null;
-    if (refused) {
-      status.textContent = "won't open";
-      status.dataset.tone = 'danger';
-      const box = slot(el, 'refused');
-      const when = refused.at ? new Date(refused.at) : null;
-      const refusedCopy_ = refusedCopy();
-      box.innerHTML = `<p class="refused-what">${escapeHtml(refusedCopy_.words[refused.reason] || refusedCopy_.words.failed)}</p>`
-        + `<p class="hint refused-where">${refused.file ? `<code>${escapeHtml(refused.file)}</code>` : ''}${refused.file && when ? ', ' : ''}${when ? `since ${escapeHtml(when.toLocaleString())}` : ''}</p>`
-        + `<p class="hint">${escapeHtml(refusedCopy_.hints[refused.reason] || refusedCopy_.hints.failed)}</p>`;
-      box.title = refused.message || '';
-      box.hidden = false;
-      slot(el, 'owner-reset').hidden = true; // nothing inside it can be reached until a good backup is restored
-    }
-    if (!refused) renderFirstPassword(el, t.awaitingFirstPassword);
-    const u = refused ? {} : t.usage || {};
-    const p = t.plan || {};
-    const mods = p.modules === 'all' || !p.modules ? 'all installed' : `${p.modules.length} allowed`;
-    const graceEnds = t.graceEndsAt ? new Date(t.graceEndsAt) : t.pastDueSince ? new Date(new Date(t.pastDueSince).getTime() + 14 * 86400000) : null;
-    // The facts as tiles: what the plan allows against what is used, a bar where there is a cap, and the states that
-    // need a host admin's eye (past due, degraded, a deletion asked for) marked.
-    el.dataset.status = refused ? 'refused' : t.status || 'active';
-    const pctOf = (used, limit) => (limit ? Math.min(100, Math.round((used / limit) * 100)) : null);
-    const tile = (key, value, pct = null, warn = false) => `<div class="fact${warn || (pct !== null && pct >= 90) ? ' fact-warn' : ''}"><span class="fact-key">${escapeHtml(key)}</span><span class="fact-value">${escapeHtml(value)}</span>${pct === null ? '' : `<span class="sdk-progress env-cap-bar${pct >= 90 ? ' warn' : ''}" role="progressbar" aria-label="${escapeHtml(key)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-valuetext="${pct} percent${pct >= 90 ? ', almost full' : ''}"><span class="sdk-progress-fill" style="--pct:${pct}%"></span></span>`}</div>`;
-    const none = '\u2014'; // a refused environment has nothing to count
-    const storageText = refused ? none : u.storageBytes == null ? (p.storageBytes ? `not measured yet, cap ${gb(p.storageBytes)}` : 'not measured yet') : p.storageBytes ? `${gb(u.storageBytes)} of ${gb(p.storageBytes)}` : `${gb(u.storageBytes)}, no cap`;
-    slot(el, 'facts').innerHTML = [
-      tile('Plan', p.name ? (settings.plans && settings.plans[p.name] ? settings.plans[p.name].name || p.name : p.name) : 'no plan named'),
-      ...(t.status === 'pastDue' ? [tile('Past due', `since ${t.pastDueSince ? new Date(t.pastDueSince).toLocaleDateString() : '?'}; free plan on ${graceEnds ? graceEnds.toLocaleDateString() : '?'}`, null, true)] : []),
-      ...(t.degradedAt ? [tile('Degraded to free', new Date(t.degradedAt).toLocaleDateString(), null, true)] : []),
-      ...(t.deleteRequestedAt ? [tile('Deletion asked for', `${new Date(t.deleteRequestedAt).toLocaleDateString()}${t.deleteRequestReason || t.deleteReason ? ': ' + (t.deleteRequestReason || t.deleteReason) : ''}`, null, true)] : []),
-      ...(refused ? [tile('Members', none), tile('Spaces', none), tile('Storage', none), tile('AI this month', none), tile('Calls at once', none)] : [
-        tile('Members', cap(u.members ?? 0, p.members), pctOf(u.members ?? 0, p.members)),
-        tile('Spaces', String(u.spaces ?? 0)),
-        tile('Storage', storageText, u.storageBytes == null ? null : pctOf(u.storageBytes, p.storageBytes)),
-        tile('AI this month', cap(u.aiCallsThisMonth ?? 0, p.aiCallsPerMonth, ' calls'), pctOf(u.aiCallsThisMonth ?? 0, p.aiCallsPerMonth)),
-        tile('Calls at once', p.calls ? `${u.callsNow ?? 0} of ${p.calls}` : 'no cap', pctOf(u.callsNow ?? 0, p.calls)),
-      ]),
-      tile('Modules', mods),
-      ...(t.template ? [tile('Template', t.template.name || t.template.id)] : []),
-      tile('Since', t.createdAt ? new Date(t.createdAt).toLocaleDateString() : ''),
-    ].join('');
-    renderSkipped(slot(el, 'template-skipped'), t.template);
-    if (!refused) renderTemplateBox(el, t);
-    // the plan form, filled from the plan
-    const form = slot(el, 'plan-form');
-    form.elements.name.value = t.name || '';
-    const pick = form.elements.planName;
-    pick.replaceChildren(new Option('(none named)', ''), ...PLAN_ORDER(settings.plans).map((id) => new Option(settings.plans[id].name || id, id)));
-    pick.value = p.name && settings.plans[p.name] ? p.name : '';
-    form.elements.modules.value = p.modules === 'all' || !p.modules ? 'all' : 'list';
-    form.elements.moduleIds.value = Array.isArray(p.modules) ? p.modules.join('\n') : '';
-    slot(el, 'modules-list').hidden = form.elements.modules.value !== 'list';
-    form.elements.members.value = p.members || '';
-    form.elements.storageGb.value = p.storageBytes ? String(p.storageBytes / 1e9) : '';
-    form.elements.aiCallsPerMonth.value = p.aiCallsPerMonth ?? '';
-    form.elements.calls.value = p.calls || '';
-    box.append(el);
-  }
+  if (page.slug) renderPage();
 }
 
-// The owners who have no password yet (plan-first-password.md, Decision 4): a row each with "New first-password link".
-// The list names only their logins; the link itself is made when the button is pressed and shown once.
+// --- One environment's page (#environments/<slug>, and /<tab>) --------------------------------------------------------
+// Its name, address and chips, Open environment, and its tabs: Overview, Plan and modules, Template, Owners and two-step,
+// Backups, Danger zone (and Domain, drawn but not yet in use). Every tab saves on its own, with the routes the cards used.
+const PAGE = $('environment-page');
+const TABS = ['overview', 'plan', 'template', 'owners', 'backups', 'danger'];
+let page = { slug: '', tab: 'overview' };
+const pageEnvironment = () => environments.find((x) => x.slug === page.slug) || null;
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
+const gb = (bytes) => (bytes ? `${(bytes / 1e9).toFixed(bytes < 1e8 ? 2 : 1)} GB` : '0 GB');
+function showEnvironment(slug, tab) {
+  const changed = page.slug !== slug;
+  page = { slug, tab: TABS.includes(tab) ? tab : 'overview' };
+  if (changed) { closeFirstPasswordLink(PAGE, false); openOffers.clear(); planDirty = false; $('env-restore-file').value = ''; }
+  renderPage();
+}
+function renderPage() {
+  const t = pageEnvironment();
+  if (!t) {
+    // Gone (deleted elsewhere) or never there: back to the table, saying so.
+    if (loaded && page.slug && !PAGE.hidden) {
+      go('environments');
+      say($('environments-status'), `There is no environment at ${page.slug}.`, true);
+    }
+    return;
+  }
+  const name = t.name || t.slug;
+  $('env-title').textContent = name;
+  $('env-address').textContent = `${t.slug}.${settings.baseDomain}`;
+  $('env-chips').innerHTML = chipsOf(t);
+  $('env-open').href = environmentUrl(t.slug);
+  PAGE.dataset.slug = t.slug;
+  $('env-tabs').setAttribute('aria-label', `${name}, pages`);
+  for (const b of $('env-tabs').querySelectorAll('[data-tab]')) {
+    const on = b.dataset.tab === page.tab;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  }
+  for (const id of TABS) $(`env-pane-${id}`).hidden = id !== page.tab;
+  renderOverview(t);
+  renderPlanForm(t);
+  renderTemplatePane(t);
+  renderOwners(t);
+  renderDanger(t);
+}
+$('env-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (b) selectEnvironmentTab(b.dataset.tab);
+});
+$('env-tabs').addEventListener('keydown', (e) => {
+  if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const i = TABS.indexOf(page.tab);
+  selectEnvironmentTab(e.key === 'Home' ? TABS[0] : e.key === 'End' ? TABS[TABS.length - 1] : TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length]);
+});
+function selectEnvironmentTab(tab) {
+  say($('env-status'), '');
+  history.replaceState(null, '', `#environments/${encodeURIComponent(page.slug)}${tab === 'overview' ? '' : `/${tab}`}`);
+  page.tab = tab;
+  renderPage();
+  $(`env-tab-${tab}`).focus();
+}
+PAGE.addEventListener('click', (e) => { const b = e.target.closest('[data-env-tab]'); if (b) selectEnvironmentTab(b.dataset.envTab); });
+
+function refusedCopy() {
+  const of = settings.productName ? ` of ${settings.productName}` : ''; // the name from the settings; none is written here
+  return {
+    words: {
+      newer: `Won't open: its data is from a newer version${of}.`,
+      failed: "Won't open: its data could not be updated.",
+      unreadable: "Won't open: its data could not be read.",
+    },
+    hints: {
+      newer: `Restore a good backup, or run a newer version${of}.`,
+      failed: 'Restore a good backup. The server log has the details.',
+      unreadable: 'Fix or restore this file (the server log names it), or restore a good backup.',
+    },
+  };
+}
+const banner = (kind, icon, text, extra = '') => `<div class="sdk-banner" data-kind="${kind}" role="status"><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-${icon}"></i></span><span class="sdk-banner-text">${text}${extra}</span></div>`;
+// Overview: why it needs a look (won't open, past due, degraded, deletion asked), its status and dates, and its use
+// against each cap. Storage is shown here only.
+function renderOverview(t) {
+  const r = t.refused;
+  const copy = refusedCopy();
+  const graceEnds = t.graceEndsAt ? new Date(t.graceEndsAt) : t.pastDueSince ? new Date(new Date(t.pastDueSince).getTime() + 14 * 86400000) : null;
+  $('env-banners').innerHTML = [
+    r ? banner('danger', 'triangle-exclamation', escapeHtml(copy.words[r.reason] || copy.words.failed), `<br><span class="hc-banner-sub">${r.file ? `<code>${escapeHtml(r.file)}</code>` : ''}${r.file && r.at ? ', ' : ''}${r.at ? `since ${escapeHtml(new Date(r.at).toLocaleString())}` : ''}${r.file || r.at ? '. ' : ''}${escapeHtml(copy.hints[r.reason] || copy.hints.failed)}</span>`) : '',
+    t.status === 'pastDue' ? banner('danger', 'credit-card', escapeHtml(`Past due since ${day(t.pastDueSince) || '?'}. It goes back to the Free plan on ${graceEnds ? graceEnds.toLocaleDateString() : '?'}.`)) : '',
+    t.degradedAt ? banner('warn', 'arrow-trend-down', escapeHtml(`Went back to the Free plan on ${day(t.degradedAt)}, after a payment stayed past due.`)) : '',
+    t.deleteRequestedAt ? banner('warn', 'trash-can', escapeHtml(`Its owner asked for it to be deleted on ${day(t.deleteRequestedAt)}${t.deleteRequestReason ? `: ${t.deleteRequestReason}` : '.'}`)) : '',
+  ].join('');
+  if (r) $('env-banners').querySelector('.sdk-banner').title = r.message || '';
+  const u = t.usage || {};
+  const facts = [
+    ['Status', chip(STATUS_TONE[statusOf(t)], STATUS_WORD[statusOf(t)])],
+    ...(t.status === 'pastDue' ? [['Past due since', escapeHtml(day(t.pastDueSince))]] : []),
+    ...(t.degradedAt ? [['Degraded', escapeHtml(day(t.degradedAt))]] : []),
+    ...(t.deleteRequestedAt ? [['Deletion asked', escapeHtml(day(t.deleteRequestedAt))]] : []),
+    ['Plan', escapeHtml(planName(t))],
+    ['Template', escapeHtml(templateName(t))],
+    ['Spaces', r ? '—' : escapeHtml(num(u.spaces))],
+    ['Created', escapeHtml(day(t.createdAt))],
+  ];
+  $('env-facts').innerHTML = facts.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${v}</dd>`).join('');
+  const p = t.plan || {};
+  const capRow = (label, value, x) => {
+    const lv = x ? levelOf(t, x) : 'ok';
+    return `<div class="hc-cap"><div class="hc-cap-top"><span class="hc-cap-key">${escapeHtml(label)}</span><span class="hc-cap-val">${escapeHtml(value)}</span></div>${x && x.cap ? bar(t, x, label) : ''}${lv !== 'ok' ? `<span class="hc-cap-note">${lv === 'full' ? 'At the cap' : 'Near the cap'}</span>` : ''}</div>`;
+  };
+  const uses = usesOf(t);
+  const storage = u.storageBytes == null ? (p.storageBytes ? `Not measured yet, cap ${gb(p.storageBytes)}` : 'Not measured yet, no cap') : p.storageBytes ? `${gb(u.storageBytes)} of ${gb(p.storageBytes)}` : `${gb(u.storageBytes)}, no cap`;
+  const of = (x) => (x.cap ? `${num(x.used)} of ${num(x.cap)}` : `${num(x.used)}, no cap`);
+  $('env-caps').innerHTML = r
+    ? '<p class="sdk-hint">Nothing to count until it opens again.</p>'
+    : [
+      capRow('Members', of(uses[0]), uses[0]),
+      capRow('AI calls this month', of(uses[1]), uses[1]),
+      capRow('Calls at once', p.calls != null ? `${num(u.callsNow)} now, of ${num(p.calls)}` : 'No cap', uses[2]),
+      capRow('Storage', storage, null),
+    ].join('');
+}
+
+// Plan and modules: the name, the plan (choosing one fills the caps from it), its own four caps and which modules it may
+// run. One Save (PATCH, as the card's Edit did).
+const BUILT_IN_MODULES = ['conference', 'chat'];
+let planDirty = false;
+function renderPlanForm(t) {
+  if (planDirty) return; // never redraw under someone's hands
+  const form = $('plan-form');
+  const p = t.plan || {};
+  form.elements.name.value = t.name || '';
+  const pick = form.elements.planName;
+  pick.replaceChildren(new Option('(none named)', ''), ...PLAN_ORDER(settings.plans).map((id) => new Option(settings.plans[id].name || id, id)));
+  pick.value = p.name && settings.plans[p.name] ? p.name : '';
+  fillCaps(form, p);
+}
+function fillCaps(form, p) {
+  form.elements.members.value = p.members || '';
+  form.elements.storageGb.value = p.storageBytes ? String(p.storageBytes / 1e9) : '';
+  form.elements.aiCallsPerMonth.value = p.aiCallsPerMonth ?? '';
+  form.elements.calls.value = p.calls || '';
+  const list = Array.isArray(p.modules) ? p.modules : null;
+  form.querySelector(`[name="modules"][value="${list ? 'list' : 'all'}"]`).checked = true;
+  // The modules this host ships, then any other id the list already names (an uploaded module), kept ticked.
+  const shipped = (settings.modules || []).filter((m) => !BUILT_IN_MODULES.includes(m.id));
+  const extra = (list || []).filter((id) => !shipped.some((m) => m.id === id)).map((id) => ({ id, name: id }));
+  $('plan-module-list').innerHTML = [...shipped, ...extra].map((m) => `<label class="sdk-choice-row"><input type="checkbox" value="${escapeHtml(m.id)}"${list && list.includes(m.id) ? ' checked' : ''}${list ? '' : ' disabled'}><span class="sdk-choice-text">${escapeHtml(m.name || m.id)}</span></label>`).join('');
+}
+$('plan-form').addEventListener('input', () => { planDirty = true; });
+$('plan-form').addEventListener('change', (e) => {
+  planDirty = true;
+  const form = $('plan-form');
+  if (e.target.name === 'planName') {
+    const caps = (settings.plans[e.target.value] || {}).caps;
+    if (caps) fillCaps(form, caps);
+  }
+  if (e.target.name === 'modules') for (const box of $('plan-module-list').querySelectorAll('input')) box.disabled = e.target.value !== 'list';
+});
+$('plan-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = $('plan-form').elements;
+  const numOf = (el) => (el.value === '' ? null : Number(el.value));
+  const bad = [...$('plan-form').querySelectorAll('input')].find((i) => !i.checkValidity());
+  if (bad) { bad.reportValidity(); bad.focus(); return; }
+  const list = $('plan-form').querySelector('[name="modules"]:checked').value === 'list';
+  const plan = {
+    name: f.planName.value || null,
+    modules: list ? [...$('plan-module-list').querySelectorAll('input:checked')].map((i) => i.value) : 'all',
+    members: numOf(f.members),
+    storageBytes: f.storageGb.value === '' ? null : Math.round(Number(f.storageGb.value) * 1e9),
+    aiCallsPerMonth: numOf(f.aiCallsPerMonth),
+    calls: numOf(f.calls),
+  };
+  say($('plan-status'), 'Saving…');
+  try {
+    await api('PATCH', `/api/host/environments/${encodeURIComponent(page.slug)}`, { name: f.name.value.trim(), plan });
+    planDirty = false;
+    await reloadEnvironments();
+    say($('plan-status'), 'Saved.');
+  } catch (err) { say($('plan-status'), err.message, true); }
+});
+
+// Template: what it was made from, what was left out, Switch template, and the offer with Review (the switching
+// addendum; drawn by /template-offer.js as on Manage's Template tab). The offer comes with the switch's answer; an offer
+// left open (offerOpen in the list) is fetched again by Review.
+const openOffers = new Map(); // slug -> the offer on show: { name, offer }
+// What a template left out when an environment was made from it (plan-environment-templates.md, "Entitlement"): each
+// module with why. Not in the plan (or needing one that was not) means it was never installed; anything else means it is
+// installed and in every space but not on yet, for the owner to turn on once what it needs is set up.
+const leftOut = (why) => why === 'not in the plan' || /^needs .+, which was skipped$/.test(why || '');
+function renderSkipped(box, template) {
+  const skipped = (template && template.skipped) || [];
+  box.hidden = !skipped.length;
+  if (!skipped.length) { box.replaceChildren(); return; }
+  box.innerHTML = `<p class="hint">Left out of the ${escapeHtml(template.name || template.id)} template:</p><ul>${skipped.map((x) => `<li><strong>${escapeHtml(x.name || x.id)}</strong>: ${leftOut(x.why) ? escapeHtml(x.why) : `not on yet. ${escapeHtml(/[.!?]$/.test(x.why || '') ? x.why : `${x.why}.`)}`}</li>`).join('')}</ul>`;
+}
+function renderTemplatePane(t) {
+  const tp = t.template;
+  $('env-template-facts').innerHTML = `<dt>Made from</dt><dd>${escapeHtml(templateName(t))}</dd>${tp && tp.version ? `<dt>Version</dt><dd>${escapeHtml(String(tp.appliedVersion || tp.version))}</dd>` : ''}`;
+  renderSkipped($('env-template-skipped'), tp);
+  const select = $('env-template-select');
+  const current = tp ? tp.id : 'none';
+  const choices = templates.filter((x) => !x.hidden || x.id === current);
+  $('env-template-switch').hidden = Boolean(t.refused) || !templates.length;
+  if (document.activeElement !== select) {
+    select.replaceChildren(...choices.map((x) => new Option(x.name || x.id, x.id)), new Option('No template', 'none'));
+    if (tp && !choices.some((x) => x.id === current)) select.append(new Option(tp.name || current, current));
+    select.value = current;
+  }
+  syncSwitch(t);
+  const shown = openOffers.get(t.slug);
+  const open = Boolean(tp && tp.offerOpen);
+  $('env-offer-none').hidden = open;
+  $('env-offer-none').textContent = t.refused ? 'Nothing can be offered until it opens again.' : tp ? 'Nothing new from this template.' : 'No template to offer anything.';
+  $('env-offer-note').hidden = !open || Boolean(shown);
+  $('env-offer-note-text').textContent = open ? `The ${tp.name || tp.id} template can turn on more here.` : '';
+  const offerBox = $('env-offer');
+  if (!open || !shown) { offerBox.hidden = true; offerBox.replaceChildren(); openOffers.delete(t.slug); return; }
+  renderOffer(offerBox, {
+    templateName: shown.name,
+    offer: shown.offer,
+    later: () => { openOffers.delete(t.slug); renderPage(); $('env-offer-review').focus(); },
+    apply: async (body) => {
+      const answer = await api('POST', `/api/host/environments/${encodeURIComponent(t.slug)}/template/apply`, body);
+      openOffers.delete(t.slug);
+      const skipped = (answer.environment.template && answer.environment.template.skipped) || [];
+      await reloadEnvironments();
+      say($('env-template-status'), skipped.length ? `Applied. ${skipped.length} left out, listed above.` : 'Applied.');
+      $('env-template-select').focus();
+    },
+  });
+}
+function syncSwitch(t) {
+  const other = $('env-template-select').value !== (t.template ? t.template.id : 'none');
+  $('env-template-switch-btn').disabled = !other;
+  $('env-template-switch-btn').classList.toggle('btn-primary', other);
+}
+$('env-template-select').addEventListener('change', () => { const t = pageEnvironment(); if (t) syncSwitch(t); });
+$('env-template-switch-btn').addEventListener('click', async () => {
+  const t = pageEnvironment();
+  if (!t) return;
+  const value = $('env-template-select').value;
+  const chosen = templates.find((x) => x.id === value);
+  if (!await confirmDialog(switchConfirm(value === 'none' ? null : chosen ? chosen.name || chosen.id : value))) return;
+  const button = $('env-template-switch-btn');
+  button.disabled = true;
+  say($('env-template-status'), 'Switching…');
+  try {
+    const { environment } = await api('PATCH', `/api/host/environments/${encodeURIComponent(t.slug)}`, { template: value });
+    if (environment.template && environment.template.offerOpen && environment.offer) openOffers.set(t.slug, { name: environment.template.name || environment.template.id, offer: environment.offer });
+    await reloadEnvironments();
+    say($('env-template-status'), environment.template ? `Switched to ${environment.template.name || environment.template.id}.` : 'Switched to no template.');
+    ($('env-offer').querySelector('input:not(:disabled)') || $('env-template-select')).focus();
+  } catch (err) {
+    button.disabled = false;
+    say($('env-template-status'), err.message, true); // the server's own sentence
+  }
+});
+$('env-offer-review').addEventListener('click', async () => {
+  const t = pageEnvironment();
+  if (!t) return;
+  try {
+    const { template, offer } = await api('GET', `/api/host/environments/${encodeURIComponent(t.slug)}/template`);
+    if (offer) openOffers.set(t.slug, { name: template.name || template.id, offer });
+    await reloadEnvironments();
+    $('env-offer').querySelector('input:not(:disabled), button')?.focus();
+  } catch (err) { say($('env-template-status'), err.message, true); }
+});
+
+// Owners and two-step: the reset of an owner's second factor, by login (the console never learns an environment's keys),
+// asked first; and the owners who have no password yet (plan-first-password.md, Decision 4), a row each with "New
+// first-password link". The list names only their logins; the link itself is made when the button is pressed and shown once.
+function renderOwners(t) {
+  $('owner-reset').hidden = Boolean(t.refused); // nothing inside it can be reached until a good backup is restored
+  renderFirstPassword(PAGE, t.refused ? [] : t.awaitingFirstPassword);
+}
+$('owner-reset').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = $('owner-reset');
+  const login = form.elements.login.value.trim();
+  if (!login) return;
+  const done = await confirmDialog({
+    title: `Reset ${login}'s second factor?`,
+    message: `${login} signs in with the password alone next time, then sets up an authenticator app again.`,
+    action: 'Reset',
+    kind: 'destructive',
+    run: () => api('DELETE', `/api/host/environments/${encodeURIComponent(page.slug)}/owners/${encodeURIComponent(login)}/mfa`),
+  });
+  if (!done) return;
+  form.reset();
+  say($('owner-reset-status'), `${login}'s second factor is reset.`);
+});
 function renderFirstPassword(card, logins) {
   const list = Array.isArray(logins) ? logins : [];
   const box = slot(card, 'first-password');
@@ -596,7 +793,7 @@ function showFirstPasswordLink(card, login, url) {
   field.focus();
   field.select();
 }
-function closeFirstPasswordLink(card) {
+function closeFirstPasswordLink(card, refocus = true) {
   const made = slot(card, 'first-password-made');
   if (made.hidden) return;
   const login = made.dataset.login;
@@ -605,7 +802,7 @@ function closeFirstPasswordLink(card) {
   made.hidden = true;
   say(slot(card, 'first-password-status'), '');
   const back = [...card.querySelectorAll('[data-action="first-password"]')].find((b) => b.dataset.login === login);
-  if (back) back.focus();
+  if (back && refocus) back.focus();
 }
 async function copyFirstPasswordLink(card) {
   const field = slot(card, 'first-password-url');
@@ -619,255 +816,61 @@ async function copyFirstPasswordLink(card) {
   }
   say(status, 'copied');
 }
-$('environments').addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  const made = e.target.closest('[data-slot="first-password-made"]');
-  if (!made) return;
+PAGE.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !e.target.closest('[data-slot="first-password-made"]')) return;
   e.preventDefault();
-  closeFirstPasswordLink(made.closest('.environment'));
+  closeFirstPasswordLink(PAGE);
 });
-
-// The host admins: a row each with whether their two-step sign-in is on. Never the last one, and never yourself, is removed.
-function renderAdmins() {
-  const admins = settings.hostAdmins || [];
-  const me = hostMe && hostMe.admin ? hostMe.admin.key : '';
-  $('admins').innerHTML = admins.map((a) => `<tr data-key="${escapeHtml(a.key)}"><th scope="row">${escapeHtml(a.login)}${a.key === me ? '<span class="sdk-table-sub">You</span>' : ''}</th>`
-    + `<td><span class="sdk-status"${a.mfaEnrolled ? ' data-tone="ok"' : ''}>${a.mfaEnrolled ? 'Two-step on' : 'Two-step off'}</span></td>`
-    + `<td class="hc-more-cell">${a.key === me || admins.length < 2 ? '' : `<button class="btn btn-small btn-danger" type="button" data-action="remove-admin" aria-label="Remove ${escapeHtml(a.login)}">Remove</button>`}</td></tr>`).join('');
-}
-
-// --- the environments' own controls, by delegation -----------------------------------------------------------------
-const armed = new Map(); // slug -> the delete button armed for a second click
-$('environments').addEventListener('click', async (e) => {
+PAGE.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-action]');
   if (!b) return;
-  const card = b.closest('.environment');
-  const slug = card.dataset.slug;
-  const t = environments.find((x) => x.slug === slug);
-  const action = b.dataset.action;
-  if (action === 'plan') { slot(card, 'plan-form').hidden = false; return; }
-  if (action === 'plan-cancel') { slot(card, 'plan-form').hidden = true; return; }
-  if (action === 'template-switch') { switchEnvironmentTemplate(card, t); return; }
-  if (action === 'template-review') { reviewEnvironmentOffer(card, t); return; }
-  if (action === 'first-password') {
-    const login = b.dataset.login;
-    const status = slot(card, 'first-password-status');
-    b.disabled = true;
-    try {
-      const { url } = await api('POST', `/api/host/environments/${encodeURIComponent(slug)}/owners/${encodeURIComponent(login)}/first-password`);
-      say(status, '');
-      showFirstPasswordLink(card, login, url);
-    } catch (err) { say(status, err.message, true); }
-    b.disabled = false;
-    return;
-  }
-  if (action === 'first-password-copy') { copyFirstPasswordLink(card); return; }
-  if (action === 'first-password-close') { closeFirstPasswordLink(card); return; }
-  if (action === 'suspend') {
-    try {
-      await api('PATCH', `/api/host/environments/${encodeURIComponent(slug)}`, { status: t.status === 'suspended' ? 'active' : 'suspended' });
-      await load();
-    } catch (err) { say($('environments-status'), err.message, true); }
-    return;
-  }
-  if (action === 'backup') {
-    b.disabled = true;
-    try {
-      const res = await fetch(`/api/host/environments/${encodeURIComponent(slug)}/backup`, { method: 'POST' });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `backup failed (${res.status})`);
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${slug}-${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    } catch (err) { say($('environments-status'), err.message, true); }
-    b.disabled = false;
-    return;
-  }
-  if (action === 'restore') {
-    // Choosing the zip is the first step; the button then arms, like Delete, since a restore replaces all its data.
-    const file = restoreFiles.get(slug);
-    if (!file) { slot(card, 'restore-file').value = ''; slot(card, 'restore-file').click(); return; }
-    restoreFiles.delete(slug);
-    b.disabled = true;
-    b.textContent = 'Restoring\u2026';
-    try {
-      const res = await api('POST', `/api/host/environments/${encodeURIComponent(slug)}/restore`, file, 'application/zip');
-      if (res.refused) say($('environments-status'), `${slug} was restored, but still won't open: ${(refusedCopy().words[res.refused.reason] || refusedCopy().words.failed).replace(/^Won't open: /, '')} Try an older backup.`, true);
-      else say($('environments-status'), `${slug} was restored from ${file.name}.`);
-    } catch (err) { say($('environments-status'), `${slug} was not restored: ${err.message}`, true); }
-    await load();
-    // The list was drawn afresh, so keyboard focus goes back to this environment's Restore backup button, or to the
-    // status line if the environment is no longer listed.
-    const again = [...$('environments').querySelectorAll('.environment')].find((c) => c.dataset.slug === slug);
-    (again ? again.querySelector('[data-action="restore"]') : $('environments-status')).focus();
-    return;
-  }
-  if (action === 'delete') {
-    if (armed.get(slug) !== b) { armed.set(slug, b); b.textContent = 'Really delete?'; setTimeout(() => { if (armed.get(slug) === b) { armed.delete(slug); b.textContent = 'Delete'; } }, 4000); return; }
-    armed.delete(slug);
-    try {
-      await api('DELETE', `/api/host/environments/${encodeURIComponent(slug)}`);
-      say($('environments-status'), `${slug} moved aside (its data is kept under environments-deleted).`);
-      await load();
-    } catch (err) { say($('environments-status'), err.message, true); }
-    $('environments-status').focus(); // its card is gone (or redrawn), so keyboard focus goes to what was said
-  }
-});
-// The zip chosen for a restore, by slug, until the armed button is clicked again (or it disarms).
-const restoreFiles = new Map();
-$('environments').addEventListener('change', (e) => {
-  if (e.target.dataset.slot !== 'restore-file') return;
-  const card = e.target.closest('.environment');
-  const slug = card.dataset.slug;
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  const b = card.querySelector('[data-action="restore"]');
-  restoreFiles.set(slug, file);
-  b.textContent = 'Replace its data?';
-  b.title = `Replace everything in ${slug} with ${file.name}`;
-  b.classList.add('btn-danger');
-  b.focus();
-  setTimeout(() => {
-    if (restoreFiles.get(slug) !== file) return; // already restored, or another zip chosen since
-    restoreFiles.delete(slug);
-    b.textContent = 'Restore backup';
-    b.title = '';
-    b.classList.remove('btn-danger');
-  }, 8000);
-});
-$('environments').addEventListener('change', (e) => {
-  const form = e.target.closest('form');
-  if (e.target.name === 'planName') {
-    const caps = (settings.plans[e.target.value] || {}).caps;
-    if (!caps) return;
-    form.elements.modules.value = Array.isArray(caps.modules) ? 'list' : 'all';
-    form.elements.moduleIds.value = Array.isArray(caps.modules) ? caps.modules.join('\n') : '';
-    slot(form, 'modules-list').hidden = form.elements.modules.value !== 'list';
-    form.elements.members.value = caps.members || '';
-    form.elements.storageGb.value = caps.storageBytes ? String(caps.storageBytes / 1e9) : '';
-    form.elements.aiCallsPerMonth.value = caps.aiCallsPerMonth ?? '';
-    form.elements.calls.value = caps.calls || '';
-    return;
-  }
-  if (e.target.name !== 'modules') return;
-  slot(form, 'modules-list').hidden = e.target.value !== 'list';
-});
-$('environments').addEventListener('submit', async (e) => {
-  const form = e.target.closest('.plan-form');
-  if (!form) return;
-  e.preventDefault();
-  const card = form.closest('.environment');
-  const f = form.elements;
-  const num = (el) => (el.value === '' ? null : Number(el.value));
-  const plan = {
-    name: f.planName.value || null,
-    modules: f.modules.value === 'all' ? 'all' : f.moduleIds.value.split(/\s+/).map((s) => s.trim()).filter(Boolean),
-    members: num(f.members),
-    storageBytes: f.storageGb.value === '' ? null : Math.round(Number(f.storageGb.value) * 1e9),
-    aiCallsPerMonth: num(f.aiCallsPerMonth),
-    calls: num(f.calls),
-  };
+  if (b.dataset.action === 'first-password-copy') { copyFirstPasswordLink(PAGE); return; }
+  if (b.dataset.action === 'first-password-close') { closeFirstPasswordLink(PAGE); return; }
+  if (b.dataset.action !== 'first-password') return;
+  const login = b.dataset.login;
+  const status = slot(PAGE, 'first-password-status');
+  b.disabled = true;
   try {
-    await api('PATCH', `/api/host/environments/${encodeURIComponent(card.dataset.slug)}`, { name: f.name.value.trim(), plan });
-    say(slot(form, 'plan-status'), 'saved');
-    await load();
-  } catch (err) { say(slot(form, 'plan-status'), err.message, true); }
+    const { url } = await api('POST', `/api/host/environments/${encodeURIComponent(page.slug)}/owners/${encodeURIComponent(login)}/first-password`);
+    say(status, '');
+    showFirstPasswordLink(PAGE, login, url);
+  } catch (err) { say(status, err.message, true); }
+  b.disabled = false;
 });
 
-// What a template left out when an environment was made from it (plan-environment-templates.md, "Entitlement"): each
-// module with why. Not in the plan (or needing one that was not) means it was never installed; anything else means it is
-// installed and in every space but not on yet, for the owner to turn on once what it needs is set up.
-const leftOut = (why) => why === 'not in the plan' || /^needs .+, which was skipped$/.test(why || '');
-function renderSkipped(box, template) {
-  const skipped = (template && template.skipped) || [];
-  box.hidden = !skipped.length;
-  if (!skipped.length) { box.replaceChildren(); return; }
-  box.innerHTML = `<p class="hint">Left out of the ${escapeHtml(template.name || template.id)} template:</p><ul>${skipped.map((x) => `<li><strong>${escapeHtml(x.name || x.id)}</strong>: ${leftOut(x.why) ? escapeHtml(x.why) : `not on yet. ${escapeHtml(/[.!?]$/.test(x.why || '') ? x.why : `${x.why}.`)}`}</li>`).join('')}</ul>`;
-}
-
-// Switching an environment's template from its card (the switching addendum): the chooser (No template, then each
-// template not hidden), Switch, and the offer after a switch, drawn by /template-offer.js as on Manage's Template tab.
-// The offer comes with the switch's answer; an offer left open (offerOpen in the list) is fetched again by Review, which
-// asks for the same template (a switch to the one in use changes nothing and answers the offer).
-const openOffers = new Map(); // slug -> the offer on show: { name, offer }
-function renderTemplateBox(el, t) {
-  const box = slot(el, 'template-box');
-  box.hidden = !templates.length;
-  if (box.hidden) return;
-  const current = t.template ? t.template.id : 'none';
-  const select = slot(el, 'template-select');
-  const choices = templates.filter((x) => !x.hidden || x.id === current);
-  select.replaceChildren(new Option('No template', 'none'), ...choices.map((x) => new Option(x.name || x.id, x.id)));
-  if (t.template && !choices.some((x) => x.id === current)) select.append(new Option(t.template.name || current, current));
-  select.value = current;
-  select.setAttribute('aria-label', `Template of ${t.name || t.slug}`);
-  const shown = openOffers.get(t.slug);
-  const open = Boolean(t.template && t.template.offerOpen);
-  slot(el, 'template-offer-note').hidden = !open || Boolean(shown);
-  slot(el, 'template-offer-note-text').textContent = open ? `The ${t.template.name || t.template.id} template can turn on more here.` : '';
-  const offerBox = slot(el, 'template-offer');
-  if (!open || !shown) { offerBox.hidden = true; openOffers.delete(t.slug); return; }
-  renderOffer(offerBox, {
-    templateName: shown.name,
-    offer: shown.offer,
-    later: () => { openOffers.delete(t.slug); renderEnvironments(); cardOf(t.slug)?.querySelector('[data-action="template-review"]')?.focus(); },
-    apply: async (body) => {
-      const answer = await api('POST', `/api/host/environments/${encodeURIComponent(t.slug)}/template/apply`, body);
-      openOffers.delete(t.slug);
-      const skipped = (answer.environment.template && answer.environment.template.skipped) || [];
-      await refreshEnvironments(t.slug, skipped.length ? `Applied. ${skipped.length} left out, listed above.` : 'Applied.');
-    },
+// Backups: a download, and a restore from a zip, asked first since it replaces all its data.
+$('env-backup').addEventListener('click', () => backupEnvironment(page.slug, $('env-backup'), $('env-status')));
+$('env-restore-file').addEventListener('change', () => { $('env-restore').disabled = !$('env-restore-file').files.length; });
+$('env-restore').addEventListener('click', async () => {
+  const t = pageEnvironment();
+  const file = $('env-restore-file').files[0];
+  if (!t || !file) return;
+  let answer = null;
+  const done = await confirmDialog({
+    title: `Restore ${t.name || t.slug} from ${file.name}?`,
+    message: 'Everything in it now is replaced by the backup. This cannot be undone.',
+    action: 'Restore',
+    kind: 'destructive',
+    run: async () => { answer = await api('POST', `/api/host/environments/${encodeURIComponent(t.slug)}/restore`, file, 'application/zip'); },
   });
-}
-const cardOf = (slug) => [...$('environments').querySelectorAll('.environment')].find((c) => c.dataset.slug === slug);
-// The list again, then a word on one card's template line, with focus on its chooser.
-async function refreshEnvironments(slug, message, error = false) {
-  try { environments = (await api('GET', '/api/host/environments')).environments; } catch { /* the last list */ }
-  renderEnvironments();
-  const card = cardOf(slug);
-  if (!card) return;
-  if (message) say(slot(card, 'template-status'), message, error);
-  slot(card, 'template-select').focus();
-}
-async function switchEnvironmentTemplate(card, t) {
-  const value = slot(card, 'template-select').value;
-  const chosen = templates.find((x) => x.id === value);
-  if (!await confirmDialog(switchConfirm(value === 'none' ? null : chosen ? chosen.name || chosen.id : value))) return;
-  const button = card.querySelector('[data-action="template-switch"]');
-  button.disabled = true;
-  say(slot(card, 'template-status'), 'Switching…');
-  try {
-    const { environment } = await api('PATCH', `/api/host/environments/${encodeURIComponent(t.slug)}`, { template: value });
-    if (environment.template && environment.template.offerOpen && environment.offer) openOffers.set(t.slug, { name: environment.template.name || environment.template.id, offer: environment.offer });
-    await refreshEnvironments(t.slug, environment.template ? `Switched to ${environment.template.name || environment.template.id}.` : 'Switched to no template.');
-    const first = cardOf(t.slug)?.querySelector('[data-slot="template-offer"]:not([hidden]) input:not(:disabled)');
-    if (first) first.focus();
-  } catch (err) {
-    button.disabled = false;
-    say(slot(card, 'template-status'), err.message, true); // the server's own sentence
-  }
-}
-async function reviewEnvironmentOffer(card, t) {
-  try {
-    const { template, offer } = await api('GET', `/api/host/environments/${encodeURIComponent(t.slug)}/template`);
-    if (offer) openOffers.set(t.slug, { name: template.name || template.id, offer });
-    await refreshEnvironments(t.slug);
-    cardOf(t.slug)?.querySelector('[data-slot="template-offer"]:not([hidden]) input:not(:disabled), [data-slot="template-offer"]:not([hidden]) button')?.focus();
-  } catch (err) {
-    say(slot(card, 'template-status'), err.message, true);
-  }
-}
-$('environments').addEventListener('change', (e) => {
-  if (e.target.dataset.slot !== 'template-select') return;
-  const card = e.target.closest('.environment');
-  const t = environments.find((x) => x.slug === card.dataset.slug);
-  const other = e.target.value !== (t && t.template ? t.template.id : 'none');
-  const button = card.querySelector('[data-action="template-switch"]');
-  button.disabled = !other;
-  button.classList.toggle('btn-primary', other);
+  if (!done) return;
+  $('env-restore-file').value = '';
+  $('env-restore').disabled = true;
+  await reloadEnvironments();
+  if (answer && answer.refused) say($('env-status'), `${t.slug} was restored, but still won't open: ${(refusedCopy().words[answer.refused.reason] || refusedCopy().words.failed).replace(/^Won't open: /, '')} Try an older backup.`, true);
+  else say($('env-status'), `${t.slug} was restored from ${file.name}.`);
+  $('env-status').focus();
 });
+
+// Danger zone: Suspend or Resume, and Delete, each asked first.
+function renderDanger(t) {
+  const resume = t.status === 'suspended';
+  $('env-suspend-title').textContent = resume ? 'Resume' : 'Suspend';
+  $('env-suspend-text').textContent = resume ? 'People can open it again.' : 'No one can open it until you resume it. Nothing is removed.';
+  $('env-suspend').textContent = resume ? 'Resume' : 'Suspend';
+}
+$('env-suspend').addEventListener('click', () => { const t = pageEnvironment(); if (t) suspendOrResume(t, $('env-status')); });
+$('env-delete').addEventListener('click', () => { const t = pageEnvironment(); if (t) deleteEnvironment(t, $('env-status')); });
 
 // A template's modules install in the background after the create answers, so what it left out is known a moment
 // later: while an environment's template reads as not applied yet, look again a few times, then stop.
@@ -879,8 +882,8 @@ function followTemplates() {
   if (!environments.some((t) => t.template && !t.template.appliedAt && !t.template.offerOpen)) { templateLooks = 0; return; }
   if (++templateLooks > 5) return;
   templateTimer = setTimeout(async () => {
-    // Never redraw under someone's hands (an open Edit form, or a card being used): look again later instead.
-    if ($('environments').querySelector('.plan-form:not([hidden]), [data-slot="template-offer"]:not([hidden])') || $('environments').contains(document.activeElement)) { followTemplates(); return; }
+    // Never redraw under someone's hands (an offer open, or the page being used): look again later instead.
+    if (!$('env-offer').hidden || (!PAGE.hidden && PAGE.contains(document.activeElement) && document.activeElement !== document.body)) { followTemplates(); return; }
     try {
       environments = (await api('GET', '/api/host/environments')).environments;
       renderEnvironments();
@@ -889,6 +892,15 @@ function followTemplates() {
       // the next full load says what is wrong
     }
   }, 1500);
+}
+
+// The host admins: a row each with whether their two-step sign-in is on. Never the last one, and never yourself, is removed.
+function renderAdmins() {
+  const admins = settings.hostAdmins || [];
+  const me = hostMe && hostMe.admin ? hostMe.admin.key : '';
+  $('admins').innerHTML = admins.map((a) => `<tr data-key="${escapeHtml(a.key)}"><th scope="row">${escapeHtml(a.login)}${a.key === me ? '<span class="sdk-table-sub">You</span>' : ''}</th>`
+    + `<td><span class="sdk-status"${a.mfaEnrolled ? ' data-tone="ok"' : ''}>${a.mfaEnrolled ? 'Two-step on' : 'Two-step off'}</span></td>`
+    + `<td class="hc-more-cell">${a.key === me || admins.length < 2 ? '' : `<button class="btn btn-small btn-danger" type="button" data-action="remove-admin" aria-label="Remove ${escapeHtml(a.login)}">Remove</button>`}</td></tr>`).join('');
 }
 
 // --- creating one ----------------------------------------------------------------------------------------------
@@ -967,12 +979,9 @@ function showView(section, rest) {
   if ($('environment-new').hidden && view === 'new') { $('create-form').reset(); say($('create-error'), ''); }
   $('environment-new').hidden = view !== 'new';
   $('environment-page').hidden = view !== 'one';
-  if (view === 'one') showEnvironment(first);
+  if (view === 'one') showEnvironment(first, rest[1]);
+  else page.slug = '';
   if (view === 'list') swipeCue();
-}
-// One environment: its card alone (until its page is drawn).
-function showEnvironment(slug) {
-  for (const card of document.querySelectorAll('#environments .environment')) card.hidden = card.dataset.slug !== slug;
 }
 // A Back to Environments button (any [data-go]).
 document.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) { go(b.dataset.go); document.querySelector('.hc-section:not([hidden]) .hc-view:not([hidden]) .hc-title')?.focus({ preventScroll: true }); } });
@@ -1158,20 +1167,6 @@ $('host-mfa-on').addEventListener('click', () => {
 });
 $('host-mfa-off').addEventListener('click', () => {
   mountDisable($('host-mfa-block'), { disable: '/api/host/me/mfa/disable', onDone: async () => { say($('host-mfa-status'), 'off'); await load(); } });
-});
-// An environment's owner, reset from its card (by login: the console never learns an environment's keys).
-$('environments').addEventListener('submit', async (e) => {
-  const form = e.target.closest('.owner-reset');
-  if (!form) return;
-  e.preventDefault();
-  const slug = form.closest('.environment').dataset.slug;
-  const login = form.elements.login.value.trim();
-  const status = slot(form, 'owner-reset-status');
-  try {
-    await api('DELETE', `/api/host/environments/${encodeURIComponent(slug)}/owners/${encodeURIComponent(login)}/mfa`);
-    form.reset();
-    say(status, `${login}'s second factor is reset`);
-  } catch (err) { say(status, err.message, true); }
 });
 $('host-logout').addEventListener('click', async () => {
   try { await api('POST', '/api/host/logout'); } catch (err) { /* the cookie is gone either way */ }
