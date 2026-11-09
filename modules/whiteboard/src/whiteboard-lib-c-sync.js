@@ -21,8 +21,7 @@
   // block back by an undo), so it is never blind to the key and never shows an older life of it. The wait ends on:
   //   - a delete whose version is this page's oldest delete not heard yet (`at`), made by this person (`me`; the change's
   //     `by`): its own (with several, the wait goes on for the next); the key starts afresh, and if this page has written
-  //     the block again meanwhile, the version that write got is what it has seen, else nothing (the key is read once more
-  //     when something else was drawn while waiting);
+  //     the block again meanwhile (or read it), the newest version it got is what it has seen, else nothing;
   //   - the echo of this page's own write since the delete (the same version and the very same block): the delete came
   //     before it, heard or missed;
   //   - a refused delete of the key: the block is read again and put back, and nothing is waited for (an earlier delete's
@@ -43,11 +42,10 @@
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
     const seen = new Map(); // key -> the newest version this page knows of
-    // key -> { pending, mine, shows, drawn } while a delete of the block by this page is not heard back: `pending` this
+    // key -> { pending, mine, shows } while a delete of the block by this page is not heard back: `pending` this
     // page's deletes not heard yet, oldest first, each { at: its version, writes: this page's own writes after it (version
     // -> the block as sent, as JSON), to know their echo }, `mine` the newest version this page has seen for the key since
-    // its last delete (its own writes, a read; 0: none), `shows` what the page shows for the key (JSON, or null: nothing),
-    // `drawn` whether a read put something else there meanwhile
+    // its last delete (its own writes, a read; 0: none), `shows` what the page shows for the key (JSON, or null: nothing)
     const gone = new Map();
     const tickets = new Map(); // key -> a number that grows with each read asked for and each change taken (refetch)
     const lanes = new Map(); // key -> { busy, next, soon, timer, deferred: [changes heard meanwhile, oldest first] }
@@ -80,7 +78,7 @@
         const g = gone.get(entry.key);
         // A key still waiting for this page's delete goes on waiting (what is still on its way may be older than this
         // read); it shows what was read.
-        if (g) { g.mine = Math.max(g.mine, version); g.shows = JSON.stringify(entry.value); g.drawn = true; } else seen.set(entry.key, version);
+        if (g) { g.mine = Math.max(g.mine, version); g.shows = JSON.stringify(entry.value); } else seen.set(entry.key, version);
         out.set(entry.key, b);
       }
       for (const [key, l] of lanes) {
@@ -93,9 +91,8 @@
 
     // What the server holds for one key, put on the page as it is (after a refused write, a change with no value, a change
     // heard while waiting for this page's delete). Not used when a newer read was asked for or a change for the key taken
-    // since, or (unless it is the write's own read, `writing`) while this page is writing the key. `shows`: what the page
-    // shows for the key, when known (JSON, or null: nothing), so the same is not drawn again.
-    async function refetch(key, writing = false, shows = undefined) {
+    // since, or (unless it is the write's own read, `writing`) while this page is writing the key.
+    async function refetch(key, writing = false) {
       const t = bump(key);
       try {
         const got = await host.storage.get(key);
@@ -110,13 +107,12 @@
           const shows = block ? JSON.stringify(got.value) : null;
           if (shows === g.shows) return;
           g.shows = shows;
-          g.drawn = true;
           onRemote(block ? { op: 'put', block } : { op: 'remove', id: idOf(key) });
           return;
         }
-        if (!got) { seen.delete(key); if (shows !== null) onRemote({ op: 'remove', id: idOf(key) }); return; }
+        if (!got) { seen.delete(key); onRemote({ op: 'remove', id: idOf(key) }); return; }
         seen.set(key, version);
-        if (block && (shows === undefined || shows !== JSON.stringify(got.value))) onRemote({ op: 'put', block });
+        if (block) onRemote({ op: 'put', block });
       } catch { /* the next change or a reload puts it right */ }
     }
 
@@ -140,7 +136,7 @@
             seen.delete(key);
             const at = r && Number.isFinite(r.version) ? r.version : 0;
             if (at > 0) { // 0: it was gone already, nothing to wait for
-              const g = gone.get(key) || { pending: [], drawn: false };
+              const g = gone.get(key) || { pending: [] };
               g.pending.push({ at, writes: new Map() });
               Object.assign(g, { mine: 0, shows: null });
               gone.set(key, g);
@@ -189,7 +185,6 @@
         gone.delete(e.key); // the wait is over
         const was = Math.max(g.mine, e.deleted ? 0 : v);
         if (was > 0) seen.set(e.key, was); else seen.delete(e.key);
-        if (g.drawn) refetch(e.key, false, g.shows); // a read drew something meanwhile: read once more, now heard as usual
         return;
       }
       const have = seen.get(e.key);

@@ -67,7 +67,7 @@ function createServer() {
 
 // ---- a fake page: what it draws (dom), what it heard, its replies and its events, both handed over by the test ----
 function createPage(server, name) {
-  const page = { name, dom: new Map(), inbox: [], replies: [], remote: [], refused: 0, busy: 0 };
+  const page = { name, dom: new Map(), inbox: [], replies: [], remote: [], refused: 0, busy: 0, holdReads: false, reads: [] };
   const reply = (fn) => new Promise((resolve, reject) => {
     // The server applies the write now; the answer reaches the page when the test hands it over.
     let out; let err;
@@ -78,7 +78,13 @@ function createPage(server, name) {
     storage: {
       set: (key, value) => reply(() => server.set(key, value, name)),
       delete: (key) => reply(() => server.delete(key, name)),
-      get: async (key) => { const e = server.data.get(key); return e ? { key, value: e.value, version: e.version } : null; },
+      // A read sees the server as it is when asked; with page.holdReads on, its answer waits until the test hands it over.
+      get: (key) => {
+        const e = server.data.get(key);
+        const out = e ? { key, value: JSON.parse(JSON.stringify(e.value)), version: e.version } : null;
+        if (!page.holdReads) return Promise.resolve(out);
+        return new Promise((resolve) => { page.reads.push(() => resolve(out)); });
+      },
       list: async (prefix) => [...server.data].filter(([k]) => k.startsWith(prefix)).map(([key, e]) => ({ key, value: e.value, version: e.version })),
     },
   };
@@ -463,6 +469,39 @@ async function testWait() {
     B.put(block('n1', 90)); await B.reply();
     await flushAll(A, B, C);
     check(A.dom.get('n1') && A.dom.get('n1').x === 90, '(f) and B\'s re-create after is taken');
+  }
+  // Reads answered out of order while waiting: the older answer, coming last, is not used.
+  {
+    const { server, A, B } = await setup();
+    A.del('n1'); await A.reply(); A.drop(); // A waits, its echo missed
+    await flushAll(B);
+    A.holdReads = true;
+    B.put(block('n1', 30)); await B.reply();
+    await A.event(); // a read of the key (it sees 30)
+    B.put(block('n1', 31)); await B.reply();
+    await A.event(); // another (it sees 31)
+    check(A.reads.length === 2, `(f) setup: two reads on their way (got ${A.reads.length})`);
+    while (A.reads.length) { A.reads.pop()(); await settle(); } // the newer answer first, then the older
+    A.holdReads = false;
+    check(A.dom.get('n1') && A.dom.get('n1').x === 31 && server.data.get(KEY('n1')).value.x === 31, `(f) reads answered out of order: the older answer is not used (got ${JSON.stringify(A.dom.get('n1'))})`);
+  }
+  // A delete by this same person from another page, with another version, is not this page's own: A deletes n1 at 3;
+  // the person's other page had deleted it at 2 before (A had not heard): A must not end its wait on that one and draw its
+  // own older writes again.
+  {
+    const { server, A, B } = await setup();
+    const A2 = createPage(server, 'A'); // the same person, another page
+    await A2.load();
+    A2.del('n1'); await A2.reply(); // v2, by A
+    A.put(block('n1', 13)); await A.reply(); // v1 of a new life
+    A.put(block('n1', 14)); await A.reply(); // v2
+    A.del('n1'); await A.reply(); // v3
+    await A.event(); // the other page's delete (2)
+    await A.event(); // A's own writes (1, 2), older than its delete
+    await A.event();
+    A.drop(); // A's own delete (3), missed
+    await flushAll(A, A2, B);
+    check(!A.dom.has('n1') && !server.data.has(KEY('n1')), `(f) the same person's other delete, at another version, is not taken for this page's own (got ${JSON.stringify(A.dom.get('n1'))})`);
   }
   // A misses its delete's echo, then undoes: the echo of its own re-create ends the wait, and B's edit after is taken.
   {
