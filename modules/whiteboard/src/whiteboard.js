@@ -118,7 +118,7 @@
   function iconSvg(name) { if (!icons.has(name)) icons.set(name, host.ui.icon(name).catch(() => '')); return icons.get(name); }
 
   // The size and alignment picked for the words of new blocks (null: each type's usual).
-  const nextText = { size: null, align: null, valign: null };
+  const nextText = { size: null, align: null };
   const takesNext = (def, role) => {
     const usual = def.create();
     if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
@@ -167,7 +167,7 @@
         if (v !== null && takesNext(def, role)) own[role] = v;
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
-      if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null && (k !== 'valign' || def.valign)) own[k] = v;
+      if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null) own[k] = v;
       // A frame goes under the other blocks (lib-e-block-frame, wbFrameZ); everything else on top.
       const z = def.container ? wbFrameZ(board.all()) : Math.floor(board.topZ()) + 1;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z });
@@ -680,7 +680,7 @@
       const b = board.get(id);
       if (!b || !(drafts.has(id) || policy.canChange(b))) return;
       ctx.change(id, { [field]: v }, { save: 'now' });
-      nextText[field] = v;
+      if (field !== 'valign') nextText[field] = v;
     },
   });
   // ---- cells ------------------------------------------------------------------------------------------------------------
@@ -1239,7 +1239,7 @@
   };
   function setWords(field, v) {
     for (const b of fontsOf()) if (field !== 'valign' || defOf(b).valign) ctx.change(b.id, { [field]: v }, { save: 'now' });
-    nextText[field] = v;
+    if (field !== 'valign') nextText[field] = v; // not the vertical: the types sit differently (a table's cells are in the middle)
     updatePaint();
   }
   function sizeMenu(where) {
@@ -1391,7 +1391,6 @@
       const now = wbAgreedWords(tall, (b) => wbValignOf(b, defOf(b)));
       const pick = (v) => () => {
         for (const b of tall) ctx.change(b.id, { valign: v }, { save: 'now' });
-        nextText.valign = v;
       };
       align.rows.push({ separator: true }, ...WB_VALIGNS.map((c) => choiceRow(c.id, c.label, now, pick(c.id), { icon: c.icon })));
     }

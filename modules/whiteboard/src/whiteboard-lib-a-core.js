@@ -157,7 +157,7 @@
     return vals.size === 0 ? null : vals.size === 1 ? [...vals][0] : undefined;
   }
   // What the colour strip's fonts group shows: size and horizontal align for the picked blocks whose words take markup
-  // (else for the active tool's type), vertical align only where a picked block's type has it. Pure: blocks and their
+  // (else for the active tool's type: size and align), vertical align only where a picked block's type has it. Pure: blocks and their
   // types in, { size, align, valign } out (each: the value, undefined for Mixed, null to hide), or null for no group.
   function wbFontsShown(blocks, defOfBlock, toolDef, next = {}) {
     const worded = blocks.filter((b) => defOfBlock(b).markup);
@@ -172,7 +172,7 @@
     }
     if (!toolDef || !toolDef.markup) return null;
     const usual = toolDef.create();
-    return { size: next.size || usual.size, align: next.align || usual.align, valign: toolDef.valign ? next.valign || usual.valign || toolDef.valign : null };
+    return { size: next.size || usual.size, align: next.align || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
   }
   // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
   // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.

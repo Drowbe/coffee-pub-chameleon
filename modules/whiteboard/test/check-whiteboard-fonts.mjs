@@ -66,8 +66,8 @@ if (!missing.length && !fails.length) {
   check(wbFontsShown([pic], defOf, null) === null, 'a line alone: no fonts group');
   check(wbFontsShown([t1, n1], defOf, null).valign === 'top', 'text and a note: vertical align is the note\'s');
   check(wbFontsShown([], defOf, null) === null, 'nothing picked, no tool: no group');
-  const shapeTool = wbFontsShown([], defOf, blockTypes.get('rect'), { valign: 'bottom' });
-  check(shapeTool.valign === 'bottom' && shapeTool.align === 'center', 'a shape tool shows what a new shape gets');
+  const shapeTool = wbFontsShown([], defOf, blockTypes.get('rect'), { align: 'right' });
+  check(shapeTool.valign === null && shapeTool.align === 'right' && shapeTool.size === 'medium', 'a shape tool shows size and align of a new shape, no vertical');
   check(wbFontsShown([], defOf, blockTypes.get('text'), {}).valign === null, 'the Text tool: size and align, no vertical');
 
   // one history step, field-wise undo
