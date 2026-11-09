@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-f-tool-shape.js: draw a shape, a line or an arrow -------------------------------------------------
-  // Drag to draw it to size, or click for one of the usual size; it is saved when the pointer lifts and the tool goes back
-  // to Select. With Snap to grid (ctx.snapping, turned round while Alt is held) its corners or ends go on the grid. Another
+  // Drag to draw it to size, or click for one of the usual size; it is saved when the pointer lifts and the tool stays on
+  // for the next one (Escape goes back to Select). With Snap to grid (ctx.snapping, turned round while Alt is held) its corners or ends go on the grid. Another
   // drawn shape is one more entry in SHAPE_TOOLS. The shapes are kinds of the Shape and Flowchart tools in the tool switch (FAMILIES in whiteboard.js).
   {
     const SHAPE_TOOLS = [
@@ -50,9 +50,7 @@
             ctx.change(id, box, { save: false });
           }
           drag = null;
-          ctx.save(id);
-          ctx.select(id);
-          ctx.setTool('select');
+          ctx.save(id); // the tool stays on for the next one (Escape goes back to Select)
         },
         cancel(ctx) { if (drag) ctx.discard(drag.id); drag = null; },
         deactivate(ctx) { this.cancel(ctx); },

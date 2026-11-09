@@ -106,7 +106,7 @@
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip, which also has text size, alignment, line style and colours for what is picked. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier; Enter, Shift Enter, Escape). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears and goes back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; every tool shows its own strip, with text size, alignment, line style and colours for what it makes or what is picked. Tools stay on until you press Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier; Enter, Shift Enter, Escape). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -121,8 +121,9 @@
   const nextText = { size: null, align: null };
   const takesNext = (def, role) => {
     const usual = def.create();
-    if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
-    return Boolean(def.paint && def.paint[role]) && WB_PALETTE_BY_ID.has(usual[role]);
+    const colour = (v) => WB_PALETTE_BY_ID.has(v) || v === 'usual'; // a frame's colours are 'usual' until one is picked
+    if (role === 'weight') return Boolean(def.weight) && colour(usual.stroke);
+    return Boolean(def.paint && def.paint[role]) && colour(usual[role]);
   };
 
   // ---- the one path for changes made here -----------------------------------------------------------------------------
@@ -626,6 +627,10 @@
     return def.resize.handles;
   }
 
+  // Words edited in a tool that stays on (Text, Note, Table, Frame): when the editing ends the block is let go, so the strip is the tool's again.
+  function settle(id) {
+    if (tool.id !== 'select' && !tool.mode && !editing && sel.size === 1 && sel.has(id)) select(null);
+  }
   function edit(id, o = {}) {
     const { fresh = false } = o;
     const b = board.get(id);
@@ -658,6 +663,7 @@
       }
       release(id);
       renderer.refreshFrame();
+      settle(id);
     }, {
       grow: b.type === 'text',
       line: Boolean(def.textLine),
@@ -760,6 +766,7 @@
       const at = step || { r, c };
       showCell(id, at.r, at.c);
       if (then) { el.focus({ preventScroll: true }); sayCell(id, at.r, at.c); }
+      if (!then) settle(id);
     }, {
       grow: true,
       label: `Row ${r + 1}, column ${c + 1}`,
@@ -899,6 +906,7 @@
     tool = next;
     family = nextFamily;
     if (family) lastKind[family] = tool.id;
+    if (tool.id !== 'select' && !tool.mode && sel.size) select(null); // a tool's strip is about the tool, not what was picked before
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
@@ -1101,7 +1109,27 @@
   coloursBox.className = 'wb-paint-group wb-colours';
   coloursBox.setAttribute('role', 'group');
   coloursBox.setAttribute('aria-label', 'Colours and line width');
-  const stripGroups = [kindsBox, fontsBox, lineBox, coloursBox];
+  const presentBox = document.createElement('div');
+  presentBox.className = 'wb-paint-group wb-presentgroup';
+  presentBox.setAttribute('role', 'group');
+  presentBox.setAttribute('aria-label', 'Frames');
+  presentBox.hidden = true;
+  // The strip begins with a quiet badge: the icon of the tool it belongs to (or of the kind of block picked).
+  const endcap = document.createElement('span');
+  endcap.className = 'wb-endcap';
+  endcap.setAttribute('role', 'img');
+  const endcapIc = document.createElement('span');
+  endcapIc.className = 'ic';
+  endcapIc.setAttribute('aria-hidden', 'true');
+  endcap.appendChild(endcapIc);
+  let endcapName = '';
+  function setEndcap(icon, label) {
+    endcap.setAttribute('aria-label', label);
+    if (endcapName === icon) return;
+    endcapName = icon;
+    iconSvg(icon).then((svg) => { if (svg && endcapName === icon) endcapIc.innerHTML = svg; });
+  }
+  const stripGroups = [kindsBox, fontsBox, lineBox, presentBox, coloursBox];
   const stripSeps = [kindsLine];
   for (let i = 2; i < stripGroups.length; i += 1) {
     const sep = document.createElement('span');
@@ -1110,7 +1138,7 @@
     sep.hidden = true;
     stripSeps.push(sep);
   }
-  paintStrip.append(kindsBox, stripSeps[0], fontsBox, stripSeps[1], lineBox, stripSeps[2], coloursBox);
+  paintStrip.append(endcap, kindsBox, stripSeps[0], fontsBox, stripSeps[1], lineBox, stripSeps[2], presentBox, stripSeps[3], coloursBox);
   // A divider shows between two groups that both show.
   function stripDividers() {
     stripSeps.forEach((sep, i) => { sep.hidden = !(!stripGroups[i + 1].hidden && stripGroups.slice(0, i + 1).some((g) => !g.hidden)); });
@@ -1183,6 +1211,8 @@
     head: [{ id: 'none', label: 'No arrowheads', icon: 'minus' }, { id: 'end', label: 'Arrow at the end', icon: 'arrow-right-long' }, { id: 'start', label: 'Arrow at the start', icon: 'arrow-left-long' }, { id: 'both', label: 'Arrows at both ends', icon: 'arrows-left-right' }],
   };
   let sizeButton = null;
+  let sizeLabel = null;
+  let presentButton = null;
   let valignBox = null;
   if (policy.canEdit) {
     const pressButton = (label, icon, onClick) => {
@@ -1206,6 +1236,7 @@
     sizeButton.className = 'btn btn-quiet btn-small wb-size-btn';
     sizeButton.setAttribute('aria-haspopup', 'menu');
     sizeButton.dataset.tip = 'Text size';
+    sizeButton.setAttribute('aria-label', 'Text size');
     sizeButton.addEventListener('click', () => sizeMenu({ anchor: sizeButton }));
     const hBox = pairBox('Align');
     for (const a of WB_ALIGNS) {
@@ -1219,7 +1250,28 @@
       fontButtons.set(`valign:${a.id}`, b);
       valignBox.appendChild(b);
     }
+    const sizeIc = document.createElement('span');
+    sizeIc.className = 'ic';
+    sizeIc.setAttribute('aria-hidden', 'true');
+    iconSvg('text-height').then((svg) => { if (svg) sizeIc.innerHTML = svg; });
+    sizeLabel = document.createElement('span');
+    sizeButton.append(sizeIc, sizeLabel);
     fontsBox.append(sizeButton, hBox, valignBox);
+    presentButton = document.createElement('button');
+    presentButton.type = 'button';
+    presentButton.className = 'btn btn-quiet btn-small wb-present-btn';
+    presentButton.dataset.tip = 'Present the frames, from the first';
+    presentButton.setAttribute('aria-label', 'Present the frames, from the first');
+    const presentIc = document.createElement('span');
+    presentIc.className = 'ic';
+    presentIc.setAttribute('aria-hidden', 'true');
+    iconSvg('play').then((svg) => { if (svg) presentIc.innerHTML = svg; });
+    presentButton.append(presentIc, document.createTextNode('Present'));
+    presentButton.addEventListener('click', () => {
+      if (presentButton.getAttribute('aria-disabled') === 'true') { note('No frames to present. Add a frame first.'); return; }
+      startPresenting();
+    });
+    presentBox.appendChild(presentButton);
     for (const field of ['style', 'head']) {
       const box = pairBox(field === 'style' ? 'Line style' : 'Arrowheads');
       for (const c of LINE_STRIP[field]) {
@@ -1263,8 +1315,9 @@
     fontsBox.hidden = !s;
     if (!s) return;
     const sz = WB_SIZE_BY_ID.get(s.size);
-    sizeButton.textContent = sz ? sz.label : 'Size';
+    sizeLabel.textContent = sz ? sz.label : 'Size';
     sizeButton.setAttribute('aria-label', `Text size: ${sz ? sz.label : 'Mixed'}`);
+    sizeButton.dataset.tip = `Text size: ${sz ? sz.label : 'Mixed'}`;
     for (const [key, b] of fontButtons) {
       const [field, id] = key.split(':');
       b.setAttribute('aria-pressed', String(s[field] === id));
@@ -1317,8 +1370,15 @@
     else out.weight = null;
     return out;
   }
+  // The icon of a kind of block (the tools' own icons; a stroke's is its brush's).
+  const BLOCK_ICONS = { note: 'note-sticky', text: 'font', frame: 'crop-simple', table: 'table', image: 'image', timer: 'stopwatch', connector: 'arrows-turn-right', highlight: 'highlighter' };
+  const blockIcon = (b) => (b.type === 'stroke' ? KIND_ICONS[b.brush] || 'pen' : b.type === 'line' ? (b.arrow ? 'arrow-right-long' : 'minus') : BLOCK_ICONS[b.type] || KIND_ICONS[b.type] || 'arrow-pointer');
   function updatePaint() {
     if (!paintButtons.size) return;
+    const nothing = !sel.size;
+    const plan = nothing ? wbStripPlan(tool, tool.makes ? blockTypes.get(tool.makes) : null) : null;
+    // Nothing picked: the Hand and Select have no strip. The Hand has none at all (it only moves around).
+    if (tool.mode || (nothing && !plan)) { paintStrip.hidden = true; afterPaint(); return; }
     // Only locked blocks picked: nothing of theirs to change, and the strip is not about new blocks then either.
     if (sel.size && !targets().length) { paintStrip.hidden = true; return; }
     const shown = paintShown();
@@ -1346,9 +1406,23 @@
     const kinds = showKinds();
     updateFonts();
     updateLine();
+    presentBox.hidden = !(plan && plan.present);
+    if (!presentBox.hidden) {
+      const none = !live().some((b) => b.type === 'frame');
+      presentButton.setAttribute('aria-disabled', String(none));
+      const words = none ? 'No frames to present' : 'Present the frames, from the first';
+      presentButton.dataset.tip = words;
+      presentButton.setAttribute('aria-label', words);
+    }
     coloursBox.hidden = !any;
     stripDividers();
-    paintStrip.hidden = !any && !kinds && fontsBox.hidden && lineBox.hidden;
+    paintStrip.hidden = !any && !kinds && fontsBox.hidden && lineBox.hidden && presentBox.hidden;
+    // The endcap: the tool's icon, or the kind of the one block picked (the Select arrow for several).
+    const picked = targets();
+    const one1 = picked.length === 1 ? picked[0] : null;
+    if (one1) setEndcap(blockIcon(one1), `${defOf(one1).label} tools`);
+    else if (picked.length) setEndcap('arrow-pointer', 'Select tools');
+    else { const o = SWITCH.find((x) => x.id === (family || tool.id)); setEndcap(o ? o.icon : tool.icon, `${o ? o.label : tool.label} tools`); }
     afterPaint();
   }
 
@@ -2688,7 +2762,8 @@
     const lockedPicked = policy.canEdit ? [...sel].filter((id) => { const x = board.get(id); return x && x.locked; }).length : 0;
     if ((k === 'Delete' || k === 'Backspace') && (picked.length || lockedPicked)) { e.preventDefault(); removeMany([...sel]); surface.focus({ preventScroll: true }); return; }
     if (k === 'Escape') {
-      if (tool.id !== 'select') setTool('select'); else select(null);
+      select(null); // Escape clears the pick and goes back to Select (also from the Hand and the drawing tools)
+      if (tool.id !== 'select') setTool('select');
       surface.focus({ preventScroll: true });
       return;
     }
