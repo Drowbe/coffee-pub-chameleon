@@ -195,6 +195,13 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
   /* the strip is one row that scrolls inside itself */
   .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
   .hc-attention-row > * { flex: none; white-space: nowrap; }
+  .hc-attention-row > .btn { min-height: 44px; }
+  .hc-density { height: auto; }
+  .hc-density > .mf-switch-btn { min-height: 44px; }
+  /* a name link in a row is a 44 pixel tap, past its line */
+  .hc-name-cell .hc-link { display: flex; align-items: center; min-height: 44px; }
+  .hc-main p .linklike { position: relative; }
+  .hc-main p .linklike::after { content: ""; position: absolute; inset: -15px -2px; }
   /* tables scroll inside their box; the first column stays (system.css) */
   .hc-main .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
   .hc-name-cell { min-width: 130px; max-width: 170px; }
