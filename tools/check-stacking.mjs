@@ -65,6 +65,8 @@ async function main() {
     for (const [mode, who] of (only ? [only] : ['light', 'dark']).map((m) => [m, m === 'dark' ? 'sam' : 'mia'])) {
       const tab = new Tab(browser.cdp, S.ctx);
       await tab.open(1280, mode, true);
+      // A page after a reload can take longer than 15 s on a busy machine; wait longer before calling it missing.
+      const waitFor = tab.waitFor.bind(tab); tab.waitFor = (sel, text, ms = 45000) => waitFor(sel, text, ms);
       const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
       const errors = [];
       const listen = (m) => {
