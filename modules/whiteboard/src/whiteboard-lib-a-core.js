@@ -41,11 +41,13 @@
     { id: 'ink', label: 'Words' },
   ];
   // The board's own settings: one value for the whole board, shared by everyone who sees it, saved whole under one key
-  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, by, at }. The key starts
+  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, override, by, at }. The key starts
   // with "_" (the module's bookkeeping, not an object): a Clear takes it and its Undo puts it back without counting it,
   // and a board with only a background has nothing to clear. background is a palette id (WB_PALETTE) or 'default' (the
   // theme's own board colour); a key that is missing, or holds anything else, reads as 'default' (wbCleanBoard). The page
   // keeps it in the undo history under WB_BOARD_STEP, an id no block can have (lib-a's wb.id refuses ':').
+  // override (Override theme) is a boolean kept only when exactly true, else false: with it on, a palette colour is drawn
+  // at full strength, not as a wash (wbBackdrop; whiteboard.css, data-override). It merges field by field like background.
   const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
   const WB_BOARD_ID = 'settings';
   const WB_BOARD_STEP = ':board';
@@ -55,6 +57,7 @@
       id: WB_BOARD_ID,
       type: 'board',
       background: WB_PALETTE_BY_ID.has(raw.background) ? raw.background : 'default',
+      override: raw.override === true,
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
     };
@@ -66,13 +69,33 @@
   // stronger on a wash than on the plain page (a wash is darker in light mode, lighter in dark mode, so a faint dot would
   // sink into it), strongest on Ink (a grey wash, nearest the dots' own colour). An unknown id is 'default'.
   const WB_WASH = 18; // per cent of the tint in a background
-  const WB_DOT = { default: 16, tint: 26, ink: 34 }; // per cent of the words' colour in a dot
-  function wbBackdrop(id) {
+  const WB_DOT = { default: 16, tint: 26, ink: 34, full: 30 }; // per cent of the words' colour in a dot
+  // With `override` on (Override theme) the ground is the colour itself and the dots take `ink`, a token chosen for its
+  // contrast with it (wbContrastInk); the page passes it in.
+  function wbBackdrop(id, override = false, ink = 'var(--text-primary)') {
     const c = WB_PALETTE_BY_ID.get(id);
-    const dot = (n) => `color-mix(in srgb, var(--text-primary) ${n}%, transparent)`;
+    const dot = (n, tok = 'var(--text-primary)') => `color-mix(in srgb, ${tok} ${n}%, transparent)`;
     if (!c) return { id: 'default', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
+    if (override === true) return { id: c.id, ground: c.token, dot: dot(WB_DOT.full, ink), strength: WB_DOT.full };
     const strength = c.id === 'ink' ? WB_DOT.ink : WB_DOT.tint;
     return { id: c.id, ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
+  }
+  // Contrast (WCAG): the ratio of two colours given as [r, g, b] (0-255), 1 to 21.
+  function wbLuminance(rgb) {
+    const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+  }
+  function wbContrast(a, b) {
+    const x = wbLuminance(a);
+    const y = wbLuminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  // 'dark' or 'light': whichever of the two candidate text colours reads better on `fill` (the first when they tie), or
+  // null when a colour is not three numbers. The page maps the answer to a theme token (renderer, ink on a full fill).
+  function wbContrastInk(fill, dark, light) {
+    const ok = (c) => Array.isArray(c) && c.length >= 3 && c.slice(0, 3).every((n) => Number.isFinite(n));
+    if (!ok(fill) || !ok(dark) || !ok(light)) return null;
+    return wbContrast(fill, dark) >= wbContrast(fill, light) ? 'dark' : 'light';
   }
   // The widths a line or a border can have, in board units.
   const WB_WEIGHTS = [1, 2, 3, 4, 8, 12];

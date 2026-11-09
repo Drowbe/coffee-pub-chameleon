@@ -404,7 +404,12 @@
   // board changes it; a change is one undo step of its own (WB_BOARD_STEP), put back field by field like a block's.
   let boardSettings = WB_BOARD_USUAL;
   function showBackdrop() {
-    const d = wbBackdrop(boardSettings.background);
+    const full = boardSettings.override === true;
+    const was = surface.dataset.override === 'on';
+    if (full) surface.dataset.override = 'on'; else delete surface.dataset.override;
+    const c = WB_PALETTE_BY_ID.get(boardSettings.background);
+    const d = wbBackdrop(boardSettings.background, full, (full && c && renderer.inkOn(c.token)) || undefined);
+    if (was !== full) { renderer.restyle(); if (host.header) setHeader(); }
     surface.style.setProperty('--wb-ground', d.ground);
     surface.style.setProperty('--wb-dot', d.dot);
     surface.dataset.background = d.id;
@@ -430,11 +435,15 @@
     if (!policy.canEdit || presenting || id === boardSettings.background) return;
     commitBoard({ ...boardSettings, background: id });
   }
+  function setOverride(on) {
+    if (!policy.canEdit || presenting || on === boardSettings.override) return;
+    commitBoard({ ...boardSettings, override: on });
+  }
   // A Clear (the title bar's) takes every key, the background's too; the page of the person who cleared puts the
   // background back at once, so a Clear empties the board of blocks and leaves its colour. Its Undo keeps what is there.
   function keepBackground(e) {
     if (!e || !e.cleared || (e.scope && e.scope !== 'space') || !policy.canEdit || !me || e.by !== me) return;
-    if (boardSettings.background === 'default') return;
+    if (boardSettings.background === 'default' && !boardSettings.override) return;
     boardSync.save({ ...boardSettings, by: me, at: new Date().toISOString() });
   }
 
@@ -959,6 +968,7 @@
     const now = boardSettings.background;
     const rows = [choiceRow('default', 'Default', now, () => setBackground('default'), { icon: 'circle', regular: true })];
     for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, () => setBackground(c.id), swatch(c.id)));
+    rows.push({ separator: true }, { id: 'override', label: 'Override theme', current: boardSettings.override, ariaLabel: boardSettings.override ? 'Override theme, on' : 'Override theme, off', onClick: () => setOverride(!boardSettings.override) });
     host.menu.show({ id: 'background', ...where, items: [{ heading: 'Background colour of the board' }, ...rows] });
   }
   const backgroundRow = (at) => ({ id: 'background', label: 'Background colour', icon: 'palette', hint: nameOf(boardSettings.background), onClick: () => { setTimeout(() => backgroundMenu({ at }), 0); } });
@@ -1806,7 +1816,7 @@
   function setHeader() {
     if (!host.header) return;
     host.header.set([
-      ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
+      ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }, { id: 'override', icon: 'circle-half-stroke', title: 'Override theme', on: boardSettings.override === true, overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
       { id: 'find', icon: 'magnifying-glass', title: 'Find', overflow: true },
@@ -1818,6 +1828,7 @@
     host.on('header', (e) => {
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
+      if (e && e.id === 'override' && !presenting) setOverride(!boardSettings.override);
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
       if (e && e.id === 'overview') toggleOverview();
       if (e && e.id === 'find') openFind();
@@ -1831,7 +1842,8 @@
     const plan = exportPlan('all');
     if (!plan.ids.length) { note('There is nothing on the board to print.'); return false; }
     // On the board's background when one is picked (Default: the paper, as before).
-    const d = wbBackdrop(boardSettings.background);
+    const pc = WB_PALETTE_BY_ID.get(boardSettings.background);
+    const d = wbBackdrop(boardSettings.background, boardSettings.override === true, (boardSettings.override === true && pc && renderer.inkOn(pc.token)) || undefined);
     const { svg } = await exporter.scene(plan.items, plan.extent, { live: true, background: d.id === 'default' ? '' : d.ground });
     svg.setAttribute('class', 'wb-print-svg');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
@@ -2734,6 +2746,8 @@
   // ---- start ------------------------------------------------------------------------------------------------------------
   host.on('change', (e) => { sync.handle(e); boardSync.handle(e); });
   host.on('changes', (e) => { keepBackground(e); sync.handleMany(e); boardSync.handleMany(e); });
+  // A new theme: the words on a full-strength fill are chosen again (Override theme), once the host has set its colours.
+  host.on('theme', () => { requestAnimationFrame(() => { if (surface.dataset.override === 'on') { renderer.restyle(); showBackdrop(); } }); });
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   await reloadBoard(); // the background (Default when it cannot be read)
