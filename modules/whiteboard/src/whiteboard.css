@@ -80,6 +80,10 @@
 .wb-block[data-stroke="none"] .wb-shape-body { stroke: none; }
 .wb-svg .wb-stroke { fill: none; stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .wb-svg .wb-head { fill: var(--wb-stroke); pointer-events: none; }
+/* the brushes (lib-e-block-stroke.js): a marker's line a little see-through, so strokes laid over one another show; a
+   brush's stroke a filled shape, thinner at its ends */
+.wb-svg[data-brush="marker"] .wb-stroke { stroke: color-mix(in srgb, var(--wb-stroke) 55%, transparent); }
+.wb-svg .wb-brush { fill: var(--wb-stroke); stroke: none; pointer-events: none; }
 /* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type) */
 .wb-shape .wb-words {
   position: absolute;
