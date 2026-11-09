@@ -92,6 +92,8 @@ which permission "<first>" already replaces`.
 
 `server/module-build.js` builds a module's zip from its source folder (`modules/<id>/module.json` and `src/`), inlining the CSS and JS into the pages; `tools/build-module.mjs` uses it to write a zip, and the server uses it to offer the modules in the deployment's own `modules/` folder. `GET /api/modules` compares each bundled version with the installed one (`update` is true when it is newer and not already kept), and `POST /api/modules/bundled/:id/install` builds the zip in memory and passes it to `install()`, so a bundled install or update goes through the same validation, version keeping and approval as an upload: an update that asks for something new is left disabled until approved. An installed copy is updated only when the bundled version is newer, so any change to a bundled module needs a version bump; `tools/check-module-versions.mjs` enforces it against a recorded fingerprint. Only folders directly under `modules/` whose `module.json` id matches the folder name and that have a `src/` are offered, by id, so a request cannot name a path.
 
+A bundled module can carry its own checks in `modules/<id>/test/*.mjs`. `npm run check:module -- <id>` runs one module's, and `tools/check-module-tests.mjs` runs every module's inside `npm run check`. They are not part of the module's zip. The Whiteboard is the first to have them ([architecture-whiteboard](architecture-whiteboard.md)).
+
 ## Install, upgrade and rollback
 
 **Stored keys a module renamed.** A manifest's `storage.renamed` (`[{ from, to }]`, key prefixes) makes the server
