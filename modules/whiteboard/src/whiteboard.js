@@ -470,9 +470,10 @@
 
   // ---- undo and redo ----------------------------------------------------------------------------------------------------
   // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
-  // edit. Someone else may have changed a block since: it is put back as this person left it anyway (the last write wins,
-  // as everywhere on the board). A block someone else deleted since, which the step needs, is left out, and the person is
-  // told once. A block this person deleted comes back whole, with its own id.
+  // edit. Only the fields the step changed are put back, and each only where the block still holds what this person left:
+  // a field someone else has changed since keeps their change (wbMergeBack); a block whose every such field someone else
+  // changed is left as it is. A block someone else deleted since, which the step needs, is left out. Either way the person
+  // is told once. A block this person deleted comes back whole, with its own id.
   let undoButton = null;
   let redoButton = null;
   function historyButtons() {
@@ -481,24 +482,28 @@
   }
   function applyChanges(list) {
     let left = 0;
+    let kept = 0;
     const touched = [];
-    for (const { id, target, source } of list) {
+    for (const { id, target, source, fields } of list) {
       const now = board.get(id);
       if (!target) { if (now) remove(id); continue; }
       if (!now && source) { left += 1; continue; } // someone else deleted it since
-      const b = wbClean(target);
+      const merged = now && fields ? wbMergeBack(now, { target, source, fields }) : target;
+      if (!merged) { kept += 1; continue; } // someone else changed all of it since
+      const b = wbClean(merged);
       if (!b || (now && !policy.canChange(now)) || (!now && !policy.canCreate())) continue;
       commit(b, 'now');
       touched.push(id);
     }
     select(touched.filter((id) => board.has(id)));
-    return left;
+    return { left, kept };
   }
   function undoRedo(which) {
     if (!history || down !== null) return; // not in the middle of a drag or a stroke
     if (editing) { const ed = editing; editing = null; ed.finish(true); }
-    const left = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
-    if (left > 0) note(`Left out ${left === 1 ? 'a block' : `${left} blocks`} someone else deleted.`);
+    const r = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
+    if (r && r.left > 0) note(`Left out ${r.left === 1 ? 'a block' : `${r.left} blocks`} someone else deleted.`);
+    else if (r && r.kept > 0) note(r.kept === 1 ? 'Left a block as it is: someone else changed it since.' : `Left ${r.kept} blocks as they are: someone else changed them since.`);
     historyButtons();
   }
 
