@@ -309,6 +309,25 @@
 /* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
 
+/* the Fill tool: the board's cursor over every block, the block under the pointer marked (a block with no background:
+   "not allowed"), and a swatch of the fill colour by the pointer */
+.board[data-tool="fill"] .wb-block, .board[data-tool="fill"] .wb-block * { cursor: inherit; }
+.board[data-tool="fill"] .wb-block[data-mark="no"], .board[data-tool="fill"] .wb-block[data-mark="no"] * { cursor: not-allowed; }
+.wb-block[data-mark="ok"] { outline: calc(2px / var(--wb-scale, 1)) solid var(--accent); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-block[data-mark="no"] { outline: calc(1px / var(--wb-scale, 1)) dashed var(--text-muted); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-swatch {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface-card);
+  border-radius: var(--radius-small);
+  background: var(--wb-swatch, var(--text-primary));
+  box-shadow: 0 0 0 1px var(--edge-hairline), 0 1px 3px var(--shadow-color);
+  transform: translate(12px, 12px);
+  pointer-events: none;
+}
+
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }
 .board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }

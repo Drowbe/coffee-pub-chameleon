@@ -142,6 +142,7 @@
       if (shown.delete(id)) restack();
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
       if (refsOf.has(id)) linkRefs({ id }, {});
+      if (marked === id) marked = null;
       geoms.delete(id);
       if (was) redrawDeps(id); // its connectors are not drawn while it is gone
     }
@@ -279,6 +280,31 @@
       putBox(el, { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h });
     }
 
+    // A block marked by a tool (the Fill tool: the block under the pointer, 'ok' it can be filled, 'no' it cannot), or null.
+    let marked = null;
+    function mark(id, kind = 'ok') {
+      const was = marked && els.get(marked);
+      if (was && marked !== id) delete was.dataset.mark;
+      const el = id ? els.get(id) : null;
+      marked = el ? id : null;
+      if (el) el.dataset.mark = kind;
+    }
+    // A small swatch of a colour by the pointer ({ sx, sy } on the screen, and the colour's token), or null to take it away.
+    let swatchEl = null;
+    function swatch(at, token) {
+      if (!at) { if (swatchEl) swatchEl.hidden = true; return; }
+      if (!swatchEl) {
+        swatchEl = document.createElement('div');
+        swatchEl.className = 'wb-swatch';
+        swatchEl.setAttribute('aria-hidden', 'true');
+        surface.append(swatchEl);
+      }
+      swatchEl.hidden = false;
+      swatchEl.style.left = `${at.sx}px`;
+      swatchEl.style.top = `${at.sy}px`;
+      swatchEl.style.setProperty('--wb-swatch', token);
+    }
+
     // A point on the screen (a pointer event's clientX and clientY) on the board, in board units.
     function toBoard(cx, cy) {
       const r = surface.getBoundingClientRect();
@@ -336,6 +362,8 @@
       select,
       marquee,
       pending,
+      mark,
+      swatch,
       element: (id) => els.get(id) || null,
       // A connector as it is drawn now ({ points, box, mid, head }), or null while it is not drawn.
       geometry: (id) => geoms.get(id) || null,
