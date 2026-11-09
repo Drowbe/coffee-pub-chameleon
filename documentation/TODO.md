@@ -64,7 +64,12 @@ The open issues labelled `priority: now` or `priority: next`:
 ## In progress
 
 - **The Vault's privacy interface** ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 2 and 3): the Prototype is locked and the screens are being built. Held: nothing is merged to main until Thomas says so.
-- **The host console redesign** ([plan-host-console](plans/plan-host-console.md)): the Prototype is locked and the console is being built. Held for Thomas.
+- **The host console redesign** ([plan-host-console](plans/plan-host-console.md)): built through slice 6 and on main (#509, 2026-11-09). Left, each on its own:
+  - The Modules route (slice 7): `GET /api/host/modules`, with each module's version and which environment runs it. The Modules section today is a read-only list of the modules the host ships.
+  - Light mode: the console's host serves no `/theme.css`, so the console is dark only. Light mode needs a server change.
+  - The server still lets a host admin remove themselves or the last host admin; only the page hides the button.
+  - The Owners tab has no list of an environment's owners: you reset a second factor by typing a login.
+  - Host-run module install and update (slice 8), and an environment's Domain tab (#50, drawn as "later").
 
 - **The leftovers `check-names` still allows.** The old words kept on purpose are listed in `tools/check-names-allow.json`; the clean-up of the ones that are not deliberate is under way, and each entry that goes is removed from the list. Do not add to it for new code.
 
@@ -94,7 +99,6 @@ The open issues labelled `priority: now` or `priority: next`:
 - **Map themes and Map options** ([plan-map-options](plans/plan-map-options.md)): approved for step 0 only (Thomas, 2026-11-04). The Prototype's Maps section is drawn; steps 1 to 4 (the map themes' tokens, `/theme.css`'s default field, the Maps module's **Map options** entry and panel) wait until Thomas has seen it, and one question on it is still open.
 - **Module emoji and Whiteboard stickers** ([plan-module-emoji](plans/plan-module-emoji.md)): approved 2026-11-09; nothing built. Six steps in order: `host.emoji.list()`, the SDK-drawn `host.ui.emojiPicker()`, the chat's picker moved onto it, then the Whiteboard's `sticker` block and its Sticker tool (pick, then click to place; key S), then the documentation. Steps 1 to 3 change `public/sdk/host.js` and start only after the toolbar change on `pm/toolbar-right-zone` has merged.
 - **Live messages for modules** (#496, [plan-module-live](plans/plan-module-live.md)): approved 2026-11-09; nothing built. `host.live.publish` and `subscribe` over the app's own server (the module stream), never LiveKit; first use the Whiteboard's live pointers. Steps 1 to 4 (the route, join and leave, guests, and the missing access rechecks when a member is removed or a role changes) are held for an independent security read before anything reaches Thomas.
-- **Stacking docked modules** (#387, [plan-panel-stacking](plans/plan-panel-stacking.md)): approved 2026-11-02, awaiting the Prototype; nothing built.
 - **The phone's bottom bar** ([plan-phone-experience](plans/plan-phone-experience.md), decision 16): four module buttons and a switcher, the call in the top bar. Decided 2026-11-03; drawn on the Prototype, not built in the product.
 - **The Planner's low-severity audit items** (PLN-13, PLN-14 and PLN-17 to PLN-25 in the health audit of the Planner): not touched. The audit fixes made so far are in Planner 0.16.0 and 0.16.1 (see the CHANGELOG).
 - **Known gaps, recorded so they are not lost.** Chat's input attaching an object in a person's own scope (named by the project manager; not checked in code by this entry's author). A length (duration) is not kept on the server's record of an object, so a summary has none to send (named by the project manager; not checked). The guest case of `tools/check-ai-page.mjs` (a guest is not invited to ask and sends nothing) is a gap at the 390 pixel width (named by the project manager; not run or read for this entry). The list of what became of recent Clear tokens (`ends` in `server/module-holds.js`) is in memory only, so after a restart a refused Undo says the time is over whatever happened to that token.
@@ -210,6 +214,7 @@ The open issues labelled `priority: now` or `priority: next`:
 - **Budget step 5: the travel template turns Budget on** ([plan-budget-module](plans/plan-budget-module.md)). `modules` in the template gains `budget` (template version 7), so a new travel environment has Budget on. Not built; an owner turns Budget on in Manage until then.
 - **A cross-module change event** for the SDK, so Budget can learn at once that a booking changed instead of asking every 30 seconds ([known-issues](known-issues.md)). Not planned yet.
 - **Planner modes** (#307): travel, design and project modes for the Planner. Not planned yet; Budget is built to stay independent of them.
+- **Whiteboard follow-ups.** #498 Frames with a presentation mode. #499 Comments on blocks (needs a plan). #501 Put other modules' objects on the board (needs a plan). #503 An ideas backlog from FigJam and Miro. #492 A contextual strip under the toolbar (an idea). The live pointers (#496) wait on [plan-module-live](plans/plan-module-live.md), above.
 - #477 In-app help for a module: help a module can show in the app itself. Not planned yet; the issue holds the detail.
 - #469 Host additions for saving and printing, for modules: additions to what the host offers modules (`host.*`) for saving and printing. Not planned yet; the issue holds the detail.
 - #471 Stream replay. Not planned yet; the issue holds the detail.

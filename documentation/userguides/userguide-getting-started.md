@@ -239,7 +239,7 @@ in one space a minute.
 compose file, `"true"` by default) says whether the server offers a second step at all; with it off nobody is
 asked and nobody can set one up. When it is offered, each environment's owners choose on Manage > Environment
 whether to **require** it of everyone, and otherwise each person chooses on their own profile. Host admins
-set theirs up on the console's Host tab, and `HOST_MFA_REQUIRED: "true"` makes it mandatory for them. The
+set theirs up in the console's **Server** section, and `HOST_MFA_REQUIRED: "true"` makes it mandatory for them. The
 secrets are encrypted with a key the server makes on first start (`secrets.key` beside the data on a single
 server, inside `host.json` with environments), so an environment's export carries nothing readable. If an
 owner or the admin is locked out, set `ADMIN_MFA_LOCKOUT_BYPASS: "true"` and recreate the container: owners,
@@ -247,9 +247,9 @@ the server's admin and host admins are then signed in on the password alone (mem
 second factor** with the password, and Manage and the console show a banner until you set it back to
 `"false"`. Nothing is deleted by either switch.
 
-**Plans, sign-up and billing.** The host console's **Plans** panel is the catalog: `free` (what sign-up
+**Plans, sign-up and billing.** The host console's **Plans** section shows the catalog, read only (a plan is changed only through the API, `PUT /api/host/plans`): `free` (what sign-up
 makes, and what a lapsed environment goes back to) and any named plans, each with its caps (members,
-storage, assistant calls a month, calls at once, modules). An environment is put on a plan from its card,
+storage, assistant calls a month, calls at once, modules). An environment is put on a plan on its own page, under **Plan and modules**,
 which fills its caps from the catalog to adjust on its own. The start page at the base domain does not list the
 plans yet. The start page has no sign-up form: it takes a person to an environment that exists. The server's sign-up route (`SIGNUP: "on"`, which makes a free environment from an address, a name and the owner's login) is still there, but no page uses it yet, so the host console's **New environment** is how an environment is made. Selling a plan is the payment provider's own hosted page: set `BILLING_CHECKOUT_<PLAN>`
 (the plan id in capitals, `BILLING_CHECKOUT_STANDARD`, say) to that page's address, and an owner's **Upgrade** goes there with `?environment=<slug>` once the link is shown (it is hidden until the start page has a plans list). The provider tells the server
@@ -334,7 +334,7 @@ rid of it sooner). A host listed in `PREVIOUS_BASE_DOMAINS` that is also the pro
 
 From there: `https://admin.<base>` is the host console (create an environment with its first owner, set its
 plan, back it up and restore it, suspend it and **Resume** it, or delete it aside, which keeps its data under
-`environments-deleted/`), `https://<slug>.<base>` each environment, and the bare
+`environments-deleted/`; see "The host console" below), `https://<slug>.<base>` each environment, and the bare
 `https://<base>` the start page (at `PRODUCT_DOMAIN` when you set one), where a person types their environment's address
 or, when `SIGNUP` is on, makes one. Three optional variables feed that page: `PRODUCT_NAME` (the full name it shows;
 the default is "Coffee Pub Chameleon", and Chameleon is used where the short form fits; a name such as "Travel Pub" shows
@@ -347,13 +347,26 @@ Once a server has environments, keep `BASE_DOMAIN` set on every start, and set i
 data folder to. A start without it stops with "This data folder belongs to a server with environments: set
 BASE_DOMAIN." and changes nothing: set it and start again.
 
+## The host console
+
+The console at `admin.<base domain>` has a navigation down its left side (a strip of tabs on a phone) with five sections:
+
+- **Environments** lists every environment with its plan, status, use against its caps and template. A strip above it counts what needs attention (past due, suspended, won't open, deletion asked, at cap, near a cap, degraded); press a count to show only those, and press it again to clear. You can search by name or address, filter by status, sort, and switch the rows between **Comfortable** and **Compact**. A row's **More** menu has **Open**, **Back up**, **Suspend** or **Resume**, and **Delete**. **New environment** opens its own page.
+- An environment's own page, from its name in the list, has the tabs **Overview**, **Plan and modules**, **Template**, **Owners and two-step**, **Backups** and **Danger zone**. A **Domain** tab is there and greyed, marked "later".
+- **Templates** lists the templates, with the environments that use each ([Templates](userguide-templates.md)).
+- **Modules** lists the modules this host ships. It is read only; each environment installs and turns on its own in Manage.
+- **Plans** shows what each plan allows and how many environments are on it. It is read only.
+- **Server** holds the host's facts, your own two-step sign-in, the host admins, AI, Maps and the flight schedule.
+
+The console asks before anything that is hard to undo. **Suspend**, **Resume**, **Restore**, **Remove** (a host admin) and resetting an owner's second factor ask first. **Delete** asks you to type the environment's address before it turns on; it moves the data aside and does not erase it. The console is dark only for now.
+
 ## Send an owner their first password link
 
 A person who signs up chooses their own password on their new environment's page, from a link that works for 15
 minutes. If they lose it, close the page too soon or wait too long, a host admin makes a new one. Only a host admin can.
 
-1. Sign in to the host console at `admin.<base domain>` and open the **Environments** tab.
-2. On the environment's card, find the owner and click **New first-password link**. The button is there only for an
+1. Sign in to the host console at `admin.<base domain>`, open **Environments** and choose the environment.
+2. On its **Owners and two-step** tab, find the owner and click **New first-password link**. The button is there only for an
    owner who has no password yet.
 3. Click **Copy**. The link is shown once. It works once, for 24 hours, and a new link replaces any older one.
 4. Send it to the owner yourself. You never see the password they choose.
@@ -362,21 +375,21 @@ If the owner already has a password, there is no button; use their sign-in inste
 
 ## Back up and restore an environment
 
-A host admin does this from the host console's **Environments** tab. Each environment's card has
-**Backup** and **Restore backup**.
+A host admin does this from an environment's own page in the host console: choose it in **Environments**, then
+its **Backups** tab, which has **Download a backup** and **Restore a backup**. **Back up** is also in the row's **More** menu in the list.
 
-To back one up, click **Backup** on its card. The browser saves the whole environment as a zip named
+To back one up, click **Download a backup**. The browser saves the whole environment as a zip named
 `<slug>-<date>.zip`: every setting, account, space, picture and module's data. It does not carry the Vault's files (their records are in the zip, their content is not): back up the Vault's folder with the data folder, and a restore without it shows those files as **File missing** until someone removes them. The flight schedule the
 Planner's lookup learns is the host's, shared by every environment, so it is not in the zip; it lives in
-`flight-schedule.json` beside `host.json`, and the console's **Host** tab can forget a flight or clear it
+`flight-schedule.json` beside `host.json`, and the console's **Server** section can forget a flight or clear it
 (see "The flight schedule" in [Modules](userguide-modules.md)).
 
 To restore one from a backup:
 
-1. Click **Restore backup** on the environment's card, and choose the zip.
-2. The button now reads **Replace its data?**. Click it again within eight seconds to go ahead; after that
-   it goes back to **Restore backup** and nothing happens.
-3. Everything in that environment is replaced by what is in the zip. The message beside the **Environments** heading says
+1. On the environment's **Backups** tab, choose the zip under **Restore**, then click **Restore a backup**.
+2. A question asks "Restore <name> from <file>?" and says everything in it now is replaced by the backup and that
+   this cannot be undone. Click **Restore** to go ahead, or cancel and nothing changes.
+3. Everything in that environment is replaced by what is in the zip. The line on the page says
    "<slug> was restored from <file>." when it worked, or "<slug> was not restored:" and the reason when it
    did not, in which case nothing was changed.
 
@@ -385,9 +398,9 @@ version of Coffee Pub Chameleon."), and the environment is left as it was.
 
 ## An environment that won't open
 
-An environment's card can carry the tag **won't open**, with a red edge and a dash for every count. Its
+An environment can carry the tag **won't open**, in the list and on its own page, with a dash for every count. Its
 people see a page saying the environment's data is from a newer version of Chameleon, or could not be updated;
-every other environment keeps working. The card says which, and names the file and when it happened:
+every other environment keeps working. The environment's page says which, and names the file and when it happened:
 
 - **Won't open: its data is from a newer version of Chameleon.** A newer version of Chameleon has run on this
   environment's data, and this one cannot read it. Run the newer version again, or restore a backup made

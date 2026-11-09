@@ -137,7 +137,7 @@ The Planner's **Look up a flight** fills a flight from the same flight number sa
 Where it is:
 
 - **On a single server,** on the Manage page's **Modules** tab, for owners and the admin.
-- **On a server with environments,** the schedule is shared by every environment, so it is on the host console's **Host** tab, for host admins only. An environment's owner has no section and can't clear it. To keep one environment's flights out, its owner turns off the Planner's **Suggest flights from earlier trips**.
+- **On a server with environments,** the schedule is shared by every environment, so it is in the host console's **Server** section, for host admins only. An environment's owner has no section and can't clear it. To keep one environment's flights out, its owner turns off the Planner's **Suggest flights from earlier trips**.
 
 The section says "This server has learned N flights from saved trips."
 

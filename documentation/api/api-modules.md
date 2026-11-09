@@ -712,6 +712,25 @@ Named arrangements of a space's canvas ([plan-saved-layouts](../plans/plan-saved
 
 A layout is `{ id, name, by, at, icon?, modules: [{ id, mode: "dock" | "float", dockW?, box?, snap? }], snap?: { all, pitch } }`. `icon` is a Font Awesome name from the environment's icon list (400 "Pick an icon from the list." otherwise); a layout saved without one wears the `object-group` icon. `modules` is in column order, docked first; `dockW` a docked width in pixels; `box` a floating box as fractions of the canvas, `{ x, y, w, h }` from 0 to 1; `snap` on a module whether it snaps, and at the top the canvas switch and the grid's pitch (50 to 320). Limits: 10 personal layouts per person per space, 10 shared per space; a name of 1 to 40 characters, trimmed, unique in its list whatever the case; at most 20 modules, each once. A bad shape is refused whole with 400 and a sentence saying what. Stored in `DATA_DIR/layouts.json` (`server/layouts.js`), dropped with its space or its person.
 
+**Stacks.** A column of the canvas can hold two or three docked modules one above the other ([plan-panel-stacking](../plans/plan-panel-stacking.md)). A stack is carried on its members' own entries in `modules`, with four optional keys; an entry with none of them is an ordinary column.
+
+| Key | Meaning |
+|---|---|
+| `stack` | The stack's id, 1 to 32 characters of `[a-z0-9]`. Members with the same id share one column. |
+| `at` | The member's place in the stack, 0 (top) to 2. |
+| `h` | The member's share of the column's height, 0.1 to 0.9. The members' shares add up to 1, within 0.01. |
+| `folded` | `true` when the member is collapsed. |
+
+A stack's width is the `dockW` of its members, as for any docked module. The server never refuses a layout for its stacks; `cleanLayout()` cleans them and every entry in comes out (the count in equals the count out; the 20-entry limit counts every member):
+
+- A `stack` key on a floating module, the conference, Chat or a composite (`dest:*`) is dropped.
+- A stack of one member, and any member past the third, become ordinary columns where the stack's first member was.
+- The kept members of a stack are placed together, at the place of the stack's first member, in `at` order (list order where `at` is missing or repeats), and renumbered 0, 1, 2. An entry cut from a stack stays in the list as an ordinary column.
+- `h` is kept only when every member has one and the raw values add up to 1 within 0.01, checked before any value is clamped; then each is clamped to 0.1 to 0.9 and rounded to four places. Otherwise every `h` is dropped and the heights are equal.
+- `folded` is kept only as `true` or `false`.
+
+That a stack counts as one column of the docked limit is the page's rule; the server knows no column limit. The page keeps a stack's width through a phone untouched ([architecture-canvas](../architecture/architecture-canvas.md), "Stacks").
+
 | Call | Purpose |
 |---|---|
 | `GET /api/spaces/:id/layouts` | `{ mine, shared, system, defaultLayout, firstVisit, favorites, canShare, canSetDefault }`. A guest gets `mine: []`, `system: []` and `favorites: []`. `canShare` and `canSetDefault`: owner rights, or a moderator of this space. `system`: the system layouts, below. `defaultLayout`: the id of the space's default layout when it is a shared one, else `null`. `firstVisit`: what a first visit shows for this person, resolved: `{ layout, opensWith }`, where `layout` is `workspace`, `calendar`, `map` or a shared layout's id (the space's default while it still resolves, else `workspace`) and `opensWith` is the space's own list of modules or `null`. `favorites`: the ids of this person's favorite layouts (below) that still exist and that they can see, in the order they were favorited. 401 "Sign in first."; 404 "There is no such space." (an aside too); 403 "You are not in that space." |

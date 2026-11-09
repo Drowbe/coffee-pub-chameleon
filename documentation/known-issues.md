@@ -30,6 +30,17 @@ These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
 
+## Stacked modules and the tab order without moveBefore
+
+A stack of docked modules keeps its sections in the page in the order the stack shows them with the browser's
+`moveBefore()`, so Tab goes top section, divider, next section ([architecture-canvas](architecture/architecture-canvas.md),
+"Stacks"). Browsers that lack `moveBefore()` (those that are not Chromium-based) leave the sections where they were in
+the page, to avoid loading them again, so the Tab order of a stack can differ from what is drawn after a **Move up**,
+a **Move down** or a drag. What is drawn and what is saved are right. Firefox and Safari, a real tablet's touch on the
+divider and a screen reader were not tried.
+
+Workaround: use the keyboard on the divider and the titlebar menus, which work in any order.
+
 ## Vault: who can see a file is only half built
 
 The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:
@@ -41,6 +52,20 @@ The server now decides which Vault files a person may see ([plan-vault-privacy](
 - **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
 
 Workaround: none needed for now, as nothing sets a visibility yet.
+
+## The host console is dark only
+
+The host console's address serves no `/theme.css`, so the console always draws in its dark colours, whatever the
+person prefers. Light mode needs a server change (GitHub follow-up in the TODO).
+
+Workaround: none.
+
+## The server lets a host admin remove themselves
+
+The console does not offer **Remove** for yourself or for the last host admin, but the server's route does not
+refuse either. A call made outside the console could remove the only host admin.
+
+Workaround: leave the host admin list to the console, and keep `ADMIN_LOGIN` and `ADMIN_PASSWORD` set.
 
 ## The host console sends no framing headers
 
@@ -125,12 +150,6 @@ the first time. Clicking it a second time opens the module but not the object.
 GitHub #20.
 
 Workaround: find the object in the module itself.
-
-## The console's Maps tab is too wide in the narrow layout
-
-On the host console at narrow width, the Maps tab runs past the right edge of the screen.
-
-Workaround: use a wider window or turn the phone sideways.
 
 ## Saving a bundled template reorders its module list
 
