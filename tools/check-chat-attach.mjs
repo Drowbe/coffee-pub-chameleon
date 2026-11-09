@@ -671,6 +671,31 @@ async function pageCases(shots, bin) {
       await clearChips();
     });
 
+    await test('page: the person\'s own Send takes what was held when they pressed it: words attached during its wait stay for the next Send', async () => {
+      pageFake.clear();
+      await clearChips();
+      const patch = (aiOff) => fetch(`${server.base}/api/spaces/${ctx.trip}`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: JSON.stringify({ aiOff }) });
+      await patch(true);
+      await fromModule(`try { await host.chat.attach({ label: 'Probe', text: 'probe words' }); } catch (e) { /* refused */ } return true;`);
+      await patch(false);
+      await idle();
+      await fromModule(`return host.chat.attach({ label: 'Held first', text: 'HELDFIRST' });`);
+      await sleep(500);
+      await tab.eval(`(() => { const real = window.fetch; let first = true; window.fetch = async (url, init) => { if (first && new RegExp('/api/spaces/[^/]+/ai$').test(String(url)) && (!init || !init.method || init.method === 'GET')) { first = false; await new Promise((r) => setTimeout(r, 900)); } return real(url, init); }; return true; })()`);
+      await tab.typeInto('#chat-input', 'Where is Faro?');
+      await tab.key('Enter');
+      await sleep(200);
+      await fromModule(`return host.chat.attach({ label: 'Late words', text: 'LATEWORDS' });`);
+      await waitPosts(1);
+      assert.equal(posts(), 1, 'the Send went');
+      const body = JSON.stringify(pageFake.last().body);
+      assert.ok(body.includes('HELDFIRST'), 'what was held when they pressed Send went');
+      assert.ok(!body.includes('LATEWORDS'), 'what a module attached during the wait did not');
+      await sleep(600);
+      assert.deepEqual((await chips()).map((x) => x.text), ['Late words'], 'and it is still held for their next Send');
+      await clearChips();
+    });
+
     await test('page: held chips show in the Discussion too, where a typed /ai can take them', async () => {
       await idle();
       await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'discussion words' });`);
