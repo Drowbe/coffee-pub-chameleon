@@ -789,9 +789,18 @@ const THEME_OPTIONAL_FIELDS = [
   ['theme-chosen-text', 'text-on-chosen'],
   ['theme-chosen-ink', 'ink-chosen'],
   ['theme-brand-ink', 'ink-brand'],
+  ['theme-neutral', 'ink-neutral'],
+  ['theme-tone-gold', 'tone-gold'],
+  ['theme-tone-blue', 'tone-blue'],
+  ['theme-tone-green', 'tone-green'],
+  ['theme-tone-teal', 'tone-teal'],
+  ['theme-tone-purple', 'tone-purple'],
+  ['theme-tone-red', 'tone-red'],
+  ['theme-tone-orange', 'tone-orange'],
+  ['theme-tone-pink', 'tone-pink'],
 ].map(([id, key]) => [id, `--${key}`, key, TC.AUTO_CSS[key] ?? null]);
 // What an Auto field is set to on the page while previewing: its formula, or for a status fill the Auto fill of the mode being edited.
-const autoCssFor = (key, formula) => formula ?? TC.STATUS_AUTO[selectedMode][key.split('-')[1]];
+const autoCssFor = (key, formula) => formula ?? (key.startsWith('tone-') ? TC.TONE_AUTO[selectedMode][key.slice(5)] : TC.STATUS_AUTO[selectedMode][key.split('-')[1]]);
 const autoBox = (id) => document.querySelector(`[data-auto-for="${id}"]`);
 const isAuto = (id) => autoBox(id).checked;
 let colorProbeCtx = null;

@@ -48,8 +48,8 @@ const prop = (body, name) => new RegExp(`^ {2}${name}: ([^;]+);$`, 'm').exec(bod
 
 test('the keys of a set are the colour roles: seven base ones, and the optional ones including the four status fills', () => {
   assert.deepEqual(THEME_BASE, ['surface-page', 'surface-panel', 'edge-hairline', 'text-primary', 'text-muted', 'accent-fill', 'text-on-accent']);
-  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand']) assert.ok(THEME_OPTIONAL.includes(key), key);
-  assert.equal(THEME_OPTIONAL.length, 30);
+  for (const key of ['surface-card', 'surface-bar-top', 'text-bar', 'surface-bar-brand', 'text-bar-brand', 'surface-bar-right', 'text-bar-right', 'icon-default', 'icon-hover', 'accent-fill-hover', 'fill-secondary', 'text-on-secondary', 'fill-secondary-hover', 'status-danger-fill', 'status-ok-fill', 'status-warn-fill', 'status-info-fill', 'fill-chosen', 'text-on-chosen', 'ink-chosen', 'ink-brand', 'ink-neutral', 'tone-gold', 'tone-blue', 'tone-green', 'tone-teal', 'tone-purple', 'tone-red', 'tone-orange', 'tone-pink']) assert.ok(THEME_OPTIONAL.includes(key), key);
+  assert.equal(THEME_OPTIONAL.length, 39);
   assert.equal(new Set([...THEME_BASE, ...THEME_OPTIONAL]).size, THEME_BASE.length + THEME_OPTIONAL.length);
 });
 
@@ -301,6 +301,15 @@ test("the theme editor's contrast panel: the pairs it lists, a warning for each 
   const mid = TC.resolve({ ...DEFAULT_THEME.dark, 'accent-fill': '#777777', 'text-on-accent': '#ffffff' }, 'dark');
   assert.equal(mid.report.find((r) => r.id === 'on-accent').ok, false);
   assert.match(mid.flags[0], /Neither white nor near-black/);
+});
+
+test('the tones: style.css reads each --tone-* with the fixed colour as its fallback, in both modes, and theme-colour.js TONE_AUTO holds the same colours', () => {
+  const style = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const found = { dark: {}, light: {} };
+  const all = [...style.matchAll(/^ {2}--tint-(gold|blue|green|teal|purple|red|orange|pink): var\(--tone-\1, (#[0-9a-f]{6})\);/gm)];
+  assert.equal(all.length, 16, 'eight tints in each of the two blocks, each from its tone');
+  all.forEach((m, i) => { found[i < 8 ? 'dark' : 'light'][m[1]] = m[2]; });
+  assert.deepEqual(found, TC.TONE_AUTO);
 });
 
 console.log(`check-theme: ${n} checks passed`);
