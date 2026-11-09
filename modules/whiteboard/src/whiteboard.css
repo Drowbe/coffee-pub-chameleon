@@ -25,6 +25,13 @@
   -webkit-user-select: none;
   outline: none;
 }
+/* The Grid button's other styles (whiteboard.js sets data-grid): graph paper is thin lines at the pitch, off draws none. */
+.board[data-grid="lines"] {
+  background-image:
+    linear-gradient(to right, var(--wb-dot) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wb-dot) 1px, transparent 1px);
+}
+.board[data-grid="off"] { background-image: none; }
 /* Fixed neutrals chosen by a person, the same in light and dark and in every theme. Move to core design-system tokens when the colour picker lands. */
 .board {
   --wb-fixed-light-white: #ffffff;
@@ -938,3 +945,36 @@
 .wb-present-btn[aria-disabled="true"] { opacity: 0.5; }
 .wb-selectgroup { gap: var(--space-1); }
 .wb-selectgroup > .wb-paint-btn[aria-disabled="true"] { opacity: 0.4; }
+
+/* Grid (whiteboard.js, the Grid button): a small panel at the top right of the board, in the find bar's look. */
+.wb-gridbar {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 23em;
+  max-width: calc(100% - var(--space-4));
+  padding: var(--space-2);
+  border: 1px solid var(--mf-edge, var(--edge-bar));
+  border-radius: var(--radius-medium);
+  background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-14);
+}
+.wb-grid-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.wb-grid-name { flex: 0 0 4.5em; color: var(--text-muted); font-size: var(--text-13); }
+.wb-grid-row input[type="range"] { flex: 1 1 6em; min-width: 0; accent-color: var(--accent); }
+.wb-grid-row output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+.wb-grid-seg { flex-wrap: nowrap; }
+.wb-grid-seg, .wb-grid-colours { display: flex; flex-wrap: wrap; gap: var(--space-1); flex: 1 1 8em; min-width: 0; }
+.wb-grid-seg button[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: inset 0 0 0 1px var(--accent); }
+.wb-grid-swatch { width: 24px; height: 24px; padding: 0; border: 1px solid var(--edge-bar); border-radius: var(--radius-small); background: var(--wb-sw, transparent); cursor: pointer; }
+.wb-grid-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface-toolbar, var(--surface-page)), 0 0 0 4px var(--accent); }
+.wb-grid-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wb-grid-auto { background: linear-gradient(135deg, var(--text-primary) 50%, var(--surface-page) 50%); }
+.app.narrow .wb-gridbar { left: var(--space-2); width: auto; }
+.app.narrow .wb-gridbar button { min-height: 36px; }
+.app.wb-presenting .wb-gridbar { display: none; }
