@@ -51,7 +51,7 @@
 //
 // A toolbar entry is one of:
 //   { type: 'switch', id, label, value, options: [{ id, label, icon, regular?, iconOnly? }] }   a segmented switch; too wide for the row,
-//       only its last choices fold into "More" (the chosen one always stays in the row), the whole switch only when no more than the chosen one fits
+//       only its last choices fold into "More" (the chosen one always stays in the row), the whole switch only when even the chosen one alone does not fit
 //   { type: 'tabs', id, label, value, options: [{ id, label, count? }] }  a tab strip, for switching between different pages
 //   { type: 'quickset', id, label, value, options: [{ id, label, count? }] }  quick sets: one filter chip chosen at a time, with counts
 //   { type: 'search', id, label, placeholder, value? }
@@ -585,7 +585,7 @@ export function createModuleFrame(opts = {}) {
     // 'spacer' entry is not needed (the gap between the groups is drawn here) and is ignored.
     const start = [];
     const end = [];
-    const tail = []; // the right zone (`zone: 'end'`, the host page's own items): after the search and Filters, at the far right
+    const tail = []; // the right zone (`zone: 'end'`: a host page's items, and a module's, of which only its first two icon-only buttons are held): after the search and Filters, at the far right
     const used = new Set();
     for (const it of entries) {
       let els = [];
@@ -620,8 +620,8 @@ export function createModuleFrame(opts = {}) {
     if (searching) toolbar.classList.add('is-searching');
   }
   // A switch too wide for the row folds only its last choices into "More": as many as fit stay, the chosen one always stays, the
-  // folded ones are chosen from More (which shows the current one). Nothing fits but the chosen one: false, and the caller moves
-  // the whole switch.
+  // folded ones are chosen from More (which lists only them). When even the chosen one alone does not fit, nothing is kept folded:
+  // false, and the caller moves the whole switch into More.
   function unfoldChoices(it) {
     it._folded = [];
     for (const e of it._els || []) for (const b of e.querySelectorAll ? e.querySelectorAll('.mf-switch-btn.is-folded') : []) { b.classList.remove('is-folded'); b.hidden = false; }

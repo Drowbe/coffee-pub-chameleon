@@ -459,7 +459,7 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   // goes right after the search and Filters in the order made, a value other than 'start' or 'end' is ignored, and a module can
   // neither pin nor change the order of the left zone.
   const mod = R.frameToolbar(R.cleanToolbarItems([
-    { id: 'snap', label: 'Snap', icon: 'border-all', on: false, zone: 'end' },
+    { id: 'snap', title: 'Snap', icon: 'border-all', on: false, zone: 'end' },
     { id: 'a', label: 'A' },
     { type: 'tabs', id: 'view', value: 'x', options: [{ id: 'x', label: 'X' }] },
     { id: 'grid', label: 'Grid', zone: 'end' },
@@ -472,9 +472,23 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   ]));
   assert.deepEqual(mod.map((e) => e.id || e.type), ['view', 'a', 'b', 'bad1', 'bad2', 'bad3', 'q', 'filters', 'snap', 'grid'], 'left zone sorted as ever, search and Filters, then the module\'s right zone in the order made');
   assert.deepEqual(mod.filter((e) => e.zone === 'end').map((e) => e.id), ['snap', 'grid'], 'only exactly "end" goes right; a bad value stays left');
-  assert.ok(mod.filter((e) => e.zone === 'end').every((e) => e.pin === true), 'a module\'s right zone is held while the left folds');
+  assert.deepEqual(mod.filter((e) => e.pin).map((e) => e.id), ['snap'], 'a module\'s right zone holds only its icon-only buttons (the Snap toggle); the labelled one folds into More as needed');
   assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', pin: true }])[0].pin, undefined, 'a module cannot pin a left item');
-  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', zone: 'end', pin: false }])[0].pin, true);
+  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', zone: 'end', pin: true }])[0].pin, undefined, 'a module cannot pin a right-zone item either');
+  // At most two of a module's right-zone buttons are held (so 16 of them cannot cut the row); a right-zone switch is never held.
+  const manyRight = R.frameToolbar(R.cleanToolbarItems([
+    ...Array.from({ length: 12 }, (_, k) => ({ id: `r${k}`, title: `R${k}`, icon: 'star', zone: 'end' })),
+    { type: 'tabs', id: 'sw', value: 'a', options: [{ id: 'a', label: 'A', icon: 'star' }, { id: 'b', label: 'B', icon: 'star' }], zone: 'end' },
+  ]));
+  assert.equal(manyRight.filter((e) => e.pin).length, 2, 'two right-zone buttons held, no more');
+  assert.ok(!manyRight.find((e) => e.id === 'sw').pin, 'a right-zone switch is not held (it folds its own choices)');
+  // A destination page wraps a module's cleaned items with `send` (partItems): they keep no pin, no zone, and do not fix the order.
+  const wrapped = R.cleanToolbarItems(R.cleanToolbarItems([
+    { id: 'b', label: 'B' }, { type: 'tabs', id: 'v', value: 'a', options: [{ id: 'a', label: 'A' }] }, { id: 'snap', title: 'Snap', icon: 'border-all', zone: 'end' },
+  ]).map(({ pin, zone, ...item }) => ({ ...item, send: noop })));
+  assert.ok(wrapped.every((i) => !i.pin && !i.zone), 'wrapped module items keep no pin and no zone');
+  assert.deepEqual(R.frameToolbar(wrapped).map((e) => e.id), ['v', 'b', 'snap'], 'the switch still leads (not the page\'s order)');
+  assert.ok(/map\(\(\{ pin, zone, \.\.\.item \}\) =>/.test(read('public/destination.js')), 'partItems strips a module item\'s pin and zone');
   const modOnly = R.frameToolbar(R.cleanToolbarItems([{ id: 'x', label: 'X' }, { type: 'tabs', id: 'v', value: 'a', options: [{ id: 'a', label: 'A' }] }, { id: 'r', label: 'R', zone: 'end' }]));
   assert.deepEqual(modOnly.map((e) => e.id), ['v', 'x', 'r'], 'a module right-zone item does not stop the switches leading the left zone');
   // A switch holds up to 12 options (the Whiteboard's Select, Hand, drawing tools and Select many in one); the 13th is cut.
@@ -491,6 +505,10 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.equal(named('  Board   tools '), 'Board tools', 'spaces tidied');
   assert.equal(named('x'.repeat(50)), 'x'.repeat(30), 'cut at 30');
   for (const bad of ['', '   ', '<b>Board</b>', 'a > b', 42, { x: 1 }, ['a'], null]) assert.equal(named(bad), 'Tools', `ignored: ${JSON.stringify(bad)}`);
+  // A switch's name loses direction controls and zero-width characters.
+  assert.equal(named('Bo\u202Eard'), 'Board');
+  assert.equal(named('\u200BBo\u2066a\u2069r\u2060d\uFEFF'), 'Board');
+  assert.equal(named('\u202A\u202B\u202C\u202D\u202E'), 'Tools', 'only invisible characters: the default');
   const frameSrc = read('public/module-frame.js');
   assert.ok(!/'View'/.test(frameSrc), 'the frame never says "View" for a switch');
   assert.ok(/'aria-label': it\.label \|\| 'Tools'/.test(frameSrc) && /it\.type === 'switch' \? 'Tools'/.test(frameSrc), 'the frame names a switch "Tools" in the row and in More');
