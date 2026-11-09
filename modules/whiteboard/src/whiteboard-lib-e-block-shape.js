@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-e-block-shape.js: the closed shapes, flowchart ones too --------------------------------------------
-  // { ...block, w, h, text, stroke, fill, ink, weight }: an outline (stroke, weight wide, or none) round a light fill (or
-  // none) with words (ink) in the middle. Double-click to change the words. Every shape is its own block type, made by the
+  // { ...block, w, h, text, stroke, fill, ink, weight, size, align }: an outline (stroke, weight wide, or none) round a
+  // light fill (or none) with words (ink) in the middle, markup in a size and an alignment (centred at first; lib-a). Double-click to change the words. Every shape is its own block type, made by the
   // one definition below; another closed shape is one more entry in SHAPES: its type, its label, its usual size (w, h) and
   // smallest size (min, so its words still fit), draw(w, h, i) -> the SVG element of its outline, inset(w, h) -> where its
   // words sit ([top, right, bottom, left] in from the box), and, when a side's middle is not on the outline, anchorIn(w, h)
@@ -50,9 +50,10 @@
         type: shape.type,
         label: shape.label,
         edit: 'text',
+        markup: true,
         paint: { stroke: { extra: ['none'] }, fill: { extra: ['none'] }, ink: {} },
         weight: true,
-        create: () => ({ w: shape.w, h: shape.h, text: '', stroke: 'ink', fill: 'ink', ink: 'ink', weight: 3 }),
+        create: () => ({ w: shape.w, h: shape.h, text: '', stroke: 'ink', fill: 'ink', ink: 'ink', weight: 3, size: 'medium', align: 'center' }),
         clean: (raw) => ({ w: wb.size(raw.w, shape.min.w, shape.w), h: wb.size(raw.h, shape.min.h, shape.h), text: wb.text(raw.text) }),
         box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
         resize: { handles: 'corners', min: shape.min },
@@ -66,13 +67,13 @@
           svg.append(body);
           const words = document.createElement('div');
           words.className = 'wb-words';
-          words.textContent = b.text;
+          wbShowWords(words, b.text);
           const inset = shape.inset ? shape.inset(b.w, b.h) : [8, 8, 8, 8];
           el.style.setProperty('--wb-inset', inset.map((n) => `${Math.round(n)}px`).join(' '));
           el.replaceChildren(svg, words);
         },
         textOf: (el) => el.querySelector('.wb-words'),
-        describe: (b) => (b.text ? `${shape.label}: ${b.text.slice(0, 80)}` : shape.label),
+        describe: (b) => { const t = wbPlain(b.text); return t ? `${shape.label}: ${t.slice(0, 80)}` : shape.label; },
       });
     }
   }

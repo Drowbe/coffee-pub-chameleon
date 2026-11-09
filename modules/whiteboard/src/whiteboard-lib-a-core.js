@@ -50,6 +50,32 @@
   const WB_GRID = 24;
   const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
+  // The words of a note, a text block and a shape (a block type with `markup: true`) are stored as written, in the small
+  // markup chat uses (**bold**, *italic*, `code`, - and 1. lists, # headings, [words](https://...) links) and drawn
+  // through the host's markdown (lib-d, wbShowWords). They have a size and an alignment of their own: a closed list of
+  // the theme's type tokens, and three ways to line the words up. A block that has neither reads as its type's usual.
+  const WB_SIZES = [
+    { id: 'small', label: 'Small', token: 'var(--text-14)' },
+    { id: 'medium', label: 'Medium', token: 'var(--text-16)' },
+    { id: 'large', label: 'Large', token: 'var(--text-22)' },
+    { id: 'huge', label: 'Huge', token: 'var(--text-28)' },
+  ];
+  const WB_SIZE_BY_ID = new Map(WB_SIZES.map((x) => [x.id, x]));
+  const WB_ALIGNS = [
+    { id: 'left', label: 'Left', icon: 'align-left' },
+    { id: 'center', label: 'Centre', icon: 'align-center' },
+    { id: 'right', label: 'Right', icon: 'align-right' },
+  ];
+  const WB_ALIGN_BY_ID = new Map(WB_ALIGNS.map((x) => [x.id, x]));
+  // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
+  // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.
+  const wbMarkup = { html: null, plain: null };
+  // A block's words as plain text, on one line: what a screen reader is told, never the markup.
+  const wbPlain = (text) => {
+    const t = typeof text === 'string' ? text : '';
+    const out = wbMarkup.plain ? wbMarkup.plain(t, { line: true }) : t;
+    return String(out).replace(/\s+/g, ' ').trim();
+  };
   // Small checks every block type uses to clean what it reads.
   const wb = {
     // A finite number in [-max, max] rounded to one decimal, or null.
@@ -68,6 +94,8 @@
     paint(v, extra, fallback) { return WB_PALETTE_BY_ID.has(v) || (extra && extra.includes(v)) ? v : fallback; },
     // One of the widths, or the fallback.
     weight(v, fallback) { return WB_WEIGHTS.includes(v) ? v : fallback; },
+    // One of a closed list's ids (a Map by id), or the fallback.
+    choice(v, byId, fallback) { return typeof v === 'string' && byId.has(v) ? v : fallback; },
     id(v) { return typeof v === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(v) ? v : null; },
     svg(tag, attrs = {}) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -98,7 +126,8 @@
   // element, describe(block) -> words for a screen reader, noun?(block) -> what a person calls it ("arrow"; else the
   // label in lower case), paint?: { role: { label?, extra?: ['none', 'auto'] } } (the
   // colour roles it has, see the top of this file), weight?: true (it has a line or border width), edit?: 'text' |
-  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
+  // 'colour' (what opening it does), markup?: true (its `text` is markup, drawn with wbShowWords, edited with the
+  // formatting bar, and it has a size and an align: its create() gives their usual, wbClean cleans them), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
   // field edited, 'text' unless named: a picture's 'alt'), textLine? (one line: Enter keeps it), textLabel? (the field's
   // name for a screen reader), textMax? (most characters), editLabel? (the menu's word for it, else "Edit"), resize?: how it
   // changes size when it is the one block picked:
@@ -158,6 +187,10 @@
     const usual = def.create();
     for (const [role, spec] of Object.entries(def.paint || {})) own[role] = wb.paint(raw[role], spec.extra, usual[role]);
     if (def.weight) own.weight = wb.weight(raw.weight, usual.weight);
+    if (def.markup) {
+      own.size = wb.choice(raw.size, WB_SIZE_BY_ID, usual.size);
+      own.align = wb.choice(raw.align, WB_ALIGN_BY_ID, usual.align);
+    }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;
     return {
