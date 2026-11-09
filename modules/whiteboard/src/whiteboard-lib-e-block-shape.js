@@ -19,6 +19,7 @@
         clean: (raw) => ({ w: wb.size(raw.w, 8, 160), h: wb.size(raw.h, 8, 100), text: wb.text(raw.text) }),
         box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
         resize: { handles: 'corners', min: { w: 16, h: 16 } },
+        linked: [['x', 'y', 'w', 'h']], // its box
         render(b, el) {
           const svg = wb.svg('svg', { class: 'wb-svg', width: b.w, height: b.h, viewBox: `0 0 ${b.w} ${b.h}`, 'aria-hidden': 'true' });
           const body = shape.draw(b.w, b.h, b.stroke === 'none' ? 0.5 : b.weight / 2);

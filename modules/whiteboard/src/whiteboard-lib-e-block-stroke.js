@@ -74,5 +74,6 @@
         for (const p of svg.querySelectorAll('path')) p.setAttribute('d', d);
       },
       describe: () => 'Drawing',
+      linked: [['x', 'y', 'points']], // where it is and its line
     });
   }

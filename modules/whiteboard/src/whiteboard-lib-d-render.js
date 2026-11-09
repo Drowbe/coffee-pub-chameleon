@@ -9,17 +9,21 @@
     const view = { x: 0, y: 0, s: 1 };
     const MIN = 0.2;
     const MAX = 4;
-    let selected = null;
-    let grips = null; // the selected block's handles: 'corners', 'ends' or null
+    let selected = new Set(); // the picked blocks' ids
+    let grips = null; // the one picked block's handles: 'corners', 'ends' or null
+    const eachFrames = new Map(); // block id -> its own frame, while more than one block is picked
+    let marqueeEl = null; // the rectangle dragged to pick blocks, while it is dragged
 
     function applyView() {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
       world.style.setProperty('--wb-scale', String(view.s));
-      let step = 24 * view.s;
+      let step = WB_GRID * view.s;
       while (step < 12) step *= 2; // zoomed far out, every other dot, so the ground never turns grey
+      // Each dot is drawn in the middle of its tile: the tiles start half a step back, so the dots sit on the grid's
+      // multiples (board 0, 24, 48 ...), where Snap to grid puts blocks.
       surface.style.setProperty('--wb-grid', `${step}px`);
-      surface.style.setProperty('--wb-grid-x', `${view.x}px`);
-      surface.style.setProperty('--wb-grid-y', `${view.y}px`);
+      surface.style.setProperty('--wb-grid-x', `${view.x - step / 2}px`);
+      surface.style.setProperty('--wb-grid-y', `${view.y - step / 2}px`);
     }
 
     function place(el, block, def) {
@@ -78,7 +82,7 @@
       if (!el.classList.contains('wb-editing')) def.render(block, el);
       place(el, block, def);
       el.setAttribute('aria-label', def.describe(block));
-      if (selected === block.id) showFrame();
+      if (selected.has(block.id)) frameSoon();
       return el;
     }
 
@@ -87,32 +91,60 @@
       if (el) el.remove();
       els.delete(id);
       if (shown.delete(id)) restack();
-      if (selected === id) select(null);
+      if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
     }
 
     function clear() { for (const id of [...els.keys()]) remove(id); }
 
-    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own. Its
-    // handles (when the page asks for them) sit on the frame's corners or on a line's ends, each at a point of the block's
+    // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own; with more
+    // than one block picked, a frame round each and one dashed box round them all (#frame), with no handles. The handles
+    // (when the page asks for them, for one block) sit on the frame's corners or on a line's ends, each at a point of the block's
     // element in board units (--hx, --hy) pushed out by --ox, --oy screen steps; whiteboard.css keeps their size on the
     // screen the same at any zoom. Which handle is pressed is its data-handle (the select tool reads it).
     const CORNERS = [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]];
     function handlePoints(el) {
       if (grips === 'corners') return CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 }));
-      const b = shown.get(selected);
+      const b = shown.get([...selected][0]);
       const def = b && blockTypes.get(b.type);
       if (grips !== 'ends' || !def) return [];
       const box = def.box(b);
       return [{ id: 'start', x: -box.x, y: -box.y, ox: 0, oy: 0 }, { id: 'end', x: -box.x + b.dx, y: -box.y + b.dy, ox: 0, oy: 0 }];
     }
+    let framePending = false;
+    function frameSoon() {
+      if (framePending) return;
+      framePending = true;
+      queueMicrotask(() => { framePending = false; showFrame(); });
+    }
+    const boxIn = (el) => ({ x0: el.offsetLeft, y0: el.offsetTop, x1: el.offsetLeft + el.offsetWidth, y1: el.offsetTop + el.offsetHeight });
+    const putBox = (node, r) => {
+      node.style.left = `${r.x0}px`;
+      node.style.top = `${r.y0}px`;
+      node.style.width = `${r.x1 - r.x0}px`;
+      node.style.height = `${r.y1 - r.y0}px`;
+    };
     function showFrame() {
-      const el = selected && els.get(selected);
-      if (!el) { frame.hidden = true; frame.replaceChildren(); return; }
+      const picked = [...selected].map((id) => els.get(id)).filter(Boolean);
+      const group = picked.length > 1;
+      for (const [id, f] of eachFrames) if (!group || !selected.has(id)) { f.remove(); eachFrames.delete(id); }
+      if (!picked.length) { frame.hidden = true; frame.replaceChildren(); frame.classList.remove('wb-frame-group'); return; }
       frame.hidden = false;
-      frame.style.left = `${el.offsetLeft}px`;
-      frame.style.top = `${el.offsetTop}px`;
-      frame.style.width = `${el.offsetWidth}px`;
-      frame.style.height = `${el.offsetHeight}px`;
+      frame.classList.toggle('wb-frame-group', group);
+      if (group) {
+        const all = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        for (const el of picked) {
+          const r = boxIn(el);
+          all.x0 = Math.min(all.x0, r.x0); all.y0 = Math.min(all.y0, r.y0); all.x1 = Math.max(all.x1, r.x1); all.y1 = Math.max(all.y1, r.y1);
+          let f = eachFrames.get(el.dataset.id);
+          if (!f) { f = document.createElement('div'); f.className = 'wb-frame-each'; f.setAttribute('aria-hidden', 'true'); world.insertBefore(f, frame); eachFrames.set(el.dataset.id, f); }
+          putBox(f, r);
+        }
+        putBox(frame, all);
+        frame.replaceChildren();
+        return;
+      }
+      const el = picked[0];
+      putBox(frame, boxIn(el));
       const points = handlePoints(el);
       if (frame.children.length !== points.length || [...frame.children].some((h, i) => h.dataset.handle !== points[i].id)) {
         frame.replaceChildren(...points.map((pt) => {
@@ -131,10 +163,39 @@
         h.style.setProperty('--oy', String(pt.oy));
       });
     }
-    function select(id, handles = null) {
-      selected = id && els.has(id) ? id : null;
-      grips = selected ? handles : null;
+    // Pick the blocks with these ids (an array; [] for none); handles only when it is one block.
+    function select(ids, handles = null) {
+      selected = new Set((ids || []).filter((id) => els.has(id)));
+      grips = selected.size === 1 ? handles : null;
       showFrame();
+    }
+    // The rectangle being dragged to pick blocks, in board units ({ x0, y0, x1, y1 }), or null to take it away.
+    function marquee(r) {
+      if (!r) { if (marqueeEl) marqueeEl.remove(); marqueeEl = null; return; }
+      if (!marqueeEl) { marqueeEl = document.createElement('div'); marqueeEl.className = 'wb-marquee'; marqueeEl.setAttribute('aria-hidden', 'true'); world.append(marqueeEl); }
+      putBox(marqueeEl, { x0: Math.min(r.x0, r.x1), y0: Math.min(r.y0, r.y1), x1: Math.max(r.x0, r.x1), y1: Math.max(r.y0, r.y1) });
+    }
+
+    // A picture on its way (lib-i): a placeholder where its block will be, with a spinner and a word for how far it is.
+    // box in board units ({ x, y, w, h }), or null to take it away. It is not a block: nothing picks, moves or saves it.
+    const pendings = new Map(); // job id -> its placeholder
+    function pending(id, box, text = '') {
+      let el = pendings.get(id);
+      if (!box) { if (el) el.remove(); pendings.delete(id); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'wb-pending';
+        el.setAttribute('aria-hidden', 'true'); // the status line says how many are on their way
+        const spin = document.createElement('span');
+        spin.className = 'sdk-spinner sdk-spinner-lg';
+        const words = document.createElement('span');
+        words.className = 'wb-pending-text';
+        el.append(spin, words);
+        world.insertBefore(el, frame);
+        pendings.set(id, el);
+      }
+      el.lastChild.textContent = text;
+      putBox(el, { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h });
     }
 
     // A point on the screen (a pointer event's clientX and clientY) on the board, in board units.
@@ -191,6 +252,8 @@
       remove,
       clear,
       select,
+      marquee,
+      pending,
       element: (id) => els.get(id) || null,
       refreshFrame: showFrame,
       toBoard,
@@ -208,12 +271,15 @@
   // Editing a block's words in place: a text box over the words, the same size and look. Enter makes a new line; leaving
   // the box, or Ctrl or Cmd with Enter, keeps what was typed; Escape puts the words back. done(text) is called once, with
   // the words to keep (the same words when nothing changed). grow: the box grows with the words (a text block); else it
-  // fills the block (a note, a shape's label).
-  function wbEditText(el, target, value, done, { grow: grows = false } = {}) {
+  // fills the block (a note, a shape's label). line: one line (a picture's description), where Enter keeps it; label: the
+  // box's name for a screen reader; max: the most characters.
+  function wbEditText(el, target, value, done, { grow: grows = false, line = false, label = 'Words', max = 0 } = {}) {
     const box = document.createElement('textarea');
-    box.className = 'wb-text-edit';
+    box.className = `wb-text-edit${line ? ' wb-text-line' : ''}`;
     box.value = value;
-    box.setAttribute('aria-label', 'Words');
+    box.setAttribute('aria-label', label);
+    if (line) { box.rows = 1; box.placeholder = label; }
+    if (max) box.maxLength = max;
     box.spellcheck = true;
     el.classList.add('wb-editing');
     target.after(box);
@@ -227,11 +293,14 @@
       el.classList.remove('wb-editing');
       done(text);
     };
-    box.addEventListener('input', grow);
+    box.addEventListener('input', () => {
+      if (line && /[\r\n]/.test(box.value)) box.value = box.value.replace(/[\r\n]+/g, ' '); // pasted lines become one
+      grow();
+    });
     box.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); finish(false); el.focus(); }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); el.focus(); }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || line)) { e.preventDefault(); finish(true); el.focus(); }
     });
     box.addEventListener('pointerdown', (e) => e.stopPropagation());
     box.addEventListener('blur', () => finish(true));

@@ -45,6 +45,10 @@
   // The words a menu shows for them.
   const WB_WEIGHT_NAMES = { 1: 'Hairline', 2: 'Thin', 3: 'Medium', 4: 'Thick', 8: 'Heavy', 12: 'Extra heavy' };
   const wbWeightName = (w) => WB_WEIGHT_NAMES[w] || `${w}`;
+  // The board's dot grid, in board units: the dots the renderer draws sit on its multiples, and Snap to grid puts blocks
+  // on them (wbSnap).
+  const WB_GRID = 24;
+  const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
   // Small checks every block type uses to clean what it reads.
   const wb = {
@@ -94,14 +98,22 @@
   // element, describe(block) -> words for a screen reader, noun?(block) -> what a person calls it ("arrow"; else the
   // label in lower case), paint?: { role: { label?, extra?: ['none', 'auto'] } } (the
   // colour roles it has, see the top of this file), weight?: true (it has a line or border width), edit?: 'text' |
-  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, resize?: how it
+  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
+  // field edited, 'text' unless named: a picture's 'alt'), textLine? (one line: Enter keeps it), textLabel? (the field's
+  // name for a screen reader), textMax? (most characters), editLabel? (the menu's word for it, else "Edit"), resize?: how it
   // changes size when it is the one block picked:
-  // { handles: 'corners', min: { w, h }, height?: false } (x, y, w, h; height false: only w, the words set the height) or
-  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }. Hit-testing is the browser's: what render draws with
+  // { handles: 'corners', min: { w, h }, height?: false, keep?: true } (x, y, w, h; height false: only w, the words set the
+  // height; keep: a corner always keeps the block's shape, as Shift does for the others) or
+  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }, linked?: [[field, ...], ...] (fields that only
+  // make sense together, such as a box's x, y, w and h: an undo puts them back together or leaves them all, see lib-g),
+  // and, for a block that points at other blocks (a
+  // connector, later), refs?(block) -> the ids it points at and remap?(block, idMap) -> the fields to change when it is
+  // copied along with them (lib-h; idMap: old id -> the copy's id). A block's delete takes away only the block: what it
+  // points at or uses (another block, an upload) stays, so an undo can bring it back whole. Hit-testing is the browser's: what render draws with
   // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
 
-  // A tool: { id, label, icon, order, key?, edits (it changes the board), makes? (the block type it puts on the board, for
+  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), edits (it changes the board), makes? (the block type it puts on the board, for
   // the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx), up?(p, ctx),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
   // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType

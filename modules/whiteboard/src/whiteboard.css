@@ -92,6 +92,69 @@
   pointer-events: none;
 }
 
+/* a picture: the upload drawn to its box, with a border only when one is picked; "Picture not found" when it is gone */
+.wb-type-image { border: var(--wb-weight) solid var(--wb-stroke); cursor: grab; }
+.wb-type-image[data-stroke="none"] { border-style: none; }
+.wb-picture { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.wb-alt { display: none; }
+.wb-missing {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 1px dashed var(--edge-hairline);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font-size: var(--text-14);
+  text-align: center;
+  overflow: hidden;
+}
+.wb-type-image[data-missing] .wb-missing { display: flex; }
+.wb-type-image[data-missing] .wb-picture { visibility: hidden; }
+
+/* a picture on its way: a placeholder where it will be, with a spinner and how far it is */
+.wb-pending {
+  position: absolute;
+  z-index: 2147482998;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: calc(2px / var(--wb-scale, 1)) dashed var(--accent);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-card));
+  color: var(--text-muted);
+  font-size: var(--text-14);
+  text-align: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* files dragged over the board */
+.wb-drop {
+  position: absolute;
+  inset: var(--space-2);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 2px dashed var(--focus-ring);
+  border-radius: var(--radius-large);
+  background: color-mix(in srgb, var(--surface-panel) 90%, transparent);
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+.wb-drop-title { margin: 0; color: var(--text-primary); font-size: var(--text-16); font-weight: var(--weight-strong); }
+.wb-drop-sub { margin: 0; font-size: var(--text-14); }
+
 /* editing words: a text box in the block's own place and look */
 .wb-editing .wb-words { visibility: hidden; }
 .wb-text-edit {
@@ -113,6 +176,18 @@
 }
 .wb-type-note .wb-text-edit { position: absolute; inset: 12px; width: auto; height: auto; }
 .wb-type-text .wb-text-edit { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); }
+.wb-type-image .wb-text-edit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--edge-hairline);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+}
 .wb-type-rect .wb-text-edit, .wb-type-ellipse .wb-text-edit { position: absolute; inset: 8px; width: auto; height: auto; text-align: center; font-size: var(--text-16); }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
@@ -126,6 +201,33 @@
   border-radius: var(--radius-small);
   pointer-events: none;
   transform: translate(calc(-2px / var(--wb-scale, 1)), calc(-2px / var(--wb-scale, 1)));
+}
+
+/* more than one block picked: a thin frame on each, and the dashed frame round them all */
+.wb-frame-each {
+  position: absolute;
+  z-index: 2147482999;
+  margin: calc(-3px / var(--wb-scale, 1));
+  padding: calc(3px / var(--wb-scale, 1));
+  box-sizing: content-box;
+  border: calc(1px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  pointer-events: none;
+  transform: translate(calc(-1px / var(--wb-scale, 1)), calc(-1px / var(--wb-scale, 1)));
+}
+.wb-frame-group {
+  margin: calc(-10px / var(--wb-scale, 1));
+  padding: calc(10px / var(--wb-scale, 1));
+}
+
+/* the rectangle dragged on the board to pick every block it touches */
+.wb-marquee {
+  position: absolute;
+  z-index: 2147483001;
+  border: calc(1px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
 }
 
 /* the picked block's handles, on the frame's corners or a line's ends: --hx, --hy is the point in the block (board units),
@@ -164,5 +266,77 @@
 
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
 
-/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
+/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. In the block's menu, the same
+   line stands in Line width's icon place. */
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
+.wb-width-sample.wb-width-icon { width: 1em; }
+
+/* The strip of the colours and the line width, hung under the toolbar's left end, over the board: the frame's toolbar
+   surface and edge (inherited from the frame; the plain tokens where there is none), open at the top. Each button is the system's small quiet icon button with a mark of its own. */
+.wb-paint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  gap: var(--space-0);
+  padding: var(--space-0) var(--space-1) var(--space-1);
+  border: 1px solid var(--mf-edge, var(--edge-bar));
+  border-top: 0;
+  border-left: 0;
+  border-bottom-right-radius: var(--radius-medium);
+  background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  /* The strip lets presses through to the board; only its buttons take them. */
+  pointer-events: none;
+}
+.wb-paint-btn { position: relative; pointer-events: auto; }
+.wb-sw { position: relative; display: block; width: 16px; height: 16px; border-radius: var(--radius-min); }
+/* Border: a frame of the colour; Background: a square filled with it (with a hairline, so a pale one shows); Words: an A
+   with a bar of the colour under it. */
+.wb-sw-stroke { border: 3px solid var(--wb-sw, var(--text-muted)); border-radius: var(--radius-small); }
+.wb-sw-fill { border: 1px solid var(--edge-field); background: var(--wb-sw, transparent); }
+.wb-sw-ink {
+  width: auto;
+  height: auto;
+  padding-bottom: var(--space-0);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  line-height: 1;
+  border-bottom: 3px solid var(--wb-sw, var(--text-muted));
+  border-radius: 0;
+}
+/* None: a line across the mark. */
+.wb-sw[data-state="none"]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text-muted);
+  transform: rotate(45deg);
+}
+.wb-sw-stroke[data-state="none"], .wb-sw-ink[data-state="none"] { border-color: var(--edge-field); }
+/* Matching (a note's border, a little darker than its fill): half of the frame in the text colour. */
+.wb-sw-stroke[data-state="auto"] { border-color: var(--text-muted) var(--edge-field) var(--edge-field) var(--text-muted); }
+/* Default with no block type known: a dashed mark. */
+.wb-sw-stroke[data-state="default"], .wb-sw-fill[data-state="default"] { border-style: dashed; border-color: var(--text-muted); }
+.wb-sw-ink[data-state="default"] { border-bottom-style: dashed; border-bottom-color: var(--text-muted); }
+/* Mixed (the picked blocks differ): several colours. */
+.wb-sw-fill[data-state="mixed"], .wb-sw-stroke[data-state="mixed"] {
+  border-color: transparent;
+  background: conic-gradient(var(--tint-red), var(--tint-gold), var(--tint-green), var(--tint-blue), var(--tint-purple), var(--tint-red));
+}
+.wb-sw-stroke[data-state="mixed"] {
+  -webkit-mask: linear-gradient(var(--text-primary) 0 0) content-box exclude, linear-gradient(var(--text-primary) 0 0);
+  mask: linear-gradient(var(--text-primary) 0 0) content-box exclude, linear-gradient(var(--text-primary) 0 0);
+}
+.wb-sw-ink[data-state="mixed"] { border-image: linear-gradient(90deg, var(--tint-red), var(--tint-gold), var(--tint-green), var(--tint-blue)) 1; }
+/* Line width: a short line drawn at the width (up to 8px); dashed for Default with no type, or Mixed. */
+.wb-lw { display: block; width: 18px; height: var(--lw, 2px); border-radius: var(--radius-min); background: currentColor; }
+.wb-lw[data-state="default"], .wb-lw[data-state="mixed"] { height: 2px; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
+
+/* moving the board with Space held or the middle or right button, whatever the tool */
+.board.wb-grab, .board.wb-grab * { cursor: grab !important; }
+.board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }

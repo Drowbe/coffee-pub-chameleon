@@ -1,11 +1,11 @@
 {
   "id": "whiteboard",
   "name": "Whiteboard",
-  "version": "0.1.4",
+  "version": "0.1.9",
   "icon": "chalkboard",
   "color": "teal",
   "content": "flush",
-  "description": "A shared board for the {space}: draw, add notes, text and shapes, and move them around together.",
+  "description": "A shared board for the {space}: draw, add notes, text, shapes and pictures, and move them around together.",
   "author": "Coffee Pub",
   "scope": [
     "space"
@@ -33,7 +33,7 @@
     },
     {
       "key": "edit",
-      "label": "Draw on the whiteboard and change what is on it",
+      "label": "Draw on the whiteboard, add pictures and change what is on it",
       "default": {
         "member": true,
         "guest": false,
@@ -44,5 +44,14 @@
   "access": {
     "read": "view",
     "write": "edit"
+  },
+  "uploads": {
+    "types": [
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ],
+    "maxBytes": 5242880,
+    "maxFiles": 500
   }
 }

@@ -11,16 +11,23 @@
 <body>
 <!--
   The board fills the module. #world is the layer the view moves and scales; each block is a .wb-block in it, drawn by its
-  block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block.
-  The host draws the title bar (the +), the toolbar (the tools, Colour, Zoom, Delete) and the status line.
+  block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
+  #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
+  #paint is the strip of the colours and the line width, hung under the toolbar's left end (whiteboard.js fills it).
+  The host draws the title bar (the +, the zoom buttons), the toolbar (the tools, Undo, Redo, Delete, Snap to grid) and
+  the status line. The board's spoken help (its aria-label) is set by whiteboard.js, in the words of the device: the keys
+  only where there is a keyboard.
 -->
 <div id="app" class="app sdk-slot" hidden>
-  <div id="board" class="board" tabindex="0" role="application" aria-roledescription="whiteboard" aria-label="Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move it, Delete takes it away.">
+  <div id="paint" class="wb-paint" role="group" aria-label="Colours and line width" hidden></div>
+  <div id="board" class="board" tabindex="0" role="application" aria-roledescription="whiteboard" aria-label="Whiteboard">
     <div id="world" class="world">
       <div id="frame" class="wb-frame" hidden></div>
     </div>
     <p id="hint" class="hint" hidden></p>
+    <div id="drop" class="wb-drop" hidden><p class="wb-drop-title">Drop to add to the board</p><p id="drop-sub" class="wb-drop-sub"></p></div>
   </div>
+  <input id="picker" type="file" accept="image/*" multiple hidden>
 </div>
 <div id="loading" class="msg" aria-busy="true"><div class="sdk-skel sdk-skel-block"></div></div>
 <div id="msg" class="sdk-empty" hidden></div>
