@@ -153,11 +153,11 @@ An adapter in `server/ai-providers.js` turns the rendered messages into its serv
 | `AI_PROMPT_VERSIONS` | Pins templates to a kept earlier version, such as `ask@1,tags@1`. At start the server logs a line for a pin it ignores and for one that points to an earlier version. |
 | `AI_LOG_PROMPTS` | `1` writes every prompt sent to the AI service to the server log, without the key, for a developer to read. Refused on a host: with `BASE_DOMAIN` set it is ignored, with a line in the log. |
 
-The address variables below are for a developer running a host on one machine. `AI_KEY` and `AI_ADDRESS` set the managed Other service on a host.
+There are no variables for keys, providers, addresses or models. A host's managed keys and settings are set only on the host console's **AI** tab. The variables `AI_OPENAI_KEY`, `AI_ANTHROPIC_KEY`, `AI_ANTHROPIC_WORKSPACE`, `AI_KEY` (and `TAVERN_AI_KEY`), `AI_PROVIDER`, `AI_ADDRESS` and `AI_MODEL` are removed: if set, they are ignored. A single-environment install (no `BASE_DOMAIN`) has no host, so it offers no managed service and its AI is off until the admin sets it up on the AI configuration page. `tools/check-ai-admin-only.mjs` checks that the server and the pages read no such variable.
 
 ## The key and its address
 
-A saved key belongs to the service and address it was saved for. Changing the provider, or the address of an Other service, drops the saved key unless a key is typed in the same request. Listing a service's models uses the saved key only at the address it was saved for. On a host, the managed Other service's key from the server's environment (`AI_KEY`, with `AI_ADDRESS`) is sent only to `AI_ADDRESS`; if a host admin saves another address, that key is not used there. A key is one line of text: one with a line break or another control character is refused when typed.
+A saved key belongs to the service and address it was saved for. Changing the provider, or the address of an Other service, drops the saved key unless a key is typed in the same request. Listing a service's models uses the saved key only at the address it was saved for. On a host, a managed Other service's saved key is sent only to the address it was saved with; the models request with another address needs a key typed with it. A key is one line of text: one with a line break or another control character is refused when typed.
 
 ## The address guard on a host
 

@@ -16,21 +16,20 @@ the compose file.
 |---|---|---|
 | `BASE_DOMAIN` | unset (one environment) | Several environments on one server, at `<slug>.<base domain>`. A commented example in the file. See [Getting Started](userguide-getting-started.md), "Environments: one server, several groups". |
 | `PRODUCT_DOMAIN` | unset | Puts the start page and sign-up on a host of their own, so their name can change without touching any environment's address. A host name only: no `https://`, no port. It needs its own DNS record, an ordinary certificate and a proxy host to port 3000; the base domain keeps the wildcard. The console stays at `admin.<base domain>`. Ignored without `BASE_DOMAIN`. A commented example in the file. |
-| `PRODUCT_SITE_URL` | unset; for example `https://www.example.com/collaborator` | The address of the product's page on your website. When it is set, the start page shows an **About** link to it, below the other parts. A full `http://` or `https://` address. Unset means no link. A value that is not a web address stops the start with one line naming it. Only for a server with `BASE_DOMAIN`. A commented example in the file. |
+| `PRODUCT_SITE_URL` | unset; for example `https://www.example.com/collaborator` | The address of the product's page on your website. When it is set, the start page shows the studio's parts (the header's **Support** and **Find Out More**, **Request an Invite**, the **Ways to use** cards and the footer); every link is built from this address's origin. A full `http://` or `https://` address. Unset means no link. A value that is not a web address stops the start with one line naming it. Only for a server with `BASE_DOMAIN`. A commented example in the file. |
 | `MIGRATE_ENVIRONMENT_SLUG` | unset | For one start only: the environment that the data already here becomes, when you turn a single-environment install into several. Remove it afterwards. |
 | `PREVIOUS_BASE_DOMAINS` | empty | Old base domains whose links redirect to the new one while you move a server's addresses ("Moving a server's addresses" in the guide). |
 | `RESERVED_SLUGS` | empty; for example `studio,shop` | Names no new environment may take, on top of the built-in list (`www`, `api`, `admin`, `mail`, `livekit` and others). Comma separated. An environment that already has one keeps working. |
 | `TEMPLATE` | unset; for example `travel` | One environment set up for one use, from a template in `templates/`: its words, icons, modules and Lobby. Only on a fresh data folder, and only without `BASE_DOMAIN` (with it, the host console and sign-up pick a template for each new environment). Ignored, with a line in the log, on data that already exists. |
-| `SIGNUP` | off | `on` lets anyone make a free environment from the start page. Needs `BASE_DOMAIN`. |
-| `CONTACT_EMAIL` | unset | Where the start page's "ask" writes to. A commented example in the file. |
+| `SIGNUP` | off | `on` turns on the server's sign-up route for a free environment. The start page has no sign-up form now, so nothing a person sees uses it yet. Needs `BASE_DOMAIN`. |
+| `CONTACT_EMAIL` | unset | Where the sign-up answer sends someone to write when sign-up is off. A commented example in the file. |
 
 ## AI
 
+Keys, providers and models are not set here. A host's keys are set on the host console's **AI** tab, and a single server's AI on the AI configuration page, so there is nothing to put in the file. The old variables (`AI_OPENAI_KEY`, `AI_ANTHROPIC_KEY`, `AI_ANTHROPIC_WORKSPACE`, `AI_KEY`, `TAVERN_AI_KEY`, `AI_PROVIDER`, `AI_ADDRESS` and `AI_MODEL`) are removed; if still set, they are ignored.
+
 | Setting | Default | What it does |
 |---|---|---|
-| `AI_OPENAI_KEY` | unset | The AI the host offers every environment (each picks it as "Managed", or sets up its own). A key is enough: the model is chosen for you and can be changed on the host console. Set either key or both. |
-| `AI_ANTHROPIC_KEY` | unset | The same, for Anthropic. |
-| `AI_ANTHROPIC_WORKSPACE` | unset | Only for a key made at the organisation level; Anthropic then asks which workspace. |
 | `AI_ALLOW_HTTP` | unset | With `BASE_DOMAIN`, the AI address an environment's owner types must be https and never a private, loopback or link-local address. `1` allows plain http. For a developer running the host on one machine only. |
 | `AI_ALLOW_PRIVATE_ADDRESSES` | unset | The same guard: `1` allows private addresses. For a developer running the host on one machine only. |
 
