@@ -156,6 +156,9 @@
     const vals = new Set(list.map(get).filter((v) => v !== null));
     return vals.size === 0 ? null : vals.size === 1 ? [...vals][0] : undefined;
   }
+  // The remembered size and align a new block of this type starts with (next: { size, align }, null for none): a new table
+  // always starts centred (its create()), whatever was picked before.
+  const wbNextWords = (def, next) => Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== null && !(def.type === 'table' && k === 'align')));
   // What the colour strip's fonts group shows: size and horizontal align for the picked blocks whose words take markup
   // (else for the active tool's type: size and align), vertical align only where a picked block's type has it. Pure: blocks and their
   // types in, { size, align, valign } out (each: the value, undefined for Mixed, null to hide), or null for no group.
@@ -172,7 +175,7 @@
     }
     if (!toolDef || !toolDef.markup) return null;
     const usual = toolDef.create();
-    return { size: next.size || usual.size, align: next.align || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
+    return { size: next.size || usual.size, align: (!wbNextWords(toolDef, next).align ? null : next.align) || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
   }
   // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
   // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['createHistory', 'wbApplyChanges', 'wbClean', 'blockTypes', 'wbValignOf', 'wbFontsShown'];
+const NAMES = ['createHistory', 'wbApplyChanges', 'wbClean', 'blockTypes', 'wbValignOf', 'wbFontsShown', 'wbNextWords'];
 let passed = 0;
 const fails = [];
 const check = (ok, what) => { if (ok) passed += 1; else fails.push(what); };
@@ -69,6 +69,12 @@ if (!missing.length && !fails.length) {
   const shapeTool = wbFontsShown([], defOf, blockTypes.get('rect'), { align: 'right' });
   check(shapeTool.valign === null && shapeTool.align === 'right' && shapeTool.size === 'medium', 'a shape tool shows size and align of a new shape, no vertical');
   check(wbFontsShown([], defOf, blockTypes.get('text'), {}).valign === null, 'the Text tool: size and align, no vertical');
+
+  // a new table ignores a remembered align; other types take it
+  const next = { size: 'huge', align: 'right' };
+  check(!('align' in lib.wbNextWords(blockTypes.get('table'), next)) && lib.wbNextWords(blockTypes.get('table'), next).size === 'huge', 'a new table takes no remembered align (size yes)');
+  check(lib.wbNextWords(blockTypes.get('note'), next).align === 'right', 'a new note takes the remembered align');
+  check(wbFontsShown([], defOf, blockTypes.get('table'), next).align === 'center', 'the Table tool shows centre whatever was remembered');
 
   // one history step, field-wise undo
   const history = lib.createHistory({ cap: 50 });

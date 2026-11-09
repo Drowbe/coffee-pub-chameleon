@@ -167,7 +167,7 @@
         if (v !== null && takesNext(def, role)) own[role] = v;
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
-      if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null) own[k] = v;
+      if (def.markup) Object.assign(own, wbNextWords(def, nextText));
       // A frame goes under the other blocks (lib-e-block-frame, wbFrameZ); everything else on top.
       const z = def.container ? wbFrameZ(board.all()) : Math.floor(board.topZ()) + 1;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z });
