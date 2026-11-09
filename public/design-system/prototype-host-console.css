@@ -46,10 +46,12 @@
 .hc-kind > b { font-variant-numeric: tabular-nums; }
 .hc-kind[data-tone="danger"] > i { color: var(--status-danger-text); }
 .hc-kind[data-tone="warn"] > i { color: var(--status-warn-text); }
-.hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: var(--space-2); }
+.hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto auto; align-items: center; gap: var(--space-2); }
 .hc-tools select { width: auto; max-width: 100%; }
 .hc-tools-more { display: contents; }
 .hc-filter-btn { display: none; }
+.hc-count-word { display: inline; }
+.hc-density { justify-self: start; height: var(--btn-h, var(--mf-ctl-h)); }
 .hc-swipe { display: none; margin: 0; }
 .hc-empty { align-items: flex-start; }
 .hc-tablebox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
@@ -75,6 +77,20 @@
 .hc-tpls .sdk-chip, .hc-tpls .sdk-status { margin-right: var(--space-1); }
 .hc-plans input { min-width: 84px; }
 .hc-plans tbody th input { min-width: 110px; }
+
+/* Compact: one use per row, shorter rows. The status, plan and template columns stay. */
+.hc-envs[data-density="compact"] :is(th, td) { padding-block: var(--space-1); }
+.hc-envs[data-density="compact"] .hc-use { min-width: 190px; gap: 0; }
+.hc-envs[data-density="compact"] tbody tr { height: 40px; }
+.hc-use-in-name { display: none; }
+.hc-use-one .hc-use-row { grid-template-columns: 54px minmax(60px, 1fr) auto; }
+
+/* ---- states drawn at rest: a focus ring, a menu and a dialog held still for the picture ---- */
+.hc-focus { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+.host-menu-item.hc-focus { background: var(--menu-hover); outline: 2px solid var(--menu-ring, var(--focus-ring)); outline-offset: -2px; border-radius: var(--radius-min); }
+.hc-menu-still { align-self: flex-end; width: min(240px, 100%); margin-top: calc(-1 * var(--space-3)); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-panel); box-shadow: var(--shadow-3); }
+.hc-scene { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; padding: var(--space-5); border: 1px solid var(--edge-hairline); border-radius: var(--radius-large); background: var(--scrim); }
+.hc-scene > .hc-still-dialog { position: static; flex: 1 1 280px; margin: 0; inset: auto; }
 
 /* ---- an environment's page ---- */
 .hc-tabs.subtabs { border-bottom: 1px solid var(--edge-hairline); padding-bottom: var(--space-1); }
@@ -140,7 +156,16 @@
   .hc-nav.subtabs { flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
   .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
   .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
-  .hc-count { grid-column: 1 / -1; }
+  .hc-count { justify-self: end; }
+  .hc-envs[data-density="compact"] :is(thead th:nth-child(4), td.hc-use-cell) { display: none; }
+  .hc-envs[data-density="compact"] .hc-use-in-name { display: flex; min-width: 0; max-width: none; margin-top: var(--space-1); }
+  .hc-envs[data-density="compact"] .hc-use-in-name .hc-use-row { grid-template-columns: 52px 44px auto; }
+  .hc-envs[data-density="compact"] .hc-name-cell { max-width: 200px; }
+  .hc-envs[data-density="compact"] .hc-name-cell .sdk-table-sub { display: none; }
+  .hc-count-word { display: none; }
+  /* one chip under another, so none runs off the edge; the table's own scroll shows the columns after it */
+  .hc-status-cell { min-width: 120px; }
+  .hc-status-cell > .sdk-status { display: flex; width: fit-content; }
   /* the needs-attention strip is one row that scrolls inside itself */
   .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
   .hc-attention-row > * { flex: none; white-space: nowrap; }

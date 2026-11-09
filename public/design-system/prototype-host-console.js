@@ -5,7 +5,7 @@
 // the left navigation folds into the tab strip the console has now. 30 invented environments, or 6, or none (the switch under the heading).
 // Pieces reused, not drawn again: .subtabs (the navigation, the environment's tabs, the editor's jump list), .sdk-table, .sdk-card,
 // .sdk-panel, .sdk-status, .sdk-progress, .sdk-banner, .sdk-search and the fields, openHostMenu (host.menu.show's menu), confirmDialog.
-import { openHostMenu } from '/host-menu.js';
+import { openHostMenu, mountHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
 import {
   DOMAIN, PLANS, MODULES, BUNDLED, TPL_MODS, TEMPLATES, ENVIRONMENTS, HOST_ADMINS, MAP_FILES, KINDS, STATUS_WORD, STATUS_TONE,
@@ -116,7 +116,7 @@ const EDITOR_PARTS = ['Basics', 'Words and verbs', 'Home icon', 'Modules', 'New 
 const SERVER_PARTS = ['The host', 'Your two-step sign-in', 'Host admins', 'AI', 'Maps', 'Flight schedule'];
 
 // One console. `count` says how many environments it holds (30, 6 or 0), read at each draw.
-export function createConsole({ count, width, lazy = false, label = 'Host console' }) {
+export function createConsole({ count, width, lazy = false, label = 'Host console', start = {}, decorate = null }) {
   const frame = h('div', 'hc-frame');
   if (width) frame.dataset.fixed = String(width);
   const el = h('div', 'hc');
@@ -125,7 +125,8 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
   frame.append(el);
   let live = !lazy; // a console off the screen is drawn when it comes near it
   if (lazy) frame.dataset.lazy = '';
-  const S = { route: 'environments', slug: '', tab: 'overview', tpl: 'travel', q: '', filter: 'all', sort: 'attention', offer: false, log: '' };
+  const S = { route: 'environments', slug: '', tab: 'overview', tpl: 'travel', q: '', filter: 'all', sort: 'attention', density: 'comfortable', offer: false, log: '', ...start };
+  const decorated = () => { if (decorate) decorate(el, S); };
   const envs = () => ENVIRONMENTS.slice(0, count());
   const byslug = (slug) => ENVIRONMENTS.find((e) => e.slug === slug) || ENVIRONMENTS[0];
 
@@ -176,6 +177,7 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
     main.textContent = '';
     ({ environments: drawEnvironments, env: drawEnv, new: drawNew, templates: drawTemplates, editor: drawEditor, modules: drawModules, plans: drawPlans, server: drawServer })[S.route]();
     frame.dataset.route = S.route;
+    decorated();
   }
 
   // ---- actions that ask first ----
@@ -220,13 +222,29 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
     const fSel = select(fOptions, S.filter); fSel.setAttribute('aria-label', 'Status');
     const sSel = select([['attention', 'Needs attention first'], ['name', 'Name'], ['plan', 'Plan'], ['newest', 'Newest'], ['use', 'Highest use']], S.sort); sSel.setAttribute('aria-label', 'Sort');
     const counter = h('p', 'hc-count'); counter.setAttribute('role', 'status'); counter.setAttribute('aria-live', 'polite');
+    // Rows: the density of the table. Comfortable shows the three uses; Compact shows the one closest to its cap.
+    const dens = h('div', 'mf-switch hc-density'); dens.setAttribute('role', 'radiogroup'); dens.setAttribute('aria-label', 'Row density');
+    const densBtns = [['comfortable', 'Comfortable'], ['compact', 'Compact']].map(([id, word]) => {
+      const b = h('button', 'mf-switch-btn', word); b.type = 'button'; b.dataset.density = id; b.setAttribute('role', 'radio');
+      b.addEventListener('click', () => { S.density = id; paintDensity(); rows(); });
+      dens.append(b);
+      return b;
+    });
+    const paintDensity = () => { for (const b of densBtns) { const on = b.dataset.density === S.density; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; } };
+    dens.addEventListener('keydown', (ev) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(ev.key)) return;
+      ev.preventDefault();
+      S.density = S.density === 'compact' ? 'comfortable' : 'compact';
+      paintDensity(); rows(); dens.querySelector('[aria-checked="true"]').focus();
+    });
+    paintDensity();
     // On a phone the two selects fold behind one control, so the first screen holds rows.
     const more = h('div', 'hc-tools-more'); more.id = `${frame.dataset.uid}-fs`;
     more.append(fSel, sSel);
     const fsBtn = btn('Filter and sort', { cls: 'btn hc-filter-btn', icon: 'sliders' });
     fsBtn.setAttribute('aria-expanded', 'false'); fsBtn.setAttribute('aria-controls', more.id);
     fsBtn.addEventListener('click', () => { const on = more.toggleAttribute('data-open'); fsBtn.setAttribute('aria-expanded', String(on)); });
-    tools.append(search, fsBtn, more, counter);
+    tools.append(search, fsBtn, more, dens, counter);
 
     const tbody = h('tbody');
     const { wrap, table } = tableIn('Environments', [['Name'], ['Plan'], ['Status'], ['Use'], ['Template'], ['', 'hc-more-col']], tbody);
@@ -250,7 +268,9 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
     function rows() {
       tbody.textContent = '';
       const list = all.filter(matches).sort(order[S.sort]);
-      counter.textContent = `${list.length} of ${all.length} environments`;
+      counter.textContent = '';
+      counter.append(`${list.length} of ${all.length}`, h('span', 'hc-count-word', ' environments'));
+      table.dataset.density = S.density;
       // the strip
       stripBody.textContent = '';
       const lead = h('span', 'hc-attention-label'); lead.append(fa('bell'), h('span', '', 'Needs attention'));
@@ -269,6 +289,7 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
       if (S.filter !== 'all') { const c = btn('Clear', { cls: 'btn btn-quiet btn-small', onClick: () => { S.filter = 'all'; fSel.value = 'all'; rows(); } }); stripBody.append(c); }
       if (!list.length) {
         const tr = h('tr', 'sdk-table-empty'); const td = h('td', '', 'No environment matches. Clear the search or the filter.'); td.colSpan = 6; tr.append(td); tbody.append(tr);
+        decorated();
         return;
       }
       for (const e of list) {
@@ -278,12 +299,13 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
         const name = h('th', 'hc-name-cell'); name.scope = 'row';
         const a = link(e.name, () => openEnv(e.slug)); a.href = `#environments/${e.slug}`;
         name.append(a, h('span', 'sdk-table-sub', `${e.slug}.${DOMAIN}`));
+        if (S.density === 'compact') { const inl = useCompact(e); inl.classList.add('hc-use-in-name'); inl.removeAttribute('title'); inl.querySelector('.visually-hidden')?.remove(); name.append(inl); } // on a phone the one bar sits under the name, so it is seen without scrolling
         const plan = h('td', '', e.plan === 'pro' ? 'Pro' : 'Free');
         const st = h('td', 'hc-status-cell');
         st.append(chip(STATUS_TONE[e.status], STATUS_WORD[e.status]));
         capChip(st, e);
         if (e.degraded) st.append(chip('warn', 'Degraded', false));
-        const u = h('td'); u.append(useCell(e));
+        const u = h('td', 'hc-use-cell'); u.append(S.density === 'compact' ? useCompact(e) : useCell(e));
         const tp = h('td', 'sdk-table-dim', tplName(e.template));
         const mo = h('td', 'hc-more-cell');
         const more = iconBtn('ellipsis', `More for ${e.name}`, () => rowMenu(more, e));
@@ -292,6 +314,7 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
         tr.append(name, plan, st, u, tp, mo);
         tbody.append(tr);
       }
+      decorated();
     }
     search.querySelector('input').addEventListener('input', (ev) => { S.q = ev.target.value; rows(); });
     fSel.addEventListener('change', () => { S.filter = fSel.value; rows(); });
@@ -310,6 +333,20 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
     line('Members', e.members, e.memCap);
     line('AI', e.ai, e.aiCap);
     if (e.calls) line('Calls', e.calls, e.callsCap);
+    return box;
+  }
+
+  // Compact: one bar, the use closest to its cap, with its label and number. The others are in the row's tooltip (and read out), and on the environment's page.
+  function useCompact(e) {
+    const uses = [['Members', e.members, e.memCap], ['AI', e.ai, e.aiCap]];
+    if (e.calls) uses.push(['Calls', e.calls, e.callsCap]);
+    const top = uses.reduce((a, b) => (b[2] && (!a[2] || b[1] / b[2] > a[1] / a[2]) ? b : a));
+    const all = uses.map(([l, v, c]) => `${l} ${num(v)} / ${num(c)}`).join(', ');
+    const box = h('div', 'hc-use hc-use-one');
+    box.title = all;
+    const r = h('div', 'hc-use-row');
+    r.append(h('span', 'hc-use-key', top[0]), bar(`${top[0]} of ${e.name}`, top[1], top[2], e), h('span', 'hc-use-val', `${num(top[1])} / ${num(top[2])}`));
+    box.append(r, h('span', 'visually-hidden', `All uses: ${all}`));
     return box;
   }
 
@@ -587,22 +624,19 @@ export function createConsole({ count, width, lazy = false, label = 'Host consol
 
   // ======== Plans ========
   function drawPlans() {
-    main.append(pageHead('Plans', btn('Add a plan', { icon: 'plus' })));
-    main.append(hint('What an environment may use, by plan. Empty means no cap. Free is what sign-up makes, and it cannot be removed.'));
+    main.append(pageHead('Plans'));
+    main.append(hint('What an environment may use, by plan. Empty means no cap. Read only: changing plans comes later. One environment’s own caps are on its page.'));
     const all = envs(); const tb = h('tbody');
     for (const p of PLANS) {
       const tr = h('tr');
-      const n = h('th', ''); n.scope = 'row'; n.append(input(p.name), h('span', 'sdk-table-sub', p.id)); n.firstChild.setAttribute('aria-label', `${p.name}: name`);
-      const cell = (v, label, type = 'number') => { const td = h('td'); const i = input(String(v), 'no cap', type); i.setAttribute('aria-label', `${p.name}: ${label}`); td.append(i); return td; };
-      const used = h('td', 'num', String(all.filter((e) => e.plan === p.id).length));
-      const rm = h('td', 'hc-more-cell'); rm.append(p.id === 'free' ? h('span', 'sdk-table-dim', 'Kept') : btn('Remove', { cls: 'btn btn-small btn-danger', onClick: () => ask({ title: `Remove the ${p.name} plan?`, message: 'Environments on it keep their caps until you move them.', action: 'Remove', kind: 'destructive' }, 'Removed (a picture).') }));
-      tr.append(n, cell(p.members, 'members'), cell(p.storageGb, 'storage in GB'), cell(p.ai, 'AI calls a month'), cell(p.calls, 'calls at once'), cell(p.modules, 'modules', 'text'), used, rm);
+      const n = h('th', ''); n.scope = 'row'; n.append(p.name, h('span', 'sdk-table-sub', p.id));
+      const cell = (v) => h('td', 'num', String(v));
+      tr.append(n, cell(p.members), cell(p.storageGb), cell(p.ai), cell(p.calls), h('td', '', p.modules), h('td', 'num', String(all.filter((e) => e.plan === p.id).length)));
       tb.append(tr);
     }
-    const { wrap, table } = tableIn('Plans', [['Plan'], ['Members'], ['Storage (GB)'], ['AI calls a month'], ['Calls at once'], ['Modules'], ['Environments', 'num'], ['', 'hc-more-col']], tb);
+    const { wrap, table } = tableIn('Plans', [['Plan'], ['Members', 'num'], ['Storage (GB)', 'num'], ['AI calls a month', 'num'], ['Calls at once', 'num'], ['Modules'], ['Environments', 'num']], tb);
     table.classList.add('hc-plans');
-    const row = h('div', 'hc-actions'); row.append(btn('Save plans', { cls: 'btn btn-primary', onClick: () => status('Saved (a picture).') }));
-    main.append(wrap, row, statusLine());
+    main.append(wrap, statusLine());
   }
 
   // ======== Server ========
@@ -694,6 +728,7 @@ const SHOWS = [
   ['An environment', (c) => c.openEnv('the-long-table')], ['Plan and modules', (c) => c.openEnv('harbour-club', 'plan')], ['Template', (c) => c.openEnv('lisbon-trip', 'template')],
   ['Owners', (c) => c.openEnv('harbour-club', 'owners')], ['Backups', (c) => c.openEnv('harbour-club', 'backups')], ['Danger zone', (c) => c.openEnv('old-book-club', 'danger')],
   ['Templates', (c) => c.go('templates')], ['Template editor', (c) => c.go('editor', { tpl: 'travel' })], ['Modules', (c) => c.go('modules')], ['Plans', (c) => c.go('plans')], ['Server', (c) => c.go('server')],
+  ['Compact rows', (c) => c.go('environments', { density: 'compact' })], ['Comfortable rows', (c) => c.go('environments', { density: 'comfortable' })],
 ];
 const slots = [];
 for (const [name, fn] of SHOWS) {
@@ -702,6 +737,9 @@ for (const [name, fn] of SHOWS) {
   jump.append(b);
 }
 sec.append(jump);
+const stateJump = h('button', 'btn btn-small', 'States'); stateJump.type = 'button';
+stateJump.addEventListener('click', () => D.querySelector('.hc-section .pp-state-name[data-states]')?.scrollIntoView({ block: 'start' }));
+jump.append(stateJump);
 
 for (const [name, note, width] of [['Wide', 'As wide as the width switch at the top.', 0], ['Phone, 390 wide', 'Always 390 wide: the navigation is the tab strip, tables scroll inside themselves, taps are 44 pixels.', 390]]) {
   const st = h('section', 'pp-state');
@@ -712,6 +750,72 @@ for (const [name, note, width] of [['Wide', 'As wide as the width switch at the 
   st.append(hh, h('p', 'pp-state-note', note), c.el);
   sec.append(st);
 }
+
+// ---- states the walk-through did not show: drawn at rest, so they can be looked at without clicking ----
+// A focus ring drawn on an element (a still picture cannot hold a real keyboard focus): the same ring the product's :focus-visible draws.
+const ring = (e) => { if (e) e.classList.add('hc-focus'); };
+// A confirm dialog drawn in place, the same markup confirmDialog builds (public/confirm.js), open and not floating.
+function stillConfirm({ title, message, action, kind }) {
+  const dlg = h('dialog', 'sdk-dialog sdk-dialog-confirm hc-still-dialog');
+  dlg.setAttribute('open', ''); dlg.setAttribute('role', 'alertdialog'); dlg.setAttribute('aria-label', title); dlg.dataset.kind = kind;
+  const head = h('div', 'sdk-dialog-head');
+  const close = h('button', 'sdk-icon-btn btn-quiet btn-small sdk-dialog-close'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.append(fa('xmark'));
+  head.append(h('h2', 'sdk-dialog-title', title), close);
+  const body = h('div', 'sdk-dialog-body'); for (const p of message.split(/\n\s*\n/)) body.append(h('p', '', p));
+  const foot = h('div', 'sdk-dialog-foot');
+  const cancel = h('button', 'btn', 'Cancel'); cancel.type = 'button';
+  const ok = h('button', `btn ${kind === 'plain' ? 'btn-primary' : 'btn-danger'}`, action); ok.type = 'button';
+  if (kind !== 'plain') ring(cancel); // a destructive question puts the focus on Cancel
+  foot.append(cancel, ok);
+  dlg.append(head, body, foot);
+  return dlg;
+}
+const stateSections = [];
+function addState(name, note, opts, wrapKids) {
+  const st = h('section', 'pp-state');
+  const hh = h('h3', 'pp-state-name', name);
+  st.append(hh, h('p', 'pp-state-note', note));
+  if (opts) { const c = createConsole({ count: () => 30, lazy: true, ...opts }); stateSections.push(c); st.append(c.el); }
+  if (wrapKids) st.append(...wrapKids);
+  sec.append(st);
+  return { st, hh };
+}
+const first = addState('States: the dialogs that ask first', 'Suspend and Resume, as the row’s More menu and the Danger zone ask them. Suspend can be taken back, so it is the soft danger button with the focus on Cancel; Resume is easy to take back, so it is the main button.', null, [(() => {
+  const scene = h('div', 'hc-scene');
+  scene.append(
+    stillConfirm({ title: 'Suspend Harbour Club?', message: 'No one can open it until you resume it. Nothing is removed.', action: 'Suspend', kind: 'destructive' }),
+    stillConfirm({ title: 'Resume Old Book Club?', message: 'People can open it again.', action: 'Resume', kind: 'plain' }),
+  );
+  return scene;
+})()]);
+first.hh.dataset.states = '';
+addState('States: the template offer', 'An environment made from a template that has a new version: the offer, with Review, on its Template tab.', { start: { route: 'env', slug: 'lisbon-trip', tab: 'template' }, label: 'Host console, template offer' });
+addState('States: search with a match', 'A search for “long” finds one environment; the count says so.', { start: { route: 'environments', q: 'long' }, label: 'Host console, search with a match' });
+addState('States: a filter in use', 'The “near a cap” kind pressed in the strip, with Clear beside it, and the status filter set to match.', { start: { route: 'environments', filter: 'near' }, label: 'Host console, filter in use' });
+addState('States: search with no match', 'A search that finds nothing says so in the table and shows 0 of 30.', { start: { route: 'environments', q: 'zebra' }, label: 'Host console, search with no match' });
+addState('States: compact rows', 'The Compact option: one bar per row, the use closest to its cap, with its label and number. The other uses are in the row’s tooltip and on the environment’s page. Status, plan and template stay.', { start: { route: 'environments', density: 'compact' }, label: 'Host console, compact rows' });
+addState('States: compact rows, phone', 'The same on the 390 pixel phone.', { width: 390, start: { route: 'environments', density: 'compact' }, label: 'Host console, compact rows, phone' });
+addState('States: keyboard focus on the table', 'Tab reaches the search, the filters, the density switch, then each row’s name link and its More button. The ring on a name link is drawn here on the first row.', {
+  start: { route: 'environments', filter: 'pastdue' }, label: 'Host console, keyboard focus on the table',
+  decorate: (el) => ring(el.querySelector('tbody tr .hc-link')),
+});
+addState('States: keyboard focus on the row menu', 'Enter on a row’s More button opens its menu with the focus on the first entry; the arrow keys move down it, Escape closes it and puts the focus back on More.', {
+  start: { route: 'environments', q: 'harbour' }, label: 'Host console, keyboard focus on the row menu',
+  decorate: (el, S) => {
+    const row = el.querySelector('tbody tr[data-slug]');
+    if (!row || el.querySelector('.hc-menu-still')) return;
+    ring(row.querySelector('.sdk-icon-btn'));
+    const e = ENVIRONMENTS.find((x) => x.slug === row.dataset.slug);
+    const box = h('div', 'hc-menu-still');
+    el.querySelector('.hc-main').append(box);
+    mountHostMenu(box, [
+      { label: 'Open', icon: 'arrow-up-right-from-square' }, { label: 'Back up', icon: 'download' },
+      e.status === 'suspended' ? { label: 'Resume', icon: 'circle-play' } : { label: 'Suspend', icon: 'circle-pause' },
+      { divider: true }, { label: 'Delete', icon: 'trash', danger: true },
+    ]);
+    ring(box.querySelector('.host-menu-item'));
+  },
+});
 main.append(sec);
 const pageJump = D.querySelector('nav.pp-jump[aria-label="Jump to a section of the page"]');
 if (pageJump) {
