@@ -1,7 +1,7 @@
 {
   "id": "whiteboard",
   "name": "Whiteboard",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "icon": "chalkboard",
   "color": "teal",
   "content": "flush",
