@@ -1020,11 +1020,12 @@
     { id: 'my', label: 'Mine', icon: 'user' },
     { id: 'space', label: `This ${word('space')}`, icon: 'users' },
   ].filter((o) => allowed[o.id]);
-  const viewSwitch = VIEW_OPTIONS.length > 1 ? host.ui.viewSwitch({ id: 'whose', options: VIEW_OPTIONS, value: view, onChange: showView }) : null;
+  const viewSwitch = VIEW_OPTIONS.length > 1 ? host.ui.viewSwitch({ id: 'whose', label: 'Whose', options: VIEW_OPTIONS, value: view, onChange: showView }) : null;
   // How the objects are laid out: cards packed like masonry, or a list. Remembered per person.
   try { state.layout = localStorage.getItem('research-layout') === 'list' ? 'list' : 'grid'; } catch (err) { state.layout = 'grid'; }
   host.ui.viewSwitch({
     id: 'layout',
+    label: 'Layout',
     options: [{ id: 'grid', label: 'Cards', icon: 'grip', iconOnly: true }, { id: 'list', label: 'List', icon: 'list', iconOnly: true }],
     value: state.layout,
     onChange: (next) => {
