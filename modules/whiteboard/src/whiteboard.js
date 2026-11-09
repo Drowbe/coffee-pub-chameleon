@@ -229,7 +229,7 @@
     updateStatus();
   }
 
-  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, onRemote, onReload: reload, onRefused, onBusy });
+  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
 
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;
@@ -582,8 +582,8 @@
   // ---- undo and redo ----------------------------------------------------------------------------------------------------
   // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
   // edit. Only the fields the step changed are put back, and each only where the block still holds what this person left:
-  // a field someone else has changed since keeps their change, and so do the fields its block type links with it
-  // (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
+  // a field someone else has changed since keeps their change, and so does every field its block type links with it,
+  // changed by the step or not (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
   // since, which the step needs, is left out. The person is told once, of both when both happened (wbUndoNote). A block
   // this person deleted comes back whole, with its own id. The work is lib-g's (wbApplyChanges); this hands it the board.
   let undoButton = null;
@@ -693,6 +693,7 @@
   // saved whole, like any new block; a copy the server refuses (the module's storage is full) is taken off again and the
   // person told once (onRefused).
   const clipboard = createClipboard();
+  let clipMarked = false; // the last copy here put the mark on the computer's clipboard (CLIP_MARK, below)
   const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
   // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
   function boundsOf(blocks) {
@@ -708,6 +709,7 @@
     const list = copyable();
     if (!policy.canEdit || !list.length) return;
     clipboard.copy(list, { cut });
+    clipMarked = false; // onCopyEvent sets it again when this copy put the mark on the computer's clipboard
     if (cut) removeMany(list.map((b) => b.id));
     setAdd();
   }
@@ -737,7 +739,8 @@
 
   // ---- pictures from the computer ---------------------------------------------------------------------------------------
   // Pasted, dropped on the board, or chosen with "Add a picture" in the +: each is made ready and sent one at a time (lib-i)
-  // with a placeholder where it will be, and becomes an image block once its upload is there, saved once, one undo step.
+  // with a placeholder where it will be, and becomes an image block once its upload is there, saved once. The pictures
+  // added at once (one drop, one paste, one choice) are one undo step together.
   // Only for someone who may change the board; everyone who may see the board sees the pictures (the uploads are the
   // space's, read with the module's view permission). Deleting a picture block leaves its upload (see lib-i).
   blockTypes.get('image').source = (upload, thumb) => host.uploads.url(upload, { thumb, scope: 'space' });
@@ -748,22 +751,28 @@
     newId: () => host.util.id(),
     onStart(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); updateStatus(); },
     onStep(job) { renderer.pending(job.id, job.box, PICTURE_STEPS[job.step]); },
+    inUse: (u) => board.all().some((b) => b.upload === u),
+    // false: no block for it (no longer allowed, or not a picture block after all), so lib-i removes the upload again.
     onPlaced(job, file) {
       renderer.pending(job.id, null);
-      if (!policy.canCreate()) { pictures.forget(file.id, (u) => board.all().some((b) => b.upload === u)); updateStatus(); return; }
+      updateStatus();
+      if (!policy.canCreate()) return false;
       const def = blockTypes.get('image');
       const b = wbClean({ ...def.create(), id: job.id, type: 'image', x: job.box.x, y: job.box.y, w: job.box.w, h: job.box.h, upload: file.id, z: Math.floor(board.topZ()) + 1 });
-      if (!b) { updateStatus(); return; }
-      commit(b, 'now'); // saved once, the upload there already: one step of the undo history
-      // Picked, with the others added along with it, unless the person has picked something else meanwhile.
+      if (!b) return false;
+      // Saved once, the upload there already. The pictures added together are one step of the undo history, however long
+      // apart their uploads finish.
       const batch = job.batch;
+      if (history && batch) history.tag(batch.tag, { join: true });
+      commit(b, 'now');
+      // Picked, with the others added along with it, unless the person has picked something else meanwhile.
       if (batch) {
         const same = sel.size === batch.picked.length && batch.picked.every((id) => sel.has(id));
         batch.made.push(b.id);
         if (same) select(batch.made.slice());
         batch.picked = [...sel];
       }
-      updateStatus();
+      return true;
     },
     onFailed(job, err) {
       renderer.pending(job.id, null);
@@ -779,7 +788,7 @@
     if (others) note('Only pictures can go on the board.');
     if (!list.length) return;
     // The pictures added together share a batch, so they are picked together as they arrive.
-    pictures.add(list, at || renderer.center(), { batch: { made: [], picked: [...sel] } });
+    pictures.add(list, at || renderer.center(), { batch: { tag: `pictures:${host.util.id()}`, made: [], picked: [...sel] } });
   }
   // The computer's own file chooser, for "Add a picture" (touch and the keyboard too).
   $('picker').accept = WB_PICTURE_ACCEPT;
@@ -855,11 +864,17 @@
   // for the right button also { right, sx, sy, target, moved, menu }. A right press moves the board only once it has gone
   // RIGHT_SLOP; one that does not is a right-click and opens the menu, for what was pressed (target: the captured pointer's
   // menu event names the board instead). menu: where it was asked for, when the browser asks on the press (a Mac, Linux);
-  // on Windows it asks after the release. A right drag opens no menu.
+  // on Windows it asks after the release. A right drag opens no menu: the menu a browser asks for just after one is not
+  // shown (afterRightDrag). That lasts until the next press, a mouse menu asked for, or RIGHT_AFTER, whichever is first,
+  // and never covers the menu key (a browser that asks for no menu after a drag must not leave a real right-click or the
+  // menu key ignored).
   let spaceHeld = false;
   let panning = null;
   const RIGHT_SLOP = 4; // screen pixels a right press may wander and still be a click (the select tool's SLOP)
-  let rightDragEnd = -Infinity; // when the last right drag ended: the menu the browser asks for after it is not shown
+  const RIGHT_AFTER = 500; // milliseconds after a right drag in which a menu asked for is the drag's own
+  let afterRightDrag = false; // a right drag has just ended: the menu the browser asks for after it is not shown
+  let afterRightTimer = 0;
+  const endAfterRight = () => { afterRightDrag = false; clearTimeout(afterRightTimer); afterRightTimer = 0; };
   const panCursor = (on) => { surface.classList.toggle('wb-grab', on); };
   const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
@@ -868,6 +883,7 @@
   };
 
   surface.addEventListener('pointerdown', (e) => {
+    endAfterRight(); // a new press: any menu after it is its own
     if (e.target.closest('.wb-text-edit')) return;
     const middle = e.pointerType === 'mouse' && e.button === 1;
     const right = e.pointerType === 'mouse' && e.button === 2;
@@ -931,7 +947,7 @@
       const was = panning;
       panning = null;
       surface.classList.remove('wb-grabbing');
-      if (was.right && was.moved) rightDragEnd = performance.now();
+      if (was.right && was.moved) { endAfterRight(); afterRightDrag = true; afterRightTimer = setTimeout(endAfterRight, RIGHT_AFTER); }
       else if (was.right && was.menu && e.type === 'pointerup') contextMenu(was.menu);
       return;
     }
@@ -969,7 +985,8 @@
     e.preventDefault();
     // A right press still down may yet be a drag: its menu waits for the release. One just after a right drag is not shown.
     if (panning && panning.right) { panning.menu = { target: panning.target, clientX: e.clientX, clientY: e.clientY }; return; }
-    if (performance.now() - rightDragEnd < 500) { rightDragEnd = -Infinity; return; }
+    // The menu key (and Shift F10) asks with no mouse button: always shown.
+    if (afterRightDrag && e.button === 2) { endAfterRight(); return; }
     contextMenu(e);
   });
   function contextMenu(e) {
@@ -1081,7 +1098,10 @@
   // this page's clipboard (lib-h) as before and put a mark on the computer's clipboard (CLIP_MARK, no words or picture), so
   // a picture copied elsewhere earlier is no longer there to be pasted instead. A paste that carries picture files and
   // not the mark adds the pictures, where the pointer is over the board or else in the middle of what is in sight;
-  // any other paste puts down the copied blocks. A browser that sends no event: the key does it after CLIP_WAIT.
+  // a paste with the mark puts down the copied blocks. Once a copy here has put the mark on the computer's clipboard, a
+  // paste without it and without pictures (words copied elsewhere since) does nothing: it is not the blocks being pasted.
+  // A copy that could not put the mark there (the menu's Copy, a browser that sends no event) leaves any paste putting
+  // the copied blocks down. A browser that sends no event: the key does it after CLIP_WAIT.
   const CLIP_MARK = 'application/x-coffee-whiteboard-blocks';
   const CLIP_WAIT = 150;
   let clipTimer = 0;
@@ -1099,8 +1119,10 @@
     clipTimer = 0;
     if (!copyable().length) return;
     e.preventDefault();
-    try { if (e.clipboardData) e.clipboardData.setData(CLIP_MARK, '1'); } catch { /* the page's own clipboard still has them */ }
+    let marked = false;
+    try { if (e.clipboardData) { e.clipboardData.setData(CLIP_MARK, '1'); marked = true; } } catch { /* the page's own clipboard still has them */ }
     copy({ cut });
+    clipMarked = marked;
   }
   surface.addEventListener('copy', (e) => onCopyEvent(e, false));
   surface.addEventListener('cut', (e) => onCopyEvent(e, true));
@@ -1124,6 +1146,7 @@
     const files = ours ? [] : filesOf(data);
     e.preventDefault();
     if (files.length && pictures) { const p = hover && renderer.toBoard(hover.cx, hover.cy); addPictures(files, p && { x: p.x, y: p.y }); return; }
+    if (!ours && (files.length || clipMarked)) return; // something copied elsewhere since: not the blocks
     paste();
   });
 

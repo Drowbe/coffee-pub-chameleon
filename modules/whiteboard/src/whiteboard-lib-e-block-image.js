@@ -52,6 +52,7 @@
       box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
       // keep: a corner always keeps the picture's shape (Shift is not needed).
       resize: { handles: 'corners', min: { w: 24, h: 24 }, keep: true },
+      linked: [['x', 'y', 'w', 'h']], // its box
       source: null,
       render(b, el) {
         let img = el.querySelector('.wb-picture');

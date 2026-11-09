@@ -4,19 +4,20 @@
  * Guards: undo must put back only the fields the step changed and keep other people's changes (field-wise undo and redo,
  * wbMergeBack), with the fields a block type links (a line's ends, a box) going back together or not at all, so an undo
  * never makes a shape neither person made; plus one gesture being one step, merged nudges, the order an undo goes in, a
- * new step clearing Redo, the cap, and what the person is told (wbUndoNote). It runs the module's own code: the block
- * format and the block types (lib-a, lib-e-*: wbClean and each type's `linked`), and lib-g's createHistory and
- * wbApplyChanges, the same apply the page uses, against a board kept in a Map. No network, no sleeps.
- * Usage: node tools/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js]. Exits 1 on any failure; a lib
- * that lacks one of the functions fails every case that needs it.
+ * new step clearing Redo, the cap, and what the person is told (wbUndoNote). A group stays whole when someone else changed
+ * any field in it since, whether the step changed that field or not (a line A moved and B stretched stays as B left it).
+ * It runs the module's own code: the block format and the block types (lib-a, lib-e-*: wbClean and each type's
+ * `linked`), and lib-g's createHistory and wbApplyChanges, the same apply the page uses, against a board kept in a Map. No network, no sleeps.
+ * Usage: node modules/whiteboard/test/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js; lib-a and
+ * lib-e-* are read from its folder]. Exits 1 on any failure; a lib that lacks one of the functions fails every case that needs it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = path.join(root, 'modules/whiteboard/src');
-const file = path.resolve(process.argv[2] || path.join(src, 'whiteboard-lib-g-history.js'));
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const file = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src/whiteboard-lib-g-history.js'));
+const src = path.dirname(file); // the block format and block types are read from beside it
 const NAMES = ['createHistory', 'wbMergeBack', 'wbApplyChanges', 'wbUndoNote', 'wbClean', 'blockTypes'];
 
 let passed = 0;
@@ -132,15 +133,57 @@ const cases = {
     const b = p.board.get('l');
     check(b.x === 300 && b.dx === 150 && r.kept === 1, `line start handle, B moves, A undoes: B's line 300 -> 450 stays (got ${b.x} -> ${b.x + b.dx}, kept ${r.kept})`);
   },
-  async 'linked: A drags a line\'s far end, B moves the line, A undoes: the end goes back'() {
+  async 'linked: A drags a line\'s far end, B moves the line, A undoes: B\'s line stays'() {
     const p = page();
     p.theirs('l', line(300, 100, 100, 0));
     p.mine('l', { dx: 200, dy: 40 }); // A drags the far end
     await turn();
     p.theirs('l', { x: 350, y: 120 }); // B moves the line
-    p.undo();
+    const r = p.undo();
     const b = p.board.get('l');
-    check(b.x === 350 && b.y === 120 && b.dx === 100 && b.dy === 0, `line end handle, B moves, A undoes: the end goes back, B's place stays (got ${pick(b, 'x', 'y', 'dx', 'dy')})`);
+    check(b.x === 350 && b.y === 120 && b.dx === 200 && b.dy === 40 && r.kept === 1, `line end handle, B moves, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'dx', 'dy')}, kept ${r.kept})`);
+  },
+  async 'linked: A moves a line, B drags its far end, A undoes: the line stays as B left it'() {
+    const p = page();
+    p.theirs('l', line(300, 100, 100, 0));
+    p.mine('l', { x: 340, y: 140 }); // A moves the line
+    await turn();
+    p.theirs('l', { dx: 160 }); // B stretches it by its far end
+    const r = p.undo();
+    const b = p.board.get('l');
+    check(b.x === 340 && b.y === 140 && b.dx === 160 && b.dy === 0 && r.kept === 1, `line moved by A, stretched by B, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'dx', 'dy')}, kept ${r.kept})`);
+    const told = lib.wbUndoNote(r);
+    check(told === 'Left a block as it is: someone else changed it since.', `and the person is told (got "${told}")`);
+  },
+  async 'linked: a field outside the group still goes back when the group stays'() {
+    const p = page();
+    p.theirs('l', { ...line(300, 100, 100, 0), stroke: 'ink' });
+    p.mine('l', { x: 340, y: 140, stroke: 'red' }); // one step: a move and a colour
+    await turn();
+    p.theirs('l', { dy: 30 }); // B moves the far end
+    const r = p.undo();
+    const b = p.board.get('l');
+    check(b.x === 340 && b.y === 140 && b.dx === 100 && b.dy === 30 && b.stroke === 'ink' && r.kept === 0, `the line stays as B left it, its colour goes back (got ${pick(b, 'x', 'y', 'dx', 'dy', 'stroke')}, kept ${r.kept})`);
+  },
+  async 'linked: A moves a pen stroke, B changes its points, A undoes: the stroke stays as B left it'() {
+    const p = page();
+    p.theirs('s', { type: 'stroke', x: 0, y: 0, points: [0, 0, 10, 10, 20, 0] });
+    p.mine('s', { x: 50, y: 60 });
+    await turn();
+    p.theirs('s', { points: [0, 0, 30, 30, 60, 0] });
+    const r = p.undo();
+    const b = p.board.get('s');
+    check(b.x === 50 && b.y === 60 && JSON.stringify(b.points) === '[0,0,30,30,60,0]' && r.kept === 1, `stroke moved by A, reshaped by B, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'points')}, kept ${r.kept})`);
+  },
+  async 'linked: A resizes a text block from the left, B moves it, A undoes: B\'s text block stays'() {
+    const p = page();
+    p.theirs('t', { type: 'text', x: 100, y: 100, w: 240, text: 'Hello' });
+    p.mine('t', { x: 60, w: 280 }); // A drags its left edge
+    await turn();
+    p.theirs('t', { x: 200, y: 150 }); // B moves it
+    const r = p.undo();
+    const b = p.board.get('t');
+    check(b.x === 200 && b.y === 150 && b.w === 280 && r.kept === 1, `text resized from the left by A, moved by B, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w')}, kept ${r.kept})`);
   },
   async 'linked: A resizes a rectangle from its top-left, B moves it, A undoes: B\'s rectangle stays'() {
     const p = page();
@@ -152,15 +195,26 @@ const cases = {
     const b = p.board.get('r');
     check(b.x === 80 && b.y === 50 && b.w === 250 && b.h === 150 && r.kept === 1, `rectangle top-left resize, B moves, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w', 'h')})`);
   },
-  async 'linked: A moves a note, B resizes it from the bottom-right, A undoes: the note goes back, B\'s size stays'() {
+  async 'linked: A resizes a picture from a corner, B moves it, A undoes: B\'s picture stays'() {
+    const p = page();
+    const pic = { type: 'image', x: 100, y: 100, w: 200, h: 100, upload: 'c'.repeat(24) };
+    p.theirs('i', pic);
+    p.mine('i', { x: 60, y: 80, w: 240, h: 120 }); // A drags the top-left corner (the shape kept)
+    await turn();
+    p.theirs('i', { x: 300, y: 80 }); // B moves it along
+    const r = p.undo();
+    const b = p.board.get('i');
+    check(b.x === 300 && b.y === 80 && b.w === 240 && b.h === 120 && r.kept === 1, `picture corner resize, B moves, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w', 'h')}, kept ${r.kept})`);
+  },
+  async 'linked: A moves a note, B resizes it from the bottom-right, A undoes: B\'s note stays'() {
     const p = page();
     p.theirs('n', note(0, 0));
     p.mine('n', { x: 40, y: 40 });
     await turn();
     p.theirs('n', { w: 300, h: 260 });
-    p.undo();
+    const r = p.undo();
     const b = p.board.get('n');
-    check(b.x === 0 && b.y === 0 && b.w === 300 && b.h === 260, `note moved by A, resized by B, A undoes: place back, B's size stays (got ${pick(b, 'x', 'y', 'w', 'h')})`);
+    check(b.x === 40 && b.y === 40 && b.w === 300 && b.h === 260 && r.kept === 1, `note moved by A, resized by B, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w', 'h')}, kept ${r.kept})`);
   },
   async 'a group step with mixed outcomes; both notes are said'() {
     const p = page();
@@ -246,6 +300,38 @@ const cases = {
     p.undo();
     check(p.board.get('n').x === 0 && p.board.get('n').fill === 'blue', 'undo of the nudges: back to the start, B\'s fill kept');
   },
+  async 'pictures added at once are one step, however far apart they land; redo brings them all back'() {
+    const p = page();
+    const pic = (x) => ({ type: 'image', x, y: 0, w: 100, h: 80, upload: 'a'.repeat(24) });
+    for (const id of ['p1', 'p2', 'p3']) { p.history.tag('pictures:1', { join: true }); p.mine(id, pic(id.length)); await turn(); }
+    check(p.history.size === 1, `three pictures of one batch, each in its own turn: one step (got ${p.history.size})`);
+    p.undo();
+    check(!['p1', 'p2', 'p3'].some((id) => p.board.has(id)), 'one undo takes all three pictures away');
+    check(!p.history.canUndo(), 'and nothing is left to undo');
+    p.redo();
+    check(['p1', 'p2', 'p3'].every((id) => p.board.has(id) && p.board.get(id).type === 'image'), 'one redo brings all three back');
+  },
+  async 'a picture batch with another step between: the step between is its own, the batch still one'() {
+    const p = page();
+    const pic = { type: 'image', x: 0, y: 0, w: 100, h: 80, upload: 'b'.repeat(24) };
+    p.theirs('n', note(0, 0));
+    p.history.tag('pictures:2', { join: true }); p.mine('p1', pic); await turn();
+    p.mine('n', { x: 40, y: 40 }); await turn(); // the person moves a note while the rest upload
+    p.history.tag('pictures:2', { join: true }); p.mine('p2', { ...pic, x: 32 }); await turn();
+    p.history.tag('pictures:3', { join: true }); p.mine('q1', { ...pic, x: 64 }); await turn(); // another batch
+    check(p.history.size === 3, `batch, move, other batch: three steps (got ${p.history.size})`);
+    p.undo();
+    check(!p.board.has('q1') && p.board.has('p1') && p.board.has('p2'), 'the first undo takes away only the other batch');
+    p.undo();
+    check(p.board.get('n').x === 0 && p.board.has('p1') && p.board.has('p2'), 'the second undo puts the note back, the pictures stay');
+    p.undo();
+    check(!p.board.has('p1') && !p.board.has('p2'), 'the third undo takes both pictures of the batch away');
+    const q = page();
+    q.history.tag('t', {}); q.mine('a', note(0, 0)); await turn();
+    q.mine('b', note(1, 1)); await turn();
+    q.history.tag('t', {}); q.mine('c', note(2, 2)); await turn();
+    check(q.history.size === 3, `a tag without join joins only the step right before it (got ${q.history.size})`);
+  },
   async 'the cap: the oldest steps go'() {
     const p = page();
     p.theirs('n', note(0, 0, 'gold'));
@@ -259,6 +345,8 @@ const cases = {
     check(m && m.x === 0 && !('text' in m), 'wbMergeBack: a field the target lacks is taken away');
     const g = lib.wbMergeBack({ x: 5, w: 30, fill: 'red' }, { target: { x: 0, w: 10, fill: 'gold' }, source: { x: 1, w: 30, fill: 'red' }, fields: ['x', 'w', 'fill'] }, [['x', 'w']]);
     check(g && g.x === 5 && g.w === 30 && g.fill === 'gold', `wbMergeBack: a linked field changed since keeps the whole group (got ${JSON.stringify(g)})`);
+    const h = lib.wbMergeBack({ x: 1, w: 50, fill: 'red' }, { target: { x: 0, w: 30, fill: 'gold' }, source: { x: 1, w: 30, fill: 'red' }, fields: ['x', 'fill'] }, [['x', 'w']]);
+    check(h && h.x === 1 && h.w === 50 && h.fill === 'gold', `wbMergeBack: a linked field the step did not change, changed since, keeps the group too (got ${JSON.stringify(h)})`);
   },
 };
 

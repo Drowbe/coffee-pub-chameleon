@@ -3,17 +3,18 @@
  * check-whiteboard-sync.mjs -- the Whiteboard's sync (modules/whiteboard/src/whiteboard-lib-c-sync.js).
  * Guards: a Delete followed at once by an Undo left the block deleted on that page; changes heard while a key's write
  * is on its way must not be lost (they are judged, in order, when the answer is in); a page that missed the echo of its
- * own delete (the stream reconnects without what it missed) must not stop taking that block. It runs the lib against a
+ * own delete (the stream reconnects without what it missed) must not stop taking that block, nor be blind to it while it
+ * waits; a delete by someone else is never taken for its own. It runs the lib against a
  * fake server, fake pages and fake timers: every reply and change event is handed over by the check in an order it picks,
  * so nothing depends on time; then a fuzz over fixed seeds (three pages, random writes, deletes, undos, reloads, delivery
  * orders and missed own-delete echoes) must end with every page showing what the server holds. No network, no sleeps.
- * Usage: node tools/check-whiteboard-sync.mjs [path to whiteboard-lib-c-sync.js]. Exits 1 on any failure.
+ * Usage: node modules/whiteboard/test/check-whiteboard-sync.mjs [path to whiteboard-lib-c-sync.js]. Exits 1 on any failure.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const file = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src/whiteboard-lib-c-sync.js'));
 const src = fs.readFileSync(file, 'utf8');
 
@@ -66,7 +67,7 @@ function createServer() {
 
 // ---- a fake page: what it draws (dom), what it heard, its replies and its events, both handed over by the test ----
 function createPage(server, name) {
-  const page = { name, dom: new Map(), inbox: [], replies: [], remote: [], refused: 0, busy: 0 };
+  const page = { name, dom: new Map(), inbox: [], replies: [], remote: [], refused: 0, busy: 0, holdReads: false, reads: [] };
   const reply = (fn) => new Promise((resolve, reject) => {
     // The server applies the write now; the answer reaches the page when the test hands it over.
     let out; let err;
@@ -77,7 +78,13 @@ function createPage(server, name) {
     storage: {
       set: (key, value) => reply(() => server.set(key, value, name)),
       delete: (key) => reply(() => server.delete(key, name)),
-      get: async (key) => { const e = server.data.get(key); return e ? { key, value: e.value, version: e.version } : null; },
+      // A read sees the server as it is when asked; with page.holdReads on, its answer waits until the test hands it over.
+      get: (key) => {
+        const e = server.data.get(key);
+        const out = e ? { key, value: JSON.parse(JSON.stringify(e.value)), version: e.version } : null;
+        if (!page.holdReads) return Promise.resolve(out);
+        return new Promise((resolve) => { page.reads.push(() => resolve(out)); });
+      },
       list: async (prefix) => [...server.data].filter(([k]) => k.startsWith(prefix)).map(([key, e]) => ({ key, value: e.value, version: e.version })),
     },
   };
@@ -85,6 +92,7 @@ function createPage(server, name) {
     host,
     board: BOARD,
     clean,
+    me: name, // the server's change says who made it (by)
     onRemote: (c) => {
       page.remote.push(c);
       if (c.op === 'remove') page.dom.delete(c.id); else page.dom.set(c.block.id, c.block);
@@ -395,6 +403,106 @@ async function testWait() {
     await flushAll(A, B);
     check(A.dom.get('n1') && A.dom.get('n1').x === 71 && server.data.get(KEY('n1')).value.x === 71, `(f) a missed own delete echo recovers on a later delete (${life + 1}): A follows B again`);
   }
+  // A misses the echo of its own delete of a block it had edited a lot (the delete's version, 7, above anything the next
+  // life of the key reaches); B brings the block back, edits it and deletes it (version 3, lower than A's): A is never
+  // blind to the key. It shows B's block while it is there, takes it away on B's delete, and follows B after.
+  {
+    const { server, A, B } = await setup();
+    for (let i = 1; i <= 5; i += 1) { A.put(block('n1', i)); await A.reply(); } // v2 .. v6
+    A.del('n1');
+    await A.reply(); // v7
+    await flushAll(B);
+    while (A.inbox.length && !A.inbox[0].deleted) await A.event();
+    A.drop(); // the delete's echo (7) never reaches A
+    B.put(block('n1', 60)); await B.reply(); // v1
+    B.put(block('n1', 61)); await B.reply(); // v2
+    await flushAll(A, B);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 61, `(f) a missed own delete at 7: B's block back at 1 and 2 is shown on A (got ${JSON.stringify(A.dom.get('n1'))})`);
+    B.del('n1'); await B.reply(); // v3: lower than A's 7
+    await flushAll(A, B);
+    check(!A.dom.has('n1') && !server.data.has(KEY('n1')), '(f) a missed own delete at 7, then B\'s delete at 3: gone on A');
+    B.put(block('n1', 70)); await B.reply();
+    B.put(block('n1', 71)); await B.reply();
+    await flushAll(A, B);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 71, `(f) and A follows B after (got ${JSON.stringify(A.dom.get('n1'))})`);
+    B.put(block('n1', 72)); await B.reply();
+    await flushAll(A, B);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 72, '(f) and keeps following B');
+  }
+  // A misses the echoes of two deletes of its own (Delete, Undo, Delete again), with or without the Undo's echo too; B
+  // brings the block back, deletes it and brings it back again: A follows every step.
+  for (const missUndo of [false, true]) {
+    const { server, A, B } = await setup();
+    A.del('n1'); await A.reply(); // v2
+    A.put(block('n1', 0, { fill: 'blue' })); await A.reply(); // Undo: v1
+    A.del('n1'); await A.reply(); // v2 again
+    A.drop(); // the first delete's echo
+    if (missUndo) A.drop(); else await A.event(); // the Undo's echo
+    A.drop(); // the second delete's echo
+    await flushAll(B);
+    B.put(block('n1', 80)); await B.reply(); // v1
+    await flushAll(A, B);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 80, `(f) two missed own delete echoes${missUndo ? ' and the Undo\'s' : ''}: B's re-create is shown on A`);
+    B.del('n1'); await B.reply(); // v2: the same version as both of A's deletes
+    await flushAll(A, B);
+    check(!A.dom.has('n1') && !server.data.has(KEY('n1')), `(f) two missed own delete echoes${missUndo ? ' and the Undo\'s' : ''}: B's delete at A's version is taken`);
+    B.put(block('n1', 81)); await B.reply();
+    B.put(block('n1', 82)); await B.reply();
+    await flushAll(A, B);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 82, `(f) two missed own delete echoes${missUndo ? ' and the Undo\'s' : ''}: A follows B after`);
+  }
+  // Someone else's older delete numbered the same as this page's (the key started afresh in between): not taken for A's
+  // own. C deletes n1 (2); A, not having heard it, writes n1 (a new life, 1) and deletes it (2); A's own echo is missed.
+  // A must not draw its own older write again.
+  {
+    const { server, A, B } = await setup();
+    const C = createPage(server, 'C');
+    await C.load();
+    C.del('n1'); await C.reply(); // v2, by C
+    A.put(block('n1', 13)); await A.reply(); // v1 of a new life
+    A.del('n1'); await A.reply(); // v2, by A
+    await A.event(); // C's delete (2): the same version as A's, someone else's
+    await A.event(); // A's own write (1), older than its delete
+    A.drop(); // A's own delete (2), missed
+    await flushAll(A, B, C);
+    check(!A.dom.has('n1') && !server.data.has(KEY('n1')), `(f) someone else's delete with this page's version is not taken for its own: no ghost of A's older write (got ${JSON.stringify(A.dom.get('n1'))})`);
+    B.put(block('n1', 90)); await B.reply();
+    await flushAll(A, B, C);
+    check(A.dom.get('n1') && A.dom.get('n1').x === 90, '(f) and B\'s re-create after is taken');
+  }
+  // Reads answered out of order while waiting: the older answer, coming last, is not used.
+  {
+    const { server, A, B } = await setup();
+    A.del('n1'); await A.reply(); A.drop(); // A waits, its echo missed
+    await flushAll(B);
+    A.holdReads = true;
+    B.put(block('n1', 30)); await B.reply();
+    await A.event(); // a read of the key (it sees 30)
+    B.put(block('n1', 31)); await B.reply();
+    await A.event(); // another (it sees 31)
+    check(A.reads.length === 2, `(f) setup: two reads on their way (got ${A.reads.length})`);
+    while (A.reads.length) { A.reads.pop()(); await settle(); } // the newer answer first, then the older
+    A.holdReads = false;
+    check(A.dom.get('n1') && A.dom.get('n1').x === 31 && server.data.get(KEY('n1')).value.x === 31, `(f) reads answered out of order: the older answer is not used (got ${JSON.stringify(A.dom.get('n1'))})`);
+  }
+  // A delete by this same person from another page, with another version, is not this page's own: A deletes n1 at 3;
+  // the person's other page had deleted it at 2 before (A had not heard): A must not end its wait on that one and draw its
+  // own older writes again.
+  {
+    const { server, A, B } = await setup();
+    const A2 = createPage(server, 'A'); // the same person, another page
+    await A2.load();
+    A2.del('n1'); await A2.reply(); // v2, by A
+    A.put(block('n1', 13)); await A.reply(); // v1 of a new life
+    A.put(block('n1', 14)); await A.reply(); // v2
+    A.del('n1'); await A.reply(); // v3
+    await A.event(); // the other page's delete (2)
+    await A.event(); // A's own writes (1, 2), older than its delete
+    await A.event();
+    A.drop(); // A's own delete (3), missed
+    await flushAll(A, A2, B);
+    check(!A.dom.has('n1') && !server.data.has(KEY('n1')), `(f) the same person's other delete, at another version, is not taken for this page's own (got ${JSON.stringify(A.dom.get('n1'))})`);
+  }
   // A misses its delete's echo, then undoes: the echo of its own re-create ends the wait, and B's edit after is taken.
   {
     const { A, B } = await setup();
@@ -429,7 +537,7 @@ async function testWait() {
     await flushAll(A, B);
     check(A.dom.get('n1') && A.dom.get('n1').x === 42, '(f) and B\'s re-create after is taken');
   }
-  // load() while waiting ends the wait.
+  // load() while waiting: what B does next is taken.
   {
     const { A, B } = await setup();
     A.del('n1');
@@ -439,7 +547,7 @@ async function testWait() {
     await B.flush();
     B.put(block('n1', 90)); await B.reply();
     await flushAll(A, B);
-    check(A.dom.get('n1') && A.dom.get('n1').x === 90, '(f) load() while waiting ends the wait: B\'s re-create is taken');
+    check(A.dom.get('n1') && A.dom.get('n1').x === 90, '(f) load() while waiting: B\'s re-create is taken');
   }
   // F3: a delete answered with version 0 (gone already) waits for nothing.
   {
@@ -525,8 +633,9 @@ async function testLanes() {
 // (h) The fuzz: three pages, fixed seeds. Random creates, edits (now or soon), deletes, undos (the same id back), reloads
 // (while none of the page's own writes is on its way),
 // and random delivery: each page's answers and events come in their own order, interleaved at random, and on some seeds a
-// page misses the echo of its own delete now and then. Without missed echoes every page must show what the server holds
-// once everything is delivered; with them, once each key has had a later delete (a version past any it had), and after.
+// page misses the echo of its own delete now and then. Every page must show what the server holds once everything is
+// delivered, missed echoes or not; and still after each key has had a later delete (a version past any it had) and come
+// back. SEEDS=n in the environment runs n seeds (3000 unless given).
 function rng(seed) {
   let a = seed >>> 0;
   return () => {
@@ -585,8 +694,10 @@ async function testFuzz(seeds) {
         if (!busy.length) { if (!timers.length) break; continue; }
         await deliver(pick(busy));
       }
-      let ok = pages.every((P) => same(P, server));
-      if (ok || drops) {
+      // Every page shows what the server holds, missed echoes or not: no page is ever left blind to a key.
+      const now = pages.every((P) => same(P, server));
+      let ok = now;
+      if (now) {
         // Each key gets a later delete (a version past any it had), then comes back: every page must follow.
         for (const [key, top] of [...server.versions]) {
           const id = key.slice(KEY('').length);
@@ -601,7 +712,7 @@ async function testFuzz(seeds) {
         }
         ok = pages.every((P) => same(P, server));
       }
-      if (!ok) { bad += 1; if (bad <= 5) fails.push(`(h) fuzz seed ${seed}: ${pages.filter((P) => !same(P, server)).map((P) => P.name).join(', ')} differ from the server`); }
+      if (!ok) { bad += 1; if (bad <= 5) fails.push(`(h) fuzz seed ${seed}: ${pages.filter((P) => !same(P, server)).map((P) => P.name).join(', ')} differ from the server${now ? ' after a later delete and a re-create of each key' : ' once everything is delivered'}`); }
     } catch (err) {
       bad += 1;
       if (bad <= 5) fails.push(`(h) fuzz seed ${seed}: ${err.message}`);
@@ -610,7 +721,7 @@ async function testFuzz(seeds) {
   check(bad === 0, `(h) fuzz: ${bad} of ${seeds} seeds end with a page that differs from the server`);
 }
 
-const SEEDS = 3000;
+const SEEDS = Number(process.env.SEEDS) || 3000;
 const started = Date.now();
 await testDeleteUndoThenRemote();
 await testTwoDeferred();
