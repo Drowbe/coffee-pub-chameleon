@@ -3,10 +3,12 @@
   // and drag to another block, or to the board for a free end, and let go: a connector is made from one to the other, saved
   // once, picked, and the tool goes back to Select. A press on the board starts one from a free point. Blocks show their
   // connection points: the one under a mouse or a pen before a press, and the ends' blocks while dragging (a finger sees
-  // them once it presses). A click with no drag, or a drag from the board to almost the same point, makes nothing.
+  // them once it presses). A click with no drag, or a drag from the board to almost the same point, makes nothing. With
+  // Snap to grid (ctx.snapping, turned round while Alt is held) a free end goes on the grid; an end on a block follows it.
   {
     const SLOP = 6; // screen pixels a press may wander and still be a click
     const at10 = (n) => Math.round(n * 10) / 10;
+    const free = (p, ctx) => (ctx.snapping(p.event) ? { x: wbSnap(p.x), y: wbSnap(p.y) } : { x: at10(p.x), y: at10(p.y) });
     let drag = null; // { from, sx, sy, moved, id } while the pointer is down
     tools.register({
       id: 'connector',
@@ -24,7 +26,7 @@
       },
       down(p, ctx) {
         const at = ctx.attachAt(p);
-        drag = { from: at || { x: at10(p.x), y: at10(p.y) }, sx: p.sx, sy: p.sy, moved: false, id: null };
+        drag = { from: at || free(p, ctx), sx: p.sx, sy: p.sy, moved: false, id: null };
         ctx.ports(at ? [at] : []);
       },
       move(p, ctx) {
@@ -32,7 +34,7 @@
         if (!drag.moved && Math.hypot(p.sx - drag.sx, p.sy - drag.sy) < SLOP) return;
         let at = ctx.attachAt(p, { not: drag.id ? [drag.id] : [] });
         if (at && drag.from.block !== undefined && drag.from.block === at.block) at = null; // not back onto its own block
-        const to = at || { x: at10(p.x), y: at10(p.y) };
+        const to = at || free(p, ctx);
         if (!drag.moved) {
           drag.moved = true;
           drag.id = ctx.draft('connector', { from: drag.from, to }).id;
@@ -46,8 +48,8 @@
         ctx.ports([]);
         if (!d.moved || !d.id) return;
         const b = ctx.get(d.id);
-        const free = (e) => e.block === undefined;
-        if (!b || (free(b.from) && free(b.to) && Math.hypot(b.to.x - b.from.x, b.to.y - b.from.y) * ctx.scale() < SLOP * 2)) { ctx.discard(d.id); return; }
+        const loose = (e) => e.block === undefined;
+        if (!b || (loose(b.from) && loose(b.to) && Math.hypot(b.to.x - b.from.x, b.to.y - b.from.y) * ctx.scale() < SLOP * 2)) { ctx.discard(d.id); return; }
         ctx.save(d.id);
         ctx.select(d.id);
         ctx.setTool('select');
