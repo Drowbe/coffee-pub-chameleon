@@ -113,9 +113,9 @@ test('the highlight: clean data, box, straight band, thinning, its tool and copi
   const pts = []; for (let i = 0; i <= 100; i += 1) pts.push(i * 3, Math.round(Math.sin(i / 100) * 0.2 * 10) / 10);
   const thin = L.blockTypes.get('stroke').simplify(pts).points;
   assert.ok(thin.length < 10 && thin[0] === 0 && thin[thin.length - 2] === 300, `thinned ${thin.length}`);
-  // tool registration: in the Paint group, key U, not H
+  // tool registration: a kind of the Pen tool, key U, not H
   const t = L.tools.get('highlight');
-  assert.deepStrictEqual([t.group, t.key, t.makes, t.usual.weight], ['paint', 'u', 'highlight', 12]);
+  assert.deepStrictEqual([t.group, t.key, t.makes, t.usual.weight], [undefined, 'u', 'highlight', 12]);
   assert.strictEqual(L.tools.list().filter((x) => x.key === 'u').length, 1);
   // keys unique across tools
   const keys = L.tools.list().map((x) => x.key).filter(Boolean); assert.strictEqual(new Set(keys).size, keys.length, 'no key twice');

@@ -86,9 +86,9 @@ await test('clean: one line of at most 80 characters, at least 80 x 60, usual co
   assert.deepEqual(L.blockTypes.get('frame').linked, [['x', 'y', 'w', 'h']], 'its box is linked for undo');
 });
 
-await test('the Frame tool: in the Flowchart menu, key S, the only tool with it', () => {
+await test('the Frame tool: a tool of its own, key S, the only tool with it', () => {
   const t = L.tools.get('frame');
-  assert.ok(t && t.group === 'flowchart' && t.makes === 'frame' && t.edits, 'registered');
+  assert.ok(t && !t.group && t.makes === 'frame' && t.edits, 'registered');
   assert.equal(t.key, 's');
   const keys = L.tools.list().filter((x) => x.key).map((x) => x.key);
   assert.equal(new Set(keys).size, keys.length, `no two tools share a key: ${keys.join(' ')}`);
