@@ -13,7 +13,7 @@
     drop: 20000, // ... and before it is taken away
     cap: 50, // the most pointers drawn; past it the one heard from longest ago goes
     range: 1e6, // a place further out than this, either way, is held to it
-    name: 24, // the most characters of a name shown
+    name: 24, // the most characters of a name shown (a longer one ends in …)
     key: 'whiteboard-pointers', // this browser's choice: '0' hides other people's pointers
     // The tools a pointer may say it is using: the board's own tool ids, nothing else.
     tools: Object.freeze(['select', 'hand', 'pen', 'marker', 'brush', 'highlight', 'fill', 'note', 'text', 'timer', 'rect', 'ellipse',
@@ -98,7 +98,8 @@
     if (typeof key !== 'string' || !key || key.length > 64 || key === me) return null;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     const guest = from.guest === true;
-    let name = typeof from.name === 'string' ? Array.from(from.name.replace(/\s+/g, ' ').trim()).slice(0, WB_LIVE.name).join('').trim() : '';
+    const chars = typeof from.name === 'string' ? Array.from(from.name.replace(/\s+/g, ' ').trim()) : [];
+    let name = chars.length > WB_LIVE.name ? `${chars.slice(0, WB_LIVE.name - 1).join('').trim()}…` : chars.join('');
     if (!name) name = guest ? 'Guest' : 'Someone';
     let colour = null;
     try { colour = tint ? tint(key) : null; } catch { colour = null; }

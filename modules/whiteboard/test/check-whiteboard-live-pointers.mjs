@@ -246,9 +246,11 @@ await test('an unknown tool is dropped', () => {
     assert.equal(L.wbLiveRead({ x: 1, y: 1, tool: t }, ann, { tint }).tool, null, String(t));
   }
 });
-await test('the name: cut to 24 characters, one line, a guest marked', () => {
+await test('the name: cut to 24 characters (… at the end), one line, a guest marked', () => {
   const long = L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: `  ${'A'.repeat(40)}  ` }, { tint });
   assert.equal(long.name.length, 24);
+  assert.equal(long.name, `${'A'.repeat(23)}…`, 'a cut name ends in …');
+  assert.equal(L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: 'B'.repeat(24) }, { tint }).name, 'B'.repeat(24), '24 fit whole');
   const emoji = L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: '😀'.repeat(30) }, { tint });
   assert.equal(Array.from(emoji.name).length, 24, 'cut by characters, not halves of one');
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: 'Ann\n\tLee' }, { tint }).name, 'Ann Lee');
