@@ -649,6 +649,21 @@ function cleanLibrary(raw, scope, permissions) {
   return true;
 }
 
+// A module's `live` (documentation/plans/plan-module-live.md): short live messages between the people using it in a
+// space (server/module-live.js). `true`, or `{ "publish": "<permission>" }` naming one of the module's own permissions
+// that sending needs (without it, seeing the module is enough). It needs the space scope. Answers { publish } (null for
+// none), or null when the module has no live messages. No approval: the messages never leave the module.
+function cleanLive(raw, scope, permissions) {
+  if (raw === undefined || raw === null || raw === false) return null;
+  if (raw !== true && (typeof raw !== 'object' || Array.isArray(raw))) throw new ModuleError('module.json: live must be true, or { "publish": "<permission>" }');
+  if (!scope.includes('space')) throw new ModuleError('module.json: live needs the "space" scope');
+  const publish = raw === true || raw.publish === undefined || raw.publish === null ? null : raw.publish;
+  if (publish !== null && (typeof publish !== 'string' || !permissions.some((p) => p && p.key === publish))) {
+    throw new ModuleError('module.json: live.publish must name one of the module\'s own permissions');
+  }
+  return { publish };
+}
+
 // A module's own `regionSource`: cutting a region out of a larger PMTiles file into one of its own file folders (see
 // server/region-cut.js). `folder` must be a `files`-type setting's own folder (so the admin already has a way to see and
 // tick what lands there), and `address` a `url` setting naming where to cut from.
@@ -940,6 +955,7 @@ function cleanManifest(raw, files) {
   const lookups = cleanLookups(raw.lookups);
   const library = cleanLibrary(raw.library, scope, permissions);
   if (library) for (const p of permissions) if (LIBRARY_PERMISSIONS.includes(p.key)) p.default.guest = false;
+  const live = cleanLive(raw.live, scope, permissions);
 
   // The modules this one cannot work without: the one place a manifest names another module (at run time every module still
   // reaches another only through the generic conduits). It cannot be turned on until they are on.
@@ -966,7 +982,7 @@ function cleanManifest(raw, files) {
   if (raw.content !== undefined && raw.content !== 'padded' && raw.content !== 'flush') throw new ModuleError('module.json: content must be "padded" or "flush"');
   const content = raw.content === 'flush' ? 'flush' : 'padded';
 
-  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install };
+  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install, live };
 }
 
 // The sentence for a zip's pages that draw or restyle what the host draws (server/module-layout.js), or null when they do not.
@@ -1162,6 +1178,8 @@ class ModuleManager {
       try { manifest.library = cleanLibrary(manifest.library, manifest.scope || [], manifest.permissions); } catch { manifest.library = false; }
       try { manifest.lookups = cleanLookups(manifest.lookups); } catch { manifest.lookups = []; }
       manifest.budget = manifest.budget === true;
+      // A `live` that no longer reads gives no live messages (it only ever adds them).
+      try { manifest.live = cleanLive(manifest.live, manifest.scope || [], manifest.permissions); } catch { manifest.live = null; }
       if (hasPlaceholders(manifest)) this.withPlaceholders.add(manifest);
       this.manifests.set(cacheKey, manifest);
     }
