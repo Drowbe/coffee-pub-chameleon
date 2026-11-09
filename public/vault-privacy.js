@@ -279,8 +279,8 @@ export async function askNarrowing({ doc = document, place, file, next, members,
     const nm = (s) => `"${s.name}", made by ${nameOf(s.by)}`;
     const makers = [...new Set(ending.map((s) => nameOf(s.by)))];
     rows.push(['share-nodes', ending.length === 1
-      ? `In 1 share link, ${nm(ending[0])}. It ends, because ${makers[0]} can no longer see the file.`
-      : `In ${ending.length} share links: ${listNames(ending.map(nm))}. They end, because their makers can no longer see the file.`]);
+      ? `In 1 share link, ${nm(ending[0])}. It stops showing the file, because ${makers[0]} can no longer see it.`
+      : `In ${ending.length} share links: ${listNames(ending.map(nm))}. They stop showing the file, because their makers can no longer see it.`]);
   }
   const mine = file.by === me;
   const lead = next.visibility === 'only-me'

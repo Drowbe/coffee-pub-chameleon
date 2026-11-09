@@ -66,7 +66,7 @@ try {
   r.check(/Change who can see this file\?/.test(ask) && /Hotel Roma booking\.png will be seen only by you and the owners\./.test(ask), `the question and what it leads to (${ask.replace(/\n/g, ' ')})`);
   r.check(/Ana Costa, Ben Weiss, Mia Alvarez and Sam Okafor can no longer see the file\./.test(ask), 'it lists the four people who lose sight (not the owner, not Lee)');
   r.check(/Linked from 1 place: Hotel Roma in .+\. For Ana Costa, Ben Weiss, Mia Alvarez and Sam Okafor the link shows hidden\./.test(ask), 'it says the link shows hidden for them');
-  r.check(/In 1 share link, "Rome, October", made by Mia Alvarez\. It ends, because Mia Alvarez can no longer see the file\./.test(ask), 'it names the share link that ends');
+  r.check(/In 1 share link, "Rome, October", made by Mia Alvarez\. It stops showing the file, because Mia Alvarez can no longer see it\./.test(ask), 'it names the share link that stops showing the file');
   r.check(await tab.eval(`!!document.querySelector('${ASK} .btn-danger.solid') && document.querySelector('${ASK} .btn-danger.solid').innerText.trim() === 'Make it only me'`), 'the action is a solid danger button, "Make it only me"');
   await tab.eval(CONTRAST);
   await inBoth(tab, async (mode) => {

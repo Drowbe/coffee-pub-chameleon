@@ -541,6 +541,19 @@ try {
     same(bothNow.status, 200, 'the two-file link still opens');
     same(bothNow.json, { ...bothBefore.json, files: bothBefore.json.files.filter((f) => f.id !== seeA.id) }, 'with the file its maker can no longer see dropped out, and nothing else changed');
     ok(!bothNow.text.includes(seeA.id) && !bothNow.text.includes('sight-a'), 'its id and name are nowhere in the answer');
+    // An owner's PATCH may not name a file the link's maker can't see: it would never be served (and could leave the maker only able to turn the link off).
+    {
+      const HIDDEN_FROM_MAKER = { error: "The person who made this link can't see that file." };
+      const mine = await make(people.mo.token, { name: 'Sight patch', files: [seeB.id] });
+      const refusedHidden = await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeA.id] });
+      same([refusedHidden.status, refusedHidden.json], [400, HIDDEN_FROM_MAKER], 'an owner naming a file the maker can\'t see: 400, said plainly');
+      const refusedMixed = await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, seeA.id] });
+      same(refusedMixed.status, 400, 'also when it is one of several');
+      same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, md.id] })).status, 200, 'files the maker sees still go through');
+      same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { name: 'Sight patch 2' })).status, 200, 'and a rename');
+      same((await json('PATCH', shares(trip.id, ownerBoth.json.share.id), people.ola.token, { files: [seeA.id, seeB.id] })).status, 200, 'an owner-made link is unaffected: its maker sees every file');
+      await send(S, 'DELETE', shares(trip.id, mine.json.share.id), { cookie: admin });
+    }
     const notInSet = 'eeeeeeeeeeeeeeeeeeeeeeee';
     for (const rest of ['/content', '/content?download=1', '/thumb']) {
       const hidden = await pub(both.json.token, `/files/${seeA.id}${rest}`, ip);

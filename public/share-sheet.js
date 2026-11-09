@@ -95,7 +95,7 @@ function restrictLine(asLink) {
   const mk = h('div', 'sdk-banner');
   mk.dataset.kind = 'info';
   const ic = h('span', 'sdk-banner-icon'); ic.append(fa('circle-info'));
-  mk.append(ic, h('span', 'sdk-banner-text', asLink ? 'The link ends if you can no longer see this file.' : 'Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with. The link ends if you can no longer see the file.'));
+  mk.append(ic, h('span', 'sdk-banner-text', asLink ? 'If you can no longer see this file, the link stops showing it.' : 'Anyone with this link can open a file that is not shared with everyone here, even people it is not shared with. If you can no longer see it, the link stops showing it.'));
   box.append(mk);
   return box;
 }
