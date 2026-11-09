@@ -15,6 +15,7 @@
         key: t.key,
         order: t.order,
         edits: true,
+        makes: t.type,
         cursor: 'copy',
         down(p) { at = p; },
         up(p, ctx) {

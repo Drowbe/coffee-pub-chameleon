@@ -3,7 +3,7 @@ import { Room, RoomEvent, Track, createLocalTracks } from '/lib/livekit-client.e
 import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPresentSpace, setInSpace, openSwitcher as openSpaceSwitcher, refreshNotices, iconClasses, spaceCrumbIcon, hasOwnerRights, word, verb, applyWords, followTheme, getIcons } from '/brand.js';
 import { anchorSegments, layoutTabs, tabOverflow, layoutIconChoices, iconMatches, gridStep, pageOpens, isHere, hereCount, asidePlaceholder, whereWords, offStream } from '/primary-nav.js';
 import { openPhaseSheet, FACT_CHIPS_HIDDEN_AT } from '/phase-sheet.js';
-import { createSpaceSetup, setupAddress } from '/space-setup.js';
+import { createSpaceSetup, setupAddress, configurationLabel } from '/space-setup.js';
 import { renderModuleSettings } from '/module-settings.js';
 import { actionBar } from '/action-bar.js';
 import { createCanvas } from '/canvas.js';
@@ -1099,6 +1099,7 @@ nav.register({ ...SPACE_TOOL, id: 'popout', order: 12, icon: 'up-right-from-squa
 // The tools whose words are the environment's: registered again (the same elements) once loadBranding() has them.
 function registerWordTools() {
   nameModuleChooser();
+  paintSetupLabel();
   if (nav.get('module-chooser')) nav.register({ ...nav.get('module-chooser'), label: word('module', { many: true, cap: true }) });
   nav.register({ ...SPACE_TOOL, id: 'recall-button', order: 51, icon: 'people-arrows', label: 'Pull participants back', title: `Give everyone in a Private Conversation from this ${word('space')} a 10 second warning, then pull them back`, labelled: true, workspace: 'every', visible: () => recallWanted(), onClick: recallParticipants });
   // Leave is in the space bar only where the bar is the phone's tab bar (plan-one-bar.md, step 5 and decision 3); wider,
@@ -2493,7 +2494,7 @@ nav.register({ id: 'aside-rejoin', bar: 'primary', zone: 'right', group: 'aside'
 // hasOwnerRights, or user.spaces[<id>].permissions.moderator). Pressing it puts `body.setting-up` on, shows the tool
 // pressed, turns the space's name in the bar into an input (in the switcher's place, placeSetupName below) and opens
 // the side panel with its tabs (a full-screen sheet on a phone); pressing it again is Cancel. The address fragment
-// picks the tab (#space, #members, #phases, #opens-with, #modules) and follows it while the panel is open. The panel's
+// picks the tab (#show, #space, #members, #phases, #modules: the tabs Modules, the space's own, Members, Phases and Settings) and follows it while the panel is open. The panel's
 // Save and Cancel are an action bar locked to its bottom (action-bar.js; not in the top bar): Save sends what changed,
 // in order, and leaves the mode; Cancel and Escape leave it and drop the edits, asking "Discard your changes?" first
 // when something was edited; a click outside does nothing. A member has no Set up. /?setup=<id>#<tab> opens it from an
@@ -2509,13 +2510,13 @@ setupNameInput.autocomplete = 'off';
 setupNameInput.setAttribute('aria-label', 'Name');
 const isModeratorHere = () => Boolean(currentSpace && me?.spaces?.[currentSpace.id]?.permissions?.moderator);
 const canSetUp = () => Boolean(currentSpace) && !inAside() && !viewingHome && !guestToken && Boolean(me) && me.role !== 'guest' && (hasOwnerRights(me) || isModeratorHere());
-// The Show tab (the modules' switches, Arrange, Layouts: canvas.mountMenu) is for everyone in a space wider than a phone, a
+// The Modules tab (id `show`; the modules' switches, Arrange, Layouts: canvas.mountMenu) is for everyone in a space wider than a phone, a
 // guest too; so Set up's button is, and a person who may not set up has that one tab and Close.
 const canShowTab = () => Boolean(currentSpace) && !viewingHome && !phoneWidth();
 const canOpenSetup = () => canSetUp() || canShowTab();
 const setupShown = () => canOpenSetup(); // shown while open too, pressed (nav.setActive in enterSetup and leaveSetup)
 // The panel's tabs in the address: the fragment it opened with, and the tab shown while it is open; gone with it.
-const SETUP_TAB_HASH = /^#(show|space|members|phases|opens-with|modules)$/;
+const SETUP_TAB_HASH = /^#(show|space|members|phases|modules)$/;
 function setupTabInAddress(tab) {
   const keep = location.pathname + location.search;
   if (tab) history.replaceState(history.state, '', `${keep}#${tab}`);
@@ -2660,7 +2661,17 @@ document.addEventListener('keydown', (event) => {
 // Set up, wider than a phone, sits after your picture and before the window controls (`place: 'end'`, in their group
 // 'space', so no divider between them; Thomas, 2026-10-13: "Settings should go right before the window controls"). On a
 // phone `place` is not read and it keeps its place in the menu (groupOrder 85, before the bell's 90 and you 999).
-nav.register({ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', icon: 'sliders', label: 'Set up', toggleable: true, active: false, visible: setupShown, onClick: () => (settingUp ? spaceSetup.cancel() : enterSetup({ tab: '#show' })) });
+nav.register({ id: 'setup', bar: 'primary', zone: 'right', group: 'space', groupOrder: 85, order: 1, place: 'end', icon: 'sliders', label: setupLabel(), toggleable: true, active: false, visible: setupShown, onClick: () => (settingUp ? spaceSetup.cancel() : enterSetup({ tab: '#show' })) });
+// Set up's tooltip and name for a screen reader: "<space word> Configuration" (Room Configuration, Trip Configuration), in
+// the template's word; in an aside, where it holds only the Modules tab, the aside's word. Home has no Set up button.
+// Registered again once the environment's words are in, and when the page enters a space or an aside.
+function setupLabel() {
+  return configurationLabel(word, inAside());
+}
+function paintSetupLabel() {
+  const tool = nav.get('setup');
+  if (tool && tool.label !== setupLabel()) nav.register({ ...tool, label: setupLabel() });
+}
 // --- end Set up ---
 
 // --- the Layout menu's Layouts section (plan-saved-layouts.md, step 3; Thomas, 2026-10-13: in the shared menu) --------
@@ -4180,11 +4191,11 @@ function messagePortrait(name, kind, icon, by) {
 }
 
 // A chat message is a header and a container. The header has a left zone (portrait, name, time) and a
-// right zone (private or public, then the menu). The container is the message itself.
+// right zone (the private or public mark, an icon, then the menu). The container is the message itself.
 // `tint` is the colour of a command's module, or gold for the AI (plan-chat-model.md, decision 18): the portrait's icon
 // and a thin left edge. `command` ("/n") follows the name. data-vis says private or public; data-in which of Chat's
 // views shows it (viewOf: private in the Assistant, the person's own shared command or answer in both, else the
-// Discussion). The person's own shared one reads "shared".
+// Discussion). The person's own shared one shows the public icon, labelled "Shared with everyone".
 function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, entry, tint, command }) {
   const el = document.createElement('div');
   el.className = 'message';
@@ -4225,11 +4236,18 @@ function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, e
   const vis = document.createElement(canChange ? 'button' : 'span');
   if (canChange) vis.type = 'button';
   vis.className = 'message-vis';
+  // The mark is an icon: one person for private, three for public and for the author's shared one. The words are its
+  // tooltip and its label ("Only you", "Everyone", "Shared with everyone").
   const paintVis = () => {
     el.dataset.in = viewOf({ visibility: state, kind, mine });
     const said = el.dataset.in === 'both' ? 'shared' : state;
-    vis.textContent = said;
-    vis.setAttribute('aria-label', said === 'private' ? 'Private' : said === 'shared' ? 'Shared' : 'Public');
+    const words = said === 'private' ? 'Only you' : said === 'shared' ? 'Shared with everyone' : 'Everyone';
+    vis.innerHTML = `<i class="fa-solid ${said === 'private' ? 'fa-user' : 'fa-users'} fa-fw" aria-hidden="true"></i>`;
+    vis.dataset.tip = words;
+    vis.dataset.mark = said;
+    vis.setAttribute('aria-label', words);
+    if (!canChange) vis.setAttribute('role', 'img');
+    else vis.setAttribute('aria-haspopup', 'menu');
   };
   paintVis();
   // The badge flips who sees it, and nothing else (decision 3): PATCH, then repaint here and tell the call. On a
@@ -4238,7 +4256,7 @@ function frameMessage({ name, at, visibility = 'public', kind, icon, by, body, e
     event.stopPropagation();
     const next = state === 'private' ? 'public' : 'private';
     openHostMenu(vis, [{
-      icon: next === 'public' ? 'users' : 'lock',
+      icon: next === 'public' ? 'users' : 'user',
       label: next === 'public' ? 'Make public' : 'Make private',
       onPick: async () => {
         const done = await setMessageVisibility(entry, next);
@@ -5578,6 +5596,7 @@ async function join(spaceId = 'lobby', { joinCall = false, pull = false } = {}) 
     // (GitHub #71).
     const known = presenceSpaces.find((r) => r.id === spaceId);
     currentSpace = known || { id: spaceId, name: spaceName, members: [], pending: true };
+    paintSetupLabel();
     if (!currentSpace.pending) spaceName = spaceDisplayName(currentSpace);
     placed = true;
     await liveOpened(openLive(spaceId));
@@ -5635,6 +5654,7 @@ async function joinAsGuest(joinedId, joinedName) {
     // Same as a member's join: the live stream, and presence fills in the members when it answers.
     const known = presenceSpaces.find((r) => r.id === joinedId);
     currentSpace = known || { id: joinedId, name: joinedName, members: [], pending: true };
+    paintSetupLabel();
     placed = true;
     await liveOpened(openLive(joinedId));
     if (entry !== entries) return;

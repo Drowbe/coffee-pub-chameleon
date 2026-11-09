@@ -20,7 +20,7 @@
  *
  * The folder of the default page (PAGE=today, the Design System page, index.html) holds: index.html (paths made relative), ds.css,
  * pages.css, ds.js, components*.js, sources.js (every stylesheet and the SDK as text, so the page works from disk and from any static
- * host), style.css, theme.css (Strong Coffee's light set; the dark set is style.css's own), fa/ (Font Awesome's stylesheet and fonts),
+ * host), style.css, theme.css (the default theme's light set; the dark set is style.css's own), fa/ (Font Awesome's stylesheet and fonts),
  * no external script. Its page links (Proposed, Prototype, Legacy) point to pages the folder does not hold. Stylesheets are the only
  * thing the page loads by link. Fails above 12 MB.
  */

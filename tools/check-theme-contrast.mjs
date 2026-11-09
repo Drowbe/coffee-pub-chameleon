@@ -65,14 +65,22 @@ for (const theme of THEMES) {
       add(`text on ${name}`, text, bg, 4.5);
       add(`muted text on ${name}`, c['text-muted'], bg, 4.5);
     }
+    // The brand's coral (ink-brand) is for large text only (24px and up), so it needs the 3 to 1 of large text, on the page and on the panel.
+    if (c['ink-brand']) for (const [name, bg] of [['page', page], ['panel', panel]]) add(`brand name ink on ${name} (large text, 24px and up)`, c['ink-brand'], bg, 3);
     // What the server picks and the theme editor shows.
     for (const r of got.report) {
       if (r.id === 'text-on-page' || r.id === 'text-on-panel' || r.id === 'muted-on-page' || r.id === 'muted-on-panel') continue; // above
       add(r.label, parseHex(r.fg), parseHex(r.bg), r.kind === 'info' ? 0 : r.min);
     }
-    const selFill = over(c['accent-fill'], 0.28, page);
-    add('selected text on selected fill (page)', mix(c['accent-fill'], 55, text), selFill, 4.5);
-    add('selected text on selected fill (panel)', mix(c['accent-fill'], 55, text), over(c['accent-fill'], 0.28, panel), 4.5);
+    // The selected fill is the accent at 28%; a theme that sets the chosen roles has the wash (wash-ink) at 30% instead, and the text on it is
+    // the chosen ink (ink-chosen) mixed 55% into the text colour. (A theme with a wash-ink but no chosen roles is measured as it always was.)
+    const own = Boolean(c['fill-chosen']);
+    const wash = own ? c['wash-ink'] || c['fill-chosen'] : c['accent-fill'];
+    const washPct = own ? 0.3 : 0.28;
+    const selInk = mix(c['ink-chosen'] || c['accent-fill'], 55, text);
+    add('selected text on selected fill (page)', selInk, over(wash, washPct, page), 4.5);
+    add('selected text on selected fill (panel)', selInk, over(wash, washPct, panel), 4.5);
+    if (c['fill-chosen']) add('text on the chosen fill', c['text-on-chosen'] || c['text-on-accent'], c['fill-chosen'], 4.5);
     add('scrollbar thumb (muted text) on its track', c['text-muted'], mix(panel, 88, text), 3);
   }
 }

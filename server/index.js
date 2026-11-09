@@ -3244,8 +3244,8 @@ app.get('/manifest.webmanifest', (_req, res) => {
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    background_color: '#1a1410',
-    theme_color: '#1a1410',
+    background_color: '#0e1a2b',
+    theme_color: '#0e1a2b',
     icons,
   });
 });
@@ -3293,7 +3293,7 @@ for (const f of ['pdf-viewer.mjs', 'pdf-viewer.css']) app.get(`/sdk/${f}`, (_req
 // admin has set (Manage > Settings > Theme), both its light and its dark set
 // (server/theme-css.js), as :root overrides -- linked
 // after style.css on every page, so the cascade lets it win without
-// touching style.css itself. Nothing set yet means only Strong Coffee's
+// touching style.css itself. Nothing set yet means only the default theme's
 // light set, under data-theme-mode="light", so an untouched server still
 // looks exactly like style.css's own built-in defaults.
 // This is also why the popped-out call window (space.js clones every
@@ -10681,7 +10681,7 @@ app.delete('/api/themes/:id', requireOwner, (req, res) => {
   res.json({ ok: true });
 });
 // A theme as a file (documentation/plans/plan-themes.md; server/theme-file.js). Export: any theme, or `default` for
-// Strong Coffee with its dark palette written out, as a download. Import: the file's JSON as the body (sent as JSON,
+// the default theme with its dark palette written out, as a download. Import: the file's JSON as the body (sent as JSON,
 // or as the file's own text with any other type), checked and added as a new theme -- never applied.
 app.get('/api/themes/:id/export', requireOwner, (req, res) => {
   const theme = req.params.id === 'default' ? null : store.themes.find((t) => t.id === req.params.id);
