@@ -11,13 +11,13 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/theme.css" id="theme-link">
   <link rel="stylesheet" href="/sdk/system.css">
+  <link rel="stylesheet" href="/host.css">
 </head>
 <body class="host-console">
   <header class="topbar"></header>
 
-  <main class="admin">
-    <!-- the host admin's own sign-in: a separate kind of account, a member of no environment -->
-    <section class="panel" id="host-login" hidden>
+  <main class="hc-page">
+    <section class="panel hc-login" id="host-login" hidden>
       <h2>Host console</h2>
       <p class="hint">Sign in as a host admin. This is the deployment's own door, not any environment's.</p>
       <form id="login-form" class="fields">
@@ -45,101 +45,20 @@
       </div>
     </section>
 
-    <div id="host-main" hidden>
-      <!-- The console in tabs, the same bar Manage uses, so a host with many environments reads one thing at a time. -->
-      <nav class="subtabs" id="subtabs">
-        <button class="subtab" data-tab="host" type="button">Host</button>
-        <button class="subtab" data-tab="plans" type="button">Plans</button>
-        <button class="subtab active" data-tab="environments" type="button">Environments</button>
-        <button class="subtab" data-tab="templates" type="button">Templates</button>
-        <button class="subtab" data-tab="ai" type="button">AI</button>
-        <button class="subtab" data-tab="maps" type="button">Maps</button>
+    <!-- The console (plan-host-console.md): a left navigation of five sections, one shown at a time and named in the address
+         (the section's name after the #, and environments/<slug> for one environment). At 640 px and under the navigation is
+         one strip of tabs that scrolls inside itself. -->
+    <div class="hc-body" id="host-main" hidden>
+      <nav class="subtabs hc-nav" id="hc-nav" aria-label="Host console sections">
+        <button class="subtab" type="button" data-section="environments"><i class="fa-solid fa-layer-group fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+        <button class="subtab" type="button" data-section="templates"><i class="fa-solid fa-clone fa-fw" aria-hidden="true"></i><span>Templates</span></button>
+        <button class="subtab" type="button" data-section="modules"><i class="fa-solid fa-puzzle-piece fa-fw" aria-hidden="true"></i><span>Modules</span></button>
+        <button class="subtab" type="button" data-section="plans"><i class="fa-solid fa-tags fa-fw" aria-hidden="true"></i><span>Plans</span></button>
+        <button class="subtab" type="button" data-section="server"><i class="fa-solid fa-server fa-fw" aria-hidden="true"></i><span>Server</span></button>
       </nav>
 
-      <section class="tab-stack" id="tab-host" hidden>
-      <section class="panel">
-        <h2>The host</h2>
-        <dl class="facts" id="host-facts"></dl>
-        <div class="row"><button class="btn" id="host-logout" type="button">Sign out of the host</button></div>
-      </section>
-      <section class="panel" id="host-mfa-panel" hidden>
-        <div class="section-head">
-          <h2>Your two-step sign-in</h2>
-          <span class="sdk-status" id="host-mfa-state">off</span>
-          <span class="status" id="host-mfa-status"></span>
-        </div>
-        <p class="hint" id="host-mfa-hint">A code from an authenticator app after the password, for this host admin account. HOST_MFA_REQUIRED on the server makes it mandatory for every host admin.</p>
-        <div class="row">
-          <button class="btn btn-primary btn-small" id="host-mfa-on" type="button" hidden>Turn on</button>
-          <button class="btn btn-small" id="host-mfa-off" type="button" hidden>Turn off</button>
-          <button class="btn btn-danger btn-small" id="host-mfa-reset" type="button" hidden>Reset my second factor</button>
-        </div>
-        <div class="mfa-block" id="host-mfa-block" hidden></div>
-      </section>
-      <section class="panel">
-        <div class="section-head">
-          <h2>Host admins</h2>
-          <span class="status" id="admins-status"></span>
-        </div>
-        <div id="admins" class="list"></div>
-        <form id="admin-form" class="fields" autocomplete="off">
-          <label>Login<input id="admin-login" type="text" maxlength="40" required autocapitalize="off"></label>
-          <label>Password<span class="row reveal-row"><input id="admin-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="admin-password" aria-pressed="false">Show</button></span></label>
-          <div class="row"><button class="btn" type="submit">Add a host admin</button></div>
-        </form>
-      </section>
-      <!-- The flight schedule (plan-flight-lookup.md, step 5): one for the whole host, learned from every environment's saved flights; drawn by /flight-schedule.js on /api/host/flight-schedule. -->
-      <section class="panel flight-schedule sdk-groups" id="flight-schedule-section" hidden>
-        <div class="sdk-stack">
-        <div class="section-head">
-          <h2>Flight schedule</h2>
-          <span class="status" id="flight-schedule-status" role="status" aria-live="polite"></span>
-        </div>
-        <p id="flight-schedule-count">This server has learned 0 flights from saved trips.</p>
-        <p class="hint">Flights people save in their trips teach this server when each flight number usually flies, so a later lookup can fill it in. It keeps the airline, the airports, the times and the terminal, never who flew.</p>
-        </div>
-        <form class="flight-forget" id="flight-forget-form" autocomplete="off">
-          <label class="field-label" for="flight-forget-number">Flight number</label>
-          <div class="row">
-            <input id="flight-forget-number" type="text" maxlength="20" placeholder="WN 2483" autocapitalize="characters" spellcheck="false">
-            <button class="btn" type="submit">Forget a flight</button>
-          </div>
-        </form>
-        <div class="row danger-row"><button class="btn btn-small btn-danger" id="flight-clear" type="button">Clear all</button></div>
-      </section>
-
-      </section>
-
-      <section class="tab-stack" id="tab-plans" hidden>
-      <section class="panel" id="plans-panel">
-        <div class="section-head">
-          <h2>Plans</h2>
-          <span class="status" id="plans-status"></span>
-          <button class="btn btn-small" id="plan-add" type="button">Add a plan</button>
-        </div>
-        <p class="hint">What an environment may use, by plan: the caps an environment takes when it is put on the plan (and may then be adjusted on its own card). <code>free</code> is what sign-up makes and what a past-due environment goes back to after 14 days; it cannot be removed. Empty caps mean no cap. A plan is sold online when the server has <code>BILLING_CHECKOUT_&lt;PLAN&gt;</code> set to the provider's checkout page for it.</p>
-        <div class="plans-editor" id="plans-editor"></div>
-        <div class="row"><button class="btn btn-primary btn-small" id="plans-save" type="button">Save plans</button></div>
-      </section>
-
-      <template id="tpl-plan-row">
-        <div class="sdk-card plan-row">
-          <div class="fields">
-            <label>Id<input name="id" type="text" class="plan-id" maxlength="20" pattern="[a-z0-9\-]+" required></label>
-            <label>Name<input name="name" type="text" maxlength="40" required></label>
-            <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
-            <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="0.5" step="0.5" placeholder="no cap"></label>
-            <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
-            <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
-            <label>Modules <span class="sdk-optional">(optional)</span><input name="modules" type="text" placeholder="all, or ids separated by spaces"></label>
-          </div>
-          <div class="row"><button class="btn btn-small danger" data-action="plan-remove" type="button">Remove this plan</button></div>
-        </div>
-      </template>
-
-      </section>
-
-      <section class="tab-stack" id="tab-environments">
+      <div class="hc-main">
+        <section class="hc-section tab-stack" id="section-environments" data-section="environments" hidden>
       <section class="panel">
         <div class="section-head">
           <h1>Environments</h1>
@@ -177,11 +96,9 @@
       </form>
 
       <div id="environments" class="environments"></div>
-      </section>
+        </section>
 
-      <!-- Templates (plan-environment-templates, addendum 2): the list (bundled, the host's own, hidden or not, used by
-           which environments), Import, New, and the editor for a host template. Drawn by /host-templates.js. -->
-      <section class="tab-stack" id="tab-templates" hidden>
+        <section class="hc-section tab-stack" id="section-templates" data-section="templates" hidden>
       <section class="panel">
         <div class="section-head">
           <h2>Templates</h2>
@@ -310,113 +227,222 @@
           <button class="btn btn-small danger" data-action="te-reaction-remove" type="button">Remove</button>
         </div>
       </template>
-      </section>
+        </section>
 
-      <section class="tab-stack" id="tab-ai" hidden>
-      <section class="panel module-config" id="ai-panel">
+        <!-- ======== Modules: read only for now (plan-host-console.md, decision 2) ======== -->
+        <section class="hc-section" id="section-modules" data-section="modules" aria-labelledby="modules-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="modules-title" tabindex="-1">Modules</h1></div>
+          <p class="sdk-hint">The modules this host ships. Read only: installing and updating come later. Each environment installs and turns on its own, in its Manage.</p>
+          <div class="hc-tablebox">
+            <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+            <div class="sdk-table-wrap hc-wrap">
+              <table class="sdk-table" aria-label="Modules">
+                <thead><tr><th scope="col">Module</th><th scope="col">Kind</th></tr></thead>
+                <tbody id="module-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="hc-section tab-stack" id="section-plans" data-section="plans" hidden>
+      <section class="panel" id="plans-panel">
         <div class="section-head">
-          <h2>Managed AI</h2>
-          <span class="status" id="ai-status"></span>
+          <h2>Plans</h2>
+          <span class="status" id="plans-status"></span>
+          <button class="btn btn-small" id="plan-add" type="button">Add a plan</button>
         </div>
-        <p class="hint">The AI services this host offers every environment, one per company: set a key here and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key is set here only; it stays on the host and is never shown to an environment.</p>
-        <div id="ai-services" class="ai-services"></div>
+        <p class="hint">What an environment may use, by plan: the caps an environment takes when it is put on the plan (and may then be adjusted on its own card). <code>free</code> is what sign-up makes and what a past-due environment goes back to after 14 days; it cannot be removed. Empty caps mean no cap. A plan is sold online when the server has <code>BILLING_CHECKOUT_&lt;PLAN&gt;</code> set to the provider's checkout page for it.</p>
+        <div class="plans-editor" id="plans-editor"></div>
+        <div class="row"><button class="btn btn-primary btn-small" id="plans-save" type="button">Save plans</button></div>
       </section>
 
-      <template id="tpl-ai-service">
-        <form class="sdk-card ai-service" autocomplete="off">
-          <div class="ai-service-head">
-            <strong data-slot="name"></strong>
-            <span class="sdk-status" data-slot="offered"></span>
+      <template id="tpl-plan-row">
+        <div class="sdk-card plan-row">
+          <div class="fields">
+            <label>Id<input name="id" type="text" class="plan-id" maxlength="20" pattern="[a-z0-9\-]+" required></label>
+            <label>Name<input name="name" type="text" maxlength="40" required></label>
+            <label>Members <span class="sdk-optional">(optional)</span><input name="members" type="number" min="1" placeholder="no cap"></label>
+            <label>Storage (GB) <span class="sdk-optional">(optional)</span><input name="storageGb" type="number" min="0.5" step="0.5" placeholder="no cap"></label>
+            <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
+            <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
+            <label>Modules <span class="sdk-optional">(optional)</span><input name="modules" type="text" placeholder="all, or ids separated by spaces"></label>
           </div>
-          <div class="ai-key" data-slot="address-row" hidden>
-            <label class="ai-label" for="ai-address-compatible">Address</label>
-            <input id="ai-address-compatible" name="address" type="url" maxlength="300" placeholder="https://">
-            <p class="hint">The server's root, or ending in /v1.</p>
-          </div>
-          <div class="ai-key" data-slot="workspace-row" hidden>
-            <label class="ai-label" for="ai-workspace-anthropic">Workspace id</label>
-            <input id="ai-workspace-anthropic" name="workspace" type="text" maxlength="100" placeholder="wrkspc_..." autocomplete="off" spellcheck="false">
-            <p class="hint">Only for a key made at the organisation level in the Anthropic console, which Anthropic then asks to name a workspace. A key made inside a workspace needs nothing here.</p>
-          </div>
-          <div class="ai-key">
-            <div class="ai-label">Key</div>
-            <div class="ai-key-row">
-              <span class="sdk-status" data-slot="key-state">not set</span>
-              <input name="key" type="password" maxlength="300" placeholder="paste a new key" autocomplete="new-password" hidden>
-              <button class="btn btn-small" type="button" data-action="key-replace">Set a key</button>
-              <button class="btn btn-small btn-danger" type="button" data-action="key-clear" hidden>Remove the key</button>
-            </div>
-            <p class="hint" data-slot="key-help"></p>
-          </div>
-          <div class="ai-model">
-            <div class="ai-label">Model</div>
-            <div class="ai-model-row">
-              <select name="model" aria-label="Model"></select>
-              <input name="model-text" type="text" maxlength="100" placeholder="the model's name" hidden>
-              <button class="btn btn-small" type="button" data-action="models-refresh" title="Load the list of models again"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
-            </div>
-            <p class="hint" data-slot="models-hint"></p>
-            <button class="linklike" type="button" data-action="model-manual" hidden>Type a model name instead</button>
-          </div>
-          <div class="row"><button class="btn btn-primary btn-small" type="submit">Save</button><span class="status" data-slot="status" role="status"></span></div>
-        </form>
+          <div class="row"><button class="btn btn-small danger" data-action="plan-remove" type="button">Remove this plan</button></div>
+        </div>
       </template>
+        </section>
 
-      </section>
+        <!-- ======== Server: the host, your two-step sign-in, host admins, AI, Maps, the flight schedule ======== -->
+        <section class="hc-section" id="section-server" data-section="server" aria-labelledby="server-title" hidden>
+          <div class="hc-head"><h1 class="hc-title" id="server-title" tabindex="-1">Server</h1></div>
+          <nav class="subtabs hc-jump hc-jump-row" id="server-jump" aria-label="Parts of the server">
+            <button class="subtab" type="button" data-part="server-host">The host</button>
+            <button class="subtab" type="button" data-part="host-mfa-panel">Your two-step sign-in</button>
+            <button class="subtab" type="button" data-part="server-admins">Host admins</button>
+            <button class="subtab" type="button" data-part="ai-panel">AI</button>
+            <button class="subtab" type="button" data-part="shared-panel">Maps</button>
+            <button class="subtab" type="button" data-part="flight-schedule-section">Flight schedule</button>
+          </nav>
+          <div class="hc-parts">
+            <section class="sdk-panel hc-part" id="server-host" tabindex="-1" aria-labelledby="server-host-title">
+              <h2 class="hc-part-name" id="server-host-title">The host</h2>
+              <dl class="hc-facts" id="host-facts"></dl>
+              <div class="row"><button class="btn" id="host-logout" type="button"><i class="fa-solid fa-right-from-bracket fa-fw" aria-hidden="true"></i><span>Sign out of the host</span></button></div>
+            </section>
+            <section class="sdk-panel hc-part" id="host-mfa-panel" tabindex="-1" aria-labelledby="host-mfa-title" hidden>
+              <div class="section-head">
+                <h2 class="hc-part-name" id="host-mfa-title">Your two-step sign-in</h2>
+                <span class="sdk-status" id="host-mfa-state">off</span>
+                <span class="status" id="host-mfa-status"></span>
+              </div>
+              <p class="sdk-hint" id="host-mfa-hint">A code from an authenticator app after the password, for this host admin account. HOST_MFA_REQUIRED on the server makes it mandatory for every host admin.</p>
+              <div class="row">
+                <button class="btn btn-primary btn-small" id="host-mfa-on" type="button" hidden>Turn on</button>
+                <button class="btn btn-small" id="host-mfa-off" type="button" hidden>Turn off</button>
+                <button class="btn btn-danger btn-small" id="host-mfa-reset" type="button" hidden>Reset my second factor</button>
+              </div>
+              <div class="mfa-block" id="host-mfa-block" hidden></div>
+            </section>
+            <section class="sdk-panel hc-part" id="server-admins" tabindex="-1" aria-labelledby="server-admins-title">
+              <div class="section-head">
+                <h2 class="hc-part-name" id="server-admins-title">Host admins</h2>
+                <span class="status" id="admins-status" role="status"></span>
+              </div>
+              <div class="sdk-table-wrap hc-wrap">
+                <table class="sdk-table" aria-label="Host admins">
+                  <thead><tr><th scope="col">Login</th><th scope="col">Two-step</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                  <tbody id="admins"></tbody>
+                </table>
+              </div>
+              <form id="admin-form" class="fields" autocomplete="off">
+                <label>Login<input id="admin-login" type="text" maxlength="40" required autocapitalize="off"></label>
+                <label>Password<span class="row reveal-row"><input id="admin-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="admin-password" aria-pressed="false">Show</button></span></label>
+                <div class="row"><button class="btn" type="submit">Add a host admin</button></div>
+              </form>
+            </section>
 
-      <section class="tab-stack" id="tab-maps" hidden>
-      <section class="panel module-config" id="shared-panel" hidden>
-        <div class="section-head">
-          <h2 id="shared-title">Maps</h2>
-          <span class="status" id="shared-status"></span>
-        </div>
-        <p class="hint" id="shared-hint">The map every environment shows: the files in the host's own folder, all of them together. Only a host admin puts files here or cuts a region. Copy a PMTiles file into the folder below, or cut one from a world file.</p>
-        <p class="hint"><code id="shared-folder"></code></p>
-        <div id="shared-files"></div>
-        <form class="shared-address" id="shared-address-form">
-          <label class="field-label" for="shared-address">World map address</label>
-          <div class="row">
-            <input id="shared-address" type="url" maxlength="500" placeholder="https://build.protomaps.com/20260924.pmtiles" autocomplete="off">
-            <button class="btn btn-small" type="submit">Save address</button>
-          </div>
-          <p class="hint">The world PMTiles file that regions are cut from. Protomaps publishes a daily build at <code>https://build.protomaps.com/YYYYMMDD.pmtiles</code>, where YYYYMMDD is the build's date, such as 20260924; any recent date works.</p>
-        </form>
-        <!-- the same region-cut block as module-config.html, driven by public/region-cut.js -->
-        <div class="region-section" id="cfg-region" hidden>
-          <h3>Add a region</h3>
-          <p class="hint">Type a place — a country, a city, a region — and the host will find it, show roughly how large the cut would be, and add it to the files above once you confirm. Nothing downloads until you say so. For basic coverage everywhere, skip the search and <button type="button" class="linklike" id="region-world-btn">cover the whole world</button> instead, at a low zoom — meant to sit underneath detailed regional cuts, not replace them.</p>
-          <form class="row" id="region-find-form">
-            <input type="text" id="region-q" placeholder="Mexico, Lisbon, the Algarve..." maxlength="200" autocomplete="off">
-            <button class="btn btn-primary btn-small" type="submit" id="region-find-btn">Find it</button>
-            <span class="status" id="region-find-status" role="status"></span>
-          </form>
-          <div class="region-confirm" id="region-confirm" hidden>
-            <p id="region-confirm-name"></p>
-            <div class="row">
-              <label>Minimum zoom <input type="number" id="region-min-zoom" min="0" max="15" value="0" step="1"></label>
-              <label>Maximum zoom <input type="number" id="region-zoom" min="0" max="15" value="14" step="1"></label>
-              <label>File name <input type="text" id="region-filename" maxlength="100"></label>
-              <label class="sdk-choice-row"><input type="checkbox" id="region-replace"><span class="sdk-choice-text">Replace a file already there with that name</span></label>
-            </div>
-            <p class="hint">Maximum zoom is how much detail the cut keeps, not how far it covers. 10 or below shows towns and the roads between them, not individual streets; 14, the default, shows streets and buildings; 15 is the most detail this can offer. Higher means a far bigger file for the same area. Minimum zoom trims the shallow end: leave it at 0 for a file meant to stand alone, or raise it when a wider, lower-zoom file already covers those zooms. Check size shows the real cost before anything downloads.</p>
-            <div class="row">
-              <button class="btn btn-small" type="button" id="region-estimate-btn">Check size</button>
-              <span class="status" id="region-estimate-status" role="status"></span>
-            </div>
-            <div class="row">
-              <button class="btn btn-primary btn-small" type="button" id="region-cut-btn" disabled>Cut and add</button>
-              <button class="btn btn-small" type="button" id="region-cancel-btn">Cancel</button>
-            </div>
-          </div>
-          <div class="region-progress" id="region-progress" hidden>
-            <p id="region-progress-name"></p>
-            <progress class="sdk-progress" max="100" value="0" id="region-progress-bar" aria-label="Progress"></progress>
-            <p class="hint" id="region-progress-message"></p>
-          </div>
-        </div>
-      </section>
+            <section class="sdk-panel hc-part module-config" id="ai-panel" tabindex="-1" aria-labelledby="ai-title">
+              <div class="section-head">
+                <h2 class="hc-part-name" id="ai-title">AI</h2>
+                <span class="status" id="ai-status"></span>
+              </div>
+              <p class="sdk-hint">The AI services this host offers every environment, one per company: set a key here and that company is offered with a model chosen for it; change the model here if you like. An environment picks one of them (<strong>Managed</strong>) or sets up its own on its AI configuration page, and enables it there either way. A key is set here only; it stays on the host and is never shown to an environment.</p>
+              <div id="ai-services" class="ai-services"></div>
+            </section>
 
-      </section>
+            <section class="sdk-panel hc-part module-config" id="shared-panel" tabindex="-1" aria-labelledby="shared-title" hidden>
+              <div class="section-head">
+                <h2 class="hc-part-name" id="shared-title">Maps</h2>
+                <span class="status" id="shared-status"></span>
+              </div>
+              <p class="sdk-hint" id="shared-hint">The map every environment shows: the files in the host's own folder, all of them together. Only a host admin puts files here or cuts a region. Copy a PMTiles file into the folder below, or cut one from a world file.</p>
+              <p class="sdk-hint hc-folder"><code id="shared-folder"></code></p>
+              <div id="shared-files"></div>
+              <form class="shared-address" id="shared-address-form">
+                <label class="field-label" for="shared-address">World map address</label>
+                <div class="hc-inline">
+                  <input id="shared-address" type="url" maxlength="500" placeholder="https://build.protomaps.com/20260924.pmtiles" autocomplete="off">
+                  <button class="btn btn-small" type="submit">Save address</button>
+                </div>
+                <p class="sdk-hint">The world PMTiles file that regions are cut from. Protomaps publishes a daily build at <code>https://build.protomaps.com/YYYYMMDD.pmtiles</code>, where YYYYMMDD is the build's date, such as 20260924; any recent date works.</p>
+              </form>
+              <!-- the same region-cut block as module-config.html, driven by public/region-cut.js -->
+              <div class="region-section" id="cfg-region" hidden>
+                <h3>Add a region</h3>
+                <p class="sdk-hint">Type a place — a country, a city, a region — and the host will find it, show roughly how large the cut would be, and add it to the files above once you confirm. Nothing downloads until you say so. For basic coverage everywhere, skip the search and <button type="button" class="linklike" id="region-world-btn">cover the whole world</button> instead, at a low zoom — meant to sit underneath detailed regional cuts, not replace them.</p>
+                <form class="hc-inline" id="region-find-form">
+                  <input type="text" id="region-q" placeholder="Mexico, Lisbon, the Algarve..." maxlength="200" autocomplete="off" aria-label="Find a region">
+                  <button class="btn btn-primary btn-small" type="submit" id="region-find-btn">Find it</button>
+                  <span class="status" id="region-find-status" role="status"></span>
+                </form>
+                <div class="region-confirm" id="region-confirm" hidden>
+                  <p id="region-confirm-name"></p>
+                  <div class="row">
+                    <label>Minimum zoom <input type="number" id="region-min-zoom" min="0" max="15" value="0" step="1"></label>
+                    <label>Maximum zoom <input type="number" id="region-zoom" min="0" max="15" value="14" step="1"></label>
+                    <label>File name <input type="text" id="region-filename" maxlength="100"></label>
+                    <label class="sdk-choice-row"><input type="checkbox" id="region-replace"><span class="sdk-choice-text">Replace a file already there with that name</span></label>
+                  </div>
+                  <p class="sdk-hint">Maximum zoom is how much detail the cut keeps, not how far it covers. 10 or below shows towns and the roads between them, not individual streets; 14, the default, shows streets and buildings; 15 is the most detail this can offer. Higher means a far bigger file for the same area. Minimum zoom trims the shallow end: leave it at 0 for a file meant to stand alone, or raise it when a wider, lower-zoom file already covers those zooms. Check size shows the real cost before anything downloads.</p>
+                  <div class="row">
+                    <button class="btn btn-small" type="button" id="region-estimate-btn">Check size</button>
+                    <span class="status" id="region-estimate-status" role="status"></span>
+                  </div>
+                  <div class="row">
+                    <button class="btn btn-primary btn-small" type="button" id="region-cut-btn" disabled>Cut and add</button>
+                    <button class="btn btn-small" type="button" id="region-cancel-btn">Cancel</button>
+                  </div>
+                </div>
+                <div class="region-progress" id="region-progress" hidden>
+                  <p id="region-progress-name"></p>
+                  <progress class="sdk-progress" max="100" value="0" id="region-progress-bar" aria-label="Progress"></progress>
+                  <p class="sdk-hint" id="region-progress-message"></p>
+                </div>
+              </div>
+            </section>
+
+            <!-- The flight schedule (plan-flight-lookup.md, step 5): one for the whole host, learned from every environment's saved flights; drawn by /flight-schedule.js on /api/host/flight-schedule. -->
+            <section class="sdk-panel hc-part flight-schedule sdk-groups" id="flight-schedule-section" tabindex="-1" hidden>
+              <div class="sdk-stack">
+              <div class="section-head">
+                <h2>Flight schedule</h2>
+                <span class="status" id="flight-schedule-status" role="status" aria-live="polite"></span>
+              </div>
+              <p id="flight-schedule-count">This server has learned 0 flights from saved trips.</p>
+              <p class="sdk-hint">Flights people save in their trips teach this server when each flight number usually flies, so a later lookup can fill it in. It keeps the airline, the airports, the times and the terminal, never who flew.</p>
+              </div>
+              <form class="flight-forget" id="flight-forget-form" autocomplete="off">
+                <label class="field-label" for="flight-forget-number">Flight number</label>
+                <div class="hc-inline">
+                  <input id="flight-forget-number" type="text" maxlength="20" placeholder="WN 2483" autocapitalize="characters" spellcheck="false">
+                  <button class="btn" type="submit">Forget a flight</button>
+                </div>
+              </form>
+              <div class="row danger-row"><button class="btn btn-small btn-danger" id="flight-clear" type="button">Clear all</button></div>
+            </section>
+          </div>
+
+          <template id="tpl-ai-service">
+            <form class="ai-service" autocomplete="off">
+              <div class="ai-service-head">
+                <strong data-slot="name"></strong>
+                <span class="sdk-status" data-slot="offered"></span>
+              </div>
+              <div class="ai-key" data-slot="address-row" hidden>
+                <label class="ai-label" for="ai-address-compatible">Address</label>
+                <input id="ai-address-compatible" name="address" type="url" maxlength="300" placeholder="https://">
+                <p class="sdk-hint">The server's root, or ending in /v1.</p>
+              </div>
+              <div class="ai-key" data-slot="workspace-row" hidden>
+                <label class="ai-label" for="ai-workspace-anthropic">Workspace id</label>
+                <input id="ai-workspace-anthropic" name="workspace" type="text" maxlength="100" placeholder="wrkspc_..." autocomplete="off" spellcheck="false">
+                <p class="sdk-hint">Only for a key made at the organisation level in the Anthropic console, which Anthropic then asks to name a workspace. A key made inside a workspace needs nothing here.</p>
+              </div>
+              <div class="ai-key">
+                <div class="ai-label">Key</div>
+                <div class="ai-key-row">
+                  <span class="sdk-status" data-slot="key-state">not set</span>
+                  <input name="key" type="password" maxlength="300" placeholder="paste a new key" autocomplete="new-password" aria-label="Key" hidden>
+                  <button class="btn btn-small" type="button" data-action="key-replace">Set a key</button>
+                  <button class="btn btn-small btn-danger" type="button" data-action="key-clear" hidden>Remove the key</button>
+                </div>
+                <p class="sdk-hint" data-slot="key-help"></p>
+              </div>
+              <div class="ai-model">
+                <div class="ai-label">Model</div>
+                <div class="ai-model-row">
+                  <select name="model" aria-label="Model"></select>
+                  <input name="model-text" type="text" maxlength="100" placeholder="the model's name" aria-label="Model" hidden>
+                  <button class="btn btn-small" type="button" data-action="models-refresh" title="Load the list of models again"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
+                </div>
+                <p class="sdk-hint" data-slot="models-hint"></p>
+                <button class="linklike" type="button" data-action="model-manual" hidden>Type a model name instead</button>
+              </div>
+              <div class="row"><button class="btn btn-primary btn-small" type="submit">Save</button><span class="status" data-slot="status" role="status"></span></div>
+            </form>
+          </template>
+        </section>
+      </div>
     </div>
   </main>
 
@@ -493,7 +519,6 @@
       </form>
     </section>
   </template>
-  <template id="tpl-admin"><div class="sdk-row list-row"><span data-slot="login"></span><span class="grow"></span><button class="btn btn-small" data-action="remove-admin" type="button">Remove</button></div></template>
 
   <script type="module" src="/host.js"></script>
 </body>

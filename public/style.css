@@ -778,26 +778,6 @@ body.host-console .environment .section-head h2 code {
   font-weight: var(--weight-regular);
 }
 
-body.host-console #host-facts {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px 16px;
-  margin: 8px 0 0;
-}
-
-body.host-console #host-facts dt {
-  color: var(--text-dim);
-  font-size: var(--text-12);
-  padding-top: 2px;
-}
-
-body.host-console #host-facts dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere; /* a web address has no spaces: it wraps instead of scrolling the page sideways on a phone */
-  line-height: var(--leading-body);
-}
-
 /* The environments: spaced cards, each with an edge in its status's colour, the facts as tiles with a bar
    where the plan has a cap, and the plan form opening under a rule. */
 body.host-console .environments {
@@ -899,16 +879,6 @@ body.host-console .plan-form > .hint {
 body.host-console .plan-form .fields + .fields,
 body.host-console .plan-form .fields + .row {
   margin-top: 12px;
-}
-
-body.host-console .subtabs {
-  margin-bottom: 8px;
-}
-
-body.host-console #tab-host .list {
-  display: grid;
-  gap: 8px;
-  margin: 8px 0;
 }
 
 body.host-console .grow {

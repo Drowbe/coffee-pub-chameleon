@@ -53,11 +53,12 @@ async function load() {
   renderAdmins();
   renderFacts();
   renderPlans();
+  renderModules();
   await loadAiServices();
   await loadShared();
   await flightSchedule.load();
 }
-// The flight schedule every environment shares (plan-flight-lookup.md, step 5), on the Host tab.
+// The flight schedule every environment shares (plan-flight-lookup.md, step 5), in the Server section.
 const flightSchedule = wireFlightSchedule('/api/host/flight-schedule');
 
 // --- the managed AI services: one row per company ---------------------------------------------------------------
@@ -393,15 +394,13 @@ $('environments').addEventListener('keydown', (e) => {
   closeFirstPasswordLink(made.closest('.environment'));
 });
 
+// The host admins: a row each with whether their two-step sign-in is on. Never the last one, and never yourself, is removed.
 function renderAdmins() {
-  const box = $('admins');
-  box.replaceChildren(...(settings.hostAdmins || []).map((a) => {
-    const row = clone('tpl-admin');
-    row.dataset.key = a.key;
-    slot(row, 'login').textContent = a.login;
-    if ((settings.hostAdmins || []).length < 2) row.querySelector('[data-action="remove-admin"]').disabled = true; // never the last
-    return row;
-  }));
+  const admins = settings.hostAdmins || [];
+  const me = hostMe && hostMe.admin ? hostMe.admin.key : '';
+  $('admins').innerHTML = admins.map((a) => `<tr data-key="${escapeHtml(a.key)}"><th scope="row">${escapeHtml(a.login)}${a.key === me ? '<span class="sdk-table-sub">You</span>' : ''}</th>`
+    + `<td><span class="sdk-status"${a.mfaEnrolled ? ' data-tone="ok"' : ''}>${a.mfaEnrolled ? 'Two-step on' : 'Two-step off'}</span></td>`
+    + `<td class="hc-more-cell">${a.key === me || admins.length < 2 ? '' : `<button class="btn btn-small btn-danger" type="button" data-action="remove-admin" aria-label="Remove ${escapeHtml(a.login)}">Remove</button>`}</td></tr>`).join('');
 }
 
 // --- the environments' own controls, by delegation -----------------------------------------------------------------
@@ -698,31 +697,61 @@ $('create-form').addEventListener('submit', async (e) => {
   } catch (err) { say($('create-error'), err.message, true); }
 });
 
-// --- the tabs ----------------------------------------------------------------------------------------------------------
-// Host (the facts, the host admins), Plans, Environments (the list and the new-environment form), AI, Maps: the same
-// bar and the same hash routing as the Manage page. Environments is the default, being what a host admin comes for.
-const TABS = ['host', 'plans', 'environments', 'templates', 'ai', 'maps'];
-function selectTab(name) {
-  const tab = TABS.includes(name) ? name : 'environments';
-  for (const t of TABS) { const el = $(`tab-${t}`); if (el) el.hidden = tab !== t; }
-  for (const b of document.querySelectorAll('.subtab')) b.classList.toggle('active', b.dataset.tab === tab);
-  // A strip wider than the page scrolls inside itself: bring the chosen tab into it, the page left as it is.
-  const strip = $('subtabs');
-  const on = strip.querySelector('.subtab.active');
+// --- the sections and the address ------------------------------------------------------------------------------------
+// The left navigation's five sections (plan-host-console.md, "Navigation"): one shows at a time, named after the # so a
+// reload and the Back button come back to it. Environments is the default, being what a host admin comes for.
+const SECTIONS = ['environments', 'templates', 'modules', 'plans', 'server'];
+function readAddress() {
+  const [section, ...rest] = decodeURIComponent(location.hash.slice(1)).split('/');
+  return SECTIONS.includes(section) ? { section, rest } : { section: 'environments', rest: [] };
+}
+function go(address) { if (location.hash !== `#${address}`) location.hash = address; else showAddress(); }
+function showAddress({ focus = false } = {}) {
+  const { section, rest } = readAddress();
+  for (const el of document.querySelectorAll('.hc-section')) el.hidden = el.dataset.section !== section;
+  for (const b of $('hc-nav').querySelectorAll('[data-section]')) {
+    if (b.dataset.section === section) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  }
+  // On a phone the navigation is a strip wider than the page: bring the current one into it, the page left as it is.
+  const strip = $('hc-nav');
+  const on = strip.querySelector('[aria-current="page"]');
   if (on && strip.scrollWidth > strip.clientWidth) {
     const t = on.getBoundingClientRect();
-    const s = strip.getBoundingClientRect();
-    if (t.left < s.left) strip.scrollLeft += t.left - s.left;
-    else if (t.right > s.right) strip.scrollLeft += t.right - s.right;
+    const sb = strip.getBoundingClientRect();
+    if (t.left < sb.left) strip.scrollLeft += t.left - sb.left;
+    else if (t.right > sb.right) strip.scrollLeft += t.right - sb.right;
   }
-  if (location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
+  showView(section, rest);
+  if (focus) document.querySelector(`.hc-section[data-section="${section}"]:not([hidden]) .hc-view:not([hidden]) .hc-title, .hc-section[data-section="${section}"]:not([hidden]) > .hc-head .hc-title`)?.focus({ preventScroll: true });
 }
-$('subtabs').addEventListener('click', (event) => {
-  const b = event.target.closest('.subtab');
-  if (b) selectTab(b.dataset.tab);
+// Within a section, which view: filled in by the sections that have more than one.
+function showView() {}
+$('hc-nav').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-section]');
+  if (!b) return;
+  go(b.dataset.section);
+  document.querySelector(`.hc-section[data-section="${b.dataset.section}"] .hc-title`)?.focus({ preventScroll: true });
+  window.scrollTo(0, 0);
 });
-window.addEventListener('hashchange', () => selectTab(location.hash.slice(1)));
-selectTab(location.hash.slice(1));
+window.addEventListener('hashchange', () => showAddress());
+if (location.hash.slice(1) && !SECTIONS.includes(location.hash.slice(1).split('/')[0])) history.replaceState(null, '', '#environments');
+showAddress();
+
+// A jump list (the Server's parts): the part comes into view and takes the keyboard focus.
+function jumpTo(id) {
+  const part = $(id);
+  if (!part || part.hidden) return;
+  part.scrollIntoView({ block: 'start' });
+  part.focus({ preventScroll: true });
+}
+$('server-jump').addEventListener('click', (e) => { const b = e.target.closest('[data-part]'); if (b) jumpTo(b.dataset.part); });
+
+// --- Modules: the modules this host ships, read only (installing and updating come later) ----------------------------
+function renderModules() {
+  const BUILT_IN = ['conference', 'chat'];
+  const rows = (settings.modules || []).map((m) => `<tr><th scope="row">${escapeHtml(m.name || m.id)}<span class="sdk-table-sub">${escapeHtml(m.id)}</span></th><td class="sdk-table-dim">${BUILT_IN.includes(m.id) ? 'Built in' : 'Bundled'}</td></tr>`);
+  $('module-rows').innerHTML = rows.length ? rows.join('') : '<tr class="sdk-table-empty"><td colspan="2">No modules are listed.</td></tr>';
+}
 
 // --- the plans catalog ----------------------------------------------------------------------------------------------
 // One row per plan (free first and never removed); Save plans sends the whole catalog (PUT /api/host/plans).
@@ -800,9 +829,12 @@ $('admin-form').addEventListener('submit', async (e) => {
 $('admins').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-action="remove-admin"]');
   if (!b) return;
-  const key = b.closest('.list-row').dataset.key;
+  const row = b.closest('tr');
+  const login = row.querySelector('th').firstChild.textContent;
+  if (!await confirmDialog({ title: `Remove ${login}?`, message: 'They can no longer sign in to the host console.', action: 'Remove', kind: 'destructive' })) return;
   try {
-    await api('DELETE', `/api/host/admins/${encodeURIComponent(key)}`);
+    await api('DELETE', `/api/host/admins/${encodeURIComponent(row.dataset.key)}`);
+    say($('admins-status'), `${login} removed`);
     await load();
   } catch (err) { say($('admins-status'), err.message, true); }
 });
@@ -842,7 +874,7 @@ $('host-verify').addEventListener('submit', async (e) => {
 });
 $('host-verify-back').addEventListener('click', () => { $('host-verify').hidden = true; $('login-form').hidden = false; });
 
-// The host admin's own second factor (the Host tab): hidden when the server does not offer two-step sign-in, and under
+// The host admin's own second factor (Server): hidden when the server does not offer two-step sign-in, and under
 // the admin lockout bypass no code is asked and their own reset (the password) is offered, with a banner until it is off.
 function renderHostMfa() {
   const me = hostMe || {};
@@ -862,7 +894,7 @@ function renderHostMfa() {
     b.dataset.mfaBypass = '1';
     b.setAttribute('role', 'status');
     b.innerHTML = '<span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><span class="sdk-banner-text"></span>';
-    b.querySelector('.sdk-banner-text').textContent = 'The admin lockout bypass is on: host admins are not asked for their two-step code. Reset your factor on the Host tab if you need to, then turn ADMIN_MFA_LOCKOUT_BYPASS off on the server.';
+    b.querySelector('.sdk-banner-text').textContent = 'The admin lockout bypass is on: host admins are not asked for their two-step code. Reset your factor under Server if you need to, then turn ADMIN_MFA_LOCKOUT_BYPASS off on the server.';
     const topbar = document.querySelector('.topbar');
     if (topbar) topbar.after(b); else document.body.prepend(b);
   }

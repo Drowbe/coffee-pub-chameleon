@@ -1,0 +1,89 @@
+/* The host console (admin.<base domain>, public/host.html; plan-host-console.md). The pieces are the product's own (.subtabs,
+   .sdk-table, .sdk-card, .sdk-panel, .sdk-status, .sdk-progress, .sdk-banner, .sdk-search, .mf-switch, the fields and buttons);
+   this file lays them out. Every colour and size is a token. A left navigation beside the section shown; at 640 px and under
+   the navigation is one strip of tabs, and every table scrolls inside its own box. */
+
+.hc-page { display: flex; flex-direction: column; min-width: 0; }
+.hc-login { margin: 12vh auto; }
+
+.hc-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; width: 100%; max-width: 1440px; margin: 0 auto; min-width: 0; }
+.hc-nav.subtabs { position: sticky; top: 0; flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-5) var(--space-3); overflow: visible; }
+.hc-nav.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-main { display: flex; flex-direction: column; min-width: 0; padding: var(--space-5) var(--space-5) var(--space-6); }
+.hc-section, .hc-view { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-section[hidden], .hc-view[hidden] { display: none; }
+
+.hc-head, .hc-env-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-width: 0; }
+.hc-head-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hc-title { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.hc-title:focus { outline: none; }
+.hc-title:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+.hc-back { align-self: flex-start; margin-left: calc(-1 * var(--space-2)); }
+.hc-env-id { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-slug { color: var(--text-muted); font-size: var(--text-12); overflow-wrap: anywhere; }
+.hc-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.hc-status { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.hc-status:empty { display: none; }
+.hc-status:focus { outline: none; }
+.hc-link { color: var(--text-accent); font-weight: var(--weight-medium); text-decoration: none; }
+.hc-link:hover { text-decoration: underline; }
+.hc-link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+
+/* ---- parts: a panel each, a name, facts ---- */
+.hc-part { min-width: 0; }
+.hc-part[id] { scroll-margin-top: var(--space-4); }
+.hc-part:focus { outline: none; }
+.hc-part > .btn { align-self: flex-start; }
+.hc-part-name, .hc-part .section-head > h2 { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+fieldset.hc-part { margin: 0; }
+fieldset.hc-part > legend.hc-part-name { float: left; width: 100%; padding: 0; }
+fieldset.hc-part > legend.hc-part-name + * { clear: both; }
+.hc-facts, #host-facts { display: grid; grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.hc-facts > dt, #host-facts > dt { color: var(--text-muted); font-size: var(--text-13); }
+.hc-facts > dd, #host-facts > dd { min-width: 0; margin: 0; overflow-wrap: anywhere; } /* a web address has no spaces: it wraps instead of scrolling the page sideways on a phone */
+.hc-parts { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); width: 100%; }
+.hc-inline > :is(input, select) { flex: 1 1 160px; min-width: 0; width: auto; }
+.hc-sub { margin: 0; }
+.hc-folder code { overflow-wrap: anywhere; }
+
+/* ---- the jump lists: the Server's parts (a row) ---- */
+.hc-jump-row.subtabs { flex-direction: row; align-items: center; }
+
+/* ---- the Server's own pieces ---- */
+.ai-services { display: flex; flex-direction: column; }
+.ai-service { display: flex; flex-direction: column; gap: var(--space-2); padding-block: var(--space-3); }
+.ai-service + .ai-service { border-top: 1px solid var(--edge-hairline); }
+.hc-main .flight-schedule .danger-row { margin: 0; }
+
+/* ---- tables: each scrolls inside its own box ---- */
+.hc-tablebox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-swipe { display: none; margin: 0; }
+.hc-wrap { border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); }
+.hc-main .sdk-table { width: 100%; }
+.hc-main .sdk-table :is(th, td) { vertical-align: middle; }
+.hc-main .sdk-table :is(th, td).hc-more-col, .hc-main .sdk-table td.hc-more-cell { width: 1%; white-space: nowrap; text-align: right; }
+.hc-main .sdk-table tbody tr { height: 44px; }
+
+/* ---- 900 px and under ---- */
+@media (max-width: 900px) {
+  .hc-body { grid-template-columns: 180px minmax(0, 1fr); }
+  .hc-main { padding-inline: var(--space-4); }
+}
+
+/* ---- the phone: 640 px and under ---- */
+@media (max-width: 640px) {
+  .hc-body { grid-template-columns: minmax(0, 1fr); }
+  /* the left navigation folds into the strip of tabs: one row, scrolling inside itself */
+  .hc-nav.subtabs { position: static; flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
+  .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
+  .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
+  .hc-title { font-size: var(--text-18); }
+  .hc-jump-row.subtabs { overflow-x: auto; }
+  .hc-swipe:not([hidden]) { display: block; }
+  .hc-facts, #host-facts { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .hc-facts > dd + dt, #host-facts > dd + dt { margin-top: var(--space-2); }
+}
+
+/* The cards and editors not yet redrawn (plan-host-console.md, slices 4 to 6) keep their panels at the column's width. */
+.hc-main .panel { max-width: none; margin: 0; }
