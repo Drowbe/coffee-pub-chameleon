@@ -4,10 +4,13 @@
   // clipboard (a module page may not use it). It goes when the page goes. It saves nothing and asks nobody's leave: the
   // page decides who may copy and paste (lib-b) and puts the copies on the board through its one path for changes.
   //
-  // A copy gets a new id, and a block that points at other blocks (a connector's two ends, later) has those pointers moved
-  // to the new copies: its block type says which ids it points at, refs(block) -> [ids], and puts new ones in,
-  // remap(block, idMap) -> the fields that change, where idMap is a Map of every copied block's old id to its copy's id. A
-  // pointer to a block that was not copied is not in idMap; the block type decides what that end becomes.
+  // A copy gets a new id, and a block that points at other blocks (a connector's two ends) has those pointers moved to the
+  // new copies: its block type says which ids it points at, refs(block) -> [ids], and puts new ones in, remap(block, idMap)
+  // -> the fields that change, where idMap is a Map of every copied block's old id to its copy's id. What is copied is the
+  // page's to choose (whiteboard.js): the connectors between the blocks copied go along, and a connector copied without a
+  // block it is attached to has that end made a free point first (its type's loosen), so no copy points at a block that
+  // is not in the copy. A block type may also say what a copy of it does not keep, copied(block) -> the fields to change (a
+  // timer's copy is not started).
   const WB_PASTE_STEP = 24; // board units each paste moves along, so copies never hide one another
 
   // Copies of `blocks` (plain blocks, any order) with new ids from newId(), moved by dx, dy, pointers among them remapped,
@@ -16,9 +19,10 @@
     const list = blocks.slice().sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
     const idMap = new Map(list.map((b) => [b.id, newId()]));
     return list.map((b) => {
-      const copy = { ...JSON.parse(JSON.stringify(b)), id: idMap.get(b.id), x: b.x + dx, y: b.y + dy };
+      const copy = { ...JSON.parse(JSON.stringify(b)), id: idMap.get(b.id), ...wbMoved(b, dx, dy) };
       const def = blockTypes.get(b.type);
       if (def && def.remap && (!def.refs || def.refs(b).length)) Object.assign(copy, def.remap(copy, idMap));
+      if (def && def.copied) Object.assign(copy, def.copied(copy)); // a running timer's copy is not running
       return copy;
     });
   }

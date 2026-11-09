@@ -6,6 +6,30 @@ as new.
 A defect is recorded here once it has been observed, with a workaround if one exists, and moves to
 the CHANGELOG once fixed.
 
+## Whiteboard: limits that are known
+
+These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
+[architecture-whiteboard](architecture/architecture-whiteboard.md)).
+
+- **Same block, same moment.** Two people changing one block at the same moment: the last save wins. There is no conflict check yet.
+- **Undo and copied blocks are per page.** They are in the page's memory, so they are gone on reload and are not shared between tabs.
+- **Pictures with no block stay.** A picture's file stays when its block is deleted (undo, copies and other people's undo may need it), and it still counts toward the space's 500 files. There is no tidy-up yet. There is no workaround.
+- **Sandboxed run.** When an owner runs the module sandboxed, not in the page, a picture shows "Picture not found", because the frame's origin is `null` and the picture's address does not load there. Pasting a picture in that frame was not tried. The bundled module runs in the page.
+- **Removed members and pictures.** A member who is removed may still load a picture for up to an hour, from the upload cache.
+- **Print and Save as image are not verified in a real browser's print dialog.** Neither was run against the real print dialog, and neither was tried in Safari or Firefox. The export's sums (which blocks, the part of the board, the size, the file name) are checked by a tool; the picture and the printed page are not. **Ctrl+P** (**Cmd+P**) is the browser's own print and does not use the board's Print.
+- **Save as image in a sandboxed run.** The SDK has no call to hand over a file a module made, so the page uses a download link. When an owner runs the module sandboxed, a download is blocked and the page says it cannot save.
+- **Save as image has one format and one place.** PNG only (no SVG), saved to the computer, not to the Vault.
+- **A table cell and Escape.** Escape in a cell being edited puts back only that cell's unfinished words. Cells you already kept stay, and **Undo** takes them back one step at a time. This is by design.
+- **Two people in one table.** Two people changing the same cell, or the same table at once outside an edited cell, still lose one change (the last save wins). A cell you edit is written into the newest table, so cells others changed meanwhile stay.
+- **Pasting rows from a spreadsheet** is checked by a tool on text and HTML samples, and was not tried with a real clipboard from Excel, Google Sheets or Numbers.
+- **The timer's sound** plays only after you have pressed or typed on the page once, as browsers require. It was not heard on a real device. The shared time is checked by a tool with fake clocks, not with two real computers whose clocks differ.
+- **The Highlighter and the note pointer do not lock on.** A highlight stays where it was put when the words under it move, and a note's pointer tip stays where it was put; it does not follow a block it points at. Locking on is designed in the code and not built.
+- **Connectors go round only their own two blocks,** not other blocks in the way.
+- **Brush pressure** was not tried with a real pen or a touch screen that senses force.
+- **Toolbar placement.** The colour swatches are not in the toolbar row and **Snap to grid** is not at the toolbar's right end, because a module can do neither (a toolbar button holds only an icon, and there is no right-hand place for a module's own button). The magnifier's menu opens at the top of the module's content, not under its button in the title bar.
+- **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
+- **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
+
 ## Vault: who can see a file is only half built
 
 The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:

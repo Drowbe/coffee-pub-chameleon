@@ -11,6 +11,14 @@
   // With Snap to grid (ctx.snapping, turned round while Alt is held) a move puts the pressed block's corner on the grid and
   // the others with it by the same amount; a resize puts the dragged edges or the line's end on the grid (not while the
   // shape is kept). Each is still saved once, on the drop: one step to undo.
+  // A connector's end (resize.attach) goes where it is let go: onto a block (the side whose middle it is near, else the
+  // side that faces the other end), or the board (a free end, on the grid with Snap to grid); the block under it shows
+  // its connection points meanwhile. A connector moves with the blocks it is attached to; moved itself (with others
+  // picked), only its free ends move.
+  // A handle of a block type's own (grips: a note's pointer tip, a table's lines) changes what its grip says, saved once on
+  // the drop; with Snap to grid the point it is dragged to goes on the grid. One that does something when pressed without
+  // a drag (a table's +) does it then (its type's tap). A corner of a table scales every column and row (its resize's
+  // scale), one save on the drop.
   {
     const SLOP = 4; // screen pixels a press may wander and still be a press, not a drag
     const TWICE = 400; // milliseconds between two presses that open a block
@@ -32,8 +40,9 @@
       }
       const east = handle.endsWith('e');
       const south = handle.startsWith('s');
-      const minW = (r.min && r.min.w) || 8;
-      const minH = (r.min && r.min.h) || 8;
+      const least = r.minOf ? r.minOf(start) : r.min; // a table's least size follows its rows and columns
+      const minW = (least && least.w) || 8;
+      const minH = (least && least.h) || 8;
       const max = WB_LIMITS.size;
       let w = start.w + (east ? mx : -mx);
       let h = r.height === false ? null : start.h + (south ? my : -my);
@@ -63,7 +72,19 @@
       return { mx: to(ex, mx), my: r.height === false ? my : to(ey, my) };
     }
     // The fields a resize changes, as they were when it began (to put back when it is cancelled).
-    const before = (r, s) => (r.handles === 'ends' ? { x: s.x, y: s.y, dx: s.dx, dy: s.dy } : r.height === false ? { x: s.x, w: s.w } : { x: s.x, y: s.y, w: s.w, h: s.h });
+    // (A table's scale says which fields it changes: those, as they were.)
+    const before = (r, s) => (r.scale ? Object.fromEntries(Object.keys(r.scale(s, s)).map((k) => [k, s[k]])) : r.attach ? { from: s.from, to: s.to } : r.handles === 'ends' ? { x: s.x, y: s.y, dx: s.dx, dy: s.dy } : r.height === false ? { x: s.x, w: s.w } : { x: s.x, y: s.y, w: s.w, h: s.h });
+    // A connector's end dragged to p: attached to the block there (not the one its other end is on), else a free point.
+    function endAt(hold, p, ctx) {
+      const which = hold.handle === 'start' ? 'from' : 'to';
+      const other = hold.start[which === 'from' ? 'to' : 'from'];
+      let at = ctx.attachAt(p, { not: [hold.id] });
+      if (at && other && other.block === at.block) at = null;
+      ctx.ports(at ? [at] : []);
+      if (at) return { [which]: at };
+      if (ctx.snapping(p.event)) return { [which]: { x: wbSnap(p.x), y: wbSnap(p.y) } };
+      return { [which]: { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 } };
+    }
 
     tools.register({
       id: 'select',
@@ -79,10 +100,22 @@
         const adding = Boolean(p.id) && adds(p, ctx);
         let unpick = false;
         if (adding) { last = { id: null, t: 0 }; if (ctx.isSelected(p.id)) unpick = true; else ctx.toggle(p.id); }
-        const r = picked && blockTypes.get(picked.type).resize;
+        // A handle of the block type's own (a note's pointer tip): its grip says what dragging it changes.
+        const def = picked && blockTypes.get(picked.type);
+        const el = picked ? ctx.element(picked.id) : null;
+        if (def && def.grips && def.grip && ctx.policy.canChange(picked) && def.grips(picked, el).some((g) => g.id === p.handle)) {
+          last = { id: null, t: 0 };
+          const base = def.gripBase ? def.gripBase(picked, p.handle, el) : null;
+          hold = { kind: 'grip', id: picked.id, handle: p.handle, def, base, sx: p.sx, sy: p.sy, start: { ...picked }, moved: false, keys: [] };
+          ctx.hold(picked.id, true);
+          return;
+        }
+        const r = picked && def.resize;
         if (r && ctx.policy.canChange(picked)) {
           last = { id: null, t: 0 };
-          hold = { kind: 'resize', id: picked.id, handle: p.handle, r, sx: p.sx, sy: p.sy, start: { ...picked }, moved: false };
+          // A table starts from its height and its rows' heights as drawn (its rows grow with their words).
+          const start = r.measure ? { ...picked, ...r.measure(picked, el) } : { ...picked };
+          hold = { kind: 'resize', id: picked.id, handle: p.handle, r, sx: p.sx, sy: p.sy, start, moved: false };
           ctx.hold(picked.id, true);
           return;
         }
@@ -90,9 +123,9 @@
           // A press on a block already picked with others keeps them all, to move together.
           if (!adding && (!ctx.isSelected(p.id) || ctx.selection().length < 2)) ctx.select(p.id);
           const now = Date.now();
-          if (!adding && last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id); return; }
+          if (!adding && last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id, { target: p.event && p.event.target }); return; }
           const blocks = ctx.selection().map((id) => ctx.get(id)).filter((b) => b && ctx.policy.canChange(b));
-          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ id: b.id, x: b.x, y: b.y })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding };
+          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ ...b })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding };
           for (const s of hold.starts) ctx.hold(s.id, true);
         } else if (emptyPress(p, ctx) === 'marquee') {
           hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p, ctx) ? ctx.selection() : [], moved: false };
@@ -113,14 +146,25 @@
           ctx.setSelection([...new Set([...hold.keep, ...ctx.blocksIn(r)])]);
           return;
         }
+        if (hold.kind === 'grip') {
+          if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
+          hold.moved = true;
+          const to = ctx.snapping(p.event) ? { x: wbSnap(p.x), y: wbSnap(p.y) } : { x: p.x, y: p.y };
+          const fields = hold.def.grip(ctx.get(hold.id) || hold.start, hold.handle, to, hold.base);
+          hold.keys = [...new Set([...hold.keys, ...Object.keys(fields)])];
+          ctx.change(hold.id, fields, { save: false });
+          return;
+        }
         if (hold.kind === 'resize') {
           if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
           hold.moved = true;
+          if (hold.r.attach) { ctx.change(hold.id, endAt(hold, p, ctx), { save: false }); return; }
           const s = ctx.scale();
           const keep = Boolean(hold.r.keep || (p.event && p.event.shiftKey)); // a picture always keeps its shape
           let m = { mx: (p.sx - hold.sx) / s, my: (p.sy - hold.sy) / s };
           if (!keep && ctx.snapping(p.event)) m = snapDrag(hold.r, hold.start, hold.handle, m.mx, m.my);
-          ctx.change(hold.id, resized(hold.r, hold.start, hold.handle, m.mx, m.my, keep), { save: false });
+          const box = resized(hold.r, hold.start, hold.handle, m.mx, m.my, keep);
+          ctx.change(hold.id, hold.r.scale ? hold.r.scale(hold.start, box) : box, { save: false });
           return;
         }
         if (!hold.moves) return;
@@ -130,14 +174,30 @@
         let dx = (p.sx - hold.sx) / s;
         let dy = (p.sy - hold.sy) / s;
         if (ctx.snapping(p.event)) {
-          const lead = hold.starts.find((b) => b.id === hold.id) || hold.starts[0];
-          dx = wbSnap(lead.x + dx) - lead.x;
-          dy = wbSnap(lead.y + dy) - lead.y;
+          // The pressed block's corner goes on the grid, the others with it; a connector has no corner of its own, so the
+          // first picked block that has one leads (none: a connector's free ends, moved as they are).
+          const has = (b) => b && Number.isFinite(b.x) && Number.isFinite(b.y);
+          const pressed = hold.starts.find((b) => b.id === hold.id);
+          const lead = has(pressed) ? pressed : hold.starts.find(has);
+          if (lead) {
+            dx = wbSnap(lead.x + dx) - lead.x;
+            dy = wbSnap(lead.y + dy) - lead.y;
+          }
         }
-        for (const b of hold.starts) ctx.change(b.id, { x: b.x + dx, y: b.y + dy }, { save: false });
+        for (const b of hold.starts) ctx.change(b.id, wbMoved(b, dx, dy), { save: false });
       },
       up(p, ctx) {
+        if (hold && hold.kind === 'grip') {
+          if (hold.moved) ctx.save(hold.id); // once, where it is let go
+          ctx.hold(hold.id, false);
+          // A press without a drag on a grip that does something (a table's +): its fields, one save.
+          const now = !hold.moved && hold.def.tap ? ctx.get(hold.id) : null;
+          const fields = now ? hold.def.tap(now, hold.handle) : null;
+          if (fields && fields.refuse) ctx.refuseWith(fields.refuse);
+          else if (fields) ctx.change(hold.id, fields, { save: 'now' });
+        }
         if (hold && hold.kind === 'resize') {
+          if (hold.r.attach) ctx.ports([]);
           if (hold.moved) ctx.save(hold.id); // the whole new box, once
           ctx.hold(hold.id, false);
         }
@@ -153,13 +213,18 @@
         hold = null;
       },
       cancel(ctx) {
+        if (hold && hold.kind === 'grip') {
+          if (hold.moved) ctx.change(hold.id, Object.fromEntries(hold.keys.map((k) => [k, hold.start[k]])), { save: false });
+          ctx.hold(hold.id, false);
+        }
         if (hold && hold.kind === 'resize') {
+          if (hold.r.attach) ctx.ports([]);
           if (hold.moved) ctx.change(hold.id, before(hold.r, hold.start), { save: false });
           ctx.hold(hold.id, false);
         }
         if (hold && hold.kind === 'block') {
           for (const b of hold.starts) {
-            if (hold.moved) ctx.change(b.id, { x: b.x, y: b.y }, { save: false });
+            if (hold.moved) ctx.change(b.id, wbMoved(b, 0, 0), { save: false });
             ctx.hold(b.id, false);
           }
         }

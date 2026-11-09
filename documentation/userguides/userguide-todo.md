@@ -53,7 +53,7 @@ An admin approves what the To-do may hear from other modules when enabling it (a
 
 ## In a space
 
-In a space the To-do is part of the **Calendar**: with the Calendar on, the two are one module, so the **Calendar** tab in the top bar and the **Calendar** switch in the **Layout** menu show the tasks on its **To-do** panel (see [Calendar](userguide-calendar.md), "A space's calendar"). Only when the Calendar is off does **To-do** have a switch of its own, opening as a column on the Workspace, floating over it, or in a window of its own, from the buttons on its titlebar. It shows that space's list; the environment's list is on the To-do's own page.
+In a space the To-do is part of the **Calendar**: with the Calendar on, the two are one module, so the **Calendar** tab in the top bar and the **Calendar** switch on Set up's **Modules** tab show the tasks on its **To-do** panel (see [Calendar](userguide-calendar.md), "A space's calendar"). Only when the Calendar is off does **To-do** have a switch of its own, opening as a column on the Workspace, floating over it, or in a window of its own, from the buttons on its titlebar. It shows that space's list; the environment's list is on the To-do's own page.
 
 ## On the Calendar
 
@@ -61,4 +61,4 @@ When the Calendar is on, a task with a due date shows on the Calendar on its due
 
 ## Reminders
 
-Set **Remind people at 9:00 that day** on a task with a due date to send a notification at 9:00 on that day. Everyone in that space (or everyone in the environment, for one of its tasks) who is allowed to see the list gets a toast, a count on the bell in the top bar, and a number on the **Due soon** card's heading and on To-do's switch in the **Layout** menu until they open it or the bell. A space's task set from the environment's list, or from Calendar, reminds that space's people. Ticking a task done, changing its date or deleting it cancels the reminder. A due date whose 9:00 has already passed sends no reminder.
+Set **Remind people at 9:00 that day** on a task with a due date to send a notification at 9:00 on that day. Everyone in that space (or everyone in the environment, for one of its tasks) who is allowed to see the list gets a toast, a count on the bell in the top bar, and a number on the **Due soon** card's heading and on To-do's switch on Set up's **Modules** tab until they open it or the bell. A space's task set from the environment's list, or from Calendar, reminds that space's people. Ticking a task done, changing its date or deleting it cancels the reminder. A due date whose 9:00 has already passed sends no reminder.

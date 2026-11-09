@@ -80,6 +80,16 @@
         show(this, el, img, b.upload, Math.max(b.w, b.h) * ratio <= THUMB);
       },
       textOf: (el) => el.querySelector('.wb-alt'),
+      // Saved as a picture (lib-l): the upload put in as a data URL (the thumbnail while it is big enough for the picture's
+      // pixels), so the picture holds it; one that cannot be read is drawn as "Picture not found". Printed, as it is shown.
+      async exported(b, el, ctx) {
+        if (ctx.live) return;
+        const img = el.querySelector('.wb-picture');
+        if (!img) return;
+        img.removeAttribute('decoding');
+        const src = await ctx.picture(b.upload, Math.max(b.w, b.h) * ctx.scale <= THUMB);
+        if (src) { img.setAttribute('src', src); delete el.dataset.missing; } else { img.removeAttribute('src'); el.dataset.missing = 'true'; }
+      },
       describe: (b) => (b.alt ? `Picture: ${b.alt.slice(0, 120)}` : 'Picture'),
     });
   }

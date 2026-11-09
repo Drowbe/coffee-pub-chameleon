@@ -16,7 +16,7 @@ The Vault holds the files of a space: tickets and confirmations as PDFs, photos,
 
 ## Open the Vault
 
-The Vault is a module like the others: open it from the **Layout** menu, under **Show**, and it opens on the canvas. If you are not in a space the Vault asks you to open it in one. Without the right to see the files it says "You can't see the files in this space." and names who to ask.
+The Vault is a module like the others: open it from Set up's **Modules** tab, and it opens on the canvas. If you are not in a space the Vault asks you to open it in one. Without the right to see the files it says "You can't see the files in this space." and names who to ask.
 
 ## See the files
 
@@ -84,7 +84,7 @@ Each window's bar has:
 
 **Print.** **Print** is for pictures and PDFs, for people who have **Download files**. It opens your browser's print dialog; choose "Save as PDF" there to keep a copy instead of printing. Other kinds of file have no **Print**. On a phone there is no **Print**, as there is no **Download**, and the public share page has none. A download-only PDF is not printed from the menu. Printing a PDF may not work from a pop-out window ([known issues](../known-issues.md)).
 
-Close a window with its close button or **Esc**; focus goes back to where you opened it. **Close all** closes every file window. It is in each window's menu and in the **Layout** menu, under **Open files**, where the number open is shown. On a phone only one window shows at a time, as a full screen sheet, and opening another file replaces it.
+Close a window with its close button or **Esc**; focus goes back to where you opened it. **Close all** closes every file window. It is in each window's menu and on Set up's **Modules** tab, under **Open files**, where the number open is shown. On a phone only one window shows at a time, as a full screen sheet, and opening another file replaces it.
 
 ## Where a file is used
 

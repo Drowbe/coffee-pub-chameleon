@@ -155,7 +155,7 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   seven base colours and thirteen optional ones by their stored names (`bg`, `bgSection`, `border`, `text`, `textDim`,
   `accent`, `onAccent`, `card`, `headerBg`, `headerText`, `navBrandBg`, `navBrandText`, `navRightBg`, `navRightText`, `icon`, `iconHover`, `primaryHover`, `secondary`,
   `secondaryText`, `secondaryHover`), `null` for Auto (a stored theme, a theme file or a template's theme without a key reads it as Auto, so it looks as before); `server/theme-css.js` is the one place that maps them to CSS (`navBrandBg` to `--nav-brand-bg`, `navBrandText` to `--nav-brand-text`, `navRightBg` to `--nav-right-bg`, `navRightText` to `--nav-right-text`; the top bar's colour areas, see [design-theme](../designsystem/design-theme.md)). A file exported here carries the four nav keys (`null` on Auto); an older server reading it drops them and names them in `dropped`, so `formatVersion` stays 1.
-  `GET /api/themes/:id/export` (owner; `default` is Strong Coffee) answers the file
+  `GET /api/themes/:id/export` (owner; `default` is the built-in default theme, Chameleon) answers the file
   `{ format: "theme", formatVersion: 1, name, author?, light, dark }` with every key in each set, as
   `<name>.theme.json`, or 404 "no such theme". The marker pair is named by kind, never by the product, and read by
   one rule for all three file formats (`server/file-format.js`, [plan-kind-names](../plans/plan-kind-names.md)).
@@ -353,3 +353,5 @@ ADMIN_LOGIN=gm ADMIN_PASSWORD=secret npm run dev
 Data goes to `./data` unless `DATA_DIR` says otherwise. `LIVEKIT_API_URL` overrides the HTTP address used
 for the LiveKit server API when it differs from the WebSocket host. `npm run check` syntax-checks every
 script; `npm run check:docs` checks the documentation structure.
+
+**The module lane.** `npm run check:module -- <id>` (`tools/check-module.mjs`) runs the checks for a change confined to one bundled module, one after another, each in its own process: first the core lint that reads module sources (syntax, versions, manifest rules, guards, layout, raw colours, names, spacing, radius, type scale, icons, the shared tokens, and that `sources.js` is unchanged), then that module's own tests, `modules/<id>/test/*.mjs`, then the older `tools/check-<id>.mjs` and `tools/check-<id>-*.mjs`. A module's own checks live in its `test/` folder: `tools/check-module-tests.mjs` runs every module's tests, and `npm run check` runs it once, so a new test needs no new line in `package.json`. A `test/` folder is not module code: it is not in the module's zip (`server/module-build.js` builds from `module.json` and `src/` only), not in the version fingerprint (`tools/check-module-versions.mjs`), and not scanned as shipped source by the style checks. Run as root in a container, `check-names` fails two `--migration` cases that need a non-root user; that is not a defect.
