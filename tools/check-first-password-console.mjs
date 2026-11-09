@@ -3,16 +3,16 @@
  * check-first-password-console.mjs -- the host console's "New first-password link" (plan-first-password.md, Decision 4,
  * step 3), live in headless Chromium over the DevTools protocol (tools/shots.mjs) against a throwaway hosted server
  * (BASE_DOMAIN=localhost, SIGNUP=on; Chromium sends localhost and every *.localhost to this machine):
- *   - the button shows on an environment's card only for an owner who has no password yet, named by login; an
+ *   - the button shows on an environment's page (its Owners and two-step tab) only for an owner who has no password yet, named by login; an
  *     environment whose owner has a password has none;
  *   - pressed (from the keyboard), it shows the link once in a read-only field, with focus on it, the sentence "This link
  *     works once, for 24 hours. Send it to the owner." and Copy and Close; Copy copies it; Escape and Close hide it, clear
  *     the field and give focus back to the button; neither while it shows nor after is the link in the page's markup,
  *     localStorage or sessionStorage; and that check fails on a console that writes the link to sessionStorage;
  *   - the link works once at the environment's own page (the owner chooses a password and is signed in) and is dead the
- *     second time; a link replaced by a newer one is dead too; the card then no longer offers the button;
+ *     second time; a link replaced by a newer one is dead too; the page then no longer offers the button;
  *   - at 390 and 1280 wide: no sideways scroll, no console error, and at 390 every control of the first-password box
- *     has a 44px target (the card's other buttons are not this check's).
+ *     has a 44px target (the page's other buttons are not this check's).
  * `--shots=<dir>`: also writes a picture of each state at 390 and 1280 (the console is always dark) into <dir>.
  * With no Chromium it says SKIPPED (not a pass).
  */
@@ -174,16 +174,21 @@ async function openTab({ width = 1280, from = nextIp(), mutate = null } = {}) {
   return { s, evaluate, waitFor, go, visibleSel, type, key, shot, layoutProblems, problems, close, width };
 }
 
-const card = (slug) => `#environments .environment[data-slug="${slug}"]`;
+// The environment's page, on its Owners and two-step tab (plan-host-console.md): where the button and the link are.
+const card = (slug) => `#environment-page[data-slug="${slug}"]`;
+async function openOwners(tab, slug) {
+  await tab.evaluate(`location.hash = ${JSON.stringify(`#environments/${slug}/owners`)}`);
+  await tab.waitFor(`${tab.visibleSel(card(slug))} && ${tab.visibleSel('#env-sheet-owners')}`, `the Owners tab of ${slug}`);
+}
 async function signInToConsole(tab) {
   await tab.go(`http://admin.localhost:${port}/`);
   await tab.waitFor(tab.visibleSel('#login-form'), 'the console sign-in');
   await tab.type('#login-name', HOST_LOGIN);
   await tab.type('#login-password', HOST_PASSWORD);
   await tab.evaluate("document.querySelector('#login-form button[type=submit]').click()");
-  await tab.waitFor(`${tab.visibleSel('#environments')} && document.querySelectorAll('#environments .environment').length >= 2`, 'the environment cards');
+  await tab.waitFor(`${tab.visibleSel('#env-list')} && document.querySelectorAll('#env-rows tr[data-slug]').length >= 2`, 'the environments table');
 }
-// The box that shows the link, in a card: whether it shows, the field's value, whether it is read-only, the sentence.
+// The box that shows the link, on the page: whether it shows, the field's value, whether it is read-only, the sentence.
 const madeState = (tab, slug) => tab.evaluate(`(() => {
   const made = document.querySelector(${JSON.stringify(`${card(slug)} [data-slot="first-password-made"]`)});
   const field = made.querySelector('[data-slot="first-password-url"]');
@@ -220,12 +225,14 @@ try {
       try {
         await signInToConsole(tab);
         const login = `own${waiting}`;
+        await openOwners(tab, done);
+        assert.equal(await tab.evaluate(`document.querySelectorAll(${JSON.stringify(`${card(done)} [data-action="first-password"]`)}).length`), 0, 'no button where the owner has a password');
+        assert.equal(await tab.evaluate(`Boolean(document.querySelector(${JSON.stringify(`${card(done)} [data-slot="first-password"]`)}).closest('[hidden]'))`), true, 'nor its box');
+        await openOwners(tab, waiting);
         const buttonSel = `${card(waiting)} [data-action="first-password"]`;
         assert.ok(await tab.evaluate(tab.visibleSel(buttonSel)), 'the button shows for the waiting owner');
         assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll(${JSON.stringify(buttonSel)})].map((b) => [b.dataset.login, b.textContent, b.className])`), [[login, 'New first-password link', 'btn btn-small']]);
         assert.equal(await tab.evaluate(`document.querySelector(${JSON.stringify(`${card(waiting)} [data-slot="first-password-rows"]`)}).textContent.includes(${JSON.stringify(`${login} has no password yet.`)})`), true);
-        assert.equal(await tab.evaluate(`document.querySelectorAll(${JSON.stringify(`${card(done)} [data-action="first-password"]`)}).length`), 0, 'no button where the owner has a password');
-        assert.equal(await tab.evaluate(`Boolean(document.querySelector(${JSON.stringify(`${card(done)} [data-slot="first-password"]`)}).closest('[hidden]'))`), true, 'nor its box');
         assert.equal((await madeState(tab, waiting)).shown, false, 'no link before the button is pressed');
         await tab.evaluate(`document.querySelector(${JSON.stringify(buttonSel)}).scrollIntoView({ block: 'center' })`);
         await tab.shot('console-button');
@@ -292,9 +299,9 @@ try {
         const signedIn = await call('POST', waiting, '/api/login', { login, password: `${waiting}-password-1` });
         assert.equal(signedIn.status, 200, 'the password works at the sign-in');
 
-        // The card no longer offers the button.
+        // The page no longer offers the button.
         await tab.s('Page.reload', {});
-        await tab.waitFor(`document.querySelectorAll('#environments .environment').length >= 2`, 'the cards again');
+        await tab.waitFor(`${tab.visibleSel(card(waiting))} && ${tab.visibleSel('#env-sheet-owners')}`, 'the page again');
         assert.equal(await tab.evaluate(`document.querySelectorAll(${JSON.stringify(buttonSel)}).length`), 0, 'no button once the password is set');
       } finally { await tab.close(); }
     });
@@ -307,6 +314,7 @@ try {
     const tab = await openTab({ mutate: keep });
     try {
       await signInToConsole(tab);
+      await openOwners(tab, 'foxtrot');
       await tab.evaluate(`document.querySelector(${JSON.stringify(`${card('foxtrot')} [data-action="first-password"]`)}).click()`);
       await tab.waitFor(`document.querySelector(${JSON.stringify(`${card('foxtrot')} [data-slot="first-password-url"]`)}).value !== ''`, 'the link');
       const url = (await madeState(tab, 'foxtrot')).value;
@@ -317,12 +325,13 @@ try {
     } finally { await tab.close(); }
   });
 
-  await test('a refusal shows its sentence on the card', async () => {
-    // The owner sets the password in another way while the card still offers the button: the server's sentence shows.
+  await test('a refusal shows its sentence on the page', async () => {
+    // The owner sets the password in another way while the page still offers the button: the server's sentence shows.
     const url = await signupByCall('echo');
     const tab = await openTab({ width: 390 });
     try {
       await signInToConsole(tab);
+      await openOwners(tab, 'echo');
       await finishByCall('echo', url, 'echo-password-1');
       await tab.evaluate(`document.querySelector(${JSON.stringify(`${card('echo')} [data-action="first-password"]`)}).click()`);
       const status = `${card('echo')} [data-slot="first-password-status"]`;
