@@ -8338,7 +8338,7 @@ app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res
   const keepPosition = req.query.keepPosition === '1';
   const cleaned = req.body.length ? await cleanPictureOffThread(req.body, ctx.manifest.uploads.types, keepPosition) : null;
   if (cleaned && cleaned.error) return res.status(400).json({ error: cleaned.error });
-  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean });
+  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean, words: { space: word('space'), environment: word('environment') } });
   res.status(201).json({ file: uploadView(file) });
 });
 // What the start of a picture says about itself, for a page that will resize it (a resize loses the picture's own facts): send its
@@ -8455,7 +8455,7 @@ const vaultScanner = createScanner({ seconds: (() => { const v = Number(VAULT_SC
 const scanSentence = (r, type) => {
   if (r.code === 'unsafe') return 'We could not check that file safely. Try saving it again from the program that made it.'; // a PDF is kept as download only instead
   if (r.code === 'picture-damaged') return 'That picture is damaged or cut short.';
-  if (r.code === 'picture-large') return 'That picture is too large to show.';
+  if (r.code === 'picture-large') return vaultTypes.PICTURE_LARGE;
   if (r.code === 'pdf-damaged') return pdfSentence({ refuse: 'damaged' });
   if (r.code === 'pdf-active') return pdfSentence({ what: r.what });
   if (r.code === 'damaged') return 'That file is damaged or cut short.';

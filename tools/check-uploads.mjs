@@ -58,9 +58,10 @@ const jpeg = ({ exif = true, extra = true } = {}) => Buffer.concat([
   seg(0xda, Buffer.from([1, 1, 0, 0, 63, 0])),
   Buffer.from([0x12, 0x34, 0xff, 0xd9]),
 ]);
-const png = () => {
+const png = (w = 1, h = 1) => {
+  const ihdr = Buffer.alloc(13, 0); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
   const chunk = (t, d) => { const b = Buffer.alloc(12 + d.length); b.writeUInt32BE(d.length, 0); b.write(t, 4, 'latin1'); d.copy(b, 8); return b; };
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', Buffer.alloc(13, 1)), chunk('tEXt', Buffer.from('Comment\0hidden')), chunk('eXIf', Buffer.from('MM')), chunk('IDAT', Buffer.from([1, 2, 3])), chunk('IEND', Buffer.alloc(0))]);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('tEXt', Buffer.from('Comment\0hidden')), chunk('eXIf', Buffer.from('MM')), chunk('IDAT', Buffer.from([1, 2, 3])), chunk('IEND', Buffer.alloc(0))]);
 };
 const webp = () => {
   const chunk = (t, d) => { const b = Buffer.alloc(8 + d.length + (d.length % 2)); b.write(t, 0, 'latin1'); b.writeUInt32LE(d.length, 4); d.copy(b, 8); return b; };
@@ -147,13 +148,37 @@ test('the store: per scope, limits, thumbnails and removal', () => {
   assert.equal(u.read('research', 'space:abcd1234', a.id, true).type, 'image/jpeg');
   assert.throws(() => u.put('research', 'space:abcd1234', { ...rule, maxBytes: 100 }, { bytes: jpeg(), by: 'u1' }), /over the limit/);
   u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2' });
-  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2' }), /already keeps 2/);
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2' }), /Error: This space already keeps the most files this module may keep \(2\)\.$/);
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(), by: 'u2', words: { space: 'trip' } }), /Error: This trip already keeps/);
+  assert.throws(() => u.put('research', 'person:u1u1u1', { ...rule, maxFiles: 0 }, { bytes: png(), by: 'u2' }), /Error: You already keep the most files/);
   assert.throws(() => u.put('research', 'space:../x', rule, { bytes: png(), by: 'u2' }), /bad scope/);
   assert.equal(u.read('research', 'space:abcd1234', '../../etc/passwd', false), null);
   assert.ok(u.usage('research').bytes > 0);
   assert.equal(u.remove('research', 'space:abcd1234', a.id), true);
   assert.equal(u.list('research', 'space:abcd1234').length, 1);
   assert.equal(u.remove('research', 'space:abcd1234', a.id), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('pixel limit: by the header, before anything is decoded', () => {
+  const { MAX_PIXELS } = require('../server/vault-types.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uploads-'));
+  const u = new ModuleUploads(dir);
+  const rule = { types: ALL, maxBytes: 5000, maxFiles: 50 };
+  const sentence = /Error: That picture is too large to show\.$/;
+  // Tiny files whose headers claim huge sizes (nothing is allocated for the picture itself).
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(30000, 30000), by: 'u1' }), sentence);
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(12000, 12000), by: 'u1' }), sentence);
+  assert.throws(() => u.put('research', 'space:abcd1234', rule, { bytes: png(10001, 10000), by: 'u1' }), sentence);
+  assert.equal(u.list('research', 'space:abcd1234').length, 0);
+  const small = u.put('research', 'space:abcd1234', rule, { bytes: png(1, 1), by: 'u1' });
+  assert.throws(() => u.putThumb('research', 'space:abcd1234', rule, small.id, png(30000, 30000)), sentence);
+  assert.equal(u.read('research', 'space:abcd1234', small.id, true), null);
+  // Just under the limit, and ordinary pictures of each type, are kept.
+  assert.equal(MAX_PIXELS, 100000000);
+  u.put('research', 'space:abcd1234', rule, { bytes: png(10000, 10000), by: 'u1' });
+  u.put('research', 'space:abcd1234', rule, { bytes: jpeg(), by: 'u1' });
+  u.put('research', 'space:abcd1234', rule, { bytes: webp(), by: 'u1' });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

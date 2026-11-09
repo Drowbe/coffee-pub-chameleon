@@ -13,11 +13,18 @@ const crypto = require('crypto');
 const { cleanImage } = require('./image-clean');
 const { StoreError } = require('./store');
 const { moduleFolders } = require('./module-data');
+const { MAX_PIXELS, PICTURE_LARGE, picturePixels } = require('./vault-types');
 
 const ID_RE = /^[a-f0-9]{24}$/;
 const SPACE_RE = /^[a-z0-9]{4,16}$/;
 const PERSON_RE = /^[a-z0-9]{4,40}$/;
 const MAX_THUMB = 400 * 1024;
+// A picture whose header says more than the Vault's pixel limit is refused, so no viewer decodes a decompression bomb. Only the
+// header is read; the picture is never decoded here.
+function refuseHuge(clean) {
+  const pixels = picturePixels(clean.bytes, clean.type);
+  if (pixels !== null && pixels > MAX_PIXELS) throw new StoreError(PICTURE_LARGE);
+}
 const oneLine = (s, n) => String(s == null ? '' : s).replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
 class ModuleUploads {
@@ -57,11 +64,14 @@ class ModuleUploads {
   // Keep an upload. `rule` is the manifest's `uploads` ({ types, maxBytes, maxFiles }). Returns the file's facts; throws a
   // StoreError with a plain message for anything not accepted.
   // `cleaned` is cleanImage's answer when the caller has already cleaned the bytes (index.js does, off its main thread).
-  put(id, scopeKey, rule, { bytes, name, by, keepPosition, cleaned = null }) {
+  put(id, scopeKey, rule, { bytes, name, by, keepPosition, cleaned = null, words = {} }) {
     if (!bytes || !bytes.length) throw new StoreError('there is no file in that');
     if (bytes.length > rule.maxBytes) throw new StoreError(`that file is over the limit of ${Math.round(rule.maxBytes / 1048576)} MB`);
     const dir = this.scopeDir(id, scopeKey);
-    if (this.list(id, scopeKey).length >= rule.maxFiles) throw new StoreError(`this place already keeps ${rule.maxFiles} files; remove some first`);
+    if (this.list(id, scopeKey).length >= rule.maxFiles) {
+      const where = scopeKey === 'environment' ? `This ${words.environment || 'environment'}` : scopeKey.startsWith('space:') ? `This ${words.space || 'space'}` : 'You';
+      throw new StoreError(`${where} already ${where === 'You' ? 'keep' : 'keeps'} the most files this module may keep (${rule.maxFiles}).`);
+    }
     let clean = cleaned;
     if (!clean) {
       try {
@@ -70,6 +80,7 @@ class ModuleUploads {
         throw new StoreError(err.message);
       }
     }
+    refuseHuge(clean);
     const fid = crypto.randomBytes(12).toString('hex');
     const facts = { id: fid, name: oneLine(name, 100), type: clean.type, size: clean.bytes.length, by, at: new Date().toISOString(), taken: clean.taken, camera: clean.camera, hasPosition: clean.hasPosition, position: clean.position, thumb: false };
     fs.mkdirSync(dir, { recursive: true });
@@ -91,6 +102,7 @@ class ModuleUploads {
         throw new StoreError(err.message);
       }
     }
+    refuseHuge(clean);
     const dir = this.scopeDir(id, scopeKey);
     fs.writeFileSync(path.join(dir, `${fid}.thumb`), clean.bytes);
     m.thumb = true;
