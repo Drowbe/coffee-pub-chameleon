@@ -37,7 +37,7 @@ t('defaults', () => {
   assert.deepEqual(b.cols, [120, 120, 120]); assert.deepEqual(b.rows, [null, null, null]);
   assert.deepEqual(b.cells, []); assert.equal(b.head, true); assert.equal(b.w, 360);
   assert.equal(b.fill, 'none'); assert.equal(b.stroke, 'ink'); assert.equal(b.ink, 'ink'); assert.equal(b.weight, 1);
-  assert.equal(b.size, 'small'); assert.equal(b.align, 'left');
+  assert.equal(b.size, 'small'); assert.equal(b.align, 'center'); assert.ok(!('valign' in b)); // a stored table without valign reads as top (fonts check: a new table is centre and middle)
 });
 t('clean drops unknown, falls back', () => {
   const b = tbl({ cols: 'x', rows: [], cells: 'nope', head: 'yes', evil: 1, fill: '#f00', stroke: 'red', weight: 7, w: 9999 });

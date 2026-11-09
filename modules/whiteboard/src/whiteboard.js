@@ -104,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the colour strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; again goes back). Select many: click or drag round blocks to add. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the colour strip. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Others' pointers show where they point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip, which also has text size, alignment, line style and colours for what is picked. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -167,7 +167,7 @@
         if (v !== null && takesNext(def, role)) own[role] = v;
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
-      if (def.markup) for (const [k, v] of Object.entries(nextText)) if (v !== null) own[k] = v;
+      if (def.markup) Object.assign(own, wbNextWords(def, nextText));
       // A frame goes under the other blocks (lib-e-block-frame, wbFrameZ); everything else on top.
       const z = def.container ? wbFrameZ(board.all()) : Math.floor(board.topZ()) + 1;
       const b = wbClean({ ...own, ...fields, id: host.util.id(), type, z });
@@ -664,11 +664,25 @@
       label: def.textLabel || 'Words',
       max: def.textMax || 0,
       // Words that take markup get the formatting bar (lib-d).
-      bar: def.markup ? { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null } : null, // keys named only where there are keys
+      bar: def.markup ? { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null, align: alignFor(id) } : null, // keys named only where there are keys
     });
     editing = { id, finish: handle.finish, fresh };
   }
 
+  // The format bar's alignment buttons for the block being edited: what it has now, and a change of one field (one save).
+  const alignFor = (id) => ({
+    read() {
+      const b = board.get(id);
+      const d = b && defOf(b);
+      return b ? { align: b.align, valign: wbValignOf(b, d) } : null;
+    },
+    set(field, v) {
+      const b = board.get(id);
+      if (!b || !(drafts.has(id) || policy.canChange(b))) return;
+      ctx.change(id, { [field]: v }, { save: 'now' });
+      if (field !== 'valign') nextText[field] = v;
+    },
+  });
   // ---- cells ------------------------------------------------------------------------------------------------------------
   // A table's cells are edited one at a time, in place, with the same editor and formatting bar as a note's words: Tab and
   // Shift Tab keep the words and go on to the next and the previous cell (Tab on the last cell adds a row first), Enter
@@ -750,7 +764,7 @@
       grow: true,
       label: `Row ${r + 1}, column ${c + 1}`,
       max: def.cellMax,
-      bar: { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null },
+      bar: { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null, align: alignFor(id) },
       home: el,
       keys(e, finish) {
         if (e.ctrlKey || e.metaKey || e.altKey) return false;
@@ -1071,7 +1085,36 @@
   kindsLine.className = 'wb-paint-sep';
   kindsLine.setAttribute('aria-hidden', 'true');
   kindsLine.hidden = true;
-  paintStrip.append(kindsBox, kindsLine);
+  // The strip is one card in groups with a thin divider between: the kinds, the fonts (size and alignment), the line
+  // (style and arrowheads) and the colours. Each group shows only when the active tool or the picked blocks can use it.
+  const fontsBox = document.createElement('div');
+  fontsBox.className = 'wb-paint-group wb-fonts';
+  fontsBox.setAttribute('role', 'group');
+  fontsBox.setAttribute('aria-label', 'Words');
+  fontsBox.hidden = true;
+  const lineBox = document.createElement('div');
+  lineBox.className = 'wb-paint-group wb-linegroup';
+  lineBox.setAttribute('role', 'group');
+  lineBox.setAttribute('aria-label', 'Line');
+  lineBox.hidden = true;
+  const coloursBox = document.createElement('div');
+  coloursBox.className = 'wb-paint-group wb-colours';
+  coloursBox.setAttribute('role', 'group');
+  coloursBox.setAttribute('aria-label', 'Colours and line width');
+  const stripGroups = [kindsBox, fontsBox, lineBox, coloursBox];
+  const stripSeps = [kindsLine];
+  for (let i = 2; i < stripGroups.length; i += 1) {
+    const sep = document.createElement('span');
+    sep.className = 'wb-paint-sep';
+    sep.setAttribute('aria-hidden', 'true');
+    sep.hidden = true;
+    stripSeps.push(sep);
+  }
+  paintStrip.append(kindsBox, stripSeps[0], fontsBox, stripSeps[1], lineBox, stripSeps[2], coloursBox);
+  // A divider shows between two groups that both show.
+  function stripDividers() {
+    stripSeps.forEach((sep, i) => { sep.hidden = !(!stripGroups[i + 1].hidden && stripGroups.slice(0, i + 1).some((g) => !g.hidden)); });
+  }
   let afterPaint = () => {}; // set once the find bar exists: it moves clear of the strip's new size
   const kindButtons = new Map(); // tool id -> button
   function showKinds() {
@@ -1115,7 +1158,7 @@
     mark.setAttribute('aria-hidden', 'true');
     button.appendChild(mark);
     button.addEventListener('click', () => onClick(button));
-    paintStrip.appendChild(button);
+    coloursBox.appendChild(button);
     paintButtons.set(key, { button, mark, label });
   }
   if (policy.canEdit) {
@@ -1129,6 +1172,115 @@
     }
     stripButton('weight', 'Line width', () => { const m = document.createElement('span'); m.className = 'wb-lw'; return m; }, (button) => widthMenu({ anchor: button }));
     paintStrip.hidden = false;
+  }
+  // The fonts group (size, align left / centre / right, align top / middle / bottom) and the line group (elbow or straight,
+  // the arrowheads): icon buttons, the chosen one pressed, none pressed when the picked blocks differ. Size is one button
+  // that shows the size and opens the four sizes as a menu: a row of four would be wider than the rest put together.
+  const fontButtons = new Map(); // 'align:left', 'valign:top' -> button
+  const lineButtons = new Map(); // 'style:elbow', 'head:end' -> button
+  const LINE_STRIP = {
+    style: [{ id: 'elbow', label: 'Elbow line', icon: 'stairs' }, { id: 'straight', label: 'Straight line', icon: 'slash' }],
+    head: [{ id: 'none', label: 'No arrowheads', icon: 'minus' }, { id: 'end', label: 'Arrow at the end', icon: 'arrow-right-long' }, { id: 'start', label: 'Arrow at the start', icon: 'arrow-left-long' }, { id: 'both', label: 'Arrows at both ends', icon: 'arrows-left-right' }],
+  };
+  let sizeButton = null;
+  let valignBox = null;
+  if (policy.canEdit) {
+    const pressButton = (label, icon, onClick) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sdk-icon-btn btn-quiet btn-small wb-paint-btn';
+      button.setAttribute('aria-label', label);
+      button.dataset.tip = label;
+      button.setAttribute('aria-pressed', 'false');
+      const ic = document.createElement('span');
+      ic.className = 'ic';
+      ic.setAttribute('aria-hidden', 'true');
+      button.appendChild(ic);
+      iconSvg(icon).then((svg) => { if (svg) ic.innerHTML = svg; });
+      button.addEventListener('click', onClick);
+      return button;
+    };
+    const pairBox = (label) => { const s = document.createElement('span'); s.className = 'wb-paint-pair'; s.setAttribute('role', 'group'); s.setAttribute('aria-label', label); return s; };
+    sizeButton = document.createElement('button');
+    sizeButton.type = 'button';
+    sizeButton.className = 'btn btn-quiet btn-small wb-size-btn';
+    sizeButton.setAttribute('aria-haspopup', 'menu');
+    sizeButton.dataset.tip = 'Text size';
+    sizeButton.addEventListener('click', () => sizeMenu({ anchor: sizeButton }));
+    const hBox = pairBox('Align');
+    for (const a of WB_ALIGNS) {
+      const b = pressButton(`Align ${a.label.toLowerCase()}`, a.icon, () => setWords('align', a.id));
+      fontButtons.set(`align:${a.id}`, b);
+      hBox.appendChild(b);
+    }
+    valignBox = pairBox('Vertical align');
+    for (const a of WB_VALIGNS) {
+      const b = pressButton(`Align ${a.label.toLowerCase()}`, a.icon, () => setWords('valign', a.id));
+      fontButtons.set(`valign:${a.id}`, b);
+      valignBox.appendChild(b);
+    }
+    fontsBox.append(sizeButton, hBox, valignBox);
+    for (const field of ['style', 'head']) {
+      const box = pairBox(field === 'style' ? 'Line style' : 'Arrowheads');
+      for (const c of LINE_STRIP[field]) {
+        const b = pressButton(c.label, c.icon, () => setLine(field, c.id));
+        lineButtons.set(`${field}:${c.id}`, b);
+        box.appendChild(b);
+      }
+      lineBox.appendChild(box);
+    }
+  }
+  // The picked blocks (or the next ones) the fonts group works on.
+  const fontsOf = () => targets().filter((b) => defOf(b).markup);
+  const fontsNow = () => {
+    const list = targets();
+    const def = !list.length && tool.makes ? blockTypes.get(tool.makes) : null;
+    return wbFontsShown(list, defOf, def, nextText);
+  };
+  function setWords(field, v) {
+    for (const b of fontsOf()) if (field !== 'valign' || defOf(b).valign) ctx.change(b.id, { [field]: v }, { save: 'now' });
+    if (field !== 'valign') nextText[field] = v; // not the vertical: the types sit differently (a table's cells are in the middle)
+    updatePaint();
+  }
+  function sizeMenu(where) {
+    const now = (fontsNow() || {}).size;
+    host.menu.show({ id: 'size', ...where, items: WB_SIZES.map((c) => choiceRow(c.id, c.label, now, () => setWords('size', c.id))) });
+  }
+  // The line group shows for picked connectors, or for the Connector tool with nothing picked.
+  const lineOf = () => targets().filter((b) => b.type === CONNECTOR);
+  function lineNow() {
+    const list = targets();
+    if (list.length) { const c = lineOf(); return c.length ? c : null; }
+    return tool.id === CONNECTOR && (policy.canUseTool(tool)) ? [] : null;
+  }
+  function setLine(field, v) {
+    for (const b of lineOf()) ctx.change(b.id, { [field]: v }, { save: 'now' });
+    nextLine[field] = v;
+    updatePaint();
+  }
+  function updateFonts() {
+    const s = fontsNow();
+    fontsBox.hidden = !s;
+    if (!s) return;
+    const sz = WB_SIZE_BY_ID.get(s.size);
+    sizeButton.textContent = sz ? sz.label : 'Size';
+    sizeButton.setAttribute('aria-label', `Text size: ${sz ? sz.label : 'Mixed'}`);
+    for (const [key, b] of fontButtons) {
+      const [field, id] = key.split(':');
+      b.setAttribute('aria-pressed', String(s[field] === id));
+    }
+    valignBox.hidden = s.valign === null;
+  }
+  function updateLine() {
+    const c = lineNow();
+    lineBox.hidden = !c;
+    if (!c) return;
+    const usual = blockTypes.get(CONNECTOR).create();
+    for (const [key, b] of lineButtons) {
+      const [field, id] = key.split(':');
+      const now = c.length ? agreed(c, field) : nextLine[field] || usual[field];
+      b.setAttribute('aria-pressed', String(now === id));
+    }
   }
   // What the strip shows for each role: { value, label, own } (value: a palette id, 'none', 'auto', null for Default with
   // no type known, undefined for Mixed; own: Default is chosen and value is the type's own colour), or null to hide it.
@@ -1192,8 +1344,11 @@
       p.button.dataset.tip = words;
     }
     const kinds = showKinds();
-    kindsLine.hidden = !(kinds && any);
-    paintStrip.hidden = !any && !kinds;
+    updateFonts();
+    updateLine();
+    coloursBox.hidden = !any;
+    stripDividers();
+    paintStrip.hidden = !any && !kinds && fontsBox.hidden && lineBox.hidden;
     afterPaint();
   }
 
@@ -1213,16 +1368,6 @@
     };
     return [group('style', 'Line style', 'stairs', WB_CONNECTOR_STYLES), group('head', 'Arrowheads', 'arrow-right-long', WB_CONNECTOR_HEADS)];
   }
-  function lineMenu(where, only) {
-    const list = connectorsIn(only);
-    if (!list.length && targets(only).length) {
-      host.menu.show({ id: 'line', ...where, items: [{ label: 'Pick a connector to change its line style', disabled: true }] });
-      return;
-    }
-    const whose = list.length > 1 ? `the ${list.length} picked connectors` : list.length ? 'this connector' : 'new connectors';
-    host.menu.show({ id: 'line', ...where, items: [{ heading: `Line ${list.length ? 'of' : 'for'} ${whose}` }, ...lineGroups(list)] });
-  }
-
   // The words' size and alignment: of the picked notes, text blocks and shapes (each one whole save, all of them one undo
   // step), or, with none picked, for new ones. Picked on blocks, it is remembered for the next block too, as a colour is.
   // The current choice is the marked row; with several blocks that differ, none is.
@@ -1239,24 +1384,18 @@
       const chosen = choices.find((c) => c.id === now);
       return { id: `text-${field}`, label, hint: chosen ? chosen.label : list.length ? 'Mixed' : 'Default', rows };
     };
-    return [group('size', 'Text size', WB_SIZES), group('align', 'Align', WB_ALIGNS)];
-  }
-  function textMenu(where, only) {
-    const list = wordedIn(only);
-    if (!list.length && targets(only).length) {
-      host.menu.show({ id: 'text', ...where, items: [{ label: 'Pick a note, text, shape or table to change its words', disabled: true }] });
-      return;
+    // Align: Left, Centre, Right, then (for notes, shapes and tables) Top, Middle, Bottom under a divider.
+    const align = group('align', 'Align', WB_ALIGNS);
+    const tall = list.filter((b) => defOf(b).valign);
+    if (tall.length) {
+      const now = wbAgreedWords(tall, (b) => wbValignOf(b, defOf(b)));
+      const pick = (v) => () => {
+        for (const b of tall) ctx.change(b.id, { valign: v }, { save: 'now' });
+      };
+      align.rows.push({ separator: true }, ...WB_VALIGNS.map((c) => choiceRow(c.id, c.label, now, pick(c.id), { icon: c.icon })));
     }
-    const def = !list.length && tool.makes && blockTypes.get(tool.makes).markup ? blockTypes.get(tool.makes) : null;
-    const whose = list.length || def ? whoseOf(list, def) : 'new notes, text, shapes and tables';
-    const [size, align] = textGroups(list);
-    host.menu.show({
-      id: 'text',
-      ...where,
-      items: [{ heading: `Text size ${list.length ? 'of' : 'for'} ${whose}` }, ...size.rows, { heading: 'Align' }, ...align.rows],
-    });
+    return [group('size', 'Text size', WB_SIZES), align];
   }
-
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'
   // z are too close to split is every block numbered again, once. Several picked blocks move together and keep their
   // order among themselves: to the front or back as a stack, a layer up or down each past the next block not picked.
@@ -1363,10 +1502,6 @@
   if (policy.canEdit) {
     undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
     redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
-    // Text size and alignment, then Line style and arrowheads (for connectors): toolbar buttons of their own after Redo
-    // (the colours and the width are on the board's strip; Snap to grid stays last).
-    host.ui.toolbarButton({ id: 'text', label: 'Text size and alignment', icon: 'text-height', iconOnly: true, onClick: (e) => textMenu(toolbarAt(e)) });
-    if (tools.get('connector') && policy.canUseTool(tools.get('connector'))) host.ui.toolbarButton({ id: 'line', label: 'Line style and arrowheads', icon: 'stairs', iconOnly: true, onClick: (e) => lineMenu(toolbarAt(e)) });
   }
 
   // Zoom is the window's, in the title bar: Zoom out and Zoom in as icons, and the magnifier's menu with the rest. Toolbar

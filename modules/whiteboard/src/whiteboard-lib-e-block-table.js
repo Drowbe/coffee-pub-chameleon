@@ -226,6 +226,7 @@
       label: 'Table',
       edit: 'cells',
       markup: true,
+      valign: 'top', // the usual (a table without the field); a new table's cells are in the middle (create)
       role: 'group',
       paint: { stroke: { label: 'Lines', extra: ['none'] }, fill: { extra: ['none'] }, ink: {} },
       weight: true,
@@ -240,7 +241,8 @@
         ink: 'ink',
         weight: 1,
         size: 'small',
-        align: 'left',
+        align: 'center',
+        valign: 'middle',
       }),
       clean: (raw) => wbTableClean(raw),
       box: (b) => ({ x: 0, y: 0, w: b.w, h: null }), // the rows' words set the height: measured on the page

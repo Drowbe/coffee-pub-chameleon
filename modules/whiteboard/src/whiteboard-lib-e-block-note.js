@@ -91,6 +91,7 @@
       label: 'Note',
       edit: 'text',
       markup: true,
+      valign: 'top', // the usual (a note without the field): the words start at the top
       paint: { stroke: { extra: ['auto', 'none'] }, fill: {}, ink: {} },
       weight: true,
       create: () => ({ w: 180, h: 180, text: '', pointer: null, fill: 'gold', stroke: 'auto', ink: 'ink', weight: 1, size: 'medium', align: 'left' }),

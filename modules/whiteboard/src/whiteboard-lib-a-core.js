@@ -140,6 +140,43 @@
     { id: 'right', label: 'Right', icon: 'align-right' },
   ];
   const WB_ALIGN_BY_ID = new Map(WB_ALIGNS.map((x) => [x.id, x]));
+  // Where the words sit from top to bottom, for the block types that have room above or below them (a block type's
+  // `valign` is its usual: what a block without the field looks like). A text block's height is its words', so it has none.
+  const WB_VALIGNS = [
+    { id: 'top', label: 'Top', icon: 'arrows-up-to-line' },
+    { id: 'middle', label: 'Middle', icon: 'up-down' },
+    { id: 'bottom', label: 'Bottom', icon: 'arrows-down-to-line' },
+  ];
+  const WB_VALIGN_BY_ID = new Map(WB_VALIGNS.map((x) => [x.id, x]));
+  // How a block's words sit now: its own choice, else its type's usual (null: the type has none). `def` is the block type.
+  const wbValignOf = (block, def) => (!def || !def.valign ? null : WB_VALIGN_BY_ID.has(block.valign) ? block.valign : def.valign);
+  // The one value every block has for a words field (size, align, valign), undefined when they differ, null when none has
+  // the field. get(block) gives the block's value.
+  function wbAgreedWords(list, get) {
+    const vals = new Set(list.map(get).filter((v) => v !== null));
+    return vals.size === 0 ? null : vals.size === 1 ? [...vals][0] : undefined;
+  }
+  // The remembered size and align a new block of this type starts with (next: { size, align }, null for none): a new table
+  // always starts centred (its create()), whatever was picked before.
+  const wbNextWords = (def, next) => Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== null && !(def.type === 'table' && k === 'align')));
+  // What the colour strip's fonts group shows: size and horizontal align for the picked blocks whose words take markup
+  // (else for the active tool's type: size and align), vertical align only where a picked block's type has it. Pure: blocks and their
+  // types in, { size, align, valign } out (each: the value, undefined for Mixed, null to hide), or null for no group.
+  function wbFontsShown(blocks, defOfBlock, toolDef, next = {}) {
+    const worded = blocks.filter((b) => defOfBlock(b).markup);
+    if (blocks.length) {
+      if (!worded.length) return null;
+      const tall = worded.filter((b) => defOfBlock(b).valign);
+      return {
+        size: wbAgreedWords(worded, (b) => b.size),
+        align: wbAgreedWords(worded, (b) => b.align),
+        valign: tall.length ? wbAgreedWords(tall, (b) => wbValignOf(b, defOfBlock(b))) : null,
+      };
+    }
+    if (!toolDef || !toolDef.markup) return null;
+    const usual = toolDef.create();
+    return { size: next.size || usual.size, align: (!wbNextWords(toolDef, next).align ? null : next.align) || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
+  }
   // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
   // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.
   const wbMarkup = { html: null, plain: null };
@@ -296,6 +333,8 @@
     if (def.markup) {
       own.size = wb.choice(raw.size, WB_SIZE_BY_ID, usual.size);
       own.align = wb.choice(raw.align, WB_ALIGN_BY_ID, usual.align);
+      // valign: only a valid choice is kept; anything else is absent, which reads as the type's usual (def.valign).
+      if (def.valign && WB_VALIGN_BY_ID.has(raw.valign)) own.valign = raw.valign;
     }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;

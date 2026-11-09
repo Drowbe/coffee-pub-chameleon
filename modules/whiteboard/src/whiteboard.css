@@ -876,3 +876,30 @@
 .wb-paint-sep { align-self: stretch; width: 1px; margin: 0 var(--space-1); background: var(--mf-edge, var(--edge-bar)); }
 .wb-kind .ic { display: block; width: 1em; height: 1em; }
 .wb-kind .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+
+/* The strip's groups (kinds, fonts, line, colours): each stays together on a row; the size is a text button that opens the
+   four sizes, the alignment and the line choices are pressed icon buttons in pairs with a small gap between. On a narrow
+   board the groups wrap onto rows, so the dividers go. */
+.wb-paint-group, .wb-paint-pair { display: flex; align-items: center; gap: var(--space-0); }
+.wb-paint-group { flex-wrap: nowrap; }
+.wb-paint-group[hidden], .wb-paint-pair[hidden] { display: none; }
+.wb-paint-group > .wb-paint-pair + .wb-paint-pair, .wb-size-btn + .wb-paint-pair { margin-left: var(--space-1); }
+.wb-size-btn { pointer-events: auto; min-width: 4.5em; }
+.wb-paint-btn .ic { display: block; width: 1em; height: 1em; }
+.wb-paint-btn .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+@media (max-width: 520px) { .wb-paint-sep { display: none; } .wb-paint { row-gap: var(--space-1); } }
+
+/* the formatting bar's groups: the words' marks, then the alignment (and the vertical one), a thin line between */
+.wb-format-group { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; }
+.wb-format-group + .wb-format-group { margin-left: var(--space-1); padding-left: var(--space-1); border-left: 1px solid var(--edge-hairline); }
+@media (max-width: 520px) { .wb-format-group + .wb-format-group { margin-left: 0; padding-left: 0; border-left: none; } }
+
+/* where the words sit from top to bottom (a block's valign; a block without it keeps its type's own look above) */
+.wb-type-note[data-valign] .wb-words { display: flex; flex-direction: column; }
+.wb-type-note[data-valign="top"] .wb-words { justify-content: flex-start; }
+.wb-type-note[data-valign="middle"] .wb-words, .wb-shape[data-valign="middle"] .wb-words { justify-content: center; }
+.wb-type-note[data-valign="bottom"] .wb-words, .wb-shape[data-valign="bottom"] .wb-words { justify-content: flex-end; }
+.wb-shape[data-valign="top"] .wb-words { justify-content: flex-start; }
+.wb-type-table[data-valign="top"] .wb-tbl td { vertical-align: top; }
+.wb-type-table[data-valign="middle"] .wb-tbl td { vertical-align: middle; }
+.wb-type-table[data-valign="bottom"] .wb-tbl td { vertical-align: bottom; }

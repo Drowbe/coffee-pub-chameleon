@@ -51,6 +51,7 @@
         label: shape.label,
         edit: 'text',
         markup: true,
+        valign: 'middle', // the usual: the words are in the middle
         paint: { stroke: { extra: ['none'] }, fill: { extra: ['none'] }, ink: {} },
         weight: true,
         create: () => ({ w: shape.w, h: shape.h, text: '', stroke: 'ink', fill: 'ink', ink: 'ink', weight: 3, size: 'medium', align: 'center' }),
