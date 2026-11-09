@@ -36,6 +36,7 @@ const { RegionCutJobs } = require('./region-cut');
 const { ModuleLimits } = require('./module-limits');
 const { ExternalCalendars } = require('./external-calendars');
 const { LiveRegister } = require('./live');
+const { ModuleLive } = require('./module-live');
 const { fetchCalendar } = require('./link-preview');
 const auth = require('./auth');
 const { migrateEnvironment } = require('./migrate-names');
@@ -142,6 +143,9 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   const live = new LiveRegister();
   const liveEvents = new EventEmitter();
   liveEvents.setMaxListeners(0);
+  // Modules' live messages (server/module-live.js): who has a module stream open in which space, who joined which
+  // module's live messages there, the rates and the sequence numbers. In memory only, never meeting another environment's.
+  const moduleLive = new ModuleLive();
   const invites = new Map(); // id -> { id, from, to, spaceId, at }
   const inviteEvents = new EventEmitter();
   inviteEvents.setMaxListeners(0);
@@ -270,7 +274,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   return {
     slug, dataDir,
     store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
-    geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
+    geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, moduleLive, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
     moduleActivity, noteActivity, saveActivity, externalCalendars,
   };
 }
