@@ -58,44 +58,90 @@
       </nav>
 
       <div class="hc-main">
-        <section class="hc-section tab-stack" id="section-environments" data-section="environments" hidden>
-      <section class="panel">
-        <div class="section-head">
-          <h1>Environments</h1>
-          <span class="status" id="environments-status" tabindex="-1" aria-live="polite"></span>
-          <button class="btn btn-primary btn-small" id="create-toggle" type="button">New environment</button>
-        </div>
-        <p class="hint">Each environment is its own people, spaces, settings and modules, at <code id="base-hint"></code>. The counts are the whole of what the host sees of one.</p>
-      </section>
+        <section class="hc-section" id="section-environments" data-section="environments" hidden>
+          <!-- The table (#environments): the needs-attention strip, search, filter, sort, rows and a More menu per row. -->
+          <div class="hc-view" id="environments-list">
+            <div class="hc-head">
+              <h1 class="hc-title" id="environments-title" tabindex="-1">Environments</h1>
+              <button class="btn btn-primary" id="create-toggle" type="button"><i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i><span>New environment</span></button>
+            </div>
+            <p class="status hc-status" id="environments-status" tabindex="-1" role="status" aria-live="polite"></p>
+            <section class="sdk-panel hc-part" id="environments-empty" aria-labelledby="environments-empty-title" hidden>
+              <h2 class="hc-part-name" id="environments-empty-title">No environments yet</h2>
+              <p class="sdk-hint">An environment is a group of people with their own spaces, at its own address. Make the first one with New environment.</p>
+            </section>
+            <div class="hc-section" id="environments-filled">
+              <section class="sdk-card hc-attention" aria-label="Needs attention">
+                <div class="hc-attention-row" id="attention"></div>
+              </section>
+              <div class="hc-tools">
+                <div class="sdk-search hc-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="env-search" type="search" placeholder="Search name or address" aria-label="Search environments" autocomplete="off" spellcheck="false"></div>
+                <button class="btn hc-filter-btn" id="env-tools-toggle" type="button" aria-expanded="false" aria-controls="env-tools-more"><i class="fa-solid fa-sliders fa-fw" aria-hidden="true"></i><span>Filter and sort</span></button>
+                <div class="hc-tools-more" id="env-tools-more">
+                  <select id="env-filter" aria-label="Status"></select>
+                  <select id="env-sort" aria-label="Sort">
+                    <option value="attention">Needs attention first</option>
+                    <option value="name">Name</option>
+                    <option value="plan">Plan</option>
+                    <option value="newest">Newest</option>
+                    <option value="use">Highest use</option>
+                  </select>
+                </div>
+                <div class="mf-switch hc-density" id="env-density" role="radiogroup" aria-label="Rows">
+                  <button class="mf-switch-btn" type="button" role="radio" data-density="comfortable">Comfortable</button>
+                  <button class="mf-switch-btn" type="button" role="radio" data-density="compact">Compact</button>
+                </div>
+                <p class="hc-count" id="env-count" role="status" aria-live="polite"></p>
+              </div>
+              <div class="hc-tablebox">
+                <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
+                <div class="sdk-table-wrap hc-wrap">
+                  <table class="sdk-table hc-envs" id="env-table" aria-label="Environments">
+                    <thead><tr><th scope="col">Name</th><th scope="col">Plan</th><th scope="col">Status</th><th scope="col" class="hc-use-col">Use</th><th scope="col">Template</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody id="env-rows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <form class="panel" id="create-form" hidden>
-        <h2>New environment</h2>
-        <div class="fields">
-          <label>Slug<input id="new-slug" type="text" minlength="3" maxlength="30" pattern="[a-z0-9\-]+" placeholder="stayingblonde" required autocapitalize="off" autocomplete="off"></label>
-          <label>Name<input id="new-name" type="text" maxlength="60" placeholder="Staying Blonde" required autocomplete="off"></label>
-          <label>Plan<select id="new-plan"><option value="">No caps, every module</option></select></label>
-        </div>
-        <!-- What it is set up for (plan-environment-templates): None, then each template. Filled by host.js; hidden when the host has none. -->
-        <fieldset class="template-choice" id="new-template" hidden>
-          <legend>Template</legend>
-          <p class="hint">Sets it up for one use: its words, home icon, module names and which modules are on. Picked now only; the owner can change anything it sets. A module the plan leaves out is skipped.</p>
-          <div class="sdk-choice-list" data-slot="options"></div>
-        </fieldset>
-        <h3>The first owner</h3>
-        <div class="fields">
-          <label>Login<input id="new-owner-login" type="text" maxlength="40" required autocapitalize="off" autocomplete="off"></label>
-          <label>Display name <span class="sdk-optional">(optional)</span><input id="new-owner-name" type="text" maxlength="40" autocomplete="off"></label>
-          <label>Password<span class="row reveal-row"><input id="new-owner-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="new-owner-password" aria-pressed="false">Show</button></span></label>
-        </div>
-        <p class="hint">The slug is the environment's address and is fixed once made: letters, digits and hyphens, 3 to 30. The owner signs in there with these.</p>
-        <div class="row">
-          <button class="btn btn-primary" type="submit">Create</button>
-          <button class="btn btn-quiet" id="create-cancel" type="button">Cancel</button>
-          <span class="status error" id="create-error" hidden></span>
-        </div>
-      </form>
+          <!-- New environment (#environments/new) -->
+          <div class="hc-view" id="environment-new" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="environments"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+            <div class="hc-head"><h1 class="hc-title" id="create-title" tabindex="-1">New environment</h1></div>
+            <form class="sdk-panel hc-part hc-form" id="create-form">
+              <div class="fields">
+                <label>Address<input id="new-slug" type="text" minlength="3" maxlength="30" pattern="[a-z0-9\-]+" placeholder="harbour-club" required autocapitalize="off" autocomplete="off" aria-describedby="new-slug-hint"></label>
+                <label>Name<input id="new-name" type="text" maxlength="60" placeholder="Harbour Club" required autocomplete="off"></label>
+                <label>Plan<select id="new-plan"><option value="">No caps, every module</option></select></label>
+              </div>
+              <p class="sdk-hint" id="new-slug-hint">It becomes <code id="base-hint"></code>: letters, digits and hyphens, 3 to 30, fixed once made.</p>
+              <!-- What it is set up for (plan-environment-templates): None, then each template. Filled by host.js; hidden when the host has none. -->
+              <fieldset class="template-choice" id="new-template" hidden>
+                <legend>Template</legend>
+                <p class="sdk-hint">Sets it up for one use: its words, home icon, module names and which modules are on. Picked now only; the owner can change anything it sets. A module the plan leaves out is skipped.</p>
+                <div class="sdk-choice-list" data-slot="options"></div>
+              </fieldset>
+              <h2 class="hc-part-name">The first owner</h2>
+              <div class="fields">
+                <label>Login<input id="new-owner-login" type="text" maxlength="40" required autocapitalize="off" autocomplete="off"></label>
+                <label>Display name <span class="sdk-optional">(optional)</span><input id="new-owner-name" type="text" maxlength="40" autocomplete="off"></label>
+                <label>Password<span class="row reveal-row"><input id="new-owner-password" aria-label="Password" type="password" maxlength="200" required autocomplete="new-password"><button class="btn btn-small" type="button" data-reveal="new-owner-password" aria-pressed="false">Show</button></span></label>
+              </div>
+              <p class="sdk-hint">The owner signs in at the new address with these.</p>
+              <div class="row">
+                <button class="btn btn-primary" type="submit">Create environment</button>
+                <button class="btn" id="create-cancel" type="button">Cancel</button>
+                <span class="status error" id="create-error" role="alert" hidden></span>
+              </div>
+            </form>
+          </div>
 
-      <div id="environments" class="environments"></div>
+          <!-- One environment (#environments/<slug>) -->
+          <div class="hc-view" id="environment-page" hidden>
+            <button class="btn btn-quiet btn-small hc-back" type="button" data-go="environments"><i class="fa-solid fa-arrow-left fa-fw" aria-hidden="true"></i><span>Environments</span></button>
+            <div id="environments" class="environments"></div>
+          </div>
         </section>
 
         <section class="hc-section tab-stack" id="section-templates" data-section="templates" hidden>

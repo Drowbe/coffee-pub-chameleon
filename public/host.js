@@ -6,6 +6,7 @@ import { wireRegionCut } from '/region-cut.js';
 import { mountEnrolment, mountDisable } from '/mfa-enrol.js';
 import { renderOffer, switchConfirm } from '/template-offer.js';
 import { confirmDialog } from '/confirm.js';
+import { openHostMenu } from '/host-menu.js';
 import { initTemplates } from '/host-templates.js';
 import { wireFlightSchedule } from '/flight-schedule.js';
 
@@ -251,7 +252,239 @@ function refusedCopy() {
   };
 }
 
+// --- Environments: the table ----------------------------------------------------------------------------------------
+// One row per environment (plan-host-console.md, "Environments: the table"; Thomas's lock of the Prototype, 2026-11-09):
+// Name with its address, Plan, Status, Use and Template, and a More menu. The needs-attention strip counts each kind and
+// is a filter on the table. Built only from what GET /api/host/environments answers (decision 10).
+const STATUS_WORD = { active: 'Active', pastDue: 'Past due', suspended: 'Suspended', refused: 'Won’t open' };
+const STATUS_TONE = { active: 'ok', pastDue: 'danger', suspended: 'warn', refused: 'danger' };
+const statusOf = (t) => (t.refused ? 'refused' : t.status === 'pastDue' || t.status === 'suspended' ? t.status : 'active');
+const planName = (t) => { const id = t.plan && t.plan.name; return id ? (settings.plans && settings.plans[id] ? settings.plans[id].name || id : id) : 'No plan'; };
+const templateName = (t) => (t.template ? t.template.name || t.template.id : 'No template');
+const num = (n) => Number(n || 0).toLocaleString('en-US');
+// Each use against its cap: members, AI calls this month, and calls now where the plan caps calls. Nothing for one that won't open.
+function usesOf(t) {
+  if (t.refused) return [];
+  const u = t.usage || {};
+  const p = t.plan || {};
+  return [
+    { label: 'Members', long: 'Members', used: u.members ?? 0, cap: p.members ?? null },
+    { label: 'AI', long: 'AI calls this month', used: u.aiCallsThisMonth ?? 0, cap: p.aiCallsPerMonth ?? null },
+    ...(p.calls != null ? [{ label: 'Calls', long: 'Calls at once', used: u.callsNow ?? 0, cap: p.calls }] : []),
+  ];
+}
+// Near a cap and at a cap (decision 8): 80 percent or more of a cap is near, 100 percent or more is at it. Only an
+// active environment is counted, and its bars use the same test.
+const ratio = (x) => (x.cap ? x.used / x.cap : 0);
+const atCap = (t) => statusOf(t) === 'active' && usesOf(t).some((x) => x.cap && ratio(x) >= 1);
+const nearCap = (t) => statusOf(t) === 'active' && !atCap(t) && usesOf(t).some((x) => x.cap && ratio(x) >= 0.8);
+const levelOf = (t, x) => (statusOf(t) !== 'active' || !x.cap ? 'ok' : ratio(x) >= 1 ? 'full' : ratio(x) >= 0.8 ? 'near' : 'ok');
+// The kinds the strip counts, in its order (decision 9). One environment can be in more than one.
+const KINDS = [
+  { id: 'pastDue', word: 'past due', one: 'Past due', icon: 'credit-card', tone: 'danger', test: (t) => statusOf(t) === 'pastDue' },
+  { id: 'suspended', word: 'suspended', one: 'Suspended', icon: 'circle-pause', tone: 'warn', test: (t) => statusOf(t) === 'suspended' },
+  { id: 'refused', word: 'won’t open', one: 'Won’t open', icon: 'triangle-exclamation', tone: 'danger', test: (t) => Boolean(t.refused) },
+  { id: 'deletion', word: 'deletion asked', one: 'Deletion asked', icon: 'trash-can', tone: 'warn', test: (t) => Boolean(t.deleteRequestedAt) },
+  { id: 'atCap', word: 'at cap', one: 'At cap', icon: 'circle-exclamation', tone: 'danger', test: atCap },
+  { id: 'nearCap', word: 'near a cap', one: 'Near a cap', icon: 'gauge-high', tone: 'warn', test: nearCap },
+  { id: 'degraded', word: 'degraded', one: 'Degraded', icon: 'arrow-trend-down', tone: 'warn', test: (t) => Boolean(t.degradedAt) },
+];
+const needsAttention = (t) => KINDS.some((k) => k.test(t));
+const chip = (tone, word, dot = true) => `<span class="sdk-status" data-tone="${tone}">${dot ? '<span class="sdk-chip-dot" aria-hidden="true"></span>' : ''}${escapeHtml(word)}</span>`;
+// The chips of one environment: its status, then a deletion asked, a cap, degraded.
+function chipsOf(t) {
+  const s = statusOf(t);
+  return chip(STATUS_TONE[s], STATUS_WORD[s])
+    + (t.deleteRequestedAt ? chip('warn', 'Deletion asked', false) : '')
+    + (atCap(t) ? chip('danger', 'At cap', false) : nearCap(t) ? chip('warn', 'Near a cap', false) : '')
+    + (t.degradedAt ? chip('warn', 'Degraded', false) : '');
+}
+function bar(t, x, label) {
+  const pct = x.cap ? Math.min(100, Math.round((x.used / x.cap) * 100)) : 0;
+  const lv = levelOf(t, x);
+  return `<span class="sdk-progress sdk-progress-sm${lv !== 'ok' ? ' warn' : ''}" role="progressbar" aria-label="${escapeHtml(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-valuetext="${pct} percent${lv === 'full' ? ', at the cap' : lv === 'near' ? ', near the cap' : ''}"><span class="sdk-progress-fill" style="--pct:${pct}%"></span></span>`;
+}
+const useText = (x) => (x.cap ? `${num(x.used)} / ${num(x.cap)}` : `${num(x.used)}, no cap`);
+const useRow = (t, x) => `<div class="hc-use-row"><span class="hc-use-key">${escapeHtml(x.label)}</span>${x.cap ? bar(t, x, `${x.long} of ${t.name || t.slug}`) : '<span></span>'}<span class="hc-use-val">${escapeHtml(useText(x))}</span></div>`;
+// Comfortable: every use. Compact: the one closest to its cap, with its label and number; the others in the tooltip, read out
+// to a screen reader, and on the environment's page.
+function useCell(t, compact) {
+  const uses = usesOf(t);
+  if (!uses.length) return '<span class="sdk-table-dim">Nothing to count</span>';
+  if (!compact) return `<div class="hc-use">${uses.map((x) => useRow(t, x)).join('')}</div>`;
+  const top = uses.reduce((a, b) => (b.cap && (!a.cap || ratio(b) > ratio(a)) ? b : a));
+  const all = uses.map((x) => `${x.long} ${useText(x)}`).join(', ');
+  return `<div class="hc-use hc-use-one" title="${escapeHtml(all)}">${useRow(t, top)}<span class="visually-hidden">All uses: ${escapeHtml(all)}</span></div>`;
+}
+
+const table = { q: '', filter: 'all', sort: 'attention', density: 'comfortable' };
+try { if (localStorage.getItem('host-console.rows') === 'compact') table.density = 'compact'; } catch { /* no storage: comfortable */ }
+const matches = (t) => {
+  const f = table.filter;
+  if (f !== 'all' && !(f === 'active' ? statusOf(t) === 'active' : KINDS.find((k) => k.id === f).test(t))) return false;
+  const q = table.q.trim().toLowerCase();
+  return !q || (t.name || '').toLowerCase().includes(q) || t.slug.includes(q);
+};
+const useMax = (t) => Math.max(0, ...usesOf(t).filter((x) => x.cap).map(ratio));
+const byName = (a, b) => (a.name || a.slug).localeCompare(b.name || b.slug);
+const ORDER = {
+  attention: (a, b) => (needsAttention(b) - needsAttention(a)) || byName(a, b),
+  name: byName,
+  plan: (a, b) => planName(a).localeCompare(planName(b)) || byName(a, b),
+  newest: (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || byName(a, b),
+  use: (a, b) => (useMax(b) - useMax(a)) || byName(a, b),
+};
+
+function renderTable() {
+  const all = environments;
+  $('environments-empty').hidden = all.length > 0;
+  $('environments-filled').hidden = !all.length;
+  if (!all.length) return;
+  // The strip: each kind with a count is a button that filters; pressed again (or Clear), the filter goes.
+  const live = KINDS.map((k) => [k, all.filter(k.test).length]).filter(([, n]) => n);
+  $('attention').innerHTML = '<span class="hc-attention-label"><i class="fa-solid fa-bell fa-fw" aria-hidden="true"></i><span>Needs attention</span></span>'
+    + (live.length ? live.map(([k, n]) => `<button class="btn btn-small hc-kind" type="button" data-kind="${k.id}" data-tone="${k.tone}" aria-pressed="${table.filter === k.id}"><i class="fa-solid fa-${k.icon} fa-fw" aria-hidden="true"></i><b>${n}</b><span>${escapeHtml(k.word)}</span></button>`).join('') : '<span class="hc-attention-none">Nothing needs attention.</span>')
+    + (table.filter !== 'all' ? '<button class="btn btn-quiet btn-small" type="button" data-kind="all">Clear</button>' : '');
+  const filter = $('env-filter');
+  if (!filter.options.length) filter.replaceChildren(new Option('All statuses', 'all'), ...KINDS.map((k) => new Option(k.one, k.id)), new Option('Active', 'active'));
+  filter.value = table.filter;
+  $('env-sort').value = table.sort;
+  $('env-search').value = table.q;
+  for (const b of $('env-density').querySelectorAll('[data-density]')) {
+    const on = b.dataset.density === table.density;
+    b.setAttribute('aria-checked', String(on));
+    b.tabIndex = on ? 0 : -1;
+  }
+  const compact = table.density === 'compact';
+  $('env-table').dataset.density = table.density;
+  const list = all.filter(matches).sort(ORDER[table.sort]);
+  $('env-count').innerHTML = `${list.length} of ${all.length}<span class="hc-count-word"> environments</span>`;
+  $('env-rows').innerHTML = list.length ? list.map((t) => {
+    const name = escapeHtml(t.name || t.slug);
+    return `<tr data-slug="${escapeHtml(t.slug)}"><th scope="row" class="hc-name-cell"><a class="hc-link" href="#environments/${encodeURIComponent(t.slug)}">${name}</a><span class="sdk-table-sub">${escapeHtml(`${t.slug}.${settings.baseDomain}`)}</span>${compact ? `<div class="hc-use-in-name">${useCell(t, true)}</div>` : ''}</th>`
+      + `<td class="hc-plan-cell">${escapeHtml(planName(t))}</td>`
+      + `<td class="hc-status-cell">${chipsOf(t)}</td>`
+      + `<td class="hc-use-cell">${useCell(t, compact)}</td>`
+      + `<td class="sdk-table-dim">${escapeHtml(templateName(t))}</td>`
+      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="row-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis fa-fw" aria-hidden="true"></i></button></td></tr>`;
+  }).join('') : '<tr class="sdk-table-empty"><td colspan="6">No environment matches. Clear the search or the filter.</td></tr>';
+  swipeCue();
+}
+// On a phone a table that scrolls sideways says so above itself; the cue goes when the table fits.
+function swipeCue() {
+  for (const box of document.querySelectorAll('.hc-tablebox')) {
+    const wrap = box.querySelector('.sdk-table-wrap');
+    const cue = box.querySelector('.hc-swipe');
+    if (wrap && cue) cue.hidden = !(wrap.scrollWidth > wrap.clientWidth + 1);
+  }
+}
+window.addEventListener('resize', swipeCue);
+$('attention').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kind]');
+  if (!b) return;
+  table.filter = b.dataset.kind === 'all' || table.filter === b.dataset.kind ? 'all' : b.dataset.kind;
+  renderTable();
+  ($('attention').querySelector(`[data-kind="${CSS.escape(b.dataset.kind)}"]`) || $('env-search')).focus();
+});
+$('env-search').addEventListener('input', (e) => { table.q = e.target.value; renderTable(); });
+$('env-filter').addEventListener('change', (e) => { table.filter = e.target.value; renderTable(); });
+$('env-sort').addEventListener('change', (e) => { table.sort = e.target.value; renderTable(); });
+$('env-tools-toggle').addEventListener('click', () => {
+  const open = $('env-tools-more').toggleAttribute('data-open');
+  $('env-tools-toggle').setAttribute('aria-expanded', String(open));
+});
+function setDensity(value) {
+  table.density = value;
+  try { localStorage.setItem('host-console.rows', value); } catch { /* kept for this visit only */ }
+  renderTable();
+  $('env-density').querySelector('[aria-checked="true"]').focus();
+}
+$('env-density').addEventListener('click', (e) => { const b = e.target.closest('[data-density]'); if (b) setDensity(b.dataset.density); });
+$('env-density').addEventListener('keydown', (e) => {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault();
+  setDensity(table.density === 'compact' ? 'comfortable' : 'compact');
+});
+// The row: its name is the link (the keyboard's), the whole row the mouse's target; More opens its menu.
+$('env-rows').addEventListener('click', (e) => {
+  const row = e.target.closest('tr[data-slug]');
+  if (!row) return;
+  const t = environments.find((x) => x.slug === row.dataset.slug);
+  const more = e.target.closest('[data-action="row-menu"]');
+  if (more) { if (t) rowMenu(more, t); return; }
+  if (!e.target.closest('a, button')) go(`environments/${row.dataset.slug}`);
+});
+function rowMenu(trigger, t) {
+  const suspended = t.status === 'suspended';
+  openHostMenu(trigger, [
+    { label: 'Open', icon: 'arrow-up-right-from-square', onPick: () => go(`environments/${t.slug}`) },
+    { label: 'Back up', icon: 'download', onPick: () => backupEnvironment(t.slug, null, $('environments-status')) },
+    suspended
+      ? { label: 'Resume', icon: 'circle-play', onPick: () => suspendOrResume(t, $('environments-status')) }
+      : { label: 'Suspend', icon: 'circle-pause', onPick: () => suspendOrResume(t, $('environments-status')) },
+    { divider: true },
+    { label: 'Delete', icon: 'trash', danger: true, onPick: () => deleteEnvironment(t, $('environments-status')) },
+  ]);
+}
+
+// --- what a host admin does to one environment: back up, suspend or resume, delete ---------------------------------
+async function backupEnvironment(slug, button, status) {
+  if (button) button.disabled = true;
+  try {
+    const res = await fetch(`/api/host/environments/${encodeURIComponent(slug)}/backup`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `backup failed (${res.status})`);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${slug}-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    say(status, `A backup of ${slug} is downloading.`);
+  } catch (err) { say(status, err.message, true); }
+  if (button) button.disabled = false;
+}
+// Suspend asks first (no one can open it until it is resumed); Resume asks too, as the plain question it is. The same
+// PATCH as before: suspended goes back to active, anything else to suspended.
+async function suspendOrResume(t, status) {
+  const resume = t.status === 'suspended';
+  const name = t.name || t.slug;
+  const done = await confirmDialog({
+    title: resume ? `Resume ${name}?` : `Suspend ${name}?`,
+    message: resume ? 'People can open it again.' : 'No one can open it until you resume it. Nothing is removed.',
+    action: resume ? 'Resume' : 'Suspend',
+    kind: resume ? 'plain' : 'destructive',
+    run: () => api('PATCH', `/api/host/environments/${encodeURIComponent(t.slug)}`, { status: resume ? 'active' : 'suspended' }),
+  });
+  if (!done) return;
+  await reloadEnvironments();
+  say(status, resume ? `${name} is open again.` : `${name} is suspended.`);
+}
+// Delete moves its data aside; the dialog asks for its address typed out before Delete turns on.
+async function deleteEnvironment(t, status) {
+  const name = t.name || t.slug;
+  const done = await confirmDialog({
+    title: `Delete ${name}?`,
+    message: 'It is moved aside, not erased: its data is kept under environments-deleted on the server. Its owners can no longer open it.\n\nType its address to say you mean it.',
+    action: 'Delete',
+    kind: 'final',
+    typed: t.slug,
+    run: () => api('DELETE', `/api/host/environments/${encodeURIComponent(t.slug)}`),
+  });
+  if (!done) return;
+  await reloadEnvironments();
+  go('environments');
+  say($('environments-status'), `${name} was deleted (moved aside).`);
+  $('environments-status').focus();
+}
+async function reloadEnvironments() {
+  try { environments = (await api('GET', '/api/host/environments')).environments; } catch (err) { say($('environments-status'), err.message, true); }
+  renderEnvironments();
+}
+
 function renderEnvironments() {
+  renderTable();
+  const shown = readAddress();
+  if (shown.section === 'environments' && shown.rest[0] && shown.rest[0] !== 'new') queueMicrotask(() => showEnvironment(shown.rest[0]));
   const box = $('environments');
   box.replaceChildren();
   restoreFiles.clear(); // a fresh card has no zip chosen
@@ -676,10 +909,10 @@ function renderCreateChoices() {
     + offered.map((t) => option(t.id, t.name || t.id, t.description || '')).join('');
   if (!options.querySelector('input:checked')) options.querySelector('input').checked = true;
 }
-// Closing the form empties it (a reset also masks its password again, brand.js), so it never reopens with an old value showing.
-const closeCreateForm = () => { $('create-form').hidden = true; $('create-form').reset(); };
-$('create-toggle').addEventListener('click', () => { if (!$('create-form').hidden) return closeCreateForm(); $('create-form').hidden = false; $('new-slug').focus(); });
-$('create-cancel').addEventListener('click', closeCreateForm);
+// New environment is its own view (#environments/new); leaving it empties the form (a reset also masks its password again,
+// brand.js), so it never comes back with an old value showing.
+$('create-toggle').addEventListener('click', () => go('environments/new'));
+$('create-cancel').addEventListener('click', () => go('environments'));
 $('create-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   say($('create-error'), '');
@@ -691,9 +924,10 @@ $('create-form').addEventListener('submit', async (e) => {
       ...($('new-template').querySelector('input:checked')?.value ? { template: $('new-template').querySelector('input:checked').value } : {}),
       owner: { login: $('new-owner-login').value.trim(), displayName: $('new-owner-name').value.trim(), password: $('new-owner-password').value },
     });
+    const slug = $('new-slug').value.trim().toLowerCase();
     $('create-form').reset();
-    $('create-form').hidden = true;
     await load();
+    go(`environments/${slug}`);
   } catch (err) { say($('create-error'), err.message, true); }
 });
 
@@ -725,7 +959,23 @@ function showAddress({ focus = false } = {}) {
   if (focus) document.querySelector(`.hc-section[data-section="${section}"]:not([hidden]) .hc-view:not([hidden]) .hc-title, .hc-section[data-section="${section}"]:not([hidden]) > .hc-head .hc-title`)?.focus({ preventScroll: true });
 }
 // Within a section, which view: filled in by the sections that have more than one.
-function showView() {}
+function showView(section, rest) {
+  if (section !== 'environments') return;
+  const [first] = rest;
+  const view = !first ? 'list' : first === 'new' ? 'new' : 'one';
+  $('environments-list').hidden = view !== 'list';
+  if ($('environment-new').hidden && view === 'new') { $('create-form').reset(); say($('create-error'), ''); }
+  $('environment-new').hidden = view !== 'new';
+  $('environment-page').hidden = view !== 'one';
+  if (view === 'one') showEnvironment(first);
+  if (view === 'list') swipeCue();
+}
+// One environment: its card alone (until its page is drawn).
+function showEnvironment(slug) {
+  for (const card of document.querySelectorAll('#environments .environment')) card.hidden = card.dataset.slug !== slug;
+}
+// A Back to Environments button (any [data-go]).
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) { go(b.dataset.go); document.querySelector('.hc-section:not([hidden]) .hc-view:not([hidden]) .hc-title')?.focus({ preventScroll: true }); } });
 $('hc-nav').addEventListener('click', (e) => {
   const b = e.target.closest('[data-section]');
   if (!b) return;

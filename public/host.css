@@ -65,10 +65,46 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-main .sdk-table :is(th, td).hc-more-col, .hc-main .sdk-table td.hc-more-cell { width: 1%; white-space: nowrap; text-align: right; }
 .hc-main .sdk-table tbody tr { height: 44px; }
 
+/* ---- Environments: the needs-attention strip and the table's tools ---- */
+.hc-attention { padding: var(--space-2) var(--space-3); }
+.hc-attention-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.hc-attention-label { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: var(--space-1); font-weight: var(--weight-strong); }
+.hc-attention-none { color: var(--text-muted); }
+.hc-kind { gap: var(--space-1); }
+.hc-kind > b { font-variant-numeric: tabular-nums; }
+.hc-kind[data-tone="danger"] > i { color: var(--status-danger-text); }
+.hc-kind[data-tone="warn"] > i { color: var(--status-warn-text); }
+.hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto auto; align-items: center; gap: var(--space-2); }
+.hc-tools select { width: auto; max-width: 100%; }
+.hc-tools-more { display: contents; }
+.hc-filter-btn { display: none; }
+.hc-density { justify-self: start; }
+.hc-count { margin: 0; color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- the environments table ---- */
+.hc-envs tbody tr[data-slug]:hover { cursor: pointer; }
+.hc-name-cell { min-width: 150px; }
+.hc-plan-cell { white-space: nowrap; }
+.hc-status-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
+.hc-use { display: flex; flex-direction: column; gap: var(--space-1); min-width: 210px; max-width: 280px; }
+.hc-use-row { display: grid; grid-template-columns: 56px minmax(60px, 1fr) auto; align-items: center; gap: var(--space-2); font-size: var(--text-12); }
+.hc-use-key { color: var(--text-muted); }
+.hc-use-val { min-width: 76px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+/* Compact: one use per row, shorter rows. Status, plan and template stay. */
+.hc-envs[data-density="compact"] :is(th, td) { padding-block: var(--space-1); }
+.hc-envs[data-density="compact"] tbody tr { height: 40px; }
+.hc-use-in-name { display: none; }
+
 /* ---- 900 px and under ---- */
 @media (max-width: 900px) {
   .hc-body { grid-template-columns: 180px minmax(0, 1fr); }
   .hc-main { padding-inline: var(--space-4); }
+  /* search and one Filter and sort control in a row; the two selects open under it */
+  .hc-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .hc-filter-btn { display: inline-flex; }
+  .hc-tools-more { display: none; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
+  .hc-tools-more[data-open] { display: grid; }
+  .hc-tools select { width: 100%; }
 }
 
 /* ---- the phone: 640 px and under ---- */
@@ -83,6 +119,26 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
   .hc-swipe:not([hidden]) { display: block; }
   .hc-facts, #host-facts { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
   .hc-facts > dd + dt, #host-facts > dd + dt { margin-top: var(--space-2); }
+  .hc-count { justify-self: end; }
+  .hc-count-word { display: none; }
+  .hc-tools-more { grid-template-columns: minmax(0, 1fr); }
+  /* the strip is one row that scrolls inside itself */
+  .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .hc-attention-row > * { flex: none; white-space: nowrap; }
+  /* tables scroll inside their box; the first column stays (system.css) */
+  .hc-main .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
+  .hc-name-cell { min-width: 130px; max-width: 170px; }
+  .hc-use-row { grid-template-columns: 48px 70px auto; }
+  /* one chip under another, so none is cut; the table's own scroll shows the columns after it */
+  .hc-status-cell { min-width: 120px; }
+  .hc-status-cell > .sdk-status { display: flex; width: fit-content; }
+  /* Compact on a phone: the one bar sits under the name, and the Use column goes */
+  .hc-envs[data-density="compact"] :is(thead th.hc-use-col, td.hc-use-cell) { display: none; }
+  .hc-envs[data-density="compact"] .hc-use-in-name { display: flex; margin-top: var(--space-1); }
+  .hc-envs[data-density="compact"] .hc-use-in-name .hc-use { min-width: 0; max-width: none; }
+  .hc-envs[data-density="compact"] .hc-use-in-name .hc-use-row { grid-template-columns: 52px 44px auto; }
+  .hc-envs[data-density="compact"] .hc-name-cell { max-width: 200px; }
+  .hc-envs[data-density="compact"] .hc-name-cell .sdk-table-sub { display: none; }
 }
 
 /* The cards and editors not yet redrawn (plan-host-console.md, slices 4 to 6) keep their panels at the column's width. */
