@@ -864,11 +864,17 @@
   // for the right button also { right, sx, sy, target, moved, menu }. A right press moves the board only once it has gone
   // RIGHT_SLOP; one that does not is a right-click and opens the menu, for what was pressed (target: the captured pointer's
   // menu event names the board instead). menu: where it was asked for, when the browser asks on the press (a Mac, Linux);
-  // on Windows it asks after the release. A right drag opens no menu.
+  // on Windows it asks after the release. A right drag opens no menu: the menu a browser asks for just after one is not
+  // shown (afterRightDrag). That lasts until the next press, a mouse menu asked for, or RIGHT_AFTER, whichever is first,
+  // and never covers the menu key (a browser that asks for no menu after a drag must not leave a real right-click or the
+  // menu key ignored).
   let spaceHeld = false;
   let panning = null;
   const RIGHT_SLOP = 4; // screen pixels a right press may wander and still be a click (the select tool's SLOP)
-  let rightDragEnd = -Infinity; // when the last right drag ended: the menu the browser asks for after it is not shown
+  const RIGHT_AFTER = 500; // milliseconds after a right drag in which a menu asked for is the drag's own
+  let afterRightDrag = false; // a right drag has just ended: the menu the browser asks for after it is not shown
+  let afterRightTimer = 0;
+  const endAfterRight = () => { afterRightDrag = false; clearTimeout(afterRightTimer); afterRightTimer = 0; };
   const panCursor = (on) => { surface.classList.toggle('wb-grab', on); };
   const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
@@ -877,6 +883,7 @@
   };
 
   surface.addEventListener('pointerdown', (e) => {
+    endAfterRight(); // a new press: any menu after it is its own
     if (e.target.closest('.wb-text-edit')) return;
     const middle = e.pointerType === 'mouse' && e.button === 1;
     const right = e.pointerType === 'mouse' && e.button === 2;
@@ -940,7 +947,7 @@
       const was = panning;
       panning = null;
       surface.classList.remove('wb-grabbing');
-      if (was.right && was.moved) rightDragEnd = performance.now();
+      if (was.right && was.moved) { endAfterRight(); afterRightDrag = true; afterRightTimer = setTimeout(endAfterRight, RIGHT_AFTER); }
       else if (was.right && was.menu && e.type === 'pointerup') contextMenu(was.menu);
       return;
     }
@@ -978,7 +985,8 @@
     e.preventDefault();
     // A right press still down may yet be a drag: its menu waits for the release. One just after a right drag is not shown.
     if (panning && panning.right) { panning.menu = { target: panning.target, clientX: e.clientX, clientY: e.clientY }; return; }
-    if (performance.now() - rightDragEnd < 500) { rightDragEnd = -Infinity; return; }
+    // The menu key (and Shift F10) asks with no mouse button: always shown.
+    if (afterRightDrag && e.button === 2) { endAfterRight(); return; }
     contextMenu(e);
   });
   function contextMenu(e) {
