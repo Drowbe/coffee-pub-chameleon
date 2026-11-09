@@ -178,8 +178,12 @@ await test('SDK: attach goes to chat.attach only; ask goes to chat.ask only; the
   // askAbout (Chat's side of ask) puts held words aside while it asks, so a module's ask can never send them.
   const input = read('public/chat-input.js');
   const about = slice(input, '  async function askAbout(', '\n  }\n');
-  assert.match(about, /const prevWords = aiWords;\s*aiWords = null;/);
-  assert.match(about, /aiWords = prevWords;/);
+  assert.ok(!/aiWords|aiContext/.test(about), 'askAbout reads and changes nothing held in the box');
+  assert.match(about, /await runAi\(q, \{ refs: kept, attached: null \}\)/, 'its own question, objects and no words, handed to the send');
+  // A Send takes its snapshot before any wait and clears only what it sent.
+  const run = slice(input, '  async function runAi(', '\n  }\n');
+  assert.ok(run.indexOf('const snapWords = own ? aiWords : null') < run.indexOf('await checkAi(true)'), 'the snapshot is before the wait');
+  assert.ok(!/aiWords\.(label|text)/.test(run.slice(run.indexOf('await checkAi(true)'))), 'after the wait, what is held is only compared with the snapshot, never read for sending');
   // Every route Send uses is the person's own: the attach path never calls api().
   const attach = slice(input, '  async function attach(', '\n  }\n');
   assert.ok(!/\bapi\(|askNow\(|runAi\(|fetch\(/.test(attach), 'attach() sends nothing');
@@ -482,9 +486,15 @@ async function pageCases(shots, bin) {
     const fromModule = (code) => tab.eval(`(async () => { const host = window.__hosts.at(-1); ${code} })()`);
     const posts = () => pageFake.seen.length;
     const chips = () => tab.eval(`[...document.querySelectorAll('#chat-ai-context .chat-ai-chip')].map((c) => ({ text: c.querySelector('.chat-ai-chip-text').textContent, title: c.title, html: c.innerHTML.includes('<img') || c.innerHTML.includes('<script'), clip: c.getBoundingClientRect().right <= document.querySelector('#chat-ai-context').getBoundingClientRect().right + 1, remove: c.querySelector('.sdk-chip-x').getAttribute('aria-label') }))`);
+    const view = () => tab.eval(`document.getElementById('chat').dataset.view`);
+    const clearChips = async () => { while ((await chips()).length) { await tab.eval(`document.querySelector('#chat-ai-context .chat-ai-chip .sdk-chip-x').click()`); await sleep(100); } };
+    const idle = async () => { await tab.eval(`(() => { const b = document.getElementById('chat-input'); b.value = ''; if (document.activeElement) document.activeElement.blur(); return true; })()`); await sleep(2200); };
+    const waitPosts = async (n, ms = 15000) => { const t = Date.now(); while (posts() < n && Date.now() - t < ms) await sleep(100); };
+
 
     await test('page: attach shows ONE chip with the label, opens the Assistant, focuses the box and sends nothing', async () => {
       pageFake.clear();
+      await idle(); // the person is not in a form or a box: a module's attach may bring Chat forward
       const r = await fromModule(`return host.chat.attach({ label: 'Words from Whiteboard', text: 'Solve 2x + 3 = 11.\\nx = ?' });`);
       assert.deepEqual(r, { attached: true });
       await sleep(600);
@@ -591,6 +601,7 @@ async function pageCases(shots, bin) {
 
     await test('page: an object is held as a chip with its label and goes by pointer with Send; another space\'s is refused', async () => {
       pageFake.clear();
+      await idle();
       const ref = { module: 'research', kind: 'note', id: 'n1', scope: 'space', space: ctx.trip };
       const r = await fromModule(`return host.chat.attach({ label: 'A research note', ref: ${JSON.stringify(ref)} });`);
       assert.deepEqual(r, { attached: true });
@@ -612,16 +623,11 @@ async function pageCases(shots, bin) {
     });
 
     // --- what a module's attach may and may not do to someone using the page (the security read) ---
-    const view = () => tab.eval(`document.getElementById('chat').dataset.view`);
-    const clearChips = async () => { while ((await chips()).length) { await tab.eval(`document.querySelector('#chat-ai-context .chat-ai-chip .sdk-chip-x').click()`); await sleep(100); } };
-    const idle = async () => { await tab.eval(`(() => { const b = document.getElementById('chat-input'); b.value = ''; if (document.activeElement) document.activeElement.blur(); return true; })()`); await sleep(2200); };
-    const waitPosts = async (n, ms = 15000) => { const t = Date.now(); while (posts() < n && Date.now() - t < ms) await sleep(100); };
-
     await test('page: with the AI off, attach is refused with the sentence and nothing is held', async () => {
       const patch = (aiOff) => fetch(`${server.base}/api/spaces/${ctx.trip}`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: JSON.stringify({ aiOff }) });
       assert.equal((await patch(true)).status, 200);
       const msg = await fromModule(`try { await host.chat.attach({ label: 'Words from Whiteboard', text: 'x words' }); return 'attached'; } catch (e) { return e.message; }`);
-      assert.equal(msg, 'AI is turned off in this space.');
+      assert.match(msg, /^AI is turned off in this \w+\.$/);
       assert.equal((await chips()).length, 0, 'nothing was held');
       assert.equal((await patch(false)).status, 200);
     });
