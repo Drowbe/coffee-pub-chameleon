@@ -14,7 +14,11 @@
  *     More), Suspend and Resume asked first, Delete asking for the address typed out before it turns on;
  *   - an environment's page and its tabs (arrow keys move between them), and Switch template;
  *   - Plans and Modules are read only: no field and no button in them;
- *   - Templates: Used by names link to the environments' pages; the editor's jump list.
+ *   - Templates: Used by names link to the environments' pages; the editor's jump list;
+ *   - names with markup (an environment's, its owner's, a template's, a plan's) are shown as text and never run;
+ *   - an address that is not valid percent-encoding falls back to Environments, on load and as a later change;
+ *     #templates/. and #templates/.. go back to the list and ask no route;
+ *   - a first-password link and a typed owner password are dropped on leaving their view and on signing out.
  * The console is drawn in dark only: /theme.css answers 404 on the console's host, so the light set is not there to
  * show (a server change; see the report of this build). `--shots=<dir>` also writes a picture of each screen and state.
  * With no Chromium it says SKIPPED (not a pass).
@@ -136,10 +140,10 @@ const strip = (tab) => tab.evaluate("Object.fromEntries([...document.querySelect
 const menuItems = (tab) => tab.evaluate("[...document.querySelectorAll('.host-menu [role=menuitem], [role=menu] [role=menuitem]')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim())");
 const dialog = (tab) => tab.evaluate("(() => { const d = document.querySelector('dialog.sdk-dialog-confirm'); if (!d) return null; return { title: d.querySelector('.sdk-dialog-title').textContent, kind: d.dataset.kind, typed: Boolean(d.querySelector('input')), okDisabled: d.querySelector('[data-ok]').disabled, focus: document.activeElement.textContent.trim() || document.activeElement.tagName }; })()");
 
-async function boot(count) {
+async function boot(count, env = {}) {
   const port = await freePort();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-host-console-'));
-  const { child, cookie } = await seed({ count, port, dataDir });
+  const { child, cookie } = await seed({ count, port, dataDir, env });
   return { port, dataDir, child, cookie };
 }
 async function shutdown(b) {
@@ -183,7 +187,7 @@ try {
       await tab.type('#login-name', HOST_LOGIN);
       await tab.type('#login-password', HOST_PASSWORD);
       await tab.evaluate("document.querySelector('#login-form button[type=submit]').click()");
-      await tab.waitFor(`${tab.visible('#env-table')} && document.querySelectorAll('#env-rows tr[data-slug]').length === 30`, 'the table after signing in');
+      await tab.waitFor(`${tab.visible('#env-list')} && document.querySelectorAll('#env-rows tr[data-slug]').length === 30`, 'the table after signing in');
     } finally { await tab.close(); }
   });
 
@@ -208,7 +212,7 @@ try {
           if (width <= 640) {
             await tab.go('#environments');
             await tab.waitFor("document.querySelectorAll('#env-rows tr[data-slug]').length === 30", 'rows');
-            assert.equal(await tab.evaluate("(() => { const w = document.querySelector('#env-table').closest('.sdk-table-wrap'); return w.scrollWidth > w.clientWidth; })()"), true, 'the table scrolls inside its box');
+            assert.equal(await tab.evaluate("(() => { const w = document.querySelector('#env-list').closest('.sdk-table-wrap'); return w.scrollWidth > w.clientWidth; })()"), true, 'the table scrolls inside its box');
             assert.equal(await tab.evaluate(tab.visible('#environments-list .hc-swipe')), true, 'with the cue');
           }
         } finally { await tab.close(); }
@@ -224,11 +228,11 @@ try {
       assert.equal(await count(tab), '30 of 30 environments');
       assert.deepEqual(await strip(tab), { pastDue: 2, suspended: 2, refused: 1, deletion: 2, atCap: 1, nearCap: 1, degraded: 1 });
       const order = await rows(tab);
-      const firstFine = order.findIndex((slug) => !['northside-writers', 'oakridge-hikers', 'old-book-club', 'summer-camp-2025-for-the-whole', 'greenway-co-op', 'tiny-trips', 'test-environment', 'the-long-table', 'lisbon-in-may', 'riverside-chess'].includes(slug));
+      const firstFine = order.findIndex((slug) => !['northside-writers', 'oakridge-hikers', 'old-book-club', 'summer-camp-2025-for-the-whole', 'greenway-co-op', 'tiny-trips', 'test-environment', 'the-long-bench', 'lisbon-in-may', 'riverside-chess'].includes(slug));
       assert.equal(firstFine, 10, `the ten that need attention come first: ${order.slice(0, 11).join(', ')}`);
       await tab.type('#env-search', 'long');
       await tab.waitFor("document.getElementById('env-count').textContent.startsWith('1 of 30')", 'one match');
-      assert.deepEqual(await rows(tab), ['the-long-table']);
+      assert.deepEqual(await rows(tab), ['the-long-bench']);
       await tab.shot('search-match');
       await tab.type('#env-search', 'zebra');
       await tab.waitFor("document.getElementById('env-count').textContent.startsWith('0 of 30')", 'no match');
@@ -264,7 +268,7 @@ try {
         assert.equal(await tab.evaluate("document.querySelector('#env-rows tr[data-slug=\"lisbon-in-may\"] td.hc-use-cell').querySelectorAll('.hc-use-row').length"), 3, 'comfortable: three uses');
         await tab.evaluate("document.querySelector('#env-density [data-density=comfortable]').focus()");
         await tab.key('ArrowRight', 'ArrowRight', 39);
-        await tab.waitFor("document.getElementById('env-table').dataset.density === 'compact'", 'compact by the arrow key');
+        await tab.waitFor("document.getElementById('env-list').dataset.density === 'compact'", 'compact by the arrow key');
         assert.equal(await tab.evaluate("document.activeElement.dataset.density"), 'compact', 'the focus follows');
         const one = await tab.evaluate(`(() => {
           const row = document.querySelector('#env-rows tr[data-slug="lisbon-in-may"]');
@@ -279,7 +283,7 @@ try {
         assert.deepEqual(await tab.layoutProblems(), []);
         await tab.shot('compact');
         await tab.s('Page.reload', {});
-        await tab.waitFor("document.getElementById('env-table')?.dataset.density === 'compact'", 'kept after a reload');
+        await tab.waitFor("document.getElementById('env-list')?.dataset.density === 'compact'", 'kept after a reload');
         await tab.evaluate("document.querySelector('#env-density [data-density=comfortable]').click()");
       } finally { await tab.close(); }
     });
@@ -352,7 +356,7 @@ try {
         await tab.evaluate("document.getElementById('env-tab-overview').focus()");
         for (const tabId of ['plan', 'template', 'owners', 'backups', 'danger']) {
           await tab.key('ArrowRight', 'ArrowRight', 39);
-          await tab.waitFor(`${tab.visible(`#env-pane-${tabId}`)} && document.activeElement.id === 'env-tab-${tabId}'`, `the ${tabId} tab by the arrow key`);
+          await tab.waitFor(`${tab.visible(`#env-sheet-${tabId}`)} && document.activeElement.id === 'env-tab-${tabId}'`, `the ${tabId} tab by the arrow key`);
           assert.equal(await tab.evaluate('location.hash'), `#environments/northside-writers/${tabId}`);
           assert.deepEqual(await tab.layoutProblems(), [], tabId);
           await tab.shot(`page-${tabId}`);
@@ -372,7 +376,7 @@ try {
           await tab.shot('page-template-switched');
           // The offer left open is offered again by Review after a reload.
           await tab.s('Page.reload', {});
-          await tab.waitFor(tab.visible('#env-pane-template'), 'the Template tab again');
+          await tab.waitFor(tab.visible('#env-sheet-template'), 'the Template tab again');
           if (await tab.evaluate(tab.visible('#env-offer-note'))) {
             await tab.shot('page-template-offer');
             await tab.evaluate("document.getElementById('env-offer-review').click()");
@@ -411,6 +415,141 @@ try {
   await shutdown(srv);
   srv = null;
 
+  // ======== names with markup, odd addresses, what is left behind ========
+  srv = await boot(0, { SIGNUP: 'on' });
+  {
+    const { port: p2, cookie: c2 } = srv;
+    const MARK = '<img src=x onerror=__xss=1>';
+    const as = (method, u, body) => call(p2, method, 'admin', u, body, { cookie: c2 });
+    let r = await as('PUT', '/api/host/plans', { free: { name: 'Free', caps: {} }, mark: { name: MARK, caps: { modules: 'all', members: 5 } } });
+    assert.equal(r.status, 200, r.text);
+    r = await as('POST', '/api/host/templates', { id: 'marked', name: MARK, description: `${MARK}<script>__xss=1</script>`, modules: ['chat', 'conference'] });
+    assert.equal(r.status, 201, r.text);
+    r = await as('POST', '/api/host/environments', { slug: 'marked', name: `${MARK}<script>__xss=1</script>`, plan: { name: 'mark', modules: 'all', members: 5 }, template: 'marked', owner: { login: 'own-marked', displayName: MARK, password: 'owner-password-1' } });
+    assert.equal(r.status, 201, r.text);
+    // An owner with no password yet (sign-up), for the first-password link.
+    r = await call(p2, 'POST', '', '/api/product/signup', { slug: 'waiting', name: MARK, owner: { login: 'ownwaiting', displayName: MARK } });
+    assert.equal(r.status, 201, r.text);
+    const noScript = async (tab, where) => {
+      await sleep(300);
+      const found = await tab.evaluate("({ ran: typeof window.__xss !== 'undefined', imgs: document.querySelectorAll('img[src=\"x\"], script:not([src])').length })");
+      assert.deepEqual(found, { ran: false, imgs: 0 }, `markup ran or was drawn as markup: ${where}`);
+    };
+
+    await test('names with markup are shown as text and never run', async () => {
+      const tab = await openTab(p2, { cookie: c2 });
+      try {
+        for (const hash of ['#environments', '#environments/marked', '#environments/marked/plan', '#environments/marked/template', '#environments/marked/owners', '#environments/marked/backups', '#environments/marked/danger', '#environments/waiting/owners', '#templates', '#templates/marked', '#plans', '#modules', '#server']) {
+          await tab.go(hash);
+          await tab.waitFor(`${tab.visible('#host-main')} && document.querySelector('#hc-nav [aria-current=page]')`, hash);
+          await sleep(500);
+          await noScript(tab, hash);
+        }
+        await tab.go('#environments/marked');
+        await tab.waitFor(`document.getElementById('env-title').textContent.length > 0`, 'the title');
+        assert.equal(await tab.evaluate("document.getElementById('env-title').textContent"), `${MARK}<script>__xss=1</script>`, 'the name, as text');
+        await tab.go('#environments');
+        await tab.waitFor("document.querySelectorAll('#env-rows tr[data-slug]').length === 2", 'rows');
+        await tab.evaluate("document.querySelector('#env-rows tr[data-slug=\"marked\"] [data-action=row-menu]').click()");
+        await tab.waitFor("document.querySelectorAll('[role=menuitem]').length > 0", 'the menu');
+        await tab.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((e) => e.textContent.trim() === 'Delete').click()");
+        await tab.waitFor("Boolean(document.querySelector('dialog.sdk-dialog-confirm'))", 'the Delete dialog');
+        await noScript(tab, 'the Delete dialog');
+        assert.equal(await tab.evaluate("document.querySelector('dialog.sdk-dialog-confirm .sdk-dialog-title').textContent"), `Delete ${MARK}<script>__xss=1</script>?`);
+        assert.deepEqual(tab.problems, []);
+      } finally { await tab.close(); }
+    });
+
+    await test('an address that is not valid percent-encoding falls back to Environments, on load and later', async () => {
+      const tab = await openTab(p2, { cookie: c2 });
+      try {
+        for (const hash of ['#environments/%E0', '#templates/%E0']) {
+          await tab.s('Page.navigate', { url: 'about:blank' }); // a fresh load, not a change of the hash
+          await sleep(200);
+          await tab.go(hash);
+          await tab.waitFor(`${tab.visible('#env-list')} && location.hash === '#environments'`, `${hash} on load`);
+        }
+        await tab.go('#server');
+        await tab.waitFor(tab.visible('#section-server'), 'Server');
+        for (const hash of ['#environments/%E0', '#templates/%E0']) {
+          await tab.go('#server');
+          await tab.waitFor(tab.visible('#section-server'), 'Server');
+          await tab.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+          await tab.waitFor(`${tab.visible('#env-list')} && location.hash === '#environments'`, `${hash} as a later change`);
+        }
+        assert.deepEqual(tab.problems, [], 'no error thrown');
+      } finally { await tab.close(); }
+    });
+
+    await test('#templates/. and #templates/.. go back to the list and ask no route', async () => {
+      const tab = await openTab(p2, { cookie: c2 });
+      try {
+        await tab.go('#templates');
+        await tab.waitFor("document.querySelectorAll('#template-list tr[data-id]').length > 0", 'the templates');
+        await tab.evaluate("window.__urls = []; { const f = window.fetch; window.fetch = (u, ...a) => { window.__urls.push(String(u)); return f(u, ...a); }; }");
+        for (const id of ['.', '..']) {
+          await tab.evaluate(`location.hash = ${JSON.stringify(`#templates/${id}`)}`);
+          await tab.waitFor(`${tab.visible('#templates-list-view')} && location.hash === '#templates' && document.getElementById('templates-status').textContent === ${JSON.stringify(`There is no template called ${id}.`)}`, `#templates/${id}`);
+          assert.equal(await tab.evaluate(tab.visible('#template-editor-view')), false, 'no editor');
+        }
+        // A fresh load too.
+        await tab.s('Page.navigate', { url: 'about:blank' });
+        await sleep(200);
+        await tab.go('#templates/..');
+        await tab.waitFor(`${tab.visible('#templates-list-view')} && location.hash === '#templates'`, '#templates/.. on load');
+        await tab.evaluate("window.__urls = []; { const f = window.fetch; window.fetch = (u, ...a) => { window.__urls.push(String(u)); return f(u, ...a); }; }");
+        await tab.evaluate("location.hash = '#templates/.'");
+        await tab.waitFor("location.hash === '#templates'", 'back to the list');
+        assert.deepEqual(await tab.evaluate("window.__urls.filter((u) => /\\/templates\\/\\.|\\/api\\/host\\/?$|\\/api\\/?$/.test(u))"), [], 'no request outside a template id');
+        assert.deepEqual(tab.problems, []);
+      } finally { await tab.close(); }
+    });
+
+    await test('a first-password link and a typed owner password are not kept after leaving or signing out', async () => {
+      const tab = await openTab(p2, { cookie: c2 });
+      const link = "document.querySelector('#environment-page [data-slot=\"first-password-url\"]')";
+      const makeLink = async () => {
+        await tab.go('#environments/waiting/owners');
+        await tab.waitFor(tab.visible('#environment-page [data-action="first-password"]'), 'the first-password button');
+        await tab.evaluate("document.querySelector('#environment-page [data-action=\"first-password\"]').click()");
+        await tab.waitFor(`${link}.value.includes('first-password') || ${link}.value.length > 20`, 'the link shown');
+      };
+      try {
+        await makeLink();
+        await tab.evaluate("location.hash = '#environments'");
+        await tab.waitFor(tab.visible('#env-list'), 'the list');
+        assert.deepEqual(await tab.evaluate(`[${link}.value, ${link}.closest('[data-slot="first-password-made"]').hidden]`), ['', true], 'leaving the page drops the link');
+        await makeLink();
+        await tab.evaluate("location.hash = '#server'");
+        await tab.waitFor(tab.visible('#section-server'), 'Server');
+        assert.equal(await tab.evaluate(`${link}.value`), '', 'another section drops it too');
+        // New environment: a typed owner password goes when the view is left.
+        await tab.evaluate("location.hash = '#environments/new'");
+        await tab.waitFor(tab.visible('#new-owner-password'), 'New environment');
+        await tab.type('#new-owner-password', 'secret-password-1');
+        await tab.evaluate("location.hash = '#plans'");
+        await tab.waitFor(tab.visible('#section-plans'), 'Plans');
+        assert.equal(await tab.evaluate("document.getElementById('new-owner-password').value"), '', 'the password is not kept in the hidden form');
+        // Signing out drops both.
+        await makeLink();
+        await tab.evaluate("location.hash = '#environments/new'");
+        await tab.waitFor(tab.visible('#new-owner-password'), 'New environment');
+        await tab.type('#new-owner-password', 'secret-password-2');
+        await tab.evaluate("location.hash = '#server'");
+        await tab.waitFor(tab.visible('#host-logout'), 'Sign out');
+        await makeLink();
+        await tab.evaluate("location.hash = '#server'");
+        await tab.waitFor(tab.visible('#host-logout'), 'Sign out');
+        await tab.evaluate("document.getElementById('host-logout').click()");
+        await tab.waitFor(tab.visible('#host-login'), 'the sign-in');
+        assert.deepEqual(await tab.evaluate(`[${link}.value, document.getElementById('new-owner-password').value]`), ['', ''], 'nothing left after signing out');
+        assert.deepEqual(tab.problems, []);
+      } finally { await tab.close(); }
+    });
+  }
+  await shutdown(srv);
+  srv = null;
+
   // ======== 6, then none ========
   for (const [howMany, expect] of [[6, { pastDue: 2, deletion: 1, atCap: 1, nearCap: 1 }], [0, null]]) {
     srv = await boot(howMany);
@@ -425,7 +564,7 @@ try {
             assert.deepEqual(await strip(tab), expect);
           } else {
             await tab.waitFor(tab.visible('#environments-empty'), 'the empty state');
-            assert.equal(await tab.evaluate(tab.visible('#env-table')), false, 'no table');
+            assert.equal(await tab.evaluate(tab.visible('#env-list')), false, 'no table');
           }
           assert.deepEqual(await tab.layoutProblems(), []);
           await tab.shot(`environments-${howMany}`);

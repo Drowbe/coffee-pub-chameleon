@@ -16,7 +16,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const HOST_LOGIN = 'boss';
 export const HOST_PASSWORD = 'check-host-console-pass-1';
 
-const NAMES = ['Harbour Club', 'Lisbon in May', 'The Long Table', 'Northside Writers', 'Oakridge Hikers', 'Tiny Trips', 'Old Book Club',
+const NAMES = ['Harbour Club', 'Lisbon in May', 'The Long Bench', 'Northside Writers', 'Oakridge Hikers', 'Tiny Trips', 'Old Book Club',
   'Summer Camp 2025 for the whole extended family', 'Greenway Co-op', 'Dragons Rest', 'Test environment', 'Kims rollback', 'Riverside Chess',
   'Anas Birthday Trip', 'Westgate Gamers', 'Maple Street Reading Circle', 'The Pines', 'Coffee and Code', 'Uncle Joes 80th', 'Moonlight Games',
   'Berlin 2027', 'Sunday League', 'Quiet Corner', 'Atlas Guild', 'Visiting Grandma', 'Night Owls', 'Patagonia', 'The Quest Board', 'Vale Family', 'Zeta Lab'];
@@ -70,9 +70,10 @@ export async function hostCookie(port) {
   return res.cookies.find((c) => c.startsWith('host_session='));
 }
 
-// Seeds `count` environments into an empty data folder and answers the running server and its host cookie.
-export async function seed({ count, port, dataDir }) {
-  let child = await startServer(dataDir, port);
+// Seeds `count` environments into an empty data folder and answers the running server and its host cookie. `env`: more
+// of the server's settings (SIGNUP=on for an owner with no password yet).
+export async function seed({ count, port, dataDir, env = {} }) {
+  let child = await startServer(dataDir, port, env);
   let cookie = await hostCookie(port);
   const as = (method, p, body) => call(port, method, 'admin', p, body, { cookie });
   let r = await as('PUT', '/api/host/plans', PLANS);
@@ -111,7 +112,7 @@ export async function seed({ count, port, dataDir }) {
     if (state === 'refused') fs.writeFileSync(path.join(dataDir, 'environments', e.slug, 'app.json'), '{ not json');
   }
   fs.writeFileSync(file, JSON.stringify(host, null, 2));
-  child = await startServer(dataDir, port);
+  child = await startServer(dataDir, port, env);
   cookie = await hostCookie(port);
   return { child, cookie, made };
 }

@@ -47,6 +47,7 @@ export function initTemplates(templates, changed, name, environmentName) {
 }
 
 // Which view: the table (''), or the editor of one template ('new' for a new one). host.js calls it from the address.
+const TEMPLATE_ID = /^[a-z][a-z0-9-]{0,31}$/;
 let shownId = '';
 export async function showTemplatesView(id) {
   if (!ready) { pendingView = id; return; }
@@ -56,6 +57,14 @@ export async function showTemplatesView(id) {
   if (id === shownId) return;
   shownId = id;
   if (id === 'new') { await openEditor(null); return; }
+  // Only a template id reaches the route (the server's pattern, server/templates.js): "." or ".." in the address would
+  // otherwise walk the request to another route.
+  if (!TEMPLATE_ID.test(id)) {
+    shownId = '';
+    location.hash = 'templates';
+    say($('templates-status'), `There is no template called ${id}.`, true);
+    return;
+  }
   try {
     await openEditor((await api('GET', `/api/host/templates/${encodeURIComponent(id)}`)).template);
   } catch (err) {
@@ -88,7 +97,7 @@ function renderList() {
       + `<td class="hc-chips-cell">${chipOf(SOURCE[t.source] || t.source)}${t.edited ? chipOf('Edited', 'info') : ''}</td>`
       + `<td class="sdk-table-dim">v${escapeHtml(String(t.version || 1))}</td>`
       + `<td class="hc-used">${used.length ? `${names}${used.length > 4 ? `<span class="hc-more-names"> and ${used.length - 4} more</span>` : ''}` : '<span class="sdk-table-dim">None</span>'}</td>`
-      + `<td>${editable ? `<input class="sdk-switch" type="checkbox" role="switch" data-action="hide"${t.hidden ? ' checked' : ''} aria-label="Hide ${name} from new environments">` : ''}</td>`
+      + `<td>${editable ? `<input class="sdk-switch" type="checkbox" role="switch" data-action="hide"${t.hidden ? ' checked' : ''} aria-label="Hide ${name} from new ${escapeHtml(word('environment', { many: true }))}">` : ''}</td>`
       + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="template-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis fa-fw" aria-hidden="true"></i></button></td></tr>`;
   }).join('');
 }
@@ -144,7 +153,7 @@ async function resetTemplate(t) {
 async function deleteTemplate(t) {
   const name = t.name || t.id;
   if ((t.usedBy || []).length) return say($('templates-status'), `In use by ${t.usedBy.map(nameOf).join(', ')}. Hide it instead.`, true);
-  if (!await confirmDialog({ title: `Delete the ${name} template?`, message: 'No environment uses it.', action: 'Delete', kind: 'destructive' })) return;
+  if (!await confirmDialog({ title: `Delete the ${name} template?`, message: `No ${word('environment')} uses it.`, action: 'Delete', kind: 'destructive' })) return;
   try {
     await api('DELETE', `/api/host/templates/${encodeURIComponent(t.id)}`);
     await reload();

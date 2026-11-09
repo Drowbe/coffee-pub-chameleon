@@ -93,10 +93,10 @@
                 </div>
                 <p class="hc-count" id="env-count" role="status" aria-live="polite"></p>
               </div>
-              <div class="hc-tablebox">
+              <div class="hc-listbox">
                 <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
                 <div class="sdk-table-wrap hc-wrap">
-                  <table class="sdk-table hc-envs" id="env-table" aria-label="Environments">
+                  <table class="sdk-table hc-envs" id="env-list" aria-label="Environments">
                     <thead><tr><th scope="col">Name</th><th scope="col">Plan</th><th scope="col">Status</th><th scope="col" class="hc-use-col">Use</th><th scope="col">Template</th><th scope="col" class="hc-more-col"><span class="visually-hidden">Actions</span></th></tr></thead>
                     <tbody id="env-rows"></tbody>
                   </table>
@@ -149,17 +149,17 @@
               <a class="btn" id="env-open" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square fa-fw" aria-hidden="true"></i><span>Open environment</span></a>
             </div>
             <div class="subtabs hc-tabs" id="env-tabs" role="tablist">
-              <button class="subtab" type="button" role="tab" id="env-tab-overview" data-tab="overview" aria-controls="env-pane-overview">Overview</button>
-              <button class="subtab" type="button" role="tab" id="env-tab-plan" data-tab="plan" aria-controls="env-pane-plan">Plan and modules</button>
-              <button class="subtab" type="button" role="tab" id="env-tab-template" data-tab="template" aria-controls="env-pane-template">Template</button>
-              <button class="subtab" type="button" role="tab" id="env-tab-owners" data-tab="owners" aria-controls="env-pane-owners">Owners and two-step</button>
-              <button class="subtab" type="button" role="tab" id="env-tab-backups" data-tab="backups" aria-controls="env-pane-backups">Backups</button>
-              <button class="subtab" type="button" role="tab" id="env-tab-danger" data-tab="danger" aria-controls="env-pane-danger">Danger zone</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-overview" data-tab="overview" aria-controls="env-sheet-overview">Overview</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-plan" data-tab="plan" aria-controls="env-sheet-plan">Plan and modules</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-template" data-tab="template" aria-controls="env-sheet-template">Template</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-owners" data-tab="owners" aria-controls="env-sheet-owners">Owners and two-step</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-backups" data-tab="backups" aria-controls="env-sheet-backups">Backups</button>
+              <button class="subtab" type="button" role="tab" id="env-tab-danger" data-tab="danger" aria-controls="env-sheet-danger">Danger zone</button>
               <button class="subtab" type="button" role="tab" id="env-tab-domain" aria-disabled="true" disabled tabindex="-1">Domain<span class="sdk-tab-badge">later</span></button>
             </div>
             <p class="status hc-status" id="env-status" tabindex="-1" role="status" aria-live="polite"></p>
 
-            <div class="hc-pane" id="env-pane-overview" role="tabpanel" aria-labelledby="env-tab-overview" hidden>
+            <div class="hc-sheet" id="env-sheet-overview" role="tabpanel" aria-labelledby="env-tab-overview" hidden>
               <div class="hc-banners" id="env-banners"></div>
               <div class="hc-grid">
                 <section class="sdk-panel hc-part" aria-labelledby="env-status-title">
@@ -174,7 +174,7 @@
               </div>
             </div>
 
-            <div class="hc-pane" id="env-pane-plan" role="tabpanel" aria-labelledby="env-tab-plan" hidden>
+            <div class="hc-sheet" id="env-sheet-plan" role="tabpanel" aria-labelledby="env-tab-plan" hidden>
               <form class="sdk-panel hc-part hc-form" id="plan-form" novalidate>
                 <h2 class="hc-part-name">Plan and modules</h2>
                 <p class="sdk-hint">The name is what the environment calls itself; its address is fixed. Choosing a plan fills the caps from it; change them here for this environment alone. Empty means no cap.</p>
@@ -204,7 +204,7 @@
 
             <!-- Switching its template, and the offer after a switch (plan-environment-templates, the switching addendum), drawn
                  with /template-offer.js. -->
-            <div class="hc-pane" id="env-pane-template" role="tabpanel" aria-labelledby="env-tab-template" hidden>
+            <div class="hc-sheet" id="env-sheet-template" role="tabpanel" aria-labelledby="env-tab-template" hidden>
               <section class="sdk-panel hc-part" aria-labelledby="env-template-title">
                 <h2 class="hc-part-name" id="env-template-title">Template</h2>
                 <dl class="hc-facts" id="env-template-facts"></dl>
@@ -227,7 +227,7 @@
               </section>
             </div>
 
-            <div class="hc-pane" id="env-pane-owners" role="tabpanel" aria-labelledby="env-tab-owners" hidden>
+            <div class="hc-sheet" id="env-sheet-owners" role="tabpanel" aria-labelledby="env-tab-owners" hidden>
               <section class="sdk-panel hc-part" aria-labelledby="env-owners-title">
                 <h2 class="hc-part-name" id="env-owners-title">Owners and two-step</h2>
                 <p class="sdk-hint">An owner locked out of their authenticator app: reset their second factor by their login.</p>
@@ -253,7 +253,7 @@
               </section>
             </div>
 
-            <div class="hc-pane" id="env-pane-backups" role="tabpanel" aria-labelledby="env-tab-backups" hidden>
+            <div class="hc-sheet" id="env-sheet-backups" role="tabpanel" aria-labelledby="env-tab-backups" hidden>
               <section class="sdk-panel hc-part" aria-labelledby="env-download-title">
                 <h2 class="hc-part-name" id="env-download-title">Download</h2>
                 <p class="sdk-hint">A zip of everything in this environment.</p>
@@ -268,7 +268,7 @@
               <p class="sdk-hint">Backups are a download. Nothing is kept on the host, and there is no schedule.</p>
             </div>
 
-            <div class="hc-pane" id="env-pane-danger" role="tabpanel" aria-labelledby="env-tab-danger" hidden>
+            <div class="hc-sheet" id="env-sheet-danger" role="tabpanel" aria-labelledby="env-tab-danger" hidden>
               <section class="sdk-panel hc-part" aria-labelledby="env-danger-title">
                 <h2 class="hc-part-name" id="env-danger-title">Danger zone</h2>
                 <div class="hc-danger-row">
@@ -310,7 +310,7 @@
                 <button class="btn btn-small" id="template-compare-close" type="button">Close</button>
               </div>
             </section>
-            <div class="hc-tablebox">
+            <div class="hc-listbox">
               <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
               <div class="sdk-table-wrap hc-wrap">
                 <table class="sdk-table hc-tpls" aria-label="Templates">
@@ -451,7 +451,7 @@
         <section class="hc-section" id="section-modules" data-section="modules" aria-labelledby="modules-title" hidden>
           <div class="hc-head"><h1 class="hc-title" id="modules-title" tabindex="-1">Modules</h1></div>
           <p class="sdk-hint">The modules this host ships. Read only: installing and updating come later. Each environment installs and turns on its own, in its Manage.</p>
-          <div class="hc-tablebox">
+          <div class="hc-listbox">
             <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
             <div class="sdk-table-wrap hc-wrap">
               <table class="sdk-table" aria-label="Modules">
@@ -466,7 +466,7 @@
         <section class="hc-section" id="section-plans" data-section="plans" aria-labelledby="plans-title" hidden>
           <div class="hc-head"><h1 class="hc-title" id="plans-title" tabindex="-1">Plans</h1></div>
           <p class="sdk-hint">What an environment may use, by plan. Read only: changing plans comes later. One environment's own caps are on its page. Free is what sign-up makes and what a past-due environment goes back to after 14 days.</p>
-          <div class="hc-tablebox">
+          <div class="hc-listbox">
             <p class="sdk-hint hc-swipe" hidden>Swipe for more</p>
             <div class="sdk-table-wrap hc-wrap">
               <table class="sdk-table hc-plans" aria-label="Plans">

@@ -178,7 +178,7 @@ async function openTab({ width = 1280, from = nextIp(), mutate = null } = {}) {
 const card = (slug) => `#environment-page[data-slug="${slug}"]`;
 async function openOwners(tab, slug) {
   await tab.evaluate(`location.hash = ${JSON.stringify(`#environments/${slug}/owners`)}`);
-  await tab.waitFor(`${tab.visibleSel(card(slug))} && ${tab.visibleSel('#env-pane-owners')}`, `the Owners tab of ${slug}`);
+  await tab.waitFor(`${tab.visibleSel(card(slug))} && ${tab.visibleSel('#env-sheet-owners')}`, `the Owners tab of ${slug}`);
 }
 async function signInToConsole(tab) {
   await tab.go(`http://admin.localhost:${port}/`);
@@ -186,7 +186,7 @@ async function signInToConsole(tab) {
   await tab.type('#login-name', HOST_LOGIN);
   await tab.type('#login-password', HOST_PASSWORD);
   await tab.evaluate("document.querySelector('#login-form button[type=submit]').click()");
-  await tab.waitFor(`${tab.visibleSel('#env-table')} && document.querySelectorAll('#env-rows tr[data-slug]').length >= 2`, 'the environments table');
+  await tab.waitFor(`${tab.visibleSel('#env-list')} && document.querySelectorAll('#env-rows tr[data-slug]').length >= 2`, 'the environments table');
 }
 // The box that shows the link, on the page: whether it shows, the field's value, whether it is read-only, the sentence.
 const madeState = (tab, slug) => tab.evaluate(`(() => {
@@ -301,7 +301,7 @@ try {
 
         // The page no longer offers the button.
         await tab.s('Page.reload', {});
-        await tab.waitFor(`${tab.visibleSel(card(waiting))} && ${tab.visibleSel('#env-pane-owners')}`, 'the page again');
+        await tab.waitFor(`${tab.visibleSel(card(waiting))} && ${tab.visibleSel('#env-sheet-owners')}`, 'the page again');
         assert.equal(await tab.evaluate(`document.querySelectorAll(${JSON.stringify(buttonSel)}).length`), 0, 'no button once the password is set');
       } finally { await tab.close(); }
     });

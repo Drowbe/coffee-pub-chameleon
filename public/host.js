@@ -29,6 +29,9 @@ async function load() {
   try {
     hostMe = await api('GET', '/api/host/me');
   } catch (err) {
+    // Signed out (or never in): nothing typed or shown for the last session stays in the page.
+    closeFirstPasswordLink(PAGE, false);
+    forgetCreateForm();
     $('host-login').hidden = false;
     $('host-main').hidden = true;
     return;
@@ -301,12 +304,12 @@ function useCell(t, compact) {
   return `<div class="hc-use hc-use-one" title="${escapeHtml(all)}">${useRow(t, top)}<span class="visually-hidden">All uses: ${escapeHtml(all)}</span></div>`;
 }
 
-const table = { q: '', filter: 'all', sort: 'attention', density: 'comfortable' };
-try { if (localStorage.getItem('host-console.rows') === 'compact') table.density = 'compact'; } catch { /* no storage: comfortable */ }
+const listing = { q: '', filter: 'all', sort: 'attention', density: 'comfortable' };
+try { if (localStorage.getItem('host-console.rows') === 'compact') listing.density = 'compact'; } catch { /* no storage: comfortable */ }
 const matches = (t) => {
-  const f = table.filter;
+  const f = listing.filter;
   if (f !== 'all' && !(f === 'active' ? statusOf(t) === 'active' : KINDS.find((k) => k.id === f).test(t))) return false;
-  const q = table.q.trim().toLowerCase();
+  const q = listing.q.trim().toLowerCase();
   return !q || (t.name || '').toLowerCase().includes(q) || t.slug.includes(q);
 };
 const useMax = (t) => Math.max(0, ...usesOf(t).filter((x) => x.cap).map(ratio));
@@ -319,7 +322,7 @@ const ORDER = {
   use: (a, b) => (useMax(b) - useMax(a)) || byName(a, b),
 };
 
-function renderTable() {
+function renderRows() {
   const all = environments;
   $('environments-empty').hidden = all.length > 0;
   $('environments-filled').hidden = !all.length;
@@ -327,21 +330,21 @@ function renderTable() {
   // The strip: each kind with a count is a button that filters; pressed again (or Clear), the filter goes.
   const live = KINDS.map((k) => [k, all.filter(k.test).length]).filter(([, n]) => n);
   $('attention').innerHTML = '<span class="hc-attention-label"><i class="fa-solid fa-bell fa-fw" aria-hidden="true"></i><span>Needs attention</span></span>'
-    + (live.length ? live.map(([k, n]) => `<button class="btn btn-small hc-kind" type="button" data-kind="${k.id}" data-tone="${k.tone}" aria-pressed="${table.filter === k.id}"><i class="fa-solid fa-${k.icon} fa-fw" aria-hidden="true"></i><b>${n}</b><span>${escapeHtml(k.word)}</span></button>`).join('') : '<span class="hc-attention-none">Nothing needs attention.</span>')
-    + (table.filter !== 'all' ? '<button class="btn btn-quiet btn-small" type="button" data-kind="all">Clear</button>' : '');
+    + (live.length ? live.map(([k, n]) => `<button class="btn btn-small hc-kind" type="button" data-kind="${k.id}" data-tone="${k.tone}" aria-pressed="${listing.filter === k.id}"><i class="fa-solid fa-${k.icon} fa-fw" aria-hidden="true"></i><b>${n}</b><span>${escapeHtml(k.word)}</span></button>`).join('') : '<span class="hc-attention-none">Nothing needs attention.</span>')
+    + (listing.filter !== 'all' ? '<button class="btn btn-quiet btn-small" type="button" data-kind="all">Clear</button>' : '');
   const filter = $('env-filter');
   if (!filter.options.length) filter.replaceChildren(new Option('All statuses', 'all'), ...KINDS.map((k) => new Option(k.one, k.id)), new Option('Active', 'active'));
-  filter.value = table.filter;
-  $('env-sort').value = table.sort;
-  $('env-search').value = table.q;
+  filter.value = listing.filter;
+  $('env-sort').value = listing.sort;
+  $('env-search').value = listing.q;
   for (const b of $('env-density').querySelectorAll('[data-density]')) {
-    const on = b.dataset.density === table.density;
+    const on = b.dataset.density === listing.density;
     b.setAttribute('aria-checked', String(on));
     b.tabIndex = on ? 0 : -1;
   }
-  const compact = table.density === 'compact';
-  $('env-table').dataset.density = table.density;
-  const list = all.filter(matches).sort(ORDER[table.sort]);
+  const compact = listing.density === 'compact';
+  $('env-list').dataset.density = listing.density;
+  const list = all.filter(matches).sort(ORDER[listing.sort]);
   $('env-count').innerHTML = `${list.length} of ${all.length}<span class="hc-count-word"> environments</span>`;
   $('env-rows').innerHTML = list.length ? list.map((t) => {
     const name = escapeHtml(t.name || t.slug);
@@ -356,7 +359,7 @@ function renderTable() {
 }
 // On a phone a table that scrolls sideways says so above itself; the cue goes when the table fits.
 function swipeCue() {
-  for (const box of document.querySelectorAll('.hc-tablebox')) {
+  for (const box of document.querySelectorAll('.hc-listbox')) {
     const wrap = box.querySelector('.sdk-table-wrap');
     const cue = box.querySelector('.hc-swipe');
     if (wrap && cue) cue.hidden = !(wrap.scrollWidth > wrap.clientWidth + 1);
@@ -366,28 +369,28 @@ window.addEventListener('resize', swipeCue);
 $('attention').addEventListener('click', (e) => {
   const b = e.target.closest('[data-kind]');
   if (!b) return;
-  table.filter = b.dataset.kind === 'all' || table.filter === b.dataset.kind ? 'all' : b.dataset.kind;
-  renderTable();
+  listing.filter = b.dataset.kind === 'all' || listing.filter === b.dataset.kind ? 'all' : b.dataset.kind;
+  renderRows();
   ($('attention').querySelector(`[data-kind="${CSS.escape(b.dataset.kind)}"]`) || $('env-search')).focus();
 });
-$('env-search').addEventListener('input', (e) => { table.q = e.target.value; renderTable(); });
-$('env-filter').addEventListener('change', (e) => { table.filter = e.target.value; renderTable(); });
-$('env-sort').addEventListener('change', (e) => { table.sort = e.target.value; renderTable(); });
+$('env-search').addEventListener('input', (e) => { listing.q = e.target.value; renderRows(); });
+$('env-filter').addEventListener('change', (e) => { listing.filter = e.target.value; renderRows(); });
+$('env-sort').addEventListener('change', (e) => { listing.sort = e.target.value; renderRows(); });
 $('env-tools-toggle').addEventListener('click', () => {
   const open = $('env-tools-more').toggleAttribute('data-open');
   $('env-tools-toggle').setAttribute('aria-expanded', String(open));
 });
 function setDensity(value) {
-  table.density = value;
+  listing.density = value;
   try { localStorage.setItem('host-console.rows', value); } catch { /* kept for this visit only */ }
-  renderTable();
+  renderRows();
   $('env-density').querySelector('[aria-checked="true"]').focus();
 }
 $('env-density').addEventListener('click', (e) => { const b = e.target.closest('[data-density]'); if (b) setDensity(b.dataset.density); });
 $('env-density').addEventListener('keydown', (e) => {
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
   e.preventDefault();
-  setDensity(table.density === 'compact' ? 'comfortable' : 'compact');
+  setDensity(listing.density === 'compact' ? 'comfortable' : 'compact');
 });
 // The row: its name is the link (the keyboard's), the whole row the mouse's target; More opens its menu.
 $('env-rows').addEventListener('click', (e) => {
@@ -448,7 +451,7 @@ async function deleteEnvironment(t, status) {
   const name = t.name || t.slug;
   const done = await confirmDialog({
     title: `Delete ${name}?`,
-    message: 'It is moved aside, not erased: its data is kept under environments-deleted on the server. Its owners can no longer open it.\n\nType its address to say you mean it.',
+    message: 'It is moved aside, not erased: its data is kept under environments-deleted on the server. Its owners can no longer open it.',
     action: 'Delete',
     kind: 'final',
     typed: t.slug,
@@ -466,7 +469,7 @@ async function reloadEnvironments() {
 }
 
 function renderEnvironments() {
-  renderTable();
+  renderRows();
   if (loaded) renderPlans(); // its count of environments per plan
   if (page.slug) renderPage();
 }
@@ -508,10 +511,10 @@ function renderPage() {
     b.setAttribute('aria-selected', String(on));
     b.tabIndex = on ? 0 : -1;
   }
-  for (const id of TABS) $(`env-pane-${id}`).hidden = id !== page.tab;
+  for (const id of TABS) $(`env-sheet-${id}`).hidden = id !== page.tab;
   renderOverview(t);
   renderPlanForm(t);
-  renderTemplatePane(t);
+  renderTemplateTab(t);
   renderOwners(t);
   renderDanger(t);
 }
@@ -667,7 +670,7 @@ function renderSkipped(box, template) {
   if (!skipped.length) { box.replaceChildren(); return; }
   box.innerHTML = `<p class="hint">Left out of the ${escapeHtml(template.name || template.id)} template:</p><ul>${skipped.map((x) => `<li><strong>${escapeHtml(x.name || x.id)}</strong>: ${leftOut(x.why) ? escapeHtml(x.why) : `not on yet. ${escapeHtml(/[.!?]$/.test(x.why || '') ? x.why : `${x.why}.`)}`}</li>`).join('')}</ul>`;
 }
-function renderTemplatePane(t) {
+function renderTemplateTab(t) {
   const tp = t.template;
   $('env-template-facts').innerHTML = `<dt>Made from</dt><dd>${escapeHtml(templateName(t))}</dd>${tp && tp.version ? `<dt>Version</dt><dd>${escapeHtml(String(tp.appliedVersion || tp.version))}</dd>` : ''}`;
   renderSkipped($('env-template-skipped'), tp);
@@ -783,7 +786,8 @@ function renderFirstPassword(card, logins) {
     return row;
   }));
 }
-// The link just made, in its read-only field until Close; nothing else keeps it.
+// The link just made, in its read-only field until Close, leaving the page (showView) or signing out (load); nothing
+// else keeps it.
 function showFirstPasswordLink(card, login, url) {
   const made = slot(card, 'first-password-made');
   made.dataset.login = login;
@@ -922,8 +926,12 @@ function renderCreateChoices() {
     + offered.map((t) => option(t.id, t.name || t.id, t.description || '')).join('');
   if (!options.querySelector('input:checked')) options.querySelector('input').checked = true;
 }
-// New environment is its own view (#environments/new); leaving it empties the form (a reset also masks its password again,
-// brand.js), so it never comes back with an old value showing.
+// New environment is its own view (#environments/new). Leaving it, by any way (showView), and signing out empty the form;
+// a reset also masks its password again (brand.js), so a typed password never waits in a hidden field.
+function forgetCreateForm() {
+  $('create-form').reset();
+  say($('create-error'), '');
+}
 $('create-toggle').addEventListener('click', () => go('environments/new'));
 $('create-cancel').addEventListener('click', () => go('environments'));
 $('create-form').addEventListener('submit', async (e) => {
@@ -948,8 +956,14 @@ $('create-form').addEventListener('submit', async (e) => {
 // The left navigation's five sections (plan-host-console.md, "Navigation"): one shows at a time, named after the # so a
 // reload and the Back button come back to it. Environments is the default, being what a host admin comes for.
 const SECTIONS = ['environments', 'templates', 'modules', 'plans', 'server'];
+// A hash that is not valid percent-encoding (#environments/%E0) is treated as no hash: Environments, and the address says so.
 function readAddress() {
-  const [section, ...rest] = decodeURIComponent(location.hash.slice(1)).split('/');
+  let parts;
+  try { parts = decodeURIComponent(location.hash.slice(1)).split('/'); } catch {
+    history.replaceState(null, '', '#environments');
+    return { section: 'environments', rest: [] };
+  }
+  const [section, ...rest] = parts;
   return SECTIONS.includes(section) ? { section, rest } : { section: 'environments', rest: [] };
 }
 function go(address) { if (location.hash !== `#${address}`) location.hash = address; else showAddress(); }
@@ -973,16 +987,18 @@ function showAddress({ focus = false } = {}) {
 }
 // Within a section, which view: filled in by the sections that have more than one.
 function showView(section, rest) {
+  const first = section === 'environments' ? rest[0] : undefined;
+  const view = section !== 'environments' ? '' : !first ? 'list' : first === 'new' ? 'new' : 'one';
+  // Leaving New environment empties its form (a typed owner password never waits in a hidden field), and leaving an
+  // environment's page drops a first-password link shown there.
+  if (view !== 'new') forgetCreateForm();
+  if (view !== 'one') { closeFirstPasswordLink(PAGE, false); page.slug = ''; }
   if (section === 'templates') { showTemplatesView(rest[0] || ''); return; }
   if (section !== 'environments') return;
-  const [first] = rest;
-  const view = !first ? 'list' : first === 'new' ? 'new' : 'one';
   $('environments-list').hidden = view !== 'list';
-  if ($('environment-new').hidden && view === 'new') { $('create-form').reset(); say($('create-error'), ''); }
   $('environment-new').hidden = view !== 'new';
   $('environment-page').hidden = view !== 'one';
   if (view === 'one') showEnvironment(first, rest[1]);
-  else page.slug = '';
   if (view === 'list') swipeCue();
 }
 // A Back to Environments button (any [data-go]).

@@ -55,7 +55,7 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-main .flight-schedule .danger-row { margin: 0; }
 
 /* ---- tables: each scrolls inside its own box ---- */
-.hc-tablebox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-listbox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .hc-swipe { display: none; margin: 0; }
 .hc-wrap { border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); }
 .hc-main .sdk-table { width: 100%; }
@@ -96,8 +96,8 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 /* ---- an environment's page ---- */
 .hc-tabs.subtabs { padding-bottom: var(--space-1); border-bottom: 1px solid var(--edge-hairline); }
 .hc-tabs .sdk-tab-badge { margin-left: var(--space-1); }
-.hc-pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.hc-pane[hidden] { display: none; }
+.hc-sheet { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-sheet[hidden] { display: none; }
 .hc-banners { display: flex; flex-direction: column; gap: var(--space-2); }
 .hc-banners:empty { display: none; }
 .hc-banner-sub { color: var(--text-muted); font-size: var(--text-13); }
@@ -115,7 +115,7 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-danger-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding-block: var(--space-2); }
 .hc-danger-row + .hc-danger-row { padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
 .hc-danger-text { display: flex; flex: 1 1 220px; flex-direction: column; gap: var(--space-1); min-width: 0; }
-#env-pane-backups .hc-part > input[type="file"] { max-width: 420px; }
+#env-sheet-backups .hc-part > input[type="file"] { max-width: 420px; }
 
 /* ---- Templates: the notices, the review, and the editor's rows ---- */
 .template-notices { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); }
