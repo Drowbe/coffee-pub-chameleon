@@ -33,7 +33,6 @@
       icon: 'fill-drip',
       key: 'f',
       order: 96,
-      group: 'paint',
       edits: true,
       paints: 'fill',
       cursor: 'cell',

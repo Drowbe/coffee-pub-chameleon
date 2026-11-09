@@ -36,8 +36,8 @@
     let last = { id: null, t: 0 };
     const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
     // Shift, Ctrl or Cmd: add to what is picked, or take out.
-    // A finger with "Select many" on, too.
-    const adds = (p, ctx) => Boolean((p.event && (p.event.shiftKey || p.event.ctrlKey || p.event.metaKey)) || (p.pointerType === 'touch' && ctx.many()));
+    // Any pointer with "Select many" on, too.
+    const adds = (p, ctx) => Boolean((p.event && (p.event.shiftKey || p.event.ctrlKey || p.event.metaKey)) || ctx.many());
     // A press on the board itself: drag a rectangle to pick blocks, or (one finger) move the board.
     const emptyPress = (p, ctx) => (p.pointerType === 'touch' && !ctx.many() ? 'board' : 'marquee');
 

@@ -69,7 +69,7 @@
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish, cell? ({ r, c, td }: a table's cell) }
-  let many = false; // "Select many" (a touch screen, a choice in the tool switch): one finger drags a rectangle and a tap adds, rather than moving the board
+  let many = false; // "Select many" (a choice in the tool switch): a click or tap adds to what is picked, a drag on the board draws a rectangle that adds
   let presenting = null; // while the frames are presented: lib-e-block-frame's state ({ order, i, view }), see "presenting"
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
@@ -104,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Flowchart menu: Connector (drag from one block to another), shapes, Table (tap a cell twice to write), Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Paint menu: Fill (tap a block), Pen, Marker, Brush, Highlighter. Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the colour strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Connector (C): drag block to block; Enter edits its label. Paint menu: Fill (F; ${ALT}-click takes a colour), Pen (P), Marker (M), Brush, Highlighter (U; Shift: straight). Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Flowchart menu: Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Other people's pointers show where they point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; again goes back). Select many: click or drag round blocks to add. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the colour strip. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Others' pointers show where they point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -807,31 +807,43 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch, named Tools: Select, the Hand (a `mode`), the drawing tools and, on a touch screen, Select
-  // many (Select with one finger dragging a rectangle and a tap adding, not moving the board). A tool marked `apart` (the
-  // Timer) is its own on/off button after it, and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
-  // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
-  // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices
-  // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table and the Frame).
+  // The tools are one switch, named Tools: Hand (a `mode`), Select, Select many (Select with every click adding to what is picked
+  // and a drag on the board drawing a rectangle that adds), then Pen, Fill, Text, Note, Flowchart, Shape, Table and Frame. A tool
+  // marked `apart` (the Timer) is its own on/off button after it. Pen, Flowchart and Shape are FAMILIES: one choice in the switch,
+  // its kinds (each a tool of its own, with its own key) the buttons of the first group on the colour strip. A kind's key picks
+  // its family with that kind; a family remembers the last kind picked, for this session.
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
-  const inSwitch = allowed.filter((t) => !t.apart && !t.group);
-  // Select many is offered only on a touch screen: with a mouse, a drag on the empty board already selects, and Shift adds.
-  const MANY = Boolean(window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) && inSwitch.some((t) => t.id === 'select');
-  const switchOptions = [
-    ...inSwitch.map(({ id, label, icon }) => ({ id, label, icon })),
-    ...(MANY ? [{ id: 'many', label: 'Select many', icon: 'object-group' }] : []),
+  const FAMILIES = [
+    { id: 'pen', kinds: ['pen', 'marker', 'brush', 'highlight'] },
+    { id: 'shape', kinds: ['rect', 'ellipse', 'line', 'arrow'] },
+    { id: 'flowchart', kinds: ['connector', 'rounded', 'diamond', 'pill', 'parallelogram'] },
   ];
-  const GROUPS = [
-    { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
-    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table', 'frame'], split: [1, 6] },
+  const familyHas = (f) => f.kinds.some((id) => allowed.some((t) => t.id === id));
+  const lastKind = Object.fromEntries(FAMILIES.map((f) => [f.id, f.kinds[0]]));
+  let family = null; // the id of the family the tool is a kind of, else null
+  const SWITCH = [
+    { id: 'hand', label: 'Hand', icon: 'hand' },
+    { id: 'select', label: 'Select', icon: 'arrow-pointer' },
+    { id: 'many', label: 'Select many', icon: 'object-group' },
+    { id: 'pen', label: 'Pen', icon: 'pen' },
+    { id: 'fill', label: 'Fill', icon: 'fill-drip' },
+    { id: 'text', label: 'Text', icon: 'font' },
+    { id: 'note', label: 'Note', icon: 'note-sticky' },
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project' },
+    { id: 'shape', label: 'Shape', icon: 'shapes' },
+    { id: 'table', label: 'Table', icon: 'table' },
+    { id: 'frame', label: 'Frame', icon: 'crop-simple' },
   ];
+  const inSwitch = (o) => (o.id === 'many' ? policy.canEdit && allowed.some((t) => t.id === 'select') : FAMILIES.some((f) => f.id === o.id) ? familyHas(FAMILIES.find((f) => f.id === o.id)) : allowed.some((t) => t.id === o.id));
   // 'many' is Select with Select many on; Select turns it off.
   const pickTool = (v) => {
     if (v === 'many' || v === 'select') { many = v === 'many'; if (tool.id === 'select') showTool(); else setTool('select'); return; }
-    setTool(v);
+    const f = FAMILIES.find((x) => x.id === v);
+    if (f) setTool(allowed.some((t) => t.id === lastKind[v]) ? lastKind[v] : f.kinds.find((id) => allowed.some((t) => t.id === id)), v);
+    else setTool(v);
   };
-  const toolSwitch = switchOptions.length > 1
-    ? host.ui.viewSwitch({ id: 'tool', label: 'Tools', value: tool.id, options: switchOptions, onChange: pickTool })
+  const toolSwitch = SWITCH.filter(inSwitch).length > 1
+    ? host.ui.viewSwitch({ id: 'tool', label: 'Tools', value: tool.id, options: SWITCH.filter(inSwitch), onChange: pickTool })
     : null;
   // An apart tool's button, and its key or a mode's (the Hand's H), turn it on, and again off, back to the tool used before it.
   const goesBack = (t) => Boolean(t && (t.apart || t.mode));
@@ -841,35 +853,21 @@
     tool: t,
     button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => toggleTool(t) }),
   }));
-  const groupButtons = GROUPS.map((g) => {
-    const list = g.order.map((id) => allowed.find((t) => t.id === id)).filter(Boolean);
-    if (!list.some((t) => t.group === g.id)) return null;
-    const menu = (e) => host.menu.show({
-      id: `tools-${g.id}`,
-      at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
-      items: [
-        { heading: g.label },
-        ...list.flatMap((t, i) => [
-          ...(i > 0 && [].concat(g.split).includes(i) ? [{ separator: true }] : []),
-          // The Fill row's icon is in the colour it fills with.
-          { id: t.id, label: t.label, icon: t.icon, ...(t.paints === 'fill' ? { iconColor: WB_PALETTE_BY_ID.get(nextFill()).token, tip: `${t.label}: ${WB_PALETTE_BY_ID.get(nextFill()).label}` } : {}), hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
-        ]),
-      ],
-    });
-    return { group: g, button: host.ui.toolbarButton({ id: `tools-${g.id}`, label: g.label, icon: g.icon, iconOnly: true, on: false, onClick: menu }) };
-  }).filter(Boolean);
   const showTool = () => {
-    if (toolSwitch) toolSwitch.set(tool.id === 'select' && many && MANY ? 'many' : inSwitch.includes(tool) ? tool.id : '');
+    if (toolSwitch) toolSwitch.set(tool.id === 'select' && many ? 'many' : family || (SWITCH.some((o) => o.id === tool.id) ? tool.id : ''));
     for (const a of apartButtons) a.button.set({ on: a.tool === tool });
-    for (const g of groupButtons) g.button.set({ on: tool.group === g.group.id });
   };
-  function setTool(id) {
+  // `fam`: the family a kind is picked in (the Rectangle is a kind of Shape and of Flowchart); else the first it is in.
+  function setTool(id, fam) {
     const next = tools.get(id);
-    if (!next || !policy.canUseTool(next) || next === tool) { showTool(); return; }
+    const nextFamily = next ? (fam && FAMILIES.some((f) => f.id === fam && f.kinds.includes(next.id)) ? fam : (FAMILIES.find((f) => f.kinds.includes(next.id)) || {}).id || null) : null;
+    if (!next || !policy.canUseTool(next) || (next === tool && nextFamily === family)) { showTool(); return; }
     if (tool.deactivate) tool.deactivate(ctx);
     if (goesBack(next) && !goesBack(tool)) toolBefore = tool.id;
     if (!next.mode && next.id !== 'select') many = false; // Select many is Select's: a drawing tool ends it, the Hand does not
     tool = next;
+    family = nextFamily;
+    if (family) lastKind[family] = tool.id;
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
@@ -877,6 +875,7 @@
     showTool();
     updateHint();
     updateStatus();
+    updatePaint();
   }
   surface.dataset.tool = tool.id;
   surface.setAttribute('aria-label', boardHelp());
@@ -1029,6 +1028,53 @@
   // picked blocks or the tool's type do not have, and for someone who may only look.
   const paintStrip = $('paint');
   const paintButtons = new Map(); // role id or 'weight' -> { button, mark }
+  // The strip's first group: the kinds of the active tool when it has them (Pen: pen, marker, brush, highlighter; Shape;
+  // Flowchart), a small row of icon buttons, the chosen one pressed, then a thin divider before the colours.
+  const KIND_ICONS = { pen: 'pen', marker: 'marker', brush: 'paintbrush', highlight: 'highlighter', rect: 'square', ellipse: 'circle', line: 'minus', arrow: 'arrow-right-long', connector: 'arrows-turn-right', rounded: 'square', diamond: 'diamond', pill: 'capsules', parallelogram: 'arrow-right-arrow-left' };
+  const FAMILY_NAMES = { pen: 'Pen', shape: 'Shape', flowchart: 'Flowchart' };
+  const kindsBox = document.createElement('div');
+  kindsBox.className = 'wb-kinds';
+  kindsBox.setAttribute('role', 'group');
+  kindsBox.hidden = true;
+  const kindsLine = document.createElement('span');
+  kindsLine.className = 'wb-paint-sep';
+  kindsLine.setAttribute('aria-hidden', 'true');
+  kindsLine.hidden = true;
+  paintStrip.append(kindsBox, kindsLine);
+  let afterPaint = () => {}; // set once the find bar exists: it moves clear of the strip's new size
+  const kindButtons = new Map(); // tool id -> button
+  function showKinds() {
+    const f = FAMILIES.find((x) => x.id === family);
+    if (!f) { kindsBox.hidden = true; kindsBox.dataset.family = ''; return false; }
+    if (kindsBox.dataset.family !== f.id) {
+      kindsBox.dataset.family = f.id;
+      kindsBox.textContent = '';
+      kindButtons.clear();
+      kindsBox.setAttribute('aria-label', `${FAMILY_NAMES[f.id]} kinds`);
+      for (const id of f.kinds) {
+        const t = allowed.find((x) => x.id === id);
+        if (!t) continue;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sdk-icon-btn btn-quiet btn-small wb-paint-btn wb-kind';
+        const words = withKey(t.label, t.key ? t.key.toUpperCase() : '').replace(' ()', '');
+        button.setAttribute('aria-label', t.label);
+        button.dataset.tip = words;
+        button.dataset.kind = id;
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.setAttribute('aria-hidden', 'true');
+        button.appendChild(ic);
+        iconSvg(KIND_ICONS[id] || t.icon).then((svg) => { if (svg) ic.innerHTML = svg; });
+        button.addEventListener('click', () => setTool(id, f.id));
+        kindsBox.appendChild(button);
+        kindButtons.set(id, button);
+      }
+    }
+    for (const [id, button] of kindButtons) button.setAttribute('aria-pressed', String(id === tool.id));
+    kindsBox.hidden = false;
+    return true;
+  }
   function stripButton(key, label, make, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1114,7 +1160,10 @@
       p.button.setAttribute('aria-label', words);
       p.button.dataset.tip = words;
     }
-    paintStrip.hidden = !any;
+    const kinds = showKinds();
+    kindsLine.hidden = !(kinds && any);
+    paintStrip.hidden = !any && !kinds;
+    afterPaint();
   }
 
   // Line style and arrowheads: of the picked connectors (each one whole save), or, with none picked, for new connectors.
@@ -2138,6 +2187,7 @@
     const st = strip.getBoundingClientRect();
     if (bar.left < st.right && bar.top < st.bottom) findBar.style.top = `${st.bottom - surface.getBoundingClientRect().top + 4}px`;
   }
+  afterPaint = () => { if (finding) placeFind(); };
   findInput.addEventListener('input', () => {
     clearTimeout(findTyped);
     findTyped = setTimeout(() => { findTyped = 0; runFind({ go: true }); }, 150);

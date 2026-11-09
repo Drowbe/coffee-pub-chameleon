@@ -2,7 +2,7 @@
   // Press and drag over words or shapes to lay a see-through band over them, a highlight block of its own, on top of what
   // is there. Holding Shift makes it a straight band, across or down (the longer way from where it started). It shows as
   // it is drawn and is saved whole when the pointer lifts, its points thinned as a drawing's are; one undo step. The tool
-  // stays on for the next one; Escape goes back to Select. In the toolbar's Paint menu (group 'paint'), key U. `usual`:
+  // stays on for the next one; Escape goes back to Select. A kind of the Pen tool (on the strip), key U. `usual`:
   // the width it draws at until the person picks one (Extra heavy, about a line of words high).
   {
     let drawing = null; // { id, ox, oy, points, straight }
@@ -13,7 +13,6 @@
       icon: 'highlighter',
       key: 'u',
       order: 98.5,
-      group: 'paint',
       edits: true,
       makes: 'highlight',
       usual: { weight: 12 },
