@@ -1731,7 +1731,7 @@
   const snapping = (event) => snapOn !== Boolean(event && event.altKey);
   // Grid: dots, graph paper or off, with its size, colour and opacity; each person's own, kept in this browser (wbGrid, lib-a),
   // for everyone who can see the board. The size is also Snap to grid's step. The panel is the small bar at the board's top right.
-  const gridPanel = $('grid-panel');
+  const gridPop = $('grid-pop');
   const gridStore = () => window.localStorage;
   const gridSize = $('grid-size');
   const gridOpacity = $('grid-opacity');
@@ -1739,8 +1739,8 @@
   function gridShow() {
     showBackdrop();
     renderer.redrawGrid();
-    if (gridPanel.hidden) return;
-    for (const b of gridPanel.querySelectorAll('[data-style]')) b.setAttribute('aria-checked', String(b.dataset.style === wbGrid.style));
+    if (gridPop.hidden) return;
+    for (const b of gridPop.querySelectorAll('[data-style]')) b.setAttribute('aria-checked', String(b.dataset.style === wbGrid.style));
     gridSize.value = String(wbGrid.size);
     $('grid-size-val').textContent = String(wbGrid.size);
     for (const [id, b] of gridSwatches) b.setAttribute('aria-checked', String(id === wbGrid.color));
@@ -1765,35 +1765,35 @@
     gridSwatches.set(c.id, b);
     $('grid-colours').append(b);
   }
-  for (const b of gridPanel.querySelectorAll('[data-style]')) b.addEventListener('click', () => gridSet({ style: b.dataset.style }));
+  for (const b of gridPop.querySelectorAll('[data-style]')) b.addEventListener('click', () => gridSet({ style: b.dataset.style }));
   gridSize.addEventListener('input', () => gridSet({ size: Number(gridSize.value) }));
   gridOpacity.addEventListener('input', () => gridSet({ opacity: Number(gridOpacity.value) / 100 }));
   $('grid-reset').addEventListener('click', () => gridSet({ ...WB_GRID_USUAL }));
   function openGrid() {
     if (presenting) return;
     closeFind({ quiet: true });
-    gridPanel.hidden = false;
+    gridPop.hidden = false;
     gridShow();
-    (gridPanel.querySelector('[data-style][aria-checked="true"]') || gridPanel).focus({ preventScroll: true });
+    (gridPop.querySelector('[data-style][aria-checked="true"]') || gridPop).focus({ preventScroll: true });
   }
   function closeGrid() {
-    if (gridPanel.hidden) return;
-    gridPanel.hidden = true;
+    if (gridPop.hidden) return;
+    gridPop.hidden = true;
     surface.focus({ preventScroll: true }); // the button is in the frame's toolbar, outside this page: the board gets the keyboard
   }
-  gridPanel.addEventListener('keydown', (e) => {
+  gridPop.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); closeGrid(); }
   });
-  for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) gridPanel.addEventListener(type, (e) => e.stopPropagation());
-  document.addEventListener('pointerdown', (e) => { if (!gridPanel.hidden && !gridPanel.contains(e.target) && !(e.target.closest && e.target.closest('[data-key="btn:grid"]'))) closeGrid(); }, true); // the Grid button toggles it itself
+  for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) gridPop.addEventListener(type, (e) => e.stopPropagation());
+  document.addEventListener('pointerdown', (e) => { if (!gridPop.hidden && !gridPop.contains(e.target) && !(e.target.closest && e.target.closest('[data-key="btn:grid"]'))) closeGrid(); }, true); // the Grid button toggles it itself
   // The right zone's buttons are made in this order: Overview, Grid, Snap. The host draws the last one at the far right, so Snap
   // stays there whatever comes and goes on the left (Delete, Arrange); a view-only person has no Snap, so Grid is last. Overview
   // and Grid are for everyone who can see the board (they only change the view); Snap is for editors.
   const overviewStore = () => window.localStorage;
   let overviewOn = wbOverviewLoad(overviewStore);
   const overviewButton = host.ui.toolbarButton({ id: 'overview', label: 'Overview', icon: 'map', iconOnly: true, on: overviewOn, zone: 'end', onClick: () => toggleOverview() });
-  host.ui.toolbarButton({ id: 'grid', label: 'Grid', icon: 'table-cells', iconOnly: true, zone: 'end', onClick: () => { if (gridPanel.hidden) openGrid(); else closeGrid(); } });
+  host.ui.toolbarButton({ id: 'grid', label: 'Grid', icon: 'table-cells', iconOnly: true, zone: 'end', onClick: () => { if (gridPop.hidden) openGrid(); else closeGrid(); } });
   if (policy.canEdit) {
     const snapButton = host.ui.toolbarButton({
       id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn, zone: 'end',
