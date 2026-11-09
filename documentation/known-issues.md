@@ -8,7 +8,7 @@ the CHANGELOG once fixed.
 
 ## Whiteboard: limits that are known
 
-These are recorded for the Whiteboard 0.1.19 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
+These are recorded for the Whiteboard 0.1.22 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
 [architecture-whiteboard](architecture/architecture-whiteboard.md)).
 
 - **Same block, same moment.** Two people changing one block at the same moment: the last save wins. There is no conflict check yet.
@@ -26,13 +26,14 @@ These are recorded for the Whiteboard 0.1.19 ([userguide-whiteboard](userguides/
 - **The Highlighter and the note pointer do not lock on.** A highlight stays where it was put when the words under it move, and a note's pointer tip stays where it was put; it does not follow a block it points at. Locking on is designed in the code and not built.
 - **Connectors go round only their own two blocks,** not other blocks in the way.
 - **Brush pressure** was not tried with a real pen or a touch screen that senses force.
-- **Toolbar placement.** The colour swatches are not in the toolbar row and **Snap to grid** is not at the toolbar's right end, because a module can do neither (a toolbar button holds only an icon, and there is no right-hand place for a module's own button). The magnifier's menu opens at the top of the module's content, not under its button in the title bar.
+- **Toolbar placement.** The colour swatches are not in the toolbar row, because a toolbar button holds only an icon. The magnifier's menu opens at the top of the module's content, not under its button in the title bar.
 - **Resizing a group.** Picking a group and dragging a handle to resize it as one selection is not built. Resize the blocks one at a time.
 - **Ctrl+L and Ctrl+G** (Cmd on a Mac), the keys for lock and group, were tried with synthetic key events and not in a real browser, where a browser may use them for itself. The same commands are in the right-click menu.
 - **Connectors and frames.** A connector with a free end inside a frame does not move when the frame moves. A connector between two blocks inside the frame does, because it follows its blocks.
 - **Frames: read as code only.** The glide between frames, the reduced-motion jump, Print with frames on the board and a real long press on a frame were read as code and not tried. Presenting is each person's own; there is no "everyone follows me" yet.
 - **Align, guides and lock keys** were checked by tool (`check-whiteboard-arrange.mjs`), not by hand in a browser.
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
+- **Find and Overview: not verified.** Find was not tried with the formatting bar's link field or a frame's title being edited (the `/` key is meant to type a slash there; this was read as code and checked by a tool on its sums, not by hand). Neither Find nor the overview was tried on a real phone, and neither in a real call.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
 
 ## Stacked modules and the tab order without moveBefore
@@ -46,17 +47,25 @@ divider and a screen reader were not tried.
 
 Workaround: use the keyboard on the divider and the titlebar menus, which work in any order.
 
-## Vault: who can see a file is only half built
+## Vault: who can see a file has known gaps
 
-The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:
+The server decides which Vault files a person may see, and the Vault (0.4.4) has the screens to set it ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 1 to 3 and the share link rule, on main; the rest of slice 4 is not built). [Vault](userguides/userguide-vault.md), "Who can see a file", describes what works. These limits are known and accepted for now:
 
 - **Space full.** The "space is full" refusal and the storage total can tell a person that files they cannot see take space. Thomas decided to accept this and document it.
-- **Share links stay open.** Until slice 4, a share link or public link to a file keeps working after the file is narrowed. Its maker, an owner or the admin can turn it off.
-- **Empty share.** A share link whose files are all hidden from its maker shows to them as "0 files", and its **Edit** button answers 404. How it should look is for Thomas to decide.
+- **A share link comes back.** A share link holds only the files its maker can still see, checked each time it is opened; a file they cannot see drops out of the link, and a link with none left reads "This link has ended." Nothing is stored, so if the file is shown to its maker again it returns to the link. Decision 8 of the plan reads as if the link ended for good; it is kept as built until Thomas says otherwise. Workaround: to end a link for good, turn it off under **Share links**.
+- **The list of links still counts a file its maker lost sight of.** The list of share links, and the number of files a person sees on it, are worked out for the person looking, not for the maker, so a link may show a file that people opening it no longer get. An empty share (all its files hidden from its maker) shows to them as "0 files", and its **Edit** button answers 404. How it should look is for Thomas to decide.
 - **Held objects.** When a hidden file is linked to an object, people who can see that object are still told that it changed. They can tell something changed on it, not what.
-- **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
+- **Some words and marks do not show for ordinary people.** The server sends a file's `visibility` only to the person who added it, owners and the admin. So the read-only line "Shared with you and others." in a file window, **Not shared with you** for a moderator who holds **See every file**, and the share sheet's sentence about a restricted file for a person who is on a chosen list, are in the code and are never drawn for them. Owners, the admin and the adder see everything described in the guide. No workaround is needed; nothing is wrongly shown.
+- **The question's numbers are an estimate, and there is no dry run.** The server cannot say in advance who would lose sight of a file, so **Change who can see this file?** counts the people who lose sight, the links and the share links from what the page can read. A moderator with **See every file** keeps sight and may still be named.
+- **"File removed" is not returned after a restricted file is deleted.** Decision 10 of the plan (only people who could see the file see "File removed") is not built.
+- **The people picker shows no role words.** It lists names and avatars and marks owners "Always can"; it does not say who is a moderator or a member.
+- **Closing and reopening Add files while files go up.** The choice resets to Everyone and the choices stay off until the queue ends, even though the files still going up keep the choice they were picked with.
 
-Workaround: none needed for now, as nothing sets a visibility yet.
+## A module's right zone at 110 pixels
+
+A module that puts three or more icon buttons in the toolbar's right zone (`zone: 'end'`) overflows the row by 12 pixels when the module is 110 pixels wide. Only the first two icon-only right-zone buttons are held in place; the rest fold into **More**, but the width the row keeps for them is not enough at that size. Only a switch's name (`label`) is cleaned of direction and zero-width characters; other labels are not. No bundled module puts more than one button in the right zone (the Whiteboard's **Snap to grid**).
+
+Workaround: none needed for the bundled modules.
 
 ## The host console is dark only
 

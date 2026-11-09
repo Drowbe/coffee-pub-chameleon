@@ -5,7 +5,7 @@
 What a person does with the board is [userguide-whiteboard](../userguides/userguide-whiteboard.md). The module's
 permissions and storage rules are those of every module ([api-modules](../api/api-modules.md)); the SDK it calls is
 [api-module-sdk](../api/api-module-sdk.md). This document is the shape of the module and the reasons for it. The code is
-in `modules/whiteboard/`, version 0.1.19.
+in `modules/whiteboard/`, version 0.1.22.
 
 ## Shape
 
@@ -27,6 +27,9 @@ has `/*__LIB__*/`, so `lib-a` loads first and its two registries exist before th
 | `lib-j-markup` | What the formatting bar does to the words being edited, as plain text in and out (bold, italic, code, lists, heading, link) |
 | `lib-k-table` | Rows copied from a spreadsheet, read as a table's cells (tab-separated text, or the words of an HTML table) |
 | `lib-l-export` | The board as a PNG, and the copy that is printed |
+| `lib-m-arrange` | Align, distribute, guides, locks and groups (plain work on boxes) |
+| `lib-n-overview` | The overview: what the small map shows, the board-to-map sums, the press and the drag, and `createOverview`, the map itself, which only the page makes |
+| `lib-o-find` | Find: the words each block is searched by, matching, reading order and the count; `whiteboard.js` has the bar |
 
 `whiteboard.js` is the glue and the one path for every local change: `commit`, then `persist`, then history and sync. A new
 kind of block or tool is a new file that registers itself; it does not edit the others.
@@ -117,7 +120,7 @@ is no tidy-up yet.
 page's answer: on when the toggle is on, turned round while `event.altKey`. The place and shape tools snap the new block's
 corner, corners or ends; select snaps the held block's corner on a move (the others by the same amount) and the dragged
 edges or a line's end on a resize, but not when the shape is kept; the **+** snaps the corner; the pen never does. The
-toggle is a `host.ui.toolbarButton` with `id: 'snap'`, made again after Delete appears so it stays last. Its state is in
+toggle is a `host.ui.toolbarButton` with `id: 'snap'` and `zone: 'end'` (see "Toolbar"). Its state is in
 `localStorage` under `whiteboard-snap`, off at first, and never in the board's data.
 
 The colour strip is `#paint` in `whiteboard.html`, filled by `paintShown` and `updatePaint` in `whiteboard.js`: one button
@@ -132,16 +135,15 @@ The zoom buttons use `host.toolbar.set` with `placement: 'titlebar'` and are hea
 The toolbar is the host's (`host.ui.viewSwitch`, `host.ui.toolbarButton`, `host.menu.show`); the module adds no control of
 its own. `whiteboard.js` builds it, left to right:
 
-- The tool switch holds every registered tool that is neither `apart` nor in a `group` (Select, Pen, Note, Text, Rectangle,
-  Ellipse, Line, Arrow: eight, which is the most it holds).
-- A tool marked `apart` is its own on/off button beside the switch (Hand, Timer). Its key and its button turn it on, and
-  again off, back to the tool used before it (`toolBefore`).
+- One switch named **Tools** (`host.ui.viewSwitch` with `label: 'Tools'`) holds every registered tool that is neither `apart` nor in a `group` (Select, the Hand, Pen, Note, Text, Rectangle, Ellipse, Line, Arrow), and on a coarse pointer a last choice, **Select many**. That is up to ten choices; a switch holds 12. The Hand is a tool with a `mode`, not an `apart` button: its key (H) and its choice turn it on, and again off, back to the tool used before it (`toolBefore`, `goesBack`).
+- A tool marked `apart` is its own on/off button after the switch (the Timer). Its key and its button toggle it back to the tool used before.
 - A tool with a `group` is a choice in that group's menu, opened by one button (`GROUPS` in `whiteboard.js`): **Paint**
   (Fill, then the Pen, Marker, Brush and Highlighter) and **Flowchart** (the Connector, the shapes, then the Table). The
   Pen is in the switch and is also offered in the Paint menu. The button is on while one of the group's tools is the tool.
   `split` puts a line in the menu after that many choices.
-- Undo and Redo, then **Text size and alignment** and **Line style and arrowheads** (each opens a menu), then **Select many**
-  (a coarse pointer only) and Delete (made when blocks are picked), and **Snap to grid** last (made again after Delete).
+- Undo and Redo, then **Text size and alignment** and **Line style and arrowheads** (each opens a menu), then Delete (made when blocks are picked) and Arrange.
+- **Snap to grid** is a `host.ui.toolbarButton` with `zone: 'end'`, an icon-only button in the module's right zone, so the host holds it at the far right and never folds it into More (a module's first two icon-only right-zone buttons are held; see [architecture-module-window](architecture-module-window.md), "Zones in a module's own row"). It is made again after Delete appears.
+- On a narrow board the host folds the row: the last choices of **Tools** go into More first (the tool in use always stays in the row), then the other buttons.
 
 A tool declares `edits: true` when it changes the board; `policy.canUseTool` leaves it out for someone who may only look.
 
@@ -273,7 +275,7 @@ One value for the whole board, shared by everyone who sees it, saved whole under
 - **Guides** are drawn by the renderer while a move is dragged, and only when Snap to grid is off and Alt is not held (`guiding`); the grid wins when Snap is on. Not for a resize or a line's end.
 - **Lock** is `locked: true` on any block. `policy.canChange` and `canDelete` are false for it; `canLock` is true for anyone who may edit. A locked block can still be picked, copied, duplicated and saved as an image. Its mark is a padlock at the top right corner of its box, and its spoken description says "locked". Ctrl or Cmd L locks all picked blocks when any is unlocked, else unlocks them.
 - **Group** is a `group` id on each member (`wbGroupId`, `wbGroupOf`, `wbGroupsOf`). Ctrl or Cmd G groups the picked blocks, with Shift ungroups. Picking one member picks the group. `wbCopies` in `lib-h-clipboard` gives each group copied one new id, and a block copied without the rest of its group has none. Resizing a group as one selection is not built.
-- The toolbar's tail is Delete, Arrange, then Snap to grid (`toolbarTail()`). Tests: `check-whiteboard-arrange.mjs`. Ctrl+L and Ctrl+G were tested with synthetic key events, not in a real browser.
+- The toolbar's tail is Delete, then Arrange (`toolbarTail()`); Snap to grid is in the right zone. Tests: `check-whiteboard-arrange.mjs`. Ctrl+L and Ctrl+G were tested with synthetic key events, not in a real browser.
 
 ## Frames and Present
 
@@ -286,10 +288,16 @@ A frame is a block type with `container: true` (`lib-e-block-frame.js`; its tool
 - **Menus.** A block's own colour reads **Default** (the paint choice `usual` is shown as Default, also in the text size and alignment menus).
 - Tests: `check-whiteboard-frames.mjs` (15 cases).
 
+## The overview and Find
+
+**Overview** (`lib-n-overview`, Show overview and Hide overview in the title bar's menu). A small map at the bottom right of the board: each block's box (from `wbRect`, so a connector has none), frames as outlines, and the view as an accent rectangle. A press puts the middle of the view there at the same zoom (`wbOverviewCentre`); dragging the rectangle moves the view. At most 2000 boxes are drawn, the lowest by z first. It is 160 by 110 CSS pixels, 120 by 84 in a narrow module (under 520px). It is hidden while presenting, on an empty board, and in a module smaller than 360 by 320 (`wbOverviewHidden`). The choice is each person's own, in `localStorage` under `whiteboard-overview` (`'1'` is shown), never in the board's data; where storage is not available it lasts until the page goes. It is a picture to the keyboard and a screen reader (no tab stop, no key). It only reads, so a viewer can use it.
+
+**Find** (`lib-o-find`, **Find** in the title bar's menu or the `/` key). `wbFindWords` gives the plain words of a block: notes, text and shapes through the markup's plain reading, a table cell by cell (each cell on its own line, so a match never runs across two), a frame's title, a connector's label and a picture's description; a timer or a drawing has none. Matching folds case and accents (`wbFindFold`), searches for at most 100 characters, counts a block once however often the words are in it, and goes in reading order (top to bottom, then left to right). Changes to the board are searched again 250 ms after the last one, keeping the current match, else the one in its place. The matches are outlined on a layer of their own, the current one stronger; the view glides to a match out of sight and never zooms in; what is picked is kept. The `/` key is taken only when the board has the keyboard and nothing is being edited (`e.isComposing`, ctrl, meta and alt are ignored), so it still types in a note editor or a table cell. Escape or Close returns the keyboard to the board. Find is off while presenting. A screen reader hears "Match 2 of 7: <the first 80 characters of the words>".
+
 ## Checks
 
 The module's own tests are in `modules/whiteboard/test/`: `check-whiteboard-sync.mjs`, `-history.mjs`, `-pictures.mjs`,
-`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs`, `-export.mjs`, `-background.mjs`, `-arrange.mjs` and `-frames.mjs`. `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
+`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs`, `-export.mjs`, `-background.mjs`, `-arrange.mjs`, `-frames.mjs`, `-minimap.mjs` (the overview's sums) and `-find.mjs` (Find's words, matching, order and count). `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
 them inside `npm run check`. They are not in the module's zip. The right-drag and paste tests send synthetic events; a
 headless browser has no computer clipboard and the suite has not run on Windows. The export test covers the sums only
 (which blocks, the part of the board, the size, the file's name); drawing the picture needs a browser and is not in the

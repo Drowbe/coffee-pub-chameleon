@@ -44,7 +44,7 @@ The frame has a variant for where it sits: `window` (edge, corner and shadow; a 
   menu starts with **Clear filters**. A toolbar button may be placed in the title bar or its menu instead of the row.
   When the row is too narrow the frame folds it in a fixed order and cuts nothing: the Filters button, then the
   switch to icons, secondary buttons to icons, the search to a magnifier that opens over the row, then whole controls
-  into **More**. Not window-level (that is the title bar) and not the add actions (that is the **+**). See
+  into **More**. A switch too wide for the row folds only its last choices into **More**; the chosen one always stays in the row, and the whole switch moves only when even the chosen choice alone does not fit (`foldChoices` in `public/module-frame.js`). A switch holds up to 12 choices (`TOOLBAR_LIMITS.tabs`) and is named **Tools** to a screen reader and in **More**, unless the module gives it a `label`. Not window-level (that is the title bar) and not the add actions (that is the **+**). See
   "Reusable toolbar tools" below before building one from raw items.
 - **Content.** The module's frame or in-page root. This is the section that scrolls, and the drop target for a
   dragged ref, either as a whole or onto specific objects within it. A docked module's content fills the whole
@@ -55,7 +55,9 @@ The frame has a variant for where it sits: `window` (edge, corner and shadow; a 
   1.5 seconds. It is not the space's status strip, which is the header's
   ([architecture-canvas](architecture-canvas.md), "The status strip").
 
-**Zones on a destination page.** A module never chooses where its toolbar items go. A host page that draws a toolbar of its own can give an item a `zone`: `start` or `end`. An item in the `end` zone is drawn after the search and **Filters**, at the row's far right, carries `mf-zone-end`, and with `pin: true` is never moved into **More**; giving any item a zone also keeps the items in the order the page gave them, instead of switches first. The Calendar destination uses this (`zones: true` in `public/destination.js`): on the left the date group (the Calendar's title, back, **Today**, forward), then the **Month | Week | Day** switch; at the far right the panel's switch (**Agenda | To-do**), with the shown panel's own items before it. **Filters** sits between, after the free space. `cleanToolbarItems` and `frameToolbar` in `public/module-chrome.js` keep a `zone` only on an item that carries a `send` function, which only a host page can give, and `tools/check-conformance.mjs` measures the zones.
+**Zones on a destination page.** A module never chooses where its toolbar items go. A host page that draws a toolbar of its own can give an item a `zone`: `start` or `end`. An item in the `end` zone is drawn after the search and **Filters**, at the row's far right, carries `mf-zone-end`, and with `pin: true` is never moved into **More**; giving any item a zone also keeps the items in the order the page gave them, instead of switches first. The Calendar destination uses this (`zones: true` in `public/destination.js`): on the left the date group (the Calendar's title, back, **Today**, forward), then the **Month | Week | Day** switch; at the far right the panel's switch (**Agenda | To-do**), with the shown panel's own items before it. **Filters** sits between, after the free space. `cleanToolbarItems` and `frameToolbar` in `public/module-chrome.js` keep a `pin` only on an item that carries a `send` function, which only a host page can give, and `tools/check-conformance.mjs` measures the zones.
+
+**Zones in a module's own row.** A module may also say `zone: 'end'` (exactly `start` or `end`; anything else is dropped) on `host.ui.toolbarButton`, `host.ui.viewSwitch` and the items of `host.toolbar.set`. Its right-zone items sit at the far right, after the search and **Filters**, in the order made. A module cannot set `pin` and cannot change the order of the rest of the row. So that a module can never cut its own row, only its first two icon-only buttons in the right zone (`MODULE_PINS` in `public/module-chrome.js`; the Whiteboard's **Snap to grid** is one) are held in place and never go into **More**; every other right-zone item folds into **More** like the left zone's, and a right-zone switch folds its own choices first. In a destination page, `partItems` in `public/destination.js` drops a module's `pin` and `zone`, so its items stay a module's. A switch's `label` is cleaned by `switchName` (plain text, spaces collapsed, at most 30 characters; ignored when empty, not a string or containing `<` or `>`; direction and zero-width characters removed). Only the switch's name is cleaned of those characters; other labels are not. Known limit: at a width of 110px with three or more right-zone icon buttons the row overflows by 12px (reported by the build; not fixed).
 
 The rules for cleaning what a module sends, and for what each call becomes, are pure functions in
 `public/module-chrome.js` (`cleanAddEntries`, `addPlan`, `frameAdd`, `cleanToolbarItems`, `frameToolbar`,
@@ -111,12 +113,12 @@ invent its own filter row from scratch. Where a pattern repeats, it gets a real 
 instead of every module hand-rolling the same item array, the same signature-diffing (so a redraw does not
 call `toolbar.set` when nothing actually changed) and the same `host.on('toolbar', ...)` wiring.
 
-`host.ui.viewSwitch({ id, options, value, onChange })` is the first of these: a labelled view or filter
+`host.ui.viewSwitch({ id, options, value, onChange, zone?, label? })` is the first of these: a labelled view or filter
 switch, the toolbar's most common tool. It owns the diffing and the event listener; a module calls
 `switcher.set(value, options?)` on every render and it only redraws when the value or a label actually
 changed (an open count in one option's label, say). Four modules were duplicating this by hand before it
 existed (Polls, Calendar, To-do, Planner, each with its own `headerSig`/`syncHeader` pair) -- all four now
-call the one helper. Reach for it, or add a new `host.ui.*` helper alongside it, before writing a second
+call the one helper. Its name (`label`) is what a screen reader reads and the heading in **More**: **Tools** unless the module gives one. The bundled modules name theirs for what it chooses: Research **Whose** and **Layout**, Places **Whose**, Polls and To-do **Show**, and Calendar, the Vault and Budget **View**; Travel and the Whiteboard keep **Tools**. Reach for it, or add a new `host.ui.*` helper alongside it, before writing a second
 copy of that boilerplate; see "Shared tools" in `api-module-sdk.md` for the same rule applied elsewhere in
 the SDK.
 
