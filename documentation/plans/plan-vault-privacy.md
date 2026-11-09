@@ -4,12 +4,9 @@
 permission and the check; experience-design draws the Vault's new controls on the Prototype first, then builds them;
 bug-fixes closes the small leaks; quality-assurance reads the result as a security change; content-manager documents.
 
-**Status:** approved by Thomas 2026-11-06; slice 1 (server rule) started 2026-11-06 as a HELD build for Thomas with a
-security read before any merge; slice 2 (Prototype of the Vault controls) started 2026-11-06; nothing merged. Thomas's
-request: "one member might not be able to view another member's files"; he chose per-file "share with chosen people".
-On 2026-11-06 he also chose the suggestions for questions a, f and g (decisions 9 to 11). This plan amends decision 13
-of [plan-attachments-vault](plan-attachments-vault.md) and overturns the "an owner may not open someone's Only me file"
-part of decisions 3 and 4 of the 2026-10-15 attachments plan (see What it overturns).
+**Status:** approved by Thomas 2026-11-06. Built and on main: slice 1 (the server rule; #424) and slices 2 and 3 (the Prototype, and the Vault's screens, Vault 0.4.2; #507, 2026-11-09). Not built: slice 4 in full (the server does not yet end a share link when its maker loses sight of a file, and the export, erase and leaver rules and the gone-link fix of points 10 and 15 to 17 were not checked or built here; part of its links and AI points came with slice 1) and slice 5 (the last security read of the whole and its documentation). Documentation of slices 1 to 3 is in [userguide-vault](../userguides/userguide-vault.md), [api-modules](../api/api-modules.md) and [architecture-modules](../architecture/architecture-modules.md). Thomas's request: "one member might not be able to view another member's files"; he chose per-file "share with chosen people". On 2026-11-06 he also chose the suggestions for questions a, f and g (decisions 9 to 11). This plan amends decision 13 of [plan-attachments-vault](plan-attachments-vault.md) and overturns the "an owner may not open someone's Only me file" part of decisions 3 and 4 of the 2026-10-15 attachments plan (see What it overturns).
+
+**Built in slice 3, and what remains of it** (read as code on main at 109f161, 2026-11-09). Built: the marks under a file's name, the three choices in **Add files**, the people picker, the file window's **Who can see this** control and its owner notice, the question before a change that takes sight from people, the share sheet's sentence for a restricted file, and the Roles row **See every file**. Remaining, and recorded in [known-issues](../known-issues.md): the server sends `visibility` only to the adder and owners, so the read-only line for people a file is shared with, **Not shared with you** for a moderator who holds **See every file**, and the share sheet's sentence for a person on a chosen list never show; the server has no dry run of a change, so the question's numbers are the page's estimate; **File removed** is not returned for a link to a restricted file that was deleted (decision 10, slice 4); the picker shows no role words; and closing **Add files** while files are going up and opening it again resets the choice to Everyone and locks it until the queue ends.
 
 ## What it is today
 
@@ -212,9 +209,9 @@ Prototype, not a contract.
 
 | # | Slice | Size | Agent | Depends on | Held |
 |---|---|---|---|---|---|
-| 1 | The server rule: stored field, `fileVisible`, the one door, every route in points 1 to 9 and 12 of the list above, the permission `see_all`, `tools/check-vault-visibility.mjs` | M to L | server-development | none | **Held for Thomas.** A quality-assurance security read, on a larger model, before any merge |
-| 2 | The Prototype of the Vault's new controls (Add files line, people picker, file window, row mark) | S | experience-design | none | Thomas looks and locks the design |
-| 3 | The Vault screens from the locked Prototype, and a module version bump | M | experience-design | 1 and 2 | |
+| 1 | Built (#424). The server rule: stored field, `fileVisible`, the one door, every route in points 1 to 9 and 12 of the list above, the permission `see_all`, `tools/check-vault-visibility.mjs` | M to L | server-development | none | **Held for Thomas.** A quality-assurance security read, on a larger model, before any merge |
+| 2 | Built. The Prototype of the Vault's new controls (Add files line, people picker, file window, row mark) | S | experience-design | none | Thomas looks and locks the design |
+| 3 | Built (#507, Vault 0.4.2). The Vault screens from the locked Prototype, and a module version bump | M | experience-design | 1 and 2 | |
 | 4 | Links, AI, share, export, erase and leaver handling: points 10, 11 and 13 to 17; the gone-link fix | M (server-development), S (bug-fixes for the gone-link fix) | server-development, bug-fixes | 1 | |
 | 5 | Security review of the whole, documentation (userguide-vault, api, the plan status) and the changelog | S | quality-assurance, then content-manager | 1 to 4 | |
 

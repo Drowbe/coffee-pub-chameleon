@@ -63,7 +63,7 @@ The open issues labelled `priority: now` or `priority: next`:
 
 ## In progress
 
-- **The Vault's privacy interface** ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 2 and 3): the Prototype is locked and the screens are being built. Held: nothing is merged to main until Thomas says so.
+- **The Vault's privacy, what is left** ([plan-vault-privacy](plans/plan-vault-privacy.md)): the screens are built (Vault 0.4.2). Left: slice 4 (the server ends a share link when its maker loses sight of a file; "File removed" only for those who could see a deleted restricted file; export, erase and leaver rules), the server sending `visibility` to people who need it so the "Shared with you and others." line, **Not shared with you** for a moderator with **See every file** and the share sheet's sentence show for them, a server preview of a change so the narrowing question's numbers are exact, role words in the people picker, and keeping the choice when **Add files** is closed and opened during an upload. See [known-issues](known-issues.md).
 - **The host console redesign** ([plan-host-console](plans/plan-host-console.md)): the Prototype is locked and the console is being built. Held for Thomas.
 
 - **The leftovers `check-names` still allows.** The old words kept on purpose are listed in `tools/check-names-allow.json`; the clean-up of the ones that are not deliberate is under way, and each entry that goes is removed from the list. Do not add to it for new code.

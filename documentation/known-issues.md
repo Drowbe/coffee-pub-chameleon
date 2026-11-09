@@ -30,17 +30,20 @@ These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
 
-## Vault: who can see a file is only half built
+## Vault: who can see a file has known gaps
 
-The server now decides which Vault files a person may see ([plan-vault-privacy](plans/plan-vault-privacy.md), slice 1, held, not yet released). No screen sets it yet, so every file is still seen by everyone in the space. These limits are known and accepted until the later slices:
+The server decides which Vault files a person may see, and the Vault 0.4.2 has the screens to set it ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 1 to 3, on main; slice 4 is not built). [Vault](userguides/userguide-vault.md), "Who can see a file", describes what works. These limits are known and accepted until the later slices:
 
 - **Space full.** The "space is full" refusal and the storage total can tell a person that files they cannot see take space. Thomas decided to accept this and document it.
-- **Share links stay open.** Until slice 4, a share link or public link to a file keeps working after the file is narrowed. Its maker, an owner or the admin can turn it off.
+- **Share links stay open.** A share link or public link to a file keeps working after the file is narrowed, until its end or until it is turned off. Its maker, an owner or the admin can turn it off. The share sheet and the narrowing question say such a link "ends"; the server does not do that yet (`shareMakerCan` checks the maker's permissions, not their sight of the file). Workaround: turn off the share links of a file you narrow.
 - **Empty share.** A share link whose files are all hidden from its maker shows to them as "0 files", and its **Edit** button answers 404. How it should look is for Thomas to decide.
 - **Held objects.** When a hidden file is linked to an object, people who can see that object are still told that it changed. They can tell something changed on it, not what.
 - **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
-
-Workaround: none needed for now, as nothing sets a visibility yet.
+- **Some words and marks do not show for ordinary people.** The server sends a file's `visibility` only to the person who added it, owners and the admin. So the read-only line "Shared with you and others." in a file window, **Not shared with you** for a moderator who holds **See every file**, and the share sheet's sentence about a restricted file for a person who is on a chosen list, are in the code and are never drawn for them. Owners, the admin and the adder see everything described in the guide. No workaround is needed; nothing is wrongly shown.
+- **The question's numbers are an estimate.** The server has no dry run of a change, so **Change who can see this file?** counts the people who lose sight, the links and the share links from what the page can read. A moderator with **See every file** keeps sight and may still be named.
+- **"File removed" is not returned after a restricted file is deleted.** Decision 10 of the plan (only people who could see the file see "File removed") is slice 4 and not built.
+- **The people picker shows no role words.** It lists names and avatars and marks owners "Always can"; it does not say who is a moderator or a member.
+- **Closing and reopening Add files while files go up.** The choice resets to Everyone and the choices stay off until the queue ends, even though the files still going up keep the choice they were picked with.
 
 ## The host console sends no framing headers
 
