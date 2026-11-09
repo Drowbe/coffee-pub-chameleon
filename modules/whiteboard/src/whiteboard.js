@@ -1811,6 +1811,9 @@
     const files = ours ? [] : filesOf(data);
     e.preventDefault();
     if (files.length && pictures) { const p = hover && renderer.toBoard(hover.cx, hover.cy); addPictures(files, p && { x: p.x, y: p.y }); return; }
+    // Rows and columns from a spreadsheet (an HTML table's words, or lines of tab-separated text): a table (lib-k).
+    const grid = ours ? null : gridOf(data);
+    if (grid && policy.canCreate()) { pasteTable(grid); return; }
     if (!ours && (files.length || clipMarked)) return; // something copied elsewhere since: not the blocks
     paste();
   });
