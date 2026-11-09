@@ -433,7 +433,7 @@
       label: def.textLabel || 'Words',
       max: def.textMax || 0,
       // Words that take markup get the formatting bar (lib-d).
-      bar: def.markup ? { layer: surface, icon: iconSvg, mod: MOD } : null,
+      bar: def.markup ? { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null } : null, // keys named only where there are keys
     });
     editing = { id, finish: handle.finish, fresh };
   }
