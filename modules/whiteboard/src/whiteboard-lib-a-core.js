@@ -141,7 +141,10 @@
   // picked, beside its resize handles ([{ id, x, y }], each a point relative to the box's top left corner), and
   // grip(block, id, at) -> the fields to change while one of them is dragged to `at` (a point on the board); saved once,
   // on the drop. actions?(block) -> entries of its own for the right-click menu ([{ id, label, icon, fields }]): a choice
-  // sets those fields, one save.
+  // sets those fields, one save. exported?(block, el, ctx) -> changes the copy of its element (el) that is saved as a
+  // picture or printed (lib-l), and may answer a promise: a picture puts its upload in as a data URL, a timer leaves out
+  // its controls, a table its active cell. ctx: { live (printing: the copy stays in the page), scale (pixels per board
+  // unit), picture(upload, thumb) -> a promise of a data URL, or null }. Without it the copy is drawn as it is shown.
   // A block made of cells (a table, lib-e-block-table.js) has edit: 'cells' (the page edits one cell at a time, see
   // whiteboard.js "cells"), role (its element's role: 'group', round a table of its own, rather than 'button'), and more of
   // the hooks above: grips(block, el) (its element, to measure what is drawn; a grip may have kind 'col' | 'row' (a grab
