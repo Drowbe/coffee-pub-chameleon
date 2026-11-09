@@ -290,7 +290,7 @@ export function createModuleFrame(opts = {}) {
   const fire = (data) => onAction({ area: 'toolbar', ...data });
   function drawSwitch(it) {
     // A radio group (the keyboard is the SDK's: public/sdk/host.js, hostSwitch): one Tab stop, the arrows move and choose.
-    const seg = el('div', 'mf-switch', { role: 'radiogroup', 'aria-label': it.label || 'View' });
+    const seg = el('div', 'mf-switch', { role: 'radiogroup', 'aria-label': it.label || 'Tools' });
     const stop = it.options.some((o) => o.id === it.value) ? it.value : it.options[0]?.id;
     for (const o of it.options) {
       const b = el('button', 'mf-switch-btn', { type: 'button', role: 'radio', 'aria-checked': String(o.id === it.value), tabindex: o.id === stop ? '0' : '-1', 'aria-label': o.label || o.icon });
@@ -531,7 +531,7 @@ export function createModuleFrame(opts = {}) {
     if (it.type === 'title' || it.type === 'text') return [{ heading: it.text }];
     if (it.type === 'search') return [{ label: it.label || 'Search', icon: 'magnifying-glass', onPick: () => win.setTimeout(() => startSearching(it._input), 0) }];
     if (it.type === 'switch' || it.type === 'tabs' || it.type === 'quickset') {
-      return [{ heading: it.label || (it.type === 'switch' ? 'View' : it.type === 'quickset' ? 'Show' : 'Tabs') }, ...it.options.map((o) => ({
+      return [{ heading: it.label || (it.type === 'switch' ? 'Tools' : it.type === 'quickset' ? 'Show' : 'Tabs') }, ...it.options.map((o) => ({
         label: o.label, ...(o.icon ? { icon: o.icon } : {}), ...(o.regular ? { regular: true } : {}), radio: true, checked: o.id === it.value, badge: o.count,
         onPick: () => { it.value = o.id; fire({ id: it.id, value: o.id }); redraw(); },
       }))];

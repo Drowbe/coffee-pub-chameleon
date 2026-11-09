@@ -210,7 +210,8 @@ export function topmostAt(candidates, x, y) {
 // What host.toolbar.set sent, cleaned (plan-unified-layout.md, "The contract"): at most 16 items, each one of
 //   { type: 'title', text }                                 the row's title (Calendar's "October 2026")
 //   { type: 'text', text }                                  a quieter note in the row
-//   { type: 'tabs', id, value, options: [{ id, label?, icon?, regular?, iconOnly? }] }   a segmented view switch
+//   { type: 'tabs', id, value, label?, options: [{ id, label?, icon?, regular?, iconOnly? }] }   a segmented switch, up to 12 options;
+//                                                           `label` names it (its accessible name and its heading in "More"), plain text of at most 30 characters, else "Tools"
 //   { type: 'search', id, value?, placeholder?, label? }    the row's search, in its fixed place at the end
 //   { type: 'chips', id, label?, single?, value?, options: [{ id, label, icon?, tint?, note?, count?, on?, default? }] }
 //                                                           a group of filters in the row's one Filters menu, under
@@ -223,7 +224,7 @@ export function topmostAt(candidates, x, y) {
 //                                                           `overflow` always in the row's "More"
 // Anything else is dropped. A function `send` on an item (the host page's own items, never a module's: a module's go through
 // postMessage or this cleaning first) is kept, so the page can mix its own items into a part's row.
-export const TOOLBAR_LIMITS = { items: 16, tabs: 8, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
+export const TOOLBAR_LIMITS = { items: 16, tabs: 12, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
 // `zone` (exactly 'start' or 'end'; anything else is left out): a module's toolbar item goes in the row's left zone ('start',
 // the default) or its right zone ('end', after the search and Filters, at the far right). A module's right-zone item is held
 // in place when the row is narrow (the left zone folds and goes into "More" first); `pin` is the host page's alone, only an
@@ -235,6 +236,9 @@ const pageZone = (i) => {
   const zone = i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {};
   return { ...zone, ...(page ? (i.pin === true ? { pin: true } : {}) : zone.zone === 'end' ? { pin: true } : {}) };
 };
+// A switch's own name: plain text only, short; a non-string, an empty one or one with "<" or ">" in it is left out (the row says "Tools").
+export const SWITCH_LABEL = 'Tools';
+const switchName = (v) => { const t = typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, TOOLBAR_LIMITS.label) : ''; return t && !/[<>]/.test(t) ? t : ''; };
 export function cleanToolbarItems(items) {
   const s = (v, n) => String(v ?? '').slice(0, n);
   const id = (v) => s(v, 40);
@@ -251,7 +255,7 @@ export function cleanToolbarItems(items) {
         id: id(o?.id), label: s(o?.label, TOOLBAR_LIMITS.label), icon: icon(o?.icon), regular: Boolean(o?.regular), iconOnly: Boolean(o?.iconOnly),
         ...(Number.isInteger(o?.count) && o.count >= 0 ? { count: o.count } : {}), // a number that stays visible when the words fold away
       })).filter((o) => o.id && (o.label || o.icon));
-      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...own, ...pageZone(i) });
+      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...(switchName(i.label) ? { label: switchName(i.label) } : {}), ...own, ...pageZone(i) });
       continue;
     }
     if (type === 'search') {
@@ -385,7 +389,7 @@ export function frameToolbar(clean) {
   const zoned = (clean || []).some((i) => i.zone && i.send); // only a host page's zones fix the order
   const place = (e, i) => (i.zone === 'end' ? tail : start).push(i.zone === 'end' ? { ...e, zone: 'end', ...(i.pin ? { pin: true } : {}) } : e);
   for (const i of clean || []) {
-    if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: 'View', value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);
+    if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: i.label || SWITCH_LABEL, value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);
     else if (i.type === 'title' || i.type === 'text') place({ type: i.type, text: i.text }, i);
     else if (i.type === 'search') end.push({ type: 'search', id: i.id, label: i.label, placeholder: i.placeholder, value: i.value, ...(i.send ? { send: i.send } : {}) });
     else if (i.type === 'chips') groups.push({ id: i.id, heading: i.label, single: i.single, ...(i.single ? { value: i.value } : {}), options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) });

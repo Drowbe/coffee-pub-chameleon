@@ -2389,9 +2389,11 @@
       // toolbar, drawn in the order they were made, and any one changing redraws the row.
       // Each choice shows its icon and its word, and only its icon while the switch's row is too narrow for the words
       // (the word stays its tooltip and accessible name); a choice with no icon always shows its word.
+      // `label` names the switch (its accessible name and its heading in the "More" menu); the host's word is "Tools". Plain text, 30 characters
+      // at most; anything else (HTML included) is ignored. Up to 12 options.
       // `zone: 'end'` (here and on host.ui.toolbarButton, and on the items of host.toolbar.set) puts a switch in the row's right zone.
       // The switch is always in the toolbar: the host draws that row wherever the module is drawn.
-      viewSwitch: ({ id, options, value, onChange, zone }) => {
+      viewSwitch: ({ id, options, value, onChange, zone, label }) => {
         let current = value;
         let opts = options;
         const off = host.on('toolbar', (e) => {
@@ -2399,7 +2401,7 @@
           current = e.value;
           onChange(e.value);
         });
-        const mine = { item: () => ({ type: 'tabs', id, value: current, options: opts, ...zoneOf(zone) }) };
+        const mine = { item: () => ({ type: 'tabs', id, value: current, options: opts, ...(typeof label === 'string' && label.trim() ? { label } : {}), ...zoneOf(zone) }) };
         switches.push(mine);
         drawSwitches();
         return {
