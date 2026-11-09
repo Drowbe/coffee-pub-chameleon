@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['blockTypes', 'wbClean', 'createPictures', 'wbSniffType', 'createHistory', 'wbApplyChanges'];
+const NAMES = ['blockTypes', 'tools', 'wbClean', 'createPictures', 'wbSniffType', 'createHistory', 'wbApplyChanges'];
 
 let passed = 0;
 const fails = [];
@@ -119,6 +119,61 @@ const cases = {
     q.add([fileOf('wrong.png', 'image/png', JPEG), fileOf('anim.png', 'image/png', GIF), fileOf('odd.webp', 'image/webp', [1, 2, 3, 4])], { x: 0, y: 0 });
     await settle();
     check(JSON.stringify(prepared) === JSON.stringify(['image/jpeg', 'image/gif', 'image/webp']), `the bytes win over the name; no known bytes: the name's type (got ${JSON.stringify(prepared)})`);
+  },
+  async 'the picture block keeps only an upload id the server could have made'() {
+    need('wbClean');
+    const pic = (upload) => lib.wbClean({ id: 'p', type: 'image', x: 0, y: 0, w: 100, h: 80, upload });
+    check(pic(UP) && pic(UP).upload === UP && pic('0123456789abcdef01234567'), 'a 24-character lower-case hex id is kept');
+    const bad = { 'upper case': 'A'.repeat(24), 'mixed case': `${'a'.repeat(23)}F`, '23 long': 'a'.repeat(23), '25 long': 'a'.repeat(25), 'not hex': 'g'.repeat(24), 'a path': '../../../../etc/passwd', 'a path of 24': `../${'a'.repeat(21)}`, 'with a newline': `${'a'.repeat(24)}\n`, empty: '', null: null, missing: undefined, number: 123456789012345678901234, array: [UP], object: { id: UP }, boolean: true };
+    for (const [what, upload] of Object.entries(bad)) check(pic(upload) === null, `an upload id that is ${what}: no block`);
+  },
+  async 'the picture block: description one line, at most 300 characters; size inside the limits'() {
+    need('wbClean');
+    const pic = (f) => lib.wbClean({ id: 'p', type: 'image', x: 0, y: 0, w: 100, h: 80, upload: UP, ...f });
+    check(pic({ alt: 'a\r\nharbour\tat dusk' }).alt === 'a harbour at dusk', 'line breaks and tabs in the description become spaces');
+    check(pic({ alt: 'x'.repeat(301) }).alt.length === 300 && pic({ alt: 'x'.repeat(300) }).alt.length === 300 && pic({ alt: 'y'.repeat(5000) }).alt === 'y'.repeat(300), 'the description is cut at 300 characters');
+    check(pic({ alt: 42 }).alt === '' && pic({ alt: null }).alt === '' && pic({ alt: ['x'] }).alt === '', 'a description that is not words is none');
+    const small = pic({ w: 3, h: -50 });
+    check(small.w === 24 && small.h === 24, `too small: at least 24 by 24 (got ${small.w} by ${small.h})`);
+    const big = pic({ w: 4000, h: 3999.96 });
+    check(big.w === 4000 && big.h === 4000, `the largest size is kept, rounded (got ${big.w} by ${big.h})`);
+    const odd = pic({ w: 4001, h: 'tall' });
+    check(odd.w === 320 && odd.h === 240, `past the largest size, or not a number: the usual 320 by 240 (got ${odd.w} by ${odd.h})`);
+    const nan = pic({ w: NaN, h: Infinity });
+    check(nan.w === 320 && nan.h === 240, 'NaN and Infinity: the usual size');
+    check(pic({ w: 100.26 }).w === 100.3, 'rounded to one decimal');
+  },
+  async 'a picture\'s corner keeps its shape, without Shift and with Snap to grid on'() {
+    need('tools', 'wbClean');
+    const select = lib.tools.get('select');
+    const run = (type, extra, handle, mx, my) => {
+      const start = lib.wbClean({ id: 'p', type, x: 100, y: 100, w: 200, h: 100, ...extra });
+      const changes = [];
+      const ctx = {
+        policy: { canChange: () => true },
+        selected: () => 'p',
+        get: () => start,
+        hold() {},
+        scale: () => 1,
+        snapping: () => true,
+        change: (id, patch) => changes.push(patch),
+        select() {}, isSelected: () => true, selection: () => ['p'], many: () => false,
+      };
+      const ev = { shiftKey: false };
+      select.down({ x: 0, y: 0, sx: 0, sy: 0, id: 'p', handle, pointerType: 'mouse', event: ev }, ctx);
+      select.move({ x: 0, y: 0, sx: mx, sy: my, id: 'p', handle, pointerType: 'mouse', event: ev }, ctx);
+      const out = changes[changes.length - 1];
+      if (select.cancel) select.cancel(ctx); // let go of the tool's hold (it puts the block back: not looked at)
+      return out;
+    };
+    for (const [handle, mx, my] of [['se', 90, 7], ['nw', -13, 60], ['ne', 50, 50], ['sw', -300, 2]]) {
+      const c = run('image', { upload: UP }, handle, mx, my);
+      check(c && Math.abs(c.w / c.h - 2) < 1e-9, `picture, corner ${handle} dragged ${mx},${my}: still 2 to 1 (got ${c && `${c.w} by ${c.h}`})`);
+    }
+    const tiny = run('image', { upload: UP }, 'se', -500, -500);
+    check(tiny && tiny.h >= 24 && Math.abs(tiny.w / tiny.h - 2) < 1e-9, `picture made as small as it goes: at least 24 high, still 2 to 1 (got ${tiny && `${tiny.w} by ${tiny.h}`})`);
+    const r = run('rect', {}, 'se', 90, 7);
+    check(r && Math.abs(r.w / r.h - 2) > 0.1, `a rectangle's corner without Shift does not keep its shape (the check can tell; got ${r && `${r.w} by ${r.h}`})`);
   },
 };
 

@@ -7,16 +7,16 @@
  * new step clearing Redo, the cap, and what the person is told (wbUndoNote). It runs the module's own code: the block
  * format and the block types (lib-a, lib-e-*: wbClean and each type's `linked`), and lib-g's createHistory and
  * wbApplyChanges, the same apply the page uses, against a board kept in a Map. No network, no sleeps.
- * Usage: node tools/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js]. Exits 1 on any failure; a lib
- * that lacks one of the functions fails every case that needs it.
+ * Usage: node tools/check-whiteboard-history.mjs [path to whiteboard-lib-g-history.js; lib-a and lib-e-* are read from its
+ * folder]. Exits 1 on any failure; a lib that lacks one of the functions fails every case that needs it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = path.join(root, 'modules/whiteboard/src');
-const file = path.resolve(process.argv[2] || path.join(src, 'whiteboard-lib-g-history.js'));
+const file = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src/whiteboard-lib-g-history.js'));
+const src = path.dirname(file); // the block format and block types are read from beside it
 const NAMES = ['createHistory', 'wbMergeBack', 'wbApplyChanges', 'wbUndoNote', 'wbClean', 'blockTypes'];
 
 let passed = 0;
@@ -151,6 +151,17 @@ const cases = {
     const r = p.undo();
     const b = p.board.get('r');
     check(b.x === 80 && b.y === 50 && b.w === 250 && b.h === 150 && r.kept === 1, `rectangle top-left resize, B moves, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w', 'h')})`);
+  },
+  async 'linked: A resizes a picture from a corner, B moves it, A undoes: B\'s picture stays'() {
+    const p = page();
+    const pic = { type: 'image', x: 100, y: 100, w: 200, h: 100, upload: 'c'.repeat(24) };
+    p.theirs('i', pic);
+    p.mine('i', { x: 60, y: 80, w: 240, h: 120 }); // A drags the top-left corner (the shape kept)
+    await turn();
+    p.theirs('i', { x: 300, y: 80 }); // B moves it along
+    const r = p.undo();
+    const b = p.board.get('i');
+    check(b.x === 300 && b.y === 80 && b.w === 240 && b.h === 120 && r.kept === 1, `picture corner resize, B moves, A undoes: left as B has it (got ${pick(b, 'x', 'y', 'w', 'h')}, kept ${r.kept})`);
   },
   async 'linked: A moves a note, B resizes it from the bottom-right, A undoes: the note goes back, B\'s size stays'() {
     const p = page();
