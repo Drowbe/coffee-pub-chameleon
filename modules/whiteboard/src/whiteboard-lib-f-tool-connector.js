@@ -16,7 +16,6 @@
       icon: 'arrows-turn-right',
       key: 'c',
       order: 90,
-      group: 'flowchart',
       edits: true,
       makes: 'connector',
       cursor: 'crosshair',

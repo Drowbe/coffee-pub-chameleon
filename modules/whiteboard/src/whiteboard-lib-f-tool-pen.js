@@ -1,14 +1,13 @@
   // ---- whiteboard-lib-f-tool-pen.js: draw freehand, with a pen, a marker or a brush ------------------------------------
   // Press and drag to draw. The stroke shows as it is drawn and is saved whole, every point, when the pen lifts; the tool
-  // stays on for the next stroke. Each kind is one entry in KINDS: the Pen is in the tool switch; the Marker and the Brush
-  // are in the toolbar's Paint menu (group 'paint'). `usual`: the width a kind draws at until the person picks one.
+  // stays on for the next stroke. Each kind is one entry in KINDS: each is a kind of the Pen tool in the tool switch (FAMILIES in whiteboard.js). `usual`: the width a kind draws at until the person picks one.
   // The Brush follows the pressure where the device reports one (a pen, a finger on a screen that senses force): its
   // widths, one per point. Where every point has the same pressure (a mouse), it keeps none, and the stroke is even.
   {
     const KINDS = [
       { id: 'pen', label: 'Pen', icon: 'pen', key: 'p', order: 20, usual: 3 },
-      { id: 'marker', label: 'Marker', icon: 'marker', key: 'm', order: 97, group: 'paint', usual: 12 },
-      { id: 'brush', label: 'Brush', icon: 'paintbrush', order: 98, group: 'paint', usual: 8 },
+      { id: 'marker', label: 'Marker', icon: 'marker', key: 'm', order: 97, usual: 12 },
+      { id: 'brush', label: 'Brush', icon: 'paintbrush', order: 98, usual: 8 },
     ];
     // A pointer's pressure as a width in percent: a light touch is a third of the full width, a hard press all of it.
     const widthOf = (p) => {
@@ -25,7 +24,6 @@
         icon: k.icon,
         key: k.key,
         order: k.order,
-        group: k.group,
         edits: true,
         makes: 'stroke',
         usual: { brush: k.id, weight: k.usual },

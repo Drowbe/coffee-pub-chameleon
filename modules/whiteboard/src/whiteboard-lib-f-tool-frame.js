@@ -12,7 +12,6 @@
       icon: 'crop-simple',
       key: 's',
       order: 95.7,
-      group: 'flowchart',
       edits: true,
       makes: 'frame',
       cursor: 'crosshair',

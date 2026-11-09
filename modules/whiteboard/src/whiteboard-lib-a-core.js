@@ -252,8 +252,7 @@
   }
 
   // A tool: { id, label, icon, order, key?, apart? (its own on/off button after the tool switch), mode? (a
-  // choice in the tool switch whose key pressed again goes back to the tool before it: the Hand), group? (one of the
-  // choices in a toolbar button's menu, by the group's id: 'flowchart'), edits (it changes the board), makes? (the block
+  // choice in the tool switch whose key pressed again goes back to the tool before it: the Hand), edits (it changes the board), makes? (the block
   // type it puts on the board, for the colour and width menus' "new blocks"), usual? (fields its new blocks get unless the
   // person picked otherwise: a marker's brush and width), paints? (the colour role it gives a block it is clicked on: the
   // Fill tool's 'fill'; the Colour menu then sets that colour), cursor?, down(p, ctx), move?(p, ctx),

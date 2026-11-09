@@ -26,7 +26,6 @@
       icon: 'table',
       key: 'g',
       order: 95.5,
-      group: 'flowchart',
       edits: true,
       makes: 'table',
       cursor: 'crosshair',
