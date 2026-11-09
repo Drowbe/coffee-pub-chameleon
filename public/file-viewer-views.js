@@ -426,7 +426,9 @@ export function infoView(file, info) {
   row('Added by', info.who(file));
   row('Added', day(file.at));
   if (file.taken) row('Taken', day(file.taken));
-  box.append(head, dl);
+  // Who can see this (public/vault-privacy.js): the adder's and owners' control goes above the facts, a read-only line below them.
+  const privacy = info.privacy || {};
+  box.append(head, ...(privacy.top ? [privacy.top] : []), dl, ...(privacy.after ? [privacy.after] : []));
   const uses = h('div', 'fv-info-uses');
   uses.append(h('h4', 'fv-info-sub', 'Where it is used'));
   const body = h('div', 'fv-info-body');

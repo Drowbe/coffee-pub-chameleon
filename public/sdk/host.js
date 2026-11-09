@@ -2638,8 +2638,13 @@
     //   list()                       -> { files: [{ id, name, type, group, size, by, at, taken?, hasThumb, uses, viewable? }], usage: { bytes, maxBytes } }
     //       `viewable: false` is only on a PDF kept as download only (the server could not check it): never open it in the
     //       app, show "This PDF can't be opened here. Download it." with download(id). Every other file has no `viewable`.
-    //   add(blob, { name, keepPosition, onProgress })  -> the file. `onProgress({ loaded, total })` while it is sent; the promise has `.cancel()`.
+    //   add(blob, { name, keepPosition, visibility, people, onProgress })  -> the file. `onProgress({ loaded, total })` while it is sent; the promise has `.cancel()`.
     //       A picture keeps where it was taken only when `keepPosition` is true. Rejects with the server's sentence (a type or limit refused).
+    //       `visibility` is who may see it: 'everyone' (the default), 'only-me' or 'people' (with `people`, the user keys of
+    //       members of this space, at most 200). The server refuses anything else. Owners and the admin always see every file.
+    //   pickPeople({ chosen })       opens the people picker over the page ("Who can see this": search, tick, at most 200) and resolves the
+    //       user keys the person chose, or null when they cancel. `chosen` are the keys ticked when it opens. The adder is always in.
+    //       A file's visibility and `people` come back in its record only for the person who added it, owners and the admin.
     //   rename(id, name), remove(id), uses(id) -> { uses: [summary], hidden }, thumb(id, blob) (the small picture you made, of at most 300 KB)
     //   url(id, { thumb, download }) the address; blob(id, { thumb }) -> a Blob of the file or its small picture.
     //       A PDF is never shown from its address (it is always sent as a download): blob(id) its bytes and hand them to
@@ -2658,10 +2663,11 @@
         const opts = o || {};
         const token = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
         const off = typeof opts.onProgress === 'function' ? host.on('libraryprogress', (e) => { if (e && e.token === token) opts.onProgress({ loaded: e.loaded, total: e.total }); }) : null;
-        const out = call('library.add', { file, name: opts.name, keepPosition: Boolean(opts.keepPosition), token }).finally(() => { if (off) off(); });
+        const out = call('library.add', { file, name: opts.name, keepPosition: Boolean(opts.keepPosition), visibility: opts.visibility, people: opts.people, token }).finally(() => { if (off) off(); });
         out.cancel = () => { call('library.cancel', { token }).catch(() => {}); };
         return out;
       },
+      pickPeople: (o) => call('library.pickPeople', { chosen: o && o.chosen }),
       rename: (id, name) => call('library.rename', { id, name }),
       remove: (id) => call('library.remove', { id }),
       uses: (id) => call('library.uses', { id }),
