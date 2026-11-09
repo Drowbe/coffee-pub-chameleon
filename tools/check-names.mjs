@@ -835,6 +835,22 @@ function scannerCheck() {
     assert.deepEqual(hits.module, ['2:stagePane']);
   });
 
+  test('the Whiteboard\'s table entry allows its own table names in modules/whiteboard/src only; everywhere else the word is still a hit', () => {
+    const live = () => realAllow.map((e) => ({ ...e, used: 0 }));
+    const code = "const WB_TABLE = { rows: 8 }; wbTableDef(); const tableDef = {}; pasteTable(); el.className = 'wb-type-table'; import './whiteboard-lib-e-block-table.js';\n";
+    const sentence = "throw new Error('Table needs rows; pick Tables again.');\n";
+    for (const file of ['modules/whiteboard/src/whiteboard.js', 'modules/whiteboard/src/lib/whiteboard-lib-k-table.js']) {
+      const inside = hitsOf(file, code, 'code', live());
+      assert.deepEqual(inside.table, [], `${file}: its own table names are allowed in code`);
+      assert.deepEqual(hitsOf(file, sentence, 'words', live()).table, [], `${file}: the words are allowed`);
+    }
+    assert.deepEqual(hitsOf('modules/whiteboard/src/a.js', "const tableName = 1; stageTable();\n", 'code', live()).table, ['1:tableName', '1:stageTable'], 'a name the entry does not list is still a hit, even inside the folder');
+    for (const file of ['modules/notes/src/notes.js', 'modules/whiteboard-extra/src/a.js', 'modules/whiteboard/module.json', 'server/scratch.js', 'public/scratch.js']) {
+      assert.deepEqual(hitsOf(file, code, 'code', live()).table, ['1:WB_TABLE', '1:wbTableDef', '1:tableDef', '1:pasteTable', '1:wb-type-table', '1:whiteboard-lib-e-block-table.js'], `${file}: the same code is flagged`);
+      assert.deepEqual(hitsOf(file, sentence, 'words', live()).table, ['1:Table', '1:Tables'], `${file}: the same words are flagged`);
+    }
+  });
+
   test('a "**" entry that would allow anything, one without a reason, and one without a known level all fail', () => {
     const bad = [
       { file: '**', level: '*', pattern: '^Room$', reason: 'x' },
