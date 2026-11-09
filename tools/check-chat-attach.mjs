@@ -612,6 +612,7 @@ async function pageCases(shots, bin) {
       const bad = await fromModule(`try { await host.chat.attach({ label: 'Elsewhere', ref: ${JSON.stringify({ ...ref, space: ctx.second })} }); return 'attached'; } catch (e) { return e.message; }`);
       assert.match(bad, /^That object is not in this \w+\.$/);
       assert.equal((await chips()).length, 1, 'still just the one');
+      await sleep(500); // past the 400 ms in which an Enter is not taken for a Send
       await tab.click('#chat-input');
       await tab.key('Enter');
       const t0 = Date.now();
@@ -632,7 +633,7 @@ async function pageCases(shots, bin) {
       assert.equal((await patch(false)).status, 200);
     });
 
-    await test('page: a guest\'s module is refused an attach too', async () => {
+    await test('page: a guest has no module to attach from, and attach itself refuses a guest and a missing AI (read as code)', async () => {
       const link = (await (await fetch(`${server.base}/api/spaces/${ctx.trip}/guest-link`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: '{}' })).json()).space.guestToken;
       const gt = new Tab(browser.cdp, ctx);
       await gt.open(WIDTH, MODE);
@@ -640,15 +641,13 @@ async function pageCases(shots, bin) {
       await gt.cdp.send('Page.navigate', { url: `${server.base}/guest/${encodeURIComponent(link)}` }, gt.sid);
       await gt.waitFor('#chat-input');
       await sleep(2500);
-      await gt.eval(`(() => { const make = window.createHost; window.__hosts = []; window.createHost = (o) => { const built = make(o); window.__hosts.push(built.host); return built; }; return true; })()`);
-      await gt.eval(`(async () => { for (const m of window.hostModules.list()) { if (window.hostModules.isOpen(m.id)) window.hostModules.close(m.id); } await new Promise((r) => setTimeout(r, 400)); for (const m of window.hostModules.list()) { window.hostModules.open(m.id); if (window.__hosts.length) break; } return true; })()`);
-      const t = Date.now();
-      while (Date.now() - t < 10000 && !(await gt.eval(`window.__hosts.length > 0`))) await sleep(200);
-      assert.ok(await gt.eval(`window.__hosts.length > 0`), 'a module opened in the guest page');
-      const msg = await gt.eval(`window.__hosts.at(-1).chat.attach({ label: 'Words', text: 'guest words' }).then(() => 'attached', (e) => e.message)`);
-      assert.match(msg, /uest/, msg);
-      assert.equal(await gt.eval(`document.querySelectorAll('#chat-ai-context .chat-ai-chip').length`), 0);
+      assert.equal(await gt.eval(`window.hostModules.list().filter((m) => window.hostModules.isOpen(m.id)).length`), 0, 'no module is open in a guest page, so none can call attach');
       await gt.close();
+      const input = read('public/chat-input.js');
+      const attach = slice(input, '  async function attach(', '\n  }\n');
+      assert.ok(attach.indexOf('await checkAi(true)') > -1 && attach.indexOf('await checkAi(true)') < attach.indexOf('aiWords = {'), 'the AI is asked afresh before anything is held');
+      assert.match(attach, /if \(aiState\.known && !aiState\.available\) return \{ ok: false, why: aiLine\(\)/, 'and a guest or a missing AI is refused with its sentence');
+      assert.match(slice(input, '  async function checkAi(', '\n  }\n'), /if \(isGuest\(\)\) aiState = \{ known: true, available: false, reason: 'guest'/);
     });
 
     await test('page: an ask during the wait for the AI\'s state does not send words attached in that wait, and does not lose them', async () => {
