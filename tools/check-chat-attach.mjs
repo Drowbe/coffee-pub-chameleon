@@ -675,11 +675,12 @@ async function pageCases(shots, bin) {
       pageFake.clear();
       await clearChips();
       const patch = (aiOff) => fetch(`${server.base}/api/spaces/${ctx.trip}`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookies.admin.map((c) => `${c.name}=${c.value}`).join('; ') }, body: JSON.stringify({ aiOff }) });
+      await idle();
+      await fromModule(`return host.chat.attach({ label: 'Held first', text: 'HELDFIRST' });`);
+      // The page learns the AI is off (an attach is refused; the chip already held stays), then it is on again.
       await patch(true);
       await fromModule(`try { await host.chat.attach({ label: 'Probe', text: 'probe words' }); } catch (e) { /* refused */ } return true;`);
       await patch(false);
-      await idle();
-      await fromModule(`return host.chat.attach({ label: 'Held first', text: 'HELDFIRST' });`);
       await sleep(500);
       await tab.eval(`(() => { const real = window.fetch; let first = true; window.fetch = async (url, init) => { if (first && new RegExp('/api/spaces/[^/]+/ai$').test(String(url)) && (!init || !init.method || init.method === 'GET')) { first = false; await new Promise((r) => setTimeout(r, 900)); } return real(url, init); }; return true; })()`);
       await tab.typeInto('#chat-input', 'Where is Faro?');
