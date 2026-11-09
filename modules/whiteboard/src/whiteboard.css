@@ -322,6 +322,87 @@
 .wb-type-connector .wb-text-edit { width: 12em; text-align: center; font-size: var(--text-14); }
 .wb-type-connector.wb-editing .wb-conn-label .wb-words { display: none; }
 
+/* a frame (whiteboard-lib-e-block-frame.js): a faint wash in a quiet border with its title on a small tab above its top left
+   corner. Only the tab and a strip along the border (--wb-fr-hit on the screen, at any zoom; wider for a finger) take a
+   press: its inside lets presses through to the board and the blocks on it. Its colours are 'usual' until one is picked:
+   a wash of the card colour, the field's edge, the muted words; a picked fill is a light wash of the tint. */
+.wb-type-frame { pointer-events: none; }
+.wb-fr-face {
+  position: absolute;
+  inset: 0;
+  border: var(--wb-weight) solid var(--wb-stroke);
+  border-radius: var(--radius-medium);
+  background: color-mix(in srgb, var(--wb-fill, var(--surface-card)) 12%, transparent);
+}
+.wb-type-frame[data-fill="usual"] .wb-fr-face { background: color-mix(in srgb, var(--surface-card) 55%, transparent); }
+.wb-type-frame[data-fill="none"] .wb-fr-face { background: none; }
+.wb-type-frame[data-stroke="usual"] .wb-fr-face { border-color: var(--edge-field, var(--text-muted)); }
+.wb-type-frame[data-stroke="none"] .wb-fr-face { border-style: none; }
+.wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-hit, 8px) / var(--wb-scale, 1)); position: absolute; pointer-events: auto; cursor: grab; }
+@media (pointer: coarse) { .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-touch, 16px) / var(--wb-scale, 1)); } }
+.app.narrow .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-touch, 16px) / var(--wb-scale, 1)); }
+.wb-fr-n, .wb-fr-s { left: calc(var(--wb-fr-s) / -2); right: calc(var(--wb-fr-s) / -2); height: var(--wb-fr-s); }
+.wb-fr-n { top: calc(var(--wb-fr-s) / -2); }
+.wb-fr-s { bottom: calc(var(--wb-fr-s) / -2); }
+.wb-fr-e, .wb-fr-w { top: calc(var(--wb-fr-s) / -2); bottom: calc(var(--wb-fr-s) / -2); width: var(--wb-fr-s); }
+.wb-fr-w { left: calc(var(--wb-fr-s) / -2); }
+.wb-fr-e { right: calc(var(--wb-fr-s) / -2); }
+.wb-fr-tab {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--wb-fr-gap, 4px));
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  height: var(--wb-fr-tab, 24px);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-small);
+  background: var(--surface-card);
+  color: var(--wb-ink);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: grab;
+}
+.wb-type-frame[data-ink="usual"] .wb-fr-tab { color: var(--text-muted); }
+.wb-type-frame:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: color-mix(in srgb, var(--wb-fill) 22%, var(--surface-card)); }
+.wb-fr-tab .wb-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-fr-tab[data-empty] .wb-words { font-style: italic; font-weight: var(--weight-medium); }
+.wb-type-frame.wb-editing .wb-fr-tab { max-width: none; }
+.wb-type-frame.wb-editing .wb-fr-tab .wb-words { display: none; }
+.wb-type-frame .wb-text-edit { width: 16em; line-height: 1.2; color: var(--text-primary); }
+
+/* presenting the frames: a small bar at the bottom of the board (Back, "2 of 5", Next, Exit) that lets presses through
+   but on its buttons; the colours strip goes while it shows, and nothing on the board looks pressable */
+.wb-present {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: calc(100% - var(--space-4));
+  padding: var(--space-1);
+  border: 1px solid var(--mf-edge, var(--edge-bar));
+  border-radius: var(--radius-medium);
+  background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  box-shadow: var(--shadow-2);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.wb-present button { pointer-events: auto; }
+.wb-present .ic { display: block; width: 1em; height: 1em; }
+.wb-present .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.wb-present-count { padding: 0 var(--space-2); color: var(--text-primary); font-size: var(--text-14); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.app.wb-presenting .wb-paint { display: none; }
+.app.wb-presenting .board, .app.wb-presenting .wb-block, .app.wb-presenting .wb-block * { cursor: default; }
+.app.wb-presenting .wb-ctl { cursor: pointer; }
+.app.narrow .wb-present-label { display: none; }
+
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
 .wb-frame {
   position: absolute;

@@ -172,7 +172,9 @@
   // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
   // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
   // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
-  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
+  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h), and container?: true (a
+  // frame, lib-e-block-frame.js: it sits under the other blocks, is picked by its tab and border only, holds the blocks
+  // inside it when it is moved or copied, and takes no connector).
   // A block that draws outside its box (a note's pointer) has reach?(block) -> the box of all it draws, relative to x, y
   // ({ x, y, w, h }): the group frame, "Show everything", the rectangle that picks blocks, layers and a paste's middle use
   // it; the box stays what is resized and what a connector attaches to. grips?(block) -> more handles for the one block
@@ -217,9 +219,9 @@
   // last drawn for while the block is not on the board. refs, remap and loosen as for the pointer above; a move of the
   // highlight alone changes dx, dy (its type's move).
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
-  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
-  // another connector.
-  const wbAttachable = (def) => Boolean(def && !def.attached && def.resize && def.resize.handles === 'corners');
+  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing,
+  // another connector or a frame (a container).
+  const wbAttachable = (def) => Boolean(def && !def.attached && !def.container && def.resize && def.resize.handles === 'corners');
   // The fields that change when a block is moved by dx, dy: its type's move, else x and y.
   function wbMoved(b, dx, dy) {
     const def = blockTypes.get(b.type);
