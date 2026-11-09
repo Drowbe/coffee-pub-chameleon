@@ -14,6 +14,7 @@
   block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
   #present is the bar shown while the frames are presented (Back, which frame of how many, Next, Exit).
+  #find is the find bar (Find in the title bar's menu, or /): the words to find, how many there are, Previous, Next, Close.
   #paint is the strip of the colours and the line width, hung under the toolbar's left end (whiteboard.js fills it).
   #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom). While words are
   edited, the formatting bar (.wb-format) is put on #board by the editor (whiteboard-lib-d-render.js).
@@ -34,6 +35,13 @@
       <span id="present-count" class="wb-present-count"></span>
       <button type="button" id="present-next" class="btn btn-quiet btn-small" aria-label="Next"><span class="wb-present-label">Next</span><span class="ic" data-icon="chevron-right" aria-hidden="true"></span></button>
       <button type="button" id="present-exit" class="btn btn-small" aria-label="Exit"><span class="ic" data-icon="xmark" aria-hidden="true"></span><span class="wb-present-label">Exit</span></button>
+    </div>
+    <div id="find" class="wb-find" role="search" aria-label="Find in the board" hidden>
+      <input id="find-input" class="wb-find-input" type="text" maxlength="100" placeholder="Find" aria-label="Find in the board" aria-describedby="find-count" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <span id="find-count" class="wb-find-count"></span>
+      <button type="button" id="find-prev" class="sdk-icon-btn btn-quiet btn-small" aria-label="Previous" data-tip="Previous"><span class="ic" aria-hidden="true"></span></button>
+      <button type="button" id="find-next" class="sdk-icon-btn btn-quiet btn-small" aria-label="Next" data-tip="Next"><span class="ic" aria-hidden="true"></span></button>
+      <button type="button" id="find-close" class="sdk-icon-btn btn-quiet btn-small" aria-label="Close" data-tip="Close"><span class="ic" aria-hidden="true"></span></button>
     </div>
   </div>
   <input id="picker" type="file" accept="image/*" multiple hidden>
