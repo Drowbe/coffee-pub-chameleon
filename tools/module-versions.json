@@ -40,11 +40,11 @@
     "hash": "893b6d48439a5c9b"
   },
   "vault": {
-    "version": "0.3.5",
-    "hash": "5ce50a96c6e7bbc5"
+    "version": "0.4.2",
+    "hash": "900016817612cfb2"
   },
   "whiteboard": {
-    "version": "0.1.16",
-    "hash": "c6c3a85a4e4ed35e"
+    "version": "0.1.17",
+    "hash": "801ce53baeb4a854"
   }
 }

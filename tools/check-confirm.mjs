@@ -55,7 +55,12 @@ for (const file of [...walk(path.join(ROOT, 'public')), ...walk(path.join(ROOT, 
   ok(/typeof t\.title !== 'string'[\s\S]{0,200}Promise\.reject/.test(sdk), 'public/sdk/host.js: host.ui.confirm does not reject a missing title');
   ok(/if \(method === 'ui\.confirm'( \|\| method === 'objects\.pick')?\) return;[\s\S]{0,80}setTimeout/.test(sdk), 'public/sdk/host.js: a frame\'s question times out after 30s (it should wait for the person)');
   const mh = read('public/module-host.js');
-  ok(/import \{ confirmDialog \} from '\/confirm\.js'/.test(mh) && /'ui\.confirm'\(o\)\s*\{[\s\S]{0,80}confirmDialog\(o\)/.test(mh), 'public/module-host.js: no "ui.confirm" handler that asks with confirmDialog');
+  ok(/import \{ confirmDialog, cleanConfirm \} from '\/confirm\.js'/.test(mh) && /'ui\.confirm'\(o\)\s*\{[\s\S]{0,80}confirmDialog\(cleanConfirm\(o\)\)/.test(mh), 'public/module-host.js: no "ui.confirm" handler that asks with confirmDialog');
+  // A module may not ask for a page's own options: the handler passes cleanConfirm's fields only, and cleanConfirm drops list, solid and run.
+  const cc = read('public/confirm.js');
+  const cleaned = /export function cleanConfirm\(o\) \{[\s\S]*?\n\}/.exec(cc);
+  ok(Boolean(cleaned) && !/\b(list|solid|run)\b/.test(cleaned[0].replace(/\/\/.*$/gm, '')), 'public/confirm.js: cleanConfirm must not pass list, solid or run through');
+  ok(!/'ui\.confirm'\(o\)\s*\{[^}]*(\.\.\.o\b|confirmDialog\(o\))/.test(mh), 'public/module-host.js: the "ui.confirm" handler passes the module\'s options on whole');
   const css = read('public/sdk/system.css');
   const block = /\/\* confirm:start \*\/([\s\S]*?)\/\* confirm:end \*\//.exec(css);
   ok(Boolean(block), 'public/sdk/system.css: no confirm:start / confirm:end block');

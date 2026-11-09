@@ -20,6 +20,7 @@ import { openHostMenu } from '/host-menu.js';
 import { confirmDialog } from '/confirm.js';
 import { actionBar } from '/action-bar.js';
 import { api, accessKeyHeaders, showNote, progressNote, word } from '/brand.js';
+import { whoBlock, loadMembers, askNarrowing, styles as privacyStyles } from '/vault-privacy.js';
 import { fileView, infoView, viewState, stopMedia, KINDS, kindOf, size, when, h } from '/file-viewer-views.js';
 
 export const MAX_WINDOWS = 4;
@@ -99,7 +100,7 @@ function loadStyles(doc) {
     link.addEventListener('error', resolve);
     doc.head.append(link);
     setTimeout(resolve, 1500);
-  });
+  }).then(() => privacyStyles(doc)); // the Info's "Who can see this" is drawn with the privacy stylesheet
   styled.set(doc, done);
   return done;
 }
@@ -424,6 +425,34 @@ function createManager(doc) {
     } else close(w);
   }
 
+  // ---- Who can see this (public/vault-privacy.js) ------------------------------------------------------------------------------------
+  // The server says who sees a file (`visibility`, and `people` to the adder and owners only); this draws it and asks the server to change it.
+  const isOwner = (w) => Boolean(w.cx && w.cx.user && (w.cx.user.role === 'owner' || w.cx.user.role === 'admin'));
+  const memberNames = (w) => (w.members ? new Map(w.members.map((m) => [m.key, m.name])) : people);
+  function privacyOf(w, f) {
+    return whoBlock(f, {
+      doc,
+      me: me(w),
+      owner: isOwner(w),
+      role: w.cx && w.cx.user ? w.cx.user.role : '',
+      names: memberNames(w),
+      members: async () => { w.members = await loadMembers(w.place.space); return w.members; },
+      ask: (file, next, members) => askNarrowing({ doc, place: w.place, file, next, members, me: me(w), mayShare: can(w, 'share'), names: new Map(members.map((m) => [m.key, m.name])) }),
+      control: () => (w.dead || !w.infoSide ? null : w.infoSide.el.querySelector('[data-change]')),
+      async change(next) {
+        const res = await api('PATCH', libUrl(w.place, `/${enc(f.id)}`), next.visibility === 'people' ? { visibility: 'people', people: next.people } : { visibility: next.visibility });
+        const was = w.files.get(f.id) || f;
+        if (res.file) w.files.set(f.id, { ...was, ...res.file });
+        if (w.dead || w.id !== f.id) return;
+        const a = doc.activeElement; // in the Info, in the menu just closed, or nowhere: the control comes back with the focus
+        const hadFocus = Boolean(w.infoSide && (!a || a === doc.body || w.infoSide.el.contains(a) || a.closest('.host-menu')));
+        drawInfo(w);
+        if (hadFocus && w.infoSide) { const c = w.infoSide.el.querySelector('[data-change]'); if (c) c.focus({ preventScroll: true }); }
+        showNote('Who can see this changed');
+      },
+    });
+  }
+
   // ---- Info -------------------------------------------------------------------------------------------------------------------------------
   function drawInfo(w) {
     if (w.infoSide) { w.infoSide.destroy(); w.infoSide.el.remove(); w.infoSide = null; }
@@ -431,6 +460,7 @@ function createManager(doc) {
     w.main.classList.toggle('has-info', Boolean(w.info && f && !w.small));
     if (!w.info || !f || w.small) return;
     w.infoSide = infoView(f, {
+      privacy: privacyOf(w, f),
       who: whoIs(w),
       uses: (file) => api('GET', libUrl(w.place, `/${enc(file.id)}/uses`)),
       open: w.openRef ? (summary) => w.openRef(summary.ref) : null,
@@ -529,9 +559,10 @@ function createManager(doc) {
   // Load what a window shows: the library's records and the person's rights in that place, then the file.
   async function load(w, id) {
     try {
-      const [cx, list] = await Promise.all([contextOf(w.place), api('GET', libUrl(w.place)), loadPeople()]);
+      const [cx, list, members] = await Promise.all([contextOf(w.place), api('GET', libUrl(w.place)), loadMembers(w.place.space).catch(() => null), loadPeople()]);
       if (w.dead) return;
       w.cx = cx;
+      w.members = members; // the space's people, for the names in Who can see this; null when they could not be read
       w.files = new Map(list.files.map((f) => [f.id, f]));
       show(w, id);
     } catch (err) {
@@ -572,7 +603,13 @@ function createManager(doc) {
           w.frame.setStatus({ text: statusOf(w, f) });
         }
         w.frame.setToolbar(toolbar(w));
-        if (w.info) drawInfo(w);
+        if (w.info) {
+          // Drawn again (the library changed): the keyboard stays on the control it was on.
+          const a = doc.activeElement;
+          const onControl = Boolean(w.infoSide && a && w.infoSide.el.contains(a) && a.matches('[data-change]'));
+          drawInfo(w);
+          if (onControl && w.infoSide) { const c = w.infoSide.el.querySelector('[data-change]'); if (c) c.focus({ preventScroll: true }); }
+        }
       }
     }, 120));
   }
@@ -581,7 +618,7 @@ function createManager(doc) {
     if (listening.has(key) || typeof join !== 'function') return;
     try {
       listening.set(key, join((type, d) => {
-        if (type === 'library' && d && d.module === place.module && d.spaceId === place.space && (d.op === 'renamed' || d.op === 'removed')) refresh(place);
+        if (type === 'library' && d && d.module === place.module && d.spaceId === place.space && (d.op === 'renamed' || d.op === 'removed' || d.op === 'visibility' || d.op === 'added')) refresh(place);
       }));
     } catch { /* the Vault's poll is the fallback */ }
   }

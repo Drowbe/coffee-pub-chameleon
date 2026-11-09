@@ -15,8 +15,9 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background-color: var(--surface-page);
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--text-primary) 16%, transparent) 1px, transparent 1.5px);
+  /* the board's background and its dots' colour (whiteboard.js sets both from wbBackdrop, lib-a; these are Default's) */
+  background-color: var(--wb-ground, var(--surface-page));
+  background-image: radial-gradient(circle, var(--wb-dot, color-mix(in srgb, var(--text-primary) 16%, transparent)) 1px, transparent 1.5px);
   background-size: var(--wb-grid, 24px) var(--wb-grid, 24px);
   background-position: var(--wb-grid-x, 0) var(--wb-grid-y, 0);
   touch-action: none;
@@ -596,6 +597,7 @@
   .app.wb-printing > :not(.wb-print) { display: none !important; }
   .app.wb-printing > .wb-print { display: block; }
   .wb-print-svg { display: block; width: 100%; height: auto; max-height: 96vh; overflow: hidden; }
+  .wb-print-svg .wb-export { print-color-adjust: exact; -webkit-print-color-adjust: exact; } /* a background is printed */
 }
 
 /* moving the board with Space held or the middle or right button, whatever the tool */
