@@ -62,6 +62,12 @@ services:
       ADMIN_MFA_LOCKOUT_BYPASS: "false"
       # The Vault's files live in their own folder, so the in-app backups stay small. Back up both folders together.
       VAULT_DIR: "/app/vault"
+      # Modules' live messages (pointers, nudges; never stored). Optional limits, shown with their defaults.
+      # MODULE_LIVE_BYTES: "256" # the most data one message may carry
+      # MODULE_LIVE_PER_SECOND: "20" # messages a second for one person in one module
+      # MODULE_LIVE_PER_PERSON: "40" # messages a second for one person in all modules
+      # MODULE_LIVE_PER_GUEST_LINK: "60" # messages a second for everyone on one guest link
+      # MODULE_LIVE_TO: "20" # the most people one message may be sent to
       PORT: "3000"
     volumes:
       - /share/appdata/coffee-pub-chameleon:/app/data # users, settings and images
