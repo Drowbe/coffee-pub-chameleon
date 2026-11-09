@@ -4,7 +4,7 @@
   // block moves with it, each by the same amount (each saved once, on the drop). Press the board itself and drag a
   // rectangle: every block it touches is picked (with Shift, Ctrl or Cmd, added to what is picked). On a touch screen one
   // finger on the board moves the board instead, unless "Select many" is on (ctx.many()): then it drags the rectangle,
-  // and a tap on a block adds it or takes it out. Moving the board otherwise is the page's (Space, the middle button, the
+  // and a tap on a block adds it or takes it out. Moving the board otherwise is the page's (Space, the middle or right button, the
   // wheel, two fingers) or the Hand tool's. Someone who may only look can pick, and move the board.
   // Drag a handle of the picked block to change its size (Shift keeps its shape; a picture always does) or to move a line's end; the new box is
   // saved once, when it is let go. What a handle does is the block type's resize (lib-a); showing the handles is the page's.

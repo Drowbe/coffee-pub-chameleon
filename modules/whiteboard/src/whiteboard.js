@@ -73,7 +73,7 @@
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
-  const MOVE_HELP = 'Hold the spacebar and drag, or pick the Hand tool (H), to move the board.';
+  const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
@@ -722,9 +722,15 @@
   let down = null; // the pointer the tool is following
   let pinch = null; // two fingers on the board: { d, s, mx, my }
   let pointerFocus = false; // a press is moving the focus
-  // Moving the board with any tool: Space held, or the middle mouse button. { id, lx, ly } while it goes on.
+  // Moving the board with any tool: Space held, the middle mouse button, or the right one. { id, lx, ly } while it goes on;
+  // for the right button also { right, sx, sy, target, moved, menu }. A right press moves the board only once it has gone
+  // RIGHT_SLOP; one that does not is a right-click and opens the menu, for what was pressed (target: the captured pointer's
+  // menu event names the board instead). menu: where it was asked for, when the browser asks on the press (a Mac, Linux);
+  // on Windows it asks after the release. A right drag opens no menu.
   let spaceHeld = false;
   let panning = null;
+  const RIGHT_SLOP = 4; // screen pixels a right press may wander and still be a click (the select tool's SLOP)
+  let rightDragEnd = -Infinity; // when the last right drag ended: the menu the browser asks for after it is not shown
   const panCursor = (on) => { surface.classList.toggle('wb-grab', on); };
   const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
@@ -735,12 +741,16 @@
   surface.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
     const middle = e.pointerType === 'mouse' && e.button === 1;
-    if (e.pointerType === 'mouse' && e.button !== 0 && !middle) return;
+    const right = e.pointerType === 'mouse' && e.button === 2;
+    if (e.pointerType === 'mouse' && e.button !== 0 && !middle && !right) return;
+    const free = !editing && down === null && !pinch && !panning;
+    if (right && (!free || spaceHeld)) return; // only the menu, as a right-click
     e.preventDefault();
-    if ((middle || spaceHeld) && !editing && down === null && !pinch) {
+    if ((middle || right || spaceHeld) && free) {
       try { surface.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
       panning = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
-      surface.classList.add('wb-grabbing');
+      if (right) Object.assign(panning, { right: true, sx: e.clientX, sy: e.clientY, target: e.target, moved: false, menu: null });
+      else surface.classList.add('wb-grabbing');
       return;
     }
     // A press while words are being edited only ends the editing: it does not also draw or put a block there.
@@ -765,6 +775,11 @@
   });
   surface.addEventListener('pointermove', (e) => {
     if (panning && panning.id === e.pointerId) {
+      if (panning.right && !panning.moved) {
+        if (Math.hypot(e.clientX - panning.sx, e.clientY - panning.sy) < RIGHT_SLOP) return;
+        panning.moved = true;
+        surface.classList.add('wb-grabbing');
+      }
       renderer.panBy(e.clientX - panning.lx, e.clientY - panning.ly);
       panning.lx = e.clientX; panning.ly = e.clientY;
       return;
@@ -783,7 +798,14 @@
     if (down === e.pointerId && tool.move) tool.move(p, ctx);
   });
   const lift = (e) => {
-    if (panning && panning.id === e.pointerId) { panning = null; surface.classList.remove('wb-grabbing'); return; }
+    if (panning && panning.id === e.pointerId) {
+      const was = panning;
+      panning = null;
+      surface.classList.remove('wb-grabbing');
+      if (was.right && was.moved) rightDragEnd = performance.now();
+      else if (was.right && was.menu && e.type === 'pointerup') contextMenu(was.menu);
+      return;
+    }
     if (!pointers.has(e.pointerId)) return;
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; return; }
@@ -815,11 +837,17 @@
   // On the board itself: paste there, or select everything.
   surface.addEventListener('contextmenu', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
+    e.preventDefault();
+    // A right press still down may yet be a drag: its menu waits for the release. One just after a right drag is not shown.
+    if (panning && panning.right) { panning.menu = { target: panning.target, clientX: e.clientX, clientY: e.clientY }; return; }
+    if (performance.now() - rightDragEnd < 500) { rightDragEnd = -Infinity; return; }
+    contextMenu(e);
+  });
+  function contextMenu(e) {
     const id = renderer.blockAt(e.target);
     const box = host.rootElement.getBoundingClientRect();
     const at = { x: e.clientX - box.left, y: e.clientY - box.top };
     if (!id) {
-      e.preventDefault();
       if (!policy.canEdit) return;
       const there = renderer.toBoard(e.clientX, e.clientY);
       host.menu.show({
@@ -832,7 +860,6 @@
       });
       return;
     }
-    e.preventDefault();
     if (!sel.has(id)) select([id]);
     const ids = [...sel];
     const list = targets();
@@ -854,7 +881,7 @@
         { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
     });
-  });
+  }
 
   // ---- the keyboard -----------------------------------------------------------------------------------------------------
   // Tab reaches the board and then each block in turn; a block that takes the focus is selected (alone, unless it is one
