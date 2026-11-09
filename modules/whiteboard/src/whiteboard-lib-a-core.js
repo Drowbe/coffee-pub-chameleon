@@ -258,7 +258,9 @@
   // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
   // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
   // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
-  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h), and container?: true (a
+  // floating?: true (the timer: held by the board but drawn by the type itself through float(block) and floatGone(id), see
+  // lib-d; never drawn on the board, picked, copied or saved as a picture), copied?(block) -> the fields a copy of it
+  // changes (lib-h), and container?: true (a
   // frame, lib-e-block-frame.js: it sits under the other blocks, is picked by its tab and border only, holds the blocks
   // inside it when it is moved or copied, and takes no connector).
   // A block that draws outside its box (a note's pointer) has reach?(block) -> the box of all it draws, relative to x, y
@@ -393,18 +395,23 @@
   }
 
   // The board's state: the blocks by id. It draws nothing and saves nothing.
+  // A block type marked `floating` (the timer) is held here but is not part of the board's drawing: all(), size, topZ()
+  // and bottomZ() leave it out, so nothing that lists, orders, picks, arranges, finds or saves the blocks sees it. get(),
+  // has() and ofType() do.
   function createBoard() {
     const blocks = new Map();
+    const floats = (b) => { const d = blockTypes.get(b.type); return Boolean(d && d.floating); };
     return {
+      ofType: (type) => [...blocks.values()].filter((b) => b.type === type),
       get: (id) => blocks.get(id) || null,
       has: (id) => blocks.has(id),
       put(block) { blocks.set(block.id, block); },
       remove(id) { return blocks.delete(id); },
       clear() { blocks.clear(); },
-      all: () => [...blocks.values()].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1)),
-      get size() { return blocks.size; },
-      topZ() { let z = 0; for (const b of blocks.values()) z = Math.max(z, b.z); return z; },
-      bottomZ() { let z = 0; for (const b of blocks.values()) z = Math.min(z, b.z); return z; },
+      all: () => [...blocks.values()].filter((b) => !floats(b)).sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1)),
+      get size() { let n = 0; for (const b of blocks.values()) if (!floats(b)) n += 1; return n; },
+      topZ() { let z = 0; for (const b of blocks.values()) if (!floats(b)) z = Math.max(z, b.z); return z; },
+      bottomZ() { let z = 0; for (const b of blocks.values()) if (!floats(b)) z = Math.min(z, b.z); return z; },
     };
   }
 

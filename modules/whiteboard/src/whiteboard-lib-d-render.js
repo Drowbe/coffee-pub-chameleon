@@ -7,6 +7,7 @@
   // overview follows it).
   function createRenderer({ surface, world, frame, icon = null, onView = null }) {
     const els = new Map(); // block id -> its element
+    const floats = new Map(); // block id -> its type, for the blocks the type draws itself (floating)
     const shown = new Map(); // block id -> the block as it was last drawn
     const view = { x: 0, y: 0, s: 1 };
     const MIN = 0.2;
@@ -135,6 +136,7 @@
     function draw(block) {
       const def = blockTypes.get(block.type);
       if (!def) return null;
+      if (def.floating) { floats.set(block.id, def); def.float(block); return null; } // the type draws it itself (the timer's clock)
       const before = shown.get(block.id);
       shown.set(block.id, block);
       if (!before || before.z !== block.z) restack();
@@ -181,6 +183,8 @@
     // A block taken away while it has the keyboard (an undo of the block just made) hands the keyboard to the board, so
     // the next key (a redo) still reaches it.
     function remove(id) {
+      const fd = floats.get(id);
+      if (fd) { floats.delete(id); fd.floatGone(id); return; }
       const el = els.get(id);
       if (el) {
         const root = el.getRootNode();
@@ -200,7 +204,7 @@
       if (was) redrawDeps(id); // its connectors are not drawn while it is gone
     }
 
-    function clear() { for (const id of [...els.keys()]) remove(id); deps.clear(); refsOf.clear(); }
+    function clear() { for (const id of [...floats.keys(), ...els.keys()]) remove(id); deps.clear(); refsOf.clear(); }
 
     // The selection is drawn as a frame round the block, a mark on the board and not a state of the block's own; with more
     // than one block picked, a frame round each and one dashed box round them all (#frame), with no handles. The handles

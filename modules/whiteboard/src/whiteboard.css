@@ -357,7 +357,7 @@
 /* a frame (whiteboard-lib-e-block-frame.js): a faint wash in a quiet border with its title on a small tab above its top left
    corner. Only the tab and a strip along the border (--wb-fr-hit on the screen, at any zoom; wider for a finger) take a
    press: its inside lets presses through to the board and the blocks on it. Its colours are 'usual' until one is picked:
-   a wash of the card colour, the field's edge, the muted words; a picked fill is a light wash of the tint. */
+   a wash of the clock colour, the field's edge, the muted words; a picked fill is a light wash of the tint. */
 .wb-type-frame { pointer-events: none; }
 .wb-fr-face {
   position: absolute;
@@ -639,7 +639,7 @@
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
 .wb-width-sample.wb-width-icon { width: 1em; }
 
-/* The overview (lib-n): a small map of the whole board at its bottom right, on the plain card surface whatever the
+/* The overview (lib-n): a small map of the whole board at its bottom right, on the plain clock surface whatever the
    board's background, so it reads in both modes. Blocks are small muted boxes, frames outlines, the view the accent.
    Under the colour strip, the formatting bar and the menus; only the map itself takes presses. */
 .wb-overview {
@@ -708,7 +708,7 @@
   transform: translate(calc(-3px / var(--wb-scale, 1)), calc(-3px / var(--wb-scale, 1)));
 }
 
-/* The strip of the colours and the line width, floating over the board's top left like the find bar (a small inset, a card
+/* The strip of the colours and the line width, floating over the board's top left like the find bar (a small inset, a clock
    with its edge, rounded on all four corners and the soft shadow): the frame's toolbar surface and edge (inherited from the
    frame; the plain tokens where there is none). Each button is the system's small quiet icon button with a mark of its own. */
 .wb-paint {
@@ -793,58 +793,80 @@
   pointer-events: none;
 }
 
-/* a timer: a card of a light wash of its fill, with the time left over a ring (stroke) that empties, and its controls
-   along the bottom for someone who may change it. Its size sets the time's size (a container). At the end the card
-   pulses a few times in its ring's colour, then stays marked; without the pulse for someone who asks for less motion. */
-.wb-type-timer {
-  container-type: size;
+/* The timer (lib-e-block-timer.js): a clock over the board, not on it, so it keeps its size and place when the board zooms or
+   pans. Like the find bar and the colour strip: the frame's toolbar surface and edge, the soft shadow, the theme's text;
+   the accent only for the ring or bar that runs. Each person's own place (dragged); the buttons are the system's small
+   quiet icon buttons. Radial: a ring with the time inside, the buttons under it. Horizontal: large digits like an alarm
+   clock, the buttons beside them. At the end it pulses a few times, then stays marked; still for less motion. */
+.wb-timer {
+  --wb-timer-ring: 108px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--wb-stroke) 45%, var(--edge-hairline));
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-2) var(--space-2);
+  border: 1px solid var(--mf-edge, var(--edge-bar));
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--wb-face, var(--surface-card)));
-  box-shadow: 0 1px 2px var(--shadow-color);
-  overflow: hidden;
+  background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  box-shadow: var(--shadow-2);
+  color: var(--text-primary);
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.wb-timer-face { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.wb-timer-ring { position: absolute; left: 6%; top: 6%; width: 88%; height: 88%; overflow: visible; pointer-events: none; }
-.wb-timer-track { fill: none; stroke: color-mix(in srgb, var(--wb-stroke) 22%, transparent); stroke-width: 6; }
-.wb-timer-arc { fill: none; stroke: var(--wb-stroke); stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
+.wb-timer.wb-timer-dragging { cursor: grabbing; }
+.wb-timer:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 1px; }
+.wb-timer-face { position: relative; width: var(--wb-timer-ring); height: var(--wb-timer-ring); display: flex; align-items: center; justify-content: center; }
+.wb-timer-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.wb-timer-track { fill: none; stroke: var(--edge-hairline); stroke-width: 6; }
+.wb-timer-arc { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
 .wb-timer-time {
   position: relative;
-  max-width: 72%;
-  color: var(--wb-ink);
-  font-size: clamp(var(--text-14), 19cqmin, var(--text-40));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-18);
   font-weight: var(--weight-strong);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.wb-timer-length { position: relative; color: var(--text-muted); font-size: var(--text-12); }
-.wb-timer-ctl {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border-top: 1px solid color-mix(in srgb, var(--wb-stroke) 25%, var(--edge-hairline));
-  cursor: default;
-}
-.wb-timer-len { font-variant-numeric: tabular-nums; }
-.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--wb-face, var(--surface-card))); animation: wb-timer-end 1.6s ease-in-out 4; }
-.wb-type-timer[data-done] .wb-timer-time { font-size: clamp(var(--text-14), 11cqmin, var(--text-28)); }
-.wb-type-timer[data-done] .wb-timer-length, .wb-type-timer[data-done] .wb-timer-arc { visibility: hidden; }
-/* the length is on its button for someone with the controls; under the time for everyone else */
-.wb-type-timer:has(.wb-timer-ctl) .wb-timer-length { display: none; }
+.wb-timer-time:hover:not(.wb-timer-static) { color: var(--accent); }
+.wb-timer-time:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
+.wb-timer-time.wb-timer-static { cursor: inherit; }
+.wb-timer-bar { display: none; }
+.wb-timer-ctl { display: flex; align-items: center; justify-content: center; gap: var(--space-0); }
+.wb-timer-btn { cursor: pointer; }
+.wb-timer .ic { display: block; width: 1em; height: 1em; }
+.wb-timer .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.wb-timer-go { width: 40px; height: 40px; font-size: var(--text-18); }
+.wb-timer-close { position: absolute; top: 2px; right: 2px; }
+.wb-timer[data-view="horizontal"] { flex-direction: row; gap: var(--space-2); padding: var(--space-2) var(--space-5) var(--space-2) var(--space-2); }
+.wb-timer[data-view="horizontal"] .wb-timer-face { width: auto; height: auto; padding-bottom: var(--space-2); }
+.wb-timer[data-view="horizontal"] .wb-timer-ring { display: none; }
+.wb-timer[data-view="horizontal"] .wb-timer-time { font-size: var(--text-40); }
+.wb-timer[data-view="horizontal"] .wb-timer-bar { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; border-radius: var(--radius-min); background: var(--edge-hairline); overflow: hidden; }
+.wb-timer-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.25s linear; }
+.wb-timer[data-done] { border-color: var(--accent); animation: wb-timer-end 1.6s ease-in-out 4; }
 @keyframes wb-timer-end {
-  50% { box-shadow: 0 0 0 calc(8px / var(--wb-scale, 1)) color-mix(in srgb, var(--wb-stroke) 35%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wb-type-timer[data-done] { animation: none; }
-  .wb-timer-arc { transition: none; }
+  .wb-timer[data-done] { animation: none; }
+  .wb-timer-arc, .wb-timer-bar i { transition: none; }
 }
+.app.narrow .wb-timer-btn { min-width: 36px; min-height: 36px; }
+.app.narrow .wb-timer-go { width: 44px; height: 44px; }
 
 /* words read out (a timer started, paused, ended): heard, not seen */
 .wb-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

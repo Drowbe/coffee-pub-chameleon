@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['blockTypes', 'wbClean', 'wbCopies', 'createSync', 'createServerClock', 'wbTimerLeft', 'wbTimerStart', 'wbTimerPause', 'wbTimerReset', 'wbTimerSetLength', 'wbTimerText', 'wbTimerWords', 'wbFillAction'];
+const NAMES = ['blockTypes', 'wbClean', 'wbCopies', 'createSync', 'createServerClock', 'wbTimerLeft', 'wbTimerStart', 'wbTimerPause', 'wbTimerReset', 'wbTimerSetLength', 'wbTimerText', 'wbTimerWords', 'wbTimerPick', 'wbTimerFit', 'wbTimerPlace', 'wbFillAction', 'createBoard'];
 
 let passed = 0;
 const fails = [];
@@ -136,16 +136,72 @@ const cases = {
     check(lib.wbTimerText(299.2) === '05:00' && lib.wbTimerText(3900) === '1:05:00' && lib.wbTimerText(0) === '00:00', 'the face: rounded up, h:mm:ss over an hour');
     check(lib.wbTimerWords(270) === '4 minutes 30 seconds' && lib.wbTimerWords(0) === 'no time', 'the words read out');
   },
-  'a timer is clean data; a copy is not running; its fields go back together'() {
+  'a timer is clean data (with its view); a copy skips it; its fields go back together'() {
     need('wbClean', 'wbCopies', 'blockTypes');
     const bad = lib.wbClean({ id: 't', type: 'timer', x: 0, y: 0, z: 1, length: -4, state: 'running', startedAt: 'soon', remaining: 'x' });
     check(bad && bad.length === 300 && bad.state === 'idle' && bad.startedAt === 0 && bad.remaining === 300, `clean: a running timer with no start is idle (${JSON.stringify(bad)})`);
+    check(bad && bad.view === 'radial', `clean: no view is radial (${bad && bad.view})`);
+    const h = lib.wbClean({ id: 't', type: 'timer', x: 0, y: 0, z: 1, view: 'horizontal' });
+    const odd = lib.wbClean({ id: 't', type: 'timer', x: 0, y: 0, z: 1, view: 'diagonal' });
+    check(h && h.view === 'horizontal' && odd && odd.view === 'radial', `clean: view is radial or horizontal (${h && h.view}, ${odd && odd.view})`);
+    const old = lib.wbClean({ id: 't', type: 'timer', x: 5, y: 6, z: 1, w: 300, h: 200, fill: 'teal', stroke: 'teal', ink: 'ink', length: 60 });
+    check(old && old.length === 60 && old.view === 'radial' && Number.isFinite(old.w), `clean: an old timer (a box, colours) still loads (${JSON.stringify(old)})`);
     const run = lib.wbClean({ id: 't', type: 'timer', x: 0, y: 0, z: 1, length: 120, state: 'running', startedAt: 1000000, remaining: 120 });
-    const [copy] = lib.wbCopies([run], { newId: () => 'c', dx: 24, dy: 24 });
-    check(copy && copy.state === 'idle' && copy.length === 120 && copy.startedAt === 0 && copy.remaining === 120, `a copy waits (${JSON.stringify(copy)})`);
+    const note = lib.wbClean({ id: 'n', type: 'note', x: 0, y: 0, z: 2, text: 'a' });
+    const copies = lib.wbCopies([run, note], { newId: (() => { let i = 0; return () => `c${i += 1}`; })(), dx: 24, dy: 24 });
+    check(copies.length === 1 && copies[0].type === 'note', `a copy leaves the timer out (${copies.map((c) => c.type)})`);
+    check(lib.wbCopies([run], { newId: () => 'c' }).length === 0, 'a copy of only a timer is empty');
     const linked = lib.blockTypes.get('timer').linked || [];
-    check(linked.some((g) => ['x', 'y', 'w', 'h'].every((f) => g.includes(f))), 'linked: its box');
     check(linked.some((g) => ['length', 'state', 'startedAt', 'remaining'].every((f) => g.includes(f))), 'linked: where its count stands');
+    check(lib.blockTypes.get('timer').floating === true, 'the timer is floating');
+  },
+  'the board holds the timer but does not list it'() {
+    need('createBoard', 'wbClean');
+    const board = lib.createBoard();
+    board.put(lib.wbClean({ id: 'n', type: 'note', x: 0, y: 0, z: 1, text: 'a' }));
+    board.put(lib.wbClean({ id: 't', type: 'timer', x: 0, y: 0, z: 9 }));
+    check(board.all().length === 1 && board.size === 1 && board.topZ() === 1, `board: all, size and topZ leave the timer out (${board.all().length}, ${board.size}, ${board.topZ()})`);
+    check(board.has('t') && board.get('t').type === 'timer' && board.ofType('timer').length === 1, 'board: get, has and ofType still find it');
+  },
+  'the oldest timer is the timer'() {
+    need('wbTimerPick');
+    const t = (id, z, at) => ({ id, type: 'timer', z, at });
+    check(lib.wbTimerPick([]) === null, 'pick: none');
+    check(lib.wbTimerPick([{ id: 'n', type: 'note', z: 0 }]) === null, 'pick: a note is not a timer');
+    check(lib.wbTimerPick([t('b', 3, ''), t('a', 5, '')]).id === 'b', 'pick: the lowest z (made first)');
+    check(lib.wbTimerPick([t('b', 3, '2026-02-01'), t('a', 3, '2026-01-01')]).id === 'a', 'pick: same z, the earlier save');
+    check(lib.wbTimerPick([t('b', 3, '2026-01-01'), t('a', 3, '2026-01-01')]).id === 'a', 'pick: same z and save, the lower id');
+    check(lib.wbTimerPick([t('c', 3, ''), t('a', 3, ''), t('b', 3, '')]).id === 'a', 'pick: the same whatever the order');
+    check(lib.wbTimerPick([t('a', 3, '2026-03-01'), { id: 'z', type: 'timer', z: 4, at: '2026-01-01' }]).id === 'a', 'pick: a later save by a start does not change which is the timer');
+  },
+  'the time fits in the ring: 59:59 and 23:59:59 for rings of 96 to 120 px'() {
+    need('wbTimerFit');
+    for (const ring of [96, 104, 108, 112, 120]) {
+      let last = Infinity;
+      for (const text of ['0:05', '00:00', '59:59', '1:05:00', '23:59:59']) {
+        const f = lib.wbTimerFit(ring, text);
+        const k = [...text].reduce((w, c) => w + (c === ':' ? 0.32 : 0.62), 0);
+        // The text's corners (0.8 em tall) are inside the ring's inner circle (the stroke is 6% of the ring, with a gap).
+        const corner = Math.hypot((k * f) / 2, (0.8 * f) / 2);
+        check(corner <= ring * 0.44 - ring * 0.03 - 1, `fit: ${text} in ${ring} px (font ${f}, corner ${corner.toFixed(1)})`);
+        check(f >= 10 && f <= ring * 0.3, `fit: ${text} in ${ring} px font is sane (${f})`);
+        if (text.length > 0 && text === '23:59:59') check(f <= last, 'fit: longer text is not larger');
+        last = f;
+      }
+    }
+  },
+  'the clock stays inside the board'() {
+    need('wbTimerPlace');
+    const size = { w: 130, h: 190 };
+    const area = { w: 800, h: 600 };
+    const at = (p, a = area) => JSON.stringify(lib.wbTimerPlace(p, size, a));
+    check(at(null) === JSON.stringify({ x: 8, y: 600 - 190 - 8 }), `place: none is bottom left (${at(null)})`);
+    check(at({ x: -50, y: -9 }) === JSON.stringify({ x: 0, y: 0 }), 'place: left and top edges');
+    check(at({ x: 5000, y: 5000 }) === JSON.stringify({ x: 670, y: 410 }), `place: right and bottom edges (${at({ x: 5000, y: 5000 })})`);
+    check(at({ x: 100, y: 120 }) === JSON.stringify({ x: 100, y: 120 }), 'place: inside is kept');
+    check(at({ x: 700, y: 500 }, { w: 400, h: 300 }) === JSON.stringify({ x: 270, y: 110 }), 'place: a smaller board pulls it back');
+    check(at({ x: 10, y: 10 }, { w: 100, h: 100 }) === JSON.stringify({ x: 0, y: 0 }), 'place: a clock bigger than the board sits top left');
+    check(at({ x: NaN, y: 3 }) === at(null), 'place: a saved place that is not numbers is the default');
   },
   'Fill: a block with a background takes the colour; Alt takes one; others refuse'() {
     need('wbFillAction', 'blockTypes');
