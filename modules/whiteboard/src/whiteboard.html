@@ -43,6 +43,18 @@
       <button type="button" id="find-next" class="sdk-icon-btn btn-quiet btn-small" aria-label="Next" data-tip="Next"><span class="ic" aria-hidden="true"></span></button>
       <button type="button" id="find-close" class="sdk-icon-btn btn-quiet btn-small" aria-label="Close" data-tip="Close"><span class="ic" aria-hidden="true"></span></button>
     </div>
+    <div id="grid-panel" class="wb-gridbar" role="dialog" aria-label="Grid" hidden>
+      <div class="wb-grid-row"><span class="wb-grid-name" id="grid-style-name">Style</span>
+        <div class="wb-grid-seg" role="radiogroup" aria-labelledby="grid-style-name">
+          <button type="button" class="btn btn-quiet btn-small" role="radio" data-style="dots" aria-checked="false">Dots</button>
+          <button type="button" class="btn btn-quiet btn-small" role="radio" data-style="lines" aria-checked="false">Graph paper</button>
+          <button type="button" class="btn btn-quiet btn-small" role="radio" data-style="off" aria-checked="false">Off</button>
+        </div></div>
+      <div class="wb-grid-row"><label class="wb-grid-name" for="grid-size">Grid size</label><input id="grid-size" type="range" min="8" max="96" step="4" value="24"><output id="grid-size-val" for="grid-size"></output></div>
+      <div class="wb-grid-row"><span class="wb-grid-name" id="grid-colour-name">Colour</span><div id="grid-colours" class="wb-grid-colours" role="radiogroup" aria-labelledby="grid-colour-name"></div></div>
+      <div class="wb-grid-row"><label class="wb-grid-name" for="grid-opacity">Opacity</label><input id="grid-opacity" type="range" min="0" max="100" step="5" value="15"><output id="grid-opacity-val" for="grid-opacity"></output></div>
+      <div class="wb-grid-row wb-grid-foot"><button type="button" id="grid-reset" class="btn btn-quiet btn-small">Reset to default</button></div>
+    </div>
   </div>
   <input id="picker" type="file" accept="image/*" multiple hidden>
   <p id="say" class="wb-say" aria-live="polite"></p>

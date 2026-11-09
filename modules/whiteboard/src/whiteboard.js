@@ -61,6 +61,7 @@
   const board = createBoard();
   const surface = $('board');
   let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
+  Object.assign(wbGrid, wbGridLoad(() => window.localStorage)); // this person's grid (the Grid button), before the board is drawn
   const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name), onView: () => overviewView() });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
@@ -104,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Flowchart joins shapes you place in a row. Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many (click or drag round blocks), Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Flowchart joins shapes you place in a row. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -427,7 +428,8 @@
   function showBackdrop() {
     const d = wbBackdrop(boardSettings.background);
     surface.style.setProperty('--wb-ground', d.ground);
-    surface.style.setProperty('--wb-dot', d.dot);
+    surface.style.setProperty('--wb-dot', wbGridPaint(d, wbGrid));
+    surface.dataset.grid = wbGrid.style;
     surface.dataset.background = d.id;
     surface.dataset.ground = d.family === 'themed' ? 'themed' : groundOf(WB_FIXED_BY_ID.get(d.id));
   }
@@ -1707,7 +1709,7 @@
     else if (e.id === 'find') { if (finding) closeFind(); else openFind(); }
   });
 
-  // Snap to grid: blocks made, moved and resized land on the board's dots (WB_GRID); Alt (Option on a Mac) held during a
+  // Snap to grid: blocks made, moved and resized land on the board's dots (wbGrid.size); Alt (Option on a Mac) held during a
   // drag does the opposite for that drag. Lines snap at their ends; a pen drawing never does. Each person's own choice,
   // kept in this browser when it can be (off at first), never in the board's data.
   const SNAP_KEY = 'whiteboard-snap';
@@ -1717,6 +1719,65 @@
   // The overview's button comes first, then Snap's: the host holds a module's first two icon-only right-zone buttons at the
   // far right, so these two stay there, Snap the last, whatever comes and goes on the left (Delete, Arrange). Overview is
   // for everyone who can see the board (it only reads); Snap is for editors.
+  // Grid: dots, graph paper or off, with its size, colour and opacity; each person's own, kept in this browser (wbGrid, lib-a),
+  // for everyone who can see the board. The size is also Snap to grid's step. The panel is the small bar at the board's top right.
+  const gridPanel = $('grid-panel');
+  const gridStore = () => window.localStorage;
+  const gridSize = $('grid-size');
+  const gridOpacity = $('grid-opacity');
+  const gridSwatches = new Map();
+  function gridShow() {
+    showBackdrop();
+    renderer.redrawGrid();
+    if (gridPanel.hidden) return;
+    for (const b of gridPanel.querySelectorAll('[data-style]')) b.setAttribute('aria-checked', String(b.dataset.style === wbGrid.style));
+    gridSize.value = String(wbGrid.size);
+    $('grid-size-val').textContent = String(wbGrid.size);
+    for (const [id, b] of gridSwatches) b.setAttribute('aria-checked', String(id === wbGrid.color));
+    const auto = wbGrid.opacity === null;
+    gridOpacity.value = String(auto ? Math.round(wbBackdrop(boardSettings.background).strength / 5) * 5 : Math.round(wbGrid.opacity * 100));
+    $('grid-opacity-val').textContent = auto ? 'Auto' : `${gridOpacity.value}%`;
+  }
+  function gridSet(change) {
+    Object.assign(wbGrid, wbGridClean({ ...wbGrid, ...change }));
+    wbGridSave(gridStore, wbGrid);
+    gridShow();
+  }
+  for (const c of WB_GRID_COLOURS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `wb-grid-swatch${c.id === 'auto' ? ' wb-grid-auto' : ''}`;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-label', c.label);
+    b.title = c.label;
+    if (c.token) b.style.setProperty('--wb-sw', c.token);
+    b.addEventListener('click', () => gridSet({ color: c.id }));
+    gridSwatches.set(c.id, b);
+    $('grid-colours').append(b);
+  }
+  for (const b of gridPanel.querySelectorAll('[data-style]')) b.addEventListener('click', () => gridSet({ style: b.dataset.style }));
+  gridSize.addEventListener('input', () => gridSet({ size: Number(gridSize.value) }));
+  gridOpacity.addEventListener('input', () => gridSet({ opacity: Number(gridOpacity.value) / 100 }));
+  $('grid-reset').addEventListener('click', () => gridSet({ ...WB_GRID_USUAL }));
+  function openGrid() {
+    if (presenting) return;
+    closeFind({ quiet: true });
+    gridPanel.hidden = false;
+    gridShow();
+    (gridPanel.querySelector('[data-style][aria-checked="true"]') || gridPanel).focus({ preventScroll: true });
+  }
+  function closeGrid() {
+    if (gridPanel.hidden) return;
+    gridPanel.hidden = true;
+    surface.focus({ preventScroll: true }); // the button is in the frame's toolbar, outside this page: the board gets the keyboard
+  }
+  gridPanel.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); closeGrid(); }
+  });
+  for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) gridPanel.addEventListener(type, (e) => e.stopPropagation());
+  document.addEventListener('pointerdown', (e) => { if (!gridPanel.hidden && !gridPanel.contains(e.target)) closeGrid(); }, true);
+  host.ui.toolbarButton({ id: 'grid', label: 'Grid', icon: 'table-cells', iconOnly: true, zone: 'end', onClick: () => { if (gridPanel.hidden) openGrid(); else closeGrid(); } });
   const overviewStore = () => window.localStorage;
   let overviewOn = wbOverviewLoad(overviewStore);
   const overviewButton = host.ui.toolbarButton({ id: 'overview', label: 'Overview', icon: 'map', iconOnly: true, on: overviewOn, zone: 'end', onClick: () => toggleOverview() });

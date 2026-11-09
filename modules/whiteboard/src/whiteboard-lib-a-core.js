@@ -90,11 +90,11 @@
   function wbBackdrop(id) {
     const dot = (n, tok = 'var(--text-primary)') => `color-mix(in srgb, ${tok} ${n}%, transparent)`;
     const f = WB_FIXED_BY_ID.get(id);
-    if (f) return { id: f.id, family: f.family, ground: `var(${f.css})`, dot: dot(WB_DOT.fixed, `var(--wb-fixed-ink-${f.family})`), strength: WB_DOT.fixed };
+    if (f) return { id: f.id, family: f.family, ground: `var(${f.css})`, dot: dot(WB_DOT.fixed, `var(--wb-fixed-ink-${f.family})`), ink: `var(--wb-fixed-ink-${f.family})`, strength: WB_DOT.fixed };
     const c = WB_PALETTE_BY_ID.get(id);
-    if (!c) return { id: 'default', family: 'themed', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
+    if (!c) return { id: 'default', family: 'themed', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), ink: 'var(--text-primary)', strength: WB_DOT.default };
     const strength = c.id === 'ink' ? WB_DOT.ink : WB_DOT.tint;
-    return { id: c.id, family: 'themed', ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
+    return { id: c.id, family: 'themed', ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), ink: 'var(--text-primary)', strength };
   }
   // Contrast (WCAG): the ratio of two colours given as [r, g, b] (0-255), 1 to 21.
   function wbLuminance(rgb) {
@@ -121,7 +121,50 @@
   // The board's dot grid, in board units: the dots the renderer draws sit on its multiples, and Snap to grid puts blocks
   // on them (wbSnap).
   const WB_GRID = 24;
-  const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
+  // This person's grid (the Grid button): its style ('dots', 'lines' for graph paper, or 'off'), pitch, colour and opacity.
+  // `wbGrid` is the live one; its size is the pitch both the drawn grid and Snap to grid use. Kept in this browser, never
+  // in the board's data; anything unreadable is the usual: dots, 24, automatic colour and strength.
+  const WB_GRID_KEY = 'whiteboard-grid';
+  const WB_GRID_STYLES = ['dots', 'lines', 'off'];
+  const WB_GRID_COLOURS = [
+    { id: 'auto', label: 'Automatic' },
+    { id: 'muted', label: 'Muted', token: 'var(--text-muted)' },
+    { id: 'accent', label: 'Accent', token: 'var(--accent)' },
+    ...WB_PALETTE.filter((c) => c.id !== 'ink'),
+  ];
+  const WB_GRID_USUAL = Object.freeze({ style: 'dots', size: WB_GRID, color: 'auto', opacity: null });
+  const wbGrid = { ...WB_GRID_USUAL };
+  function wbGridClean(v) {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    const u = WB_GRID_USUAL;
+    return {
+      style: WB_GRID_STYLES.includes(o.style) ? o.style : u.style,
+      size: Number.isInteger(o.size) && o.size >= 8 && o.size <= 96 ? o.size : u.size,
+      color: WB_GRID_COLOURS.some((c) => c.id === o.color) ? o.color : u.color,
+      opacity: typeof o.opacity === 'number' && o.opacity >= 0 && o.opacity <= 1 ? o.opacity : u.opacity,
+    };
+  }
+  function wbGridLoad(store) {
+    try { return wbGridClean(JSON.parse(store().getItem(WB_GRID_KEY))); } catch { return wbGridClean(null); }
+  }
+  function wbGridSave(store, g) {
+    try { store().setItem(WB_GRID_KEY, JSON.stringify(wbGridClean(g))); return true; } catch { return false; }
+  }
+  // The grid's colour as CSS on a background `d` (wbBackdrop): automatic is the background's own dot colour (its strength
+  // unless an opacity is set); a chosen colour is its token at the set opacity, else the background's strength.
+  function wbGridPaint(d, g) {
+    if (g.color === 'auto' && g.opacity === null) return d.dot;
+    const c = WB_GRID_COLOURS.find((x) => x.id === g.color);
+    const tok = c && c.token ? c.token : d.ink;
+    const pct = g.opacity === null ? d.strength : Math.round(g.opacity * 100);
+    return `color-mix(in srgb, ${tok} ${pct}%, transparent)`;
+  }
+  // Where the tiles of the drawn grid start so the grid sits on the multiples of the pitch: a dot is drawn in the middle
+  // of its tile (half a step back); a line is drawn at the tile's start (whole pixels, so it stays crisp).
+  function wbGridOffset(style, view, step) {
+    return style === 'lines' ? { x: Math.round(view.x), y: Math.round(view.y) } : { x: view.x - step / 2, y: view.y - step / 2 };
+  }
+  const wbSnap = (v, pitch = wbGrid.size) => Math.round(v / pitch) * pitch;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
   // The words of a note, a text block and a shape (a block type with `markup: true`) are stored as written, in the small
   // markup chat uses (**bold**, *italic*, `code`, - and 1. lists, # headings, [words](https://...) links) and drawn

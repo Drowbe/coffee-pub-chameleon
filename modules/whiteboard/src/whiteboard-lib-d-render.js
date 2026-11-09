@@ -26,13 +26,14 @@
     function applyView() {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
       world.style.setProperty('--wb-scale', String(view.s));
-      let step = WB_GRID * view.s;
+      let step = wbGrid.size * view.s;
       while (step < 12) step *= 2; // zoomed far out, every other dot, so the ground never turns grey
-      // Each dot is drawn in the middle of its tile: the tiles start half a step back, so the dots sit on the grid's
-      // multiples (board 0, 24, 48 ...), where Snap to grid puts blocks.
+      // A dot is drawn in the middle of its tile: the tiles start half a step back, so the dots sit on the grid's
+      // multiples (board 0, 24, 48 ...), where Snap to grid puts blocks; a line is at its tile's start (wbGridOffset).
+      const at = wbGridOffset(wbGrid.style, view, step);
       surface.style.setProperty('--wb-grid', `${step}px`);
-      surface.style.setProperty('--wb-grid-x', `${view.x - step / 2}px`);
-      surface.style.setProperty('--wb-grid-y', `${view.y - step / 2}px`);
+      surface.style.setProperty('--wb-grid-x', `${at.x}px`);
+      surface.style.setProperty('--wb-grid-y', `${at.y}px`);
       if (onView) onView();
     }
 
@@ -448,6 +449,7 @@
     applyView();
     return {
       view,
+      redrawGrid: applyView,
       draw,
       remove,
       clear,
