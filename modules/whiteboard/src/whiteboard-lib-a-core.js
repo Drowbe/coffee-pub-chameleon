@@ -50,6 +50,32 @@
   const WB_GRID = 24;
   const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
+  // The words of a note, a text block and a shape (a block type with `markup: true`) are stored as written, in the small
+  // markup chat uses (**bold**, *italic*, `code`, - and 1. lists, # headings, [words](https://...) links) and drawn
+  // through the host's markdown (lib-d, wbShowWords). They have a size and an alignment of their own: a closed list of
+  // the theme's type tokens, and three ways to line the words up. A block that has neither reads as its type's usual.
+  const WB_SIZES = [
+    { id: 'small', label: 'Small', token: 'var(--text-14)' },
+    { id: 'medium', label: 'Medium', token: 'var(--text-16)' },
+    { id: 'large', label: 'Large', token: 'var(--text-22)' },
+    { id: 'huge', label: 'Huge', token: 'var(--text-28)' },
+  ];
+  const WB_SIZE_BY_ID = new Map(WB_SIZES.map((x) => [x.id, x]));
+  const WB_ALIGNS = [
+    { id: 'left', label: 'Left', icon: 'align-left' },
+    { id: 'center', label: 'Centre', icon: 'align-center' },
+    { id: 'right', label: 'Right', icon: 'align-right' },
+  ];
+  const WB_ALIGN_BY_ID = new Map(WB_ALIGNS.map((x) => [x.id, x]));
+  // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
+  // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.
+  const wbMarkup = { html: null, plain: null };
+  // A block's words as plain text, on one line: what a screen reader is told, never the markup.
+  const wbPlain = (text) => {
+    const t = typeof text === 'string' ? text : '';
+    const out = wbMarkup.plain ? wbMarkup.plain(t, { line: true }) : t;
+    return String(out).replace(/\s+/g, ' ').trim();
+  };
   // Small checks every block type uses to clean what it reads.
   const wb = {
     // A finite number in [-max, max] rounded to one decimal, or null.

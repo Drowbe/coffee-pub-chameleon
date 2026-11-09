@@ -7,6 +7,7 @@
     type: 'note',
     label: 'Note',
     edit: 'text',
+    markup: true,
     paint: { stroke: { extra: ['auto', 'none'] }, fill: {}, ink: {} },
     weight: true,
     create: () => ({ w: 180, h: 180, text: '', fill: 'gold', stroke: 'auto', ink: 'ink', weight: 1 }),
@@ -17,8 +18,8 @@
     render(b, el) {
       let words = el.querySelector('.wb-words');
       if (!words) { words = document.createElement('div'); words.className = 'wb-words'; el.replaceChildren(words); }
-      words.textContent = b.text;
+      wbShowWords(words, b.text);
     },
     textOf: (el) => el.querySelector('.wb-words'),
-    describe: (b) => (b.text ? `Note: ${b.text.slice(0, 80)}` : 'Empty note'),
+    describe: (b) => { const t = wbPlain(b.text); return t ? `Note: ${t.slice(0, 80)}` : 'Empty note'; },
   });

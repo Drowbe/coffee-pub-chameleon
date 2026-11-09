@@ -10,6 +10,8 @@
 //   lib-f tool-*    one file per tool
 //   lib-g history   undo and redo of this person's own changes
 //   lib-h clipboard copy, cut, paste and duplicate (in this page's memory)
+//   lib-i pictures  pictures from the computer, sent as uploads
+//   lib-j markup    what the formatting bar does to the words being edited
 (async () => {
   'use strict';
 
@@ -90,6 +92,17 @@
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
     return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M) and the Brush. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
+  // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
+  // wbShowWords), read out as the host's plain text of it.
+  wbMarkup.html = host.util.markdown;
+  wbMarkup.plain = host.util.plain;
+  wbMarkup.linkTip = `${MOD}-click to open`;
+  // The host's icons as SVG, each asked for once (a timer's buttons, the formatting bar).
+  const icons = new Map(); // name -> a promise of its SVG
+  function iconSvg(name) { if (!icons.has(name)) icons.set(name, host.ui.icon(name).catch(() => '')); return icons.get(name); }
+
+  // The size and alignment picked for the words of new blocks (null: each type's usual).
+  const nextText = { size: null, align: null };
   const takesNext = (def, role) => {
     const usual = def.create();
     if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
@@ -968,10 +981,9 @@
   const MUTE_KEY = 'whiteboard-timer-mute';
   let muted = false;
   try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* no storage: not muted */ }
-  const icons = new Map(); // name -> a promise of its SVG
   timerDef.now = () => sync.now();
   timerDef.controls = (b) => policy.canChange(b);
-  timerDef.icon = (name) => { if (!icons.has(name)) icons.set(name, host.ui.icon(name).catch(() => '')); return icons.get(name); };
+  timerDef.icon = (name) => iconSvg(name);
   timerDef.say = (text) => say(text);
   timerDef.done = () => { say('Time is up.'); if (!muted) chime(); };
   timerDef.act = (id, what, button) => {
@@ -1199,6 +1211,25 @@
             : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
+  // ---- links in the words ------------------------------------------------------------------------------------------------
+  // A link in a block's words opens in a new tab: with Ctrl or Cmd and a click (that click is the link's, it picks
+  // nothing), or with a plain click on the block that was already the one picked, once it is clear the click is not the
+  // first of a double-click (which edits the words). Only with the Select tool, and never on a drag: a press on a link
+  // anywhere else picks and moves the block as on its words. The browser itself never follows one (its click, middle
+  // click and drag are stopped). The right-click menu has Open link too (the way for the keyboard and a touch screen).
+  const LINK_WAIT = 400; // the Select tool's double-click time
+  let linkPress = null; // { pointerId, href, sx, sy, mod, picked } while a press on a link is down
+  let linkTimer = 0;
+  function openLink(href) {
+    if (typeof href !== 'string' || !/^https?:\/\//i.test(href)) return;
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+  for (const type of ['click', 'auxclick', 'dragstart']) {
+    surface.addEventListener(type, (e) => { if (e.target.closest && e.target.closest('.wb-block a')) e.preventDefault(); }, true);
+  }
+  const hostOf = (href) => { try { return new URL(href).host; } catch { return ''; } };
+  const linkRows = (id) => wbLinksIn(renderer.element(id)).map((href, i) => ({ id: `link-${i}`, label: 'Open link', icon: 'arrow-up-right-from-square', hint: hostOf(href), tip: href, onClick: () => openLink(href) }));
+
   // ---- the pointer ------------------------------------------------------------------------------------------------------
   const pointers = new Map(); // pointer id -> its last point on the screen
   let down = null; // the pointer the tool is following
@@ -1246,6 +1277,15 @@
     }
     // A press while words are being edited only ends the editing: it does not also draw or put a block there.
     if (editing) { const ed = editing; editing = null; ed.finish(true); surface.focus({ preventScroll: true, focusVisible: false }); return; }
+    clearTimeout(linkTimer);
+    linkTimer = 0;
+    linkPress = null;
+    const href = tool.id === 'select' && !spaceHeld ? wbLinkAt(e.target) : null;
+    if (href) {
+      const on = renderer.blockAt(e.target);
+      linkPress = { pointerId: e.pointerId, href, sx: e.clientX, sy: e.clientY, mod: (e.ctrlKey || e.metaKey) && !e.shiftKey, picked: sel.size === 1 && sel.has(on) };
+      if (linkPress.mod) return; // a Ctrl or Cmd click on a link is the link's
+    }
     try { surface.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
     const p = pointOf(e);
     pointers.set(e.pointerId, p);
@@ -1289,6 +1329,13 @@
     if (down === e.pointerId && tool.move) tool.move(p, ctx);
   });
   const lift = (e) => {
+    if (linkPress && linkPress.pointerId === e.pointerId) {
+      const lp = linkPress;
+      linkPress = null;
+      const still = e.type === 'pointerup' && Math.hypot(e.clientX - lp.sx, e.clientY - lp.sy) < 4;
+      if (still && lp.mod) openLink(lp.href);
+      else if (still && lp.picked) linkTimer = setTimeout(() => { linkTimer = 0; if (!editing) openLink(lp.href); }, LINK_WAIT);
+    }
     if (panning && panning.id === e.pointerId) {
       const was = panning;
       panning = null;
@@ -1355,7 +1402,12 @@
     if (!sel.has(id)) select([id]);
     const ids = [...sel];
     const list = targets();
-    if (!list.length) return;
+    const links = ids.length === 1 ? linkRows(id) : [];
+    if (!list.length) {
+      // Someone who may only look: the links, if there are any.
+      if (links.length) host.menu.show({ id: 'block', at, items: links });
+      return;
+    }
     const single = list.length === 1 ? list[0] : null;
     const def = single && defOf(single);
     const lines = connectorsIn();
@@ -1368,6 +1420,7 @@
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         ...(lines.length ? lineGroups(lines) : []),
+        ...links,
         ...(pair() ? [{ id: 'connect', label: 'Connect them', icon: 'arrows-turn-right', onClick: () => connectPicked() }] : []),
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),

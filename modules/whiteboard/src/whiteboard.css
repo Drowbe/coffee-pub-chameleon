@@ -43,7 +43,33 @@
 .wb-block { position: absolute; --wb-ink: var(--text-primary); --wb-stroke: var(--text-primary); --wb-weight: 0px; color: var(--wb-ink); }
 .wb-block:focus { outline: none; }
 .wb-block:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 4px; }
-.wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; }
+.wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; text-align: var(--wb-align, inherit); }
+
+/* a block's words written with markup (lib-d, wbShowWords: the host's markdown), close set so a note stays a note: the
+   words' own size (--wb-size, a type token the renderer sets) and colour, headings a step or two larger, no colours of
+   their own but the ink's and the accent under a link */
+.wb-md :is(p, ul, ol, h1, h2, h3, pre, blockquote) { margin: 0; }
+.wb-md > * + * { margin-top: 0.35em; }
+.wb-md :is(ul, ol) { padding-left: 1.4em; }
+.wb-block:is([data-align="center"], [data-align="right"]) .wb-md :is(ul, ol) { padding-left: 0; list-style-position: inside; }
+.wb-md :is(h1, h2, h3) { font-weight: var(--weight-strong); line-height: 1.2; }
+.wb-md h1 { font-size: 1.5em; }
+.wb-md h2 { font-size: 1.25em; }
+.wb-md h3 { font-size: 1.1em; }
+.wb-md strong { font-weight: var(--weight-strong); }
+.wb-md em { font-style: italic; }
+.wb-md code {
+  padding: 0 0.2em;
+  border-radius: var(--radius-min);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.wb-md pre { padding: 0.3em 0.5em; border-radius: var(--radius-small); background: color-mix(in srgb, currentColor 10%, transparent); white-space: pre-wrap; }
+.wb-md pre code { padding: 0; background: none; }
+.wb-md blockquote { padding-left: 0.6em; border-left: 2px solid color-mix(in srgb, currentColor 40%, transparent); }
+/* a link: underlined in the accent, never dragged; a press on it is the board's (whiteboard.js, "links") */
+.wb-md a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 0.15em; -webkit-user-drag: none; }
 
 /* a note: a square of its fill with words on it, a slight border a little darker than the fill (stroke 'auto': the fill
    with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
@@ -89,13 +115,14 @@
   position: absolute;
   inset: var(--wb-inset, 8px);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
   text-align: center;
   font-size: var(--text-16);
   overflow: hidden;
   pointer-events: none;
 }
+.wb-shape .wb-words a { pointer-events: auto; }
 
 /* a picture: the upload drawn to its box, with a border only when one is picked; "Picture not found" when it is gone */
 .wb-type-image { border: var(--wb-weight) solid var(--wb-stroke); cursor: grab; }
