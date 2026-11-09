@@ -89,34 +89,6 @@
     // A block's colours and width, as custom properties whiteboard.css draws with: --wb-fill, --wb-stroke and --wb-ink are
     // the role's theme token (unset for 'none' or 'auto', which data-fill and data-stroke tell the stylesheet), --wb-weight
     // the width in board units.
-    //
-    // Override theme (surface.dataset.override === 'on'): the block says so (data-override, which whiteboard.css reads, and
-    // which an exported copy keeps), and a block with a palette colour as its fill whose words are the usual ink gets
-    // --wb-ink as whichever of the theme's text and page colours reads better on that fill (inkOn).
-    const probe = document.createElement('span');
-    probe.hidden = true;
-    const resolved = new Map(); // token -> [r, g, b] in the theme now
-    function rgbOf(token) {
-      if (resolved.has(token)) return resolved.get(token);
-      probe.style.color = '';
-      probe.style.color = token;
-      if (!probe.parentNode) surface.append(probe);
-      const m = /^rgba?\(\s*(\d+(?:\.\d+)?)[ ,]+(\d+(?:\.\d+)?)[ ,]+(\d+(?:\.\d+)?)/.exec(getComputedStyle(probe).color);
-      const rgb = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-      resolved.set(token, rgb);
-      return rgb;
-    }
-    // The token of the text colour that reads better on `token` (a palette token), or null when it cannot be told.
-    function inkOn(token) {
-      const a = rgbOf('var(--text-primary)');
-      const b = rgbOf('var(--surface-page)');
-      if (!a || !b) return null;
-      const darkFirst = wbLuminance(a) <= wbLuminance(b);
-      const pick = wbContrastInk(rgbOf(token), darkFirst ? a : b, darkFirst ? b : a);
-      if (!pick) return null;
-      return (pick === 'dark') === darkFirst ? 'var(--text-primary)' : 'var(--surface-page)';
-    }
-    const overrideOn = () => surface.dataset.override === 'on';
     function paint(el, block, def) {
       for (const role of WB_ROLES) {
         const v = def.paint && def.paint[role.id] ? block[role.id] : undefined;
@@ -124,12 +96,6 @@
         if (v) el.dataset[role.id] = v; else delete el.dataset[role.id];
         if (c) el.style.setProperty(`--wb-${role.id}`, c.token); else el.style.removeProperty(`--wb-${role.id}`);
       }
-      const full = overrideOn();
-      if (full) el.dataset.override = 'on'; else delete el.dataset.override;
-      delete el.dataset.contrast;
-      const fill = full && def.paint && def.paint.fill ? WB_PALETTE_BY_ID.get(block.fill) : null;
-      const ink = fill && def.paint.ink && (block.ink === 'ink' || block.ink === 'usual') ? inkOn(fill.token) : null;
-      if (ink) { el.style.setProperty('--wb-ink', ink); el.dataset.contrast = 'auto'; }
       if (def.weight) el.style.setProperty('--wb-weight', `${block.weight}px`); else el.style.removeProperty('--wb-weight');
       // The words' size (a type token) and how they line up, for a block whose words take markup.
       const size = def.markup && WB_SIZE_BY_ID.get(block.size);
@@ -165,11 +131,6 @@
       for (const cid of [...(deps.get(id) || [])]) { const c = shown.get(cid); if (c) draw(c); }
     }
 
-    // Every block drawn again with the colours as they are now (Override theme switched, or the theme changed).
-    function restyle() {
-      resolved.clear();
-      for (const [id, el] of els) { const b = shown.get(id); const d = b && blockTypes.get(b.type); if (b && d) paint(el, b, d); }
-    }
     function draw(block) {
       const def = blockTypes.get(block.type);
       if (!def) return null;
@@ -483,8 +444,6 @@
     return {
       view,
       draw,
-      restyle,
-      inkOn,
       remove,
       clear,
       select,
