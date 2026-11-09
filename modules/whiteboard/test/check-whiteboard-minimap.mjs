@@ -5,7 +5,7 @@
  * Guards:
  *   - what the map shows: the box round every block (frames too) and the view, with a margin (a share of the longer side,
  *     at least a few board units); nothing for an empty board; far-apart blocks all in it;
- *   - the map and the board, both ways (the board's shape kept, centred, inside the panel's padding);
+ *   - the map and the board, both ways (the board's shape kept, centred, inside the map's padding);
  *   - a press puts the middle of the view on the point pressed, at the same zoom;
  *   - dragging the view's rectangle keeps where it was grabbed and is held inside what the map shows;
  *   - at most 2000 boxes are drawn, the lowest by z first;

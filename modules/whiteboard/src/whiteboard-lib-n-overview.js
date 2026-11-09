@@ -1,19 +1,19 @@
   // ---- whiteboard-lib-n-overview.js: the overview, a small map of the whole board ---------------------------------------
   //
-  // A small panel at the bottom right of the board (Show overview, in the title bar's menu): every block as a small box,
+  // A small map at the bottom right of the board (Show overview, in the title bar's menu): every block as a small box,
   // each frame as an outline, and the part of the board in sight as a rectangle in the accent colour. A press anywhere on
   // it puts the middle of the view there; dragging moves the view along. It only reads the board and the view, so someone
   // who may only look can use it. Each person's own choice, kept in this browser (off at first), never in the board's data.
   //
   // The work is plain functions on boxes ({ x0, y0, x1, y1 } in board units, as lib-m's wbRect gives them), so the
-  // checks run it with no page; createOverview is the panel itself, made only by the page.
+  // checks run it with no page; createOverview is the map itself, made only by the page.
   const WB_OVERVIEW = {
     key: 'whiteboard-overview', // the browser's storage: '1' shown, anything else hidden
     cap: 2000, // the most blocks drawn (the lowest first, by z); the rest are left out, and the map says nothing of it
     least: { w: 360, h: 320 }, // a module smaller than this has no room for it
     size: { w: 160, h: 110 }, // CSS pixels
     small: { w: 120, h: 84 }, // in a narrow module
-    pad: 4, // CSS pixels inside the panel's edge
+    pad: 4, // CSS pixels inside the map's edge
     margin: 0.06, // round what is shown: this much of its longer side, each way
     marginLeast: 40, // and at least this many board units
   };
@@ -63,11 +63,11 @@
     return sorted.length > cap ? sorted.slice(0, cap) : sorted;
   }
 
-  // Whether the panel is hidden: turned off, while presenting, in a module too small for it, or with nothing on the board.
+  // Whether the map is hidden: turned off, while presenting, in a module too small for it, or with nothing on the board.
   function wbOverviewHidden({ on, width, height, count, presenting }) {
     return !on || Boolean(presenting) || !(width >= WB_OVERVIEW.least.w) || !(height >= WB_OVERVIEW.least.h) || !(count > 0);
   }
-  // The panel's size, by the module's width (narrow: the stylesheet's `.app.narrow`).
+  // The map's size, by the module's width (narrow: the stylesheet's `.app.narrow`).
   const wbOverviewSize = (narrow) => (narrow ? WB_OVERVIEW.small : WB_OVERVIEW.size);
 
   // The person's choice, in the browser's storage when there is one (store() -> localStorage; it may throw, or there may
@@ -79,17 +79,17 @@
     try { const s = store(); if (!s) return false; s.setItem(WB_OVERVIEW.key, on ? '1' : '0'); return true; } catch { return false; }
   }
 
-  // The panel: a small SVG in the board's corner. centre(p) puts the middle of the view at the board point p (the page
+  // The map: a small SVG in the board's corner. centre(p) puts the middle of the view at the board point p (the page
   // moves the view). The page hands it the boxes (blocks(list), [{ x0, y0, x1, y1, z, frame }]) when the board changes and
   // the view's box (view(r)) when the view moves; it draws once a frame at most, and not at all while hidden. While the
   // view's rectangle is dragged the map keeps its scale, so the rectangle moves under the pointer and not the map.
   function createOverview({ layer, centre }) {
     const NS = 'http://www.w3.org/2000/svg';
-    const panel = document.createElement('div');
-    panel.className = 'wb-overview';
-    panel.setAttribute('role', 'img');
-    panel.setAttribute('aria-label', 'Overview of the board');
-    panel.hidden = true;
+    const mapEl = document.createElement('div');
+    mapEl.className = 'wb-overview';
+    mapEl.setAttribute('role', 'img');
+    mapEl.setAttribute('aria-label', 'Overview of the board');
+    mapEl.hidden = true;
     const svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('aria-hidden', 'true');
     const g = document.createElementNS(NS, 'g');
@@ -99,10 +99,10 @@
     viewEl.setAttribute('class', 'wb-ov-view');
     g.append(frames, boxes, viewEl);
     svg.append(g);
-    panel.append(svg);
-    panel.style.width = `${WB_OVERVIEW.size.w}px`;
-    panel.style.height = `${WB_OVERVIEW.size.h}px`;
-    layer.append(panel);
+    mapEl.append(svg);
+    mapEl.style.width = `${WB_OVERVIEW.size.w}px`;
+    mapEl.style.height = `${WB_OVERVIEW.size.h}px`;
+    layer.append(mapEl);
 
     let size = WB_OVERVIEW.size;
     let all = []; // the boxes, as last handed in
@@ -113,7 +113,7 @@
     let bounds = null;
     let hidden = true;
     let frame = 0;
-    let drag = null; // { id, grab, fit, bounds } while a pointer is down on the panel
+    let drag = null; // { id, grab, fit, bounds } while a pointer is down on the map
     const pools = { frames: [], boxes: [] };
 
     function soon() {
@@ -149,24 +149,24 @@
       if (viewBox) setRect(viewEl, viewBox);
     }
 
-    // A point on the panel (a pointer event) on the board, by the map as drawn (or as it was when the drag began).
-    const boardAt = (e, f) => { const r = panel.getBoundingClientRect(); return wbOverviewToBoard(f, { x: e.clientX - r.left, y: e.clientY - r.top }); };
+    // A point on the map (a pointer event) on the board, by the map as drawn (or as it was when the drag began).
+    const boardAt = (e, f) => { const r = mapEl.getBoundingClientRect(); return wbOverviewToBoard(f, { x: e.clientX - r.left, y: e.clientY - r.top }); };
     const mid = (r) => ({ x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 });
-    panel.addEventListener('pointerdown', (e) => {
+    mapEl.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       e.preventDefault();
       if (drag || !fit || !viewBox || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      try { panel.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
+      try { mapEl.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
       const p = boardAt(e, fit);
       // On the view's rectangle: it moves from where it was pressed (a press there that does not move puts the middle
       // there all the same, when it is let go); elsewhere, the view's middle goes there first.
       const c = mid(viewBox);
       const grab = wbOverviewInside(p, viewBox) ? { x: p.x - c.x, y: p.y - c.y } : { x: 0, y: 0 };
       drag = { id: e.pointerId, grab, fit, bounds, p, sx: e.clientX, sy: e.clientY, moved: false };
-      panel.classList.add('wb-ov-dragging');
+      mapEl.classList.add('wb-ov-dragging');
       centre(wbOverviewDrag(p, grab, bounds));
     });
-    panel.addEventListener('pointermove', (e) => {
+    mapEl.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       e.stopPropagation();
       if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return;
@@ -179,29 +179,29 @@
       const was = drag;
       drag = null;
       if (!was.moved && e.type === 'pointerup' && (was.grab.x || was.grab.y)) centre(wbOverviewDrag(was.p, { x: 0, y: 0 }, was.bounds));
-      panel.classList.remove('wb-ov-dragging');
+      mapEl.classList.remove('wb-ov-dragging');
       soon(); // the map fits the view again
     };
-    panel.addEventListener('pointerup', end);
-    panel.addEventListener('pointercancel', end);
-    for (const type of ['contextmenu', 'dblclick', 'click']) panel.addEventListener(type, (e) => { e.stopPropagation(); e.preventDefault(); });
+    mapEl.addEventListener('pointerup', end);
+    mapEl.addEventListener('pointercancel', end);
+    for (const type of ['contextmenu', 'dblclick', 'click']) mapEl.addEventListener(type, (e) => { e.stopPropagation(); e.preventDefault(); });
 
     return {
-      el: panel,
+      el: mapEl,
       blocks(list) { all = list || []; dirty = true; soon(); },
       view(r) { viewBox = r; soon(); },
       size(s) {
         if (s.w === size.w && s.h === size.h) return;
         size = s;
-        panel.style.width = `${s.w}px`;
-        panel.style.height = `${s.h}px`;
+        mapEl.style.width = `${s.w}px`;
+        mapEl.style.height = `${s.h}px`;
         soon();
       },
       hide(on) {
         if (hidden === Boolean(on)) return;
         hidden = Boolean(on);
-        panel.hidden = hidden;
-        if (hidden) { drag = null; panel.classList.remove('wb-ov-dragging'); cancelAnimationFrame(frame); frame = 0; } else soon();
+        mapEl.hidden = hidden;
+        if (hidden) { drag = null; mapEl.classList.remove('wb-ov-dragging'); cancelAnimationFrame(frame); frame = 0; } else soon();
       },
       get hidden() { return hidden; },
       // For the checks in a browser: the map as drawn.

@@ -556,7 +556,7 @@
 
 /* The overview (lib-n): a small map of the whole board at its bottom right, on the plain card surface whatever the
    board's background, so it reads in both modes. Blocks are small muted boxes, frames outlines, the view the accent.
-   Under the colour strip, the formatting bar and the menus; only the panel itself takes presses. */
+   Under the colour strip, the formatting bar and the menus; only the map itself takes presses. */
 .wb-overview {
   position: absolute;
   right: var(--space-3);

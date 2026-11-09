@@ -58,7 +58,7 @@
   const me = (info.user && info.user.key) || '';
   const board = createBoard();
   const surface = $('board');
-  let overview = null; // the overview's panel (lib-n), once it is made (see "the overview")
+  let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
   const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name), onView: () => overviewView() });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
