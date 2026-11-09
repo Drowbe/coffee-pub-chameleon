@@ -347,6 +347,7 @@
   ];
   const filterSwitch = host.ui.viewSwitch({
     id: 'filter',
+    label: 'Show',
     options: FILTERS,
     value: show,
     onChange: (id) => { show = id; render(); },

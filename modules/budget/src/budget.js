@@ -717,7 +717,7 @@
     const last = localStorage.getItem('budget-view');
     if (last === 'overview' || last === 'costs' || last === 'settle') state.view = last;
   } catch (err) { /* the default */ }
-  viewSwitch = host.ui.viewSwitch({ id: 'view', options: VIEW_OPTIONS(), value: state.view === 'settle' ? 'overview' : state.view, onChange: showView });
+  viewSwitch = host.ui.viewSwitch({ id: 'view', label: 'View', options: VIEW_OPTIONS(), value: state.view === 'settle' ? 'overview' : state.view, onChange: showView });
   let wired = false; // the timers and listeners are set once, however many times it is tried
   async function load() {
     $('msg').hidden = true;

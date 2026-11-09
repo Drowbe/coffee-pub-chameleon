@@ -15,6 +15,8 @@
 //   lib-k table     rows copied from a spreadsheet, read as a table's cells
 //   lib-l export    the board as a picture, and ready to print
 //   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
+//   lib-n overview  the small map of the whole board
+//   lib-o find      Find in the board: which blocks hold the words, in reading order
 (async () => {
   'use strict';
 
@@ -57,7 +59,8 @@
   const me = (info.user && info.user.key) || '';
   const board = createBoard();
   const surface = $('board');
-  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name) });
+  let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
+  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name), onView: () => overviewView() });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
@@ -65,7 +68,7 @@
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish, cell? ({ r, c, td }: a table's cell) }
-  let many = false; // "Select many" (a touch screen): one finger drags a rectangle and a tap adds, rather than moving the board
+  let many = false; // "Select many" (a touch screen, a choice in the tool switch): one finger drags a rectangle and a tap adds, rather than moving the board
   let presenting = null; // while the frames are presented: lib-e-block-frame's state ({ order, i, view }), see "presenting"
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
@@ -98,12 +101,11 @@
   const keyHint = (keys) => (KEYS ? keys : undefined);
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
-  // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
-  const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
+  // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Flowchart menu: Connector (drag from one block to another), shapes, Table (tap a cell twice to write), Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Paint menu: Fill (tap a block), Pen, Marker, Brush, Highlighter. Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous).';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops.`;
+    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Connector (C): drag block to block; Enter edits its label. Paint menu: Fill (F; ${ALT}-click takes a colour), Pen (P), Marker (M), Brush, Highlighter (U; Shift: straight). Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Flowchart menu: Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape).`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -450,9 +452,9 @@
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
   }
-  // The toolbar's buttons for what is picked, always in this order before Snap to grid: Delete (something picked may be
+  // The toolbar's buttons for what is picked, always in this order: Delete (something picked may be
   // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
-  // goes, then Snap to grid after them.
+  // goes. (Snap to grid is in the right zone, so it stays at the far right.)
   let arrangeButton = null;
   function toolbarTail() {
     const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
@@ -462,7 +464,6 @@
     if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
     if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
-    if (snapButton) makeSnapButton();
   }
   // The two picked blocks a connector can join (in the order they were picked), or null.
   function pair() {
@@ -796,21 +797,34 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
-  // holds 8), and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
+  // The tools are one switch, named Tools: Select, the Hand (a `mode`), the drawing tools and, on a touch screen, Select
+  // many (Select with one finger dragging a rectangle and a tap adding, not moving the board). A tool marked `apart` (the
+  // Timer) is its own on/off button after it, and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
   // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
   // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices
   // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table and the Frame).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
+  // Select many is offered only on a touch screen: with a mouse, a drag on the empty board already selects, and Shift adds.
+  const MANY = Boolean(window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) && inSwitch.some((t) => t.id === 'select');
+  const switchOptions = [
+    ...inSwitch.map(({ id, label, icon }) => ({ id, label, icon })),
+    ...(MANY ? [{ id: 'many', label: 'Select many', icon: 'object-group' }] : []),
+  ];
   const GROUPS = [
     { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
     { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table', 'frame'], split: [1, 6] },
   ];
-  const toolSwitch = inSwitch.length > 1
-    ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
+  // 'many' is Select with Select many on; Select turns it off.
+  const pickTool = (v) => {
+    if (v === 'many' || v === 'select') { many = v === 'many'; if (tool.id === 'select') showTool(); else setTool('select'); return; }
+    setTool(v);
+  };
+  const toolSwitch = switchOptions.length > 1
+    ? host.ui.viewSwitch({ id: 'tool', label: 'Tools', value: tool.id, options: switchOptions, onChange: pickTool })
     : null;
-  // An apart tool's button and its key turn it on, and again off, back to the tool used before it.
+  // An apart tool's button, and its key or a mode's (the Hand's H), turn it on, and again off, back to the tool used before it.
+  const goesBack = (t) => Boolean(t && (t.apart || t.mode));
   let toolBefore = 'select';
   const toggleTool = (t) => setTool(tool === t ? toolBefore : t.id);
   const apartButtons = allowed.filter((t) => t.apart).map((t) => ({
@@ -835,7 +849,7 @@
     return { group: g, button: host.ui.toolbarButton({ id: `tools-${g.id}`, label: g.label, icon: g.icon, iconOnly: true, on: false, onClick: menu }) };
   }).filter(Boolean);
   const showTool = () => {
-    if (toolSwitch) toolSwitch.set(tool.apart || tool.group ? '' : tool.id);
+    if (toolSwitch) toolSwitch.set(tool.id === 'select' && many && MANY ? 'many' : inSwitch.includes(tool) ? tool.id : '');
     for (const a of apartButtons) a.button.set({ on: a.tool === tool });
     for (const g of groupButtons) g.button.set({ on: tool.group === g.group.id });
   };
@@ -843,7 +857,8 @@
     const next = tools.get(id);
     if (!next || !policy.canUseTool(next) || next === tool) { showTool(); return; }
     if (tool.deactivate) tool.deactivate(ctx);
-    if (next.apart && !tool.apart) toolBefore = tool.id;
+    if (goesBack(next) && !goesBack(tool)) toolBefore = tool.id;
+    if (!next.mode && next.id !== 'select') many = false; // Select many is Select's: a drawing tool ends it, the Hand does not
     tool = next;
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
@@ -1296,14 +1311,10 @@
   let snapOn = false;
   try { snapOn = window.localStorage.getItem(SNAP_KEY) === '1'; } catch { /* no browser storage: off */ }
   const snapping = (event) => snapOn !== Boolean(event && event.altKey);
-  // Its button is the last in the row (the toolbar has no right-hand place for a module's own button): made again after
-  // Delete comes, so Delete does not take its place.
-  let snapButton = null;
-  function makeSnapButton() {
-    if (!policy.canEdit) return;
-    if (snapButton) snapButton.destroy();
-    snapButton = host.ui.toolbarButton({
-      id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn,
+  // Its button is in the row's right zone, at the far right, whatever comes and goes on the left (Delete, Arrange).
+  if (policy.canEdit) {
+    const snapButton = host.ui.toolbarButton({
+      id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn, zone: 'end',
       onClick: () => {
         snapOn = !snapOn;
         snapButton.set({ on: snapOn });
@@ -1311,15 +1322,6 @@
       },
     });
   }
-
-  // On a touch screen one finger on the board moves it; "Select many" makes it pick instead (lib-f-tool-select.js).
-  if (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) {
-    const manyButton = host.ui.toolbarButton({
-      id: 'many', label: 'Select many', icon: 'object-group', iconOnly: true, on: false,
-      onClick: () => { many = !many; manyButton.set({ on: many }); },
-    });
-  }
-  makeSnapButton();
 
   // ---- copy, cut, paste and duplicate -----------------------------------------------------------------------------------
   // Only for someone who may change the board. The copies are new blocks: new ids, saved as this person's, on top of
@@ -1649,6 +1651,8 @@
       if (host.status) host.status.set(items).catch(() => {});
       updateHint();
       updatePaint();
+      overviewRefresh();
+      if (finding) findSoon(); // the matches, as the board now is
     });
   }
   function updateHint() {
@@ -1797,16 +1801,24 @@
     }
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
-  if (host.header) {
+  // The title bar's menu: set again when Show overview turns into Hide overview (see "the overview").
+  function setHeader() {
+    if (!host.header) return;
     host.header.set([
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
+      { id: 'find', icon: 'magnifying-glass', title: 'Find', overflow: true },
+      { id: 'overview', icon: 'map', title: overviewOn ? 'Hide overview' : 'Show overview', on: overviewOn, overflow: true },
     ]).catch(() => {});
+  }
+  if (host.header) {
     host.on('header', (e) => {
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
+      if (e && e.id === 'overview') toggleOverview();
+      if (e && e.id === 'find') openFind();
     });
   }
 
@@ -1894,6 +1906,7 @@
     if (!state) { note('No frames to present. Add a frame first.'); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
+    closeFind({ quiet: true }); // Find is not used while presenting
     presenting = state;
     select(null);
     $('app').classList.add('wb-presenting');
@@ -1951,6 +1964,174 @@
   $('present-next').addEventListener('click', () => presentGo('next'));
   $('present-exit').addEventListener('click', () => stopPresenting());
   const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
+
+  // ---- the overview -------------------------------------------------------------------------------------------------------
+  // A small map of the whole board at the bottom right of the board (lib-n): Show overview and Hide overview in the title
+  // bar's menu turn it on and off, each person's own choice kept in this browser when it can be (off at first), never in
+  // the board's data. It shows every block, the frames as outlines, and what is in sight; a press on it puts the middle of
+  // the view there at the same zoom, and a drag moves the view along. It is hidden while presenting, in a module smaller
+  // than 360 x 320 pixels, and while the board is empty. It is a picture to the keyboard and a screen reader (no tab stop,
+  // no key): the keyboard moves the board itself. It reads the board only, so someone who may only look can use it.
+  const overviewStore = () => window.localStorage;
+  let overviewOn = wbOverviewLoad(overviewStore);
+  overview = createOverview({
+    layer: surface,
+    centre(p) {
+      if (presenting) return;
+      cancelAnimationFrame(glide);
+      glide = 0;
+      renderer.setView(wbOverviewCentre(p, renderer.view, surface.clientWidth, surface.clientHeight));
+      updateStatus();
+    },
+  });
+  // Every block's box (lib-m, wbRect: a connector has none, it follows its blocks), with its z and whether it is a frame.
+  const overviewBoxes = () => live().map((b) => { const r = wbRect(b, heightOf); return r && { ...r, z: b.z, frame: wbIsFrame(b) }; }).filter(Boolean);
+  // Shown or hidden as things are now, and drawn again (once a frame at most, by lib-n): with the status line, after any
+  // change to the board, a resize or presenting.
+  function overviewRefresh() {
+    if (!overview) return;
+    const hidden = wbOverviewHidden({ on: overviewOn, width: host.rootElement.clientWidth, height: host.rootElement.clientHeight, count: live().length, presenting });
+    overview.size(wbOverviewSize($('app').classList.contains('narrow')));
+    overview.hide(hidden);
+    if (hidden) return;
+    overview.blocks(overviewBoxes());
+    overview.view(viewBox());
+  }
+  // The view moved (a drag, the wheel, a zoom, a glide): only the rectangle, and the map's fit, follow.
+  function overviewView() {
+    if (overview && !overview.hidden) overview.view(viewBox());
+  }
+  function toggleOverview() {
+    overviewOn = !overviewOn;
+    wbOverviewSave(overviewStore, overviewOn); // where it cannot be kept, it lasts until the page goes
+    setHeader();
+    overviewRefresh();
+  }
+  setHeader();
+
+  // ---- find in the board ----------------------------------------------------------------------------------------------------
+  // Find, in the title bar's menu, or / on the board (when no words are being edited) opens the find bar at the top of the
+  // board: what is typed is found in the blocks' words (lib-o: notes, text, shapes, frame titles, table cells, connector
+  // labels, picture descriptions; case and accents aside), each block once, in reading order. Enter goes to the next match
+  // and Shift Enter to the previous, round at the ends; Escape or Close closes it and hands the keyboard back to the board.
+  // Every match has a thin accent outline and the one shown a stronger one, drawn on a layer of their own over the blocks
+  // (nothing in the blocks changes). The one shown is not picked: what the person picked stays picked, so a Delete or an
+  // arrow key after a search still acts on what they chose, and Find reads only, for someone who may only look too. The
+  // view glides to a match that is not in sight (or jumps, for someone who asks for less motion), keeping the zoom unless
+  // the block is too big to be seen whole (lib-o, wbFindView). Changes to the board, here or from elsewhere, are found
+  // again a moment later. Not while presenting.
+  let finding = null; // { ids, i } while the find bar is open: the matches in reading order, and the one shown (-1: none)
+  let findTimer = 0;
+  let findTyped = 0;
+  const findBar = $('find');
+  const findInput = $('find-input');
+  const findMarks = document.createElement('div'); // the outlines round the matches, a layer over the blocks
+  findMarks.className = 'wb-find-marks';
+  findMarks.setAttribute('aria-hidden', 'true');
+  $('world').insertBefore(findMarks, $('frame'));
+  for (const [id, name] of [['find-prev', 'chevron-up'], ['find-next', 'chevron-down'], ['find-close', 'xmark']]) {
+    const ic = $(id).querySelector('.ic');
+    iconSvg(name).then((svg) => { if (svg) ic.innerHTML = svg; }, () => {});
+  }
+  // Where a block is drawn, for reading order (null: not drawn, as a connector whose block is gone).
+  const findAt = (b) => { const r = renderer.rectOf(b.id); return r ? { x: r.x0, y: r.y0 } : null; };
+  // The outlines: one round each match (all it draws), the one shown stronger.
+  function drawFindMarks() {
+    const ids = finding ? finding.ids : [];
+    const kids = findMarks.children;
+    while (kids.length > ids.length) kids[kids.length - 1].remove();
+    ids.forEach((id, i) => {
+      let m = kids[i];
+      if (!m) { m = document.createElement('div'); m.className = 'wb-find-mark'; findMarks.append(m); }
+      const r = renderer.reachOf(id);
+      m.hidden = !r;
+      if (r) { m.style.left = `${r.x0}px`; m.style.top = `${r.y0}px`; m.style.width = `${r.x1 - r.x0}px`; m.style.height = `${r.y1 - r.y0}px`; }
+      m.classList.toggle('wb-find-now', i === finding.i);
+    });
+  }
+  function showFindCount() {
+    $('find-count').textContent = finding ? wbFindCount(findInput.value, finding.i, finding.ids.length) : '';
+  }
+  // Search again for what is typed. go: show the first match (what was typed changed); else keep the one shown.
+  function runFind({ go = false } = {}) {
+    if (!finding) return;
+    clearTimeout(findTimer);
+    findTimer = 0;
+    const ids = wbFindMatches(live(), findInput.value, { at: findAt });
+    const i = go ? (ids.length ? 0 : -1) : wbFindFollow(finding.ids, finding.i, ids);
+    finding = { ids, i };
+    showFindCount();
+    drawFindMarks();
+    if (go) { if (ids.length) showMatch(); else if (wbFindQuery(findInput.value)) say('No matches'); }
+  }
+  // The board changed: found again a moment after the last change, the view left where it is.
+  function findSoon() { if (!findTimer) findTimer = setTimeout(() => { findTimer = 0; runFind(); }, WB_FIND.wait); }
+  // Bring the match shown into sight, and say it.
+  function showMatch() {
+    const id = finding && finding.ids[finding.i];
+    const r = id && renderer.reachOf(id);
+    if (!r) return;
+    const to = wbFindView(r, renderer.view, surface.clientWidth, surface.clientHeight, { min: renderer.limits.min });
+    if (to) showView(to);
+    say(wbFindWordsSaid(finding.i, finding.ids.length, wbFindWords(board.get(id))));
+  }
+  // Next (1) or previous (-1). What was typed and not yet searched for is searched for first (its first match is the next).
+  function findGo(dir) {
+    if (!finding) return;
+    if (findTyped) { clearTimeout(findTyped); findTyped = 0; runFind({ go: true }); if (dir > 0) return; }
+    const i = wbFindStep(finding.i, finding.ids.length, dir);
+    if (i < 0) { say('No matches'); return; }
+    finding = { ...finding, i };
+    showFindCount();
+    drawFindMarks();
+    showMatch();
+  }
+  function openFind() {
+    if (presenting) return;
+    if (!finding) {
+      if (editing) { const e = editing; editing = null; e.finish(true); }
+      finding = { ids: [], i: -1 };
+      findBar.hidden = false;
+      placeFind();
+      if (findInput.value) runFind();
+    }
+    findInput.focus({ preventScroll: true });
+    findInput.select();
+  }
+  function closeFind({ quiet = false } = {}) {
+    if (!finding) return;
+    finding = null;
+    clearTimeout(findTimer);
+    clearTimeout(findTyped);
+    findTimer = 0;
+    findTyped = 0;
+    findBar.hidden = true;
+    showFindCount();
+    drawFindMarks();
+    if (!quiet) surface.focus({ preventScroll: true });
+  }
+  // Clear of the colour strip (top left): beside it where there is room, else under it.
+  function placeFind() {
+    findBar.style.top = '';
+    const strip = $('paint');
+    if (strip.hidden || !strip.offsetWidth) return;
+    const bar = findBar.getBoundingClientRect();
+    const st = strip.getBoundingClientRect();
+    if (bar.left < st.right && bar.top < st.bottom) findBar.style.top = `${st.bottom - surface.getBoundingClientRect().top + 4}px`;
+  }
+  findInput.addEventListener('input', () => {
+    clearTimeout(findTyped);
+    findTyped = setTimeout(() => { findTyped = 0; runFind({ go: true }); }, 150);
+  });
+  findBar.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // the board's keys are not the bar's
+    if (e.key === 'Escape') { e.preventDefault(); closeFind(); return; }
+    if (e.key === 'Enter' && e.target === findInput && !e.isComposing) { e.preventDefault(); findGo(e.shiftKey ? -1 : 1); }
+  });
+  for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) findBar.addEventListener(type, (e) => e.stopPropagation());
+  $('find-prev').addEventListener('click', () => findGo(-1));
+  $('find-next').addEventListener('click', () => findGo(1));
+  $('find-close').addEventListener('click', () => closeFind());
 
   // ---- links in the words ------------------------------------------------------------------------------------------------
   // A link in a block's words opens in a new tab: with Ctrl or Cmd and a click (that click is the link's, it picks
@@ -2250,6 +2431,7 @@
       if (k === 'Escape') { e.preventDefault(); leaveCells(); say('The arrow keys move the table again.'); return; }
       if (k.length === 1 && !e.isComposing) { e.preventDefault(); editCell(b.id, nav.r, nav.c, { typed: k }); return; }
     }
+    if (wbFindKey(e, { editing: Boolean(editing), presenting: Boolean(presenting) })) { e.preventDefault(); openFind(); return; }
     if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
     // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
     const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
@@ -2307,7 +2489,7 @@
     if (k === '-') { renderer.zoomBy(0.8); updateStatus(); return; }
     if (k === '0') { renderer.fit(); updateStatus(); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
-    if (t) { e.preventDefault(); if (t.apart) toggleTool(t); else setTool(t.id); }
+    if (t) { e.preventDefault(); if (goesBack(t)) toggleTool(t); else setTool(t.id); }
   });
 
   // ---- the computer's clipboard, and dropping files -----------------------------------------------------------------------
@@ -2408,7 +2590,9 @@
   new ResizeObserver(() => {
     const w = host.rootElement.clientWidth;
     $('app').classList.toggle('narrow', w > 0 && w < 520);
-    if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); updateStatus(); }
+    if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
+    updateStatus(); // the overview: its size, and whether there is room for it
+    if (finding) placeFind(); // the find bar clear of the colour strip at the new width
   }).observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 

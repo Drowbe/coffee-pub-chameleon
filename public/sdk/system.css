@@ -5838,6 +5838,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 .mf-fold-primary .mf-btn-primary:has(> i) { width: var(--mf-ctl-h); padding: 0; }
 .mf-toolbar > .mf-more.is-shown { display: inline-flex; }
 .mf-toolbar > .is-moved.is-moved { display: none; }
+.mf-switch > .mf-switch-btn.is-folded { display: none; } /* a choice folded into More while the row is too narrow (module-frame.js, foldChoices) */
 /* Searching (the folded magnifier opened): the field takes the whole row, with its close button. */
 .mf-toolbar.is-searching > :not(.mf-search) { display: none; }
 .mf-toolbar.is-searching > .mf-search.mf-search { display: flex; flex: 1 1 auto; }

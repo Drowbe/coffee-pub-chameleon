@@ -50,7 +50,8 @@
 // invisible: nothing moves and no two overlap.
 //
 // A toolbar entry is one of:
-//   { type: 'switch', id, label, value, options: [{ id, label, icon, regular?, iconOnly? }] }   a segmented view switch
+//   { type: 'switch', id, label, value, options: [{ id, label, icon, regular?, iconOnly? }] }   a segmented switch; too wide for the row,
+//       only its last choices fold into "More" (the chosen one always stays in the row), the whole switch only when even the chosen one alone does not fit
 //   { type: 'tabs', id, label, value, options: [{ id, label, count? }] }  a tab strip, for switching between different pages
 //   { type: 'quickset', id, label, value, options: [{ id, label, count? }] }  quick sets: one filter chip chosen at a time, with counts
 //   { type: 'search', id, label, placeholder, value? }
@@ -296,7 +297,7 @@ export function createModuleFrame(opts = {}) {
   const fire = (data) => onAction({ area: 'toolbar', ...data });
   function drawSwitch(it) {
     // A radio group (the keyboard is the SDK's: public/sdk/host.js, hostSwitch): one Tab stop, the arrows move and choose.
-    const seg = el('div', 'mf-switch', { role: 'radiogroup', 'aria-label': it.label || 'View' });
+    const seg = el('div', 'mf-switch', { role: 'radiogroup', 'aria-label': it.label || 'Tools' });
     const stop = it.options.some((o) => o.id === it.value) ? it.value : it.options[0]?.id;
     for (const o of it.options) {
       const b = el('button', 'mf-switch-btn', { type: 'button', role: 'radio', 'aria-checked': String(o.id === it.value), tabindex: o.id === stop ? '0' : '-1', 'aria-label': o.label || o.icon });
@@ -532,12 +533,12 @@ export function createModuleFrame(opts = {}) {
     win.setTimeout(look, 100);
   }
   // The entries one control gives the "More" menu.
-  function moreEntries(it) {
+  function moreEntries(it, only) {
     if (it.type === 'button') return [{ label: it.label || it.tip, icon: it.icon, ...(it.regular ? { regular: true } : {}), ...(it.disabled ? { disabled: true } : {}), ...(typeof it.on === 'boolean' ? { checked: it.on } : {}), onPick: () => fire({ id: it.id, el: moreBtn }) }];
     if (it.type === 'title' || it.type === 'text') return [{ heading: it.text }];
     if (it.type === 'search') return [{ label: it.label || 'Search', icon: 'magnifying-glass', onPick: () => win.setTimeout(() => startSearching(it._input), 0) }];
     if (it.type === 'switch' || it.type === 'tabs' || it.type === 'quickset') {
-      return [{ heading: it.label || (it.type === 'switch' ? 'View' : it.type === 'quickset' ? 'Show' : 'Tabs') }, ...it.options.map((o) => ({
+      return [{ heading: it.label || (it.type === 'switch' ? 'Tools' : it.type === 'quickset' ? 'Show' : 'Tabs') }, ...it.options.filter((o) => !only || only.includes(o.id)).map((o) => ({
         label: o.label, ...(o.icon ? { icon: o.icon } : {}), ...(o.regular ? { regular: true } : {}), radio: true, checked: o.id === it.value, badge: o.count,
         onPick: () => { it.value = o.id; fire({ id: it.id, value: o.id }); redraw(); },
       }))];
@@ -556,7 +557,7 @@ export function createModuleFrame(opts = {}) {
   moreBtn.setAttribute('aria-haspopup', 'menu');
   moreBtn.addEventListener('click', () => openHostMenu(moreBtn, () => {
     const list = [];
-    for (const it of entries) if (it._els && it._els[0].classList.contains('is-moved')) list.push(...moreEntries(it));
+    for (const it of entries) if (it._els && it._els[0].classList.contains('is-moved')) list.push(...moreEntries(it)); else if (it._folded && it._folded.length) list.push(...moreEntries(it, it._folded));
     return list;
   }));
   const spacer = el('span', 'mf-spacer', { 'aria-hidden': 'true' });
@@ -584,7 +585,7 @@ export function createModuleFrame(opts = {}) {
     // 'spacer' entry is not needed (the gap between the groups is drawn here) and is ignored.
     const start = [];
     const end = [];
-    const tail = []; // the right zone (`zone: 'end'`, the host page's own items): after the search and Filters, at the far right
+    const tail = []; // the right zone (`zone: 'end'`: a host page's items, and a module's, of which only its first two icon-only buttons are held): after the search and Filters, at the far right
     const used = new Set();
     for (const it of entries) {
       let els = [];
@@ -618,6 +619,28 @@ export function createModuleFrame(opts = {}) {
     toolbar.hidden = entries.length === 0;
     if (searching) toolbar.classList.add('is-searching');
   }
+  // A switch too wide for the row folds only its last choices into "More": as many as fit stay, the chosen one always stays, the
+  // folded ones are chosen from More (which lists only them). When even the chosen one alone does not fit, nothing is kept folded:
+  // false, and the caller moves the whole switch into More.
+  function unfoldChoices(it) {
+    it._folded = [];
+    for (const e of it._els || []) for (const b of e.querySelectorAll ? e.querySelectorAll('.mf-switch-btn.is-folded') : []) { b.classList.remove('is-folded'); b.hidden = false; }
+  }
+  function foldChoices(it, over) {
+    const group = it._els && it._els[0];
+    const parts = group && group.querySelectorAll ? [...group.querySelectorAll('.mf-switch-btn')] : [];
+    if (parts.length < 2) return false;
+    for (let at = parts.length - 1; at >= 0; at -= 1) {
+      const b = parts[at];
+      if (b.getAttribute('aria-checked') === 'true') continue;
+      b.classList.add('is-folded');
+      b.hidden = true;
+      it._folded.unshift(it.options[at].id);
+      if (!over()) return true;
+    }
+    unfoldChoices(it);
+    return false;
+  }
   // Fit the row: the fold steps in order, then whole controls into "More", until nothing is cut.
   function fit() {
     frameReq = 0;
@@ -626,6 +649,7 @@ export function createModuleFrame(opts = {}) {
     if (toolbar.hidden) return;
     for (const f of FOLDS) toolbar.classList.remove(`mf-fold-${f}`);
     for (const it of entries) for (const e of it._els || []) e.classList.remove('is-moved');
+    for (const it of entries) unfoldChoices(it);
     moreBtn.classList.remove('is-shown');
     // A button that asks for it is always in "More".
     for (const it of entries) {
@@ -659,6 +683,7 @@ export function createModuleFrame(opts = {}) {
         .sort((a, b) => a.rank - b.rank || b.at - a.at);
       for (const { it } of order) {
         if (!over()) break;
+        if (it.type === 'switch' && foldChoices(it, over)) continue; // only its last choices go into More
         for (const e of it._els) e.classList.add('is-moved');
       }
     }

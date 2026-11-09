@@ -344,7 +344,7 @@
   // ---- the host's bands: the toolbar, the title bar, the "+", the status line ---------------------------------------------------
   const VIEW_OPTIONS = [{ id: 'list', label: 'List', icon: 'list' }, { id: 'grid', label: 'Grid', icon: 'grip' }];
   await loadPrefs();
-  const viewSwitch = host.ui.viewSwitch({ id: 'view', options: VIEW_OPTIONS, value: state.view, onChange: (v) => { state.view = v === 'grid' ? 'grid' : 'list'; state.limit = PAGE; savePrefs(); render(); } });
+  const viewSwitch = host.ui.viewSwitch({ id: 'view', label: 'View', options: VIEW_OPTIONS, value: state.view, onChange: (v) => { state.view = v === 'grid' ? 'grid' : 'list'; state.limit = PAGE; savePrefs(); render(); } });
   function chosen() { return state.files.filter((f) => state.sel.has(f.id)); }
   function filtersChips() {
     const all = state.files;
