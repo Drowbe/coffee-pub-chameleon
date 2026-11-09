@@ -608,7 +608,9 @@
     const t = wbTableFromGrid(grid);
     const p = hover ? renderer.toBoard(hover.cx, hover.cy) : renderer.center();
     const w = t.cols.reduce((a, n) => a + n, 0);
-    const b = ctx.draft('table', { x: p.x - w / 2, y: p.y - (t.rows.length * WB_TABLE.rowMin) / 2, cols: t.cols, rows: t.rows, cells: t.cells, head: t.head });
+    const at = { x: p.x - w / 2, y: p.y - (t.rows.length * WB_TABLE.rowMin) / 2 };
+    if (snapping(null)) { at.x = wbSnap(at.x); at.y = wbSnap(at.y); } // with Snap to grid, its corner on the grid
+    const b = ctx.draft('table', { ...at, cols: t.cols, rows: t.rows, cells: t.cells, head: t.head });
     ctx.save(b.id);
     select([b.id]);
     const el = renderer.element(b.id);
