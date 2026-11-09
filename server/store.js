@@ -425,6 +425,8 @@ const THEME_OPTIONAL = [
   // tints a chosen card or day, today and your own chat message in place of the accent (server/theme-css.js writes its quieter steps).
   'surface-field', 'surface-menu', 'surface-bar-nav', 'edge-field', 'wash-ink',
   'mf-surface-title', 'mf-surface-toolbar', 'mf-surface-row', 'mf-surface-row-hover',
+  // A chat message's box (a step off the window until a theme sets it).
+  'surface-message',
   // What a chosen thing is drawn with, apart from the accent that marks an action (public/sdk/system.css): the fill of a chosen segment or
   // day and the base of the tints under a chosen, hovered or pressed thing; the text on that fill; the ink chosen text is mixed from.
   'fill-chosen', 'text-on-chosen', 'ink-chosen',
@@ -432,6 +434,8 @@ const THEME_OPTIONAL = [
   'ink-brand',
   // The ink every neutral wash (a hover, a press, a card's head band, a track) is mixed from: the text colour until a theme sets it.
   'ink-neutral',
+  // The colour of the icons and links in the top bar (the bar text at 75% until a theme sets it).
+  'icon-bar',
   // The eight tones modules and phases are tinted with (a module's colour, a phase's wash, the kind colours): what each is until a theme sets it.
   'tone-gold', 'tone-blue', 'tone-green', 'tone-teal', 'tone-purple', 'tone-red', 'tone-orange', 'tone-pink',
 ];
@@ -462,11 +466,12 @@ const DEFAULT_THEME = {
   // The field edge is --line2 with 30% ink mixed in (the least that reaches 3:1 on a white field; --line2 alone is 1.75:1).
   light: {
     'surface-page': '#fbf6ec', 'surface-panel': '#ffffff', 'edge-hairline': '#e2d3b3', 'text-primary': '#14243b', 'text-muted': '#475569', 'accent-fill': '#0b7a84', 'text-on-accent': '#ffffff',
-    'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e',
+    'surface-card': '#ffffff', 'surface-field': '#ffffff', 'surface-menu': '#ffffff', 'edge-field': '#9a937e', 'icon-default': '#14243b', 'icon-bar': '#14243b',
     'fill-secondary': '#ffffff', 'fill-secondary-hover': '#f3e9d4',
-    'wash-ink': '#cfae6c', 'fill-chosen': '#ebd9b3', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
+    'wash-ink': '#cfae6c', 'fill-chosen': '#f3e9d4', 'text-on-chosen': '#14243b', 'ink-chosen': '#14243b',
     'ink-brand': '#e0553c',
     'mf-surface-title': '#f7f0e0', 'mf-surface-toolbar': '#fbf6ec', 'mf-surface-row': '#fbf6ec', 'mf-surface-row-hover': '#f3e9d4',
+    'surface-message': '#ffffff',
     // The light pass: every wash is cream or sand, never grey, black or teal. The bars' side zones are the sand a step off the ground; a hover is
     // the studio's teal darkened (--accent-hover); a chosen segment is --sand itself; the neutral ink is the --sand family at full strength, so
     // 8% reads as cream, 14% as sand, 20% as --band; the eight tones are the studio's hues (sea, sand, coral, teal) deepened to read as text and icons (4.5:1 on white) and,
