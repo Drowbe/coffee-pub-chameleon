@@ -4,7 +4,7 @@
  * whole under _board:main:settings next to the blocks.
  * Guards: what is read is cleaned (an unknown colour, or no value at all, is Default; anything that is not the settings is
  * left out); the dots stay readable on every background (wbBackdrop: theme tokens only, a stronger dot on a wash than on
- * the plain page, the strongest on Ink); the sync takes the settings key like any key, and only its own keys (two pages:
+ * the plain page, the strongest on Charcoal; fixed light and dark colours live in whiteboard.css and their ink reads at 4.5:1); the sync takes the settings key like any key, and only its own keys (two pages:
  * a change, its undo and redo, a later change by the other page, a missed echo, a reload, a Clear that deletes the key);
  * undo and redo of a background are one step each and merge like a block's field: a background someone else changed since
  * is left as it is, with its own note.
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['WB_PALETTE', 'WB_BOARD_PREFIX', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wbContrast', 'wbContrastInk', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
+const NAMES = ['WB_DOT', 'WB_PALETTE', 'WB_FIXED_BACKGROUNDS', 'WB_FIXED_BY_ID', 'WB_BOARD_PREFIX', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wbContrast', 'wbContrastInk', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
 
 let passed = 0;
 const fails = [];
@@ -50,12 +50,12 @@ function format() {
   check(clean({ id: 'settings', background: { a: 1 } }).background === 'default', 'a background that is not a string is Default');
   check(clean({ id: 'other', background: 'blue' }) === null, 'a value that is not the settings is left out');
   check(clean(null) === null && clean('blue') === null, 'what is not an object is left out');
-  // Override theme: kept only when exactly true.
-  check(usual.override === false, 'a new board has Override theme off');
-  check(clean({ id: 'settings', override: true }).override === true, 'override true is kept');
-  for (const v of [false, 'true', 1, null, undefined, {}, 'yes']) check(clean({ id: 'settings', override: v }).override === false, `override ${JSON.stringify(v)} reads as off`);
-  check(clean({ id: 'settings' }).override === false, 'no override is off');
-  check(clean({ id: 'settings', background: 'blue', override: true }).background === 'blue', 'override and background are independent');
+  // Fixed backgrounds are kept; the Override theme field is gone (an old stored one is dropped).
+  for (const f of lib.WB_FIXED_BACKGROUNDS) check(clean({ id: 'settings', background: f.id }).background === f.id, `${f.id}: a fixed background is kept`);
+  for (const c of lib.WB_PALETTE) check(clean({ id: 'settings', background: c.id }).background === c.id, `${c.id}: a tinted background is kept`);
+  for (const v of ['light-', 'dark-red', 'light', 'Light-white', 'ink ', '']) check(clean({ id: 'settings', background: v }).background === 'default', `${JSON.stringify(v)}: unknown reads as Default`);
+  check(!('override' in usual) && !('override' in clean({ id: 'settings', background: 'blue', override: true })), 'override is dropped, not kept');
+  check(clean({ id: 'settings', background: 'dark-black', override: true }).background === 'dark-black', 'a stored override beside a background changes nothing');
   const c = clean({ id: 'settings', background: 'teal', by: 'x'.repeat(200), extra: 1 });
   check(c.type === 'board' && c.by.length === 64 && !('extra' in c), 'the clean keeps only its own fields');
 }
@@ -76,15 +76,41 @@ function dots() {
     if (c.id !== 'ink') check(bd('ink').strength > x.strength, `ink: the dots are strongest on Ink (vs ${c.id})`);
   }
   check(!raw.test(d.dot), 'Default: theme tokens only');
-  // Override theme: the colour itself, the dots in the ink given.
-  for (const c of palette) {
-    const x = bd(c.id, true, 'var(--surface-page)');
-    check(x.ground === c.token, `${c.id}: with override the ground is the token itself`);
-    check(x.dot.includes('var(--surface-page)') && !raw.test(x.ground) && !raw.test(x.dot), `${c.id}: with override the dots take the ink given, tokens only`);
-    check(bd(c.id, true).dot.includes('var(--text-primary)'), `${c.id}: the dots default to the words' colour`);
+  // Fixed colours: the ground is the custom property in whiteboard.css (no colour in the JS), the dots the fixed ink of the family.
+  for (const f of lib.WB_FIXED_BACKGROUNDS) {
+    const x = bd(f.id);
+    check(x.id === f.id && x.family === f.family && x.ground === `var(${f.css})`, `${f.id}: the ground is its custom property, family ${f.family}`);
+    check(!raw.test(x.ground) && !raw.test(x.dot) && x.dot.includes(`var(--wb-fixed-ink-${f.family})`), `${f.id}: no colour in the JS; the dots take the ink of its family`);
   }
-  check(bd('default', true).ground === 'var(--surface-page)', 'Default stays the page colour with override');
-  check(bd('blue', false).ground.includes('color-mix'), 'override off is the wash as before');
+  check(d.family === 'themed' && palette.every((c) => bd(c.id).family === 'themed'), 'Default and the tinted colours follow the theme');
+  // The colours as the stylesheet holds them: every fixed colour is defined once, and the ink of its family reads on it (>= 4.5:1).
+  const css = fs.readFileSync(path.join(src, 'whiteboard.css'), 'utf8');
+  const hex = (name) => {
+    const m = new RegExp(`${name}:\\s*#([0-9a-f]{6})\\b`, 'i').exec(css);
+    return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null;
+  };
+  const inkOf = { light: hex('--wb-fixed-ink-light'), dark: hex('--wb-fixed-ink-dark') };
+  check(inkOf.light && inkOf.dark, 'both fixed inks are in whiteboard.css');
+  check(css.includes('Fixed neutrals chosen by a person, the same in light and dark and in every theme. Move to core design-system tokens when the colour picker lands.'), 'the fixed colours carry their comment');
+  for (const f of lib.WB_FIXED_BACKGROUNDS) {
+    const g = hex(f.css);
+    check(Boolean(g), `${f.id}: its colour is in whiteboard.css`);
+    if (!g || !inkOf.light) continue;
+    const ink = inkOf[f.family];
+    check(lib.wbContrast(g, ink) >= 4.5, `${f.id}: the usual ink reads on it at ${lib.wbContrast(g, ink).toFixed(1)}:1`);
+    const pick = lib.wbContrastInk(g, inkOf.light, inkOf.dark);
+    check((pick === 'dark' ? 'light' : 'dark') === f.family, `${f.id}: contrast agrees it is a ${f.family} ground`);
+    // The dots (the ink at the fixed strength over the ground) are told apart from it.
+    const k = lib.WB_DOT.fixed / 100;
+    const dot = g.map((v, i) => v * (1 - k) + ink[i] * k);
+    check(lib.wbContrast(g, dot) >= 1.2, `${f.id}: the dots show on it (${lib.wbContrast(g, dot).toFixed(2)}:1)`);
+  }
+  // What a person reads: no token word in any label, and fixed colours are named as colours.
+  const words = [...palette.map((c) => c.label), ...lib.WB_FIXED_BACKGROUNDS.map((f) => f.label)];
+  check(words.every((w) => !/\b(ink|token|tint|wash|usual)\b/i.test(w)), 'no label has a token word');
+  check(palette.find((c) => c.id === 'ink').label === 'Charcoal' && palette.map((c) => c.label).join() === 'Charcoal,Yellow,Orange,Red,Pink,Purple,Blue,Teal,Green', 'the tinted colours are named: Charcoal, Yellow, Orange, ...');
+  check(new Set(words).size === words.length && new Set([...palette.map((c) => c.id), ...lib.WB_FIXED_BACKGROUNDS.map((f) => f.id)]).size === words.length, 'every label and id is its own');
+  check(lib.WB_FIXED_BACKGROUNDS.filter((f) => f.family === 'light').length === 7 && lib.WB_FIXED_BACKGROUNDS.filter((f) => f.family === 'dark').length === 7, 'seven light and seven dark');
   // The contrast pick.
   const black = [0, 0, 0];
   const white = [255, 255, 255];
@@ -271,52 +297,51 @@ async function syncing() {
   check(bg(b) === 'default', 'a stored unknown colour reads as Default');
 }
 
-async function overriding() {
+async function fixing() {
   const server = createServer();
   const a = createPage(server, 'ann');
   const b = createPage(server, 'bob');
   const KEY = `${lib.WB_BOARD_PREFIX}${lib.WB_BOARD_ID}`;
-  const flip = (p, on) => p.pick2({ override: on });
-  a.pick('blue');
+  a.pick('light-white');
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(server.data.get(KEY).value.background === 'light-white' && !('override' in server.data.get(KEY).value), 'a fixed pick is one whole write, with no override field');
+  check(bg(a) === 'light-white' && bg(b) === 'light-white', 'the other page sees the fixed background');
+  await new Promise((r) => { setImmediate(r); });
+  b.pick('dark-black');
   await settle(); a.deliver(); b.deliver(); await settle();
   await new Promise((r) => { setImmediate(r); });
-  flip(a, true);
+  check(bg(a) === 'dark-black', 'a later fixed pick is taken');
+  b.undo();
   await settle(); a.deliver(); b.deliver(); await settle();
-  check(server.data.get(KEY).value.override === true && server.data.get(KEY).value.background === 'blue', 'switching on is one whole write that keeps the background');
-  check(a.settings.override === true && b.settings.override === true && b.settings.background === 'blue', 'the other page sees it on');
+  check(bg(a) === 'light-white' && bg(b) === 'light-white', 'undo puts the earlier fixed background back on both pages');
+  b.redo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(bg(a) === 'dark-black' && bg(b) === 'dark-black', 'redo puts the pick back');
+  // A tinted pick over a fixed one, undone.
+  a.pick('gold');
+  await settle(); a.deliver(); b.deliver(); await settle();
   await new Promise((r) => { setImmediate(r); });
-  a.undo();
-  await settle(); a.deliver(); b.deliver(); await settle();
-  check(a.settings.override === false && b.settings.override === false && a.settings.background === 'blue', 'undo switches it off and leaves the background');
-  a.redo();
-  await settle(); a.deliver(); b.deliver(); await settle();
-  check(a.settings.override === true && b.settings.override === true, 'redo switches it on');
-  // Field by field: B changes the background; A's undo of override still works (override not changed by B since)
-  b.pick('green');
-  await settle(); a.deliver(); b.deliver(); await settle();
   const r = a.undo();
   await settle(); a.deliver(); b.deliver(); await settle();
-  check(r && r.board !== true && a.settings.override === false && a.settings.background === 'green' && b.settings.override === false, "undoing override leaves someone else's background");
-  // B changes override after A: A's undo of it leaves B's value with the note
-  a.redo();
-  await settle(); a.deliver(); b.deliver(); await settle();
-  b.pick2({ override: false });
-  await settle(); a.deliver(); b.deliver(); await settle();
-  const r2 = a.undo();
-  await settle(); a.deliver(); b.deliver(); await settle();
-  check(r2 && r2.board === true && a.settings.override === false && b.settings.override === false, 'an override someone else changed since is left as it is');
+  check(r && r.board !== true && bg(a) === 'dark-black' && bg(b) === 'dark-black', 'undo of a tinted pick returns to the fixed one');
+  // A reload shows it; a stored old override is dropped on the way in.
   const c = createPage(server, 'cy');
-  b.pick2({ override: true });
-  await settle(); await c.reload();
-  check(c.settings.override === true, 'a reload shows it');
+  await c.reload();
+  check(bg(c) === 'dark-black', 'a reload shows the fixed background');
+  server.data.set(KEY, { value: { id: 'settings', background: 'light-creme', override: true }, version: 20 });
+  await c.reload();
+  check(bg(c) === 'light-creme' && !('override' in c.settings), 'a stored override is dropped');
+  server.data.set(KEY, { value: { id: 'settings', background: 'dark-teal' }, version: 21 });
+  await c.reload();
+  check(bg(c) === 'default', 'an unknown fixed id reads as Default');
   server.clear('ann');
   a.deliver(); b.deliver(); c.deliver(); await settle();
-  check(c.settings.override === false, 'a deleted key is off');
+  check(bg(c) === 'default', 'a deleted key is Default');
 }
 
 async function main() {
   if (!fails.length) {
-    for (const [name, fn] of [['format', format], ['dots', dots], ['syncing', syncing], ['overriding', overriding]]) {
+    for (const [name, fn] of [['format', format], ['dots', dots], ['syncing', syncing], ['fixing', fixing]]) {
       try { await fn(); } catch (err) { fails.push(`${name}: ${err.stack || err.message}`); }
     }
   }

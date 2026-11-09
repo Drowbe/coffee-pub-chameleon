@@ -23,6 +23,9 @@
     "modules/travel/src/travel.js": {
       "raw": 12
     },
+    "modules/whiteboard/src/whiteboard.css": {
+      "raw": 16
+    },
     "public/admin.js": {
       "raw": 1
     },

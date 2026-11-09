@@ -25,6 +25,38 @@
   -webkit-user-select: none;
   outline: none;
 }
+/* Fixed neutrals chosen by a person, the same in light and dark and in every theme. Move to core design-system tokens when the colour picker lands. */
+.board {
+  --wb-fixed-light-white: #ffffff;
+  --wb-fixed-light-creme: #f5eedb;
+  --wb-fixed-light-grey: #e4e6ea;
+  --wb-fixed-light-blue: #dce9f6;
+  --wb-fixed-light-green: #ddeedd;
+  --wb-fixed-light-yellow: #fbf4c8;
+  --wb-fixed-light-pink: #f8e0e9;
+  --wb-fixed-dark-black: #000000;
+  --wb-fixed-dark-slate: #2b3440;
+  --wb-fixed-dark-grey: #34373c;
+  --wb-fixed-dark-blue: #14274b;
+  --wb-fixed-dark-green: #163a2b;
+  --wb-fixed-dark-wine: #4a1b2b;
+  --wb-fixed-dark-purple: #2f2050;
+  --wb-fixed-ink-light: #1c2024; /* the usual ink on a light fixed background */
+  --wb-fixed-ink-dark: #eceff3; /* the usual ink on a dark fixed background */
+}
+/* On a fixed background (the board's data-ground, set from the background) the words, lines and borders left at their usual
+   colour follow the ground, not the theme: the blocks' own copies of the theme's text, edge and surface tokens are the
+   ground's. A colour a person picked is still its tint. The strip, menus, find bar and the rest keep the theme's. */
+.board[data-ground="light"] .world { --wb-usual: var(--wb-fixed-ink-light); color-scheme: light; }
+.board[data-ground="dark"] .world { --wb-usual: var(--wb-fixed-ink-dark); color-scheme: dark; }
+.board:is([data-ground="light"], [data-ground="dark"]) .world {
+  --text-primary: var(--wb-usual);
+  --text-muted: color-mix(in srgb, var(--wb-usual) 68%, var(--wb-ground));
+  --wb-edge: color-mix(in srgb, var(--wb-usual) 30%, var(--wb-ground));
+  --edge-hairline: color-mix(in srgb, var(--wb-usual) 18%, var(--wb-ground));
+  --surface-page: var(--wb-ground);
+  --wb-face: color-mix(in srgb, var(--wb-usual) 4%, var(--wb-ground));
+}
 .board:focus-visible { box-shadow: inset 0 0 0 2px var(--focus-ring, var(--accent)); }
 .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
 .hint {
@@ -76,7 +108,7 @@
    with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
 .wb-type-note {
   --wb-fill: var(--tint-gold);
-  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--surface-card));
+  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--wb-face, var(--surface-card)));
   padding: 12px;
   border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-min);
@@ -158,7 +190,7 @@
   background: var(--surface-page);
   color: var(--wb-ink);
 }
-.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--surface-card)); }
+.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--wb-face, var(--surface-card))); }
 .wb-tbl td {
   padding: 4px 8px;
   border-right: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
@@ -332,11 +364,11 @@
   inset: 0;
   border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--wb-fill, var(--surface-card)) 12%, transparent);
+  background: color-mix(in srgb, var(--wb-fill, var(--wb-face, var(--surface-card))) 12%, transparent);
 }
-.wb-type-frame[data-fill="usual"] .wb-fr-face { background: color-mix(in srgb, var(--surface-card) 55%, transparent); }
+.wb-type-frame[data-fill="usual"] .wb-fr-face { background: color-mix(in srgb, var(--wb-face, var(--surface-card)) 55%, transparent); }
 .wb-type-frame[data-fill="none"] .wb-fr-face { background: none; }
-.wb-type-frame[data-stroke="usual"] .wb-fr-face { border-color: var(--edge-field, var(--text-muted)); }
+.wb-type-frame[data-stroke="usual"] .wb-fr-face { border-color: var(--wb-edge, var(--edge-field, var(--text-muted))); }
 .wb-type-frame[data-stroke="none"] .wb-fr-face { border-style: none; }
 .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-hit, 8px) / var(--wb-scale, 1)); position: absolute; pointer-events: auto; cursor: grab; }
 @media (pointer: coarse) { .wb-fr-edge { --wb-fr-s: calc(var(--wb-fr-touch, 16px) / var(--wb-scale, 1)); } }
@@ -358,7 +390,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--edge-hairline);
   border-radius: var(--radius-small);
-  background: var(--surface-card);
+  background: var(--wb-face, var(--surface-card));
   color: var(--wb-ink);
   font-size: var(--text-14);
   font-weight: var(--weight-strong);
@@ -368,7 +400,7 @@
   cursor: grab;
 }
 .wb-type-frame[data-ink="usual"] .wb-fr-tab { color: var(--text-muted); }
-.wb-type-frame:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: color-mix(in srgb, var(--wb-fill) 22%, var(--surface-card)); }
+.wb-type-frame:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: color-mix(in srgb, var(--wb-fill) 22%, var(--wb-face, var(--surface-card))); }
 .wb-fr-tab .wb-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-fr-tab[data-empty] .wb-words { font-style: italic; font-weight: var(--weight-medium); }
 .wb-type-frame.wb-editing .wb-fr-tab { max-width: none; }
@@ -770,7 +802,7 @@
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--wb-stroke) 45%, var(--edge-hairline));
   border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--surface-card));
+  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--wb-face, var(--surface-card)));
   box-shadow: 0 1px 2px var(--shadow-color);
   overflow: hidden;
   cursor: grab;
@@ -801,7 +833,7 @@
   cursor: default;
 }
 .wb-timer-len { font-variant-numeric: tabular-nums; }
-.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--surface-card)); animation: wb-timer-end 1.6s ease-in-out 4; }
+.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--wb-face, var(--surface-card))); animation: wb-timer-end 1.6s ease-in-out 4; }
 .wb-type-timer[data-done] .wb-timer-time { font-size: clamp(var(--text-14), 11cqmin, var(--text-28)); }
 .wb-type-timer[data-done] .wb-timer-length, .wb-type-timer[data-done] .wb-timer-arc { visibility: hidden; }
 /* the length is on its button for someone with the controls; under the time for everyone else */
@@ -835,21 +867,6 @@
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }
 .board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }
-
-/* Override theme (whiteboard.js, setOverride; the renderer puts data-override on each block and the board): a palette colour
-   is drawn at full strength, not as a wash. Borders, lines and words are the theme token already; the fills are the washes
-   below. A block with such a fill and the usual ink gets its words from the renderer (data-contrast, --wb-ink: whichever of
-   the theme's text and page colours reads better), so a copy for the picture or the print keeps it. */
-.wb-type-note[data-override] { --wb-face: var(--wb-fill); }
-.wb-type-text[data-override]:not([data-fill="none"]) { background: var(--wb-fill); }
-.wb-block[data-override] .wb-shape-body { fill: var(--wb-fill, var(--text-primary)); }
-.wb-block[data-override][data-fill="none"] .wb-shape-body { fill: none; }
-.wb-type-table[data-override]:not([data-fill="none"]) .wb-tbl { background: var(--wb-fill); }
-.wb-type-table[data-override]:not([data-fill="none"]) .wb-tbl tr.wb-head > td { background: color-mix(in srgb, var(--wb-ink) 14%, transparent); }
-.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-face { background: var(--wb-fill); }
-.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: var(--wb-fill); }
-.wb-type-frame[data-contrast] .wb-fr-tab { color: var(--wb-ink); }
-.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { border-color: var(--wb-stroke); }
 
 /* The strip's first group: the kinds of the active tool (Pen, Shape, Flowchart), a row of icon buttons, then a thin divider
    before the colours. The strip wraps rather than run past the board's edge. */

@@ -19,10 +19,10 @@
   // One board per space today. Its id is part of every key, so several named boards is a list of ids and a switch.
   const WB_BOARD = 'main';
 
-  // The colours a person can give a role: the theme's text colour (ink) and the eight fixed tints. Stored as the name,
+  // The colours a person can give a role: the theme's text colour (id 'ink', read as Charcoal) and the eight tints. Stored as the name,
   // never as a colour, so a block follows the theme and both modes (the renderer hands the token to whiteboard.css).
   const WB_PALETTE = [
-    { id: 'ink', label: 'Ink', token: 'var(--text-primary)' },
+    { id: 'ink', label: 'Charcoal', token: 'var(--text-primary)' },
     { id: 'gold', label: 'Yellow', token: 'var(--tint-gold)' },
     { id: 'orange', label: 'Orange', token: 'var(--tint-orange)' },
     { id: 'red', label: 'Red', token: 'var(--tint-red)' },
@@ -41,13 +41,31 @@
     { id: 'ink', label: 'Words' },
   ];
   // The board's own settings: one value for the whole board, shared by everyone who sees it, saved whole under one key
-  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, override, by, at }. The key starts
+  // next to the blocks: _board:<board>:settings, { id: 'settings', type: 'board', background, by, at }. The key starts
   // with "_" (the module's bookkeeping, not an object): a Clear takes it and its Undo puts it back without counting it,
-  // and a board with only a background has nothing to clear. background is a palette id (WB_PALETTE) or 'default' (the
-  // theme's own board colour); a key that is missing, or holds anything else, reads as 'default' (wbCleanBoard). The page
+  // and a board with only a background has nothing to clear. background is 'default' (the theme's own board colour), a
+  // palette id (WB_PALETTE: a wash of that tint, following the theme) or a fixed id (WB_FIXED_BACKGROUNDS: the same colour
+  // in light and dark mode); a key that is missing, or holds anything else, reads as 'default' (wbCleanBoard). The page
   // keeps it in the undo history under WB_BOARD_STEP, an id no block can have (lib-a's wb.id refuses ':').
-  // override (Override theme) is a boolean kept only when exactly true, else false: with it on, a palette colour is drawn
-  // at full strength, not as a wash (wbBackdrop; whiteboard.css, data-override). It merges field by field like background.
+  // Fixed backgrounds: `family` says whether the colour is light or dark, which chooses the board's usual ink and dots
+  // (whiteboard.css, [data-ground]); `css` is the custom property in whiteboard.css that holds the colour (read by name).
+  const WB_FIXED_BACKGROUNDS = [
+    { id: 'light-white', label: 'Pure White', family: 'light', css: '--wb-fixed-light-white' },
+    { id: 'light-creme', label: 'Creme', family: 'light', css: '--wb-fixed-light-creme' },
+    { id: 'light-grey', label: 'Light Grey', family: 'light', css: '--wb-fixed-light-grey' },
+    { id: 'light-blue', label: 'Light Blue', family: 'light', css: '--wb-fixed-light-blue' },
+    { id: 'light-green', label: 'Light Green', family: 'light', css: '--wb-fixed-light-green' },
+    { id: 'light-yellow', label: 'Light Yellow', family: 'light', css: '--wb-fixed-light-yellow' },
+    { id: 'light-pink', label: 'Light Pink', family: 'light', css: '--wb-fixed-light-pink' },
+    { id: 'dark-black', label: 'Black', family: 'dark', css: '--wb-fixed-dark-black' },
+    { id: 'dark-slate', label: 'Slate', family: 'dark', css: '--wb-fixed-dark-slate' },
+    { id: 'dark-grey', label: 'Dark Grey', family: 'dark', css: '--wb-fixed-dark-grey' },
+    { id: 'dark-blue', label: 'Dark Blue', family: 'dark', css: '--wb-fixed-dark-blue' },
+    { id: 'dark-green', label: 'Dark Green', family: 'dark', css: '--wb-fixed-dark-green' },
+    { id: 'dark-wine', label: 'Wine', family: 'dark', css: '--wb-fixed-dark-wine' },
+    { id: 'dark-purple', label: 'Dark Purple', family: 'dark', css: '--wb-fixed-dark-purple' },
+  ];
+  const WB_FIXED_BY_ID = new Map(WB_FIXED_BACKGROUNDS.map((c) => [c.id, c]));
   const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
   const WB_BOARD_ID = 'settings';
   const WB_BOARD_STEP = ':board';
@@ -56,29 +74,27 @@
     return {
       id: WB_BOARD_ID,
       type: 'board',
-      background: WB_PALETTE_BY_ID.has(raw.background) ? raw.background : 'default',
-      override: raw.override === true,
+      background: WB_PALETTE_BY_ID.has(raw.background) || WB_FIXED_BY_ID.has(raw.background) ? raw.background : 'default',
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
     };
   }
   const WB_BOARD_USUAL = Object.freeze(wbCleanBoard({ id: WB_BOARD_ID }));
-  // How the board is drawn on a background: `ground` its colour, `dot` its grid's dots, both theme tokens (so they follow
-  // light and dark mode). A palette colour is a wash of its tint on the page's colour, never the tint itself: a block in
-  // that colour, or in Ink, stays readable on it, as a note's face is a wash of its fill. The dots are the words' colour,
-  // stronger on a wash than on the plain page (a wash is darker in light mode, lighter in dark mode, so a faint dot would
-  // sink into it), strongest on Ink (a grey wash, nearest the dots' own colour). An unknown id is 'default'.
+  // How the board is drawn on a background: `ground` its colour, `dot` its grid's dots, `family` 'light', 'dark' or
+  // 'themed' (the board's data-ground), the colours as CSS (theme tokens, or the fixed custom property). A tinted
+  // colour is a wash of its tint on the page's colour, never the tint itself: a block in that colour, or in Charcoal,
+  // stays readable on it. The dots are the words' colour, stronger on a wash than on the plain page, strongest on
+  // Charcoal. A fixed colour ignores the theme: its dots are the fixed ink of its family. An unknown id is 'default'.
   const WB_WASH = 18; // per cent of the tint in a background
-  const WB_DOT = { default: 16, tint: 26, ink: 34, full: 30 }; // per cent of the words' colour in a dot
-  // With `override` on (Override theme) the ground is the colour itself and the dots take `ink`, a token chosen for its
-  // contrast with it (wbContrastInk); the page passes it in.
-  function wbBackdrop(id, override = false, ink = 'var(--text-primary)') {
-    const c = WB_PALETTE_BY_ID.get(id);
+  const WB_DOT = { default: 16, tint: 26, ink: 34, fixed: 24 }; // per cent of the words' colour in a dot
+  function wbBackdrop(id) {
     const dot = (n, tok = 'var(--text-primary)') => `color-mix(in srgb, ${tok} ${n}%, transparent)`;
-    if (!c) return { id: 'default', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
-    if (override === true) return { id: c.id, ground: c.token, dot: dot(WB_DOT.full, ink), strength: WB_DOT.full };
+    const f = WB_FIXED_BY_ID.get(id);
+    if (f) return { id: f.id, family: f.family, ground: `var(${f.css})`, dot: dot(WB_DOT.fixed, `var(--wb-fixed-ink-${f.family})`), strength: WB_DOT.fixed };
+    const c = WB_PALETTE_BY_ID.get(id);
+    if (!c) return { id: 'default', family: 'themed', ground: 'var(--surface-page)', dot: dot(WB_DOT.default), strength: WB_DOT.default };
     const strength = c.id === 'ink' ? WB_DOT.ink : WB_DOT.tint;
-    return { id: c.id, ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
+    return { id: c.id, family: 'themed', ground: `color-mix(in srgb, ${c.token} ${WB_WASH}%, var(--surface-page))`, dot: dot(strength), strength };
   }
   // Contrast (WCAG): the ratio of two colours given as [r, g, b] (0-255), 1 to 21.
   function wbLuminance(rgb) {
@@ -91,7 +107,7 @@
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   }
   // 'dark' or 'light': whichever of the two candidate text colours reads better on `fill` (the first when they tie), or
-  // null when a colour is not three numbers. The page maps the answer to a theme token (renderer, ink on a full fill).
+  // null when a colour is not three numbers. The page maps the answer to a colour.
   function wbContrastInk(fill, dark, light) {
     const ok = (c) => Array.isArray(c) && c.length >= 3 && c.slice(0, 3).every((n) => Number.isFinite(n));
     if (!ok(fill) || !ok(dark) || !ok(light)) return null;
