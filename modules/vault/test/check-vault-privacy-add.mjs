@@ -137,13 +137,37 @@ try {
   await sleep(200);
   const locked = await tab.eval(`(() => { const root = document.querySelector('#module-frame').shadowRoot; return { off: [...root.querySelectorAll('#who-choices input')].every((i) => i.disabled), pick: root.querySelector('#who-change').disabled, line: root.querySelector('#add-line').innerText }; })()`);
   r.check(locked.off && locked.pick, 'while files are waiting or going up the three choices and Choose people are off');
-  r.check(/keep this until they are done/.test(locked.line) && !/applies to every file you add now/.test(locked.line), `the sentence says the waiting files keep their choice (${locked.line})`);
+  r.check(/keep the choice they were picked with/.test(locked.line) && !/applies to every file you add now/.test(locked.line), `the sentence says the waiting files keep their choice (${locked.line})`);
   await tab.eval(`(() => { const i = document.querySelector('#module-frame').shadowRoot.querySelector('#who-choices input[value=everyone]'); i.disabled = false; i.click(); })()`).catch(() => {});
   await until(tab, `(async () => (await (await fetch('/api/modules/vault/library?space=${env.trip}')).json()).files.filter((f) => /^Slow /.test(f.name)).length)()`, (v) => v === 4, 30000);
   const heldFiles = (await env.listOf('lee')).filter((f) => /^Slow /.test(f.name));
   r.check(heldFiles.length === 4 && heldFiles.every((f) => f.visibility === 'only-me'), `all four slowed files were held as only-me, as the screen said when they were picked (${heldFiles.map((f) => f.visibility)})`);
   await tab.cdp.send('Fetch.disable', {}, tab.sid);
   tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== hold);
+  await tab.close();
+
+  // A file the server turned away with a 503 waits for Try again: the choices stay off, and it lands as it was picked.
+  tab = await openVault(env, browser, 'lee');
+  await openAdd(tab);
+  let refuse = true;
+  const gate = (m) => {
+    if (m.method !== 'Fetch.requestPaused' || m.sessionId !== tab.sid) return;
+    const q = m.params;
+    if (refuse && q.request.method === 'POST' && /\/library\?/.test(q.request.url)) tab.cdp.send('Fetch.fulfillRequest', { requestId: q.requestId, responseCode: 503, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from('{"error":"Busy."}').toString('base64') }, tab.sid).catch(() => {});
+    else tab.cdp.send('Fetch.continueRequest', { requestId: q.requestId }, tab.sid).catch(() => {});
+  };
+  tab.cdp.listeners.push(gate);
+  await tab.cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*/library?*', requestStage: 'Request' }] }, tab.sid);
+  await tab.eval(give('Retry 1.png'));
+  await tab.waitFor('#module-frame >>> .vt-up-bad', '', 30000);
+  const waiting = await tab.eval(`(() => { const root = document.querySelector('#module-frame').shadowRoot; return { off: [...root.querySelectorAll('#who-choices input')].every((i) => i.disabled) && root.querySelector('#who-change').disabled, line: root.querySelector('#add-line').innerText }; })()`);
+  r.check(waiting.off && /waiting to be tried again/.test(waiting.line) && !/applies to every file you add now/.test(waiting.line), `a file waiting for Try again keeps the choices off and the sentence says so (${waiting.line})`);
+  refuse = false;
+  await tab.click('#module-frame >>> button', 'Try adding');
+  await until(tab, `(async () => (await (await fetch('/api/modules/vault/library?space=${env.trip}')).json()).files.filter((f) => /^Retry 1/.test(f.name)).length)()`, (v) => v === 1, 30000);
+  r.check((await env.listOf('lee')).find((f) => /^Retry 1/.test(f.name))?.visibility === 'everyone', 'the retried file lands as it was picked (Everyone)');
+  await tab.cdp.send('Fetch.disable', {}, tab.sid);
+  tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== gate);
   await tab.close();
 
   // No one to choose.

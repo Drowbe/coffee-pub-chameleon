@@ -1762,7 +1762,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       // Who may see it goes as the server wants it; the server checks both (an unknown word or a person not in the space is refused).
       // Anything but undefined goes on as it is, so the server refuses a shape it does not know (null, a list, a number, an object) instead of
       // the page quietly sending no word, which the server reads as everyone.
-      if (visibility !== undefined && (typeof visibility !== 'string' || visibility.length > 20)) throw Object.assign(new Error('visibility must be everyone, only-me or people'), { status: 400 });
+      if (visibility !== undefined && (typeof visibility !== 'string' || !visibility || visibility.length > 20)) throw Object.assign(new Error('visibility must be everyone, only-me or people'), { status: 400 });
       if (people !== undefined && (!Array.isArray(people) || people.length > 201 || people.some((k) => typeof k !== 'string'))) throw Object.assign(new Error('people must be a list of user keys'), { status: 400 });
       const who = visibility !== undefined ? { visibility, people: people === undefined ? '' : people.join(',') } : people !== undefined ? { people: people.join(',') } : {};
       const target = libraryUrl('', { name: String(name ?? file.name ?? '').slice(0, 200), keepPosition: keepPosition ? '1' : '', ...who });

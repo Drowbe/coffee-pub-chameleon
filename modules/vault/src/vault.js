@@ -861,7 +861,7 @@
     }
     // While a file is waiting or going up its sight is fixed (it was set when the file was chosen), so the choices are off until the batch is
     // done: the screen never says a choice applies to a file it no longer can change.
-    const busy = state.queue.some((x) => x.status === 'queued' || x.status === 'uploading');
+    const busy = state.queue.some((x) => x.status === 'queued' || x.status === 'uploading' || (x.status === 'refused' && x.retry && x.file)); // a file that can be tried again keeps its choice too
     for (const input of box.querySelectorAll('input')) { input.checked = input.value === state.who.visibility; input.disabled = busy; }
     $('who-change').disabled = busy;
     box.setAttribute('aria-disabled', busy ? 'true' : 'false');
@@ -870,7 +870,7 @@
     $('who-change-word').textContent = chosen.length ? 'Change people' : 'Choose people';
     const names = chosen.map(nameOf);
     $('who-names').textContent = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names.join('');
-    $('add-line').textContent = busy ? `${whoSentence(false)} Files being added keep this until they are done.` : whoSentence();
+    $('add-line').textContent = busy ? `${whoSentence(false)} Files being added, or waiting to be tried again, keep the choice they were picked with.` : whoSentence();
   }
   $('who-change').addEventListener('click', () => {
     host.library.pickPeople({ chosen: whoPeople() }).then((keys) => {

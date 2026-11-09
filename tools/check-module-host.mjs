@@ -46,13 +46,18 @@ const inSpace = { ...base, scope: 'space', space: 'gq2zb7pq' };
 test('library.add never sends a visibility that is not a word as no visibility', async () => {
   const src = slice('public/module-host.js', "async 'library.add'({ file, name, keepPosition, visibility, people, token }) {", "const target = libraryUrl(");
   const body = src.slice(src.indexOf('{', src.indexOf('token })')) + 1, src.lastIndexOf('const target = libraryUrl('));
+  const lib = slice('public/module-host.js', 'const libraryUrl = (path = \'\', extra = {}) => {', '\n  };');
   class Blob {}
-  const run = new Function('Blob', 'Object', `return async (file, visibility, people) => { ${body.replace('(file instanceof Blob)', '(file instanceof Blob)')} return who; };`)(Blob, Object);
-  for (const bad of [null, ['only-me'], 7, { a: 1 }, true, 'x'.repeat(21)]) await assert.rejects(() => run(new Blob(), bad), (e) => e.status === 400, `visibility ${JSON.stringify(bad)} reached the server as no word`);
+  // The URL the server would get: through the handler's own libraryUrl, which drops empty values (an empty word would otherwise read as everyone).
+  const run = new Function('Blob', 'Object', 'URLSearchParams', `const scope = 'space'; const spaceId = 'sp1'; const base = '/api/modules/vault'; const word = () => 'a space'; ${lib}
+    return async (file, visibility, people) => { ${body} return libraryUrl('', { name: 'n', keepPosition: '', ...who }); };`)(Blob, Object, URLSearchParams);
+  for (const bad of [null, ['only-me'], 7, { a: 1 }, true, '', 'x'.repeat(21)]) await assert.rejects(() => run(new Blob(), bad), (e) => e.status === 400, `visibility ${JSON.stringify(bad)} reached the server as no word`);
   for (const bad of [null, 'a,b', { 0: 'a' }, [1], new Array(202).fill('k')]) await assert.rejects(() => run(new Blob(), 'people', bad), (e) => e.status === 400, `people ${JSON.stringify(bad)} was passed on`);
-  assert.deepEqual(await run(new Blob(), undefined, undefined), {});
-  assert.deepEqual(await run(new Blob(), 'only-me', undefined), { visibility: 'only-me', people: '' });
-  assert.deepEqual(await run(new Blob(), 'people', ['a', 'b']), { visibility: 'people', people: 'a,b' });
+  const q = async (...a) => new URL(await run(new Blob(), ...a), 'http://x').searchParams;
+  assert.equal((await q(undefined, undefined)).has('visibility'), false);
+  assert.equal((await q('only-me', undefined)).get('visibility'), 'only-me');
+  const pp = await q('people', ['a', 'b']);
+  assert.equal(pp.get('visibility'), 'people'); assert.equal(pp.get('people'), 'a,b');
 });
 test('library.pickPeople takes the adder from the page and asks the library gate first', () => {
   const src = slice('public/module-host.js', "async 'library.pickPeople'({ chosen }) {", 'returnFocus: () => holder });');
