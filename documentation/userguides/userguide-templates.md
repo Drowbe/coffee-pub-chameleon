@@ -34,8 +34,8 @@ More bundled templates may come later, and the host admin can make their own (be
 
 **On a server with environments,** the host admin picks it on the host console:
 
-1. On the **Environments** tab, click **New environment**.
-2. Fill in the slug, the name and the first owner as usual.
+1. In the console's **Environments** section, click **New environment**.
+2. Fill in the address, the name and the first owner as usual.
 3. Under **Template**, choose one ("None" is first, for an environment made without one).
 4. Under **Plan**, choose the plan, or leave "No caps, every module".
 5. Click **Create**.
@@ -90,8 +90,9 @@ the rest) are not offered: they are yours by now. Switching to **No template** p
 back (or your own) and changes nothing else. A switched template is never applied on its own; only what you
 confirm is.
 
-**The host admin** can do the same from the host console: on the **Environments** tab, each environment's card has
-a **Template** choice and **Switch**, then the same offer, with **Review** to bring it back later.
+**The host admin** can do the same from the host console: open the environment from the **Environments** list, choose
+its **Template** tab, pick a template and click **Switch template**, then the same offer, with **Review** to bring it
+back later.
 
 ## When a template is updated
 
@@ -107,10 +108,13 @@ The rest is offered, never forced:
 
 ## Make your own templates
 
-On a server with environments, the host admin makes templates on the host console's **Templates** tab. It lists
-every template with where it comes from (**Bundled**, **Yours** or **Imported**), its version, how many environments
-use it, and whether it is hidden. A bundled template can be edited (see "Edit a bundled template"), but never
-deleted.
+On a server with environments, the host admin makes templates in the host console's **Templates** section. It lists
+every template with where it comes from (**Bundled**, **Own** or **Imported**), its version, **Used by** (the
+environments that use it, by name, each a link to that environment's page; past four it reads "and N more"), and
+whether it is **Hidden**. A **More** menu on each row has **Edit**, **Export**, **Duplicate**, **Reset to shipped**
+(a bundled template you edited) and **Delete** (an Own template nothing uses). A bundled template can be edited (see
+"Edit a bundled template"), but never deleted. **Import file** and **New template** are above the list. The editor
+opens as a page of its own with a list of its parts beside it (a strip on a phone) and one **Save**.
 
 **Make one:**
 
@@ -135,14 +139,14 @@ deleted.
 6. Click **Save**. It is version 1, and offered on the create form straight away. A problem, such as a phase id
    listed twice, shows beside the part it is about, and nothing is saved.
 
-**Edit one:** click **Edit** on its row, change what you need, and click **Save**. Each save is a new version.
+**Edit one:** open the row's **More** menu, choose **Edit**, change what you need, and click **Save**. Each save is a new version.
 Every environment using it gets the words, the word for entering a space, phases, home icon and module names and icons at once, and is offered the
 rest (see "When a template is updated").
 
-**Duplicate one:** click **Duplicate** on any row, bundled or yours. Give the new template an id, then a name. It is
+**Duplicate one:** open a row's **More** menu and choose **Duplicate**, bundled or yours. Give the new template an id, then a name. It is
 a template of your own at version 1, with everything the one you duplicated has now, and opens in the editor.
 
-**Hide one:** tick **Hidden** on its row. It is no longer offered for new environments, on sign-up or for a
+**Hide one:** switch **Hidden** on in its row. It is no longer offered for new environments, on sign-up or for a
 switch; the environments using it keep it. Untick it to offer it again.
 
 **Delete one:** click **Delete** and confirm. A template an environment uses can't be deleted ("In use by <environments>.
@@ -160,7 +164,7 @@ have it, marked as edited.
 The host admin can change a bundled template, such as Travel, in place. The id stays, so every environment made
 from it gets the change.
 
-1. On the **Templates** tab, click **Edit** on the bundled template's row. The editor says "Your edits are kept over
+1. In the **Templates** section, open the bundled template's **More** menu and choose **Edit**. The editor says "Your edits are kept over
    the shipped template."
 2. Change what you need and click **Save**. The first save is the shipped version plus one, and each later save
    adds one. Environments using it get the words, phases, home icon and module names and icons at once, and are
@@ -212,7 +216,7 @@ A template may list a module the environment can't have yet. It leaves it off an
 - **Needs** another module that was left off: turn that one on first.
 - **Not on yet**: Research needs the AI service, so it waits until the service is set up and turned on.
 
-The environment's card on the host console and Manage's **Template** tab list each one with how to fix it.
+The environment's **Template** tab on the host console and Manage's **Template** tab list each one with how to fix it.
 Turning it on later, once that is fixed, is the same as turning on any module.
 
 ## Backups

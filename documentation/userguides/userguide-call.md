@@ -194,6 +194,10 @@ chat box is hidden.
   - **Clean up**, which tiles the floating modules to fill the Workspace, none on another, each keeping its side of the
     window. With the grid on they are whole cells. Clean up again changes nothing. Docked modules and modules in
     their own window are left alone.
+
+  In Panel Mode there is also **Unstack all**, which gives every module in a stack a column of its own (it is
+  off while nothing is stacked). Window Mode puts stacks away and Panel Mode brings them back (see "Stacking
+  modules" below).
 - **Layouts**: the Workspace, Calendar and Map first, then the space's shared layouts, then your own, with **Save this
   layout** at the end (see "Saved layouts" below).
 
@@ -215,13 +219,44 @@ Each module's **+** in the titlebar is its add button: **Add event**, **Add task
 so on, or a menu where there is more than one thing to add. A module can also have a slim status line at its foot that says, for
 example, "12 of 40" or "3 open". There is no row of buttons at the bottom.
 
+## Stacking modules
+
+A short module, such as Polls with two open polls, leaves most of its column empty. Stack it under another docked module and the two share one column. A stack counts as one column, however many modules it holds, and holds up to three. Each module keeps its own titlebar, menu and tools. Anyone who can use the Workspace can stack; a stack is part of how you arranged it, so it is kept for you in this browser and saved in layouts.
+
+To stack from the menu:
+
+1. Press the **⋮** in the titlebar of the module you want to move.
+2. Choose **Stack with...**.
+3. Under the names of the column you want to join, choose **Above <module>** or **Below <module>**. A column that already holds three modules reads "Full: three modules" and is greyed.
+
+The module's menu in a stack also has **Move up**, **Move down**, **Move out of the stack**, **Collapse** (or **Expand**) and **Equal heights**. A floating module that you stack docks and stacks in one step.
+
+To stack by dragging:
+
+1. Press the titlebar of a docked module and drag it over another docked module. The upper half shows where it would go above that module, the lower half below it, in words such as "Polls goes under To-do".
+2. Let go to stack it. Press Escape before you let go to take the drag back.
+
+Drag to the left or right edge of a column instead, where a line shows, and the module goes between columns. Dragging a module out of a stack to an edge reads **Its own column here**.
+
+In a stack:
+
+- The bar between two modules is a divider. Drag it, or focus it and press the Up and Down arrow keys (hold Shift for larger steps), Home or End. Each module keeps at least 156 pixels, so the divider stops there.
+- The button at the start of a titlebar collapses that module to its titlebar. The last module open in a stack cannot be collapsed. When the window is too short, the lowest module collapses by itself.
+- A new stack starts with equal heights. **Equal heights** puts them back.
+- **Unstack all** under **Arrange** on Set up's **Modules** tab gives every module in every stack its own column again.
+- **Window Mode** floats the modules and puts the stacks away; **Panel Mode** docks them and brings the stacks back, with the same heights and collapses, for those modules still open.
+
+The Workspace tells you what happened: "Polls was stacked under To-do.", "Polls has its own column again." It also says why it cannot: "A stack holds three modules at most.", "The canvas is too short to stack here." or "The window is too narrow for another column."
+
+Not every module can be in a stack. The call and Chat, and the modules that are several in one, such as the Calendar and the Map, never are. Their menu has no **Stack with...**, or has it greyed. On a phone (640 pixels wide and below) there are no columns and so no stacks; a stack you made on a wider window is kept and comes back when the window is wide again.
+
 ## Saved layouts
 
 Save the way the Workspace is arranged, give it a name, and put it back in one press.
 
 To save one:
 
-1. Arrange the Workspace the way you want it.
+1. Arrange the Workspace the way you want it. A layout keeps stacks, with their heights and collapses.
 2. Press **Set up** and, on the **Modules** tab, choose **Save this layout** under **Layouts**.
 3. Type a **Name**. Owners, the admin and the space's moderators can also switch on **For everyone in this space** to
    save a shared layout.

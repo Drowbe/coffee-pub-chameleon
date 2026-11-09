@@ -24,7 +24,7 @@ The server checks both permissions on every save, so the board's buttons are a h
 
 The Whiteboard is a module like the others: open it from the **Layout** menu, under **Show**, and it opens on the canvas. It works only in a space; anywhere else it says it opens in a space.
 
-The board fills the module. The toolbar above it holds, from the left: the tool switch (**Select**, **Pen**, **Note**, **Text**, **Rectangle**, **Ellipse**, **Line** and **Arrow**), then the **Hand** and **Timer** buttons, the **Paint** and **Flowchart** menu buttons, **Undo**, **Redo**, **Text size and alignment**, **Line style and arrowheads**, **Select many** (touch screens only), **Delete** (while blocks are picked) and **Snap to grid**. The title bar holds the **+**, which adds blocks, the zoom buttons and a menu with **Save as image…** and **Print**. A small strip under the left end of the toolbar shows the colours and the line width (see "Colours and widths"). The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first.
+The board fills the module. The toolbar above it holds, from the left: the tool switch (**Select**, **Pen**, **Note**, **Text**, **Rectangle**, **Ellipse**, **Line** and **Arrow**), then the **Hand** and **Timer** buttons, the **Paint** and **Flowchart** menu buttons, **Undo**, **Redo**, **Text size and alignment**, **Line style and arrowheads**, **Select many** (touch screens only), **Delete** (while blocks are picked), **Arrange** (while two or more are picked) and **Snap to grid**, in that order. The title bar holds the **+**, which adds blocks, the zoom buttons and a menu with **Present**, **Background colour…**, **Save as image…** and **Print**. A small strip under the left end of the toolbar shows the colours and the line width (see "Colours and widths"). The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first.
 
 ## Draw and add blocks
 
@@ -57,7 +57,7 @@ The Pen, Marker, Brush and Highlighter stay on for the next line. A drawing and 
 
 ## Flowchart and connectors
 
-The **Flowchart** button opens a menu with the **Connector**, then the **Rectangle**, **Rounded box**, **Diamond**, **Pill** and **Parallelogram**, then the **Table**. The button is on while one of them is the tool. The shapes are made as the Rectangle is: drag to size, or click for the usual size. They hold words as a rectangle does. Use the Rounded box for a step, the Diamond for a choice, the Pill for a start or an end, and the Parallelogram for what goes in or out.
+The **Flowchart** button opens a menu with the **Connector**, then the **Rectangle**, **Rounded box**, **Diamond**, **Pill** and **Parallelogram**, then the **Table** and the **Frame**. The button is on while one of them is the tool. The shapes are made as the Rectangle is: drag to size, or click for the usual size. They hold words as a rectangle does. Use the Rounded box for a step, the Diamond for a choice, the Pill for a start or an end, and the Parallelogram for what goes in or out.
 
 A **connector** joins two blocks and follows them when they move or change size.
 
@@ -145,6 +145,15 @@ Hold **Alt** (**Option** on a Mac) while you drag or click to do the opposite fo
 
 Snap to grid is off at first. It is your own choice, not the board's: your browser keeps it for next time, and other people do not see it. Only someone who may change the board has the button.
 
+## Background colour
+
+The whole board has one background colour, the same for everyone. Anyone who can change the board can change it.
+
+1. Right-click an empty place on the board, or open the title bar's menu.
+2. Choose **Background colour**, then a colour. **Default** is the theme's own board colour.
+
+The colours are the same as a block's (**Ink** and the tints). Each is a light wash of the colour, about 18 percent, so it follows light and dark mode and blocks stay readable on it. A change is one **Undo** step. If someone else changed the background after you, **Undo** leaves it and says "Left the background as it is: someone else changed it since." **Save as image** (with **Board colour** chosen) and **Print** use the background. **Clear** keeps it.
+
 ## Pick, move and change blocks
 
 With Select:
@@ -156,6 +165,55 @@ With Select:
 - **Delete** or **Backspace**, or the bin button in the toolbar, deletes what is picked.
 
 From the keyboard: **Tab** goes to the board and then to each block in turn, and the block it reaches is picked. **Enter** edits the picked block. The arrow keys move it 10 board units a press, or 1 with **Shift**; a run of presses is saved once, after the last one.
+
+## Align and distribute
+
+With two or more blocks picked, **Arrange** in the toolbar (it appears beside the bin) and **Arrange** in the right-click menu offer:
+
+- **Align left**, **Align centre**, **Align right**, **Align top**, **Align middle** and **Align bottom**, which line the picked blocks up to the box round all of them (two or more blocks).
+- **Distribute horizontally** and **Distribute vertically**, which space the blocks evenly between the first and the last (three or more blocks).
+
+Each is one **Undo** step. A connector is not moved; it follows its blocks. Locked blocks are left where they are, and the board says "Left a locked block as it is."
+
+**Guides.** While you drag blocks with **Snap to grid** off, a line shows when the box you hold lines up with the edge or middle of a block near it, and the box lands on it. Hold **Alt** (**Option** on a Mac) to drag without guides. With **Snap to grid** on, the grid wins and there are no guides.
+
+## Lock a block
+
+A locked block stays as it is. Pick blocks and choose **Lock** in the right-click menu, or press **Ctrl+L** (**Cmd+L**); choose **Unlock** or press the key again to undo it. A small padlock shows at the block's corner.
+
+- A locked block cannot be moved, resized, deleted, recoloured, moved to another layer or edited. It can still be picked, copied, duplicated and saved as an image.
+- Anyone who may change the board may lock or unlock any block. It is saved with the block (`locked`).
+- **Align**, **Distribute**, **Delete** and **Undo** leave locked blocks as they are and say so.
+
+## Group blocks
+
+Pick two or more blocks and choose **Group** in the right-click menu, or press **Ctrl+G** (**Cmd+G**), so they move together. **Ungroup**, or **Ctrl+Shift+G** (**Cmd+Shift+G**), breaks the group up.
+
+- Picking one block of a group picks the whole group.
+- A copy or a duplicate of a group is a new group of its own. A block copied without the rest of its group is in no group.
+- **Resizing a group as one picked selection is not built.**
+
+## Frames and Present
+
+A **frame** is a titled area that holds blocks, such as a slide or a step. Frames sit under all other blocks.
+
+**Add one:** choose **Frame** (**S**) in the **Flowchart** menu and drag to size, or click for the usual size; or choose **Add a frame** in the **+**. Its title opens for editing. Type it and press Enter.
+
+- **Pick a frame** by its title tab or its border (about 8 pixels wide, wider on a touch screen). The empty inside is not the frame: a press there picks what is under it or starts a rectangle.
+- **Rename:** double-click the title tab, press **Enter** on a picked frame, or choose **Rename** in its menu. A title is one line of up to 80 characters. A frame is at least 80 by 60 board units.
+- **Moving a frame** (dragging, the arrow keys, align or distribute) moves the blocks fully inside it with it, as one **Undo** step. Locked blocks stay and the board says "Left a locked block as it is." A frame inside a frame goes with it.
+- **Copy, cut and duplicate** a frame take the blocks inside it. **Delete** and **resize** change only the frame.
+- Connectors do not join a frame.
+- **Save frame as image…** in a picked frame's menu saves a PNG exactly the frame's size, with everything that overlaps it and without its title tab. It has the same **Background** and **Size** choices as **Save as image**.
+
+**Present** shows the frames one at a time, each fitted to the board. Choose **Present** in the title bar's menu or the board's right-click menu, or **Present from this frame** in a frame's menu.
+
+- Frames go top to bottom and, within a row, left to right. A row is the frames whose tops are within half the first frame's height.
+- A bar at the bottom has **Back**, a count such as "2 of 5", **Next** and **Exit**.
+- Keys: the right and down arrows, **Page Down** and **Space** go on; the left and up arrows and **Page Up** go back; **Home** and **End** go to the first and last; **Escape** exits. A screen reader hears "Frame 2 of 5: Plan".
+- While presenting, the board cannot be changed, and the wheel, a pinch, a drag and the zoom buttons are ignored. **Exit** puts back the view you had.
+- Presenting is yours alone: nobody follows you yet (that waits on live messages for modules). Someone who can only look can present too.
+- With no frames it says "No frames to present. Add a frame first."
 
 ## Write words
 
@@ -176,9 +234,9 @@ A link in the words opens in a new tab with **Ctrl+click** (**Cmd+click**) on it
 
 The **Text size and alignment** button in the toolbar sets the words of the picked notes, text blocks, shapes and tables. Under **Text size**: **Small**, **Medium**, **Large** and **Huge**. Under **Align**: **Left**, **Centre** and **Right**. The same two lists are **Text size** and **Align** in the right-click menu.
 
-- With nothing picked, it sets the size and alignment for the new blocks you make, and **Usual** puts back each kind's own. A size or alignment picked on blocks is also kept for new blocks while the page is open.
+- With nothing picked, it sets the size and alignment for the new blocks you make, and **Default** puts back each kind's own. A size or alignment picked on blocks is also kept for new blocks while the page is open.
 - With picked blocks that differ, no choice is marked. If the picked blocks have no words to change, the menu says "Pick a note, text, shape or table to change its words".
-- The usual is Large and left for a text block, and Small and left for a table.
+- The default is Large and left for a text block, and Small and left for a table.
 
 ## Note pointer
 
@@ -323,7 +381,9 @@ If the server asks the board to slow down, it says "Saving a lot at once. The re
 | See the board, move it and zoom | Yes | Yes |
 | Pick blocks | Yes | Yes |
 | Add, change, move, layer and delete blocks | No | Yes |
-| Colours, widths, the colour strip and Snap to grid | No | Yes |
+| Colours, widths, the colour strip, the board's background and Snap to grid | No | Yes |
+| Align, distribute, lock and group | No | Yes |
+| Present the frames | Yes | Yes |
 | Text size, alignment, line style and arrowheads | No | Yes |
 | Paint tools, flowchart shapes, connectors, tables and the timer's buttons | No | Yes |
 | Copy, paste, duplicate, undo and redo | No | Yes |
@@ -365,6 +425,7 @@ These work while the board has the keyboard (click it, or Tab to it). Key names 
 | Connector | C | C |
 | Rounded box, Diamond | B, D | B, D |
 | Table | G | G |
+| Frame | S | S |
 | Timer | Y | Y |
 | Bold, italic, code, link (while editing words) | Ctrl+B, Ctrl+I, Ctrl+E, Ctrl+K | Cmd+B, Cmd+I, Cmd+E, Cmd+K |
 | Next cell, previous cell (editing a table cell) | Tab, Shift+Tab | Tab, Shift+Tab |
@@ -391,6 +452,9 @@ These work while the board has the keyboard (click it, or Tab to it). Key names 
 | Redo | Ctrl+Shift+Z or Ctrl+Y | Cmd+Shift+Z or Cmd+Y |
 | Hand tool, on and off | H | H |
 | Move the board | Hold Space and drag | Hold Space and drag |
+| Lock, unlock what is picked | Ctrl+L | Cmd+L |
+| Group, ungroup what is picked | Ctrl+G, Ctrl+Shift+G | Cmd+G, Cmd+Shift+G |
+| Present the frames (once presenting: next, back, first, last, exit) | Right or Down, Left or Up, Home, End, Escape | the same |
 | Zoom with the wheel | Ctrl+wheel | Cmd+wheel, or pinch on the trackpad |
 | Snap the other way, for one drag or click | Alt while dragging | Option while dragging |
 

@@ -18,7 +18,7 @@ Manage > Environment starts with an **Environment** panel: the plan's name, and 
 - **Calls at once** is how many spaces may have a call running at the same time. A space counts only while someone there is on the call, not while people are merely in it. Entering a space is never refused, and neither is joining a call already running; starting one more is: **Join the call** leaves you in **Not in a call**, which says "This environment's plan allows N call(s) at once; one is running in <space>". Stepping aside with people when others stay on the call starts one more too, and is refused the same way.
 - **Modules** is which of the bundled modules your plan includes; one not included shows "Not in your plan" under Available.
 
-Over a cap, that one thing stops and everything else keeps running. Manage has no **Upgrade** link yet: it comes back when the host has a plans page. Until then the host sets a plan from the console. A plan is bought on the payment provider's own page; the app never sees a card, and the plan changes here once the provider says so.
+Over a cap, that one thing stops and everything else keeps running. Manage has no **Upgrade** link yet: it comes back when the host has a plans page. Until then the host sets a plan on the environment's page in the console. A plan is bought on the payment provider's own page; the app never sees a card, and the plan changes here once the provider says so.
 
 ## Payment overdue
 

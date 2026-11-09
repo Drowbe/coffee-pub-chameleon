@@ -8,7 +8,7 @@ the CHANGELOG once fixed.
 
 ## Whiteboard: limits that are known
 
-These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
+These are recorded for the Whiteboard 0.1.19 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
 [architecture-whiteboard](architecture/architecture-whiteboard.md)).
 
 - **Same block, same moment.** Two people changing one block at the same moment: the last save wins. There is no conflict check yet.
@@ -27,8 +27,24 @@ These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/
 - **Connectors go round only their own two blocks,** not other blocks in the way.
 - **Brush pressure** was not tried with a real pen or a touch screen that senses force.
 - **Toolbar placement.** The colour swatches are not in the toolbar row and **Snap to grid** is not at the toolbar's right end, because a module can do neither (a toolbar button holds only an icon, and there is no right-hand place for a module's own button). The magnifier's menu opens at the top of the module's content, not under its button in the title bar.
+- **Resizing a group.** Picking a group and dragging a handle to resize it as one selection is not built. Resize the blocks one at a time.
+- **Ctrl+L and Ctrl+G** (Cmd on a Mac), the keys for lock and group, were tried with synthetic key events and not in a real browser, where a browser may use them for itself. The same commands are in the right-click menu.
+- **Connectors and frames.** A connector with a free end inside a frame does not move when the frame moves. A connector between two blocks inside the frame does, because it follows its blocks.
+- **Frames: read as code only.** The glide between frames, the reduced-motion jump, Print with frames on the board and a real long press on a frame were read as code and not tried. Presenting is each person's own; there is no "everyone follows me" yet.
+- **Align, guides and lock keys** were checked by tool (`check-whiteboard-arrange.mjs`), not by hand in a browser.
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
+
+## Stacked modules and the tab order without moveBefore
+
+A stack of docked modules keeps its sections in the page in the order the stack shows them with the browser's
+`moveBefore()`, so Tab goes top section, divider, next section ([architecture-canvas](architecture/architecture-canvas.md),
+"Stacks"). Browsers that lack `moveBefore()` (those that are not Chromium-based) leave the sections where they were in
+the page, to avoid loading them again, so the Tab order of a stack can differ from what is drawn after a **Move up**,
+a **Move down** or a drag. What is drawn and what is saved are right. Firefox and Safari, a real tablet's touch on the
+divider and a screen reader were not tried.
+
+Workaround: use the keyboard on the divider and the titlebar menus, which work in any order.
 
 ## Vault: who can see a file is only half built
 
@@ -41,6 +57,20 @@ The server now decides which Vault files a person may see ([plan-vault-privacy](
 - **Visibility change on a shared file.** Changing who sees a file that is in a share link is handled in slice 4.
 
 Workaround: none needed for now, as nothing sets a visibility yet.
+
+## The host console is dark only
+
+The host console's address serves no `/theme.css`, so the console always draws in its dark colours, whatever the
+person prefers. Light mode needs a server change (GitHub follow-up in the TODO).
+
+Workaround: none.
+
+## The server lets a host admin remove themselves
+
+The console does not offer **Remove** for yourself or for the last host admin, but the server's route does not
+refuse either. A call made outside the console could remove the only host admin.
+
+Workaround: leave the host admin list to the console, and keep `ADMIN_LOGIN` and `ADMIN_PASSWORD` set.
 
 ## The host console sends no framing headers
 
@@ -125,12 +155,6 @@ the first time. Clicking it a second time opens the module but not the object.
 GitHub #20.
 
 Workaround: find the object in the module itself.
-
-## The console's Maps tab is too wide in the narrow layout
-
-On the host console at narrow width, the Maps tab runs past the right edge of the screen.
-
-Workaround: use a wider window or turn the phone sideways.
 
 ## Saving a bundled template reorders its module list
 

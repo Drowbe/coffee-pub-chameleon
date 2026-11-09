@@ -5,7 +5,7 @@
 What a person does with the board is [userguide-whiteboard](../userguides/userguide-whiteboard.md). The module's
 permissions and storage rules are those of every module ([api-modules](../api/api-modules.md)); the SDK it calls is
 [api-module-sdk](../api/api-module-sdk.md). This document is the shape of the module and the reasons for it. The code is
-in `modules/whiteboard/`, version 0.1.16.
+in `modules/whiteboard/`, version 0.1.19.
 
 ## Shape
 
@@ -262,10 +262,34 @@ of the paper (`.wb-print` in `whiteboard.css`); the host prints the module's con
 image…** is a `host.header.set` item with `overflow: true`, so it is in the title bar's menu, before the host's standard
 actions. Both are available to anyone who may see the board.
 
+## The board's background
+
+One value for the whole board, shared by everyone who sees it, saved whole under one key beside the blocks: `_board:main:settings`, `{ id: 'settings', type: 'board', background, by, at }`. `background` is a palette id or `'default'` (the theme's own board colour); a missing key, or any other value, reads as `'default'` (`wbCleanBoard` in `lib-a`). The key starts with `_`, the module's bookkeeping, so a Clear takes it and its Undo puts it back without counting it, and a board with only a background has nothing to clear. The page puts the background back at once after its own person's Clear, so a Clear empties the board of blocks and keeps its colour. `wbBackdrop(id)` gives the ground and the dot colour: a wash of the tint, `WB_WASH` (18 percent) on `var(--surface-page)`, so it follows light and dark mode, with the grid's dots stronger on a wash than on the plain page. Anyone who may change the board may set it (`setBackground`). It is one step in the undo history under `WB_BOARD_STEP` (`:board`, an id no block can have), and an undo that finds someone else changed it since leaves it and says so (`wbUndoNote`). It is in the board's right-click menu on empty space and in the title bar's menu. Save as image with **Board colour** and Print draw it. Tests: `check-whiteboard-background.mjs`.
+
+## Align, distribute, guides, locks and groups
+
+`lib-m-arrange.js` is plain work on blocks and boxes with no page. `wbRect` gives a block's box (a connector has none and is never lined up), `wbAlignMoves` lines two or more boxes up to the box round them, `wbDistributeMoves` spaces three or more evenly between the first and the last, `wbGuideSnap` snaps a dragged box to the edges and middles of the boxes near it within a few screen pixels, and `wbArrangeChanges`, `wbLockChanges`, `wbGroupChanges` and `wbUngroupChanges` answer which blocks a command changes. `wbArrangeChanges` also returns `moves`. `wbLockedNote` is the sentence for blocks left alone. The page puts every change through its one path (`ctx.change`), so one command is one undo step.
+
+- **Guides** are drawn by the renderer while a move is dragged, and only when Snap to grid is off and Alt is not held (`guiding`); the grid wins when Snap is on. Not for a resize or a line's end.
+- **Lock** is `locked: true` on any block. `policy.canChange` and `canDelete` are false for it; `canLock` is true for anyone who may edit. A locked block can still be picked, copied, duplicated and saved as an image. Its mark is a padlock at the top right corner of its box, and its spoken description says "locked". Ctrl or Cmd L locks all picked blocks when any is unlocked, else unlocks them.
+- **Group** is a `group` id on each member (`wbGroupId`, `wbGroupOf`, `wbGroupsOf`). Ctrl or Cmd G groups the picked blocks, with Shift ungroups. Picking one member picks the group. `wbCopies` in `lib-h-clipboard` gives each group copied one new id, and a block copied without the rest of its group has none. Resizing a group as one selection is not built.
+- The toolbar's tail is Delete, Arrange, then Snap to grid (`toolbarTail()`). Tests: `check-whiteboard-arrange.mjs`. Ctrl+L and Ctrl+G were tested with synthetic key events, not in a real browser.
+
+## Frames and Present
+
+A frame is a block type with `container: true` (`lib-e-block-frame.js`; its tool is `lib-f-tool-frame.js`, key `s`, in the Flowchart group, and **Add a frame** in the +). A container is not attachable, so connectors do not join it.
+
+- **Order.** A new frame goes under every block that is not a frame and above existing frames. A press on its empty inside goes to what is under it; it is picked by its title tab or its border (`FRAME.hit` 8 screen pixels, `touch` 16). Size: 480 by 320 new, at least 80 by 60, a title of at most 80 characters (`FRAME`).
+- **What it holds.** `wbFrameContents` finds the blocks fully inside it, a frame inside it counting as one. Moving a frame (a drag, the arrow keys, align or distribute) moves them with it through `wbFrameFollow`, in one undo step; locked blocks stay. Copy, cut and duplicate take the contents; delete and resize change only the frame. A connector whose free end is inside a frame does not move with it (a known limit).
+- **Present** is the page's `presenting` state (`{ order, i, view }`) with the pure `wbPresentStart`, `wbPresentGo`, `wbPresentSync` and `wbPresentWords` in the frame file. Frames are in reading order, a row being the frames whose tops are within half the first frame's height. `renderer.setView` puts the view (held to `renderer.limits`, zoom 20 to 400 percent) and Exit puts the old one back. The board is not changed while presenting and pan and zoom are ignored. It is each person's own and changes nothing, so someone who may only look can present; a shared "follow me" waits on the live channel ([plan-module-live](../plans/plan-module-live.md)).
+- **Save frame as image** exports the frame's own box with everything overlapping it, without the title tab, through `lib-l-export`.
+- **Menus.** A block's own colour reads **Default** (the paint choice `usual` is shown as Default, also in the text size and alignment menus).
+- Tests: `check-whiteboard-frames.mjs` (15 cases).
+
 ## Checks
 
 The module's own tests are in `modules/whiteboard/test/`: `check-whiteboard-sync.mjs`, `-history.mjs`, `-pictures.mjs`,
-`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs` and `-export.mjs`. `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
+`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs`, `-export.mjs`, `-background.mjs`, `-arrange.mjs` and `-frames.mjs`. `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
 them inside `npm run check`. They are not in the module's zip. The right-drag and paste tests send synthetic events; a
 headless browser has no computer clipboard and the suite has not run on Windows. The export test covers the sums only
 (which blocks, the part of the board, the size, the file's name); drawing the picture needs a browser and is not in the
