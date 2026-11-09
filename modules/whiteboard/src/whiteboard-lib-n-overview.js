@@ -158,22 +158,27 @@
       if (drag || !fit || !viewBox || (e.pointerType === 'mouse' && e.button !== 0)) return;
       try { panel.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
       const p = boardAt(e, fit);
-      // On the view's rectangle: it moves from where it was pressed; elsewhere, the view's middle goes there first.
+      // On the view's rectangle: it moves from where it was pressed (a press there that does not move puts the middle
+      // there all the same, when it is let go); elsewhere, the view's middle goes there first.
       const c = mid(viewBox);
       const grab = wbOverviewInside(p, viewBox) ? { x: p.x - c.x, y: p.y - c.y } : { x: 0, y: 0 };
-      drag = { id: e.pointerId, grab, fit, bounds };
+      drag = { id: e.pointerId, grab, fit, bounds, p, sx: e.clientX, sy: e.clientY, moved: false };
       panel.classList.add('wb-ov-dragging');
       centre(wbOverviewDrag(p, grab, bounds));
     });
     panel.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       e.stopPropagation();
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return;
+      drag.moved = true;
       centre(wbOverviewDrag(boardAt(e, drag.fit), drag.grab, drag.bounds));
     });
     const end = (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       e.stopPropagation();
+      const was = drag;
       drag = null;
+      if (!was.moved && e.type === 'pointerup' && (was.grab.x || was.grab.y)) centre(wbOverviewDrag(was.p, { x: 0, y: 0 }, was.bounds));
       panel.classList.remove('wb-ov-dragging');
       soon(); // the map fits the view again
     };
