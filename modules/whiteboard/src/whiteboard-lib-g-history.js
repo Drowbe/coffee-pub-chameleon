@@ -7,13 +7,72 @@
   // A step is one gesture: a drag, a stroke, a resize, a colour picked, a paste, a delete of several blocks. Every change
   // told to it in one turn of the page's script is one step (they are joined until the turn ends), so a drop that saves
   // ten blocks is one step; a run of changes tagged the same within a moment (the arrow keys nudging) is one step too.
-  // Each change in a step is a block's whole state before and after it ({ id, before, after }; null: no block), so a
-  // create, a change, a move in the stack (z) and a delete are all the same thing.
+  // Each change in a step keeps a block's whole state before and after it ({ id, before, after }; null: no block); what a
+  // change put back is worked out from them field by field: a create and a delete are the whole block, any other change
+  // only the fields it changed (a move: x and y; a colour: that colour; a move in the stack: z).
   //
-  // undo(apply) and redo(apply) hand the step's changes to apply as [{ id, target, source }]: put the block as target
-  // (null: take it away), where source is what this person left it as. The page writes them as new changes, the same way
-  // as any other, so everyone else sees them like any edit; while it does, what it writes is not recorded as a new step.
-  // A new step clears what could be redone. The oldest steps go past `cap`.
+  // undo(apply) and redo(apply) hand the step's changes to apply as [{ id, target, source, fields }], the last change first
+  // for an undo: put the block as target (null: take it away), where source is what this person left it as; `fields`
+  // (null for a create or a delete) are the fields to put back, each only where the block still holds what this person
+  // left there (wbMergeBack): a field someone else has changed since keeps their value. Fields a block type names as
+  // linked (lib-a: a line's x, y, dx and dy; a box's x, y, w and h) go back together or not at all: when someone else has
+  // changed any of them since, the rest stay as they are too, so an undo never makes a shape neither person made (a line
+  // whose start this person dragged and someone else then moved does not get its far end back on its own). The page
+  // writes the whole merged block as a new change (wbApplyChanges), the same way as any other, so everyone else sees it
+  // like any edit; while it does, what it writes is not recorded as a new step. A new step clears what could be redone.
+  // The oldest steps go past `cap`.
+  const wbSameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // The fields two states of a block differ in, leaving aside who saved it and when.
+  function wbFieldsChanged(a, b) {
+    const out = [];
+    for (const f of new Set([...Object.keys(a), ...Object.keys(b)])) if (f !== 'by' && f !== 'at' && !wbSameValue(a[f], b[f])) out.push(f);
+    return out;
+  }
+  // The block as undo or redo leaves it, given the block as it is now: each of the change's fields goes to target where
+  // now still holds source there and in every field linked with it that the change changed; a field someone else changed
+  // since stays theirs, and so do the fields linked with it. `linked`: the block type's lists of linked fields. null: no
+  // field to put back (someone else changed them all), so the block is left as it is.
+  function wbMergeBack(now, { target, source, fields }, linked = []) {
+    const out = { ...now };
+    const theirs = (f) => !wbSameValue(now[f], source[f]);
+    const withIt = (f) => (linked.find((g) => g.includes(f)) || [f]).filter((g) => fields.includes(g));
+    let any = false;
+    for (const f of fields) {
+      if (withIt(f).some(theirs)) continue; // someone else's since, or a field it goes with is
+      if (target[f] === undefined) delete out[f]; else out[f] = JSON.parse(JSON.stringify(target[f]));
+      any = true;
+    }
+    return any ? out : null;
+  }
+  // Put a step's changes (as undo and redo hand them) on the board. What it needs from the page: get(id) -> the block or
+  // null, remove(id), put(block) (saved as a new change), canChange(block), canCreate(), clean(raw) -> a block or null,
+  // linkedOf(block) -> its type's linked fields. Answers { left: blocks someone else deleted since (left out), kept:
+  // blocks whose every field to put back someone else changed (left as they are), touched: the ids put back }.
+  function wbApplyChanges(list, { get, remove, put, canChange, canCreate, clean, linkedOf }) {
+    let left = 0;
+    let kept = 0;
+    const touched = [];
+    for (const { id, target, source, fields } of list) {
+      const now = get(id);
+      if (!target) { if (now) remove(id); continue; }
+      if (!now && source) { left += 1; continue; } // someone else deleted it since
+      const merged = now && fields ? wbMergeBack(now, { target, source, fields }, linkedOf(now)) : target;
+      if (!merged) { kept += 1; continue; } // someone else changed all of it since
+      const b = clean(merged);
+      if (!b || (now && !canChange(now)) || (!now && !canCreate())) continue;
+      put(b);
+      touched.push(id);
+    }
+    return { left, kept, touched };
+  }
+  // What the person is told after an undo or a redo that could not put everything back ('' : nothing to tell). Both, when
+  // both happened.
+  function wbUndoNote(r) {
+    const parts = [];
+    if (r && r.left > 0) parts.push(`Left out ${r.left === 1 ? 'a block' : `${r.left} blocks`} someone else deleted.`);
+    if (r && r.kept > 0) parts.push(r.kept === 1 ? 'Left a block as it is: someone else changed it since.' : `Left ${r.kept} blocks as they are: someone else changed them since.`);
+    return parts.join(' ');
+  }
   function createHistory({ cap = 100, onChange = () => {} } = {}) {
     const undos = [];
     const redos = [];
@@ -57,7 +116,10 @@
       close();
       const step = from.pop();
       if (!step) return null;
-      const list = [...step.changes.values()].map((c) => (which === 'undo' ? { id: c.id, target: copy(c.before), source: copy(c.after) } : { id: c.id, target: copy(c.after), source: copy(c.before) }));
+      const list = [...step.changes.values()].map((c) => {
+        const fields = c.before && c.after ? wbFieldsChanged(c.before, c.after) : null;
+        return which === 'undo' ? { id: c.id, target: copy(c.before), source: copy(c.after), fields } : { id: c.id, target: copy(c.after), source: copy(c.before), fields };
+      });
       if (which === 'undo') list.reverse();
       return { step, list, to };
     }

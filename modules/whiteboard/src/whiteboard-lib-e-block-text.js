@@ -14,6 +14,7 @@
     clean: (raw) => ({ w: wb.size(raw.w, 40, 240), text: wb.text(raw.text) }),
     box: (b) => ({ x: 0, y: 0, w: b.w, h: null }),
     resize: { handles: 'corners', min: { w: 40 }, height: false }, // a corner changes the width; the words set the height
+    linked: [['x', 'y', 'w']], // its box (the words set the height)
     render(b, el) {
       let words = el.querySelector('.wb-words');
       if (!words) { words = document.createElement('div'); words.className = 'wb-words'; el.replaceChildren(words); }

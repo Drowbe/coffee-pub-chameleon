@@ -75,7 +75,7 @@
   // ---- the one path for changes made here -----------------------------------------------------------------------------
   // Every local change lands here: drawn at once, and saved now, soon (after a pause) or not yet (while a drag or a stroke
   // goes on). Each save, and each delete (remove), is told to the history as { before, after }, the whole block (lib-g):
-  // that is what undo and redo put back, through this same path.
+  // undo and redo put back from them the fields that changed, through this same path.
   const history = policy.canEdit ? createHistory({ cap: 100, onChange: () => historyButtons() }) : null;
   function commit(next, save) {
     board.put(next);
@@ -458,9 +458,11 @@
 
   // ---- undo and redo ----------------------------------------------------------------------------------------------------
   // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
-  // edit. Someone else may have changed a block since: it is put back as this person left it anyway (the last write wins,
-  // as everywhere on the board). A block someone else deleted since, which the step needs, is left out, and the person is
-  // told once. A block this person deleted comes back whole, with its own id.
+  // edit. Only the fields the step changed are put back, and each only where the block still holds what this person left:
+  // a field someone else has changed since keeps their change, and so do the fields its block type links with it
+  // (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
+  // since, which the step needs, is left out. The person is told once, of both when both happened (wbUndoNote). A block
+  // this person deleted comes back whole, with its own id. The work is lib-g's (wbApplyChanges); this hands it the board.
   let undoButton = null;
   let redoButton = null;
   function historyButtons() {
@@ -468,25 +470,24 @@
     if (redoButton) redoButton.set({ disabled: !history.canRedo() });
   }
   function applyChanges(list) {
-    let left = 0;
-    const touched = [];
-    for (const { id, target, source } of list) {
-      const now = board.get(id);
-      if (!target) { if (now) remove(id); continue; }
-      if (!now && source) { left += 1; continue; } // someone else deleted it since
-      const b = wbClean(target);
-      if (!b || (now && !policy.canChange(now)) || (!now && !policy.canCreate())) continue;
-      commit(b, 'now');
-      touched.push(id);
-    }
-    select(touched.filter((id) => board.has(id)));
-    return left;
+    const r = wbApplyChanges(list, {
+      get: (id) => board.get(id),
+      remove,
+      put: (b) => commit(b, 'now'),
+      canChange: (b) => policy.canChange(b),
+      canCreate: () => policy.canCreate(),
+      clean: wbClean,
+      linkedOf: (b) => { const def = blockTypes.get(b.type); return (def && def.linked) || []; },
+    });
+    select(r.touched.filter((id) => board.has(id)));
+    return r;
   }
   function undoRedo(which) {
     if (!history || down !== null) return; // not in the middle of a drag or a stroke
     if (editing) { const ed = editing; editing = null; ed.finish(true); }
-    const left = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
-    if (left > 0) note(`Left out ${left === 1 ? 'a block' : `${left} blocks`} someone else deleted.`);
+    const r = which === 'undo' ? history.undo(applyChanges) : history.redo(applyChanges);
+    const told = wbUndoNote(r);
+    if (told) note(told);
     historyButtons();
   }
 

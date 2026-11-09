@@ -13,6 +13,7 @@
     clean: (raw) => ({ w: wb.size(raw.w, 40, 180), h: wb.size(raw.h, 40, 180), text: wb.text(raw.text) }),
     box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
     resize: { handles: 'corners', min: { w: 40, h: 40 } },
+    linked: [['x', 'y', 'w', 'h']], // its box
     render(b, el) {
       let words = el.querySelector('.wb-words');
       if (!words) { words = document.createElement('div'); words.className = 'wb-words'; el.replaceChildren(words); }
