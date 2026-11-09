@@ -3651,8 +3651,11 @@
       if (typeof m.seq !== 'number' || (last !== undefined && m.seq <= last)) return;
       lastSeq.set(m.from.key, m.seq);
       const from = withTint(m.from);
+      // Each handler gets its own copy of the data, so one handler changing it can't change what the next one sees.
       for (const fn of [...fns]) {
-        try { fn(m.data, { ...from }, { topic: m.topic, at: m.at, seq: m.seq }); } catch (err) { console.error(err); }
+        let data;
+        try { data = structuredClone(m.data); } catch (err) { return; } // only plain JSON comes (the host checked it)
+        try { fn(data, { ...from }, { topic: m.topic, at: m.at, seq: m.seq }); } catch (err) { console.error(err); }
       }
     });
     host.on('live.people', (e) => {

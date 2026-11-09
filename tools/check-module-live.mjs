@@ -167,6 +167,31 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   same(dataBytes(undefined), 4, 'no data is null');
 }
 
+// --- the guest pass on its own: server/index.js's own functions, the environment handed in --------------------------------
+// The same link token and pass are refused in another environment, so a pass is for one environment even where two
+// environments' links had the same token (the two-environment run below can only show it with different tokens).
+{
+  const index = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
+  const fnSrc = (head) => {
+    const at = index.indexOf(head);
+    assert.ok(at >= 0, `server/index.js has ${head}`);
+    return index.slice(at, index.indexOf('\n}\n', at) + 2);
+  };
+  const src = ['function guestPassKey()', 'function guestPassSignature(', 'function makeGuestPass(', 'function readGuestPass('].map(fnSrc).join('\n');
+  let slug = 'aaa';
+  const passes = new Function('crypto', 'secretsKeyBuf', 'currentEnvironment', `${src}\nreturn { makeGuestPass, readGuestPass };`)(require('crypto'), () => Buffer.alloc(32, 7), () => ({ slug }));
+  const pass = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
+  same(passes.readGuestPass('LINKTOKEN1', pass), { id: 'guest-Abcd1234', name: 'Ada' }, 'a pass reads back in its own environment, with its own link');
+  same(passes.readGuestPass('LINKTOKEN2', pass), null, 'not with another link');
+  slug = 'bbb';
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'the same link token and pass in another environment: refused');
+  slug = undefined;
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'nor on a single-environment install');
+  const plain = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
+  slug = 'aaa';
+  same(passes.readGuestPass('LINKTOKEN1', plain), null, 'and a single-environment pass is refused in an environment');
+}
+
 // --- not the call: read as code ----------------------------------------------------------------------------------------
 const CALL_WORDS = /livekit|callService|HAS_CALL_SERVICE|publishData|\/api\/call\/|\/api\/token/i;
 {
@@ -605,6 +630,11 @@ try {
   await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: noPassId } }), 409, 'open the space first; there is no module stream of yours there', 'but nobody can join with it, not even with a good pass');
   same((await send('live-a', keep.id, { topic: 'g.all', data: {} }, samC)).status, 200);
   await noPassS.until((e) => e.event === 'live' && e.data.topic === 'g.all');
+  // A module guests may not read (live-m: `point`, which the guest role lacks): nothing of it reaches a guest, pass or not.
+  same((await send('live-m', keep.id, { topic: 'g.mod', data: { secret: 1 } }, owner)).status, 200, 'the owner sends on live-m');
+  same((await send('live-a', keep.id, { topic: 'g.after', data: {} }, owner)).status, 200, 'then on live-a');
+  for (const st of [giaS, gusS, noPassS, guestS]) await st.until((e) => e.event === 'live' && e.data.topic === 'g.after');
+  ok([giaS, gusS, noPassS, guestS].every((st) => !st.events.some((e) => e.data && e.data.module === 'live-m')), 'a guest with a valid pass (or none) gets no live event of a module guests may not read');
   // Refusals: another link's pass, another space, a forged pass, the publish permission.
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, tod.pass)), 403, 'that guest pass is not valid; enter again', 'the Tower guest\'s pass on the Keep\'s link: 403');
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(towerLink, gia.pass)), 403, 'this module is not available in that space for you', 'Gia\'s pass on the Tower\'s link, to the Keep: 403');

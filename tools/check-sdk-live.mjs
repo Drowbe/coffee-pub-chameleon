@@ -412,6 +412,10 @@ const personTint = new Function(`${tintSrc[0]}; return personTint;`)();
 
 // === 2. Chromium =========================================================================================================
 const MODULE_JS = String.raw`(function () {
+  // Everything the host posts to this frame (the hello answer, every call's answer and error, every event), as text, so
+  // the check can see that no stream id or guest pass ever reaches a module.
+  var inbox = [];
+  addEventListener('message', function (e) { var m = e.data; if (m && m.host === 1) { try { inbox.push(JSON.stringify(m)); } catch (err) { inbox.push(String(m)); } } });
   var report = function (o) { parent.postMessage(Object.assign({ livetest: 1 }, o), '*'); };
   var subs = new Map();
   var peopleOff = null;
@@ -420,6 +424,8 @@ const MODULE_JS = String.raw`(function () {
     return function (data, from, meta) {
       var plain = data === null || typeof data !== 'object' || Array.isArray(data) || Object.getPrototypeOf(data) === Object.prototype;
       report({ kind: 'message', name: name, data: data, from: from, meta: meta, plain: plain, polluted: ({}).polluted === undefined ? null : true });
+      // A handler that changes its data: the next handler on the topic must not see the change.
+      if (data && typeof data === 'object' && !Array.isArray(data)) data.touchedBy = name;
     };
   };
   // Subscribed as the page starts, before host.ready() and before the frame's load event, as a module may.
@@ -441,6 +447,7 @@ const MODULE_JS = String.raw`(function () {
     var answer = function (o) { report(Object.assign({ kind: 'answer', id: c.id }, o)); };
     try {
       if (c.op === 'state') return answer({ state: host.live.state, states: states });
+      if (c.op === 'inbox') return answer({ inbox: inbox.join('\n'), count: inbox.length });
       if (c.op === 'tint') return answer({ tints: c.keys.map(function (k) { return host.live.tint(k); }) });
       if (c.op === 'subscribe') {
         subs.set(c.name, host.live.subscribe(c.topic, handler(c.name)));
@@ -569,6 +576,7 @@ else {
   let browser = null;
   const tabs = [];
   const asked = []; // every request a page made: [tab, url]
+  const streamIds = new Set(); // every module stream id a page named in a join or leave
   try {
     await start();
     ok(/No LiveKit: voice and video are off\./.test(out), 'the throwaway server has no LiveKit');
@@ -596,7 +604,13 @@ else {
       const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
       const s = (m, p) => cdp.send(m, p, sessionId);
       await s('Page.enable'); await s('Runtime.enable'); await s('Network.enable');
-      cdp.listeners.push((m) => { if (m.sessionId === sessionId && m.method === 'Network.requestWillBeSent') asked.push([name, m.params.request.url]); });
+      cdp.listeners.push((m) => {
+        if (m.sessionId !== sessionId || m.method !== 'Network.requestWillBeSent') return;
+        asked.push([name, m.params.request.url]);
+        // The stream ids the page joins and leaves with: none may ever reach a module.
+        const said = /"stream":"([^"]+)"/.exec(m.params.request.postData || '');
+        if (said) streamIds.add(said[1]);
+      });
       if (cookie) await s('Network.setCookie', { name: 'app_session', value: cookie, url: base(), httpOnly: true });
       const tab = {
         name, targetId, browserContextId, sessionId,
@@ -671,8 +685,9 @@ else {
     same(m1[0].data, { x: 1 }, 'Ben\'s live-t hears it');
     same(m1[0].from, { key: ann.key, name: 'Ann', guest: false, tint: personTint(ann.key) }, 'from Ann, with her tint');
     same([m1[0].meta.topic, typeof m1[0].meta.at, Number.isInteger(m1[0].meta.seq)], ['pointer', 'number', true], 'meta: topic, the server\'s time and sequence');
-    await until(B, "g.mod === 't' && g.kind === 'message' && g.name === 'p2'");
+    const m1b = await until(B, "g.mod === 't' && g.kind === 'message' && g.name === 'p2'");
     ok(true, 'both handlers on the topic hear it');
+    same(m1b[0].data, { x: 1 }, 'each with its own copy: the first handler changing its data does not change the second\'s');
     await until(G, "g.mod === 't' && g.kind === 'message'");
     await sleep(400);
     same((await got(B, "g.mod === 'u' && g.kind === 'message'")).length, 0, 'another module\'s same topic hears nothing');
@@ -790,6 +805,20 @@ else {
     await cmd(A, 't', 'publish', { topic: 'after', data: { r: 1 } });
     const after = await until(B, "g.name === 'after' && g.data?.r === 1", 8000);
     ok(after[0].meta.seq <= beforeSeq && after[0].meta.seq === 1, `the new server's first sequence number (${after[0].meta.seq}) is heard though lower than the last (${beforeSeq})`);
+
+    // Nothing the host posted to any module frame -- the hello answer, every answer and error, every event, before and after
+    // the restart -- holds a module stream's id or the guest's pass.
+    const pass = await G.eval('window.__guest.pass');
+    ok(streamIds.size >= 6, `the stream ids the pages joined with are known (${streamIds.size})`);
+    for (const T of [A, B, G]) {
+      for (const k of Object.keys(mods)) {
+        const { inbox, count } = await cmd(T, k, 'inbox');
+        ok(count > 5 && inbox.includes('"live"'), `${T.name}'s ${k}: the host's messages were recorded (${count}, the hello answer among them)`);
+        const leaked = [...streamIds].filter((id) => inbox.includes(id));
+        same(leaked, [], `${T.name}'s ${k}: no stream id in anything the host posted to the module`);
+        ok(!inbox.includes(pass) && !inbox.includes(pass.split('.')[1]) && !/pass=/.test(inbox), `${T.name}'s ${k}: no guest pass (nor its signature, nor pass=) either`);
+      }
+    }
 
     // Leaving: a new page in Ben's frame (reset), the guest's module unmounted, Ben's tab closed.
     await until(A, `g.mod === 't' && g.kind === 'people' && g.joined && g.joined.key === ${JSON.stringify(ben.key)}`, 8000);
