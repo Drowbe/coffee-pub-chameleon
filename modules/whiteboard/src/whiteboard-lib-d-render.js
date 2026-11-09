@@ -3,8 +3,9 @@
   // The board is drawn with the page's own HTML and SVG: one element per block in a "world" layer that the view moves and
   // scales (pan and zoom), so words wrap and are edited as ordinary text, and every colour is a theme token in CSS. The
   // renderer owns the view and the elements; what a block looks like is its block type's render. It saves nothing.
-  // icon(name) -> a promise of an icon's SVG (the lock mark's padlock).
-  function createRenderer({ surface, world, frame, icon = null }) {
+  // icon(name) -> a promise of an icon's SVG (the lock mark's padlock). onView() is told each time the view moves (the
+  // overview follows it).
+  function createRenderer({ surface, world, frame, icon = null, onView = null }) {
     const els = new Map(); // block id -> its element
     const shown = new Map(); // block id -> the block as it was last drawn
     const view = { x: 0, y: 0, s: 1 };
@@ -31,6 +32,7 @@
       surface.style.setProperty('--wb-grid', `${step}px`);
       surface.style.setProperty('--wb-grid-x', `${view.x - step / 2}px`);
       surface.style.setProperty('--wb-grid-y', `${view.y - step / 2}px`);
+      if (onView) onView();
     }
 
     function place(el, block, def) {

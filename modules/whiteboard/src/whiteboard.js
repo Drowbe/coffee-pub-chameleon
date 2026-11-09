@@ -15,6 +15,7 @@
 //   lib-k table     rows copied from a spreadsheet, read as a table's cells
 //   lib-l export    the board as a picture, and ready to print
 //   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
+//   lib-n overview  the small map of the whole board
 (async () => {
   'use strict';
 
@@ -57,7 +58,8 @@
   const me = (info.user && info.user.key) || '';
   const board = createBoard();
   const surface = $('board');
-  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name) });
+  let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
+  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name), onView: () => overviewView() });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
@@ -101,9 +103,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back. Show overview, in the title bar menu, puts a small map of the whole board in its corner: tap it or drag its rectangle to move the view.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops. Show overview, in the title bar menu, puts a small map of the whole board in its corner: click it or drag its rectangle to move the view.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1649,6 +1651,7 @@
       if (host.status) host.status.set(items).catch(() => {});
       updateHint();
       updatePaint();
+      overviewRefresh();
     });
   }
   function updateHint() {
@@ -1797,16 +1800,22 @@
     }
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
-  if (host.header) {
+  // The title bar's menu: set again when Show overview turns into Hide overview (see "the overview").
+  function setHeader() {
+    if (!host.header) return;
     host.header.set([
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
+      { id: 'overview', icon: 'map', title: overviewOn ? 'Hide overview' : 'Show overview', on: overviewOn, overflow: true },
     ]).catch(() => {});
+  }
+  if (host.header) {
     host.on('header', (e) => {
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
+      if (e && e.id === 'overview') toggleOverview();
     });
   }
 
@@ -1951,6 +1960,50 @@
   $('present-next').addEventListener('click', () => presentGo('next'));
   $('present-exit').addEventListener('click', () => stopPresenting());
   const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
+
+  // ---- the overview -------------------------------------------------------------------------------------------------------
+  // A small map of the whole board at the bottom right of the board (lib-n): Show overview and Hide overview in the title
+  // bar's menu turn it on and off, each person's own choice kept in this browser when it can be (off at first), never in
+  // the board's data. It shows every block, the frames as outlines, and what is in sight; a press on it puts the middle of
+  // the view there at the same zoom, and a drag moves the view along. It is hidden while presenting, in a module smaller
+  // than 360 x 320 pixels, and while the board is empty. It is a picture to the keyboard and a screen reader (no tab stop,
+  // no key): the keyboard moves the board itself. It reads the board only, so someone who may only look can use it.
+  const overviewStore = () => window.localStorage;
+  let overviewOn = wbOverviewLoad(overviewStore);
+  overview = createOverview({
+    layer: surface,
+    centre(p) {
+      if (presenting) return;
+      cancelAnimationFrame(glide);
+      glide = 0;
+      renderer.setView(wbOverviewCentre(p, renderer.view, surface.clientWidth, surface.clientHeight));
+      updateStatus();
+    },
+  });
+  // Every block's box (lib-m, wbRect: a connector has none, it follows its blocks), with its z and whether it is a frame.
+  const overviewBoxes = () => live().map((b) => { const r = wbRect(b, heightOf); return r && { ...r, z: b.z, frame: wbIsFrame(b) }; }).filter(Boolean);
+  // Shown or hidden as things are now, and drawn again (once a frame at most, by lib-n): with the status line, after any
+  // change to the board, a resize or presenting.
+  function overviewRefresh() {
+    if (!overview) return;
+    const hidden = wbOverviewHidden({ on: overviewOn, width: host.rootElement.clientWidth, height: host.rootElement.clientHeight, count: live().length, presenting });
+    overview.size(wbOverviewSize($('app').classList.contains('narrow')));
+    overview.hide(hidden);
+    if (hidden) return;
+    overview.blocks(overviewBoxes());
+    overview.view(viewBox());
+  }
+  // The view moved (a drag, the wheel, a zoom, a glide): only the rectangle, and the map's fit, follow.
+  function overviewView() {
+    if (overview && !overview.hidden) overview.view(viewBox());
+  }
+  function toggleOverview() {
+    overviewOn = !overviewOn;
+    wbOverviewSave(overviewStore, overviewOn); // where it cannot be kept, it lasts until the page goes
+    setHeader();
+    overviewRefresh();
+  }
+  setHeader();
 
   // ---- links in the words ------------------------------------------------------------------------------------------------
   // A link in a block's words opens in a new tab: with Ctrl or Cmd and a click (that click is the link's, it picks
@@ -2408,7 +2461,8 @@
   new ResizeObserver(() => {
     const w = host.rootElement.clientWidth;
     $('app').classList.toggle('narrow', w > 0 && w < 520);
-    if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); updateStatus(); }
+    if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
+    updateStatus(); // the overview: its size, and whether there is room for it
   }).observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
