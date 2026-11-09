@@ -2610,6 +2610,7 @@
   $('world').append(liveLayer);
   const liveEls = new Map(); // a person's key -> { el, name, tool, x, y, toolId, faded }
   const liveState = () => (liveApi ? liveApi.state : 'closed');
+  const guestWord = host.util.word('guest');
   const ARROW = 'M1 1 L1 17 L5.5 13 L8.5 20 L11.5 18.7 L8.6 12 L14.5 12 Z';
   function livePointerEl(p) {
     const el = document.createElement('div');
@@ -2627,7 +2628,7 @@
     tag.className = 'wb-live-tag';
     const name = document.createElement('span');
     name.className = 'wb-live-name';
-    name.textContent = wbLiveLabel(p);
+    name.textContent = wbLiveLabel(p, guestWord);
     const toolEl = document.createElement('span');
     toolEl.className = 'wb-live-tool';
     tag.append(name, toolEl);
@@ -2651,7 +2652,7 @@
       if (!v) { v = livePointerEl(p); liveEls.set(p.key, v); }
       if (v.x !== p.x || v.y !== p.y) { v.el.style.transform = `translate(${p.x}px, ${p.y}px)`; v.x = p.x; v.y = p.y; }
       if (!v.el.isConnected) liveLayer.append(v.el); // placed first, so it does not glide in from the corner
-      const label = wbLiveLabel(p);
+      const label = wbLiveLabel(p, guestWord);
       if (v.label !== label) { v.name.textContent = label; v.label = label; }
       const faded = liveStore.faded(p, now);
       if (v.faded !== faded) { v.el.classList.toggle('wb-live-faded', faded); v.faded = faded; }

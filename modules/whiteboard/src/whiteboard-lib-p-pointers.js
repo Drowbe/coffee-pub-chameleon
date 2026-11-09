@@ -100,7 +100,7 @@
     const guest = from.guest === true;
     const chars = typeof from.name === 'string' ? Array.from(from.name.replace(/\s+/g, ' ').trim()) : [];
     let name = chars.length > WB_LIVE.name ? `${chars.slice(0, WB_LIVE.name - 1).join('').trim()}…` : chars.join('');
-    if (!name) name = guest ? 'Guest' : 'Someone';
+    if (!name && !guest) name = 'Someone'; // a nameless guest is named by their role (wbLiveLabel)
     let colour = null;
     try { colour = tint ? tint(key) : null; } catch { colour = null; }
     if (!WB_LIVE.tints.includes(colour)) colour = null;
@@ -112,8 +112,9 @@
     return { ...who, x, y, tool: wbLiveOwn(data, 'tool') ? wbLiveTool(data.tool) : null };
   }
 
-  // The words on a pointer's tag: the name, and "(guest)" after a guest's.
-  const wbLiveLabel = (p) => (p.guest ? `${p.name} (guest)` : p.name);
+  // The words on a pointer's tag: the name, and the guest role's word after a guest's (as the environment says it:
+  // roleWord is host.util.word for that role), or that word alone for a guest with no name.
+  const wbLiveLabel = (p, roleWord) => (p.guest ? (p.name ? `${p.name} (${roleWord})` : String(roleWord)) : p.name);
 
   // The pointers heard, by person: a Map keyed by the sender's key, in the order last heard (the oldest first). put() a
   // checked message (lib's wbLiveRead) at a time; a gone one takes the pointer away. Past the cap the oldest goes.

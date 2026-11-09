@@ -261,10 +261,11 @@ await test('the name: cut to 24 characters (… at the end), one line, a guest m
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1' }, { tint }).name, 'Someone');
   const g = L.wbLiveRead({ x: 1, y: 1 }, { key: 'guest-abcd1234', name: 'Gil', guest: true }, { tint });
   assert.equal(g.guest, true);
-  assert.equal(L.wbLiveLabel(g), 'Gil (guest)');
-  assert.equal(L.wbLiveLabel(L.wbLiveRead({ x: 1, y: 1 }, { key: 'guest-abcd1234', guest: true }, { tint })), 'Guest (guest)');
+  assert.equal(L.wbLiveLabel(g, 'guest'), 'Gil (guest)');
+  assert.equal(L.wbLiveLabel(L.wbLiveRead({ x: 1, y: 1 }, { key: 'guest-abcd1234', guest: true }, { tint }), 'guest'), 'guest', 'a nameless guest: the role word alone');
+  assert.equal(L.wbLiveLabel(g, 'visitor'), 'Gil (visitor)', 'the environment\'s word for the role');
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: 'Ann', guest: 'true' }, { tint }).guest, false, 'only true is a guest');
-  assert.equal(L.wbLiveLabel(long), long.name);
+  assert.equal(L.wbLiveLabel(long, 'guest'), long.name);
 });
 await test('a colour is one of the eight, else none', () => {
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, ann, { tint }).tint, 'blue');

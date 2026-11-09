@@ -520,7 +520,7 @@
   align-items: center;
   gap: var(--space-1);
   max-width: 16em;
-  padding: 1px var(--space-1) 1px 6px;
+  padding: 1px var(--space-1);
   border-left: 3px solid var(--wb-live);
   border-radius: var(--radius-min);
   background: var(--surface-card);
