@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * check-module-live.mjs -- live messages for modules (documentation/plans/plan-module-live.md, steps 1 and 2; its Verify
+ * check-module-live.mjs -- live messages for modules (documentation/plans/plan-module-live.md, steps 1 to 3; its Verify
  * section, points 1 to 7). Live messages travel over the app's own server, never over the call.
  *
  * First server/module-live.js on its own, with a clock handed in: connections indexed by space, join and leave, the grace
@@ -9,8 +9,8 @@
  *
  * Then the rule that this is not the call, read as code: server/module-live.js requires nothing but Node's crypto and
  * names no LiveKit, and the live section of server/index.js (between its markers) and the module stream's route name none
- * of livekit, callService, HAS_CALL_SERVICE, publishData, /api/call/ or /api/token. (host.live in public/sdk/host.js and
- * public/module-host.js come with the plan's step 5, and this check reads them then.)
+ * of livekit, callService, HAS_CALL_SERVICE, publishData, /api/call/ or /api/token. (host.live in public/sdk/host.js, the
+ * page's side in public/module-live.js and its wiring in public/module-host.js are read by tools/check-sdk-live.mjs.)
  *
  * Then three throwaway servers (PORT=0, DATA_DIR under the temp folder), with three modules built here: live-a (`live:
  * true`, read guarded by `view`), live-p (`live: { publish: "point" }`, `point` for moderators) and live-off (no `live`).
@@ -20,7 +20,7 @@
  *      with another space's guest link. The module and the space come from the server: a topic can't cross modules, the
  *      event is always `live`, a body can't set `from` or `module`, and data that looks like an event stays data. `at`
  *      and `seq` are the server's. Refusals with their sentences: no `live` (400), no read (403), the publish permission
- *      missing (403), a guest (403), signed out (401), no space (400), no such space or module (404), a bad topic or `to`
+ *      missing (403), a guest without a valid pass (403), signed out (401), no space (400), no such space or module (404), a bad topic or `to`
  *      (400), data over MODULE_LIVE_BYTES (413), past MODULE_LIVE_PER_SECOND (429 with Retry-After). `joined` and `left`:
  *      a join answers who is there and tells the others once; a second tab joining tells nobody; a stream that is not
  *      yours or not in this space is 409; a closed stream says `left` after its grace (10 seconds), a reconnect within the
@@ -30,16 +30,22 @@
  *      owner made a member, a new password, a person deleted and a guest link turned off (each stream ends in under
  *      300 ms), the module turned off, rolled back to a version without `live` or removed; each next send is refused.
  *      With nothing to tell the streams (a person turning on their own two-step sign-in), the 2-second recheck alone ends
- *      the old session's stream within about 2.5 s. Flood and abuse:
+ *      the old session's stream within about 2.5 s. Guests by their pass (step 3): two guests on one link are told apart
+ *      (each sends as the id and name on their pass, never hears their own, can be named in `to`, joins and leaves as
+ *      themselves, and can't join on another's stream); a stream with no valid pass still receives but can't be joined on;
+ *      another link's pass, another space, a forged pass (another guest's or a member's key on a signature), the publish
+ *      permission and a module guests may not read are refused; the link turned off ends their streams and refuses their
+ *      sends, and a joined guest is told to the others as left, by the name on their pass. Flood and abuse:
  *      many topics, huge bodies, malformed JSON, deep nesting, prototype-pollution keys and many streams leave the server
  *      answering and delivering. Nothing is written to DATA_DIR.
  *   2. Dummy LiveKit keys and a stand-in for the call service's API that counts every request: sending, joining, leaving
  *      and receiving ask it nothing. The limits read from the environment (MODULE_LIVE_BYTES, _PER_SECOND, _PER_PERSON,
- *      _TO) hold. Module streams with a space are counted per person and per guest link (LIVE_STREAMS_PER_PERSON,
+ *      _TO, _PER_GUEST_LINK: everyone on one link together) hold. Module streams with a space are counted per person and per guest link (LIVE_STREAMS_PER_PERSON,
  *      LIVE_STREAMS_PER_GUEST_LINK, one address its share), apart from GET /api/live's: one over is 429 in the same
  *      sentence, a closed one gives its place back, and a stream with no space is not counted.
  *   3. Two environments (BASE_DOMAIN): a message in one never reaches a reader of the same module in the other, and the
- *      host console resetting an owner's two-step sign-in ends their stream in that environment at once.
+ *      host console resetting an owner's two-step sign-in ends their stream in that environment at once. A guest's pass
+ *      from one environment is refused in the other.
  * What can't be checked here: the feel of live pointers between two real browsers on a real network, and load beyond a
  * handful of people.
  */
@@ -81,14 +87,22 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   same(reg.join(a1, 'board'), { joined: true }, 'the first join is new');
   same(reg.join(a2, 'board'), { joined: false }, 'a second tab of the same person is not');
   same(reg.join(b1, 'board'), { joined: true }, 'another person is');
-  same(reg.people('board', 'keep'), [{ key: 'al', guest: false }, { key: 'bo', guest: false }], 'both listed');
+  same(reg.people('board', 'keep'), [{ key: 'al', guest: false, name: '' }, { key: 'bo', guest: false, name: '' }], 'both listed (a person\'s name is read from their account, not kept here)');
   same(reg.people('board', 'tower'), [], 'not in another space');
   same(reg.people('other', 'keep'), [], 'nor for another module');
   const g = reg.open({ who: null, guest: true, space: 'keep', deliver: () => {}, mayRead: () => true });
-  same(reg.join(g, 'board'), null, 'a connection with no person (a guest, for now) does not join');
+  same(reg.join(g, 'board'), null, 'a connection with no person (a guest who gave no valid pass) does not join');
+  // A guest by their pass (step 3): known by its id, with the name on the pass kept (they have no account).
+  const gp = reg.open({ who: 'guest-Zed01', name: 'Zed', guest: true, space: 'keep', deliver: () => {}, mayRead: () => true });
+  same(reg.join(gp, 'board'), { joined: true }, 'a guest by their pass joins');
+  same(reg.people('board', 'keep').find((p) => p.key === 'guest-Zed01'), { key: 'guest-Zed01', guest: true, name: 'Zed' }, 'listed with the name on their pass');
+  same(reg.open({ who: 'x1y2', name: 'Not kept', space: 'keep', deliver: () => {}, mayRead: () => true }) && reg.inSpace('keep').at(-1).name, '', 'a name is kept for a guest only');
+  reg.close(reg.inSpace('keep').at(-1).id);
+  same(reg.leave(gp, 'board'), { left: true }, 'and leaves');
+  reg.close(gp);
 
   same(reg.close(a1), [], 'closing one of two tabs: still there, no grace');
-  same(reg.close(a2), [{ module: 'board', space: 'keep', who: 'al', until: t + 10000 }], 'closing the last: a grace of 10 seconds');
+  same(reg.close(a2), [{ module: 'board', space: 'keep', who: 'al', name: '', guest: false, until: t + 10000 }], 'closing the last: a grace of 10 seconds');
   same(reg.people('board', 'keep').map((p) => p.key), ['al', 'bo'], 'listed during the grace');
   t += 5000;
   same(reg.sweep(), [], 'nothing to sweep inside the grace');
@@ -96,7 +110,7 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   same(reg.join(a3, 'board'), { joined: false }, 'a reconnect within the grace is not a new join');
   same(reg.close(a3).length, 1, 'closed again');
   t += 10001;
-  same(reg.sweep(), [{ module: 'board', space: 'keep', who: 'al' }], 'after the grace: left');
+  same(reg.sweep(), [{ module: 'board', space: 'keep', who: 'al', name: '', guest: false }], 'after the grace: left');
   same(reg.people('board', 'keep').map((p) => p.key), ['bo'], 'and no longer listed');
   same(reg.sweep(), [], 'said once');
   same(reg.leave(b1, 'board'), { left: true }, 'a leave is at once');
@@ -151,6 +165,31 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   same(({}).polluted, undefined, 'and nothing was polluted');
   same(dataBytes({ x: 1 }), 7, 'size as JSON');
   same(dataBytes(undefined), 4, 'no data is null');
+}
+
+// --- the guest pass on its own: server/index.js's own functions, the environment handed in --------------------------------
+// The same link token and pass are refused in another environment, so a pass is for one environment even where two
+// environments' links had the same token (the two-environment run below can only show it with different tokens).
+{
+  const index = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
+  const fnSrc = (head) => {
+    const at = index.indexOf(head);
+    assert.ok(at >= 0, `server/index.js has ${head}`);
+    return index.slice(at, index.indexOf('\n}\n', at) + 2);
+  };
+  const src = ['function guestPassKey()', 'function guestPassSignature(', 'function makeGuestPass(', 'function readGuestPass('].map(fnSrc).join('\n');
+  let slug = 'aaa';
+  const passes = new Function('crypto', 'secretsKeyBuf', 'currentEnvironment', `${src}\nreturn { makeGuestPass, readGuestPass };`)(require('crypto'), () => Buffer.alloc(32, 7), () => ({ slug }));
+  const pass = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
+  same(passes.readGuestPass('LINKTOKEN1', pass), { id: 'guest-Abcd1234', name: 'Ada' }, 'a pass reads back in its own environment, with its own link');
+  same(passes.readGuestPass('LINKTOKEN2', pass), null, 'not with another link');
+  slug = 'bbb';
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'the same link token and pass in another environment: refused');
+  slug = undefined;
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'nor on a single-environment install');
+  const plain = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
+  slug = 'aaa';
+  same(passes.readGuestPass('LINKTOKEN1', plain), null, 'and a single-environment pass is refused in an environment');
 }
 
 // --- not the call: read as code ----------------------------------------------------------------------------------------
@@ -469,8 +508,8 @@ try {
   await refusal(await send('live-a', 'nosuch', { topic: 'a' }, samC), 404, 'no such space', 'no such space: 404');
   await refusal(await send('live-a', tower.id, { topic: 'a' }, samC), 403, 'this module is not available in that space for you', 'another space: 403');
   await refusal(await send('live-p', keep.id, { topic: 'a' }, samC), 403, 'your role can\'t send live messages in this module', 'the publish permission missing: 403');
-  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}`), 403, 'Guests can receive live messages but can\'t send them yet', 'a guest: 403');
-  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}&pass=anything`), 403, 'Guests can receive live messages but can\'t send them yet', 'a guest with a pass: 403 (the pass on module routes is step 3)');
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}`), 403, 'that guest pass is not valid; enter again', 'a guest without a pass: 403');
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}&pass=anything`), 403, 'that guest pass is not valid; enter again', 'a guest with a pass that is not one: 403');
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(towerLink)}`), 403, 'this module is not available in that space for you', 'another space\'s guest: 403');
   await refusal(await send('live-a', keep.id, { topic: 'Bad Topic' }, samC), 400, 'the topic must be 1 to 40 of a-z, 0-9, dot, underscore and dash', 'a bad topic: 400');
   await refusal(await send('live-a', keep.id, { topic: 'a', to: [] }, samC), 400, 'to must list 1 to 20 people', 'to empty: 400');
@@ -494,7 +533,7 @@ try {
   const join = (moduleId, stream, cookie, space = keep.id) => call('POST', `/api/modules/${moduleId}/live/join?space=${space}`, { cookie, body: { stream } });
   const leave = (moduleId, stream, cookie, space = keep.id) => call('POST', `/api/modules/${moduleId}/live/leave?space=${space}`, { cookie, body: { stream } });
   const sj = await join('live-a', samId, samC);
-  same(sj.json, { ok: true, people: [{ key: sam.key, name: 'Sam', guest: false }] }, 'Sam joins: answered with who is there');
+  same(sj.json, { ok: true, people: [{ key: sam.key, name: 'Sam', guest: false }], limits: { bytes: 256, perSecond: 20, to: 20 } }, 'Sam joins: answered with who is there, and the limits a page keeps to');
   const pj = await join('live-a', patId1, patC);
   same(pj.json.people.map((p) => p.key).sort(), [pat.key, sam.key].sort(), 'Pat joins: both there');
   const joinedEv = await samS.until((e) => e.event === 'joined');
@@ -517,7 +556,7 @@ try {
   await refusal(await join('live-a', 'x', null), 401, 'sign in first', 'signed out: 401');
   await quiet(300);
   ok(!samS.events.some((e) => e.event === 'joined' && e.data.person.key === lou.key), 'Lou joining in the Tower tells nobody in the Keep');
-  await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}&guest=${encodeURIComponent(keepLink)}`, { body: { stream: ids[5] } }), 403, 'Guests can receive live messages but can\'t send them yet', 'a guest can\'t join yet: 403');
+  await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}&guest=${encodeURIComponent(keepLink)}`, { body: { stream: ids[5] } }), 403, 'that guest pass is not valid; enter again', 'a guest without a pass can\'t join: 403');
 
   // A closed tab with another still joined: nothing. The last closed: `left` after the grace; a reconnect within it: neither.
   pat1.close();
@@ -550,6 +589,71 @@ try {
 
   // --- 7. nothing written: every message, refusal, join and leave above left DATA_DIR as it was -------------------------
   same(snapshot(dataDir), before, 'sending, receiving, refusals, rates, joining and leaving wrote nothing to DATA_DIR');
+
+  // --- guests by their pass (step 3) -----------------------------------------------------------------------------------
+  // Two guests on the Keep's one link, each known by the id on their own pass (POST /api/guest-join); a guest stream
+  // with no pass still only receives. Gia and Gus in the Keep, Tod on the Tower's link.
+  const guestIn = async (link, name) => (await call('POST', '/api/guest-join', { body: { token: link, name } })).json.guest;
+  const gia = await guestIn(keepLink, 'Gia');
+  const gus = await guestIn(keepLink, 'Gus');
+  const tod = await guestIn(towerLink, 'Tod');
+  ok(gia.id !== gus.id && /^guest-/.test(gia.id) && /^guest-/.test(gus.id), 'two guests on one link: two ids');
+  const gq = (link, pass) => `&guest=${encodeURIComponent(link)}&pass=${encodeURIComponent(pass)}`;
+  const giaS = await openStream(MS(keep.id, gq(keepLink, gia.pass)));
+  const gusS = await openStream(MS(keep.id, gq(keepLink, gus.pass)));
+  const [giaId, gusId] = [await ready(giaS), await ready(gusS)];
+  same((await send('live-a', keep.id, { topic: 'g.point', data: { x: 5 } }, null, gq(keepLink, gia.pass))).json, { ok: true }, 'a guest with their pass sends');
+  const gm = await samS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
+  same(gm.data.from, { key: gia.id, name: 'Gia', guest: true }, 'from the guest as their pass names them');
+  await gusS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
+  await guestS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
+  await quiet(300);
+  same(giaS.lives().filter((e) => e.data.topic === 'g.point').length, 0, 'the other guest and a guest with no pass receive it; never the guest who sent it');
+  for (const [st, who] of [[louK, 'Lou on the Keep\'s stream'], [towerG, 'the Tower\'s guest'], [crossG, 'the Keep\'s stream on the Tower\'s link']]) same(st.lives().filter((e) => e.data.topic === 'g.point').length, 0, `nor ${who}`);
+  same((await send('live-a', keep.id, { topic: 'g.nudge', data: {}, to: [gus.id] }, samC)).status, 200, 'Sam sends to Gus by his id');
+  await gusS.until((e) => e.event === 'live' && e.data.topic === 'g.nudge');
+  same((await send('live-a', keep.id, { topic: 'g.back', data: {}, to: [sam.key] }, null, gq(keepLink, gus.pass))).status, 200, 'Gus answers Sam alone');
+  await samS.until((e) => e.event === 'live' && e.data.topic === 'g.back');
+  await quiet(300);
+  ok(![giaS, guestS, pat4, ownS].some((st) => st.lives().some((e) => e.data.topic === 'g.nudge' || e.data.topic === 'g.back')), '`to` a guest reaches that guest only, and a guest\'s `to` the person named only');
+  // Joining and leaving as themselves.
+  const gjoin = await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: giaId } });
+  same(gjoin.status, 200, 'Gia joins with her stream');
+  ok(gjoin.json.people.some((p) => p.key === gia.id && p.name === 'Gia' && p.guest === true), 'and is listed by the name on her pass');
+  const gjEv = await samS.until((e) => e.event === 'joined' && e.data.person.key === gia.id);
+  same(gjEv.data.person, { key: gia.id, name: 'Gia', guest: true }, 'Sam is told Gia joined');
+  ok(gjEv.data.people.some((p) => p.key === gia.id && p.guest === true), 'and she is in the list');
+  await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gus.pass)}`, { body: { stream: giaId } }), 409, 'open the space first; there is no module stream of yours there', 'Gus can\'t join with Gia\'s stream: 409');
+  const noPassS = await openStream(MS(keep.id, gq(keepLink, 'not-a-pass')));
+  same(noPassS.status, 200, 'a guest stream with a pass that is not one still opens (it receives)');
+  const noPassId = await ready(noPassS);
+  await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: noPassId } }), 409, 'open the space first; there is no module stream of yours there', 'but nobody can join with it, not even with a good pass');
+  same((await send('live-a', keep.id, { topic: 'g.all', data: {} }, samC)).status, 200);
+  await noPassS.until((e) => e.event === 'live' && e.data.topic === 'g.all');
+  // A module guests may not read (live-m: `point`, which the guest role lacks): nothing of it reaches a guest, pass or not.
+  same((await send('live-m', keep.id, { topic: 'g.mod', data: { secret: 1 } }, owner)).status, 200, 'the owner sends on live-m');
+  same((await send('live-a', keep.id, { topic: 'g.after', data: {} }, owner)).status, 200, 'then on live-a');
+  for (const st of [giaS, gusS, noPassS, guestS]) await st.until((e) => e.event === 'live' && e.data.topic === 'g.after');
+  ok([giaS, gusS, noPassS, guestS].every((st) => !st.events.some((e) => e.data && e.data.module === 'live-m')), 'a guest with a valid pass (or none) gets no live event of a module guests may not read');
+  // Refusals: another link's pass, another space, a forged pass, the publish permission.
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, tod.pass)), 403, 'that guest pass is not valid; enter again', 'the Tower guest\'s pass on the Keep\'s link: 403');
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(towerLink, gia.pass)), 403, 'this module is not available in that space for you', 'Gia\'s pass on the Tower\'s link, to the Keep: 403');
+  await refusal(await send('live-a', tower.id, { topic: 'a' }, null, gq(towerLink, gia.pass)), 403, 'that guest pass is not valid; enter again', 'Gia\'s pass on the Tower\'s link, to the Tower: 403');
+  await refusal(await send('live-a', tower.id, { topic: 'a' }, null, gq(keepLink, gia.pass)), 403, 'this module is not available in that space for you', 'Gia in the Tower: 403');
+  const [, sig] = gia.pass.split('.');
+  const forged = `${Buffer.from(JSON.stringify({ id: gus.id, name: 'Gus' })).toString('base64url')}.${sig}`;
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, forged)), 403, 'that guest pass is not valid; enter again', 'Gus\'s id on Gia\'s signature: 403');
+  const asMember = `${Buffer.from(JSON.stringify({ id: sam.key, name: 'Sam' })).toString('base64url')}.${sig}`;
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, asMember)), 403, 'that guest pass is not valid; enter again', 'a member\'s key on a guest\'s signature: 403');
+  await refusal(await send('live-p', keep.id, { topic: 'a' }, null, gq(keepLink, gia.pass)), 403, 'your role can\'t send live messages in this module', 'the guest role without live-p\'s publish permission: 403');
+  await refusal(await send('live-m', keep.id, { topic: 'a' }, null, gq(keepLink, gia.pass)), 403, 'your role can\'t do that in this module', 'a module guests may not read: 403');
+  // Gia leaves: at once.
+  same((await call('POST', `/api/modules/live-a/live/leave?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: giaId } })).json, { ok: true }, 'Gia leaves');
+  const glEv = await samS.until((e) => e.event === 'left' && e.data.person.key === gia.id, 800);
+  same(glEv.data.person, { key: gia.id, name: 'Gia', guest: true }, 'Sam is told Gia left');
+  // Gus joins; the link turned off (below) ends his access: the others are told he left, by the name on his pass.
+  same((await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gus.pass)}`, { body: { stream: gusId } })).status, 200, 'Gus joins');
+  await samS.until((e) => e.event === 'joined' && e.data.person.key === gus.id);
 
   // --- 4. access lost stops delivery at once -------------------------------------------------------------------------
   // Sam taken out of the Keep: no more messages, `removed` on his live stream, `left` to the others, his send refused.
@@ -645,6 +749,10 @@ try {
   // The guest link turned off: the guest's module stream ends at once.
   const guestMs = await endsAtOnce(guestS, async () => same((await call('DELETE', `/api/spaces/${keep.id}/guest-link`, { cookie: owner })).status, 200, 'the Keep\'s guest link is turned off'));
   ok(guestMs < 300, `the guest's module stream ends at once (${guestMs} ms)`);
+  ok((await within(giaS.ended, 500)) === true && (await within(gusS.ended, 500)) === true, 'and the streams of the guests with passes too');
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, gia.pass)), 401, 'sign in first', 'and a guest\'s send with the old link and pass is refused');
+  const gusLeft = await pat4.until((e) => e.event === 'left' && e.data.person.key === gus.id, 1000);
+  same(gusLeft.data.person, { key: gus.id, name: 'Gus', guest: true }, 'Gus lost access with the link: the others are told at once that he left, by the name on his pass');
 
   // A module rolled back to a version without `live`, and a module removed: their messages are refused at once.
   same((await call('POST', '/api/modules', { cookie: owner, raw: ROLL[0], type: 'application/zip' })).status, 201, 'live-r 1.0.0 (no live) installs');
@@ -713,7 +821,7 @@ try {
   open.length = 0;
   await startServer({
     LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'devsecretdevsecret', LIVEKIT_API_URL: `http://127.0.0.1:${lk.address().port}`,
-    MODULE_LIVE_BYTES: '64', MODULE_LIVE_PER_SECOND: '3', MODULE_LIVE_PER_PERSON: '5', MODULE_LIVE_TO: '2',
+    MODULE_LIVE_BYTES: '64', MODULE_LIVE_PER_SECOND: '3', MODULE_LIVE_PER_PERSON: '5', MODULE_LIVE_TO: '2', MODULE_LIVE_PER_GUEST_LINK: '4',
     LIVE_STREAMS_PER_PERSON: '4', LIVE_STREAMS_PER_GUEST_LINK: '5',
   });
   {
@@ -753,6 +861,14 @@ try {
     const r3 = await Promise.all([...Array.from({ length: 3 }, () => send('live-a', sp.id, { topic: 'r' }, own)), ...Array.from({ length: 3 }, () => send('live-p', sp.id, { topic: 'r' }, own))]);
     same(r3.filter((r) => r.status === 200).length, 5, 'MODULE_LIVE_PER_PERSON=5: five at once across modules');
     same(lkAsked.slice(from), [], 'still nothing asked of the call service');
+    // MODULE_LIVE_PER_GUEST_LINK=4: three guests on one link, three each at once (each under their own 3): four in all.
+    const hallLink = (await call('POST', `/api/spaces/${sp.id}/guest-link`, { cookie: own, body: {} })).json.space.guestToken;
+    const passes = [];
+    for (const name of ['Gil', 'Gwen', 'Gord']) passes.push((await call('POST', '/api/guest-join', { body: { token: hallLink, name } })).json.guest.pass);
+    await quiet(1100);
+    const rg = await Promise.all(passes.flatMap((pass) => Array.from({ length: 3 }, () => send('live-a', sp.id, { topic: 'g' }, null, `&guest=${encodeURIComponent(hallLink)}&pass=${encodeURIComponent(pass)}`))));
+    same(rg.filter((r) => r.status === 200).length, 4, 'MODULE_LIVE_PER_GUEST_LINK=4: four at once for everyone on one guest link');
+    ok(rg.filter((r) => r.status === 429).every((r) => Number(r.retryAfter) >= 1), 'the rest 429 with Retry-After');
 
     // Open module streams with a space are counted as GET /api/live's are (LIVE_STREAMS_PER_PERSON=4 here), apart from them.
     const more = [];
@@ -839,6 +955,17 @@ try {
     await quiet(400);
     same(bbb.s.lives().length, 0, 'a reader of the same module in the other environment gets nothing');
     ok(!bbb.s.events.some((e) => e.event === 'joined'), 'nor its joins');
+    // A guest pass is for its own environment: aaa's guest's pass with bbb's link is refused, and aaa's link means nothing at bbb.
+    hostHeader = aaa.host;
+    const aLink = (await call('POST', `/api/spaces/${aaa.sp.id}/guest-link`, { cookie: aaa.ownC, body: {} })).json.space.guestToken;
+    const aGuest = (await call('POST', '/api/guest-join', { body: { token: aLink, name: 'Ada' } })).json.guest;
+    same((await send('live-a', aaa.sp.id, { topic: 'g' }, null, `&guest=${encodeURIComponent(aLink)}&pass=${encodeURIComponent(aGuest.pass)}`)).status, 200, 'aaa\'s guest sends in aaa');
+    hostHeader = bbb.host;
+    const bLink = (await call('POST', `/api/spaces/${bbb.sp.id}/guest-link`, { cookie: bbb.ownC, body: {} })).json.space.guestToken;
+    await refusal(await send('live-a', bbb.sp.id, { topic: 'g' }, null, `&guest=${encodeURIComponent(bLink)}&pass=${encodeURIComponent(aGuest.pass)}`), 403, 'that guest pass is not valid; enter again', 'aaa\'s guest pass with bbb\'s link: 403');
+    await refusal(await send('live-a', bbb.sp.id, { topic: 'g' }, null, `&guest=${encodeURIComponent(aLink)}&pass=${encodeURIComponent(aGuest.pass)}`), 401, 'sign in first', 'aaa\'s link at bbb: 401');
+    await quiet(300);
+    same(bbb.s.lives().length, 0, 'still nothing in bbb');
 
     // The host console resets aaa's owner's two-step sign-in (signing them out everywhere there): their module stream in
     // aaa ends at once, though the reset runs on the host's router.

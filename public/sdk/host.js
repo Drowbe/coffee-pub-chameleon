@@ -47,6 +47,38 @@
     return global.Phases;
   };
 
+  // A person's colour (plan-module-live.md, decision 4): one of the eight tints, picked from their key (a person's key,
+  // or a guest's id) by one fixed rule, so a person has the same colour in every module and on every page. The rule:
+  // the 32-bit FNV-1a hash of the key's UTF-16 code units, taken modulo 8, indexes this list. Draw it with
+  // var(--tint-<name>). Never change the list's order or the rule: everyone's colour would change with it.
+  const PERSON_TINTS = Object.freeze(['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red']);
+  function personTint(key) {
+    const s = String(key == null ? '' : key);
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i += 1) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return PERSON_TINTS[h % PERSON_TINTS.length];
+  }
+  // Live messages' names (the bridge in public/module-live.js checks them again).
+  const LIVE_TOPIC = /^[a-z0-9._-]{1,40}$/;
+  const LIVE_PERSON = /^(?:[a-z0-9]{4,16}|guest-[A-Za-z0-9_-]{4,40})$/;
+  const LIVE_GAP_MS = 50; // the SDK sends at most 20 a second for a module (MODULE_LIVE_PER_SECOND's default)
+  function liveHasProto(value) {
+    const stack = [value];
+    while (stack.length) {
+      const v = stack.pop();
+      if (!v || typeof v !== 'object') continue;
+      if (Array.isArray(v)) { for (const x of v) stack.push(x); continue; }
+      for (const k of Object.keys(v)) {
+        if (k === '__proto__') return true;
+        stack.push(v[k]);
+      }
+    }
+    return false;
+  }
+
   // A pointer checked for shape, or null. Says nothing about whether the viewer may see the object.
   function cleanRef(ref) {
     const ok = ref && typeof ref.module === 'string' && typeof ref.kind === 'string' && typeof ref.id === 'string'
@@ -3556,6 +3588,191 @@
       return () => listeners.get(event).delete(fn);
     },
   };
+
+  // Live messages (plan-module-live.md): short messages between the people using this module in this space -- a pointer,
+  // a typing mark, a nudge. They travel over the app's own server, never over the call: they work with no voice and video
+  // set up and with nobody on a call. Only in a space (on an environment page `state` is 'closed' and publish refuses),
+  // and only for a module whose module.json says "live": true (else the host refuses with the server's sentence).
+  //
+  //   const off = host.live.subscribe('pointer', (data, from, meta) => { ... }); // returns unsubscribe; many per topic
+  //   await host.live.publish('pointer', { x, y });             // everyone else here who may see the module
+  //   await host.live.publish('nudge', { text }, { to: [key] }); // only these people (keys, or a guest's id)
+  //   const stop = host.live.on('people', ({ joined, left, people }) => { ... }); // who has joined it here
+  //   host.live.state;                                           // 'connecting' | 'open' | 'closed'
+  //   host.live.on('state', (state) => { ... });                 // or host.on('live', ({ state }) => { ... })
+  //   host.live.tint(key);                                       // that person's tint name
+  //
+  // `from` is { key, name, guest, tint }: `tint` one of blue, green, teal, purple, orange, pink, gold and red, the same for
+  // a person everywhere (draw it with var(--tint-<tint>)). `meta` is { topic, at, seq }: the server's time and sequence.
+  // A topic is 1 to 40 of a-z, 0-9, dot, underscore and dash, and is this module's own: no other module hears it.
+  // publish resolves once the server took the message, never when it was delivered. Messages are lossy: none is stored or
+  // replayed after a reconnect, one may be dropped, and there is no acknowledgement (use storage or an action for that).
+  // `data` is plain JSON of at most 256 bytes, with no `__proto__` key. The SDK sends at most 20 a second for the module,
+  // keeping only the newest waiting for each topic (and `to`): a message replaced before it went settles as its
+  // replacement does. A message older than the last one heard from the same person is dropped. The sender's own pages
+  // never hear their own messages. The host joins while there is a subscription or a 'people' watch, joins again after
+  // every reconnect, and leaves when there is neither, when the module's page goes and when it is closed.
+  function makeLive() {
+    let state = 'connecting';
+    let heardState = false;
+    const topics = new Map(); // topic -> Set(handler)
+    const peopleFns = new Set();
+    const stateFns = new Set();
+    let people = null; // [{ key, name, guest, tint }] once known
+    const lastSeq = new Map(); // a sender's key -> the last seq heard from them since this stream's `ready`
+    const waiting = new Map(); // topic + to -> { topic, data, to, settle: [{ resolve, reject }] }
+    let timer = null;
+    let nextAt = 0;
+    const withTint = (p) => ({ key: p.key, name: p.name, guest: p.guest === true, tint: personTint(p.key) });
+    const bad = (message, status = 400) => Object.assign(new Error(message), { status });
+    const tellPeople = (fn, change) => { try { fn({ joined: change.joined, left: change.left, people: (people || []).slice() }); } catch (err) { console.error(err); } };
+
+    readyPromise.then((r) => {
+      if (heardState) return;
+      state = r && (r.live === 'open' || r.live === 'connecting' || r.live === 'closed') ? r.live : (r && r.context && r.context.scope === 'space' ? 'connecting' : 'closed');
+    }, () => { if (!heardState) state = 'closed'; });
+
+    host.on('live.state', (e) => {
+      if (!e || typeof e.state !== 'string') return;
+      heardState = true;
+      // A new connection: the server's sequence numbers may have started over (a restart), so each sender's last-seen goes.
+      if (e.fresh) lastSeq.clear();
+      if (e.state === state) return;
+      state = e.state;
+      for (const fn of [...stateFns]) { try { fn(state); } catch (err) { console.error(err); } }
+      emit('live', { state });
+    });
+    host.on('live.message', (m) => {
+      if (!m || typeof m.topic !== 'string' || !m.from || typeof m.from.key !== 'string') return;
+      const fns = topics.get(m.topic);
+      if (!fns || !fns.size) return;
+      // Stale or out of order: not newer than the last heard from that person (the server counts up per module and space).
+      const last = lastSeq.get(m.from.key);
+      if (typeof m.seq !== 'number' || (last !== undefined && m.seq <= last)) return;
+      lastSeq.set(m.from.key, m.seq);
+      const from = withTint(m.from);
+      // Each handler gets its own copy of the data, so one handler changing it can't change what the next one sees.
+      for (const fn of [...fns]) {
+        let data;
+        try { data = structuredClone(m.data); } catch (err) { return; } // only plain JSON comes (the host checked it)
+        try { fn(data, { ...from }, { topic: m.topic, at: m.at, seq: m.seq }); } catch (err) { console.error(err); }
+      }
+    });
+    host.on('live.people', (e) => {
+      if (!e || !Array.isArray(e.people)) return;
+      people = e.people.map(withTint);
+      const change = { joined: e.joined ? withTint(e.joined) : null, left: e.left ? withTint(e.left) : null };
+      if (change.left) lastSeq.delete(change.left.key);
+      for (const fn of [...peopleFns]) tellPeople(fn, change);
+    });
+
+    function pump() {
+      if (timer !== null || !waiting.size) return;
+      timer = setTimeout(flush, Math.max(0, nextAt - Date.now()));
+    }
+    function flush() {
+      timer = null;
+      const [k, msg] = waiting.entries().next().value || [];
+      if (!msg) return;
+      waiting.delete(k);
+      nextAt = Date.now() + LIVE_GAP_MS;
+      readyPromise.then(() => call('live.publish', { topic: msg.topic, data: msg.data, ...(msg.to ? { to: msg.to } : {}) })).then(
+        () => { for (const s of msg.settle) s.resolve(true); },
+        (err) => {
+          // Asked to wait: nothing more goes until then.
+          if (err && err.status === 429) nextAt = Math.max(nextAt, Date.now() + Math.max(1, Number(err.retryAfter) || 1) * 1000);
+          for (const s of msg.settle) s.reject(err);
+        },
+      );
+      pump();
+    }
+
+    const live = {
+      get state() { return state; },
+      tint: personTint,
+      publish(topic, data, options) {
+        if (typeof topic !== 'string' || !LIVE_TOPIC.test(topic)) return Promise.reject(bad('the topic must be 1 to 40 of a-z, 0-9, dot, underscore and dash'));
+        const o = options === undefined || options === null ? {} : options;
+        if (typeof o !== 'object' || Object.keys(o).some((k) => k !== 'to')) return Promise.reject(bad('the options are only { to }'));
+        let to = null;
+        if (o.to !== undefined && o.to !== null) {
+          if (!Array.isArray(o.to) || !o.to.length || o.to.length > 20 || !o.to.every((k) => typeof k === 'string' && LIVE_PERSON.test(k))) return Promise.reject(bad('to must list 1 to 20 people by their keys'));
+          to = [...new Set(o.to)];
+        }
+        let copy;
+        try {
+          const text = JSON.stringify(data === undefined ? null : data);
+          copy = JSON.parse(text); // the value as it is now: a change after publish doesn't change what goes
+        } catch (err) {
+          return Promise.reject(bad('the data must be plain JSON'));
+        }
+        if (liveHasProto(copy)) return Promise.reject(bad('the data can\'t have a __proto__ key'));
+        const k = `${topic}\u0000${to ? to.slice().sort().join(',') : ''}`;
+        return new Promise((resolve, reject) => {
+          const held = waiting.get(k);
+          if (held) {
+            held.data = copy; // only the newest waits
+            held.settle.push({ resolve, reject });
+          } else {
+            waiting.set(k, { topic, data: copy, to, settle: [{ resolve, reject }] });
+          }
+          pump();
+        });
+      },
+      subscribe(topic, handler) {
+        if (typeof topic !== 'string' || !LIVE_TOPIC.test(topic)) throw bad('the topic must be 1 to 40 of a-z, 0-9, dot, underscore and dash');
+        if (typeof handler !== 'function') throw bad('subscribe needs a function');
+        let fns = topics.get(topic);
+        const first = !fns;
+        if (!fns) { fns = new Set(); topics.set(topic, fns); }
+        const mine = (...args) => handler(...args); // the same function twice is two subscriptions
+        fns.add(mine);
+        if (first) readyPromise.then(() => call('live.subscribe', { topic })).catch((err) => console.warn(`[host.live] ${err.message}`));
+        let off = false;
+        return () => {
+          if (off) return;
+          off = true;
+          const now = topics.get(topic);
+          if (!now) return;
+          now.delete(mine);
+          if (now.size) return;
+          topics.delete(topic);
+          readyPromise.then(() => call('live.unsubscribe', { topic })).catch(() => {});
+        };
+      },
+      // 'people': fn({ joined, left, people }) on each join and leave, and once with who is there now. 'state': fn(state).
+      on(event, fn) {
+        if (typeof fn !== 'function') throw bad('on needs a function');
+        if (event === 'state') {
+          stateFns.add(fn);
+          return () => { stateFns.delete(fn); };
+        }
+        if (event !== 'people') throw bad('host.live.on hears "people" or "state"');
+        const first = !peopleFns.size;
+        peopleFns.add(fn);
+        if (first) {
+          readyPromise.then(() => call('live.people', { on: true })).then((r) => {
+            if (!peopleFns.has(fn)) return;
+            if (r && Array.isArray(r.people) && r.people.length) people = r.people.map(withTint);
+            if (people) tellPeople(fn, { joined: null, left: null });
+          }, (err) => console.warn(`[host.live] ${err.message}`));
+        } else if (people) {
+          setTimeout(() => { if (peopleFns.has(fn)) tellPeople(fn, { joined: null, left: null }); }, 0);
+        }
+        let off = false;
+        return () => {
+          if (off) return;
+          off = true;
+          peopleFns.delete(fn);
+          if (peopleFns.size) return;
+          people = null;
+          readyPromise.then(() => call('live.people', { on: false })).catch(() => {});
+        };
+      },
+    };
+    return live;
+  }
+  host.live = makeLive();
 
   const destinationApi = {
     onState: (fn) => {

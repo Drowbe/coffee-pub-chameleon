@@ -2928,7 +2928,7 @@ function redirectToHost(req, res, status, newHost) {
 }
 // The paths the product host lets through beside /: what the start page loads and asks.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
-const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/module-live.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
 // The modules' stylesheets and icons, for the Design System pages: read from modules/*/src on each request, so the committed
 // public/design-system/sources.js holds nothing from a module (server/design-system-modules.js).
 app.get('/design-system/module-sources.js', (req, res) => {
@@ -10354,7 +10354,10 @@ app.get('/api/modules/stream', (req, res) => {
   // Live messages (plan-module-live.md): a stream with a space is in this environment's live register and says its id
   // first (`ready`). Its reader gets a module's live messages there while place() lets them read that module there, the
   // module declares `live` and its guards don't shut guests out (moduleLiveReadable).
-  const liveConnection = space ? openModuleLive(req, res, env, who, space, (viewer, moduleId) => {
+  // A guest is in the register by their pass when they gave a valid one for this link (moduleGuestPass), else they only
+  // receive, as before.
+  const liveMe = who.user ? { key: who.user.key, name: who.user.displayName, guest: false } : guestLiveMe(req);
+  const liveConnection = space ? openModuleLive(req, res, env, who, liveMe, space, (viewer, moduleId) => {
     const found = modules.enabled(moduleId);
     return Boolean(found && place(views[0], moduleId, `space:${space.id}`, found, viewer) && moduleLiveReadable(viewer, found.manifest, space.id));
   }) : null;
@@ -10540,9 +10543,16 @@ app.get('/api/modules/stream', (req, res) => {
 //   MODULE_LIVE_BYTES (256): the most a message's `data` may be, as JSON.
 //   MODULE_LIVE_PER_SECOND (20): messages a second for one person in one module, with a burst of the same.
 //   MODULE_LIVE_PER_PERSON (40): messages a second for one person across all modules.
-//   MODULE_LIVE_PER_GUEST_LINK (60): messages a second for everyone on one guest link together (for when guests may send).
+//   MODULE_LIVE_PER_GUEST_LINK (60): messages a second for everyone on one guest link together.
 //   MODULE_LIVE_TO (20): the most people one message may name in `to`.
-// Joining counts as a message under the first two.
+// Joining counts as a message under the first two (and, for a guest, the third).
+//
+// Guests (plan-module-live.md, step 3). A guest is known by the id on their guest pass (POST /api/guest-join), as on GET
+// /api/live: the module stream, and each send, join and leave, carry it as ?guest=<link>&pass=<pass>. The pass is signed
+// with the environment and that link, so it is refused for another link, space or environment, and dies with the link. A
+// guest stream without a valid pass still receives (as before), but nobody can name it in `to` and it can't join; a send,
+// join or leave without one is 403. The checks are otherwise a person's: the module visible to guests in that space, its
+// guards, its read permission and its `publish` permission, from the guest role.
 //
 // Events on GET /api/modules/stream?space=<id> (a stream with a space; each `event:` named, data JSON):
 //   ready   { stream }: first, once. `stream` names this connection to join and leave.
@@ -10563,12 +10573,14 @@ function moduleLiveReadable(viewer, manifest, spaceId) {
 
 // An event written once and shared by every stream it goes to.
 const liveEventBytes = (type, data) => Buffer.from(`id: ${eventIdOf(data)}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
-// A person as live messages show them: the name read from their account now.
+// A person as live messages show them: the name read from their account now. A guest is shown by the id and the name on
+// their pass, which the register keeps (`name`): they have no account.
 function livePerson(key) {
   const user = store.userByKey(key);
   return user ? { key, name: user.displayName, guest: false } : null;
 }
-const liveModulePeople = (moduleId, spaceId) => moduleLive.people(moduleId, spaceId).map((p) => livePerson(p.key)).filter(Boolean);
+const liveShown = (p) => (p.guest ? { key: p.key, name: p.name, guest: true } : livePerson(p.key));
+const liveModulePeople = (moduleId, spaceId) => moduleLive.people(moduleId, spaceId).map(liveShown).filter(Boolean);
 
 // Writes `bytes` to the connections in the space whose reader may read the module there now; never to `except`'s own
 // connections, and with `to`, only to those people's.
@@ -10580,20 +10592,32 @@ function tellModuleLive(moduleId, spaceId, bytes, { except = null, to = null } =
     c.deliver(bytes);
   }
 }
-function tellModuleLivePeople(type, moduleId, spaceId, key) {
-  const person = livePerson(key) || { key, name: '', guest: false };
-  tellModuleLive(moduleId, spaceId, liveEventBytes(type, { module: moduleId, spaceId, person, people: liveModulePeople(moduleId, spaceId) }), { except: key });
+// `who` is { key, name, guest } (a guest's name is the one on their pass; a person's is read again from their account).
+function tellModuleLivePeople(type, moduleId, spaceId, who) {
+  const person = liveShown(who) || { key: who.key, name: '', guest: false };
+  tellModuleLive(moduleId, spaceId, liveEventBytes(type, { module: moduleId, spaceId, person, people: liveModulePeople(moduleId, spaceId) }), { except: who.key });
 }
 // Those whose grace ran out are told as left.
 function sweepModuleLive() {
-  for (const gone of moduleLive.sweep()) tellModuleLivePeople('left', gone.module, gone.space, gone.who);
+  for (const gone of moduleLive.sweep()) tellModuleLivePeople('left', gone.module, gone.space, { key: gone.who, name: gone.name, guest: gone.guest });
+}
+// A guest's identity on a module route: the id and name on their pass for the guest link in ?guest=, or null (no pass, or
+// one that is not for this link in this environment).
+function moduleGuestPass(req) {
+  return typeof req.query.guest === 'string' && typeof req.query.pass === 'string' ? readGuestPass(req.query.guest, req.query.pass) : null;
+}
+// That guest as live messages know them, { key, name, guest: true }, or null.
+function guestLiveMe(req) {
+  const pass = moduleGuestPass(req);
+  return pass ? { key: pass.id, name: pass.name, guest: true } : null;
 }
 
-// A module stream with a space joins the register. `readable(viewer, moduleId)` is the stream's own rule (place()).
+// A module stream with a space joins the register. `readable(viewer, moduleId)` is the stream's own rule (place()). `me` is
+// who the register knows the reader as: { key, name, guest } (a guest by their pass), or null (a guest with no valid pass).
 // Its reader is read afresh, and every module's answer asked again, every STREAM_RECHECK_MS and at once when
 // liveAccessChanged() or a change to the modules says so: a module it joined but may no longer read is left at once,
 // and a session that ended, an account deleted or a guest link turned off ends the stream. Answers { id, close }.
-function openModuleLive(req, res, env, who, space, readable) {
+function openModuleLive(req, res, env, who, me, space, readable) {
   let viewer = who;
   const seen = new Map(); // moduleId -> may read it now
   const mayRead = (moduleId) => {
@@ -10601,7 +10625,7 @@ function openModuleLive(req, res, env, who, space, readable) {
     if (!seen.has(moduleId)) seen.set(moduleId, readable(viewer, moduleId));
     return seen.get(moduleId);
   };
-  const id = moduleLive.open({ who: who.user ? who.user.key : null, guest: !who.user, space: space.id, deliver: (bytes) => sseWrite(res, bytes), mayRead });
+  const id = moduleLive.open({ who: me ? me.key : null, name: me ? me.name : '', guest: !who.user, space: space.id, deliver: (bytes) => sseWrite(res, bytes), mayRead });
   const recheck = () => {
     if (!viewer) return;
     req._user = undefined;
@@ -10611,7 +10635,7 @@ function openModuleLive(req, res, env, who, space, readable) {
     seen.clear();
     for (const moduleId of moduleLive.joinedBy(id)) {
       if (mayRead(moduleId)) continue;
-      if (moduleLive.leave(id, moduleId)?.left) tellModuleLivePeople('left', moduleId, space.id, who.user.key);
+      if (moduleLive.leave(id, moduleId)?.left) tellModuleLivePeople('left', moduleId, space.id, me);
     }
     // No longer this person (signed out everywhere, deleted) or this space's guest (the link turned off or regenerated):
     // the whole stream ends, so the page opens it again with what it holds now, or is refused.
@@ -10642,9 +10666,10 @@ function openModuleLive(req, res, env, who, space, readable) {
   };
 }
 
-// Who may use a module's live messages in ?space=: { manifest, space, who, perms }, or null once refused. The same
+// Who may use a module's live messages in ?space=: { manifest, space, who, perms, me }, or null once refused. The same
 // rule as reading its data there (moduleAccess with read): the module on there, the person in the space (or that space's
-// guest), the module's read permission, and its guards.
+// guest), the module's read permission, and its guards. `me` is who sends, joins or leaves: { key, name, guest }, a
+// guest by the pass for their own link (moduleGuestPass), which they must give.
 function moduleLiveFor(req, res) {
   const found = modules.enabled(req.params.id);
   if (!found) return void res.status(404).json({ error: `no such ${word('module')}` });
@@ -10660,30 +10685,36 @@ function moduleLiveFor(req, res) {
   const perms = modulePerms(who, space.id);
   if (!moduleCan(manifest, perms, 'read')) return void res.status(403).json({ error: `your role can't do that in this ${word('module')}` });
   if (shutFromGuests(who, manifest, space.id)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
-  // A guest is known on these routes only by the guest link, which everyone on it shares, so a guest can't send, join
-  // or leave yet (plan-module-live.md, step 3, brings their pass here); they still receive.
-  if (!who.user) return void res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can receive live messages but can't send them yet` });
-  return { manifest, space, who, perms };
+  // A guest link is shared by everyone on it, so a guest is known here by their pass, as on GET /api/live.
+  const me = who.user ? { key: who.user.key, name: who.user.displayName, guest: false } : guestLiveMe(req);
+  if (!me) return void res.status(403).json({ error: `that ${word('guest')} pass is not valid; enter again` });
+  return { manifest, space, who, perms, me };
 }
 // The module stream named by the body's `stream`, if it is this person's and in this space: else null, once refused.
 function moduleLiveConnection(req, res, ctx) {
   const stream = req.body && typeof req.body === 'object' && !Array.isArray(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'stream') ? req.body.stream : undefined;
   if (typeof stream !== 'string' || !stream || stream.length > 64) return void res.status(400).json({ error: `stream must be the id the ${word('module')} stream gave` });
   const conn = moduleLive.connection(stream);
-  if (!conn || conn.who !== ctx.who.user.key || conn.space !== ctx.space.id) return void res.status(409).json({ error: `open the ${word('space')} first; there is no ${word('module')} stream of yours there` });
+  if (!conn || conn.who !== ctx.me.key || conn.space !== ctx.space.id) return void res.status(409).json({ error: `open the ${word('space')} first; there is no ${word('module')} stream of yours there` });
   return conn;
 }
-// The rates for one person in one module: 0, or the seconds to wait (and the 429 is sent).
-function moduleLiveWait(res, key, moduleId) {
-  const wait = moduleLive.take([[`person:${key}:${moduleId}`, moduleLiveLimits.perSecond], [`person:${key}`, moduleLiveLimits.perPerson]]);
+// The rates for one person (or guest) in one module, and for a guest everyone on their space's guest link together: 0, or
+// the seconds to wait (and the 429 is sent).
+function moduleLiveWait(res, ctx) {
+  const key = ctx.me.key;
+  const moduleId = ctx.manifest.id;
+  const limits = [[`person:${key}:${moduleId}`, moduleLiveLimits.perSecond], [`person:${key}`, moduleLiveLimits.perPerson]];
+  if (ctx.me.guest) limits.push([`guest-link:${ctx.space.id}`, moduleLiveLimits.perGuestLink]);
+  const wait = moduleLive.take(limits);
   if (wait) res.status(429).set('Retry-After', String(wait)).json({ error: 'too many live messages; wait a moment' });
   return wait;
 }
 
 // POST /api/modules/:id/live?space=<id> { topic, data, to? }: a live message. Answers { ok: true } once the server took
 // it (never when it was delivered; nothing confirms that), or 400 (no `live` in the module, a bad topic, data or `to`),
-// 401, 403 (no read there, the `publish` permission missing, a guest), 404, 413 (data over MODULE_LIVE_BYTES) or 429
-// with Retry-After (past MODULE_LIVE_PER_SECOND or MODULE_LIVE_PER_PERSON). The module and the space come from the
+// 401, 403 (no read there, the `publish` permission missing, a guest without a valid pass), 404, 413 (data over
+// MODULE_LIVE_BYTES) or 429 with Retry-After (past MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON or, for a guest,
+// MODULE_LIVE_PER_GUEST_LINK). The module and the space come from the
 // route and the server's own check, never from the message; `from`, `at` and `seq` are the server's.
 app.post('/api/modules/:id/live', (req, res) => {
   const ctx = moduleLiveFor(req, res);
@@ -10700,25 +10731,24 @@ app.post('/api/modules/:id/live', (req, res) => {
     return res.status(400).json({ error: 'the data must be plain JSON' });
   }
   if (bytes > moduleLiveLimits.bytes) return res.status(413).json({ error: `a live message's data can be at most ${moduleLiveLimits.bytes} bytes` });
-  const key = ctx.who.user.key;
-  if (moduleLiveWait(res, key, moduleId)) return;
+  if (moduleLiveWait(res, ctx)) return;
   const { at, seq } = moduleLive.stamp(moduleId, ctx.space.id);
-  const message = { module: moduleId, topic: said.topic, data: said.data, from: livePerson(key), at, seq, spaceId: ctx.space.id };
-  tellModuleLive(moduleId, ctx.space.id, liveEventBytes('live', message), { except: key, to: said.to });
+  const message = { module: moduleId, topic: said.topic, data: said.data, from: liveShown(ctx.me), at, seq, spaceId: ctx.space.id };
+  tellModuleLive(moduleId, ctx.space.id, liveEventBytes('live', message), { except: ctx.me.key, to: said.to });
   res.json({ ok: true });
 });
 // POST /api/modules/:id/live/join?space=<id> { stream }: this person's module stream there (the `ready` id) joins the
-// module's live messages. Answers { ok: true, people } (everyone joined now, this person too); the others are told
-// `joined` when this person was not there already. 409 when `stream` is not theirs, open, in this space.
+// module's live messages. Answers { ok: true, people, limits } (everyone joined now, this person too; `limits` the
+// MODULE_LIVE_* values a page keeps to, { bytes, perSecond, to }); the others are told `joined` when this person was not
+// there already. 409 when `stream` is not theirs, open, in this space.
 app.post('/api/modules/:id/live/join', (req, res) => {
   const ctx = moduleLiveFor(req, res);
   if (!ctx) return;
   const conn = moduleLiveConnection(req, res, ctx);
   if (!conn) return;
-  const key = ctx.who.user.key;
-  if (moduleLiveWait(res, key, ctx.manifest.id)) return;
-  if (moduleLive.join(conn.id, ctx.manifest.id)?.joined) tellModuleLivePeople('joined', ctx.manifest.id, ctx.space.id, key);
-  res.json({ ok: true, people: liveModulePeople(ctx.manifest.id, ctx.space.id) });
+  if (moduleLiveWait(res, ctx)) return;
+  if (moduleLive.join(conn.id, ctx.manifest.id)?.joined) tellModuleLivePeople('joined', ctx.manifest.id, ctx.space.id, ctx.me);
+  res.json({ ok: true, people: liveModulePeople(ctx.manifest.id, ctx.space.id), limits: { bytes: moduleLiveLimits.bytes, perSecond: moduleLiveLimits.perSecond, to: moduleLiveLimits.to } });
 });
 // POST /api/modules/:id/live/leave?space=<id> { stream }: that stream leaves the module's live messages, at once (the
 // module closed on that page). The others are told `left` when it was the person's last. Answers { ok: true }.
@@ -10727,7 +10757,7 @@ app.post('/api/modules/:id/live/leave', (req, res) => {
   if (!ctx) return;
   const conn = moduleLiveConnection(req, res, ctx);
   if (!conn) return;
-  if (moduleLive.leave(conn.id, ctx.manifest.id)?.left) tellModuleLivePeople('left', ctx.manifest.id, ctx.space.id, ctx.who.user.key);
+  if (moduleLive.leave(conn.id, ctx.manifest.id)?.left) tellModuleLivePeople('left', ctx.manifest.id, ctx.space.id, ctx.me);
   res.json({ ok: true });
 });
 // --- end of module live messages -------------------------------------------------------------------------------------
