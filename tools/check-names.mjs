@@ -844,7 +844,11 @@ function scannerCheck() {
       assert.deepEqual(inside.table, [], `${file}: its own table names are allowed in code`);
       assert.deepEqual(hitsOf(file, sentence, 'words', live()).table, [], `${file}: the words are allowed`);
     }
-    assert.deepEqual(hitsOf('modules/whiteboard/src/a.js', "const tableName = 1; stageTable();\n", 'code', live()).table, ['1:tableName', '1:stageTable'], 'a name the entry does not list is still a hit, even inside the folder');
+    // Any identifier or class that contains "table" is the Whiteboard's own table block (Thomas: the word is allowed in the Whiteboard
+    // folder only): allowed inside the folder, a hit everywhere else (the loop below), and the other old names stay hits inside it.
+    const own = hitsOf('modules/whiteboard/src/a.js', "const tableName = 1; stageTable(); wb-tablegroup; tableMenu(); roomId = 2;\n", 'code', live());
+    assert.deepEqual(own.table, [], 'any identifier with "table" in it is allowed inside the folder');
+    assert.deepEqual(own.space, ['1:roomId'], 'another old name is still a hit inside the folder');
     for (const file of ['modules/notes/src/notes.js', 'modules/whiteboard-extra/src/a.js', 'modules/whiteboard/module.json', 'server/scratch.js', 'public/scratch.js']) {
       assert.deepEqual(hitsOf(file, code, 'code', live()).table, ['1:WB_TABLE', '1:wbTableDef', '1:tableDef', '1:pasteTable', '1:wb-type-table', '1:whiteboard-lib-e-block-table.js'], `${file}: the same code is flagged`);
       assert.deepEqual(hitsOf(file, sentence, 'words', live()).table, ['1:Table', '1:Tables'], `${file}: the same words are flagged`);
