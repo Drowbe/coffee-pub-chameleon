@@ -12,6 +12,7 @@
 //   lib-h clipboard copy, cut, paste and duplicate (in this page's memory)
 //   lib-i pictures  pictures from the computer, sent as uploads
 //   lib-j markup    what the formatting bar does to the words being edited
+//   lib-k table     rows copied from a spreadsheet, read as a table's cells
 (async () => {
   'use strict';
 
@@ -61,7 +62,7 @@
   const known = new Map(); // id -> the block as last saved here or heard from elsewhere: a change's "before", for undo
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
-  let editing = null; // { id, finish }
+  let editing = null; // { id, finish, cell? ({ r, c, td }: a table's cell) }
   let many = false; // "Select many" (a touch screen): one finger drags a rectangle and a tap adds, rather than moving the board
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
@@ -97,9 +98,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -193,6 +194,10 @@
     many: () => many,
     blocksIn: (r) => blocksIn(r),
     edit: (id, o) => edit(id, o),
+    // A block's element, for a tool to measure what is drawn (a table's rows).
+    element: (id) => renderer.element(id),
+    // A short note instead of a change that cannot be made (a table's last row deleted).
+    refuseWith: (words) => note(words),
     setTool: (id) => setTool(id),
     hold(id, on) { if (on) held.add(id); else release(id); },
     // Where a connector's end goes for a pointer on the board ({ block, side } or null: the board), and the connection
@@ -316,6 +321,8 @@
       known.set(b.id, b);
       board.put(b);
       renderer.draw(b);
+      // A table's cell being edited here that is no longer drawn (its row or column went): its editing ends (lib-e).
+      if (editing && editing.cell && editing.id === b.id && !editing.cell.td.isConnected) { const e = editing; editing = null; e.finish(true); }
     }
     sweepSoon();
     updateStatus();
@@ -358,6 +365,7 @@
   function select(ids) {
     sel.clear();
     for (const id of ids || []) if (board.has(id)) sel.add(id);
+    if (cellNav && !(sel.size === 1 && sel.has(cellNav.id))) leaveCells(); // the cells are the one picked table's
     renderer.select([...sel], handlesOf(one()));
     const can = [...sel].some((id) => policy.canDelete(board.get(id)));
     if (can && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
@@ -410,13 +418,20 @@
     return def.resize.handles;
   }
 
-  function edit(id, { fresh = false } = {}) {
+  function edit(id, o = {}) {
+    const { fresh = false } = o;
     const b = board.get(id);
     const def = b && blockTypes.get(b.type);
     const el = renderer.element(id);
     if (!def || !el || !def.edit) return;
     if (!drafts.has(id) && !policy.canChange(b)) return;
     if (editing) { const e = editing; editing = null; e.finish(true); }
+    if (def.edit === 'cells') {
+      // A table: the cell pressed, else the active one, else the first.
+      const at = (o.target && def.cellAt(o.target)) || (cellNav && cellNav.id === id ? cellNav : null) || (lastCell && lastCell.id === id ? lastCell : null) || { r: 0, c: 0 };
+      editCell(id, at.r, at.c);
+      return;
+    }
     if (def.edit === 'colour') {
       const r = el.getBoundingClientRect();
       const box = host.rootElement.getBoundingClientRect();
@@ -446,16 +461,169 @@
     editing = { id, finish: handle.finish, fresh };
   }
 
+  // ---- cells ------------------------------------------------------------------------------------------------------------
+  // A table's cells are edited one at a time, in place, with the same editor and formatting bar as a note's words: Tab and
+  // Shift Tab keep the words and go on to the next and the previous cell (Tab on the last cell adds a row first), Enter
+  // keeps them and moves down, Shift Enter makes a new line, Escape puts them back, a press elsewhere keeps them. Each cell
+  // kept is one save and one undo step (with the row Tab adds).
+  // The table is not held while a cell is edited: what someone else changes in it meanwhile is drawn at once (the cell's
+  // text box stays as it is), and the cell's words are then written into the newest table, that cell alone
+  // (wbTableSetCell), so what the others changed stays. Only a cell that was changed here is written. Cells are found by
+  // their place: a row or a column someone adds or deletes above or left of it meanwhile moves the words typed to the cell
+  // that is then in that place, and a cell no longer in the table is not kept (the person is told). Two people changing
+  // the same table at the same moment otherwise still overwrite each other, as with any block (the last write wins).
+  // The active cell: Enter on a picked table (or editing a cell) shows it, and then the arrow keys move it rather than the
+  // table, Enter or F2 edits it, a letter typed starts its words afresh, Delete empties it and Escape goes back to moving
+  // the table. It is this page's own mark (data-cell on the block), never saved.
+  let cellNav = null; // { id, r, c } while a table's cells are moved through
+  let lastCell = null; // { id, r, c }: the cell last pressed, for Enter
+  let cellClip = null; // the words of a cell, copied with the menu's Copy cell text (this page's memory)
+  const tableDef = () => blockTypes.get('table');
+  function showCell(id, r, c) {
+    if (cellNav && cellNav.id !== id) { const was = renderer.element(cellNav.id); if (was) { delete was.dataset.cell; tableDef().markCell(was); } }
+    cellNav = { id, r, c };
+    const el = renderer.element(id);
+    if (el) { el.dataset.cell = `${r},${c}`; tableDef().markCell(el); }
+  }
+  function leaveCells() {
+    if (!cellNav) return;
+    const el = renderer.element(cellNav.id);
+    cellNav = null;
+    if (el) { delete el.dataset.cell; tableDef().markCell(el); }
+  }
+  function sayCell(id, r, c) {
+    const b = board.get(id);
+    if (!b) return;
+    const t = wbPlain(wbCellOf(b, r, c));
+    say(`Row ${r + 1}, column ${c + 1}${b.head && r === 0 ? ', header' : ''}: ${t || 'empty'}`);
+  }
+  // One cell's words, written into the table as it is now (one save), or a note when they cannot be.
+  function putCell(id, r, c, text) {
+    const now = board.get(id);
+    if (!now || (!drafts.has(id) && !policy.canChange(now))) return false;
+    const put = wbTableSetCell(now, r, c, text);
+    if (!put) { note('That cell is not in the table any more, so what was typed in it was not kept.'); return false; }
+    if (put.cut) note('The table is full, so the words were cut short.');
+    ctx.change(id, { cells: put.cells }, { save: 'now' });
+    return true;
+  }
+  function editCell(id, r, c, { typed = '' } = {}) {
+    const b = board.get(id);
+    const def = b && blockTypes.get(b.type);
+    const el = renderer.element(id);
+    if (!def || def.edit !== 'cells' || !el) return;
+    if (!drafts.has(id) && !policy.canChange(b)) return;
+    if (editing) { const e = editing; editing = null; e.finish(true); }
+    const td = def.cellEl(el, r, c);
+    if (!td) return;
+    showCell(id, r, c);
+    const start = wbCellOf(b, r, c);
+    let then = null; // where to go once the words are kept: 'next', 'prev' or 'down'
+    const handle = wbEditText(td, td.querySelector(':scope > .wb-words'), start, (text) => {
+      if (editing && editing.id === id) editing = null;
+      if (board.get(id)) {
+        if (text !== start) putCell(id, r, c, text);
+        else if (drafts.has(id)) ctx.save(id); // a new table whose first cell is left empty: saved as it is
+      }
+      renderer.refreshFrame();
+      const now = board.get(id);
+      if (!now) return;
+      const step = then ? wbTableStep(now, r, c, then) : null;
+      if (step && step.grow) {
+        const f = wbTableInsertRow(now, now.rows.length);
+        if (f.refuse) { note(f.refuse); showCell(id, r, c); el.focus({ preventScroll: true }); return; }
+        ctx.change(id, f, { save: 'now' }); // in the same undo step as the cell
+      }
+      if (step && then !== 'down') { editCell(id, step.r, step.c); return; }
+      const at = step || { r, c };
+      showCell(id, at.r, at.c);
+      if (then) { el.focus({ preventScroll: true }); sayCell(id, at.r, at.c); }
+    }, {
+      grow: true,
+      label: `Row ${r + 1}, column ${c + 1}`,
+      max: def.cellMax,
+      bar: { layer: surface, icon: iconSvg, mod: KEYS ? MOD : null },
+      home: el,
+      keys(e, finish) {
+        if (e.ctrlKey || e.metaKey || e.altKey) return false;
+        if (e.key === 'Tab') { e.preventDefault(); then = e.shiftKey ? 'prev' : 'next'; finish(true); return true; }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); then = 'down'; finish(true); return true; }
+        return false;
+      },
+    });
+    editing = { id, finish: handle.finish, cell: { r, c, td } };
+    // A letter typed on the active cell starts its words afresh with it.
+    const box = typed ? td.querySelector('.wb-text-edit') : null;
+    if (box) { box.value = typed.slice(0, def.cellMax); box.setSelectionRange(box.value.length, box.value.length); box.dispatchEvent(new Event('input')); }
+  }
+  // The right-click menu's entries for a table's cell: Edit cell, the rows and columns, the header row, and the cell.
+  function cellRows(b, cell) {
+    const def = defOf(b);
+    const text = wbCellOf(b, cell.r, cell.c);
+    // Each worked out again from the table as it is when it is chosen (someone may have changed it meanwhile).
+    const run = (id) => () => {
+      const now = board.get(b.id);
+      const a = now && def.actions(now, cell).find((x) => x.id === id);
+      if (!a || !policy.canChange(now)) return;
+      const { refuse, cut: _cut, ...fields } = a.fields;
+      if (refuse) { note(refuse); return; }
+      ctx.change(b.id, fields, { save: 'now' });
+    };
+    const acts = def.actions(b, cell).map((a) => ({ id: a.id, label: a.label, icon: a.icon, ...(a.current !== undefined ? { current: a.current } : {}), ...(a.ariaLabel ? { ariaLabel: a.ariaLabel } : {}), ...(a.disabled ? { disabled: true } : {}), onClick: run(a.id) }));
+    const pick = (ids) => acts.filter((a) => ids.includes(a.id));
+    return [
+      { id: 'edit', label: 'Edit cell', icon: 'pen', hint: keyHint('Enter'), onClick: () => editCell(b.id, cell.r, cell.c) },
+      { id: 'rows', label: 'Rows and columns', icon: 'table-cells', items: [...pick(['row-above', 'row-below', 'col-left', 'col-right']), { separator: true }, ...pick(['row-delete', 'col-delete'])] },
+      ...pick(['head']),
+      {
+        id: 'cell',
+        label: 'Cell',
+        icon: 'table-cells-large',
+        hint: `Row ${cell.r + 1}, column ${cell.c + 1}`,
+        items: [
+          ...pick(['clear']),
+          { id: 'cell-copy', label: 'Copy cell text', icon: 'copy', disabled: !text, onClick: () => { cellClip = text; if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); } },
+          { id: 'cell-cut', label: 'Cut cell text', icon: 'scissors', disabled: !text, onClick: () => { cellClip = text; if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); putCell(b.id, cell.r, cell.c, ''); } },
+          { id: 'cell-paste', label: 'Paste cell text', icon: 'paste', disabled: cellClip === null, onClick: () => { if (cellClip !== null) putCell(b.id, cell.r, cell.c, cellClip); } },
+        ],
+      },
+    ];
+  }
+  // A paste of rows and columns (lib-k): a new table round the pointer, or the middle of what is in sight, saved at once
+  // as this person's, picked. Rows and columns past the limits are left out, with a short note.
+  function gridOf(data) {
+    if (!data || !data.getData) return null;
+    let html = '';
+    let text = '';
+    try { html = data.getData('text/html') || ''; text = data.getData('text/plain') || ''; } catch { return null; }
+    const grid = html ? wbGridFromHtml(html, (h) => new DOMParser().parseFromString(h, 'text/html')) : null;
+    if (grid) return grid;
+    return wbLooksTabular(text) ? wbParseTsv(text) : null;
+  }
+  function pasteTable(grid) {
+    if (!policy.canCreate() || !tableDef()) return;
+    const t = wbTableFromGrid(grid);
+    const p = hover ? renderer.toBoard(hover.cx, hover.cy) : renderer.center();
+    const w = t.cols.reduce((a, n) => a + n, 0);
+    const b = ctx.draft('table', { x: p.x - w / 2, y: p.y - (t.rows.length * WB_TABLE.rowMin) / 2, cols: t.cols, rows: t.rows, cells: t.cells, head: t.head });
+    ctx.save(b.id);
+    select([b.id]);
+    const el = renderer.element(b.id);
+    if (el) el.focus({ preventScroll: true });
+    if (t.cut) note(`Only part of it was pasted: a table holds at most ${WB_TABLE.maxRows} rows, ${WB_TABLE.maxCols} columns and ${WB_TABLE.cellMax} characters a cell.`);
+  }
+
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
   // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
   // holds 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker, the
   // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
-  // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices.
+  // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices
+  // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
   const GROUPS = [
     { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
-    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'], split: 1 },
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table'], split: [1, 6] },
   ];
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
@@ -476,7 +644,7 @@
       items: [
         { heading: g.label },
         ...list.flatMap((t, i) => [
-          ...(i > 0 && i === g.split ? [{ separator: true }] : []),
+          ...(i > 0 && [].concat(g.split).includes(i) ? [{ separator: true }] : []),
           // The Fill row's icon is in the colour it fills with.
           { id: t.id, label: t.label, icon: t.icon, ...(t.paints === 'fill' ? { iconColor: WB_PALETTE_BY_ID.get(nextFill()).token, tip: `${t.label}: ${WB_PALETTE_BY_ID.get(nextFill()).label}` } : {}), hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
         ]),
@@ -671,11 +839,11 @@
   function textMenu(where, only) {
     const list = wordedIn(only);
     if (!list.length && targets(only).length) {
-      host.menu.show({ id: 'text', ...where, items: [{ label: 'Pick a note, text or shape to change its words', disabled: true }] });
+      host.menu.show({ id: 'text', ...where, items: [{ label: 'Pick a note, text, shape or table to change its words', disabled: true }] });
       return;
     }
     const def = !list.length && tool.makes && blockTypes.get(tool.makes).markup ? blockTypes.get(tool.makes) : null;
-    const whose = list.length || def ? whoseOf(list, def) : 'new notes, text and shapes';
+    const whose = list.length || def ? whoseOf(list, def) : 'new notes, text, shapes and tables';
     const [size, align] = textGroups(list);
     host.menu.show({
       id: 'text',
@@ -832,7 +1000,8 @@
       return { ...b, ...d.loosen(b, ids, (which) => (g ? (which === 'from' ? g.points[0] : g.points[g.points.length - 1]) : null)) };
     });
   }
-  // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
+  // The box round some blocks, in board units (a block whose height follows its words counts as tall as it is drawn, else
+  // one line high).
   function boundsOf(blocks) {
     const r = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
     for (const b of blocks) {
@@ -840,7 +1009,8 @@
       if (def.attached && def.refs(b).length === 2) continue; // where it runs follows its blocks
       const box = def.reach ? def.reach(b) : def.box(b); // all it draws: a note's pointer too
       const x = (b.x || 0) + box.x; const y = (b.y || 0) + box.y;
-      r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x + box.w); r.y1 = Math.max(r.y1, y + (box.h === null ? 32 : box.h));
+      const el = box.h === null ? renderer.element(b.id) : null; // the original's, when it is still on the board
+      r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x + box.w); r.y1 = Math.max(r.y1, y + (box.h === null ? (el ? el.offsetHeight : 32) : box.h));
     }
     if (!Number.isFinite(r.x0)) return { x0: 0, y0: 0, x1: 0, y1: 0 };
     return r;
@@ -1051,6 +1221,7 @@
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
       { id: 'timer', label: 'Add a timer', icon: 'stopwatch', hint: keyHint('Y') },
+      ...(tools.get('table') ? [{ id: 'table', label: 'Add a table', icon: 'table', hint: keyHint('G') }] : []),
       {
         label: 'Add a flowchart shape',
         icon: 'diagram-project',
@@ -1076,7 +1247,7 @@
       const box = def.box({ ...def.create(), x: 0, y: 0 });
       const b = ctx.draft(id, { x: c.x - box.w / 2, y: c.y - (box.h || 24) / 2 });
       select(b.id);
-      if (def.edit !== 'text') { ctx.save(b.id); renderer.element(b.id).focus({ preventScroll: true }); return; }
+      if (def.edit !== 'text' && def.edit !== 'cells') { ctx.save(b.id); renderer.element(b.id).focus({ preventScroll: true }); return; }
       // After the host's menu has closed and handed the focus back to the +, or that would end the editing at once.
       setTimeout(() => { if (board.has(b.id)) edit(b.id, { fresh: true }); }, 60);
     });
@@ -1107,6 +1278,7 @@
         : tool.makes === 'stroke' ? 'Press and drag to draw.'
           : tool.makes === 'highlight' ? `Press and drag over what to highlight.${KEYS ? ' Hold Shift for a straight band.' : ''}`
           : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
+          : tool.id === 'table' ? `${KEYS ? 'Click' : 'Tap'} the board to put a table there, or drag to give it a size.`
             : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
@@ -1167,8 +1339,17 @@
       else surface.classList.add('wb-grabbing');
       return;
     }
+    // A press on a table's cell: remembered for Enter, and the active cell when the cells are being moved through.
+    const pressed = (() => {
+      const id = renderer.blockAt(e.target);
+      const d = id && board.get(id) ? blockTypes.get(board.get(id).type) : null;
+      const at = d && d.cellAt ? d.cellAt(e.target) : null;
+      return at ? { id, r: at.r, c: at.c } : null;
+    })();
+    if (pressed) lastCell = pressed;
+    const onCells = () => { if (pressed && cellNav && cellNav.id === pressed.id && sel.has(pressed.id)) showCell(pressed.id, pressed.r, pressed.c); };
     // A press while words are being edited only ends the editing: it does not also draw or put a block there.
-    if (editing) { const ed = editing; editing = null; ed.finish(true); surface.focus({ preventScroll: true, focusVisible: false }); return; }
+    if (editing) { const ed = editing; editing = null; ed.finish(true); surface.focus({ preventScroll: true, focusVisible: false }); onCells(); return; }
     clearTimeout(linkTimer);
     linkTimer = 0;
     linkPress = null;
@@ -1195,6 +1376,7 @@
     if (tool.edits && !policy.canUseTool(tool)) return;
     down = e.pointerId;
     tool.down(p, ctx);
+    onCells();
   });
   surface.addEventListener('pointermove', (e) => {
     if (panning && panning.id === e.pointerId) {
@@ -1301,6 +1483,13 @@
     }
     const single = list.length === 1 ? list[0] : null;
     const def = single && defOf(single);
+    // A table's cell: the one pressed (it becomes the active one), else the active one (Shift F10), else the first.
+    let cell = null;
+    if (def && def.edit === 'cells') {
+      const hit = def.cellAt(e.target);
+      cell = hit || (cellNav && cellNav.id === single.id ? cellNav : null) || { r: 0, c: 0 };
+      if (hit) showCell(single.id, hit.r, hit.c);
+    }
     const lines = connectorsIn();
     const worded = wordedIn();
     host.menu.show({
@@ -1309,7 +1498,7 @@
       items: [
         ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         // The block type's own entries (a note's Add pointer, Remove pointer): each one save of the fields it names.
-        ...(def && def.actions ? def.actions(single).map((a) => ({ id: a.id, label: a.label, icon: a.icon, onClick: () => ctx.change(single.id, a.fields, { save: 'now' }) })) : []),
+        ...(cell ? cellRows(single, cell) : def && def.actions ? def.actions(single).map((a) => ({ id: a.id, label: a.label, icon: a.icon, onClick: () => ctx.change(single.id, a.fields, { save: 'now' }) })) : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         ...(lines.length ? lineGroups(lines) : []),
@@ -1341,6 +1530,16 @@
     const b = one() && board.get(one());
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
+    // A table's active cell (see "cells"): the arrows, Enter, Delete and a letter are the cells', Escape leaves them.
+    const nav = cellNav && b && b.id === cellNav.id && policy.canChange(b) ? cellNav : null;
+    if (nav && !mod) {
+      const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[k];
+      if (dir) { e.preventDefault(); const st = wbTableStep(b, nav.r, nav.c, dir); if (st) { showCell(b.id, st.r, st.c); sayCell(b.id, st.r, st.c); } return; }
+      if (k === 'Enter' || k === 'F2') { e.preventDefault(); editCell(b.id, nav.r, nav.c); return; }
+      if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); putCell(b.id, nav.r, nav.c, ''); return; }
+      if (k === 'Escape') { e.preventDefault(); leaveCells(); say('The arrow keys move the table again.'); return; }
+      if (k.length === 1 && !e.isComposing) { e.preventDefault(); editCell(b.id, nav.r, nav.c, { typed: k }); return; }
+    }
     if (mod && !e.shiftKey && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
     // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
     const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
@@ -1390,8 +1589,8 @@
   // Ctrl or Cmd C, X and V reach the board as the browser's copy, cut and paste events. Copy and cut keep the blocks in
   // this page's clipboard (lib-h) as before and put a mark on the computer's clipboard (CLIP_MARK, no words or picture), so
   // a picture copied elsewhere earlier is no longer there to be pasted instead. A paste that carries picture files and
-  // not the mark adds the pictures, where the pointer is over the board or else in the middle of what is in sight;
-  // any other paste puts down the copied blocks. A browser that sends no event: the key does it after CLIP_WAIT.
+  // not the mark adds the pictures, where the pointer is over the board or else in the middle of what is in sight; then
+  // rows and columns (an HTML table, or tab-separated lines) make a table there; any other paste puts down the copied blocks. A browser that sends no event: the key does it after CLIP_WAIT.
   const CLIP_MARK = 'application/x-coffee-whiteboard-blocks';
   const CLIP_WAIT = 150;
   let clipTimer = 0;
