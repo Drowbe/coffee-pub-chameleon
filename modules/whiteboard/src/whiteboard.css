@@ -554,6 +554,29 @@
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
 .wb-width-sample.wb-width-icon { width: 1em; }
 
+/* The overview (lib-n): a small map of the whole board at its bottom right, on the plain card surface whatever the
+   board's background, so it reads in both modes. Blocks are small muted boxes, frames outlines, the view the accent.
+   Under the colour strip, the formatting bar and the menus; only the panel itself takes presses. */
+.wb-overview {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--mf-edge, var(--edge-bar));
+  border-radius: var(--radius-medium);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  touch-action: none;
+}
+.app.narrow .wb-overview { right: var(--space-2); bottom: var(--space-2); }
+.wb-overview svg { display: block; width: 100%; height: 100%; }
+.wb-ov-block { fill: color-mix(in srgb, var(--text-muted) 55%, transparent); }
+.wb-ov-frame { fill: none; stroke: var(--text-muted); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.wb-ov-view { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: var(--accent); stroke-width: 1.5px; vector-effect: non-scaling-stroke; cursor: grab; }
+.wb-ov-dragging, .wb-ov-dragging .wb-ov-view { cursor: grabbing; }
+
 /* The strip of the colours and the line width, hung under the toolbar's left end, over the board: the frame's toolbar
    surface and edge (inherited from the frame; the plain tokens where there is none), open at the top. Each button is the system's small quiet icon button with a mark of its own. */
 .wb-paint {
