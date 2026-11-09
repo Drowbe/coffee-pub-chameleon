@@ -8,7 +8,7 @@ the CHANGELOG once fixed.
 
 ## Whiteboard: limits that are known
 
-These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
+These are recorded for the Whiteboard 0.1.19 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
 [architecture-whiteboard](architecture/architecture-whiteboard.md)).
 
 - **Same block, same moment.** Two people changing one block at the same moment: the last save wins. There is no conflict check yet.
@@ -27,6 +27,11 @@ These are recorded for the Whiteboard 0.1.16 ([userguide-whiteboard](userguides/
 - **Connectors go round only their own two blocks,** not other blocks in the way.
 - **Brush pressure** was not tried with a real pen or a touch screen that senses force.
 - **Toolbar placement.** The colour swatches are not in the toolbar row and **Snap to grid** is not at the toolbar's right end, because a module can do neither (a toolbar button holds only an icon, and there is no right-hand place for a module's own button). The magnifier's menu opens at the top of the module's content, not under its button in the title bar.
+- **Resizing a group.** Picking a group and dragging a handle to resize it as one selection is not built. Resize the blocks one at a time.
+- **Ctrl+L and Ctrl+G** (Cmd on a Mac), the keys for lock and group, were tried with synthetic key events and not in a real browser, where a browser may use them for itself. The same commands are in the right-click menu.
+- **Connectors and frames.** A connector with a free end inside a frame does not move when the frame moves. A connector between two blocks inside the frame does, because it follows its blocks.
+- **Frames: read as code only.** The glide between frames, the reduced-motion jump, Print with frames on the board and a real long press on a frame were read as code and not tried. Presenting is each person's own; there is no "everyone follows me" yet.
+- **Align, guides and lock keys** were checked by tool (`check-whiteboard-arrange.mjs`), not by hand in a browser.
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
 
