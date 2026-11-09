@@ -353,7 +353,7 @@ function renderRows() {
       + `<td class="hc-status-cell">${chipsOf(t)}</td>`
       + `<td class="hc-use-cell">${useCell(t, compact)}</td>`
       + `<td class="sdk-table-dim">${escapeHtml(templateName(t))}</td>`
-      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="row-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis fa-fw" aria-hidden="true"></i></button></td></tr>`;
+      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="row-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></td></tr>`;
   }).join('') : '<tr class="sdk-table-empty"><td colspan="6">No environment matches. Clear the search or the filter.</td></tr>';
   swipeCue();
 }

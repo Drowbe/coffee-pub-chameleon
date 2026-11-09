@@ -98,7 +98,7 @@ function renderList() {
       + `<td class="sdk-table-dim">v${escapeHtml(String(t.version || 1))}</td>`
       + `<td class="hc-used">${used.length ? `${names}${used.length > 4 ? `<span class="hc-more-names"> and ${used.length - 4} more</span>` : ''}` : '<span class="sdk-table-dim">None</span>'}</td>`
       + `<td>${editable ? `<input class="sdk-switch" type="checkbox" role="switch" data-action="hide"${t.hidden ? ' checked' : ''} aria-label="Hide ${name} from new ${escapeHtml(word('environment', { many: true }))}">` : ''}</td>`
-      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="template-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis fa-fw" aria-hidden="true"></i></button></td></tr>`;
+      + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="template-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></td></tr>`;
   }).join('');
 }
 
