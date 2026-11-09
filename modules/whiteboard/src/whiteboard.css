@@ -577,6 +577,51 @@
 .wb-ov-view { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: var(--accent); stroke-width: 1.5px; vector-effect: non-scaling-stroke; cursor: grab; }
 .wb-ov-dragging, .wb-ov-dragging .wb-ov-view { cursor: grabbing; }
 
+/* Find (whiteboard.js, "find in the board"): the bar at the top right of the board (under the colour strip when it would
+   meet it), on the frame's toolbar surface, and the outlines round the matches: a layer of their own in the world, over
+   the blocks and under the selection's frame, the same thickness at any zoom; the match shown stronger, with a wash. */
+.wb-find {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-0);
+  max-width: calc(100% - var(--space-4));
+  padding: var(--space-1);
+  border: 1px solid var(--mf-edge, var(--edge-bar));
+  border-radius: var(--radius-medium);
+  background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  box-shadow: var(--shadow-2);
+}
+.wb-find-input { flex: 1 1 12em; min-width: 6em; width: 12em; font-size: var(--text-14); user-select: text; -webkit-user-select: text; }
+.wb-find-count { padding: 0 var(--space-1); color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wb-find-count:empty { display: none; }
+.wb-find .ic { display: block; width: 1em; height: 1em; }
+.wb-find .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.app.narrow .wb-find { left: var(--space-2); }
+.app.narrow .wb-find-input { font-size: var(--text-16); }
+.app.narrow .wb-find button { min-width: 36px; min-height: 36px; }
+.app.wb-presenting .wb-find { display: none; }
+.wb-find-marks { position: absolute; left: 0; top: 0; z-index: 2147482997; pointer-events: none; }
+.wb-find-mark {
+  position: absolute;
+  margin: calc(-4px / var(--wb-scale, 1));
+  padding: calc(4px / var(--wb-scale, 1));
+  box-sizing: content-box;
+  border: calc(1.5px / var(--wb-scale, 1)) solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: var(--radius-small);
+  transform: translate(calc(-1.5px / var(--wb-scale, 1)), calc(-1.5px / var(--wb-scale, 1)));
+}
+.wb-find-mark.wb-find-now {
+  margin: calc(-5px / var(--wb-scale, 1));
+  padding: calc(5px / var(--wb-scale, 1));
+  border: calc(3px / var(--wb-scale, 1)) solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  transform: translate(calc(-3px / var(--wb-scale, 1)), calc(-3px / var(--wb-scale, 1)));
+}
+
 /* The strip of the colours and the line width, hung under the toolbar's left end, over the board: the frame's toolbar
    surface and edge (inherited from the frame; the plain tokens where there is none), open at the top. Each button is the system's small quiet icon button with a mark of its own. */
 .wb-paint {
