@@ -100,8 +100,60 @@ function row(f, viewer, onOpen) {
   return li;
 }
 
+// A file as a card in the Grid (the Vault's banded card). The marks sit on their own line under the facts, so a narrow card cuts nothing.
+function cardOf(f, viewer, onOpen, narrow = false) {
+  const k = KINDS[f.kind];
+  if (narrow) { // a phone: the picture first, the name under it (the Vault's own narrow card)
+    const c = h('article', 'sdk-card vt-card vt-card-thumb');
+    c.dataset.id = f.id; c.dataset.tint = k.tint;
+    const over = h('div', 'vt-card-over');
+    const m = h('button', 'menu-btn sdk-icon-btn btn-quiet btn-small'); m.type = 'button'; m.setAttribute('aria-label', `More for ${f.name}`); m.append(fa('ellipsis-vertical'));
+    over.append(h('span', 'vt-fill'), m);
+    const meta = h('div', 'vt-card-meta');
+    const name = h('button', 'sdk-open vt-card-name', f.name); name.type = 'button'; name.title = `${f.name} (${k.word})`;
+    if (onOpen) name.addEventListener('click', () => onOpen(f, name));
+    const subl = h('span', 'sdk-card-sub');
+    subl.append(h('span', 'vt-x-kind', `${k.word} · `), size(f.size), h('span', 'vt-x-by', ` · ${f.by === keyOf(viewer) ? 'You' : nm(f.by)}`));
+    meta.append(name, subl);
+    const mark = f.by === keyOf(viewer) ? markOf(f) : null;
+    if (mark || shared(viewer, f)) {
+      const t = h('p', 'vt-card-line vp-card-marks');
+      if (mark) { const a = h('span', 'vt-tone vp-mark'); a.append(fa(mark[0]), mark[1]); t.append(a); }
+      if (shared(viewer, f)) { const a = h('span', 'vt-tone vp-mark'); a.dataset.kind = 'rights'; a.append(fa('eye'), 'Not shared with you'); t.append(a); }
+      meta.append(t);
+    }
+    c.append(thumb(f, 192), over, meta);
+    return c;
+  }
+  const c = h('article', 'sdk-card-banded vt-card');
+  c.dataset.id = f.id; c.dataset.tint = k.tint;
+  const head = h('header', 'sdk-card-head');
+  const main = h('div', 'sdk-card-main');
+  const ic = h('span', 'vt-kind-mini'); ic.dataset.tint = k.tint; ic.title = k.word; ic.setAttribute('role', 'img'); ic.setAttribute('aria-label', k.word); ic.append(fa(k.icon));
+  const title = h('h3', 'sdk-card-title vt-card-title');
+  const name = h('button', 'sdk-open vt-card-name', f.name); name.type = 'button'; name.title = `${f.name} (${k.word})`;
+  if (onOpen) name.addEventListener('click', () => onOpen(f, name));
+  title.append(name);
+  main.append(ic, title);
+  const m = h('button', 'menu-btn sdk-icon-btn btn-quiet btn-small'); m.type = 'button'; m.setAttribute('aria-label', `More for ${f.name}`); m.append(fa('ellipsis-vertical'));
+  head.append(main, m);
+  const body = h('div', 'sdk-card-body');
+  const line = h('p', 'vt-card-line');
+  line.append(`${size(f.size)} · ${f.by === keyOf(viewer) ? 'You' : nm(f.by)} · ${when(f.at)}`);
+  body.append(thumb(f, 192), line);
+  const mark = f.by === keyOf(viewer) ? markOf(f) : null;
+  if (mark || shared(viewer, f)) {
+    const t = h('p', 'vt-card-line vp-card-marks');
+    if (mark) { const a = h('span', 'vt-tone vp-mark'); a.append(fa(mark[0]), mark[1]); t.append(a); }
+    if (shared(viewer, f)) { const a = h('span', 'vt-tone vp-mark'); a.dataset.kind = 'rights'; a.append(fa('eye'), 'Not shared with you'); t.append(a); }
+    body.append(t);
+  }
+  c.append(head, body);
+  return c;
+}
+
 // The Vault in the real module frame. `viewer` decides what is in the list; `form` is Add files drawn above the list; `banner` a notice.
-function vaultFrame({ viewer = 'lee', form = null, banner = null, onOpen, statusItems = [], addButton = true }) {
+function vaultFrame({ viewer = 'lee', form = null, banner = null, onOpen, statusItems = [], addButton = true, view = 'list', narrow = false }) {
   const list = visibleTo(viewer);
   const total = list.reduce((a, f) => a + f.size, 0); // each person sees their own visible total
   const app = h('div', 'vt-app vp-app');
@@ -114,10 +166,17 @@ function vaultFrame({ viewer = 'lee', form = null, banner = null, onOpen, status
   }
   if (form) app.append(form);
   const scroll = h('div', 'vt-scroll');
-  const ul = h('ul', 'sdk-card-list vt-rows');
-  ul.setAttribute('aria-label', 'Files');
-  for (const f of list) ul.append(row(f, viewer, onOpen));
-  scroll.append(ul);
+  if (view === 'grid') {
+    const g = h('div', 'vt-grid');
+    g.setAttribute('role', 'list'); g.setAttribute('aria-label', 'Files');
+    for (const f of list) { const c = cardOf(f, viewer, onOpen, narrow); c.setAttribute('role', 'listitem'); g.append(c); }
+    scroll.append(g);
+  } else {
+    const ul = h('ul', 'sdk-card-list vt-rows');
+    ul.setAttribute('aria-label', 'Files');
+    for (const f of list) ul.append(row(f, viewer, onOpen));
+    scroll.append(ul);
+  }
   app.append(scroll);
   const by = [...new Set(list.map((f) => f.by))].filter((k) => k !== keyOf(viewer)); // Added by lists only people who added a file this person can see
   const groups = [
@@ -128,7 +187,7 @@ function vaultFrame({ viewer = 'lee', form = null, banner = null, onOpen, status
     title: W.module, icon: W.icon, tint: 'blue',
     titlebar: { ...(addButton ? { add: { label: 'Add files' } } : {}), close: true },
     toolbar: [
-      { type: 'switch', id: 'view', label: 'View', value: 'list', options: [{ id: 'list', label: 'List', icon: 'list' }, { id: 'grid', label: 'Grid', icon: 'grip' }] },
+      { type: 'switch', id: 'view', label: 'View', value: view, options: [{ id: 'list', label: 'List', icon: 'list' }, { id: 'grid', label: 'Grid', icon: 'grip' }] },
       { type: 'title', text: 'Newest first' },
       { type: 'search', id: 'find', label: 'Search files', placeholder: 'Search files', value: '' },
       { type: 'filters', id: 'filters', label: 'Filters', groups },
@@ -193,6 +252,11 @@ const CHOICES = [
   ['everyone', 'Everyone in this trip', 'The default. Every member can see them.'],
   ['only-me', 'Only me', 'You and the owners can see them.'],
   ['people', 'Chosen people', 'You, the owners and the people you pick.'],
+];
+// The menu's three choices as radio items (role menuitemradio, aria-checked), the current one drawn with a filled dot and the others with an empty ring.
+const radioItems = (current, onPick = () => {}) => [
+  { heading: 'Who can see this' },
+  ...CHOICES.map(([key, label]) => ({ label, radio: true, checked: key === current, icon: 'circle-dot', ...(key === current ? {} : { icon: 'circle', regular: true }), onPick: () => onPick(key) })),
 ];
 let uid = 0;
 function addForm({ vis: v0 = 'everyone', people: p0 = [], onPick } = {}) {
@@ -261,7 +325,7 @@ function addForm({ vis: v0 = 'everyone', people: p0 = [], onPick } = {}) {
 // ---- the people picker ----
 const members = () => Object.entries(CAST).filter(([k]) => k !== 'lee').map(([key, v]) => ({ key, ...v }));
 // chosen: keys; members: everyone who may be chosen (not the adder, who always sees); query: the search text; locked: the adder's row.
-function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder = 'lee', phone = false, onDone }) {
+function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder = 'lee', phone = false, error = false, onDone }) {
   const s = sheet({ title: 'Who can see this', width: 'form' });
   if (phone) s.dlg.classList.add('vp-phone');
   const st = { chosen: new Set(chosen), q: query };
@@ -320,7 +384,10 @@ function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder
   }
   inp.addEventListener('input', () => { st.q = inp.value; drawList(); });
   head.append(h('span', 'sdk-label', 'Chosen'), count);
-  body.append(search, head, chips, msg, list);
+  const fail = h('div', 'sdk-banner vp-error'); fail.dataset.kind = 'danger'; fail.setAttribute('role', 'alert');
+  const fic = h('span', 'sdk-banner-icon'); fic.append(fa('circle-exclamation'));
+  fail.append(fic, h('span', 'sdk-banner-text', "We couldn't save who can see this. Nothing changed. Try again."));
+  body.append(...(error ? [fail] : []), search, head, chips, msg, list);
   s.body.append(body);
   const done = okBtn('Done', 'btn btn-primary');
   s.foot.append(cancelBtn(), done);
@@ -332,7 +399,7 @@ function peopleSheet({ chosen = [], members: all, max = LIMIT, query = '', adder
 // ---- the file window ----
 const winCtx = { can: (what) => ['view', 'add', 'download'].includes(what), canRemove: () => false, remove: () => {}, share: () => {}, words: { module: W.module }, pdfSearch: true };
 // Who can see this, in the file window's Info: a control for the adder and owners, a line for everyone else.
-function whoBlock(f, { viewer, change, as }) {
+function whoBlock(f, { viewer, change, as, error = false }) {
   const x = as || vis(f);
   const box = h('div', 'vp-who-info');
   box.append(h('h4', 'vt-info-sub', 'Who can see this'));
@@ -343,12 +410,16 @@ function whoBlock(f, { viewer, change, as }) {
     b.append(fa('caret-down', 'vp-caret'));
     b.setAttribute('aria-haspopup', 'menu');
     b.dataset.change = '';
-    const items = () => [
-      { heading: 'Who can see this' },
-      ...CHOICES.map(([key, label]) => ({ label, radio: true, checked: x.v === key, onPick: () => {} })),
-    ];
+    if (error) b.setAttribute('aria-describedby', 'vp-save-error');
+    const items = () => radioItems(x.v);
     b.addEventListener('click', () => openHostMenu(b, items));
     box.append(b);
+    if (error) {
+      const e = h('p', 'sdk-error vp-save-error', "We couldn't change who can see this file. Nothing changed. Try again.");
+      e.id = 'vp-save-error'; e.setAttribute('role', 'alert');
+      e.prepend(fa('circle-exclamation'), ' ');
+      box.append(e);
+    }
     if (x.v === 'people' && !x.p.length) box.append(h('p', 'vt-info-none', 'No one chosen yet. Only you and the owners can see it.'));
     if (x.v === 'people' && x.p.length) {
       const names = h('ul', 'vp-namelist');
@@ -401,7 +472,7 @@ function windowShot(box, { viewer, fileId, block, openSheet, phone = false, menu
       };
       put();
       new MutationObserver(put).observe(w.body, { childList: true, subtree: true });
-      if (menu) { const t = w.body.querySelector('[data-change]'); if (t) heldMenu(cv.el, t, [{ heading: 'Who can see this' }, ...CHOICES.map(([key, label]) => ({ label, radio: true, checked: key === 'people' }))]); }
+      if (menu) { const t = w.body.querySelector('[data-change]'); if (t) heldMenu(cv.el, t, radioItems('people')); }
     },
   };
   return out;
@@ -460,6 +531,8 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const s = set('list', 'The Vault as a member sees it', 'Lee, a member. His own files that are not for everyone carry a small mark in the line under the name: Only me, or the number of people. Only he sees that mark on them. Files other people shared with him are plain rows. The files Mia kept to herself, the ones Sam shared with others, and the rental agreement are not in the list: no row, no gap, no count, no "hidden file" line. The line at the foot counts only what he can see, and so does the storage total. Added by in Filters lists only people who added a file he can see. Mia, who sees Lee\'s files only if they are shared with her, is the moderator below.');
   const p = pair(s);
   shot(p, { name: 'The list, 1280', note: 'The foot says 36 files: six of the forty-two are not shared with Lee, and he is not told. The marks are on Trevi fountain.jpg (3 people), Gelato stop.webp, Receipt, dinner on Friday.png (Only me) and the insurance (1 person).', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'lee' }); box.append(v.hold); return {}; } });
+  shot(p, { name: 'The Grid, 1280', note: 'The same files as cards. The marks sit on their own line under the facts, and the owner\'s "Not shared with you" the same way (set 5). Nothing else changes.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'lee', view: 'grid' }); box.append(v.hold); return {}; } });
+  shot(p, { name: 'The Grid, on a phone (390)', note: 'Three across with the picture first, as the Vault\'s Grid is on a phone. The marks sit under the facts.', w: 390, h: 720, build: (box) => { const v = vaultFrame({ viewer: 'lee', view: 'grid', narrow: true }); box.append(v.hold); return {}; } });
   shot(p, { name: 'The list, on a phone (390)', note: 'The mark moves into the line under the name with the size and who added it; nothing is cut.', w: 390, h: 720, build: (box) => { const v = vaultFrame({ viewer: 'lee' }); box.append(v.hold); return {}; } });
 }
 
@@ -484,6 +557,8 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   over('Three chosen', 'The list shows everyone in the trip who is not the adder, with their role in quiet words. Owners are shown with Always can and cannot be chosen; moderators can.', () => peopleSheet(phoneBase));
   over('Searching', 'The list narrows as the person types; the chosen stay on their chips.', () => peopleSheet({ ...phoneBase, query: 'e' }));
   over('At the limit: 200 of 200', 'A big trip (the picker lists the first thirty and asks for a search). Nothing more can be ticked, a message says why, and the chips scroll.', () => peopleSheet({ chosen: BIG.slice(BIG.length - LIMIT).map((x) => x.key), members: BIG, max: LIMIT }));
+  over('At the limit, on a phone (390)', 'The chips wrap; three whole rows show and the rest scroll a row at a time, so a chip is never cut in half.', () => peopleSheet({ chosen: BIG.slice(BIG.length - LIMIT).map((x) => x.key), members: BIG, max: LIMIT, phone: true }), { w: 390, h: 940 });
+  over('A save that failed', 'Done was pressed and the save did not go through. The line sits at the top of the dialog, in the danger colour with an icon and words; the choices stay as they were, so nothing is lost and the person presses Done again.', () => peopleSheet({ ...phoneBase, error: true }));
   over('A search with no match', 'The list says so; the chosen stay on their chips.', () => peopleSheet({ ...phoneBase, query: 'zzz' }));
   over('No one to choose', 'A trip with only the adder.', () => peopleSheet({ chosen: [], members: [] }));
   over('On a phone (390)', 'A full-width sheet; the rows and buttons are 44px.', () => peopleSheet({ ...phoneBase, phone: true }), { w: 390, h: 940 });
@@ -498,6 +573,8 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const p2 = pair(s);
   shot(p2, { name: 'Chosen people, no one chosen yet', note: 'A file of Lee\'s with an empty list.', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true, as: { v: 'people', p: [] } }) }) });
   shot(p2, { name: 'Shared with everyone: no block (Sam)', note: 'A file in the default state shows no block to a viewer.', h: 720, build: (box) => windowShot(box, { viewer: 'sam', fileId: 'f30', block: (f) => whoBlock(f, { viewer: 'sam', change: false }) }) });
+  const p4 = pair(s);
+  shot(p4, { name: 'A change that failed to save', note: 'Lee tried to change Trevi fountain.jpg and the save did not go through. The line sits under the control in the danger colour, with an icon; the control shows the setting that is still true.', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true, error: true }) }) });
   const p3 = pair(s);
   shot(p3, { name: 'The menu open', note: 'Three radio choices; a change that narrows who sees a file with links asks first (section 9).', h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }), menu: true }) });
   shot(p3, { name: 'On a phone (390)', note: 'The window is a full-screen sheet; the control is a 44px button.', w: 390, h: 720, build: (box) => windowShot(box, { viewer: 'lee', fileId: 'f02', block: (f) => whoBlock(f, { viewer: 'lee', change: true }) }) });
@@ -508,6 +585,7 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const s = set('owner', 'The owner or admin, a file not shared with them', 'Noor is an owner. She sees every file in the list; the ones not shared with her carry "Not shared with you" in the line under the name (so nobody is surprised, plan decision 2). Opening one works. The file window says so in a notice at the top of Info, names who can see it, and has the same control to change it. The admin sees the same.');
   const p = pair(s);
   shot(p, { name: 'The owner\'s list', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'noor' }); box.append(v.hold); return {}; } });
+  shot(p, { name: 'The owner\'s Grid', note: '"Not shared with you" on its own line under the facts of each card.', h: 720, build: (box) => { const v = vaultFrame({ viewer: 'noor', view: 'grid' }); box.append(v.hold); return {}; } });
   shot(p, { name: 'The owner opens Mia\'s Only me picture', note: 'Bridge over the Tiber.jpg. The notice, then who can see it, then the control.', h: 720, build: (box) => windowShot(box, { viewer: 'noor', fileId: 'f17', block: (f) => ownerBlock(f) }) });
 }
 
@@ -603,7 +681,7 @@ function bookingFrame({ hotel, dinner, canEdit = false }) {
   const ask = (rows, lead, action) => {
     const x = sheet({ title: 'Change who can see this file?', width: 'confirm', kind: 'destructive' });
     x.body.append(h('p', '', lead), effects(rows));
-    x.foot.append(cancelBtn(), okBtn(action, 'btn btn-danger'));
+    x.foot.append(cancelBtn(), okBtn(action, 'btn btn-danger solid'));
     return x.dlg;
   };
   const p = pair(s);

@@ -28,6 +28,13 @@
 .vp-who-info.vp-after { padding: var(--space-3) 0 0; border-bottom: 0; border-top: 1px solid var(--edge-hairline); }
 .vp-rights { margin-bottom: var(--space-1); }
 
+/* ---- a save that failed: the picker's line and the file window's line ---- */
+.vp-save-error { margin: 0; }
+.vp-save-error > i { margin-right: var(--space-1); }
+
+/* ---- the Grid card's marks ---- */
+.vp-card-marks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+
 /* ---- the people picker (a dialog) ---- */
 .vp-pickbody { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .vp-chosen-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
@@ -68,7 +75,8 @@
 .vp-phone .sdk-dialog-close, .vp-phone .sdk-chip-x { min-width: 44px; }
 .vp-phone .sdk-search > input { min-height: 44px; font-size: var(--text-16); }
 .vp-phone .vp-people { max-height: 340px; }
-.vp-phone .vp-chosen { max-height: 100px; }
+.vp-phone .vp-chosen { max-height: 140px; scroll-snap-type: y proximity; } /* three whole rows of 44px chips; more scroll a row at a time */
+.vp-phone .vp-chosen > * { scroll-snap-align: start; }
 .vp-phone .sdk-chip-removable { min-height: 44px; }
 
 /* the frame height the Add files drawings need (the Vault section's set stops at 800) */
