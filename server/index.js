@@ -8545,14 +8545,17 @@ function askedVisibility(rawVisibility, rawPeople, space) {
   return { visibility, people };
 }
 // Whether a share link's maker may still make it: they exist, are in the space (or an owner or the admin), and have each
-// permission in `keys` of the module there. The public routes ask this on every open.
+// permission in `keys` of the module there. Answers the maker's sight of the space's files (fileSight, the library's one
+// rule, as that person) or null. The public routes ask this on every open, and a file the maker can no longer see drops
+// out of the link (plan-vault-privacy.md, decision 8).
 function shareMakerCan(userKey, spaceId, moduleId, keys) {
   const user = store.userByKey(userKey);
   const space = store.spaceById(spaceId);
-  if (!user || !space) return false;
-  if (!(hasOwnerRights(user) || space.members.includes(user.key))) return false;
+  if (!user || !space) return null;
+  if (!(hasOwnerRights(user) || space.members.includes(user.key))) return null;
   const perms = store.spacePermissions(user.key, spaceId);
-  return keys.every((k) => Boolean(perms[`module.${moduleId}.${k}`]));
+  if (!keys.every((k) => Boolean(perms[`module.${moduleId}.${k}`]))) return null;
+  return fileSight({ user }, spaceId, moduleId);
 }
 const fileRef = (ctx, fid) => ({ module: ctx.manifest.id, kind: 'file', id: fid, scope: 'space', space: ctx.spaceId });
 // `viewable: false` only on a PDF kept as download only (decision 18): the app never opens it, only downloads it.

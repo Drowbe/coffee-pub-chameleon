@@ -587,7 +587,8 @@ try {
     for (const s of [sh, mixed]) await as(people.ola.cookie, 'DELETE', `/api/modules/vault/library/shares/${s.id}?space=${A.id}`);
   }
   // A link's maker keeps it when its file is narrowed away from them: they still list it (naming no file they can't see)
-  // and can turn it off. Someone else who can't see the file still finds the link not there, as an id that is nobody's.
+  // and can turn it off, while the public link reads ended until the file is shown to them again. Someone else who can't
+  // see the file still finds the link not there, as an id that is nobody's.
   {
     const shares = `/api/modules/vault/library/shares?space=${A.id}`;
     const one = (sid) => `/api/modules/vault/library/shares/${sid}?space=${A.id}`;
@@ -609,7 +610,13 @@ try {
       expect(theirs.status === 404 && shape(theirs) === shape(missing), `${what} someone else's link of a file they can't see: ${brief(theirs)} vs ${brief(missing)} for an id that is nobody's`);
     }
     must(await as(admin, 'PATCH', '/api/roles/member', { 'module.vault.share': false }), 200, 'members may not share again');
-    expect((await call(server, 'GET', `/api/shared/${made.token}`)).status === 200, 'the link still opened before its maker turned it off');
+    // Its maker can no longer see its only file, so the link reads ended (decision 8), exactly as an unknown link does;
+    // shown to them again, it opens again.
+    const narrowedOpen = await call(server, 'GET', `/api/shared/${made.token}`);
+    const unknownOpen = await call(server, 'GET', `/api/shared/${'B'.repeat(43)}`);
+    expect(narrowedOpen.status === 404 && shape(narrowedOpen) === shape(unknownOpen), `a link whose maker can no longer see its file still opens: ${brief(narrowedOpen)} vs ${brief(unknownOpen)}`);
+    must(await as(people.ada.cookie, 'PATCH', `/api/modules/vault/library/${narrowed.id}?space=${A.id}`, { visibility: 'people', people: [K('mod')] }), 200, 'the adder shows it to the moderator again');
+    expect((await call(server, 'GET', `/api/shared/${made.token}`)).status === 200, 'the link did not open again once its maker could see the file');
     const off = await as(people.mod.cookie, 'DELETE', one(sid));
     expect(off.status === 200 && off.json?.ok === true, `the maker could not turn off their link of a narrowed file: ${off.status} ${off.text}`);
     expect((await call(server, 'GET', `/api/shared/${made.token}`)).status === 404, 'the link still opens after its maker turned it off');

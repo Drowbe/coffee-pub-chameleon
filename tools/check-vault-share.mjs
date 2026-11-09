@@ -13,7 +13,9 @@
  * emptied links, the Vault turned off and the space deleted all answering the same; the password flow (locked, a wrong
  * one, a right one and its cookie's attributes, the cookie on another link or changed, Secure on https), the tries limit
  * per link and address, per link and per address, its growing wait, the misses limit; file removal and Turn off
- * cascading; the 200 links cap; the view count. Server H, with BASE_DOMAIN: a link opens only on its own environment's
+ * cascading; the 200 links cap; the view count; a file its maker can no longer see (narrowed by an owner or by its
+ * adder) dropping out of a link on every open, a link left with none ended, both answering as a missing file or an
+ * unknown link, owners' and the admin's links keeping every file, and a file shown again coming back. Server H, with BASE_DOMAIN: a link opens only on its own environment's
  * host. What can't be checked here: the page in a browser (experience-design's), a real proxy's access logs.
  */
 import assert from 'node:assert/strict';
@@ -512,6 +514,88 @@ try {
   same((await pub(moView.json.token, '', { ip: '10.0.10.2' })).status, 200, 'and it opens again');
   same((await json('PATCH', '/api/roles/member', admin, { 'module.vault.share': false, 'module.vault.download': true })).status, 200, 'Roles: members may not share, as at the start');
   for (const id of [moView, moDl]) await send(S, 'DELETE', shares(trip.id, id.json.share.id), { cookie: admin });
+
+  // The maker's sight of each file, rechecked on every open (plan-vault-privacy.md, decision 8 and step 14): a file its
+  // maker can no longer see drops out of the link as a removed file does, and a link left with none reads ended, as an
+  // unknown one does. Owners and the admin see every file, so their links keep them all. Shown again, a file comes back.
+  {
+    const SHOWN = ['referrer-policy', 'x-robots-tag', 'cache-control', 'x-content-type-options', 'content-type', 'content-length', 'retry-after', 'set-cookie', 'content-disposition'];
+    const look = (r) => JSON.stringify([r.status, ...SHOWN.map((h) => r.headers[h] ?? null), r.bytes.toString()]);
+    const seeA = await add('pat', trip.id, 'sight-a.md', Buffer.from('# a\n'), 'text/markdown');
+    const seeB = await add('pat', trip.id, 'sight-b.md', Buffer.from('# b\n'), 'text/markdown');
+    const sightOf = (f, value, who = people.ola.token) => json('PATCH', `/api/modules/vault/library/${f.id}?space=${trip.id}`, who, value);
+    const both = await make(people.mo.token, { name: 'Sight both', files: [seeA.id, seeB.id] });
+    const onlyA = await make(people.mo.token, { name: 'Sight a', files: [seeA.id], download: true });
+    const onlyB = await make(people.mo.token, { name: 'Sight b', files: [seeB.id] });
+    const lockedA = await make(people.mo.token, { name: 'Sight locked', files: [seeA.id], password: 'sight password' });
+    const ownerBoth = await make(people.ola.token, { name: 'Sight owner', files: [seeA.id, seeB.id] });
+    same([both.status, onlyA.status, onlyB.status, lockedA.status, ownerBoth.status], [201, 201, 201, 201, 201], 'the moderator makes four links to the two files, the owner one');
+    const ip = { ip: '10.0.11.1' };
+    const bothBefore = await pub(both.json.token, '', ip);
+    same(bothBefore.json.files.map((f) => f.id), [seeA.id, seeB.id], 'before: the link holds both files');
+    const unknownToken = crypto.randomBytes(32).toString('base64url');
+
+    // An owner (not its adder) narrows a to only-me: only pat, the owners and the admin see it now; mo does not.
+    same((await sightOf(seeA, { visibility: 'only-me' })).status, 200, 'an owner narrows sight-a.md to only-me');
+    const bothNow = await pub(both.json.token, '', ip);
+    same(bothNow.status, 200, 'the two-file link still opens');
+    same(bothNow.json, { ...bothBefore.json, files: bothBefore.json.files.filter((f) => f.id !== seeA.id) }, 'with the file its maker can no longer see dropped out, and nothing else changed');
+    ok(!bothNow.text.includes(seeA.id) && !bothNow.text.includes('sight-a'), 'its id and name are nowhere in the answer');
+    const notInSet = 'eeeeeeeeeeeeeeeeeeeeeeee';
+    for (const rest of ['/content', '/content?download=1', '/thumb']) {
+      const hidden = await pub(both.json.token, `/files/${seeA.id}${rest}`, ip);
+      const missing = await pub(both.json.token, `/files/${notInSet}${rest}`, ip);
+      same([hidden.status, hidden.json], [404, NO_FILE], `the dropped file's ${rest}: 404 "There is no such file."`);
+      same(look(hidden), look(missing), `the dropped file's ${rest} answers byte for byte as a file that is not there`);
+    }
+    same((await pub(both.json.token, `/files/${seeB.id}/content`, ip)).status, 200, 'the file its maker still sees opens');
+    for (const [label, rest, o] of [['the list', '', {}], ['its file', `/files/${seeA.id}/content`, {}], ['a download', `/files/${seeA.id}/content?download=1`, {}], ['its thumbnail', `/files/${seeA.id}/thumb`, {}]]) {
+      const ended = await pub(onlyA.json.token, rest, { ...o, ip: '10.0.11.2' });
+      const unknownR = await pub(unknownToken, rest, { ...o, ip: '10.0.11.3' });
+      same([ended.status, ended.json], [404, ENDED], `a download link whose only file its maker can no longer see, ${label}: ended`);
+      same(look(ended), look(unknownR), `${label}: byte for byte as an unknown link`);
+    }
+    const unlockEnded = await pub(lockedA.json.token, '/unlock', { method: 'POST', ip: '10.0.11.2', headers: JSONH, body: bodyOf({ password: 'sight password' }) });
+    const unlockUnknown = await pub(unknownToken, '/unlock', { method: 'POST', ip: '10.0.11.3', headers: JSONH, body: bodyOf({ password: 'sight password' }) });
+    same([unlockEnded.status, unlockEnded.json, look(unlockEnded)], [404, ENDED, look(unlockUnknown)], 'its password link: unlocking it answers as an unknown link, with no cookie');
+    same((await pub(onlyB.json.token, '', ip)).status, 200, 'a link to the other file still opens');
+    same((await pub(ownerBoth.json.token, '', ip)).json.files.map((f) => f.id), [seeA.id, seeB.id], 'the owner\'s link keeps both: an owner sees every file');
+    const adminA = await make(admin, { name: 'Sight admin', files: [seeA.id] });
+    same(adminA.status, 201, 'the admin may share the only-me file');
+    same((await pub(adminA.json.token, '', ip)).json.files.map((f) => f.id), [seeA.id], 'and the admin\'s link opens it');
+    same((await pub(adminA.json.token, `/files/${seeA.id}/content`, ip)).status, 200, 'with its bytes');
+    const madeHidden = await make(people.mo.token, { name: 'Sight again', files: [seeA.id] });
+    const madeMissing = await make(people.mo.token, { name: 'Sight again', files: [notInSet] });
+    same([madeHidden.status, madeHidden.json, look(madeHidden)], [404, NO_FILE, look(madeMissing)], 'the moderator can\'t make a new link of it: as a file that is not there');
+    const moList = await send(S, 'GET', shares(trip.id), { cookie: people.mo.token });
+    ok(!moList.text.includes(seeA.id) && !moList.text.includes('sight-a'), 'nor does the moderator\'s list of links name it, in anyone\'s link');
+    same(moList.json.shares.find((x) => x.id === onlyA.json.share.id)?.files, [], 'their own link of it stays in their list, with no file, so they can turn it off');
+
+    // The adder narrows b to a list without the maker: no file of the two-file link is left, so it ends as well.
+    same((await sightOf(seeB, { visibility: 'people', people: [people.max.key] }, people.pat.token)).status, 200, 'the adder shows sight-b.md only to max');
+    for (const [label, token] of [['the two-file link', both.json.token], ['the link to b', onlyB.json.token]]) {
+      const ended = await pub(token, '', { ip: '10.0.11.4' });
+      const unknownR = await pub(unknownToken, '', { ip: '10.0.11.5' });
+      same(look(ended), look(unknownR), `${label}: ended, byte for byte as an unknown link`);
+      same((await pub(token, `/files/${seeB.id}/content`, { ip: '10.0.11.4' })).json, ENDED, `${label}: its file too`);
+    }
+    same((await pub(ownerBoth.json.token, '', ip)).json.files.length, 2, 'the owner\'s link still keeps both');
+    const maxLink = await make(people.max.token, { name: 'Sight max', files: [seeB.id] });
+    same(maxLink.status, 201, 'max, on the list, may share b');
+    same((await pub(maxLink.json.token, '', ip)).json.files.map((f) => f.id), [seeB.id], 'and max\'s link opens it');
+
+    // Shown to the maker again: the files come back, as the link was made.
+    same((await sightOf(seeA, { visibility: 'people', people: [people.mo.key, people.pat.key] })).status, 200, 'an owner shows sight-a.md to mo and pat');
+    same((await pub(both.json.token, '', ip)).json.files.map((f) => f.id), [seeA.id], 'the two-file link opens again, with a only');
+    same((await pub(onlyA.json.token, `/files/${seeA.id}/content?download=1`, ip)).status, 200, 'the download link downloads again');
+    same((await pub(onlyB.json.token, '', { ip: '10.0.11.4' })).json, ENDED, 'the link to b is still ended');
+    same((await sightOf(seeB, { visibility: 'everyone' }, people.pat.token)).status, 200, 'the adder shows sight-b.md to everyone again');
+    same((await pub(both.json.token, '', ip)).json, bothBefore.json, 'the two-file link is as it was made');
+    same((await pub(onlyB.json.token, '', ip)).status, 200, 'and the link to b opens again');
+
+    for (const l of [both, onlyA, onlyB, lockedA, ownerBoth, adminA, maxLink]) same((await send(S, 'DELETE', shares(trip.id, l.json.share.id), { cookie: admin })).json, { ok: true }, `${l.json.share.name} turned off`);
+    for (const f of [seeA, seeB]) same((await send(S, 'DELETE', `/api/modules/vault/library/${f.id}?space=${trip.id}`, { cookie: people.pat.token })).status, 200, `${f.name} removed`);
+  }
   const nm = await json('PATCH', shares(trip.id, view.json.share.id), people.mo.token, { name: 7 });
   const fresh = await make(people.mo.token, { name: 'Name test', files: [md.id], days: 1 });
   same([(await json('PATCH', shares(trip.id, fresh.json.share.id), people.mo.token, { name: 7 })).status, (await json('PATCH', shares(trip.id, fresh.json.share.id), people.mo.token, { name: null })).json], [400, { error: 'Give the share link a name.' }], 'a name that is not text on a change: 400');
