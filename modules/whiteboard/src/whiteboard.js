@@ -13,6 +13,8 @@
 //   lib-i pictures  pictures from the computer, sent as uploads
 //   lib-j markup    what the formatting bar does to the words being edited
 //   lib-k table     rows copied from a spreadsheet, read as a table's cells
+//   lib-l export    the board as a picture, and ready to print
+//   lib-m arrange   align, distribute, guides, and what a lock, a group or a delete changes
 (async () => {
   'use strict';
 
@@ -55,7 +57,7 @@
   const me = (info.user && info.user.key) || '';
   const board = createBoard();
   const surface = $('board');
-  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame') });
+  const renderer = createRenderer({ surface, world: $('world'), frame: $('frame'), icon: (name) => iconSvg(name) });
   const drafts = new Set(); // blocks made here that are not saved yet (a stroke being drawn, a note before its words)
   const held = new Set(); // blocks being moved or edited here: a change to one from elsewhere waits until it is let go
   const waiting = new Map(); // id -> the newest change from elsewhere to a held block
@@ -98,9 +100,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -169,6 +171,7 @@
     },
     change(id, patch, { save = 'now' } = {}) {
       const b = board.get(id);
+      if (b && !drafts.has(id) && b.locked && policy.canLock(b)) { lockedNote(1, 1); return; }
       if (!b || (!drafts.has(id) && !policy.canChange(b))) return;
       const next = wbClean({ ...b, ...patch });
       if (next) commit(next, save);
@@ -191,7 +194,11 @@
     remove: (id) => remove(id),
     select: (id) => select(id ? [id] : []),
     setSelection: (ids) => select(ids),
-    toggle(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); else select([...sel, id]); },
+    // A block of a group goes in or out with its whole group.
+    toggle(id) {
+      const unit = new Set(wbExpandGroups([id], board.all()));
+      if (sel.has(id)) select([...sel].filter((x) => !unit.has(x))); else select([...sel, ...unit]);
+    },
     marquee: (r) => renderer.marquee(r),
     many: () => many,
     blocksIn: (r) => blocksIn(r),
@@ -200,6 +207,14 @@
     element: (id) => renderer.element(id),
     // A short note instead of a change that cannot be made (a table's last row deleted).
     refuseWith: (words) => note(words),
+    // Locked blocks left as they are: n of the `of` blocks a gesture was for (lib-m's words).
+    lockedNote: (n, of) => lockedNote(n, of),
+    // Guides while blocks are dragged (lib-f-tool-select): whether this drag has them (Snap to grid off, Alt not held),
+    // the box round the dragged blocks and the boxes near what is in sight to line it up with (once a drag), and the
+    // lines to draw ([] for none).
+    guiding: (event) => !snapOn && !(event && event.altKey),
+    guideBoxes: (ids) => guideBoxes(ids),
+    guides: (lines) => renderer.guides(lines),
     setTool: (id) => setTool(id),
     hold(id, on) { if (on) held.add(id); else release(id); },
     // Where a connector's end goes for a pointer on the board ({ block, side } or null: the board), and the connection
@@ -261,13 +276,14 @@
   }
 
   // Deleting a block deletes the connectors attached to it first, in the same undo step: one undo brings the block back,
-  // then them, each with its own id.
-  function remove(id) {
+  // then them, each with its own id. A connector goes with its block even when it is locked (force: a locked block taken
+  // away all the same), so none is left pointing at nothing.
+  function remove(id, { force = false } = {}) {
     const b = board.get(id);
     if (!b) return;
     if (drafts.has(id)) { ctx.discard(id); return; }
-    if (!policy.canDelete(b)) return;
-    for (const c of connectorsOf(id)) remove(c);
+    if (!(force ? policy.canLock(b) : policy.canDelete(b))) return;
+    for (const c of connectorsOf(id)) remove(c, { force: true });
     if (history) history.record(id, known.get(id) || b, null);
     known.delete(id);
     board.remove(id);
@@ -278,7 +294,12 @@
     unpick(id);
     updateStatus();
   }
-  function removeMany(ids) { for (const id of ids) remove(id); }
+  // A delete of several blocks (lib-m, wbDeleteSet): the locked ones stay, and the person is told.
+  function removeMany(ids) {
+    const r = wbDeleteSet(ids, board.all(), { canDelete: (b) => drafts.has(b.id) || policy.canDelete(b), refsOf: (b) => { const d = defOf(b); return d && d.refs ? d.refs(b) : []; } });
+    for (const id of r.ids) remove(id, { force: true });
+    if (r.locked) lockedNote(r.locked, ids.length);
+  }
   // A block gone from the board is gone from what is picked.
   function unpick(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); }
 
@@ -405,16 +426,30 @@
   let deleteButton = null;
   let addCanConnect = false; // the +'s "Connect the 2 picked blocks" is on
   // Pick exactly these blocks (an array of ids; [] or null for none).
+  // Picking a block of a group picks the whole group (lib-m, wbExpandGroups).
   function select(ids) {
     sel.clear();
-    for (const id of ids || []) if (board.has(id)) sel.add(id);
+    const want = (ids || []).filter((id) => board.has(id));
+    for (const id of want.length ? wbExpandGroups(want, board.all()) : []) if (board.has(id)) sel.add(id);
     if (cellNav && !(sel.size === 1 && sel.has(cellNav.id))) leaveCells(); // the cells are the one picked table's
     renderer.select([...sel], handlesOf(one()));
-    const can = [...sel].some((id) => policy.canDelete(board.get(id)));
-    if (can && !deleteButton) { deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) }); if (snapButton) makeSnapButton(); }
-    if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
+    toolbarTail();
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
+  }
+  // The toolbar's buttons for what is picked, always in this order before Snap to grid: Delete (something picked may be
+  // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
+  // goes, then Snap to grid after them.
+  let arrangeButton = null;
+  function toolbarTail() {
+    const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
+    const wantArrange = policy.canEdit && sel.size > 1;
+    if (Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
+    if (arrangeButton) { arrangeButton.destroy(); arrangeButton = null; }
+    if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
+    if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
+    if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
+    if (snapButton) makeSnapButton();
   }
   // The two picked blocks a connector can join (in the order they were picked), or null.
   function pair() {
@@ -453,6 +488,89 @@
     return out;
   }
 
+  // ---- locks, groups, align and distribute ------------------------------------------------------------------------------
+  // What they change is lib-m's to work out; each command is one undo step (every block it changes is saved in the same
+  // turn), for someone who may change the board. Locked blocks are left as they are and the person is told (note).
+  const lockedNote = (n, of) => { const t = wbLockedNote(n, of); if (t) note(t); };
+  const pickedBlocks = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
+  const heightOf = (b) => { const el = renderer.element(b.id); return el ? el.offsetHeight : 0; };
+  // The picked blocks align and distribute would move: placed (not connectors) and not locked.
+  const arrangeable = () => pickedBlocks().filter((b) => !defOf(b).attached && b.locked !== true);
+  function arrange(how) {
+    if (!policy.canEdit) return;
+    const list = pickedBlocks();
+    const r = wbArrangeChanges(list, how, { measure: heightOf });
+    if (!r.enough) { note(r.locked ? wbLockedNote(r.locked, list.length) : 'Pick more blocks to do that.'); return; }
+    for (const c of r.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    if (r.locked) lockedNote(r.locked, list.length);
+  }
+  // The rows of Arrange, in the toolbar's menu and the right-click menu: each greyed while too few blocks can move.
+  const arrangeRows = () => {
+    const n = arrangeable().length;
+    return WB_ARRANGE.flatMap((a, i) => [
+      ...(i > 0 && a.distribute && !WB_ARRANGE[i - 1].distribute ? [{ separator: true }] : []),
+      { id: `arrange-${a.id}`, label: a.label, icon: a.icon, disabled: n < (a.distribute ? 3 : 2), onClick: () => arrange(a.id) },
+    ]);
+  };
+  function arrangeMenu(where) {
+    if (!policy.canEdit || sel.size < 2) return;
+    host.menu.show({ id: 'arrange', ...where, items: [{ heading: `Arrange the ${sel.size} picked blocks` }, ...arrangeRows()] });
+  }
+  // Lock or unlock what is picked: lock it all when any of it is unlocked, else unlock it all. A lock is written without
+  // the usual leave (a locked block may still be unlocked), one save each.
+  function lockPicked() {
+    if (!policy.canEdit || !sel.size) return;
+    if (editing && sel.has(editing.id)) { const e = editing; editing = null; e.finish(true); }
+    const r = wbLockChanges([...sel], pickedBlocks());
+    for (const c of r.changes) {
+      const b = board.get(c.id);
+      const next = b && policy.canLock(b) ? wbClean({ ...b, ...c.fields }) : null;
+      if (next) commit(next, 'now');
+    }
+    select([...sel]); // no handles on a locked block; Delete and Arrange as they now are
+    say(r.on ? 'Locked.' : 'Unlocked.');
+  }
+  const canGroup = () => policy.canEdit && wbGroupChanges([...sel], board.all(), { newGroup: () => 'x' }).changes.length > 0;
+  const inGroup = () => { const groups = wbGroupsOf(board.all()); return [...sel].some((id) => groups.has(wbGroupOf(board.get(id)))); };
+  function groupPicked() {
+    if (!policy.canEdit || !sel.size) return;
+    const r = wbGroupChanges([...sel], board.all());
+    if (!r.changes.length) { if (r.locked) lockedNote(r.locked, sel.size); return; }
+    for (const c of r.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    select([...sel]);
+    if (r.locked) lockedNote(r.locked, r.locked + r.changes.length);
+    say(`Grouped ${r.changes.length} blocks.`);
+  }
+  function ungroupPicked() {
+    if (!policy.canEdit || !sel.size) return;
+    const r = wbUngroupChanges([...sel], board.all());
+    for (const c of r.changes) ctx.change(c.id, c.fields, { save: 'now' });
+    if (r.locked) lockedNote(r.locked, r.locked + r.changes.length);
+    if (r.changes.length) say('Ungrouped.');
+  }
+  // Guides: the box round the dragged blocks (their boxes as drawn; connectors follow them), and the boxes of the other
+  // blocks in sight or near it (half a screen round it), found once when a drag begins.
+  function guideBoxes(ids) {
+    const mine = new Set(ids);
+    let box = null;
+    for (const id of ids) {
+      const b = board.get(id);
+      const r = b && !defOf(b).attached ? renderer.rectOf(id) : null;
+      if (!r) continue;
+      box = box ? { x0: Math.min(box.x0, r.x0), y0: Math.min(box.y0, r.y0), x1: Math.max(box.x1, r.x1), y1: Math.max(box.y1, r.y1) } : { ...r };
+    }
+    const v = viewBox();
+    const mx = (v.x1 - v.x0) / 2;
+    const my = (v.y1 - v.y0) / 2;
+    const near = [];
+    for (const b of board.all()) {
+      if (mine.has(b.id) || drafts.has(b.id) || defOf(b).attached) continue;
+      const r = renderer.rectOf(b.id);
+      if (r && r.x1 >= v.x0 - mx && r.x0 <= v.x1 + mx && r.y1 >= v.y0 - my && r.y0 <= v.y1 + my) near.push(r);
+    }
+    return { box, near };
+  }
+
   // The handles the one picked block shows: its type's (resize), only with Select and only to someone who may change it.
   function handlesOf(id) {
     const b = id && board.get(id);
@@ -467,7 +585,7 @@
     const def = b && blockTypes.get(b.type);
     const el = renderer.element(id);
     if (!def || !el || !def.edit) return;
-    if (!drafts.has(id) && !policy.canChange(b)) return;
+    if (!drafts.has(id) && !policy.canChange(b)) { if (b.locked && policy.canLock(b)) lockedNote(1, 1); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (def.edit === 'cells') {
       // A table: the cell pressed, else the active one, else the first.
@@ -555,7 +673,7 @@
     const def = b && blockTypes.get(b.type);
     const el = renderer.element(id);
     if (!def || def.edit !== 'cells' || !el) return;
-    if (!drafts.has(id) && !policy.canChange(b)) return;
+    if (!drafts.has(id) && !policy.canChange(b)) { if (b.locked && policy.canLock(b)) lockedNote(1, 1); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     const td = def.cellEl(el, r, c);
     if (!td) return;
@@ -1039,6 +1157,8 @@
     return list.some((b) => Boolean(wbBetween(board.all(), b.id, to, past)));
   }
   function layer(ids, to) {
+    const locked = ids.filter((id) => { const b = board.get(id); return b && b.locked; }).length;
+    if (locked && policy.canEdit) lockedNote(locked, ids.length);
     if (!canLayer(ids, to)) return;
     const list = layerable(ids);
     const mine = new Set(list.map((b) => b.id));
@@ -1079,7 +1199,10 @@
       get: (id) => (isBoard(id) ? boardSettings : board.get(id)),
       remove: (id) => { if (!isBoard(id)) remove(id); },
       put: (b) => (boardy(b) ? commitBoard(b) : commit(b, 'now')),
-      canChange: (b) => (boardy(b) ? policy.canEdit : policy.canChange(b)),
+      // A step that only locked or unlocked a block is undone on it while it is locked; nothing else is.
+      canChange: (b, fields) => (boardy(b) ? policy.canEdit : fields && fields.length && fields.every((f) => f === 'locked') ? policy.canLock(b) : policy.canChange(b)),
+      canRemove: (b) => boardy(b) || drafts.has(b.id) || policy.canDelete(b),
+      locked: (b) => Boolean(b && b.locked === true),
       canCreate: () => policy.canCreate(),
       clean: (raw) => (boardy(raw) ? wbCleanBoard(raw) : wbClean(raw)),
       linkedOf: (b) => { const def = blockTypes.get(b.type); return (def && def.linked) || []; },
@@ -1187,8 +1310,8 @@
   const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && !missingRefs(b).length);
   // What a copy holds: the picked blocks and every connector whose blocks are all among them (picked or not); a picked
   // connector with an end on a block left out has that end made a free point where it is drawn now (its type's loosen).
-  function copySet() {
-    const list = copyable();
+  function copySet(picked = copyable()) {
+    const list = picked.slice();
     const ids = new Set(list.map((b) => b.id));
     for (const b of board.all()) {
       const d = defOf(b);
@@ -1218,9 +1341,13 @@
     return r;
   }
   // Cut is a copy and a delete: the connectors attached to what is cut go too (the ones between them are in the copy).
+  // A locked block is copied, never cut: a cut takes the others and leaves it (the person is told).
   function copy({ cut = false } = {}) {
     if (!policy.canEdit || !copyable().length) return;
-    const list = copySet();
+    const picked = cut ? copyable().filter((b) => policy.canDelete(b)) : copyable();
+    if (cut) lockedNote(copyable().length - picked.length, copyable().length);
+    if (!picked.length) return;
+    const list = copySet(picked);
     clipboard.copy(list, { cut });
     clipMarked = false; // onCopyEvent sets it again when this copy put the mark on the computer's clipboard
     if (cut) removeMany(list.map((b) => b.id));
@@ -1244,8 +1371,8 @@
     if (!copyable().length) return;
     placeCopies(wbCopies(copySet(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
   }
-  const clipRows = (at) => [
-    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), onClick: () => copy({ cut: true }) },
+  const clipRows = (at, { cut = true } = {}) => [
+    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), disabled: !cut, onClick: () => copy({ cut: true }) },
     { id: 'copy', label: 'Copy', icon: 'copy', hint: keyHint(`${MOD} C`), onClick: () => copy() },
     { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste(at) },
     { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
@@ -1262,17 +1389,23 @@
   let muted = false;
   try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* no storage: not muted */ }
   timerDef.now = () => sync.now();
-  timerDef.controls = (b) => policy.canChange(b);
+  // A locked timer still runs: its controls are using it, not changing it (lib-b, canLock).
+  timerDef.controls = (b) => policy.canLock(b);
+  const useTimer = (id, fields) => {
+    const b = board.get(id);
+    const next = b && b.type === 'timer' && policy.canLock(b) ? wbClean({ ...b, ...fields }) : null;
+    if (next) commit(next, 'now');
+  };
   timerDef.icon = (name) => iconSvg(name);
   timerDef.say = (text) => say(text);
   timerDef.done = () => { say('Time is up.'); if (!muted) chime(); };
   timerDef.act = (id, what, button) => {
     const b = board.get(id);
-    if (!b || b.type !== 'timer' || !policy.canChange(b)) return;
+    if (!b || b.type !== 'timer' || !policy.canLock(b)) return;
     const now = sync.now();
-    if (what === 'start') ctx.change(id, wbTimerStart(b, now));
-    else if (what === 'pause') ctx.change(id, wbTimerPause(b, now));
-    else if (what === 'reset') ctx.change(id, wbTimerReset(b));
+    if (what === 'start') useTimer(id, wbTimerStart(b, now));
+    else if (what === 'pause') useTimer(id, wbTimerPause(b, now));
+    else if (what === 'reset') useTimer(id, wbTimerReset(b));
     else if (what === 'length') timerMenu(id, button);
   };
   // Words read out once (started, paused, time is up), never the seconds ticking.
@@ -1286,7 +1419,7 @@
   function timerMenu(id, button) {
     const b = board.get(id);
     if (!b) return;
-    const set = (secs) => () => { const now = board.get(id); if (now && policy.canChange(now)) ctx.change(id, wbTimerSetLength(secs)); };
+    const set = (secs) => () => useTimer(id, wbTimerSetLength(secs));
     host.menu.show({
       id: 'timer',
       anchor: button,
@@ -1323,7 +1456,7 @@
     }
     const f = customFor;
     const b = f && board.get(f.id);
-    if (b && policy.canChange(b)) ctx.change(b.id, wbTimerSetLength(total));
+    if (b) useTimer(b.id, wbTimerSetLength(total));
     customEditor.close();
   }
   if (customEditor) {
@@ -1856,12 +1989,16 @@
     const ids = [...sel];
     const list = targets();
     const links = ids.length === 1 ? linkRows(id) : [];
-    if (!list.length) {
+    if (!policy.canEdit) {
       // Someone who may only look: the links, if there are any, and Save as image (what is selected).
       host.menu.show({ id: 'block', at, items: [...links, ...(links.length ? [{ separator: true }] : []), exportRow('selection')] });
       return;
     }
-    const single = list.length === 1 ? list[0] : null;
+    // Locked blocks are in `ids` and not in `list` (what may be changed): they get Unlock, Copy, Duplicate and Save as
+    // image, and the rest of the menu works on the others.
+    const single = list.length === 1 && ids.length === 1 ? list[0] : null;
+    const lockOn = wbLockChanges(ids, pickedBlocks()).on;
+    const deletable = ids.filter((x) => policy.canDelete(board.get(x))).length;
     const def = single && defOf(single);
     // A table's cell: the one pressed (it becomes the active one), else the active one (Shift F10), else the first.
     let cell = null;
@@ -1880,19 +2017,24 @@
         ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         // The block type's own entries (a note's Add pointer, Remove pointer): each one save of the fields it names.
         ...(cell ? cellRows(single, cell) : def && def.actions ? def.actions(single).map((a) => ({ id: a.id, label: a.label, icon: a.icon, onClick: () => ctx.change(single.id, a.fields, { save: 'now' }) })) : []),
-        { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
+        ...(list.length ? [{ id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } }] : []),
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         ...(lines.length ? lineGroups(lines) : []),
         ...(worded.length ? textGroups(worded).map((g) => ({ id: g.id, label: g.label, icon: g.id === 'text-size' ? 'text-height' : 'align-left', hint: g.hint, items: g.rows })) : []),
         ...links,
         ...(pair() ? [{ id: 'connect', label: 'Connect them', icon: 'arrows-turn-right', onClick: () => connectPicked() }] : []),
+        // Two or more picked: align and distribute them, group them; and for any picked, ungroup, lock or unlock.
+        ...(ids.length > 1 ? [{ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', items: arrangeRows() }] : []),
+        ...(ids.length > 1 && canGroup() ? [{ id: 'group', label: 'Group', icon: 'object-group', hint: keyHint(`${MOD} G`), onClick: () => groupPicked() }] : []),
+        ...(inGroup() ? [{ id: 'ungroup', label: 'Ungroup', icon: 'object-ungroup', hint: keyHint(`${MOD} Shift G`), onClick: () => ungroupPicked() }] : []),
+        { id: 'lock', label: lockOn ? 'Lock' : 'Unlock', icon: lockOn ? 'lock' : 'lock-open', hint: keyHint(`${MOD} L`), onClick: () => lockPicked() },
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
-        ...clipRows(null),
+        ...clipRows(null, { cut: list.length > 0 }),
         exportRow('selection'),
         { separator: true },
-        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
+        { id: 'delete', label: deletable > 1 ? `Delete ${deletable} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, disabled: !deletable, onClick: () => removeMany(ids) },
       ],
     });
     // Line width has no icon that reads as it: a short line is drawn in the icon's place instead.
@@ -1930,6 +2072,11 @@
     // Undo: Ctrl or Cmd Z; redo: with Shift, or Ctrl Y.
     const zy = mod ? (e.code === 'KeyZ' || k.toLowerCase() === 'z' ? 'z' : e.code === 'KeyY' || k.toLowerCase() === 'y' ? 'y' : '') : '';
     if (zy && history) { e.preventDefault(); undoRedo(zy === 'z' && !e.shiftKey ? 'undo' : 'redo'); return; }
+    // Lock (Ctrl or Cmd L, again to unlock), group (Ctrl or Cmd G) and ungroup (with Shift): only with something picked,
+    // so with nothing picked the browser keeps the keys (by the key's place too, so any keyboard layout).
+    const named = mod ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
+    if (named === 'l' && !e.shiftKey && policy.canEdit && sel.size) { e.preventDefault(); lockPicked(); return; }
+    if (named === 'g' && policy.canEdit && sel.size) { e.preventDefault(); if (e.shiftKey) ungroupPicked(); else groupPicked(); return; }
     // Copy, cut, paste and duplicate (by the key's place too, so any keyboard layout).
     const letter = mod && !e.shiftKey ? (e.code && e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : k.toLowerCase()) : '';
     if (letter && 'cxvd'.includes(letter) && policy.canEdit) {
@@ -1939,13 +2086,20 @@
       clipKey(letter);
       return;
     }
-    if ((k === 'Delete' || k === 'Backspace') && picked.length) { e.preventDefault(); removeMany(picked.map((x) => x.id)); surface.focus({ preventScroll: true }); return; }
+    // Locked blocks among those picked stay, and the person is told (removeMany, the arrows and the brackets).
+    const lockedPicked = policy.canEdit ? [...sel].filter((id) => { const x = board.get(id); return x && x.locked; }).length : 0;
+    if ((k === 'Delete' || k === 'Backspace') && (picked.length || lockedPicked)) { e.preventDefault(); removeMany([...sel]); surface.focus({ preventScroll: true }); return; }
     if (k === 'Escape') {
       if (tool.id !== 'select') setTool('select'); else select(null);
       surface.focus({ preventScroll: true });
       return;
     }
-    if (k === 'Enter' && b) { e.preventDefault(); edit(b.id); return; }
+    // Enter edits the one picked block, or the block of a picked group that has the keyboard.
+    const focused = renderer.blockAt(e.target);
+    const toEdit = b || (focused && sel.has(focused) ? board.get(focused) : null);
+    if (k === 'Enter' && toEdit) { e.preventDefault(); edit(toEdit.id); return; }
+    if (k.startsWith('Arrow') && lockedPicked && !mod) lockedNote(lockedPicked, sel.size);
+    if (k.startsWith('Arrow') && !picked.length && lockedPicked && !mod) { e.preventDefault(); return; }
     if (k.startsWith('Arrow') && picked.length && !mod) {
       e.preventDefault();
       const step = e.shiftKey ? 1 : 10;
@@ -1958,10 +2112,10 @@
     if (mod) return;
     // ] forward one layer, [ back one; with Shift, to the front and to the back (by the key's place, so any keyboard layout).
     const bracket = e.code === 'BracketRight' || k === ']' || k === '}' ? 'up' : e.code === 'BracketLeft' || k === '[' || k === '{' ? 'down' : null;
-    if (bracket && picked.length) {
+    if (bracket && (picked.length || lockedPicked)) {
       e.preventDefault();
       const ends = e.shiftKey || k === '}' || k === '{';
-      layer(picked.map((x) => x.id), bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
+      layer([...sel], bracket === 'up' ? (ends ? 'front' : 'forward') : (ends ? 'back' : 'backward'));
       return;
     }
     if (k === '+' || k === '=') { renderer.zoomBy(1.25); updateStatus(); return; }

@@ -11,6 +11,13 @@
   // With Snap to grid (ctx.snapping, turned round while Alt is held) a move puts the pressed block's corner on the grid and
   // the others with it by the same amount; a resize puts the dragged edges or the line's end on the grid (not while the
   // shape is kept). Each is still saved once, on the drop: one step to undo.
+  // With Snap to grid off (and Alt not held: Alt turns guides off for that drag), a move lines the dragged blocks' box up
+  // with the blocks near it in sight (lib-m, wbGuideSnap: its edges and middle onto theirs within GUIDE screen pixels),
+  // and the page draws the guides while it does (ctx.guides). Not for a resize, nor a line's end. The blocks it lines up
+  // with are found once, when the drag begins (ctx.guideBoxes). A locked block is not moved (lib-b): a drag of picked
+  // blocks moves the others, and the person is told once (ctx.lockedNote).
+  // Picking one block of a group picks the whole group (the page's select does it), so a click, Shift-click or rectangle
+  // works on whole groups.
   // A connector's end (resize.attach) goes where it is let go: onto a block (the side whose middle it is near, else the
   // side that faces the other end), or the board (a free end, on the grid with Snap to grid); the block under it shows
   // its connection points meanwhile. A connector moves with the blocks it is attached to; moved itself (with others
@@ -21,6 +28,7 @@
   // scale), one save on the drop.
   {
     const SLOP = 4; // screen pixels a press may wander and still be a press, not a drag
+    const GUIDE = 6; // screen pixels a dragged box's edge or middle may be from another's and go onto it
     const TWICE = 400; // milliseconds between two presses that open a block
     let hold = null; // { kind: 'block' | 'board' | 'resize', ... } while the pointer is down
     let last = { id: null, t: 0 };
@@ -124,8 +132,10 @@
           if (!adding && (!ctx.isSelected(p.id) || ctx.selection().length < 2)) ctx.select(p.id);
           const now = Date.now();
           if (!adding && last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id, { target: p.event && p.event.target }); return; }
-          const blocks = ctx.selection().map((id) => ctx.get(id)).filter((b) => b && ctx.policy.canChange(b));
-          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ ...b })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding };
+          const all = ctx.selection().map((id) => ctx.get(id)).filter(Boolean);
+          const blocks = all.filter((b) => ctx.policy.canChange(b));
+          const locked = all.filter((b) => b.locked === true).length;
+          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ ...b })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding, locked, of: all.length, guide: null };
           for (const s of hold.starts) ctx.hold(s.id, true);
         } else if (emptyPress(p, ctx) === 'marquee') {
           hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p, ctx) ? ctx.selection() : [], moved: false };
@@ -167,8 +177,9 @@
           ctx.change(hold.id, hold.r.scale ? hold.r.scale(hold.start, box) : box, { save: false });
           return;
         }
-        if (!hold.moves) return;
         if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
+        if (hold.locked && !hold.told && ctx.lockedNote && !hold.adding) { hold.told = true; ctx.lockedNote(hold.locked, hold.of); }
+        if (!hold.moves) return;
         hold.moved = true;
         const s = ctx.scale();
         let dx = (p.sx - hold.sx) / s;
@@ -183,7 +194,18 @@
             dx = wbSnap(lead.x + dx) - lead.x;
             dy = wbSnap(lead.y + dy) - lead.y;
           }
-        }
+          if (ctx.guides) ctx.guides([]);
+        } else if (ctx.guiding && ctx.guiding(p.event)) {
+          // The box round the dragged blocks, and the boxes it may line up with, once per drag.
+          if (!hold.guide) hold.guide = ctx.guideBoxes(hold.starts.map((b) => b.id));
+          const g = hold.guide;
+          if (g && g.box) {
+            const r = wbGuideSnap({ x0: g.box.x0 + dx, y0: g.box.y0 + dy, x1: g.box.x1 + dx, y1: g.box.y1 + dy }, g.near, GUIDE / s);
+            dx += r.dx;
+            dy += r.dy;
+            ctx.guides(r.lines);
+          }
+        } else if (ctx.guides) ctx.guides([]);
         for (const b of hold.starts) ctx.change(b.id, wbMoved(b, dx, dy), { save: false });
       },
       up(p, ctx) {
@@ -202,6 +224,7 @@
           ctx.hold(hold.id, false);
         }
         if (hold && hold.kind === 'block') {
+          if (ctx.guides) ctx.guides([]);
           // The drop is saved first, so a change from elsewhere held meanwhile is overtaken. Every block moved, in one go.
           if (hold.moved) for (const b of hold.starts) ctx.save(b.id);
           for (const b of hold.starts) ctx.hold(b.id, false);
@@ -223,6 +246,7 @@
           ctx.hold(hold.id, false);
         }
         if (hold && hold.kind === 'block') {
+          if (ctx.guides) ctx.guides([]);
           for (const b of hold.starts) {
             if (hold.moved) ctx.change(b.id, wbMoved(b, 0, 0), { save: false });
             ctx.hold(b.id, false);
