@@ -2593,6 +2593,7 @@
     $('app').classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
     updateStatus(); // the overview: its size, and whether there is room for it
+    if (finding) placeFind(); // the find bar clear of the colour strip at the new width
   }).observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
