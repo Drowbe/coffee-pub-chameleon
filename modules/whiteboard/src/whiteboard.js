@@ -669,11 +669,18 @@
   };
   surface.addEventListener('pointerup', lift);
   surface.addEventListener('pointercancel', lift);
+  const WHEEL_STEP = Math.log(1.12); // the most one wheel step zooms: 12%
   surface.addEventListener('wheel', (e) => {
     e.preventDefault();
     const r = surface.getBoundingClientRect();
-    if (e.ctrlKey || e.metaKey) renderer.zoomAt(renderer.view.s * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
-    else renderer.panBy(-e.deltaX, -e.deltaY);
+    // In pixels, whatever the wheel counts in (lines, pages).
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? surface.clientHeight : 1;
+    if (e.ctrlKey || e.metaKey) {
+      // A pinch on a trackpad comes as many small steps and follows the fingers; a mouse wheel's notch is one big step,
+      // held to WHEEL_STEP, so it zooms a little, not by half again.
+      const f = Math.min(WHEEL_STEP, Math.max(-WHEEL_STEP, -e.deltaY * unit * 0.01));
+      renderer.zoomAt(renderer.view.s * Math.exp(f), e.clientX - r.left, e.clientY - r.top);
+    } else renderer.panBy(-e.deltaX * unit, -e.deltaY * unit);
     updateStatus();
   }, { passive: false });
 
