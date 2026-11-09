@@ -50,6 +50,32 @@
   const WB_GRID = 24;
   const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
+  // The words of a note, a text block and a shape (a block type with `markup: true`) are stored as written, in the small
+  // markup chat uses (**bold**, *italic*, `code`, - and 1. lists, # headings, [words](https://...) links) and drawn
+  // through the host's markdown (lib-d, wbShowWords). They have a size and an alignment of their own: a closed list of
+  // the theme's type tokens, and three ways to line the words up. A block that has neither reads as its type's usual.
+  const WB_SIZES = [
+    { id: 'small', label: 'Small', token: 'var(--text-14)' },
+    { id: 'medium', label: 'Medium', token: 'var(--text-16)' },
+    { id: 'large', label: 'Large', token: 'var(--text-22)' },
+    { id: 'huge', label: 'Huge', token: 'var(--text-28)' },
+  ];
+  const WB_SIZE_BY_ID = new Map(WB_SIZES.map((x) => [x.id, x]));
+  const WB_ALIGNS = [
+    { id: 'left', label: 'Left', icon: 'align-left' },
+    { id: 'center', label: 'Centre', icon: 'align-center' },
+    { id: 'right', label: 'Right', icon: 'align-right' },
+  ];
+  const WB_ALIGN_BY_ID = new Map(WB_ALIGNS.map((x) => [x.id, x]));
+  // What the page hands the board for markup: html(text) -> the host's markdown (escaped first), plain(text, { line })
+  // -> the host's plain text of it. Until the page sets them, words are shown and read as they are.
+  const wbMarkup = { html: null, plain: null };
+  // A block's words as plain text, on one line: what a screen reader is told, never the markup.
+  const wbPlain = (text) => {
+    const t = typeof text === 'string' ? text : '';
+    const out = wbMarkup.plain ? wbMarkup.plain(t, { line: true }) : t;
+    return String(out).replace(/\s+/g, ' ').trim();
+  };
   // Small checks every block type uses to clean what it reads.
   const wb = {
     // A finite number in [-max, max] rounded to one decimal, or null.
@@ -68,6 +94,8 @@
     paint(v, extra, fallback) { return WB_PALETTE_BY_ID.has(v) || (extra && extra.includes(v)) ? v : fallback; },
     // One of the widths, or the fallback.
     weight(v, fallback) { return WB_WEIGHTS.includes(v) ? v : fallback; },
+    // One of a closed list's ids (a Map by id), or the fallback.
+    choice(v, byId, fallback) { return typeof v === 'string' && byId.has(v) ? v : fallback; },
     id(v) { return typeof v === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(v) ? v : null; },
     svg(tag, attrs = {}) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -98,23 +126,78 @@
   // element, describe(block) -> words for a screen reader, noun?(block) -> what a person calls it ("arrow"; else the
   // label in lower case), paint?: { role: { label?, extra?: ['none', 'auto'] } } (the
   // colour roles it has, see the top of this file), weight?: true (it has a line or border width), edit?: 'text' |
-  // 'colour' (what opening it does), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
+  // 'colour' (what opening it does), markup?: true (its `text` is markup, drawn with wbShowWords, edited with the
+  // formatting bar, and it has a size and an align: its create() gives their usual, wbClean cleans them), and for 'text' textOf(el) -> the element the words are edited over, textField? (the
   // field edited, 'text' unless named: a picture's 'alt'), textLine? (one line: Enter keeps it), textLabel? (the field's
   // name for a screen reader), textMax? (most characters), editLabel? (the menu's word for it, else "Edit"), resize?: how it
   // changes size when it is the one block picked:
   // { handles: 'corners', min: { w, h }, height?: false, keep?: true } (x, y, w, h; height false: only w, the words set the
   // height; keep: a corner always keeps the block's shape, as Shift does for the others) or
-  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }, linked?: [[field, ...], ...] (fields that only
-  // make sense together, such as a box's x, y, w and h: an undo puts them back together or leaves them all, see lib-g),
-  // and, for a block that points at other blocks (a
-  // connector, later), refs?(block) -> the ids it points at and remap?(block, idMap) -> the fields to change when it is
-  // copied along with them (lib-h; idMap: old id -> the copy's id). A block's delete takes away only the block: what it
-  // points at or uses (another block, an upload) stays, so an undo can bring it back whole. Hit-testing is the browser's: what render draws with
-  // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
+  // { handles: 'ends', attach?: true } (a line: x, y, dx, dy; attach: a connector, whose ends are re-attached); no resize,
+  // no handles }, linked?: [[field, ...], ...] (fields that only make sense together, such as a box's x, y, w and h: an
+  // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
+  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
+  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
+  // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
+  // A block that draws outside its box (a note's pointer) has reach?(block) -> the box of all it draws, relative to x, y
+  // ({ x, y, w, h }): the group frame, "Show everything", the rectangle that picks blocks, layers and a paste's middle use
+  // it; the box stays what is resized and what a connector attaches to. grips?(block) -> more handles for the one block
+  // picked, beside its resize handles ([{ id, x, y }], each a point relative to the box's top left corner), and
+  // grip(block, id, at) -> the fields to change while one of them is dragged to `at` (a point on the board); saved once,
+  // on the drop. actions?(block) -> entries of its own for the right-click menu ([{ id, label, icon, fields }]): a choice
+  // sets those fields, one save. exported?(block, el, ctx) -> changes the copy of its element (el) that is saved as a
+  // picture or printed (lib-l), and may answer a promise: a picture puts its upload in as a data URL, a timer leaves out
+  // its controls, a table its active cell. ctx: { live (printing: the copy stays in the page), scale (pixels per board
+  // unit), picture(upload, thumb) -> a promise of a data URL, or null }. Without it the copy is drawn as it is shown.
+  // A block made of cells (a table, lib-e-block-table.js) has edit: 'cells' (the page edits one cell at a time, see
+  // whiteboard.js "cells"), role (its element's role: 'group', round a table of its own, rather than 'button'), and more of
+  // the hooks above: grips(block, el) (its element, to measure what is drawn; a grip may have kind 'col' | 'row' (a grab
+  // bar len units long) | 'add' (a +), and ox, oy to push it out from the box), gripBase?(block, id, el) -> what a grip's
+  // drag starts from (handed to grip as a 4th argument), tap?(block, id) -> the fields a press on a grip without a drag
+  // changes (one save), actions(block, cell) (the cell pressed, { r, c }; an entry may be { refuse: words } in its fields
+  // for a short note instead of a save, and current, ariaLabel, disabled), and in resize: minOf?(block) -> its least
+  // { w, h }, measure?(block, el) -> what a corner's drag starts from beside the block ({ h, ... } as drawn), and
+  // scale?(start, box) -> the fields a corner's drag changes for the new box (else the box itself).
+  //
+  // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
+  // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,
+  // pointOf) -> the fields to change when it is copied without some of them (an end on a block not in `keep`, a Set of ids,
+  // becomes a free point where it is drawn now, pointOf(end) -> { x, y }). Such a block is `attached`: it has no x, y of its
+  // own and is drawn from the boxes of the blocks it points at, never stored: layout(block, boxOf) -> what to draw
+  // ({ points, box, ... } in board units) or null while a block it points at is not on the board (then it is not drawn at
+  // all), where boxOf(id) -> that block's box on the board ({ x, y, w, h, in? }) or null; render(block, el, layout) and
+  // describe(block, find) (find(id) -> another block, for its words). A block's delete takes away only the block and the
+  // connectors attached to it (the page does that, in the same undo step): what it uses (an upload) stays, so an undo can
+  // bring it back whole. Hit-testing is the browser's: what render draws with pointer events on (see whiteboard.css,
+  // .wb-hit) is what a click finds.
+  //
+  // Later, not built: a note's pointer that locks onto another block, so its tip follows it. The stored shape stays
+  // pointer: { dx, dy } (the tip's offset from the note's middle, lib-e-block-note.js) and gains an optional
+  // target: { block, side }, resolved when it is drawn as a connector's end is (boxOf(target.block), wbSidePoint): the tip
+  // goes to that side's middle while the block is on the board, and falls back to dx, dy while it is not. The note then has
+  // refs, remap and loosen like a connector (loosen writes the drawn tip back into dx, dy), and is redrawn with the block
+  // it points at (the renderer's deps); it stays a placed block with its own x, y, so it is not `attached`.
+  // Later too: a highlight (lib-e-block-highlight.js) that locks onto what it highlights, so it moves with that block. It
+  // gains an optional target: { block, dx, dy }, its x, y's offset from that block's top left corner; when it is drawn,
+  // x, y become boxOf(target.block) + dx, dy (as a connector's ends are resolved), and it keeps its own x, y as they were
+  // last drawn for while the block is not on the board. refs, remap and loosen as for the pointer above; a move of the
+  // highlight alone changes dx, dy (its type's move).
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
+  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
+  // another connector.
+  const wbAttachable = (def) => Boolean(def && !def.attached && def.resize && def.resize.handles === 'corners');
+  // The fields that change when a block is moved by dx, dy: its type's move, else x and y.
+  function wbMoved(b, dx, dy) {
+    const def = blockTypes.get(b.type);
+    return def && def.move ? def.move(b, dx, dy) : { x: b.x + dx, y: b.y + dy };
+  }
 
-  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), edits (it changes the board), makes? (the block type it puts on the board, for
-  // the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx), up?(p, ctx),
+  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), group? (one of the
+  // choices in a toolbar button's menu, by the group's id: 'flowchart'), edits (it changes the board), makes? (the block
+  // type it puts on the board, for the colour and width menus' "new blocks"), usual? (fields its new blocks get unless the
+  // person picked otherwise: a marker's brush and width), paints? (the colour role it gives a block it is clicked on: the
+  // Fill tool's 'fill'; the Colour menu then sets that colour), cursor?, down(p, ctx), move?(p, ctx),
+  // up?(p, ctx), hover?(p, ctx) (a mouse or a pen over the board with nothing pressed; p null when it leaves),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
   // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType
   // and event.
@@ -125,22 +208,27 @@
     if (!raw || typeof raw !== 'object') return null;
     const def = blockTypes.get(raw.type);
     const id = wb.id(raw.id);
-    const x = wb.num(raw.x);
-    const y = wb.num(raw.y);
+    // An attached block (a connector) has no place of its own: it is drawn from the blocks it points at.
+    const placed = !(def && def.attached);
+    const x = placed ? wb.num(raw.x) : 0;
+    const y = placed ? wb.num(raw.y) : 0;
     if (!def || !id || x === null || y === null) return null;
     const own = def.clean(raw);
     if (!own) return null;
     const usual = def.create();
     for (const [role, spec] of Object.entries(def.paint || {})) own[role] = wb.paint(raw[role], spec.extra, usual[role]);
     if (def.weight) own.weight = wb.weight(raw.weight, usual.weight);
+    if (def.markup) {
+      own.size = wb.choice(raw.size, WB_SIZE_BY_ID, usual.size);
+      own.align = wb.choice(raw.align, WB_ALIGN_BY_ID, usual.align);
+    }
     // z is kept as it is (not rounded), so a block put between two neighbours keeps its place; see wbBetween.
     const z = typeof raw.z === 'number' && Number.isFinite(raw.z) && Math.abs(raw.z) <= 1e9 ? raw.z : 0;
     return {
       ...own,
       id,
       type: def.type,
-      x,
-      y,
+      ...(placed ? { x, y } : {}),
       z,
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',

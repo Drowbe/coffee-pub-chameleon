@@ -389,6 +389,21 @@ test('Share: the author\'s private message, made public with the PATCH the badge
 
 // --- step 5 ---------------------------------------------------------------------------------------------------------
 
+// A tint is written `#rrggbb;` (host.css) or `var(--tone-<same name>, #rrggbb);` (style.css: a theme may set the tone, the hex is
+// what it is until it does). Anything else, or another tone's name, is not a tint value.
+function tintValue(block, t) {
+  const m = new RegExp(`--tint-${t}: (?:#([0-9a-f]{6})|var\\(--tone-${t}, #([0-9a-f]{6})\\));`).exec(block);
+  return m ? (m[1] || m[2]) : null;
+}
+
+test('tintValue reads both written forms and refuses a mixed or foreign one (planted)', () => {
+  assert.equal(tintValue('--tint-gold: #d9a93c;', 'gold'), 'd9a93c');
+  assert.equal(tintValue('--tint-gold: var(--tone-gold, #d9a93c);', 'gold'), 'd9a93c');
+  assert.equal(tintValue('--tint-gold: var(--tone-blue, #d9a93c);', 'gold'), null, 'another tone');
+  assert.equal(tintValue('--tint-gold: color-mix(in srgb, #d9a93c, #94680a);', 'gold'), null, 'a mix of the palettes');
+  assert.equal(tintValue('--tint-gold: var(--tone-gold, var(--x));', 'gold'), null, 'no fixed fallback');
+});
+
 test('the eight tints: fixed dark values on :root and light ones for the light mode, in style.css and host.css', () => {
   for (const file of ['public/style.css', 'public/sdk/host.css']) {
     const src = read(file);
@@ -397,14 +412,14 @@ test('the eight tints: fixed dark values on :root and light ones for the light m
     assert.ok(lightAt > -1, `${file}: the light values follow the mode showing`);
     const light = src.slice(lightAt, src.indexOf('}', lightAt));
     for (const t of TINTS) {
-      const dark = new RegExp(`--tint-${t}: (#[0-9a-f]{6});`).exec(root);
-      const lit = new RegExp(`--tint-${t}: (#[0-9a-f]{6});`).exec(light);
+      const dark = tintValue(root, t);
+      const lit = tintValue(light, t);
       assert.ok(dark && lit, `${file}: --tint-${t} has a dark and a light value`);
-      assert.notEqual(dark[1], lit[1], `${file}: --tint-${t} differs by mode`);
+      assert.notEqual(dark, lit, `${file}: --tint-${t} differs by mode`);
     }
   }
-  // The same values in both files.
-  const values = (src) => [...src.matchAll(/--tint-([a-z]+): (#[0-9a-f]{6});/g)].map((m) => `${m[1]}=${m[2]}`).join(' ');
+  // The same values in both files (style.css may wrap each in its tone role).
+  const values = (src) => [...src.matchAll(/--tint-([a-z]+): (?:var\(--tone-[a-z]+, )?(#[0-9a-f]{6})\)?;/g)].map((m) => `${m[1]}=${m[2]}`).join(' ');
   assert.equal(values(read('public/sdk/host.css')), values(css));
   // The mode showing is written for the light values to key on, and module frames receive the tints.
   assert.match(read('public/theme-mode.js'), /for \(const doc of liveDocs\(\)\) doc\.documentElement\.dataset\.modeShown = mode;/);

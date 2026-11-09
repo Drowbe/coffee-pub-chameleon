@@ -65,7 +65,7 @@ The environment's calendar also shows the events of every space you belong to th
 
 In a space, the **Calendar** tab in the top bar shows the Calendar and the To-do together for that space (the same page as Global Calendar, for one space: no list of spaces to choose, and no calendars of your own). It fills the Workspace, loads as saved each time you press its tab, and does not set you Away on the call. The call and the chat stay in the column beside it. It shows that space's events, and the environment's events beside them marked **environment**. The environment's events are read-only in a space; change them on the environment's calendar. Its **Month | Week | Day | Agenda** views and its **Agenda | To-do** panel work as described above.
 
-The Calendar can also be switched on as a module from the **Layout** menu, where it appears as **Calendar** (the Calendar and the To-do are one switch), docked as a column or floating, or in a window of its own.
+The Calendar can also be switched on as a module from Set up's **Modules** tab, where it appears as **Calendar** (the Calendar and the To-do are one switch), docked as a column or floating, or in a window of its own.
 
 Days inside a dated phase of the space are tinted with the phase's colour (see "Phases" in [Spaces](userguide-spaces.md)). A soft wash fills each such day in the **Month**, **Week** and **Day** views, and the phase's name is shown on its first day and on the first day a view shows; **Day** keeps a phase bar over the all-day events. A space with no phases, a day in none and the environment's own calendar have no tint.
 
@@ -123,7 +123,7 @@ Set **Repeats** to every day, week, 2 weeks, month or year, and optionally an **
 
 ## Reminders
 
-Set **Remind people** on an event to send a notification when it starts, 15 minutes before, an hour before, or a day before. Everyone in that space (or everyone in the environment, for one of its events) who is allowed to see the calendar gets a toast, and a number on the Calendar's switch in the **Layout** menu until they open it. A space's event made or changed from the environment's calendar, or from Global Calendar, reminds that space's people. Changing an event moves its reminder, and deleting it cancels the reminder. An event with a reminder time that has already passed gets no reminder. A repeating event reminds people before every occurrence, including while nobody has the calendar open.
+Set **Remind people** on an event to send a notification when it starts, 15 minutes before, an hour before, or a day before. Everyone in that space (or everyone in the environment, for one of its events) who is allowed to see the calendar gets a toast, and a number on the Calendar's switch on Set up's **Modules** tab until they open it. A space's event made or changed from the environment's calendar, or from Global Calendar, reminds that space's people. Changing an event moves its reminder, and deleting it cancels the reminder. An event with a reminder time that has already passed gets no reminder. A repeating event reminds people before every occurrence, including while nobody has the calendar open.
 
 ## In your own calendar app
 

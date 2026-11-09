@@ -43,7 +43,33 @@
 .wb-block { position: absolute; --wb-ink: var(--text-primary); --wb-stroke: var(--text-primary); --wb-weight: 0px; color: var(--wb-ink); }
 .wb-block:focus { outline: none; }
 .wb-block:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 4px; }
-.wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; }
+.wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; text-align: var(--wb-align, inherit); }
+
+/* a block's words written with markup (lib-d, wbShowWords: the host's markdown), close set so a note stays a note: the
+   words' own size (--wb-size, a type token the renderer sets) and colour, headings a step or two larger, no colours of
+   their own but the ink's and the accent under a link */
+.wb-md :is(p, ul, ol, h1, h2, h3, pre, blockquote) { margin: 0; }
+.wb-md > * + * { margin-top: 0.35em; }
+.wb-md :is(ul, ol) { padding-left: 1.4em; }
+.wb-block:is([data-align="center"], [data-align="right"]) .wb-md :is(ul, ol) { padding-left: 0; list-style-position: inside; }
+.wb-md :is(h1, h2, h3) { font-weight: var(--weight-strong); line-height: 1.2; }
+.wb-md h1 { font-size: 1.5em; }
+.wb-md h2 { font-size: 1.25em; }
+.wb-md h3 { font-size: 1.1em; }
+.wb-md strong { font-weight: var(--weight-strong); }
+.wb-md em { font-style: italic; }
+.wb-md code {
+  padding: 0 0.2em;
+  border-radius: var(--radius-min);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.wb-md pre { padding: 0.3em 0.5em; border-radius: var(--radius-small); background: color-mix(in srgb, currentColor 10%, transparent); white-space: pre-wrap; }
+.wb-md pre code { padding: 0; background: none; }
+.wb-md blockquote { padding-left: 0.6em; border-left: 2px solid color-mix(in srgb, currentColor 40%, transparent); }
+/* a link: underlined in the accent, never dragged; a press on it is the board's (whiteboard.js, "links") */
+.wb-md a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 0.15em; -webkit-user-drag: none; }
 
 /* a note: a square of its fill with words on it, a slight border a little darker than the fill (stroke 'auto': the fill
    with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
@@ -55,42 +81,99 @@
   border-radius: var(--radius-min);
   background: var(--wb-face);
   box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent);
-  font-size: var(--text-16);
+  font-size: var(--wb-size, var(--text-16));
   overflow: hidden;
   cursor: grab;
 }
 .wb-type-note[data-stroke="auto"] { border-color: color-mix(in srgb, var(--wb-face) 40%, var(--shadow-color)); }
 .wb-type-note[data-stroke="none"] { border-style: none; }
-.wb-type-note .wb-words { height: 100%; overflow: hidden; }
+.wb-type-note .wb-words { position: relative; height: 100%; overflow: hidden; }
+/* a note with a pointer (lib-e-block-note.js): the note and its tail are one outline in an SVG behind the words, with the
+   note's own fill, border and shadow (the box's are put away), so there is no seam where the tail meets the note. The SVG
+   starts at the box's outer corner, out past the border. */
+.wb-type-note[data-pointer] { overflow: visible; background: none; border-color: transparent; box-shadow: none; }
+.wb-svg.wb-note-shape {
+  left: calc(-1 * var(--wb-weight));
+  top: calc(-1 * var(--wb-weight));
+  filter: drop-shadow(0 1px 1px var(--shadow-color)) drop-shadow(0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent));
+  pointer-events: none;
+}
+.wb-type-note[data-stroke="none"] .wb-note-shape { left: 0; top: 0; }
+.wb-svg .wb-note-outline { fill: var(--wb-face); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linejoin: round; }
+.wb-type-note[data-stroke="auto"] .wb-note-outline { stroke: color-mix(in srgb, var(--wb-face) 40%, var(--shadow-color)); }
+.wb-type-note[data-stroke="none"] .wb-note-outline { stroke: none; }
 
 /* words on their own; a background (a light wash of its fill) and a border only when they are picked */
-.wb-type-text { padding: 4px; font-size: var(--text-22); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
+.wb-type-text { padding: 4px; font-size: var(--wb-size, var(--text-22)); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
 .wb-type-text:not([data-fill="none"]) { background: color-mix(in srgb, var(--wb-fill) 22%, transparent); }
 .wb-type-text[data-stroke="none"] { border-style: none; }
 .wb-type-text .wb-words:empty { min-height: 1.35em; }
 
-/* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line */
-.wb-type-rect, .wb-type-ellipse, .wb-type-line, .wb-type-stroke { pointer-events: none; }
+/* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line (.wb-shape: every closed shape) */
+.wb-shape, .wb-type-line, .wb-type-stroke, .wb-type-highlight, .wb-type-connector { pointer-events: none; }
 .wb-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .wb-svg .wb-hit { pointer-events: visiblePainted; cursor: grab; }
 .wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: max(16px, calc(var(--wb-weight) + 8px)); stroke-linecap: round; pointer-events: stroke; }
 /* a shape is picked anywhere inside it, with or without a fill */
-.wb-svg .wb-shape-body { fill: color-mix(in srgb, var(--wb-fill, var(--text-primary)) 14%, transparent); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); pointer-events: visible; }
+.wb-svg .wb-shape-body { fill: color-mix(in srgb, var(--wb-fill, var(--text-primary)) 14%, transparent); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linejoin: round; pointer-events: visible; }
 .wb-block[data-fill="none"] .wb-shape-body { fill: none; }
 .wb-block[data-stroke="none"] .wb-shape-body { stroke: none; }
 .wb-svg .wb-stroke { fill: none; stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .wb-svg .wb-head { fill: var(--wb-stroke); pointer-events: none; }
-.wb-type-rect .wb-words, .wb-type-ellipse .wb-words {
+/* the brushes (lib-e-block-stroke.js): a marker's line a little see-through, so strokes laid over one another show; a
+   brush's stroke a filled shape, thinner at its ends */
+.wb-svg[data-brush="marker"] .wb-stroke { stroke: color-mix(in srgb, var(--wb-stroke) 55%, transparent); }
+.wb-svg .wb-brush { fill: var(--wb-stroke); stroke: none; pointer-events: none; }
+/* a highlight (lib-e-block-highlight.js): a wide band with round ends in a wash of its colour, laid over what is under
+   it. A plain see-through wash, no blend mode: a multiply blend reads well on a light board but turns to a dark smudge on
+   a dark one, and a module's page cannot tell which mode the theme is in, so one wash of the tint token at 38% serves both
+   (the tints are lighter in the dark mode, darker in the light one). One path, so it is no darker where it crosses itself. */
+.wb-svg .wb-highlight { fill: none; stroke: color-mix(in srgb, var(--wb-stroke) 38%, transparent); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+/* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type), in the middle from
+   top to bottom and lined up as the block says (centred at first); a link in them takes the pointer */
+.wb-shape .wb-words {
   position: absolute;
-  inset: 8px;
+  inset: var(--wb-inset, 8px);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  text-align: center;
-  font-size: var(--text-16);
+  text-align: var(--wb-align, center);
+  font-size: var(--wb-size, var(--text-16));
   overflow: hidden;
   pointer-events: none;
 }
+.wb-shape .wb-words a { pointer-events: auto; }
+
+/* a table (lib-e-block-table.js): cells on the board's own colour (or a light wash of their fill), the lines in the
+   stroke colour (the ones inside a little lighter than the outer border), the header row on a faint wash of the lines'
+   colour with strong words. A row is at least its stored height and grows to fit its words. The active cell (moved
+   through with the arrow keys) has the accent's ring; the cell being edited shows its text box in place of its words. */
+.wb-type-table { font-size: var(--wb-size, var(--text-14)); cursor: grab; }
+.wb-tbl {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: var(--wb-weight) solid var(--wb-stroke);
+  background: var(--surface-page);
+  color: var(--wb-ink);
+}
+.wb-type-table:not([data-fill="none"]) .wb-tbl { background: color-mix(in srgb, var(--wb-fill) 18%, var(--surface-card)); }
+.wb-tbl td {
+  padding: 4px 8px;
+  border-right: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
+  border-bottom: var(--wb-weight) solid color-mix(in srgb, var(--wb-stroke) 55%, transparent);
+  vertical-align: top;
+  text-align: var(--wb-align, left);
+  overflow: hidden;
+}
+.wb-tbl td:last-child { border-right: none; }
+.wb-tbl tr:last-child > td { border-bottom: none; }
+.wb-type-table[data-stroke="none"] .wb-tbl, .wb-type-table[data-stroke="none"] .wb-tbl td { border-style: none; }
+.wb-tbl tr.wb-head > td { background: color-mix(in srgb, var(--wb-stroke) 10%, transparent); font-weight: var(--weight-strong); }
+.wb-tbl td.wb-cell-on { box-shadow: inset 0 0 0 calc(2px / var(--wb-scale, 1)) var(--accent); }
+.wb-tbl .wb-words { min-height: 1.35em; }
+.wb-tbl td.wb-editing > .wb-words { display: none; }
+.wb-tbl .wb-text-edit { text-align: var(--wb-align, left); }
 
 /* a picture: the upload drawn to its box, with a border only when one is picked; "Picture not found" when it is gone */
 .wb-type-image { border: var(--wb-weight) solid var(--wb-stroke); cursor: grab; }
@@ -173,6 +256,7 @@
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
+  text-align: var(--wb-align, inherit);
 }
 .wb-type-note .wb-text-edit { position: absolute; inset: 12px; width: auto; height: auto; }
 .wb-type-text .wb-text-edit { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); }
@@ -188,7 +272,54 @@
   color: var(--text-primary);
   font-size: var(--text-14);
 }
-.wb-type-rect .wb-text-edit, .wb-type-ellipse .wb-text-edit { position: absolute; inset: 8px; width: auto; height: auto; text-align: center; font-size: var(--text-16); }
+.wb-shape .wb-text-edit { position: absolute; inset: var(--wb-inset, 8px); width: auto; height: auto; text-align: var(--wb-align, center); font-size: var(--wb-size, var(--text-16)); }
+
+/* the formatting bar over a block whose words are being edited (lib-d, wbFormatBar): a small raised strip of quiet icon
+   buttons on the board, above the block (below it when there is no room), that wraps onto two rows when narrow; Link
+   swaps the buttons for an address field */
+.wb-format {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: calc(100% - 8px);
+  padding: var(--space-1);
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-medium);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
+  touch-action: manipulation;
+}
+.wb-format-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.wb-format-btn { position: relative; }
+.wb-format-level { position: absolute; right: 3px; bottom: 2px; font-size: var(--text-11); font-weight: var(--weight-strong); line-height: 1; pointer-events: none; }
+.wb-format-address { flex: 1; min-width: 12em; font-size: var(--text-16); user-select: text; -webkit-user-select: text; }
+.wb-format-why { max-width: 22em; margin: 0; padding: 0 var(--space-1); color: var(--text-danger); font-size: var(--text-12); }
+
+/* a connector: its line and arrowheads are the SVG rules above; its label sits over the middle of the line, on the
+   board's own colour so the line does not run through the words, and is not there while it has none */
+.wb-conn-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 16em;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-small);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: grab;
+}
+.wb-conn-label .wb-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-type-connector:not(.wb-editing) .wb-conn-label[data-empty] { display: none; }
+.wb-type-connector .wb-text-edit { width: 12em; text-align: center; font-size: var(--text-14); }
+.wb-type-connector.wb-editing .wb-conn-label .wb-words { display: none; }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
 .wb-frame {
@@ -219,6 +350,22 @@
   margin: calc(-10px / var(--wb-scale, 1));
   padding: calc(10px / var(--wb-scale, 1));
 }
+
+/* a block's connection points, while a connector is drawn or its end dragged: a small square on the middle of each side,
+   filled on the side the end goes to; the same size on the screen at any zoom */
+.wb-port {
+  position: absolute;
+  z-index: 2147482998;
+  width: calc(10px / var(--wb-scale, 1));
+  height: calc(10px / var(--wb-scale, 1));
+  box-sizing: border-box;
+  border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
+  border-radius: var(--radius-min);
+  background: var(--surface-card);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.wb-port-on { background: var(--accent); }
 
 /* the rectangle dragged on the board to pick every block it touches */
 .wb-marquee {
@@ -260,9 +407,34 @@
 .wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
 .wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
 .wb-handle-start, .wb-handle-end { cursor: move; }
-.wb-handle-start::after, .wb-handle-end::after { border-radius: var(--radius-small); }
-@media (pointer: coarse) { .wb-handle { --hit: 32px; } }
+.wb-handle-start::after, .wb-handle-end::after, .wb-handle-tip::after { border-radius: var(--radius-small); }
+/* a note's pointer tip: moved like a line's end */
+.wb-handle-tip { cursor: move; }
+/* a picked table's grab bars on the lines between its columns and its rows (--hl: the bar's length in board units), a
+   faint line until the pointer is over one, 12px across on the screen (16px on a touch screen), but never more than 16
+   board units, so zoomed far out the cells between them can still be pressed; and its two + handles, below the last row
+   and right of the last column, that add one */
+.wb-handle-col, .wb-handle-row { --bar: 12px; }
+.wb-handle-col { width: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); height: calc(var(--hl, 0) * 1px); cursor: col-resize; }
+.wb-handle-row { width: calc(var(--hl, 0) * 1px); height: min(calc(var(--bar) / var(--wb-scale, 1)), 16px); cursor: row-resize; }
+.wb-handle-col::after, .wb-handle-row::after { border: none; border-radius: 0; background: var(--accent); opacity: 0.3; }
+.wb-handle-col::after { width: calc(2px / var(--wb-scale, 1)); height: 100%; }
+.wb-handle-row::after { width: 100%; height: calc(2px / var(--wb-scale, 1)); }
+.wb-handle-col:hover::after, .wb-handle-row:hover::after, .wb-handle-col:active::after, .wb-handle-row:active::after { opacity: 1; }
+.wb-handle-add { cursor: pointer; }
+.wb-handle-add::after {
+  width: calc(18px / var(--wb-scale, 1));
+  height: calc(18px / var(--wb-scale, 1));
+  border-radius: var(--radius-small);
+  background:
+    linear-gradient(var(--accent), var(--accent)) center / calc(10px / var(--wb-scale, 1)) calc(2px / var(--wb-scale, 1)) no-repeat,
+    linear-gradient(var(--accent), var(--accent)) center / calc(2px / var(--wb-scale, 1)) calc(10px / var(--wb-scale, 1)) no-repeat,
+    var(--surface-card);
+}
+.wb-handle-add:hover::after { background-color: color-mix(in srgb, var(--accent) 16%, var(--surface-card)); }
+@media (pointer: coarse) { .wb-handle { --hit: 32px; } .wb-handle-col, .wb-handle-row { --bar: 16px; } }
 .app.narrow .wb-handle { --hit: 32px; }
+.app.narrow .wb-handle-col, .app.narrow .wb-handle-row { --bar: 16px; }
 
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
 
@@ -336,6 +508,95 @@
 /* Line width: a short line drawn at the width (up to 8px); dashed for Default with no type, or Mixed. */
 .wb-lw { display: block; width: 18px; height: var(--lw, 2px); border-radius: var(--radius-min); background: currentColor; }
 .wb-lw[data-state="default"], .wb-lw[data-state="mixed"] { height: 2px; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
+
+/* the Fill tool: the board's cursor over every block, the block under the pointer marked (a block with no background:
+   "not allowed"), and a swatch of the fill colour by the pointer */
+.board[data-tool="fill"] .wb-block, .board[data-tool="fill"] .wb-block * { cursor: inherit; }
+.board[data-tool="fill"] .wb-block[data-mark="no"], .board[data-tool="fill"] .wb-block[data-mark="no"] * { cursor: not-allowed; }
+.wb-block[data-mark="ok"] { outline: calc(2px / var(--wb-scale, 1)) solid var(--accent); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-block[data-mark="no"] { outline: calc(1px / var(--wb-scale, 1)) dashed var(--text-muted); outline-offset: calc(4px / var(--wb-scale, 1)); }
+.wb-swatch {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface-card);
+  border-radius: var(--radius-small);
+  background: var(--wb-swatch, var(--text-primary));
+  box-shadow: 0 0 0 1px var(--edge-hairline), 0 1px 3px var(--shadow-color);
+  transform: translate(12px, 12px);
+  pointer-events: none;
+}
+
+/* a timer: a card of a light wash of its fill, with the time left over a ring (stroke) that empties, and its controls
+   along the bottom for someone who may change it. Its size sets the time's size (a container). At the end the card
+   pulses a few times in its ring's colour, then stays marked; without the pulse for someone who asks for less motion. */
+.wb-type-timer {
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--wb-stroke) 45%, var(--edge-hairline));
+  border-radius: var(--radius-medium);
+  background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 16%, var(--surface-card));
+  box-shadow: 0 1px 2px var(--shadow-color);
+  overflow: hidden;
+  cursor: grab;
+}
+.wb-timer-face { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.wb-timer-ring { position: absolute; left: 6%; top: 6%; width: 88%; height: 88%; overflow: visible; pointer-events: none; }
+.wb-timer-track { fill: none; stroke: color-mix(in srgb, var(--wb-stroke) 22%, transparent); stroke-width: 6; }
+.wb-timer-arc { fill: none; stroke: var(--wb-stroke); stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
+.wb-timer-time {
+  position: relative;
+  max-width: 72%;
+  color: var(--wb-ink);
+  font-size: clamp(var(--text-14), 19cqmin, var(--text-40));
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  text-align: center;
+}
+.wb-timer-length { position: relative; color: var(--text-muted); font-size: var(--text-12); }
+.wb-timer-ctl {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-top: 1px solid color-mix(in srgb, var(--wb-stroke) 25%, var(--edge-hairline));
+  cursor: default;
+}
+.wb-timer-len { font-variant-numeric: tabular-nums; }
+.wb-type-timer[data-done] { border-color: var(--wb-stroke); background: color-mix(in srgb, var(--wb-fill, var(--tint-teal)) 30%, var(--surface-card)); animation: wb-timer-end 1.6s ease-in-out 4; }
+.wb-type-timer[data-done] .wb-timer-time { font-size: clamp(var(--text-14), 11cqmin, var(--text-28)); }
+.wb-type-timer[data-done] .wb-timer-length, .wb-type-timer[data-done] .wb-timer-arc { visibility: hidden; }
+/* the length is on its button for someone with the controls; under the time for everyone else */
+.wb-type-timer:has(.wb-timer-ctl) .wb-timer-length { display: none; }
+@keyframes wb-timer-end {
+  50% { box-shadow: 0 0 0 calc(8px / var(--wb-scale, 1)) color-mix(in srgb, var(--wb-stroke) 35%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-type-timer[data-done] { animation: none; }
+  .wb-timer-arc { transition: none; }
+}
+
+/* words read out (a timer started, paused, ended): heard, not seen */
+.wb-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Save as image (whiteboard-lib-l-export.js): the picture's size under the choices */
+.wb-export-size { margin: 0; color: var(--text-muted); font-size: var(--text-12); }
+/* The copy of the board that is saved or printed: its page the size of what it shows, the blocks placed on it as on the
+   board. Print: only while the host prints, the board's copy in place of the board, as wide as the paper and at most a
+   page tall, the same shape (the host shows its light colours while it prints). */
+.wb-export { position: relative; margin: 0; overflow: hidden; }
+.wb-export-layer { position: absolute; width: 0; height: 0; }
+.wb-print { display: none; }
+@media print {
+  .app.wb-printing > :not(.wb-print) { display: none !important; }
+  .app.wb-printing > .wb-print { display: block; }
+  .wb-print-svg { display: block; width: 100%; height: auto; max-height: 96vh; overflow: hidden; }
+}
 
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }
