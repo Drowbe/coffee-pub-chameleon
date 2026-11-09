@@ -210,7 +210,8 @@ export function topmostAt(candidates, x, y) {
 // What host.toolbar.set sent, cleaned (plan-unified-layout.md, "The contract"): at most 16 items, each one of
 //   { type: 'title', text }                                 the row's title (Calendar's "October 2026")
 //   { type: 'text', text }                                  a quieter note in the row
-//   { type: 'tabs', id, value, options: [{ id, label?, icon?, regular?, iconOnly? }] }   a segmented view switch
+//   { type: 'tabs', id, value, label?, options: [{ id, label?, icon?, regular?, iconOnly? }] }   a segmented switch, up to 12 options;
+//                                                           `label` names it (its accessible name and its heading in "More"), plain text of at most 30 characters, else "Tools"
 //   { type: 'search', id, value?, placeholder?, label? }    the row's search, in its fixed place at the end
 //   { type: 'chips', id, label?, single?, value?, options: [{ id, label, icon?, tint?, note?, count?, on?, default? }] }
 //                                                           a group of filters in the row's one Filters menu, under
@@ -223,12 +224,25 @@ export function topmostAt(candidates, x, y) {
 //                                                           `overflow` always in the row's "More"
 // Anything else is dropped. A function `send` on an item (the host page's own items, never a module's: a module's go through
 // postMessage or this cleaning first) is kept, so the page can mix its own items into a part's row.
-export const TOOLBAR_LIMITS = { items: 16, tabs: 8, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
-// Where the host page puts an item of its own (never a module's: only an item with a `send` function keeps it): `zone: 'end'`
-// is the row's right zone, after the search and Filters (the Calendar destination's panel switch and the panel's items),
-// `pin` that the item is never moved into "More". Any item with a zone also makes the page's order the row's: the items
-// are kept in the order given, not sorted switches first.
-const pageZone = (i) => (typeof i.send === 'function' ? { ...(i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {}), ...(i.pin === true ? { pin: true } : {}) } : {});
+export const TOOLBAR_LIMITS = { items: 16, tabs: 12, chips: 24, text: 80, title: 80, label: 30, placeholder: 80, value: 200 };
+// `zone` (exactly 'start' or 'end'; anything else is left out): a module's toolbar item goes in the row's left zone ('start',
+// the default) or its right zone ('end', after the search and Filters, at the far right). A module's right-zone items fold into
+// "More" like the left zone's when the row has no room (a right-zone switch folds its own choices first); only the first two
+// icon-only buttons of a module's right zone are held in place (frameToolbar), so a module can never cut its own row. `pin`
+// is the host page's alone: only an item with a `send` function keeps it (the Calendar destination's panel switch and the
+// panel's items), and a host page's right-zone item is moved into "More" only when it is not pinned. A page's item with any
+// zone also makes the page's order the row's: its items are kept in the order given, not sorted switches first (a module's
+// zone never does).
+const MODULE_PINS = 2;
+const pageZone = (i) => {
+  const zone = i.zone === 'end' ? { zone: 'end' } : i.zone === 'start' ? { zone: 'start' } : {};
+  return { ...zone, ...(typeof i.send === 'function' && i.pin === true ? { pin: true } : {}) };
+};
+// A switch's own name: plain text only, short; a non-string, an empty one or one with "<" or ">" in it is left out (the row says "Tools").
+export const SWITCH_LABEL = 'Tools';
+// Direction controls and zero-width characters are removed (they can hide or reorder the words).
+const INVISIBLE = /[\u200B-\u200D\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g;
+const switchName = (v) => { const t = typeof v === 'string' ? v.replace(INVISIBLE, '').replace(/\s+/g, ' ').trim().slice(0, TOOLBAR_LIMITS.label) : ''; return t && !/[<>]/.test(t) ? t : ''; };
 export function cleanToolbarItems(items) {
   const s = (v, n) => String(v ?? '').slice(0, n);
   const id = (v) => s(v, 40);
@@ -245,7 +259,7 @@ export function cleanToolbarItems(items) {
         id: id(o?.id), label: s(o?.label, TOOLBAR_LIMITS.label), icon: icon(o?.icon), regular: Boolean(o?.regular), iconOnly: Boolean(o?.iconOnly),
         ...(Number.isInteger(o?.count) && o.count >= 0 ? { count: o.count } : {}), // a number that stays visible when the words fold away
       })).filter((o) => o.id && (o.label || o.icon));
-      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...own, ...pageZone(i) });
+      if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...(switchName(i.label) ? { label: switchName(i.label) } : {}), ...own, ...pageZone(i) });
       continue;
     }
     if (type === 'search') {
@@ -376,10 +390,12 @@ export function frameToolbar(clean) {
   const end = [];
   const tail = []; // the right zone: items the page gave `zone: 'end'`
   const groups = [];
-  const zoned = (clean || []).some((i) => i.zone);
-  const place = (e, i) => (i.zone === 'end' ? tail : start).push(i.zone === 'end' ? { ...e, zone: 'end', ...(i.pin ? { pin: true } : {}) } : e);
+  const zoned = (clean || []).some((i) => i.zone && i.send); // only a host page's zones fix the order
+  // A module's right zone holds in place its first two icon-only row buttons (a Snap toggle); the rest folds into More as needed.
+  const held = new Set((clean || []).filter((i) => !i.send && i.zone === 'end' && i.type === 'button' && i.placement === 'row' && i.icon && !i.label).slice(0, MODULE_PINS));
+  const place = (e, i) => (i.zone === 'end' ? tail : start).push(i.zone === 'end' ? { ...e, zone: 'end', ...(i.pin || held.has(i) ? { pin: true } : {}) } : e);
   for (const i of clean || []) {
-    if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: 'View', value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);
+    if (i.type === 'tabs') place({ type: 'switch', id: i.id, label: i.label || SWITCH_LABEL, value: i.value, options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) }, i);
     else if (i.type === 'title' || i.type === 'text') place({ type: i.type, text: i.text }, i);
     else if (i.type === 'search') end.push({ type: 'search', id: i.id, label: i.label, placeholder: i.placeholder, value: i.value, ...(i.send ? { send: i.send } : {}) });
     else if (i.type === 'chips') groups.push({ id: i.id, heading: i.label, single: i.single, ...(i.single ? { value: i.value } : {}), options: i.options.map((o) => ({ ...o })), ...(i.send ? { send: i.send } : {}) });

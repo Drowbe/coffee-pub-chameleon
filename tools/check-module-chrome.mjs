@@ -441,7 +441,7 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.ok(!R.frameToolbar(R.cleanToolbarItems([{ type: 'search', id: 'q' }])).some((e) => e.type === 'filters'), 'no chips: no Filters button');
   // The Calendar destination's zones (Thomas, 2026-11-02): a host page's own items (they carry `send`) may say `zone: 'end'` (the
   // row's right zone, after the search and Filters) and `pin` (never moved into More); any zone keeps the order given instead
-  // of sorting switches first. A module's own item has no say: the same words from a module are dropped.
+  // of sorting switches first. A module's own item may say `zone` too, but never `pin` (below).
   const noop = () => {};
   const zoned = R.cleanToolbarItems([
     { type: 'title', text: 'October 2026', send: noop, zone: 'start' },
@@ -455,9 +455,68 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.equal(zrow[4].zone, 'end');
   assert.equal(zrow[4].pin, true);
   assert.equal(zrow[4].options[1].count, 4, 'a switch choice keeps its count, which stays when its words fold');
-  const stranger = R.cleanToolbarItems([{ type: 'tabs', id: 'part', value: 'a', options: [{ id: 'a', label: 'A' }], zone: 'end', pin: true }]);
-  assert.equal(stranger[0].zone, undefined, 'a module cannot put itself in the right zone');
-  assert.equal(stranger[0].pin, undefined);
+  // A module's own items (no `send`) may say `zone: 'end'` too (Thomas, 2026-11-09): default stays left in the order made, 'end'
+  // goes right after the search and Filters in the order made, a value other than 'start' or 'end' is ignored, and a module can
+  // neither pin nor change the order of the left zone.
+  const mod = R.frameToolbar(R.cleanToolbarItems([
+    { id: 'snap', title: 'Snap', icon: 'border-all', on: false, zone: 'end' },
+    { id: 'a', label: 'A' },
+    { type: 'tabs', id: 'view', value: 'x', options: [{ id: 'x', label: 'X' }] },
+    { id: 'grid', label: 'Grid', zone: 'end' },
+    { id: 'b', label: 'B', zone: 'start' },
+    { id: 'bad1', label: 'Bad 1', zone: 'END' },
+    { id: 'bad2', label: 'Bad 2', zone: 'right' },
+    { id: 'bad3', label: 'Bad 3', zone: { x: 1 } },
+    { type: 'search', id: 'q', zone: 'end' },
+    { type: 'chips', id: 'f', label: 'Show', options: [{ id: 'a', label: 'A' }], zone: 'end' },
+  ]));
+  assert.deepEqual(mod.map((e) => e.id || e.type), ['view', 'a', 'b', 'bad1', 'bad2', 'bad3', 'q', 'filters', 'snap', 'grid'], 'left zone sorted as ever, search and Filters, then the module\'s right zone in the order made');
+  assert.deepEqual(mod.filter((e) => e.zone === 'end').map((e) => e.id), ['snap', 'grid'], 'only exactly "end" goes right; a bad value stays left');
+  assert.deepEqual(mod.filter((e) => e.pin).map((e) => e.id), ['snap'], 'a module\'s right zone holds only its icon-only buttons (the Snap toggle); the labelled one folds into More as needed');
+  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', pin: true }])[0].pin, undefined, 'a module cannot pin a left item');
+  assert.equal(R.cleanToolbarItems([{ id: 'p', label: 'P', zone: 'end', pin: true }])[0].pin, undefined, 'a module cannot pin a right-zone item either');
+  // At most two of a module's right-zone buttons are held (so 16 of them cannot cut the row); a right-zone switch is never held.
+  const manyRight = R.frameToolbar(R.cleanToolbarItems([
+    ...Array.from({ length: 12 }, (_, k) => ({ id: `r${k}`, title: `R${k}`, icon: 'star', zone: 'end' })),
+    { type: 'tabs', id: 'sw', value: 'a', options: [{ id: 'a', label: 'A', icon: 'star' }, { id: 'b', label: 'B', icon: 'star' }], zone: 'end' },
+  ]));
+  assert.equal(manyRight.filter((e) => e.pin).length, 2, 'two right-zone buttons held, no more');
+  assert.ok(!manyRight.find((e) => e.id === 'sw').pin, 'a right-zone switch is not held (it folds its own choices)');
+  // A destination page wraps a module's cleaned items with `send` (partItems): they keep no pin, no zone, and do not fix the order.
+  const wrapped = R.cleanToolbarItems(R.cleanToolbarItems([
+    { id: 'b', label: 'B' }, { type: 'tabs', id: 'v', value: 'a', options: [{ id: 'a', label: 'A' }] }, { id: 'snap', title: 'Snap', icon: 'border-all', zone: 'end' },
+  ]).map(({ pin, zone, ...item }) => ({ ...item, send: noop })));
+  assert.ok(wrapped.every((i) => !i.pin && !i.zone), 'wrapped module items keep no pin and no zone');
+  assert.deepEqual(R.frameToolbar(wrapped).map((e) => e.id), ['v', 'b', 'snap'], 'the switch still leads (not the page\'s order)');
+  assert.ok(/map\(\(\{ pin, zone, \.\.\.item \}\) =>/.test(read('public/destination.js')), 'partItems strips a module item\'s pin and zone');
+  const modOnly = R.frameToolbar(R.cleanToolbarItems([{ id: 'x', label: 'X' }, { type: 'tabs', id: 'v', value: 'a', options: [{ id: 'a', label: 'A' }] }, { id: 'r', label: 'R', zone: 'end' }]));
+  assert.deepEqual(modOnly.map((e) => e.id), ['v', 'x', 'r'], 'a module right-zone item does not stop the switches leading the left zone');
+  // A switch holds up to 12 options (the Whiteboard's Select, Hand, drawing tools and Select many in one); the 13th is cut.
+  const opts = (n) => Array.from({ length: n }, (_, k) => ({ id: `o${k}`, label: `Option ${k}`, icon: 'star' }));
+  for (const [n, kept] of [[10, 10], [12, 12], [13, 12]]) {
+    assert.equal(R.cleanToolbarItems([{ type: 'tabs', id: 'sw', value: 'o0', options: opts(n) }])[0].options.length, kept, `${n} options: ${kept} kept`);
+  }
+  assert.equal(R.TOOLBAR_LIMITS.tabs, 12);
+  // The switch's name is "Tools" (its accessible name and its heading in More); a module may give its own, plain text of at most 30
+  // characters; a non-string, an empty one or one with HTML in it is ignored.
+  const named = (label) => R.frameToolbar(R.cleanToolbarItems([{ type: 'tabs', id: 'sw', value: 'a', label, options: [{ id: 'a', label: 'A' }] }]))[0].label;
+  assert.equal(named(undefined), 'Tools', 'the default name');
+  assert.equal(named('Board'), 'Board', 'a module\'s own name');
+  assert.equal(named('  Board   tools '), 'Board tools', 'spaces tidied');
+  assert.equal(named('x'.repeat(50)), 'x'.repeat(30), 'cut at 30');
+  for (const bad of ['', '   ', '<b>Board</b>', 'a > b', 42, { x: 1 }, ['a'], null]) assert.equal(named(bad), 'Tools', `ignored: ${JSON.stringify(bad)}`);
+  // A switch's name loses direction controls and zero-width characters.
+  assert.equal(named('Bo\u202Eard'), 'Board');
+  assert.equal(named('\u200BBo\u2066a\u2069r\u2060d\uFEFF'), 'Board');
+  assert.equal(named('\u202A\u202B\u202C\u202D\u202E'), 'Tools', 'only invisible characters: the default');
+  const frameSrc = read('public/module-frame.js');
+  assert.ok(!/'View'/.test(frameSrc), 'the frame never says "View" for a switch');
+  assert.ok(/'aria-label': it\.label \|\| 'Tools'/.test(frameSrc) && /it\.type === 'switch' \? 'Tools'/.test(frameSrc), 'the frame names a switch "Tools" in the row and in More');
+  // host.ui.toolbarButton / viewSwitch pass the same whitelisted field to host.toolbar.set.
+  const hostSrc = read('public/sdk/host.js');
+  assert.ok(/const zoneOf = \(z\) => \(z === 'start' \|\| z === 'end' \? \{ zone: z \} : \{\}\);/.test(hostSrc), 'the SDK whitelists zone to start or end');
+  assert.ok(/toolbarButton: \(\{[^}]*\bzone\b[^}]*\}\) =>/.test(hostSrc) && /viewSwitch: \(\{[^}]*\bzone\b[^}]*\blabel\b[^}]*\}\) =>/.test(hostSrc), 'toolbarButton takes zone, viewSwitch zone and label');
+  assert.equal((hostSrc.match(/\.\.\.zoneOf\(zone\)/g) || []).length, 2, 'both draw the whitelisted zone');
   assert.deepEqual(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` })), 6).length, 6, 'a page may keep more status items than the default');
   assert.equal(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` }))).length, 4, 'the default is four');
   // The title bar's actions: the header's icons, then the toolbar buttons placed there; past five, the menu.
