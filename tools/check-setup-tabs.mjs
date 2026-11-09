@@ -170,6 +170,45 @@ try {
     assert.equal(await home.eval(`Boolean(document.querySelector('[data-nav-tool="setup"]')?.getClientRects().length)`), false, 'Home has no Set up button');
   });
 
+  for (const [width, mode] of [[1280, 'dark'], [1280, 'light'], [390, 'dark']]) {
+    await test(`What AI may see, Only these, at ${width} ${mode}: every module switch is at the right edge, its label at the left`, async () => {
+      const tab = await inSpace('admin', width, mode);
+      // The section shows only when the server has an AI service: save one, as the admin does.
+      const put = await tab.eval(`fetch('/api/ai', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, provider: 'compatible', address: 'http://127.0.0.1:9', model: 'm', key: 'check-key' }) }).then((r) => r.status)`);
+      assert.equal(put, 200, 'the AI service is saved');
+      await tab.eval('location.reload()');
+      await tab.waitFor('button.sdk-strip-fact[data-module=budget]');
+      await sleep(600);
+      if (width < 600) { await tab.eval(`document.querySelector('[data-nav-tool="setup"]').click()`); await tab.waitFor('#space-setup .setup-tab'); await sleep(900); } else await openSetup(tab);
+      await tab.click('#setup-tab-modules');
+      await sleep(600);
+      assert.equal(await tab.eval(`document.getElementById('setup-ai-sees-follow').click() || document.getElementById('setup-ai-sees-follow').checked`), false, 'its own choice, not the environment\'s');
+      await sleep(300);
+      await tab.eval(`(() => { const r = document.getElementById('setup-ai-sees-modules-some'); r.scrollIntoView({ block: 'center' }); r.click(); return true; })()`);
+      await sleep(400);
+      if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, `ai-modules-${width}-${mode}.png`), await tab.shoot(false)); }
+      const m = await tab.eval(`(() => {
+        const list = document.getElementById('setup-ai-sees-module-list');
+        const rows = [...list.querySelectorAll('.sdk-choice-row')].map((row) => {
+          const r = row.getBoundingClientRect(); const sw = row.querySelector('.sdk-switch').getBoundingClientRect(); const lab = row.querySelector('.sdk-choice-label').getBoundingClientRect();
+          return { rowL: r.left, rowR: r.right, swR: sw.right, labL: lab.left, swL: sw.left };
+        });
+        return { rows, hidden: list.hidden };
+      })()`);
+      assert.equal(m.hidden, false, 'the list is open');
+      assert.ok(m.rows.length >= 5, `the module switches are listed (${m.rows.length})`);
+      const first = m.rows[0];
+      for (const r of m.rows) {
+        assert.ok(r.rowR - r.swR <= 16 + 3, `the switch sits at the row's right edge (gap ${r.rowR - r.swR}px)`);
+        assert.ok(Math.abs(r.swR - first.swR) <= 1, `every switch is in one column (${r.swR} vs ${first.swR})`);
+        assert.ok(r.labL - r.rowL <= 16 + 3, `the label starts at the row's left edge (gap ${r.labL - r.rowL}px)`);
+        assert.ok(r.swL > r.labL, 'the label comes before the switch');
+      }
+      const above = await tab.eval(`document.getElementById('setup-ai-sees-follow').getBoundingClientRect().right`);
+      assert.ok(Math.abs(above - first.swR) <= 3, `the module switches line up with the switches above (${first.swR} vs ${above})`);
+    });
+  }
+
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });
     for (const [width, mode] of [[1280, 'light'], [1280, 'dark'], [1024, 'light']]) {
