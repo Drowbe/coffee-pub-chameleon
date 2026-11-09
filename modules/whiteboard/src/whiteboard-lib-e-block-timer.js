@@ -228,6 +228,12 @@
           startTicking();
         } else ticking.delete(el);
       },
+      // Saved as a picture or printed (lib-l): its face as it is now, without the controls (the length then shows under
+      // the time, as it does for someone with no controls).
+      exported(b, el) {
+        const row = el.querySelector('.wb-timer-ctl');
+        if (row) row.remove();
+      },
       describe: (b) => {
         const left = wbTimerLeft(b, now());
         if (b.state === 'running' && left <= 0) return 'Timer: time is up';

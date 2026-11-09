@@ -45,6 +45,23 @@
       </div>
     </form>
   </dialog>
+  <dialog id="export" class="sdk-editor">
+    <form id="export-form" class="sdk-form">
+      <h3 id="export-title">Save as image</h3>
+      <label class="sdk-field"><span class="sdk-label">What to save</span><select id="export-what"></select><span class="sdk-hint"></span></label>
+      <div class="sdk-form-row">
+        <label class="sdk-field sdk-m"><span class="sdk-label">Background</span><select id="export-bg"><option value="page">Board colour</option><option value="none">Transparent</option></select><span class="sdk-hint"></span></label>
+        <label class="sdk-field sdk-m"><span class="sdk-label">Size</span><select id="export-scale"><option value="1">Normal (1x)</option><option value="2">Double (2x)</option></select><span class="sdk-hint"></span></label>
+      </div>
+      <p id="export-size" class="wb-export-size" aria-live="polite"></p>
+      <div class="sdk-form-error" id="export-error" role="alert" hidden></div>
+      <div class="sdk-editor-actions">
+        <button class="btn btn-quiet" type="button" id="export-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="export-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="print" class="wb-print" aria-hidden="true"></div>
 </div>
 <div id="loading" class="msg" aria-busy="true"><div class="sdk-skel sdk-skel-block"></div></div>
 <div id="msg" class="sdk-empty" hidden></div>
