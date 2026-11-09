@@ -487,7 +487,8 @@ try {
     const themeText = (await asOwner('GET', '/api/themes/default/export')).text;
     const checked = await call(server, 'admin', 'POST', '/api/host/themes/check', { cookie: host, raw: themeText, type: 'application/octet-stream' });
     assert.equal(checked.status, 200, checked.text);
-    assert.deepEqual([Object.keys(checked.json).sort(), Object.keys(checked.json.theme), checked.json.theme.name, checked.json.dropped], [['dropped', 'theme'], ['name', 'light', 'dark'], 'Strong Coffee', []]);
+    // The default theme is the product's own, named by the product's short name (store.js DEFAULT_THEME); Strong Coffee is now a built-in beside the others. The test product has one word, so its short name is PRODUCT.
+    assert.deepEqual([Object.keys(checked.json).sort(), Object.keys(checked.json.theme), checked.json.theme.name, checked.json.dropped], [['dropped', 'theme'], ['name', 'light', 'dark'], PRODUCT, []]);
     assert.deepEqual(checked.json.theme.dark, JSON.parse(themeText).dark, 'the colors as the file has them');
     assert.equal((await console_('POST', '/api/host/themes/check', JSON.parse(themeText))).status, 200, 'sent as JSON too');
     const themeRefusals = [

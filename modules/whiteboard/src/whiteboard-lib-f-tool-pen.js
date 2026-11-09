@@ -9,6 +9,7 @@
       key: 'p',
       order: 20,
       edits: true,
+      makes: 'stroke',
       cursor: 'crosshair',
       down(p, ctx) {
         const b = ctx.draft('stroke', { x: p.x, y: p.y, points: [0, 0] });

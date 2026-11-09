@@ -1,6 +1,8 @@
 /*
- * The Whiteboard module's look. Every colour is a theme token (public/sdk/host.css): a block's colour is stored as a name
- * (ink or one of the eight tints) and mapped to its token here, so the board follows the theme and both modes. Nothing has
+ * The Whiteboard module's look. Every colour is a theme token (public/sdk/host.css): a block's colours are stored as names
+ * (ink or one of the eight tints) and the renderer hands each role's token to the block as --wb-fill, --wb-stroke and
+ * --wb-ink (unset for 'none' and 'auto', which data-fill and data-stroke say), with its width as --wb-weight, so the
+ * board follows the theme and both modes. Nothing has
  * a fixed pixel height: the board fills the module. The narrow layout keys on `.app.narrow`, set from the module's width.
  */
 * { box-sizing: border-box; }
@@ -37,45 +39,47 @@
   pointer-events: none;
 }
 
-/* a block: where it is and how big is set by the renderer; how it looks is here, by its type and colour */
-.wb-block { position: absolute; --c: var(--text-primary); color: var(--text-primary); }
+/* a block: where it is and how big is set by the renderer; how it looks is here, by its type and its colours */
+.wb-block { position: absolute; --wb-ink: var(--text-primary); --wb-stroke: var(--text-primary); --wb-weight: 0px; color: var(--wb-ink); }
 .wb-block:focus { outline: none; }
 .wb-block:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 4px; }
-.wb-block[data-tint="gold"] { --c: var(--tint-gold); }
-.wb-block[data-tint="orange"] { --c: var(--tint-orange); }
-.wb-block[data-tint="red"] { --c: var(--tint-red); }
-.wb-block[data-tint="pink"] { --c: var(--tint-pink); }
-.wb-block[data-tint="purple"] { --c: var(--tint-purple); }
-.wb-block[data-tint="blue"] { --c: var(--tint-blue); }
-.wb-block[data-tint="teal"] { --c: var(--tint-teal); }
-.wb-block[data-tint="green"] { --c: var(--tint-green); }
 .wb-words { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; }
 
-/* a note: a square of its colour, words on it */
+/* a note: a square of its fill with words on it, a slight border a little darker than the fill (stroke 'auto': the fill
+   with the theme's shadow colour over it, so it is darker in both modes), or its own colour, and a small, close shadow */
 .wb-type-note {
+  --wb-fill: var(--tint-gold);
+  --wb-face: color-mix(in srgb, var(--wb-fill) 38%, var(--surface-card));
   padding: 12px;
+  border: var(--wb-weight) solid var(--wb-stroke);
   border-radius: var(--radius-min);
-  background: color-mix(in srgb, var(--c) 38%, var(--surface-card));
-  box-shadow: var(--shadow-1);
+  background: var(--wb-face);
+  box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent);
   font-size: var(--text-16);
   overflow: hidden;
   cursor: grab;
 }
+.wb-type-note[data-stroke="auto"] { border-color: color-mix(in srgb, var(--wb-face) 40%, var(--shadow-color)); }
+.wb-type-note[data-stroke="none"] { border-style: none; }
 .wb-type-note .wb-words { height: 100%; overflow: hidden; }
 
-/* words on their own */
-.wb-type-text { padding: 4px; color: var(--c); font-size: var(--text-22); cursor: grab; }
-.wb-type-text[data-tint="ink"] { color: var(--text-primary); }
+/* words on their own; a background (a light wash of its fill) and a border only when they are picked */
+.wb-type-text { padding: 4px; font-size: var(--text-22); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
+.wb-type-text:not([data-fill="none"]) { background: color-mix(in srgb, var(--wb-fill) 22%, transparent); }
+.wb-type-text[data-stroke="none"] { border-style: none; }
 .wb-type-text .wb-words:empty { min-height: 1.35em; }
 
 /* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line */
 .wb-type-rect, .wb-type-ellipse, .wb-type-line, .wb-type-stroke { pointer-events: none; }
 .wb-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .wb-svg .wb-hit { pointer-events: visiblePainted; cursor: grab; }
-.wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: 16px; stroke-linecap: round; pointer-events: stroke; }
-.wb-shape-body { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); stroke-width: 3px; }
-.wb-svg .wb-stroke { fill: none; stroke: var(--c); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.wb-svg .wb-head { fill: var(--c); pointer-events: none; }
+.wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: max(16px, calc(var(--wb-weight) + 8px)); stroke-linecap: round; pointer-events: stroke; }
+/* a shape is picked anywhere inside it, with or without a fill */
+.wb-svg .wb-shape-body { fill: color-mix(in srgb, var(--wb-fill, var(--text-primary)) 14%, transparent); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); pointer-events: visible; }
+.wb-block[data-fill="none"] .wb-shape-body { fill: none; }
+.wb-block[data-stroke="none"] .wb-shape-body { stroke: none; }
+.wb-svg .wb-stroke { fill: none; stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.wb-svg .wb-head { fill: var(--wb-stroke); pointer-events: none; }
 .wb-type-rect .wb-words, .wb-type-ellipse .wb-words {
   position: absolute;
   inset: 8px;
@@ -158,4 +162,7 @@
 @media (pointer: coarse) { .wb-handle { --hit: 32px; } }
 .app.narrow .wb-handle { --hit: 32px; }
 
-.app.narrow .wb-svg .wb-hit-wide { stroke-width: 24px; }
+.app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
+
+/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
+.wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }

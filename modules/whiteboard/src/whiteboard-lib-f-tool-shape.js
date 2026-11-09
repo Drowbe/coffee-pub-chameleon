@@ -21,6 +21,7 @@
         key: t.key,
         order: t.order,
         edits: true,
+        makes: t.type,
         cursor: 'crosshair',
         down(p, ctx) {
           const b = ctx.draft(t.type, t.line ? { x: p.x, y: p.y, dx: 0, dy: 0, arrow: Boolean(t.arrow) } : { x: p.x, y: p.y, w: 8, h: 8 });

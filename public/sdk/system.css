@@ -185,7 +185,7 @@
   --surface-bar-brand: color-mix(in srgb, var(--surface-bar-top) 97%, black);
   --surface-bar-right: color-mix(in srgb, var(--surface-bar-top) 97%, black);
   --surface-canvas: var(--surface-page);
-  --surface-track: color-mix(in srgb, var(--surface-panel) 88%, var(--text-primary)); /* a scrollbar or progress track */
+  --surface-track: color-mix(in srgb, var(--surface-panel) 88%, var(--ink-neutral)); /* a scrollbar or progress track */
 
   /* Text and icons */
   --text-disabled: color-mix(in srgb, var(--text-muted) 55%, transparent);
@@ -215,13 +215,18 @@
   --fill-chosen: var(--accent-fill);
   --text-on-chosen: var(--text-on-accent);
   --ink-chosen: var(--accent-fill);
+  /* The second word of the product's lockup (the brand's coral): the accent until a theme sets it. Large text only, 24px and up. */
+  --ink-brand: var(--accent-fill);
   --fill-chosen-hover: color-mix(in srgb, var(--fill-chosen) 85%, white);
+  /* The ink every neutral wash is mixed from: a hover, a press, a quiet fill, a card's head band, a track. The text colour until a theme
+     sets it; a light theme with a warm page sets a warm one so its washes are cream and sand, not grey. */
+  --ink-neutral: var(--text-primary);
   --wash-selected: 28%;
   --wash-today: 14%;
   --wash-own: 10%;
   --wash-pick: 28%;
   --accent-fill-hover: color-mix(in srgb, var(--accent-fill) 85%, white);
-  --fill-hover: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  --fill-hover: color-mix(in srgb, var(--ink-neutral) 8%, transparent);
   --fill-selected: color-mix(in srgb, var(--wash-ink) var(--wash-selected), transparent);
   --fill-today: color-mix(in srgb, var(--wash-ink) var(--wash-today), transparent);
   --fill-secondary: var(--surface-card);
@@ -257,7 +262,7 @@
      these against the land (maps-lib-d-style.js, guardMap: names 4.5:1, major road 3, minor 1.7, water 1.5 and a blue of its own), so a
      theme that sets one badly still reads; tools/check-maps.mjs holds the shipped themes to it. Light overrides below. */
   --map-land: color-mix(in srgb, var(--text-primary) 4%, var(--surface-panel));
-  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-page));
+  --map-water: color-mix(in srgb, var(--tint-blue) 72%, var(--surface-page));
   --map-park: color-mix(in srgb, var(--tint-green) 16%, var(--map-land));
   --map-wood: color-mix(in srgb, var(--tint-green) 9%, var(--map-land));
   --map-road-minor: color-mix(in srgb, var(--text-primary) 20%, var(--map-land));
@@ -449,7 +454,7 @@
 .btn-quiet {
   --b-bg: transparent;
   --b-bg-h: var(--fill-hover);
-  --b-bg-a: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --b-bg-a: color-mix(in srgb, var(--ink-neutral) 16%, transparent);
   --b-fg: var(--text-primary);
   --b-fg-h: var(--text-primary);
   --b-bd: transparent;
@@ -886,9 +891,9 @@
   --chip-icon: var(--icon-14);
   --chip-x: var(--icon-20);
   --chip-hit: 44px;
-  --chip-fill: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  --chip-fill-hover: color-mix(in srgb, var(--text-primary) 14%, transparent);
-  --chip-fill-active: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --chip-fill: color-mix(in srgb, var(--ink-neutral) 8%, transparent);
+  --chip-fill-hover: color-mix(in srgb, var(--ink-neutral) 14%, transparent);
+  --chip-fill-active: color-mix(in srgb, var(--ink-neutral) 20%, transparent);
   --chip-tint: 18%;
   --chip-surface: var(--surface-panel); /* the surface the chip sits on; a chip in a card sets --surface-card */
   --micro-inset: 3px; /* the micro count's inset from the corner of its icon */
@@ -1118,7 +1123,7 @@
   border: 0;
   border-radius: var(--radius-small);
   clip-path: circle(max(50%, (100% - 18.5px) * 100));
-  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--ink-neutral) 14%, transparent);
   color: var(--text-primary);
   font-size: var(--text-11);
   font-weight: var(--weight-strong);
@@ -1243,7 +1248,7 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--text-primary) 14%, var(--av-surface));
+  background: color-mix(in srgb, var(--ink-neutral) 14%, var(--av-surface));
   color: var(--av-ink, var(--text-primary));
   font: inherit;
   font-size: var(--av-font);
@@ -1319,7 +1324,7 @@
   /* padding and gaps: --pad-panel, --pad-card, --pad-home, --pad-row-y/-x, --gap-in, --gap-card-rows, --gap-group (Foundations, Padding) */
   --card-icon: 32px;
   --card-head-h: var(--btn-h-small); /* the banded card's head band: 30px */
-  --card-head-tint: var(--text-primary); /* what the band is shaded with */
+  --card-head-tint: var(--ink-neutral); /* what the band is shaded with */
   --card-head-step: 6%; /* how much: one step darker than the box's own surface (a neutral-wash theme writes 8%) */
   --tick-hit: 28px; /* 44px on a phone */
   --tick-edge: -6px;
@@ -1490,8 +1495,8 @@
 /* A button in the band (the "..." or one small action) is the band's 30px and sits on its line. */
 .sdk-card-banded > .sdk-card-head > :is(.sdk-icon-btn, .btn-small) { flex: none; }
 /* The banded card's states: the same fills as a card, made on the box's own surface (--s), so the band, a step of it, follows. */
-.sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):hover { --s: color-mix(in srgb, var(--text-primary) 8%, var(--surface-card)); }
-.sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):active { --s: color-mix(in srgb, var(--text-primary) 14%, var(--surface-card)); }
+.sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):hover { --s: color-mix(in srgb, var(--ink-neutral) 8%, var(--surface-card)); }
+.sdk-card-banded:is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):active { --s: color-mix(in srgb, var(--ink-neutral) 14%, var(--surface-card)); }
 .sdk-card-banded:is([aria-current="true"], [aria-selected="true"], .on) { --s: color-mix(in srgb, var(--wash-ink) var(--wash-pick), var(--surface-card)); }
 .sdk-card-banded:has(.sdk-open:focus-visible),
 .sdk-card-banded:is(a, button, [role="button"], [tabindex="0"]):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
@@ -1566,10 +1571,10 @@
 
 /* ---- states: hover and selected are fills ---- */
 :is(.sdk-card, .sdk-row, .space-choice):is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):hover {
-  background: color-mix(in srgb, var(--text-primary) 8%, var(--s));
+  background: color-mix(in srgb, var(--ink-neutral) 8%, var(--s));
 }
 :is(.sdk-card, .sdk-row, .space-choice):is(:has(.sdk-open), a, button:not(:disabled), [role="button"], [tabindex="0"]):active {
-  background: color-mix(in srgb, var(--text-primary) 14%, var(--s));
+  background: color-mix(in srgb, var(--ink-neutral) 14%, var(--s));
 }
 :is(.sdk-card, .sdk-row, .space-choice):is([aria-current="true"], [aria-selected="true"], .on) {
   background: var(--fill-selected);
@@ -1580,7 +1585,7 @@
 
 /* The ghost: a quiet fill on hover (written twice over, so it beats the clickable card's rule above). */
 :is(.sdk-card-add, .space-choice-add):is(.sdk-card-add, .space-choice-add):hover {
-  background: color-mix(in srgb, var(--text-primary) 8%, var(--surface-panel));
+  background: color-mix(in srgb, var(--ink-neutral) 8%, var(--surface-panel));
   color: var(--text-primary);
 }
 
@@ -1769,7 +1774,7 @@
 .sdk-table-group > :is(th, td) {
   padding-top: var(--tbl-cell-y);
   padding-bottom: var(--tbl-cell-y);
-  background: color-mix(in srgb, var(--text-primary) 8%, var(--tbl-surface));
+  background: color-mix(in srgb, var(--ink-neutral) 8%, var(--tbl-surface));
   color: var(--text-primary);
   font-size: var(--text-12);
   font-weight: var(--weight-strong);
@@ -1779,7 +1784,7 @@
   text-transform: uppercase;
   border-bottom: 1px solid var(--edge-hairline);
 }
-.sdk-table-group:hover > :is(th, td) { background: color-mix(in srgb, var(--text-primary) 8%, var(--tbl-surface)); }
+.sdk-table-group:hover > :is(th, td) { background: color-mix(in srgb, var(--ink-neutral) 8%, var(--tbl-surface)); }
 .sdk-table-group .sdk-table-count { margin-left: var(--space-2); color: var(--tbl-dim); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 .sdk-table tbody tr:hover :is(.sdk-table-sub, .sdk-table-dim) { color: var(--tbl-dim); }
 
@@ -1809,7 +1814,7 @@
   cursor: pointer;
   outline: none;
 }
-.sdk-sort:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); color: var(--text-primary); }
+.sdk-sort:hover { background: color-mix(in srgb, var(--ink-neutral) 10%, transparent); color: var(--text-primary); }
 .sdk-sort:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-sort > i { font-size: var(--text-11); opacity: 0.6; }
 .sdk-table thead th:is([aria-sort="ascending"], [aria-sort="descending"]) { color: var(--text-primary); }
@@ -1882,7 +1887,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   background: var(--status-ok-mark);
 }
 .sdk-member:is(button, label) { cursor: pointer; }
-.sdk-member:is(button, label):hover { background: color-mix(in srgb, var(--text-primary) 8%, var(--s)); }
+.sdk-member:is(button, label):hover { background: color-mix(in srgb, var(--ink-neutral) 8%, var(--s)); }
 .sdk-member:is(button, label):focus-visible, .sdk-member-toggle:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 /* A tile that turns a person on or off in a space: on is the selected fill, off is 45% strength. */
 .sdk-member-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -1931,6 +1936,8 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-sel-bg: var(--fill-chosen);
   --cal-sel-bg-hover: var(--fill-chosen-hover);
   --cal-sel-text: var(--text-on-chosen);
+  /* What a chip on the chosen day is mixed with: the text's opposite in lightness, so the chip steps away from its own text (light text, a darker chip; dark text, a lighter one). */
+  --cal-sel-chip: oklch(from var(--cal-sel-text) calc(1 - l) c h);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 16%;
   /* Muted text on a fill (hover, today, another calendar's chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
@@ -1940,6 +1947,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-sel-bg: color-mix(in srgb, var(--fill-chosen) 32%, var(--surface-field));
   --cal-sel-bg-hover: color-mix(in srgb, var(--fill-chosen) 40%, var(--surface-field));
   --cal-sel-text: var(--text-primary);
+  --cal-sel-chip: var(--text-primary);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 9%;
 }
@@ -2074,7 +2082,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-more { color: var(--cal-sel-text); }
 
 /* An event on the chosen day (solid accent): the chip reads against the accent, not tinted by it. */
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--text-primary) 22%, var(--cal-sel-bg)); color: var(--cal-sel-text); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--cal-sel-chip) 22%, var(--cal-sel-bg)); color: var(--cal-sel-text); }
 
 /* The exception, kept: the 3px bar on the left of a Calendar agenda row and of the chips of other calendars and markers (Thomas, 2026-10-18).
    A straight, square-ended block the full height of the box (it covers the box's own 1px edge, --bar-bleed); the box is square on that side. */
@@ -2180,7 +2188,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --mk-icon-tint: 38%;
   --mk-h: 24px;
   --mk-ic: 20px;
-  --mk-line: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --mk-line: color-mix(in srgb, var(--ink-neutral) 18%, transparent);
 }
 
 /* ---- the colour the three forms share ---- */
@@ -2327,7 +2335,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 /* days:start */
 :root {
   --day-date-w: 48px;
-  --day-block-fill: color-mix(in srgb, var(--text-primary) 8%, transparent); /* over the card, or the current card's fill */
+  --day-block-fill: color-mix(in srgb, var(--ink-neutral) 8%, transparent); /* over the card, or the current card's fill */
   --chip-h-day: 40px; /* 44px on a phone */
   /* Muted text on a fill (the date block, a day chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
   --day-dim: color-mix(in srgb, var(--text-muted) 55%, var(--text-primary));
@@ -2404,7 +2412,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   cursor: pointer;
   outline: none;
 }
-.sdk-day-empty:hover { background: color-mix(in srgb, var(--text-primary) 8%, var(--surface-card)); color: var(--text-primary); }
+.sdk-day-empty:hover { background: color-mix(in srgb, var(--ink-neutral) 8%, var(--surface-card)); color: var(--text-primary); }
 .sdk-day-empty:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .sdk-day.is-drop .sdk-day-empty { color: var(--text-primary); }
 
@@ -2472,7 +2480,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-small);
-  background: color-mix(in srgb, var(--text-primary) 14%, var(--surface-panel));
+  background: color-mix(in srgb, var(--ink-neutral) 14%, var(--surface-panel));
   color: var(--text-primary);
   font-size: var(--text-12);
   font-weight: var(--weight-strong);
@@ -2507,10 +2515,10 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --label-size: var(--text-12);
   --label-gap: var(--space-1);
   --check-h: 32px; /* the row of a tick box, radio or switch; 44px on a phone */
-  --field-fill-hover: color-mix(in srgb, var(--surface-field) 93%, var(--text-primary));
+  --field-fill-hover: color-mix(in srgb, var(--surface-field) 93%, var(--ink-neutral));
   --field-ring: color-mix(in srgb, var(--focus-ring) 30%, transparent);
   --field-ring-danger: color-mix(in srgb, var(--status-danger-fill) 30%, transparent);
-  --field-mark: color-mix(in srgb, var(--text-primary) 24%, transparent);
+  --field-mark: color-mix(in srgb, var(--ink-neutral) 24%, transparent);
 }
 
 @media (max-width: 640px) {
@@ -3523,8 +3531,8 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   --menu-w-max: 320px;
   --menu-item-h: 32px; /* 44px on a phone */
   --menu-font: var(--text-14);
-  --menu-hover: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  --menu-press: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --menu-hover: color-mix(in srgb, var(--ink-neutral) 10%, transparent);
+  --menu-press: color-mix(in srgb, var(--ink-neutral) 16%, transparent);
   --menu-current-hover: color-mix(in srgb, var(--fill-chosen) 33%, transparent);
   --menu-current-fg: var(--text-selected);
   --menu-danger-fg: var(--status-danger-text);
@@ -3920,10 +3928,10 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
    their rules stay in style.css's chat block (their corner: medium on the window, small inside your own message). */
 /* chat:start */
 :root {
-  --msg-quote-fill: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  --msg-quote-fill: color-mix(in srgb, var(--ink-neutral) 7%, transparent);
   --msg-portrait: 24px;
   --msg-meta: color-mix(in srgb, var(--text-primary) 78%, var(--text-muted)); /* the time and the command: 4.5 to 1 on both message fills */
-  --msg-fill: color-mix(in srgb, var(--text-primary) 5%, transparent); /* the box's own surface: a step off the window */
+  --msg-fill: color-mix(in srgb, var(--ink-neutral) 5%, transparent); /* the box's own surface: a step off the window */
   --composer-lines: 5;
   --composer-lh: 20px;
   --composer-pad-y: var(--space-2);
@@ -3985,7 +3993,7 @@ dialog.sdk-dialog-pick::backdrop { background: var(--scrim); }
   height: var(--msg-portrait);
   overflow: hidden;
   border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--text-primary) 14%, var(--surface-panel));
+  background: color-mix(in srgb, var(--ink-neutral) 14%, var(--surface-panel));
   color: var(--text-primary);
   font-size: var(--text-11);
   font-weight: var(--weight-strong);
@@ -4123,7 +4131,7 @@ span.message-vis {
 .message .text code {
   padding: 0 var(--space-1);
   border-radius: var(--radius-min);
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--ink-neutral) 10%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--text-13);
 }
@@ -4992,8 +5000,8 @@ button.sdk-toast-body:focus-visible { outline: 2px solid var(--focus-ring); outl
    The shimmer stops, and the spinner slows, when the person asks for less motion. */
 /* states:start */
 :root {
-  --skel-base: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  --skel-hi: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  --skel-base: color-mix(in srgb, var(--ink-neutral) 8%, transparent);
+  --skel-hi: color-mix(in srgb, var(--ink-neutral) 14%, transparent);
   --skel-ms: 1.4s;
   --spin: 16px;
   --spin-ms: 0.8s;
@@ -5704,7 +5712,7 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
   border-bottom: 1px solid var(--mf-edge);
   background: var(--mf-surface-title);
 }
-.mf-titlebar-icon { display: inline-flex; flex: none; color: var(--text-accent); font-size: var(--icon-16); }
+.mf-titlebar-icon { display: inline-flex; flex: none; color: var(--ink-chosen); font-size: var(--icon-16); }
 .mf-titlebar-icon[hidden] { display: none; }
 .mf-titlebar-title { flex: 1 1 auto; min-width: var(--mf-title-min); margin: 0; overflow: hidden; font-size: var(--text-14); font-weight: var(--weight-strong); line-height: var(--leading-title); white-space: nowrap; text-overflow: ellipsis; }
 .mf-titlebar-tools { display: flex; flex: none; align-items: center; gap: var(--space-0); }

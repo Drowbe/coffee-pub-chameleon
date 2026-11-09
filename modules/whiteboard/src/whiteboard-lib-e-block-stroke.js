@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-e-block-stroke.js: a freehand stroke --------------------------------------------------------------
-  // { ...block, points: [x0, y0, x1, y1, ...], width, tint }: every point of the line drawn, relative to x, y, saved whole
-  // once the pen lifts. Double-click to change its colour (tint).
+  // { ...block, points: [x0, y0, x1, y1, ...], stroke, weight }: every point of the line drawn, relative to x, y, saved
+  // whole once the pen lifts. Double-click to change its colour.
   {
     const MAX = WB_LIMITS.numbers;
     // Fewer points for the same line (Ramer-Douglas-Peucker), within `tol` board units; looser until it fits the limit.
@@ -41,15 +41,16 @@
     blockTypes.register({
       type: 'stroke',
       label: 'Drawing',
-      edit: 'tint',
+      edit: 'colour',
+      paint: { stroke: { label: 'Line' } },
+      weight: true,
       simplify,
-      create: () => ({ points: [0, 0], width: 3, tint: 'ink' }),
+      create: () => ({ points: [0, 0], stroke: 'ink', weight: 3 }),
       clean(raw) {
         if (!Array.isArray(raw.points) || raw.points.length < 2 || raw.points.length > MAX || raw.points.length % 2) return null;
         const points = raw.points.map((n) => wb.num(n, WB_LIMITS.size * 10));
         if (points.some((n) => n === null)) return null;
-        const width = wb.num(raw.width, 40);
-        return { points, width: width === null || width < 1 ? 3 : width, tint: wb.tint(raw.tint) };
+        return { points };
       },
       box(b) {
         let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
@@ -57,7 +58,7 @@
           x0 = Math.min(x0, b.points[i]); x1 = Math.max(x1, b.points[i]);
           y0 = Math.min(y0, b.points[i + 1]); y1 = Math.max(y1, b.points[i + 1]);
         }
-        const pad = b.width / 2 + 8;
+        const pad = b.weight / 2 + 8;
         return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
       },
       render(b, el) {
@@ -71,7 +72,6 @@
         }
         svg.setAttribute('width', box.w); svg.setAttribute('height', box.h); svg.setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
         for (const p of svg.querySelectorAll('path')) p.setAttribute('d', d);
-        svg.lastChild.style.strokeWidth = `${b.width}px`;
       },
       describe: () => 'Drawing',
     });

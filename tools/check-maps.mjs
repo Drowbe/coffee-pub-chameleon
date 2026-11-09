@@ -158,7 +158,7 @@ test('the map reads on every shipped theme, dark and light, and on a theme that 
     for (const mode of ['dark', 'light']) {
       const set = t[mode];
       if (!set) continue;
-      const env = { 'surface-page': hex(set['surface-page']), 'surface-panel': hex(set['surface-panel']), 'text-primary': hex(set['text-primary']), 'text-muted': hex(set['text-muted']), 'tint-blue': hex(TINTS[mode].blue), 'tint-green': hex(TINTS[mode].green) };
+      const env = { 'surface-page': hex(set['surface-page']), 'surface-panel': hex(set['surface-panel']), 'text-primary': hex(set['text-primary']), 'text-muted': hex(set['text-muted']), 'tint-blue': hex(set['tone-blue'] || TINTS[mode].blue), 'tint-green': hex(set['tone-green'] || TINTS[mode].green) }; // a theme's own tones, else the fixed ones
       const tokens = mode === 'light' ? light : dark;
       const map = {};
       for (const name of Object.keys(KEYS)) { env[`map-${name}`] = evalCss(tokens[name], env); map[KEYS[name]] = env[`map-${name}`]; }
