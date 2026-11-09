@@ -40,7 +40,7 @@
   // Which blocks a kind of export takes, bottom to top. list: every block bottom to top as { id, rect ({ x0, y0, x1, y1 }:
   // all it draws on the board, or null when it is not drawn), refs (the ids it is attached to) }; picked: a Set of ids;
   // view: what is in sight, a box on the board. The selection takes the picked blocks and every connector whose blocks are
-  // all among them, as a copy does.
+  // all among them, as a copy does. 'frame' is a frame's box (handed as view): every block it overlaps, the frame too.
   function wbExportPick(kind, list, { picked = new Set(), view = null } = {}) {
     const drawn = list.filter((x) => x && x.rect);
     if (kind === 'selection') {
@@ -48,15 +48,15 @@
       if (!ids.size) return [];
       return drawn.filter((x) => ids.has(x.id) || (x.refs && x.refs.length && x.refs.every((r) => ids.has(r)))).map((x) => x.id);
     }
-    if (kind === 'view') return view ? drawn.filter((x) => wbOverlap(x.rect, view)).map((x) => x.id) : [];
+    if (kind === 'view' || kind === 'frame') return view ? drawn.filter((x) => wbOverlap(x.rect, view)).map((x) => x.id) : [];
     return drawn.map((x) => x.id);
   }
 
   // The part of the board a picture shows, in whole board units ({ x, y, w, h }), or null when there is nothing to show.
-  // 'view': the box in sight as it is; else every rect with `margin` round them.
+  // 'view' and 'frame': the box as it is (a frame's picture is the frame's size); else every rect with `margin` round them.
   function wbExportExtent(kind, rects, { view = null, margin = WB_EXPORT.margin } = {}) {
     let r = null;
-    if (kind === 'view') r = view;
+    if (kind === 'view' || kind === 'frame') r = view;
     else {
       for (const q of rects) {
         if (!q) continue;

@@ -80,7 +80,8 @@
     return out;
   }
 
-  // What a command (WB_ARRANGE id) changes on these blocks: { changes: [{ id, fields }], locked: how many were left
+  // What a command (WB_ARRANGE id) changes on these blocks: { changes: [{ id, fields }], moves: [{ id, dx, dy }] (the
+  // same, as amounts: a frame's blocks go along, lib-e-block-frame's wbFrameMoveChanges), locked: how many were left
   // out because they are locked, enough: whether there were enough blocks to do it }. Connectors are left out (they follow
   // their blocks); the fields are each block type's move (lib-a, wbMoved).
   function wbArrangeChanges(blocks, how, { measure = () => 0 } = {}) {
@@ -93,7 +94,7 @@
     if (!def || rects.length < need) return { changes: [], locked, enough: false };
     const moves = def.distribute ? wbDistributeMoves(rects, how) : wbAlignMoves(rects, how);
     const byId = new Map(free.map((b) => [b.id, b]));
-    return { changes: moves.map((m) => ({ id: m.id, fields: wbMoved(byId.get(m.id), m.dx, m.dy) })), locked, enough: true };
+    return { changes: moves.map((m) => ({ id: m.id, fields: wbMoved(byId.get(m.id), m.dx, m.dy) })), moves, locked, enough: true };
   }
 
   // Guides: a box being dragged (moving, where it would be now) lines up with the boxes near it. Each axis on its own: of

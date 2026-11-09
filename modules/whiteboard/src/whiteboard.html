@@ -13,6 +13,7 @@
   The board fills the module. #world is the layer the view moves and scales; each block is a .wb-block in it, drawn by its
   block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
+  #present is the bar shown while the frames are presented (Back, which frame of how many, Next, Exit).
   #paint is the strip of the colours and the line width, hung under the toolbar's left end (whiteboard.js fills it).
   #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom). While words are
   edited, the formatting bar (.wb-format) is put on #board by the editor (whiteboard-lib-d-render.js).
@@ -28,6 +29,12 @@
     </div>
     <p id="hint" class="hint" hidden></p>
     <div id="drop" class="wb-drop" hidden><p class="wb-drop-title">Drop to add to the board</p><p id="drop-sub" class="wb-drop-sub"></p></div>
+    <div id="present" class="wb-present" role="toolbar" aria-label="Presenting the frames" hidden>
+      <button type="button" id="present-back" class="btn btn-quiet btn-small" aria-label="Back"><span class="ic" data-icon="chevron-left" aria-hidden="true"></span><span class="wb-present-label">Back</span></button>
+      <span id="present-count" class="wb-present-count"></span>
+      <button type="button" id="present-next" class="btn btn-quiet btn-small" aria-label="Next"><span class="wb-present-label">Next</span><span class="ic" data-icon="chevron-right" aria-hidden="true"></span></button>
+      <button type="button" id="present-exit" class="btn btn-small" aria-label="Exit"><span class="ic" data-icon="xmark" aria-hidden="true"></span><span class="wb-present-label">Exit</span></button>
+    </div>
   </div>
   <input id="picker" type="file" accept="image/*" multiple hidden>
   <p id="say" class="wb-say" aria-live="polite"></p>

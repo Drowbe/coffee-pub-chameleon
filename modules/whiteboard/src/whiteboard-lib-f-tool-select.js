@@ -17,7 +17,9 @@
   // with are found once, when the drag begins (ctx.guideBoxes). A locked block is not moved (lib-b): a drag of picked
   // blocks moves the others, and the person is told once (ctx.lockedNote).
   // Picking one block of a group picks the whole group (the page's select does it), so a click, Shift-click or rectangle
-  // works on whole groups.
+  // works on whole groups. A frame dragged takes every block inside it along (ctx.contentsOf), each saved once on the
+  // drop with the rest: one step to undo. A frame is pressed only by its tab or its border (whiteboard.css), so a press
+  // inside it is a press on the board or on the block there.
   // A connector's end (resize.attach) goes where it is let go: onto a block (the side whose middle it is near, else the
   // side that faces the other end), or the board (a free end, on the grid with Snap to grid); the block under it shows
   // its connection points meanwhile. A connector moves with the blocks it is attached to; moved itself (with others
@@ -133,9 +135,12 @@
           const now = Date.now();
           if (!adding && last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id, { target: p.event && p.event.target }); return; }
           const all = ctx.selection().map((id) => ctx.get(id)).filter(Boolean);
-          const blocks = all.filter((b) => ctx.policy.canChange(b));
-          const locked = all.filter((b) => b.locked === true).length;
-          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ ...b })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding, locked, of: all.length, guide: null };
+          const picked = all.filter((b) => ctx.policy.canChange(b));
+          // A frame moved takes the blocks inside it now (lib-e-block-frame, wbFrameFollow); a locked one inside stays.
+          const inside = ctx.contentsOf ? ctx.contentsOf(picked.map((b) => b.id)) : { blocks: [], locked: 0 };
+          const blocks = [...picked, ...inside.blocks];
+          const locked = all.filter((b) => b.locked === true).length + inside.locked;
+          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ ...b })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding, locked, of: all.length + inside.blocks.length + inside.locked, guide: null };
           for (const s of hold.starts) ctx.hold(s.id, true);
         } else if (emptyPress(p, ctx) === 'marquee') {
           hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p, ctx) ? ctx.selection() : [], moved: false };

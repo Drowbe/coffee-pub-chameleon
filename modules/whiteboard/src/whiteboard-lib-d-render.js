@@ -408,6 +408,13 @@
       applyView();
     }
     function panBy(dx, dy) { view.x += dx; view.y += dy; applyView(); }
+    // Put the view as given ({ x, y, s }; the scale held to the limits): presenting a frame, and back.
+    function setView(v) {
+      view.s = Math.min(MAX, Math.max(MIN, v.s));
+      view.x = v.x;
+      view.y = v.y;
+      applyView();
+    }
     function center() {
       return { x: (surface.clientWidth / 2 - view.x) / view.s, y: (surface.clientHeight / 2 - view.y) / view.s };
     }
@@ -462,6 +469,8 @@
       zoomBy: (f) => zoomAt(view.s * f, surface.clientWidth / 2, surface.clientHeight / 2),
       reset: () => zoomAt(1, surface.clientWidth / 2, surface.clientHeight / 2),
       panBy,
+      setView,
+      limits: { min: MIN, max: MAX },
       center,
       fit,
     };
