@@ -843,4 +843,26 @@ test('a bundled module that stores objects and may point at other modules\' tell
   assert.deepEqual(missing, [], `these modules store objects and consume other modules' kinds but never call host.objects.setLinks: ${missing.join(', ')}`);
 });
 
+test('a module\'s test/ folder (modules/<id>/test/*.mjs, run by tools/check-module-tests.mjs) never goes into its zip', () => {
+  const { buildModule, bundledModules } = createRequire(import.meta.url)('../server/module-build.js');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'modules');
+  const ids = bundledModules(root).map((m) => m.id);
+  assert.ok(ids.length >= 6, 'the bundled modules were found');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-modules-zip-'));
+  try {
+    for (const id of ids) {
+      const copy = path.join(tmp, id);
+      fs.cpSync(path.join(root, id), copy, { recursive: true });
+      const plain = buildModule(copy);
+      fs.mkdirSync(path.join(copy, 'test'), { recursive: true });
+      fs.writeFileSync(path.join(copy, 'test', 'zz-scratch-test.mjs'), 'process.exit(0);\n');
+      const withTest = buildModule(copy);
+      assert.equal(withTest.fileCount, plain.fileCount, `${id}: a test/ folder changed the number of files in the zip`);
+      assert.ok(!withTest.zip.includes('zz-scratch-test') && !withTest.zip.includes('test/'), `${id}: the zip has a test/ entry`);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 console.log(`check-modules: ${n} groups OK`);
