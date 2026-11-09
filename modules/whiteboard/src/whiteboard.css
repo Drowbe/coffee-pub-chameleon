@@ -266,8 +266,73 @@
 
 .app.narrow .wb-svg .wb-hit-wide { stroke-width: max(24px, calc(var(--wb-weight) + 12px)); }
 
-/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
+/* The width menu: a small line drawn at each choice's weight, in the row's own text colour. In the block's menu, the same
+   line stands in Line width's icon place. */
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
+.wb-width-sample.wb-width-icon { width: 1em; }
+
+/* The strip of the colours and the line width, hung under the toolbar's left end, over the board: the toolbar's own
+   surface with its edge, open at the top. Each button is the system's small quiet icon button with a mark of its own. */
+.wb-paint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  gap: var(--space-0);
+  padding: var(--space-0) var(--space-1) var(--space-1);
+  border: 1px solid var(--edge-bar);
+  border-top: 0;
+  border-left: 0;
+  border-bottom-right-radius: var(--radius-medium);
+  background: var(--surface-toolbar);
+}
+.wb-paint-btn { position: relative; }
+.wb-sw { position: relative; display: block; width: 16px; height: 16px; border-radius: var(--radius-min); }
+/* Border: a ring of the colour; Background: a square filled with it (with a hairline, so a pale one shows); Words: an A
+   with a bar of the colour under it. */
+.wb-sw-stroke { border: 3px solid var(--wb-sw, var(--text-muted)); border-radius: var(--radius-round); }
+.wb-sw-fill { border: 1px solid var(--edge-field); background: var(--wb-sw, transparent); }
+.wb-sw-ink {
+  width: auto;
+  height: auto;
+  padding-bottom: var(--space-0);
+  color: var(--text-primary);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  line-height: 1;
+  border-bottom: 3px solid var(--wb-sw, var(--text-muted));
+  border-radius: 0;
+}
+/* None: a line across the mark. */
+.wb-sw[data-state="none"]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text-muted);
+  transform: rotate(45deg);
+}
+.wb-sw-stroke[data-state="none"], .wb-sw-ink[data-state="none"] { border-color: var(--edge-field); }
+/* Matching (a note's border, a little darker than its fill): half of the ring in the text colour. */
+.wb-sw-stroke[data-state="auto"] { border-color: var(--text-muted) var(--edge-field) var(--edge-field) var(--text-muted); }
+/* Default with no block type known: a dashed mark. */
+.wb-sw[data-state="default"] { border-style: dashed; border-color: var(--text-muted); }
+/* Mixed (the picked blocks differ): several colours. */
+.wb-sw-fill[data-state="mixed"], .wb-sw-stroke[data-state="mixed"] {
+  border-color: transparent;
+  background: conic-gradient(var(--tint-red), var(--tint-gold), var(--tint-green), var(--tint-blue), var(--tint-purple), var(--tint-red));
+}
+.wb-sw-stroke[data-state="mixed"] {
+  -webkit-mask: radial-gradient(circle, transparent 4px, var(--text-primary) 4.5px);
+  mask: radial-gradient(circle, transparent 4px, var(--text-primary) 4.5px);
+}
+.wb-sw-ink[data-state="mixed"] { border-image: linear-gradient(90deg, var(--tint-red), var(--tint-gold), var(--tint-green), var(--tint-blue)) 1; }
+/* Line width: a short line drawn at the width (up to 8px), round at its ends; dashed for Default with no type, or Mixed. */
+.wb-lw { display: block; width: 18px; height: var(--lw, 2px); border-radius: var(--radius-round); background: currentColor; }
+.wb-lw[data-state="default"], .wb-lw[data-state="mixed"] { height: 2px; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
 
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }

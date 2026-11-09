@@ -8,6 +8,9 @@
   // wheel, two fingers) or the Hand tool's. Someone who may only look can pick, and move the board.
   // Drag a handle of the picked block to change its size (Shift keeps its shape; a picture always does) or to move a line's end; the new box is
   // saved once, when it is let go. What a handle does is the block type's resize (lib-a); showing the handles is the page's.
+  // With Snap to grid (ctx.snapping, turned round while Alt is held) a move puts the pressed block's corner on the grid and
+  // the others with it by the same amount; a resize puts the dragged edges or the line's end on the grid (not while the
+  // shape is kept). Each is still saved once, on the drop: one step to undo.
   {
     const SLOP = 4; // screen pixels a press may wander and still be a press, not a drag
     const TWICE = 400; // milliseconds between two presses that open a block
@@ -45,6 +48,19 @@
       const out = { w, x: east ? start.x : start.x + start.w - w };
       if (h !== null) { out.h = h; out.y = south ? start.y : start.y + start.h - h; }
       return out;
+    }
+    // How far a handle is dragged, (mx, my) board units, so that what it moves lands on the grid: the line's end, or the
+    // corner's edges.
+    function snapDrag(r, start, handle, mx, my) {
+      const to = (edge, d) => wbSnap(edge + d) - edge;
+      if (r.handles === 'ends') {
+        const ex = handle === 'start' ? start.x : start.x + start.dx;
+        const ey = handle === 'start' ? start.y : start.y + start.dy;
+        return { mx: to(ex, mx), my: to(ey, my) };
+      }
+      const ex = handle.endsWith('e') ? start.x + start.w : start.x;
+      const ey = handle.startsWith('s') ? start.y + (start.h || 0) : start.y;
+      return { mx: to(ex, mx), my: r.height === false ? my : to(ey, my) };
     }
     // The fields a resize changes, as they were when it began (to put back when it is cancelled).
     const before = (r, s) => (r.handles === 'ends' ? { x: s.x, y: s.y, dx: s.dx, dy: s.dy } : r.height === false ? { x: s.x, w: s.w } : { x: s.x, y: s.y, w: s.w, h: s.h });
@@ -102,15 +118,22 @@
           hold.moved = true;
           const s = ctx.scale();
           const keep = Boolean(hold.r.keep || (p.event && p.event.shiftKey)); // a picture always keeps its shape
-          ctx.change(hold.id, resized(hold.r, hold.start, hold.handle, (p.sx - hold.sx) / s, (p.sy - hold.sy) / s, keep), { save: false });
+          let m = { mx: (p.sx - hold.sx) / s, my: (p.sy - hold.sy) / s };
+          if (!keep && ctx.snapping(p.event)) m = snapDrag(hold.r, hold.start, hold.handle, m.mx, m.my);
+          ctx.change(hold.id, resized(hold.r, hold.start, hold.handle, m.mx, m.my, keep), { save: false });
           return;
         }
         if (!hold.moves) return;
         if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
         hold.moved = true;
         const s = ctx.scale();
-        const dx = (p.sx - hold.sx) / s;
-        const dy = (p.sy - hold.sy) / s;
+        let dx = (p.sx - hold.sx) / s;
+        let dy = (p.sy - hold.sy) / s;
+        if (ctx.snapping(p.event)) {
+          const lead = hold.starts.find((b) => b.id === hold.id) || hold.starts[0];
+          dx = wbSnap(lead.x + dx) - lead.x;
+          dy = wbSnap(lead.y + dy) - lead.y;
+        }
         for (const b of hold.starts) ctx.change(b.id, { x: b.x + dx, y: b.y + dy }, { save: false });
       },
       up(p, ctx) {

@@ -77,7 +77,7 @@
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} With Snap to grid on, blocks land on the dots; hold ${MOD === 'Cmd' ? 'Option' : 'Alt'} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   const takesNext = (def, role) => {
     const usual = def.create();
@@ -114,6 +114,8 @@
     selection: () => [...sel],
     isSelected: (id) => sel.has(id),
     scale: () => renderer.view.s,
+    // Whether this gesture snaps to the grid (Snap to grid, turned round while Alt is held), and a point or a length so.
+    snapping: (event) => snapping(event),
     panBy: (dx, dy) => renderer.panBy(dx, dy),
     draft(type, fields) {
       const def = blockTypes.get(type);
@@ -237,7 +239,7 @@
     for (const id of ids || []) if (board.has(id)) sel.add(id);
     renderer.select([...sel], handlesOf(one()));
     const can = [...sel].some((id) => policy.canDelete(board.get(id)));
-    if (can && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
+    if (can && !deleteButton) { deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) }); if (snapButton) makeSnapButton(); }
     if (!can && deleteButton) { deleteButton.destroy(); deleteButton = null; }
     updateStatus();
   }
@@ -325,6 +327,7 @@
     renderer.select([...sel], handlesOf(one()));
     showTool();
     updateHint();
+    updateStatus();
   }
   surface.dataset.tool = tool.id;
   surface.setAttribute('aria-label', boardHelp());
@@ -357,9 +360,12 @@
   const agreed = (list, field) => { const vals = new Set(list.map((b) => b[field])); return vals.size === 1 ? [...vals][0] : undefined; };
   // Whose colours a menu shows: "this note", "the 3 picked blocks", "the Pen tool" (what it draws next), "new blocks".
   const whoseOf = (list, def) => (list.length > 1 ? `the ${list.length} picked blocks` : list.length ? `this ${nounOf(list[0])}` : def ? `the ${tool.label} tool` : 'new blocks');
-  const nameOf = (id) => (id === undefined ? 'Mixed' : NAMED[id] ? NAMED[id].label : WB_PALETTE_BY_ID.has(id) ? WB_PALETTE_BY_ID.get(id).label : 'Usual');
+  // A role's colour in words: a palette colour's name, None, Matching, Mixed (the picked blocks differ) or Default (each
+  // block type's own colour, when no type is known).
+  const nameOf = (id) => (id === undefined ? 'Mixed' : NAMED[id] ? NAMED[id].label : WB_PALETTE_BY_ID.has(id) ? WB_PALETTE_BY_ID.get(id).label : 'Default');
 
-  function colourMenu(where, only) {
+  // `role`: only that colour role's rows (a swatch on the board's strip opens its own role).
+  function colourMenu(where, only, role) {
     const list = targets(only);
     const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
     let groups;
@@ -378,23 +384,23 @@
         for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
         const same = new Set(having.map((b) => b.type)).size === 1 ? defOf(having[0]) : null;
         return { role, label: roleLabel(same, role), now, rows };
-      }).filter(Boolean);
+      }).filter((g) => g && (!role || g.role.id === role));
     } else {
-      // For new blocks: "Usual" and the palette.
-      groups = WB_ROLES.filter((role) => !def || takesNext(def, role.id)).map((role) => {
-        const now = next[role.id];
-        const usual = def ? def.create()[role.id] : null;
-        const pick = (v) => () => { next[role.id] = v; };
-        const rows = [choiceRow(null, 'Usual', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
+      // For new blocks: "Default" (the block type's own colour, named beside it when the type is known) and the palette.
+      groups = WB_ROLES.filter((r) => (!def || takesNext(def, r.id)) && (!role || r.id === role)).map((r) => {
+        const now = next[r.id];
+        const usual = def ? def.create()[r.id] : null;
+        const pick = (v) => () => { next[r.id] = v; updateStatus(); };
+        const rows = [choiceRow(null, 'Default', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
         for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
-        return { role, label: roleLabel(def, role), now: now === null ? usual : now, rows };
+        return { role: r, label: roleLabel(def, r), now: now === null ? usual : now, rows };
       });
     }
     if (!groups.length) return;
     const whose = whoseOf(list, def);
     const prep = list.length ? 'of' : 'for';
     const items = groups.length === 1
-      ? [{ heading: groups[0].role.id === 'ink' ? `Colour of the words ${prep} ${whose}` : `Colour ${prep} ${whose}` }, ...groups[0].rows]
+      ? [{ heading: groups[0].role.id === 'ink' ? `Colour of the words ${prep} ${whose}` : `${groups[0].label} colour ${prep} ${whose}` }, ...groups[0].rows]
       : [{ heading: `Colours ${prep} ${whose}` }, ...groups.map((g) => ({ id: g.role.id, label: g.label, hint: nameOf(g.now), ...swatch(g.now), items: g.rows }))];
     host.menu.show({ id: 'colour', ...where, items });
   }
@@ -413,15 +419,16 @@
     const pick = (v) => () => {
       for (const b of list) ctx.change(b.id, { weight: v }, { save: 'now' });
       if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) next.weight = v;
+      updateStatus();
     };
     const lines = (t) => t === 'line' || t === 'stroke';
     const border = list.length ? !list.every((b) => lines(b.type)) : def && !lines(def.type);
     const whose = list.length || def ? whoseOf(list, def) : 'new lines and borders';
-    const items = [{ heading: `${border ? 'Border width' : 'Width'} ${list.length ? 'of' : 'for'} ${whose}` }];
+    const items = [{ heading: `${border ? 'Border width' : 'Line width'} ${list.length ? 'of' : 'for'} ${whose}` }];
     const samples = []; // the weight each choice row draws, in row order
     if (!list.length) {
       const usual = def ? def.create().weight : null;
-      items.push(choiceRow(null, 'Usual', now, pick(null), { hint: usual ? wbWeightName(usual) : '' }));
+      items.push(choiceRow(null, 'Default', now, pick(null), { hint: usual ? wbWeightName(usual) : '' }));
       samples.push(usual);
     }
     for (const w of WB_WEIGHTS) { items.push(choiceRow(w, wbWeightName(w), now, pick(w))); samples.push(w); }
@@ -431,12 +438,98 @@
     const menu = surface.getRootNode().querySelector('.wb-width-menu');
     if (menu) [...menu.querySelectorAll('.sdk-menu-item:not(:disabled)')].forEach((row, i) => {
       if (!samples[i]) return;
-      const line = document.createElement('span');
-      line.className = 'wb-width-sample';
-      line.setAttribute('aria-hidden', 'true');
-      line.style.setProperty('--sample', `${samples[i]}px`);
-      row.insertBefore(line, row.firstChild);
+      row.insertBefore(widthSample(samples[i]), row.firstChild);
     });
+  }
+  // A short line drawn at a width, for a menu row.
+  function widthSample(w, className = 'wb-width-sample') {
+    const line = document.createElement('span');
+    line.className = className;
+    line.setAttribute('aria-hidden', 'true');
+    line.style.setProperty('--sample', `${w}px`);
+    return line;
+  }
+
+  // ---- the colours and width on show ------------------------------------------------------------------------------------
+  // A toolbar button holds only an icon, never a colour or a drawing, so the colours and the width are shown on the board's
+  // own strip (#paint), hung under the toolbar's left end: a swatch for each colour role (Border a ring, Background a
+  // filled square, Words an A over a bar) and a line drawn at the width, each a button that opens its own menu. Each shows
+  // what its menu marks: the picked blocks' (several colours in a ring when they differ), else what new blocks get (the
+  // active tool's block type's own when Default is chosen; a dashed ring when no type is known). Hidden for a role the
+  // picked blocks or the tool's type do not have, and for someone who may only look.
+  const paintStrip = $('paint');
+  const paintButtons = new Map(); // role id or 'weight' -> { button, mark }
+  function stripButton(key, label, make, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sdk-icon-btn btn-quiet btn-small wb-paint-btn';
+    button.setAttribute('aria-haspopup', 'menu');
+    const mark = make();
+    mark.setAttribute('aria-hidden', 'true');
+    button.appendChild(mark);
+    button.addEventListener('click', () => onClick(button));
+    paintStrip.appendChild(button);
+    paintButtons.set(key, { button, mark, label });
+  }
+  if (policy.canEdit) {
+    for (const role of WB_ROLES) {
+      stripButton(role.id, role.label, () => {
+        const m = document.createElement('span');
+        m.className = `wb-sw wb-sw-${role.id}`;
+        if (role.id === 'ink') m.textContent = 'A';
+        return m;
+      }, (button) => colourMenu({ anchor: button }, null, role.id));
+    }
+    stripButton('weight', 'Line width', () => { const m = document.createElement('span'); m.className = 'wb-lw'; return m; }, (button) => widthMenu({ anchor: button }));
+    paintStrip.hidden = false;
+  }
+  // What the strip shows for each role: { value, label, own } (value: a palette id, 'none', 'auto', null for Default with
+  // no type known, undefined for Mixed; own: Default is chosen and value is the type's own colour), or null to hide it.
+  function paintShown() {
+    const list = targets();
+    const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
+    const sameDef = (bs) => (new Set(bs.map((b) => b.type)).size === 1 ? defOf(bs[0]) : null);
+    const out = {};
+    for (const role of WB_ROLES) {
+      if (list.length) {
+        const having = list.filter((b) => { const d = defOf(b); return d.paint && d.paint[role.id]; });
+        out[role.id] = having.length ? { value: agreed(having, role.id), label: roleLabel(sameDef(having), role) } : null;
+      } else if (!def || takesNext(def, role.id)) {
+        const now = next[role.id];
+        out[role.id] = { value: now !== null ? now : def ? def.create()[role.id] : null, label: roleLabel(def, role), own: now === null && Boolean(def) };
+      } else out[role.id] = null;
+    }
+    const lined = list.filter((b) => defOf(b).weight);
+    if (list.length) out.weight = lined.length ? { value: agreed(lined, 'weight') } : null;
+    else if (!def || takesNext(def, 'weight')) out.weight = { value: next.weight !== null ? next.weight : def ? def.create().weight : null, own: next.weight === null && Boolean(def) };
+    else out.weight = null;
+    return out;
+  }
+  function updatePaint() {
+    if (!paintButtons.size) return;
+    const shown = paintShown();
+    let any = false;
+    for (const [key, p] of paintButtons) {
+      const s = shown[key];
+      p.button.hidden = !s;
+      if (!s) continue;
+      any = true;
+      let words;
+      if (key === 'weight') {
+        words = s.value === undefined ? 'Mixed' : s.value === null ? 'Default' : s.own ? `Default (${wbWeightName(s.value)})` : wbWeightName(s.value);
+        p.mark.dataset.state = s.value === undefined ? 'mixed' : s.value === null ? 'default' : 'width';
+        p.mark.style.setProperty('--lw', `${Math.min(8, s.value || 2)}px`);
+        words = `Line width: ${words}`;
+      } else {
+        const c = WB_PALETTE_BY_ID.get(s.value);
+        p.mark.dataset.state = s.value === undefined ? 'mixed' : s.value === null ? 'default' : c ? 'colour' : s.value;
+        if (c) p.mark.style.setProperty('--wb-sw', c.token); else p.mark.style.removeProperty('--wb-sw');
+        words = `${s.label || p.label}: ${s.own ? `Default (${nameOf(s.value)})` : nameOf(s.value)}`;
+      }
+      p.button.setAttribute('aria-label', words);
+      p.button.dataset.tip = words;
+    }
+    paintStrip.hidden = !any;
   }
 
   // Layers: one write moves a block (its z put between its new neighbours, lib-a's wbBetween). Only when two neighbours'
@@ -535,22 +628,55 @@
   if (policy.canEdit) {
     undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => { undoRedo('undo'); if (!history.canUndo()) keepKeyboard(); } });
     redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => { undoRedo('redo'); if (!history.canRedo()) keepKeyboard(); } });
-    host.ui.toolbarButton({ id: 'colour', label: 'Colour', icon: 'palette', iconOnly: true, onClick: (e) => colourMenu(toolbarAt(e)) });
-    host.ui.toolbarButton({ id: 'width', label: 'Width', icon: 'grip-lines', iconOnly: true, onClick: (e) => widthMenu(toolbarAt(e)) });
   }
-  host.ui.toolbarButton({
-    id: 'zoom', label: 'Zoom', icon: 'magnifying-glass', iconOnly: true,
-    onClick: (e) => host.menu.show({
-      id: 'zoom',
-      at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
-      items: [
-        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: () => { renderer.zoomBy(1.25); updateStatus(); } },
-        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: () => { renderer.zoomBy(0.8); updateStatus(); } },
-        { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { renderer.fit(); updateStatus(); } },
-        { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { renderer.reset(); updateStatus(); } },
-      ],
-    }),
+
+  // Zoom is the window's, in the title bar: Zoom out and Zoom in as icons, and the magnifier's menu with the rest. Toolbar
+  // buttons placed in the title bar (host.toolbar.set), so a click comes as the 'toolbar' event with where the button is.
+  const zoomIn = () => { renderer.zoomBy(1.25); updateStatus(); };
+  const zoomOut = () => { renderer.zoomBy(0.8); updateStatus(); };
+  const zoomMenu = (e) => host.menu.show({
+    id: 'zoom',
+    ...toolbarAt(e),
+    items: [
+      { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: zoomIn },
+      { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: zoomOut },
+      { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { renderer.fit(); updateStatus(); } },
+      { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { renderer.reset(); updateStatus(); } },
+    ],
   });
+  host.toolbar.set([
+    { type: 'button', id: 'zoom-out', title: withKey('Zoom out', '-'), icon: 'magnifying-glass-minus', placement: 'titlebar' },
+    { type: 'button', id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus', placement: 'titlebar' },
+    { type: 'button', id: 'zoom', title: 'Zoom', icon: 'magnifying-glass', placement: 'titlebar' },
+  ]).catch(() => {});
+  host.on('toolbar', (e) => {
+    if (e.id === 'zoom-in') zoomIn();
+    else if (e.id === 'zoom-out') zoomOut();
+    else if (e.id === 'zoom') zoomMenu(e);
+  });
+
+  // Snap to grid: blocks made, moved and resized land on the board's dots (WB_GRID); Alt (Option on a Mac) held during a
+  // drag does the opposite for that drag. Lines snap at their ends; a pen drawing never does. Each person's own choice,
+  // kept in this browser when it can be (off at first), never in the board's data.
+  const SNAP_KEY = 'whiteboard-snap';
+  let snapOn = false;
+  try { snapOn = window.localStorage.getItem(SNAP_KEY) === '1'; } catch { /* no browser storage: off */ }
+  const snapping = (event) => snapOn !== Boolean(event && event.altKey);
+  // Its button is the last in the row (the toolbar has no right-hand place for a module's own button): made again after
+  // Delete comes, so Delete does not take its place.
+  let snapButton = null;
+  function makeSnapButton() {
+    if (!policy.canEdit) return;
+    if (snapButton) snapButton.destroy();
+    snapButton = host.ui.toolbarButton({
+      id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn,
+      onClick: () => {
+        snapOn = !snapOn;
+        snapButton.set({ on: snapOn });
+        try { window.localStorage.setItem(SNAP_KEY, snapOn ? '1' : '0'); } catch { /* kept for this visit only */ }
+      },
+    });
+  }
 
   // On a touch screen one finger on the board moves it; "Select many" makes it pick instead (lib-f-tool-select.js).
   if (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) {
@@ -559,6 +685,7 @@
       onClick: () => { many = !many; manyButton.set({ on: many }); },
     });
   }
+  makeSnapButton();
 
   // ---- copy, cut, paste and duplicate -----------------------------------------------------------------------------------
   // Only for someone who may change the board. The copies are new blocks: new ids, saved as this person's, on top of
@@ -684,7 +811,8 @@
       if (!def) return;
       const c = renderer.center();
       const box = def.box({ ...def.create(), x: 0, y: 0 });
-      const b = ctx.draft(id, { x: c.x - box.w / 2, y: c.y - (box.h || 24) / 2 });
+      const at = { x: c.x - box.w / 2, y: c.y - (box.h || 24) / 2 };
+      const b = ctx.draft(id, snapping(null) ? { x: wbSnap(at.x), y: wbSnap(at.y) } : at);
       select(b.id);
       if (def.edit !== 'text') { ctx.save(b.id); renderer.element(b.id).focus({ preventScroll: true }); return; }
       // After the host's menu has closed and handed the focus back to the +, or that would end the editing at once.
@@ -706,6 +834,7 @@
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
       updateHint();
+      updatePaint();
     });
   }
   function updateHint() {
@@ -868,11 +997,12 @@
     const def = single && defOf(single);
     host.menu.show({
       id: 'block',
+      className: 'wb-block-menu',
       at,
       items: [
         ...(def && def.edit === 'text' ? [{ id: 'edit', label: def.editLabel || 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
-        ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
+        ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Line width', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
@@ -881,6 +1011,10 @@
         { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
     });
+    // Line width has no icon that reads as it: a short line is drawn in the icon's place instead.
+    const menu = surface.getRootNode().querySelector('.wb-block-menu');
+    const row = menu && [...menu.querySelectorAll('.sdk-menu-label')].find((l) => l.textContent === 'Line width');
+    if (row) row.before(widthSample(3, 'wb-width-sample wb-width-icon'));
   }
 
   // ---- the keyboard -----------------------------------------------------------------------------------------------------

@@ -45,6 +45,10 @@
   // The words a menu shows for them.
   const WB_WEIGHT_NAMES = { 1: 'Hairline', 2: 'Thin', 3: 'Medium', 4: 'Thick', 8: 'Heavy', 12: 'Extra heavy' };
   const wbWeightName = (w) => WB_WEIGHT_NAMES[w] || `${w}`;
+  // The board's dot grid, in board units: the dots the renderer draws sit on its multiples, and Snap to grid puts blocks
+  // on them (wbSnap).
+  const WB_GRID = 24;
+  const wbSnap = (v) => Math.round(v / WB_GRID) * WB_GRID;
   const WB_LIMITS = { coord: 1000000, size: 4000, text: 4000, numbers: 6000 };
   // Small checks every block type uses to clean what it reads.
   const wb = {
