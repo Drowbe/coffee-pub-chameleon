@@ -348,8 +348,15 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     arrangeOnWide = isNarrow(); // no columns or windows on a phone: put on the canvas when it is wide (placeForWidth)
     saved.__mode = want;
     persist();
-    if (want === 'panel') { dockAll(); return; }
+    if (want === 'panel') {
+      // The modules floating now, before they dock: a stack Window Mode put away comes back from these only.
+      const floating = new Set([...opened.values()].filter((p) => p.mode === 'float' && !p.lifted).map((p) => p.id));
+      dockAll();
+      if (!isNarrow()) restoreStacks(floating);
+      return;
+    }
     if (isNarrow()) { update(); return; }
+    keepStacks();
     const columns = [...opened.values()].filter((p) => (p.mode === 'dock' || p.waiting) && !inColumn(p) && !p.lifted && supports(p, 'float')).sort(byOrder);
     const fresh = columns.filter((p) => !(saved[p.id]?.box && saved[p.id]?.layout === 'user'));
     hush += 1;
@@ -370,6 +377,56 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     if (snapAllOn()) applySnapLayout([...opened.values()].filter((p) => floaterOf(p)));
     update();
   }
+  // Window Mode puts the stacks away and Panel Mode brings them back (Thomas, 2026-11-09): as the modules float, each stack
+  // is kept in the remembered layout (`__stacks`, beside the stacks' own keys in app.canvas.<space>, so a reload in between
+  // keeps it): its modules top first, their shares, their collapse, their own widths and the column's width. Choosing
+  // Panel Mode again docks every floating module (dockAll) and then rebuilds each stack from those of its modules still
+  // open, still floating until then (one docked meanwhile by the person stays where it is) and still able to stack; a
+  // stack with fewer than two of them is none, the rest closing up. A layout loaded meanwhile forgets them.
+  function keepStacks() {
+    const stacks = currentColumns().filter((c) => c.ids.length > 1).map((c) => ({
+      ids: c.ids.slice(),
+      width: c.width,
+      h: c.ids.map((id) => (Number.isFinite(saved[id]?.h) ? saved[id].h : null)),
+      folded: c.ids.map((id) => saved[id]?.folded === true),
+      ownW: c.ids.map((id) => (Number.isFinite(saved[id]?.ownW) ? saved[id].ownW : null)),
+    }));
+    if (stacks.length) { saved.__stacks = stacks; persist(); }
+  }
+  function restoreStacks(floating) {
+    const kept = Array.isArray(saved.__stacks) ? saved.__stacks : [];
+    delete saved.__stacks;
+    try {
+      for (const st of kept) {
+        if (!st || !Array.isArray(st.ids)) continue;
+        const members = st.ids.map((id, k) => ({ id, k })).filter(({ id }) => {
+          const p = typeof id === 'string' ? opened.get(id) : null;
+          return p && floating.has(id) && wantsColumn(p) && canStack(p);
+        }).slice(0, STACK.max);
+        if (members.length < 2) continue;
+        const ids = members.map((m) => m.id);
+        const folded = members.map(({ k }) => Array.isArray(st.folded) && st.folded[k] === true);
+        if (folded.every(Boolean)) folded[folded.length - 1] = false; // the last section stays open
+        members.forEach(({ id, k }, at) => {
+          const h = Array.isArray(st.h) ? Number(st.h[k]) : NaN;
+          const own = Array.isArray(st.ownW) ? Number(st.ownW[k]) : NaN;
+          saved[id] = { ...(saved[id] || {}), h: h > 0 ? h : 1 / ids.length, folded: folded[at], ...(Number.isFinite(own) && own > 0 ? { ownW: own } : {}) };
+        });
+        const cols = currentColumns();
+        const next = [];
+        for (const c of cols) {
+          if (c.ids.includes(ids[0])) next.push({ ids, stack: null, width: Number.isFinite(st.width) ? st.width : c.width });
+          const rest = c.ids.filter((id) => !ids.includes(id));
+          if (rest.length) next.push({ ...c, ids: rest });
+        }
+        arrange(next);
+      }
+    } catch { /* a stack that cannot come back stays columns of their own */ }
+    persist();
+    syncDock();
+    update();
+  }
+
   // Panel Mode's dock (the Layout menu's Panel Mode): every floating module that can be a column goes back beside the
   // call. A module in a window of its own, and one that can only float, are left alone.
   // Through the fit (plan-docked-limit.md): what the window holds gets a column, in column order; the rest wait, floating,
@@ -2305,6 +2362,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onNote = nul
     try {
       // The conference and the chat are the column's (plan-one-bar.md, step 6): a layout neither names nor closes them.
       for (const p of [...opened.values()]) if (p.kind !== 'builtin' && !named.has(p.id) && !keepCall(p)) closeModule(p.id);
+      delete saved.__stacks; // stacks Window Mode put away are the arrangement this layout replaces
       // The canvas-level snap as saved (a module's own `snap` in an older layout is ignored).
       saved.__snap = { ...(saved.__snap || {}), all: plan.snap.all, pitch: plan.snap.pitch };
       const g = gridFor({ left: area.x, top: area.y, width: area.w, height: area.h }, plan.snap.pitch);

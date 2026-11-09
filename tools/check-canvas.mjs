@@ -786,6 +786,9 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // Only a new stack starts with equal heights (decision 6); a move inside a stack keeps every share; a joiner takes an equal part.
   const into = canvasJs.slice(canvasJs.indexOf('  function stackInto('), canvasJs.indexOf('  function moveToColumn('));
   if (!/const within = from === into;/.test(into) || !/if \(held\.length < 2\) into\.even = true;/.test(into)) fail(C, 'stackInto(): equal heights for a new stack only');
+  // Window Mode puts the stacks away in the remembered layout (__stacks) and Panel Mode brings them back (Thomas, 2026-11-09).
+  const arr = canvasJs.slice(canvasJs.indexOf('  function setArrangeMode(mode) {'), canvasJs.indexOf('  function dockAll() {'));
+  if (!/dockAll\(\);\n\s*if \(!isNarrow\(\)\) restoreStacks\(floating\);/.test(arr) || !/keepStacks\(\);/.test(arr) || !/if \(stacks\.length\) \{ saved\.__stacks = stacks; persist\(\); \}/.test(arr)) fail(C, 'Window Mode keeps the stacks aside (__stacks) and Panel Mode brings them back after docking');
   if (!/if \(restore && Number\.isFinite\(ownW\) && stack\)/.test(canvasJs)) fail(C, 'a module out of its stack gets its own width back (ownW)');
   if (!/el\.style\.gridColumn = `\$\{1 \+ i\} \/ \$\{2 \+ i\}`;/.test(canvasJs)) fail(C, 'a column\'s parts name both grid lines (a stacked section is laid in its area absolutely, where a missing end line is the canvas\'s edge)');
   const sty = css.slice(css.indexOf('/* A stack (plan-panel-stacking.md'), css.indexOf('.stack-chip > i'));

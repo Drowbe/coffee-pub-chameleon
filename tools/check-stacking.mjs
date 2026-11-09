@@ -23,6 +23,8 @@
 //  13. Inside a stack Tab goes top section, divider, next section; nothing in a module starts again when the page's order
 //      follows the stack; a drag inside a stack keeps the shares; Escape stops a drag; a module out of a stack has its own
 //      width again; after Unstack all the keyboard is on Panel Mode.
+//  14. Window Mode puts the stacks away and Panel Mode brings them back, with their heights and collapse, beside an ordinary
+//      column; after a reload in between; closed up when a member was closed meanwhile; layouts saved meanwhile are kept.
 // It cannot check a real tablet's touch, a screen reader, or a call (no LiveKit here).
 // Usage: node tools/check-stacking.mjs [--mode=light|dark]. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
@@ -411,8 +413,67 @@ async function main() {
         await tab.waitFor('#canvas .module-docked.in-stack');
         await sleep(2500);
         expect(near(shape(await state()), want), `${L} after a reload the loaded stack is ${shape(await state())}, not ${want}`);
+
+        // 14. Window Mode and back (Thomas, 2026-11-09): the stacks come back, with their order, heights and collapse, beside the
+        // ordinary column; after a reload in between; closed up when a member was closed meanwhile; the layout saved in
+        // between and after is one the server keeps.
+        const arrangeTo = async (label) => { await showTab(); await pick(label); await closeMenus(); await sleep(900); };
+        const whole = (st) => st.docked.filter((d) => d.stacked).sort((a, b) => a.top - b.top).map((d) => `${d.id}:${d.h}:${d.folded}`).join();
+        const sameStack = (a, b) => { const x = a.split(','); const y = b.split(','); return Boolean(a) && x.length === y.length && x.every((v, i) => { const [ia, ha, fa] = v.split(':'); const [ib, hb, fb] = y[i].split(':'); return ia === ib && fa === fb && Math.abs(Number(ha) - Number(hb)) <= 2; }); };
+        const saveLayout = async (name) => {
+          await showTab();
+          await pick('Save this layout');
+          await tab.waitFor('dialog.layout-sheet[open] input');
+          await tab.eval(`(() => { const i = document.querySelector('dialog.layout-sheet[open] input:not([type]), dialog.layout-sheet[open] input[type=text]'); i.value = ${JSON.stringify(name)}; i.dispatchEvent(new Event('input', { bubbles: true })); [...document.querySelectorAll('dialog.layout-sheet[open] button')].find((b) => b.textContent.trim() === 'Save').click(); })()`);
+          await sleep(1200);
+          await closeMenus();
+          const all = await tab.eval(`fetch('/api/spaces/${S.ctx.trip}/layouts').then((r) => r.json())`);
+          return [...(all.mine || []), ...(all.shared || [])].find((x) => x.name === name) || null;
+        };
+        // Uneven heights and the lowest collapsed, in a stack of three beside the Itinerary.
+        await tab.eval(`document.querySelectorAll('#canvas > .stack-divider')[0].focus()`);
+        await key('ArrowDown'); await key('ArrowDown'); await key('ArrowDown');
+        await tab.eval(`document.querySelector('.module-docked[data-module="research"] .stack-fold').click()`);
+        await sleep(300);
+        const three = whole(await state());
+        expect(/research:36:true$/.test(three) && !(await state()).docked.find((d) => d.id === 'travel').stacked, `${L} the stack to put away is not three with Research collapsed beside the Itinerary: ${three}`);
+        await arrangeTo('Window Mode');
+        s = await state();
+        expect(!s.groups.length && ['places', 'polls', 'research'].every((id) => s.floats.includes(id)), `${L} Window Mode did not float the stack's modules: ${JSON.stringify(s)}`);
+        const away = await stored();
+        expect(Array.isArray(away.__stacks) && away.__stacks[0]?.ids?.join() === 'places,polls,research' && !['places', 'polls', 'research'].some((id) => 'stack' in (away[id] || {})), `${L} the stack is not kept aside in the remembered layout (and off the floating modules): ${JSON.stringify(away.__stacks)}`);
+        const floatingSaved = await saveLayout('Windows');
+        expect(floatingSaved && floatingSaved.modules.every((m) => !('stack' in m)), `${L} a layout saved in Window Mode was not kept as a plain one: ${JSON.stringify(floatingSaved)}`);
+        await arrangeTo('Panel Mode');
+        s = await state();
+        expect(sameStack(whole(s), three) && !s.docked.find((d) => d.id === 'travel').stacked && s.groups.length === 1, `${L} Panel Mode brought back ${whole(s)}, not ${three}`);
+        // A reload in Window Mode, then Panel Mode.
+        await arrangeTo('Window Mode');
+        await tab.cdp.send('Page.reload', {}, tab.sid);
+        await tab.waitFor('.module-floating[data-module="places"]');
+        await sleep(2500);
+        await arrangeTo('Panel Mode');
+        s = await state();
+        expect(sameStack(whole(s), three), `${L} after a reload in Window Mode, Panel Mode brought back ${whole(s)}, not ${three}`);
+        // A member closed meanwhile: the other two come back as a stack of two, uneven as they were.
+        await arrangeTo('Window Mode');
+        await tab.eval(`document.querySelector('.module-floating[data-module="research"] .mf-close-btn').click()`);
+        await sleep(400);
+        await arrangeTo('Panel Mode');
+        s = await state();
+        const two = whole(s);
+        expect(/^places:\d+:false,polls:\d+:false$/.test(two) && s.groups.includes('Stacked: Places, Polls') && Math.abs(s.docked.find((d) => d.id === 'places').h - s.docked.find((d) => d.id === 'polls').h) > 20, `${L} with Research closed in Window Mode, Panel Mode brought back ${two}`);
+        // A stack of two, there and back.
+        await arrangeTo('Window Mode');
+        await arrangeTo('Panel Mode');
+        s = await state();
+        expect(sameStack(whole(s), two), `${L} a stack of two came back as ${whole(s)}, not ${two}`);
+        const backSaved = await saveLayout('Back');
+        const back2 = (backSaved?.modules || []).filter((m) => m.stack);
+        expect(back2.map((m) => `${m.id}:${m.at}`).join() === 'places:0,polls:1' && Math.abs(back2.reduce((a, m) => a + (m.h || 0), 0) - 1) <= 0.01, `${L} the layout saved after Panel Mode does not carry the stack as the server keeps it: ${JSON.stringify(backSaved?.modules)}`);
+        expect(!('__stacks' in (await stored())), `${L} the stacks put away are still kept after they came back`);
         if (errors.length) failures.push(`${L} the page threw: ${errors.slice(0, 3).join(' | ')}`);
-        say(`${mode}: stacked by menu and drag, divider 8 px within 156 px by pointer and keys, collapse and the last one open, a fourth refused, one column of the limit, out by the drag, reload, close to one, composites refused, short canvas, phone, a saved layout's stack, Unstack all`);
+        say(`${mode}: stacked by menu and drag, divider 8 px within 156 px by pointer and keys, collapse and the last one open, a fourth refused, one column of the limit, out by the drag, reload, close to one, composites refused, short canvas, phone, a saved layout's stack, Unstack all, Window Mode and back`);
       } finally {
         tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== listen);
         await tab.close();
