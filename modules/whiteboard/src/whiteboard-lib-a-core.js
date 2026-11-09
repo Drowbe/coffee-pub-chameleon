@@ -104,17 +104,37 @@
   // changes size when it is the one block picked:
   // { handles: 'corners', min: { w, h }, height?: false, keep?: true } (x, y, w, h; height false: only w, the words set the
   // height; keep: a corner always keeps the block's shape, as Shift does for the others) or
-  // { handles: 'ends' } (a line: x, y, dx, dy); no resize, no handles }, linked?: [[field, ...], ...] (fields that only
-  // make sense together, such as a box's x, y, w and h: an undo puts them back together or leaves them all, see lib-g),
-  // and, for a block that points at other blocks (a
-  // connector, later), refs?(block) -> the ids it points at and remap?(block, idMap) -> the fields to change when it is
-  // copied along with them (lib-h; idMap: old id -> the copy's id). A block's delete takes away only the block: what it
-  // points at or uses (another block, an upload) stays, so an undo can bring it back whole. Hit-testing is the browser's: what render draws with
-  // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
+  // { handles: 'ends', attach?: true } (a line: x, y, dx, dy; attach: a connector, whose ends are re-attached); no resize,
+  // no handles }, linked?: [[field, ...], ...] (fields that only make sense together, such as a box's x, y, w and h: an
+  // undo puts them back together or leaves them all, see lib-g), anchorIn?(block) -> how far in from its box a
+  // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline), and
+  // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved).
+  //
+  // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
+  // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,
+  // pointOf) -> the fields to change when it is copied without some of them (an end on a block not in `keep`, a Set of ids,
+  // becomes a free point where it is drawn now, pointOf(end) -> { x, y }). Such a block is `attached`: it has no x, y of its
+  // own and is drawn from the boxes of the blocks it points at, never stored: layout(block, boxOf) -> what to draw
+  // ({ points, box, ... } in board units) or null while a block it points at is not on the board (then it is not drawn at
+  // all), where boxOf(id) -> that block's box on the board ({ x, y, w, h, in? }) or null; render(block, el, layout) and
+  // describe(block, find) (find(id) -> another block, for its words). A block's delete takes away only the block and the
+  // connectors attached to it (the page does that, in the same undo step): what it uses (an upload) stays, so an undo can
+  // bring it back whole. Hit-testing is the browser's: what render draws with pointer events on (see whiteboard.css,
+  // .wb-hit) is what a click finds.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
+  // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
+  // another connector.
+  const wbAttachable = (def) => Boolean(def && !def.attached && def.resize && def.resize.handles === 'corners');
+  // The fields that change when a block is moved by dx, dy: its type's move, else x and y.
+  function wbMoved(b, dx, dy) {
+    const def = blockTypes.get(b.type);
+    return def && def.move ? def.move(b, dx, dy) : { x: b.x + dx, y: b.y + dy };
+  }
 
-  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), edits (it changes the board), makes? (the block type it puts on the board, for
-  // the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx), up?(p, ctx),
+  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), group? (one of the
+  // choices in a toolbar button's menu, by the group's id: 'flowchart'), edits (it changes the board), makes? (the block
+  // type it puts on the board, for the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx),
+  // up?(p, ctx), hover?(p, ctx) (a mouse or a pen over the board with nothing pressed; p null when it leaves),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
   // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType
   // and event.
@@ -125,8 +145,10 @@
     if (!raw || typeof raw !== 'object') return null;
     const def = blockTypes.get(raw.type);
     const id = wb.id(raw.id);
-    const x = wb.num(raw.x);
-    const y = wb.num(raw.y);
+    // An attached block (a connector) has no place of its own: it is drawn from the blocks it points at.
+    const placed = !(def && def.attached);
+    const x = placed ? wb.num(raw.x) : 0;
+    const y = placed ? wb.num(raw.y) : 0;
     if (!def || !id || x === null || y === null) return null;
     const own = def.clean(raw);
     if (!own) return null;
@@ -139,8 +161,7 @@
       ...own,
       id,
       type: def.type,
-      x,
-      y,
+      ...(placed ? { x, y } : {}),
       z,
       by: typeof raw.by === 'string' ? raw.by.slice(0, 64) : '',
       at: typeof raw.at === 'string' ? raw.at.slice(0, 40) : '',
