@@ -13,7 +13,8 @@
   The board fills the module. #world is the layer the view moves and scales; each block is a .wb-block in it, drawn by its
   block type (whiteboard-lib-e-block-*.js). #frame is the selection's frame, drawn over the selected block (or round all of them, when several are).
   #drop shows while files are dragged over the board; #picker is the file chooser behind "Add a picture" in the +.
-  #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom).
+  #say reads out a timer starting, pausing and ending; #editor asks for a timer's own length (Custom). While words are
+  edited, the formatting bar (.wb-format) is put on #board by the editor (whiteboard-lib-d-render.js).
   The host draws the title bar (the +), the toolbar (the tools, Colour, Zoom, Delete) and the status line. The board's
   spoken help (its aria-label) is set by whiteboard.js, in the words of the device: the keys only where there is a keyboard.
 -->
