@@ -9,9 +9,10 @@
 // nothing in it knows the call exists.
 //
 // Four things are held:
-//   - connections: one entry per open module stream with a space, { id, who, guest, space, deliver, mayRead }. `who` is a
-//     person's key, or null for a guest (a guest on the module stream is known only by the guest link, so nobody can
-//     name them in `to`). `deliver(bytes)` writes to that stream; `mayRead(moduleId)` answers whether its reader may
+//   - connections: one entry per open module stream with a space, { id, who, name, guest, space, deliver, mayRead }. `who`
+//     is a person's key, or a guest's id from their guest pass (step 3), or null for a guest who gave no valid pass (they
+//     only receive, and nobody can name them in `to`). `name` is kept for a guest only, whose name is on their pass
+//     and in no account (a person's name is read from their account when it is shown). `deliver(bytes)` writes to that stream; `mayRead(moduleId)` answers whether its reader may
 //     read that module in that space now (index.js keeps that answer per connection and asks again on every recheck).
 //     Indexed by space, so a message touches only the connections of its own space.
 //   - joins: per module and space, the people who joined that module's live messages there, each with the connections
@@ -79,18 +80,18 @@ class ModuleLive {
     this.graceMs = graceMs;
     // A connection's id is a person's proof that the connection is theirs (join and leave), so it can't be guessed.
     this.makeId = makeId || (() => crypto.randomBytes(12).toString('base64url'));
-    this.connections = new Map(); // id -> { id, who, guest, space, deliver, mayRead, joined: Set<moduleId> }
+    this.connections = new Map(); // id -> { id, who, name, guest, space, deliver, mayRead, joined: Set<moduleId> }
     this.bySpace = new Map(); // space -> Set<id>
-    this.joins = new Map(); // pairKey -> Map<who, { who, guest, conns: Set<id>, until }>
+    this.joins = new Map(); // pairKey -> Map<who, { who, name, guest, conns: Set<id>, until }>
     this.buckets = new Map(); // key -> { tokens, at }
     this.seqs = new Map(); // pairKey -> last seq
     this.takes = 0;
   }
 
-  // A module stream with a space opened: its id.
-  open({ who = null, guest = false, space, deliver, mayRead }) {
+  // A module stream with a space opened: its id. `name` only for a guest (the name on their pass).
+  open({ who = null, name = '', guest = false, space, deliver, mayRead }) {
     const id = this.makeId();
-    const entry = { id, who: who || null, guest: Boolean(guest), space, deliver, mayRead, joined: new Set() };
+    const entry = { id, who: who || null, name: guest && typeof name === 'string' ? name : '', guest: Boolean(guest), space, deliver, mayRead, joined: new Set() };
     this.connections.set(id, entry);
     if (!this.bySpace.has(space)) this.bySpace.set(space, new Set());
     this.bySpace.get(space).add(id);
@@ -107,7 +108,7 @@ class ModuleLive {
     return ids ? [...ids].map((id) => this.connections.get(id)).filter(Boolean) : [];
   }
 
-  // A module stream closed: every module it joined loses it. Answers [{ module, space, who, until }] for each person
+  // A module stream closed: every module it joined loses it. Answers [{ module, space, who, name, guest, until }] for each person
   // that leaves no other joined connection there: they are in the grace until `until` (sweep() then says they left).
   close(id) {
     const entry = this.connections.get(id);
@@ -123,7 +124,7 @@ class ModuleLive {
       const person = this.drop(entry, moduleId);
       if (!person || person.conns.size) continue;
       person.until = this.now() + this.graceMs;
-      waiting.push({ module: moduleId, space: entry.space, who: person.who, until: person.until });
+      waiting.push({ module: moduleId, space: entry.space, who: person.who, name: person.name, guest: person.guest, until: person.until });
     }
     entry.joined.clear();
     return waiting;
@@ -137,7 +138,8 @@ class ModuleLive {
   }
 
   // A connection joins a module's live messages in its space. Answers { joined } -- true when the person was not there
-  // before (nor in the grace), so the others are told -- or null for a connection that is not open or has no person.
+  // before (nor in the grace), so the others are told -- or null for a connection that is not open or has no person (a
+  // guest who gave no valid pass).
   join(id, moduleId) {
     const entry = this.connections.get(id);
     if (!entry || !entry.who) return null;
@@ -152,7 +154,7 @@ class ModuleLive {
     }
     const joined = !person;
     if (!person) {
-      person = { who: entry.who, guest: entry.guest, conns: new Set(), until: 0 };
+      person = { who: entry.who, name: entry.name, guest: entry.guest, conns: new Set(), until: 0 };
       people.set(entry.who, person);
     }
     person.conns.add(id);
@@ -189,7 +191,7 @@ class ModuleLive {
     return entry ? [...entry.joined] : [];
   }
 
-  // Those whose grace ran out with no connection back: [{ module, space, who }], each forgotten now.
+  // Those whose grace ran out with no connection back: [{ module, space, who, name, guest }], each forgotten now.
   sweep() {
     const now = this.now();
     const gone = [];
@@ -197,19 +199,20 @@ class ModuleLive {
       const [moduleId, space] = key.split('\u0000');
       for (const person of [...people.values()]) {
         if (person.conns.size || !person.until || person.until > now) continue;
-        gone.push({ module: moduleId, space, who: person.who });
+        gone.push({ module: moduleId, space, who: person.who, name: person.name, guest: person.guest });
         this.forget(moduleId, space, person.who);
       }
     }
     return gone;
   }
 
-  // Who has joined a module's live messages in a space now (the grace included): [{ key, guest }].
+  // Who has joined a module's live messages in a space now (the grace included): [{ key, guest, name }] (`name` is a
+  // guest's, from their pass; '' for a person, whose name index.js reads from their account).
   people(moduleId, space) {
     const people = this.joins.get(pairKey(moduleId, space));
     if (!people) return [];
     const now = this.now();
-    return [...people.values()].filter((p) => p.conns.size || p.until > now).map((p) => ({ key: p.who, guest: p.guest }));
+    return [...people.values()].filter((p) => p.conns.size || p.until > now).map((p) => ({ key: p.who, guest: p.guest, name: p.name }));
   }
 
   // The rates: `limits` is [[key, perSecond], ...], each a token bucket that holds perSecond tokens (the burst) and

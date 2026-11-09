@@ -28,20 +28,31 @@
 // frame starts over and the old page's subscriptions go. When the relay is made again for the same frame it says
 // 'app:streamhello' and the frame joins again.
 //
+// Live messages (plan-module-live.md). A connection with a space says `ready` { stream } first: its id, which the page's
+// live calls (public/module-live.js) name to join and leave. `ready` is never deduplicated (a reconnect says it again, and
+// it must be heard every time), only an open connection that is not retiring hands it on, and a mount that joins a view
+// later is handed the latest at once, so every mount (and a window frame, through the relay) knows the id now. `lost` is
+// the hub's own, never the server's: the connection carrying that space dropped (the browser is trying again), so its id
+// no longer holds until the next `ready`. `live`, `joined` and `left` pass like any other event. A guest's connection
+// carries their guest pass (`passFor(guest)`, handed to createStreamHub), so the server knows them apart from others on
+// the same link; the relay hands a window frame the pass with its join answer (only for the guest link it was made for).
+//
 // Pure: nothing here reads the page's globals; module-host.js and canvas.js hand in the windows, and tools/check-streams.mjs
 // runs it against a stand-in EventSource and clock.
 
-export const STREAM_TYPES = Object.freeze(['change', 'changes', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external', 'library']);
+export const STREAM_TYPES = Object.freeze(['change', 'changes', 'schedule', 'links', 'refchange', 'bus', 'action', 'settings', 'markers', 'external', 'library', 'ready', 'live', 'joined', 'left', 'lost']);
 const PAGE = ''; // the page's own view
 const SEEN_MAX = 512; // ids remembered per view, to hand on once what two connections both carried
 const EVENT_SOURCE_CLOSED = 2;
 
-// The stream's address for a connection: a space's view, with the page's (`page`) riding along, or the page's alone.
-export function moduleStreamUrl({ space = null, page = false, guest = null } = {}) {
+// The stream's address for a connection: a space's view, with the page's (`page`) riding along, or the page's alone. A
+// guest's carries their link's token and, when the page has it, their pass.
+export function moduleStreamUrl({ space = null, page = false, guest = null, pass = null } = {}) {
   const p = new URLSearchParams();
   if (space) p.set('space', space);
   if (space && page) p.set('page', '1');
   if (guest) p.set('guest', guest);
+  if (guest && pass) p.set('pass', pass);
   return `/api/modules/stream?${p}`;
 }
 
@@ -60,7 +71,8 @@ export function streamPlan(wanted, keep = null) {
 }
 const viewsOf = (c) => (c.space ? (c.page ? [c.space, PAGE] : [c.space]) : [PAGE]);
 
-export function createStreamHub({ EventSourceImpl = globalThis.EventSource, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t), retireAfterMs = 15000 } = {}) {
+export function createStreamHub({ EventSourceImpl = globalThis.EventSource, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t), retireAfterMs = 15000, passFor = () => null } = {}) {
+  const urlOf = (g, p) => moduleStreamUrl({ ...p, guest: g.guest, pass: g.guest ? passFor(g.guest) || null : null });
   const groups = new Map(); // guest token ('' for none) -> { guest, views: Map(view -> Set(fn)), conns: Map(url -> conn), refused: Set(view), seen: Map(view -> { ids, order }), timer }
   const groupFor = (guest) => {
     const key = guest || '';
@@ -107,13 +119,25 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
       groups.delete(g.key);
     }
   }
+  // The connection that hands on a space's `ready` now: open, not retiring, carrying that space, with an id.
+  const readyFor = (g, space) => [...g.conns.values()].find((o) => o.space === space && o.open && !o.retiring && o.ready) || null;
   function open(g, p) {
-    const url = moduleStreamUrl({ ...p, guest: g.guest });
+    const url = urlOf(g, p);
     const es = new EventSourceImpl(url);
-    const c = { url, space: p.space, page: p.page, es, open: false, retiring: false, retireTimer: null };
+    const c = { url, space: p.space, page: p.page, es, open: false, retiring: false, retireTimer: null, ready: null };
     for (const type of STREAM_TYPES) {
+      if (type === 'lost') continue; // the hub's own
       es.addEventListener(type, (ev) => {
         if (g.conns.get(url) !== c) return;
+        if (type === 'ready') {
+          // This connection's id (a connection with a space). Kept for mounts that join later; handed on every time.
+          let data;
+          try { data = JSON.parse(ev.data); } catch { return; }
+          if (!c.space || !data || typeof data.stream !== 'string') return;
+          c.ready = { stream: data.stream };
+          if (!c.retiring) deliver(g, c.space, 'ready', '', { stream: data.stream });
+          return;
+        }
         let data;
         try {
           data = JSON.parse(ev.data);
@@ -137,6 +161,11 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
     es.addEventListener('error', () => {
       if (g.conns.get(url) !== c) return;
       c.open = false;
+      // Its id no longer holds: the space's mounts hear `lost` until the next `ready` (from this connection's own retry,
+      // or another's).
+      const had = c.ready;
+      c.ready = null;
+      if (had && c.space && !c.retiring && !readyFor(g, c.space)) deliver(g, c.space, 'lost', '', {});
       if (es.readyState !== EVENT_SOURCE_CLOSED) return; // the browser tries again by itself
       // Given up (a refusal): that view is not asked for again until everyone has left it, as a stream of its own was.
       close(g, c);
@@ -152,7 +181,7 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
     const plan = streamPlan(wanted, keep);
     const urls = new Set();
     for (const p of plan) {
-      const url = moduleStreamUrl({ ...p, guest: g.guest });
+      const url = urlOf(g, p);
       urls.add(url);
       const c = g.conns.get(url);
       if (!c) open(g, p);
@@ -184,6 +213,14 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
       fns.add(onEvent);
       later(g);
       let left = false;
+      // A space's id, when a connection already said it: handed to this one at once (it missed the `ready`).
+      if (space) {
+        schedule(() => {
+          const c = readyFor(g, space);
+          if (left || !c || !g.views.get(view)?.has(onEvent)) return;
+          try { onEvent('ready', { stream: c.ready.stream }); } catch (err) { console.error(err); }
+        }, 0);
+      }
       return () => {
         if (left) return;
         left = true;
@@ -198,6 +235,10 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
         later(g);
       };
     },
+    // What passFor answers changed (a guest's pass arrived): the connections follow, the new opened before the old go.
+    refresh() {
+      for (const g of groups.values()) later(g);
+    },
     // For checks: the connections open now, as their addresses.
     connections: () => [...groups.values()].flatMap((g) => [...g.conns.values()].map((c) => c.url)),
   };
@@ -207,7 +248,8 @@ const SUB_ID = /^[A-Za-z0-9_*-]{1,40}$/;
 const MAX_FRAME_SUBS = 64;
 
 // The page's side, for one window frame (`frame`, an iframe in `win`, which is where its messages arrive): `allow()`
-// answers { space, guest }, the only view the frame may hear; `join` is the page's hub's. Answers stop().
+// answers { space, guest, pass? }, the only view the frame may hear (and, for a guest, their pass, handed to the frame
+// with the join answer so its live calls know them); `join` is the page's hub's. Answers stop().
 export function createStreamRelay({ win, frame, origin, allow, join }) {
   const subs = new Map(); // sub -> leave
   let doc = null; // the token of the document in the frame now
@@ -231,17 +273,21 @@ export function createStreamRelay({ win, frame, origin, allow, join }) {
       return;
     }
     if (d.sub === '*') return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: false, error: 'that name is kept for leaving everything' }); // '*' means all of them
-    if (subs.has(d.sub)) return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: true }); // asked again: still on
     const may = allow() || {};
     const space = typeof d.space === 'string' && d.space ? d.space : null;
     const guest = typeof d.guest === 'string' && d.guest ? d.guest : null;
-    if (!space || space !== (may.space || null) || guest !== (may.guest || null) || subs.size >= MAX_FRAME_SUBS) {
+    const allowed = Boolean(space) && space === (may.space || null) && guest === (may.guest || null);
+    if (subs.has(d.sub)) return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: true, ...(allowed && guest && typeof may.pass === 'string' && may.pass ? { pass: may.pass } : {}) }); // asked again: still on
+    if (!allowed || subs.size >= MAX_FRAME_SUBS) {
       return post({ type: 'app:streamjoined', doc, sub: d.sub, ok: false, error: 'this window may hear only the events its page gave it' });
     }
     const mine = doc;
     const sub = d.sub;
+    // The answer comes before any event (the hub hands events on later), so a frame knows the pass before the `ready`.
+    // A guest's pass goes only with the guest link this frame was made for (checked just above).
+    const pass = guest && typeof may.pass === 'string' && may.pass ? may.pass : null; // `allowed` holds here
+    post({ type: 'app:streamjoined', doc, sub, ok: true, ...(pass ? { pass } : {}) });
     subs.set(sub, join(space, guest, (event, data) => post({ type: 'app:streamevent', doc: mine, sub, event, data })));
-    post({ type: 'app:streamjoined', doc, sub, ok: true });
   };
   // The frame's messages arrive in the window it is in. That can change under the relay: popping the call out moves the
   // canvas, this frame and all, into another window (and the frame's page loads again there). So on each load the relay
@@ -280,7 +326,8 @@ export function createStreamRelay({ win, frame, origin, allow, join }) {
 // the call is popped out the frame sits in the popped-out window (`parent`) while the canvas's script still runs in the
 // page that opened that window (`parent.opener`). Both are heard; the opener only while it is this site's.
 const RELAY_TRIES = 4;
-export function createStreamRelayClient({ parent, self, origin, fallback = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t) }) {
+// `onPass(guest, pass)`: the page handed this frame the guest's pass with a join answer (for live messages' calls).
+export function createStreamRelayClient({ parent, self, origin, fallback = null, onPass = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t) }) {
   const doc = `d${Math.random().toString(36).slice(2, 12)}${Date.now().toString(36)}`;
   const subs = new Map(); // sub -> { fn, space, guest, acked, tries, timer, own }
   let n = 0;
@@ -328,6 +375,9 @@ export function createStreamRelayClient({ parent, self, origin, fallback = null,
       if (s.timer !== null) cancel(s.timer);
       s.timer = null;
       if (d.ok !== true) console.warn(`[app] live updates: ${typeof d.error === 'string' ? d.error : 'the page said no'}`);
+      else if (onPass && s.guest && typeof d.pass === 'string' && d.pass.length <= 400) {
+        try { onPass(s.guest, d.pass); } catch (err) { console.error(err); }
+      }
     } else if (d.type === 'app:streamevent' && typeof d.event === 'string' && STREAM_TYPES.includes(d.event) && d.data && typeof d.data === 'object') {
       try { s.fn(d.event, d.data); } catch (err) { console.error(err); }
     }
