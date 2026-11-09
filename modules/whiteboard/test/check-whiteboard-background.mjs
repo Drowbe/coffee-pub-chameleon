@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['WB_PALETTE', 'WB_BOARD_PREFIX', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
+const NAMES = ['WB_PALETTE', 'WB_BOARD_PREFIX', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wbContrast', 'wbContrastInk', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
 
 let passed = 0;
 const fails = [];
@@ -50,6 +50,12 @@ function format() {
   check(clean({ id: 'settings', background: { a: 1 } }).background === 'default', 'a background that is not a string is Default');
   check(clean({ id: 'other', background: 'blue' }) === null, 'a value that is not the settings is left out');
   check(clean(null) === null && clean('blue') === null, 'what is not an object is left out');
+  // Override theme: kept only when exactly true.
+  check(usual.override === false, 'a new board has Override theme off');
+  check(clean({ id: 'settings', override: true }).override === true, 'override true is kept');
+  for (const v of [false, 'true', 1, null, undefined, {}, 'yes']) check(clean({ id: 'settings', override: v }).override === false, `override ${JSON.stringify(v)} reads as off`);
+  check(clean({ id: 'settings' }).override === false, 'no override is off');
+  check(clean({ id: 'settings', background: 'blue', override: true }).background === 'blue', 'override and background are independent');
   const c = clean({ id: 'settings', background: 'teal', by: 'x'.repeat(200), extra: 1 });
   check(c.type === 'board' && c.by.length === 64 && !('extra' in c), 'the clean keeps only its own fields');
 }
@@ -70,6 +76,34 @@ function dots() {
     if (c.id !== 'ink') check(bd('ink').strength > x.strength, `ink: the dots are strongest on Ink (vs ${c.id})`);
   }
   check(!raw.test(d.dot), 'Default: theme tokens only');
+  // Override theme: the colour itself, the dots in the ink given.
+  for (const c of palette) {
+    const x = bd(c.id, true, 'var(--surface-page)');
+    check(x.ground === c.token, `${c.id}: with override the ground is the token itself`);
+    check(x.dot.includes('var(--surface-page)') && !raw.test(x.ground) && !raw.test(x.dot), `${c.id}: with override the dots take the ink given, tokens only`);
+    check(bd(c.id, true).dot.includes('var(--text-primary)'), `${c.id}: the dots default to the words' colour`);
+  }
+  check(bd('default', true).ground === 'var(--surface-page)', 'Default stays the page colour with override');
+  check(bd('blue', false).ground.includes('color-mix'), 'override off is the wash as before');
+  // The contrast pick.
+  const black = [0, 0, 0];
+  const white = [255, 255, 255];
+  check(Math.abs(lib.wbContrast(black, white) - 21) < 0.01, 'black on white is 21:1');
+  check(lib.wbContrastInk([241, 230, 216], black, white) === 'dark', 'dark words on a light fill');
+  check(lib.wbContrastInk([26, 18, 6], black, white) === 'light', 'light words on a dark fill');
+  check(lib.wbContrastInk([0, 0, 0], white, black) === 'dark', 'the first candidate is "dark" whichever way round');
+  check(lib.wbContrastInk(null, black, white) === null && lib.wbContrastInk([1, 2], black, white) === null && lib.wbContrastInk([NaN, 0, 0], black, white) === null, 'a colour that is not three numbers gives no answer');
+  const themes = [
+    { fills: [[217, 169, 60], [79, 191, 178], [111, 191, 115], [106, 166, 232], [224, 122, 110], [241, 230, 216]], dark: [26, 20, 16], light: [241, 230, 216] }, // the dark theme's tints and words
+    { fills: [[148, 104, 10], [0, 121, 107], [42, 98, 176], [179, 55, 43], [46, 125, 50], [26, 20, 16]], dark: [26, 20, 16], light: [250, 248, 244] }, // the light theme's
+  ];
+  for (const t of themes) {
+    for (const fill of t.fills) {
+      const pick = lib.wbContrastInk(fill, t.dark, t.light);
+      const best = Math.max(lib.wbContrast(fill, t.dark), lib.wbContrast(fill, t.light));
+      check(lib.wbContrast(fill, pick === 'dark' ? t.dark : t.light) === best && best >= 4.5, `fill ${fill}: the pick has the better ratio, at least 4.5:1`);
+    }
+  }
 }
 
 // ---- a fake server (versions as server/module-data.js) and pages ----
@@ -136,6 +170,7 @@ function createPage(server, name) {
     history,
     boardSync,
     pick(id) { commitBoard({ ...page.settings, background: id }); },
+    pick2(fields) { commitBoard({ ...page.settings, ...fields }); },
     undo() { return history.undo(apply); },
     redo() { return history.redo(apply); },
     async reload() { const list = await boardSync.load(); page.settings = list[0] || lib.WB_BOARD_USUAL; },
@@ -236,9 +271,52 @@ async function syncing() {
   check(bg(b) === 'default', 'a stored unknown colour reads as Default');
 }
 
+async function overriding() {
+  const server = createServer();
+  const a = createPage(server, 'ann');
+  const b = createPage(server, 'bob');
+  const KEY = `${lib.WB_BOARD_PREFIX}${lib.WB_BOARD_ID}`;
+  const flip = (p, on) => p.pick2({ override: on });
+  a.pick('blue');
+  await settle(); a.deliver(); b.deliver(); await settle();
+  await new Promise((r) => { setImmediate(r); });
+  flip(a, true);
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(server.data.get(KEY).value.override === true && server.data.get(KEY).value.background === 'blue', 'switching on is one whole write that keeps the background');
+  check(a.settings.override === true && b.settings.override === true && b.settings.background === 'blue', 'the other page sees it on');
+  await new Promise((r) => { setImmediate(r); });
+  a.undo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(a.settings.override === false && b.settings.override === false && a.settings.background === 'blue', 'undo switches it off and leaves the background');
+  a.redo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(a.settings.override === true && b.settings.override === true, 'redo switches it on');
+  // Field by field: B changes the background; A's undo of override still works (override not changed by B since)
+  b.pick('green');
+  await settle(); a.deliver(); b.deliver(); await settle();
+  const r = a.undo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(r && r.board !== true && a.settings.override === false && a.settings.background === 'green' && b.settings.override === false, "undoing override leaves someone else's background");
+  // B changes override after A: A's undo of it leaves B's value with the note
+  a.redo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  b.pick2({ override: false });
+  await settle(); a.deliver(); b.deliver(); await settle();
+  const r2 = a.undo();
+  await settle(); a.deliver(); b.deliver(); await settle();
+  check(r2 && r2.board === true && a.settings.override === false && b.settings.override === false, 'an override someone else changed since is left as it is');
+  const c = createPage(server, 'cy');
+  b.pick2({ override: true });
+  await settle(); await c.reload();
+  check(c.settings.override === true, 'a reload shows it');
+  server.clear('ann');
+  a.deliver(); b.deliver(); c.deliver(); await settle();
+  check(c.settings.override === false, 'a deleted key is off');
+}
+
 async function main() {
   if (!fails.length) {
-    for (const [name, fn] of [['format', format], ['dots', dots], ['syncing', syncing]]) {
+    for (const [name, fn] of [['format', format], ['dots', dots], ['syncing', syncing], ['overriding', overriding]]) {
       try { await fn(); } catch (err) { fails.push(`${name}: ${err.stack || err.message}`); }
     }
   }

@@ -413,6 +413,8 @@
   box-sizing: content-box;
   border: calc(2px / var(--wb-scale, 1)) dashed var(--accent);
   border-radius: var(--radius-small);
+  /* a thin page-coloured edge each side, so the dashes show on a full-strength background of the accent's own colour */
+  box-shadow: 0 0 0 calc(1px / var(--wb-scale, 1)) var(--surface-page), inset 0 0 0 calc(1px / var(--wb-scale, 1)) var(--surface-page);
   pointer-events: none;
   transform: translate(calc(-2px / var(--wb-scale, 1)), calc(-2px / var(--wb-scale, 1)));
 }
@@ -564,6 +566,7 @@
   border: calc(2px / var(--wb-scale, 1)) solid var(--accent);
   border-radius: var(--radius-min);
   background: var(--surface-card);
+  box-shadow: 0 0 0 calc(1px / var(--wb-scale, 1)) var(--surface-page);
 }
 .wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
 .wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
@@ -651,6 +654,7 @@
 .wb-find .ic { display: block; width: 1em; height: 1em; }
 .wb-find .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .app.narrow .wb-find { left: var(--space-2); }
+.app.narrow:has(.wb-paint:not([hidden])) .wb-find { top: calc(var(--space-2) + 48px); } /* under the colour strip, which floats at the top left */
 .app.narrow .wb-find-input { font-size: var(--text-16); }
 .app.narrow .wb-find button { min-width: 36px; min-height: 36px; }
 .app.wb-presenting .wb-find { display: none; }
@@ -672,21 +676,21 @@
   transform: translate(calc(-3px / var(--wb-scale, 1)), calc(-3px / var(--wb-scale, 1)));
 }
 
-/* The strip of the colours and the line width, hung under the toolbar's left end, over the board: the frame's toolbar
-   surface and edge (inherited from the frame; the plain tokens where there is none), open at the top. Each button is the system's small quiet icon button with a mark of its own. */
+/* The strip of the colours and the line width, floating over the board's top left like the find bar (a small inset, a card
+   with its edge, rounded on all four corners and the soft shadow): the frame's toolbar surface and edge (inherited from the
+   frame; the plain tokens where there is none). Each button is the system's small quiet icon button with a mark of its own. */
 .wb-paint {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: var(--space-2);
+  top: var(--space-2);
   z-index: 4;
   display: flex;
   gap: var(--space-0);
-  padding: var(--space-0) var(--space-1) var(--space-1);
+  padding: var(--space-1);
   border: 1px solid var(--mf-edge, var(--edge-bar));
-  border-top: 0;
-  border-left: 0;
-  border-bottom-right-radius: var(--radius-medium);
+  border-radius: var(--radius-medium);
   background: var(--mf-surface-toolbar, var(--surface-toolbar));
+  box-shadow: var(--shadow-2);
   /* The strip lets presses through to the board; only its buttons take them. */
   pointer-events: none;
 }
@@ -831,3 +835,18 @@
 /* moving the board with Space held or the middle or right button, whatever the tool */
 .board.wb-grab, .board.wb-grab * { cursor: grab !important; }
 .board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }
+
+/* Override theme (whiteboard.js, setOverride; the renderer puts data-override on each block and the board): a palette colour
+   is drawn at full strength, not as a wash. Borders, lines and words are the theme token already; the fills are the washes
+   below. A block with such a fill and the usual ink gets its words from the renderer (data-contrast, --wb-ink: whichever of
+   the theme's text and page colours reads better), so a copy for the picture or the print keeps it. */
+.wb-type-note[data-override] { --wb-face: var(--wb-fill); }
+.wb-type-text[data-override]:not([data-fill="none"]) { background: var(--wb-fill); }
+.wb-block[data-override] .wb-shape-body { fill: var(--wb-fill, var(--text-primary)); }
+.wb-block[data-override][data-fill="none"] .wb-shape-body { fill: none; }
+.wb-type-table[data-override]:not([data-fill="none"]) .wb-tbl { background: var(--wb-fill); }
+.wb-type-table[data-override]:not([data-fill="none"]) .wb-tbl tr.wb-head > td { background: color-mix(in srgb, var(--wb-ink) 14%, transparent); }
+.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-face { background: var(--wb-fill); }
+.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { background: var(--wb-fill); }
+.wb-type-frame[data-contrast] .wb-fr-tab { color: var(--wb-ink); }
+.wb-type-frame[data-override]:not([data-fill="usual"], [data-fill="none"]) .wb-fr-tab { border-color: var(--wb-stroke); }
