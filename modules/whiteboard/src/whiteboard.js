@@ -693,6 +693,7 @@
   // saved whole, like any new block; a copy the server refuses (the module's storage is full) is taken off again and the
   // person told once (onRefused).
   const clipboard = createClipboard();
+  let clipMarked = false; // the last copy here put the mark on the computer's clipboard (CLIP_MARK, below)
   const copyable = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
   // The box round some blocks, in board units (a block whose height follows its words counts as one line high).
   function boundsOf(blocks) {
@@ -708,6 +709,7 @@
     const list = copyable();
     if (!policy.canEdit || !list.length) return;
     clipboard.copy(list, { cut });
+    clipMarked = false; // onCopyEvent sets it again when this copy put the mark on the computer's clipboard
     if (cut) removeMany(list.map((b) => b.id));
     setAdd();
   }
@@ -1081,7 +1083,10 @@
   // this page's clipboard (lib-h) as before and put a mark on the computer's clipboard (CLIP_MARK, no words or picture), so
   // a picture copied elsewhere earlier is no longer there to be pasted instead. A paste that carries picture files and
   // not the mark adds the pictures, where the pointer is over the board or else in the middle of what is in sight;
-  // any other paste puts down the copied blocks. A browser that sends no event: the key does it after CLIP_WAIT.
+  // a paste with the mark puts down the copied blocks. Once a copy here has put the mark on the computer's clipboard, a
+  // paste without it and without pictures (words copied elsewhere since) does nothing: it is not the blocks being pasted.
+  // A copy that could not put the mark there (the menu's Copy, a browser that sends no event) leaves any paste putting
+  // the copied blocks down. A browser that sends no event: the key does it after CLIP_WAIT.
   const CLIP_MARK = 'application/x-coffee-whiteboard-blocks';
   const CLIP_WAIT = 150;
   let clipTimer = 0;
@@ -1099,8 +1104,10 @@
     clipTimer = 0;
     if (!copyable().length) return;
     e.preventDefault();
-    try { if (e.clipboardData) e.clipboardData.setData(CLIP_MARK, '1'); } catch { /* the page's own clipboard still has them */ }
+    let marked = false;
+    try { if (e.clipboardData) { e.clipboardData.setData(CLIP_MARK, '1'); marked = true; } } catch { /* the page's own clipboard still has them */ }
     copy({ cut });
+    clipMarked = marked;
   }
   surface.addEventListener('copy', (e) => onCopyEvent(e, false));
   surface.addEventListener('cut', (e) => onCopyEvent(e, true));
@@ -1124,6 +1131,7 @@
     const files = ours ? [] : filesOf(data);
     e.preventDefault();
     if (files.length && pictures) { const p = hover && renderer.toBoard(hover.cx, hover.cy); addPictures(files, p && { x: p.x, y: p.y }); return; }
+    if (!ours && (files.length || clipMarked)) return; // something copied elsewhere since: not the blocks
     paste();
   });
 
