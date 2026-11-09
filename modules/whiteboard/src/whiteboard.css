@@ -903,3 +903,14 @@
 .wb-type-table[data-valign="top"] .wb-tbl td { vertical-align: top; }
 .wb-type-table[data-valign="middle"] .wb-tbl td { vertical-align: middle; }
 .wb-type-table[data-valign="bottom"] .wb-tbl td { vertical-align: bottom; }
+
+/* The strip's endcap: a small quiet round badge with the icon of the tool the strip belongs to (not a button). */
+.wb-endcap { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin-right: var(--space-1); border-radius: var(--radius-medium); background: var(--surface-page); border: 1px solid var(--edge-hairline); color: var(--text-muted); pointer-events: none; }
+.wb-endcap .ic { display: block; width: 12px; height: 12px; }
+.wb-endcap .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+/* The size button: the text-size icon with the size's word. */
+.wb-size-btn { display: inline-flex; align-items: center; gap: var(--space-1); }
+.wb-size-btn .ic, .wb-present-btn .ic { display: block; width: 1em; height: 1em; }
+.wb-size-btn .ic svg, .wb-present-btn .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.wb-present-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-1); }
+.wb-present-btn[aria-disabled="true"] { opacity: 0.5; }

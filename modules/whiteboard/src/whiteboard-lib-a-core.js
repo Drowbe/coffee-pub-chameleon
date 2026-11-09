@@ -159,11 +159,21 @@
   // The remembered size and align a new block of this type starts with (next: { size, align }, null for none): a new table
   // always starts centred (its create()), whatever was picked before.
   const wbNextWords = (def, next) => Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== null && !(def.type === 'table' && k === 'align')));
+  // Whether a block type bears words that take a size and an alignment (a note, text, a shape with a box, a table): not a
+  // stroke, a line, an arrow, a highlight, a connector, a picture or a frame (its title is plain).
+  const wbBearsWords = (def) => Boolean(def && def.markup);
+  // What the strip holds when a tool is chosen and nothing is picked, from the tool and the block type it makes (null: the
+  // Hand and Select have no strip then): { fonts: size and alignment, line: line style and arrowheads, present: the Present
+  // button, colours: the colour buttons }. The Fill tool has its colour only.
+  function wbStripPlan(tool, def, family = null) {
+    if (!tool || tool.mode || tool.id === 'select') return null;
+    return { fonts: wbBearsWords(def), line: tool.id === 'connector' || family === 'flowchart', present: tool.id === 'frame', colours: true };
+  }
   // What the colour strip's fonts group shows: size and horizontal align for the picked blocks whose words take markup
   // (else for the active tool's type: size and align), vertical align only where a picked block's type has it. Pure: blocks and their
   // types in, { size, align, valign } out (each: the value, undefined for Mixed, null to hide), or null for no group.
   function wbFontsShown(blocks, defOfBlock, toolDef, next = {}) {
-    const worded = blocks.filter((b) => defOfBlock(b).markup);
+    const worded = blocks.filter((b) => wbBearsWords(defOfBlock(b)));
     if (blocks.length) {
       if (!worded.length) return null;
       const tall = worded.filter((b) => defOfBlock(b).valign);
@@ -173,7 +183,7 @@
         valign: tall.length ? wbAgreedWords(tall, (b) => wbValignOf(b, defOfBlock(b))) : null,
       };
     }
-    if (!toolDef || !toolDef.markup) return null;
+    if (!wbBearsWords(toolDef)) return null;
     const usual = toolDef.create();
     return { size: next.size || usual.size, align: (!wbNextWords(toolDef, next).align ? null : next.align) || usual.align, valign: null }; // a new block's vertical align is its type's own: not shown until it is picked
   }

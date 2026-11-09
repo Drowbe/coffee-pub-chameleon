@@ -1,6 +1,6 @@
   // ---- whiteboard-lib-f-tool-frame.js: draw a frame ------------------------------------------------------------------------
   // Drag to draw it to size, or click for one of the usual size centred there; it goes under the other blocks (wbFrameZ,
-  // the page's draft does it for a container), the tool goes back to Select and its title ("Frame") is opened for editing
+  // the page's draft does it for a container), the tool stays on (Escape goes back to Select) and its title ("Frame") is opened for editing
   // at once; it is saved when that editing ends. With Snap to grid (ctx.snapping, turned round while Alt is held) its
   // corners go on the grid. In the toolbar's Flowchart menu, with the Table, key S.
   {
@@ -39,7 +39,6 @@
         }
         drag = null;
         ctx.select(id);
-        ctx.setTool('select');
         ctx.edit(id, { fresh: true }); // its title; saved when that editing ends
       },
       cancel(ctx) { if (drag) ctx.discard(drag.id); drag = null; },

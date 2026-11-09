@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['createHistory', 'wbApplyChanges', 'wbClean', 'blockTypes', 'wbValignOf', 'wbFontsShown', 'wbNextWords'];
+const NAMES = ['createHistory', 'wbApplyChanges', 'wbClean', 'blockTypes', 'wbValignOf', 'wbFontsShown', 'wbNextWords', 'wbBearsWords', 'wbStripPlan'];
 let passed = 0;
 const fails = [];
 const check = (ok, what) => { if (ok) passed += 1; else fails.push(what); };
@@ -30,7 +30,7 @@ const missing = NAMES.filter((n) => typeof lib[n] === 'undefined');
 if (missing.length) fails.push(`the libs have no ${missing.join(', ')}`);
 
 if (!missing.length && !fails.length) {
-  const { wbClean, blockTypes, wbValignOf, wbFontsShown } = lib;
+  const { wbClean, blockTypes, wbValignOf, wbFontsShown, wbBearsWords, wbStripPlan } = lib;
   const make = (type, extra = {}) => wbClean({ ...blockTypes.get(type).create(), id: `${type}1`, type, x: 0, y: 0, ...extra });
   const defOf = (b) => blockTypes.get(b.type);
 
@@ -66,6 +66,18 @@ if (!missing.length && !fails.length) {
   check(wbFontsShown([pic], defOf, null) === null, 'a line alone: no fonts group');
   check(wbFontsShown([t1, n1], defOf, null).valign === 'top', 'text and a note: vertical align is the note\'s');
   check(wbFontsShown([], defOf, null) === null, 'nothing picked, no tool: no group');
+  // One pattern for tools: words are borne by notes, text, closed shapes and tables, not strokes, lines, highlights, connectors, frames.
+  for (const t of ['note', 'text', 'rect', 'ellipse', 'rounded', 'diamond', 'table']) check(wbBearsWords(blockTypes.get(t)), `${t} bears words`);
+  for (const t of ['stroke', 'line', 'highlight', 'connector', 'frame', 'image']) check(!wbBearsWords(blockTypes.get(t)), `${t} bears no words`);
+  check(wbFontsShown([], defOf, blockTypes.get('stroke')) === null && wbFontsShown([], defOf, blockTypes.get('line')) === null, 'the Pen and Line tools show no fonts group');
+  const plan = (id, makes, extra = {}, family = null) => wbStripPlan({ id, ...extra }, makes ? blockTypes.get(makes) : null, family);
+  check(plan('hand', null, { mode: true }) === null && plan('select', null) === null, 'Hand and Select: no strip with nothing picked');
+  check(!plan('pen', 'stroke').fonts && plan('pen', 'stroke').colours, 'Pen: colours, no fonts');
+  check(plan('text', 'text').fonts && plan('note', 'note').fonts && plan('table', 'table').fonts && plan('rect', 'rect').fonts, 'Text, Note, Table, Rectangle: fonts');
+  check(!plan('arrow', 'line').fonts && !plan('highlight', 'highlight').fonts, 'Arrow and Highlighter: no fonts');
+  check(plan('connector', 'connector').line && plan('diamond', 'diamond', {}, 'flowchart').line && !plan('rect', 'rect', {}, 'shape').line, 'Connector and Flowchart kinds: line group, Shape: none');
+  check(plan('frame', 'frame').present && !plan('frame', 'frame').fonts && !plan('note', 'note').present, 'Frame: Present, no fonts');
+  check(!plan('fill', null).fonts && plan('fill', null).colours, 'Fill: colours only');
   const shapeTool = wbFontsShown([], defOf, blockTypes.get('rect'), { align: 'right' });
   check(shapeTool.valign === null && shapeTool.align === 'right' && shapeTool.size === 'medium', 'a shape tool shows size and align of a new shape, no vertical');
   check(wbFontsShown([], defOf, blockTypes.get('text'), {}).valign === null, 'the Text tool: size and align, no vertical');

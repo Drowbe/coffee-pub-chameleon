@@ -1,7 +1,7 @@
   // ---- whiteboard-lib-f-tool-table.js: put a table on the board -----------------------------------------------------------
   // Click the board for a table of 3 columns and 3 rows centred there, or drag to give it a size (the columns share the
   // width, the rows the height, each kept to its least size); it is saved with its first cell's words, once they are
-  // typed, and the tool goes back to Select. In the toolbar's Flowchart menu (the tool switch holds eight), key G. With Snap
+  // typed, and the tool stays on (Escape goes back to Select). In the toolbar's Flowchart menu (the tool switch holds eight), key G. With Snap
   // to grid (ctx.snapping, turned round while Alt is held) its corners go on the grid, like a rectangle's.
   {
     let drag = null; // { id, x, y, sx, sy, moved }
@@ -51,7 +51,6 @@
         }
         drag = null;
         ctx.select(id);
-        ctx.setTool('select');
         ctx.edit(id, { fresh: true }); // its first cell; saved when that editing ends
       },
       cancel(ctx) { if (drag) ctx.discard(drag.id); drag = null; },
