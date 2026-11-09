@@ -259,7 +259,7 @@
      these against the land (maps-lib-d-style.js, guardMap: names 4.5:1, major road 3, minor 1.7, water 1.5 and a blue of its own), so a
      theme that sets one badly still reads; tools/check-maps.mjs holds the shipped themes to it. Light overrides below. */
   --map-land: color-mix(in srgb, var(--text-primary) 4%, var(--surface-panel));
-  --map-water: color-mix(in srgb, var(--tint-blue) 38%, var(--surface-page));
+  --map-water: color-mix(in srgb, var(--tint-blue) 72%, var(--surface-page));
   --map-park: color-mix(in srgb, var(--tint-green) 16%, var(--map-land));
   --map-wood: color-mix(in srgb, var(--tint-green) 9%, var(--map-land));
   --map-road-minor: color-mix(in srgb, var(--text-primary) 20%, var(--map-land));
@@ -1933,6 +1933,8 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-sel-bg: var(--fill-chosen);
   --cal-sel-bg-hover: var(--fill-chosen-hover);
   --cal-sel-text: var(--text-on-chosen);
+  /* What a chip on the chosen day is mixed with: the text's opposite in lightness, so the chip steps away from its own text (light text, a darker chip; dark text, a lighter one). */
+  --cal-sel-chip: oklch(from var(--cal-sel-text) calc(1 - l) c h);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 16%;
   /* Muted text on a fill (hover, today, another calendar's chip): a little stronger, as the plain muted colour is under 4.5 to 1 there in the light mode. */
@@ -1942,6 +1944,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
   --cal-sel-bg: color-mix(in srgb, var(--fill-chosen) 32%, var(--surface-field));
   --cal-sel-bg-hover: color-mix(in srgb, var(--fill-chosen) 40%, var(--surface-field));
   --cal-sel-text: var(--text-primary);
+  --cal-sel-chip: var(--text-primary);
   --cal-today-ring: var(--accent-fill);
   --cal-ph-wash: 9%;
 }
@@ -2076,7 +2079,7 @@ th[aria-sort="ascending"] .sdk-sort > i, th[aria-sort="descending"] .sdk-sort > 
 .sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-more { color: var(--cal-sel-text); }
 
 /* An event on the chosen day (solid accent): the chip reads against the accent, not tinted by it. */
-.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--text-primary) 22%, var(--cal-sel-bg)); color: var(--cal-sel-text); }
+.sdk-cal-cell:is(.is-selected, [aria-selected="true"]) .sdk-cal-event { background: color-mix(in srgb, var(--cal-sel-chip) 22%, var(--cal-sel-bg)); color: var(--cal-sel-text); }
 
 /* The exception, kept: the 3px bar on the left of a Calendar agenda row and of the chips of other calendars and markers (Thomas, 2026-10-18).
    A straight, square-ended block the full height of the box (it covers the box's own 1px edge, --bar-bleed); the box is square on that side. */

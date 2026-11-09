@@ -34,7 +34,7 @@
     const ladder = dark ? [20, 30, 42] : [27, 39, 50];
     return {
       land,
-      water: mixA(tok.blue, dark ? tok.bg : tok.section, 38),
+      water: mixA(tok.blue, dark ? tok.bg : tok.section, dark ? 72 : 38),
       park: mixA(tok.green, land, 16),
       wood: mixA(tok.green, land, 9),
       roadMinor: mixA(tok.text, land, ladder[0]),
