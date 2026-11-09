@@ -229,7 +229,7 @@
     updateStatus();
   }
 
-  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, onRemote, onReload: reload, onRefused, onBusy });
+  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
 
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;

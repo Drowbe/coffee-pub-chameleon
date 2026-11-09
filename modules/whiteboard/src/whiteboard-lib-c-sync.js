@@ -12,36 +12,43 @@
   // same key wait, in the order they came, until the write is done, and are then judged one by one the same way; a value
   // that is not a block is left out.
   //
-  // After this page deletes a block, the key waits for that delete to be heard back: nothing but a delete is taken for it
-  // meanwhile, so a late echo of an older write does not bring the block back. The server numbers a key afresh after a
-  // delete (from 1), so an old echo can carry the same version as a write made since; that is why a successful write of
-  // the key (an undo bringing the block back with the same id) does not end the wait: its version says nothing about what
-  // is still on its way. The wait ends on:
-  //   - a delete whose version is this page's delete's (`at`): its own; the key starts afresh, and if this page has written
-  //     the block again meanwhile, the version that write got is what it has seen, else nothing;
-  //   - a delete with a higher version: a later one, someone else's, heard after this page's own was missed (the stream
-  //     can reconnect without what it missed); it is taken like any delete. One with a lower version is older: ignored;
+  // After this page deletes a block, the key waits for that delete to be heard back. Meanwhile no change heard for the key
+  // is drawn as it is, because the server numbers a key afresh after a delete (from 1): a change heard now may be older
+  // than this page's delete (still on its way, a late echo of an older write, someone else's life of the block before)
+  // or later (this page's echo was missed: the stream can reconnect without what it missed), and its version cannot
+  // tell which. Instead each one is answered by reading the key (refetch): this page's delete was answered already, so
+  // what the server holds now is never older than it. The page shows that, unless it shows it already (this page's own
+  // block back by an undo), so it is never blind to the key and never shows an older life of it. The wait ends on:
+  //   - a delete whose version is this page's oldest delete not heard yet (`at`), made by this person (`me`; the change's
+  //     `by`): its own (with several, the wait goes on for the next); the key starts afresh, and if this page has written
+  //     the block again meanwhile, the version that write got is what it has seen, else nothing (the key is read once more
+  //     when something else was drawn while waiting);
   //   - the echo of this page's own write since the delete (the same version and the very same block): the delete came
   //     before it, heard or missed;
-  //   - load(), which reads the board again;
   //   - a refused delete of the key: the block is read again and put back, and nothing is waited for (an earlier delete's
   //     echo, missed, could otherwise hold the key for good).
-  // A delete answered with version 0 found the key gone already: there is no delete of this page's to wait for.
+  // Neither does a successful write of the key (an undo bringing the block back with the same id: its version says
+  // nothing about what is still on its way), nor load() (what is still on its way may be older than what it read). A delete answered with version 0 found the key gone already: there is no
+  // delete of this page's to wait for. A read answered after something newer for the key was taken, or while this page
+  // is writing it, is not used (the newer change, or the write, is what the page shows).
   //
   // A write the server turns away for now (429: too many saves in a minute, as when many blocks move at once) is sent
   // again after the wait it names, unless a newer one for that key has come meanwhile; onBusy hears it once per refusal.
   // Two writes to one block at once: the last write wins (no version is sent). Conflict handling, when it comes, sends the
   // version this page saw ({ version } on set) and resolves a 409 here.
-  function createSync({ host, board, clean, onRemote, onReload, onRefused, onBusy = () => {} }) {
+  function createSync({ host, board, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {} }) {
     const PREFIX = `block:${board}:`;
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
     const seen = new Map(); // key -> the newest version this page knows of
-    // key -> { at, mine, writes } while this page's delete of the block is not heard back: `at` the delete's version, `mine`
-    // the newest version this page has seen for the key since (its own writes, a read; 0: none), `writes` this page's own
-    // writes since (version -> the block as sent, as JSON), to know their echo
+    // key -> { pending, mine, shows, drawn } while a delete of the block by this page is not heard back: `pending` this
+    // page's deletes not heard yet, oldest first, each { at: its version, writes: this page's own writes after it (version
+    // -> the block as sent, as JSON), to know their echo }, `mine` the newest version this page has seen for the key since
+    // its last delete (its own writes, a read; 0: none), `shows` what the page shows for the key (JSON, or null: nothing),
+    // `drawn` whether a read put something else there meanwhile
     const gone = new Map();
+    const tickets = new Map(); // key -> a number that grows with each read asked for and each change taken (refetch)
     const lanes = new Map(); // key -> { busy, next, soon, timer, deferred: [changes heard meanwhile, oldest first] }
     const lane = (key) => {
       let l = lanes.get(key);
@@ -53,8 +60,9 @@
       const g = gone.get(key);
       if (!g) { seen.set(key, Math.max(seen.get(key) || 0, version)); return; }
       g.mine = Math.max(g.mine, version);
-      if (value !== undefined) g.writes.set(version, JSON.stringify(value));
+      if (value !== undefined) { g.pending[g.pending.length - 1].writes.set(version, JSON.stringify(value)); g.shows = JSON.stringify(value); }
     };
+    const bump = (key) => { const t = (tickets.get(key) || 0) + 1; tickets.set(key, t); return t; };
     const active = (l) => Boolean(l && (l.busy || l.timer || l.next !== undefined));
 
     // The board as the server holds it, with this page's own writes that have not gone yet laid over it (they will land
@@ -62,12 +70,16 @@
     async function load() {
       const list = await host.storage.list(PREFIX);
       seen.clear();
-      gone.clear();
       const out = new Map();
+      for (const g of gone.values()) g.shows = null;
       for (const entry of Array.isArray(list) ? list : []) {
         const b = clean(entry.value);
         if (!b || keyOf(b.id) !== entry.key) continue;
-        seen.set(entry.key, Number.isFinite(entry.version) ? entry.version : 0);
+        const version = Number.isFinite(entry.version) ? entry.version : 0;
+        const g = gone.get(entry.key);
+        // A key still waiting for this page's delete goes on waiting (what is still on its way may be older than this
+        // read); it shows what was read.
+        if (g) { g.mine = Math.max(g.mine, version); g.shows = JSON.stringify(entry.value); g.drawn = true; } else seen.set(entry.key, version);
         out.set(entry.key, b);
       }
       for (const [key, l] of lanes) {
@@ -78,15 +90,32 @@
       return [...out.values()];
     }
 
-    // What the server holds for one key, put on the page as it is (after a refused write, or a change with no value).
-    async function refetch(key) {
+    // What the server holds for one key, put on the page as it is (after a refused write, a change with no value, a change
+    // heard while waiting for this page's delete). Not used when a newer read was asked for or a change for the key taken
+    // since, or (unless it is the write's own read, `writing`) while this page is writing the key. `shows`: what the page
+    // shows for the key, when known (JSON, or null: nothing), so the same is not drawn again.
+    async function refetch(key, writing = false, shows = undefined) {
+      const t = bump(key);
       try {
         const got = await host.storage.get(key);
-        if (!got) { seen.delete(key); onRemote({ op: 'remove', id: idOf(key) }); return; }
-        if (gone.has(key)) gone.get(key).mine = Number.isFinite(got.version) ? got.version : 0;
-        else seen.set(key, Number.isFinite(got.version) ? got.version : 0);
-        const b = clean(got.value);
-        if (b && keyOf(b.id) === key) onRemote({ op: 'put', block: b });
+        if (tickets.get(key) !== t || (!writing && active(lanes.get(key)))) return;
+        const version = got && Number.isFinite(got.version) ? got.version : 0;
+        const b = got ? clean(got.value) : null;
+        const block = b && keyOf(b.id) === key ? b : null;
+        const g = gone.get(key);
+        if (g) {
+          // Waiting for this page's delete: drawn only when it is not what the page shows already.
+          g.mine = Math.max(g.mine, version);
+          const shows = block ? JSON.stringify(got.value) : null;
+          if (shows === g.shows) return;
+          g.shows = shows;
+          g.drawn = true;
+          onRemote(block ? { op: 'put', block } : { op: 'remove', id: idOf(key) });
+          return;
+        }
+        if (!got) { seen.delete(key); if (shows !== null) onRemote({ op: 'remove', id: idOf(key) }); return; }
+        seen.set(key, version);
+        if (block && (shows === undefined || shows !== JSON.stringify(got.value))) onRemote({ op: 'put', block });
       } catch { /* the next change or a reload puts it right */ }
     }
 
@@ -109,7 +138,12 @@
             const r = await host.storage.delete(key);
             seen.delete(key);
             const at = r && Number.isFinite(r.version) ? r.version : 0;
-            if (at > 0) gone.set(key, { at, mine: 0, writes: new Map() }); // 0: it was gone already, nothing to wait for
+            if (at > 0) { // 0: it was gone already, nothing to wait for
+              const g = gone.get(key) || { pending: [], drawn: false };
+              g.pending.push({ at, writes: new Map() });
+              Object.assign(g, { mine: 0, shows: null });
+              gone.set(key, g);
+            }
           } else {
             const r = await host.storage.set(key, value);
             if (r && Number.isFinite(r.version)) saw(key, r.version, value);
@@ -124,7 +158,7 @@
           }
           onRefused(err, idOf(key));
           if (value === GONE) gone.delete(key); // not deleted: no delete of this page's to wait for
-          await refetch(key);
+          await refetch(key, true);
         } finally {
           l.busy = false;
         }
@@ -141,30 +175,31 @@
     function accept(e) {
       const g = gone.get(e.key);
       if (g) {
-        // Deleted here, and the delete not heard back yet (see the top of this file). The block is already off this page,
-        // or back on it by this page's own write.
+        // Deleted here, and the delete not heard back yet (see the top of this file).
         const v = Number.isFinite(e.version) ? e.version : null;
-        if (!e.deleted) {
-          const own = v !== null ? g.writes.get(v) : undefined;
-          if (own === undefined || own !== JSON.stringify(e.value)) return; // a late echo of an older write
-          gone.delete(e.key); // this page's own write since: its delete came before it
-          seen.set(e.key, Math.max(g.mine, v));
-          return;
-        }
-        if (v !== null && v < g.at) return; // an older delete; this page's is to come
-        gone.delete(e.key);
-        if (v !== null && v > g.at) { seen.delete(e.key); onRemote({ op: 'remove', id: idOf(e.key) }); return; } // a later one
-        if (g.mine > 0) seen.set(e.key, g.mine); else seen.delete(e.key);
+        const json = e.deleted ? null : JSON.stringify(e.value);
+        // This page's oldest delete not heard yet, or the echo of a write of its own made after one of them (those deletes
+        // came before it): heard. Its deletes' echoes come in the order they were made.
+        const mineToo = !me || typeof e.by !== 'string' || !e.by || e.by === me; // a delete by someone else is not this page's
+        const upTo = e.deleted ? (v !== null && v === g.pending[0].at && mineToo ? 0 : -1) : g.pending.findIndex((d) => v !== null && d.writes.get(v) === json);
+        if (upTo < 0) { refetch(e.key); return; } // older or later, the version cannot tell: what the server holds now
+        g.pending.splice(0, upTo + 1);
+        if (g.pending.length) return; // a later delete of this page's still to come
+        gone.delete(e.key); // the wait is over
+        const was = Math.max(g.mine, e.deleted ? 0 : v);
+        if (was > 0) seen.set(e.key, was); else seen.delete(e.key);
+        if (g.drawn) refetch(e.key, false, g.shows); // a read drew something meanwhile: read once more, now heard as usual
         return;
       }
       const have = seen.get(e.key);
-      if (e.deleted) { seen.delete(e.key); onRemote({ op: 'remove', id: idOf(e.key) }); return; }
+      if (e.deleted) { bump(e.key); seen.delete(e.key); onRemote({ op: 'remove', id: idOf(e.key) }); return; }
       if (have !== undefined && Number.isFinite(e.version) && e.version <= have) return; // our own echo, or a repeat
       if (Number.isFinite(e.version)) seen.set(e.key, e.version);
       const id = idOf(e.key);
       if (e.value === undefined) { refetch(e.key); return; }
       const b = clean(e.value);
       if (!b || b.id !== id) return; // not a block this page can draw
+      bump(e.key);
       onRemote({ op: 'put', block: b });
     }
 
