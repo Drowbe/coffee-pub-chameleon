@@ -106,7 +106,7 @@
   // pointer events on (see whiteboard.css, .wb-hit) is what a click finds.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
 
-  // A tool: { id, label, icon, order, key?, edits (it changes the board), makes? (the block type it puts on the board, for
+  // A tool: { id, label, icon, order, key?, apart? (its own on/off button beside the tool switch), edits (it changes the board), makes? (the block type it puts on the board, for
   // the colour and width menus' "new blocks"), cursor?, down(p, ctx), move?(p, ctx), up?(p, ctx),
   // cancel?(ctx), activate?(ctx), deactivate?(ctx) }. p is the pointer on the board: { x, y } in board units, { sx, sy }
   // on the screen, id (the block under it, or null), handle (the selected block's handle under it, or null), pointerType

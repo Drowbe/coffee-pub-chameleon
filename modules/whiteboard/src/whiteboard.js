@@ -60,6 +60,7 @@
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish }
+  let many = false; // "Select many" (a touch screen): one finger drags a rectangle and a tap adds, rather than moving the board
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
@@ -72,7 +73,7 @@
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
-  const MOVE_HELP = 'Drag the board to move it; hold Shift and drag to select the blocks in a rectangle.';
+  const MOVE_HELP = 'Hold the spacebar and drag, or pick the Hand tool (H), to move the board.';
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
@@ -143,6 +144,7 @@
     setSelection: (ids) => select(ids),
     toggle(id) { if (sel.has(id)) select([...sel].filter((x) => x !== id)); else select([...sel, id]); },
     marquee: (r) => renderer.marquee(r),
+    many: () => many,
     blocksIn: (r) => blocksIn(r),
     edit: (id, o) => edit(id, o),
     setTool: (id) => setTool(id),
@@ -293,20 +295,34 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
+  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds 8).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
-  const toolSwitch = allowed.length > 1
-    ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: allowed.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
+  const inSwitch = allowed.filter((t) => !t.apart);
+  const toolSwitch = inSwitch.length > 1
+    ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
     : null;
+  // An apart tool's button and its key turn it on, and again off, back to the tool used before it.
+  let toolBefore = 'select';
+  const toggleTool = (t) => setTool(tool === t ? toolBefore : t.id);
+  const apartButtons = allowed.filter((t) => t.apart).map((t) => ({
+    tool: t,
+    button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => toggleTool(t) }),
+  }));
+  const showTool = () => {
+    if (toolSwitch) toolSwitch.set(tool.apart ? '' : tool.id);
+    for (const a of apartButtons) a.button.set({ on: a.tool === tool });
+  };
   function setTool(id) {
     const next = tools.get(id);
-    if (!next || !policy.canUseTool(next) || next === tool) { if (toolSwitch) toolSwitch.set(tool.id); return; }
+    if (!next || !policy.canUseTool(next) || next === tool) { showTool(); return; }
     if (tool.deactivate) tool.deactivate(ctx);
+    if (next.apart && !tool.apart) toolBefore = tool.id;
     tool = next;
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
     renderer.select([...sel], handlesOf(one()));
-    if (toolSwitch) toolSwitch.set(tool.id);
+    showTool();
     updateHint();
   }
   surface.dataset.tool = tool.id;
@@ -535,6 +551,14 @@
     }),
   });
 
+  // On a touch screen one finger on the board moves it; "Select many" makes it pick instead (lib-f-tool-select.js).
+  if (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) {
+    const manyButton = host.ui.toolbarButton({
+      id: 'many', label: 'Select many', icon: 'object-group', iconOnly: true, on: false,
+      onClick: () => { many = !many; manyButton.set({ on: many }); },
+    });
+  }
+
   // ---- copy, cut, paste and duplicate -----------------------------------------------------------------------------------
   // Only for someone who may change the board. The copies are new blocks: new ids, saved as this person's, on top of
   // everything (in the order the originals were), a step along each time (lib-h), and picked once they are there. Each is
@@ -630,7 +654,7 @@
     hint.hidden = board.size > 0;
     if (hint.hidden) return;
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
-      : tool.id === 'select' ? 'Pick a tool above, then click the board.'
+      : tool.id === 'select' || tool.id === 'hand' ? 'Pick a tool above, then click the board.'
         : tool.id === 'pen' ? 'Press and drag to draw.' : 'Click the board to put it there.';
   }
 
@@ -639,6 +663,10 @@
   let down = null; // the pointer the tool is following
   let pinch = null; // two fingers on the board: { d, s, mx, my }
   let pointerFocus = false; // a press is moving the focus
+  // Moving the board with any tool: Space held, or the middle mouse button. { id, lx, ly } while it goes on.
+  let spaceHeld = false;
+  let panning = null;
+  const panCursor = (on) => { surface.classList.toggle('wb-grab', on); };
   const pointOf = (e) => ({ ...renderer.toBoard(e.clientX, e.clientY), id: renderer.blockAt(e.target), handle: renderer.handleAt(e.target), pointerType: e.pointerType, event: e });
   const twoFingers = () => {
     const [a, b] = [...pointers.values()];
@@ -647,8 +675,15 @@
 
   surface.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const middle = e.pointerType === 'mouse' && e.button === 1;
+    if (e.pointerType === 'mouse' && e.button !== 0 && !middle) return;
     e.preventDefault();
+    if ((middle || spaceHeld) && !editing && down === null && !pinch) {
+      try { surface.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
+      panning = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
+      surface.classList.add('wb-grabbing');
+      return;
+    }
     // A press while words are being edited only ends the editing: it does not also draw or put a block there.
     if (editing) { const ed = editing; editing = null; ed.finish(true); surface.focus({ preventScroll: true, focusVisible: false }); return; }
     try { surface.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
@@ -670,6 +705,11 @@
     tool.down(p, ctx);
   });
   surface.addEventListener('pointermove', (e) => {
+    if (panning && panning.id === e.pointerId) {
+      renderer.panBy(e.clientX - panning.lx, e.clientY - panning.ly);
+      panning.lx = e.clientX; panning.ly = e.clientY;
+      return;
+    }
     if (!pointers.has(e.pointerId)) return;
     const p = pointOf(e);
     pointers.set(e.pointerId, p);
@@ -684,6 +724,7 @@
     if (down === e.pointerId && tool.move) tool.move(p, ctx);
   });
   const lift = (e) => {
+    if (panning && panning.id === e.pointerId) { panning = null; surface.classList.remove('wb-grabbing'); return; }
     if (!pointers.has(e.pointerId)) return;
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; return; }
@@ -693,6 +734,9 @@
   };
   surface.addEventListener('pointerup', lift);
   surface.addEventListener('pointercancel', lift);
+  surface.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no scrolling by the middle button
+  surface.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceHeld = false; panCursor(false); } });
+  surface.addEventListener('focusout', (e) => { if (!surface.contains(e.relatedTarget)) { spaceHeld = false; panCursor(false); } });
   const WHEEL_STEP = Math.log(1.12); // the most one wheel step zooms: 12%
   surface.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -762,6 +806,7 @@
   });
   surface.addEventListener('keydown', (e) => {
     if (e.target.closest('.wb-text-edit') || e.altKey) return;
+    if (e.key === ' ') { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; panCursor(true); } return; } // held: drag moves the board
     const picked = targets(); // the picked blocks this person may change
     const b = one() && board.get(one());
     const k = e.key;
@@ -806,7 +851,7 @@
     if (k === '-') { renderer.zoomBy(0.8); updateStatus(); return; }
     if (k === '0') { renderer.fit(); updateStatus(); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
-    if (t) { e.preventDefault(); setTool(t.id); }
+    if (t) { e.preventDefault(); if (t.apart) toggleTool(t); else setTool(t.id); }
   });
 
   // ---- the width ------------------------------------------------------------------------------------------------------

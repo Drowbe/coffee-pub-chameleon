@@ -1,9 +1,11 @@
   // ---- whiteboard-lib-f-tool-select.js: pick, move and open blocks; move the board --------------------------------------
   // Press a block to pick it and drag it to move it (saved once, where it is dropped); press it twice quickly to edit it.
   // With Shift, Ctrl or Cmd a press adds the block to what is picked, or takes it out. Drag a picked block and every picked
-  // block moves with it, each by the same amount (each saved once, on the drop). Press the board itself and drag to move
-  // the whole board; with Shift, drag a rectangle instead and every block it touches is picked too.
-  // Someone who may only look can pick and move the board.
+  // block moves with it, each by the same amount (each saved once, on the drop). Press the board itself and drag a
+  // rectangle: every block it touches is picked (with Shift, Ctrl or Cmd, added to what is picked). On a touch screen one
+  // finger on the board moves the board instead, unless "Select many" is on (ctx.many()): then it drags the rectangle,
+  // and a tap on a block adds it or takes it out. Moving the board otherwise is the page's (Space, the middle button, the
+  // wheel, two fingers) or the Hand tool's. Someone who may only look can pick, and move the board.
   // Drag a handle of the picked block to change its size (Shift keeps its shape) or to move a line's end; the new box is
   // saved once, when it is let go. What a handle does is the block type's resize (lib-a); showing the handles is the page's.
   {
@@ -13,9 +15,10 @@
     let last = { id: null, t: 0 };
     const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
     // Shift, Ctrl or Cmd: add to what is picked, or take out.
-    const adds = (p) => Boolean(p.event && (p.event.shiftKey || p.event.ctrlKey || p.event.metaKey));
-    // A press on the board itself: move the board, or drag a rectangle to pick blocks.
-    const emptyPress = (p) => (p.event && p.event.shiftKey ? 'marquee' : 'board');
+    // A finger with "Select many" on, too.
+    const adds = (p, ctx) => Boolean((p.event && (p.event.shiftKey || p.event.ctrlKey || p.event.metaKey)) || (p.pointerType === 'touch' && ctx.many()));
+    // A press on the board itself: drag a rectangle to pick blocks, or (one finger) move the board.
+    const emptyPress = (p, ctx) => (p.pointerType === 'touch' && !ctx.many() ? 'board' : 'marquee');
 
     // The new box for a handle dragged (mx, my) board units from where it was pressed, inside the type's minimum size.
     function resized(r, start, handle, mx, my, keep) {
@@ -55,7 +58,11 @@
       edits: false,
       down(p, ctx) {
         const picked = p.handle && ctx.selected() ? ctx.get(ctx.selected()) : null;
-        if (p.id && adds(p)) { last = { id: null, t: 0 }; hold = null; ctx.toggle(p.id); return; }
+        // Adding: a block not picked yet is added at once (and a drag then moves them all); one picked already is taken out
+        // when it is let go without a drag.
+        const adding = Boolean(p.id) && adds(p, ctx);
+        let unpick = false;
+        if (adding) { last = { id: null, t: 0 }; if (ctx.isSelected(p.id)) unpick = true; else ctx.toggle(p.id); }
         const r = picked && blockTypes.get(picked.type).resize;
         if (r && ctx.policy.canChange(picked)) {
           last = { id: null, t: 0 };
@@ -65,17 +72,17 @@
         }
         if (p.id) {
           // A press on a block already picked with others keeps them all, to move together.
-          if (!ctx.isSelected(p.id) || ctx.selection().length < 2) ctx.select(p.id);
+          if (!adding && (!ctx.isSelected(p.id) || ctx.selection().length < 2)) ctx.select(p.id);
           const now = Date.now();
-          if (last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id); return; }
+          if (!adding && last.id === p.id && now - last.t < TWICE) { last = { id: null, t: 0 }; hold = null; ctx.select(p.id); ctx.edit(p.id); return; }
           const blocks = ctx.selection().map((id) => ctx.get(id)).filter((b) => b && ctx.policy.canChange(b));
-          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ id: b.id, x: b.x, y: b.y })), moved: false, moves: blocks.length > 0, group: ctx.selection().length > 1 };
+          hold = { kind: 'block', id: p.id, sx: p.sx, sy: p.sy, starts: blocks.map((b) => ({ id: b.id, x: b.x, y: b.y })), moved: false, moves: blocks.length > 0, group: !adding && ctx.selection().length > 1, unpick, adding };
           for (const s of hold.starts) ctx.hold(s.id, true);
         } else if (emptyPress(p, ctx) === 'marquee') {
-          hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p) ? ctx.selection() : [], moved: false };
+          hold = { kind: 'marquee', x: p.x, y: p.y, sx: p.sx, sy: p.sy, keep: adds(p, ctx) ? ctx.selection() : [], moved: false };
           if (!hold.keep.length) ctx.select(null);
         } else {
-          if (!adds(p)) ctx.select(null);
+          if (!adds(p, ctx)) ctx.select(null);
           hold = { kind: 'board', sx: p.sx, sy: p.sy, lx: p.sx, ly: p.sy };
         }
       },
@@ -116,7 +123,8 @@
           if (hold.moved) for (const b of hold.starts) ctx.save(b.id);
           for (const b of hold.starts) ctx.hold(b.id, false);
           if (!hold.moved && hold.group) ctx.select(hold.id); // a click, not a drag, on one of several picks just it
-          last = hold.moved ? { id: null, t: 0 } : { id: hold.id, t: Date.now() };
+          if (!hold.moved && hold.unpick) ctx.toggle(hold.id);
+          last = hold.moved || hold.adding ? { id: null, t: 0 } : { id: hold.id, t: Date.now() };
         }
         if (hold && hold.kind === 'marquee') ctx.marquee(null);
         hold = null;

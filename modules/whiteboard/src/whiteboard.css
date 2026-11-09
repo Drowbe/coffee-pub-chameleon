@@ -193,3 +193,7 @@
 
 /* The width menu: a small line drawn at each choice's weight, in the row's own text colour. */
 .wb-width-sample { flex: none; width: 2em; height: var(--sample); border-radius: var(--radius-min); background: currentColor; }
+
+/* moving the board with Space held or the middle button, whatever the tool */
+.board.wb-grab, .board.wb-grab * { cursor: grab !important; }
+.board.wb-grabbing, .board.wb-grabbing * { cursor: grabbing !important; }
