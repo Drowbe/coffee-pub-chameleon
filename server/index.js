@@ -10644,7 +10644,7 @@ function moduleLiveFor(req, res) {
 // The module stream named by the body's `stream`, if it is this person's and in this space: else null, once refused.
 function moduleLiveConnection(req, res, ctx) {
   const stream = req.body && typeof req.body === 'object' && !Array.isArray(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'stream') ? req.body.stream : undefined;
-  if (typeof stream !== 'string' || !stream || stream.length > 64) return void res.status(400).json({ error: 'stream must be the id the module stream gave' });
+  if (typeof stream !== 'string' || !stream || stream.length > 64) return void res.status(400).json({ error: `stream must be the id the ${word('module')} stream gave` });
   const conn = moduleLive.connection(stream);
   if (!conn || conn.who !== ctx.who.user.key || conn.space !== ctx.space.id) return void res.status(409).json({ error: `open the ${word('space')} first; there is no ${word('module')} stream of yours there` });
   return conn;
