@@ -139,6 +139,13 @@
   // connector's end goes on a side ({ left, right, top, bottom }, for a side whose middle is not on the outline),
   // move?(block, dx, dy) -> the fields to change when it is moved by dx, dy (else x and y; see wbMoved), and
   // copied?(block) -> the fields a copy of it changes (a timer's copy is not started; lib-h).
+  // A block that draws outside its box (a note's pointer) has reach?(block) -> the box of all it draws, relative to x, y
+  // ({ x, y, w, h }): the group frame, "Show everything", the rectangle that picks blocks, layers and a paste's middle use
+  // it; the box stays what is resized and what a connector attaches to. grips?(block) -> more handles for the one block
+  // picked, beside its resize handles ([{ id, x, y }], each a point relative to the box's top left corner), and
+  // grip(block, id, at) -> the fields to change while one of them is dragged to `at` (a point on the board); saved once,
+  // on the drop. actions?(block) -> entries of its own for the right-click menu ([{ id, label, icon, fields }]): a choice
+  // sets those fields, one save.
   //
   // A block that points at other blocks (a connector) has refs(block) -> the ids it points at, remap(block, idMap) -> the
   // fields to change when it is copied along with them (lib-h; idMap: old id -> the copy's id) and loosen(block, keep,
@@ -151,6 +158,13 @@
   // connectors attached to it (the page does that, in the same undo step): what it uses (an upload) stays, so an undo can
   // bring it back whole. Hit-testing is the browser's: what render draws with pointer events on (see whiteboard.css,
   // .wb-hit) is what a click finds.
+  //
+  // Later, not built: a note's pointer that locks onto another block, so its tip follows it. The stored shape stays
+  // pointer: { dx, dy } (the tip's offset from the note's middle, lib-e-block-note.js) and gains an optional
+  // target: { block, side }, resolved when it is drawn as a connector's end is (boxOf(target.block), wbSidePoint): the tip
+  // goes to that side's middle while the block is on the board, and falls back to dx, dy while it is not. The note then has
+  // refs, remap and loosen like a connector (loosen writes the drawn tip back into dx, dy), and is redrawn with the block
+  // it points at (the renderer's deps); it stays a placed block with its own x, y, so it is not `attached`.
   const blockTypes = wbRegistry('block type', 'type', ['create', 'clean', 'box', 'render', 'describe']);
   // A block a connector can be attached to: one with a box of its own (four corners to resize), not a line, a drawing or
   // another connector.
