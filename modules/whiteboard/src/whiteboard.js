@@ -65,8 +65,12 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
-  // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl.
+  // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl. Keys are named (in menus, in a button's name) only
+  // where there is a mouse or a trackpad: on a touch screen alone they are noise.
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+  const keyHint = (keys) => (KEYS ? keys : undefined);
+  const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
   const takesNext = (def, role) => {
     const usual = def.create();
     if (role === 'weight') return Boolean(def.weight) && WB_PALETTE_BY_ID.has(usual.stroke);
@@ -76,7 +80,7 @@
   // ---- the one path for changes made here -----------------------------------------------------------------------------
   // Every local change lands here: drawn at once, and saved now, soon (after a pause) or not yet (while a drag or a stroke
   // goes on). Each save, and each delete (remove), is told to the history as { before, after }, the whole block (lib-g):
-  // that is what undo and redo put back, through this same path.
+  // undo and redo put back from them the fields that changed, through this same path.
   const history = policy.canEdit ? createHistory({ cap: 100, onChange: () => historyButtons() }) : null;
   function commit(next, save) {
     board.put(next);
@@ -289,9 +293,12 @@
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
     : null;
+  // An apart tool's button and its key turn it on, and again off, back to the tool used before it.
+  let toolBefore = 'select';
+  const toggleTool = (t) => setTool(tool === t ? toolBefore : t.id);
   const apartButtons = allowed.filter((t) => t.apart).map((t) => ({
     tool: t,
-    button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: `${t.label} (${t.key.toUpperCase()})`, icon: t.icon, iconOnly: true, on: false, onClick: () => setTool(tool === t ? 'select' : t.id) }),
+    button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => toggleTool(t) }),
   }));
   const showTool = () => {
     if (toolSwitch) toolSwitch.set(tool.apart ? '' : tool.id);
@@ -301,6 +308,7 @@
     const next = tools.get(id);
     if (!next || !policy.canUseTool(next) || next === tool) { showTool(); return; }
     if (tool.deactivate) tool.deactivate(ctx);
+    if (next.apart && !tool.apart) toolBefore = tool.id;
     tool = next;
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
@@ -434,10 +442,10 @@
     return Boolean(p && q && p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1);
   }
   const LAYERS = [
-    { id: 'front', label: 'Bring to front', icon: 'angles-up', hint: 'Shift ]' },
-    { id: 'forward', label: 'Forward one layer', icon: 'arrow-up', hint: ']' },
-    { id: 'backward', label: 'Back one layer', icon: 'arrow-down', hint: '[' },
-    { id: 'back', label: 'Send to back', icon: 'angles-down', hint: 'Shift [' },
+    { id: 'front', label: 'Bring to front', icon: 'angles-up', hint: keyHint('Shift ]') },
+    { id: 'forward', label: 'Forward one layer', icon: 'arrow-up', hint: keyHint(']') },
+    { id: 'backward', label: 'Back one layer', icon: 'arrow-down', hint: keyHint('[') },
+    { id: 'back', label: 'Send to back', icon: 'angles-down', hint: keyHint('Shift [') },
   ];
   const layerable = (ids) => ids.map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id) && policy.canChange(b)).sort((a, b) => a.z - b.z);
   function canLayer(ids, to) {
@@ -508,8 +516,8 @@
   }
 
   if (policy.canEdit) {
-    undoButton = host.ui.toolbarButton({ id: 'undo', label: `Undo (${MOD} Z)`, icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => undoRedo('undo') });
-    redoButton = host.ui.toolbarButton({ id: 'redo', label: `Redo (${MOD} Shift Z)`, icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => undoRedo('redo') });
+    undoButton = host.ui.toolbarButton({ id: 'undo', label: withKey('Undo', `${MOD} Z`), icon: 'rotate-left', iconOnly: true, disabled: true, onClick: () => undoRedo('undo') });
+    redoButton = host.ui.toolbarButton({ id: 'redo', label: withKey('Redo', `${MOD} Shift Z`), icon: 'rotate-right', iconOnly: true, disabled: true, onClick: () => undoRedo('redo') });
     host.ui.toolbarButton({ id: 'colour', label: 'Colour', icon: 'palette', iconOnly: true, onClick: (e) => colourMenu(toolbarAt(e)) });
     host.ui.toolbarButton({ id: 'width', label: 'Width', icon: 'grip-lines', iconOnly: true, onClick: (e) => widthMenu(toolbarAt(e)) });
   }
@@ -519,9 +527,9 @@
       id: 'zoom',
       at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
       items: [
-        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: '+', onClick: () => { renderer.zoomBy(1.25); updateStatus(); } },
-        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: '-', onClick: () => { renderer.zoomBy(0.8); updateStatus(); } },
-        { id: 'fit', label: 'Show everything', icon: 'expand', hint: '0', onClick: () => { renderer.fit(); updateStatus(); } },
+        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: () => { renderer.zoomBy(1.25); updateStatus(); } },
+        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: () => { renderer.zoomBy(0.8); updateStatus(); } },
+        { id: 'fit', label: 'Show everything', icon: 'expand', hint: keyHint('0'), onClick: () => { renderer.fit(); updateStatus(); } },
         { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', onClick: () => { renderer.reset(); updateStatus(); } },
       ],
     }),
@@ -577,10 +585,10 @@
     placeCopies(wbCopies(copyable(), { newId: () => host.util.id(), dx: WB_PASTE_STEP, dy: WB_PASTE_STEP }));
   }
   const clipRows = (at) => [
-    { id: 'cut', label: 'Cut', icon: 'scissors', hint: `${MOD} X`, onClick: () => copy({ cut: true }) },
-    { id: 'copy', label: 'Copy', icon: 'copy', hint: `${MOD} C`, onClick: () => copy() },
-    { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste(at) },
-    { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: `${MOD} D`, onClick: () => duplicate() },
+    { id: 'cut', label: 'Cut', icon: 'scissors', hint: keyHint(`${MOD} X`), onClick: () => copy({ cut: true }) },
+    { id: 'copy', label: 'Copy', icon: 'copy', hint: keyHint(`${MOD} C`), onClick: () => copy() },
+    { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste(at) },
+    { id: 'duplicate', label: 'Duplicate', icon: 'clone', hint: keyHint(`${MOD} D`), onClick: () => duplicate() },
   ];
 
   // The +: the same blocks, put in the middle of what is in sight (for the keyboard, and for anyone who looks for it there).
@@ -592,7 +600,7 @@
       { id: 'text', label: 'Add text', icon: 'font' },
       { id: 'rect', label: 'Add a rectangle', icon: 'square' },
       { divider: true },
-      { id: 'paste', label: 'Paste', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has() },
+      { id: 'paste', label: 'Paste', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has() },
     ]).catch(() => {});
   }
   if (policy.canEdit && host.add) {
@@ -713,11 +721,18 @@
   surface.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no scrolling by the middle button
   surface.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceHeld = false; panCursor(false); } });
   surface.addEventListener('focusout', (e) => { if (!surface.contains(e.relatedTarget)) { spaceHeld = false; panCursor(false); } });
+  const WHEEL_STEP = Math.log(1.12); // the most one wheel step zooms: 12%
   surface.addEventListener('wheel', (e) => {
     e.preventDefault();
     const r = surface.getBoundingClientRect();
-    if (e.ctrlKey || e.metaKey) renderer.zoomAt(renderer.view.s * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
-    else renderer.panBy(-e.deltaX, -e.deltaY);
+    // In pixels, whatever the wheel counts in (lines, pages).
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? surface.clientHeight : 1;
+    if (e.ctrlKey || e.metaKey) {
+      // A pinch on a trackpad comes as many small steps and follows the fingers; a mouse wheel's notch is one big step,
+      // held to WHEEL_STEP, so it zooms a little, not by half again.
+      const f = Math.min(WHEEL_STEP, Math.max(-WHEEL_STEP, -e.deltaY * unit * 0.01));
+      renderer.zoomAt(renderer.view.s * Math.exp(f), e.clientX - r.left, e.clientY - r.top);
+    } else renderer.panBy(-e.deltaX * unit, -e.deltaY * unit);
     updateStatus();
   }, { passive: false });
 
@@ -736,8 +751,8 @@
         id: 'board',
         at,
         items: [
-          { id: 'paste', label: 'Paste here', icon: 'paste', hint: `${MOD} V`, disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
-          { id: 'all', label: 'Select all', icon: 'object-group', hint: `${MOD} A`, disabled: board.size === 0, onClick: () => selectAll() },
+          { id: 'paste', label: 'Paste here', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
+          { id: 'all', label: 'Select all', icon: 'object-group', hint: keyHint(`${MOD} A`), disabled: board.size === 0, onClick: () => selectAll() },
         ],
       });
       return;
@@ -753,7 +768,7 @@
       id: 'block',
       at,
       items: [
-        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: 'Enter', onClick: () => edit(single.id) }] : []),
+        ...(def && def.edit === 'text' ? [{ id: 'edit', label: 'Edit', icon: 'pen', hint: keyHint('Enter'), onClick: () => edit(single.id) }] : []),
         { id: 'colour', label: 'Colour', icon: 'palette', onClick: () => { setTimeout(() => colourMenu({ at }), 0); } },
         ...(list.some((b) => defOf(b).weight) ? [{ id: 'width', label: 'Width', icon: 'grip-lines', onClick: () => { setTimeout(() => widthMenu({ at }), 0); } }] : []),
         { heading: 'Layer' },
@@ -761,7 +776,7 @@
         { separator: true },
         ...clipRows(null),
         { separator: true },
-        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: 'Delete', danger: true, onClick: () => removeMany(ids) },
+        { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
     });
   });
@@ -820,7 +835,7 @@
     if (k === '-') { renderer.zoomBy(0.8); updateStatus(); return; }
     if (k === '0') { renderer.fit(); updateStatus(); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
-    if (t) { e.preventDefault(); setTool(t.id); }
+    if (t) { e.preventDefault(); if (t.apart) toggleTool(t); else setTool(t.id); }
   });
 
   // ---- the width ------------------------------------------------------------------------------------------------------
