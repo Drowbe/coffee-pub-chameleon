@@ -347,10 +347,15 @@ function renderRoles({ permissions, roles }) {
       group = p.group;
       rows.push(`<tr class="sdk-table-group"><th scope="colgroup" colspan="${ROLE_COLUMNS.length + 1}">${escapeHtml(group)}</th></tr>`);
     }
-    rows.push(`<tr><th scope="row">${escapeHtml(p.label)}</th>` + ROLE_COLUMNS.map((role) => {
+    // A library's "See every file" (plan-vault-privacy.md): the one row that says what it does, and a guest can never have it.
+    const seesAll = /^module\.[a-z0-9-]+\.see_all$/.test(p.key);
+    const about = seesAll ? `Lets this role open files that were not shared with them. Off by default for ${word('moderator', { many: true })}; ${word('owner', { many: true })} always can.` : '';
+    rows.push(`<tr><th scope="row">${escapeHtml(p.label)}${about ? `<span class="sdk-table-sub">${escapeHtml(about)}</span>` : ''}</th>` + ROLE_COLUMNS.map((role) => {
       const noGuestAi = role === 'guest' && p.key === 'useAi'; // the server refuses guests whatever the box says
-      const locked = role === 'owner' || noGuestAi;
-      return `<td class="is-center"><input type="checkbox" data-role="${role}" data-perm="${p.key}" ${(roles[role] || {})[p.key] && !noGuestAi ? 'checked' : ''} ${locked ? `disabled title="${escapeHtml(noGuestAi ? `${word('guest', { many: true, cap: true })} can never use AI` : `${word('owner', { many: true, cap: true })} can always do this`)}"` : ''} aria-label="${escapeHtml(p.label)}, ${escapeHtml(label(role))}"></td>`;
+      const noGuestFiles = role === 'guest' && seesAll;
+      const locked = role === 'owner' || noGuestAi || noGuestFiles;
+      const why = noGuestAi ? `${word('guest', { many: true, cap: true })} can never use AI` : noGuestFiles ? `${word('guest', { many: true, cap: true })} can never do this` : `${word('owner', { many: true, cap: true })} can always do this`;
+      return `<td class="is-center"><input type="checkbox" data-role="${role}" data-perm="${p.key}" ${(roles[role] || {})[p.key] && !noGuestAi && !noGuestFiles ? 'checked' : ''} ${locked ? `disabled title="${escapeHtml(why)}"` : ''} ${seesAll && !locked ? `title="${escapeHtml(about)}"` : ''} aria-label="${escapeHtml(p.label)}, ${escapeHtml(label(role))}"></td>`;
     }).join('') + '</tr>');
   }
   rows.push('</tbody>');

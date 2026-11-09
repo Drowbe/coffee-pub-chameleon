@@ -85,6 +85,15 @@
   .vt-card-thumb .vt-card-name { display: -webkit-box; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 }
 
+/* ---- who can see a file: the small marks under a file's name (plan-vault-privacy.md) ---- */
+.vt-vis { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--vt-dim); white-space: nowrap; }
+.vt-vis .ic { font-size: var(--text-11); }
+.vt-sub:has(.vt-vis) { overflow: visible; white-space: normal; text-overflow: clip; }
+.vt-card-marks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); min-width: 0; }
+/* A card is narrow: a mark's words wrap beside its icon, never run past the card. */
+.vt-card-marks .vt-vis { align-items: flex-start; min-width: 0; white-space: normal; }
+.vt-card-marks .vt-vis .ic { margin-top: 2px; }
+
 /* ---- Add files ---- */
 .vt-add { display: flex; flex: none; flex-direction: column; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--edge-hairline); }
 .vt-add-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
@@ -104,6 +113,13 @@
 .vt-accept, .vt-notice, .vt-line { margin: 0; color: var(--text-muted); font-size: var(--text-12); line-height: 16px; }
 .vt-line { color: var(--text-primary); font-size: var(--text-13); }
 .vt-where { align-self: stretch; }
+/* Who can see what is added: the label, three choices, then Choose people with the names, and one sentence */
+.vt-who { display: flex; flex-direction: column; gap: var(--space-2); }
+.vt-who .sdk-choice-list { gap: var(--space-2); }
+.vt-who-label { color: var(--vt-dim); }
+.vt-who-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.vt-who-names { min-width: 0; color: var(--text-primary); font-size: var(--text-13); overflow-wrap: anywhere; }
+.vt-line { overflow-wrap: anywhere; }
 .vt-queue { display: flex; flex-direction: column; gap: var(--gap-card-rows); max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
 .vt-up-name { overflow: hidden; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .vt-up-line { display: block; font-size: var(--text-12); line-height: 16px; color: var(--vt-dim); overflow-wrap: anywhere; }
@@ -126,5 +142,8 @@
 
 /* Touch and narrow: the Vault's own small buttons are 44px targets (the name is the whole row or card: its cover is the target). */
 @media (pointer: coarse), (max-width: 640px) {
-  .vt-app :is(.menu-btn, .vt-up .btn, .vt-up .sdk-icon-btn, #add-close, .vt-more .btn) { --btn-h: 44px; }
+  .vt-app :is(.menu-btn, .vt-up .btn, .vt-up .sdk-icon-btn, #add-close, .vt-more .btn, #who-change) { --btn-h: 44px; }
+}
+@container vault (max-width: 430px) {
+  .vt-who .sdk-choice-row { min-height: 44px; }
 }
