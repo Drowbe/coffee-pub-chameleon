@@ -275,7 +275,7 @@ test('the "+" and the status bar as drawn: names, the shared menu, the live node
 test('the window: a frame for every module, moved (not rebuilt) between docked and floating', () => {
   const make = canvas.slice(canvas.indexOf('  function makeFrame('), canvas.indexOf('  // The page a composite holds'));
   assert.match(make, /createModuleFrame\(\{/, 'the canvas draws a module window with the frame');
-  assert.match(make, /titlebar: \{ close: true, standard: \(\) => standardFor\(m\.id\), onAction: \(e\) => titlebarAction\(m\.id, e\) \}/, 'Close and the standard actions are the window\'s');
+  assert.match(make, /titlebar: \{ close: true, standard: \(\) => standardFor\(m\.id\), extra: \(\) => stackMenu\(m\.id\), onAction: \(e\) => titlebarAction\(m\.id, e\) \}/, 'Close, the standard actions and the stack entries (plan-panel-stacking.md) are the window\'s');
   assert.match(make, /onAction: \(e\) => opened\.get\(m\.id\)\?\.mount\?\.bandEvent\?\.\(e\)/, 'the module\'s own controls go to its mount');
   const floating = canvas.slice(canvas.indexOf('  function openModuleFloating('), canvas.indexOf('  function openModuleDocked('));
   const docked = canvas.slice(canvas.indexOf('  function openModuleDocked('), canvas.indexOf('  function moveModule('));
@@ -471,7 +471,7 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   const frameJs = read('public/module-frame.js');
   assert.match(frameJs, /if \(a\.placement !== 'bar' \|\| a\.danger\) continue;/, 'a destructive action is never an icon');
   assert.match(frameJs, /const danger = \[\.\.\.actions\.filter\(\(a\) => a\.danger\)\.map\(entry\), \.\.\.hostDanger\];/, 'the destructive ones last: the module\'s, then the host\'s Clear');
-  assert.match(frameJs, /const runs = \[own, standard, danger\]\.filter\(\(r\) => r\.length\);/, 'own, a line, the standard actions, a line, the destructive ones');
+  assert.match(frameJs, /const runs = \[own, standard, Array\.isArray\(extra\) \? extra : \[\], danger\]\.filter\(\(r\) => r\.length\);/, 'own, a line, the standard actions, a line, the window\'s own entries (the stack entries), a line, the destructive ones');
 });
 
 test('the "+": one entry for one add (Thomas, 2026-10-14: the Map\'s "+" offered "Add a place" twice)', () => {
