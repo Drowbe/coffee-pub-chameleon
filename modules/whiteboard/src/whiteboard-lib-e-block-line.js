@@ -39,4 +39,5 @@
     },
     describe: (b) => (b.arrow ? 'Arrow' : 'Line'),
     resize: { handles: 'ends' }, // a handle on each end moves that end
+    linked: [['x', 'y', 'dx', 'dy']], // where it starts and where it ends
   });

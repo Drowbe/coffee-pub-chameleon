@@ -785,11 +785,13 @@ const THEME_OPTIONAL_FIELDS = [
   ['theme-mf-toolbar', 'mf-surface-toolbar'],
   ['theme-mf-row', 'mf-surface-row'],
   ['theme-mf-row-hover', 'mf-surface-row-hover'],
+  ['theme-message', 'surface-message'],
   ['theme-chosen', 'fill-chosen'],
   ['theme-chosen-text', 'text-on-chosen'],
   ['theme-chosen-ink', 'ink-chosen'],
   ['theme-brand-ink', 'ink-brand'],
   ['theme-neutral', 'ink-neutral'],
+  ['theme-icon-bar', 'icon-bar'],
   ['theme-tone-gold', 'tone-gold'],
   ['theme-tone-blue', 'tone-blue'],
   ['theme-tone-green', 'tone-green'],
@@ -2493,6 +2495,9 @@ $('template-imported').addEventListener('click', async (e) => {
 // The plan and its use (GET /api/environment): each cap as a bar, the past-due banner with its date, the way to a bigger
 // plan (the product page's plans), a copy of the environment, and a request to delete it.
 let envInfo = null;
+// Whether the product site has a page of plans for Upgrade to open. It has none today (the start page lists no plans), so
+// Upgrade is not drawn. Set this to true when a Plans list is added and the link comes back, pointing at #plans.
+const plansPage = false;
 const gb = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(bytes < 1e10 ? 1 : 0)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
 async function loadEnvironment() {
   const card = $('env-panel');
@@ -2500,7 +2505,7 @@ async function loadEnvironment() {
   try {
     envInfo = await api('GET', '/api/environment');
     // The product page's address (Upgrade goes to its plans): the public product facts carry the base domain.
-    if (!envInfo.baseDomain || !envInfo.productDomain) {
+    if (plansPage && (!envInfo.baseDomain || !envInfo.productDomain)) {
       const facts = await api('GET', '/api/product').catch(() => ({}));
       if (!envInfo.baseDomain) envInfo.baseDomain = facts.baseDomain || '';
       envInfo.productDomain = facts.productDomain || envInfo.productDomain || '';
@@ -2540,7 +2545,7 @@ function renderEnvironment() {
     banner.hidden = false;
   } else banner.hidden = true;
   const up = $('env-upgrade');
-  if (e.baseDomain) { up.href = `${location.protocol}//${e.productDomain || e.baseDomain}${location.port ? ':' + location.port : ''}/#plans`; up.hidden = false; } else up.hidden = true;
+  if (plansPage && e.baseDomain) { up.href = `${location.protocol}//${e.productDomain || e.baseDomain}${location.port ? ':' + location.port : ''}/#plans`; up.hidden = false; } else up.hidden = true;
   const requested = Boolean(e.deleteRequestedAt);
   $('env-delete').hidden = requested;
   $('env-delete-cancel').hidden = !requested;

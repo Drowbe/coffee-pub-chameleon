@@ -21,7 +21,7 @@ call window picks the theme up too, when the page clones its stylesheets into th
 
 ## The tokens
 
-The theme editor sets the first seven, and may also set the thirteen in the second group. Every token in the second
+The theme editor sets the first seven, and may also set the optional ones in the second group and in "The default theme and the optional roles" below. Every token in the second
 group follows the base colors until a theme sets it (**Auto**), so a theme that never touches one keeps
 working. The rest are derived with `color-mix`.
 
@@ -118,13 +118,13 @@ stay allowed:
 
 Anything else that needs an exception is added to the check's list with its reason, and Thomas decides.
 
-**The Calendar's days.** Today and the chosen day are told apart. The chosen day is a solid accent fill with the on-accent text in the dark modes (`--cal-sel-bg`, `--cal-sel-text`) and a lighter fill (32% accent over the field) with the primary text in the light mode, so the brown is not the heaviest thing on the page. Today wears a 1px inset ring in both (`--cal-today-ring`) over its own fill. The focus ring on the chosen day is a double ring, the text colour outside and the on-fill colour inside, each 3 to 1 or more. A task still to do that is late is not dimmed like a past event: it takes `--text-danger`, which reads 4.5 to 1 on a raised step in the dark modes too.
+**The Calendar's days.** Today and the chosen day are told apart. The chosen day is a solid accent fill with the on-accent text in the dark modes (`--cal-sel-bg`, `--cal-sel-text`) and a lighter fill (32% accent over the field) with the primary text in the light mode, so the brown is not the heaviest thing on the page. On the chosen day an event's chip is mixed toward the opposite of the day's text (`--cal-sel-chip`), so a light-text day gets a darker chip and stays readable in a dark theme. Today wears a 1px inset ring in both (`--cal-today-ring`) over its own fill. The focus ring on the chosen day is a double ring, the text colour outside and the on-fill colour inside, each 3 to 1 or more. A task still to do that is late is not dimmed like a past event: it takes `--text-danger`, which reads 4.5 to 1 on a raised step in the dark modes too.
 
 The Calendar's sizes and shares are tokens in the `calendar` block of `public/sdk/system.css`: `--cal-cell-h` (74px, a cell's least height), `--cal-chip-h` (18px, an event chip), `--cal-hover` and `--cal-press` (10% and 16% of the text colour over a cell), `--cal-today` (14% of the accent), `--cal-tint` (22%, an event's tone over its cell), `--cal-out` (0.55, a day outside the month), `--cal-bar` (3px, the kept bar), `--cal-ph-wash` (16%, a phase's wash) and `--cal-dim` (muted text on a fill). The chosen day is `--cal-sel-bg`, `--cal-sel-bg-hover` and `--cal-sel-text`, and today's ring is `--cal-today-ring`.
 
 ## Tints
 
-Eight named colours mark what a message or a module is from: a module's own colour (its manifest's `color`), and gold for the AI. They also mark a **phase**: each phase of a space's timeline wears one, by its place in the template's list. They are fixed, not part of a theme, and no theme sets them; each has a dark and a light value, tested on both. On a light page the darker value is used: under the stylesheet's light set (`data-theme-mode="light"`), or the environment's light default when the person has made no choice (`data-mode-shown="light"`, set by `public/theme-mode.js`).
+Eight named colours mark what a message or a module is from: a module's own colour (its manifest's `color`), and gold for the AI. They also mark a **phase**: each phase of a space's timeline wears one, by its place in the template's list. Each has a dark and a light value, tested on both, and a theme may set its own through the `tone-*` roles (see "The default theme and the optional roles" below); the values here are what each is until a theme sets it. On a light page the darker value is used: under the stylesheet's light set (`data-theme-mode="light"`), or the environment's light default when the person has made no choice (`data-mode-shown="light"`, set by `public/theme-mode.js`).
 
 | Token | Dark | Light |
 |---|---|---|
@@ -137,7 +137,7 @@ Eight named colours mark what a message or a module is from: a module's own colo
 | `--tint-orange` | `#e8964a` | `#b35a00` |
 | `--tint-pink` | `#e58ab8` | `#ad3a78` |
 
-**The brand coral.** `--brand-coral` is the brand kit's coral, used for the product's name in the start page's header. It is not a tint and not a theme colour: it is fixed, `#ff8264` in the dark modes and `#e0553c` in the light mode (both in `public/style.css`, the second in the light-mode block that darkens the tints). It is for large text only, 24 px and up, never body text, and no theme sets it. `tools/check-start-page.mjs` requires the start page's product name to use the token.
+**The brand name.** The product's name in the start page's header and in the top bar's lockup is drawn in `--ink-brand`, a theme role (the accent until a theme sets it; Chameleon sets coral). It is for large text only, 24 px and up (a lockup marked `data-size="large"`), never body text. The start page does not read it: it has its own palette (below). `--brand-coral` is removed.
 
 `data-tint="<name>"` on an element sets `--tint` to that token. A tint colours an icon and a thin edge only (a message's 3-pixel left edge and its portrait's icon, a module's icon in its titlebar and the Layout menu); text and backgrounds keep their usual tokens. The tokens are in `public/style.css` and in `/sdk/host.css`, so a module's page has them too.
 
@@ -150,7 +150,7 @@ The Maps module draws the map from the theme's tokens, so a light theme gives a 
 | Token | Use |
 |---|---|
 | `--map-land` | the land: dark, a hair off the panel (4% of the text colour over `--surface-panel`); light, the panel itself |
-| `--map-water` | water: the blue tint, 38% over the page (dark) or the panel (light) |
+| `--map-water` | water: the blue tint, 72% over the page (dark, so it keeps a hue of its own against a navy land on every dark theme) or 38% over the panel (light) |
 | `--map-park`, `--map-wood` | parks and woods: the green tint over the land, 16% and 9% |
 | `--map-road-minor`, `--map-road-medium`, `--map-road-major` | roads, one ladder of the text colour over the land. Dark 20%, 30% and 42%; light 27%, 39% and 50% |
 | `--map-building` | buildings: 10% (dark) or 12% (light) of the text colour over the land |
@@ -241,6 +241,31 @@ A file a module's object is linked to (`host.ui.fileChips`, [api-module-sdk](../
 
 The sheet that makes a share link and the list of links (`public/share-sheet.js`, styles in `public/share-sheet.css`) are dialogs in the Dialogs family, 480px wide for the sheet, 520px for editing a link and 560px for the list, never wider than the screen less `--space-6`. They use the form fields, the three-way switch for the days a link lasts, a choice row with the shared switch for **Allow download**, and the action bar. The public page of a link (`public/shared.html`, `public/shared.css`) takes the environment's theme from `/theme.css` and uses only tokens: `--surface-page` for the page, a grid of cards (`--surface-card` on a hairline, `--radius-medium`) at least 150px wide, and the file windows' own views (`public/file-viewer-views.js`) for a file opened on it. Read as code; the Prototype's "Sharing outside" and "The public page" are the drawings.
 
+## The default theme and the optional roles
+
+**The default theme** is Chameleon, named by the product's short name. It is the Coffee Pub studio's design system read into the theme roles (`DEFAULT_THEME` in `server/store.js`): cream, navy and teal, with coral for the lockup's second word. The dark set is the navy ground (`#0e1a2b`) with cream ink and a teal accent (`#5cc8cf`); it is also the palette `public/style.css` starts from (`tools/check-theme.mjs` holds the two equal). The light set is the studio's page: a cream ground, white panels, cards, menus and fields on a tan hairline, teal (`#0b7a84`) only on primary buttons, a switch that is on, the focus ring and links. It is the theme a server with no saved theme sends. Titles and heading icons are ink, not teal; the accent stays on actions. **Strong Coffee**, the default before, is now one of the built-in themes, unchanged, beside Calming Teal and Burnt Orange. The Design System pages list Chameleon first.
+
+**Light mode is designed, not inverted.** Every neutral wash (a hover, a press, a card's head band, a track) is mixed from one ink, so in Chameleon's light set they read as cream and sand, never grey. Soft tints mark the eight tones, a chat message sits on a white card, and the icons are ink navy, turning teal on hover. The text colours are checked against their surfaces by `tools/check-theme-contrast.mjs`.
+
+**The optional roles** below are set in the theme editor on Manage > Theme. Each follows the base colours until a theme sets it (**Auto**), so a theme that never touches one keeps working. They are stored and sent like the others (`THEME_OPTIONAL` in `server/store.js`; the Auto formulas are in `public/theme-colour.js`).
+
+| Role (`--token`) | Row in the editor | Use, and what Auto is |
+|---|---|---|
+| `fill-chosen` | Chosen fill (segment, day) | The fill of a chosen segment or day, and the base of the tints under a chosen, hovered or pressed thing. Auto is the accent. |
+| `text-on-chosen` | Text on chosen fill | Text on that fill. Auto is the text colour on the accent. |
+| `ink-chosen` | Chosen text ink | The ink chosen text is mixed from. Auto is the accent. |
+| `ink-brand` | Brand name ink (large text only) | The second word of the lockup, 24 px and up. Auto is the accent. |
+| `ink-neutral` | Neutral wash ink (hover, press, quiet fills) | The ink every neutral wash is mixed from. Auto is the text colour. |
+| `tone-gold`, `tone-blue`, `tone-green`, `tone-teal`, `tone-purple`, `tone-red`, `tone-orange`, `tone-pink` | Tone: gold, and so on (eight rows) | The eight colours that tint modules, phases and kinds (`--tint-*` follow them). Auto is the Tints table above. |
+| `icon-bar` | Top bar icons | The icons and links in the top bar. Auto is the bar text at 75%. |
+| `surface-message` | Chat message background | A chat message's box. Auto is a 5% wash of the neutral ink. |
+
+Removed: nothing a theme file holds. A theme saved before these roles keeps working, since each is optional.
+
+## The start page's own palette
+
+The start page (`public/start.css`) does not use the app's theme. It has its own palette from the studio's design system, the `--sp-*` names, written once in three `:root` blocks at the top of the file (light, the picked dark, and the browser's dark; the two dark blocks must hold the same values). `tools/check-no-raw-colours.mjs` allows raw colours only there. No environment's theme reaches it.
+
 ## Muted text and Strong Coffee in light
 
 The text colours are checked against their surfaces by `tools/check-theme-contrast.mjs`. In Strong Coffee's light mode, muted text is `#63564b` (5.07:1 on a card) and the accent fill is `#a6682a` (white text on it is 4.53:1). Some muted text on tinted surfaces is still under 4.5:1 in light mode; it is listed in [known-issues](../known-issues.md).
@@ -249,7 +274,7 @@ The text colours are checked against their surfaces by `tools/check-theme-contra
 
 `/design-system/` serves four pages with the same links at the top (the pages and how they fit are described in `public/design-system/README.md`):
 
-- **Design System**: what is in production, each family drawn from the product's own stylesheets. `tools/check-design-system-catalog.mjs` (in `npm run check`) fails when an example uses a class no stylesheet defines, when a block of `system.css` has no family, and when the moduleframe family does not link to the Prototype page. `tools/check-design-system.mjs` opens the page in headless Chromium, served and as its snapshot from disk, and fails on a console error, an example frame that does not load, a sideways scroll or a page that does not finish drawing; it runs per scenario (`--scenario=1280:light`, `1280:dark`, `390:light`, `390:dark`). `npm run check` runs 1280:light; `npm run check:design` runs all four, and so does `.github/workflows/design-check.yml`, as parallel jobs on every push to main and every pull request.
+- **Design System**: what is in production, each family drawn from the product's own stylesheets. The core stylesheets and icons are in the generated `public/design-system/sources.js`, which holds nothing from `modules/`; the modules' stylesheets and icons come at run time from `GET /design-system/module-sources.js`, so a change inside a module never makes that file stale. `tools/check-design-system-catalog.mjs` (in `npm run check`) fails when an example uses a class no stylesheet defines, when a block of `system.css` has no family, and when the moduleframe family does not link to the Prototype page. `tools/check-design-system.mjs` opens the page in headless Chromium, served and as its snapshot from disk, and fails on a console error, an example frame that does not load, a sideways scroll or a page that does not finish drawing; it runs per scenario (`--scenario=1280:light`, `1280:dark`, `390:light`, `390:dark`). `npm run check` runs 1280:light; `npm run check:design` runs all four, and so does `.github/workflows/design-check.yml`, as parallel jobs on every push to main and every pull request.
 - **Proposed**: changes staged for the design system, each with what, why and its status. Nothing is staged now.
 - **Prototype**: the module frame drawn by the real `createModuleFrame` in four states, in each shipped theme, Light or Dark, at a width chosen at the top. A tweak made here is staged on Proposed, then built into production. The **Planner** section runs the Planner's own markup and stylesheets (`public/design-system/sources.js`, written by `node tools/design-system-snapshot.mjs --sources`, and `prototype-planner.js`) on a sample week, with a jump list to each part. A **Maps** section (design-process only; nothing in it ships) draws the map themes and the Maps module's **Map options** panel from [plan-map-options](../plans/plan-map-options.md), step 0, on a picture of a map made from the map tokens, in the app's dark and light themes side by side, for Thomas to judge before anything is built; its decisions of 2026-11-04 are drawn as decided and one question stays open. The pages are `prototype-maps.js` and `map-screen.html`. A **Light** switch, for Strong Coffee in light only, shows the current light mode and four candidates on the same screen: Paper, Cool mist, Cream and Contrast (`?look=`). The candidates are not shipped. `tools/check-prototype-parity.mjs` (in `npm run check`) starts a throwaway server with the screenshot seed, opens the real Planner and the Prototype's Planner at the same width in headless Chromium and fails when: the strip, Unscheduled, the phase bars, the day card and head, the cards, the joint and its +, the suggestions, the empty-day box or the more buttons differ in left edge, right inset or height by more than 1px (at 1280 light and dark, 700 and 390); the parts of a column do not share one left and right edge; the gap above and below a joint's + differs by more than 2px; a button at a real 390px viewport is under 44px; the Prototype at `?w=390` in a wide window does not draw as a real 390 window; or the Prototype's templates are not character for character those of `modules/travel/src/travel.html`, or `sources.js` is not what the stylesheets produce. With no Chromium it says SKIPPED and exits 0, and it fails when `CI` is set.
 - **Legacy**: frozen records (the app's inventory before the design system, and System v1). System v1 is only checked to load: no console error, every frame drawn.

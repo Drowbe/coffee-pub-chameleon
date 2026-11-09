@@ -26,8 +26,11 @@ are gone; `GET /api/product` has no `pages` and gains `productSiteUrl`; `PRODUCT
 facts show **Start page** and **Product site**; the product host's `/theme.css` sends the bundled default theme; and the
 start page's product name uses the new `--brand-coral` token. The checks are `tools/check-start-page.mjs` and the
 changed cases of `check-origin`. **Not built:** slice 6, the demo hook (`/api/product` has no `demo`, the page has no
-**Try the demo**). **Not done from slice 4:** Manage's **Upgrade** link still points at `<productDomain>/#plans`
-(`public/admin.js`), and the start page has no Plans list for it to reach. Slice 7, the documentation, is written for
+**Try the demo**). **Later, 2026-11-08 and 09 (PRs #449, #452, #456, #472):** the page took the studio's look (header, hero with
+**Private Beta** and **Request an Invite**, **Ways to use** cards, footer; every link out built from the origin of
+`PRODUCT_SITE_URL`, hidden without it), its own palette from the studio's design system and a sticky header; the sign-up
+form came off the page (the server's sign-up routes remain); and Manage's **Upgrade** link is hidden until a plans page
+exists (`plansPage = false` in `public/admin.js`), because the start page has no Plans list for it to reach. Slice 7, the documentation, is written for
 slices 4 and 5 and needs another pass after slice 6. Slices 1 and 2 are outside this record.
 
 **Known privacy issue, live today.** `GET /api/product/environments` lists every active environment on the host, by

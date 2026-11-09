@@ -30,6 +30,7 @@ const { REF_SHAPE, cleanPointer } = new Function(`${hostSrc}\nreturn { REF_SHAPE
 const sdkSrc = slice('public/sdk/host.js', 'function cleanRef(ref) {', '\n  }\n');
 const cleanRef = new Function(`${sdkSrc}\nreturn cleanRef;`)();
 
+const { changeStamp } = new Function(`${slice('public/module-host.js', 'export function changeStamp(d) {', '\n}\n').replace('export ', '')}\nreturn { changeStamp };`)();
 let failed = 0;
 let n = 0;
 const pending = [];
@@ -760,6 +761,25 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
   assert.ok(!/await (api|fetch|import)\(/.test(printSrc.slice(0, waits)), 'host.library.print must not wait on a request before the others have started');
   const viewerSrc = slice('public/file-viewer.js', 'async function printIt(w, f) {', 'finally { stop(); }');
   assert.ok(viewerSrc.includes("progressNote('Preparing to print...')") && viewerSrc.indexOf('progressNote(') < viewerSrc.indexOf('fetch('), 'the file window\'s Print must show its note before it fetches');
+}
+// A live 'change' carries the server's `updatedAt` on to the module (changeStamp in public/module-host.js).
+{
+  const test2 = (name, fn) => { try { fn(); n += 1; } catch (err) { failed += 1; console.error(`check-module-host: ${name}: ${err.message}`); } };
+  test2('a change carries the updatedAt the server sent, as sent', () => {
+    const at = '2026-11-09T10:20:30.456Z';
+    assert.deepEqual(changeStamp({ key: 'k', updatedAt: at }), { updatedAt: at });
+    assert.equal(changeStamp({ updatedAt: at }).updatedAt, at);
+    assert.deepEqual(changeStamp({ updatedAt: 1762683630456 }), { updatedAt: 1762683630456 });
+  });
+  test2('a change without a usable updatedAt carries none', () => {
+    for (const d of [{}, null, undefined, { updatedAt: null }, { updatedAt: '' }, { updatedAt: 'soon' }, { updatedAt: NaN }, { updatedAt: Infinity }, { updatedAt: {} }, { updatedAt: true }, { updatedAt: '2026-11-09T10:20:30Z'.padEnd(60, ' ') }]) {
+      assert.deepEqual(changeStamp(d), {}, JSON.stringify(d));
+      assert.equal('updatedAt' in changeStamp(d), false);
+    }
+  });
+  test2('the change event sends it through changeStamp', () => {
+    assert.match(fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8'), /send\('change', \{[^}]*\.\.\.changeStamp\(d\) \}\)/);
+  });
 }
 await Promise.all(pending);
 if (failed) process.exit(1);

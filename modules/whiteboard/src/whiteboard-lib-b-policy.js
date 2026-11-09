@@ -10,6 +10,8 @@
       canEdit: edit,
       canUseTool: (tool) => Boolean(tool) && (!tool.edits || edit),
       canCreate: () => edit,
+      // Adding a picture from the computer: the same as adding any block, where the host keeps uploads.
+      canAddPicture: () => edit && Boolean(host.uploads),
       canChange: (block) => edit && Boolean(block),
       canDelete: (block) => edit && Boolean(block),
       canSee: () => true,

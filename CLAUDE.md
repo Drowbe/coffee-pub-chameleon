@@ -22,6 +22,8 @@ decide those.
 - In a cloud container running as root, `check-names` fails two `--migration` cases (a read-only parent
   folder, the `tavern.json` rename) because root ignores read-only permissions. That isn't a defect; don't
   change the check. Run the checks after `check-names` in the `check` script one by one to see them.
+- `npm run check:module -- <id>`: the module lane. Core lint plus that module's own tests and its
+  `tools/check-<id>*.mjs` files; no whole suite. Use it for a change confined to `modules/<id>/`.
 - `npm run check:docs`: the documentation standard.
 - `npm run docs:build`: builds the wiki pages into `tools/.wiki-build/` for review.
 - Local server: `LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=devsecretdevsecret ADMIN_PASSWORD=testpass1234 npm run dev`
@@ -47,6 +49,15 @@ decide those.
   building new ones.
 - Words a person reads: plain and short. Names follow the Names section below, in code and in words.
 - A changed module gets a version bump.
+- A module's own checks live in `modules/<id>/test/*.mjs` (node scripts that exit 0/1). `npm run check`
+  runs them all through `tools/check-module-tests.mjs`, so a new module test needs no new `package.json`
+  line. `test/` is not module code: not in the zip, not in the version fingerprint.
+- A change confined to `modules/<id>/` is a module-lane change: module-scoped checks only and no
+  independent review. A change to the core (`public/sdk/`, `public/module-host.js`,
+  `public/module-frame.js`, `server/`, `tools/`, the stored data format, or a manifest's
+  permissions, uploads or refs) is not (Thomas, 2026-11-09).
+- `public/design-system/sources.js` holds nothing from `modules/`. The Design System pages read module
+  stylesheets and icons from `/design-system/module-sources.js` at run time.
 - Be exact about verification: "verified live", "checked by a tool" and "read as code only" are
   different claims.
 - Work comes in three kinds, and Thomas names the kind: a **try build** (the default; one builder, one
@@ -55,7 +66,7 @@ decide those.
   (the full flow: plan, QA, docs, version bumps). Never treat a try build as production.
 - Start every GitHub issue title with its area and a colon, then the title (`Settings: Profile photo won't save`).
   The areas: Settings, Chat, Call, Home, Phases, Planner, Calendar, Places, Maps, Budget, Research, To-do,
-  Polls, Forms, Design, Layout, Server, Docs, Verify, Ideas. Settings covers anything about configuring
+  Polls, Forms, Whiteboard, Design, Layout, Server, Docs, Verify, Ideas. Settings covers anything about configuring
   things: Set up, Manage, Profile, module and template settings, overridable words, permissions settings
   and the Modules page. Every agent files issues this way (Thomas, 2026-10-15).
 - The project manager picks the smaller model for small jobs and a larger one only for risky work (layout and

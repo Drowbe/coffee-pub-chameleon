@@ -63,6 +63,9 @@ The open issues labelled `priority: now` or `priority: next`:
 
 ## In progress
 
+- **The Vault's privacy interface** ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 2 and 3): the Prototype is locked and the screens are being built. Held: nothing is merged to main until Thomas says so.
+- **The host console redesign** ([plan-host-console](plans/plan-host-console.md)): the Prototype is locked and the console is being built. Held for Thomas.
+
 - **The leftovers `check-names` still allows.** The old words kept on purpose are listed in `tools/check-names-allow.json`; the clean-up of the ones that are not deliberate is under way, and each entry that goes is removed from the list. Do not add to it for new code.
 
 - **Environment templates** ([plan-environment-templates](plans/plan-environment-templates.md)): done, except the live verification of addendum 2's steps 3a and 3b (#68). Addendum 3, editing a bundled template on the host console and Duplicate (#91), is built and its console was walked live (2026-09-30). Addendum 4, the word for entering a space, is built and verified live (2026-09-30).
@@ -174,7 +177,7 @@ The open issues labelled `priority: now` or `priority: next`:
 - #50 An environment's own domain, and one identity across environments.
 - The calls cap is enforced by the page only: the page asks `POST /api/call/join` before joining, but a token can publish as soon as it is minted, so a modified page could skip the check, as it could before. Making the cap binding means granting publish only after the check.
 - The host console's environment list waits on LiveKit when any environment's plan caps calls (it counts each one's running calls, up to two seconds a request).
-- The product site ([plan-product-site](plans/plan-product-site.md)): the start page is built. Still to do: the demo hook (slice 6, **Try the demo** and `demo` in `GET /api/product`) and a Plans list on the start page, which Manage's **Upgrade** link (`<product domain>/#plans`) waits for.
+- The product site ([plan-product-site](plans/plan-product-site.md)): the start page is built (the studio's look, 2026-11-08). Still to do: the demo hook (slice 6: **Try the demo** and `demo` in `GET /api/product`) and a Plans list on the start page. Manage's **Upgrade** link is hidden (`plansPage = false` in `public/admin.js`) until the Plans list exists; turning that on is part of the same work.
 - #57 An About page.
 
 ## Streaming and OBS
@@ -204,6 +207,10 @@ The open issues labelled `priority: now` or `priority: next`:
 - **Budget step 5: the travel template turns Budget on** ([plan-budget-module](plans/plan-budget-module.md)). `modules` in the template gains `budget` (template version 7), so a new travel environment has Budget on. Not built; an owner turns Budget on in Manage until then.
 - **A cross-module change event** for the SDK, so Budget can learn at once that a booking changed instead of asking every 30 seconds ([known-issues](known-issues.md)). Not planned yet.
 - **Planner modes** (#307): travel, design and project modes for the Planner. Not planned yet; Budget is built to stay independent of them.
+- #477 In-app help for a module: help a module can show in the app itself. Not planned yet; the issue holds the detail.
+- #469 Host additions for saving and printing, for modules: additions to what the host offers modules (`host.*`) for saving and printing. Not planned yet; the issue holds the detail.
+- #471 Stream replay. Not planned yet; the issue holds the detail.
+- #480 Toolbar additions for modules. Not planned yet; the issue holds the detail.
 - #34 Updating a module from an address, not only a zip.
 - #35 A module's own activity on its card.
 - #36 Storing and sending sensitive data such as passwords.

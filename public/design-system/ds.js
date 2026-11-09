@@ -581,7 +581,8 @@ window.__dsLog = [];
     sec.innerHTML = `<h2>Icons</h2><p class="ds-lead">The Font Awesome Free solid icons the product uses: ${list.length} names found in the stylesheets, scripts, pages, module sources and server templates. Each is written <code>&lt;i class="fa-solid fa-name" aria-hidden="true"&gt;&lt;/i&gt;</code> on an app page; a module asks the SDK for an SVG with host.ui.icon(name). Click one to copy its markup.</p>`;
     stats.icons = list.length;
     const groups = new Map();
-    for (const i of list) { if (!groups.has(i.group)) groups.set(i.group, []); groups.get(i.group).push(i); }
+    for (const i of list) { if (!i.group) i.group = 'Modules'; // an icon only a module uses has no group from sources.js (module-sources.js adds it)
+      if (!groups.has(i.group)) groups.set(i.group, []); groups.get(i.group).push(i); }
     for (const [g, items] of [...groups.entries()].sort((a, b) => b[1].length - a[1].length)) {
       sec.appendChild(mk('h3', 'ds-group', `${h(g)} <span class="ds-count">${items.length}</span>`));
       const grid = mk('div', 'ds-icons');

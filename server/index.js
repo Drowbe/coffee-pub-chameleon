@@ -2924,6 +2924,15 @@ function redirectToHost(req, res, status, newHost) {
 // The paths the product host lets through beside /: what the start page loads and asks.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+// The modules' stylesheets and icons, for the Design System pages: read from modules/*/src on each request, so the committed
+// public/design-system/sources.js holds nothing from a module (server/design-system-modules.js).
+app.get('/design-system/module-sources.js', (req, res) => {
+  try {
+    res.type('application/javascript').set('Cache-Control', 'no-cache').send(require('./design-system-modules').moduleSourcesJs(path.join(__dirname, '..'), path.dirname(require.resolve('@fortawesome/fontawesome-free/package.json'))));
+  } catch (err) {
+    res.status(500).type('text').send('The sources for the Design System could not be read.');
+  }
+});
 const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/start.css', '/start.js', '/theme-head.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
@@ -8329,7 +8338,7 @@ app.post('/api/modules/:id/uploads', rawUpload, checkStorageCap, async (req, res
   const keepPosition = req.query.keepPosition === '1';
   const cleaned = req.body.length ? await cleanPictureOffThread(req.body, ctx.manifest.uploads.types, keepPosition) : null;
   if (cleaned && cleaned.error) return res.status(400).json({ error: cleaned.error });
-  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean });
+  const file = moduleUploads.put(ctx.manifest.id, ctx.scopeKey, ctx.manifest.uploads, { bytes: req.body, name: req.query.name, by: ctx.by, keepPosition, cleaned: cleaned && cleaned.clean, words: { space: word('space'), environment: word('environment'), module: word('module') } });
   res.status(201).json({ file: uploadView(file) });
 });
 // What the start of a picture says about itself, for a page that will resize it (a resize loses the picture's own facts): send its
@@ -8446,7 +8455,7 @@ const vaultScanner = createScanner({ seconds: (() => { const v = Number(VAULT_SC
 const scanSentence = (r, type) => {
   if (r.code === 'unsafe') return 'We could not check that file safely. Try saving it again from the program that made it.'; // a PDF is kept as download only instead
   if (r.code === 'picture-damaged') return 'That picture is damaged or cut short.';
-  if (r.code === 'picture-large') return 'That picture is too large to show.';
+  if (r.code === 'picture-large') return vaultTypes.PICTURE_LARGE;
   if (r.code === 'pdf-damaged') return pdfSentence({ refuse: 'damaged' });
   if (r.code === 'pdf-active') return pdfSentence({ what: r.what });
   if (r.code === 'damaged') return 'That file is damaged or cut short.';

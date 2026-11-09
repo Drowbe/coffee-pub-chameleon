@@ -2414,9 +2414,9 @@
         };
       },
       // A button in the same toolbar row as the view switches (a chooser that opens a menu, say: Research's Tags),
-      // drawn after the switches made before it. { id, label?, icon?, iconOnly?, on?, onClick }. onClick gets the
+      // drawn after the switches made before it. { id, label?, icon?, iconOnly?, on?, disabled?, onClick }. onClick gets the
       // 'toolbar' event, whose `x` (when the host gives it) puts a menu under the button: host.menu.show({ at: { x, y: 4 } }).
-      // Returns { set({ label?, icon?, on? }), destroy() }; set() redraws only when something changed.
+      // Returns { set({ label?, icon?, on?, disabled? }), destroy() }; set() redraws only when something changed.
       // The shared "..." button (ellipsis-vertical, icon centered): a card's menu, a day's, a poll's, a
       // place's. Pass a button you already have (its data-action and listeners stay); omit it to make one.
       // { label } is the accessible name (defaults to the button's aria-label, or "More").
@@ -2437,12 +2437,12 @@
         }
         return btn;
       },
-      toolbarButton: ({ id, label, icon, iconOnly, on, onClick }) => {
-        let state = { label, icon, iconOnly: Boolean(iconOnly), on: Boolean(on) };
+      toolbarButton: ({ id, label, icon, iconOnly, on, disabled, onClick }) => {
+        let state = { label, icon, iconOnly: Boolean(iconOnly), on: Boolean(on), disabled: Boolean(disabled) };
         const off = host.on('toolbar', (e) => {
           if (e.id === id && typeof onClick === 'function') onClick(e);
         });
-        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, on: state.on }) };
+        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, on: state.on, ...(state.disabled ? { disabled: true } : {}) }) };
         switches.push(mine);
         drawSwitches();
         return {

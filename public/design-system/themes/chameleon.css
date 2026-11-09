@@ -44,6 +44,8 @@
   --bg-card: #ffffff;
   --surface-bar-brand: #f7f0e0;
   --surface-bar-right: #f7f0e0;
+  --icon-default: #14243b;
+  --icon: #14243b;
   --accent-fill-hover: #096870;
   --fill-secondary: #ffffff;
   --secondary: #ffffff;
@@ -62,11 +64,13 @@
   --mf-surface-toolbar: #fbf6ec;
   --mf-surface-row: #fbf6ec;
   --mf-surface-row-hover: #f3e9d4;
-  --fill-chosen: #ebd9b3;
+  --surface-message: #ffffff;
+  --fill-chosen: #f3e9d4;
   --text-on-chosen: #14243b;
   --ink-chosen: #14243b;
   --ink-brand: #e0553c;
   --ink-neutral: #c9962a;
+  --icon-bar: #14243b;
   --tone-gold: #8c6d2c;
   --tone-blue: #2c6498;
   --tone-green: #2f7f77;

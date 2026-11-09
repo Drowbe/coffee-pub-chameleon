@@ -176,9 +176,9 @@ do in it; in short:
 Who may send messages or pictures is set per role on the Roles tab; if a permission is off the
 chat box is hidden.
 
-## The Layout menu
+## The Modules tab
 
-**Layout**, an icon button in the top bar beside the bell, opens a menu for the Workspace. It has three parts:
+**Set up**, in the top bar (its tooltip reads "<space> Configuration", with the template's word for a space), opens a panel whose first tab is **Modules**. Everyone in a space has it, a guest too; a person who may not set the space up sees only this tab, titled **Modules**, with **Close**. It has three parts:
 
 - **Show**: a switch for each module on in the space, on while the module is shown on the Workspace. A count shows
   what is unread. The Calendar and the To-do show as one switch, **Calendar**, and Maps and Places as one, **Maps**
@@ -197,8 +197,8 @@ chat box is hidden.
 - **Layouts**: the Workspace, Calendar and Map first, then the space's shared layouts, then your own, with **Save this
   layout** at the end (see "Saved layouts" below).
 
-The menu stays open while you flip switches; press Escape, click the button again or click elsewhere to close it. With
-the keyboard, Tab and the arrow keys move through it, and Space or Enter flips a switch or presses a button. In the narrow layout there is no **Layout** button: the modules are tabs along the bottom.
+The panel stays open while you flip switches; close it with **Cancel** (or **Close**) or Escape. For owners and the admin, a line at the foot says "Modules are turned on for the whole <environment> in Manage." With
+the keyboard, Tab and the arrow keys move through it, and Space or Enter flips a switch or presses a button. In the narrow layout there is no **Modules** tab: the modules are tabs along the bottom.
 
 ## Modules on the Workspace
 
@@ -222,7 +222,7 @@ Save the way the Workspace is arranged, give it a name, and put it back in one p
 To save one:
 
 1. Arrange the Workspace the way you want it.
-2. Open **Layout** and choose **Save this layout** under **Layouts**.
+2. Press **Set up** and, on the **Modules** tab, choose **Save this layout** under **Layouts**.
 3. Type a **Name**. Owners, the admin and the space's moderators can also switch on **For everyone in this space** to
    save a shared layout.
 4. Choose **Save**. The menu says "Saved <name>." If you already have a layout with that name, it offers **Replace
@@ -254,7 +254,7 @@ can't keep favorites.
 
 To make a layout a favorite:
 
-1. Open **Layout**.
+1. Press **Set up**, on the **Modules** tab.
 2. Under **Layouts**, press the **⋮** beside the layout.
 3. Choose **Favorite**. The menu says "<name> is a favorite.", and a small heart shows after the layout's name.
 
@@ -263,7 +263,7 @@ says "<name> is no longer a favorite." Deleting a layout takes it out of everyon
 
 The tabs are in the order you made them favorites. When the bar has no room for all of them, the ones that don't fit go
 into a **…** after the last tab, from the right; the tab you are on and the Workspace stay. The layouts in the **…** are
-still in the **Layout** menu, marked by their hearts. Tabs are not shown in the narrow layout, in an aside, or to a guest.
+still in the **Layouts** list on the **Modules** tab, marked by their hearts. Tabs are not shown in the narrow layout, in an aside, or to a guest.
 
 ## When the Workspace is too narrow for another column
 
@@ -275,9 +275,9 @@ more. Installed modules give way from the right.
   when the window is wide enough".
 - On another floating module, **Dock as a panel** says "The window is too narrow for another column" while the columns
   are full.
-- **Layout** says why, at the end of **Arrange**: for example "The window is too narrow for another column, so
+- The **Modules** tab says why, at the end of **Arrange**: for example "The window is too narrow for another column, so
   Calendar is floating. It docks when the window is wide enough.", or after choosing **Panel Mode**, "2 docked. 1 stays
-  floating until the window is wide enough." The note goes after a few seconds, or when you close the menu.
+  floating until the window is wide enough." The note goes after a few seconds, or when you close the panel.
 - Drag or resize a waiting module and it stays floating for good.
 
 ## In the narrow layout

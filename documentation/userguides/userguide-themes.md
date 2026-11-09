@@ -50,7 +50,7 @@ until you choose **Apply**, which puts the theme and the default mode live on ev
 A theme can be saved as a file and brought into another environment.
 
 1. To share one, choose it in the chooser and click **Export**. The browser saves `<name>.theme.json`. Any
-   theme can be exported, the built-in ones and Strong Coffee included. Export saves the theme as it was last
+   theme can be exported, the built-in ones included. Export saves the theme as it was last
    saved, not changes still in the editor, so choose **Update** or **Save as new theme** first.
 2. To bring one in, click **Import…** and choose the file. It is added as a new theme and chosen in the chooser, so
    you can preview it. It is not applied: click **Apply** when you want to use it.
@@ -70,5 +70,5 @@ import is refused with "This environment has 100 themes, the most it can hold. D
 
 ## Where to start
 
-Strong Coffee is how Chameleon has always looked. Calming Teal and Burnt Orange are the other built-in themes. Choose
+Chameleon, in cream, navy and teal, is the default theme and the one a new environment starts with. Strong Coffee, how Chameleon looked before, Calming Teal and Burnt Orange are the other built-in themes. Choose
 one of them, change what you want, and **Save as new theme**.

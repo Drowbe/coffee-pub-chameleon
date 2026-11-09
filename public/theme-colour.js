@@ -69,9 +69,11 @@
     'ink-chosen': 'var(--accent-fill)',
     'ink-brand': 'var(--accent-fill)',
     'ink-neutral': 'var(--text-primary)',
+    'icon-bar': 'color-mix(in srgb, var(--text-bar) 75%, transparent)',
     'mf-surface-title': 'color-mix(in srgb, var(--surface-panel) 70%, black)',
     'mf-surface-toolbar': 'color-mix(in srgb, var(--surface-panel) 93%, var(--text-primary))',
     'mf-surface-row': 'color-mix(in srgb, var(--surface-panel) 94%, var(--accent-fill))',
+    'surface-message': 'color-mix(in srgb, var(--ink-neutral) 5%, transparent)',
     'mf-surface-row-hover': 'color-mix(in srgb, var(--surface-panel) 88%, var(--accent-fill))',
   };
 
