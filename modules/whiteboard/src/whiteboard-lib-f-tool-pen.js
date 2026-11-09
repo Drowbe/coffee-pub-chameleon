@@ -7,7 +7,7 @@
   {
     const KINDS = [
       { id: 'pen', label: 'Pen', icon: 'pen', key: 'p', order: 20, usual: 3 },
-      { id: 'marker', label: 'Marker', icon: 'highlighter', key: 'm', order: 97, group: 'paint', usual: 12 },
+      { id: 'marker', label: 'Marker', icon: 'marker', key: 'm', order: 97, group: 'paint', usual: 12 },
       { id: 'brush', label: 'Brush', icon: 'paintbrush', order: 98, group: 'paint', usual: 8 },
     ];
     // A pointer's pressure as a width in percent: a light touch is a third of the full width, a hard press all of it.

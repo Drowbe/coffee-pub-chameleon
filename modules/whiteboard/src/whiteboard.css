@@ -110,7 +110,7 @@
 .wb-type-text .wb-words:empty { min-height: 1.35em; }
 
 /* the SVG blocks: only what is drawn takes the pointer, not the empty box round a line (.wb-shape: every closed shape) */
-.wb-shape, .wb-type-line, .wb-type-stroke, .wb-type-connector { pointer-events: none; }
+.wb-shape, .wb-type-line, .wb-type-stroke, .wb-type-highlight, .wb-type-connector { pointer-events: none; }
 .wb-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .wb-svg .wb-hit { pointer-events: visiblePainted; cursor: grab; }
 .wb-svg .wb-hit-wide { fill: none; stroke: transparent; stroke-width: max(16px, calc(var(--wb-weight) + 8px)); stroke-linecap: round; pointer-events: stroke; }
@@ -124,6 +124,11 @@
    brush's stroke a filled shape, thinner at its ends */
 .wb-svg[data-brush="marker"] .wb-stroke { stroke: color-mix(in srgb, var(--wb-stroke) 55%, transparent); }
 .wb-svg .wb-brush { fill: var(--wb-stroke); stroke: none; pointer-events: none; }
+/* a highlight (lib-e-block-highlight.js): a wide band with round ends in a wash of its colour, laid over what is under
+   it. A plain see-through wash, no blend mode: a multiply blend reads well on a light board but turns to a dark smudge on
+   a dark one, and a module's page cannot tell which mode the theme is in, so one wash of the tint token at 38% serves both
+   (the tints are lighter in the dark mode, darker in the light one). One path, so it is no darker where it crosses itself. */
+.wb-svg .wb-highlight { fill: none; stroke: color-mix(in srgb, var(--wb-stroke) 38%, transparent); stroke-width: var(--wb-weight); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 /* a shape's words, in the part of it that is inside its outline (--wb-inset, set by its block type), in the middle from
    top to bottom and lined up as the block says (centred at first); a link in them takes the pointer */
 .wb-shape .wb-words {

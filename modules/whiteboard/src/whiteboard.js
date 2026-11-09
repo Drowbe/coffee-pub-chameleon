@@ -67,8 +67,17 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
-  // A freehand stroke's width is picked for its brush alone (a marker is wide, a pen thin): brush id -> width, or null.
-  const nextWeights = { pen: null, marker: null, brush: null };
+  // A freehand stroke's width is picked for its brush alone (a marker is wide, a pen thin), and a highlight's for
+  // highlights: brush id (or 'highlight') -> width, or null.
+  const nextWeights = { pen: null, marker: null, brush: null, highlight: null };
+  // What a block's width is remembered by: a drawing's brush, 'highlight' for a highlight, else nothing (the shared one).
+  const brushKey = (type, brush) => (type === 'stroke' ? brush || null : type === 'highlight' ? 'highlight' : null);
+  // A highlight's colour is picked for highlights alone (Yellow until one is picked), so a pen's ink does not make the
+  // next highlight black; every other type shares next.
+  const OWN_COLOURS = new Set(['highlight']);
+  const nextOwn = { highlight: { stroke: null } };
+  const nextColour = (def, role) => (def && OWN_COLOURS.has(def.type) ? (nextOwn[def.type][role] ?? null) : next[role]);
+  const setNextColour = (def, role, v) => { if (def && OWN_COLOURS.has(def.type)) nextOwn[def.type][role] = v; else next[role] = v; };
   const nextWeightOf = (brush) => (brush && brush in nextWeights ? nextWeights[brush] : next.weight);
   const setNextWeight = (brush, v) => { if (brush && brush in nextWeights) nextWeights[brush] = v; else next.weight = v; };
   // The colour the Fill tool fills with: the fill picked for new blocks, else Yellow.
@@ -88,9 +97,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker and the Brush; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M) and the Brush. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -143,9 +152,9 @@
       const def = blockTypes.get(type);
       // The type's usual, then what the tool making it draws with (a marker's width), then what the person picked.
       const own = { ...def.create(), ...(tool.makes === type && tool.usual ? tool.usual : {}) };
-      const brush = type === 'stroke' ? fields.brush || own.brush : null;
+      const brush = brushKey(type, fields.brush || own.brush);
       for (const role of Object.keys(next)) {
-        const v = role === 'weight' ? nextWeightOf(brush) : next[role];
+        const v = role === 'weight' ? nextWeightOf(brush) : nextColour(def, role);
         if (v !== null && takesNext(def, role)) own[role] = v;
       }
       if (type === CONNECTOR) for (const [k, v] of Object.entries(nextLine)) if (v !== null) own[k] = v;
@@ -439,13 +448,13 @@
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
   // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
-  // holds 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker and the
-  // Brush) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
+  // holds 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker, the
+  // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
   // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices.
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
   const GROUPS = [
-    { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush'], split: 1 },
+    { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
     { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'], split: 1 },
   ];
   const toolSwitch = inSwitch.length > 1
@@ -546,7 +555,7 @@
         const extras = having.map((b) => defOf(b).paint[role.id].extra || []).reduce((a, x) => a.filter((v) => x.includes(v)));
         const pick = (v) => () => {
           for (const b of having) ctx.change(b.id, { [role.id]: v }, { save: 'now' });
-          if (WB_PALETTE_BY_ID.has(v)) next[role.id] = v;
+          if (WB_PALETTE_BY_ID.has(v)) for (const t of new Set(having.map((b) => b.type))) setNextColour(blockTypes.get(t), role.id, v);
         };
         const rows = extras.map((v) => choiceRow(v, NAMED[v].label, now, pick(v), swatch(v)));
         for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
@@ -556,9 +565,9 @@
     } else {
       // For new blocks: "Usual" and the palette.
       groups = WB_ROLES.filter((role) => !def || takesNext(def, role.id)).map((role) => {
-        const now = next[role.id];
+        const now = nextColour(def, role.id);
         const usual = def ? def.create()[role.id] : null;
-        const pick = (v) => () => { next[role.id] = v; };
+        const pick = (v) => () => { setNextColour(def, role.id, v); };
         const rows = [choiceRow(null, 'Usual', now, pick(null), { ...swatch(usual), hint: usual ? nameOf(usual) : '' })];
         for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, pick(c.id), swatch(c.id)));
         return { role, label: roleLabel(def, role), now: now === null ? usual : now, rows };
@@ -584,13 +593,13 @@
       return;
     }
     // A freehand tool's width, and a picked drawing's, is remembered for its brush alone.
-    const brushOf = list.length === 1 ? (list[0].type === 'stroke' ? list[0].brush : null) : !list.length && def && def.type === 'stroke' && tool.usual ? tool.usual.brush : null;
+    const brushOf = list.length === 1 ? brushKey(list[0].type, list[0].brush) : !list.length && def ? brushKey(def.type, tool.usual && tool.usual.brush) : null;
     const now = list.length ? agreed(list, 'weight') : nextWeightOf(brushOf);
     const pick = (v) => () => {
       for (const b of list) ctx.change(b.id, { weight: v }, { save: 'now' });
       if (!list.length || (list.length === 1 && takesNext(def, 'weight'))) setNextWeight(brushOf, v);
     };
-    const lines = (t) => t === 'line' || t === 'stroke' || t === CONNECTOR;
+    const lines = (t) => t === 'line' || t === 'stroke' || t === 'highlight' || t === CONNECTOR;
     const border = list.length ? !list.every((b) => lines(b.type)) : def && !lines(def.type);
     const whose = list.length || def ? whoseOf(list, def) : 'new lines and borders';
     const items = [{ heading: `${border ? 'Border width' : 'Width'} ${list.length ? 'of' : 'for'} ${whose}` }];
@@ -1096,6 +1105,7 @@
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
       : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
         : tool.makes === 'stroke' ? 'Press and drag to draw.'
+          : tool.makes === 'highlight' ? `Press and drag over what to highlight.${KEYS ? ' Hold Shift for a straight band.' : ''}`
           : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
             : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }

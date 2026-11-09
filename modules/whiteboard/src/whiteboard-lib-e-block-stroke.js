@@ -110,6 +110,7 @@
       brushes: BRUSHES,
       maxWide: MAX_WIDE,
       simplify,
+      pathOf, // a highlight draws its band along the same smooth path (lib-e-block-highlight.js)
       create: () => ({ points: [0, 0], brush: 'pen', stroke: 'ink', weight: 3 }),
       clean(raw) {
         if (!Array.isArray(raw.points) || raw.points.length < 2 || raw.points.length > MAX || raw.points.length % 2) return null;
