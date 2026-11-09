@@ -726,20 +726,25 @@ class Store {
     if (!data.spaces.some((r) => r.id === LOBBY)) {
       data.spaces.unshift(this.sanitizeSpace({ id: LOBBY, name: 'Lobby', description: 'Where everyone meets.', members: [], createdAt: new Date().toISOString() }));
     }
-    // Ships BUILTIN_THEMES exactly once -- a flag rather than "seed
-    // whatever's missing by id" every load, so deleting one (an admin
-    // decides they don't want it) sticks instead of it reappearing on the
-    // next restart.
+    // Ships each of BUILTIN_THEMES exactly once -- a list of the ids already shipped rather than "seed whatever's missing by id"
+    // every load, so deleting one (an admin decides they don't want it) sticks instead of it reappearing on the next restart,
+    // and a built-in added later reaches an environment that was seeded before it existed.
     let seededThemes = false;
     // A copy, never DEFAULT_SETTINGS' own array, which every store shares.
     data.settings.themes = Array.isArray(data.settings.themes) ? [...data.settings.themes] : [];
     // The published calendar's address (plan-space-calendars.md, section 2): only a hash with its dates, or nothing.
     if (data.settings.publishedCalendarFeed !== undefined && !cleanCalendarFeed(data.settings.publishedCalendarFeed)) delete data.settings.publishedCalendarFeed;
-    if (!data.settings.builtinThemesSeeded) {
-      for (const builtin of BUILTIN_THEMES) {
-        if (!data.settings.themes.some((t) => t.id === builtin.id)) data.settings.themes.push(structuredClone(builtin));
-      }
-      data.settings.builtinThemesSeeded = true;
+    // The one allowed data migration (Thomas, 2026-11-09): data saved with the old boolean `builtinThemesSeeded` was seeded before
+    // Strong Coffee became a built-in (#457), so it counts as having been given every built-in but that one. Remove with the next
+    // reset of test data.
+    if (!Array.isArray(data.settings.builtinThemesSeeded)) {
+      data.settings.builtinThemesSeeded = data.settings.builtinThemesSeeded === true ? BUILTIN_THEMES.filter((t) => t.id !== 'strong-coffee').map((t) => t.id) : [];
+      seededThemes = true;
+    }
+    for (const builtin of BUILTIN_THEMES) {
+      if (data.settings.builtinThemesSeeded.includes(builtin.id)) continue;
+      if (!data.settings.themes.some((t) => t.id === builtin.id)) data.settings.themes.push(structuredClone(builtin));
+      data.settings.builtinThemesSeeded = [...data.settings.builtinThemesSeeded, builtin.id];
       seededThemes = true;
     }
     // There is one theme format (the colour roles, THEME_BASE and THEME_OPTIONAL). A saved theme that does not have at least one

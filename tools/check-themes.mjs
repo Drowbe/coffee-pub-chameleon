@@ -195,6 +195,25 @@ await test('Store.importTheme: a new id, "Name (2)" on a clash (Strong Coffee\'s
   assert.equal('author' in store.sanitizeTheme({ name: 'Plain', light: set() }), false, 'a theme made in Manage has none');
 });
 
+await test('built-ins ship once each: data seeded under the old flag gains Strong Coffee once, a delete sticks, a new environment gets all three', () => {
+  const ids = (st) => st.themes.map((t) => t.id).sort();
+  assert.deepEqual(ids(new Store(fs.mkdtempSync(path.join(os.tmpdir(), 'check-themes-new-')))), [...BUILTIN_THEME_IDS].sort(), 'a new environment gets every built-in');
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'check-themes-old-'));
+  const first = new Store(old);
+  const others = BUILTIN_THEME_IDS.filter((id) => id !== 'strong-coffee');
+  // What an environment seeded before Strong Coffee was a built-in has stored: the boolean, and only the other built-ins.
+  const raw = JSON.parse(fs.readFileSync(first.file, 'utf8'));
+  raw.settings.builtinThemesSeeded = true;
+  raw.settings.themes = raw.settings.themes.filter((t) => t.id !== 'strong-coffee');
+  fs.writeFileSync(first.file, JSON.stringify(raw));
+  assert.deepEqual(ids(new Store(old)), [...BUILTIN_THEME_IDS].sort(), 'Strong Coffee is added');
+  const moved = new Store(old);
+  moved.settings.themes = moved.settings.themes.filter((t) => t.id !== 'strong-coffee');
+  moved.save();
+  assert.deepEqual(ids(new Store(old)), [...others].sort(), 'deleting it sticks across a reload');
+  assert.deepEqual(ids(new Store(old)), [...others].sort(), 'and across another');
+});
+
 await test('control and format characters (direction marks, zero-width ones) are dropped from a name and author, from a file or the editor', () => {
   const hidden = '\u202e\u200b\u200f\u2066\ufeff\u00ad\u0007\u007f\u0085';
   const got = tf.readThemeFile(file({ name: `${hidden} Har${hidden}bour ${hidden}`, author: `Tho\nmas${hidden}\t` }), sanitize);
