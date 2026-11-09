@@ -1418,6 +1418,7 @@
       if (sel.size > 1) items.push({ text: `${sel.size} selected` });
       const coming = pictures ? pictures.count : 0;
       if (coming) items.push({ text: coming === 1 ? 'Adding a picture' : `Adding ${coming} pictures`, icon: 'image' });
+      if (exporting) items.push({ text: `${exporting}…`, icon: 'file-image' });
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
@@ -1436,6 +1437,153 @@
           : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
           : tool.id === 'table' ? `${KEYS ? 'Click' : 'Tap'} the board to put a table there, or drag to give it a size.`
             : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
+  }
+
+  // ---- save as image, and print ---------------------------------------------------------------------------------------
+  // For everyone who can see the board (it only reads it): "Save as image" in the title bar's menu and the right-click
+  // menus asks what to save (everything, what is selected, what is in sight), on what background and at what size, and
+  // saves a PNG to the computer (lib-l). Print is the host's standard Print in the title bar's menu: the whole board,
+  // fitted to the paper, in the light colours.
+  // Not here yet (the host has no way for it): saving the picture to the Vault, and Print from a key or a button of the
+  // board's own (only the title bar's menu starts the host's Print, so Ctrl or Cmd P stays the browser's).
+  const exporter = createExporter({
+    root,
+    world: $('world'),
+    async picture(upload, thumb) {
+      const address = await host.uploads.url(upload, { thumb, scope: 'space' });
+      const res = await fetch(address, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.blob();
+    },
+  });
+  let exporting = ''; // what the status line says while a picture is made
+  // What is in sight, on the board.
+  const viewBox = () => {
+    const v = renderer.view;
+    return { x0: -v.x / v.s, y0: -v.y / v.s, x1: (surface.clientWidth - v.x) / v.s, y1: (surface.clientHeight - v.y) / v.s };
+  };
+  // The blocks a kind of export takes (bottom to top) and the part of the board it shows.
+  function exportPlan(kind) {
+    const list = board.all().filter((b) => !drafts.has(b.id)).map((b) => {
+      const d = defOf(b);
+      return { id: b.id, rect: renderer.reachOf(b.id), refs: d.refs ? d.refs(b) : [] };
+    });
+    const rectOf = new Map(list.map((x) => [x.id, x.rect]));
+    const view = viewBox();
+    const ids = wbExportPick(kind, list, { picked: sel, view });
+    const extent = ids.length ? wbExportExtent(kind, ids.map((id) => rectOf.get(id)), { view }) : null;
+    return { ids, extent, items: ids.map((id) => ({ block: board.get(id), el: renderer.element(id) })) };
+  }
+  // Hands the person the file. The SDK has no call that hands over a file a module made (host.library.download saves a
+  // Vault file only): the SDK's once it has one (host.files.save), else a download link in the page, which works for a
+  // module running in the page (every bundled module does). In a sandboxed frame a download is blocked without a word,
+  // so there it says it cannot.
+  async function deliver(blob, name) {
+    if (host.files && typeof host.files.save === 'function') return host.files.save(blob, { name });
+    if (typeof ShadowRoot === 'undefined' || !(root instanceof ShadowRoot)) throw new Error('Saving a file to the computer is not possible here.');
+    const address = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = address;
+    a.download = name;
+    a.rel = 'noopener';
+    a.hidden = true;
+    $('app').append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(address), 60000);
+    return true;
+  }
+  const EXPORT_EMPTY = { all: 'There is nothing on the board to save.', selection: 'Select what to save first.', view: 'There is nothing in sight to save.' };
+  async function saveImage({ kind, background, scale }) {
+    const plan = exportPlan(kind);
+    if (!plan.ids.length) throw new Error(EXPORT_EMPTY[kind] || EXPORT_EMPTY.all);
+    const size = wbExportSize(plan.extent, scale);
+    const fill = background === 'page' ? getComputedStyle(surface).backgroundColor : '';
+    exporting = 'Making the picture';
+    updateStatus();
+    try {
+      const blob = await exporter.png(plan.items, plan.extent, size, { background: fill, step: (words) => { exporting = words; updateStatus(); } });
+      const name = wbExportName(info.module.name, new Date(), 'png');
+      await deliver(blob, name);
+      return { name, size };
+    } finally {
+      exporting = '';
+      updateStatus();
+    }
+  }
+
+  // The Save as image window.
+  const exportEditor = host.ui.editor($('export'), { onClose: () => { $('export-error').hidden = true; } });
+  let exportBusy = false;
+  const exportChoice = () => ({ kind: $('export-what').value, background: $('export-bg').value, scale: Number($('export-scale').value) || 1 });
+  // The picture's size, said under the choices; and whether it had to be made smaller.
+  function exportSizeNote() {
+    const { kind, scale } = exportChoice();
+    const plan = exportPlan(kind);
+    const out = $('export-size');
+    if (!plan.ids.length) { out.textContent = EXPORT_EMPTY[kind] || ''; $('export-save').disabled = true; return; }
+    $('export-save').disabled = exportBusy;
+    const size = wbExportSize(plan.extent, scale);
+    out.textContent = `${wbExportPixels(size)}.${size.clamped ? ' Made smaller to fit: the board is too big for this size.' : ''}`;
+  }
+  function openExport(kind = null) {
+    const what = $('export-what');
+    what.replaceChildren(...WB_EXPORT_KINDS.map((k) => {
+      const o = document.createElement('option');
+      o.value = k.id;
+      o.textContent = k.label;
+      if (k.id === 'selection' && !sel.size) o.disabled = true;
+      return o;
+    }));
+    what.value = kind && (kind !== 'selection' || sel.size) ? kind : sel.size > 1 ? 'selection' : 'all';
+    $('export-error').hidden = true;
+    exportSizeNote();
+    exportEditor.open({ focus: what, returnTo: () => surface });
+  }
+  for (const id of ['export-what', 'export-bg', 'export-scale']) $(id).addEventListener('change', exportSizeNote);
+  $('export-cancel').addEventListener('click', () => exportEditor.cancel());
+  $('export-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (exportBusy) return;
+    exportBusy = true;
+    const save = $('export-save');
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    $('export-error').hidden = true;
+    try {
+      const { name, size } = await saveImage(exportChoice());
+      exportEditor.close();
+      note(`Saving ${name} to your computer.${size.clamped ? ` It was made smaller to fit: ${wbExportPixels(size)}.` : ''}`);
+    } catch (err) {
+      $('export-error').textContent = sentence(err && err.message) || 'The picture could not be made.';
+      $('export-error').hidden = false;
+    } finally {
+      exportBusy = false;
+      save.textContent = 'Save';
+      save.disabled = false;
+    }
+  });
+  const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
+  if (host.header) {
+    host.header.set([{ id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true }]).catch(() => {});
+    host.on('header', (e) => { if (e && e.id === 'export') openExport(); });
+  }
+
+  // Print: the whole board in an SVG the width of the paper (whiteboard.css, .wb-print), put back once the host has printed.
+  function endPrint() { $('app').classList.remove('wb-printing'); $('print').replaceChildren(); }
+  async function preparePrint() {
+    const plan = exportPlan('all');
+    if (!plan.ids.length) { note('There is nothing on the board to print.'); return false; }
+    const { svg } = await exporter.scene(plan.items, plan.extent, { live: true });
+    svg.setAttribute('class', 'wb-print-svg');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    $('print').replaceChildren(svg);
+    $('app').classList.add('wb-printing');
+    return true;
+  }
+  if (host.standard) {
+    host.standard.set({ print: { run: preparePrint } }).catch(() => {});
+    host.on('printed', endPrint);
   }
 
   // ---- links in the words ------------------------------------------------------------------------------------------------
@@ -1624,7 +1772,8 @@
     const box = host.rootElement.getBoundingClientRect();
     const at = { x: e.clientX - box.left, y: e.clientY - box.top };
     if (!id) {
-      if (!policy.canEdit) return;
+      // Someone who may only look: Save as image.
+      if (!policy.canEdit) { host.menu.show({ id: 'board', at, items: [exportRow()] }); return; }
       const there = renderer.toBoard(e.clientX, e.clientY);
       host.menu.show({
         id: 'board',
@@ -1632,6 +1781,8 @@
         items: [
           { id: 'paste', label: 'Paste here', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
           { id: 'all', label: 'Select all', icon: 'object-group', hint: keyHint(`${MOD} A`), disabled: board.size === 0, onClick: () => selectAll() },
+          { separator: true },
+          exportRow(),
         ],
       });
       return;
@@ -1641,8 +1792,8 @@
     const list = targets();
     const links = ids.length === 1 ? linkRows(id) : [];
     if (!list.length) {
-      // Someone who may only look: the links, if there are any.
-      if (links.length) host.menu.show({ id: 'block', at, items: links });
+      // Someone who may only look: the links, if there are any, and Save as image (what is selected).
+      host.menu.show({ id: 'block', at, items: [...links, ...(links.length ? [{ separator: true }] : []), exportRow('selection')] });
       return;
     }
     const single = list.length === 1 ? list[0] : null;
@@ -1674,6 +1825,7 @@
         ...LAYERS.map((l) => ({ ...l, disabled: !canLayer(ids, l.id), onClick: () => layer(ids, l.id) })),
         { separator: true },
         ...clipRows(null),
+        exportRow('selection'),
         { separator: true },
         { id: 'delete', label: list.length > 1 ? `Delete ${list.length} blocks` : 'Delete', icon: 'trash', hint: keyHint('Delete'), danger: true, onClick: () => removeMany(ids) },
       ],
