@@ -444,7 +444,8 @@ function createManager(doc) {
         const was = w.files.get(f.id) || f;
         if (res.file) w.files.set(f.id, { ...was, ...res.file });
         if (w.dead || w.id !== f.id) return;
-        const hadFocus = Boolean(w.infoSide && w.infoSide.el.contains(doc.activeElement));
+        const a = doc.activeElement; // in the Info, in the menu just closed, or nowhere: the control comes back with the focus
+        const hadFocus = Boolean(w.infoSide && (!a || a === doc.body || w.infoSide.el.contains(a) || a.closest('.host-menu')));
         drawInfo(w);
         if (hadFocus && w.infoSide) { const c = w.infoSide.el.querySelector('[data-change]'); if (c) c.focus({ preventScroll: true }); }
         showNote('Who can see this changed');
@@ -602,7 +603,13 @@ function createManager(doc) {
           w.frame.setStatus({ text: statusOf(w, f) });
         }
         w.frame.setToolbar(toolbar(w));
-        if (w.info) drawInfo(w);
+        if (w.info) {
+          // Drawn again (the library changed): the keyboard stays on the control it was on.
+          const a = doc.activeElement;
+          const onControl = Boolean(w.infoSide && a && w.infoSide.el.contains(a) && a.matches('[data-change]'));
+          drawInfo(w);
+          if (onControl && w.infoSide) { const c = w.infoSide.el.querySelector('[data-change]'); if (c) c.focus({ preventScroll: true }); }
+        }
       }
     }, 120));
   }

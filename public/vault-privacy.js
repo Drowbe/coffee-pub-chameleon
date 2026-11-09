@@ -148,8 +148,8 @@ export async function choosePeople({ doc = document, members, chosen = [], adder
         r.append(box, avatar(m.name, 24), h('span', 'sdk-choice-label', m.name));
         list.append(r);
       }
-      if (!choosable.length) list.append(h('p', 'vp-none', `No one else is in this ${space} yet. Only you and the ${owners} can see ${subject}.`));
-      else if (!shown.length) list.append(h('p', 'vp-none', `No one matches "${st.q.trim()}".`));
+      if (!choosable.some((m) => !m.owner)) list.append(h('p', 'vp-none', `No one else is in this ${space} yet. Only you and the ${owners} can see ${subject}.`));
+      if (choosable.some((m) => !m.owner) && !shown.length) list.append(h('p', 'vp-none', `No one matches "${st.q.trim()}".`));
       else if (shown.length > SHOWN) list.append(h('p', 'vp-none', `${shown.length - SHOWN} more. Search to find them.`));
       sync();
     }

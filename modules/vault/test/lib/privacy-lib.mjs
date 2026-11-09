@@ -145,3 +145,43 @@ export const CONTRAST = `(() => {
   window.__ratio = (e) => { const s = getComputedStyle(e); const bg = back(e); const fgc = rgb(s.color); const fg = over(fgc, bg); const a = lum(fg); const b = lum(bg); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
   return true;
 })()`;
+
+// ---- the file window ----
+export async function openWindow(tab, name) {
+  await tab.click('#module-frame >>> .sdk-open', name);
+  await tab.waitFor('.fv-win');
+  await sleep(500);
+}
+export async function showInfo(tab) {
+  await until(tab, `[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info')`, Boolean, 10000);
+  if (!(await tab.eval(`!!document.querySelector('.fv-info')`))) await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Info').click()`);
+  await tab.waitFor('.fv-info');
+  await sleep(400);
+}
+// Answer some requests as the page's own network would, for what a throwaway server does not do: `rules(request)` gives
+// { status, body } to answer instead, or null to let it through; `edit(request, body)` may change a response.
+export async function intercept(tab, { patterns, rules = () => null, edit = null }) {
+  const s = (m, p) => tab.cdp.send(m, p, tab.sid);
+  await s('Fetch.enable', { patterns });
+  const hook = async (m) => {
+    if (m.method !== 'Fetch.requestPaused' || m.sessionId !== tab.sid) return;
+    const p = m.params; const id = p.requestId;
+    try {
+      if (p.responseStatusCode === undefined) {
+        const answer = rules(p.request);
+        if (answer) await s('Fetch.fulfillRequest', { requestId: id, responseCode: answer.status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(answer.body || { error: 'It did not work.' })).toString('base64') });
+        else await s('Fetch.continueRequest', { requestId: id });
+      } else if (edit) {
+        const body = JSON.parse(Buffer.from((await s('Fetch.getResponseBody', { requestId: id })).body, 'base64').toString('utf8') || 'null');
+        const changed = edit(p.request, body);
+        await s('Fetch.fulfillRequest', { requestId: id, responseCode: p.responseStatusCode, responseHeaders: p.responseHeaders.filter((h) => h.name.toLowerCase() !== 'content-length'), body: Buffer.from(JSON.stringify(changed)).toString('base64') });
+      } else await s('Fetch.continueResponse', { requestId: id });
+    } catch { try { await s('Fetch.continueRequest', { requestId: id }); } catch { /* gone */ } }
+  };
+  tab.cdp.listeners.push(hook);
+  return () => { tab.cdp.listeners = tab.cdp.listeners.filter((f) => f !== hook); return s('Fetch.disable').catch(() => {}); };
+}
+export async function press(tab, k, code, vk, text) {
+  await tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) }, tab.sid);
+  await tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }, tab.sid);
+}
