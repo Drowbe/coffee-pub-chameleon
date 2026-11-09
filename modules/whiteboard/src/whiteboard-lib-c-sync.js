@@ -28,9 +28,10 @@
   //   - a refused delete of the key: the block is read again and put back, and nothing is waited for (an earlier delete's
   //     echo, missed, could otherwise hold the key for good).
   // Neither does a successful write of the key (an undo bringing the block back with the same id: its version says
-  // nothing about what is still on its way), nor load() (what is still on its way may be older than what it read). A delete answered with version 0 found the key gone already: there is no
-  // delete of this page's to wait for. A read answered after something newer for the key was taken, or while this page
-  // is writing it, is not used (the newer change, or the write, is what the page shows).
+  // nothing about what is still on its way), nor load() (what is still on its way may be older than what it read). A
+  // delete answered with version 0 found the key gone already: there is no delete of this page's to wait for. A read
+  // answered after something newer for the key was taken, or while this page is writing it, is not used (the newer
+  // change, or the write, is what the page shows).
   //
   // A write the server turns away for now (429: too many saves in a minute, as when many blocks move at once) is sent
   // again after the wait it names, unless a newer one for that key has come meanwhile; onBusy hears it once per refusal.
