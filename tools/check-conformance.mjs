@@ -509,7 +509,7 @@ function judge(context, phone, windows) {
       for (const x of b.buttons) {
         // Every control in a band is the frame's --mf-ctl-h, on every width (the Prototype at 390 too), the Filters button too; a
         // filter chip is the chip's --mf-chip-h.
-        const should = x.chip ? want.chip : phone && /^View$/.test(x.what) ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
+        const should = x.chip ? want.chip : phone && /^Tools$/.test(x.what) ? FRAME.hit + 2 + 2 * FRAME.edge0 : want.button;
         if (Math.abs(x.h - should) > 0.5) bad(`control in the ${b.band} (${x.what})`, x.h, should);
       }
     }
