@@ -2924,6 +2924,15 @@ function redirectToHost(req, res, status, newHost) {
 // The paths the product host lets through beside /: what the start page loads and asks.
 // The design system pages (public/design-system/, no sign-in) and the app files they import, as static files only.
 const DESIGN_SYSTEM_FILES = ['/module-frame.js', '/module-host.js', '/module-stream.js', '/host-menu.js', '/menu-flyout.js', '/tooltip.js', '/brand.js', '/confirm.js', '/nav-bar.js', '/module-chrome.js', '/environment-banner.js', '/page-tabs.js', '/words.js', '/theme-mode.js', '/primary-nav.js', '/destination.css', '/diag.css'];
+// The modules' stylesheets and icons, for the Design System pages: read from modules/*/src on each request, so the committed
+// public/design-system/sources.js holds nothing from a module (server/design-system-modules.js).
+app.get('/design-system/module-sources.js', (req, res) => {
+  try {
+    res.type('application/javascript').set('Cache-Control', 'no-cache').send(require('./design-system-modules').moduleSourcesJs(path.join(__dirname, '..'), path.dirname(require.resolve('@fortawesome/fontawesome-free/package.json'))));
+  } catch (err) {
+    res.status(500).type('text').send('The sources for the Design System could not be read.');
+  }
+});
 const designSystemStatic = publicStatic({ index: false }); // static files only, a miss is a plain 404 here
 const PRODUCT_HOST_PATHS = ['/start.css', '/start.js', '/theme-head.js', '/style.css', '/theme.css', '/img/site/icon', '/favicon.ico', '/api/product', '/api/product/environment', '/api/product/address', '/api/product/signup'];
 if (BASE_DOMAIN) {
