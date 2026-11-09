@@ -1,0 +1,219 @@
+/* The host console (admin.<base domain>, public/host.html; plan-host-console.md). The pieces are the product's own (.subtabs,
+   .sdk-table, .sdk-card, .sdk-panel, .sdk-status, .sdk-progress, .sdk-banner, .sdk-search, .mf-switch, the fields and buttons);
+   this file lays them out. Every colour and size is a token. A left navigation beside the section shown; at 640 px and under
+   the navigation is one strip of tabs, and every table scrolls inside its own box. */
+
+.hc-page { display: flex; flex-direction: column; min-width: 0; }
+.hc-login { margin: 12vh auto; }
+
+.hc-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; width: 100%; max-width: 1440px; margin: 0 auto; min-width: 0; }
+.hc-nav.subtabs { position: sticky; top: 0; flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-5) var(--space-3); overflow: visible; }
+.hc-nav.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-main { display: flex; flex-direction: column; min-width: 0; padding: var(--space-5) var(--space-5) var(--space-6); }
+.hc-section, .hc-view, .hc-column { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-section[hidden], .hc-view[hidden], .hc-column[hidden] { display: none; }
+
+.hc-head, .hc-env-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-width: 0; }
+.hc-head-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hc-title { margin: 0; font-family: var(--font-display); font-size: var(--text-22); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.hc-title:focus { outline: none; } /* a heading takes the focus only so a screen reader starts there */
+.hc-column > .status:empty, .hc-part > .status:empty { display: none; }
+.hc-back { align-self: flex-start; margin-left: calc(-1 * var(--space-2)); }
+.hc-env-id { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-slug { color: var(--text-muted); font-size: var(--text-12); overflow-wrap: anywhere; }
+.hc-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.hc-status { margin: 0; color: var(--text-muted); font-size: var(--text-13); }
+.hc-status:empty { display: none; }
+.hc-status:focus { outline: none; }
+.hc-link { color: var(--text-accent); font-weight: var(--weight-medium); text-decoration: none; }
+.hc-link:hover { text-decoration: underline; }
+.hc-link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-small); }
+
+/* ---- parts: a panel each, a name, facts ---- */
+.hc-part { min-width: 0; }
+.hc-part[id] { scroll-margin-top: var(--space-4); }
+.hc-part:focus { outline: none; }
+.hc-part > .btn { align-self: flex-start; }
+.hc-part-name, .hc-part .section-head > h2 { margin: 0; font-size: var(--text-16); font-weight: var(--weight-strong); }
+fieldset.hc-part { margin: 0; }
+fieldset.hc-part > legend.hc-part-name { float: left; width: 100%; padding: 0; }
+fieldset.hc-part > legend.hc-part-name + * { clear: both; }
+.hc-facts, #host-facts { display: grid; grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.hc-facts > dt, #host-facts > dt { color: var(--text-muted); font-size: var(--text-13); }
+.hc-facts > dd, #host-facts > dd { min-width: 0; margin: 0; overflow-wrap: anywhere; } /* a web address has no spaces: it wraps instead of scrolling the page sideways on a phone */
+.hc-parts { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); width: 100%; }
+.hc-inline > :is(input, select) { flex: 1 1 160px; min-width: 0; width: auto; }
+.hc-sub { margin: 0; }
+.hc-folder code { overflow-wrap: anywhere; }
+
+
+/* ---- the Server's own pieces ---- */
+.ai-services { display: flex; flex-direction: column; }
+.ai-service { display: flex; flex-direction: column; gap: var(--space-2); padding-block: var(--space-3); }
+.ai-service + .ai-service { border-top: 1px solid var(--edge-hairline); }
+.hc-main .flight-schedule .danger-row { margin: 0; }
+
+/* ---- tables: each scrolls inside its own box ---- */
+.hc-listbox { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.hc-swipe { display: none; margin: 0; }
+.hc-wrap { border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); }
+.hc-main .sdk-table { width: 100%; }
+.hc-main .sdk-table :is(th, td) { vertical-align: middle; }
+.hc-main .sdk-table :is(th, td).hc-more-col, .hc-main .sdk-table td.hc-more-cell { width: 1%; white-space: nowrap; text-align: right; }
+.hc-main .sdk-table tbody tr { height: 44px; }
+
+/* ---- Environments: the needs-attention strip and the table's tools ---- */
+.hc-attention { padding: var(--space-2) var(--space-3); }
+.hc-attention-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.hc-attention-label { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: var(--space-1); font-weight: var(--weight-strong); }
+.hc-attention-none { color: var(--text-muted); }
+.hc-kind { gap: var(--space-1); }
+.hc-kind > b { font-variant-numeric: tabular-nums; }
+.hc-kind[data-tone="danger"] > i { color: var(--status-danger-text); }
+.hc-kind[data-tone="warn"] > i { color: var(--status-warn-text); }
+.hc-tools { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto auto; align-items: center; gap: var(--space-2); }
+.hc-tools select { width: auto; max-width: 100%; }
+.hc-tools-more { display: contents; }
+.hc-filter-btn { display: none; }
+.hc-density { justify-self: start; }
+.hc-count { margin: 0; color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- the environments table ---- */
+.hc-envs tbody tr[data-slug]:hover { cursor: pointer; }
+.hc-name-cell { min-width: 150px; }
+.hc-plan-cell { white-space: nowrap; }
+.hc-status-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
+.hc-use { display: flex; flex-direction: column; gap: var(--space-1); min-width: 210px; max-width: 280px; }
+.hc-use-row { display: grid; grid-template-columns: 56px minmax(60px, 1fr) auto; align-items: center; gap: var(--space-2); font-size: var(--text-12); }
+.hc-use-key { color: var(--text-muted); }
+.hc-use-val { min-width: 76px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+/* Compact: one use per row, shorter rows. Status, plan and template stay. */
+.hc-envs[data-density="compact"] :is(th, td) { padding-block: var(--space-1); }
+.hc-envs[data-density="compact"] tbody tr { height: 40px; }
+.hc-use-in-name { display: none; }
+
+/* ---- an environment's page ---- */
+.hc-tabs.subtabs { padding-bottom: var(--space-1); border-bottom: 1px solid var(--edge-hairline); }
+.hc-tabs .sdk-tab-badge { margin-left: var(--space-1); }
+.hc-sheet { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hc-sheet[hidden] { display: none; }
+.hc-banners { display: flex; flex-direction: column; gap: var(--space-2); }
+.hc-banners:empty { display: none; }
+.hc-banner-sub { color: var(--text-muted); font-size: var(--text-13); }
+.hc-banner-sub code { overflow-wrap: anywhere; }
+.hc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; gap: var(--space-4); }
+.hc-caps { display: flex; flex-direction: column; gap: var(--space-3); }
+.hc-cap { display: flex; flex-direction: column; gap: var(--space-1); }
+.hc-cap-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); }
+.hc-cap-key { color: var(--text-muted); font-size: var(--text-13); }
+.hc-cap-val { font-variant-numeric: tabular-nums; }
+.hc-cap-note { color: var(--status-warn-text); font-size: var(--text-12); font-weight: var(--weight-strong); }
+.hc-form { max-width: 720px; }
+.hc-fieldset { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; margin: 0; padding: 0; border: 0; }
+.hc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); margin-left: var(--space-5); }
+.hc-danger-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding-block: var(--space-2); }
+.hc-danger-row + .hc-danger-row { padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }
+.hc-danger-text { display: flex; flex: 1 1 220px; flex-direction: column; gap: var(--space-1); min-width: 0; }
+#env-sheet-backups .hc-part > input[type="file"] { max-width: 420px; }
+
+/* ---- Templates: the notices, the review, and the editor's rows ---- */
+.template-notices { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); }
+.template-notices:empty { display: none; }
+.template-compare-head,
+.template-compare-row { display: grid; grid-template-columns: 8em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
+.template-compare-head { margin: 8px 0 4px; color: var(--text-dim); font-size: var(--text-12); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.template-compare-row { padding: 8px 0; border-top: 1px solid var(--border); }
+.template-compare-row pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-12); }
+#template-compare .row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+#te-icon-set { width: 100%; box-sizing: border-box; }
+.template-editor .problems { color: var(--danger-text); margin: 8px 0 0; padding-left: 16px; font-size: var(--text-13); }
+.template-editor .problems:empty { display: none; }
+/* The name column is one fixed width (10em) in every row, and the fields may shrink, so a long name or icon never pushes a
+   row's fields out of line with the rows around it. */
+.word-row, .module-display-row { display: grid; grid-template-columns: 10em minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; margin-bottom: 8px; }
+.word-row > strong, .module-display-row > strong { min-width: 0; overflow-wrap: anywhere; }
+.module-display-row input[type="text"] { max-width: none; order: 0; }
+.icon-field { display: flex; align-items: center; gap: 8px; }
+.icon-field input { flex: 1; min-width: 0; }
+.icon-field i { width: 1.4em; text-align: center; flex: none; }
+.template-modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }
+.phase-row, .opens-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.phase-row input[type="text"] { flex: 1 1 8rem; min-width: 0; }
+.opens-row .sdk-choice-row { flex: 1; width: auto; min-width: 8rem; }
+@media (max-width: 640px) {
+  .word-row, .module-display-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .word-row > :first-child, .module-display-row > :first-child { grid-column: 1 / -1; }
+}
+
+.hc-chips-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
+.hc-used { min-width: 180px; }
+.hc-more-names { color: var(--text-muted); }
+.hc-tpls tbody tr { height: 52px; }
+/* the editor: its parts in a column, the jump list beside them */
+.hc-editor { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: var(--space-4); min-width: 0; }
+.hc-jump.subtabs { position: sticky; top: var(--space-4); flex-direction: column; align-items: stretch; gap: var(--space-1); overflow: visible; }
+.hc-jump.subtabs > .subtab { justify-content: flex-start; width: 100%; }
+.hc-jump-row.subtabs { position: static; flex-direction: row; align-items: center; }
+.hc-jump-row.subtabs > .subtab { width: auto; }
+
+/* ---- 900 px and under ---- */
+@media (max-width: 900px) {
+  .hc-body { grid-template-columns: 180px minmax(0, 1fr); }
+  .hc-main { padding-inline: var(--space-4); }
+  /* search and one Filter and sort control in a row; the two selects open under it */
+  .hc-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .hc-filter-btn { display: inline-flex; }
+  .hc-tools-more { display: none; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
+  .hc-tools-more[data-open] { display: grid; }
+  .hc-tools select { width: 100%; }
+}
+
+/* ---- the phone: 640 px and under ---- */
+@media (max-width: 640px) {
+  .hc-body { grid-template-columns: minmax(0, 1fr); }
+  /* the left navigation folds into the strip of tabs: one row, scrolling inside itself */
+  .hc-nav.subtabs { position: static; flex-direction: row; align-items: center; gap: var(--tabs-gap); padding: var(--space-1) var(--space-3); overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--edge-hairline); }
+  .hc-nav.subtabs > .subtab { width: auto; justify-content: center; }
+  .hc-main { padding: var(--space-3) var(--space-3) var(--space-5); }
+  .hc-title { font-size: var(--text-18); }
+  .hc-tabs.subtabs { overflow-x: auto; }
+  .hc-checks { margin-left: var(--space-3); }
+  .hc-editor { grid-template-columns: minmax(0, 1fr); }
+  .hc-jump.subtabs { position: static; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; }
+  .hc-jump.subtabs > .subtab { width: auto; }
+  /* a link inside a cell is a 44 pixel tap: one under another */
+  .hc-used { display: flex; flex-direction: column; align-items: flex-start; }
+  .hc-used > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .hc-sep { display: none; }
+  .hc-swipe:not([hidden]) { display: block; }
+  .hc-facts, #host-facts { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .hc-facts > dd + dt, #host-facts > dd + dt { margin-top: var(--space-2); }
+  .hc-count { justify-self: end; }
+  .hc-count-word { display: none; }
+  .hc-tools-more { grid-template-columns: minmax(0, 1fr); }
+  /* the strip is one row that scrolls inside itself */
+  .hc-attention-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .hc-attention-row > * { flex: none; white-space: nowrap; }
+  .hc-attention-row > .btn { min-height: 44px; }
+  .hc-density { height: auto; }
+  .hc-density > .mf-switch-btn { min-height: 44px; }
+  /* a name link in a row is a 44 pixel tap, past its line */
+  .hc-name-cell .hc-link { display: flex; align-items: center; min-height: 44px; }
+  .hc-main p .linklike { position: relative; }
+  .hc-main p .linklike::after { content: ""; position: absolute; inset: calc(-1 * var(--space-4)) 0; }
+  /* tables scroll inside their box; the first column stays (system.css) */
+  .hc-main .sdk-icon-btn.btn-small { min-width: 44px; min-height: 44px; }
+  .hc-name-cell { min-width: 130px; max-width: 170px; }
+  .hc-use-row { grid-template-columns: 48px 70px auto; }
+  /* one chip under another, so none is cut; the table's own scroll shows the columns after it */
+  .hc-status-cell { min-width: 120px; }
+  .hc-status-cell > .sdk-status { display: flex; width: fit-content; }
+  /* Compact on a phone: the one bar sits under the name, and the Use column goes */
+  .hc-envs[data-density="compact"] :is(thead th.hc-use-col, td.hc-use-cell) { display: none; }
+  .hc-envs[data-density="compact"] .hc-use-in-name { display: flex; margin-top: var(--space-1); }
+  .hc-envs[data-density="compact"] .hc-use-in-name .hc-use { min-width: 0; max-width: none; }
+  .hc-envs[data-density="compact"] .hc-use-in-name .hc-use-row { grid-template-columns: 52px 44px auto; }
+  .hc-envs[data-density="compact"] .hc-name-cell { max-width: 200px; }
+  .hc-envs[data-density="compact"] .hc-name-cell .sdk-table-sub { display: none; }
+}
