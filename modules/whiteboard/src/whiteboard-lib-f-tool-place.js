@@ -2,7 +2,7 @@
   // Click the board and a note (centred on the click) or a text block (starting at it) is made there and opened for its
   // words; the tool goes back to Select. With Snap to grid (ctx.snapping) its corner goes on the grid. A timer (centred)
   // is saved at once, as it is. Another click-to-place block is one more entry in PLACE. The Timer is its own button
-  // beside the tool switch (apart), which holds eight.
+  // after the tool switch (apart).
   {
     const PLACE = [
       { id: 'note', type: 'note', label: 'Note', icon: 'note-sticky', key: 'n', order: 30, centred: true },

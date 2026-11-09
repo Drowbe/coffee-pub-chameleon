@@ -68,7 +68,7 @@
   const sel = new Set(); // the picked blocks' ids
   const one = () => (sel.size === 1 ? [...sel][0] : null); // the one picked block, or null (none, or several)
   let editing = null; // { id, finish, cell? ({ r, c, td }: a table's cell) }
-  let many = false; // "Select many" (a touch screen): one finger drags a rectangle and a tap adds, rather than moving the board
+  let many = false; // "Select many" (a touch screen, a choice in the tool switch): one finger drags a rectangle and a tap adds, rather than moving the board
   let presenting = null; // while the frames are presented: lib-e-block-frame's state ({ order, i, view }), see "presenting"
   let tool = tools.get('select');
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
@@ -101,12 +101,11 @@
   const keyHint = (keys) => (KEYS ? keys : undefined);
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
-  // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
-  const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
+  // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour. Press a block long to align, group or lock what is selected. The Flowchart menu holds the Frame: a frame moves and copies with what is inside it. Tap a frame\'s title or border to pick it; press its title long for more. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right; tap Next and Back. Show overview, in the title bar menu, puts a small map of the whole board in its corner: tap it or drag its rectangle to move the view. Find, in the title bar menu, finds words on the board; tap Next and Previous to go through what it finds.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Flowchart menu: Connector (drag from one block to another), shapes, Table (tap a cell twice to write), Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Paint menu: Fill (tap a block), Pen, Marker, Brush, Highlighter. Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous).';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. With it off, a dragged block lines up with the blocks near it; ${ALT} stops that. To line up two or more blocks or spread them out evenly, right-click them or use Arrange. ${M} G groups the selected blocks and ${M} Shift G ungroups them. ${M} L locks what is selected, so it can't be moved or changed, and unlocks it again. Paste or drop a picture to add it, or choose Add a picture in the +. The Frame (S) is in the Flowchart menu: a frame moves and copies with what is inside it. Pick a frame by its title or its border; double-click the title to rename it. Present, in the title bar menu, shows the frames one at a time, top to bottom and left to right: the arrow keys, the spacebar, Page Up and Page Down go on and back, Home and End go to the first and last, Escape stops. Show overview, in the title bar menu, puts a small map of the whole board in its corner: click it or drag its rectangle to move the view. Find, in the title bar menu or the slash key, finds words on the board: Enter goes to the next match, Shift Enter to the previous, Escape closes it.`;
+    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Connector (C): drag block to block; Enter edits its label. Paint menu: Fill (F; ${ALT}-click takes a colour), Pen (P), Marker (M), Brush, Highlighter (U; Shift: straight). Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Flowchart menu: Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape).`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -453,9 +452,9 @@
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
   }
-  // The toolbar's buttons for what is picked, always in this order before Snap to grid: Delete (something picked may be
+  // The toolbar's buttons for what is picked, always in this order: Delete (something picked may be
   // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
-  // goes, then Snap to grid after them.
+  // goes. (Snap to grid is in the right zone, so it stays at the far right.)
   let arrangeButton = null;
   function toolbarTail() {
     const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
@@ -465,7 +464,6 @@
     if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
     if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
-    if (snapButton) makeSnapButton();
   }
   // The two picked blocks a connector can join (in the order they were picked), or null.
   function pair() {
@@ -799,21 +797,34 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch; a tool marked `apart` (the Hand, the Timer) is its own on/off button beside it (the switch
-  // holds 8), and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
+  // The tools are one switch, named Tools: Select, the Hand (a `mode`), the drawing tools and, on a touch screen, Select
+  // many (Select with one finger dragging a rectangle and a tap adding, not moving the board). A tool marked `apart` (the
+  // Timer) is its own on/off button after it, and the tools of a group (Flowchart: the Connector, the flowchart shapes, the Table and the Frame; Paint: Fill, the Marker, the
   // Brush and the Highlighter) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
   // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices
   // (or after each of a list of counts: Flowchart has the Connector, the shapes, then the Table and the Frame).
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
+  // Select many is offered only on a touch screen: with a mouse, a drag on the empty board already selects, and Shift adds.
+  const MANY = Boolean(window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) && inSwitch.some((t) => t.id === 'select');
+  const switchOptions = [
+    ...inSwitch.map(({ id, label, icon }) => ({ id, label, icon })),
+    ...(MANY ? [{ id: 'many', label: 'Select many', icon: 'object-group' }] : []),
+  ];
   const GROUPS = [
     { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush', 'highlight'], split: 1 },
     { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram', 'table', 'frame'], split: [1, 6] },
   ];
-  const toolSwitch = inSwitch.length > 1
-    ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
+  // 'many' is Select with Select many on; Select turns it off.
+  const pickTool = (v) => {
+    if (v === 'many' || v === 'select') { many = v === 'many'; if (tool.id === 'select') showTool(); else setTool('select'); return; }
+    setTool(v);
+  };
+  const toolSwitch = switchOptions.length > 1
+    ? host.ui.viewSwitch({ id: 'tool', label: 'Tools', value: tool.id, options: switchOptions, onChange: pickTool })
     : null;
-  // An apart tool's button and its key turn it on, and again off, back to the tool used before it.
+  // An apart tool's button, and its key or a mode's (the Hand's H), turn it on, and again off, back to the tool used before it.
+  const goesBack = (t) => Boolean(t && (t.apart || t.mode));
   let toolBefore = 'select';
   const toggleTool = (t) => setTool(tool === t ? toolBefore : t.id);
   const apartButtons = allowed.filter((t) => t.apart).map((t) => ({
@@ -838,7 +849,7 @@
     return { group: g, button: host.ui.toolbarButton({ id: `tools-${g.id}`, label: g.label, icon: g.icon, iconOnly: true, on: false, onClick: menu }) };
   }).filter(Boolean);
   const showTool = () => {
-    if (toolSwitch) toolSwitch.set(tool.apart || tool.group ? '' : tool.id);
+    if (toolSwitch) toolSwitch.set(tool.id === 'select' && many && MANY ? 'many' : inSwitch.includes(tool) ? tool.id : '');
     for (const a of apartButtons) a.button.set({ on: a.tool === tool });
     for (const g of groupButtons) g.button.set({ on: tool.group === g.group.id });
   };
@@ -846,7 +857,8 @@
     const next = tools.get(id);
     if (!next || !policy.canUseTool(next) || next === tool) { showTool(); return; }
     if (tool.deactivate) tool.deactivate(ctx);
-    if (next.apart && !tool.apart) toolBefore = tool.id;
+    if (goesBack(next) && !goesBack(tool)) toolBefore = tool.id;
+    if (!next.mode && next.id !== 'select') many = false; // Select many is Select's: a drawing tool ends it, the Hand does not
     tool = next;
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
@@ -1299,14 +1311,10 @@
   let snapOn = false;
   try { snapOn = window.localStorage.getItem(SNAP_KEY) === '1'; } catch { /* no browser storage: off */ }
   const snapping = (event) => snapOn !== Boolean(event && event.altKey);
-  // Its button is the last in the row (the toolbar has no right-hand place for a module's own button): made again after
-  // Delete comes, so Delete does not take its place.
-  let snapButton = null;
-  function makeSnapButton() {
-    if (!policy.canEdit) return;
-    if (snapButton) snapButton.destroy();
-    snapButton = host.ui.toolbarButton({
-      id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn,
+  // Its button is in the row's right zone, at the far right, whatever comes and goes on the left (Delete, Arrange).
+  if (policy.canEdit) {
+    const snapButton = host.ui.toolbarButton({
+      id: 'snap', label: 'Snap to grid', icon: 'border-all', iconOnly: true, on: snapOn, zone: 'end',
       onClick: () => {
         snapOn = !snapOn;
         snapButton.set({ on: snapOn });
@@ -1314,15 +1322,6 @@
       },
     });
   }
-
-  // On a touch screen one finger on the board moves it; "Select many" makes it pick instead (lib-f-tool-select.js).
-  if (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) {
-    const manyButton = host.ui.toolbarButton({
-      id: 'many', label: 'Select many', icon: 'object-group', iconOnly: true, on: false,
-      onClick: () => { many = !many; manyButton.set({ on: many }); },
-    });
-  }
-  makeSnapButton();
 
   // ---- copy, cut, paste and duplicate -----------------------------------------------------------------------------------
   // Only for someone who may change the board. The copies are new blocks: new ids, saved as this person's, on top of
@@ -2490,7 +2489,7 @@
     if (k === '-') { renderer.zoomBy(0.8); updateStatus(); return; }
     if (k === '0') { renderer.fit(); updateStatus(); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
-    if (t) { e.preventDefault(); if (t.apart) toggleTool(t); else setTool(t.id); }
+    if (t) { e.preventDefault(); if (goesBack(t)) toggleTool(t); else setTool(t.id); }
   });
 
   // ---- the computer's clipboard, and dropping files -----------------------------------------------------------------------
