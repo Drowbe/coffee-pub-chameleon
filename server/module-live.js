@@ -238,6 +238,12 @@ class ModuleLive {
     for (const [key, b] of this.buckets) if (now - b.at >= 1000) this.buckets.delete(key);
   }
 
+  // A space deleted: its sequence numbers and joins go (its streams end on their own as their readers lose access).
+  forgetSpace(space) {
+    for (const key of [...this.seqs.keys()]) if (key.endsWith(`\u0000${space}`)) this.seqs.delete(key);
+    for (const key of [...this.joins.keys()]) if (key.endsWith(`\u0000${space}`)) this.joins.delete(key);
+  }
+
   // The server's time and the next sequence number for a module in a space: { at, seq }.
   stamp(moduleId, space) {
     const key = pairKey(moduleId, space);

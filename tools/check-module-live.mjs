@@ -26,14 +26,20 @@
  *      yours or not in this space is 409; a closed stream says `left` after its grace (10 seconds), a reconnect within the
  *      grace says neither; a leave says `left` at once. Access lost stops delivery at once (well under the 2-second recheck):
  *      a member taken out of the space (also `removed` on GET /api/live, and `left` to the others), a role that loses the
- *      module's read, the moderator tick taken away (the publish permission), a person deleted (their stream ends), a
- *      guest link turned off (the guest's stream ends), the module turned off; each next send is refused. Flood and abuse:
+ *      module's read, the moderator tick taken away (from live-m, read only by moderators, and from live-p's sending), an
+ *      owner made a member, a new password, a person deleted and a guest link turned off (each stream ends in under
+ *      300 ms), the module turned off, rolled back to a version without `live` or removed; each next send is refused.
+ *      With nothing to tell the streams (a person turning on their own two-step sign-in), the 2-second recheck alone ends
+ *      the old session's stream within about 2.5 s. Flood and abuse:
  *      many topics, huge bodies, malformed JSON, deep nesting, prototype-pollution keys and many streams leave the server
  *      answering and delivering. Nothing is written to DATA_DIR.
  *   2. Dummy LiveKit keys and a stand-in for the call service's API that counts every request: sending, joining, leaving
  *      and receiving ask it nothing. The limits read from the environment (MODULE_LIVE_BYTES, _PER_SECOND, _PER_PERSON,
- *      _TO) hold.
- *   3. Two environments (BASE_DOMAIN): a message in one never reaches a reader of the same module in the other.
+ *      _TO) hold. Module streams with a space are counted per person and per guest link (LIVE_STREAMS_PER_PERSON,
+ *      LIVE_STREAMS_PER_GUEST_LINK, one address its share), apart from GET /api/live's: one over is 429 in the same
+ *      sentence, a closed one gives its place back, and a stream with no space is not counted.
+ *   3. Two environments (BASE_DOMAIN): a message in one never reaches a reader of the same module in the other, and the
+ *      host console resetting an owner's two-step sign-in ends their stream in that environment at once.
  * What can't be checked here: the feel of live pointers between two real browsers on a real network, and load beyond a
  * handful of people.
  */
@@ -50,6 +56,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { ModuleLive, liveLimits, readSend, dataBytes } = require('../server/module-live.js');
 const { buildModule } = require('../server/module-build.js');
+const { totpCode } = require('../server/auth.js');
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n += 1; };
 const same = (a, b, msg) => { assert.deepEqual(a, b, msg); n += 1; };
@@ -121,6 +128,8 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
   same([reg.stamp('board', 'keep').seq, reg.stamp('board', 'keep').seq, reg.stamp('board', 'tower').seq, reg.stamp('other', 'keep').seq], [1, 2, 1, 1], 'seq counts per module and space');
   same(reg.stamp('board', 'keep').at, t, 'at is the server\'s clock');
+  reg.forgetSpace('keep');
+  same([reg.stamp('board', 'keep').seq, reg.stamp('board', 'tower').seq, reg.people('board', 'keep')], [1, 2, []], 'a space deleted: its sequence numbers and joins go, another space\'s stay');
   void got;
 }
 
@@ -192,7 +201,11 @@ const ZIPS = {
   'live-a': writeModule('live-a', { live: true }),
   'live-p': writeModule('live-p', { live: { publish: 'point' } }),
   'live-off': writeModule('live-off', {}),
+  // Read only by moderators (and owners): `point` guards reading.
+  'live-m': writeModule('live-m', { live: true, access: { read: 'point' } }),
 };
+// A module whose 1.0.0 has no `live` and whose 1.1.0 has: rolled back, it has none.
+const ROLL = [writeModule('live-r', {}), writeModule('live-r', { version: '1.1.0', live: true })];
 const BAD_ZIPS = [
   [writeModule('live-env', { scope: ['person'], live: true }), 'module.json: live needs the "space" scope'],
   [writeModule('live-bad', { live: { publish: 'nosuch' } }), 'module.json: live.publish must name one of the module\'s own permissions'],
@@ -575,16 +588,75 @@ try {
   await call('PATCH', `/api/users/${pat.key}/spaces/${keep.id}`, { cookie: owner, body: { permissions: { moderator: false } } });
   await refusal(await send('live-p', keep.id, { topic: 'mod' }, patC), 403, 'your role can\'t send live messages in this module', 'the tick taken away: refused');
 
+  // Read only by moderators (live-m): Pat ticked hears it; the tick taken away, the very next message does not reach him.
+  await call('PATCH', `/api/users/${pat.key}/spaces/${keep.id}`, { cookie: owner, body: { permissions: { moderator: true } } });
+  same((await send('live-m', keep.id, { topic: 'mod.read' }, owner)).status, 200, 'the owner sends in live-m, read by moderators');
+  await pat4.until((e) => e.event === 'live' && e.data.topic === 'mod.read', 1000);
+  await call('PATCH', `/api/users/${pat.key}/spaces/${keep.id}`, { cookie: owner, body: { permissions: { moderator: false } } });
+  same((await send('live-m', keep.id, { topic: 'mod.gone' }, owner)).status, 200, 'and again, at once after the tick is taken away');
+  await quiet(400);
+  ok(!pat4.lives().some((e) => e.data.topic === 'mod.gone'), 'Pat, no longer a moderator, gets nothing at once (well under the 2-second recheck)');
+
+  // Ends in well under the recheck: `act` done, the stream's end comes within `ms` of starting it.
+  const endsAtOnce = async (s, act, ms = 300) => {
+    const t = Date.now();
+    await act();
+    const ended = await within(s.ended, 1500);
+    return ended === true ? Date.now() - t : Infinity;
+  };
+  const kim = await mk('kim', 'Kim');
+  const max = await mk('max', 'Max');
+  const oz = (await call('POST', '/api/users', { cookie: owner, body: { login: 'oz', displayName: 'Oz', role: 'owner', password: 'ownerpass1234' } })).json.user;
+  const kimC = await login('kim', 'memberpass1234');
+  const maxC = await login('max', 'memberpass1234');
+  const ozC = await login('oz', 'ownerpass1234');
+  await call('PATCH', `/api/spaces/${keep.id}`, { cookie: owner, body: { members: [pat.key, ivy.key, kim.key, max.key] } });
+  const kimS = await openStream(MS(keep.id), { cookie: kimC });
+  const maxS = await openStream(MS(keep.id), { cookie: maxC });
+  const ozS = await openStream(MS(keep.id), { cookie: ozC });
+  await Promise.all([kimS, maxS, ozS].map(ready));
+
+  // A new password signs Kim out everywhere: her module stream ends at once.
+  const kimMs = await endsAtOnce(kimS, async () => same((await call('PATCH', `/api/users/${kim.key}`, { cookie: owner, body: { password: 'newpass12345' } })).status, 200, 'Kim\'s password is changed'));
+  ok(kimMs < 300, `her module stream ends at once (${kimMs} ms; the recheck is 2000)`);
+
+  // Oz, an owner who is not a member of the Keep, reads it by owner rights; made a member, the very next message is not his.
+  same((await send('live-a', keep.id, { topic: 'oz.before' }, patC)).status, 200);
+  await ozS.until((e) => e.event === 'live' && e.data.topic === 'oz.before', 1000);
+  same((await call('PATCH', `/api/users/${oz.key}`, { cookie: owner, body: { role: 'member' } })).status, 200, 'Oz is made a member');
+  same((await send('live-a', keep.id, { topic: 'oz.after' }, patC)).status, 200, 'Pat sends at once');
+  await quiet(400);
+  ok(!ozS.lives().some((e) => e.data.topic === 'oz.after'), 'Oz, no longer an owner and not in the Keep, gets nothing at once');
+
+  // Nothing tells the streams when Max turns on his own two-step sign-in (his other pages' sessions end with the old
+  // stamp, and his own are left to the recheck so they never race his new cookie): the 2-second recheck ends his stream.
+  const secret = (await call('POST', '/api/me/mfa/start', { cookie: maxC, body: {} })).json.secret;
+  const maxT = Date.now();
+  same((await call('POST', '/api/me/mfa/enable', { cookie: maxC, body: { code: totpCode(secret) } })).status, 200, 'Max turns on his two-step sign-in');
+  const maxEnded = await within(maxS.ended, 3000);
+  const maxMs = Date.now() - maxT;
+  ok(maxEnded === true && maxMs < 2600, `his old session's module stream ends by the periodic recheck alone (${maxMs} ms, within about 2.5 s)`);
+
   // Ivy deleted: her module stream ends at once.
-  const ivyEnded = within(ivyS.ended, 1000);
-  same((await call('DELETE', `/api/users/${ivy.key}`, { cookie: owner })).status, 200, 'Ivy is deleted');
-  ok((await ivyEnded) === true, 'her module stream ends at once');
+  const ivyMs = await endsAtOnce(ivyS, async () => same((await call('DELETE', `/api/users/${ivy.key}`, { cookie: owner })).status, 200, 'Ivy is deleted'));
+  ok(ivyMs < 300, `her module stream ends at once (${ivyMs} ms)`);
   await refusal(await send('live-a', keep.id, { topic: 'a' }, ivyC), 401, 'sign in first', 'and her send is refused');
 
   // The guest link turned off: the guest's module stream ends at once.
-  const guestEnded = within(guestS.ended, 1000);
-  same((await call('DELETE', `/api/spaces/${keep.id}/guest-link`, { cookie: owner })).status, 200, 'the Keep\'s guest link is turned off');
-  ok((await guestEnded) === true, 'the guest\'s module stream ends at once');
+  const guestMs = await endsAtOnce(guestS, async () => same((await call('DELETE', `/api/spaces/${keep.id}/guest-link`, { cookie: owner })).status, 200, 'the Keep\'s guest link is turned off'));
+  ok(guestMs < 300, `the guest's module stream ends at once (${guestMs} ms)`);
+
+  // A module rolled back to a version without `live`, and a module removed: their messages are refused at once.
+  same((await call('POST', '/api/modules', { cookie: owner, raw: ROLL[0], type: 'application/zip' })).status, 201, 'live-r 1.0.0 (no live) installs');
+  same((await call('PATCH', '/api/modules/live-r', { cookie: owner, body: { enabled: true } })).status, 200);
+  const up = await call('POST', '/api/modules', { cookie: owner, raw: ROLL[1], type: 'application/zip' });
+  ok(up.status === 201 || up.status === 200, `live-r 1.1.0 (live) installs over it: ${up.text.slice(0, 200)}`);
+  same((await send('live-r', keep.id, { topic: 'r' }, patC)).status, 200, '1.1.0 has live messages');
+  same((await join('live-r', patId4, patC)).json.people.map((p) => p.key), [pat.key], 'Pat joins live-r');
+  same((await call('POST', '/api/modules/live-r/rollback', { cookie: owner, body: { version: '1.0.0' } })).status, 200, 'rolled back to 1.0.0');
+  await refusal(await send('live-r', keep.id, { topic: 'r' }, patC), 400, 'this module doesn\'t use live messages', 'rolled back: its send is 400');
+  same((await call('DELETE', '/api/modules/live-r?keepData=0', { cookie: owner })).status, 200, 'live-r is removed');
+  await refusal(await send('live-r', keep.id, { topic: 'r' }, patC), 404, 'no such module', 'removed: 404');
 
   // The module turned off: nothing more, and the send is 404.
   same((await call('PATCH', '/api/modules/live-p', { cookie: owner, body: { enabled: false } })).status, 200, 'live-p is turned off');
@@ -642,6 +714,7 @@ try {
   await startServer({
     LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'devsecretdevsecret', LIVEKIT_API_URL: `http://127.0.0.1:${lk.address().port}`,
     MODULE_LIVE_BYTES: '64', MODULE_LIVE_PER_SECOND: '3', MODULE_LIVE_PER_PERSON: '5', MODULE_LIVE_TO: '2',
+    LIVE_STREAMS_PER_PERSON: '4', LIVE_STREAMS_PER_GUEST_LINK: '5',
   });
   {
     const own = await login('admin', 'testpass1234');
@@ -680,6 +753,33 @@ try {
     const r3 = await Promise.all([...Array.from({ length: 3 }, () => send('live-a', sp.id, { topic: 'r' }, own)), ...Array.from({ length: 3 }, () => send('live-p', sp.id, { topic: 'r' }, own))]);
     same(r3.filter((r) => r.status === 200).length, 5, 'MODULE_LIVE_PER_PERSON=5: five at once across modules');
     same(lkAsked.slice(from), [], 'still nothing asked of the call service');
+
+    // Open module streams with a space are counted as GET /api/live's are (LIVE_STREAMS_PER_PERSON=4 here), apart from them.
+    const more = [];
+    for (let i = 0; i < 3; i += 1) more.push(await openStream(MS(sp.id), { cookie: aC }));
+    ok(more.every((s) => s.status === 200), 'Ann holds four module streams with a space');
+    const fifth = await openStream(MS(sp.id), { cookie: aC });
+    same([fifth.status, fifth.error], [429, 'you have too many module streams open (4 at most); close one and try again'], 'a fifth: 429, in the live stream\'s sentence');
+    const otherSpace = (await call('POST', '/api/spaces', { cookie: own, body: { name: 'Yard', members: [a.key] } })).json.space;
+    await call('PATCH', `/api/spaces/${otherSpace.id}`, { cookie: own, body: { members: [a.key] } });
+    same((await openStream(MS(otherSpace.id), { cookie: aC })).status, 429, 'counted per person, in any space');
+    same((await openStream(MS(sp.id), { cookie: bC })).status, 200, 'Ben is counted apart: per person, not for everyone');
+    same((await openStream(`/api/live?space=${sp.id}`, { cookie: aC })).status, 200, 'Ann\'s live stream is counted apart from her module streams');
+    same((await openStream('/api/modules/stream', { cookie: aC })).status, 200, 'a module stream with no space (no live messages) is not counted');
+    more[0].close();
+    await quiet(300);
+    const again = await openStream(MS(sp.id), { cookie: aC });
+    same(again.status, 200, 'a closed stream gives its place back');
+    // A guest link: one address gets its share of LIVE_STREAMS_PER_GUEST_LINK (5: two here), as on the live stream.
+    const link = (await call('POST', `/api/spaces/${sp.id}/guest-link`, { cookie: own, body: {} })).json.space.guestToken;
+    const g = `&guest=${encodeURIComponent(link)}`;
+    const gs = [await openStream(MS(sp.id, g)), await openStream(MS(sp.id, g))];
+    ok(gs.every((s) => s.status === 200), 'two guest streams from one address');
+    const g3 = await openStream(MS(sp.id, g));
+    same([g3.status, g3.error], [429, 'you have too many module streams open (2 at most); close one and try again'], 'a third from that address: 429');
+    gs[0].close();
+    await quiet(300);
+    same((await openStream(MS(sp.id, g))).status, 200, 'one closed, one more opens');
     for (const s of open) s.close();
   }
   await stopServer();
@@ -739,6 +839,21 @@ try {
     await quiet(400);
     same(bbb.s.lives().length, 0, 'a reader of the same module in the other environment gets nothing');
     ok(!bbb.s.events.some((e) => e.event === 'joined'), 'nor its joins');
+
+    // The host console resets aaa's owner's two-step sign-in (signing them out everywhere there): their module stream in
+    // aaa ends at once, though the reset runs on the host's router.
+    hostHeader = aaa.host;
+    const secret = (await call('POST', '/api/me/mfa/start', { cookie: aaa.ownC, body: {} })).json.secret;
+    const enabled = await call('POST', '/api/me/mfa/enable', { cookie: aaa.ownC, body: { code: totpCode(secret) } });
+    same(enabled.status, 200, 'aaa\'s owner turns on two-step sign-in');
+    const ownS = await openStream(MS(aaa.sp.id), { cookie: enabled.json.token });
+    await ready(ownS);
+    const t = Date.now();
+    same((await hostCall('DELETE', '/api/host/environments/aaa/owners/ownaaa/mfa', {})).status, 200, 'the host console resets it');
+    const ended = await within(ownS.ended, 1500);
+    const ms = Date.now() - t;
+    ok(ended === true && ms < 300, `the owner's module stream in aaa ends at once (${ms} ms; the recheck is 2000)`);
+    ok(bbb.s.closed !== true && (await within(bbb.s.ended, 300)) === 'timeout', 'a stream in bbb goes on');
     for (const s of open) s.close();
   }
   await stopServer();

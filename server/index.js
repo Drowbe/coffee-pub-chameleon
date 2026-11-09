@@ -1926,6 +1926,9 @@ hostRouter.delete('/api/host/environments/:slug/owners/:login/mfa', requireHostA
   const owner = env.store.userByLogin(req.params.login);
   if (!owner || owner.role !== 'owner') return res.status(404).json({ error: 'no owner with that login there' });
   env.store.mfaDisable(owner.key);
+  // Signed out everywhere (auth.userStamp): that environment's streams of theirs end now. This runs on the host's
+  // router, outside the environment's own requests, so it is told in that environment.
+  envContext.run(env, () => liveAccessChanged());
   res.json({ ok: true });
 });
 
@@ -3557,6 +3560,8 @@ app.post('/api/me/mfa/enable', requireMfaOffered, (req, res) => {
   const step = plain ? auth.totpVerify(plain, req.body?.code) : null;
   if (step === null || step === undefined) return res.status(401).json({ error: 'wrong code' });
   const recoveryCodes = auth.recoveryCodes();
+  // No liveAccessChanged() for a person's own change (here, disable and the bypass reset): their other pages' streams
+  // end at the 2-second recheck, so this page's own never race the new cookie this answer sets.
   store.mfaEnable(user.key, recoveryCodes.map((c) => auth.hashPassword(c)));
   store.mfaRecordStep(user.key, step);
   const fresh = store.userByKey(user.key);
@@ -4051,6 +4056,7 @@ app.post('/api/spaces/:id/phases/cover', (req, res) => {
 });
 app.delete('/api/spaces/:id', requireOwner, (req, res) => {
   eraseSpace(currentEnvironment(), req.params.id); // everything kept for it, then the space; throws 500 if a step fails (server/space-erase.js)
+  moduleLive.forgetSpace(req.params.id); // its live messages' sequence numbers and joins
   liveAccessChanged();
   res.json({ ok: true });
 });
@@ -5077,7 +5083,9 @@ function streamEventBytes(data) {
   }
   return bytes;
 }
-function eventStream(req, res, { keys, what, on = [], recheck, start, end }) {
+// The open-stream counts (liveStreamKeys): takes a slot under every key and answers a function that gives them back
+// (once), or answers null after the 429 when one is full. `what` names the streams in the sentence ("live streams").
+function takeStreamSlots(res, keys, what) {
   const full = keys.find(([key, most]) => (liveStreamsOpen.get(key) || 0) >= most);
   if (full) {
     const said = full === keys[0]
@@ -5087,6 +5095,20 @@ function eventStream(req, res, { keys, what, on = [], recheck, start, end }) {
     return null;
   }
   for (const [key] of keys) liveStreamsOpen.set(key, (liveStreamsOpen.get(key) || 0) + 1);
+  let given = false;
+  return () => {
+    if (given) return;
+    given = true;
+    for (const [key] of keys) {
+      const left = (liveStreamsOpen.get(key) || 1) - 1;
+      if (left > 0) liveStreamsOpen.set(key, left);
+      else liveStreamsOpen.delete(key);
+    }
+  };
+}
+function eventStream(req, res, { keys, what, on = [], recheck, start, end }) {
+  const giveBack = takeStreamSlots(res, keys, what);
+  if (!giveBack) return null;
   const env = currentEnvironment(); // captured once: the close handler below fires later, outside this request
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -5132,11 +5154,7 @@ function eventStream(req, res, { keys, what, on = [], recheck, start, end }) {
     clearInterval(beat);
     clearInterval(again);
     for (const [emitter, event, fn] of bound) emitter.off(event, fn);
-    for (const [key] of keys) {
-      const left = (liveStreamsOpen.get(key) || 1) - 1;
-      if (left > 0) liveStreamsOpen.set(key, left);
-      else liveStreamsOpen.delete(key);
-    }
+    giveBack();
     if (end) end();
   }
   for (const [emitter, event, fn] of bound) emitter.on(event, fn);
@@ -10301,6 +10319,11 @@ app.get('/api/modules/stream', (req, res) => {
   // The views this connection carries: the space's (or, without a space, the page's), and with page=1 the page's too.
   const views = [{ space, view: null }];
   if (space && req.query.page === '1') views.push({ space: null, view: 'page' });
+  // A stream with a space carries live messages (openModuleLive below): counted as GET /api/live's are, under the same
+  // LIVE_STREAMS_PER_PERSON and LIVE_STREAMS_PER_GUEST_LINK (one address on a link its share), apart from them, so a
+  // page's live stream and module stream don't share one person's count. 429 when one is full.
+  const giveBack = space ? takeStreamSlots(res, liveStreamKeys(req, who).map(([key, most]) => [`${key}|modules`, most]), `${word('module')} streams`) : () => {};
+  if (!giveBack) return;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   sseWrite(res, 'retry: 3000\n\n');
@@ -10487,6 +10510,7 @@ app.get('/api/modules/stream', (req, res) => {
     if (stopped) return;
     stopped = true;
     clearInterval(beat);
+    giveBack();
     if (liveConnection) liveConnection.close();
     moduleSettings.off('change', onSettings);
     moduleData.off('change', onMarkers);
