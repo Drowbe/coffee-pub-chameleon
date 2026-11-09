@@ -226,6 +226,9 @@ await test('bad numbers and far places', () => {
 await test('__proto__ and constructor keys change nothing', () => {
   const evil = JSON.parse('{"__proto__": {"x": 5, "y": 6, "polluted": 1}, "constructor": {"prototype": {"polluted": 1}}}');
   assert.equal(L.wbLiveRead(evil, ann, { tint }), null, 'x and y only from the data itself');
+  assert.equal(L.wbLiveRead(Object.create({ x: 5, y: 6 }), ann, { tint }), null, 'never an inherited x and y');
+  assert.equal(L.wbLiveRead(Object.assign(Object.create({ x: 5 }), { y: 6 }), ann, { tint }), null, 'nor an inherited x');
+  assert.equal(L.wbLiveRead(Object.assign(Object.create({ y: 5 }), { x: 6 }), ann, { tint }), null, 'nor an inherited y');
   const evil2 = JSON.parse('{"x": 1, "y": 2, "__proto__": {"tool": "pen"}, "constructor": "hand"}');
   const m = L.wbLiveRead(evil2, ann, { tint });
   assert.equal(m.tool, null);
@@ -235,7 +238,7 @@ await test('__proto__ and constructor keys change nothing', () => {
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, fromEvil, { tint }).guest, false);
 });
 await test('a missing or odd sender, and this person\'s own key, are ignored', () => {
-  for (const from of [undefined, null, 'ann1', 5, [], {}, { key: 5 }, { key: '' }, { key: 'k'.repeat(65) }]) {
+  for (const from of [undefined, null, 'ann1', 5, [], Object.assign(['x'], { key: 'ann1' }), {}, { key: 5 }, { key: '' }, { key: 'k'.repeat(65) }]) {
     assert.equal(L.wbLiveRead({ x: 1, y: 1 }, from, { tint }), null, JSON.stringify(from));
   }
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, ann, { me: 'ann1', tint }), null);
