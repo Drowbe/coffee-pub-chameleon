@@ -133,8 +133,9 @@
     }
 
     // The SVG with the blocks' copies in it, showing `extent`. items: [{ block, el }] bottom to top. live: for print (it
-    // stays in the page); scale: the picture's pixels per board unit.
-    async function scene(items, extent, { live = false, scale = 1 } = {}) {
+    // stays in the page); scale: the picture's pixels per board unit; background: what its page is filled with (the
+    // board's background as a CSS colour of theme tokens, for print; '' : nothing, the paper).
+    async function scene(items, extent, { live = false, scale = 1, background = '' } = {}) {
       const svg = document.createElementNS(SVG, 'svg');
       svg.setAttribute('viewBox', `${extent.x} ${extent.y} ${extent.w} ${extent.h}`);
       const fo = document.createElementNS(SVG, 'foreignObject');
@@ -143,6 +144,7 @@
       page.setAttribute('class', 'wb-export');
       page.style.width = `${extent.w}px`;
       page.style.height = `${extent.h}px`;
+      if (background) page.style.background = background;
       const layer = document.createElementNS(XHTML, 'div');
       layer.setAttribute('class', 'wb-export-layer');
       layer.style.left = `${-extent.x}px`;

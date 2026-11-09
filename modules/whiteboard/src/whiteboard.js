@@ -98,9 +98,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. The Paint menu holds Fill, the Pen, the Marker, the Brush and the Highlighter; with Fill, tap a block to fill it with colour. The Timer button puts a countdown on the board. While you edit words, a bar of buttons makes them bold, italic, code or a link; tap a link once its block is picked to open it. Press a note long and choose Add pointer to give it a tail; drag the tip to point at something. The Flowchart menu also holds the Table: tap a cell twice to write in it. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or when you press the board long, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Press the board long to change its background colour.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F), the Pen (P), the Marker (M), the Brush and the Highlighter (U); hold Shift with the Highlighter for a straight band. With Fill, click a block to fill it with colour, or ${ALT}-click one to take its colour. The Timer (Y) puts a countdown on the board; Tab reaches its Start, Reset and Length buttons. While you edit words, ${M} B, I, E and K make the selected words bold, italic, code or a link. ${M}-click a link to open it, or click it once its block is picked. Right-click a note and choose Add pointer to give it a tail; drag the tip to point at something. The Table (G) is in the Flowchart menu. Enter on a picked table shows its cells: the arrow keys move between them, Enter edits one, Tab goes on to the next, Escape goes back to moving the table. Paste rows from a spreadsheet to make a table. Save as image, in the title bar menu or the right-click menu, saves the board, what is selected or what is in sight as a picture; Print is in the title bar menu. Right-click the board to change its background colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -360,6 +360,46 @@
   }
 
   const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
+
+  // ---- the board's background -------------------------------------------------------------------------------------------
+  // One setting for the whole board, seen by everyone (lib-a, WB_BOARD_PREFIX): its own sync, the same as the blocks' (one
+  // write per change, changes from elsewhere drawn as they come, a missing key the usual Default). Anyone who may edit the
+  // board changes it; a change is one undo step of its own (WB_BOARD_STEP), put back field by field like a block's.
+  let boardSettings = WB_BOARD_USUAL;
+  function showBackdrop() {
+    const d = wbBackdrop(boardSettings.background);
+    surface.style.setProperty('--wb-ground', d.ground);
+    surface.style.setProperty('--wb-dot', d.dot);
+    surface.dataset.background = d.id;
+  }
+  function takeBoard(change) {
+    boardSettings = change.op === 'put' ? change.block : WB_BOARD_USUAL;
+    showBackdrop();
+  }
+  async function reloadBoard() {
+    try { const list = await boardSync.load(); boardSettings = list[0] || WB_BOARD_USUAL; } catch { return; }
+    showBackdrop();
+  }
+  const boardSync = createSync({ host, board: WB_BOARD, prefix: WB_BOARD_PREFIX, clean: wbCleanBoard, me, onRemote: takeBoard, onReload: reloadBoard, onRefused, onBusy });
+  // Put the settings as `next` (a background picked, or an undo): drawn at once, saved whole, told to the history.
+  function commitBoard(next) {
+    const stamped = { ...wbCleanBoard(next), by: me, at: new Date().toISOString() };
+    if (history) history.record(WB_BOARD_STEP, boardSettings, stamped);
+    boardSettings = stamped;
+    showBackdrop();
+    boardSync.save(stamped);
+  }
+  function setBackground(id) {
+    if (!policy.canEdit || id === boardSettings.background) return;
+    commitBoard({ ...boardSettings, background: id });
+  }
+  // A Clear (the title bar's) takes every key, the background's too; the page of the person who cleared puts the
+  // background back at once, so a Clear empties the board of blocks and leaves its colour. Its Undo keeps what is there.
+  function keepBackground(e) {
+    if (!e || !e.cleared || (e.scope && e.scope !== 'space') || !policy.canEdit || !me || e.by !== me) return;
+    if (boardSettings.background === 'default') return;
+    boardSync.save({ ...boardSettings, by: me, at: new Date().toISOString() });
+  }
 
   // ---- selecting and editing ----------------------------------------------------------------------------------------
   let deleteButton = null;
@@ -759,6 +799,17 @@
     host.menu.show({ id: 'colour', ...where, items });
   }
 
+  // The board's background (one for everyone, see "the board's background"): Default (the theme's own board colour) and
+  // the palette, the current one marked. One pick is one save and one undo step.
+  function backgroundMenu(where) {
+    if (!policy.canEdit) return;
+    const now = boardSettings.background;
+    const rows = [choiceRow('default', 'Default', now, () => setBackground('default'), { icon: 'circle', regular: true })];
+    for (const c of WB_PALETTE) rows.push(choiceRow(c.id, c.label, now, () => setBackground(c.id), swatch(c.id)));
+    host.menu.show({ id: 'background', ...where, items: [{ heading: 'Background colour of the board' }, ...rows] });
+  }
+  const backgroundRow = (at) => ({ id: 'background', label: 'Background colour', icon: 'palette', hint: nameOf(boardSettings.background), onClick: () => { setTimeout(() => backgroundMenu({ at }), 0); } });
+
   function widthMenu(where, only) {
     const all = targets(only);
     const list = all.filter((b) => defOf(b).weight);
@@ -1020,16 +1071,21 @@
     if (redoButton) redoButton.set({ disabled: !history.canRedo() });
   }
   function applyChanges(list) {
+    // The board's settings (WB_BOARD_STEP, the background) go through the same work: as a block whose value is never
+    // missing (no key: the usual), put back with commitBoard.
+    const isBoard = (id) => id === WB_BOARD_STEP;
+    const boardy = (b) => Boolean(b && b.type === 'board');
     const r = wbApplyChanges(list, {
-      get: (id) => board.get(id),
-      remove,
-      put: (b) => commit(b, 'now'),
-      canChange: (b) => policy.canChange(b),
+      get: (id) => (isBoard(id) ? boardSettings : board.get(id)),
+      remove: (id) => { if (!isBoard(id)) remove(id); },
+      put: (b) => (boardy(b) ? commitBoard(b) : commit(b, 'now')),
+      canChange: (b) => (boardy(b) ? policy.canEdit : policy.canChange(b)),
       canCreate: () => policy.canCreate(),
-      clean: wbClean,
+      clean: (raw) => (boardy(raw) ? wbCleanBoard(raw) : wbClean(raw)),
       linkedOf: (b) => { const def = blockTypes.get(b.type); return (def && def.linked) || []; },
       pointsAt: (b) => { const def = blockTypes.get(b.type); return Boolean(def && def.refs); },
-      missing: (b) => missingRefs(b).length > 0,
+      missing: (b) => !boardy(b) && missingRefs(b).length > 0,
+      isBoard,
     });
     select(r.touched.filter((id) => board.has(id)));
     return r;
@@ -1565,8 +1621,14 @@
   });
   const exportRow = (kind = null) => ({ id: 'export', label: 'Save as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport(kind), 0); } });
   if (host.header) {
-    host.header.set([{ id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true }]).catch(() => {});
-    host.on('header', (e) => { if (e && e.id === 'export') openExport(); });
+    host.header.set([
+      ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
+      { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
+    ]).catch(() => {});
+    host.on('header', (e) => {
+      if (e && e.id === 'export') openExport();
+      if (e && e.id === 'background') backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
+    });
   }
 
   // Print: the whole board in an SVG the width of the paper (whiteboard.css, .wb-print), put back once the host has printed.
@@ -1574,7 +1636,9 @@
   async function preparePrint() {
     const plan = exportPlan('all');
     if (!plan.ids.length) { note('There is nothing on the board to print.'); return false; }
-    const { svg } = await exporter.scene(plan.items, plan.extent, { live: true });
+    // On the board's background when one is picked (Default: the paper, as before).
+    const d = wbBackdrop(boardSettings.background);
+    const { svg } = await exporter.scene(plan.items, plan.extent, { live: true, background: d.id === 'default' ? '' : d.ground });
     svg.setAttribute('class', 'wb-print-svg');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     $('print').replaceChildren(svg);
@@ -1782,6 +1846,7 @@
           { id: 'paste', label: 'Paste here', icon: 'paste', hint: keyHint(`${MOD} V`), disabled: !clipboard.has(), onClick: () => paste({ x: there.x, y: there.y }) },
           { id: 'all', label: 'Select all', icon: 'object-group', hint: keyHint(`${MOD} A`), disabled: board.size === 0, onClick: () => selectAll() },
           { separator: true },
+          backgroundRow(at),
           exportRow(),
         ],
       });
@@ -2006,13 +2071,14 @@
     $('app').classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); updateStatus(); }
   }).observe(host.rootElement);
-  window.addEventListener('pagehide', () => sync.flush());
+  window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
   // ---- start ------------------------------------------------------------------------------------------------------------
-  host.on('change', (e) => sync.handle(e));
-  host.on('changes', (e) => sync.handleMany(e));
+  host.on('change', (e) => { sync.handle(e); boardSync.handle(e); });
+  host.on('changes', (e) => { keepBackground(e); sync.handleMany(e); boardSync.handleMany(e); });
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
+  await reloadBoard(); // the background (Default when it cannot be read)
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
   sweepSoon();
   $('loading').hidden = true;

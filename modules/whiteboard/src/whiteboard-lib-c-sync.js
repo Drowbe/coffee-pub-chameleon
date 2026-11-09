@@ -39,8 +39,11 @@
   //
   // It also keeps the page's guess of the server's clock (createServerClock, below), from the time the server stamps on
   // every write (updatedAt): what a timer counts from, so pages whose own clocks differ still show the same time.
-  function createSync({ host, board, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock() }) {
-    const PREFIX = `block:${board}:`;
+  //
+  // The same code keeps the board's settings (lib-a, WB_BOARD_PREFIX): a second sync for that prefix, whose one "block" is
+  // the settings value. `prefix` names the keys a sync owns (block:<board>: unless given); it hears only those.
+  function createSync({ host, board, prefix = `block:${board}:`, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock() }) {
+    const PREFIX = prefix;
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
