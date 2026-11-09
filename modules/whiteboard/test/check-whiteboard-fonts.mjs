@@ -70,12 +70,12 @@ if (!missing.length && !fails.length) {
   for (const t of ['note', 'text', 'rect', 'ellipse', 'rounded', 'diamond', 'table']) check(wbBearsWords(blockTypes.get(t)), `${t} bears words`);
   for (const t of ['stroke', 'line', 'highlight', 'connector', 'frame', 'image']) check(!wbBearsWords(blockTypes.get(t)), `${t} bears no words`);
   check(wbFontsShown([], defOf, blockTypes.get('stroke')) === null && wbFontsShown([], defOf, blockTypes.get('line')) === null, 'the Pen and Line tools show no fonts group');
-  const plan = (id, makes, extra = {}) => wbStripPlan({ id, ...extra }, makes ? blockTypes.get(makes) : null);
+  const plan = (id, makes, extra = {}, family = null) => wbStripPlan({ id, ...extra }, makes ? blockTypes.get(makes) : null, family);
   check(plan('hand', null, { mode: true }) === null && plan('select', null) === null, 'Hand and Select: no strip with nothing picked');
   check(!plan('pen', 'stroke').fonts && plan('pen', 'stroke').colours, 'Pen: colours, no fonts');
   check(plan('text', 'text').fonts && plan('note', 'note').fonts && plan('table', 'table').fonts && plan('rect', 'rect').fonts, 'Text, Note, Table, Rectangle: fonts');
   check(!plan('arrow', 'line').fonts && !plan('highlight', 'highlight').fonts, 'Arrow and Highlighter: no fonts');
-  check(plan('connector', 'connector').line && !plan('rect', 'rect').line, 'Connector: line group, Rectangle: none');
+  check(plan('connector', 'connector').line && plan('diamond', 'diamond', {}, 'flowchart').line && !plan('rect', 'rect', {}, 'shape').line, 'Connector and Flowchart kinds: line group, Shape: none');
   check(plan('frame', 'frame').present && !plan('frame', 'frame').fonts && !plan('note', 'note').present, 'Frame: Present, no fonts');
   check(!plan('fill', null).fonts && plan('fill', null).colours, 'Fill: colours only');
   const shapeTool = wbFontsShown([], defOf, blockTypes.get('rect'), { align: 'right' });

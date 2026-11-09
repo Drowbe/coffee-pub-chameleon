@@ -628,8 +628,9 @@
   }
 
   // Words edited in a tool that stays on (Text, Note, Table, Frame): when the editing ends the block is let go, so the strip is the tool's again.
+  // (A moment later: ending the editing hands the focus back to the block, which would pick it again.)
   function settle(id) {
-    if (tool.id !== 'select' && !tool.mode && !editing && sel.size === 1 && sel.has(id)) select(null);
+    setTimeout(() => { if (tool.id !== 'select' && !tool.mode && !editing && sel.size === 1 && sel.has(id)) select(null); }, 0);
   }
   function edit(id, o = {}) {
     const { fresh = false } = o;
@@ -1303,7 +1304,7 @@
   function lineNow() {
     const list = targets();
     if (list.length) { const c = lineOf(); return c.length ? c : null; }
-    return tool.id === CONNECTOR && (policy.canUseTool(tool)) ? [] : null;
+    return (tool.id === CONNECTOR || family === 'flowchart') && (policy.canUseTool(tool)) ? [] : null;
   }
   function setLine(field, v) {
     for (const b of lineOf()) ctx.change(b.id, { [field]: v }, { save: 'now' });
@@ -1376,7 +1377,7 @@
   function updatePaint() {
     if (!paintButtons.size) return;
     const nothing = !sel.size;
-    const plan = nothing ? wbStripPlan(tool, tool.makes ? blockTypes.get(tool.makes) : null) : null;
+    const plan = nothing ? wbStripPlan(tool, tool.makes ? blockTypes.get(tool.makes) : null, family) : null;
     // Nothing picked: the Hand and Select have no strip. The Hand has none at all (it only moves around).
     if (tool.mode || (nothing && !plan)) { paintStrip.hidden = true; afterPaint(); return; }
     // Only locked blocks picked: nothing of theirs to change, and the strip is not about new blocks then either.

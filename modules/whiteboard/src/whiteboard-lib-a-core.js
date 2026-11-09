@@ -165,9 +165,9 @@
   // What the strip holds when a tool is chosen and nothing is picked, from the tool and the block type it makes (null: the
   // Hand and Select have no strip then): { fonts: size and alignment, line: line style and arrowheads, present: the Present
   // button, colours: the colour buttons }. The Fill tool has its colour only.
-  function wbStripPlan(tool, def) {
+  function wbStripPlan(tool, def, family = null) {
     if (!tool || tool.mode || tool.id === 'select') return null;
-    return { fonts: wbBearsWords(def), line: tool.id === 'connector', present: tool.id === 'frame', colours: true };
+    return { fonts: wbBearsWords(def), line: tool.id === 'connector' || family === 'flowchart', present: tool.id === 'frame', colours: true };
   }
   // What the colour strip's fonts group shows: size and horizontal align for the picked blocks whose words take markup
   // (else for the active tool's type: size and align), vertical align only where a picked block's type has it. Pure: blocks and their
