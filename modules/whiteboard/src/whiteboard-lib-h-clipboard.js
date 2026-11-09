@@ -9,7 +9,8 @@
   // -> the fields that change, where idMap is a Map of every copied block's old id to its copy's id. What is copied is the
   // page's to choose (whiteboard.js): the connectors between the blocks copied go along, and a connector copied without a
   // block it is attached to has that end made a free point first (its type's loosen), so no copy points at a block that
-  // is not in the copy.
+  // is not in the copy. A block type may also say what a copy of it does not keep, copied(block) -> the fields to change (a
+  // timer's copy is not started).
   const WB_PASTE_STEP = 24; // board units each paste moves along, so copies never hide one another
 
   // Copies of `blocks` (plain blocks, any order) with new ids from newId(), moved by dx, dy, pointers among them remapped,
@@ -21,6 +22,7 @@
       const copy = { ...JSON.parse(JSON.stringify(b)), id: idMap.get(b.id), ...wbMoved(b, dx, dy) };
       const def = blockTypes.get(b.type);
       if (def && def.remap && (!def.refs || def.refs(b).length)) Object.assign(copy, def.remap(copy, idMap));
+      if (def && def.copied) Object.assign(copy, def.copied(copy)); // a running timer's copy is not running
       return copy;
     });
   }

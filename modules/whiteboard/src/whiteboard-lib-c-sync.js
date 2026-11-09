@@ -32,7 +32,10 @@
   // again after the wait it names, unless a newer one for that key has come meanwhile; onBusy hears it once per refusal.
   // Two writes to one block at once: the last write wins (no version is sent). Conflict handling, when it comes, sends the
   // version this page saw ({ version } on set) and resolves a 409 here.
-  function createSync({ host, board, clean, onRemote, onReload, onRefused, onBusy = () => {} }) {
+  //
+  // It also keeps the page's guess of the server's clock (createServerClock, below), from the time the server stamps on
+  // every write (updatedAt): what a timer counts from, so pages whose own clocks differ still show the same time.
+  function createSync({ host, board, clean, onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock() }) {
     const PREFIX = `block:${board}:`;
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
@@ -64,7 +67,9 @@
       seen.clear();
       gone.clear();
       const out = new Map();
+      const t = Date.now();
       for (const entry of Array.isArray(list) ? list : []) {
+        clock.heard(entry.updatedAt, t, { old: true });
         const b = clean(entry.value);
         if (!b || keyOf(b.id) !== entry.key) continue;
         seen.set(entry.key, Number.isFinite(entry.version) ? entry.version : 0);
@@ -111,7 +116,9 @@
             const at = r && Number.isFinite(r.version) ? r.version : 0;
             if (at > 0) gone.set(key, { at, mine: 0, writes: new Map() }); // 0: it was gone already, nothing to wait for
           } else {
+            const t0 = Date.now();
             const r = await host.storage.set(key, value);
+            if (r) clock.wrote(r.updatedAt, t0, Date.now());
             if (r && Number.isFinite(r.version)) saw(key, r.version, value);
           }
         } catch (err) {
@@ -171,6 +178,8 @@
     return {
       keyOf,
       load,
+      // The server's time now, as this page best knows it (ms).
+      now: () => clock.now(),
       save(block) { queue(keyOf(block.id), block); },
       saveSoon(block, ms = 600) {
         const key = keyOf(block.id);
@@ -202,6 +211,7 @@
       handle(e) {
         if (!e || typeof e.key !== 'string' || !e.key.startsWith(PREFIX)) return;
         if (e.scope && e.scope !== 'space') return;
+        clock.heard(e.updatedAt, Date.now());
         const l = lanes.get(e.key);
         // Judged once this page's own write is done. (A lane with changes waiting is always active: every write drains its
         // lane when it ends, and stops only for another write or a wait, which drains it in turn.)
@@ -216,4 +226,42 @@
         for (const c of list) this.handle({ ...c, scope: e.scope });
       },
     };
+  }
+
+  // The page's guess of the server's clock: offset = server time - this page's time, in ms. Its evidence is the time the
+  // server stamps on a write (updatedAt):
+  //   wrote(stamp, t0, t1): a write of this page's, sent at t0 and answered at t1 (this page's clock). The server stamped it
+  //     in between, so the offset is stamp - (t0 + t1) / 2, give or take half the round trip; the shortest round trip is kept.
+  //   heard(stamp, t): a write heard of at t (someone's change as it arrives, or with { old: true } one read with the board).
+  //     It was stamped before t, so the offset is at least stamp - t: a floor, which a change heard live puts within its
+  //     delivery time of the truth whichever way this page's clock is off. A board read gives only a loose floor (its writes
+  //     may be old), so it is never the guess itself, only a floor under it.
+  // The guess: the best write's, else the newest floor from a change heard live, else 0 (this page's own clock); then never
+  // below any floor. A stamp that is not a time is ignored. now() is this page's clock moved by the guess.
+  function createServerClock(localNow = () => Date.now()) {
+    let best = null; // { offset, err } from this page's quickest write
+    let live = -Infinity; // the highest floor from a change heard live
+    let floor = -Infinity; // the highest floor from anything
+    const stampOf = (v) => (typeof v === 'string' ? Date.parse(v) : NaN);
+    const clock = {
+      wrote(stamp, t0, t1) {
+        const s = stampOf(stamp);
+        if (!Number.isFinite(s) || !Number.isFinite(t0) || !Number.isFinite(t1) || t1 < t0) return;
+        const err = (t1 - t0) / 2;
+        if (!best || err <= best.err) best = { offset: s - (t0 + t1) / 2, err };
+        floor = Math.max(floor, s - t1);
+      },
+      heard(stamp, t, { old = false } = {}) {
+        const s = stampOf(stamp);
+        if (!Number.isFinite(s) || !Number.isFinite(t)) return;
+        if (!old) live = Math.max(live, s - t);
+        floor = Math.max(floor, s - t);
+      },
+      offset() {
+        const guess = best ? best.offset : Number.isFinite(live) ? live : 0;
+        return Number.isFinite(floor) ? Math.max(guess, floor) : guess;
+      },
+      now: () => localNow() + clock.offset(),
+    };
+    return clock;
   }
