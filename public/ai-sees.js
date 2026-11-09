@@ -81,7 +81,7 @@ export function mountSees(box, { word, idPrefix = 'sees', onChange = null } = {}
     q(`#${id('modules-some')}`).checked = some;
     const list = q(`#${id('module-list')}`);
     list.hidden = !some;
-    list.innerHTML = (some && !value.modules.length ? '<p class="hint" role="status">Pick at least one, or choose All of them.</p>' : '') + modules.map((m) => `<label class="sdk-choice-row"><input type="checkbox" class="sdk-switch" role="switch" data-sees-module="${esc(m.id)}"${some && value.modules.includes(m.id) ? ' checked' : ''}><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(m.name)}</span></span></label>`).join('') || '<p class="hint">None on yet.</p>';
+    list.innerHTML = (some && !value.modules.length ? '<p class="hint" role="status">Pick at least one, or choose All of them.</p>' : '') + modules.map((m) => `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(m.name)}</span></span><input type="checkbox" class="sdk-switch" role="switch" data-sees-module="${esc(m.id)}"${some && value.modules.includes(m.id) ? ' checked' : ''}></label>`).join('') || '<p class="hint">None on yet.</p>';
     for (const el of box.querySelectorAll('input, select')) el.disabled = locked;
     const look = q('[data-sees="lookup"]');
     const desc = look.closest('label').querySelector('.sdk-choice-desc');
