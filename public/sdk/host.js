@@ -1246,6 +1246,8 @@
     return call('toolbar.set', { items });
   }
   const drawSwitches = () => { drawToolbar().catch(() => {}); };
+  // A toolbar item's zone: 'start' (the left, the default) or 'end' (the right, after the search and Filters); anything else is left out.
+  const zoneOf = (z) => (z === 'start' || z === 'end' ? { zone: z } : {});
 
   // An "open this object" from the host can arrive before the module has said what to do with one.
   let pendingOpen = null;
@@ -2387,8 +2389,11 @@
       // toolbar, drawn in the order they were made, and any one changing redraws the row.
       // Each choice shows its icon and its word, and only its icon while the switch's row is too narrow for the words
       // (the word stays its tooltip and accessible name); a choice with no icon always shows its word.
+      // `label` names the switch (its accessible name and its heading in the "More" menu); the host's word is "Tools". Plain text, 30 characters
+      // at most; anything else (HTML included) is ignored. Up to 12 options.
+      // `zone: 'end'` (here and on host.ui.toolbarButton, and on the items of host.toolbar.set) puts a switch in the row's right zone.
       // The switch is always in the toolbar: the host draws that row wherever the module is drawn.
-      viewSwitch: ({ id, options, value, onChange }) => {
+      viewSwitch: ({ id, options, value, onChange, zone, label }) => {
         let current = value;
         let opts = options;
         const off = host.on('toolbar', (e) => {
@@ -2396,7 +2401,7 @@
           current = e.value;
           onChange(e.value);
         });
-        const mine = { item: () => ({ type: 'tabs', id, value: current, options: opts }) };
+        const mine = { item: () => ({ type: 'tabs', id, value: current, options: opts, ...(typeof label === 'string' && label.trim() ? { label } : {}), ...zoneOf(zone) }) };
         switches.push(mine);
         drawSwitches();
         return {
@@ -2414,7 +2419,8 @@
         };
       },
       // A button in the same toolbar row as the view switches (a chooser that opens a menu, say: Research's Tags),
-      // drawn after the switches made before it. { id, label?, icon?, iconOnly?, on?, disabled?, onClick }. onClick gets the
+      // drawn after the switches made before it. { id, label?, icon?, iconOnly?, on?, disabled?, zone?, onClick }. `zone: 'end'`
+      // puts it in the row's right zone, after the search and Filters, in the order made ('start' or none: the left; any other value is ignored). onClick gets the
       // 'toolbar' event, whose `x` (when the host gives it) puts a menu under the button: host.menu.show({ at: { x, y: 4 } }).
       // Returns { set({ label?, icon?, on?, disabled? }), destroy() }; set() redraws only when something changed.
       // The shared "..." button (ellipsis-vertical, icon centered): a card's menu, a day's, a poll's, a
@@ -2437,12 +2443,12 @@
         }
         return btn;
       },
-      toolbarButton: ({ id, label, icon, iconOnly, on, disabled, onClick }) => {
+      toolbarButton: ({ id, label, icon, iconOnly, on, disabled, onClick, zone }) => {
         let state = { label, icon, iconOnly: Boolean(iconOnly), on: Boolean(on), disabled: Boolean(disabled) };
         const off = host.on('toolbar', (e) => {
           if (e.id === id && typeof onClick === 'function') onClick(e);
         });
-        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, on: state.on, ...(state.disabled ? { disabled: true } : {}) }) };
+        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, on: state.on, ...(state.disabled ? { disabled: true } : {}), ...zoneOf(zone) }) };
         switches.push(mine);
         drawSwitches();
         return {
@@ -3465,6 +3471,9 @@
     //       label is an icon button, `title` its tooltip and name; `on` a pressed state. `placement: 'titlebar'` draws it as
     //       an icon in the title bar instead, `placement: 'menu'` puts it in the title bar's menu; `overflow: true` keeps it
     //       in the row's "More" menu
+    // Every title, text, tabs and button item (and host.ui.viewSwitch, host.ui.toolbarButton) may say `zone: 'end'` for the row's
+    // right zone: at the far right, after the search and Filters, in the order given, and kept in place while the left zone
+    // folds. `zone` is 'start' (the left, the default) or 'end'; any other value is ignored.
     // Your view switches and toolbar buttons (host.ui.viewSwitch, host.ui.toolbarButton) come first, then your items;
     // call set on every render (the same row is not drawn twice). Resolves true wherever the module is drawn; only a
     // dashboard widget answers false.

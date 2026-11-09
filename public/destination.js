@@ -494,7 +494,7 @@ function flipFilter(id, on) {
 // from the other parts' as "<part's key>~<id>"; its `x` measured from the part's own edge, for a menu under it); the
 // page's answer the page.
 function partItems(m) {
-  return m.toolbar.map((item) => ({
+  return m.toolbar.map(({ pin, zone, ...item }) => ({ // a module's items stay a module's: no pin, no zone of its own in the page's row
     ...item,
     ...(item.id ? { id: `${m.key}~${item.id}` } : {}),
     send: (data, el) => {

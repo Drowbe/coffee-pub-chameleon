@@ -18,6 +18,12 @@
 //      4px between its text and the band's edges.
 //   7. Budget's Costs in a thin column (240 and 200 px): no word of a cost's title is broken across lines (the amounts beside it
 //      once left the title a letter wide).
+//   8. A switch of 10 choices (icons only) beside a right-zone button (zone 'end', pinned) in a row at 390, 430, 560 and 1280 px: the row
+//      is never cut, the right-zone button keeps its place at the far end past the More button, only the switch's LAST choices go
+//      into More (more of them the narrower the row, at least two stay), the chosen choice always stays in the row (even the
+//      last one), and the folded choices are the ones More offers.
+//   9. A module that puts 16 buttons, or a 12-choice switch, in its right zone at 390 px (through the cleaning the module host does)
+//      cannot cut its own row: the row's last control ends inside it, and every button or choice is in the row or in More.
 // Usage: node tools/check-narrow.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -104,6 +110,55 @@ const CAL = (pick) => `(() => { const f = document.querySelector('iframe.composi
   const cw = f.contentWindow;
   return { pos, mq: { m900: cw.matchMedia('(max-width: 900px)').matches, m640: cw.matchMedia('(max-width: 640px)').matches, iw: cw.innerWidth }, frame: { w: Math.round(fr.width), h: Math.round(fr.height), lifted: f.classList.contains('module-editor-lifted') }, page: { x: Math.round(m.left + fr.left), y: Math.round(m.top + fr.top), w: Math.round(m.width), h: Math.round(m.height) },
     drawn, open: roots.some((r) => { const e = r.querySelector('#editor'); return Boolean(e && e.open); }), win: { w: innerWidth, h: innerHeight } }; })()`;
+
+
+// A real frame (public/module-frame.js) drawn in a box of the given width, a 10-choice switch and a right-zone button in its
+// toolbar, with `value` chosen; what the row shows, and what More offers.
+const FOLD = (w, value) => `(async () => {
+  const { createModuleFrame } = await import('/module-frame.js');
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:0;top:0;width:${w}px;height:200px;z-index:99999;background:#fff';
+  document.body.append(box);
+  const opts = Array.from({ length: 10 }, (_, k) => ({ id: 't' + k, label: 'Tool ' + k, icon: 'star', iconOnly: true }));
+  const frame = createModuleFrame({ title: 'T', bands: { titlebar: false, status: false }, toolbar: [
+    { type: 'switch', id: 'tool', label: 'Tools', value: '${value}', options: opts },
+    { type: 'button', id: 'snap', label: 'Snap to grid', icon: 'border-all', kind: 'icon', zone: 'end', pin: true }], onAction: () => {} });
+  box.append(frame.el); frame.fit();
+  await new Promise((r) => setTimeout(r, 400)); frame.fit(); await new Promise((r) => setTimeout(r, 200));
+  const tb = box.querySelector('.mf-toolbar'); const tr = tb.getBoundingClientRect();
+  const shown = (e) => e.getClientRects().length > 0;
+  const parts = [...tb.querySelectorAll('.mf-switch-btn')];
+  const more = tb.querySelector('.mf-more'); const snap = tb.querySelector('.mf-zone-end');
+  const out = { visible: parts.filter(shown).map((b) => b.getAttribute('aria-label')), current: parts.find((b) => b.getAttribute('aria-checked') === 'true')?.getAttribute('aria-label'),
+    currentShown: shown(parts.find((b) => b.getAttribute('aria-checked') === 'true')), hiddenCount: parts.filter((b) => !shown(b)).length,
+    moreShown: Boolean(more && shown(more)), snapShown: Boolean(snap && shown(snap)),
+    snapRight: snap ? Math.round(snap.getBoundingClientRect().right) : null, snapLeft: snap ? Math.round(snap.getBoundingClientRect().left) : null,
+    moreRight: more && shown(more) ? Math.round(more.getBoundingClientRect().right) : null, switchRight: Math.round(Math.max(...parts.filter(shown).map((b) => b.getBoundingClientRect().right))),
+    width: Math.round(tr.width), cut: tb.scrollWidth > tb.clientWidth + 1 };
+  if (out.moreShown) { more.click(); await new Promise((r) => setTimeout(r, 300)); const items = [...document.querySelectorAll('[role=menuitemradio], [role=menuitem], .sdk-menu-item')].filter(shown).map((e) => e.textContent.trim()); out.moreItems = items; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
+  box.remove(); return out; })()`;
+
+// A module's whole right zone (cleaned as the module host cleans it) in a real frame 390 px wide: is the row cut, and is every
+// control in the row or in More.
+const RIGHT = (kind) => `(async () => {
+  const { createModuleFrame } = await import('/module-frame.js');
+  const { cleanToolbarItems, frameToolbar } = await import('/module-chrome.js');
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:0;top:0;width:390px;height:200px;z-index:99999;background:#fff';
+  document.body.append(box);
+  const items = '${kind}' === 'buttons'
+    ? Array.from({ length: 16 }, (_, k) => ({ id: 'r' + k, title: 'R' + k, icon: 'star', zone: 'end' }))
+    : [{ type: 'tabs', id: 'sw', value: 'o0', zone: 'end', options: Array.from({ length: 12 }, (_, k) => ({ id: 'o' + k, label: 'O' + k, icon: 'star', iconOnly: true })) }];
+  const frame = createModuleFrame({ title: 'T', bands: { titlebar: false, status: false }, toolbar: frameToolbar(cleanToolbarItems(items)), onAction: () => {} });
+  box.append(frame.el); frame.fit();
+  await new Promise((r) => setTimeout(r, 400)); frame.fit(); await new Promise((r) => setTimeout(r, 200));
+  const tb = box.querySelector('.mf-toolbar'); const tr = tb.getBoundingClientRect();
+  const shown = (e) => e.getClientRects().length > 0;
+  const kids = [...tb.children].filter(shown);
+  const names = (e) => (e.getAttribute('aria-label') || e.textContent || '').trim();
+  const inRow = [...tb.querySelectorAll('button')].filter(shown).map(names);
+  const more = tb.querySelector('.mf-more'); let inMore = [];
+  if (more && shown(more)) { more.click(); await new Promise((r) => setTimeout(r, 300)); inMore = [...document.querySelectorAll('[role=menuitemradio], [role=menuitem], [role=menuitemcheckbox], .sdk-menu-item')].filter(shown).map((e) => e.textContent.trim()); }
+  const out = { right: Math.round(Math.max(...kids.map((e) => e.getBoundingClientRect().right))), width: Math.round(tr.width), cut: tb.scrollWidth > tb.clientWidth + 1, inRow, inMore };
+  box.remove(); return out; })()`;
 
 async function main() {
   const bin = findBrowser();
@@ -204,6 +259,45 @@ async function main() {
       if (!got.length) failures.push(`Budget's Costs at ${size}px: no cost was shown, so nothing was measured`);
       for (const x of got.filter((c) => c.word)) failures.push(`Budget's Costs at ${size}px: the word "${x.word}" of "${x.title}" is broken across lines (title ${x.width}px wide)`);
       say(`Budget's Costs ${size}px: ${got.length} costs, ${got.filter((c) => c.word).length} broken words, narrowest title ${Math.min(...got.map((c) => c.width))}px`);
+    }
+
+    // 8. A 10-choice switch with a right-zone button: only its last choices fold into More.
+    const foldPage = { id: 'maps-page', as: 'mia', url: '/modules/maps?space={trip}', wait: '#module-frame >>> *' };
+    let widest = 0;
+    for (const [w, value] of [[390, 't0'], [430, 't0'], [560, 't0'], [390, 't9'], [1280, 't0']]) {
+      const got = await view(browser, S, Math.max(w, 390), 'light', foldPage, FOLD(w, value), 1500);
+      const tag = `A 10-choice switch at ${w}px (chosen ${value})`;
+      if (!got) { failures.push(`${tag}: nothing was measured`); continue; }
+      if (got.cut) failures.push(`${tag}: the row is cut`);
+      if (!got.snapShown) failures.push(`${tag}: the right-zone button is not shown`);
+      else if (got.snapRight < got.width - 20) failures.push(`${tag}: the right-zone button is not at the far end (${got.snapRight} of ${got.width})`);
+      if (got.moreRight !== null && got.snapLeft < got.moreRight) failures.push(`${tag}: the right-zone button overlaps More`);
+      if (got.snapLeft < got.switchRight) failures.push(`${tag}: the right-zone button overlaps the switch`);
+      if (!got.currentShown) failures.push(`${tag}: the chosen choice is not in the row`);
+      if (w <= 430) {
+        if (got.visible.length < 2) failures.push(`${tag}: ${got.visible.length} choice(s) stayed in the row; at least two fit`);
+        if (got.hiddenCount < 1 || !got.moreShown) failures.push(`${tag}: nothing folded into More`);
+        else {
+          const names = (got.moreItems || []).filter((x) => /^Tool \d$/.test(x));
+          if (names.length !== got.hiddenCount) failures.push(`${tag}: More offers ${names.length} choices, ${got.hiddenCount} are folded`);
+          if (names.some((n) => got.visible.includes(n))) failures.push(`${tag}: More offers a choice that is already in the row`);
+        }
+        if (value === 't0' && got.visible[0] !== 'Tool 0') failures.push(`${tag}: the first choice is not the one that stays first`);
+      } else if (w >= 1000 && got.hiddenCount) failures.push(`${tag}: ${got.hiddenCount} choices folded where all fit`);
+      if (value === 't0') { if (w === 390) widest = got.visible.length; if (w === 430 && got.visible.length <= widest) failures.push(`${tag}: no more choices stay than at 390 px`); }
+      say(`${tag}: ${got.visible.length} in the row, ${got.hiddenCount} in More, right-zone button ${got.snapLeft}-${got.snapRight} of ${got.width}`);
+    }
+
+    // 9. A module's own right zone can never cut its row.
+    for (const [kind, want, prefix] of [['buttons', 16, 'R'], ['switch', 12, 'O']]) {
+      const got = await view(browser, S, 390, 'light', foldPage, RIGHT(kind), 1500);
+      const tag = `A module's ${kind === 'buttons' ? '16 right-zone buttons' : '12-choice right-zone switch'} at 390px`;
+      if (!got) { failures.push(`${tag}: nothing was measured`); continue; }
+      if (got.cut || got.right > got.width + 1) failures.push(`${tag}: the row is cut (its last control ends at ${got.right} of ${got.width})`);
+      const lost = [];
+      for (let k = 0; k < want; k += 1) { const n = `${prefix}${k}`; if (!got.inRow.includes(n) && !got.inMore.includes(n)) lost.push(n); }
+      if (lost.length) failures.push(`${tag}: ${lost.join(', ')} can be reached neither in the row nor in More`);
+      say(`${tag}: ends at ${got.right} of ${got.width}, ${got.inRow.filter((x) => new RegExp('^' + prefix + '\\d+$').test(x)).length} in the row, ${got.inMore.length} in More`);
     }
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
