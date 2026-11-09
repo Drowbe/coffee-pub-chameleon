@@ -582,8 +582,8 @@
   // ---- undo and redo ----------------------------------------------------------------------------------------------------
   // Only this person's own steps (lib-g), put back as new changes through commit and remove, so everyone sees them like any
   // edit. Only the fields the step changed are put back, and each only where the block still holds what this person left:
-  // a field someone else has changed since keeps their change, and so do the fields its block type links with it
-  // (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
+  // a field someone else has changed since keeps their change, and so does every field its block type links with it,
+  // changed by the step or not (wbMergeBack); a block whose every such field someone else changed is left as it is. A block someone else deleted
   // since, which the step needs, is left out. The person is told once, of both when both happened (wbUndoNote). A block
   // this person deleted comes back whole, with its own id. The work is lib-g's (wbApplyChanges); this hands it the board.
   let undoButton = null;

@@ -18,8 +18,9 @@
   // (null for a create or a delete) are the fields to put back, each only where the block still holds what this person
   // left there (wbMergeBack): a field someone else has changed since keeps their value. Fields a block type names as
   // linked (lib-a: a line's x, y, dx and dy; a box's x, y, w and h) go back together or not at all: when someone else has
-  // changed any of them since, the rest stay as they are too, so an undo never makes a shape neither person made (a line
-  // whose start this person dragged and someone else then moved does not get its far end back on its own). The page
+  // changed any of them since, whether this step changed that one or not, the whole group stays as it is, so an undo
+  // never makes a shape neither person made (a line this person moved and someone else then stretched by its far end
+  // stays as they left it; it does not jump back with the new far end). The page
   // writes the whole merged block as a new change (wbApplyChanges), the same way as any other, so everyone else sees it
   // like any edit; while it does, what it writes is not recorded as a new step. A new step clears what could be redone.
   // The oldest steps go past `cap`.
@@ -31,13 +32,13 @@
     return out;
   }
   // The block as undo or redo leaves it, given the block as it is now: each of the change's fields goes to target where
-  // now still holds source there and in every field linked with it that the change changed; a field someone else changed
-  // since stays theirs, and so do the fields linked with it. `linked`: the block type's lists of linked fields. null: no
-  // field to put back (someone else changed them all), so the block is left as it is.
+  // now still holds source there and in every field linked with it (whether the change changed that one or not); a field
+  // someone else changed since stays theirs, and so does every field linked with it. `linked`: the block type's lists of
+  // linked fields. null: no field to put back (someone else changed them all), so the block is left as it is.
   function wbMergeBack(now, { target, source, fields }, linked = []) {
     const out = { ...now };
     const theirs = (f) => !wbSameValue(now[f], source[f]);
-    const withIt = (f) => (linked.find((g) => g.includes(f)) || [f]).filter((g) => fields.includes(g));
+    const withIt = (f) => linked.find((g) => g.includes(f)) || [f];
     let any = false;
     for (const f of fields) {
       if (withIt(f).some(theirs)) continue; // someone else's since, or a field it goes with is
