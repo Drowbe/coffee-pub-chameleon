@@ -246,6 +246,38 @@ const cases = {
     p.undo();
     check(p.board.get('n').x === 0 && p.board.get('n').fill === 'blue', 'undo of the nudges: back to the start, B\'s fill kept');
   },
+  async 'pictures added at once are one step, however far apart they land; redo brings them all back'() {
+    const p = page();
+    const pic = (x) => ({ type: 'image', x, y: 0, w: 100, h: 80, upload: 'a'.repeat(24) });
+    for (const id of ['p1', 'p2', 'p3']) { p.history.tag('pictures:1', { join: true }); p.mine(id, pic(id.length)); await turn(); }
+    check(p.history.size === 1, `three pictures of one batch, each in its own turn: one step (got ${p.history.size})`);
+    p.undo();
+    check(!['p1', 'p2', 'p3'].some((id) => p.board.has(id)), 'one undo takes all three pictures away');
+    check(!p.history.canUndo(), 'and nothing is left to undo');
+    p.redo();
+    check(['p1', 'p2', 'p3'].every((id) => p.board.has(id) && p.board.get(id).type === 'image'), 'one redo brings all three back');
+  },
+  async 'a picture batch with another step between: the step between is its own, the batch still one'() {
+    const p = page();
+    const pic = { type: 'image', x: 0, y: 0, w: 100, h: 80, upload: 'b'.repeat(24) };
+    p.theirs('n', note(0, 0));
+    p.history.tag('pictures:2', { join: true }); p.mine('p1', pic); await turn();
+    p.mine('n', { x: 40, y: 40 }); await turn(); // the person moves a note while the rest upload
+    p.history.tag('pictures:2', { join: true }); p.mine('p2', { ...pic, x: 32 }); await turn();
+    p.history.tag('pictures:3', { join: true }); p.mine('q1', { ...pic, x: 64 }); await turn(); // another batch
+    check(p.history.size === 3, `batch, move, other batch: three steps (got ${p.history.size})`);
+    p.undo();
+    check(!p.board.has('q1') && p.board.has('p1') && p.board.has('p2'), 'the first undo takes away only the other batch');
+    p.undo();
+    check(p.board.get('n').x === 0 && p.board.has('p1') && p.board.has('p2'), 'the second undo puts the note back, the pictures stay');
+    p.undo();
+    check(!p.board.has('p1') && !p.board.has('p2'), 'the third undo takes both pictures of the batch away');
+    const q = page();
+    q.history.tag('t', {}); q.mine('a', note(0, 0)); await turn();
+    q.mine('b', note(1, 1)); await turn();
+    q.history.tag('t', {}); q.mine('c', note(2, 2)); await turn();
+    check(q.history.size === 3, `a tag without join joins only the step right before it (got ${q.history.size})`);
+  },
   async 'the cap: the oldest steps go'() {
     const p = page();
     p.theirs('n', note(0, 0, 'gold'));

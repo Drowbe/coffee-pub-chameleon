@@ -3,7 +3,8 @@
   // A picture pasted, dropped or chosen with "Add a picture" becomes an image block (lib-e-block-image) in four steps, one
   // picture at a time: its facts are read from the start of the file (host.uploads.inspect), it is made smaller in the page
   // (about 2000 px on its long edge, and a thumbnail of about 400 px), it is sent (host.uploads.put, host.uploads.thumb), and
-  // only then does the page put the block on the board, saved once, as one step of the undo history. Until then the page
+  // only then does the page put the block on the board, saved once (the pictures added together are one step of the undo
+  // history: the page tags them so, lib-g). Until then the page
   // shows a placeholder where it will be; if anything fails, the placeholder goes and nothing is saved. A refusal for now
   // (429: too many pictures in a minute) waits the time the server names and carries on, as the sync manager does.
   //

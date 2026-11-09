@@ -739,7 +739,8 @@
 
   // ---- pictures from the computer ---------------------------------------------------------------------------------------
   // Pasted, dropped on the board, or chosen with "Add a picture" in the +: each is made ready and sent one at a time (lib-i)
-  // with a placeholder where it will be, and becomes an image block once its upload is there, saved once, one undo step.
+  // with a placeholder where it will be, and becomes an image block once its upload is there, saved once. The pictures
+  // added at once (one drop, one paste, one choice) are one undo step together.
   // Only for someone who may change the board; everyone who may see the board sees the pictures (the uploads are the
   // space's, read with the module's view permission). Deleting a picture block leaves its upload (see lib-i).
   blockTypes.get('image').source = (upload, thumb) => host.uploads.url(upload, { thumb, scope: 'space' });
@@ -756,9 +757,12 @@
       const def = blockTypes.get('image');
       const b = wbClean({ ...def.create(), id: job.id, type: 'image', x: job.box.x, y: job.box.y, w: job.box.w, h: job.box.h, upload: file.id, z: Math.floor(board.topZ()) + 1 });
       if (!b) { updateStatus(); return; }
-      commit(b, 'now'); // saved once, the upload there already: one step of the undo history
-      // Picked, with the others added along with it, unless the person has picked something else meanwhile.
+      // Saved once, the upload there already. The pictures added together are one step of the undo history, however long
+      // apart their uploads finish.
       const batch = job.batch;
+      if (history && batch) history.tag(batch.tag, { join: true });
+      commit(b, 'now');
+      // Picked, with the others added along with it, unless the person has picked something else meanwhile.
       if (batch) {
         const same = sel.size === batch.picked.length && batch.picked.every((id) => sel.has(id));
         batch.made.push(b.id);
@@ -781,7 +785,7 @@
     if (others) note('Only pictures can go on the board.');
     if (!list.length) return;
     // The pictures added together share a batch, so they are picked together as they arrive.
-    pictures.add(list, at || renderer.center(), { batch: { made: [], picked: [...sel] } });
+    pictures.add(list, at || renderer.center(), { batch: { tag: `pictures:${host.util.id()}`, made: [], picked: [...sel] } });
   }
   // The computer's own file chooser, for "Add a picture" (touch and the keyboard too).
   $('picker').accept = WB_PICTURE_ACCEPT;
