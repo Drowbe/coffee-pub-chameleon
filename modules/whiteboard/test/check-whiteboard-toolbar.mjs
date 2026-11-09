@@ -38,7 +38,7 @@ const families = {};
 for (const m of main.matchAll(/\{ id: '([a-z]+)', kinds: \[([^\]]*)\] \}/g)) families[m[1]] = [...m[2].matchAll(/'([a-z]+)'/g)].map((k) => k[1]);
 check(families.pen && families.pen.join() === 'pen,marker,brush,highlight', 'Pen has pen, marker, brush, highlighter');
 check(families.shape && families.shape.join() === 'rect,ellipse,line,arrow', 'Shape has rectangle, ellipse, line, arrow');
-check(families.flowchart && families.flowchart.join() === 'connector,rect,rounded,diamond,pill,parallelogram', 'Flowchart has the connector and the flowchart shapes');
+check(families.flowchart && families.flowchart.join() === 'connector,rounded,diamond,pill,parallelogram', 'Flowchart has the connector and the flowchart shapes');
 
 if (tools) {
   const get = (id) => tools.get(id);

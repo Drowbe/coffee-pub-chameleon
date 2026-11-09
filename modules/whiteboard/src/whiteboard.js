@@ -106,7 +106,7 @@
   const boardHelp = () => {
     if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the colour strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back), Show overview (tap or drag in the map), Find (Next and Previous). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, the arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; H again goes back). Select many: a click adds, a drag round blocks adds. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the colour strip. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link. ${M}-click a link, or click it on a picked block, to open it. Right-click a note, Add pointer, drag its tip. Table (G; Enter shows its cells, arrow keys and Tab move, Enter edits, Escape leaves), Frame (S; takes what is inside along; pick it by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add a picture (+). Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock or unlock. Snap to grid: onto the dots, else lined up with blocks near; ${ALT} while dragging: the opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrow keys, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Other people's pointers show where they point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H; again goes back). Select many: click or drag round blocks to add. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the colour strip. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Timer (Y): Tab reaches its buttons. Editing words: ${M} B, I, E, K: bold, italic, code, link; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click the title to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour, Save as image. Arrange or right-click: align, spread out. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar, Page Up and Down, Home, End; Escape stops), Show overview (click or drag in the map), Find (/; Enter, Shift Enter, Escape). Others' pointers show where they point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -816,7 +816,7 @@
   const FAMILIES = [
     { id: 'pen', kinds: ['pen', 'marker', 'brush', 'highlight'] },
     { id: 'shape', kinds: ['rect', 'ellipse', 'line', 'arrow'] },
-    { id: 'flowchart', kinds: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'] },
+    { id: 'flowchart', kinds: ['connector', 'rounded', 'diamond', 'pill', 'parallelogram'] },
   ];
   const familyHas = (f) => f.kinds.some((id) => allowed.some((t) => t.id === id));
   const lastKind = Object.fromEntries(FAMILIES.map((f) => [f.id, f.kinds[0]]));
@@ -1041,6 +1041,7 @@
   kindsLine.setAttribute('aria-hidden', 'true');
   kindsLine.hidden = true;
   paintStrip.append(kindsBox, kindsLine);
+  let afterPaint = () => {}; // set once the find bar exists: it moves clear of the strip's new size
   const kindButtons = new Map(); // tool id -> button
   function showKinds() {
     const f = FAMILIES.find((x) => x.id === family);
@@ -1162,6 +1163,7 @@
     const kinds = showKinds();
     kindsLine.hidden = !(kinds && any);
     paintStrip.hidden = !any && !kinds;
+    afterPaint();
   }
 
   // Line style and arrowheads: of the picked connectors (each one whole save), or, with none picked, for new connectors.
@@ -2185,6 +2187,7 @@
     const st = strip.getBoundingClientRect();
     if (bar.left < st.right && bar.top < st.bottom) findBar.style.top = `${st.bottom - surface.getBoundingClientRect().top + 4}px`;
   }
+  afterPaint = () => { if (finding) placeFind(); };
   findInput.addEventListener('input', () => {
     clearTimeout(findTyped);
     findTyped = setTimeout(() => { findTyped = 0; runFind({ go: true }); }, 150);
