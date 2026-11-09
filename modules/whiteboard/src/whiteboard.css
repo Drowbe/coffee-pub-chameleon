@@ -87,7 +87,21 @@
 }
 .wb-type-note[data-stroke="auto"] { border-color: color-mix(in srgb, var(--wb-face) 40%, var(--shadow-color)); }
 .wb-type-note[data-stroke="none"] { border-style: none; }
-.wb-type-note .wb-words { height: 100%; overflow: hidden; }
+.wb-type-note .wb-words { position: relative; height: 100%; overflow: hidden; }
+/* a note with a pointer (lib-e-block-note.js): the note and its tail are one outline in an SVG behind the words, with the
+   note's own fill, border and shadow (the box's are put away), so there is no seam where the tail meets the note. The SVG
+   starts at the box's outer corner, out past the border. */
+.wb-type-note[data-pointer] { overflow: visible; background: none; border-color: transparent; box-shadow: none; }
+.wb-svg.wb-note-shape {
+  left: calc(-1 * var(--wb-weight));
+  top: calc(-1 * var(--wb-weight));
+  filter: drop-shadow(0 1px 1px var(--shadow-color)) drop-shadow(0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent));
+  pointer-events: none;
+}
+.wb-type-note[data-stroke="none"] .wb-note-shape { left: 0; top: 0; }
+.wb-svg .wb-note-outline { fill: var(--wb-face); stroke: var(--wb-stroke); stroke-width: var(--wb-weight); stroke-linejoin: round; }
+.wb-type-note[data-stroke="auto"] .wb-note-outline { stroke: color-mix(in srgb, var(--wb-face) 40%, var(--shadow-color)); }
+.wb-type-note[data-stroke="none"] .wb-note-outline { stroke: none; }
 
 /* words on their own; a background (a light wash of its fill) and a border only when they are picked */
 .wb-type-text { padding: 4px; font-size: var(--wb-size, var(--text-22)); border: var(--wb-weight) solid var(--wb-stroke); border-radius: var(--radius-min); cursor: grab; }
@@ -357,7 +371,9 @@
 .wb-handle-nw, .wb-handle-se { cursor: nwse-resize; }
 .wb-handle-ne, .wb-handle-sw { cursor: nesw-resize; }
 .wb-handle-start, .wb-handle-end { cursor: move; }
-.wb-handle-start::after, .wb-handle-end::after { border-radius: var(--radius-small); }
+.wb-handle-start::after, .wb-handle-end::after, .wb-handle-tip::after { border-radius: var(--radius-small); }
+/* a note's pointer tip: moved like a line's end */
+.wb-handle-tip { cursor: move; }
 @media (pointer: coarse) { .wb-handle { --hit: 32px; } }
 .app.narrow .wb-handle { --hit: 32px; }
 

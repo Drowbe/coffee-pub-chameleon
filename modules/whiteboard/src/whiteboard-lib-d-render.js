@@ -160,9 +160,11 @@
     // screen the same at any zoom. Which handle is pressed is its data-handle (the select tool reads it).
     const CORNERS = [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]];
     function handlePoints(el) {
-      if (grips === 'corners') return CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 }));
       const b = shown.get([...selected][0]);
       const def = b && blockTypes.get(b.type);
+      // A block type's own handles (a note's pointer tip), after its resize handles.
+      const own = def && def.grips && grips ? def.grips(b).map((g) => ({ id: g.id, x: g.x, y: g.y, ox: 0, oy: 0 })) : [];
+      if (grips === 'corners') return [...CORNERS.map(([id, cx, cy]) => ({ id, x: cx * el.offsetWidth, y: cy * el.offsetHeight, ox: cx ? 1 : -1, oy: cy ? 1 : -1 })), ...own];
       if (grips !== 'ends' || !def) return [];
       if (def.attached) {
         const g = geoms.get(b.id);
@@ -181,6 +183,15 @@
       queueMicrotask(() => { framePending = false; showFrame(); });
     }
     const boxIn = (el) => ({ x0: el.offsetLeft, y0: el.offsetTop, x1: el.offsetLeft + el.offsetWidth, y1: el.offsetTop + el.offsetHeight });
+    // All a block draws, on the board: its element's box, and further where its type reaches past it (a note's pointer).
+    function reachIn(el) {
+      const r = boxIn(el);
+      const b = shown.get(el.dataset.id);
+      const def = b && blockTypes.get(b.type);
+      if (!def || !def.reach || def.attached) return r;
+      const q = def.reach(b);
+      return { x0: Math.min(r.x0, b.x + q.x), y0: Math.min(r.y0, b.y + q.y), x1: Math.max(r.x1, b.x + q.x + q.w), y1: Math.max(r.y1, b.y + q.y + q.h) };
+    }
     const putBox = (node, r) => {
       node.style.left = `${r.x0}px`;
       node.style.top = `${r.y0}px`;
@@ -197,7 +208,7 @@
       if (group) {
         const all = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
         for (const el of picked) {
-          const r = boxIn(el);
+          const r = reachIn(el);
           all.x0 = Math.min(all.x0, r.x0); all.y0 = Math.min(all.y0, r.y0); all.x1 = Math.max(all.x1, r.x1); all.y1 = Math.max(all.y1, r.y1);
           let f = eachFrames.get(el.dataset.id);
           if (!f) { f = document.createElement('div'); f.className = 'wb-frame-each'; f.setAttribute('aria-hidden', 'true'); world.insertBefore(f, frame); eachFrames.set(el.dataset.id, f); }
@@ -346,8 +357,9 @@
       if (!seen.length) { view.s = 1; view.x = w / 2; view.y = h / 2; applyView(); return; }
       let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
       for (const el of seen) {
-        x0 = Math.min(x0, el.offsetLeft); y0 = Math.min(y0, el.offsetTop);
-        x1 = Math.max(x1, el.offsetLeft + el.offsetWidth); y1 = Math.max(y1, el.offsetTop + el.offsetHeight);
+        const r = reachIn(el);
+        x0 = Math.min(x0, r.x0); y0 = Math.min(y0, r.y0);
+        x1 = Math.max(x1, r.x1); y1 = Math.max(y1, r.y1);
       }
       const pad = 32;
       const s = Math.min(1, Math.max(MIN, Math.min((w - pad * 2) / Math.max(1, x1 - x0), (h - pad * 2) / Math.max(1, y1 - y0))));
@@ -374,6 +386,8 @@
       // The ids of the connectors attached to a block.
       attachedTo: (id) => [...(deps.get(id) || [])],
       boxOf,
+      // All a block draws, on the board ({ x0, y0, x1, y1 }), or null when it is not drawn.
+      reachOf: (id) => { const el = els.get(id); return el && !el.hidden ? reachIn(el) : null; },
       ports,
       refreshFrame: showFrame,
       toBoard,

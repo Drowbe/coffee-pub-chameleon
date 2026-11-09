@@ -11,6 +11,7 @@
   // A connector's end (resize.attach) goes where it is let go: onto a block (the side whose middle it is near, else the
   // side that faces the other end), or the board (a free end); the block under it shows its connection points meanwhile.
   // A connector moves with the blocks it is attached to; moved itself (with others picked), only its free ends move.
+  // A handle of a block type's own (grips: a note's pointer tip) changes what its grip says, saved once on the drop.
   {
     const SLOP = 4; // screen pixels a press may wander and still be a press, not a drag
     const TWICE = 400; // milliseconds between two presses that open a block
@@ -75,7 +76,15 @@
         const adding = Boolean(p.id) && adds(p, ctx);
         let unpick = false;
         if (adding) { last = { id: null, t: 0 }; if (ctx.isSelected(p.id)) unpick = true; else ctx.toggle(p.id); }
-        const r = picked && blockTypes.get(picked.type).resize;
+        // A handle of the block type's own (a note's pointer tip): its grip says what dragging it changes.
+        const def = picked && blockTypes.get(picked.type);
+        if (def && def.grips && def.grip && ctx.policy.canChange(picked) && def.grips(picked).some((g) => g.id === p.handle)) {
+          last = { id: null, t: 0 };
+          hold = { kind: 'grip', id: picked.id, handle: p.handle, def, sx: p.sx, sy: p.sy, start: { ...picked }, moved: false, keys: [] };
+          ctx.hold(picked.id, true);
+          return;
+        }
+        const r = picked && def.resize;
         if (r && ctx.policy.canChange(picked)) {
           last = { id: null, t: 0 };
           hold = { kind: 'resize', id: picked.id, handle: p.handle, r, sx: p.sx, sy: p.sy, start: { ...picked }, moved: false };
@@ -109,6 +118,14 @@
           ctx.setSelection([...new Set([...hold.keep, ...ctx.blocksIn(r)])]);
           return;
         }
+        if (hold.kind === 'grip') {
+          if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
+          hold.moved = true;
+          const fields = hold.def.grip(ctx.get(hold.id) || hold.start, hold.handle, { x: p.x, y: p.y });
+          hold.keys = [...new Set([...hold.keys, ...Object.keys(fields)])];
+          ctx.change(hold.id, fields, { save: false });
+          return;
+        }
         if (hold.kind === 'resize') {
           if (!hold.moved && Math.hypot(p.sx - hold.sx, p.sy - hold.sy) < SLOP) return;
           hold.moved = true;
@@ -127,6 +144,10 @@
         for (const b of hold.starts) ctx.change(b.id, wbMoved(b, dx, dy), { save: false });
       },
       up(p, ctx) {
+        if (hold && hold.kind === 'grip') {
+          if (hold.moved) ctx.save(hold.id); // once, where it is let go
+          ctx.hold(hold.id, false);
+        }
         if (hold && hold.kind === 'resize') {
           if (hold.r.attach) ctx.ports([]);
           if (hold.moved) ctx.save(hold.id); // the whole new box, once
@@ -144,6 +165,10 @@
         hold = null;
       },
       cancel(ctx) {
+        if (hold && hold.kind === 'grip') {
+          if (hold.moved) ctx.change(hold.id, Object.fromEntries(hold.keys.map((k) => [k, hold.start[k]])), { save: false });
+          ctx.hold(hold.id, false);
+        }
         if (hold && hold.kind === 'resize') {
           if (hold.r.attach) ctx.ports([]);
           if (hold.moved) ctx.change(hold.id, before(hold.r, hold.start), { save: false });
