@@ -65,12 +65,16 @@
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
+  // The colour the Fill tool fills with: the fill picked for new blocks, else Yellow.
+  const FILL_USUAL = 'gold';
+  const nextFill = () => next.fill || FILL_USUAL;
   // The line style and arrowheads picked for new connectors (null: the usual), the same way.
   const nextLine = { style: null, head: null };
   const CONNECTOR = 'connector'; // the block type the Line style and Arrowheads menus are for
   // The key named in hints: Cmd on a Mac, iPhone or iPad, else Ctrl. Keys are named (in menus, in a button's name) only
   // where there is a mouse or a trackpad: on a touch screen alone they are noise.
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const ALT = MOD === 'Cmd' ? 'Option' : 'Alt'; // the Alt key, by its name on this device
   const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
   const keyHint = (keys) => (KEYS ? keys : undefined);
   const withKey = (label, keys) => (KEYS ? `${label} (${keys})` : label);
@@ -78,9 +82,9 @@
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. MOVE_HELP is how the board moves.
   const MOVE_HELP = 'To move the board, drag with the right mouse button, hold the spacebar and drag, or pick the Hand tool (H).';
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it and drag it to move it; press it long for more. Drag the board with one finger to move it, pinch to zoom. To join two blocks, pick Connector in the Flowchart menu and drag from one to the other. To fill a block with colour, pick Fill in the Paint menu and tap it.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. With Snap to grid on, blocks land on the dots; hold ${MOD === 'Cmd' ? 'Option' : 'Alt'} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
+    return `Whiteboard. Tab moves through the blocks; Enter edits one, the arrow keys move what is selected, Delete takes it away. Shift-click adds a block to the selection, ${M} A selects all, Escape clears. ${M} C, X, V and D copy, cut, paste and duplicate; ${M} Z undoes, ${M} Shift Z redoes. ${MOVE_HELP} The Connector tool (C) joins two blocks: press on one and drag to the other. A connector follows its blocks and goes when one of them is deleted; Enter on it edits its label. The Paint menu holds Fill (F): click a block to fill it with colour, or ${ALT}-click one to take its colour. With Snap to grid on, blocks land on the dots; hold ${ALT} while you drag to place one freely, or, with it off, to snap. Paste or drop a picture to add it, or choose Add a picture in the +.`;
   };
   const takesNext = (def, role) => {
     const usual = def.create();
@@ -165,7 +169,29 @@
     // points to show ([{ block, side }], [] for none).
     attachAt: (p, o) => attachAt(p, o),
     ports: (list) => renderer.ports(list),
+    // The Fill tool: the colour it fills with, taking a colour for it (Alt-click), the block under the pointer marked
+    // ('ok' or 'no'; null for none), the swatch by the pointer ({ sx, sy }, null to take it away), and a click on a block
+    // with nothing to fill (or, with alt, no colour to take).
+    nextFill: () => nextFill(),
+    setNextFill(v, { quiet = false } = {}) {
+      if (!WB_PALETTE_BY_ID.has(v)) return;
+      next.fill = v;
+      if (!quiet) note(`Fill colour: ${WB_PALETTE_BY_ID.get(v).label}.`); // taken from a block: say which
+      if (lastSwatch) showSwatch(lastSwatch);
+    },
+    mark: (id, kind) => renderer.mark(id, kind),
+    swatch: (at) => showSwatch(at),
+    refuse(b, alt) {
+      const d = blockTypes.get(b.type);
+      const noun = d.noun ? d.noun(b) : d.label.toLowerCase();
+      note(alt ? `This ${noun} has no colour to take.` : `${/^[aeiou]/.test(noun) ? 'An' : 'A'} ${noun} has no background to fill.`);
+    },
   };
+  let lastSwatch = null;
+  function showSwatch(at) {
+    lastSwatch = at;
+    renderer.swatch(at, WB_PALETTE_BY_ID.get(nextFill()).token);
+  }
   // The same block, leaving aside who saved it and when.
   function sameBlock(a, b) {
     if (!a || !b) return a === b;
@@ -382,13 +408,15 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds 8),
-  // and the tools of a group (the Connector and the flowchart shapes) are the choices of one button's menu after it, the
-  // button on while one of them is the tool. A group's menu may offer a tool from the switch too (`also`, in `order`).
+  // The tools are one switch; a tool marked `apart` (the Hand) is its own on/off button beside it (the switch holds
+  // 8), and the tools of a group (Flowchart: the Connector and the flowchart shapes; Paint: Fill, the Marker and the
+  // Brush) are the choices of one button's menu after it, the button on while one of them is the tool. A group's menu may
+  // offer a tool from the switch too (it is in its `order`: Paint offers the Pen). `split`: a line after that many choices.
   const allowed = tools.list().filter((t) => policy.canUseTool(t));
   const inSwitch = allowed.filter((t) => !t.apart && !t.group);
   const GROUPS = [
-    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'] },
+    { id: 'paint', label: 'Paint', icon: 'paintbrush', order: ['fill', 'pen', 'marker', 'brush'], split: 1 },
+    { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order: ['connector', 'rect', 'rounded', 'diamond', 'pill', 'parallelogram'], split: 1 },
   ];
   const toolSwitch = inSwitch.length > 1
     ? host.ui.viewSwitch({ id: 'tool', value: tool.id, options: inSwitch.map((t) => ({ id: t.id, label: t.label, icon: t.icon })), onChange: (v) => setTool(v) })
@@ -409,8 +437,9 @@
       items: [
         { heading: g.label },
         ...list.flatMap((t, i) => [
-          ...(i > 0 && t.makes !== CONNECTOR && list[i - 1].makes === CONNECTOR ? [{ separator: true }] : []),
-          { id: t.id, label: t.label, icon: t.icon, hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
+          ...(i > 0 && i === g.split ? [{ separator: true }] : []),
+          // The Fill row's icon is in the colour it fills with.
+          { id: t.id, label: t.label, icon: t.icon, ...(t.paints === 'fill' ? { iconColor: WB_PALETTE_BY_ID.get(nextFill()).token, tip: `${t.label}: ${WB_PALETTE_BY_ID.get(nextFill()).label}` } : {}), hint: t.key ? keyHint(t.key.toUpperCase()) : undefined, current: tool === t, ariaLabel: tool === t ? `${t.label}, chosen` : undefined, onClick: () => setTool(t.id) },
         ]),
       ],
     });
@@ -473,6 +502,13 @@
   // `role`: only that colour role's rows (a swatch on the board's strip opens its own role).
   function colourMenu(where, only, role) {
     const list = targets(only);
+    if (!list.length && tool.paints === 'fill') {
+      // The Fill tool's colour (the fill new blocks get too): the palette, the current one marked.
+      const now = nextFill();
+      const rows = WB_PALETTE.map((c) => choiceRow(c.id, c.label, now, () => ctx.setNextFill(c.id, { quiet: true }), swatch(c.id)));
+      host.menu.show({ id: 'colour', ...where, items: [{ heading: 'Colour for the Fill tool' }, ...rows] });
+      return;
+    }
     const def = list.length ? null : tool.makes ? blockTypes.get(tool.makes) : null;
     let groups;
     if (list.length) {
@@ -1027,7 +1063,8 @@
     hint.textContent = !policy.canEdit ? 'Nothing on the board yet.'
       : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
         : tool.id === 'pen' ? 'Press and drag to draw.'
-          : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
+          : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
+            : tool.id === 'connector' ? 'Press on a block and drag to another to join them.' : 'Click the board to put it there.';
   }
 
   // ---- the pointer ------------------------------------------------------------------------------------------------------
