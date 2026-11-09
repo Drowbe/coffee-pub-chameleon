@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides what the colour picker is and does; experience-design, who builds the SDK piece, the pages and the Design System entries; server-development, who builds the checks; and whoever builds the Whiteboard's use of it.
 
-**Status:** draft, 2026-11-09, not agreed. The request came from the Whiteboard session: "we need a colour chooser where people pick and set their own colour for things. It should probably be provided by core, and may already exist." Thomas has said yes to a core SDK piece, `host.ui.colorPicker` (a palette, a hex field, recent colours, the browser's own chooser underneath), for the Whiteboard, Maps, Planner and Calendar to share, and has allowed a colour a person chose to be stored as a hex in module data. Nothing is built.
+**Status:** approved 2026-11-09 (Thomas: "approve", with the answers in Decisions below); nothing built. Building starts next cycle (usage budget). The request came from the Whiteboard session: "we need a colour chooser where people pick and set their own colour for things. It should probably be provided by core, and may already exist." Thomas has said yes to a core SDK piece, `host.ui.colorPicker` (a palette, a hex field, recent colours, the browser's own chooser underneath), for the Whiteboard, Maps, Planner and Calendar to share, and has allowed a colour a person chose to be stored as a hex in module data. Nothing is built.
 
 ## What it is today
 
@@ -27,10 +27,17 @@ It partly exists. There is a colour picker, but only for the app's own pages, an
 - **The picker is core, an SDK piece named `host.ui.colorPicker`**, with a palette, a hex field, recent colours and the browser's own chooser underneath, so the Whiteboard, Maps, Planner and Calendar share one. (Thomas, relayed from the Whiteboard session: one piece rather than one per module.)
 - **A colour a person chose may be stored as a hex in module data.** The rule "colours come from the theme tokens" in `CLAUDE.md` is about colours in code, not about a person's own choice. (Thomas.)
 - **The Whiteboard gets "Override theme":** exact colours instead of tints, stored as `#rrggbb` in a block's data. (Thomas, in the Whiteboard session.)
+- **The palette is both** (option 1C): the fixed colours, and a row of the theme's colours shown only when a module asks (`tones: true`). Stream and the settings need exact colours; the Whiteboard needs both. (Thomas, 2026-11-09.)
+- **It is drawn inside the module by the SDK**, as a popover (option 2A), so it works in a sandboxed module too. (Thomas, 2026-11-09.)
+- **Recent colours are kept in the browser, per person**, keyed by environment and person (option 3A); nothing on the server. (Thomas, 2026-11-09.)
+- **The helper is spelled `host.util.colorName`**, matching `color` in the API. (Thomas, 2026-11-09.)
+- **A theme colour comes back only through `onChange`**; the hidden input stays a colour input. (Thomas, 2026-11-09.)
+- **The Whiteboard's board background stays theme colours only**; an exact background would fight the grid's dots in one mode. (Thomas, 2026-11-09.)
+- **The admin theme editor's colour inputs are not upgraded**; it is a different job, one exact value beside the contrast panel. (Thomas, 2026-11-09.)
 
-## What needs settling first
+## The choices that were laid out
 
-The request and the code pull two ways, and the contract below depends on which way Thomas goes.
+Kept for the record; Thomas chose 1C, 2A and 3A (Decisions above).
 
 1. **Fixed colours or the theme's tones.** The existing palette is 16 fixed hex colours, chosen because a stored colour should look the same in every theme. The Whiteboard's palette is the theme's tones by name, chosen so a block follows the theme and both modes. The request asks for "a palette of the theme's tones".
 2. **Where the picker is drawn**, which decides whether it works in a sandboxed module.
@@ -68,7 +75,7 @@ Suggestion: **A**. Recent colours are a convenience, not data; a module never se
 
 ## The contract
 
-Written for options 1C, 2A and 3A. Where Thomas chooses otherwise, the matching part changes.
+Written for options 1C, 2A and 3A, as decided.
 
 ### The value
 
@@ -78,7 +85,7 @@ Written for options 1C, 2A and 3A. Where Thomas chooses otherwise, the matching 
 
 ### `host.ui.colorPicker(input, options)`
 
-- `input`: an `<input type="color">` (or a text input, for a module that stores tones; see open question 5). The piece hides it and puts a trigger before it, as `colour-pick.js` does now.
+- `input`: an `<input type="color">`; a module that stores theme colours takes the value from `onChange`. The piece hides it and puts a trigger before it, as `colour-pick.js` does now.
 - `options`: `{ label, tones?: boolean, value?, onChange?(result) }`. `label` is what a screen reader hears ("Background").
 - `onChange` gets `{ value, hex, tone }`: `value` is what to store; `hex` is always the colour as this viewer sees it now (a tone resolved in this page's theme), for a preview; `tone` is the name or `null`. The input's own `input` and `change` events still fire, carrying `#rrggbb`.
 - Returns `{ set(value), open(), close(), destroy() }`.
@@ -96,7 +103,7 @@ Written for options 1C, 2A and 3A. Where Thomas chooses otherwise, the matching 
 - `host.util.color.parse(value)`: above.
 - `host.util.readableOn(value)`: `{ tone: 'light' | 'dark', ink: '#ffffff' | '#0a0a0a', ratio }`, the text colour that reads best on that fill, from `ThemeColour.pickOn` (the SDK loads `/theme-colour.js` the way it loads `/phases.js`). A tone is resolved in this page's theme first. A module may draw text in `ink` on a person's fill; a fixed pair is allowed by rule 6 of design-theme.
 - `host.util.contrast(a, b)`: the ratio of two colour values.
-- `host.util.colorName(value)`: the nearest of the palette's names, for screen readers and tooltips ("close to Blue"). Optional; see open question 4.
+- `host.util.colorName(value)`: the nearest of the palette's names, for screen readers and tooltips ("close to Blue").
 
 ### The module setting type `color`
 
@@ -139,9 +146,11 @@ Written for options 1C, 2A and 3A. Where Thomas chooses otherwise, the matching 
 
 ## Left to build, in order
 
+Building starts next cycle (Thomas, 2026-11-09: the usage budget).
+
 1. **The picker in the SDK** (experience-design). `host.ui.colorPicker` and `host.util.color.parse` in `public/sdk/host.js`, the new rows and the phone sheet, the Pickers styles in `host.css`, recent colours (option 3), the Design System entries and screenshot, the check's picker part (server-development). The module settings forms use it in the same step and `colour-pick.js` goes. Leaves working: every `color` and list setting with the new picker; any module can call it.
-2. **The readability helpers** (experience-design). `readableOn`, `contrast`, `colorName` if wanted; the contrast hint in the picker; the check's helper part. Leaves working: the hint, and a helper modules can call.
-3. **The Whiteboard uses it** (module lane, a version bump). Override theme: a block's colour roles take a hex as well as a tone (`wb.paint`), the colour menus gain **Custom colour...** which opens the picker, note words take `readableOn` on a hex fill, and the board background takes a hex if Thomas wants that too (open question 6). Leaves working: exact colours on the board, seen alike by everyone.
+2. **The readability helpers** (experience-design). `readableOn`, `contrast` and `colorName`; the contrast hint in the picker; the check's helper part. Leaves working: the hint, and a helper modules can call.
+3. **The Whiteboard uses it** (module lane, a version bump). Override theme: a block's colour roles take a hex as well as a tone (`wb.paint`), the colour menus gain **Custom colour...** which opens the picker, note words take `readableOn` on a hex fill; the board background stays theme colours only. Leaves working: exact colours on the board, seen alike by everyone.
 4. **Later, each on its own:** the Planner's marker contrast fix; Maps, Calendar and Places, if and when they let a person choose a colour.
 
 ## Verify
@@ -150,12 +159,6 @@ Written for options 1C, 2A and 3A. Where Thomas chooses otherwise, the matching 
 - Step 3: two browsers signed in as two people in one space, each choosing exact colours and tones, one in a light theme and one in a dark; a block saved with `url(x)` as its fill (written to storage by hand) must draw with its default.
 - Nothing here touches LiveKit; no call is needed to verify any step.
 
-## Open questions
+## Still open
 
-1. **Palette: fixed, tones, or both?** Suggestion: both, Theme row on request (option 1C).
-2. **Drawn by the SDK in the module, or by the page?** Suggestion: by the SDK (2A).
-3. **Recent colours: browser, server or none?** Suggestion: browser, per person (3A).
-4. **Spelling of the helpers.** The API already says `color` (the manifest's `color`, the setting type `color`, `host.ui.colorPicker`), the words a person reads say "colour". Suggestion: `host.util.colorName`, not `colourName`; and whether it is wanted at all (suggestion: yes, it is what a screen reader says for a custom hex).
-5. **May a module store a tone through the picker into a text field**, or should a module with `tones: true` take the value only from `onChange`? Suggestion: only from `onChange`; the hidden input stays a colour input.
-6. **The Whiteboard's board background:** a hex too, or tones only? Suggestion: tones only for now; an exact background colour fights the grid's dots in one mode or the other.
-7. **The admin theme editor's native colour inputs:** upgrade them to the picker? Suggestion: no; it is a different job (one exact value, with the contrast panel beside it).
+Nothing blocks the build. Whether `CLAUDE.md`'s rule on theme tokens gains a clause about a person's own colour is Thomas's to decide when he wants.
