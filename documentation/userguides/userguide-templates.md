@@ -26,7 +26,7 @@ The Travel template sets an environment up for planning trips together:
   bar shows which one a trip is in and how far along it is, and the Itinerary and the Calendar tint the days; see
   "The status strip" and "Phases" in [Spaces](userguide-spaces.md), and [Planner](userguide-planner.md).
 - A new trip is set to open the Itinerary and the chat, not the call, the first time someone enters it. The call is
-  never joined by entering. The owner can change this on the trip's **First visit** tab in **Set up**.
+  never joined by entering. The owner can change this on the trip's **First visit** section on the **Settings** tab of **Set up**.
 
 More bundled templates may come later, and the host admin can make their own (below).
 

@@ -871,7 +871,7 @@ participants or characters`, or a sentence naming a bad `opensWith` entry). A ke
 or `[]` removes it, and with neither left `spaceDefaults` is cleared. The phases reach modules through the module
 context (`store.templatePhases`; [api-modules](../api/api-modules.md), `GET /api/modules/:id/context`). `GET /api/modules` adds `templateDisplayName` and `templateDisplayIcon`.
 **The verbs** (addendum 4, "the word for entering a space"). Beside the ten words, `server/words.js` keeps a small
-set of verbs: the actions a person reads at the start of a button. There are two: `enter`, default "Enter", on a space's main button and the guest form; and `layout`, default "Layout", on the space bar's Layout button (plan-layout-menu, decision 1). A verb is
+set of verbs: the actions a person reads at the start of a button. There are two: `enter`, default "Enter", on a space's main button and the guest form; and `layout`, default "Layout", once on the top bar's Layout button (plan-layout-menu, decision 1); that button is gone, so no control reads it now. A verb is
 one string, with no plural or article, never lower-cased; it is not a level or role, so it stays out of `words` and
 the Names. It resolves as the owner's (`settings.verbs.enter`), else the template's (`store.templateVerbs`, set by
 `useLive()`), else the default (`resolveVerbs()`). `branding()` carries `verbs`, resolved (`{ enter: "Enter", layout: "Layout" }`);

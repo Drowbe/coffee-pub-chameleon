@@ -103,8 +103,8 @@ also have **Add space** there, the dashed card at the end of the spaces, which m
 Press **Enter** on a space. You are in the space, not yet on the call:
 
 - The **top bar** names the space, with an arrow to switch to another. Next to it are the layout tabs (**Workspace**,
-  **Calendar**, **Map**, and any layouts you favorite), who is here, then **Layout**, the bell, your picture, **Set up**,
-  **Full screen** and **Pop out**.
+  **Calendar**, **Map**, and any layouts you favorite), who is here, then the bell, your picture, **Manage** (the gear; owners and the admin), **Set up**
+  (its first tab, **Modules**, shows and hides modules), **Full screen** and **Pop out**.
 - Under the bar, a thin **status strip** shows the phase the space is in, if the environment has phases.
 - Down the left, the **column** holds the chat and, once you join, the call. Press **Start call**, at the right end
   of the **Discussion | Assistant** row, when you are ready (it reads **Join call** when a call is already running);

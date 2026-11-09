@@ -30,7 +30,7 @@ A module's command opens the same form as its own add button, filled in from wha
 
 What to know:
 
-- **The module must be open.** If it isn't, the text stays in the box and a line under it says so, for example "To-do isn't open". Switch it on from **Layout** in the top bar and press Enter again.
+- **The module must be open.** If it isn't, the text stays in the box and a line under it says so, for example "To-do isn't open". Switch it on from **Set up**, on the **Modules** tab, and press Enter again.
 - **An unknown command** stays in the box with "No command /x". Nothing is sent to the space. Text that starts with `/` is never sent as a message.
 - **Two modules with the same command** are both listed, each with its module's name. If both are open, the line under the box asks you to choose from the list.
 
@@ -136,7 +136,7 @@ Chat keeps the space's last 500 public messages and each person's last 200 priva
 
 ## Colours
 
-Each module has a colour, and it shows in three places: on the messages its command made, on the module's icon in its titlebar, and on its line in the **Layout** menu. The AI is gold, Research blue, the To-do green, the Calendar red, the Planner teal, Polls purple, Places orange and Maps pink. Plain messages have none.
+Each module has a colour, and it shows in three places: on the messages its command made, on the module's icon in its titlebar, and on its line on Set up's **Modules** tab. The AI is gold, Research blue, the To-do green, the Calendar red, the Planner teal, Polls purple, Places orange and Maps pink. Plain messages have none.
 
 ## Bring in research from another AI
 

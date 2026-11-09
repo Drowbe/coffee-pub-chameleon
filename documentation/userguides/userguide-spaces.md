@@ -32,9 +32,10 @@ The bar at the top of every page takes you around the environment. What is in it
   does: everyone goes back to that space's call. A long name is cut short with "…"; hover over it for the whole name.
 - **The layout tabs**: **Workspace**, **Calendar**, **Map** and your favorite layouts (see "Layout tabs" below).
 - **Who is here**: the people in the space (see [The call](userguide-call.md), "Who is here").
-- On the right, **Layout** (an icon button beside the bell, opening the menu that shows and hides modules and arranges
-  them; see [The call](userguide-call.md), "The Layout menu"), the bell, your picture, then, for owners, the admin and
-  the space's moderators, **Set up** (see "Set up" below), and last **Full screen** and **Pop out**.
+- On the right, the bell, your picture, then, for owners and the admin, **Manage** (a gear button), then **Set up**
+  (see "Set up" below) and last **Full screen** and **Pop out**. **Set up** is there for every member of the space,
+  not only those who may change it: its first tab, **Modules**, shows and hides modules and arranges them (see
+  [The call](userguide-call.md), "The Modules tab").
 
 When the window is too narrow for everything, Who is here shrinks first (the names become a count, then the pictures
 go); then the layout tabs go into a **…** after them, one at a time from the right; then the tools on the right fold
@@ -57,7 +58,7 @@ Every view of a space is a layout, and each layout is a tab. They sit right afte
 - After them, each saved layout you have made a favorite, in the order you favorited them. There is no limit.
 
 Press a tab to show it. The call and the chat stay where they are, in the column beside the work area (see
-[The call](userguide-call.md)), whichever tab is shown. In the **Layout** menu, under **Layouts**, the **⋮** on a row
+[The call](userguide-call.md)), whichever tab is shown. On Set up's **Modules** tab, under **Layouts**, the **⋮** on a row
 offers **Favorite** or **Unfavorite** (Calendar and Map can be taken off the tabs; the Workspace always stays),
 **Rename** and **Change icon**. Your names, icons and favorites are yours alone, kept for each space. A guest has no
 tabs, and neither has an aside.
@@ -65,9 +66,9 @@ tabs, and neither has an aside.
 ### The profile menu
 
 Click your picture at the right of the top bar. The menu has **View profile**, **Dark mode**, **Global Calendar** and
-**Global Map** (when an owner has turned them on; see below), **Manage** (owners and the admin), **Host console** (a
+**Global Map** (when an owner has turned them on; see below), **Host console** (a
 host admin signed in to an environment on a hosted server), **Install as an app** (while the browser offers it) and
-**Sign out**.
+**Sign out**. Manage is not in this menu: owners and the admin have it as the gear button in the top bar, next to **Set up**. In the narrow layout the top bar has no such button, and **Manage** is in this menu again.
 
 **Global Calendar** and **Global Map** are the environment's own pages: the Calendar and the To-do, or the map and
 Places, gathered across your spaces. They are separate from a space's own Calendar and Map tabs. An owner turns each
@@ -295,16 +296,21 @@ step-aside or private word is not remembered.
 ## Set up
 
 Set up is where a space is named, pictured and arranged. It is one panel on the space's own screen, with tabs and one
-**Save**.
+**Save**. The panel is 460 pixels wide, with a stronger shadow so that it reads as floating above the page.
 
-**Who can:** owners and the admin see every tab. A space's moderators see **Phases**, **First visit** and, for the
-modules, only each module's settings. A member has no **Set up**.
+**Who can:** owners and the admin see every tab. A space's moderators see **Modules**, **Phases** and **Settings**
+(the First visit section and the module settings only). A member or a guest sees the **Modules** tab alone, which has
+nothing to save: the panel is then titled **Modules** and has **Close**. In the narrow layout there is no **Modules**
+tab (the modules are tabs along the bottom).
 
 To open it:
 
-1. In the space, press **Set up** in the top bar (it shows pressed while the panel is open). Home's **Add space**
+1. In the space, press **Set up** in the top bar (it shows pressed while the panel is open). Its tooltip and the
+   panel's title read "<space> Configuration", with the environment's word for a space (**Trip Configuration**); in an
+   aside they use the aside's word. The button opens on **Modules**. Home's **Add space**
    opens it for the space it makes. Manage's **Edit** button on a space (with your environment's word for it, such as **Edit trip**) does the same.
 2. The space's name in the top bar becomes a box you can type in. The panel opens at the side (the whole screen in the narrow layout) with the tabs along its head.
+   When the tabs do not all fit, the last ones go into a **...** button (**More tabs**) at the end of the row.
 3. Change what you need, on any tabs. A small dot on a tab means it has changes not yet saved.
 4. Choose **Save** in the bar locked to the foot of the panel. It sends everything at once and closes the panel, with
    a line saying what was saved. **Cancel** drops every change. Escape does the same, and asks "Discard your changes?"
@@ -313,14 +319,19 @@ To open it:
 If the server refuses something, the panel stays open on the tab it belongs to with the server's sentence, and says
 what did save. Change it and press **Save** again.
 
-The tabs, with your environment's words for them:
+The tabs, in this order, with your environment's words for them:
 
+- **Modules** (named for the environment's word for modules): a switch for each module on in the space, **Arrange** and
+  **Layouts**, as described in [The call](userguide-call.md), "The Modules tab". The switches act at once; they are
+  not part of **Save**. For owners and the admin, a line at the foot says "Modules are turned on for the whole
+  <environment> in Manage."
 - **Space** (named for the environment's word, such as **Trip**): the space's **Picture** (square; anything else is
   cropped to the middle), **Name**, **Description**, **Faces in the call** (what each person's tile shows while their
   camera is off: their own pictures, or their character pictures; see
   [Participant and Character images](userguide-images.md)), **Launch link** and its **Link icon**, **In the published
   calendar** (shown only while an owner has the published calendar on; see "The published calendar (owner)" in
-  [Calendar](userguide-calendar.md)), and **Delete** at the foot.
+  [Calendar](userguide-calendar.md)), and last the section **Delete this <space>** (with the
+  environment's word).
 - **Members** (named for the environment's word for members, such as **Planners**): who belongs to the space,
   **Allow guests**, then **Generate invite link** and the guest link (**Turn on**, **Copy**, **New link**, **Turn
   off**). Members and **Allow guests** are saved with **Save**. The links work at once and are not part of it.
@@ -329,29 +340,33 @@ The tabs, with your environment's words for them:
   shows. Only owners and the admin can change it. It is saved with **Save**.
 - **Phases**: each phase's **Start** and **End** in rows, as in the phase sheet, then the **Budget** field. Saved with
   **Save**. Left out when the environment has no phases; then the **Budget** field is on the tab named for the space
-  (an owner's), or on **First visit** (a moderator's).
+  (an owner's), or on **Settings** (a moderator's).
 - **Budget** (a field, not a tab): the space's budget, an amount and a currency, shown while a module that uses it (such
   as Budget) is on in the space, or when one is already set. Leave the amount empty and choose a currency to give the
   space a currency with no target; empty both to clear it. Owners, the admin and the space's moderators can set it
   (see [Budget](userguide-budget.md)).
-- **First visit**: what someone sees the first time they enter. Choose the **Workspace**, with its **Opens with**
-  switches (the chat, and each module on in the space), or **Calendar**, **Map** or a shared saved layout. Owners and the
-  admin choose which; a moderator can change the **Opens with** switches. A switch that cannot open now stays in the
-  list with a note saying why ("(not installed)", "(turned off)", "(can't open on the canvas)"), so turning it back
-  on restores it. **Stop using it** returns to the Workspace. After a first visit each person's own arrangement is
-  remembered.
-- **Modules** (named for the environment's word): the modules that are on here, **Turn AI off in this space** and
-  **What AI may see** (while the server has an AI service; owners only: tick **Same as the environment's choice** off to
-  set what goes to the AI for this space alone, as described in [Modules](userguide-modules.md), "The AI service"; **Let AI look things up** can be turned off for one space, but not on when the environment has it off), and a section for each module with its settings for this space. Every module that
-  is turned on is in every space; an owner turns one on or off on the **Modules** tab of Manage (see
-  [Modules](userguide-modules.md)). A moderator sees the module settings only. A file a module holds is deleted at once,
-  not on **Save**.
+- **Settings**: three kinds of section.
+  - **First visit**: what someone sees the first time they enter. Choose the **Workspace**, with its **Opens with**
+    switches (the chat, and each module on in the space), or **Calendar**, **Map** or a shared saved layout. Owners and the
+    admin choose which; a moderator can change the **Opens with** switches. A switch that cannot open now stays in the
+    list with a note saying why ("(not installed)", "(turned off)", "(can't open on the canvas)"), so turning it back
+    on restores it. **Stop using it** returns to the Workspace. After a first visit each person's own arrangement is
+    remembered.
+  - **AI** (while the server has an AI service; owners and the admin): **Turn AI off in this space** and **What AI may see**
+    (tick **Same as the environment's choice** off to set what goes to the AI for this space alone, as described in
+    [Modules](userguide-modules.md), "The AI service"; **Let AI look things up** can be turned off for one space, but not
+    on when the environment has it off). The switches under **What AI may see** sit at the right, with their words at
+    the left.
+  - A section for each module with its settings for this space. Every module that is turned on is in every space; an
+    owner turns one on or off on the **Modules** tab of Manage (see [Modules](userguide-modules.md)). A moderator sees the
+    module settings only. A file a module holds is deleted at once, not on **Save**. There is no longer a read-only
+    list of modules on this tab: the switches are on the **Modules** tab.
 
-**Delete** (on the **Space** tab) asks first, inside the panel: "Delete <name>? Its members stay in the Lobby." Choose
+**Delete** (the last section of the **Space** tab) asks first, inside the panel: "Delete <name>? Its members stay in the Lobby." Choose
 **Delete** or **Keep**. It does not wait for **Save**. Afterwards you are on Home. The Lobby, Home's backing, has no
 Delete, no member list and no calendar switch.
 
-Older settings addresses still work: `/spaces/<id>` (with `#space`, `#members` or `#modules`) and
+Older settings addresses still work: `/spaces/<id>` (with `#space`, `#members` or `#modules`; `#modules` opens **Settings**, and `#show` opens **Modules**) and
 `/module-settings?space=<id>` take you to Set up on the same tab. The separate settings pages are gone.
 
 ## Step aside

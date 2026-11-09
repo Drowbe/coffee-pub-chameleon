@@ -2,7 +2,7 @@
 
 **Audience:** an owner setting up the AI on a Coffee Pub Chameleon server, and anyone asking it questions or bringing in research from another AI.
 
-The AI is asked from Chat now, in its **Assistant** tab or with `/ai`; see [Chat](userguide-chat.md), "Ask the AI". The Assistant tab shows only your own commands and answers. The Assistant module has no window of its own and is not in the Layout menu. A new install leaves it out, even when its template lists it. Where it is installed, it keeps its **Use the assistant** permission, which decides who may use `/ai` and bring in research, and the AI hook; **Ask the assistant** asks in Chat. Research brought in from another AI comes in through Chat too.
+The AI is asked from Chat now, in its **Assistant** tab or with `/ai`; see [Chat](userguide-chat.md), "Ask the AI". The Assistant tab shows only your own commands and answers. The Assistant module has no window of its own and is not on Set up's **Modules** tab. A new install leaves it out, even when its template lists it. Where it is installed, it keeps its **Use the assistant** permission, which decides who may use `/ai` and bring in research, and the AI hook; **Ask the assistant** asks in Chat. Research brought in from another AI comes in through Chat too.
 
 ## Set it up (owner)
 
