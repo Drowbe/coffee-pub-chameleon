@@ -1,17 +1,20 @@
   // ---- whiteboard-lib-e-block-timer.js: a countdown --------------------------------------------------------------------
-  // { ...block, w, h, length, state, startedAt, remaining, fill, stroke, ink }: a clock face that counts down from length
-  // (whole seconds). state: 'idle' (not started; remaining is length), 'running' (startedAt is the server's time it counts
-  // from, in ms: it ends at startedAt + length * 1000; remaining is what was left when it was started), or 'paused'
-  // (remaining is what was left). Every page works out what is left from startedAt and its own guess of the server's
-  // clock (the page's now(), lib-c), so nothing is written while it runs: Start, Pause, Reset and a new length are one
-  // write each. A copy is never running: it is the same length, not started (copied). A corner changes its size.
+  // The board's one timer is a clock over the board (not on it): { ...block, length, state, startedAt, remaining, view }, where
+  // length is in whole seconds, state is 'idle' (not started; remaining is length), 'running' (startedAt is the server's
+  // time it counts from, in ms: it ends at startedAt + length * 1000; remaining is what was left when it was started) or
+  // 'paused' (remaining is what was left), and view is 'radial' (a ring with the time inside) or 'horizontal' (large digits
+  // like an alarm clock). The block is only the shared state: it is saved and heard like any block, but it is `floating`
+  // (lib-a, lib-d): never drawn on the board, never picked, copied, arranged, found, overviewed or saved as a picture. If a
+  // board has several (an old one), the oldest is the timer (wbTimerPick) and the others are left alone. Every page works
+  // out what is left from startedAt and its own guess of the server's clock (the page's now(), lib-c), so nothing is written
+  // while it runs: Start, Pause, Reset, a new length and the view are one write each.
   //
-  // The face shows the time left (m:ss, or h:mm:ss over an hour) and a ring that empties; at zero it says "Time is up" and
-  // pulses gently (still, for someone who asks for less motion). The controls (Start or Pause, Reset, the length) are on
-  // the block, only for someone who may change it. What they do, the sounds and the words read out are the page's, through
-  // the hooks it sets: now() -> the server's time (ms), controls(block) -> whether to draw the controls, icon(name) -> a
-  // promise of an icon's SVG, act(id, what, button) ('start', 'pause', 'reset', 'length'), say(text) (read out once) and
-  // done(block) (it reached zero while this page watched). The sums are the plain functions below, tested on their own.
+  // The clock is each person's own: where it sits (dragged, or moved with the arrow keys) and whether it is shown are kept in
+  // this browser (position(), hidden()); the time and state are shared. Its size does not change with the board's zoom or
+  // pan. Clicking the time asks for a length (the page's menu: act(id, 'length', button)). At zero it pulses gently (still,
+  // for someone who asks for less motion), says "Time is up" and the page sounds it. What the buttons do, the sounds and
+  // the words read out are the page's, through the hooks it sets (listed at the end). The sums are the plain functions
+  // below, tested on their own.
   const WB_TIMER_LENGTHS = [60, 120, 300, 600, 900, 1800]; // the length menu's choices, in seconds
   const WB_TIMER_MAX = 86400 - 1; // the longest timer: a second short of a day
   const WB_TIMER_LATE = 10000; // ms: a timer that ended longer ago than this when the page saw it is not sounded
@@ -56,77 +59,280 @@
     const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const r = seconds % 60;
     return [h ? `${h} h` : '', m ? `${m} min` : '', r ? `${r} s` : ''].filter(Boolean).join(' ') || '0 s';
   }
+  // The oldest timer block is THE timer (the others are not drawn): the lowest z (it is never moved, so it keeps its place in
+  // the order the blocks were made), then the earliest save, then the id. Null for none.
+  function wbTimerPick(blocks) {
+    let best = null;
+    for (const b of blocks) {
+      if (!b || b.type !== 'timer') continue;
+      if (!best || b.z < best.z || (b.z === best.z && ((b.at || '') < (best.at || '') || ((b.at || '') === (best.at || '') && b.id < best.id)))) best = b;
+    }
+    return best;
+  }
+  // The font size (px) that puts `text` ("59:59", "23:59:59") inside a ring `ring` px wide without touching it: a digit is about
+  // 0.62 em wide, a colon 0.32, the line 0.8 em tall, and the text's corners stay inside the circle that is left within the
+  // ring's stroke (0.37 of the ring's width).
+  function wbTimerFit(ring, text) {
+    const k = [...String(text)].reduce((w, c) => w + (c === ':' ? 0.32 : 0.62), 0) || 1;
+    const reach = ring * 0.37;
+    return Math.max(10, Math.min(ring * 0.3, Math.floor(reach / Math.sqrt((k * k) / 4 + 0.16))));
+  }
+  // Where the clock goes: `pos` ({ x, y } or null: bottom left, a gap above the bottom) moved inside `area` ({ w, h }) for a
+  // clock `size` ({ w, h }). A clock bigger than the area sits at the top left.
+  function wbTimerPlace(pos, size, area, gap = 8) {
+    const maxX = Math.max(0, area.w - size.w);
+    const maxY = Math.max(0, area.h - size.h);
+    const ok = pos && Number.isFinite(pos.x) && Number.isFinite(pos.y);
+    const x = ok ? pos.x : gap;
+    const y = ok ? pos.y : area.h - size.h - gap;
+    return { x: Math.round(Math.max(0, Math.min(maxX, x))), y: Math.round(Math.max(0, Math.min(maxY, y))) };
+  }
   {
-    const ticking = new Set(); // the elements of the running timers drawn on this page
-    let ticker = 0;
-    const sounded = new Set(); // `${id}:${startedAt}`: the ends this page has sounded
     let def = null;
     const now = () => (def.now ? def.now() : Date.now());
+    const blocks = new Map(); // the timer blocks on this page (all of them: the oldest is the timer)
+    const sounded = new Set(); // `${id}:${startedAt}`: the ends this page has sounded
+    let clock = null; // the clock's parts, once made
+    let shown = null; // the timer block as the clock last drew it
+    let ticker = 0;
+    const GAP = 8;
+    const the = () => wbTimerPick([...blocks.values()]);
 
-    // One timer's face, as it is at `t`: the time, the ring, the words for a screen reader, and the end.
-    function show(el, b, t) {
-      const left = wbTimerLeft(b, t);
-      const up = b.state === 'running' && left <= 0;
-      const text = up ? 'Time is up' : wbTimerText(left);
-      const face = el.querySelector('.wb-timer-face');
-      const time = el.querySelector('.wb-timer-time');
-      if (time.textContent !== text) time.textContent = text;
-      el.querySelector('.wb-timer-arc').setAttribute('stroke-dasharray', `${b.length ? wbRound1((left / b.length) * 100) : 0} 100`);
-      const label = up ? 'Timer: time is up' : `Timer: ${wbTimerWords(left)} left${b.state === 'paused' ? ', paused' : b.state === 'idle' ? ', not started' : ''}`;
-      if (face.getAttribute('aria-label') !== label) face.setAttribute('aria-label', label);
-      if (up) el.dataset.done = 'true'; else delete el.dataset.done;
-      // The end, seen happen here: sounded and said once, not for a timer that ended long before the page saw it.
-      const ends = b.state === 'running' ? b.startedAt + b.length * 1000 : Infinity;
-      const key = `${b.id}:${b.startedAt}`;
-      if (up && el.wbLeft > 0 && t - ends < WB_TIMER_LATE && !sounded.has(key)) {
-        sounded.add(key);
-        if (def.done) def.done(b);
-      }
-      el.wbLeft = left;
-      return up;
-    }
-    function tick() {
-      const t = now();
-      for (const el of [...ticking]) {
-        if (!el.isConnected || !el.wbTimer || el.wbTimer.state !== 'running') { ticking.delete(el); continue; }
-        // At the end: drawn once more whole, so the controls offer Start again.
-        if (show(el, el.wbTimer, t)) { ticking.delete(el); def.render(el.wbTimer, el); }
-      }
-    }
-    // Four times a second while a timer runs here; it stops itself once none does (the page closed: its elements gone).
-    function startTicking() {
-      if (ticker) return;
-      const t = setInterval(() => { if (!ticking.size) { clearInterval(t); ticker = 0; return; } tick(); }, 250);
-      ticker = t;
-    }
-    const button = (cls, what, icon, label) => {
+    const button = (cls, what, label) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `wb-ctl ${cls}`;
+      btn.className = `sdk-icon-btn btn-quiet btn-small wb-timer-btn ${cls}`;
       btn.dataset.act = what;
       btn.setAttribute('aria-label', label);
-      btn.title = label;
-      if (icon) {
-        const ic = document.createElement('span');
-        ic.className = 'ic wb-ctl-icon';
-        ic.setAttribute('aria-hidden', 'true');
-        btn.append(ic);
-      }
+      btn.dataset.tip = label;
+      const ic = document.createElement('span');
+      ic.className = 'ic';
+      ic.setAttribute('aria-hidden', 'true');
+      btn.append(ic);
       return btn;
     };
     const setIcon = (btn, name) => {
-      const ic = btn.querySelector('.wb-ctl-icon');
+      const ic = btn.querySelector('.ic');
       if (!ic || ic.dataset.icon === name) return;
       ic.dataset.icon = name;
       ic.replaceChildren();
       if (def.icon) Promise.resolve(def.icon(name)).then((svg) => { if (ic.dataset.icon === name && svg) ic.innerHTML = svg; }, () => {});
     };
+    const setLabel = (btn, label) => { btn.setAttribute('aria-label', label); btn.dataset.tip = label; };
+    const store = (k) => (def.store ? def.store(k) : null);
+    const area = () => ({ w: def.layer.clientWidth, h: def.layer.clientHeight });
+
+    function make() {
+      const el = document.createElement('div');
+      el.className = 'wb-timer';
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', 'Timer');
+      el.tabIndex = 0;
+      el.hidden = true;
+      const face = document.createElement('div');
+      face.className = 'wb-timer-face';
+      face.setAttribute('role', 'timer');
+      face.setAttribute('aria-live', 'off');
+      const ring = wb.svg('svg', { class: 'wb-timer-ring', viewBox: '0 0 100 100', 'aria-hidden': 'true' });
+      ring.append(
+        wb.svg('circle', { class: 'wb-timer-track', cx: 50, cy: 50, r: 44, pathLength: 100 }),
+        wb.svg('circle', { class: 'wb-timer-arc', cx: 50, cy: 50, r: 44, pathLength: 100, transform: 'rotate(-90 50 50)' }),
+      );
+      const time = document.createElement('button');
+      time.type = 'button';
+      time.className = 'wb-timer-time';
+      time.dataset.act = 'length';
+      time.setAttribute('aria-haspopup', 'menu');
+      const bar = document.createElement('div');
+      bar.className = 'wb-timer-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      bar.append(document.createElement('i'));
+      face.append(ring, time, bar);
+      const ctl = document.createElement('div');
+      ctl.className = 'wb-timer-ctl';
+      const reset = button('wb-timer-reset', 'reset', 'Reset');
+      const go = button('wb-timer-go', 'start', 'Start');
+      const view = button('wb-timer-view', 'view', 'Horizontal view');
+      ctl.append(reset, go, view);
+      const close = button('wb-timer-close', 'hide', 'Hide the timer');
+      el.append(face, ctl, close);
+      def.layer.append(el);
+      clock = { el, face, time, arc: ring.querySelector('.wb-timer-arc'), bar: bar.firstChild, ctl, reset, go, view, close };
+      setIcon(reset, 'rotate-left');
+      setIcon(close, 'xmark');
+      wire(el);
+      if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (!el.hidden) place(); }).observe(def.layer);
+    }
+
+    // Clicks on the clock's buttons and the time.
+    function wire(el) {
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-act]');
+        if (!btn || !shown) return;
+        if (btn.dataset.act === 'hide') { if (def.hide) def.hide(); return; }
+        if (btn.classList.contains('wb-timer-static')) return;
+        if (def.act) def.act(shown.id, btn.dataset.act, btn);
+      });
+      // Moved by dragging anywhere that is not a button, or with the arrow keys while the clock has the keyboard.
+      let drag = null;
+      el.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (e.target.closest('button')) return;
+        const r = el.getBoundingClientRect();
+        drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, from: { x: el.offsetLeft, y: el.offsetTop }, moved: false };
+        try { el.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+        el.classList.add('wb-timer-dragging');
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const box = def.layer.getBoundingClientRect();
+        drag.moved = true;
+        put(wbTimerPlace({ x: e.clientX - box.left - drag.dx, y: e.clientY - box.top - drag.dy }, size(), area()));
+      });
+      const end = (e, cancel) => {
+        if (!drag || (e && e.pointerId !== drag.id)) return;
+        const d = drag;
+        drag = null;
+        el.classList.remove('wb-timer-dragging');
+        try { el.releasePointerCapture(d.id); } catch { /* already free */ }
+        if (cancel) put(d.from);
+        else if (d.moved) save({ x: el.offsetLeft, y: el.offsetTop });
+      };
+      el.addEventListener('pointerup', (e) => end(e, false));
+      el.addEventListener('pointercancel', (e) => end(e, true));
+      el.addEventListener('keydown', (e) => {
+        e.stopPropagation(); // the board's keys are not the clock's
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (drag) end(null, true); else if (def.leave) def.leave();
+          return;
+        }
+        if (e.target !== el) return;
+        const step = e.shiftKey ? 32 : 8;
+        const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        const p = wbTimerPlace({ x: el.offsetLeft + d[0], y: el.offsetTop + d[1] }, size(), area());
+        put(p);
+        save(p);
+      });
+      for (const type of ['keyup', 'click', 'dblclick', 'wheel', 'copy', 'cut', 'paste']) el.addEventListener(type, (e) => e.stopPropagation());
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('contextmenu', (e) => { e.stopPropagation(); e.preventDefault(); if (def.menu) def.menu(e); });
+    }
+    const size = () => ({ w: clock.el.offsetWidth, h: clock.el.offsetHeight });
+    const put = (p) => { clock.el.style.left = `${p.x}px`; clock.el.style.top = `${p.y}px`; };
+    function save(p) { const s = store('pos'); if (s) s.set(p); }
+    // Inside the board: where this person left it, else bottom left. Also puts a saved place that no longer fits back in.
+    function place() {
+      const s = store('pos');
+      put(wbTimerPlace(s ? s.get() : null, size(), area(), GAP));
+    }
+
+    // The clock as it is at `t`: the time, the ring or bar, the words for a screen reader, and the end.
+    function paint(b, t) {
+      const left = wbTimerLeft(b, t);
+      const up = b.state === 'running' && left <= 0;
+      const text = wbTimerText(left);
+      const { el, time } = clock;
+      if (time.textContent !== text) time.textContent = text;
+      const radial = b.view !== 'horizontal';
+      if (radial) {
+        const ring = clock.face.offsetWidth || 104;
+        const f = `${wbTimerFit(ring, text)}px`;
+        if (time.style.fontSize !== f) time.style.fontSize = f;
+      } else if (time.style.fontSize) time.style.fontSize = '';
+      const frac = b.length ? Math.max(0, Math.min(1, left / b.length)) : 0;
+      clock.arc.setAttribute('stroke-dasharray', `${wbRound1(frac * 100)} 100`);
+      clock.bar.style.width = `${wbRound1(frac * 100)}%`;
+      const label = up ? 'Timer: time is up' : `Timer: ${wbTimerWords(left)} left${b.state === 'paused' ? ', paused' : b.state === 'idle' ? ', not started' : ''}`;
+      if (clock.face.getAttribute('aria-label') !== label) clock.face.setAttribute('aria-label', label);
+      if (up) el.dataset.done = 'true'; else delete el.dataset.done;
+      return { left, up };
+    }
+    // The end seen happen here: sounded and said once, not for a timer that ended long before the page saw it.
+    function ending(b, t, left) {
+      const up = b.state === 'running' && left <= 0;
+      const ends = b.state === 'running' ? b.startedAt + b.length * 1000 : Infinity;
+      const key = `${b.id}:${b.startedAt}`;
+      if (up && ending.was > 0 && t - ends < WB_TIMER_LATE && !sounded.has(key)) {
+        sounded.add(key);
+        if (def.done) def.done(b);
+      }
+      ending.was = left;
+    }
+    ending.was = 0;
+
+    function tick() {
+      const b = the();
+      if (!b || b.state !== 'running') { stop(); return; }
+      const t = now();
+      const left = clock && !clock.el.hidden ? paint(b, t).left : wbTimerLeft(b, t);
+      ending(b, t, left);
+      if (left <= 0) { stop(); if (clock && !clock.el.hidden) refresh(); }
+    }
+    function stop() { if (ticker) { clearInterval(ticker); ticker = 0; } }
+    // Four times a second while it runs here; it stops itself at the end or when the timer goes.
+    function go() {
+      if (ticker) return;
+      const t = setInterval(() => {
+        if (!def.layer || !def.layer.isConnected) { clearInterval(t); ticker = 0; return; } // the page is gone
+        tick();
+      }, 250);
+      ticker = t;
+    }
+
+    // Draw the clock from the timer block now (or hide it).
+    function refresh() {
+      const b = the();
+      if (!def.layer) return;
+      if (!b) { shown = null; stop(); if (clock) clock.el.hidden = true; if (def.changed) def.changed(); return; }
+      const was = shown;
+      shown = b;
+      const t = now();
+      const left = wbTimerLeft(b, t);
+      if (!was || was.id !== b.id || was.state !== 'running' || b.state !== 'running' || was.startedAt !== b.startedAt) ending.was = left;
+      const visible = !(def.hidden && def.hidden());
+      if (!visible && clock) clock.el.hidden = true;
+      if (visible) {
+        if (!clock) make();
+        const { el } = clock;
+        const wasHidden = el.hidden;
+        el.hidden = false;
+        el.dataset.view = b.view === 'horizontal' ? 'horizontal' : 'radial';
+        el.dataset.state = b.state;
+        const may = Boolean(def.controls && def.controls(b));
+        clock.ctl.hidden = !may;
+        clock.close.hidden = !(def.canHide && def.canHide());
+        clock.time.classList.toggle('wb-timer-static', !may);
+        clock.time.tabIndex = may ? 0 : -1;
+        setLabel(clock.time, may ? 'Set the time' : `Timer: ${wbTimerWords(left)} left`);
+        const running = b.state === 'running' && left > 0;
+        clock.go.dataset.act = running ? 'pause' : 'start';
+        setLabel(clock.go, running ? 'Pause' : 'Start');
+        setIcon(clock.go, running ? 'pause' : 'play');
+        const horizontal = b.view === 'horizontal';
+        clock.view.dataset.act = 'view';
+        setLabel(clock.view, horizontal ? 'Radial view' : 'Horizontal view');
+        setIcon(clock.view, horizontal ? 'circle-notch' : 'ruler-horizontal');
+        paint(b, t);
+        if (wasHidden || !was || was.view !== b.view) place();
+      }
+      // Started, paused, reset or set again (here or by someone else): said once; the seconds themselves are not.
+      if (was && def.say && (was.state !== b.state || was.startedAt !== b.startedAt || was.length !== b.length)) {
+        if (b.state === 'running' && left > 0) def.say(`Timer started: ${wbTimerWords(left)} left.`);
+        else if (b.state === 'paused') def.say(`Timer paused: ${wbTimerWords(left)} left.`);
+        else if (b.state === 'idle') def.say(`Timer set to ${wbTimerWords(b.length)}.`);
+      }
+      if (b.state === 'running' && left > 0) go(); else stop();
+      if (def.changed) def.changed();
+    }
 
     def = blockTypes.register({
       type: 'timer',
       label: 'Timer',
-      paint: { fill: {}, stroke: { label: 'Ring' }, ink: { label: 'Time' } },
-      create: () => ({ w: 200, h: 160, length: 300, state: 'idle', startedAt: 0, remaining: 300, fill: 'teal', stroke: 'teal', ink: 'ink' }),
+      floating: true,
+      create: () => ({ w: 200, h: 160, length: 300, state: 'idle', startedAt: 0, remaining: 300, view: 'radial' }),
       clean(raw) {
         const length = Number.isInteger(raw.length) && raw.length >= 1 && raw.length <= WB_TIMER_MAX ? raw.length : 300;
         let state = ['idle', 'running', 'paused'].includes(raw.state) ? raw.state : 'idle';
@@ -134,110 +340,48 @@
         if (state === 'running' && !startedAt) state = 'idle';
         const r = typeof raw.remaining === 'number' && Number.isFinite(raw.remaining) ? wbRound1(Math.max(0, Math.min(length, raw.remaining))) : length;
         return {
-          w: wb.size(raw.w, 160, 200),
+          w: wb.size(raw.w, 160, 200), // no longer used: kept so an old timer still loads
           h: wb.size(raw.h, 120, 160),
           length,
           state,
           startedAt: state === 'running' ? startedAt : 0,
           remaining: state === 'idle' ? length : r,
+          view: raw.view === 'horizontal' ? 'horizontal' : 'radial',
         };
       },
       box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
-      resize: { handles: 'corners', min: { w: 160, h: 120 } },
-      linked: [['x', 'y', 'w', 'h'], ['length', 'state', 'startedAt', 'remaining']], // its box; where its count stands
-      // A copy (copy and paste, duplicate) is the same length, not started.
-      copied: (b) => wbTimerReset(b),
-      // Hooks the page sets (see the top of this file).
+      linked: [['length', 'state', 'startedAt', 'remaining']], // where its count stands
+      // The renderer hands the timer blocks here instead of drawing them (lib-d).
+      float(b) { blocks.set(b.id, b); refresh(); },
+      floatGone(id) { blocks.delete(id); refresh(); },
+      // The clock shows or hides, or sits somewhere else (the page changed a setting): drawn again.
+      redraw: () => refresh(),
+      // The timer block now, for the page's toolbar and menus.
+      current: () => the(),
+      // The clock's own parts, for the page and the checks.
+      clock: () => (clock ? clock.el : null),
+      // Hooks the page sets: layer (the element the clock is put in), now() -> the server's time (ms), controls(block) ->
+      // whether to draw the controls and the time as a button, canHide() -> whether the clock has a close button,
+      // hidden() -> whether this person has hidden the clock, store('pos') -> { get, set } for where the clock is kept,
+      // hide() (the close button), leave() (Escape: the keyboard goes back to the board), menu(event) (a right press),
+      // icon(name) -> a promise of an icon's SVG, act(id, what, button) ('start', 'pause', 'reset', 'length', 'view'),
+      // say(text) (read out once), done(block) (it reached zero while this page watched) and changed() (the clock was drawn
+      // or taken away: the toolbar's button shows whether it is on).
+      layer: null,
       now: null,
       controls: null,
+      canHide: null,
+      hidden: null,
+      store: null,
+      hide: null,
+      leave: null,
+      menu: null,
       icon: null,
       act: null,
       say: null,
       done: null,
-      render(b, el) {
-        let face = el.querySelector('.wb-timer-face');
-        if (!face) {
-          face = document.createElement('div');
-          face.className = 'wb-timer-face';
-          face.setAttribute('role', 'timer');
-          face.setAttribute('aria-live', 'off');
-          const ring = wb.svg('svg', { class: 'wb-timer-ring', viewBox: '0 0 100 100', 'aria-hidden': 'true' });
-          ring.append(
-            wb.svg('circle', { class: 'wb-timer-track', cx: 50, cy: 50, r: 44, pathLength: 100 }),
-            wb.svg('circle', { class: 'wb-timer-arc', cx: 50, cy: 50, r: 44, pathLength: 100, transform: 'rotate(-90 50 50)' }),
-          );
-          const time = document.createElement('div');
-          time.className = 'wb-timer-time';
-          time.setAttribute('aria-hidden', 'true');
-          const len = document.createElement('div');
-          len.className = 'wb-timer-length';
-          len.setAttribute('aria-hidden', 'true');
-          face.append(ring, time, len);
-          el.replaceChildren(face);
-        }
-        const was = el.wbTimer;
-        el.wbTimer = b;
-        el.dataset.state = b.state;
-        el.querySelector('.wb-timer-length').textContent = wbTimerShort(b.length);
-        // The controls, for someone who may change it.
-        const may = Boolean(def.controls && def.controls(b));
-        let row = el.querySelector('.wb-timer-ctl');
-        if (may && !row) {
-          row = document.createElement('div');
-          row.className = 'wb-timer-ctl';
-          const lengthBtn = button('btn btn-quiet btn-small wb-timer-len', 'length', false, 'Length');
-          lengthBtn.setAttribute('aria-haspopup', 'menu');
-          row.append(
-            button('sdk-icon-btn btn-quiet btn-small', 'start', true, 'Start'),
-            button('sdk-icon-btn btn-quiet btn-small', 'reset', true, 'Reset'),
-            lengthBtn,
-          );
-          row.addEventListener('click', (e) => {
-            const btn = e.target.closest('.wb-ctl');
-            if (btn && def.act) def.act(el.dataset.id, btn.dataset.act, btn);
-          });
-          el.append(row);
-        }
-        if (!may && row) { row.remove(); row = null; }
-        const t = now();
-        const left = wbTimerLeft(b, t);
-        if (row) {
-          const go = row.querySelector('[data-act="start"], [data-act="pause"]');
-          const running = b.state === 'running' && left > 0;
-          const word = running ? 'Pause' : b.state === 'paused' ? 'Go on' : b.state === 'running' ? 'Start again' : 'Start';
-          go.dataset.act = running ? 'pause' : 'start';
-          go.setAttribute('aria-label', word);
-          go.title = word;
-          setIcon(go, running ? 'pause' : 'play');
-          setIcon(row.querySelector('[data-act="reset"]'), 'rotate-left');
-          const lb = row.querySelector('.wb-timer-len');
-          lb.textContent = wbTimerShort(b.length);
-          lb.setAttribute('aria-label', `Length: ${wbTimerWords(b.length)}. Change it`);
-          lb.title = 'Length';
-        }
-        el.wbLeft = was && was.id === b.id && was.state === 'running' && b.state === 'running' && was.startedAt === b.startedAt ? el.wbLeft : left;
-        show(el, b, t);
-        // Started, paused, reset or set again (here or by someone else): said once; the seconds themselves are not.
-        if (was && def.say && (was.state !== b.state || was.startedAt !== b.startedAt || was.length !== b.length)) {
-          if (b.state === 'running' && left > 0) def.say(`Timer started: ${wbTimerWords(left)} left.`);
-          else if (b.state === 'paused') def.say(`Timer paused: ${wbTimerWords(left)} left.`);
-          else if (b.state === 'idle') def.say(`Timer set to ${wbTimerWords(b.length)}.`);
-        }
-        if (b.state === 'running' && left > 0) {
-          ticking.add(el);
-          startTicking();
-        } else ticking.delete(el);
-      },
-      // Saved as a picture or printed (lib-l): its face as it is now, without the controls (the length then shows under
-      // the time, as it does for someone with no controls).
-      exported(b, el) {
-        const row = el.querySelector('.wb-timer-ctl');
-        if (row) row.remove();
-      },
-      describe: (b) => {
-        const left = wbTimerLeft(b, now());
-        if (b.state === 'running' && left <= 0) return 'Timer: time is up';
-        return `Timer, ${wbTimerShort(b.length)}${b.state === 'running' ? ', running' : b.state === 'paused' ? `, paused with ${wbTimerWords(left)} left` : ''}`;
-      },
+      changed: null,
+      render() {},
+      describe: (b) => `Timer, ${wbTimerShort(b.length)}`,
     });
   }

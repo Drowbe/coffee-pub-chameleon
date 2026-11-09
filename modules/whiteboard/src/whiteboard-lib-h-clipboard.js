@@ -9,8 +9,8 @@
   // -> the fields that change, where idMap is a Map of every copied block's old id to its copy's id. What is copied is the
   // page's to choose (whiteboard.js): the connectors between the blocks copied go along, and a connector copied without a
   // block it is attached to has that end made a free point first (its type's loosen), so no copy points at a block that
-  // is not in the copy. A block type may also say what a copy of it does not keep, copied(block) -> the fields to change (a
-  // timer's copy is not started).
+  // is not in the copy. A block type may also say what a copy of it does not keep, copied(block) -> the fields to change. A block of a
+  // floating type (the timer: one to a board) is left out of the copies.
   const WB_PASTE_STEP = 24; // board units each paste moves along, so copies never hide one another
 
   // Copies of `blocks` (plain blocks, any order) with new ids from newId(), moved by dx, dy, pointers among them remapped,
@@ -18,7 +18,8 @@
   // a group's blocks are a new group of their own (each group copied gets one new id from newGroup()), and a block copied
   // without any other of its group is in no group.
   function wbCopies(blocks, { newId, dx = 0, dy = 0, newGroup = () => wbGroupId() }) {
-    const list = blocks.slice().sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
+    // A block of a floating type (the timer: one to a board) is not copied.
+    const list = blocks.filter((b) => { const d = blockTypes.get(b.type); return !(d && d.floating); }).sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
     const idMap = new Map(list.map((b) => [b.id, newId()]));
     const groupMap = new Map([...wbGroupsOf(list).keys()].map((g) => [g, newGroup()]));
     return list.map((b) => {
@@ -27,7 +28,7 @@
       if (groupMap.has(wbGroupOf(b))) copy.group = groupMap.get(wbGroupOf(b)); else delete copy.group;
       const def = blockTypes.get(b.type);
       if (def && def.remap && (!def.refs || def.refs(b).length)) Object.assign(copy, def.remap(copy, idMap));
-      if (def && def.copied) Object.assign(copy, def.copied(copy)); // a running timer's copy is not running
+      if (def && def.copied) Object.assign(copy, def.copied(copy));
       return copy;
     });
   }

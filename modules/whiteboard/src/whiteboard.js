@@ -104,9 +104,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: a countdown. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select many: drag round blocks or tap each. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears and goes back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; every tool shows its own strip, with text size, alignment, line style and colours for what it makes or what is picked. Tools stay on until you press Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier; Enter, Shift Enter, Escape). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears and goes back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select many: click or drag round blocks. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; every tool shows its own strip, with text size, alignment, line style and colours for what it makes or what is picked. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer, drag its tip. Table (G; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste spreadsheet rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else lined up with near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1717,18 +1717,74 @@
   ];
 
   // ---- timers -------------------------------------------------------------------------------------------------------------
-  // What a timer's controls do (lib-e-block-timer.js): Start, Pause and Reset are one write and one undo step each, and
-  // anyone who may change the board may use them on any timer. The length menu sets a new length (the timer stops and
-  // waits at it), Custom asks for minutes and seconds, and Mute keeps this person's timers quiet in this browser. A
+  // The board's one timer is a clock over the board (lib-e-block-timer.js), on every page. What its buttons do: Start, Pause,
+  // Reset and the view are one write and one undo step each, and anyone who may change the board may use them. Clicking
+  // the time opens the length menu, which sets a new length (the timer stops and waits at it); Custom asks for minutes and
+  // seconds, and Mute keeps this person's timer quiet in this browser. Where the clock sits and whether it is shown are this
+  // person's own, kept in this browser. The toolbar's Timer, the Y key and the + add the timer (one only) or show or hide
+  // the clock; "Remove timer" in its right-click menu takes it away for everyone. A
   // timer reaching zero while the page watches is said once and, unless muted, plays one short soft tone (only once the
   // person has pressed or typed on the page: browsers play no sound before that; where it cannot play it is skipped).
   const timerDef = blockTypes.get('timer');
   const MUTE_KEY = 'whiteboard-timer-mute';
   let muted = false;
   try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* no storage: not muted */ }
+  timerDef.layer = surface;
   timerDef.now = () => sync.now();
   // A locked timer still runs: its controls are using it, not changing it (lib-b, canLock).
   timerDef.controls = (b) => policy.canLock(b);
+  const TIMER_POS = 'whiteboard-timer-pos';
+  const TIMER_HIDE = `whiteboard-timer-hidden:${WB_BOARD}`;
+  let timerHidden = false;
+  try { timerHidden = localStorage.getItem(TIMER_HIDE) === '1'; } catch { /* no storage: shown */ }
+  timerDef.hidden = () => timerHidden;
+  timerDef.canHide = () => policy.canEdit; // the toolbar's Timer brings it back, for those who have it
+  timerDef.store = () => ({
+    get() { try { const p = JSON.parse(localStorage.getItem(TIMER_POS)); return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null; } catch { return null; } },
+    set(p) { try { localStorage.setItem(TIMER_POS, JSON.stringify({ x: p.x, y: p.y })); } catch { /* not kept */ } },
+  });
+  function showTimer(on) {
+    timerHidden = !on;
+    try { if (on) localStorage.removeItem(TIMER_HIDE); else localStorage.setItem(TIMER_HIDE, '1'); } catch { /* not kept */ }
+    // Shown again: a place that no longer fits is put back inside (the clock does it as it shows).
+    timerDef.redraw();
+    timerButton.set({ on });
+  }
+  timerDef.hide = () => { showTimer(false); surface.focus({ preventScroll: true }); };
+  timerDef.leave = () => surface.focus({ preventScroll: true });
+  // The Timer (toolbar, Y): no timer yet makes one (one undo step) and shows the card; one shown is hidden for this person
+  // only; one hidden is shown. The + only adds or shows.
+  function toggleTimer(only) {
+    if (!policy.canEdit) return;
+    if (!timerDef.current()) {
+      const b = ctx.draft('timer', { x: 0, y: 0 });
+      ctx.save(b.id);
+      showTimer(true);
+      return;
+    }
+    showTimer(only ? true : timerHidden);
+    if (!timerHidden && timerDef.clock()) timerDef.clock().focus({ preventScroll: true });
+  }
+  const timerButton = policy.canEdit
+    ? host.ui.toolbarButton({ id: 'tool-timer', label: withKey('Timer', 'Y'), icon: 'stopwatch', iconOnly: true, on: false, onClick: () => toggleTimer(false) })
+    : { set() {} };
+  timerButton.set({ on: Boolean(timerDef.current()) && !timerHidden });
+  timerDef.changed = () => timerButton.set({ on: Boolean(timerDef.current()) && !timerHidden });
+  timerDef.menu = (e) => {
+    if (!policy.canEdit || !timerDef.current()) return;
+    const box = host.rootElement.getBoundingClientRect();
+    host.menu.show({ id: 'timer-card', at: { x: e.clientX - box.left, y: e.clientY - box.top }, items: [{ id: 'remove', label: 'Remove timer', icon: 'trash-can', onClick: () => removeTimer() }] });
+  };
+  async function removeTimer() {
+    const b = timerDef.current();
+    if (!b || !policy.canEdit) return;
+    let yes = false;
+    try { yes = await host.ui.confirm({ title: 'Remove timer', message: 'This will remove the timer for everyone. Are you sure?', action: 'Remove timer', cancel: 'Cancel' }); } catch { return; }
+    if (!yes) return;
+    // Every timer block goes (an old board may have several), so none is left to take its place.
+    for (const t of board.ofType('timer')) remove(t.id, { force: true });
+    surface.focus({ preventScroll: true });
+  }
   const useTimer = (id, fields) => {
     const b = board.get(id);
     const next = b && b.type === 'timer' && policy.canLock(b) ? wbClean({ ...b, ...fields }) : null;
@@ -1744,6 +1800,7 @@
     if (what === 'start') useTimer(id, wbTimerStart(b, now));
     else if (what === 'pause') useTimer(id, wbTimerPause(b, now));
     else if (what === 'reset') useTimer(id, wbTimerReset(b));
+    else if (what === 'view') useTimer(id, { view: b.view === 'horizontal' ? 'radial' : 'horizontal' });
     else if (what === 'length') timerMenu(id, button);
   };
   // Words read out once (started, paused, time is up), never the seconds ticking.
@@ -1924,6 +1981,7 @@
       if (id === 'paste') { paste(); return; }
       if (id === 'picture') { if (pictures) $('picker').click(); return; }
       if (id === 'connect') { connectPicked(); return; }
+      if (id === 'timer') { toggleTimer(true); return; }
       const def = blockTypes.get(id);
       if (!def || def.attached) return;
       const c = renderer.center();
@@ -1942,7 +2000,7 @@
     if (statusFrame) return;
     statusFrame = requestAnimationFrame(() => {
       statusFrame = 0;
-      const n = board.size - drafts.size;
+      const n = Math.max(0, board.size - [...drafts].filter((id) => board.has(id) && blockTypes.get(board.get(id).type) && !blockTypes.get(board.get(id).type).floating).length);
       const items = [{ text: n === 1 ? '1 block' : `${n} blocks`, icon: 'shapes' }];
       if (sel.size > 1) {
         // What is picked is one group: said so (a group looks like any blocks picked together).
@@ -2798,6 +2856,7 @@
     if (k === '+' || k === '=') { renderer.zoomBy(1.25); updateStatus(); return; }
     if (k === '-') { renderer.zoomBy(0.8); updateStatus(); return; }
     if (k === '0') { renderer.fit(); updateStatus(); return; }
+    if (k.toLowerCase() === 'y' && !mod && !e.altKey && policy.canEdit) { e.preventDefault(); toggleTimer(false); return; }
     const t = allowed.find((x) => x.key === k.toLowerCase());
     if (t) { e.preventDefault(); if (goesBack(t)) toggleTool(t); else setTool(t.id); }
   });
