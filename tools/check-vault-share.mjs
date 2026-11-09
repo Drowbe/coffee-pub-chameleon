@@ -555,6 +555,7 @@ try {
       same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { name: 'Sight patch 2' })).status, 200, 'and a rename');
       const resent = await json('PATCH', shares(trip.id, both.json.share.id), people.ola.token, { name: 'Sight both, renamed', files: [seeA.id, seeB.id] });
       same([resent.status, resent.json.share.name], [200, 'Sight both, renamed'], 'an owner re-sends the unchanged list with a new name while the maker has lost sight of one file: 200 (the share sheet always sends the list)');
+      same((await json('PATCH', shares(trip.id, both.json.share.id), people.ola.token, { name: 'Sight both' })).status, 200, 'and its name goes back, so the cases below see the link as made');
       same((await json('PATCH', shares(trip.id, mine.json.share.id), people.ola.token, { files: [seeB.id, seeA.id] })).json, HIDDEN_FROM_MAKER, 'adding that file to another link of the same maker is still refused');
       same((await json('PATCH', shares(trip.id, ownerBoth.json.share.id), people.ola.token, { files: [seeA.id, seeB.id] })).status, 200, 'an owner-made link is unaffected: its maker sees every file');
       await send(S, 'DELETE', shares(trip.id, mine.json.share.id), { cookie: admin });
