@@ -451,7 +451,20 @@
   transform: translateX(-50%);
   pointer-events: none;
 }
-.wb-present button { pointer-events: auto; }
+.wb-present button, .wb-present-dim { pointer-events: auto; }
+.wb-present-dim { display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-1); color: var(--text-muted); }
+.wb-present-dim input { width: 7rem; min-width: 3rem; flex: 1 1 auto; margin: 0; accent-color: var(--accent); }
+.app.narrow .wb-present-dim input { width: 4.5rem; }
+/* the spotlight while presenting: in the world, so it follows zoom and glide. Its box is the frame shown (with its tab);
+   the shadow darkens all the rest of the board (blocks, grid and ground) and the box is left clear. Over the blocks, under
+   the selection, guides and other people's pointers. */
+.wb-scrim {
+  position: absolute;
+  z-index: 2147482990;
+  pointer-events: none;
+  box-shadow: 0 0 0 100000px color-mix(in srgb, var(--wb-fixed-dark-black) calc(var(--wb-dim, 0) * 1%), transparent);
+}
+.wb-scrim[hidden] { display: none; }
 .wb-present .ic { display: block; width: 1em; height: 1em; }
 .wb-present .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .wb-present-count { padding: 0 var(--space-2); color: var(--text-primary); font-size: var(--text-14); white-space: nowrap; font-variant-numeric: tabular-nums; }

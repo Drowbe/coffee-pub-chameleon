@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames in turn: arrows, spacebar; Escape stops). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -2442,9 +2442,34 @@
     presentBar();
     if (!b) return;
     const q = defOf(b).reach(b);
+    scrimTo({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h });
     showView(wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max }));
     say(wbPresentWords(presenting, b.title));
   }
+  // The spotlight: the dim and where it is clear (the frame shown, with its tab), in the world.
+  const dimStore = () => window.localStorage;
+  let presentDim = wbDimLoad(dimStore);
+  const scrim = $('scrim');
+  const dimInput = $('present-dim');
+  function dimShow() {
+    dimInput.value = String(presentDim);
+    dimInput.title = `Dim the rest of the board: ${presentDim}%`;
+    dimInput.setAttribute('aria-valuetext', `${presentDim}%`);
+    scrim.style.setProperty('--wb-dim', String(wbDimStrength(presentDim)));
+    scrim.dataset.dim = String(presentDim);
+  }
+  function scrimTo(r) {
+    Object.assign(scrim.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+    scrim.hidden = false;
+    dimShow();
+  }
+  dimShow();
+  iconSvg('circle-half-stroke').then((svg) => { if (svg) $('present-dim-icon').innerHTML = svg; }, () => {});
+  dimInput.addEventListener('input', () => {
+    presentDim = wbDimValue(dimInput.value);
+    wbDimSave(dimStore, presentDim);
+    dimShow();
+  });
   function startPresenting(at = null) {
     if (presenting) { if (at) presentTo(at); return; }
     const state = wbPresentStart(live(), renderer.view, at);
@@ -2479,6 +2504,7 @@
     presenting = null;
     $('app').classList.remove('wb-presenting');
     $('present').hidden = true;
+    scrim.hidden = true;
     showView(back);
     surface.focus({ preventScroll: true });
     say('Stopped presenting.');
@@ -2498,6 +2524,7 @@
     const onButton = Boolean(e.target.closest && e.target.closest('.wb-present button'));
     const k = e.key;
     if (k === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest && e.target.closest('.wb-present-dim') && k !== 'Escape') return; // the slider keeps its own keys
     if (onButton && (k === 'Enter' || k === ' ')) return;
     e.preventDefault();
     if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') presentGo('next');
