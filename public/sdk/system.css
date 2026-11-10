@@ -4733,6 +4733,10 @@ html[data-dialog-open] { overflow: hidden; }
 /* toasts:start */
 :root {
   --toast-w: 32rem;
+  /* Set on the stack by brand.js to sit at the top centre of the canvas; these are where it sits with no canvas showing. */
+  --toast-x: 50%;
+  --toast-top: calc(var(--topbar-h, 44px) + var(--space-3));
+  --toast-cw: 90vw;
   --toast-gap: var(--space-2);
   --toast-ms: var(--motion-base);
 }
