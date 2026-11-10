@@ -1786,7 +1786,14 @@
     if (e.key === 'Escape') { e.preventDefault(); closeGrid(); }
   });
   for (const type of ['pointerdown', 'click', 'dblclick', 'contextmenu', 'wheel', 'copy', 'cut', 'paste', 'keyup']) gridPop.addEventListener(type, (e) => e.stopPropagation());
-  document.addEventListener('pointerdown', (e) => { if (!gridPop.hidden && !gridPop.contains(e.target) && !(e.target.closest && e.target.closest('[data-key="btn:grid"]'))) closeGrid(); }, true); // the Grid button toggles it itself
+  // The module runs inside the page's shadow root, so a press there is seen at the document as aimed at the root's host: the
+  // press is placed by its path (composedPath), not by e.target. The Grid button toggles the panel itself.
+  document.addEventListener('pointerdown', (e) => {
+    if (gridPop.hidden) return;
+    const path = e.composedPath();
+    if (path.includes(gridPop) || path.some((n) => n.dataset && n.dataset.key === 'btn:grid')) return;
+    closeGrid();
+  }, true);
   // The right zone's buttons are made in this order: Overview, Grid, Snap. The host draws the last one at the far right, so Snap
   // stays there whatever comes and goes on the left (Delete, Arrange); a view-only person has no Snap, so Grid is last. Overview
   // and Grid are for everyone who can see the board (they only change the view); Snap is for editors.
