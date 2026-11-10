@@ -490,18 +490,29 @@
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
   }
-  // The toolbar's buttons for what is picked, always in this order: Delete (something picked may be
-  // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
-  // goes. (Snap to grid is in the right zone, so it stays at the far right.)
+  // The toolbar's buttons that come and go, always in this order after the Timer: Present (the board has a frame; anyone who
+  // can see the board), Delete (something picked may be deleted), Arrange (two or more picked, for someone who may change
+  // the board). The host draws buttons in the order they were made, so all are made again in order when one comes or goes.
+  // (Snap to grid is in the right zone, so it stays at the far right.)
   let arrangeButton = null;
+  let presentTool = null;
   function toolbarTail() {
+    const wantPresent = [...board.all()].some((b) => wbIsFrame(b));
     const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
     const wantArrange = policy.canEdit && sel.size > 1;
-    if (Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
-    if (arrangeButton) { arrangeButton.destroy(); arrangeButton = null; }
-    if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
-    if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
+    if (presentTool) presentTool.set({ on: Boolean(presenting) });
+    if (Boolean(presentTool) === wantPresent && Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
+    for (const b of [arrangeButton, deleteButton, presentTool]) if (b) b.destroy();
+    arrangeButton = deleteButton = presentTool = null;
+    if (wantPresent) presentTool = host.ui.toolbarButton({ id: 'present-tool', label: 'Present', icon: 'person-chalkboard', on: Boolean(presenting), onClick: () => presentToggle() });
+    if (wantDelete) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
+  }
+  // The Present button: start (or follow a presentation to everyone, when one runs and this person is not in it), or leave.
+  function presentToggle() {
+    if (presenting) stopPresenting();
+    else if (sharedFresh() && shared.rec.presenter !== me) startFollow(shared.rec);
+    else startPresenting();
   }
   // Auto-connect: the last flowchart shape this person placed with the Flowchart tool (cleared when another tool is chosen),
   // and whether a new one is joined to it when they are in a row (wbAutoConnect). The choice is this browser's.
@@ -2196,6 +2207,7 @@
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
+      toolbarTail();
       updateHint();
       updatePaint();
       overviewRefresh();

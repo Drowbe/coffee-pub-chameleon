@@ -36,6 +36,9 @@ check(!/id: 'many'/.test(switchText), 'Select many is not in the tool switch (it
 check(/'Select one at a time'/.test(main) && /'Select many'/.test(main) && /'Select all'/.test(main) && /'Clear selection'/.test(main), 'the Select strip has Single, Many, Select all, Clear selection');
 check(!/id: 'paint'|id: 'flowchart', label: 'Flowchart', icon: 'diagram-project', order/.test(main), 'no Paint or Flowchart menu button is left in the toolbar');
 
+check(/id: 'present-tool', label: 'Present', icon: 'person-chalkboard'/.test(main) && /const wantPresent = \[\.\.\.board\.all\(\)\]\.some\(\(b\) => wbIsFrame\(b\)\)/.test(main), 'a Present button is in the toolbar while the board has a frame');
+check(/for \(const b of \[arrangeButton, deleteButton, presentTool\]\) if \(b\) b\.destroy\(\)/.test(main) && main.indexOf('presentTool = host.ui.toolbarButton') < main.indexOf('deleteButton = host.ui.toolbarButton') && main.indexOf('deleteButton = host.ui.toolbarButton') < main.indexOf('arrangeButton = host.ui.toolbarButton'), 'Present, Delete, Arrange are made again in that order');
+
 const families = {};
 for (const m of main.matchAll(/\{ id: '([a-z]+)', kinds: \[([^\]]*)\] \}/g)) families[m[1]] = [...m[2].matchAll(/'([a-z]+)'/g)].map((k) => k[1]);
 check(families.pen && families.pen.join() === 'pen,marker,brush,highlight', 'Pen has pen, marker, brush, highlighter');
