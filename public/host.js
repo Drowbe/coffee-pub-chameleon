@@ -843,6 +843,41 @@ PAGE.addEventListener('click', async (e) => {
   b.disabled = false;
 });
 
+// Demo space: one request that can take a while; the report is written with textContent, the passwords shown once.
+$('env-demo-add').addEventListener('click', async () => {
+  const b = $('env-demo-add');
+  const box = $('env-demo-report');
+  box.hidden = true;
+  box.replaceChildren();
+  b.disabled = true;
+  b.setAttribute('aria-busy', 'true');
+  say($('env-demo-status'), 'Adding the demo space. This can take a minute.');
+  try {
+    const r = await api('POST', `/api/host/environments/${encodeURIComponent(page.slug)}/demo`);
+    const line = (text) => { const p = document.createElement('p'); p.textContent = text; box.append(p); };
+    if (r.demo === false) { say($('env-demo-status'), r.message || 'There is no demo for this template.', true); return; }
+    say($('env-demo-status'), r.fellBack ? `Added the demo space. This template has no demo of its own, so the travel demo was used.` : 'Added the demo space.');
+    line(`Space: ${r.space ? r.space.name : ''}`);
+    const made = Object.entries(r.created || {}).map(([id, n]) => `${id} ${n}`).join(', ');
+    line(`Made: ${made || 'nothing'}.`);
+    for (const s of r.skipped || []) line(`Skipped ${s.module}: ${s.why}`);
+    for (const s of r.refused || []) line(`Refused ${s.module}${s.key ? ` (${s.key})` : ''}: ${s.why}`);
+    if ((r.people || []).length) {
+      line('People made. These passwords are shown once; copy them now.');
+      const ul = document.createElement('ul');
+      for (const p of r.people) { const li = document.createElement('li'); li.textContent = `${p.displayName} (${p.login}): ${p.password}`; ul.append(li); }
+      box.append(ul);
+    }
+    if (r.guestUrl) line(`Guest link: ${r.guestUrl}`);
+    box.hidden = false;
+  } catch (err) {
+    say($('env-demo-status'), err.message, true);
+  } finally {
+    b.disabled = false;
+    b.removeAttribute('aria-busy');
+  }
+});
+
 // Backups: a download, and a restore from a zip, asked first since it replaces all its data.
 $('env-backup').addEventListener('click', () => backupEnvironment(page.slug, $('env-backup'), $('env-status')));
 $('env-restore-file').addEventListener('change', () => { $('env-restore').disabled = !$('env-restore-file').files.length; });
