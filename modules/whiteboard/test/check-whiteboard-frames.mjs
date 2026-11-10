@@ -33,7 +33,7 @@ const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/
 const NAMES = ['wbClean', 'blockTypes', 'tools', 'wbAttachable', 'wbMoved', 'wbCopies', 'wbDeleteSet', 'createPolicy', 'createHistory',
   'wbApplyChanges', 'wbUndoNote', 'wbArrangeChanges', 'wbExportPick', 'wbExportExtent', 'wbExportSize',
   'WB_FRAME', 'wbFrameTitle', 'wbIsFrame', 'wbFrameContents', 'wbFrameFollow', 'wbFrameMoveChanges', 'wbFrameInRect', 'wbFrameHit',
-  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect', 'WB_MOVE', 'wbMoveValue', 'wbMoveLoad', 'wbMoveSave', 'wbLerpRect', 'wbLerpWindow', 'wbScrimPath'];
+  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect', 'WB_MOVE', 'wbMoveValue', 'wbMoveLoad', 'wbMoveChoice', 'wbMoveEffective', 'wbMoveSave', 'wbLerpRect', 'wbLerpWindow', 'wbScrimPath'];
 
 let passed = 0;
 const fails = [];
@@ -415,6 +415,22 @@ await test('present dim: 0 to 100 in fives, 60 at first, bad values and broken s
   assert.equal(L.wbDimStrength(0), 0, 'no dim, no scrim');
   assert.equal(L.wbDimStrength(100), 1, 'full dim is completely black');
   assert.equal(L.wbDimStrength(60), 0.6, 'linear');
+});
+
+await test('present move: a stored choice wins over reduced motion; no choice is Pan, or Immediate with less motion; a follower with less motion jumps', () => {
+  const mem = (v) => () => ({ getItem: () => v });
+  assert.deepEqual(L.wbMoveChoice(mem(null)), { mode: 'pan', explicit: false });
+  assert.deepEqual(L.wbMoveChoice(mem('bad')), { mode: 'pan', explicit: false });
+  assert.deepEqual(L.wbMoveChoice(mem('fade')), { mode: 'fade', explicit: true });
+  assert.deepEqual(L.wbMoveChoice(() => { throw new Error('x'); }), { mode: 'pan', explicit: false });
+  const E = L.wbMoveEffective;
+  assert.equal(E(null, false, false), 'pan');
+  assert.equal(E(null, true, false), 'immediate', 'default gives way to less motion');
+  for (const m of ['immediate', 'fade', 'pan']) { assert.equal(E(m, false, false), m); assert.equal(E(m, true, false), m, `${m} chosen still happens with less motion`); }
+  assert.equal(E('bogus', true, false), 'immediate');
+  assert.equal(E('fade', false, true, 'pan'), 'pan', 'a follower takes the presenter\'s');
+  assert.equal(E('fade', true, true, 'pan'), 'immediate', 'a follower with less motion jumps, whatever they chose');
+  assert.equal(E(null, false, true, 'junk'), 'pan');
 });
 
 await test('present move: immediate, fade or pan; pan at first; bad values and broken storage give pan, never throws', () => {
