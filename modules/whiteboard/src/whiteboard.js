@@ -2401,13 +2401,13 @@
   const reduceMotion = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let glide = 0;
   // Move the view to `to` ({ x, y, s }): the middle of the screen and the zoom glide together (the zoom evenly).
-  function showView(to, onStep) {
+  function showView(to, onStep, instant = false) {
     cancelAnimationFrame(glide);
     glide = 0;
     const from = { x: renderer.view.x, y: renderer.view.y, s: renderer.view.s };
     const W = surface.clientWidth / 2;
     const H = surface.clientHeight / 2;
-    if (reduceMotion() || !(from.s > 0)) { renderer.setView(to); if (onStep) onStep(1); updateStatus(); return; }
+    if (instant || reduceMotion() || !(from.s > 0)) { renderer.setView(to); if (onStep) onStep(1); updateStatus(); return; }
     const mid = (v) => ({ x: (W - v.x) / v.s, y: (H - v.y) / v.s }); // the board point in the middle of the screen
     const a = mid(from);
     const b = mid(to);
@@ -2460,7 +2460,7 @@
       return wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max });
     };
     const win = scrimWindow(b);
-    const jump = () => { scrimDraw(win); showView(fit()); };
+    const jump = () => { scrimDraw(win); showView(fit(), null, true); };
     const how = reduceMotion() ? 'immediate' : wbMoveValue(mode);
     if (how === 'pan') {
       const from = scrimNow;
