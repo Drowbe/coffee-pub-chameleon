@@ -27,12 +27,14 @@
   <div id="board" class="board" tabindex="0" role="application" aria-roledescription="whiteboard" aria-label="Whiteboard">
     <div id="world" class="world">
       <div id="frame" class="wb-frame" hidden></div>
+      <div id="scrim" class="wb-scrim" hidden></div>
     </div>
     <p id="hint" class="hint" hidden></p>
     <div id="drop" class="wb-drop" hidden><p class="wb-drop-title">Drop to add to the board</p><p id="drop-sub" class="wb-drop-sub"></p></div>
     <div id="present" class="wb-present" role="toolbar" aria-label="Presenting the frames" hidden>
       <button type="button" id="present-back" class="btn btn-quiet btn-small" aria-label="Back"><span class="ic" data-icon="chevron-left" aria-hidden="true"></span><span class="wb-present-label">Back</span></button>
       <span id="present-count" class="wb-present-count"></span>
+      <label class="wb-present-dim"><span id="present-dim-icon" class="ic" aria-hidden="true"></span><input id="present-dim" type="range" min="0" max="100" step="5" value="60" aria-label="Dim the rest of the board"></label>
       <button type="button" id="present-next" class="btn btn-quiet btn-small" aria-label="Next"><span class="wb-present-label">Next</span><span class="ic" data-icon="chevron-right" aria-hidden="true"></span></button>
       <button type="button" id="present-exit" class="btn btn-small" aria-label="Exit"><span class="ic" data-icon="xmark" aria-hidden="true"></span><span class="wb-present-label">Exit</span></button>
     </div>

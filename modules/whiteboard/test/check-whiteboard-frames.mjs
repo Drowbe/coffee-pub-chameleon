@@ -33,7 +33,7 @@ const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/
 const NAMES = ['wbClean', 'blockTypes', 'tools', 'wbAttachable', 'wbMoved', 'wbCopies', 'wbDeleteSet', 'createPolicy', 'createHistory',
   'wbApplyChanges', 'wbUndoNote', 'wbArrangeChanges', 'wbExportPick', 'wbExportExtent', 'wbExportSize',
   'WB_FRAME', 'wbFrameTitle', 'wbIsFrame', 'wbFrameContents', 'wbFrameFollow', 'wbFrameMoveChanges', 'wbFrameInRect', 'wbFrameHit',
-  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords'];
+  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength'];
 
 let passed = 0;
 const fails = [];
@@ -397,6 +397,23 @@ await test('undo: field by field, a block someone else moved since is left (and 
   q.theirs('F', { w: 600 });
   q.undo();
   assert.deepEqual([q.board.get('F').x, q.board.get('F').w], [50, 600], 'the box stays as they left it');
+});
+
+await test('present dim: 0 to 100 in fives, 60 at first, bad values and broken storage give 60, never throws', () => {
+  const mem = (v) => () => ({ getItem: () => v, setItem(k, x) { this.set = [k, x]; } });
+  assert.equal(L.wbDimLoad(mem(null)), 60, 'nothing saved');
+  assert.equal(L.wbDimLoad(mem('35')), 35);
+  assert.equal(L.wbDimLoad(mem('0')), 0, '0 is no dim');
+  for (const bad of ['abc', '-5', '101', '1e2', '', '5.5', 'NaN']) assert.equal(L.wbDimLoad(mem(bad)), 60, `bad ${bad}`);
+  assert.equal(L.wbDimLoad(() => { throw new Error('no storage'); }), 60, 'storage throws');
+  assert.equal(L.wbDimLoad(() => null), 60, 'no storage');
+  assert.equal(L.wbDimValue(62), 60, 'steps of five');
+  const m = mem(null)(); 
+  assert.equal(L.wbDimSave(() => m, 45), true);
+  assert.deepEqual(m.set, ['whiteboard-present-dim', '45']);
+  assert.equal(L.wbDimSave(() => { throw new Error('x'); }, 45), false, 'a failed save is said, not thrown');
+  assert.equal(L.wbDimStrength(0), 0, 'no dim, no scrim');
+  assert.equal(L.wbDimStrength(100), 85, 'full dim still lets shapes read');
 });
 
 if (fails.length) {
