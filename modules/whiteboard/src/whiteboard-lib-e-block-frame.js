@@ -197,6 +197,19 @@
   function wbMoveLoad(store) {
     try { const s = store(); return wbMoveValue(s ? s.getItem(WB_MOVE.key) : null); } catch { return WB_MOVE.def; }
   }
+  // Whether this person ever chose (a stored value): { mode, explicit }. A choice outranks the system's reduced motion; the
+  // default (never chosen) gives way to it.
+  function wbMoveChoice(store) {
+    try { const s = store(); const v = s ? s.getItem(WB_MOVE.key) : null; return WB_MOVE.all.includes(v) ? { mode: v, explicit: true } : { mode: WB_MOVE.def, explicit: false }; } catch { return { mode: WB_MOVE.def, explicit: false }; }
+  }
+  // The move that happens: stored (the saved choice or null), whether the system asks for less motion, whether this person
+  // follows a presenter, and the presenter's move. A follower takes the presenter's unless they ask for less motion. Else a
+  // choice stands (even with less motion on); no choice is Pan, or Immediate with less motion.
+  function wbMoveEffective(stored, reduced, follower, presenter) {
+    if (follower) return reduced ? 'immediate' : wbMoveValue(presenter);
+    if (WB_MOVE.all.includes(stored)) return stored;
+    return reduced ? 'immediate' : WB_MOVE.def;
+  }
   function wbMoveSave(store, v) {
     try { const s = store(); if (!s) return false; s.setItem(WB_MOVE.key, wbMoveValue(v)); return true; } catch { return false; }
   }

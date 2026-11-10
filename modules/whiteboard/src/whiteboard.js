@@ -490,18 +490,29 @@
     if (Boolean(pair()) !== addCanConnect) setAdd();
     updateStatus();
   }
-  // The toolbar's buttons for what is picked, always in this order: Delete (something picked may be
-  // deleted), Arrange (two or more picked, for someone who may change the board). Made again in order when one comes or
-  // goes. (Snap to grid is in the right zone, so it stays at the far right.)
+  // The toolbar's buttons that come and go, always in this order after the Timer: Present (the board has a frame; anyone who
+  // can see the board), Delete (something picked may be deleted), Arrange (two or more picked, for someone who may change
+  // the board). The host draws buttons in the order they were made, so all are made again in order when one comes or goes.
+  // (Snap to grid is in the right zone, so it stays at the far right.)
   let arrangeButton = null;
+  let presentTool = null;
   function toolbarTail() {
+    const wantPresent = [...board.all()].some((b) => wbIsFrame(b));
     const wantDelete = [...sel].some((id) => policy.canDelete(board.get(id)));
     const wantArrange = policy.canEdit && sel.size > 1;
-    if (Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
-    if (arrangeButton) { arrangeButton.destroy(); arrangeButton = null; }
-    if (deleteButton && !wantDelete) { deleteButton.destroy(); deleteButton = null; }
-    if (wantDelete && !deleteButton) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
+    if (presentTool) presentTool.set({ on: Boolean(presenting) });
+    if (Boolean(presentTool) === wantPresent && Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
+    for (const b of [arrangeButton, deleteButton, presentTool]) if (b) b.destroy();
+    arrangeButton = deleteButton = presentTool = null;
+    if (wantPresent) presentTool = host.ui.toolbarButton({ id: 'present-tool', label: 'Present', icon: 'person-chalkboard', on: Boolean(presenting), onClick: () => presentToggle() });
+    if (wantDelete) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
+  }
+  // The Present button: start (or follow a presentation to everyone, when one runs and this person is not in it), or leave.
+  function presentToggle() {
+    if (presenting) stopPresenting();
+    else if (sharedFresh() && shared.rec.presenter !== me) startFollow(shared.rec);
+    else startPresenting();
   }
   // Auto-connect: the last flowchart shape this person placed with the Flowchart tool (cleared when another tool is chosen),
   // and whether a new one is joined to it when they are in a row (wbAutoConnect). The choice is this browser's.
@@ -2196,6 +2207,7 @@
       if (!policy.canEdit) items.push({ text: 'View only', title: 'You can look and move around, not change the board' });
       items.push({ text: `${Math.round(renderer.view.s * 100)}%`, quiet: true, end: true, title: 'Zoom' });
       if (host.status) host.status.set(items).catch(() => {});
+      toolbarTail();
       updateHint();
       updatePaint();
       overviewRefresh();
@@ -2405,13 +2417,13 @@
   const reduceMotion = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let glide = 0;
   // Move the view to `to` ({ x, y, s }): the middle of the screen and the zoom glide together (the zoom evenly).
-  function showView(to, onStep, instant = false) {
+  function showView(to, onStep, instant = false, force = false) { // force: glide even when the system asks for less motion (a Pan the person chose)
     cancelAnimationFrame(glide);
     glide = 0;
     const from = { x: renderer.view.x, y: renderer.view.y, s: renderer.view.s };
     const W = surface.clientWidth / 2;
     const H = surface.clientHeight / 2;
-    if (instant || reduceMotion() || !(from.s > 0)) { renderer.setView(to); if (onStep) onStep(1); updateStatus(); return; }
+    if (instant || (!force && reduceMotion()) || !(from.s > 0)) { renderer.setView(to); if (onStep) onStep(1); updateStatus(); return; }
     const mid = (v) => ({ x: (W - v.x) / v.s, y: (H - v.y) / v.s }); // the board point in the middle of the screen
     const a = mid(from);
     const b = mid(to);
@@ -2436,7 +2448,7 @@
   const sharedFresh = () => Boolean(shared.rec) && !wbPresentStale(shared.seenAt, Date.now());
   const following = () => Boolean(presenting && presenting.follow);
   const effDim = () => (following() && shared.rec ? shared.rec.dim : presentDim);
-  const effMove = () => (following() && shared.rec ? shared.rec.move : presentMoveNow);
+  const effMove = () => (following() && shared.rec ? shared.rec.move : presentMoveNow); // the mode shown on the button
   const PRESENT_ICONS = [['present-back', 'chevron-left'], ['present-next', 'chevron-right'], ['present-exit', 'xmark']];
   for (const [id, name] of PRESENT_ICONS) {
     const ic = $(id).querySelector('.ic');
@@ -2461,10 +2473,13 @@
     if (sender.active && sender.record.frame !== b.id) sender.change({ frame: b.id });
   }
   // How Present moves between frames: the one place the choice is read (shared presenting can pass the presenter's instead)
-  // and the one place it is applied (goToFrame). With reduced motion every choice is Immediate; the choice itself is kept.
+  // and the one place it is applied (goToFrame). A saved choice (Fade, Pan or Immediate) is kept even when the system asks for
+  // less motion; with no choice the default Pan gives way to it; someone following jumps if they ask for less motion.
   const moveStore = () => window.localStorage;
-  let presentMoveNow = wbMoveLoad(moveStore);
-  const presentMove = () => effMove(); // the presenter's, while following
+  const moveChoice = wbMoveChoice(moveStore);
+  let presentMoveNow = moveChoice.mode;
+  let presentMoveChosen = moveChoice.explicit; // false until this person picks one
+  const presentMove = () => wbMoveEffective(presentMoveChosen ? presentMoveNow : null, reduceMotion(), following() && Boolean(shared.rec), shared.rec && shared.rec.move);
   const MOVES = { immediate: 'Immediate', fade: 'Fade', pan: 'Pan' };
   const world = $('world');
   let fading = null; // the board's fade in progress (a Web Animation), so a new move can end it
@@ -2476,11 +2491,12 @@
     };
     const win = scrimWindow(b);
     const jump = () => { scrimDraw(win); showView(fit(), null, true); };
-    const how = reduceMotion() ? 'immediate' : wbMoveValue(mode);
+    const how = wbMoveValue(mode); // already what presentMove() decided
+    const calm = reduceMotion();
     if (how === 'pan') {
       const from = scrimNow;
       scrimDraw(from || win); // the clear window starts where the last one was, then travels with the view
-      showView(fit(), from ? (e) => scrimDraw(wbLerpWindow(from, win, e)) : () => scrimDraw(win));
+      showView(fit(), from ? (e) => scrimDraw(wbLerpWindow(from, win, e)) : () => scrimDraw(win), false, true);
     } else if (how === 'fade' && world.animate && scrimNow) {
       const T = 150;
       const out = world.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T, fill: 'forwards' });
@@ -2535,11 +2551,14 @@
   iconSvg('film').then((svg) => { if (svg) $('present-move-icon').innerHTML = svg; }, () => {});
   function moveShow() {
     const calm = reduceMotion();
-    moveBtn.setAttribute('aria-label', `Transition: ${MOVES[effMove()]}`);
+    const shown = following() ? effMove() : presentMove();
+    moveBtn.setAttribute('aria-label', `Transition: ${MOVES[shown]}`);
     moveBtn.setAttribute('aria-disabled', String(following()));
-    moveBtn.dataset.tip = following() ? 'The presenter sets this' : calm ? 'How Present moves between frames (less motion is on: it jumps)' : 'How Present moves between frames';
+    moveBtn.dataset.tip = following() ? (calm ? 'The presenter sets this. Your system asks for less motion, so it jumps for you.' : 'The presenter sets this')
+      : calm ? (presentMoveChosen ? (presentMoveNow === 'immediate' ? 'How Present moves between frames' : `Your system asks for less motion: ${MOVES[presentMoveNow]} is your choice, so it still animates.`) : 'Your system asks for less motion, so Present jumps until you choose Fade or Pan.')
+      : 'How Present moves between frames';
     moveBtn.title = moveBtn.dataset.tip;
-    $('present-move-label').textContent = MOVES[effMove()];
+    $('present-move-label').textContent = MOVES[shown];
   }
   moveShow();
   moveBtn.addEventListener('click', () => {
@@ -2547,7 +2566,7 @@
     host.menu.show({
       id: 'present-move',
       anchor: moveBtn,
-      items: WB_MOVE.all.map((id) => ({ id, label: MOVES[id], current: id === presentMoveNow, onClick: () => { presentMoveNow = id; wbMoveSave(moveStore, id); moveShow(); if (sender.active) sender.change({ move: id }); surface.focus({ preventScroll: true }); } })),
+      items: WB_MOVE.all.map((id) => ({ id, label: MOVES[id], current: id === presentMove(), onClick: () => { presentMoveNow = id; presentMoveChosen = true; wbMoveSave(moveStore, id); moveShow(); if (sender.active) sender.change({ move: id }); surface.focus({ preventScroll: true }); } })),
     });
   });
   dimInput.addEventListener('input', () => {
@@ -2813,7 +2832,7 @@
     const cur = presenting && presenting.order[presenting.i];
     const value = {
       id: 'state', type: 'present', presenter: me, name: String((info.user && info.user.name) || 'Someone').slice(0, WB_PRESENT.nameMax),
-      frame: cur, move: from ? from.move : presentMoveNow, dim: from ? from.dim : presentDim, seq: old ? old.seq + 1 : 1,
+      frame: cur, move: from ? from.move : presentMove(), dim: from ? from.dim : presentDim, seq: old ? old.seq + 1 : 1,
       at: new Date(sync.now()).toISOString(), by: me,
     };
     try {
