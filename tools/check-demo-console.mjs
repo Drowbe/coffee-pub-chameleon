@@ -53,7 +53,7 @@ try {
   const login = await call('POST', 'admin', '/api/host/login', HOST);
   assert.equal(login.status, 200, login.text);
   const admin = { cookie: login.cookie };
-  for (const slug of ['alpha', 'beta']) {
+  for (const slug of ['alpha', 'beta', 'gamma']) {
     const made = await call('POST', 'admin', '/api/host/environments', { slug, name: slug, template: 'travel', owner: { login: `own${slug}`, displayName: slug, password: OWNER_PASSWORD } }, admin);
     assert.equal(made.status, 201, made.text);
   }
@@ -69,6 +69,16 @@ try {
   const cross = await call('POST', 'admin', url('alpha'), undefined, { ...admin, 'sec-fetch-site': 'cross-site' });
   assert.equal(cross.status, 403, 'a cross-site request is refused');
   assert.equal((await call('POST', 'admin', url('nope'), undefined, admin)).status, 404, 'unknown environment');
+
+  // A real account named like the host admin does not stop the demo (the run has its own stand-in, host-demo).
+  const real = await call('POST', 'alpha', '/api/users', { login: HOST.login, displayName: 'Real boss', role: 'member', password: OWNER_PASSWORD }, await ownerOf('alpha'));
+  assert.ok(real.status < 300, real.text);
+  // An ordinary account called host-demo (it has a password) is never reused.
+  const fake = await call('POST', 'gamma', '/api/users', { login: 'host-demo', displayName: 'Not the stand-in', role: 'member', password: OWNER_PASSWORD }, await ownerOf('gamma'));
+  assert.ok(fake.status < 300, fake.text);
+  const refusedFake = await call('POST', 'admin', url('gamma'), undefined, admin);
+  assert.equal(refusedFake.status, 409);
+  assert.match(refusedFake.json.error, /"host-demo" already has an account/);
 
   const added = await call('POST', 'admin', url('alpha'), undefined, admin);
   assert.equal(added.status, 200, added.text);
