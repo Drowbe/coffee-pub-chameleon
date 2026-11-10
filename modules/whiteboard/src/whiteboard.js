@@ -2868,7 +2868,7 @@
   for (const type of ['pointerdown', 'keydown', 'dblclick', 'contextmenu', 'wheel', 'keyup']) $('rejoin').addEventListener(type, (e) => e.stopPropagation()); // a button of its own: the board's keys and presses are not its
   $('rejoin').addEventListener('click', () => { if (shared.rec && sharedFresh()) startFollow(shared.rec); });
   // A record nobody has seen change for 35 s goes stale: noticed within a few seconds.
-  setInterval(() => { if (!sender.active && (shared.rec || presenting)) applyShared(); }, 4000);
+  const staleTick = setInterval(() => { if (!surface.isConnected) { clearInterval(staleTick); sender.stop(); return; } if (!sender.active && (shared.rec || presenting)) applyShared(); }, 4000); // gone with the page
   window.addEventListener('pagehide', () => { if (sender.active) stopSharing(); });
 
   // ---- the overview -------------------------------------------------------------------------------------------------------
