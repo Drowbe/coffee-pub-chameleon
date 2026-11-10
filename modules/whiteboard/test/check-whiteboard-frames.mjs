@@ -33,7 +33,7 @@ const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/
 const NAMES = ['wbClean', 'blockTypes', 'tools', 'wbAttachable', 'wbMoved', 'wbCopies', 'wbDeleteSet', 'createPolicy', 'createHistory',
   'wbApplyChanges', 'wbUndoNote', 'wbArrangeChanges', 'wbExportPick', 'wbExportExtent', 'wbExportSize',
   'WB_FRAME', 'wbFrameTitle', 'wbIsFrame', 'wbFrameContents', 'wbFrameFollow', 'wbFrameMoveChanges', 'wbFrameInRect', 'wbFrameHit',
-  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength'];
+  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect'];
 
 let passed = 0;
 const fails = [];
@@ -415,6 +415,14 @@ await test('present dim: 0 to 100 in fives, 60 at first, bad values and broken s
   assert.equal(L.wbDimStrength(0), 0, 'no dim, no scrim');
   assert.equal(L.wbDimStrength(100), 1, 'full dim is completely black');
   assert.equal(L.wbDimStrength(60), 0.6, 'linear');
+});
+
+await test('round rect path: square without radii, arcs per corner, radii held to half the shorter side', () => {
+  assert.ok(L.wbRoundRect(0, 0, 100, 50, null).includes('A0 0'), 'square corners are zero arcs');
+  const p = L.wbRoundRect(10, 20, 100, 50, [8, 0, 0, 100]);
+  assert.ok(p.startsWith('M18 20H110'), 'top left 8, top right square');
+  assert.ok(p.includes('A25 25 0 0 1 10 45'), 'bottom left held to 25');
+  assert.equal((p.match(/Z/g) || []).length, 1, 'one closed segment');
 });
 
 if (fails.length) {

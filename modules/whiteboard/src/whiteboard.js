@@ -2463,10 +2463,12 @@
   function scrimTo(b) {
     const el = renderer.element(b.id);
     const tab = el && el.querySelector('.wb-fr-tab');
-    const rect = (x, y, w, h) => `M${x} ${y}h${w}v${h}h${-w}z`;
+    const face = el && el.querySelector('.wb-fr-face');
+    // The corners as drawn: the computed radii are in the element's own units, which are board units (the world scales them).
+    const radii = (e) => { const c = getComputedStyle(e); return ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((k) => parseFloat(c[`border${k}Radius`]) || 0); };
     const BIG = 1e6;
-    let d = rect(b.x - BIG, b.y - BIG, 2 * BIG + b.w, 2 * BIG + b.h) + rect(b.x, b.y, b.w, b.h);
-    if (tab && tab.offsetWidth) d += rect(b.x, b.y - WB_FRAME.gap - tab.offsetHeight, tab.offsetWidth, tab.offsetHeight);
+    let d = wbRoundRect(b.x - BIG, b.y - BIG, 2 * BIG + b.w, 2 * BIG + b.h, null) + wbRoundRect(b.x, b.y, b.w, b.h, face ? radii(face) : null);
+    if (tab && tab.offsetWidth) d += wbRoundRect(b.x, b.y - WB_FRAME.gap - tab.offsetHeight, tab.offsetWidth, tab.offsetHeight, radii(tab));
     $('scrim-path').setAttribute('d', d);
     scrim.removeAttribute('hidden');
     dimShow();
