@@ -67,6 +67,24 @@
     // it out. The block's spoken description says "locked" instead.
     const locks = new Map(); // block id -> its lock mark
     let padlock = null; // the padlock's SVG, once it is in
+    // The mark shows only on mouseover of its block, with the keyboard on it, or when it is picked (whiteboard.css).
+    const lockHot = new Set(); // ids of blocks under the pointer or with the keyboard on them
+    function lockState(id) {
+      const m = locks.get(id);
+      if (!m) return;
+      m.classList.toggle('wb-lock-hot', lockHot.has(id));
+      m.classList.toggle('wb-lock-pick', selected.has(id));
+    }
+    function lockWire(id) {
+      const el = els.get(id);
+      if (!el || el.dataset.lockWired) return;
+      el.dataset.lockWired = '1';
+      const set = (on) => { if (on) lockHot.add(id); else lockHot.delete(id); lockState(id); };
+      el.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') set(true); });
+      el.addEventListener('pointerleave', () => { if (!el.matches(':focus-visible')) set(false); });
+      el.addEventListener('focusin', () => { if (el.matches(':focus-visible')) set(true); });
+      el.addEventListener('focusout', () => set(false));
+    }
     function showLock(block, def, at) {
       let m = locks.get(block.id);
       if (!block.locked || !at) { if (m) { m.remove(); locks.delete(block.id); } return; }
@@ -86,6 +104,8 @@
       }
       m.style.left = `${at.x}px`;
       m.style.top = `${at.y}px`;
+      lockWire(block.id);
+      lockState(block.id);
     }
 
     // A block's colours and width, as custom properties whiteboard.css draws with: --wb-fill, --wb-stroke and --wb-ink are
@@ -200,7 +220,7 @@
       }
       els.delete(id);
       const lock = locks.get(id);
-      if (lock) { lock.remove(); locks.delete(id); }
+      if (lock) { lock.remove(); locks.delete(id); lockHot.delete(id); }
       const was = shown.get(id);
       if (shown.delete(id)) restack();
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
@@ -303,6 +323,7 @@
     function select(ids, handles = null) {
       selected = new Set((ids || []).filter((id) => els.has(id)));
       grips = selected.size === 1 ? handles : null;
+      for (const id of locks.keys()) lockState(id);
       showFrame();
     }
     // The rectangle being dragged to pick blocks, in board units ({ x0, y0, x1, y1 }), or null to take it away.

@@ -526,7 +526,7 @@
 }
 .wb-port-on { background: var(--accent); }
 
-/* a locked block's mark: a small padlock on a rounded square at its box's top right corner, the same size on the screen at any zoom,
+/* a locked block's mark (shown on mouseover, keyboard focus or when picked): a small padlock on a rounded square at its box's top right corner, the same size on the screen at any zoom,
    over its own block and under the blocks above it (its z-index is its block's) */
 .wb-lock {
   position: absolute;
@@ -541,7 +541,12 @@
   color: var(--text-muted);
   transform: translate(-50%, -50%);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
+.wb-lock.wb-lock-hot, .wb-lock.wb-lock-pick { opacity: 1; }
+@media (hover: none) { .wb-lock.wb-lock-hot:not(.wb-lock-pick) { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .wb-lock { transition: none; } }
 .wb-lock .ic { display: grid; width: calc(11px / var(--wb-scale, 1)); height: calc(11px / var(--wb-scale, 1)); }
 .wb-lock .ic svg { width: 100%; height: 100%; fill: currentColor; }
 

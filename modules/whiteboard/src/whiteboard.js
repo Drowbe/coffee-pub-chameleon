@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on until Escape. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag in the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide them in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -2401,13 +2401,13 @@
   const reduceMotion = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let glide = 0;
   // Move the view to `to` ({ x, y, s }): the middle of the screen and the zoom glide together (the zoom evenly).
-  function showView(to) {
+  function showView(to, onStep, instant = false) {
     cancelAnimationFrame(glide);
     glide = 0;
     const from = { x: renderer.view.x, y: renderer.view.y, s: renderer.view.s };
     const W = surface.clientWidth / 2;
     const H = surface.clientHeight / 2;
-    if (reduceMotion() || !(from.s > 0)) { renderer.setView(to); updateStatus(); return; }
+    if (instant || reduceMotion() || !(from.s > 0)) { renderer.setView(to); if (onStep) onStep(1); updateStatus(); return; }
     const mid = (v) => ({ x: (W - v.x) / v.s, y: (H - v.y) / v.s }); // the board point in the middle of the screen
     const a = mid(from);
     const b = mid(to);
@@ -2419,6 +2419,7 @@
       const s = Math.exp(Math.log(from.s) + (Math.log(to.s) - Math.log(from.s)) * e);
       const c = { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e };
       renderer.setView(k < 1 ? { x: W - c.x * s, y: H - c.y * s, s } : to);
+      if (onStep) onStep(e);
       if (k < 1) glide = requestAnimationFrame(step); else { glide = 0; updateStatus(); }
     };
     glide = requestAnimationFrame(step);
@@ -2441,10 +2442,43 @@
     const b = board.get(presenting.order[presenting.i]);
     presentBar();
     if (!b) return;
-    const q = defOf(b).reach(b);
-    scrimTo(b);
-    showView(wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max }));
+    goToFrame(b, presentMove());
     say(wbPresentWords(presenting, b.title));
+  }
+  // How Present moves between frames: the one place the choice is read (shared presenting can pass the presenter's instead)
+  // and the one place it is applied (goToFrame). With reduced motion every choice is Immediate; the choice itself is kept.
+  const moveStore = () => window.localStorage;
+  let presentMoveNow = wbMoveLoad(moveStore);
+  const presentMove = () => presentMoveNow;
+  const MOVES = { immediate: 'Immediate', fade: 'Fade', pan: 'Pan' };
+  const world = $('world');
+  let fading = null; // the board's fade in progress (a Web Animation), so a new move can end it
+  function goToFrame(b, mode) {
+    if (fading) { fading.cancel(); fading = null; }
+    const fit = () => {
+      const q = defOf(b).reach(b);
+      return wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max });
+    };
+    const win = scrimWindow(b);
+    const jump = () => { scrimDraw(win); showView(fit(), null, true); };
+    const how = reduceMotion() ? 'immediate' : wbMoveValue(mode);
+    if (how === 'pan') {
+      const from = scrimNow;
+      scrimDraw(from || win); // the clear window starts where the last one was, then travels with the view
+      showView(fit(), from ? (e) => scrimDraw(wbLerpWindow(from, win, e)) : () => scrimDraw(win));
+    } else if (how === 'fade' && world.animate && scrimNow) {
+      const T = 150;
+      const out = world.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T, fill: 'forwards' });
+      fading = out;
+      out.finished.then(() => {
+        if (fading !== out) return;
+        jump();
+        const back = world.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T });
+        fading = back;
+        out.cancel();
+        back.finished.then(() => { if (fading === back) fading = null; }, () => {});
+      }, () => {});
+    } else jump();
   }
   // The spotlight: the dim and where it is clear (the frame shown, with its tab), in the world.
   const dimStore = () => window.localStorage;
@@ -2460,21 +2494,44 @@
   }
   // The two clear windows, in board units: the frame's box and its title tab (read from what is drawn: the tab sits above the
   // box's top left corner, the gap between them is dimmed too).
-  function scrimTo(b) {
+  let scrimNow = null; // the window as last drawn
+  function scrimWindow(b) {
     const el = renderer.element(b.id);
     const tab = el && el.querySelector('.wb-fr-tab');
     const face = el && el.querySelector('.wb-fr-face');
     // The corners as drawn: the computed radii are in the element's own units, which are board units (the world scales them).
     const radii = (e) => { const c = getComputedStyle(e); return ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((k) => parseFloat(c[`border${k}Radius`]) || 0); };
-    const BIG = 1e6;
-    let d = wbRoundRect(b.x - BIG, b.y - BIG, 2 * BIG + b.w, 2 * BIG + b.h, null) + wbRoundRect(b.x, b.y, b.w, b.h, face ? radii(face) : null);
-    if (tab && tab.offsetWidth) d += wbRoundRect(b.x, b.y - WB_FRAME.gap - tab.offsetHeight, tab.offsetWidth, tab.offsetHeight, radii(tab));
-    $('scrim-path').setAttribute('d', d);
+    return {
+      face: { x: b.x, y: b.y, w: b.w, h: b.h, r: face ? radii(face) : [0, 0, 0, 0] },
+      tab: tab && tab.offsetWidth ? { x: b.x, y: b.y - WB_FRAME.gap - tab.offsetHeight, w: tab.offsetWidth, h: tab.offsetHeight, r: radii(tab) } : null,
+    };
+  }
+  function scrimDraw(win) {
+    scrimNow = win;
+    $('scrim-path').setAttribute('d', wbScrimPath(win));
     scrim.removeAttribute('hidden');
     dimShow();
   }
   dimShow();
   iconSvg('circle-half-stroke').then((svg) => { if (svg) $('present-dim-icon').innerHTML = svg; }, () => {});
+  // The transition choice: one button that opens a menu of the three.
+  const moveBtn = $('present-move');
+  iconSvg('film').then((svg) => { if (svg) $('present-move-icon').innerHTML = svg; }, () => {});
+  function moveShow() {
+    const calm = reduceMotion();
+    moveBtn.setAttribute('aria-label', `Transition: ${MOVES[presentMoveNow]}`);
+    moveBtn.dataset.tip = calm ? 'How Present moves between frames (less motion is on: it jumps)' : 'How Present moves between frames';
+    moveBtn.title = moveBtn.dataset.tip;
+    $('present-move-label').textContent = MOVES[presentMoveNow];
+  }
+  moveShow();
+  moveBtn.addEventListener('click', () => {
+    host.menu.show({
+      id: 'present-move',
+      anchor: moveBtn,
+      items: WB_MOVE.all.map((id) => ({ id, label: MOVES[id], current: id === presentMoveNow, onClick: () => { presentMoveNow = id; wbMoveSave(moveStore, id); moveShow(); surface.focus({ preventScroll: true }); } })),
+    });
+  });
   dimInput.addEventListener('input', () => {
     presentDim = wbDimValue(dimInput.value);
     wbDimSave(dimStore, presentDim);
@@ -2515,6 +2572,8 @@
     $('app').classList.remove('wb-presenting');
     $('present').hidden = true;
     scrim.setAttribute('hidden', '');
+    scrimNow = null;
+    if (fading) { fading.cancel(); fading = null; }
     showView(back);
     surface.focus({ preventScroll: true });
     say('Stopped presenting.');

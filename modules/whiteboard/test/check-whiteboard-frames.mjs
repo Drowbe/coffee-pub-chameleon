@@ -33,7 +33,7 @@ const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/
 const NAMES = ['wbClean', 'blockTypes', 'tools', 'wbAttachable', 'wbMoved', 'wbCopies', 'wbDeleteSet', 'createPolicy', 'createHistory',
   'wbApplyChanges', 'wbUndoNote', 'wbArrangeChanges', 'wbExportPick', 'wbExportExtent', 'wbExportSize',
   'WB_FRAME', 'wbFrameTitle', 'wbIsFrame', 'wbFrameContents', 'wbFrameFollow', 'wbFrameMoveChanges', 'wbFrameInRect', 'wbFrameHit',
-  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect'];
+  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect', 'WB_MOVE', 'wbMoveValue', 'wbMoveLoad', 'wbMoveSave', 'wbLerpRect', 'wbLerpWindow', 'wbScrimPath'];
 
 let passed = 0;
 const fails = [];
@@ -415,6 +415,30 @@ await test('present dim: 0 to 100 in fives, 60 at first, bad values and broken s
   assert.equal(L.wbDimStrength(0), 0, 'no dim, no scrim');
   assert.equal(L.wbDimStrength(100), 1, 'full dim is completely black');
   assert.equal(L.wbDimStrength(60), 0.6, 'linear');
+});
+
+await test('present move: immediate, fade or pan; pan at first; bad values and broken storage give pan, never throws', () => {
+  const mem = (v) => () => ({ getItem: () => v, setItem(k, x) { this.set = [k, x]; } });
+  assert.equal(L.wbMoveLoad(mem(null)), 'pan');
+  for (const ok of ['immediate', 'fade', 'pan']) assert.equal(L.wbMoveLoad(mem(ok)), ok);
+  for (const bad of ['', 'Fade', 'slide', '0', 'undefined']) assert.equal(L.wbMoveLoad(mem(bad)), 'pan', `bad ${bad}`);
+  assert.equal(L.wbMoveLoad(() => { throw new Error('no storage'); }), 'pan');
+  assert.equal(L.wbMoveLoad(() => null), 'pan');
+  const m = mem(null)();
+  assert.equal(L.wbMoveSave(() => m, 'fade'), true);
+  assert.deepEqual(m.set, ['whiteboard-present-move', 'fade']);
+  assert.equal(L.wbMoveSave(() => { throw new Error('x'); }, 'fade'), false);
+});
+
+await test('scrim window: interpolates face, tab and radii; ends match; a missing tab takes the destination', () => {
+  const a = { face: { x: 0, y: 0, w: 100, h: 50, r: [8, 8, 8, 8] }, tab: { x: 0, y: -20, w: 40, h: 16, r: [4, 4, 0, 0] } };
+  const b = { face: { x: 200, y: 100, w: 300, h: 150, r: [0, 0, 0, 0] }, tab: null };
+  assert.deepEqual(L.wbLerpWindow(a, b, 0).face, a.face);
+  assert.deepEqual(L.wbLerpWindow(a, b, 1).face, b.face);
+  assert.deepEqual(L.wbLerpWindow(a, b, 0.5).face, { x: 100, y: 50, w: 200, h: 100, r: [4, 4, 4, 4] });
+  assert.equal(L.wbLerpWindow(a, b, 0.5).tab, null, 'no tab at the destination: none');
+  assert.deepEqual(L.wbLerpWindow(null, b, 0.5), b, 'no start: the destination');
+  assert.equal((L.wbScrimPath(a).match(/Z/g) || []).length, 3, 'outer, face, tab');
 });
 
 await test('round rect path: square without radii, arcs per corner, radii held to half the shorter side', () => {
