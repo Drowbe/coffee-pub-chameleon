@@ -189,6 +189,36 @@
   function wbDimSave(store, v) {
     try { const s = store(); if (!s) return false; s.setItem(WB_DIM.key, String(wbDimValue(v))); return true; } catch { return false; }
   }
+  // How Present moves from frame to frame (the Present bar's choice): 'immediate' (no animation), 'fade' (the board fades out,
+  // the view jumps, it fades in) or 'pan' (the view glides, the clear window with it; what Present always did). This person's
+  // choice in this browser. Read through wbMoveLoad, applied in one place (whiteboard.js goToFrame).
+  const WB_MOVE = { key: 'whiteboard-present-move', def: 'pan', all: ['immediate', 'fade', 'pan'] };
+  const wbMoveValue = (v) => (typeof v === 'string' && WB_MOVE.all.includes(v) ? v : WB_MOVE.def);
+  function wbMoveLoad(store) {
+    try { const s = store(); return wbMoveValue(s ? s.getItem(WB_MOVE.key) : null); } catch { return WB_MOVE.def; }
+  }
+  function wbMoveSave(store, v) {
+    try { const s = store(); if (!s) return false; s.setItem(WB_MOVE.key, wbMoveValue(v)); return true; } catch { return false; }
+  }
+  // Between two clear windows ({ face: { x, y, w, h, r: [4 radii] }, tab: same | null }) at e (0 to 1); a missing window on
+  // either side gives the destination's.
+  const wbLerp = (a, b, e) => a + (b - a) * e;
+  function wbLerpRect(a, b, e) {
+    if (!a || !b) return b || null;
+    return { x: wbLerp(a.x, b.x, e), y: wbLerp(a.y, b.y, e), w: wbLerp(a.w, b.w, e), h: wbLerp(a.h, b.h, e), r: [0, 1, 2, 3].map((i) => wbLerp(a.r[i] || 0, b.r[i] || 0, e)) };
+  }
+  function wbLerpWindow(a, b, e) {
+    if (!a) return b;
+    return { face: wbLerpRect(a.face, b.face, e), tab: wbLerpRect(a.tab, b.tab, e) };
+  }
+  // The scrim's path: a huge rectangle with the window's holes.
+  function wbScrimPath(win) {
+    const BIG = 1e6;
+    const f = win.face;
+    let d = wbRoundRect(f.x - BIG, f.y - BIG, 2 * BIG + f.w, 2 * BIG + f.h, null) + wbRoundRect(f.x, f.y, f.w, f.h, f.r);
+    if (win.tab) d += wbRoundRect(win.tab.x, win.tab.y, win.tab.w, win.tab.h, win.tab.r);
+    return d;
+  }
   // One closed path segment for a rounded rectangle: x, y, w, h and the radii of its corners [top left, top right, bottom
   // right, bottom left] (each held to half the shorter side; none: square).
   function wbRoundRect(x, y, w, h, radii) {
