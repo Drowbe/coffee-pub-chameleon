@@ -471,11 +471,20 @@
 .wb-scrim[hidden] { display: none; }
 .wb-present .ic { display: block; width: 1em; height: 1em; }
 .wb-present .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.wb-present-who { padding: 0 var(--space-2); color: var(--text-primary); font-size: var(--text-14); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
+.wb-present-who[hidden], .wb-present [hidden] { display: none; }
+.wb-present #present-share[aria-pressed="true"] { background: var(--fill-chosen); color: var(--text-on-chosen); }
+.wb-present-dim input:disabled, .wb-present button[aria-disabled="true"] { cursor: default; }
+.wb-present-dim:has(input:disabled) { opacity: 0.6; }
+/* the way back to a shared presentation: a small button at the top middle of the board */
+.wb-rejoin { position: absolute; left: 50%; top: var(--space-2); transform: translateX(-50%); z-index: 6; max-width: calc(100% - var(--space-4)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-rejoin[hidden] { display: none; }
 .wb-present-count { padding: 0 var(--space-2); color: var(--text-primary); font-size: var(--text-14); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .app.wb-presenting .wb-paint { display: none; }
 .app.wb-presenting .board, .app.wb-presenting .wb-block, .app.wb-presenting .wb-block * { cursor: default; }
 .app.wb-presenting .wb-ctl { cursor: pointer; }
 .app.narrow .wb-present-label { display: none; }
+.app.narrow .wb-present-who { max-width: 7rem; font-size: var(--text-12, var(--text-14)); }
 .app.narrow .wb-present button { min-width: 44px; }
 
 /* the selection's frame, a mark on the board kept the same thickness at any zoom */
