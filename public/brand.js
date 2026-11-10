@@ -1001,9 +1001,19 @@ let toastLiftTimer = 0;
 function liftToasts() {
   const layer = document.getElementById('toast-layer');
   if (!layer) return;
+  // Top centre of the canvas, a little below the module title bars; with no canvas showing, of the page below its bar.
+  const cv = document.getElementById('canvas');
+  const cr = cv && !cv.hidden ? cv.getBoundingClientRect() : null;
+  if (cr && cr.width > 0 && cr.height > 0) {
+    layer.style.setProperty('--toast-x', `${Math.round(cr.left + cr.width / 2)}px`);
+    layer.style.setProperty('--toast-top', `${Math.round(Math.max(cr.top, 0) + 56)}px`);
+    layer.style.setProperty('--toast-cw', `${Math.round(cr.width * 0.9)}px`);
+  } else {
+    ['--toast-x', '--toast-top', '--toast-cw'].forEach((k) => layer.style.removeProperty(k));
+  }
   const live = [...layer.children].some((e) => e.dataset.state !== 'leaving');
   let top = window.innerHeight;
-  if (live && window.innerWidth <= 640) {
+  if (live && layer.querySelector(':scope > .sdk-toast[data-undo]')) {
     for (const el of document.querySelectorAll(TOAST_AVOID)) {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0 && r.bottom > window.innerHeight / 2) top = Math.min(top, r.top);
@@ -1032,7 +1042,7 @@ function placeToast(spec) {
   const el = document.createElement('div');
   el.className = 'sdk-toast';
   el.dataset.kind = kind;
-  el.setAttribute('role', kind === 'danger' ? 'alert' : 'status');
+  el.setAttribute('role', kind === 'danger' || kind === 'warn' ? 'alert' : 'status');
   const head = `<span class="sdk-toast-title">${escapeHtml(spec.title || '')}</span>${spec.text ? `<span class="sdk-toast-text">${escapeHtml(spec.text)}</span>` : ''}${spec.from ? `<span class="sdk-toast-text">${escapeHtml(spec.from)}</span>` : ''}`;
   el.innerHTML = `<span class="sdk-toast-icon" aria-hidden="true"><i class="fa-solid fa-${escapeHtml(spec.icon || 'circle-info')}"></i></span>`
     + (spec.onOpen ? `<button type="button" class="sdk-toast-body" data-toast-open>${head}</button>` : `<div class="sdk-toast-body">${head}</div>`)
@@ -1100,13 +1110,21 @@ function showToast(n) {
   });
 }
 
+// The kinds a note may have (host.ui.toast's `kind`): the stylesheet's status kind, the icon and the time. Anything else is 'info'.
+const NOTE_KINDS = {
+  info: { kind: 'info', icon: 'circle-info', ms: 4500 },
+  success: { kind: 'ok', icon: 'circle-check', ms: 4500 },
+  warning: { kind: 'warn', icon: 'triangle-exclamation', ms: 6000 },
+  danger: { kind: 'danger', icon: 'circle-xmark', ms: 7000 },
+};
 // A short note that goes away by itself (a module's "Saved in ...", host.ui.toast): a toast with a title only, never kept in the bell.
 // It is said aloud once (role=status) and goes after 4.5 s, or when it is closed.
-export function showNote(text, body = '') {
+export function showNote(text, body = '', kind = 'info') {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!t) return;
   const more = String(body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
-  pushToast({ kind: 'info', icon: 'circle-info', title: t, ...(more ? { text: more } : {}), ms: 4500 });
+  const k = Object.hasOwn(NOTE_KINDS, kind) ? kind : 'info';
+  pushToast({ kind: NOTE_KINDS[k].kind, icon: NOTE_KINDS[k].icon, title: t, ...(more ? { text: more } : {}), ms: NOTE_KINDS[k].ms });
 }
 
 // A note for work that is running ("Preparing to print..."): it stays until the returned function is called (a minute at most), then

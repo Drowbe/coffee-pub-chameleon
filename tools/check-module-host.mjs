@@ -810,3 +810,15 @@ test('the budget target (#216): the hello carries host.space().budget, the page 
 await Promise.all(pending);
 if (failed) process.exit(1);
 console.log(`check-module-host: OK (${n} groups)`);
+// host.toast(text, { kind }): only the text and the kind cross the bridge, and the page turns an unknown kind into info.
+{
+  const rd = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  const hostSrc = slice('public/sdk/host.js', '      toast: (text, opts) =>', '.then(() => true),');
+  assert.ok(/call\('ui\.toast', \{ text: String\(text \?\? ''\), kind: [^}]*\}\)/.test(hostSrc), 'host.toast must send the text and the kind only');
+  assert.ok(rd('public/sdk/host.js').includes("'warning' (stays 6 s)"), 'the comment above host.toast must name the kinds');
+  const handler = slice('public/module-host.js', "async 'ui.toast'({ text, kind }) {", 'return true;');
+  assert.ok(handler.includes("showNote(text, '', kind)"), 'ui.toast must pass the kind to showNote');
+  const brand = rd('public/brand.js');
+  assert.ok(brand.includes("Object.hasOwn(NOTE_KINDS, kind) ? kind : 'info'"), 'showNote must make an unknown kind info');
+  for (const k of ['info', 'success', 'warning', 'danger']) assert.ok(new RegExp(`\\n  ${k}: \\{ kind: `).test(brand), `NOTE_KINDS must have ${k}`);
+}

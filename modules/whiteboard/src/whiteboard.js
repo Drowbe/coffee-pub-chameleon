@@ -374,11 +374,11 @@
   }
   // One note at a time: a change to many blocks that is refused is refused once for each, and is said once.
   let noted = { text: '', t: 0 };
-  function note(text) {
+  function note(text, kind) {
     const now = Date.now();
     if (text === noted.text && now - noted.t < 5000) return;
     noted = { text, t: now };
-    host.ui.toast(text).catch(() => {});
+    host.ui.toast(text, kind ? { kind } : undefined).catch(() => {});
   }
   function onRefused(err) {
     note(err && err.status === 403 ? 'You may not change this whiteboard.' : `That change was not saved. ${(err && err.message) || ''}`.trim());
@@ -562,7 +562,7 @@
   // ---- locks, groups, align and distribute ------------------------------------------------------------------------------
   // What they change is lib-m's to work out; each command is one undo step (every block it changes is saved in the same
   // turn), for someone who may change the board. Locked blocks are left as they are and the person is told (note).
-  const lockedNote = (n, of) => { const t = wbLockedNote(n, of); if (t) note(t); };
+  const lockedNote = (n, of) => { const t = wbLockedNote(n, of); if (t) note(t, 'warning'); };
   // Every block on the board but the drafts (one being drawn, a new one before its words).
   const live = () => board.all().filter((b) => !drafts.has(b.id));
   const pickedBlocks = () => [...sel].map((id) => board.get(id)).filter((b) => b && !drafts.has(b.id));
@@ -573,7 +573,7 @@
     if (!policy.canEdit || presenting) return;
     const list = pickedBlocks();
     const r = wbArrangeChanges(list, how, { measure: heightOf });
-    if (!r.enough) { note(r.locked ? wbLockedNote(r.locked, list.length) : 'Pick more blocks to do that.'); return; }
+    if (!r.enough) { if (r.locked) note(wbLockedNote(r.locked, list.length), 'warning'); else note('Pick more blocks to do that.'); return; }
     // A frame moved takes the blocks inside it along, in the same step.
     const f = wbFrameMoveChanges(r.moves, live(), { measure: heightOf });
     for (const c of f.changes) ctx.change(c.id, c.fields, { save: 'now' });

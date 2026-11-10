@@ -2069,8 +2069,9 @@
         return { update: set, destroy: () => { dead = true; for (const off of offs) off(); container.replaceChildren(); } };
       },
       // A short note that appears for a few seconds and goes: for an instant confirmation ("Saved in X.") or a small refusal. Never
-      // draw one inline in the module. Resolves true; the text is cut to 200 characters.
-      toast: (text) => call('ui.toast', { text: String(text ?? '') }).then(() => true),
+      // draw one inline in the module. Resolves true; the text is cut to 200 characters. `kind` (optional): 'info' (the default),
+      // 'success', 'warning' (stays 6 s) or 'danger' (a refusal or a failure, 7 s); anything else is 'info'. Only the text and the kind go.
+      toast: (text, opts) => call('ui.toast', { text: String(text ?? ''), kind: opts && typeof opts.kind === 'string' ? opts.kind : undefined }).then(() => true),
       // A question the person answers, in place of the browser's own confirm (never call window.confirm). Drawn by the page, over
       // everything, as the styled confirm: a title, a plain message, Cancel and the action. Resolves true (the action) or false
       // (Cancel, Escape, a click outside); rejects only when it is asked badly (no title, an unknown kind) or the page did not answer.

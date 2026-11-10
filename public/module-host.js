@@ -1544,9 +1544,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       return Boolean(await onOpenRef(cleanPointer(ref), { newTab: newTab === true }));
     },
     // A short note on the page that goes away by itself: for an instant confirmation ("Saved in ..."), never kept anywhere.
-    async 'ui.toast'({ text }) {
+    async 'ui.toast'({ text, kind }) {
       if (typeof text !== 'string' || !text.trim()) throw Object.assign(new Error('say something'), { status: 400 });
-      showNote(text);
+      showNote(text, '', kind);
       return true;
     },
     // A question for the person (host.ui.confirm): the styled confirm over the page. true for the action, false for anything else.
