@@ -4790,7 +4790,7 @@ html[data-dialog-open] { overflow: hidden; }
   background: var(--surface-toast);
   color: var(--text-primary);
   /* The kind stands it out: a 1px border and a soft ring in its colour, a deeper drop shadow. Still, nothing animated. */
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-fill) 15%, transparent), 0 6px 18px color-mix(in srgb, black 26%, transparent), var(--shadow-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-fill) 15%, transparent), var(--shadow-3);
   font: inherit;
   font-size: var(--text-13);
   line-height: 18px;
