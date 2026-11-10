@@ -181,7 +181,7 @@
 
   // The dim while presenting (the Present bar's slider): how much of the board outside the frame shown is darkened, 0 to 100
   // in steps of 5, 60 at first. This person's choice in this browser, never in the board's data. store() -> localStorage.
-  const WB_DIM = { key: 'whiteboard-present-dim', def: 60, max: 85 }; // max: the most the darkening shows at 100%, so shapes still read
+  const WB_DIM = { key: 'whiteboard-present-dim', def: 60 };
   const wbDimValue = (v) => { const n = typeof v === 'string' && /^\d{1,3}$/.test(v) ? Number(v) : typeof v === 'number' ? v : NaN; return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n / 5) * 5 : WB_DIM.def; };
   function wbDimLoad(store) {
     try { const s = store(); return wbDimValue(s ? s.getItem(WB_DIM.key) : null); } catch { return WB_DIM.def; }
@@ -189,8 +189,8 @@
   function wbDimSave(store, v) {
     try { const s = store(); if (!s) return false; s.setItem(WB_DIM.key, String(wbDimValue(v))); return true; } catch { return false; }
   }
-  // The scrim's strength in percent of black for a dim value (0: none).
-  const wbDimStrength = (v) => Math.round(wbDimValue(v) * WB_DIM.max) / 100;
+  // The scrim's opacity (0 to 1) for a dim value.
+  const wbDimStrength = (v) => wbDimValue(v) / 100; // linear: 0 none, 1 completely black
 
   blockTypes.register({
     type: 'frame',

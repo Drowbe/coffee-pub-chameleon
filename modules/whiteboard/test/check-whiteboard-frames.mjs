@@ -413,7 +413,8 @@ await test('present dim: 0 to 100 in fives, 60 at first, bad values and broken s
   assert.deepEqual(m.set, ['whiteboard-present-dim', '45']);
   assert.equal(L.wbDimSave(() => { throw new Error('x'); }, 45), false, 'a failed save is said, not thrown');
   assert.equal(L.wbDimStrength(0), 0, 'no dim, no scrim');
-  assert.equal(L.wbDimStrength(100), 85, 'full dim still lets shapes read');
+  assert.equal(L.wbDimStrength(100), 1, 'full dim is completely black');
+  assert.equal(L.wbDimStrength(60), 0.6, 'linear');
 });
 
 if (fails.length) {
