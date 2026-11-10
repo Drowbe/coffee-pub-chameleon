@@ -2785,7 +2785,7 @@
     if (e.value === undefined) { loadShared(); return; }
     const rec = wbCleanPresent(e.value);
     if (!rec) return;
-    if (sender.active && rec.presenter === me) return; // this page's own write
+    if ((sender.active || sharing) && rec.presenter === me) return; // this page's own write (heard before its answer)
     if (shared.rec && Number.isFinite(e.version) && e.version <= shared.version) return; // a repeat or an older one
     takeShared(rec, Number.isFinite(e.version) ? e.version : 0);
     applyShared();
@@ -2865,6 +2865,7 @@
   }
   $('present-share').addEventListener('click', () => { if (sender.active) stopSharing(); else startSharing(); });
   $('present-takeover').addEventListener('click', () => takeOver());
+  for (const type of ['pointerdown', 'keydown', 'dblclick', 'contextmenu', 'wheel', 'keyup']) $('rejoin').addEventListener(type, (e) => e.stopPropagation()); // a button of its own: the board's keys and presses are not its
   $('rejoin').addEventListener('click', () => { if (shared.rec && sharedFresh()) startFollow(shared.rec); });
   // A record nobody has seen change for 35 s goes stale: noticed within a few seconds.
   setInterval(() => { if (!sender.active && (shared.rec || presenting)) applyShared(); }, 4000);
