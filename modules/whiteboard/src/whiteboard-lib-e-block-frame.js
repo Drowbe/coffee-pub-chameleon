@@ -189,6 +189,13 @@
   function wbDimSave(store, v) {
     try { const s = store(); if (!s) return false; s.setItem(WB_DIM.key, String(wbDimValue(v))); return true; } catch { return false; }
   }
+  // One closed path segment for a rounded rectangle: x, y, w, h and the radii of its corners [top left, top right, bottom
+  // right, bottom left] (each held to half the shorter side; none: square).
+  function wbRoundRect(x, y, w, h, radii) {
+    const m = Math.min(w, h) / 2;
+    const [a, b, c, d] = [0, 1, 2, 3].map((i) => { const r = Number(radii && radii[i]); return Number.isFinite(r) && r > 0 ? Math.min(r, m) : 0; });
+    return `M${x + a} ${y}H${x + w - b}A${b} ${b} 0 0 1 ${x + w} ${y + b}V${y + h - c}A${c} ${c} 0 0 1 ${x + w - c} ${y + h}H${x + d}A${d} ${d} 0 0 1 ${x} ${y + h - d}V${y + a}A${a} ${a} 0 0 1 ${x + a} ${y}Z`;
+  }
   // The scrim's opacity (0 to 1) for a dim value.
   const wbDimStrength = (v) => wbDimValue(v) / 100; // linear: 0 none, 1 completely black
 
