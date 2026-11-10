@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Tools stay on. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block; Enter edits its label. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes what is inside along; pick by title or border, double-click to rename). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: onto dots, else near blocks; ${ALT} while dragging: opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): dots, graph paper or off, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button). Timer (Y): drag it; click its time to set it. Pointers show where others point; hide in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging does the opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Other people\'s pointers: hide in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -2355,6 +2355,8 @@
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
+      ...(policy.canEdit && me ? [{ id: 'present-all', icon: 'tower-broadcast', title: sender.active ? 'Stop presenting to everyone' : 'Present to everyone', overflow: true }] : []),
+      ...(shared.rec && shared.left && sharedFresh() && !following() ? [{ id: 'rejoin', icon: 'rotate-left', title: `Rejoin ${shared.rec.name}'s presentation`, overflow: true }] : []),
       { id: 'pointers', icon: 'arrow-pointer', title: pointersOn ? 'Hide other people\'s pointers' : 'Show other people\'s pointers', on: pointersOn, overflow: true },
     ]).catch(() => {});
   }
@@ -2363,6 +2365,8 @@
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
+      if (e && e.id === 'present-all') { if (sender.active) stopSharing().then(() => setHeader()); else startSharing(); }
+      if (e && e.id === 'rejoin' && shared.rec && sharedFresh()) startFollow(shared.rec);
       if (e && e.id === 'pointers') togglePointers();
     });
   }
@@ -2424,6 +2428,15 @@
     };
     glide = requestAnimationFrame(step);
   }
+  // Presenting to everyone (lib-q): the record in storage, who is presenting, and what this page does about it. `rec` is the
+  // record as last heard (cleaned), `seenAt` this page's clock when it last changed (a record nobody has seen change for 35 s
+  // is nobody's), `left` that this person left that presentation, `offered` the presenter who was offered to a personal
+  // presenter already.
+  const shared = { rec: null, version: 0, seenAt: NaN, left: false, offered: '', name: '' };
+  const sharedFresh = () => Boolean(shared.rec) && !wbPresentStale(shared.seenAt, Date.now());
+  const following = () => Boolean(presenting && presenting.follow);
+  const effDim = () => (following() && shared.rec ? shared.rec.dim : presentDim);
+  const effMove = () => (following() && shared.rec ? shared.rec.move : presentMoveNow);
   const PRESENT_ICONS = [['present-back', 'chevron-left'], ['present-next', 'chevron-right'], ['present-exit', 'xmark']];
   for (const [id, name] of PRESENT_ICONS) {
     const ic = $(id).querySelector('.ic');
@@ -2435,6 +2448,7 @@
     $('present-count').textContent = `${presenting.i + 1} of ${n}`;
     $('present-back').setAttribute('aria-disabled', String(presenting.i === 0));
     $('present-next').setAttribute('aria-disabled', String(presenting.i === n - 1));
+    barShow();
     updateStatus();
   }
   // Show the frame the state is at, with the tab over it, and say it.
@@ -2444,12 +2458,13 @@
     if (!b) return;
     goToFrame(b, presentMove());
     say(wbPresentWords(presenting, b.title));
+    if (sender.active && sender.record.frame !== b.id) sender.change({ frame: b.id });
   }
   // How Present moves between frames: the one place the choice is read (shared presenting can pass the presenter's instead)
   // and the one place it is applied (goToFrame). With reduced motion every choice is Immediate; the choice itself is kept.
   const moveStore = () => window.localStorage;
   let presentMoveNow = wbMoveLoad(moveStore);
-  const presentMove = () => presentMoveNow;
+  const presentMove = () => effMove(); // the presenter's, while following
   const MOVES = { immediate: 'Immediate', fade: 'Fade', pan: 'Pan' };
   const world = $('world');
   let fading = null; // the board's fade in progress (a Web Animation), so a new move can end it
@@ -2486,11 +2501,12 @@
   const scrim = $('scrim');
   const dimInput = $('present-dim');
   function dimShow() {
-    dimInput.value = String(presentDim);
-    dimInput.title = `Dim the rest of the board: ${presentDim}%`;
-    dimInput.setAttribute('aria-valuetext', `${presentDim}%`);
-    scrim.style.setProperty('--wb-dim', String(wbDimStrength(presentDim)));
-    scrim.dataset.dim = String(presentDim);
+    const d = effDim();
+    dimInput.value = String(d);
+    dimInput.title = following() ? `The presenter sets this: ${d}%` : `Dim the rest of the board: ${d}%`;
+    dimInput.setAttribute('aria-valuetext', `${d}%`);
+    scrim.style.setProperty('--wb-dim', String(wbDimStrength(d)));
+    scrim.dataset.dim = String(d);
   }
   // The two clear windows, in board units: the frame's box and its title tab (read from what is drawn: the tab sits above the
   // box's top left corner, the gap between them is dimmed too).
@@ -2519,38 +2535,44 @@
   iconSvg('film').then((svg) => { if (svg) $('present-move-icon').innerHTML = svg; }, () => {});
   function moveShow() {
     const calm = reduceMotion();
-    moveBtn.setAttribute('aria-label', `Transition: ${MOVES[presentMoveNow]}`);
-    moveBtn.dataset.tip = calm ? 'How Present moves between frames (less motion is on: it jumps)' : 'How Present moves between frames';
+    moveBtn.setAttribute('aria-label', `Transition: ${MOVES[effMove()]}`);
+    moveBtn.setAttribute('aria-disabled', String(following()));
+    moveBtn.dataset.tip = following() ? 'The presenter sets this' : calm ? 'How Present moves between frames (less motion is on: it jumps)' : 'How Present moves between frames';
     moveBtn.title = moveBtn.dataset.tip;
-    $('present-move-label').textContent = MOVES[presentMoveNow];
+    $('present-move-label').textContent = MOVES[effMove()];
   }
   moveShow();
   moveBtn.addEventListener('click', () => {
+    if (following()) return;
     host.menu.show({
       id: 'present-move',
       anchor: moveBtn,
-      items: WB_MOVE.all.map((id) => ({ id, label: MOVES[id], current: id === presentMoveNow, onClick: () => { presentMoveNow = id; wbMoveSave(moveStore, id); moveShow(); surface.focus({ preventScroll: true }); } })),
+      items: WB_MOVE.all.map((id) => ({ id, label: MOVES[id], current: id === presentMoveNow, onClick: () => { presentMoveNow = id; wbMoveSave(moveStore, id); moveShow(); if (sender.active) sender.change({ move: id }); surface.focus({ preventScroll: true }); } })),
     });
   });
   dimInput.addEventListener('input', () => {
+    if (following()) { dimShow(); return; }
     presentDim = wbDimValue(dimInput.value);
     wbDimSave(dimStore, presentDim);
     dimShow();
+    if (sender.active) sender.change({ dim: presentDim });
   });
-  function startPresenting(at = null) {
-    if (presenting) { if (at) presentTo(at); return; }
+  function startPresenting(at = null, follow = false) {
+    if (presenting) { if (at && !following()) presentTo(at); return; }
     const state = wbPresentStart(live(), renderer.view, at);
     if (!state) { note('No frames to present. Add a frame first.'); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
     closeFind({ quiet: true }); // Find is not used while presenting
     liveLeave(); // a person's own read-through: their pointer is not sent meanwhile
-    presenting = state;
+    presenting = follow ? { ...state, follow: true } : state;
+    if (!follow && sharedFresh() && shared.rec.presenter !== me) shared.offered = shared.rec.presenter; // their own choice: not offered again
     select(null);
     $('app').classList.add('wb-presenting');
     $('present').hidden = false;
     surface.focus({ preventScroll: true });
     presentFrame();
+    rejoinShow();
   }
   function presentTo(id) {
     const i = presenting.order.indexOf(id);
@@ -2559,15 +2581,19 @@
     presentFrame();
   }
   function presentGo(how) {
-    if (!presenting) return;
+    if (!presenting || presenting.follow) return;
     const next = wbPresentGo(presenting, how);
     if (next.i === presenting.i) return;
     presenting = next;
     presentFrame();
   }
-  function stopPresenting() {
+  // `how`: undefined (the person's own Exit or Leave), 'ended' (the presentation they were following ended)
+  function stopPresenting(how) {
     if (!presenting) return;
     const back = presenting.view;
+    const wasFollowing = presenting.follow;
+    if (sender.active) stopSharing(); // Exit ends both
+    if (wasFollowing && how !== 'ended') shared.left = true;
     presenting = null;
     $('app').classList.remove('wb-presenting');
     $('present').hidden = true;
@@ -2576,26 +2602,29 @@
     if (fading) { fading.cancel(); fading = null; }
     showView(back);
     surface.focus({ preventScroll: true });
-    say('Stopped presenting.');
+    say(how === 'ended' && shared.name ? `${shared.name} stopped presenting` : 'Stopped presenting.');
+    rejoinShow();
     updateStatus();
   }
   // The frames changed while presenting (a change from elsewhere, a reload).
   function presentSync() {
     if (!presenting) return;
     const next = wbPresentSync(presenting, live());
-    if (!next) { stopPresenting(); note('There are no frames left to present.'); return; }
+    if (!next) { const was = following(); stopPresenting(); note(was ? 'There are no frames to present.' : 'There are no frames left to present.'); return; }
     presenting = next;
     if (next.same) presentBar(); else presentFrame();
+    followFrame(); // a frame the presenter is on that has just come in
   }
   // A key while presenting: the bar's buttons keep Enter and Space, Tab moves between them and the board, the rest is
   // the presentation's or nothing.
   function presentKey(e) {
-    const onButton = Boolean(e.target.closest && e.target.closest('.wb-present button'));
+    const onButton = Boolean(e.target.closest && e.target.closest('.wb-present button, .wb-rejoin'));
     const k = e.key;
     if (k === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest && e.target.closest('.wb-present-dim') && k !== 'Escape') return; // the slider keeps its own keys
     if (onButton && (k === 'Enter' || k === ' ')) return;
     e.preventDefault();
+    if (presenting.follow) { if (k === 'Escape') stopPresenting(); return; } // following: only leaving
     if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') presentGo('next');
     else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') presentGo('back');
     else if (k === 'Home') presentGo('first');
@@ -2606,6 +2635,241 @@
   $('present-next').addEventListener('click', () => presentGo('next'));
   $('present-exit').addEventListener('click', () => stopPresenting());
   const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
+
+  // ---- presenting to everyone ---------------------------------------------------------------------------------------------
+  // Present stays personal; the Share button on the Present bar (or "Present to everyone" in the title bar's menu) makes it
+  // shared: the person drives, everyone else on the board follows by default, on the same frame with the same move and dim
+  // (their own dim and Transition show the presenter's, switched off: "The presenter sets this"). The rules are lib-q;
+  // this is the page's part. Who presents is ONE record in storage (lib-q), taken by compare-and-set; the presenter rewrites
+  // it on every Next, Back, dim or move change (a moment after the last) and every 10 s, and deletes it on stopping. Others
+  // read it at load and hear its changes; no record, or none seen to change for 35 s, is nobody presenting. A follower sees
+  // the bar with "<Name> is presenting" and Leave; after Leave a Rejoin button shows while that presentation lasts. Only
+  // someone who may edit the board starts, stops or takes over; a view-only person or guest only follows and never writes.
+  // Nothing here touches the board's data or its history.
+  const sender = createWbPresentSender({
+    put: (value, version) => host.storage.set(WB_PRESENT.key, value, { version }),
+    later: (fn, ms) => setTimeout(fn, ms),
+    cancel: (t) => clearTimeout(t),
+    stamp: () => new Date(sync.now()).toISOString(),
+    by: me,
+    onLost: (theirs, current) => {
+      if (theirs && current) takeShared(theirs, current.version);
+      else { shared.rec = null; note('Presenting to everyone stopped.'); }
+      lostShare(theirs);
+    },
+  });
+  iconSvg('tower-broadcast').then((svg) => { if (svg) $('present-share-icon').innerHTML = svg; }, () => {});
+  // The bar as the presenting is: who, which buttons, what is switched off.
+  function barShow() {
+    if (!presenting) return;
+    const f = presenting.follow;
+    const s = sender.active;
+    const who = $('present-who');
+    who.hidden = !(f || s);
+    who.textContent = f && shared.rec ? `${shared.rec.name} is presenting` : 'Presenting to everyone';
+    $('present-back').hidden = f;
+    $('present-next').hidden = f;
+    dimInput.disabled = f;
+    dimShow();
+    moveShow();
+    const share = $('present-share');
+    share.hidden = f || !policy.canEdit || !me;
+    share.setAttribute('aria-pressed', String(s));
+    const words = s ? 'Stop sharing' : 'Present to everyone';
+    share.setAttribute('aria-label', words);
+    share.dataset.tip = words;
+    share.title = words;
+    $('present-share-label').textContent = s ? 'Stop sharing' : 'Share';
+    const take = $('present-takeover');
+    take.hidden = !(f && wbPresentCanTakeOver({ canEdit: policy.canEdit, me, rec: shared.rec, fresh: sharedFresh() }));
+    $('present-exit').setAttribute('aria-label', f ? 'Leave' : 'Exit');
+    $('present-exit').querySelector('.wb-present-label').textContent = f ? 'Leave' : 'Exit';
+  }
+  // The Rejoin button (or Follow, while presenting alone) shown while someone else's presentation lasts and this person is
+  // not in it; the title bar's menu has the same.
+  let headerKey = '';
+  function rejoinShow() {
+    const rec = shared.rec;
+    const on = Boolean(rec) && sharedFresh() && rec.presenter !== me && !following() && (shared.left || Boolean(presenting));
+    const b = $('rejoin');
+    b.hidden = !on;
+    if (on) {
+      b.textContent = presenting ? 'Follow' : 'Rejoin';
+      b.setAttribute('aria-label', presenting ? `Follow ${rec.name}'s presentation` : `Rejoin ${rec.name}'s presentation`);
+    }
+    const hk = `${sender.active}|${on && shared.left}|${rec ? rec.name : ''}`;
+    if (hk !== headerKey) { headerKey = hk; setHeader(); }
+  }
+  // Follow the presenter: from no presenting, or from presenting alone (the view and frame change over, the bar is the same).
+  function startFollow(rec) {
+    shared.left = false;
+    if (presenting && !presenting.follow) { presenting = { ...presenting, follow: true }; barShow(); followFrame(true); }
+    else {
+      startPresenting(rec.frame, true);
+      if (!presenting) { shared.left = true; rejoinShow(); return; } // no frames: not tried again until the person asks
+    }
+    say(`${rec.name} is presenting`);
+    rejoinShow();
+  }
+  // The frame the presenter is on, shown here (kept where it is when this board has no such frame yet).
+  function followFrame(force = false) {
+    if (!following() || !shared.rec) return;
+    const i = presenting.order.indexOf(shared.rec.frame);
+    if (i >= 0 && (i !== presenting.i || force)) { presenting = { ...presenting, i }; presentFrame(); } else barShow();
+  }
+  // What this page does now that the record (or none) is known.
+  function applyShared() {
+    const rec = shared.rec;
+    if (sender.active) { // the presenter here: someone else's record or none means it was taken over or cleared
+      if (rec && rec.presenter !== me) { sender.stop(); lostShare(rec); }
+      return;
+    }
+    const fresh = sharedFresh();
+    if (rec) shared.name = rec.name;
+    const mode = !presenting ? 'none' : presenting.follow ? 'follow' : 'personal';
+    const what = wbPresentHear({ rec, fresh, me, mode, sending: false, left: shared.left, offered: Boolean(rec) && shared.offered === rec.presenter });
+    if (!rec || !fresh) { shared.left = false; shared.offered = ''; }
+    if (what === 'end') { stopPresenting('ended'); note(`${shared.name || 'The presenter'} stopped presenting.`); }
+    else if (what === 'follow') startFollow(rec);
+    else if (what === 'update') { dimShow(); followFrame(); }
+    else if (what === 'offer') { shared.offered = rec.presenter; note(`${rec.name} is presenting. Press Follow to join.`); }
+    rejoinShow();
+  }
+  // A record heard (a change, or this page's own start) and when this page saw it.
+  function takeShared(rec, version) {
+    if (shared.rec && shared.rec.presenter !== rec.presenter) shared.left = false; // another presenter: a new presentation
+    shared.rec = rec;
+    shared.version = version;
+    shared.seenAt = Date.now();
+    shared.name = rec.name;
+  }
+  // The presenter here was replaced (taken over): a short note, and this person goes on as a follower.
+  function lostShare(rec) {
+    if (rec) {
+      note(`${rec.name} took over the presentation.`);
+      shared.left = false;
+      if (presenting) { presenting = { ...presenting, follow: true }; barShow(); followFrame(true); }
+    } else barShow();
+    rejoinShow();
+  }
+  // The record in storage now (read by its key: a key that is not there is an empty list, not an error).
+  async function readShared() {
+    const list = await host.storage.list(WB_PRESENT.key);
+    const e = (Array.isArray(list) ? list : []).find((x) => x.key === WB_PRESENT.key);
+    const rec = e ? wbCleanPresent(e.value) : null;
+    return { rec, version: e && Number.isFinite(e.version) ? e.version : 0, updatedAt: e ? e.updatedAt : null };
+  }
+  async function loadShared() {
+    let got;
+    try { got = await readShared(); } catch { return; }
+    if (sender.active) return;
+    if (!got.rec) { shared.rec = null; shared.version = 0; shared.seenAt = NaN; applyShared(); return; }
+    if (shared.rec && got.version === shared.version && JSON.stringify(shared.rec) === JSON.stringify(got.rec)) { applyShared(); return; } // the same: no news
+    const stamp = typeof got.updatedAt === 'string' ? Date.parse(got.updatedAt) : NaN;
+    const age = Number.isFinite(stamp) ? sync.now() - stamp : NaN;
+    if (shared.rec && shared.rec.presenter !== got.rec.presenter) shared.left = false;
+    shared.rec = got.rec;
+    shared.version = got.version;
+    shared.seenAt = wbPresentSeenAt(Date.now(), age);
+    applyShared();
+  }
+  // A storage 'change' for the record.
+  function hearShared(e) {
+    if (!e || e.key !== WB_PRESENT.key || (e.scope && e.scope !== 'space')) return;
+    if (e.deleted) {
+      shared.rec = null; shared.version = 0; shared.seenAt = NaN;
+      if (sender.active) { sender.stop(); note('Presenting to everyone stopped.'); lostShare(null); return; } // a Clear, or someone removed it
+      applyShared();
+      return;
+    }
+    if (e.value === undefined) { loadShared(); return; }
+    const rec = wbCleanPresent(e.value);
+    if (!rec) return;
+    if ((sender.active || sharing) && rec.presenter === me) return; // this page's own write (heard before its answer)
+    if (shared.rec && Number.isFinite(e.version) && e.version <= shared.version) return; // a repeat or an older one
+    takeShared(rec, Number.isFinite(e.version) ? e.version : 0);
+    applyShared();
+  }
+  async function startSharing() {
+    if (sender.active || sharing) return;
+    if (!policy.canEdit || !me) return;
+    if (!presenting) startPresenting();
+    if (!presenting || presenting.follow) return;
+    sharing = true;
+    try {
+      let got;
+      try { got = await readShared(); } catch { note('Presenting to everyone could not start.'); return; }
+      const known = got.rec && shared.rec && got.version === shared.version;
+      const fresh = Boolean(got.rec) && (known ? sharedFresh() : !wbPresentStale(wbPresentSeenAt(Date.now(), typeof got.updatedAt === 'string' ? sync.now() - Date.parse(got.updatedAt) : NaN), Date.now()));
+      const plan = wbPresentStartPlan({ canEdit: policy.canEdit, me, rec: got.rec, fresh });
+      if (plan === 'denied') return;
+      if (plan === 'follow') { takeSharedFrom(got); startFollow(got.rec); return; }
+      await writeShared(got.rec, got.version, null);
+    } finally { sharing = false; }
+  }
+  function takeSharedFrom(got) { takeShared(got.rec, got.version); }
+  // Write the first record (a new one, or in place of a stale or taken one) with the version read.
+  async function writeShared(old, version, from) {
+    const cur = presenting && presenting.order[presenting.i];
+    const value = {
+      id: 'state', type: 'present', presenter: me, name: String((info.user && info.user.name) || 'Someone').slice(0, WB_PRESENT.nameMax),
+      frame: cur, move: from ? from.move : presentMoveNow, dim: from ? from.dim : presentDim, seq: old ? old.seq + 1 : 1,
+      at: new Date(sync.now()).toISOString(), by: me,
+    };
+    try {
+      const r = await host.storage.set(WB_PRESENT.key, value, { version });
+      const rec = wbCleanPresent(value);
+      shared.rec = rec; shared.version = r && Number.isFinite(r.version) ? r.version : version + 1; shared.seenAt = Date.now();
+      sender.start(rec, shared.version);
+      presenting = { ...presenting, follow: false };
+      if (from) { presentMoveNow = from.move; presentDim = from.dim; }
+      barShow();
+      say('Presenting to everyone.');
+      rejoinShow();
+    } catch (err) {
+      if (wbPresentStartResult(err) === 'follow') { // someone else wrote first: follow them
+        try {
+          const got = await readShared();
+          if (got.rec && got.rec.presenter !== me) { takeShared(got.rec, got.version); startFollow(got.rec); return; }
+        } catch { /* the note below */ }
+      }
+      note('Presenting to everyone could not start.');
+    }
+  }
+  let sharing = false; // a start or a take over is on its way
+  async function stopSharing() {
+    if (!sender.active) return;
+    const v = sender.version;
+    sender.stop();
+    shared.rec = null; shared.version = 0; shared.seenAt = NaN;
+    if (presenting) barShow();
+    rejoinShow();
+    try { await host.storage.delete(WB_PRESENT.key, { version: v }); } catch (err) {
+      // Our own newer write was in flight: delete that one. Someone else's record is left alone.
+      const cur = err && err.current && wbCleanPresent(err.current.value);
+      if (cur && cur.presenter === me && Number.isFinite(err.current.version)) host.storage.delete(WB_PRESENT.key, { version: err.current.version }).catch(() => {});
+    }
+  }
+  async function takeOver() {
+    if (sharing || !following() || !wbPresentCanTakeOver({ canEdit: policy.canEdit, me, rec: shared.rec, fresh: sharedFresh() })) return;
+    const from = shared.rec;
+    const ok = await host.ui.confirm({ title: `Take over the presentation from ${from.name}?`, message: 'Everyone, you included, will follow you instead.', action: 'Take over' }).catch(() => false);
+    if (!ok || !following()) return;
+    sharing = true;
+    try {
+      let got;
+      try { got = await readShared(); } catch { note('The presentation could not be taken over.'); return; }
+      if (got.rec && got.rec.presenter !== from.presenter) { await loadShared(); return; } // someone else took it first: follow them
+      await writeShared(got.rec, got.version, got.rec || from);
+    } finally { sharing = false; }
+  }
+  $('present-share').addEventListener('click', () => { if (sender.active) stopSharing(); else startSharing(); });
+  $('present-takeover').addEventListener('click', () => takeOver());
+  for (const type of ['pointerdown', 'keydown', 'dblclick', 'contextmenu', 'wheel', 'keyup']) $('rejoin').addEventListener(type, (e) => e.stopPropagation()); // a button of its own: the board's keys and presses are not its
+  $('rejoin').addEventListener('click', () => { if (shared.rec && sharedFresh()) startFollow(shared.rec); });
+  // A record nobody has seen change for 35 s goes stale: noticed within a few seconds.
+  const staleTick = setInterval(() => { if (!surface.isConnected) { clearInterval(staleTick); sender.stop(); return; } if (!sender.active && (shared.rec || presenting)) applyShared(); }, 4000); // gone with the page
+  window.addEventListener('pagehide', () => { if (sender.active) stopSharing(); });
 
   // ---- the overview -------------------------------------------------------------------------------------------------------
   // A small map of the whole board at the bottom right of the board (lib-n): the Overview button at the right of the toolbar
@@ -2829,7 +3093,7 @@
     endAfterRight(); // a new press: any menu after it is its own
     if (e.target.closest('.wb-text-edit') || onControl(e)) return;
     // Presenting: the bar's buttons are pressed as buttons; a press anywhere else does nothing (see "presenting").
-    if (presenting) { if (!e.target.closest('.wb-present')) e.preventDefault(); return; }
+    if (presenting) { if (!e.target.closest('.wb-present, .wb-rejoin')) e.preventDefault(); return; }
     const middle = e.pointerType === 'mouse' && e.button === 1;
     const right = e.pointerType === 'mouse' && e.button === 2;
     if (e.pointerType === 'mouse' && e.button !== 0 && !middle && !right) return;
@@ -3323,7 +3587,7 @@
   }
 
   // Sending. Not over the find bar, the presenting bar, the overview or the formatting bar: only the board itself.
-  const NOT_BOARD = '.wb-find, .wb-present, .wb-overview, .wb-format, .wb-drop';
+  const NOT_BOARD = '.wb-find, .wb-present, .wb-rejoin, .wb-overview, .wb-format, .wb-drop';
   const liveSender = liveApi ? createWbLiveSender({ send: (data) => liveApi.publish(WB_LIVE.topic, data) }) : null;
   const liveLeave = () => { if (liveSender) liveSender.leave(); };
   function livePoint(e) {
@@ -3372,8 +3636,13 @@
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
   // ---- start ------------------------------------------------------------------------------------------------------------
-  host.on('change', (e) => { sync.handle(e); boardSync.handle(e); });
-  host.on('changes', (e) => { keepBackground(e); sync.handleMany(e); boardSync.handleMany(e); });
+  host.on('change', (e) => { sync.handle(e); boardSync.handle(e); hearShared(e); });
+  host.on('changes', (e) => {
+    keepBackground(e); sync.handleMany(e); boardSync.handleMany(e);
+    if (e && (!e.scope || e.scope === 'space')) { // a Clear takes the record with the rest, a put-back may bring it
+      if (e.cleared || e.restored) loadShared(); else for (const c of Array.isArray(e.changes) ? e.changes : []) hearShared({ ...c, scope: e.scope });
+    }
+  });
   let first;
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   await reloadBoard(); // the background (Default when it cannot be read)
@@ -3383,4 +3652,5 @@
   $('app').hidden = false;
   if (surface.clientWidth > 0) { fitted = true; renderer.fit(); }
   updateStatus();
+  loadShared(); // someone may be presenting already: follow them
 })();
