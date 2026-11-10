@@ -2352,6 +2352,8 @@ function loopbackFetch(url, { method = 'GET', headers = {}, body } = {}) {
         resolve(new Response([204, 304].includes(r.statusCode) ? null : Buffer.concat(chunks), { status: r.statusCode, headers: h }));
       });
     });
+    // A stalled answer ends the run (the caller's finally frees the slug's guard): 3 minutes, DEMO_REQUEST_TIMEOUT_SECONDS.
+    req.setTimeout((Number(process.env.DEMO_REQUEST_TIMEOUT_SECONDS) > 0 ? Number(process.env.DEMO_REQUEST_TIMEOUT_SECONDS) : 180) * 1000, () => req.destroy(new Error('timed out')));
     req.on('error', reject);
     if (body !== undefined) req.write(body);
     req.end();
