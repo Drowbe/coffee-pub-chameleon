@@ -2442,7 +2442,7 @@
     presentBar();
     if (!b) return;
     const q = defOf(b).reach(b);
-    scrimTo({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h });
+    scrimTo(b);
     showView(wbFitView({ x: b.x + q.x, y: b.y + q.y, w: q.w, h: q.h }, surface.clientWidth, surface.clientHeight, { bottom: WB_FRAME.bar, min: renderer.limits.min, max: renderer.limits.max }));
     say(wbPresentWords(presenting, b.title));
   }
@@ -2458,9 +2458,17 @@
     scrim.style.setProperty('--wb-dim', String(wbDimStrength(presentDim)));
     scrim.dataset.dim = String(presentDim);
   }
-  function scrimTo(r) {
-    Object.assign(scrim.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
-    scrim.hidden = false;
+  // The two clear windows, in board units: the frame's box and its title tab (read from what is drawn: the tab sits above the
+  // box's top left corner, the gap between them is dimmed too).
+  function scrimTo(b) {
+    const el = renderer.element(b.id);
+    const tab = el && el.querySelector('.wb-fr-tab');
+    const rect = (x, y, w, h) => `M${x} ${y}h${w}v${h}h${-w}z`;
+    const BIG = 1e6;
+    let d = rect(b.x - BIG, b.y - BIG, 2 * BIG + b.w, 2 * BIG + b.h) + rect(b.x, b.y, b.w, b.h);
+    if (tab && tab.offsetWidth) d += rect(b.x, b.y - WB_FRAME.gap - tab.offsetHeight, tab.offsetWidth, tab.offsetHeight);
+    $('scrim-path').setAttribute('d', d);
+    scrim.removeAttribute('hidden');
     dimShow();
   }
   dimShow();
@@ -2504,7 +2512,7 @@
     presenting = null;
     $('app').classList.remove('wb-presenting');
     $('present').hidden = true;
-    scrim.hidden = true;
+    scrim.setAttribute('hidden', '');
     showView(back);
     surface.focus({ preventScroll: true });
     say('Stopped presenting.');
