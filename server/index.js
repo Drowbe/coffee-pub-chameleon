@@ -14,6 +14,8 @@ const { ModuleManager, LIMITS: MODULE_LIMITS, compareVersions, oldNameIn, pendin
 const { buildModule, bundledModules, zipFiles } = require('./module-build');
 const { fillManifest } = require('./modules');
 const templates = require('./templates');
+const demoLoader = require('./demo-loader');
+const http = require('http');
 const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
@@ -2328,6 +2330,68 @@ hostRouter.post('/api/host/environments/:slug/template/apply', requireHostAdmin,
     res.json({ environment: { ...hostRegistry.findEnvironment(req.params.slug), ...answer } });
   } catch (err) {
     if (err instanceof StoreError) return res.status(err.status).json({ error: err.message });
+    sendHostError(err, res);
+  }
+});
+// Adds the demo space to an environment (documentation/plans/plan-demo-space.md): the generic loader (server/demo-loader.js)
+// run against the environment's template's demo file (travel's when the template has none), by loopback, as the host
+// admin's own stand-in user in that environment. The stand-in needs no password: the session is signed here with the
+// environment's own secret, as a sign-in would, and lives only for this one run. It changes no environment-wide setting.
+// Answers the loader's report, with the demo people's one-time passwords shown once (never logged, never kept).
+const demoRuns = new Set();
+// fetch cannot set the Host header, and the environment is chosen by it: so the loader's requests go through node's http.
+function loopbackFetch(url, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = http.request({ host: u.hostname, port: u.port, path: u.pathname + u.search, method, headers: { ...headers, ...(body !== undefined ? { 'content-length': Buffer.byteLength(body) } : {}) } }, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        const h = new Headers();
+        for (const [k, v] of Object.entries(r.headers)) for (const x of [].concat(v)) h.append(k, x);
+        resolve(new Response([204, 304].includes(r.statusCode) ? null : Buffer.concat(chunks), { status: r.statusCode, headers: h }));
+      });
+    });
+    req.on('error', reject);
+    if (body !== undefined) req.write(body);
+    req.end();
+  });
+}
+hostRouter.post('/api/host/environments/:slug/demo', requireHostAdmin, async (req, res) => {
+  const slug = req.params.slug;
+  try {
+    const entry = hostRegistry.findEnvironment(slug);
+    if (!entry) throw new HostError('no such environment', 404);
+    if (entry.status === 'suspended') throw new HostError(`This ${word('environment')} is suspended. Turn it on first, then add the demo ${word('space')}.`, 409);
+    if (refusals.has(slug)) throw new HostError(`This ${word('environment')} will not open, so the demo ${word('space')} cannot be added. Restore a good backup first.`, 409);
+    if (demoRuns.has(slug)) throw new HostError(`The demo ${word('space')} is being added. Wait for it to finish.`, 409);
+    const env = environmentFor(slug);
+    const envWord = (...a) => env.store.word(...a);
+    if (env.store.spaces.some((sp) => String(sp.description || '').startsWith(demoLoader.MARKER))) throw new HostError(`The demo ${envWord('space')} is already there. Delete it, then add it again.`, 409);
+    const own = env.store.templateRecord?.id || null;
+    const usedTemplate = own && demoLoader.hasDemo(own) ? own : 'travel';
+    const admin = currentHostAdmin(req);
+    let user = env.store.userByLogin(admin.login);
+    if (user && !user.hostAdmin) throw new HostError(`A person called "${admin.login}" already has an account in this ${envWord('environment')}, so the host admin cannot act there under that name.`, 409);
+    if (!user) user = env.store.addUser({ login: admin.login, displayName: admin.login, role: 'admin', passwordHash: null, hostAdmin: true });
+    demoRuns.add(slug);
+    let report;
+    try {
+      report = await demoLoader.loadDemo({
+        base: `http://127.0.0.1:${listener.address().port}`,
+        headers: { host: `${slug}.${BASE_DOMAIN}` },
+        templateId: usedTemplate,
+        today: new Date().toISOString().slice(0, 10),
+        session: { cookie: `${auth.COOKIE}=${auth.issueSession(env.store.sessionSecret, user)}` },
+        fetchImpl: loopbackFetch,
+        words: envWord,
+      });
+    } finally {
+      demoRuns.delete(slug);
+    }
+    res.set('Cache-Control', 'no-store').json({ ...report, template: own, usedTemplate, fellBack: usedTemplate !== own });
+  } catch (err) {
+    if (err instanceof demoLoader.DemoError) return res.status(409).json({ error: err.message });
     sendHostError(err, res);
   }
 });
