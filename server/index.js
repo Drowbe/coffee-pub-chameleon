@@ -2339,6 +2339,7 @@ hostRouter.post('/api/host/environments/:slug/template/apply', requireHostAdmin,
 // environment's own secret, as a sign-in would, and lives only for this one run. It changes no environment-wide setting.
 // Answers the loader's report, with the demo people's one-time passwords shown once (never logged, never kept).
 const demoRuns = new Set();
+const DEMO_STANDIN_LOGIN = 'host-demo';
 // fetch cannot set the Host header, and the environment is chosen by it: so the loader's requests go through node's http.
 function loopbackFetch(url, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -2372,10 +2373,10 @@ hostRouter.post('/api/host/environments/:slug/demo', requireHostAdmin, async (re
     if (env.store.spaces.some((sp) => String(sp.description || '').startsWith(demoLoader.MARKER))) throw new HostError(`The demo ${envWord('space')} is already there. Delete it, then add it again.`, 409);
     const own = env.store.templateRecord?.id || null;
     const usedTemplate = own && demoLoader.hasDemo(own) ? own : 'travel';
-    const admin = currentHostAdmin(req);
-    let user = env.store.userByLogin(admin.login);
-    if (user && !user.hostAdmin) throw new HostError(`A person called "${admin.login}" already has an account in this ${envWord('environment')}, so the host admin cannot act there under that name.`, 409);
-    if (!user) user = env.store.addUser({ login: admin.login, displayName: admin.login, role: 'admin', passwordHash: null, hostAdmin: true });
+    // The demo run's own stand-in, never the host admin's login (an ordinary account may have that name): fixed login, no password.
+    let user = env.store.userByLogin(DEMO_STANDIN_LOGIN);
+    if (user && (!user.hostAdmin || user.passwordHash)) throw new HostError(`A person called "${DEMO_STANDIN_LOGIN}" already has an account in this ${envWord('environment')}, so the demo cannot be added. Rename or remove that account first.`, 409);
+    if (!user) user = env.store.addUser({ login: DEMO_STANDIN_LOGIN, displayName: 'Host (demo)', role: 'admin', passwordHash: null, hostAdmin: true });
     demoRuns.add(slug);
     let report;
     try {
