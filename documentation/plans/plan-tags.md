@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides; server-development (the tag list, its routes, the checks); experience-design (the SDK piece, the pages, Documents and Research); quality-assurance (an independent read, because this changes the core); content-manager (the documents once it is built).
 
-**Status:** Decided, 2026-11-11 (decisions 1 to 9); nothing is built and nothing was run for this plan. The build waits for Thomas's go. The request, as Thomas gave it: tags on Documents, and "tags should be a shared service". Facts are marked **(code)** (read in the code), **(docs)** (read in the documentation) or **(memory)** (not checked). The decisions are Thomas's; the contract is a draft built on them, and what he has not decided is under "Open questions".
+**Status:** Decided, 2026-11-11 (decisions 1 to 12); nothing is built and nothing was run for this plan. The build waits for Thomas's go. The request, as Thomas gave it: tags on Documents, and "tags should be a shared service". Facts are marked **(code)** (read in the code), **(docs)** (read in the documentation) or **(memory)** (not checked). The decisions are Thomas's; the contract is a draft built on them, and nothing is left open.
 
 ## What it is today
 
@@ -31,6 +31,9 @@ Thomas, 2026-11-11.
 7. **A word that matches no tag is dropped, and the person is told** ("skipped: not a tag in this space"). Nothing creates tags behind anyone's back: only a person, in the picker, makes a tag. *Reason:* a list nobody asked to grow stays clean.
 8. **Rename, recolour and delete live on the space's Manage page, in a Tags section.** *Reason:* Manage is where a space is configured.
 9. **The Assistant may see the names of the space's tags, nothing else** (no ids, no colours, no counts), and only for objects the person already shares with it. *Reason:* it helps it find things without widening what it can read.
+10. **When an object moves to another space, its tags are re-created by name in the new space:** an existing tag of the same name there is used, else one is made with the same colour. Only when the person has the create right (edit) in the destination space. The 200-per-list and 8-per-object limits still apply; anything that does not fit is dropped and the person is told. Names are re-validated by the one rule. It runs on the server and is never trusted from the client. *Reason:* a moved object keeps its meaning without leaking ids across spaces.
+11. **A module opts in to tags in its manifest** (`"tags": true`); there is no owner approval step. *Reason:* a tag list is small and the create right is already checked per module.
+12. **Research's own tags are replaced cleanly.** Nobody has tags to keep, so there is no migration. *Reason:* the product is unreleased.
 
 Any library added for this follows the Documents plan's decisions 8 and 9 (allowed licences only, nothing from outside). None is expected.
 
@@ -41,6 +44,10 @@ Draft on the decisions above. Names: the list belongs to a space; the things tag
 ### A tag and its limits
 
 `{ id, name, color, by, at }`. `id` 8 to 12 lower-case letters and digits, made by the server and never reused. `name` 1 to 24 characters of letters (any language), digits and dashes, lower-cased and NFKC-normalised; unique in the list ignoring case. `color` a tone name from the theme's fixed set, or empty (plain); never a free hex, so the light and dark themes stay right. `by` a user key, `at` an ISO time. A list holds at most 200 tags; an object at most 8. `<`, `>`, `&` and quotes are not allowed in a name, so a stored name carries no HTML; pages still use `textContent`. One cleaning function in `server/tags.js` is used by the routes, the summary and the objects format.
+
+### Moving an object to another space
+
+A server helper in `server/tags.js` takes the object's tag ids, the source list and the destination space, and returns the destination ids. For each tag it reads the name from the source list, re-validates it by the one rule, and uses the destination tag of that name or makes one with the same colour. It makes none unless the person may edit in the destination space (the same check as a create), stops at 200 in the list and 8 on the object, and returns what it dropped so the page can say "skipped: too many tags to keep: ...". The client sends only the object and the destination; it never sends names or ids to trust. This plan does not build a move: no move between spaces was found in the code or the documents (a search, not a full read), so the helper is called by whichever feature adds one. A copy follows the same rule.
 
 ### Stored (core, one list per space)
 
@@ -76,7 +83,7 @@ A chip row on an object; an edit-tags button that opens the picker (type to filt
 
 ### Research moves onto it
 
-Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (colours live in the list); Suggest tags offers the AI's words that match a tag as chips, and the rest are skipped with a note; the `saveNote` and `savePhoto` paths match words to tags by name and drop the rest with "skipped: not a tag in this space". Tags already on Research objects are lost; test data may be reset (CLAUDE.md). Version bump.
+Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (colours live in the list); Suggest tags offers the AI's words that match a tag as chips, and the rest are skipped with a note; the `saveNote` and `savePhoto` paths match words to tags by name and drop the rest with "skipped: not a tag in this space". No migration (decision 12). Version bump.
 
 ## What touches the core, and what does not
 
@@ -93,6 +100,7 @@ Waits for Thomas's go.
 3. **Documents:** the field, chips, picker, filter and search. Owner: experience-design. The first visible result.
 4. **Summary field `tags`, search and the Assistant:** `SUMMARY_FIELDS`, search by tag, `SENT_FIELDS`. Owner: server-development. Names only, and only for objects the person shares with it (decision 9). Held for a security read, since it is new text the model sees.
 5. **Objects format change:** the one rule in `server/object-format.js`, the prompt text and `check-object-format`; a word with no tag is dropped and reported, never created. Owner: server-development.
+5b. **The move helper** (decision 10) and its checks, with step 1 or when a move exists. Owner: server-development; held for the same independent read.
 6. **Research moves onto it,** with the same drop-and-report rule. Owner: experience-design.
 7. **Documentation:** `api-modules.md`, `api-module-sdk.md`, `architecture-modules.md`, the user guides and the CHANGELOG. Owner: content-manager.
 
@@ -105,20 +113,15 @@ Waits for Thomas's go.
 ## Risks
 
 - **A core change for modules that are still small.** The SDK, the bridge and the summary are shared by every module; a wrong turn costs all of them. Hence the held reads in steps 1 and 4.
-- **Tags do not follow an object to another space.** An object moved or copied to another space has ids that mean nothing there; it shows no tags until retagged.
+- **Re-creating tags on a move** can fill the destination's list of 200 or add colours nobody chose there. Mitigation: the limits, the edit-right check and the report of what was dropped.
 - **A restore of an old backup** can bring back a tag that was deleted since.
 - **Tags in the AI's context** (step 4) are new text the model sees; What AI may see must show it.
-- **Research's tags are lost** on the move, for anyone who has them now.
 - **200 tags** is a pick list, not a taxonomy.
 
 ## Open questions
 
-None block the build. Questions 1 to 3 of the earlier draft are decided (7 to 9).
-
-1. **Do moving or copying an object between spaces carry its tags by name?** Today none move.
-2. **Does a module need the owner's approval to use tags,** as `refs` do? Draft: no.
-3. **Does anyone have Research tags to keep?**
+None. Decisions 7 to 12 closed the earlier ones.
 
 ## Not decided
 
-The tone names and how many; the exact words on screen beyond those above; the stored file's name; whether a guest sees chips on a shared object; whether the picker offers Suggest tags outside Research.
+The tone names and how many; the exact words on screen beyond those above; the stored file's name; whether a guest sees chips on a shared object; whether the picker offers Suggest tags outside Research; which feature first moves an object between spaces.
