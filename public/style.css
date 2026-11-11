@@ -6419,6 +6419,10 @@ body.chat-window {
 /* Two-step sign-in (plans/plan-mfa.md): the enrolment block (the QR, the key, the code, then the recovery codes), the
    code page, and the small rows on the profile and the console. */
 .login-step.wide { max-width: 560px; }
+/* the agreement step: each text in its own box that scrolls when long */
+.agree-doc { max-height: 40vh; overflow-y: auto; text-align: left; }
+.agree-doc h2 { margin: 0 0 8px; font-size: var(--text-16, 1rem); }
+.agree-doc p { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mfa-block { margin: 8px 0 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-large); background: var(--bg-card, var(--bg)); }
 .mfa-scan { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
 .mfa-qr svg { display: block; width: 168px; height: 168px; padding: 8px; border-radius: var(--radius-medium); background: #fff; }

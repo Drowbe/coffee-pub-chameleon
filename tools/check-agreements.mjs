@@ -31,8 +31,7 @@
  *   - guests' agreements (server/agreements.js, GuestAgreements): a typed name is kept as plain text, one line, at
  *     most 40 characters; one record per guest, text and version; the file is private, bounded, and never written over
  *     when it cannot be read; an owner's copy carries neither it nor an account's `agreed`.
- * Left for later steps, pinned here so they change on purpose: a guest link is not asked (step 4), and /agree serves
- * the step page, which has no agreement panel until step 2.
+ * Left for later steps, pinned here so they change on purpose: a guest link is not asked (step 4).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -585,7 +584,14 @@ try {
     assert.equal(page.headers['cache-control'], 'no-store');
     assert.equal(page.text, fs.readFileSync(path.join(ROOT, 'public', 'login-step.html'), 'utf8'), 'the step page, as it is');
     assert.ok(!page.text.includes('alert(1)') && !page.text.includes('Be kind'), 'the server never writes a text into a page');
-    if (!/agree/i.test(fs.readFileSync(path.join(ROOT, 'public', 'login-step.js'), 'utf8'))) notes.push('/agree serves the step page, which has no agreement panel yet (step 2 of the plan): until then a person can agree only through the API.');
+    // Step 2: the page has the agreement panel, draws texts as text, and the shared api helper sends a 403 to /agree.
+    const stepJs = fs.readFileSync(path.join(ROOT, 'public', 'login-step.js'), 'utf8');
+    const brandJs = fs.readFileSync(path.join(ROOT, 'public', 'brand.js'), 'utf8');
+    assert.match(page.text, /id="agree"/);
+    assert.match(page.text, /id="agree-name"[^>]*required/);
+    assert.ok(stepJs.includes('/api/agreements/accept') && stepJs.includes('sameSiteNext'), 'the page agrees and goes to the safe next');
+    assert.ok(!/innerHTML/.test(stepJs), 'the texts are drawn as text');
+    assert.match(brandJs, /agreementRequired === true[\s\S]{0,200}\/agree\?next=\$\{encodeURIComponent\(sameSiteNext/, 'api() sends an agreementRequired 403 to /agree');
   });
 
   await test('agreeing: recorded with each text\'s version and the time, once; then everything answers as before', async () => {

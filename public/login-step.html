@@ -35,6 +35,18 @@
     <div id="enrol-block"></div>
     <p class="hint"><a href="/login">Start over</a></p>
   </section>
+  <!-- The agreement step (/agree): the texts to agree to, drawn as plain paragraphs by login-step.js, then the typed full name. -->
+  <form class="panel login login-step wide" id="agree" hidden>
+    <div class="brand big"><img data-brand="icon" alt="" class="icon"><span data-brand="environmentName">Coffee Pub</span></div>
+    <p class="hint" id="agree-lede">Read this, then agree to come in.</p>
+    <div id="agree-docs"></div>
+    <label>Your full name<input id="agree-name" type="text" autocomplete="name" maxlength="80" required></label>
+    <p class="hint">Type your name to agree to the text above.</p>
+    <button class="btn btn-primary" type="submit" id="agree-go"><i class="fa-solid fa-check" aria-hidden="true"></i> Agree</button>
+    <p class="status error" id="agree-error" hidden></p>
+    <p class="hint"><a href="/logout" id="agree-out">Sign out</a></p>
+    <span class="version" data-brand="version"></span>
+  </form>
   <script type="module" src="/login-step.js"></script>
 </body>
 </html>
