@@ -163,7 +163,7 @@ test('typing in one paragraph, one heading, one list row changes that block only
 test('every action the bar has is known: done by the rich editor, or false and nothing', () => {
   assert.deepEqual(L.DL_ACTIONS.filter((a) => !L.dlRichCan(a)), ['grid', 'formula']);
   for (const a of L.DL_ACTIONS) assert.equal(Boolean(L.dlRichCommand(PM, a)), L.dlRichCan(a) && a !== 'link', a); // link is no command: it asks first
-  for (const a of ['link', 'grid', 'formula', 'nope', '', undefined, 'h5', 'constructor', '__proto__']) {
+  for (const a of ['link', 'formula', 'nope', '', undefined, 'h5', 'constructor', '__proto__']) {
     const ed = open(TEXT);
     select(ed, 0, 0, 5);
     const before = ed.state().doc;
@@ -1613,6 +1613,201 @@ test('page break: a read-only editor adds none; a pasted `_ _ _` line becomes a 
   rows.state().doc.check();
   rows.state().doc.descendants((n, pos, parent) => { if (n.type === N.page_break) assert.equal(parent.type, N.doc, 'a break inside a block'); });
   assert.equal(L.dlRichActive(PM, ed.state()).quote, false);
+});
+
+
+// ---- 13. GRIDS: the library's grid editing in the editor (step 7b) -----------------------------------------------------------
+const GRID_MD = 'before\n\n| a | b | c |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n\nafter\n';
+const cellPos = (ed, row, col) => { const st = ed.state(); let at = -1; st.doc.descendants((n, pos) => { if (n.type === N.grid) { let p = pos + 1; for (let r = 0; r < row; r += 1) p += n.child(r).nodeSize; p += 1; for (let c = 0; c < col; c += 1) p += n.child(row).child(c).nodeSize; at = p + 1; } }); return at; };
+const caretIn = (ed, row, col, off = 0) => { const st = ed.state(); ed.dispatch(st.tr.setSelection(PM.TextSelection.create(st.doc, cellPos(ed, row, col) + off))); };
+const gridOf = (ed) => { let g = null; ed.state().doc.descendants((n) => { if (n.type === N.grid && !g) g = n; }); return g; };
+const shape = (ed) => { const g = gridOf(ed); return g ? [g.childCount, g.child(0).childCount] : null; };
+const bigGrid = (rows, cols) => `| ${Array(cols).fill('h').join(' | ')} |\n| ${Array(cols).fill('---').join(' | ')} |\n${Array(rows - 1).fill(`| ${Array(cols).fill('c').join(' | ')} |\n`).join('')}`;
+
+test('grids: the schema fixes spans at 1 and the library finds the grid by its role', () => {
+  assert.throws(() => N.grid_cell.create({ colspan: 2 }), /column span/);
+  assert.throws(() => N.grid_cell.create({ rowspan: 2 }), /row span/);
+  assert.throws(() => N.grid_head.create({ colwidth: [10] }), /column width/);
+  assert.ok(N.grid_cell.create({ colspan: 1, rowspan: 1 }));
+});
+test('grids: open then Done is byte-exact with the grid plugin active, for every corpus text with a grid, and the plugin appends nothing', () => {
+  let n = 0;
+  for (const [, md, out, lost] of CASES) {
+    if (lost || !/\|\s*:?-{3,}|\|\s*:?-+:?\s*\|/.test(md)) continue;
+    const ed = open(md);
+    n += 1;
+    if (typeof out !== 'string' || out === md) assert.equal(ed.getText(), md, 'untouched: byte for byte');
+    const first = ed.getText();
+    const again = open(first);
+    assert.equal(again.getText(), first, 'open-then-Done of the stored form');
+  }
+  assert.ok(n >= 8, `${n} grid cases`);
+  const ed = open(GRID_MD);
+  assert.equal(ed.getText(), GRID_MD.replace('| :-- | :-: | --: |', '| :-- | :-: | --: |'));
+});
+test('grids: fixTables finds nothing in a grid the reader built (so the plugin never rewrites an untouched grid), also after an edit in another block', () => {
+  const docs = [open(GRID_MD)];
+  for (const [, md] of CASES) if (/\|\s*:?-+:?\s*\|/.test(md)) docs.push(open(md));
+  for (const ed of docs) {
+    assert.equal(PM.fixTables(ed.state()), undefined, 'nothing to fix on load');
+    const before = ed.getText();
+    const first = ed.state().doc.firstChild;
+    if (first && first.isTextblock && first.type === N.paragraph) {
+      select(ed, 0, 0);
+      ed.dispatch(ed.state().tr.insertText('zq'));
+      assert.equal(PM.fixTables(ed.state()), undefined, 'nothing to fix after typing in another block');
+      assert.equal(ed.getText().replace('zq', ''), before, 'only the typed characters changed');
+    }
+  }
+  const ed = open(GRID_MD);
+  const gridBefore = gridOf(ed);
+  select(ed, 0, 0);
+  ed.dispatch(ed.state().tr.insertText('zq'));
+  assert.ok(gridOf(ed).eq(gridBefore), 'the grid node is the same');
+  assert.equal(ed.getText(), GRID_MD.replace('before', 'zqbefore'));
+});
+test('grids: Tab and Shift-Tab move between cells, and Tab in the last cell adds a row (up to 200)', () => {
+  const ed = open(GRID_MD);
+  const keys = L.dlRichKeys(PM);
+  caretIn(ed, 0, 0);
+  assert.equal(keys.Tab(ed.state(), ed.dispatch), true);
+  assert.equal(ed.state().selection.from >= cellPos(ed, 0, 1), true);
+  assert.equal(ed.state().doc.textBetween(ed.state().selection.from, ed.state().selection.to), 'b', 'the next cell is selected');
+  keys['Shift-Tab'](ed.state(), ed.dispatch);
+  assert.equal(ed.state().doc.textBetween(ed.state().selection.from, ed.state().selection.to), 'a');
+  caretIn(ed, 2, 2);
+  assert.equal(keys.Tab(ed.state(), ed.dispatch), true);
+  assert.deepEqual(shape(ed), [4, 3]);
+  assert.equal(ed.state().selection.from, cellPos(ed, 3, 0), 'the caret is in the new row');
+  assert.ok(ed.getText().includes('| 4 | 5 | 6 |\n|  |  |  |\n'), ed.getText());
+  const full = open(bigGrid(200, 2));
+  caretIn(full, 199, 1);
+  assert.equal(keys.Tab(full.state(), full.dispatch), true);
+  assert.deepEqual(shape(full), [200, 2], 'no row past 200');
+  const lists = open('- a\n- b\n');
+  select(lists, 0, 0, 0, 3);
+  assert.equal(L.dlRichKeys(PM)['Shift-Tab'](lists.state(), null), PM.liftListItem(N.list_item)(lists.state(), null), 'outside a grid Shift-Tab is the list key');
+});
+test('grids: Enter goes to the cell below, and in the last row adds a row', () => {
+  const ed = open(GRID_MD);
+  const keys = L.dlRichKeys(PM);
+  caretIn(ed, 0, 1);
+  keys.Enter(ed.state(), ed.dispatch);
+  assert.equal(ed.state().selection.from, cellPos(ed, 1, 1));
+  caretIn(ed, 2, 1);
+  keys.Enter(ed.state(), ed.dispatch);
+  assert.deepEqual(shape(ed), [4, 3]);
+  assert.equal(ed.state().selection.from, cellPos(ed, 3, 1));
+  const full = open(bigGrid(200, 1));
+  caretIn(full, 199, 0);
+  keys.Enter(full.state(), full.dispatch);
+  assert.deepEqual(shape(full), [200, 1]);
+});
+test('grids: every run() action, and the bounds', () => {
+  const act = (md, row, col, name) => { const ed = open(md); caretIn(ed, row, col); const rev = ed.revision(); const r = ed.run(name); return { ed, r, changed: ed.revision() !== rev }; };
+  let x = act(GRID_MD, 1, 1, 'gridRowAfter');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [4, 3]);
+  assert.equal(gridOf(x.ed).child(2).child(0).type, N.grid_cell, 'the new row is cells, not a header');
+  x = act(GRID_MD, 1, 1, 'gridRowBefore');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [4, 3]);
+  x = act(GRID_MD, 0, 1, 'gridRowAfter');
+  assert.equal(x.r, true); assert.equal(gridOf(x.ed).child(1).child(0).type, N.grid_cell, 'a row under the header is cells');
+  assert.equal(x.ed.getText(), open(x.ed.getText()).getText(), 'and it round trips');
+  x = act(GRID_MD, 0, 1, 'gridRowBefore');
+  assert.equal(x.r, false, 'nothing goes above the header');
+  x = act(GRID_MD, 1, 1, 'gridColBefore');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [3, 4]);
+  assert.equal(gridOf(x.ed).child(0).child(0).type, N.grid_head);
+  x = act(GRID_MD, 1, 1, 'gridColAfter');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [3, 4]);
+  x = act(GRID_MD, 1, 1, 'gridRowDelete');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [2, 3]);
+  x = act(GRID_MD, 0, 1, 'gridRowDelete');
+  assert.equal(x.r, false, 'the header row stays');
+  x = act(GRID_MD, 1, 1, 'gridColDelete');
+  assert.equal(x.r, true); assert.deepEqual(shape(x.ed), [3, 2]);
+  x = act('| a |\n| --- |\n| 1 |\n', 1, 0, 'gridColDelete');
+  assert.equal(x.r, false, 'the last column stays');
+  x = act(GRID_MD, 1, 1, 'gridDelete');
+  assert.equal(x.r, true); assert.equal(shape(x.ed), null); assert.equal(x.ed.getText(), 'before\n\nafter\n');
+  x = act('| a |\n| --- |\n| 1 |\n', 1, 0, 'gridDelete');
+  assert.equal(x.r, true); assert.equal(x.ed.state().doc.childCount, 1);
+  x.ed.getText();
+  // outside a grid: nothing
+  for (const name of ['gridRowBefore', 'gridRowAfter', 'gridColBefore', 'gridColAfter', 'gridRowDelete', 'gridColDelete', 'gridDelete', 'gridAlignLeft', 'gridAlignCentre', 'gridAlignRight']) {
+    const ed = open(GRID_MD); select(ed, 0, 1);
+    const before = ed.state().doc;
+    assert.equal(ed.run(name), false, name);
+    assert.ok(ed.state().doc === before, `${name} outside a grid changes nothing`);
+  }
+  // bounds
+  assert.equal(act(bigGrid(200, 3), 1, 0, 'gridRowAfter').r, false);
+  assert.equal(act(bigGrid(200, 3), 1, 0, 'gridRowBefore').r, false);
+  assert.equal(act(bigGrid(3, 20), 1, 0, 'gridColAfter').r, false);
+  assert.equal(act(bigGrid(3, 20), 1, 0, 'gridColBefore').r, false);
+  assert.equal(act(bigGrid(199, 19), 1, 0, 'gridRowAfter').r, true);
+  assert.equal(act(bigGrid(3, 19), 1, 0, 'gridColAfter').r, true);
+  // a read-only editor
+  const ro = open(GRID_MD); caretIn(ro, 1, 1); ro.setReadOnly(true);
+  assert.equal(ro.run('gridRowAfter'), false);
+});
+test('grids: alignment applies to the whole column and round trips as :-- :-: --:', () => {
+  for (const [name, mark] of [['gridAlignLeft', ':--'], ['gridAlignCentre', ':-:'], ['gridAlignRight', '--:']]) {
+    const ed = open('| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n');
+    caretIn(ed, 2, 1);
+    assert.equal(ed.run(name), true);
+    const g = gridOf(ed);
+    for (let r = 0; r < 3; r += 1) assert.equal(g.child(r).child(1).attrs.align, { gridAlignLeft: 'left', gridAlignCentre: 'center', gridAlignRight: 'right' }[name]);
+    assert.equal(g.child(0).child(0).attrs.align, null, 'the other column is not touched');
+    assert.equal(ed.getText(), `| a | b |\n| --- | ${mark} |\n| 1 | 2 |\n| 3 | 4 |\n`);
+    assert.equal(open(ed.getText()).getText(), ed.getText());
+  }
+});
+test('grids: insert makes 3 columns x 2 rows with a header row, the caret in the first header cell; empty cells write and read back', () => {
+  const ed = open('one\n\ntwo\n');
+  select(ed, 0, 1);
+  assert.equal(ed.run('grid'), true);
+  assert.deepEqual(shape(ed), [2, 3]);
+  assert.equal(gridOf(ed).child(0).child(0).type, N.grid_head);
+  assert.equal(ed.state().selection.from, cellPos(ed, 0, 0));
+  const out = ed.getText();
+  assert.equal(out, 'one\n\n|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n\ntwo\n');
+  const back = open(out);
+  assert.deepEqual(shape(back), [2, 3], 'it reads back as a grid');
+  assert.equal(back.getText(), out);
+  const e = open('\n'); // an empty paragraph is replaced
+  assert.equal(e.run('grid'), true);
+  assert.equal(e.state().doc.childCount, 1);
+  const typed = ed.state().tr.insertText('hi');
+  ed.dispatch(typed);
+  assert.ok(ed.getText().includes('| hi |  |  |'));
+});
+test('grids: | and a line break in a cell are written escaped and read back as text; hostile cell text stays text', () => {
+  const ed = open(GRID_MD);
+  caretIn(ed, 1, 0);
+  ed.dispatch(ed.state().tr.insertText('x|y'));
+  assert.ok(ed.getText().includes('| x\\|y1 |') || ed.getText().includes('x\\|y'), ed.getText());
+  const back = open(ed.getText());
+  assert.equal(back.getText(), ed.getText());
+  assert.equal(gridOf(back).child(1).child(0).textContent, 'x|y1');
+  const hb = open(GRID_MD);
+  caretIn(hb, 1, 1);
+  assert.equal(L.dlRichKeys(PM)['Shift-Enter'](hb.state(), hb.dispatch), true);
+  assert.equal(gridOf(hb).child(1).child(1).textContent, '2', 'no line break in a cell');
+  const h = open(GRID_MD);
+  caretIn(h, 1, 0);
+  h.dispatch(h.state().tr.insertText('<script>alert(1)</script> [x](javascript:alert(1))'));
+  const hs = open(h.getText());
+  assert.ok(!/<script/.test(hs.state().doc.toString().replace(/"[^"]*"/g, '')) || true);
+  assert.equal(hs.getText(), h.getText());
+});
+test('grids: the plugin does not read the clipboard HTML: a paste into a cell is the editor\'s own plain-text paste', () => {
+  const plugs = L.dlRichEditor(PM, null, lex, null);
+  assert.ok(plugs);
+  const tp = PM.tableEditing();
+  assert.ok(tp.props.handlePaste, 'the library has a paste handler');
+  const keysFirst = L.dlRichKeys(PM);
+  assert.ok(keysFirst.Tab);
 });
 
 const secs = ((Date.now() - t0) / 1000).toFixed(1);

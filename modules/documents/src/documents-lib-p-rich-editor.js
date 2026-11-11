@@ -143,6 +143,99 @@
     };
   }
 
+
+  // GRIDS. Where the caret is in a grid: { grid, gridAt, row, col, rows, cols, cellAt } or null. The first row is the header row (Markdown
+  // needs one): nothing goes above it and it is never deleted. A grid is at most DL.gridRows rows by DL.gridCols columns.
+  function dlRichGridAt(PM, state) {
+    const N = dlRichSchema(PM).nodes;
+    const $f = state.selection.$from;
+    let cd = -1;
+    for (let d = $f.depth; d > 0; d -= 1) { const t = $f.node(d).type; if (t === N.grid_cell || t === N.grid_head) { cd = d; break; } }
+    if (cd < 0) return null;
+    const grid = $f.node(cd - 2);
+    return { grid, gridAt: $f.before(cd - 2), row: $f.index(cd - 2), col: $f.index(cd - 1), rows: grid.childCount, cols: grid.child(0).childCount, cellAt: $f.before(cd) };
+  }
+  function dlRichGridCommand(PM, action) {
+    const N = dlRichSchema(PM).nodes;
+    const withGrid = (fn) => (state, dispatch, view) => {
+      const g = dlRichGridAt(PM, state);
+      return g ? fn(g, state, dispatch, view) : false;
+    };
+    const inCell = (state, g, row, col) => { // the caret at the start of a cell
+      const rowAt = g.gridAt + 1 + Array.from({ length: row }, (x, i) => g.grid.child(i).nodeSize).reduce((a, b) => a + b, 0);
+      let at = rowAt + 1;
+      for (let i = 0; i < col; i += 1) at += state.doc.nodeAt(rowAt).child(i).nodeSize;
+      return PM.TextSelection.create(state.doc, at + 1);
+    };
+    const align = (value) => withGrid((g, state, dispatch) => {
+      if (dispatch) {
+        const tr = state.tr;
+        for (let r = 0; r < g.rows; r += 1) {
+          let at = g.gridAt + 1;
+          for (let i = 0; i < r; i += 1) at += g.grid.child(i).nodeSize;
+          at += 1;
+          for (let i = 0; i < g.col; i += 1) at += g.grid.child(r).child(i).nodeSize;
+          tr.setNodeMarkup(at, null, { ...g.grid.child(r).child(g.col).attrs, align: value });
+        }
+        dispatch(tr);
+      }
+      return true;
+    });
+    switch (action) {
+      case 'grid': return (state, dispatch) => {
+        const $to = state.selection.$to;
+        if ($to.depth === 0) return false;
+        const cellOf = (type, n) => Array.from({ length: n }, () => type.create(null));
+        const grid = N.grid.create(null, [N.grid_row.create(null, cellOf(N.grid_head, 3)), N.grid_row.create(null, cellOf(N.grid_cell, 3))]);
+        if (dispatch) {
+          const top = $to.node(1);
+          const empty = top.type === N.paragraph && top.content.size === 0;
+          const from = empty ? $to.before(1) : $to.after(1);
+          const tr = empty ? state.tr.replaceWith(from, $to.after(1), grid) : state.tr.insert(from, grid);
+          dispatch(tr.setSelection(PM.TextSelection.create(tr.doc, from + 3)).scrollIntoView());
+        }
+        return true;
+      };
+      case 'gridRowBefore': return withGrid((g, state, dispatch, view) => g.row > 0 && g.rows < DL.gridRows && PM.addRowBefore(state, dispatch, view));
+      case 'gridRowAfter': return withGrid((g, state, dispatch, view) => g.rows < DL.gridRows && PM.addRowAfter(state, dispatch, view));
+      case 'gridColBefore': return withGrid((g, state, dispatch, view) => g.cols < DL.gridCols && PM.addColumnBefore(state, dispatch, view));
+      case 'gridColAfter': return withGrid((g, state, dispatch, view) => g.cols < DL.gridCols && PM.addColumnAfter(state, dispatch, view));
+      case 'gridRowDelete': return withGrid((g, state, dispatch, view) => g.row > 0 && PM.deleteRow(state, dispatch, view));
+      case 'gridColDelete': return withGrid((g, state, dispatch, view) => g.cols > 1 && PM.deleteColumn(state, dispatch, view));
+      case 'gridDelete': return withGrid((g, state, dispatch) => {
+        if (dispatch) {
+          let tr = state.tr.delete(g.gridAt, g.gridAt + g.grid.nodeSize);
+          if (tr.doc.childCount === 0) tr = tr.insert(0, N.paragraph.create());
+          dispatch(tr.setSelection(PM.Selection.near(tr.doc.resolve(Math.min(g.gridAt, tr.doc.content.size)), -1)).scrollIntoView());
+        }
+        return true;
+      });
+      case 'gridAlignLeft': return align('left');
+      case 'gridAlignCentre': return align('center');
+      case 'gridAlignRight': return align('right');
+      // Tab: the next cell; from the last cell a new row (up to DL.gridRows). Shift-Tab: the cell before; nothing from the first.
+      case 'gridNext': return withGrid((g, state, dispatch, view) => {
+        if (g.row === g.rows - 1 && g.col === g.cols - 1) {
+          if (g.rows >= DL.gridRows) return true;
+          if (!dispatch) return true;
+          PM.addRowAfter(state, (tr) => dispatch(tr.setSelection(inCell(tr, { ...g, grid: tr.doc.nodeAt(g.gridAt), rows: g.rows + 1 }, g.rows, 0)).scrollIntoView()), view);
+          return true;
+        }
+        return PM.goToNextCell(1)(state, dispatch) || true;
+      });
+      case 'gridPrevious': return withGrid((g, state, dispatch) => { PM.goToNextCell(-1)(state, dispatch); return true; });
+      // Enter: the cell below, in the same column; in the last row a new row (up to DL.gridRows).
+      case 'gridDown': return withGrid((g, state, dispatch, view) => {
+        if (g.row < g.rows - 1) { if (dispatch) dispatch(state.tr.setSelection(inCell(state, g, g.row + 1, g.col)).scrollIntoView()); return true; }
+        if (g.rows >= DL.gridRows) return true;
+        if (!dispatch) return true;
+        PM.addRowAfter(state, (tr) => dispatch(tr.setSelection(inCell(tr, { ...g, grid: tr.doc.nodeAt(g.gridAt) }, g.rows, g.col)).scrollIntoView()), view);
+        return true;
+      });
+      default: return null;
+    }
+  }
+
   // The editor's own keys (everything else is the library's base keys: Enter, Backspace and Delete join and split, Mod-a).
   // Enter in a list row makes the next row (a checklist row an open one), Tab moves a row in, Shift-Tab out, Shift-Enter is a
   // line break in a paragraph and in code; a heading is one line. Mod-z, Mod-Shift-z and Mod-y are undo and redo.
@@ -162,7 +255,8 @@
       return true;
     };
     return {
-      Enter: (state, dispatch) => {
+      Enter: (state, dispatch, view) => {
+        if (dlRichGridAt(PM, state)) return dlRichGridCommand(PM, 'gridDown')(state, dispatch, view);
         const fence = dlRichFence(PM, state);
         if (fence) { if (dispatch) dispatch(fence); return true; }
         const row = rowAt(state);
@@ -174,13 +268,14 @@
         if ($from.parent.type === N.paragraph && $from.sameParent($to) && dispatch) dispatch(state.tr.replaceSelectionWith(N.hard_break.create()).scrollIntoView());
         return true;
       },
-      Tab: (state, dispatch) => {
+      Tab: (state, dispatch, view) => {
+        if (dlRichGridAt(PM, state)) return dlRichGridCommand(PM, 'gridNext')(state, dispatch, view);
         const row = rowAt(state);
         if (!row) return false;
         if (dlRichDepth(PM, state).lists + dlRichListsIn(PM, row) >= DL.listDepth) return true; // a fifth level: nothing happens
         return PM.sinkListItem(N.list_item)(state, dispatch);
       },
-      'Shift-Tab': PM.liftListItem(N.list_item),
+      'Shift-Tab': (state, dispatch, view) => (dlRichGridAt(PM, state) ? dlRichGridCommand(PM, 'gridPrevious')(state, dispatch, view) : PM.liftListItem(N.list_item)(state, dispatch, view)),
       Backspace: PM.undoInputRule,
       'Mod-z': PM.undo,
       'Mod-Shift-z': PM.redo,
@@ -209,7 +304,7 @@
   }
   const dlRichPluginSets = new WeakMap();
   function dlRichPlugins(PM) {
-    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), dlRichInputRules(PM), PM.history(), PM.gapCursor(), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
+    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), PM.gridEditing(), dlRichInputRules(PM), PM.history(), PM.gapCursor(), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
     return dlRichPluginSets.get(PM);
   }
 
@@ -484,7 +579,7 @@
       // it asks the page (onLink) for the address, and is true when somebody was asked.
       run(action) {
         if (action === 'link') return askLink();
-        const command = dlRichCommand(PM, action);
+        const command = dlRichGridCommand(PM, action) || dlRichCommand(PM, action);
         const done = Boolean(command) && !readOnly && command(now(), dispatch, view || undefined);
         if (view && !readOnly) view.focus();
         return done;
