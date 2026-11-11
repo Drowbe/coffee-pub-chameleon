@@ -33,7 +33,7 @@ import { findBrowser, launch, freePort, stopServer, bootSeeded, Tab, sleep, driv
 // public/module-stream.js is a browser module (no package type here): read through a copy named .mjs.
 const STREAM_TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'streams-unit-'));
 fs.copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'module-stream.js'), path.join(STREAM_TMP, 'module-stream.mjs'));
-const { streamPlan, moduleStreamUrl, createStreamHub, createStreamRelay, createStreamRelayClient } = await import(pathToFileURL(path.join(STREAM_TMP, 'module-stream.mjs')).href);
+const { streamPlan, moduleStreamUrl, createStreamHub, createStreamRelay, createStreamRelayClient, createReconnectWatch } = await import(pathToFileURL(path.join(STREAM_TMP, 'module-stream.mjs')).href);
 fs.rmSync(STREAM_TMP, { recursive: true, force: true });
 
 const say = (...a) => console.log('check-streams:', ...a);
@@ -123,6 +123,47 @@ function unitChecks() {
   run();
   assert.equal(sources[sources.length - 1].closed, true, 'the last to leave closes it');
   assert.deepEqual(solo.connections(), []);
+
+  // Reconnected: a mount's watch over the hub's events says so once per drop, and only for a mount in a space.
+  {
+    const rh = createStreamHub({ EventSourceImpl: FakeES, schedule, cancel });
+    const mount = (space) => {
+      const watch = createReconnectWatch(space);
+      const bridge = []; // what the sandboxed-frame bridge would post: the event and its data
+      const heard = [];
+      rh.join(space, null, (type) => { heard.push(type); if (watch(type)) bridge.push({ host: 1, event: 'reconnected', data: {} }); });
+      return { bridge, heard };
+    };
+    const m = mount('rc1');
+    const none = mount(null);
+    run();
+    const es = sources[sources.length - 1];
+    assert.equal(es.url, '/api/modules/stream?space=rc1&page=1');
+    es.opened();
+    es.send('ready', { stream: 'a' });
+    assert.equal(m.bridge.length, 0, 'open, ready: no reconnected');
+    es.send('ready', { stream: 'a' });
+    assert.equal(m.bridge.length, 0, 'a second ready without a lost: none');
+    es.fire('error'); // dropped; the browser tries again
+    assert.ok(m.heard.includes('lost'));
+    es.opened();
+    es.send('ready', { stream: 'b' });
+    assert.equal(m.bridge.length, 1, 'lost then ready: one');
+    es.send('ready', { stream: 'b' });
+    assert.equal(m.bridge.length, 1, 'a repeated ready: still one');
+    es.fire('error');
+    es.fire('error');
+    es.opened();
+    es.send('ready', { stream: 'c' });
+    assert.equal(m.bridge.length, 2, 'lost twice then ready: one more');
+    assert.deepEqual(m.bridge.at(-1), { host: 1, event: 'reconnected', data: {} }, 'the bridge message carries no data');
+    assert.equal(none.bridge.length, 0, 'a mount without a space: none');
+    assert.equal(createReconnectWatch(null)('lost') || createReconnectWatch(null)('ready'), false);
+    // A mount that joins after a drop was never told `lost`: its first ready is not a reconnection.
+    const late = mount('rc1');
+    run();
+    assert.equal(late.bridge.length, 0, 'a mount joining later: none');
+  }
 
   // The relay: a frame hears only its own space, from its own page, and lets go when told or closed.
   const listeners = (w) => { w.handlers = []; w.addEventListener = (t, fn) => { if (t === 'message') w.handlers.push(fn); }; w.removeEventListener = (t, fn) => { w.handlers = w.handlers.filter((f) => f !== fn); }; return w; };

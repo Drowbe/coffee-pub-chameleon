@@ -396,7 +396,7 @@ const personTint = new Function(`${tintSrc[0]}; return personTint;`)();
   const mhFrom = mh.indexOf('// Live messages (host.live; plan-module-live.md)');
   const mhTo = mh.indexOf("window.addEventListener('pageshow', onPageShow);");
   ok(mhFrom > 0 && mhTo > mhFrom && !CALL_WORDS.test(mh.slice(mhFrom, mhTo)), 'the live calls in public/module-host.js name none of them');
-  ok(/const leaveStream = keyed \? pollSettings\(\) : joinStream\([^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(type === 'ready' \|\| type === 'lost' \|\| type === 'live' \|\| type === 'joined' \|\| type === 'left'\) \{\n\s*live\.onStream\(type, d\);\n\s*return;/.test(mh), 'the mount hands the stream\'s live events to the bridge before anything else');
+  ok(/const leaveStream = keyed \? pollSettings\(\) : joinStream\([^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(type === 'ready' \|\| type === 'lost' \|\| type === 'live' \|\| type === 'joined' \|\| type === 'left'\) \{\n\s*live\.onStream\(type, d\);\n(?:\s*if \(reconnectWatch\(type\)\) send\('reconnected', \{\}\);\n)?\s*return;/.test(mh), 'the mount hands the stream\'s live events to the bridge before anything else');
   ok(/async hello\(\) \{\n(?:\s*\/\/[^\n]*\n)*\s*if \(helloSeen\) live\.reset\(\);\n\s*helloSeen = true;/.test(mh), 'a new page in the frame (a second hello) resets its live messages, before it can subscribe again');
   ok(!/addEventListener\('load', \(\) => live\.reset\(\)\)/.test(mh), 'and not on the frame\'s load event, which comes after the page\'s scripts subscribed');
   ok(/live\.destroy\(\);/.test(mh) && /window\.removeEventListener\('pagehide', onPageHide\)/.test(mh), 'unmounting leaves');

@@ -822,3 +822,12 @@ console.log(`check-module-host: OK (${n} groups)`);
   assert.ok(brand.includes("Object.hasOwn(NOTE_KINDS, kind) ? kind : 'info'"), 'showNote must make an unknown kind info');
   for (const k of ['info', 'success', 'warning', 'danger']) assert.ok(new RegExp(`\\n  ${k}: \\{ kind: `).test(brand), `NOTE_KINDS must have ${k}`);
 }
+
+// Reconnected: each mount sends the module 'reconnected' with no data when its stream says ready after lost.
+(async () => {
+  const host = fs.readFileSync(new URL('../public/module-host.js', import.meta.url), 'utf8');
+  assert.match(host, /const reconnectWatch = createReconnectWatch\(!keyed && scope === 'space' \? spaceId : null\);/, 'each mount has its watch, for a space only');
+  assert.ok(host.includes("if (reconnectWatch(type)) send('reconnected', {});"), "the mount sends 'reconnected' with no data");
+  assert.match(fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8'), /'reconnected' \(no data\)/, 'the SDK says what the event is');
+  console.log('ok - reconnected: wired in the mount, no data');
+})();
