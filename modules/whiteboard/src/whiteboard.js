@@ -3870,7 +3870,8 @@
   let fitted = false;
   const widthWatch = new ResizeObserver(() => {
     const app = $('app');
-    if (!app || !host.rootElement || !host.rootElement.isConnected) { widthWatch.disconnect(); return; } // the module is gone: nothing to fit
+    if (!app || !host.rootElement) { widthWatch.disconnect(); return; } // its content is gone: nothing to fit, ever
+    if (!host.rootElement.isConnected) return; // moved for a moment (a window or dock change): fit when it is back
     const w = host.rootElement.clientWidth;
     app.classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
