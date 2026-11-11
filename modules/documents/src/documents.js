@@ -1,7 +1,8 @@
-// Documents module: the list and reading (build step 3). Each space has its own documents. A document is a small record
-// (doc:<id>) and its text in chunks (text:<id>:<chunk>); the rules are in the documents-lib-*.js files, which have no page.
-// Editing is not here yet: a document is made with a title (and, for tests, documentsSeed). Removing one puts it in the trash
-// (_trash:<id>), where an editor can bring it back or delete it for good.
+// Documents module: the list, reading and editing (build steps 3 and 4). Each space has its own documents. A document is a small
+// record (doc:<id>) and its text in chunks (text:<id>:<chunk>); the rules are in the documents-lib-*.js files, which have no page.
+// One person edits at a time: Edit takes the lock (_lock:<id>, compare-and-set), the editor refreshes it every 10 s and saves
+// 3 s after the last key; the save writes the changed chunks, then the small record under the version read (the commit).
+// Removing a document puts it in the trash (_trash:<id>), where an editor can bring it back or delete it for good.
 (async function () {
   'use strict';
 
@@ -50,6 +51,8 @@
   let shownRev = 0;
   let query = '';
   let noteTimer = 0;
+  const locks = new Map(); // id -> { rec, version, seenAt }: the locks heard, with when this page saw them change
+  let ed = null; // the editing session, or null
 
   const note = (text) => {
     const n = $('note');
@@ -71,14 +74,29 @@
     } else if (item.key.startsWith('_trash:')) {
       const rec = item.value ? dlCleanTrash(item.value) : null;
       if (rec && rec.id === idOf(item.key, '_trash:')) trash.set(rec.id, rec);
+    } else if (item.key.startsWith('_lock:')) {
+      const id = idOf(item.key, '_lock:');
+      const rec = item.value ? dlCleanLock(item.value) : null;
+      if (rec && rec.doc === id) observeLock(id, rec, item.version, Boolean(item.heard)); else locks.delete(id);
     }
   }
+  // A lock record seen. Read at load or take time: how long it has been quiet is judged from its time; heard as a change: just now.
+  function observeLock(id, rec, version, heard) {
+    const prev = locks.get(id);
+    const same = prev && prev.rec.holder === rec.holder && prev.rec.seq === rec.seq && prev.rec.at === rec.at;
+    const now = Date.now();
+    const seenAt = same ? prev.seenAt : heard ? now : dlLockSeenAt(now, now - Date.parse(rec.at));
+    locks.set(id, { rec, version, seenAt });
+  }
+  const liveLock = (id) => { const l = locks.get(id); return l && !dlLockStale(l.seenAt, Date.now()) ? l : null; };
   function forget(key) {
     if (key.startsWith('doc:')) { docs.delete(idOf(key, 'doc:')); unreadable.delete(idOf(key, 'doc:')); } else if (key.startsWith('_trash:')) trash.delete(idOf(key, '_trash:'));
+    else if (key.startsWith('_lock:')) locks.delete(idOf(key, '_lock:'));
   }
   async function load() {
     docs.clear(); unreadable.clear(); trash.clear();
     for (const item of await host.storage.list('doc:')) remember(item);
+    for (const item of await host.storage.list('_lock:')) remember(item);
     for (const item of await host.storage.list('_trash:')) remember(item);
     if (canEdit) purgeOld();
   }
@@ -94,7 +112,7 @@
       const items = await host.storage.list(`text:${id}:`);
       const byId = new Map();
       for (const it of items) { const c = dlCleanChunk(it.value); if (c && c.doc === id) byId.set(c.id, c.text); }
-      if (rec.chunks.every((c) => byId.has(c))) return { rec, text: dlJoin(rec.chunks.map((c) => byId.get(c))) };
+      if (rec.chunks.every((c) => byId.has(c))) return { rec, text: dlJoin(rec.chunks.map((c) => byId.get(c))), parts: rec.chunks.map((c) => ({ id: c, text: byId.get(c) })), stored: [...byId.keys()] };
       const fresh = await host.storage.get(`doc:${id}`);
       const cleaned = fresh && dlCleanDoc(fresh.value);
       if (!cleaned) return null;
@@ -163,6 +181,8 @@
     main.append(el('span', 'row-title', rec.title));
     if (rec.excerpt) main.append(el('span', 'row-excerpt', rec.excerpt));
     main.append(el('span', 'meta', trashRec ? `Deleted by ${trashRec.name}, ${when(trashRec.at)}` : `Edited by ${rec.editedByName}, ${when(rec.editedAt)}`));
+    const held = !trashRec && liveLock(rec.id);
+    if (held) main.append(el('span', 'lock-tag', `${held.rec.name} is editing`));
     li.append(main);
     if (trashRec && canEdit) {
       const back = el('button', 'btn btn-small', 'Restore');
@@ -216,8 +236,9 @@
     if (!docs.has(id)) return;
     openId = id; shownRev = 0;
     $('list').hidden = true; $('read').hidden = false;
-    $('rename').hidden = $('remove').hidden = !canEdit;
+    $('rename').hidden = $('remove').hidden = $('edit').hidden = !canEdit;
     $('renamer').hidden = true;
+    updateEditButton();
     $('page').replaceChildren();
     $('read-title').textContent = docs.get(id).title;
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
@@ -235,7 +256,12 @@
   });
   $('trash-toggle').addEventListener('click', () => { showTrash = !showTrash; render(); });
   $('back').addEventListener('click', closeDoc);
-  $('rename').addEventListener('click', () => { $('renamer').hidden = false; $('rename-title').value = docs.get(openId).title; $('rename-title').focus(); });
+  const heldByOther = (id) => { const l = liveLock(id); return l && l.rec.holder !== me ? l : null; };
+  $('rename').addEventListener('click', () => {
+    const l = heldByOther(openId);
+    if (l) { note(`${l.rec.name} is editing this. Try again when they are done.`); return; }
+    $('renamer').hidden = false; $('rename-title').value = docs.get(openId).title; $('rename-title').focus();
+  });
   $('rename-cancel').addEventListener('click', () => { $('renamer').hidden = true; });
   $('renamer').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -243,6 +269,8 @@
   });
   $('remove').addEventListener('click', async () => {
     const rec = docs.get(openId);
+    const l = heldByOther(openId);
+    if (l) { note(`${l.rec.name} is editing this. Try again when they are done.`); return; }
     try {
       if (!rec || !(await host.ui.confirm({ title: 'Delete this document?', message: `"${rec.title}" goes to the trash. You can bring it back for a week.`, action: 'Delete', kind: 'destructive' }))) return;
       await moveToTrash(openId);
@@ -253,12 +281,14 @@
   // Another person's change: the small record is the signal. A change to a chunk alone is not heard.
   function applyChange(e) {
     const key = String(e.key || '');
-    if (!key.startsWith('doc:') && !key.startsWith('_trash:')) return false;
-    if (e.deleted) forget(key); else if (e.value !== undefined) remember({ key, value: e.value }); else return 'reload';
+    if (!/^(doc|_trash|_lock):/.test(key)) return false;
+    if (e.deleted) forget(key); else if (e.value !== undefined) remember({ key, value: e.value, version: e.version, heard: true }); else return 'reload';
     return true;
   }
   function afterChange() {
+    if (ed) { hearLock(); return; }
     if (openId) {
+      updateEditButton();
       const rec = docs.get(openId);
       if (!rec) { note('This document was deleted.'); closeDoc(); return; }
       if (rec.rev > shownRev) draw(openId).catch(() => {});
@@ -267,15 +297,300 @@
   host.on('change', (e) => { const r = applyChange(e); if (r === 'reload') reload(); else if (r) afterChange(); });
   host.on('changes', (e) => {
     const list = Array.isArray(e.changes) ? e.changes : [];
-    if (!list.some((c) => /^(doc|_trash):/.test(String(c.key)))) return;
+    if (!list.some((c) => /^(doc|_trash|_lock):/.test(String(c.key)))) return;
     if (list.some((c) => !c.deleted && c.value === undefined)) { reload(); return; }
     for (const c of list) applyChange(c);
     afterChange();
   });
   function reload() { load().then(afterChange).catch(() => {}); }
 
-  // For tests only, until editing exists: makes a document with the text given. Returns its id.
-  window.documentsSeed = (title, text) => (canEdit ? create(title, String(text)).then((id) => { render(); return id; }) : Promise.reject(new Error('Not allowed.')));
+  // ---- the lock and editing ------------------------------------------------------------------------------------------------
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const cleanMsg = (err) => (err && err.message) || 'That did not work. Try again.';
+
+  // The Edit button: on, or off with the reason beside it.
+  function updateEditButton() {
+    if (!canEdit || !openId || ed) return;
+    const l = liveLock(openId);
+    const st = dlLockEditState({ canEdit, me, rec: l && l.rec, fresh: Boolean(l), mine: false });
+    $('edit').disabled = !st.enabled;
+    $('edit').title = st.reason;
+    $('edit-why').textContent = st.reason;
+    $('edit-why').hidden = !st.reason;
+  }
+  // A lock goes stale with no event, so the page looks again every few seconds.
+  const looker = setInterval(() => {
+    if (!$('app')) return void clearInterval(looker);
+    if (ed || !locks.size) return;
+    if (openId) updateEditButton(); else if (!showTrash && !$('list').hidden) render();
+  }, 5000);
+
+  async function startEdit() {
+    const id = openId;
+    if (!id || ed || !canEdit) return;
+    $('edit').disabled = true;
+    try {
+      const cur = await host.storage.get(dlLockKey(id));
+      const rec = cur && dlCleanLock(cur.value);
+      const held = rec && rec.doc === id ? rec : null;
+      if (held) observeLock(id, held, cur.version, false); else locks.delete(id);
+      const plan = dlLockTakePlan({ canEdit, me, rec: held, fresh: Boolean(liveLock(id)), mine: false });
+      if (plan !== 'take') { updateEditButton(); const st = dlLockEditState({ canEdit, me, rec: held, fresh: true, mine: false }); note(st.reason || 'You cannot edit this.'); return; }
+      const next = dlLockNext(id, me, myName, new Date().toISOString(), held);
+      let r;
+      try { r = await host.storage.set(dlLockKey(id), next, { version: cur ? cur.version : 0 }); } catch (err) {
+        if (dlLockTakeResult(err) === 'busy') { const again = await host.storage.get(dlLockKey(id)).catch(() => null); const lr = again && dlCleanLock(again.value); if (lr) observeLock(id, lr, again.version, true); updateEditButton(); note(lr ? `${lr.name} is editing this. You can read it as it changes.` : 'Someone else is editing this.'); } else note('Could not start editing. Try again.');
+        return;
+      }
+      const lock = { rec: next, version: r && r.version };
+      locks.set(id, { rec: next, version: lock.version, seenAt: Date.now() });
+      try { await openEditor(id, lock); } catch (err) {
+        host.storage.delete(dlLockKey(id), { version: lock.version }).catch(() => {});
+        locks.delete(id);
+        note(cleanMsg(err));
+        updateEditButton();
+      }
+    } catch (err) { note(cleanMsg(err)); updateEditButton(); }
+  }
+
+  // Reads the small record with its version and the text it lists; the person who has the lock deletes leftover chunks.
+  async function readForEdit(id) {
+    for (let tries = 0; tries < 3; tries += 1) {
+      const cur = await host.storage.get(dlDocKey(id));
+      const rec = cur && dlCleanDoc(cur.value);
+      if (!rec) throw new Error('This document is gone.');
+      docs.set(rec.id, rec);
+      const got = await readText(rec.id);
+      if (!got) throw new Error('This document could not be loaded. Try again.');
+      if (got.rec.rev === rec.rev) return { rec, version: cur.version, got };
+    }
+    throw new Error('This document could not be loaded. Try again.');
+  }
+
+  async function openEditor(id, lock) {
+    const { rec, version, got } = await readForEdit(id);
+    ed = {
+      id, rec, docVersion: version, old: got.parts, lock, text: got.text, saved: { text: got.text, title: rec.title },
+      lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
+      timer: 0, beat: 0, previewTimer: 0, queue: Promise.resolve(),
+    };
+    for (const cid of dlLeftoverChunks(rec.chunks, got.stored)) host.storage.delete(dlTextKey(id, cid)).catch(() => {});
+    $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
+    $('edit-title').value = rec.title;
+    const ta = $('edit-text');
+    ta.value = got.text; ta.readOnly = false;
+    $('edit-title').readOnly = false;
+    $('lost').hidden = true; $('done').hidden = false; $('done').disabled = false; $('fmt').hidden = false;
+    drawPreview();
+    setStatus();
+    const beat = setInterval(() => {
+      if (!$('app')) return void clearInterval(beat);
+      serial(refreshLock).catch(() => {});
+    }, DL_LOCK.beat);
+    ed.beat = beat;
+    ta.focus();
+  }
+
+  const serial = (fn) => {
+    const s = ed;
+    const run = s.queue.then(() => (s === ed ? fn() : undefined));
+    s.queue = run.catch(() => {});
+    return run;
+  };
+  const current = () => ({ text: $('edit-text').value, title: $('edit-title').value });
+  const dirtyNow = () => ed && dlIsDirty(ed.saved, current());
+  function setStatus() {
+    if (!ed) return;
+    $('edit-status').textContent = ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed });
+  }
+  function drawPreview() {
+    if (!ed) return;
+    $('edit-preview').replaceChildren(dlBuild(dlDescribe($('edit-text').value, lex), doc));
+  }
+
+  async function refreshLock() {
+    if (!ed || ed.lost) return;
+    const next = dlLockNext(ed.id, me, myName, new Date().toISOString(), ed.lock.rec);
+    try {
+      const r = await host.storage.set(dlLockKey(ed.id), next, { version: ed.lock.version });
+      ed.log.push(Date.now());
+      ed.lock = { rec: next, version: r && r.version };
+      locks.set(ed.id, { rec: next, version: ed.lock.version, seenAt: Date.now() });
+    } catch (err) {
+      if (dlLockRefreshResult(err) === 'lost') loseLock();
+    }
+  }
+  // Another person holds the lock now: the editor stops taking keys and keeps the text on the screen.
+  function hearLock() {
+    if (!ed || ed.lost) return;
+    const l = locks.get(ed.id);
+    if (l && dlLockHear({ rec: l.rec, fresh: true, me, editing: true }) === 'lost') loseLock();
+  }
+  function loseLock() {
+    if (!ed || ed.lost) return;
+    ed.lost = true;
+    clearTimeout(ed.timer); clearInterval(ed.beat);
+    $('edit-text').readOnly = true; $('edit-title').readOnly = true;
+    $('done').hidden = true; $('fmt').hidden = true;
+    $('lost-text').textContent = 'You stopped editing because someone else saved first. Your changes are kept here.';
+    $('lost').hidden = false;
+    setStatus();
+    $('lost-copy').focus();
+  }
+
+  // The commit: the changed chunks, then the small record with rev + 1 under the version read. -> 'saved' | 'conflict' | 'failed' |
+  // 'title' | 'long' | 'lost'.
+  function saveNow() {
+    return serial(async () => {
+      if (!ed || ed.lost) return 'lost';
+      const cur = current();
+      if (!dlIsDirty(ed.saved, cur)) return 'saved';
+      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random) });
+      if (!plan.ok) {
+        ed.refused = plan.reason;
+        note(plan.reason === 'title' ? 'Give the document a title.' : 'This document is too long. Split it into two.');
+        setStatus();
+        return plan.reason;
+      }
+      const wait = dlWriteWait(ed.log, Date.now(), plan.writes.length + 1);
+      if (wait) await sleep(wait);
+      if (!ed || ed.lost) return 'lost';
+      ed.saving = true; ed.failed = false; ed.lastSave = Date.now(); setStatus();
+      const wrote = [];
+      try {
+        for (const c of plan.writes) { await host.storage.set(dlTextKey(ed.id, c.id), { id: c.id, doc: ed.id, text: c.text }); wrote.push(c.id); ed.log.push(Date.now()); }
+        const r = await host.storage.set(dlDocKey(ed.id), plan.record, { version: ed.docVersion });
+        ed.log.push(Date.now());
+        ed.docVersion = r && r.version;
+      } catch (err) {
+        ed.saving = false;
+        ed.stray.push(...wrote);
+        if (dlCommitResult(err) === 'conflict') { loseLock(); return 'conflict'; }
+        ed.failed = true; setStatus();
+        return 'failed';
+      }
+      ed.saving = false;
+      ed.rec = plan.record;
+      ed.old = plan.chunks.map((c) => ({ id: c.id, text: c.text }));
+      ed.saved = { text: cur.text, title: cur.title };
+      remember({ key: dlDocKey(ed.id), value: plan.record });
+      const gone = [...plan.dropped, ...ed.stray.filter((x) => !plan.chunks.some((c) => c.id === x))];
+      ed.stray = [];
+      for (const cid of gone) host.storage.delete(dlTextKey(ed.id, cid)).catch(() => {});
+      setStatus();
+      return 'saved';
+    });
+  }
+  // Plans the next autosave: 3 s after the last key, never within 3 s of the last save.
+  function schedule(force) {
+    if (!ed || ed.lost) return;
+    clearTimeout(ed.timer);
+    if (ed.refused) return;
+    const d = dlAutosaveDelay({ now: Date.now(), lastKey: ed.lastKey, lastSave: ed.lastSave, dirty: dirtyNow(), force: Boolean(force) });
+    if (d === null) return;
+    const mine = ed;
+    ed.timer = setTimeout(() => { saveNow().then(() => { if (ed === mine) schedule(false); }).catch(() => {}); }, d);
+  }
+  function typed() {
+    if (!ed || ed.lost) return;
+    ed.lastKey = Date.now(); ed.refused = '';
+    clearTimeout(ed.previewTimer);
+    ed.previewTimer = setTimeout(drawPreview, 200);
+    setStatus(); schedule(false);
+  }
+
+  function stopEditing() {
+    if (!ed) return;
+    clearTimeout(ed.timer); clearInterval(ed.beat); clearTimeout(ed.previewTimer);
+    ed = null;
+    $('editor').hidden = true;
+  }
+  async function finish() {
+    if (!ed || ed.lost) return;
+    const mine = ed;
+    $('done').disabled = true;
+    clearTimeout(ed.timer);
+    const d = dlAutosaveDelay({ now: Date.now(), lastKey: ed.lastKey, lastSave: ed.lastSave, dirty: dirtyNow(), force: true });
+    if (d) await sleep(d);
+    const r = await saveNow();
+    if (ed !== mine || mine.lost) return;
+    if (r !== 'saved') {
+      $('done').disabled = false;
+      if (r === 'failed') note('Not saved. Try Done again.');
+      return;
+    }
+    const lockVersion = mine.lock.version;
+    await mine.queue;
+    stopEditing();
+    host.storage.delete(dlLockKey(mine.id), { version: lockVersion }).catch(() => {});
+    locks.delete(mine.id);
+    $('read').hidden = false;
+    openId = mine.id; shownRev = 0;
+    $('page').replaceChildren();
+    $('read-title').textContent = docs.get(mine.id) ? docs.get(mine.id).title : '';
+    updateEditButton();
+    draw(mine.id).catch(() => {});
+    $('edit').focus();
+  }
+
+  // The bar: each button changes the text with the library's function, keeping the browser's undo where it can.
+  function applyFormat(fn) {
+    if (!ed || ed.lost) return;
+    const ta = $('edit-text');
+    const out = fn({ value: ta.value, start: ta.selectionStart, end: ta.selectionEnd });
+    ta.focus();
+    if (out.value !== ta.value) {
+      ta.setSelectionRange(0, ta.value.length);
+      if (!doc.execCommand || !doc.execCommand('insertText', false, out.value)) { ta.value = out.value; typed(); }
+      if (ta.value !== out.value) { ta.value = out.value; typed(); }
+    }
+    ta.setSelectionRange(out.start, out.end);
+  }
+  const FORMATS = { bold: dlBold, italic: dlItalic, code: dlCode, list: dlList, numbered: dlNumbered, checklist: dlChecklist, quote: dlQuote, link: (s) => dlLink(s), grid: (s) => dlGrid(s), formula: (s) => dlFormula(s) };
+  $('fmt').addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-fmt]');
+    if (b && FORMATS[b.dataset.fmt]) applyFormat(FORMATS[b.dataset.fmt]);
+  });
+  $('fmt-heading').addEventListener('change', (e) => {
+    const lv = Number(e.target.value);
+    e.target.value = '';
+    if (lv) applyFormat((s) => dlHeading(s, lv));
+  });
+  $('edit').addEventListener('click', startEdit);
+  $('done').addEventListener('click', finish);
+  $('edit-text').addEventListener('input', typed);
+  $('edit-title').addEventListener('input', typed);
+
+  $('lost-copy').addEventListener('click', async () => {
+    const text = $('edit-text').value;
+    try { await navigator.clipboard.writeText(text); note('Copied.'); } catch (err) {
+      const ta = $('edit-text'); ta.focus(); ta.select();
+      note(doc.execCommand && doc.execCommand('copy') ? 'Copied.' : 'Select the text and copy it.');
+    }
+  });
+  $('lost-new').addEventListener('click', async () => {
+    try {
+      const id = await create(dlCleanLine(`${$('edit-title').value} (copy)`, DL.titleMax), $('edit-text').value);
+      stopEditing();
+      render();
+      $('read').hidden = false; $('list').hidden = true;
+      openDoc(id);
+      note('Saved as a new document.');
+    } catch (err) { note(cleanMsg(err)); }
+  });
+  $('lost-close').addEventListener('click', async () => {
+    if (!(await host.ui.confirm({ title: 'Close without saving?', message: 'The text on the screen will be gone.', action: 'Close', kind: 'destructive' }))) return;
+    stopEditing();
+    closeDoc();
+  });
+
+  // A hidden page saves; a page that shows again refreshes the lock first, then saves.
+  doc.addEventListener('visibilitychange', () => {
+    if (!ed || ed.lost) return;
+    if (doc.visibilityState === 'hidden') schedule(true);
+    else serial(refreshLock).then(() => schedule(true)).catch(() => {});
+  });
+  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); } });
 
   try { await load(); } catch (err) { showMsg('Documents could not load', err.message, () => location.reload()); return; }
   render();

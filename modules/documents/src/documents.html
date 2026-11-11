@@ -10,7 +10,7 @@
 </head>
 <body>
 <!--
-  Two states in one window: #list (the documents, or the trash) and #read (one document, rendered). The script fills them;
+  Three states in one window: #list (the documents, or the trash), #read (one document, rendered) and #editor (the text box, the bar and the preview). The script fills them;
   nothing a person wrote is ever set as HTML. #note is a short line for a refusal or a notice.
 -->
 <div id="app" class="app sdk-slot" hidden>
@@ -33,6 +33,7 @@
     <div class="bar">
       <button type="button" class="btn btn-quiet btn-small" id="back">Back</button>
       <h2 id="read-title" class="read-title"></h2>
+      <button type="button" class="btn btn-primary btn-small" id="edit" hidden>Edit</button>
       <button type="button" class="btn btn-quiet btn-small" id="rename" hidden>Rename</button>
       <button type="button" class="btn btn-quiet btn-small" id="remove" hidden>Delete</button>
     </div>
@@ -41,8 +42,43 @@
       <button type="submit" class="btn btn-primary btn-small">Save</button>
       <button type="button" class="btn btn-quiet btn-small" id="rename-cancel">Cancel</button>
     </form>
+    <p id="edit-why" class="meta" role="status" hidden></p>
     <p id="read-meta" class="meta"></p>
     <article id="page" class="page" tabindex="0"></article>
+  </section>
+  <section id="editor" class="view" aria-label="Editing" hidden>
+    <div class="bar">
+      <input id="edit-title" class="edit-title" type="text" maxlength="120" aria-label="Title" autocomplete="off">
+      <span id="edit-status" class="meta" role="status">Saved</span>
+      <button type="button" class="btn btn-primary btn-small" id="done">Done</button>
+    </div>
+    <div class="bar fmt" role="toolbar" aria-label="Formatting" id="fmt">
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="bold" aria-label="Bold" title="Bold"><b>B</b></button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="italic" aria-label="Italic" title="Italic"><i>I</i></button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="code" aria-label="Code" title="Code">&lt;/&gt;</button>
+      <select id="fmt-heading" class="fmt-select" aria-label="Heading" title="Heading">
+        <option value="">Heading</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option value="4">Heading 4</option>
+      </select>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="list" aria-label="Bulleted list" title="Bulleted list">List</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="numbered" aria-label="Numbered list" title="Numbered list">1.</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="checklist" aria-label="Checklist" title="Checklist">Tasks</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="quote" aria-label="Quote" title="Quote">Quote</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="link" aria-label="Link" title="Link">Link</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="grid" aria-label="Grid" title="Grid">Grid</button>
+      <button type="button" class="btn btn-quiet btn-small" data-fmt="formula" aria-label="Formula" title="Formula">Formula</button>
+    </div>
+    <div id="lost" class="lost" role="alert" hidden>
+      <p id="lost-text"></p>
+      <div class="bar">
+        <button type="button" class="btn btn-small" id="lost-copy">Copy</button>
+        <button type="button" class="btn btn-primary btn-small" id="lost-new">Save as a new document</button>
+        <button type="button" class="btn btn-quiet btn-small" id="lost-close">Close</button>
+      </div>
+    </div>
+    <div class="edit-body">
+      <textarea id="edit-text" class="edit-text" aria-label="Text" spellcheck="true"></textarea>
+      <article id="edit-preview" class="page edit-preview" aria-label="Preview"></article>
+    </div>
   </section>
 </div>
 <div id="loading" class="msg" aria-busy="true"><div class="sdk-skel-list"><div class="sdk-skel sdk-skel-block"></div><div class="sdk-skel sdk-skel-block"></div></div></div>
