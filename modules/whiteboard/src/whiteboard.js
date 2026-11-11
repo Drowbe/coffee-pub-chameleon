@@ -402,6 +402,34 @@
     updateStatus();
   }
 
+  // Read the board again after a stream may have been missed (the connection dropped, the page was hidden a while), as a
+  // merge: blocks being edited, dragged or not saved yet, the selection, the view and the history are left alone.
+  let resyncing = false;
+  let resyncAgain = false;
+  async function resyncBoard() {
+    if (resyncing) { resyncAgain = true; return; }
+    resyncing = true;
+    try {
+      do {
+        resyncAgain = false;
+        let got = null;
+        for (let i = 0; i < 3 && !(got && got.quiet); i += 1) got = await sync.read();
+        if (!got || !got.quiet) continue; // changes kept coming: they are drawn as they come
+        const pending = sync.busyIds();
+        for (const id of drafts) pending.add(id);
+        for (const id of held) pending.add(id);
+        for (const id of waiting.keys()) pending.add(id);
+        if (editing) pending.add(editing.id);
+        const have = sync.versions();
+        const shown = new Map();
+        for (const b of board.all()) shown.set(b.id, have.get(b.id) || 0);
+        const plan = wbResyncPlan(shown, got.list, pending);
+        for (const id of plan.remove) { onRemote({ op: 'remove', id }); sync.adopt(id, 0); }
+        for (const p of plan.put) { onRemote({ op: 'put', block: p.block }); sync.adopt(p.block.id, p.version); }
+      } while (resyncAgain);
+    } catch { /* the next change or a reload puts it right */ } finally { resyncing = false; }
+  }
+
   const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
 
   // ---- the board's background -------------------------------------------------------------------------------------------
@@ -3863,6 +3891,14 @@
   await reloadBoard(); // the background (Default when it cannot be read)
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
   sweepSoon();
+  // A dropped connection: read the board again when it is back, and when the page shows again after a while hidden. (Later:
+  // the host's 'reconnected' event calls resyncBoard() here too.)
+  let hiddenAt = 0;
+  window.addEventListener('online', () => { resyncBoard(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > 30000) { hiddenAt = 0; resyncBoard(); } else hiddenAt = 0;
+  });
   $('loading').hidden = true;
   $('app').hidden = false;
   if (surface.clientWidth > 0) { fitted = true; renderer.fit(); }

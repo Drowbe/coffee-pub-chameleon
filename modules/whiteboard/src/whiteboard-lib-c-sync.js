@@ -68,6 +68,7 @@
       if (value !== undefined) { g.pending[g.pending.length - 1].writes.set(version, JSON.stringify(value)); g.shows = JSON.stringify(value); }
     };
     const bump = (key) => { const t = (tickets.get(key) || 0) + 1; tickets.set(key, t); return t; };
+    let heard = 0; // changes heard so far
     const active = (l) => Boolean(l && (l.busy || l.timer || l.next !== undefined));
 
     // The board as the server holds it, with this page's own writes that have not gone yet laid over it (they will land
@@ -96,6 +97,19 @@
       }
       return [...out.values()];
     }
+
+    // A read for a resync (see lib-r): the server's list as it is, and nothing of this page's changed. `quiet` is false when
+    // a change was heard while it was on its way (the list may be older than that change; read again).
+    async function read() {
+      const before = heard;
+      const list = await host.storage.list(PREFIX);
+      return { list: Array.isArray(list) ? list : [], quiet: before === heard };
+    }
+    // id -> the version this page last saw; ids whose keys are being written, or wait for this page's delete to be heard.
+    const versions = () => { const m = new Map(); for (const [k, v] of seen) m.set(idOf(k), v); return m; };
+    const busyIds = () => { const s = new Set(); for (const k of gone.keys()) s.add(idOf(k)); for (const [k, l] of lanes) if (active(l) || l.deferred.length) s.add(idOf(k)); return s; };
+    // The page took a block from a read: what it has seen for the key (0: the key is gone).
+    function adopt(id, version) { const k = keyOf(id); if (gone.has(k)) return; if (version > 0) seen.set(k, Math.max(seen.get(k) || 0, version)); else seen.delete(k); }
 
     // What the server holds for one key, put on the page as it is (after a refused write, a change with no value, a change
     // heard while waiting for this page's delete). Not used when a newer read was asked for or a change for the key taken
@@ -212,6 +226,10 @@
     return {
       keyOf,
       load,
+      read,
+      versions,
+      busyIds,
+      adopt,
       // The server's time now, as this page best knows it (ms).
       now: () => clock.now(),
       save(block) { queue(keyOf(block.id), block); },
@@ -245,6 +263,7 @@
       handle(e) {
         if (!e || typeof e.key !== 'string' || !e.key.startsWith(PREFIX)) return;
         if (e.scope && e.scope !== 'space') return;
+        heard += 1;
         clock.heard(e.updatedAt, Date.now());
         const l = lanes.get(e.key);
         // Judged once this page's own write is done. (A lane with changes waiting is always active: every write drains its
