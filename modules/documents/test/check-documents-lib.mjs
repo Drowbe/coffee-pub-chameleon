@@ -863,6 +863,26 @@ test('real marked: a formula node carries its TeX and whether it is inline or bl
   assert.deepEqual([inl.tex, inl.display], ['a\\,b', false]);
   assert.deepEqual([r.desc[1].t, r.desc[1].tex, r.desc[1].display], ['math', '\\frac{1}{2}', true]);
 });
+test('real marked: a footnote mark is shown as it is written and flagged raw; nothing else about the line changes', () => {
+  const r = real('A claim.[^1] More [^note-2].\n\n[^1]: The **note** text.');
+  assert.deepEqual(r.desc[0].c, [{ t: 'text', v: 'A claim.' }, { t: 'text', v: '[^1]', raw: true }, { t: 'text', v: ' More ' }, { t: 'text', v: '[^note-2]', raw: true }, { t: 'text', v: '.' }]);
+  assert.deepEqual(r.desc[1].c.slice(0, 2), [{ t: 'text', v: '[^1]:', raw: true }, { t: 'text', v: ' The ' }]);
+  assert.equal(r.desc[1].c[2].t, 'strong');
+  assert.equal(r.root.textContent, 'A claim.[^1] More [^note-2].[^1]: The note text.');
+  assert.deepEqual(r.d.sinks, []);
+  // not a mark: its brackets escaped, a space inside, nothing inside, a second ^, or inside code
+  for (const md of ['A \\[^1\\] b', 'A [^ 1] b', 'A [^] b', 'A [^a^b] b', 'A `[^1]` b', `A [^${'x'.repeat(65)}] b`]) {
+    const flat = JSON.stringify(real(md).desc);
+    assert.ok(!flat.includes('"raw":true'), md);
+  }
+  // a formula found in the words is still found, and the words on both sides of it are still read
+  const m = real('x [^1] $5 or$ y [^2]');
+  assert.deepEqual(m.desc[0].c.map((n) => (n.t === 'math' ? `$${n.tex}$` : `${n.raw ? 'RAW:' : ''}${n.v}`)), ['x ', 'RAW:[^1]', ' ', '$5 or$', ' y ', 'RAW:[^2]']);
+  // a hostile mark is still only text
+  const h = real('[^<script>alert(1)</script>] [^1]: <img src=x onerror=alert(1)>');
+  assert.deepEqual(h.d.sinks, []);
+  assert.ok(!h.nodes.some((n) => ['script', 'img'].includes(n.tag)));
+});
 test('dlEscapeLabel: a written label reads back as the same label', () => {
   const labels = ['Plain', 'Board [2]', 'a \\ b', 'trailing \\', '`code`', 'a & b', '&amp; &lt; &#35; &copy;', '*star* _under_ ~tilde~', '<b>x</b>', '$a$ and $b$', '![x]', 'a|b', '\\[x\\]', '[]', ']\\[', '\\\\', '&', 'x &amp', 'one\ntwo', '"quote" \'single\'', 'a (b) [c](d)', '[a](b)', '](x)', 'f(x) = [1](2)'];
   for (const label of labels) {

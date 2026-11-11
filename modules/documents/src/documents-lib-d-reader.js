@@ -64,17 +64,34 @@
   const dlTitle = (t) => (typeof t === 'string' && t ? { title: dlCleanLine(dlDecodeText(t), 200) } : {});
   // Split a text run at $...$ (not "$5 and $6": the closing $ is not followed by a digit; the formula is 2000 characters at most).
   const DL_INLINE_MATH = /\$(?=\S)([^$\n]{1,2000}?\S|\S)\$(?!\d)/g;
+  // A footnote mark ([^1], and [^1]: where its note starts). The reader draws no footnotes: the mark is shown as it is written,
+  // as before, and flagged raw so a later editor keeps it word for word instead of escaping its brackets.
+  const DL_NOTE_MARK = /\[\^[^\s\[\]^]{1,64}\]:?/g;
+  function dlNoteSplit(v) {
+    if (v.indexOf('[^') < 0) return [dlText(v)];
+    const out = [];
+    let last = 0;
+    DL_NOTE_MARK.lastIndex = 0;
+    let m;
+    while ((m = DL_NOTE_MARK.exec(v))) {
+      if (m.index > last) out.push(dlText(v.slice(last, m.index)));
+      out.push({ ...dlText(m[0]), raw: true });
+      last = m.index + m[0].length;
+    }
+    if (last < v.length) out.push(dlText(v.slice(last)));
+    return out;
+  }
   function dlMathSplit(v) {
     const out = [];
     let last = 0;
     DL_INLINE_MATH.lastIndex = 0;
     let m;
     while ((m = DL_INLINE_MATH.exec(v))) {
-      if (m.index > last) out.push(dlText(v.slice(last, m.index)));
+      if (m.index > last) out.push(...dlNoteSplit(v.slice(last, m.index)));
       out.push({ t: 'math', tex: dlCleanText(m[1]), display: false });
       last = m.index + m[0].length;
     }
-    if (last < v.length) out.push(dlText(v.slice(last)));
+    if (last < v.length) out.push(...dlNoteSplit(v.slice(last)));
     return out;
   }
 
