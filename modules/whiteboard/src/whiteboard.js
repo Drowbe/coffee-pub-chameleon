@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Notes shows your speaker notes to you only; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging does the opposite. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour, opacity. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Other people\'s pointers: hide in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames; Notes: speaker notes). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging flips it. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Notes: yours alone; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Pointers: hide in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1267,6 +1267,7 @@
   let valignBox = null;
   let autoButton = null;
   let tableButton = null;
+  let notesButton = null;
   let singleButton = null;
   let manyButton = null;
   let allButton = null;
@@ -1345,6 +1346,11 @@
       startPresenting();
     });
     presentBox.appendChild(presentButton);
+    notesButton = pressButton('Notes', 'clipboard', () => { const f = pickedFrame(); if (f) openNotes(f.id); });
+    notesButton.removeAttribute('aria-pressed');
+    notesButton.dataset.tip = 'Speaker notes for the picked frame';
+    notesButton.hidden = true;
+    presentBox.appendChild(notesButton);
     for (const field of ['style', 'head']) {
       const box = pairBox(field === 'style' ? 'Line style' : 'Arrowheads');
       for (const c of LINE_STRIP[field]) {
@@ -1533,8 +1539,11 @@
     updateFonts();
     updateLine();
     updateTable();
-    presentBox.hidden = !(plan && plan.present);
-    if (!presentBox.hidden) {
+    const framePicked = Boolean(notesButton) && Boolean(pickedFrame());
+    presentBox.hidden = !((plan && plan.present) || framePicked);
+    if (notesButton) notesButton.hidden = !framePicked;
+    presentButton.hidden = !(plan && plan.present);
+    if (!presentBox.hidden && !presentButton.hidden) {
       const none = !live().some((b) => b.type === 'frame');
       presentButton.setAttribute('aria-disabled', String(none));
       const words = none ? 'No frames to present' : 'Present the frames, from the first';
@@ -2582,6 +2591,7 @@
     if (!state) { note('No frames to present. Add a frame first.'); return; }
     if (editing) { const e = editing; editing = null; e.finish(true); }
     if (down !== null) { if (tool.cancel) tool.cancel(ctx); down = null; pointers.clear(); }
+    closeNotes();
     closeFind({ quiet: true }); // Find is not used while presenting
     liveLeave(); // a person's own read-through: their pointer is not sent meanwhile
     presenting = follow ? { ...state, follow: true } : state;
@@ -2616,6 +2626,7 @@
     presenting = null;
     $('app').classList.remove('wb-presenting');
     $('present').hidden = true;
+    $('notes-box').hidden = true;
     scrim.setAttribute('hidden', '');
     scrimNow = null;
     if (fading) { fading.cancel(); fading = null; }
@@ -2688,6 +2699,101 @@
     },
   });
   iconSvg('tower-broadcast').then((svg) => { if (svg) $('present-share-icon').innerHTML = svg; }, () => {});
+  // ---- speaker notes: a frame's own words, never drawn on the board -----------------------------------------------------
+  // Notes are in the board's stored data: hiding them only keeps them off the screen; whoever can open the board can read them.
+  const NOTES_HELP = 'Anyone who can open this board can read notes. Don\'t put secrets in them.';
+  const NOTES_SHOW = 'whiteboard-present-notes';
+  let notesOn = false;
+  try { notesOn = window.localStorage.getItem(NOTES_SHOW) === '1'; } catch { /* no storage: hidden */ }
+  iconSvg('clipboard').then((svg) => { if (svg) $('present-notes-icon').innerHTML = svg; }, () => {});
+  // The presenter's own box: the current frame's notes, on this screen only (a follower never has it).
+  function notesShow() {
+    const btn = $('present-notes');
+    const mine = Boolean(presenting) && !presenting.follow;
+    btn.hidden = !mine;
+    btn.setAttribute('aria-pressed', String(notesOn));
+    const tip = `${notesOn ? 'Hide' : 'Show'} your speaker notes. Only on your screen, but ${NOTES_HELP.charAt(0).toLowerCase()}${NOTES_HELP.slice(1)}`;
+    btn.title = tip;
+    btn.dataset.tip = tip;
+    const box = $('notes-box');
+    const f = mine && notesOn ? board.get(presenting.order[presenting.i]) : null;
+    box.hidden = !f;
+    if (!f) return;
+    const words = document.createElement('div');
+    words.className = 'wb-words';
+    if (f.notes) wbShowWords(words, f.notes); else { words.textContent = 'No notes for this frame.'; words.classList.add('wb-notes-none'); }
+    box.replaceChildren(words);
+  }
+  $('present-notes').addEventListener('click', () => {
+    notesOn = !notesOn;
+    try { window.localStorage.setItem(NOTES_SHOW, notesOn ? '1' : '0'); } catch { /* kept for this visit only */ }
+    notesShow();
+  });
+  // The notes of one frame, to read (anyone) or to write (editors): a small box over the board with Save and Cancel.
+  let notesDlg = null;
+  function closeNotes() {
+    if (!notesDlg) return;
+    notesDlg.remove();
+    notesDlg = null;
+    surface.focus({ preventScroll: true });
+  }
+  function openNotes(id) {
+    const f = board.get(id);
+    if (!f || !wbIsFrame(f) || presenting) return;
+    closeNotes();
+    const dlg = document.createElement('div');
+    dlg.className = 'wb-notes-dlg';
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-label', 'Speaker notes');
+    const head = document.createElement('h2');
+    head.className = 'wb-notes-title';
+    head.textContent = `Speaker notes: ${(f.title || '').trim() || 'Frame'}`;
+    const help = document.createElement('p');
+    help.className = 'wb-notes-help';
+    help.id = 'notes-help';
+    help.textContent = NOTES_HELP;
+    const row = document.createElement('div');
+    row.className = 'wb-notes-row';
+    const close = (btn, label, onClick, quiet) => { btn.type = 'button'; btn.className = quiet ? 'btn btn-quiet btn-small' : 'btn btn-small'; btn.textContent = label; btn.addEventListener('click', onClick); return btn; };
+    if (policy.canEdit) {
+      const area = document.createElement('textarea');
+      area.className = 'wb-notes-area';
+      area.maxLength = WB_NOTES_MAX;
+      area.rows = 8;
+      area.value = f.notes || '';
+      area.setAttribute('aria-label', 'Speaker notes');
+      area.setAttribute('aria-describedby', 'notes-help');
+      const count = document.createElement('span');
+      count.className = 'wb-notes-count';
+      count.setAttribute('aria-live', 'polite');
+      const tally = () => { count.textContent = `${area.value.length} of ${WB_NOTES_MAX}`; };
+      tally();
+      area.addEventListener('input', tally);
+      const save = () => {
+        const now = board.get(id);
+        const next = wbFrameNotes(area.value);
+        if (now && next !== (now.notes || '')) ctx.change(id, { notes: next }, { save: 'now' });
+        closeNotes();
+      };
+      row.append(count, close(document.createElement('button'), 'Cancel', closeNotes, true), close(document.createElement('button'), 'Save', save, false));
+      dlg.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeNotes(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+      });
+      dlg.append(head, area, help, row);
+    } else {
+      const read = document.createElement('div');
+      read.className = 'wb-words wb-notes-read';
+      read.tabIndex = 0;
+      if (f.notes) wbShowWords(read, f.notes); else { read.textContent = 'No notes for this frame.'; read.classList.add('wb-notes-none'); }
+      row.append(close(document.createElement('button'), 'Close', closeNotes, false));
+      dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeNotes(); } });
+      dlg.append(head, read, row);
+    }
+    $('app').appendChild(dlg);
+    notesDlg = dlg;
+    (dlg.querySelector('textarea') || dlg.querySelector('.wb-notes-read')).focus();
+  }
   // The bar as the presenting is: who, which buttons, what is switched off.
   function barShow() {
     if (!presenting) return;
@@ -2713,6 +2819,7 @@
     $('present-share-label').textContent = s ? 'Stop sharing' : 'Share';
     const take = $('present-takeover');
     take.hidden = !(f && wbPresentCanTakeOver({ canEdit: policy.canEdit, me, rec: shared.rec, fresh: sharedFresh() }));
+    notesShow();
     $('present-exit').setAttribute('aria-label', f ? 'Leave' : 'Exit');
     $('present-exit').querySelector('.wb-present-label').textContent = f ? 'Leave' : 'Exit';
   }
@@ -3285,6 +3392,7 @@
     const links = ids.length === 1 ? linkRows(id) : [];
     // A frame, picked alone: present from it, and save it as a picture (its own box, with all of the board in it).
     const frameRows = pickedFrame() ? [
+      { id: 'notes', label: policy.canEdit ? 'Notes' : 'Speaker notes', icon: 'clipboard', onClick: () => openNotes(id) },
       { id: 'present-here', label: 'Present from this frame', icon: 'play', onClick: () => startPresenting(id) },
       { id: 'export-frame', label: 'Save frame as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport('frame'), 0); } },
     ] : [];
