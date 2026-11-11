@@ -54,6 +54,14 @@ services:
       PRODUCT_NAME: "Coffee Pub Chameleon"
       # CONTACT_EMAIL: "you@example.com" # optional: where the start page's "ask" writes to
       # PRODUCT_SITE_URL: "https://www.example.com/collaborator" # optional: the start page's "About" link to the product's page on your website (an http or https address)
+      # The About page's studio card; each is optional, and the card shows only what is set. Links are http or https (Contact may be mailto:).
+      # STUDIO_NAME: "Coffee Pub Studio"
+      # STUDIO_LOGO_FILE: "/app/data/studio-logo.svg" # a png, jpg, webp, svg or gif of at most 512 KB, for light themes
+      # STUDIO_LOGO_DARK_FILE: "/app/data/studio-logo-dark.svg" # the same for dark themes; with only one logo set it serves both
+      # STUDIO_URL: "https://www.example.com"
+      # STUDIO_PRODUCT_URL: "https://www.example.com/product"
+      # STUDIO_CONTACT_URL: "https://www.example.com/contact"
+      # STUDIO_SUPPORT_URL: "https://www.example.com/support"
       # Several environments: set the base domain (unset, one environment). PRODUCT_DOMAIN puts the start page on its own host.
       # BASE_DOMAIN: "CHANGE_ME_BASE_DOMAIN"
       # PRODUCT_DOMAIN: "CHANGE_ME_PRODUCT_HOST"
