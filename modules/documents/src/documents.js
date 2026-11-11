@@ -242,7 +242,7 @@
     $('page').replaceChildren();
     $('read-title').textContent = docs.get(id).title;
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
-    $('read-title').closest('.bar').querySelector('button').focus();
+    $('back').focus();
   }
   function closeDoc() { openId = null; $('read').hidden = true; $('list').hidden = false; render(); }
 
@@ -372,7 +372,7 @@
     ed = {
       id, rec, docVersion: version, old: got.parts, lock, text: got.text, saved: { text: got.text, title: rec.title },
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
-      timer: 0, beat: 0, previewTimer: 0, queue: Promise.resolve(),
+      timer: 0, beat: 0, queue: Promise.resolve(),
     };
     for (const cid of dlLeftoverChunks(rec.chunks, got.stored)) host.storage.delete(dlTextKey(id, cid)).catch(() => {});
     $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
@@ -381,7 +381,6 @@
     ta.value = got.text; ta.readOnly = false;
     $('edit-title').readOnly = false;
     $('lost').hidden = true; $('done').hidden = false; $('done').disabled = false; $('fmt').hidden = false;
-    drawPreview();
     setStatus();
     const beat = setInterval(() => {
       if (!$('app')) return void clearInterval(beat);
@@ -402,10 +401,6 @@
   function setStatus() {
     if (!ed) return;
     $('edit-status').textContent = ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed });
-  }
-  function drawPreview() {
-    if (!ed) return;
-    $('edit-preview').replaceChildren(dlBuild(dlDescribe($('edit-text').value, lex), doc));
   }
 
   async function refreshLock() {
@@ -494,14 +489,12 @@
   function typed() {
     if (!ed || ed.lost) return;
     ed.lastKey = Date.now(); ed.refused = '';
-    clearTimeout(ed.previewTimer);
-    ed.previewTimer = setTimeout(drawPreview, 200);
     setStatus(); schedule(false);
   }
 
   function stopEditing() {
     if (!ed) return;
-    clearTimeout(ed.timer); clearInterval(ed.beat); clearTimeout(ed.previewTimer);
+    clearTimeout(ed.timer); clearInterval(ed.beat);
     ed = null;
     $('editor').hidden = true;
   }

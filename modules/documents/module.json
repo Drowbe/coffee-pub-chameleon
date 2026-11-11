@@ -1,7 +1,7 @@
 {
   "id": "documents",
   "name": "Documents",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "icon": "file-lines",
   "color": "orange",
   "description": "Shared notes for the {space}: session notes, handouts and plans. One person edits at a time and everyone reads along.",
