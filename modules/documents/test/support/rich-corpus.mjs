@@ -142,6 +142,32 @@ export const CASES = [
   ['table past the bounds (201 rows)', `| a |\n| --- |\n${'| r |\n'.repeat(201)}`],
 ];
 
+// ---- the manual page break ---------------------------------------------------------------------------------------------------------
+// `_ _ _` as a top-level rule line of its own is a page break (the node page_break). Same shape as CASES; kept apart so the 119 of the
+// mapping corpus stay as they were. A rule written any other way, and a `_ _ _` inside a list or a quote, is an ordinary rule.
+export const BREAK_CASES = [
+  ["page break between blocks", "above\n\n_ _ _\n\nbelow\n"],
+  ["page break at the start", "_ _ _\n\nfirst\n"],
+  ["page break at the end", "last\n\n_ _ _\n"],
+  ["a page break alone", "_ _ _\n"],
+  ["page breaks in a row", "a\n\n_ _ _\n\n_ _ _\n\n_ _ _\n\nb\n"],
+  ["page break after a heading, a list, a quote, a code block and a grid", "# H\n\n_ _ _\n\n- a\n- b\n\n_ _ _\n\n> q\n\n_ _ _\n\n```js\nx\n```\n\n_ _ _\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n_ _ _\n"],
+  ["page break between two lists", "- a\n\n_ _ _\n\n- b\n"],
+  ["page break with trailing blank lines", "a\n\n_ _ _\n\n\n\n", "a\n\n_ _ _\n"],
+  ["page break with blank lines before it", "a\n\n\n\n_ _ _\n\nb\n", "a\n\n_ _ _\n\nb\n"],
+  ["page break with no blank lines around it", "a\n_ _ _\nb\n", "a\n\n_ _ _\n\nb\n"],
+  ["page break beside the other rules", "a\n\n---\n\n_ _ _\n\n***\n\n_ _ _\n\n___\n", "a\n\n---\n\n_ _ _\n\n---\n\n_ _ _\n\n---\n"],
+  ["a rule spelled in other ways stays a rule", "a\n\n_ _ _ _\n\n__ _\n\n_  _  _\n\n* * *\n\n- - -\n\nb\n", "a\n\n---\n\n---\n\n---\n\n---\n\n---\n\nb\n"],
+  ["`_ _ _` in a list row is a rule", "- a\n\n  _ _ _\n\n  b\n", "- a\n\n  ---\n\n  b\n"],
+  ["`_ _ _` in a quote is a rule", "> a\n>\n> _ _ _\n>\n> b\n", "> a\n>\n> ---\n>\n> b\n"],
+  ["`_ _ _` in a code block is words", "```\n_ _ _\n```\n\n    _ _ _\n", "```\n_ _ _\n```\n\n```\n_ _ _\n```\n"],
+  ["`_ _ _` in a paragraph is words", "a _ _ _ b\n", "a \\_ \\_ \\_ b\n"],
+  ["`_ _ _` with a space before it and after it is a rule", "a\n\n _ _ _\n\n_ _ _ \n\nb\n", "a\n\n---\n\n---\n\nb\n"],
+  ["a page break before a kept rule, and the rule before it", "---\n\n_ _ _\n\n***\n", "---\n\n_ _ _\n\n---\n"],
+];
+// A text with `count` page breaks, a short paragraph between each: for the bounds.
+export const breaksText = (count) => Array.from({ length: count }, (_, i) => `p${i}\n\n_ _ _\n`).join('\n');
+
 // ---- the fuzz ----------------------------------------------------------------------------------------------------------------------
 // Random documents built straight in the schema (what a person could make in the editor). `extended` false is the spike's
 // generator with its seed (rich-spike/work/fuzz.mjs; the chip is a node here, not a link); true adds what the spike did not
@@ -198,7 +224,7 @@ export function fuzzDocs(schema, count, extended) {
       const text = pick(['a < b', 'x\n\ny', '```\nin\n```', '  indented', '$x$ *a*'].concat(extended ? ['~~~\nin\n~~~', '<script>alert(1)</script>'] : []));
       return N.code_block.create({ lang, info: extended && lang ? pick(['', 'title="x" {1,3}', 'a`b']) : '' }, [schema.text(text)]);
     }
-    if (r < 0.88) return N.horizontal_rule.create();
+    if (r < 0.88) return r >= 0.855 && depth === 0 ? N.page_break.create() : N.horizontal_rule.create(); // 2 in 88 of the blocks at the top are page breaks (no extra draw: the generator's stream is as it was)
     if (r < 0.93) return N.formula_block.create({ tex: pick(['E = mc^2', '\\int_0^1 x\\,dx', 'a \\\\ b', 'a\n= b']) });
     if (extended && r < 0.96) return N.source_block.create(null, [schema.text(pick(['<div class="x">\nraw *html*\n</div>', '<!-- note -->', '[r]: https://example.com/r "T"', '<script>alert(1)</script>', '<img src=x onerror=alert(1)>']))]);
     const cols = 1 + Math.floor(rnd() * 3);

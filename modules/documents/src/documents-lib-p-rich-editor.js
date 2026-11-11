@@ -13,7 +13,7 @@
   // an empty string if it is ever reached. The schema has no rule for reading the browser's own changes to the page, so a
   // change the browser makes by itself can only bring words.
   // WHAT GOES OUT. Copy and cut give Markdown as the plain text (the library also writes its own HTML of the selection).
-  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link'];
+  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link', 'pagebreak'];
   const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Backspace', 'Mod-z', 'Mod-Shift-z', 'Mod-y', 'Mod-b', 'Mod-i', 'Mod-e', 'Mod-Enter', 'Mod-k'];
   const DL_RICH_PASTE = Object.freeze({ htmlMax: 4000000 });
   const dlRichCan = (action) => DL_RICH_ACTIONS.includes(action);
@@ -89,6 +89,21 @@
     const N = schema.nodes;
     const M = schema.marks;
     if (!dlRichCan(action) || action === 'link') return null;
+    // A page break goes after the top-level block that holds the selection (never inside a list or a quote); the caret moves to
+    // the block after it, and a paragraph is made there when it was the last.
+    if (action === 'pagebreak') {
+      return (state, dispatch) => {
+        const $to = state.selection.$to;
+        const after = $to.depth === 0 ? $to.pos : $to.after(1);
+        if (dispatch) {
+          const tr = state.tr.insert(after, N.page_break.create());
+          const next = after + 1;
+          if (next >= tr.doc.content.size || tr.doc.resolve(next).nodeAfter.type === N.page_break) tr.insert(next, N.paragraph.create());
+          dispatch(tr.setSelection(PM.Selection.near(tr.doc.resolve(next), 1)).scrollIntoView());
+        }
+        return true;
+      };
+    }
     const h = /^h([1-4])$/.exec(action);
     if (h) {
       const level = Number(h[1]);

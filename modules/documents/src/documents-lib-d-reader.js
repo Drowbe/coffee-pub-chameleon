@@ -158,6 +158,10 @@
     return out;
   }
 
+  // THE MANUAL PAGE BREAK (plan-documents-paper-layout.md, decision 13): a top-level rule spelled exactly `_ _ _` on a line of its
+  // own. The lexer reads it as a rule like `---`; the reader makes it { t: 'pagebreak' }. Inside a list or a quote it stays an
+  // ordinary rule. An ordinary rule a person wrote as `_ _ _` is a page break from now on; the editor writes `---` for a rule.
+  const DL_PAGE_BREAK_LINE = '_ _ _';
   const dlSource = (raw) => ({ t: 'source', v: dlTrimBreaks(dlCleanText(String(raw || ''))) });
   const DL_DISPLAY_MATH = /^\$\$(?!\$)([\s\S]+?)\$\$$/;
   const dlTwoFormulas = (tex) => /[^$]\$\$+[^$]/.test(tex); // "$$a$$ and $$b$$": a $$ pair with words on both sides is two formulas in a paragraph, not one block
@@ -199,7 +203,7 @@
           out.push({ t: 'codeblock', v: dlCleanText(String(k.text || '')), lang: word.slice(0, 40).replace(/[^A-Za-z0-9_+#.-]/g, ''), info: sp < 0 ? '' : fence.slice(sp).trim() });
           break;
         }
-        case 'hr': out.push({ t: 'rule' }); break;
+        case 'hr': out.push(ctx.list === 0 && ctx.quote === 0 && dlTrimBreaks(String(k.raw || '')) === DL_PAGE_BREAK_LINE ? { t: 'pagebreak' } : { t: 'rule' }); break;
         case 'list': {
           if (ctx.list >= DL.listDepth || ctx.quote > 8) { out.push(dlSource(k.raw)); break; }
           const items = (k.items || []).map((it) => ({
@@ -290,6 +294,16 @@
         else if (b.t === 'heading') { const e = el(`h${b.depth}`); inline(b.c, e); parent.appendChild(e); }
         else if (b.t === 'quote') { const e = el('blockquote'); blocks(b.c, e); parent.appendChild(e); }
         else if (b.t === 'rule') parent.appendChild(el('hr'));
+        else if (b.t === 'pagebreak') { // a separator named "Page break"; the drawn words are for the eye only
+          const e = el('div', 'dl-pagebreak');
+          e.setAttribute('role', 'separator');
+          e.setAttribute('aria-label', 'Page break');
+          const w = el('span', 'dl-pagebreak-label');
+          w.setAttribute('aria-hidden', 'true');
+          w.textContent = 'Page break';
+          e.appendChild(w);
+          parent.appendChild(e);
+        }
         else if (b.t === 'codeblock' || b.t === 'source') {
           const e = el('pre', b.t === 'source' ? 'dl-source' : '');
           const c = el('code');

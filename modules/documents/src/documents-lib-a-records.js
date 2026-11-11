@@ -1,6 +1,6 @@
   // ---- documents-lib-a-records.js: cleaning the three stored records (no page, no host) ------------------------------------
   //
-  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, preview?, paper, by, at, editedBy, editedByName, editedAt }
+  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, preview?, paper, layout, pageSize, pageNumbers, by, at, editedBy, editedByName, editedAt }
   //   text:<id>:<c>   { id:<chunk>, doc:<id>, text }
   //   _lock:<id>      { id:'lock', type:'lock', doc, holder, name, at, seq, by }
   // Every record is cleaned on reading as well as on writing: a wrong type, unknown fields dropped, strings cut, control
@@ -105,6 +105,22 @@
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
   }
 
+  // The page's layout (plan-documents-paper-layout.md): Fluid (the continuous sheet) or Paper (a page of a fixed size), the page's
+  // size (Letter or A4) and whether page numbers are shown. Like the colour they belong to the document and every reader sees
+  // the same; they change only while editing, on the colour's path. A missing or unknown value reads as the first (Fluid, Letter, no).
+  const DL_LAYOUT_DEFAULT = 'fluid';
+  const DL_PAGESIZE_DEFAULT = 'letter';
+  const dlCleanLayout = (v) => (v === 'paper' ? 'paper' : DL_LAYOUT_DEFAULT);
+  const dlCleanPageSize = (v) => (v === 'a4' ? 'a4' : DL_PAGESIZE_DEFAULT);
+  const dlCleanPageNumbers = (v) => v === true;
+  // The three together: -> { layout, pageSize, pageNumbers } from any record or nothing.
+  const dlCleanPage = (v) => ({ layout: dlCleanLayout(v && v.layout), pageSize: dlCleanPageSize(v && v.pageSize), pageNumbers: dlCleanPageNumbers(v && v.pageNumbers) });
+  const dlSamePage = (a, b) => {
+    const x = dlCleanPage(a);
+    const y = dlCleanPage(b);
+    return x.layout === y.layout && x.pageSize === y.pageSize && x.pageNumbers === y.pageNumbers;
+  };
+
   const dlIsRecord = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   const dlDocId = (s) => (typeof s === 'string' && /^[a-z0-9]{8,16}$/.test(s) ? s : null);
   const dlChunkId = (s) => (typeof s === 'string' && /^[a-z0-9]{8}$/.test(s) ? s : null);
@@ -136,6 +152,7 @@
       excerpt: dlCut(dlCleanLine(v.excerpt, DL.excerptMax * 2), DL.excerptMax),
       ...(preview ? { preview } : {}),
       paper: dlCleanPaper(v.paper),
+      ...dlCleanPage(v),
       by, at, editedBy,
       editedByName: dlCleanLine(v.editedByName, DL.nameMax) || 'Someone',
       editedAt,

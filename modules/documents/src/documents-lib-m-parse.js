@@ -64,7 +64,7 @@
     }
     // A paragraph in a list row never starts with spaces (an indented line there reads as words): the serialiser writes none.
     const lead = (c) => (c && c[0] && c[0].t === 'text' && !c[0].raw ? [{ ...c[0], v: String(c[0].v || '').replace(/^[ \t]+/, '') }, ...c.slice(1)] : c);
-    function blocks(list, row) {
+    function blocks(list, row, top) {
       const out = [];
       for (const b of list || []) {
         if (!b || typeof b !== 'object') continue;
@@ -72,6 +72,7 @@
         else if (b.t === 'heading') out.push(made(N.heading.create({ level: Math.min(6, Math.max(1, Math.trunc(Number(b.level || b.depth)) || 1)) }, inline(b.c, [], []))));
         else if (b.t === 'quote') { const c = blocks(b.c); out.push(made(N.blockquote.create(null, c.length ? c : [para([])]))); }
         else if (b.t === 'rule') out.push(made(N.horizontal_rule.create()));
+        else if (b.t === 'pagebreak') out.push(made(top ? N.page_break.create() : N.horizontal_rule.create())); // the reader makes none inside a list or quote
         else if (b.t === 'codeblock') {
           const v = dlTrimBreaks(String(b.v || ''));
           const lang = /^[A-Za-z0-9_+#.-]{0,40}$/.test(String(b.lang || '')) ? String(b.lang || '') : '';
@@ -97,7 +98,7 @@
       }
       return out;
     }
-    return blocks(desc);
+    return blocks(desc, false, true);
   }
 
   // A description -> the editor's whole text as one node. Throws DL_RICH_OVER past the node bound, and if a value fails the schema.

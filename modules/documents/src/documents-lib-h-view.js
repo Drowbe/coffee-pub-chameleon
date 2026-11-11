@@ -49,3 +49,39 @@ const DL_EDITVIEWS = Object.freeze([{ id: 'markdown', label: 'Markdown', icon: '
 // The switch's choice for "is it the rich editor", and back: anything but 'rich' (nothing, a stray value) is Markdown.
 const dlEditViewId = (rich) => (rich ? 'rich' : 'markdown');
 const dlEditViewIsRich = (id) => id === 'rich';
+
+// ---- the page: its size, in one place (print reuses these later: @page takes the same inches and millimetres) --------------------
+// Letter is 8.5 by 11 inches, A4 is 210 by 297 millimetres; a screen inch is 96 px, so Letter is 816 by 1056 px and A4 794 by 1123.
+// The margin is 1 inch all round. `w`, `h` and `text` (the area inside the margins) are px, derived from the real size.
+const DL_PAGE_DPI = 96;
+const DL_PAGE_MARGIN_IN = 1;
+const DL_PAGE_SIZES = Object.freeze({
+  letter: Object.freeze({ id: 'letter', label: 'Letter', inW: 8.5, inH: 11, atPage: '8.5in 11in' }),
+  a4: Object.freeze({ id: 'a4', label: 'A4', mmW: 210, mmH: 297, atPage: '210mm 297mm' }),
+});
+// -> { id, label, w, h, margin, textW, textH, atPage } for 'letter' or 'a4' (anything else is Letter).
+function dlPageGeometry(id) {
+  const s = DL_PAGE_SIZES[id === 'a4' ? 'a4' : 'letter'];
+  const px = (inches, mm) => Math.round(inches !== undefined ? inches * DL_PAGE_DPI : (mm / 25.4) * DL_PAGE_DPI);
+  const w = px(s.inW, s.mmW);
+  const h = px(s.inH, s.mmH);
+  const margin = DL_PAGE_MARGIN_IN * DL_PAGE_DPI;
+  return { id: s.id, label: s.label, w, h, margin, textW: w - 2 * margin, textH: h - 2 * margin, atPage: s.atPage };
+}
+// Fit width on a Paper sheet: the scale that makes the page as wide as the window, never more than twice its size.
+const DL_PAGE_FIT_MAX = 2;
+const dlPageFit = (avail, pageW) => (Number.isFinite(avail) && avail > 0 && pageW > 0 ? Math.min(DL_PAGE_FIT_MAX, avail / pageW) : 1);
+
+// ---- the layout: Fluid or Paper (the document's own, kept in its record; the shared view switch in the editing bar) ----------------
+const DL_LAYOUTS = Object.freeze([{ id: 'fluid', label: 'Fluid', icon: 'align-justify' }, { id: 'paper', label: 'Paper', icon: 'file' }]);
+// The Page menu's entries after "Page colour...": the sizes, then the page numbers; -> [{ kind, id, label, current }].
+function dlPageMenuModel(page) {
+  const p = dlCleanPage(page);
+  return [
+    { kind: 'heading', label: 'Page size' },
+    ...Object.values(DL_PAGE_SIZES).map((s) => ({ kind: 'size', id: s.id, label: s.label, current: p.pageSize === s.id })),
+    { kind: 'heading', label: 'On the page' },
+    { kind: 'numbers', id: 'numbers', label: 'Page numbers', current: p.pageNumbers },
+    { kind: 'break', id: 'break', label: 'Page break', icon: 'scissors' },
+  ];
+}

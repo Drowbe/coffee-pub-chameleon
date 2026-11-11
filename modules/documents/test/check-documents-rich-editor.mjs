@@ -1548,6 +1548,73 @@ test('Mod-k and run("link") ask the page, once; always taken; a read-only editor
   assert.equal(ed.run('link'), false, 'destroy lets go');
 });
 
+const kinds = (ed) => { const out = []; ed.state().doc.forEach((b) => out.push(b.type.name)); return out; };
+// ---- 13. THE PAGE BREAK (plan-documents-paper-layout.md, step 2) ------------------------------------------------------------------
+test('page break: the action puts the node after the top-level block with the caret, and the caret goes to the block after', () => {
+  const ed = open('one\n\ntwo\n\nthree\n');
+  select(ed, 1, 1);
+  assert.equal(ed.run('pagebreak'), true);
+  assert.deepEqual(kinds(ed), ['paragraph', 'paragraph', 'page_break', 'paragraph']);
+  const sel = ed.state().selection;
+  assert.equal(sel.$from.parent.textContent, 'three');
+  assert.equal(ed.getText(), 'one\n\ntwo\n\n_ _ _\n\nthree\n');
+  assert.ok(PM.undo(ed.state(), ed.dispatch));
+  assert.equal(ed.getText(), 'one\n\ntwo\n\nthree\n');
+});
+test('page break: after the last block a paragraph is made to type in; in a list row or a quote it goes after the whole list or quote', () => {
+  const last = open('one\n');
+  select(last, 0, 3);
+  last.run('pagebreak');
+  assert.deepEqual(kinds(last), ['paragraph', 'page_break', 'paragraph']);
+  assert.equal(last.state().selection.$from.parent.type, N.paragraph);
+  assert.equal(last.getText(), 'one\n\n_ _ _\n');
+  const row = open('- a\n- b\n\nend\n');
+  const at = wordAt(row.state().doc, 'a');
+  row.dispatch(row.state().tr.setSelection(PM.TextSelection.create(row.state().doc, at + 1)));
+  row.run('pagebreak');
+  assert.deepEqual(kinds(row), ['bullet_list', 'page_break', 'paragraph']);
+  assert.equal(row.getText(), '- a\n- b\n\n_ _ _\n\nend\n');
+  const quote = open('> q\n\nend\n');
+  const q = wordAt(quote.state().doc, 'q');
+  quote.dispatch(quote.state().tr.setSelection(PM.TextSelection.create(quote.state().doc, q + 1)));
+  quote.run('pagebreak');
+  assert.deepEqual(kinds(quote), ['blockquote', 'page_break', 'paragraph']);
+  assert.equal(quote.getText(), '> q\n\n_ _ _\n\nend\n');
+});
+test('page break: one block changes in the text, byte for byte; a second press adds a second break (it is not a toggle)', () => {
+  const md = 'Intro __stays__ exact.\n\n* one\n* two\n\n***\n\nEnd _it_ here\n';
+  const ed = open(md);
+  select(ed, 0, 2);
+  ed.run('pagebreak');
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\n_ _ _\n\n* one\n* two\n\n***\n\nEnd _it_ here\n');
+  select(ed, 2, 0, 0, 3);
+  ed.run('pagebreak');
+  assert.equal(kinds(ed).filter((k) => k === 'page_break').length, 2);
+  const again = open(ed.getText());
+  assert.deepEqual(kinds(again), kinds(ed));
+  assert.equal(again.getText(), ed.getText());
+});
+test('page break: a read-only editor adds none; a pasted `_ _ _` line becomes a break only at the top; Backspace takes a break out', () => {
+  const ro = open('one\n');
+  ro.setReadOnly(true);
+  const before = ro.getText();
+  ro.run('pagebreak');
+  assert.equal(ro.getText(), before);
+  const ed = open('one\n\n_ _ _\n\ntwo\n');
+  assert.deepEqual(kinds(ed), ['paragraph', 'page_break', 'paragraph']);
+  select(ed, 2, 0);
+  assert.ok(PM.baseKeymap.Backspace(ed.state(), ed.dispatch)); // the break is one atom: Backspace at the start of the next block takes it out
+  assert.deepEqual(kinds(ed), ['paragraph', 'paragraph']);
+  assert.equal(ed.getText(), 'one\n\ntwo\n');
+  const rows = open('- a\n');
+  const a = wordAt(rows.state().doc, 'a');
+  rows.dispatch(rows.state().tr.setSelection(PM.TextSelection.create(rows.state().doc, a + 1)));
+  rows.paste('x\n\n_ _ _\n\ny');
+  rows.state().doc.check();
+  rows.state().doc.descendants((n, pos, parent) => { if (n.type === N.page_break) assert.equal(parent.type, N.doc, 'a break inside a block'); });
+  assert.equal(L.dlRichActive(PM, ed.state()).quote, false);
+});
+
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
 if (fails.length) {
   for (const f of fails) console.error(`FAIL ${f}`);
