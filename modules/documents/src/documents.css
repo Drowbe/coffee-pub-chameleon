@@ -97,6 +97,33 @@
 .edit-text { flex: 1 1 auto; width: 100%; min-height: 16rem; resize: none; padding: 0; background: none; border: 0; border-radius: 0; font-family: var(--font-mono, monospace); font-size: var(--text-14); line-height: var(--leading-body, 1.6); color: var(--doc-ink); caret-color: var(--doc-ink); }
 .sheet-edit .edit-text, .sheet-edit .edit-text:focus, .sheet-edit .edit-text:focus-visible { outline: none; border: 0; box-shadow: none; background: none; }
 .sheet-edit:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
+/* the rich editor (ProseMirror), in the same sheet as the text box. Its words look as the reading page does (.page). The library's
+   own rules (prosemirror.css, the gap cursor, the drop cursor) are here with the theme's tokens, under .rich. Step 5: enough to work. */
+.rich { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 16rem; }
+.rich .ProseMirror { position: relative; flex: 1 1 auto; outline: none; caret-color: var(--doc-ink); word-wrap: break-word; white-space: pre-wrap; white-space: break-spaces; font-variant-ligatures: none; font-feature-settings: "liga" 0; }
+.rich .ProseMirror:focus-visible { outline: none; }
+.rich .ProseMirror pre { white-space: pre-wrap; }
+.rich .ProseMirror a { cursor: text; }
+.rich .ProseMirror > :last-child { margin-bottom: 0; }
+.rich .ProseMirror li { position: relative; }
+.rich .ProseMirror-hideselection *::selection { background: transparent; }
+.rich .ProseMirror-hideselection { caret-color: transparent; }
+.rich .ProseMirror [draggable][contenteditable="false"] { user-select: text; }
+.rich .ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-small); }
+.rich li.ProseMirror-selectednode { outline: none; }
+.rich li.ProseMirror-selectednode::after { content: ""; position: absolute; inset: calc(-1 * var(--space-0)) calc(-1 * var(--space-0)) calc(-1 * var(--space-0)) calc(-1 * var(--space-7)); border: 2px solid var(--accent); pointer-events: none; }
+.rich .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.rich .ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: calc(-1 * var(--space-0)); width: var(--space-5); border-top: 1px solid var(--doc-ink); animation: dl-rich-blink 1.1s steps(2, start) infinite; }
+@keyframes dl-rich-blink { to { visibility: hidden; } }
+.rich .ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+.rich .dl-drop { background: var(--accent); }
+/* a checklist row's box (pressed to tick it), and what Markdown holds that the editor shows as it is written */
+.rich li.dl-task::before { content: ""; grid-column: 1; width: 0.85em; height: 0.85em; margin-top: 0.35em; border: 1px solid var(--doc-ink); border-radius: var(--radius-min); cursor: pointer; }
+.rich li.dl-task[data-task="done"]::before { background: var(--doc-ink); box-shadow: inset 0 0 0 2px var(--doc-paper); }
+.rich .dl-source, .rich .dl-source-inline { color: var(--doc-quiet); font-family: var(--font-mono, monospace); font-size: var(--text-13); background: none; border: 1px dashed var(--doc-edge); border-radius: var(--radius-min); }
+.rich .dl-source-inline { padding: 0 var(--space-1); }
+.rich .dl-source code { background: none; }
+.rich .dl-object { text-decoration: underline; text-underline-offset: 2px; }
 .lost { border: 1px solid var(--edge-hairline); border-left: 3px solid var(--accent); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); background: var(--surface-card); }
 .lost p { margin: 0 0 var(--space-2); }
 .thumb .page ul, .thumb .page ol { padding-left: 1.6em; }

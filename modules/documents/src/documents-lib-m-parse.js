@@ -62,11 +62,13 @@
       }
       return out;
     }
-    function blocks(list) {
+    // A paragraph in a list row never starts with spaces (an indented line there reads as words): the serialiser writes none.
+    const lead = (c) => (c && c[0] && c[0].t === 'text' && !c[0].raw ? [{ ...c[0], v: String(c[0].v || '').replace(/^[ \t]+/, '') }, ...c.slice(1)] : c);
+    function blocks(list, row) {
       const out = [];
       for (const b of list || []) {
         if (!b || typeof b !== 'object') continue;
-        if (b.t === 'paragraph') out.push(para(inline(b.c, [], [])));
+        if (b.t === 'paragraph') out.push(para(inline(row ? lead(b.c) : b.c, [], [])));
         else if (b.t === 'heading') out.push(made(N.heading.create({ level: Math.min(6, Math.max(1, Math.trunc(Number(b.level || b.depth)) || 1)) }, inline(b.c, [], []))));
         else if (b.t === 'quote') { const c = blocks(b.c); out.push(made(N.blockquote.create(null, c.length ? c : [para([])]))); }
         else if (b.t === 'rule') out.push(made(N.horizontal_rule.create()));
@@ -81,7 +83,7 @@
           else out.push(made(N.source_block.create(null, [made(schema.text(`$$${tex.replace(/\n[ \t]*\n/g, '\n') || ' '}$$`))]))); // an empty one: kept as written
         } else if (b.t === 'list') {
           const rows = (b.items || []).map((it) => {
-            const c = blocks(it.c);
+            const c = blocks(it.c, true);
             return made(N.list_item.create({ checked: it.task ? Boolean(it.checked) : null }, c.length ? c : [para([])]));
           });
           if (rows.length) out.push(made(b.ordered ? N.ordered_list.create({ order: Number.isInteger(b.start) && b.start >= 0 && b.start < 1e6 ? b.start : 1 }, rows) : N.bullet_list.create(null, rows)));

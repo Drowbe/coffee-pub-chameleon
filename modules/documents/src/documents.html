@@ -10,7 +10,7 @@
 </head>
 <body>
 <!--
-  Three states in one window: #list (the documents, or the trash), #read (one document, rendered) and #editor (the text box and its bar). The script fills them;
+  Three states in one window: #list (the documents, or the trash), #read (one document, rendered) and #editor (the text box, or the rich editor in #edit-rich, and its bar). The script fills them;
   nothing a person wrote is ever set as HTML. #note is a short line for a refusal or a notice.
 -->
 <div id="app" class="app sdk-slot" hidden>
@@ -50,6 +50,7 @@
     <div class="sheet sheet-edit">
       <input id="edit-title" class="doc-title edit-title" type="text" maxlength="120" aria-label="Title" autocomplete="off">
       <textarea id="edit-text" class="edit-text" aria-label="Text" spellcheck="true"></textarea>
+      <div id="edit-rich" class="rich" hidden></div>
     </div>
   </section>
 </div>

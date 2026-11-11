@@ -905,6 +905,25 @@ test('real marked: a formula node carries its TeX and whether it is inline or bl
   assert.deepEqual([inl.tex, inl.display], ['a\\,b', false]);
   assert.deepEqual([r.desc[1].t, r.desc[1].tex, r.desc[1].display], ['math', '\\frac{1}{2}', true]);
 });
+test('real marked: two $$ formulas in one paragraph are a paragraph, not one block formula (loose list, top level); a true block still is one', () => {
+  const shape = (n) => (n.t === 'math' ? `${n.display ? 'D' : 'I'}:${n.tex}` : `${n.t}${n.raw ? '!' : ''}:${n.v}`);
+  const top = L.dlDescribe('$$a$$ and $$b$$', lex);
+  assert.equal(top.length, 1);
+  assert.equal(top[0].t, 'paragraph');
+  assert.ok(!top[0].c.some((n) => n.display));
+  assert.equal(top[0].c.map(shape).join('|').replace(/[ID]:/g, '$:').includes('and'), true);
+  const loose = L.dlDescribe('- one\n\n- $$a$$ and $$b$$\n', lex);
+  const item = loose[0].items[1].c;
+  assert.equal(item.length, 1);
+  assert.equal(item[0].t, 'paragraph');
+  assert.ok(!item[0].c.some((n) => n.display));
+  const block = L.dlDescribe('$$\nx\n$$', lex);
+  assert.deepEqual([block[0].t, block[0].tex, block[0].display], ['math', 'x', true]);
+  const inBlock = L.dlDescribe('- one\n\n- $$\n  x\n  $$\n', lex);
+  assert.deepEqual([inBlock[0].items[1].c[0].t, inBlock[0].items[1].c[0].display], ['math', true]);
+  const two = L.dlDescribe('see $a$ and $b$ here', lex);
+  assert.equal(two[0].c.filter((n) => n.t === 'math').length, 2);
+});
 test('real marked: a footnote mark is shown as it is written and flagged raw; nothing else about the line changes', () => {
   const r = real('A claim.[^1] More [^note-2].\n\n[^1]: The **note** text.');
   assert.deepEqual(r.desc[0].c, [{ t: 'text', v: 'A claim.' }, { t: 'text', v: '[^1]', raw: true }, { t: 'text', v: ' More ' }, { t: 'text', v: '[^note-2]', raw: true }, { t: 'text', v: '.' }]);

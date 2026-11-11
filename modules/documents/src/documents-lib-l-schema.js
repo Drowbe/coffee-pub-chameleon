@@ -11,8 +11,10 @@
   // A source node holds Markdown the reader shows as text (raw HTML and comments, pictures, footnote marks, link-definition lines,
   // a link with a refused address, anything past the bounds, anything unknown) and writes it back word for word.
   // Every attribute has a `validate` rule, so node.check() and Node.fromJSON refuse a value the reader would not have made.
-  // Not here yet (they belong to the steps that need a page): the rules that read the browser's own changes back (parseDOM), and
-  // what the grid editing library needs on the grid nodes (its role key and the span attributes).
+  // There is no rule that reads the browser's own changes to the page back (parseDOM), on purpose: what the editor drew is
+  // read back as the node it was drawn from, and anything the browser adds by itself can only bring words, never a mark, a
+  // node or an attribute (documents-lib-p-rich-editor.js). Not here yet: what the grid editing library needs on the grid nodes
+  // (its role key and the span attributes).
   const DL_RICH = Object.freeze({ nodesMax: 60000, labelMax: 200, titleMax: 200, langMax: 40, infoMax: 240 });
   const DL_RICH_ALIGN = ['left', 'center', 'right'];
   const DL_RICH_PART = /^[a-z][a-z0-9_-]{0,39}$/;

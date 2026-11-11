@@ -160,6 +160,7 @@
 
   const dlSource = (raw) => ({ t: 'source', v: dlTrimBreaks(dlCleanText(String(raw || ''))) });
   const DL_DISPLAY_MATH = /^\$\$([\s\S]+?)\$\$$/;
+  const dlTwoFormulas = (tex) => /[^$]\$\$+[^$]/.test(tex); // "$$a$$ and $$b$$": a $$ pair with words on both sides is two formulas in a paragraph, not one block
 
   // A task item whose first line still starts with "[ ] " or "[x] " as words (no box token in front of it): take those words out.
   function dlTaskTokens(it) {
@@ -181,7 +182,7 @@
         case 'heading': out.push({ t: 'heading', depth: Math.min(4, Math.max(1, Number(k.depth) || 1)), level: Math.min(6, Math.max(1, Number(k.depth) || 1)), c: dlInline(k.tokens) }); break;
         case 'paragraph': {
           const m = DL_DISPLAY_MATH.exec(String(k.raw || '').trim());
-          if (m) out.push(m[1].trim().length <= DL.formulaMax ? { t: 'math', tex: dlCleanText(m[1].trim()), display: true } : dlSource(k.raw));
+          if (m && !dlTwoFormulas(m[1])) out.push(m[1].trim().length <= DL.formulaMax ? { t: 'math', tex: dlCleanText(m[1].trim()), display: true } : dlSource(k.raw));
           else out.push({ t: 'paragraph', c: dlInline(k.tokens) });
           break;
         }
