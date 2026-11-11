@@ -53,6 +53,32 @@
     return out;
   }
 
+  // A marked inline extension (give it to `new marked.Marked({ extensions: [DL_MARKED_MATH] })`): it reads $...$ and $$...$$ BEFORE
+  // marked's escape rule, so a formula keeps its backslashes (\, \{ \% \\). A $ followed by a digit or a space starts nothing,
+  // and \$ is a literal dollar (the escape rule takes it first). The token is { type:'math', raw, text } and `text` is the TeX.
+  const DL_MARKED_MATH = {
+    name: 'math',
+    level: 'inline',
+    start: (src) => { const i = src.indexOf('$'); return i < 0 ? undefined : i; },
+    tokenizer(src) {
+      const m = /^\$\$(?=\S)([^$]{1,2000}?)\$\$/.exec(src) || /^\$(?![\d\s$])([^$\n]{1,2000}?\S|\S)\$(?!\d)/.exec(src);
+      return m ? { type: 'math', raw: m[0], text: m[1] } : undefined;
+    },
+  };
+  // The label of a link as a person reads it: the lexer's decoded inline text (escapes already taken out), not the source.
+  function dlPlain(tokens, depth = 0) {
+    let s = '';
+    if (!Array.isArray(tokens) || depth > 20) return s;
+    for (const k of tokens) {
+      if (!k || typeof k !== 'object') continue;
+      if (Array.isArray(k.tokens) && k.tokens.length) s += dlPlain(k.tokens, depth + 1);
+      else if (k.type === 'br') s += ' ';
+      else if (k.type === 'math') s += `$${k.text || ''}$`;
+      else if (k.type !== 'checkbox') s += String(k.text == null ? k.raw || '' : k.text);
+    }
+    return s;
+  }
+
   function dlInline(tokens, depth = 0) {
     const out = [];
     if (!Array.isArray(tokens) || depth > 20) return out;
@@ -69,14 +95,16 @@
         case 'del': out.push({ t: 'del', c: sub() }); break;
         case 'codespan': out.push({ t: 'code', v: dlCleanText(String(k.text || '')) }); break;
         case 'br': out.push({ t: 'br' }); break;
+        case 'math': out.push({ t: 'math', tex: dlCleanText(String(k.text == null ? '' : k.text)), display: false }); break;
+        case 'checkbox': break; // a loose item carries its box as an inline token; the item's own flag draws the one box
         case 'link': {
           const a = dlSafeAddress(String(k.href || ''));
-          if (!a) out.push(dlText(k.raw)); // an address that is not allowed: the source, as text
-          else if (a.kind === 'object') out.push({ t: 'object', module: a.module, objectKind: a.objectKind, id: a.id, label: dlCleanLine(String(k.text || ''), 200) });
+          if (!a) out.push({ ...dlText(k.raw), raw: true }); // an address that is not allowed: the source, as text
+          else if (a.kind === 'object') out.push({ t: 'object', module: a.module, objectKind: a.objectKind, id: a.id, label: dlCleanLine(Array.isArray(k.tokens) && k.tokens.length ? dlPlain(k.tokens) : String(k.text || ''), 200) });
           else out.push({ t: 'link', href: a.href, c: sub() });
           break;
         }
-        default: out.push(dlText(k.raw != null ? k.raw : k.text)); // html, images, footnotes, anything else: its source, as text
+        default: out.push({ ...dlText(k.raw != null ? k.raw : k.text), raw: true }); // html, images, footnotes, anything else: its source, as text (raw: a later editor shows it as a source node)
       }
     }
     return out;
@@ -84,6 +112,16 @@
 
   const dlSource = (raw) => ({ t: 'source', v: dlCleanText(String(raw || '')).replace(/\n+$/, '') });
   const DL_DISPLAY_MATH = /^\$\$([\s\S]+?)\$\$$/;
+
+  // A task item whose first line still starts with "[ ] " or "[x] " as words (no box token in front of it): take those words out.
+  function dlTaskTokens(it) {
+    const toks = it.tokens;
+    if (!it.task || !Array.isArray(toks) || !toks[0] || !Array.isArray(toks[0].tokens)) return toks;
+    const inner = toks[0].tokens;
+    if (!inner[0] || inner[0].type !== 'text' || typeof inner[0].text !== 'string' || !/^\[[ xX]\]\s+/.test(inner[0].text) || inner[0].tokens) return toks;
+    const first = { ...inner[0], text: inner[0].text.replace(/^\[[ xX]\]\s+/, '') };
+    return [{ ...toks[0], tokens: [first, ...inner.slice(1)] }, ...toks.slice(1)];
+  }
 
   function dlBlocks(tokens, ctx) {
     const out = [];
@@ -104,12 +142,12 @@
           if (ctx.quote >= 8) out.push(dlSource(k.raw));
           else out.push({ t: 'quote', c: dlBlocks(k.tokens, { ...ctx, quote: ctx.quote + 1 }) });
           break;
-        case 'code': out.push({ t: 'codeblock', v: dlCleanText(String(k.text || '')) }); break;
+        case 'code': out.push({ t: 'codeblock', v: dlCleanText(String(k.text || '')), lang: k.codeBlockStyle === 'indented' ? '' : dlCleanLine(String(k.lang || ''), 40).replace(/[^A-Za-z0-9_+#.-]/g, '') }); break;
         case 'hr': out.push({ t: 'rule' }); break;
         case 'list': {
           if (ctx.list >= DL.listDepth || ctx.quote > 8) { out.push(dlSource(k.raw)); break; }
           const items = (k.items || []).map((it) => ({
-            task: Boolean(it.task), checked: Boolean(it.task && it.checked), c: dlBlocks(it.tokens, { ...ctx, list: ctx.list + 1 }),
+            task: Boolean(it.task), checked: Boolean(it.task && it.checked), c: dlBlocks(dlTaskTokens(it), { ...ctx, list: ctx.list + 1 }),
           }));
           out.push({ t: 'list', ordered: Boolean(k.ordered), start: k.ordered && Number.isInteger(k.start) && k.start >= 0 && k.start < 1e6 ? k.start : 1, items });
           break;
