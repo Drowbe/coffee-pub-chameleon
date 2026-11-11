@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
 const NAMES = ['WB_PRESENT', 'wbCleanPresent', 'wbPresentSeenAt', 'wbPresentStale', 'wbPresentStartPlan', 'wbPresentStartResult',
-  'wbPresentCanTakeOver', 'wbPresentAcceptLive', 'wbPresentHear', 'wbPresentNext', 'createWbPresentSender'];
+  'wbPresentCanTakeOver', 'wbPresentAcceptLive', 'wbPresentHear', 'wbPresentNext', 'createWbPresentSender', 'wbPresentMenu', 'wbPresentGo'];
 let passed = 0;
 const fails = [];
 let L = {};
@@ -210,6 +210,17 @@ await test('sender: a 403 stops it', async () => {
   assert.equal(r.lost.length, 1);
 });
 
+await test('wbPresentMenu lists frames in order, names or Frame N, marks the current', () => {
+  const st = { order: ['a', 'b', 'c'], i: 1 };
+  const m = L.wbPresentMenu(st, (id) => ({ a: 'Intro', b: '  ', c: undefined })[id]);
+  assert.deepEqual(m.map((x) => x.label), ['Intro', 'Frame 2', 'Frame 3']);
+  assert.deepEqual(m.map((x) => x.current), [false, true, false]);
+  assert.deepEqual(L.wbPresentMenu(null, () => ''), []);
+});
+await test('Restart goes to the first frame, and stays when already there', () => {
+  assert.equal(L.wbPresentGo({ order: ['a', 'b'], i: 1 }, 'first').i, 0);
+  assert.equal(L.wbPresentGo({ order: ['a', 'b'], i: 0 }, 'first').i, 0);
+});
 if (fails.length) {
   console.error(`check-whiteboard-present: ${fails.length} failed, ${passed} passed`);
   for (const f of fails) console.error(`  FAIL ${f}`);

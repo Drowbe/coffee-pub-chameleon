@@ -504,7 +504,7 @@
     if (Boolean(presentTool) === wantPresent && Boolean(deleteButton) === wantDelete && Boolean(arrangeButton) === wantArrange) return;
     for (const b of [arrangeButton, deleteButton, presentTool]) if (b) b.destroy();
     arrangeButton = deleteButton = presentTool = null;
-    if (wantPresent) presentTool = host.ui.toolbarButton({ id: 'present-tool', label: 'Present', icon: 'person-chalkboard', on: Boolean(presenting), onClick: () => presentToggle() });
+    if (wantPresent) presentTool = host.ui.toolbarButton({ id: 'present-tool', label: 'Present the frames', icon: 'play', iconOnly: true, on: Boolean(presenting), onClick: () => presentToggle() });
     if (wantDelete) deleteButton = host.ui.toolbarButton({ id: 'delete', label: 'Delete', icon: 'trash', iconOnly: true, onClick: () => removeMany([...sel]) });
     if (wantArrange) arrangeButton = host.ui.toolbarButton({ id: 'arrange', label: 'Arrange', icon: 'arrows-left-right-to-line', iconOnly: true, onClick: (e) => arrangeMenu(toolbarAt(e)) });
   }
@@ -2653,6 +2653,16 @@
   $('present-back').addEventListener('click', () => presentGo('back'));
   $('present-next').addEventListener('click', () => presentGo('next'));
   $('present-exit').addEventListener('click', () => stopPresenting());
+  $('present-restart').addEventListener('click', () => presentGo('first'));
+  for (const [id, name] of [['present-restart-icon', 'backward-step'], ['present-jump-icon', 'list']]) iconSvg(name).then((svg) => { if (svg) $(id).innerHTML = svg; }, () => {});
+  $('present-jump').addEventListener('click', () => {
+    if (!presenting || presenting.follow) return;
+    host.menu.show({
+      id: 'present-jump',
+      anchor: $('present-jump'),
+      items: wbPresentMenu(presenting, (id) => (board.get(id) || {}).title).map((m) => ({ id: m.id, label: m.label, current: m.current, onClick: () => { presentTo(m.id); surface.focus({ preventScroll: true }); } })),
+    });
+  });
   const presentRow = () => ({ id: 'present', label: 'Present', icon: 'play', onClick: () => startPresenting() });
 
   // ---- presenting to everyone ---------------------------------------------------------------------------------------------
@@ -2688,6 +2698,8 @@
     who.textContent = f && shared.rec ? `${shared.rec.name} is presenting` : 'Presenting to everyone';
     $('present-back').hidden = f;
     $('present-next').hidden = f;
+    $('present-restart').hidden = f;
+    $('present-jump').hidden = f;
     dimInput.disabled = f;
     dimShow();
     moveShow();
