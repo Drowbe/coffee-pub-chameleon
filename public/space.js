@@ -6751,6 +6751,22 @@ function onKey(event) {
   event.preventDefault();
 }
 
+// --- mobile viewport quirks ---------------------------------------------------
+
+// On a phone the keyboard overlays the page, and CSS's own `dvh` is slow to follow the browser's address and tab
+// bars: visualViewport.height keeps the shell (and so the Chat input) above both (see body.in-space in style.css).
+// Only at phone width (the max-width: 640px rule). A tablet's keyboard or shortcut bar must not shrink the shell,
+// so wider than that the property is removed and the shell is plain 100dvh.
+function syncViewportHeight() {
+  const root = document.documentElement;
+  if (window.innerWidth > 640) { root.style.removeProperty('--app-vh'); return; }
+  root.style.setProperty('--app-vh', `${window.visualViewport?.height || window.innerHeight}px`);
+}
+window.visualViewport?.addEventListener('resize', syncViewportHeight);
+window.addEventListener('resize', syncViewportHeight);
+syncViewportHeight();
+
+
 // --- floating controls: show on movement, hide when the pointer rests --------
 
 const CHROME_IDLE_MS = 3000; // how long the pointer rests before a popped-out call's bars fade

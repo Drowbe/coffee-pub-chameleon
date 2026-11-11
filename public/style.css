@@ -5698,6 +5698,7 @@ body.chat-window {
     right: 0;
     height: 100vh;
     height: 100dvh;
+    height: var(--app-vh, 100dvh); /* the visible height, kept by syncViewportHeight in space.js */
   }
 
   body.in-space .topbar {
