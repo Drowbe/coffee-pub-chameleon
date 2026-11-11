@@ -189,6 +189,7 @@ export async function loadBranding() {
     }
   });
   paintProductMarks();
+  paintStudio(b.studio);
   // The phone's home-screen icon (Safari reads a PNG only): the environment's own, else the mark on its cream square.
   document.querySelectorAll('link[rel="apple-touch-icon"]').forEach((link) => (link.href = b.hasIcon ? icon.href : APPLE_TOUCH_ICON));
   // A page marked data-brand="background" (the sign-in page) gets the
@@ -202,6 +203,43 @@ export async function loadBranding() {
   }
   return b;
 }
+
+// The About page's studio card (#about-studio, public/admin.html) from /api/branding's `studio`: null hides it. Everything is
+// set as text or an attribute, never as markup. The logo follows the mode showing (data-mode-shown on <html>).
+const STUDIO_LINKS = [['main', 'Main site'], ['product', 'Product site'], ['contact', 'Contact'], ['support', 'Support']];
+let studioNow = null;
+function paintStudio(studio) {
+  if (studio !== undefined) studioNow = studio;
+  const card = document.getElementById('about-studio');
+  if (!card) return;
+  const s = studioNow;
+  card.hidden = !s;
+  if (!s) return;
+  const img = document.getElementById('about-studio-logo');
+  const dark = document.documentElement.dataset.modeShown === 'dark';
+  img.hidden = !s.logo;
+  if (s.logo) {
+    img.alt = s.name;
+    img.setAttribute('src', dark ? '/about/studio-logo-dark' : '/about/studio-logo');
+  }
+  document.getElementById('about-studio-name').textContent = `Made by ${s.name}`;
+  const box = document.getElementById('about-studio-links');
+  box.replaceChildren();
+  box.hidden = true;
+  for (const [key, label] of STUDIO_LINKS) {
+    const href = s.links && s.links[key];
+    if (typeof href !== 'string' || !/^(https?:|mailto:)/i.test(href)) continue;
+    if (box.firstChild) box.append(' \u00b7 ');
+    const a = document.createElement('a');
+    a.textContent = label;
+    a.setAttribute('href', href);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+    box.append(a);
+    box.hidden = false;
+  }
+}
+document.addEventListener('app:theme', () => paintStudio());
 
 // One header, built once here, used by every page including the call page (plan-primary-nav.md, "The bar"). The
 // header can be moved to the popped-out window with the rest of the app, so its parts are looked up inside it as well
