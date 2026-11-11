@@ -53,7 +53,7 @@ for (const file of [...walk(path.join(ROOT, 'public')), ...walk(path.join(ROOT, 
   const sdk = read('public/sdk/host.js');
   ok(/confirm:\s*\(o\)\s*=>[\s\S]{0,400}call\('ui\.confirm'/.test(sdk), 'public/sdk/host.js: host.ui.confirm does not ask the page (call "ui.confirm")');
   ok(/typeof t\.title !== 'string'[\s\S]{0,200}Promise\.reject/.test(sdk), 'public/sdk/host.js: host.ui.confirm does not reject a missing title');
-  ok(/if \(method === 'ui\.confirm'( \|\| method === 'objects\.pick')?\) return;[\s\S]{0,80}setTimeout/.test(sdk), 'public/sdk/host.js: a frame\'s question times out after 30s (it should wait for the person)');
+  ok(/if \(method === 'ui\.confirm'( \|\| method === 'ui\.prompt')?( \|\| method === 'objects\.pick')?\) return;[\s\S]{0,80}setTimeout/.test(sdk), 'public/sdk/host.js: a frame\'s question times out after 30s (it should wait for the person)');
   const mh = read('public/module-host.js');
   ok(/import \{ confirmDialog, cleanConfirm \} from '\/confirm\.js'/.test(mh) && /'ui\.confirm'\(o\)\s*\{[\s\S]{0,80}confirmDialog\(cleanConfirm\(o\)\)/.test(mh), 'public/module-host.js: no "ui.confirm" handler that asks with confirmDialog');
   // A module may not ask for a page's own options: the handler passes cleanConfirm's fields only, and cleanConfirm drops list, solid and run.

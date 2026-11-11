@@ -2087,6 +2087,33 @@
         if (typeof t.title !== 'string' || !t.title.trim()) return Promise.reject(Object.assign(new Error('say what is being asked (title)'), { status: 400 }));
         return call('ui.confirm', { title: t.title, message: t.message, action: t.action, cancel: t.cancel, kind: t.kind, typed: t.typed }).then((r) => r === true);
       },
+      // A one-line question the person answers by typing, in place of the browser's own prompt (never call window.prompt). Drawn by the
+      // page like host.ui.confirm (the same dialog, over everything, with one text field). Resolves the text typed (a string, which may
+      // be empty) or null (Cancel, Escape, a click outside, or another prompt already open: only one is open at a time).
+      // host.ui.prompt({ title, label?, value?, action?, placeholder?, maxLength?, validate? }):
+      //   title    the question, short ("Rename the map"); label: the field's name; value: what the field starts with.
+      //   action   the button's word (default "OK"); placeholder: the grey hint in an empty field.
+      //   maxLength  default 200, at most 2000; the field stops there.
+      //   validate  optional function (answer) => string | falsy, run here in the module, never sent. A string is an error message:
+      //            the page asks again with that message under the field and what was typed in it, until it passes or the person cancels.
+      // Text only (no HTML anywhere); the strings are cut to a length (title 200, label 200, placeholder 200, action 40). The module cannot style it.
+      // Rejects only when it is asked badly (no title) or the page did not answer. Escape cancels; focus is held in the dialog and goes back.
+      prompt: async (o) => {
+        const t = o && typeof o === 'object' ? o : {};
+        if (typeof t.title !== 'string' || !t.title.trim()) throw Object.assign(new Error('say what is being asked (title)'), { status: 400 });
+        const str = (v) => (typeof v === 'string' ? v : undefined);
+        const validate = typeof t.validate === 'function' ? t.validate : null;
+        let value = str(t.value);
+        let error;
+        for (;;) {
+          const r = await call('ui.prompt', { title: t.title, label: str(t.label), value, action: str(t.action), placeholder: str(t.placeholder), maxLength: Number.isFinite(t.maxLength) ? t.maxLength : undefined, error });
+          if (typeof r !== 'string') return null;
+          const problem = validate ? await validate(r) : '';
+          if (typeof problem !== 'string' || !problem.trim()) return r;
+          value = r;
+          error = problem;
+        }
+      },
       // A date picker for a date field: a small month grid under it, weekdays across the top, so the day a date
       // falls on is visible while choosing. The typed field keeps working; a button opens the grid and the
       // weekday of what is in the field shows under it. Works on <input type="date"> and
@@ -4174,7 +4201,7 @@
       const id = ++seq;
       pending.set(id, { resolve, reject });
       global.parent.postMessage({ host: 1, tk: secret, id, method, params }, '*');
-      if (method === 'ui.confirm' || method === 'objects.pick') return; // a question waits as long as the person takes
+      if (method === 'ui.confirm' || method === 'ui.prompt' || method === 'objects.pick') return; // a question waits as long as the person takes
       setTimeout(() => {
         if (!pending.delete(id)) return;
         reject(new Error('the host did not answer'));
