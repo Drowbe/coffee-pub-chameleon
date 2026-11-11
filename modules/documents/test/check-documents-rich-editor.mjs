@@ -20,6 +20,12 @@
  * 7. PASTE. Plain text is read as Markdown through the reader; hostile text makes no link to a refused address and no node
  *    the schema refuses; inside code the text goes in as it is; 2,000,000 characters are held whole, quickly.
  * 8. COPY. The selection as Markdown.
+ * 9. TYPING SHORTCUTS. Every rule: it fires as its last character is typed, it does not fire where it must not (in code, in
+ *    a raw block, in a heading, in the middle of a line, past the reader's bounds, in a read-only editor), Backspace puts the
+ *    typed characters back and undo takes the rule back. A link is made only of an address the reader allows.
+ * 10. WHAT THE BAR SHOWS. dlRichActive from a made selection: in bold, italic, code, a quote, each list, each heading level,
+ *    nowhere; it never reads the words.
+ * 11. THE NEW KEYS. Mod-b, Mod-i, Mod-e and Mod-Enter (the tick of a checklist row), and nothing else new.
  *
  * Usage: node modules/documents/test/check-documents-rich-editor.mjs [path to the src folder]. Exits 1 on any failure.
  */
@@ -32,7 +38,7 @@ const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, 'modules/documents/src'));
 const { PM, L, lex } = loadRich(src, ['DL', 'DL_ACTIONS', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichEditor', 'dlRichTidy',
-  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
+  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
 const schema = L.dlRichSchema(PM);
 const N = schema.nodes;
 const M = schema.marks;
@@ -258,7 +264,8 @@ test('the bounds hold: no fifth list level by an action', () => {
 // ---- 5. the keys -------------------------------------------------------------------------------------------------------------
 test('exactly the editor\'s own keys are bound; Mod-s and the zoom keys are not', () => {
   assert.deepEqual(Object.keys(L.dlRichKeys(PM)).sort(), [...L.DL_RICH_KEYS].sort());
-  for (const k of ['Mod-s', 'Mod-=', 'Mod-+', 'Mod--', 'Mod-0', 'Escape', 'Mod-b', 'Mod-i']) assert.equal(k in L.dlRichKeys(PM), false, k);
+  for (const k of ['Mod-s', 'Mod-=', 'Mod-+', 'Mod--', 'Mod-0', 'Escape', 'Mod-k', 'Mod-u', 'Mod-m', 'Mod-d', 'Mod-Shift-b', 'Space', ' ']) assert.equal(k in L.dlRichKeys(PM), false, k);
+  for (const k of Object.keys(L.dlRichKeys(PM))) assert.match(k, /^(Mod-.+|(Shift-)?(Enter|Tab)|Backspace)$/, `${k}: a letter alone is never bound (the call's shortcuts)`);
   for (const k of ['Mod-s', 'Mod-=', 'Mod--', 'Mod-0', 'Escape']) assert.equal(k in PM.baseKeymap, false, `the base keys do not bind ${k}`);
   for (const k of ['Enter', 'Backspace', 'Delete', 'Mod-a']) assert.equal(k in PM.baseKeymap, true, `the base keys bind ${k}`);
 });
@@ -497,10 +504,566 @@ test('what is copied is Markdown: words as words, blocks as blocks, rows as a li
   assert.equal(typeof cells, 'string', 'part of a grid: its plain words, never an error');
 });
 
+
+// ---- 9. typing shortcuts -------------------------------------------------------------------------------------------------------
+// A new editor on `md`, the caret `at` characters into block `i` (at its end when `at` is not given), then `typed` typed.
+const typedIn = (md, typed, i = 0, at = null, deep = 1) => {
+  const ed = open(md);
+  const d = ed.state().doc;
+  if (at === null) ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(d, endOf(d, i) - (deep - 1))));
+  else select(ed, i, at, at, deep);
+  if (typed) ed.type(typed);
+  return ed;
+};
+const first = (ed) => ed.state().doc.firstChild;
+const marksOf = (ed) => { const out = []; ed.state().doc.descendants((n) => { if (n.isText) out.push([n.text, n.marks.map((m) => m.type.name).sort().join('+')]); }); return out; };
+test('the rules are the ones named, each a rule of the one plugin', () => {
+  assert.deepEqual(L.dlRichRules(PM).map((r) => r.name), L.DL_RICH_RULES);
+  assert.ok(L.dlRichInputRules(PM) === L.dlRichInputRules(PM), 'one plugin');
+  assert.ok(open('x\n').state().plugins.includes(L.dlRichInputRules(PM)), 'and the editor has it');
+  for (const r of L.dlRichRules(PM)) { assert.equal(r.rule.inCode, false, `${r.name} never fires in a code block`); assert.equal(r.rule.inCodeMark, false, `${r.name} never fires in words that are code`); assert.equal(r.rule.undoable, true); }
+});
+test('heading: "# " to "#### " at the start of a paragraph', () => {
+  for (let n = 1; n <= 4; n += 1) {
+    const ed = typedIn('', `${'#'.repeat(n)} `);
+    assert.equal(first(ed).type.name, 'heading', `level ${n}`);
+    assert.equal(first(ed).attrs.level, n);
+    assert.equal(first(ed).childCount, 0, 'the marks are gone');
+    ed.type('Title');
+    assert.equal(ed.getText(), `${'#'.repeat(n)} Title\n`);
+  }
+  const ed = typedIn('words __here__\n\nmore\n', '## ', 1, 0);
+  assert.equal(ed.getText(), 'words __here__\n\n## more\n', 'the words after the caret are kept, the block above is as stored');
+});
+test('heading: five marks, a mark with no space, the middle of a line, a heading and a grid cell fire nothing', () => {
+  for (const [md, typed, i, at, deep] of [['', '##### '], ['', '###### '], ['', '#x '], ['', '#'], ['a\n', ' # '], ['a\n', '# ', 0, 1], ['# head\n', '## ', 0, 0], ['| a |\n| --- |\n| b |\n', '# ', 0, 0, 3]]) {
+    const ed = typedIn(md, typed, i, at, deep);
+    let headings = 0;
+    ed.state().doc.descendants((n) => { if (n.type === N.heading && md[0] !== '#') headings += 1; });
+    assert.equal(headings, 0, JSON.stringify([md, typed]));
+    assert.ok(ed.state().doc.textContent.includes(typed), `${JSON.stringify(typed)} stays as typed`);
+  }
+  assert.equal(first(typedIn('# head\n', '## ', 0, 0)).attrs.level, 1, 'a heading keeps its level');
+});
+test('Backspace straight after a rule puts the typed characters back; undo takes the rule back', () => {
+  const ed = typedIn('', '## ');
+  assert.equal(first(ed).type.name, 'heading');
+  assert.equal(key(ed, 'Backspace'), true);
+  assert.equal(first(ed).type.name, 'paragraph');
+  assert.equal(first(ed).textContent, '## ', 'the characters typed, as words');
+  assert.equal(key(ed, 'Backspace'), false, 'the next Backspace is the library\'s own');
+  const un = typedIn('', '## ');
+  assert.equal(key(un, 'Mod-z'), true);
+  assert.equal(first(un).type.name, 'paragraph', 'undo: the heading is a paragraph again');
+  assert.equal(first(un).textContent, '##', 'with what was typed before the rule fired');
+  assert.equal(key(un, 'Mod-Shift-z'), true);
+  assert.equal(first(un).type.name, 'heading', 'redo');
+  const moved = typedIn('', '## ');
+  moved.type('a');
+  assert.equal(key(moved, 'Backspace'), false, 'after another character the rule is not undone by Backspace');
+  const mark = typedIn('', 'a **b**');
+  assert.deepEqual(marksOf(mark), [['a ', ''], ['b', 'strong']]);
+  assert.equal(key(mark, 'Backspace'), true);
+  assert.deepEqual(marksOf(mark), [['a **b**', '']]);
+});
+test('bullet: "- " and "* " make a bulleted list, and join a bulleted list directly above', () => {
+  for (const m of ['- ', '* ']) {
+    const ed = typedIn('', m);
+    assert.equal(first(ed).type.name, 'bullet_list', m);
+    assert.equal(first(ed).firstChild.attrs.checked, null);
+    ed.type('one');
+    assert.equal(ed.getText(), '- one\n');
+  }
+  const joined = typedIn('* a\n\nb\n\nend __x__\n', '- ', 1, 0);
+  assert.equal(joined.state().doc.childCount, 2, 'one list, not two');
+  assert.equal(joined.getText(), '- a\n- b\n\nend __x__\n');
+  const other = typedIn('1. a\n\nb\n', '- ', 1, 0);
+  assert.deepEqual([other.state().doc.child(0).type.name, other.state().doc.child(1).type.name], ['ordered_list', 'bullet_list'], 'a list of another kind is not joined');
+});
+test('bullet: nothing in the first line of a row, past the fourth level, with no space, or after other words', () => {
+  const row = typedIn('- a\n', '- ', 0, 0, 3);
+  assert.equal(row.getText(), '- \\- a\n', 'the marks are words');
+  const deep = open('- 1\n  - 2\n    - 3\n      - 4\n\n        more\n');
+  const st = deep.state();
+  st.doc.descendants((n, pos) => { if (n.isText && n.text === 'more') deep.dispatch(st.tr.setSelection(PM.TextSelection.create(st.doc, pos))); });
+  const before = JSON.stringify(deep.state().doc.toJSON()).split('bullet_list').length;
+  for (const m of ['- ', '1. ', '[ ] ']) { deep.type(m); assert.equal(JSON.stringify(deep.state().doc.toJSON()).split('bullet_list').length, before, `${m}: no fifth level`); assert.equal(JSON.stringify(deep.state().doc.toJSON()).includes('ordered_list'), false); }
+  for (const typed of ['-x ', '-', 'a - ', '+ ', '-- ']) assert.equal(first(typedIn('', typed)).type.name, 'paragraph', typed);
+});
+test('numbered: "1. " makes a numbered list and joins one above; no other number does', () => {
+  const ed = typedIn('', '1. ');
+  assert.equal(first(ed).type.name, 'ordered_list');
+  assert.equal(first(ed).attrs.order, 1);
+  ed.type('one');
+  assert.equal(ed.getText(), '1. one\n');
+  const joined = typedIn('1. a\n2. b\n\nc\n', '1. ', 1, 0);
+  assert.equal(joined.getText(), '1. a\n2. b\n3. c\n');
+  for (const typed of ['2. ', '10. ', '1) ', '1.', '1.x ', 'a 1. ', '1984. ']) assert.equal(first(typedIn('', typed)).type.name, 'paragraph', typed);
+});
+test('checklist: "[ ] " and "[x] " make a checklist row; in the first line of a row the row gets its box ("- [ ] ")', () => {
+  const open1 = typedIn('', '[ ] ');
+  assert.equal(first(open1).type.name, 'bullet_list');
+  assert.equal(first(open1).firstChild.attrs.checked, false);
+  open1.type('a');
+  assert.equal(open1.getText(), '- [ ] a\n');
+  const done = typedIn('', '[x] ');
+  assert.equal(first(done).firstChild.attrs.checked, true);
+  const dash = typedIn('', '- [ ] buy milk');
+  assert.equal(dash.state().doc.childCount, 1);
+  assert.equal(first(dash).childCount, 1, 'one row');
+  assert.equal(dash.getText(), '- [ ] buy milk\n');
+  assert.equal(typedIn('', '1. [X] a').getText(), '1. [x] a\n');
+  const has = typedIn('- [x] a\n', '[ ] ', 0, 0, 3);
+  assert.equal(first(has).firstChild.attrs.checked, true, 'a row that has its box keeps it');
+  assert.equal(first(has).textContent, '[ ] a');
+  const joined = typedIn('- [x] a\n\nb\n', '[ ] ', 1, 0);
+  assert.equal(joined.getText(), '- [x] a\n- [ ] b\n');
+  for (const typed of ['[] ', '[ ]', '[y] ', 'a [ ] ']) assert.equal(first(typedIn('', typed)).type.name, 'paragraph', typed);
+});
+test('quote: "> " makes a quote, to eight levels and no further', () => {
+  const ed = typedIn('', '> ');
+  assert.equal(first(ed).type.name, 'blockquote');
+  ed.type('said');
+  assert.equal(ed.getText(), '> said\n');
+  const two = typedIn('> a\n\nb\n', '> ', 1, 0);
+  assert.equal(two.state().doc.childCount, 2, 'a quote above is not joined: Markdown reads two quotes');
+  const depth = (ed2) => { let most = 0; ed2.state().doc.descendants((n, pos) => { if (n.isTextblock) { const $p = ed2.state().doc.resolve(pos + 1); let q = 0; for (let d = $p.depth; d > 0; d -= 1) if ($p.node(d).type === N.blockquote) q += 1; most = Math.max(most, q); } }); return most; };
+  const seven = typedIn(`${'> '.repeat(7)}x\n`, '> ', 0, 0, 8);
+  assert.equal(depth(seven), 8);
+  const eight = typedIn(`${'> '.repeat(8)}x\n`, '> ', 0, 0, 9);
+  assert.equal(depth(eight), 8, 'no ninth quote');
+  assert.ok(eight.state().doc.textContent.startsWith('> x'));
+  for (const typed of ['>', '>x ', 'a > ', '>> ']) assert.equal(first(typedIn('', typed)).type.name, 'paragraph', typed);
+});
+test('code block: "```" then a space or Enter; Enter keeps a language; Backspace puts the marks back', () => {
+  const sp = typedIn('', '``` ');
+  assert.equal(first(sp).type.name, 'code_block');
+  assert.equal(first(sp).attrs.lang, '');
+  sp.type('let a;');
+  assert.equal(sp.getText(), '```\nlet a;\n```\n');
+  assert.equal(first(typedIn('', '```js ')).type.name, 'paragraph', 'a language is named with Enter, not a space');
+  const en = typedIn('', '```');
+  assert.equal(first(en).type.name, 'paragraph', 'three marks alone are still words');
+  assert.equal(key(en, 'Enter'), true);
+  assert.equal(first(en).type.name, 'code_block');
+  assert.equal(en.state().doc.childCount, 1, 'Enter made the block, not a second paragraph');
+  assert.equal(key(en, 'Backspace'), true);
+  assert.equal(first(en).type.name, 'paragraph');
+  assert.equal(first(en).textContent, '```');
+  const lang = typedIn('', '```c++');
+  key(lang, 'Enter');
+  assert.deepEqual([first(lang).type.name, first(lang).attrs.lang], ['code_block', 'c++']);
+  const un = typedIn('', '```');
+  key(un, 'Enter');
+  assert.equal(key(un, 'Mod-z'), true);
+  assert.equal(first(un).textContent, '```', 'undo');
+  // not with other words in the paragraph, not in the middle, not a longer or shorter fence
+  for (const [md, typed, at] of [['after\n', '``` ', 0], ['', '`` '], ['', '```` '], ['', 'a ``` '], ['', '```a b ']]) assert.equal(first(typedIn(md, typed, 0, at === undefined ? null : at)).type.name, 'paragraph', JSON.stringify([md, typed]));
+  const mid = typedIn('', '```x');
+  assert.ok(L.dlRichFence(PM, mid.state()), 'at the end of the marks');
+  select(mid, 0, 2);
+  assert.equal(L.dlRichFence(PM, mid.state()), null, 'Enter in the middle of the marks is an ordinary Enter');
+  assert.equal(L.dlRichFence(PM, typedIn('a ```\n', '').state()), null);
+  assert.equal(L.dlRichFence(PM, typedIn('# ```\n', '').state()), null, 'not in a heading');
+});
+test('rule: "---" in a paragraph that holds nothing else', () => {
+  const ed = typedIn('', '---');
+  assert.deepEqual([ed.state().doc.child(0).type.name, ed.state().doc.child(1).type.name], ['horizontal_rule', 'paragraph']);
+  assert.ok(ed.state().selection.$from.parent === ed.state().doc.child(1), 'the caret is in the paragraph after the rule');
+  assert.equal(ed.getText(), '---\n');
+  ed.type('next');
+  assert.equal(ed.getText(), '---\n\nnext\n');
+  const between = open('above __x__\n\n\n\nbelow _y_\n');
+  between.dispatch(between.state().tr.insert(posOf(between.state().doc, 1), N.paragraph.create()));
+  select(between, 1, 0);
+  between.type('---');
+  assert.equal(between.state().doc.childCount, 3, 'no paragraph is added when a block of words follows');
+  assert.ok(between.state().selection.$from.parent === between.state().doc.child(2), 'the caret is in the block after the rule');
+  const out = between.getText().split('\n\n');
+  assert.equal(out[0], 'above __x__');
+  assert.equal(out[out.length - 1], 'below _y_\n', 'the blocks around are as stored');
+  assert.ok(out.includes('---'));
+  const back = typedIn('', '---');
+  assert.equal(key(back, 'Backspace'), true);
+  assert.deepEqual([back.state().doc.childCount, first(back).type.name, first(back).textContent], [1, 'paragraph', '---']);
+  for (const [md, typed, at, deep] of [['a\n', '---'], ['a\n', '---', 0], ['', '--'], ['- a\n', '---', 0, 3], ['# h\n', '---', 0]]) {
+    const not = typedIn(md, typed, 0, at === undefined ? null : at, deep || 1);
+    let rules = 0;
+    not.state().doc.descendants((n) => { if (n.type === N.horizontal_rule) rules += 1; });
+    assert.equal(rules, 0, JSON.stringify([md, typed]));
+  }
+  const row = typedIn('- a\n', '', 0, 0, 3);
+  row.dispatch(row.state().tr.delete(3, 4));
+  row.type('---');
+  assert.equal(first(row).type.name, 'bullet_list', 'in the first line of a row the marks stay words ("- ---" reads as a rule)');
+  assert.equal(first(row).textContent, '---');
+});
+test('bold, italic, strike and code close into the mark when the last character is typed', () => {
+  for (const [typed, mark, written] of [['**b c**', 'strong', '**b c**'], ['*b c*', 'em', '*b c*'], ['_b c_', 'em', '*b c*'], ['~~b c~~', 'strike', '~~b c~~'], ['`b c`', 'code', '`b c`']]) {
+    const ed = typedIn('', `a ${typed}`);
+    assert.deepEqual(marksOf(ed), [['a ', ''], ['b c', mark]], typed);
+    ed.type(' d');
+    assert.deepEqual(marksOf(ed), [['a ', ''], ['b c', mark], [' d', '']], `${typed}: what is typed next is plain`);
+    assert.equal(ed.getText(), `a ${written} d\n`);
+    assert.equal(ed.lastWrite().same, true);
+  }
+  assert.deepEqual(marksOf(typedIn('', '**b**')), [['b', 'strong']], 'at the start of a line');
+  assert.deepEqual(marksOf(typedIn('', '*i*')), [['i', 'em']]);
+  assert.deepEqual(marksOf(typedIn('', 'in**side**')), [['in', ''], ['side', 'strong']]);
+  assert.deepEqual(marksOf(typedIn('', '**a *b* c**')), [['a ', 'strong'], ['b', 'em+strong'], [' c', 'strong']], 'italic inside bold');
+  assert.deepEqual(marksOf(typedIn('', '**`x`**')), [['x', 'code+strong']], 'bold around code');
+  assert.deepEqual(marksOf(typedIn('', '(_x_)')), [['(', ''], ['x', 'em'], [')', '']]);
+  const mid = typedIn('one two\n', '**x**', 0, 4);
+  assert.equal(mid.getText(), 'one **x**two\n');
+});
+test('the marks stay words where Markdown would not read them', () => {
+  const plain = (typed, md = '', at = null) => { const ed = typedIn(md, typed, 0, at); assert.deepEqual(marksOf(ed).filter((m) => m[1]), [], JSON.stringify(typed)); return ed; };
+  for (const typed of ['** b**', '**b **', '* b*', '2 * 3 * 4', '****', '**', '``', '` `', 'snake_case_name', 'a_b_', '_ b_', '__b__', '~b~', '~~ b~~', '***b***', '\ufffc']) plain(typed);
+  assert.equal(plain('2 * 3 * 4').getText(), '2 \\* 3 \\* 4\n');
+  const inWord = typedIn('ab\n', '_x_', 0, 0); // "_x_" typed in front of a letter: _x_ab is words
+  assert.deepEqual(marksOf(inWord), [['_x_ab', '']]);
+  // inside words that are code, and inside a code block or a raw block, nothing is read
+  const code = typedIn('`ab`\n', '**x**', 0, 1);
+  assert.deepEqual(marksOf(code), [['a**x**b', 'code']]);
+  const opener = typedIn('`a*b` c\n', '*', 0, 5); // the opening mark is code: words
+  assert.deepEqual(marksOf(opener).map((m) => m[1]), ['code', '']);
+  for (const md of ['```\ncode\n```\n', '<div>\nraw\n</div>\n']) {
+    for (const typed of ['# ', '- ', '1. ', '[ ] ', '> ', '``` ', '---', '**b**', '*i*', '_i_', '~~s~~', '`c`', '[t](https://example.com/)']) {
+      const ed = typedIn(md, typed, 0, 0);
+      assert.equal(ed.state().doc.childCount, 1, `${typed} in ${first(ed).type.name}`);
+      assert.equal(first(ed).type.name, md[0] === '<' ? 'source_block' : 'code_block');
+      assert.ok(first(ed).textContent.startsWith(typed), `${typed} is typed as it is`);
+      assert.equal(first(ed).firstChild.marks.length, 0);
+    }
+  }
+});
+test('no mark is read inside an address being typed, and a bare address stays words', () => {
+  const bare = typedIn('', 'see https://example.com/_a_/*b*/~~c~~ now');
+  assert.deepEqual(marksOf(bare), [['see https://example.com/_a_/*b*/~~c~~ now', '']]);
+  assert.equal(linksOf(bare.state().doc).length, 0, 'a bare address is not made a link');
+  assert.equal(linksOf(L.dlRichRead(PM, bare.getText(), lex).doc).length, 0, 'nor is it one when the saved text is read again');
+  assert.equal(bare.lastWrite().same, true);
+  assert.equal(typedIn('', 'https://example.com ').getText(), 'https\\://example.com\n');
+  assert.deepEqual(marksOf(typedIn('', 'mailto:a_b_c@example.com')).filter((m) => m[1]), []);
+  const link = typedIn('', '[x](https://example.com/_a_/b)');
+  assert.deepEqual(linksOf(link.state().doc), ['https://example.com/_a_/b']);
+});
+test('link: "[words](address)" closes into a link for an address the reader allows', () => {
+  for (const [address, href] of [['https://example.com/a?b=1&c=2', 'https://example.com/a?b=1&c=2'], ['http://example.com', 'http://example.com'], ['mailto:ana@example.com', 'mailto:ana@example.com'], ['HTTPS://Example.com/x', 'https://Example.com/x']]) {
+    const ed = typedIn('', `see [the site](${address})`);
+    assert.deepEqual(marksOf(ed), [['see ', ''], ['the site', 'link']], address);
+    assert.deepEqual(linksOf(ed.state().doc), [href]);
+    assert.equal(L.dlRichHref(href), href);
+    ed.state().doc.check();
+    ed.type(' and on');
+    assert.deepEqual(marksOf(ed)[2], [' and on', ''], 'what is typed next is not in the link');
+    assert.equal(ed.getText(), `see [the site](${href}) and on\n`);
+    assert.equal(ed.lastWrite().same, true);
+  }
+  const bold = typedIn('', '[**b** c](https://example.com/)');
+  assert.deepEqual(marksOf(bold), [['b', 'link+strong'], [' c', 'link']]);
+  const back = typedIn('', '[a](https://example.com/)');
+  assert.equal(key(back, 'Backspace'), true);
+  assert.deepEqual(marksOf(back), [['[a](https://example.com/)', '']], 'Backspace: the characters typed, as words');
+});
+test('link: an object: address makes the chip, as reading the same Markdown does', () => {
+  const ed = typedIn('', 'open [the map](object:maps:place:abc123)');
+  const chips = [];
+  ed.state().doc.descendants((n) => { if (n.type === N.object) chips.push(n.attrs); });
+  assert.deepEqual(chips.map((c) => [c.module, c.kind, c.id, c.label]), [['maps', 'place', 'abc123', 'the map']]);
+  ed.state().doc.check();
+  assert.equal(ed.getText(), 'open [the map](object:maps:place:abc123)\n');
+  assert.ok(ed.state().doc.eq(L.dlRichRead(PM, ed.getText(), lex).doc), 'the same nodes as reading it');
+});
+const REFUSED = ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', 'vbscript:x', 'file:///etc/passwd', 'ftp://example.com/a', 'blob:https://example.com/1', 'page.html', '/a/b', '//example.com/a', '#top', 'example.com', 'object:bad', 'object:maps:place:', 'mailto:', 'https://', 'http:example.com', 'java\tscript:x', '&#106;avascript:alert(1)', 'https://a.example/"x', 'https://exa<mple.com/'];
+test(`link: an address the reader refuses is left as the words typed (${REFUSED.length} addresses; the reader's own rule decides)`, () => {
+  for (const address of REFUSED) {
+    assert.equal(L.dlSafeAddress(address), null, `${address}: the reader refuses it`);
+    const typed = `[x](${address})`;
+    const ed = typedIn('', typed);
+    ed.state().doc.check();
+    assert.deepEqual(linksOf(ed.state().doc), [], address);
+    let atoms = 0;
+    ed.state().doc.descendants((n) => { if (n.isAtom && !n.isText) atoms += 1; });
+    assert.equal(atoms, 0, `${address}: no chip`);
+    if (!/\s/.test(address)) assert.equal(ed.state().doc.textContent, typed, `${address}: the words typed`);
+    assert.deepEqual(linksOf(L.dlRichRead(PM, ed.getText(), lex).doc), [], `${address}: no link when the saved text is read again`);
+  }
+  // every link a rule can make is one the reader allows: the scheme list is the reader's, not a second one
+  for (const scheme of ['http', 'https', 'mailto', 'object', 'javascript', 'data', 'ftp', 'file', 'tel', 'sms', 'ws', 'about', 'chrome']) {
+    const address = scheme === 'mailto' ? 'mailto:a@b.example' : scheme === 'object' ? 'object:maps:place:p1' : `${scheme}://example.com/a`;
+    const ed = typedIn('', `[x](${address})`);
+    const made = linksOf(ed.state().doc).length + (JSON.stringify(ed.state().doc.toJSON()).includes('"object"') ? 1 : 0);
+    assert.equal(made, L.dlSafeAddress(address) ? 1 : 0, scheme);
+  }
+  assert.deepEqual(linksOf(typedIn('', '![alt](https://example.com/p.png)').state().doc), [], 'a picture is not made a link');
+  assert.deepEqual(linksOf(typedIn('', '[x](https://example.com/a b)').state().doc), []);
+  assert.deepEqual(linksOf(typedIn('', '[ ](https://example.com/)').state().doc), [], 'no words, no link');
+});
+test('the first line of a list row: no heading and no quote is typed into it, and no code block after a box', () => {
+  for (const [md, typed] of [['- [ ] a\n', '# '], ['- [ ] a\n', '## '], ['- [ ] a\n', '> '], ['- [ ] a\n', '``` '], ['- a\n', '# '], ['- a\n', '> '], ['1. a\n', '#### '], ['1. a\n', '> ']]) {
+    const ed = typedIn(md, typed, 0, 0, 3);
+    assert.deepEqual([first(ed).firstChild.childCount, first(ed).firstChild.firstChild.type.name], [1, 'paragraph'], `${typed} in ${md}`);
+    assert.ok(first(ed).textContent.startsWith(typed), `${typed} stays as typed`);
+    ed.getText();
+    assert.deepEqual([ed.lastWrite().same, ed.lastWrite().whole], [true, false], `${typed}: what is written reads back`);
+  }
+  assert.equal(L.dlRichFence(PM, typedIn('', '- [ ] ```').state()), null, 'nor a code block by Enter after a box');
+  // a code block in a row with no box is made, and reads back; so do a heading and a quote in a row's second block
+  const code = typedIn('', '- ``` ');
+  code.type('let a;');
+  assert.equal(first(code).firstChild.firstChild.type.name, 'code_block');
+  assert.equal(code.getText(), '- ```\n  let a;\n  ```\n');
+  assert.deepEqual([code.lastWrite().same, code.lastWrite().whole], [true, false]);
+  const second = open('- one\n\n  two\n');
+  second.dispatch(second.state().tr.setSelection(PM.TextSelection.create(second.state().doc, wordAt(second.state().doc, 'two'))));
+  second.type('## ');
+  assert.equal(second.getText(), '- one\n\n  ## two\n');
+  // the typing rules never leave a text that has to be written whole: with other blocks around, each empty result is written alone
+  for (const typed of ['# ', '- ', '1. ', '[ ] ', '> ', '``` ', '---', '- # ', '1. > ', '- [ ] # ', '> # ', '> - ', '> > ', '- ``` ', '> ``` ', '> ---']) {
+    const ed = open('Top __x__\n\nmid\n\nEnd _y_\n');
+    const at = wordAt(ed.state().doc, 'mid');
+    ed.dispatch(ed.state().tr.delete(at, at + 3));
+    ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at)));
+    ed.type(typed);
+    const out = ed.getText();
+    assert.deepEqual([ed.lastWrite().same, ed.lastWrite().whole], [true, false], JSON.stringify(typed));
+    assert.ok(out.startsWith('Top __x__\n\n') && out.endsWith('End _y_\n'), `${JSON.stringify(typed)}: the blocks around are as stored`);
+  }
+  // what is typed after a rule gets what the closing mark would have got, not the marks of the words before it
+  assert.deepEqual(marksOf(typedIn('', '[**b**](https://example.com/) z')), [['b', 'link+strong'], [' z', '']]);
+  assert.deepEqual(marksOf(typedIn('', '**a `c`** z')), [['a ', 'strong'], ['c', 'code+strong'], [' z', '']]);
+  assert.deepEqual(marksOf(typedIn('**bold**\n', ' *i* z', 0, 4)), [['bold ', 'strong'], ['i', 'em+strong'], [' z', 'strong']], 'inside bold words the next words stay bold');
+});
+test('a read-only editor types nothing and runs no rule', () => {
+  const ed = open('x\n');
+  select(ed, 0, 0);
+  ed.setReadOnly(true);
+  const before = ed.state().doc;
+  assert.equal(ed.type('# '), false);
+  assert.ok(ed.state().doc === before);
+  const plugin = L.dlRichInputRules(PM);
+  const fired = [];
+  const st = typedIn('', '#').state();
+  const asView = (editable) => ({ state: st, composing: false, editable, dispatch: (tr) => fired.push(tr) });
+  assert.equal(plugin.props.handleTextInput(asView(false), st.selection.from, st.selection.to, ' '), false, 'a view that cannot be typed in');
+  assert.equal(fired.length, 0);
+  assert.equal(plugin.props.handleTextInput(asView(true), st.selection.from, st.selection.to, ' '), true);
+  assert.equal(fired.length, 1);
+});
+test('every rule leaves a text the schema takes, and typing a rule in one block leaves the other blocks as stored', () => {
+  const md = 'A __bold__ start\n\nmid\n\n* one\n* two\n\nEnd _it_ here\n';
+  const blocks = md.split('\n\n');
+  for (const [typed, want] of [['# ', '# mid'], ['#### ', '#### mid'], ['* ', '- mid'], ['1. ', '1. mid'], ['[ ] ', '- [ ] mid'], ['> ', '> mid'], ['**b** ', '**b** mid'], ['*i* ', '*i* mid'], ['~~s~~ ', '~~s~~ mid'], ['`c` ', '`c` mid'], ['[t](https://example.com/) ', '[t](https://example.com/) mid']]) {
+    const ed = typedIn(md, typed, 1, 0);
+    ed.state().doc.check();
+    const out = ed.getText().split('\n\n');
+    assert.deepEqual([ed.lastWrite().same, ed.lastWrite().whole], [true, false], typed);
+    assert.equal(out[0], blocks[0], `${typed}: the block above`);
+    assert.equal(out[1], want, typed);
+    assert.equal(out[2], blocks[2], `${typed}: the list below`);
+    assert.equal(out[3], blocks[3], `${typed}: the last block`);
+  }
+});
+
+const BITS = ['# ', '## ', '#### ', '- ', '* ', '1. ', '[ ] ', '[x] ', '> ', '``` ', '---', '**b**', '*i*', '_i_', '~~s~~', '`c`', '[t](https://example.com/a)', '[m](mailto:a@b.example)', '[o](object:maps:place:p1)',
+  '[x](javascript:alert(1))', '[d](data:text/html,x)', 'word ', ' ', 'a_b_c', '**', '*', '`', '[', ']', '(', ')'];
+test('marks typed at random, at every kind of place in the corpus: the schema takes the result, no link to a refused address, never a whole-text rewrite', () => {
+  let seed = 20261111;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  let runs = 0;
+  let fired = 0;
+  const bad = [];
+  for (let r = 0; r < 4000; r += 1) {
+    const md = pick(CASES)[1];
+    const ed = open(md);
+    const spots = [];
+    ed.state().doc.descendants((n, pos) => { if (n.isTextblock) { spots.push(pos + 1, pos + n.nodeSize - 1); if (n.content.size > 2) spots.push(pos + 1 + Math.floor(rnd() * n.content.size)); } });
+    if (!spots.length) continue;
+    const at = pick(spots);
+    let typed = '';
+    try {
+      ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at)));
+      const inCode = Boolean(ed.state().selection.$from.parent.type.spec.code);
+      const size = ed.state().doc.content.size;
+      for (let i = 1 + Math.floor(rnd() * 3); i > 0; i -= 1) { const b = pick(BITS); typed += b; ed.type(b); }
+      if (inCode) assert.equal(ed.state().doc.content.size, size + typed.length, 'in code every character is typed as it is');
+      else if (ed.state().doc.content.size !== size + typed.length) fired += 1;
+      ed.state().doc.check();
+      const out = ed.getText();
+      runs += 1;
+      if (ed.lastWrite().whole && !inCode) bad.push(`written whole: ${JSON.stringify(typed)} in ${JSON.stringify(md).slice(0, 60)} at ${at}`); // (a raw block a person edits is step 5's)
+      for (const doc of [ed.state().doc, L.dlRichRead(PM, out, lex).doc]) for (const href of linksOf(doc)) assert.match(href, /^(https?:\/\/|mailto:)/);
+    } catch (err) { bad.push(`${err.message.slice(0, 120)}: ${JSON.stringify(typed)} in ${JSON.stringify(md).slice(0, 60)} at ${at}`); }
+  }
+  assert.ok(runs > 3000 && fired > 500, `runs ${runs}, rules fired in ${fired}`);
+  assert.deepEqual(bad.slice(0, 5), []);
+});
+
+// ---- 10. what the bar shows ------------------------------------------------------------------------------------------------------
+const NOWHERE = { bold: false, italic: false, code: false, heading: 0, list: false, numbered: false, checklist: false, quote: false };
+// The state with the caret (or a selection to `to`) at the word `word` of the text `md`.
+const at = (md, word, len = 0, into = 1) => { const ed = open(md); const p = wordAt(ed.state().doc, word) + into; ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, p, p + len))); return ed; };
+const active = (ed) => L.dlRichActive(PM, ed.state());
+test('the bar: nowhere, nothing is on', () => {
+  assert.deepEqual(active(at('plain words\n', 'plain')), NOWHERE);
+  assert.deepEqual(active(at('plain words\n', 'plain', 5, 0)), NOWHERE);
+  assert.deepEqual(active(at('```\ncode\n```\n', 'code')), NOWHERE);
+  assert.deepEqual(active(open('')), NOWHERE);
+  const rule = open('a\n\n---\n\nb\n');
+  rule.dispatch(rule.state().tr.setSelection(PM.NodeSelection.create(rule.state().doc, posOf(rule.state().doc, 1))));
+  assert.deepEqual(active(rule), NOWHERE, 'a selected rule');
+  for (const id of ['bold', 'italic', 'code', 'heading', 'list', 'numbered', 'checklist', 'quote', 'link', 'grid', 'formula']) { assert.equal(L.dlRichIsOn(NOWHERE, id), false, id); assert.equal(L.dlRichIsOn(null, id), false); }
+});
+test('the bar: in bold, in italic, in code, by a caret and by a selection', () => {
+  const md = 'a **bold** b *ital* c `code` d ***both*** e\n';
+  assert.deepEqual(active(at(md, 'bold')), { ...NOWHERE, bold: true });
+  assert.deepEqual(active(at(md, 'ital')), { ...NOWHERE, italic: true });
+  assert.deepEqual(active(at(md, 'code')), { ...NOWHERE, code: true });
+  assert.deepEqual(active(at(md, 'both')), { ...NOWHERE, bold: true, italic: true });
+  assert.deepEqual(active(at(md, 'bold', 2)), { ...NOWHERE, bold: true }, 'a selection inside the bold words');
+  assert.deepEqual(active(at(md, 'a ', 8, 0)), { ...NOWHERE, bold: true }, 'a selection that takes in some bold words: a press takes bold off');
+  assert.deepEqual(active(at(md, ' b ', 3, 0)), NOWHERE, 'the plain words between two marks');
+  const all = open(md);
+  all.selectAll();
+  assert.deepEqual(active(all), { ...NOWHERE, bold: true, italic: true, code: true });
+  for (const id of ['bold', 'italic', 'code']) assert.equal(L.dlRichIsOn(active(all), id), true);
+});
+test('the bar: a press with nothing selected turns the button on for what is typed next, and off again', () => {
+  const ed = at('plain words\n', 'words');
+  ed.run('bold');
+  assert.deepEqual(active(ed), { ...NOWHERE, bold: true });
+  ed.type('x');
+  assert.deepEqual(active(ed), { ...NOWHERE, bold: true });
+  ed.run('bold');
+  assert.deepEqual(active(ed), NOWHERE);
+  for (const [action, name] of [['bold', 'bold'], ['italic', 'italic'], ['code', 'code']]) {
+    const sel = at('some plain words\n', 'plain', 5, 0);
+    assert.equal(active(sel)[name], false);
+    sel.run(action);
+    assert.equal(active(sel)[name], true, `${action}: on after the press`);
+    assert.deepEqual([sel.state().selection.from, sel.state().selection.to], [6, 11], 'and the selection is kept');
+    sel.run(action);
+    assert.equal(active(sel)[name], false, `${action}: off after the second`);
+  }
+});
+test('the bar: each heading level', () => {
+  for (let n = 1; n <= 6; n += 1) {
+    const a = active(at(`${'#'.repeat(n)} Head\n\nwords\n`, 'Head'));
+    assert.deepEqual(a, { ...NOWHERE, heading: n });
+    assert.equal(L.dlRichIsOn(a, 'heading'), true);
+  }
+  const two = open('# One\n\n## Two\n');
+  two.dispatch(two.state().tr.setSelection(PM.TextSelection.create(two.state().doc, 2, 9)));
+  assert.equal(active(two).heading, 0, 'a selection over two headings is in neither');
+  assert.deepEqual(active(at('# a **b** c\n', 'b')), { ...NOWHERE, heading: 1, bold: true });
+});
+test('the bar: a quote, and each list', () => {
+  assert.deepEqual(active(at('> said\n', 'said')), { ...NOWHERE, quote: true });
+  assert.deepEqual(active(at('- one\n- two\n', 'two')), { ...NOWHERE, list: true });
+  assert.deepEqual(active(at('1. one\n2. two\n', 'two')), { ...NOWHERE, numbered: true });
+  assert.deepEqual(active(at('- [ ] one\n- [x] two\n', 'two')), { ...NOWHERE, checklist: true }, 'a checklist is not shown as a bulleted list too');
+  assert.deepEqual(active(at('1. [ ] one\n', 'one')), { ...NOWHERE, numbered: true, checklist: true });
+  assert.deepEqual(active(at('- a\n  1. inner\n', 'inner')), { ...NOWHERE, numbered: true }, 'the innermost list');
+  assert.deepEqual(active(at('1. a\n   - [ ] inner\n', 'inner')), { ...NOWHERE, checklist: true });
+  assert.deepEqual(active(at('> - **row**\n', 'row')), { ...NOWHERE, quote: true, list: true, bold: true });
+  assert.deepEqual(active(at('- one\n- [ ] two\n', 'one')), { ...NOWHERE, list: true }, 'the row the caret is in');
+  const mixed = open('- one\n- [ ] two\n');
+  mixed.dispatch(mixed.state().tr.setSelection(PM.TextSelection.create(mixed.state().doc, wordAt(mixed.state().doc, 'one'), wordAt(mixed.state().doc, 'two') + 1)));
+  assert.deepEqual(active(mixed), { ...NOWHERE, list: true }, 'a row with a box and a row without: a bulleted list');
+});
+test('the bar says what a press will do: on means the press takes the format off', () => {
+  for (const [md, word, action, name] of [['> said\n', 'said', 'quote', 'quote'], ['- one\n', 'one', 'list', 'list'], ['1. one\n', 'one', 'numbered', 'numbered'], ['- [ ] one\n', 'one', 'checklist', 'checklist'], ['## Head\n', 'Head', 'h2', 'heading']]) {
+    const ed = at(md, word);
+    assert.ok(active(ed)[name], `${action}: on`);
+    assert.equal(ed.run(action), true);
+    assert.ok(!active(ed)[name], `${action}: off after the press`);
+    assert.equal(ed.run(action), true);
+    assert.ok(active(ed)[name], `${action}: on again`);
+  }
+});
+test('the bar never reads the words: no text of the document is asked for', () => {
+  const proto = PM.Node.prototype;
+  const kept = { textBetween: proto.textBetween, textContent: Object.getOwnPropertyDescriptor(proto, 'textContent'), toString: proto.toString };
+  const eds = [at('a **bold** b\n', 'bold'), at('- [ ] one\n', 'one'), at('> # Head\n', 'Head', 2)];
+  const all = open(TEXT);
+  all.selectAll();
+  eds.push(all);
+  let asked = 0;
+  proto.textBetween = () => { asked += 1; return ''; };
+  Object.defineProperty(proto, 'textContent', { configurable: true, get() { asked += 1; return ''; } });
+  try { for (const ed of eds) active(ed); } finally { proto.textBetween = kept.textBetween; Object.defineProperty(proto, 'textContent', kept.textContent); }
+  assert.equal(asked, 0);
+  assert.ok(!/\.text\b|textBetween|textContent|getText|toString/.test(String(L.dlRichActive)), 'and its code names no way to read them');
+});
+test('the bar is told of every move of the caret and every change, and of nothing after destroy', () => {
+  const ed = open('one **two**\n');
+  let heard = 0;
+  ed.onSelect(() => { heard += 1; });
+  select(ed, 0, 1);
+  assert.equal(heard, 1, 'a move of the caret');
+  assert.equal(ed.active().bold, false);
+  select(ed, 0, 5);
+  assert.equal(heard, 2);
+  assert.equal(ed.active().bold, true, 'active() is the state now');
+  ed.type('x');
+  assert.equal(heard, 3, 'a change of the text');
+  ed.setText('new\n');
+  assert.equal(heard, 4, 'a new text');
+  const rev = ed.revision();
+  select(ed, 0, 1);
+  assert.equal(ed.revision(), rev, 'a move of the caret is still not a change');
+  assert.equal(heard, 5);
+  ed.destroy();
+  ed.dispatch(ed.state().tr.insertText('y'));
+  assert.equal(heard, 5, 'destroy lets go');
+});
+
+// ---- 11. the new keys ----------------------------------------------------------------------------------------------------------
+test('Mod-b, Mod-i and Mod-e are Bold, Italic and Code on the selection, kept; always taken, so the browser does none of its own', () => {
+  for (const [k, mark, written] of [['Mod-b', M.strong, '**plain**'], ['Mod-i', M.em, '*plain*'], ['Mod-e', M.code, '`plain`']]) {
+    const ed = open('some plain words\n\nnext __one__\n');
+    select(ed, 0, 5, 10);
+    assert.equal(key(ed, k), true);
+    assert.ok(ed.state().doc.rangeHasMark(6, 11, mark), k);
+    assert.deepEqual([ed.state().selection.from, ed.state().selection.to], [6, 11], 'the selection is kept');
+    assert.equal(ed.getText(), `some ${written} words\n\nnext __one__\n`);
+    assert.equal(key(ed, k), true);
+    assert.equal(ed.getText(), 'some plain words\n\nnext __one__\n');
+    const code = open('```\ncode\n```\n');
+    select(code, 0, 0, 3);
+    const before = code.state().doc;
+    assert.equal(key(code, k), true, `${k} in a code block is taken`);
+    assert.ok(code.state().doc === before, 'and does nothing');
+    const locked = L.dlRichKeys(PM)[k](ed.state(), ed.dispatch, { editable: false });
+    assert.equal(locked, false, `${k} in an editor that cannot be typed in is not taken`);
+    assert.equal(ed.getText(), 'some plain words\n\nnext __one__\n');
+  }
+});
+test('Mod-Enter ticks and clears the checklist row the caret is in', () => {
+  const ed = at('- [ ] one\n- [x] two\n\nend __x__\n', 'one');
+  assert.equal(key(ed, 'Mod-Enter'), true);
+  assert.equal(ed.getText(), '- [x] one\n- [x] two\n\nend __x__\n');
+  assert.equal(ed.state().selection.from, wordAt(ed.state().doc, 'one') + 1, 'the caret stays');
+  assert.equal(key(ed, 'Mod-Enter'), true);
+  assert.equal(ed.getText(), '- [ ] one\n- [x] two\n\nend __x__\n', 'cleared again: the stored text, exactly');
+  const inner = at('- [ ] outer\n  - [x] inner\n', 'inner');
+  assert.equal(key(inner, 'Mod-Enter'), true);
+  assert.equal(inner.getText(), '- [ ] outer\n  - [ ] inner\n', 'the innermost row only');
+  for (const [md, word] of [['- plain row\n', 'plain'], ['a paragraph\n', 'paragraph'], ['1. numbered\n', 'numbered'], ['- [ ] task\n\n  ```\n  codehere\n  ```\n', 'codehere'], ['- [x] outer\n  - plain inner\n', 'plain']]) {
+    const not = at(md, word);
+    const before = not.state().doc;
+    assert.equal(key(not, 'Mod-Enter'), false, md);
+    assert.ok(not.state().doc === before);
+  }
+  assert.equal(L.dlRichKeys(PM)['Mod-Enter'](ed.state(), ed.dispatch, { editable: false }), false, 'not in an editor that cannot be typed in');
+});
+
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
 if (fails.length) {
   for (const f of fails) console.error(`FAIL ${f}`);
   console.error(`documents rich editor: ${fails.length} failed, ${passed} passed in ${secs} s`);
   process.exit(1);
 }
-console.log(`documents rich editor: ${passed} tests passed in ${secs} s (open-then-Done exact on the corpus; ${STATES.length} states Markdown cannot say; ${HOSTILE_PASTE.length} hostile pastes)`);
+console.log(`documents rich editor: ${passed} tests passed in ${secs} s (open-then-Done exact on the corpus; ${STATES.length} states Markdown cannot say; ${HOSTILE_PASTE.length} hostile pastes; ${L.DL_RICH_RULES.length} typing rules; ${REFUSED.length} refused addresses)`);
