@@ -43,10 +43,10 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const bundleText = fs.readFileSync(path.join(src, 'documents-lib-0-prosemirror.js'), 'utf8');
 // The bundle is one plain script that leaves one object, DlPM, exactly as the page's build splices it in. No page is given to it.
 const PM = new Function(`${bundleText}\nreturn DlPM;`)();
-const NAMES = ['DL', 'DL_RICH', 'dlCleanText', 'dlDescribe', 'dlSafeAddress', 'DL_MARKED_MATH', 'dlRichHref', 'dlRichSchema', 'dlRichParse', 'dlRichFromDescription', 'dlRichSerialise'];
+const NAMES = ['DL', 'DL_RICH', 'dlCleanText', 'dlDescribe', 'dlSafeAddress', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichParse', 'dlRichFromDescription', 'dlRichSerialise'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
-const reader = new markedLib.Marked({ gfm: true, extensions: [L.DL_MARKED_MATH] });
+const reader = new markedLib.Marked({ gfm: true, extensions: [L.DL_MARKED_MATH], hooks: L.DL_MARKED_HOOKS });
 const lex = (md) => reader.lexer(md);
 const P = (md) => L.dlRichParse(PM, md, lex);
 const S = (doc, beside) => L.dlRichSerialise(PM, doc, beside);

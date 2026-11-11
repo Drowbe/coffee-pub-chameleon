@@ -18,7 +18,7 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
-  'dlObjectLinks', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
+  'dlObjectLinks', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
@@ -27,6 +27,9 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
   'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
+const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
+const reader = new markedLib.Marked({ gfm: true, extensions: [L.DL_MARKED_MATH], hooks: L.DL_MARKED_HOOKS });
+const lex = (m) => reader.lexer(m);
 let passed = 0;
 const fails = [];
 const pending = [];
@@ -72,7 +75,7 @@ test('preview: a record without one shows its excerpt; a save writes one', () =>
   assert.equal(L.dlThumbText(L.dlCleanDoc(doc)), 'Hi');
   assert.equal(L.dlThumbText({ preview: 'P', excerpt: 'E' }), 'P');
   assert.equal(L.dlThumbText(null), '');
-  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'x' }], text: '# T\n\nbody', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222' });
+  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'x' }], text: '# T\n\nbody', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222', lex });
   assert.equal(plan.record.preview, '# T\n\nbody');
 });
 test('list view: only thumbs is thumbs; two options with icons', () => {
@@ -180,9 +183,9 @@ test('plan: unchanged chunks keep their id and are not written', () => {
   assert.deepEqual(L.dlLeftoverChunks(['a'], ['a', 'z']), ['z']);
 });
 test('excerpt: plain, 300 characters', () => {
-  assert.equal(L.dlExcerpt('| A | B |\n|:--|--:|\n| 1 | 2 |'), 'A B 1 2');
-  assert.equal(L.dlExcerpt('# Title\n\n**bold** and [a link](https://x.y) `code`\n- [ ] task'), 'Title bold and a link code task');
-  assert.equal(L.dlExcerpt('a'.repeat(400)).length, 300);
+  assert.equal(L.dlExcerpt('| A | B |\n|:--|--:|\n| 1 | 2 |', lex), 'A B 1 2');
+  assert.equal(L.dlExcerpt('# Title\n\n**bold** and [a link](https://x.y) `code`\n- [ ] task', lex), 'Title bold and a link code task');
+  assert.equal(L.dlExcerpt('a'.repeat(400), lex).length, 300);
 });
 
 // ---- the lock
@@ -438,7 +441,7 @@ test('format: link, object link, grid, formula', () => {
 {
   let n = 0;
   const fresh = () => `new${String(n++).padStart(5, '0')}`;
-  const base = { rec: doc, me: 'u2', name: 'Bo', now: '2026-11-11T11:00:00.000Z', title: 'Plan' };
+  const base = { rec: doc, me: 'u2', name: 'Bo', now: '2026-11-11T11:00:00.000Z', title: 'Plan', lex };
   test('save plan: only changed chunks are written, rev goes up, record is filled', () => {
     const p = L.dlPlanSave({ ...base, old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', fresh });
     assert.equal(p.ok, true);
@@ -516,7 +519,7 @@ test('page colour: cleaning keeps known ids only, the default otherwise', () => 
   assert.ok(L.DL_PAPERS.length >= 3 && L.DL_PAPERS.length <= 8);
 });
 test('page colour: a save carries it, and a change makes the page dirty', () => {
-  const base = { old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222' };
+  const base = { old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222', lex };
   assert.equal(L.dlPlanSave(base).record.paper, 'light-white');
   assert.equal(L.dlPlanSave({ ...base, paper: 'dark-slate' }).record.paper, 'dark-slate');
   assert.equal(L.dlPlanSave({ ...base, paper: 'bogus' }).record.paper, 'light-white');
@@ -688,7 +691,7 @@ test('tags: a text save and a tag change write different keys, so neither can 40
   const docVersion = (await s.get(`doc:${ID}`)).version;
   // a tag change lands between the editor's read and its commit
   s.hook = async () => { await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T1], remove: [] }, known, me: 'u2', now: 'n' }); };
-  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi there', title: 'Plan', paper: 'light-white', rec: { ...doc, id: ID }, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'zzzz0000' });
+  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi there', title: 'Plan', paper: 'light-white', rec: { ...doc, id: ID }, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'zzzz0000', lex });
   assert.ok(plan.ok);
   await s.set(`doc:${ID}`, plan.record, { version: docVersion }); // no 409
   assert.deepEqual(s.m.get(L.dlTagsKey(ID)).value.tags, [T1]);
@@ -751,9 +754,37 @@ test('resync: a gap after hiding is more than 30 s', () => {
 });
 
 // ---- the reader with the real (vendored) marked: formulas, loose checklists, chip labels, and the flags
-const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
-const reader = new markedLib.Marked({ gfm: true, extensions: [L.DL_MARKED_MATH] });
 const real = (md, hooks) => { const d = fakeDoc(); const desc = L.dlDescribe(md, (m) => reader.lexer(m)); const root = L.dlBuild(desc, d, hooks); return { desc, root, d, nodes: all(root) }; };
+// emphasis around a formula: the * or _ inside a formula must not pair with the emphasis outside it
+const emOf = (md) => L.dlDescribe(md, lex)[0].c.map((n) => (n.c ? [n.t, n.c.map((m) => (m.t === 'math' ? `$${m.tex}$` : m.v)).join('')] : [n.t, n.t === 'math' ? `$${n.tex}$` : n.v]));
+test('real marked: a * inside a formula does not end the italic', () => {
+  assert.deepEqual(emOf('*x $a*b$ y*'), [['em', 'x $a*b$ y']]);
+});
+test('real marked: a _ inside a formula does not end the italic or bold', () => {
+  assert.deepEqual(emOf('_x $a_b$ y_'), [['em', 'x $a_b$ y']]);
+  assert.deepEqual(emOf('**x $a_b$ y**'), [['strong', 'x $a_b$ y']]);
+  assert.deepEqual(emOf('**x $a**b$ y**'), [['strong', 'x $a**b$ y']]);
+});
+test('real marked: ordinary emphasis beside a formula still works', () => {
+  assert.deepEqual(emOf('*a* $x^2$ **b**'), [['em', 'a'], ['text', ' '], ['math', '$x^2$'], ['text', ' '], ['strong', 'b']]);
+  assert.deepEqual(emOf('*a $x$ b* and z'), [['em', 'a $x$ b'], ['text', ' and z']]);
+  assert.deepEqual(emOf('a * b $c$ * d'), [['text', 'a * b '], ['math', '$c$'], ['text', ' * d']]);
+});
+// every text made from a document for display comes from the reader's description, never from the Markdown source
+test('the excerpt, preview, thumbnail and search text never show the zero-width entity or character', () => {
+  const md = '# T\n\n**a.**&#8203;b and ​c';
+  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'x' }], text: md, title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222', lex });
+  const rec = plan.record;
+  const bad = /&#8203;|&amp;#8203;|​/i;
+  assert.equal(rec.excerpt, 'T a.b and c');
+  // the stored preview is Markdown for the thumbnail and keeps the entity (without it the bold would not close); what is shown is the description
+  assert.ok(!/\u200b/.test(rec.preview), 'preview');
+  const shown = L.dlBuild(L.dlDescribe(L.dlThumbText(rec), lex), fakeDoc()).textContent;
+  assert.ok(!bad.test(shown) && shown.includes('a.b'), 'thumbnail');
+  const search = `${rec.title} ${rec.excerpt}`.toLowerCase();
+  assert.ok(!bad.test(search) && search.includes('a.b'), 'search');
+  assert.equal(L.dlBuild(L.dlDescribe(L.dlCleanDoc({ ...doc, preview: 'x&#8203;y &#x200B;z' }).preview, lex), fakeDoc()).textContent, 'xy z');
+});
 test('real marked: a formula keeps its backslashes and is shown as visible TeX', () => {
   const r = real('Is $\\int x\\,dx$ and $\\{a\\}\\%$ and $a\\\\b$ ok');
   const maths = r.nodes.filter((n) => n.className === 'dl-math');

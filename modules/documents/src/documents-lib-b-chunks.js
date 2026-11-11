@@ -70,15 +70,9 @@
   // Chunks stored under the document that its small record does not list (leftovers of a save that did not finish).
   const dlLeftoverChunks = (listed, storedIds) => storedIds.filter((id) => !listed.includes(id));
 
-  // The first 300 characters as plain text, for lists and search.
-  function dlExcerpt(text) {
-    const t = dlCleanText(text)
-      .replace(/^\s*(```|~~~).*$/gm, ' ')
-      .replace(/^[\s|:-]*-[\s|:-]*$/gm, ' ')
-      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-      .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?/gm, '')
-      .replace(/[*_`~|]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  // The first 300 characters as plain text, for lists and search: the words of the reader's description (entities read, zero-width
+  // characters out), never the Markdown source. `lex` is the reader's lexer, as dlDescribe takes it.
+  function dlExcerpt(text, lex) {
+    const t = dlCleanText(dlDescribedText(dlDescribe(text, lex))).replace(/\s+/g, ' ').trim();
     return dlCut(t, DL.excerptMax).trim();
   }

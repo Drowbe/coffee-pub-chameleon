@@ -68,7 +68,7 @@
     if (text) noteTimer = setTimeout(() => note(''), 6000);
   };
   const when = (iso) => { try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch (err) { return ''; } };
-  const reader = new marked.Marked({ gfm: true, extensions: [DL_MARKED_MATH] });
+  const reader = new marked.Marked({ gfm: true, extensions: [DL_MARKED_MATH], hooks: DL_MARKED_HOOKS });
   const lex = (md) => reader.lexer(md);
   const idOf = (key, prefix) => key.slice(prefix.length);
 
@@ -144,7 +144,7 @@
     const now = new Date().toISOString();
     const plan = dlPlanChunks([], split.chunks, () => dlNewId(Math.random));
     for (const c of plan) await host.storage.set(dlTextKey(id, c.id), { id: c.id, doc: id, text: c.text });
-    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text), preview: dlPreview(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
+    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text, lex), preview: dlPreview(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
     const r = await host.storage.set(dlDocKey(id), rec, { version: 0 });
     remember({ key: dlDocKey(id), value: rec, version: r && r.version });
     return id;
@@ -272,7 +272,7 @@
     }
     return li;
   }
-  // A thumbnail card: a small copy of the page in the document's own colour, its first lines through the same safe reader
+  // A thumbnail: a small copy of the page in the document's own colour, its first lines through the same safe reader
   // (tokens to elements, no HTML), the title and who edited it. The description is kept per revision, the elements made fresh.
   const described = new Map();
   function thumbDesc(rec) {
@@ -283,10 +283,10 @@
     }
     return described.get(k);
   }
-  function card(rec, trashRec) {
-    const li = el('li', 'card');
+  function thumbItem(rec, trashRec) {
+    const li = el('li', 'thumb-item');
     li.setAttribute('data-id', rec.id);
-    const main = el(trashRec ? 'div' : 'button', 'card-main');
+    const main = el(trashRec ? 'div' : 'button', 'thumb-main');
     if (!trashRec) { main.type = 'button'; main.addEventListener('click', () => openDoc(rec.id)); }
     const thumb = el('div', 'sheet thumb');
     paintPaper(thumb, rec.paper);
@@ -326,9 +326,9 @@
     const byTag = (rec) => showTrash || dlTagsMatch(tagsOf.get(rec.id) || [], filterTags, knownTags);
     const shown = recs.filter(({ rec }) => byTag(rec) && (!q || rec.title.toLowerCase().includes(q) || rec.excerpt.toLowerCase().includes(q)));
     const thumbs = listView === 'thumbs';
-    $('rows').className = thumbs ? 'cards' : 'rows';
-    const items = shown.map(({ rec, t }) => (thumbs ? card(rec, t) : row(rec, t)));
-    if (!showTrash) for (const id of unreadable) { const li = el('li', thumbs ? 'card unreadable' : 'row unreadable'); li.append(el('span', 'row-title', 'This document could not be read.')); items.push(li); }
+    $('rows').className = thumbs ? 'thumbs' : 'rows';
+    const items = shown.map(({ rec, t }) => (thumbs ? thumbItem(rec, t) : row(rec, t)));
+    if (!showTrash) for (const id of unreadable) { const li = el('li', thumbs ? 'thumb-item unreadable' : 'row unreadable'); li.append(el('span', 'row-title', 'This document could not be read.')); items.push(li); }
     if (!items.length) {
       const text = q || filterTags.length ? 'Nothing matches that.' : showTrash ? 'The trash is empty.' : canEdit ? 'No documents yet.' : 'Nothing has been written here yet.';
       const li = el('li', 'meta', text);
@@ -647,7 +647,7 @@
       if (!ed || ed.lost) return 'lost';
       const cur = snapshot();
       if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
-      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random) });
+      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random), lex });
       if (!plan.ok) {
         ed.refused = plan.reason;
         note(plan.reason === 'title' ? 'Give the document a title.' : 'This document is too long. Split it into two.');
