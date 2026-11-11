@@ -125,6 +125,7 @@ const EXT = /\.(js|mjs|cjs|html|css|json)$/;
 const SKIP = [
   /^public\/lib\//, /^public\/models\//, /^public\/maps-glyphs\//, /^tools\/\.wiki-build\//,
   /^modules\/maps\/src\/maps-lib-a-maplibre\./, /^modules\/maps\/src\/maps-lib-b-pmtiles\./,
+  /^modules\/documents\/src\/documents-lib-0-marked\./, // vendored marked (MIT): not our code, so not scanned
   /^tools\/check-names-allow\.json$/, /(^|\/)node_modules\//,
   /^public\/sdk\/pdfjs\//, // vendored third-party pdf.js (generated, minified): not our code, so not scanned
   /^server\/airports\.json$/, // third-party data (mwgg/Airports, built by tools/build-airports.mjs): airport names, not code
