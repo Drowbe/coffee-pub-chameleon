@@ -20,7 +20,8 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
-  'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb'];
+  'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
+  'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
@@ -507,6 +508,49 @@ test('contrast helpers', () => {
   assert.deepEqual(L.dlHexRgb('#fff'), [255, 255, 255]);
   assert.equal(L.dlHexRgb('red'), null);
   assert.equal(L.dlHexRgb(5), null);
+});
+
+test('view: clean, store, read, label', () => {
+  assert.equal(L.dlCleanView('fit'), 'fit');
+  assert.equal(L.dlCleanView(125), 125);
+  assert.equal(L.dlCleanView('150'), 150);
+  for (const bad of [undefined, null, 'x', 60, '60', 0, -100, NaN, {}, '1e2']) assert.equal(L.dlCleanView(bad), 'fit');
+  assert.equal(L.dlViewStore(200), '200');
+  assert.equal(L.dlViewStore('junk'), 'fit');
+  assert.equal(L.dlViewRead('75'), 75);
+  assert.equal(L.dlViewRead(null), 'fit');
+  assert.equal(L.dlViewLabel('fit'), 'Fit width');
+  assert.equal(L.dlViewLabel(125), '125%');
+  assert.equal(L.dlViewLabel('nope'), 'Fit width');
+});
+test('view: the sheet for a view', () => {
+  assert.deepEqual({ ...L.dlViewSheet('fit') }, { zoom: 1, widthRem: null, maxRem: 120 });
+  assert.deepEqual({ ...L.dlViewSheet(100) }, { zoom: 1, widthRem: 48, maxRem: 48 });
+  assert.deepEqual({ ...L.dlViewSheet(50) }, { zoom: 0.5, widthRem: 48, maxRem: 48 });
+  assert.equal(L.dlViewSheet(200).zoom, 2);
+  assert.equal(L.dlViewSheet('junk').widthRem, null);
+});
+test('view: zoom steps', () => {
+  assert.equal(L.dlViewStep(100, 1), 125);
+  assert.equal(L.dlViewStep(100, -1), 75);
+  assert.equal(L.dlViewStep(50, -1), 50);
+  assert.equal(L.dlViewStep(200, 1), 200);
+  assert.equal(L.dlViewStep('fit', 1), 125);
+  assert.equal(L.dlViewStep('fit', -1), 75);
+  let v = 50; const seen = [v];
+  for (let i = 0; i < 8; i += 1) { v = L.dlViewStep(v, 1); seen.push(v); }
+  assert.deepEqual(seen.slice(0, 6), [50, 75, 100, 125, 150, 200]);
+  assert.equal(seen.at(-1), 200);
+});
+test('view: keys', () => {
+  assert.equal(L.dlViewKey({ key: '+', ctrlKey: true }), 'in');
+  assert.equal(L.dlViewKey({ key: '=', metaKey: true }), 'in');
+  assert.equal(L.dlViewKey({ key: '-', ctrlKey: true }), 'out');
+  assert.equal(L.dlViewKey({ key: '0', metaKey: true }), 'actual');
+  assert.equal(L.dlViewKey({ key: '-' }), null);
+  assert.equal(L.dlViewKey({ key: '0', ctrlKey: true, altKey: true }), null);
+  assert.equal(L.dlViewKey({ key: 'a', ctrlKey: true }), null);
+  assert.equal(L.dlViewKey(null), null);
 });
 
 if (fails.length) { console.error(`documents lib: ${fails.length} failed, ${passed} passed`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }
