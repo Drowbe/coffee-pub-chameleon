@@ -44,7 +44,7 @@ const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, 'modules/documents/src'));
 const { PM, L, lex } = loadRich(src, ['DL', 'DL_ACTIONS', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichEditor', 'dlRichTidy',
-  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
+  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'dlRichInGrid', 'dlRichGridMenu', 'dlRichGridAt', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
 const schema = L.dlRichSchema(PM);
 const N = schema.nodes;
 const M = schema.marks;
@@ -161,7 +161,7 @@ test('typing in one paragraph, one heading, one list row changes that block only
 
 // ---- 4. the actions ----------------------------------------------------------------------------------------------------------
 test('every action the bar has is known: done by the rich editor, or false and nothing', () => {
-  assert.deepEqual(L.DL_ACTIONS.filter((a) => !L.dlRichCan(a)), ['grid', 'formula']);
+  assert.deepEqual(L.DL_ACTIONS.filter((a) => !L.dlRichCan(a)), ['formula']);
   for (const a of L.DL_ACTIONS) assert.equal(Boolean(L.dlRichCommand(PM, a)), L.dlRichCan(a) && a !== 'link', a); // link is no command: it asks first
   for (const a of ['link', 'formula', 'nope', '', undefined, 'h5', 'constructor', '__proto__']) {
     const ed = open(TEXT);
@@ -1808,6 +1808,31 @@ test('grids: the plugin does not read the clipboard HTML: a paste into a cell is
   assert.ok(tp.props.handlePaste, 'the library has a paste handler');
   const keysFirst = L.dlRichKeys(PM);
   assert.ok(keysFirst.Tab);
+});
+
+test('grid menu: dlRichInGrid, the menu model, the caret-cell decoration', () => {
+  const ed = open(GRID_MD);
+  assert.equal(L.dlRichInGrid(PM, ed.state()), false); assert.equal(L.dlRichGridMenu(PM, ed.state()), null);
+  assert.equal(L.dlRichCan('grid'), true);
+  caretIn(ed, 0, 1); assert.equal(L.dlRichInGrid(PM, ed.state()), true, 'header cell');
+  let m = L.dlRichGridMenu(PM, ed.state()); const by = (id) => m.find((x) => x.id === id);
+  assert.equal(by('gridRowBefore').disabled, true); assert.equal(by('gridRowDelete').disabled, true); assert.equal(by('gridRowAfter').disabled, false);
+  assert.equal(by('gridAlignCentre').current, true); assert.equal(by('gridAlignLeft').current, false);
+  caretIn(ed, 1, 2); assert.equal(L.dlRichInGrid(PM, ed.state()), true, 'body cell');
+  m = L.dlRichGridMenu(PM, ed.state()); assert.equal(by('gridRowBefore').disabled, false); assert.equal(by('gridRowDelete').disabled, false); assert.equal(by('gridAlignRight').current, true);
+  const st = ed.state(); const rev = ed.revision(); const doc = st.doc;
+  const marked = []; PM.Plugin; ed.state().plugins.forEach((p) => { const d = p.props.decorations && p.props.decorations(ed.state()); if (d) d.find().forEach((x) => marked.push(x)); });
+  assert.equal(marked.length, 1, 'exactly one cell marked'); assert.equal(marked[0].type.attrs.class, 'dl-cell-active');
+  assert.equal(ed.state().doc, doc); assert.equal(ed.revision(), rev, 'no change of text or revision');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, 2)));
+  assert.equal(L.dlRichInGrid(PM, ed.state()), false, 'a paragraph');
+  const marked2 = []; ed.state().plugins.forEach((p) => { const d = p.props.decorations && p.props.decorations(ed.state()); if (d) d.find().forEach((x) => marked2.push(x)); });
+  assert.equal(marked2.length, 0);
+  const wide = open(bigGrid(2, 2)); caretIn(wide, 0, 0); assert.equal(L.dlRichGridMenu(PM, wide.state()).find((x) => x.id === 'gridColDelete').disabled, false);
+  const one = open('| a |\n| - |\n| 1 |\n'); caretIn(one, 1, 0); assert.equal(L.dlRichGridMenu(PM, one.state()).find((x) => x.id === 'gridColDelete').disabled, true, 'last column');
+  const big = open(bigGrid(200, 2)); caretIn(big, 1, 0); assert.equal(L.dlRichGridMenu(PM, big.state()).find((x) => x.id === 'gridRowAfter').disabled, true, 'row limit');
+  const ins = open('x\n'); assert.equal(ins.run('grid'), true); assert.equal(L.dlRichInGrid(PM, ins.state()), true, 'insert puts the caret in the grid');
+  assert.deepEqual(shape(ins), [2, 3]); caretIn(ed, 0, 0);
 });
 
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
