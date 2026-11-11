@@ -2388,7 +2388,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.match(space, /else if \(action === 'setup'\) openSetupFor\(id, event\.detail\.tab \|\| ''\);/, 'Manage over a call asks the space page underneath');
   const adminJs = fs.readFileSync(path.join(ROOT, 'public/admin.js'), 'utf8');
   assert.match(adminJs, /const setupHref = \(id\) => `\/\?setup=\$\{encodeURIComponent\(id\)\}`;/);
-  assert.match(adminJs, /row\.querySelector\('\[data-action="edit"\]'\)\.href = setupHref\(space\.id\);/, 'Manage\'s Edit link');
+  assert.match(adminJs, /const edit = row\.querySelector\('\[data-action="edit"\]'\);\n\s*edit\.hidden = space\.isLobby;\n\s*edit\.href = setupHref\(space\.id\);/, 'Manage\'s Edit link (hidden for Home, set up for every other space)');
   assert.match(adminJs, /openSetup\(space\.id\); \/\/ into the new space with Set up open/, 'and its jump after making a space');
   assert.ok(!/`\/spaces\/\$\{/.test(adminJs), 'Manage no longer links to the old page');
   const setup = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
