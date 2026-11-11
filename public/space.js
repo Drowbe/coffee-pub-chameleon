@@ -6751,22 +6751,6 @@ function onKey(event) {
   event.preventDefault();
 }
 
-// --- mobile viewport quirks ---------------------------------------------------
-
-// Mobile browsers can be slow to recompute CSS's own `dvh` as their address
-// and tab bar show and hide on scroll -- visualViewport's resize event
-// fires the moment that actually happens, so mirroring it into a custom
-// property keeps the floating controls above the browser's own chrome
-// instead of sliding out from under it (see body.in-space in style.css).
-function syncViewportHeight() {
-  const h = window.visualViewport?.height || window.innerHeight;
-  document.documentElement.style.setProperty('--app-vh', `${h}px`);
-}
-window.visualViewport?.addEventListener('resize', syncViewportHeight);
-window.addEventListener('resize', syncViewportHeight);
-syncViewportHeight();
-
-
 // --- floating controls: show on movement, hide when the pointer rests --------
 
 const CHROME_IDLE_MS = 3000; // how long the pointer rests before a popped-out call's bars fade
