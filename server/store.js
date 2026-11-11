@@ -198,6 +198,7 @@ const ROLE_PERMISSIONS = [
   { key: 'canMute', label: 'Mute other people', group: 'Moderation' },
   { key: 'canKick', label: 'Kick other people', group: 'Moderation' },
   { key: 'canInvite', label: "Manage {a space}'s {guest} link", group: 'Moderation' },
+  { key: 'manageTags', label: "Rename, recolour and delete {a space}'s tags", group: 'Moderation' },
   { key: 'useAi', label: 'Use AI (needs an AI service set up)', group: 'AI' },
   { key: 'image_profile', label: 'Profile photo', group: 'Images' },
   { key: 'image_background', label: 'Call background', group: 'Images' },
@@ -221,8 +222,8 @@ const imageDefaults = (own) => Object.fromEntries(IMAGE_KEYS.map((k) => [k, own 
 const EDITABLE_ROLES = ['moderator', 'member', 'guest'];
 const ROLE_DEFAULTS = {
   moderator: { ...Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p.key, true])), useAi: true, ...imageDefaults(true) },
-  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: true, ...imageDefaults(true) },
-  guest: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: false, startAside: false, canMute: false, canKick: false, canInvite: false, useAi: false, ...imageDefaults(false) },
+  member: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: true, startAside: false, canMute: false, canKick: false, canInvite: false, manageTags: false, useAi: true, ...imageDefaults(true) },
+  guest: { conference: true, chatRead: true, chat: true, sendPictures: true, react: true, shareScreen: true, privateCall: false, startAside: false, canMute: false, canKick: false, canInvite: false, manageTags: false, useAi: false, ...imageDefaults(false) },
 };
 function cleanSpacePermissions(p) {
   return Object.fromEntries(SPACE_PERMISSIONS.map((k) => [k, Boolean(p?.[k])]));

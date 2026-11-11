@@ -117,7 +117,7 @@ const SPACE_ID = '[a-z0-9]{4,16}';
 // The files an environment's folder holds that go in the copy, by their path in it. app.json and ai.json are made
 // above. `declared`: a module's own folders for the files an owner places (its manifest's file settings).
 const FILE_RULES = [
-  /^(chat|layouts|attention|facts|ai-usage)\.json$/,
+  /^(chat|layouts|attention|facts|tags|ai-usage)\.json$/,
   /^ai-log\.jsonl$/,
   /^images\/.+$/,
   /^modules\/(registry|settings|activity|announced|links|schedules|notifications|bus)\.json$/,
