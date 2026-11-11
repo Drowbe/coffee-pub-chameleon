@@ -4,6 +4,9 @@
     { "url": "https://github.com/markedjs/marked", "reason": "Marked's licence header comment and its 'please report this' error text; shown or read, never fetched" },
     { "url": "http://", "reason": "marked's autolink code prefixes this to an address typed as www.example.com; the result goes into a token's href text that the Documents reader only checks against its own link rules, and nothing is fetched" }
   ],
+  "modules/documents/src/documents-lib-0-prosemirror.js": [
+    { "url": "https://prosemirror.net/docs/guide/#generatable", "reason": "ProseMirror's own error text for a schema that cannot be filled (prosemirror-model, 'see https://prosemirror.net/docs/guide/#generatable'); it is thrown as an Error message for a developer to read and is never fetched" }
+  ],
   "modules/documents/src/documents-lib-f-format.js": [
     { "url": "https://", "reason": "the default address text that the link button puts inside a Markdown link for the person to overwrite (text in the box, not a request)" }
   ]
