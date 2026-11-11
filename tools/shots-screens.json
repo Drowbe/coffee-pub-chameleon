@@ -1882,7 +1882,7 @@
     },
     {
      "click": "button.host-menu-item",
-     "text": "Save this layout"
+     "text": "Save as new layout"
     },
     {
      "wait": "dialog.layout-sheet[open]"

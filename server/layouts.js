@@ -16,7 +16,7 @@
 // them, per space, like favorites: "system": { "<user key>": { "<system id>": { "name"?, "icon"?, "tab"?: false } } }.
 // A user layout may carry an `icon`; one stored without reads as kind `user` with the default icon.
 //
-// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }], snap?: { all, pitch } }. cleanLayout()
+// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }] (empty: a blank layout), snap?: { all, pitch }, arrange?: 'panel' | 'window' }. cleanLayout()
 // is the one shape check, pure; the Layouts class keeps the lists, their limits and the clean-up when a space or a
 // person is removed (server/store.js calls forgetSpace and forgetPerson). The browser's own remembered layout
 // (app.canvas.<space id>) is unchanged and separate. An aside has no layouts: index.js only finds spaces.
@@ -56,7 +56,8 @@ const ICON_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 // A module id: the same rule as a space's opensWith (server/store.js).
 const MODULE_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const MODES = ['dock', 'float'];
-const TOP_KEYS = ['name', 'shared', 'modules', 'snap', 'icon'];
+const TOP_KEYS = ['name', 'shared', 'modules', 'snap', 'icon', 'arrange'];
+const ARRANGES = ['panel', 'window'];
 const MODULE_KEYS = ['id', 'mode', 'dockW', 'box', 'snap', 'stack', 'at', 'h', 'folded'];
 const BOX_KEYS = ['x', 'y', 'w', 'h'];
 const SNAP_KEYS = ['all', 'pitch'];
@@ -150,7 +151,7 @@ function cleanLayout(input, { partial = false, icons = null } = {}) {
   }
 
   if (!partial || input.modules !== undefined) {
-    if (!Array.isArray(input.modules) || input.modules.length === 0) return { error: `List the ${many('module')} the layout opens.` };
+    if (!Array.isArray(input.modules)) return { error: `List the ${many('module')} the layout opens (an empty list is a blank layout).` };
     if (input.modules.length > LAYOUT_LIMITS.modules) return { error: `A layout can hold at most ${LAYOUT_LIMITS.modules} ${many('module')}.` };
     const seen = new Set();
     const entries = [];
@@ -184,6 +185,11 @@ function cleanLayout(input, { partial = false, icons = null } = {}) {
       entries.push({ kept, raw: entry });
     }
     out.modules = cleanStacks(entries);
+  }
+
+  if (input.arrange !== undefined) {
+    if (!ARRANGES.includes(input.arrange)) return { error: 'Arrange must be panel or window.' };
+    out.arrange = input.arrange;
   }
 
   if (input.icon !== undefined) {
@@ -442,7 +448,7 @@ class Layouts {
 
   // Saves a new layout, already cleaned by cleanLayout: in the shared list when `shared`, else in `by`'s own. Throws
   // a LayoutError (409) when the name is taken in that list (with the id of the one that has it) or the list is full.
-  add(spaceId, by, { name, shared = false, modules, snap, icon }) {
+  add(spaceId, by, { name, shared = false, modules, snap, icon, arrange }) {
     this.mustWrite();
     const owner = shared ? null : by;
     const current = this.listOf(spaceId, owner);
@@ -454,7 +460,7 @@ class Layouts {
         ? `This ${words.word('space')} has ${cap} shared layouts. Delete one first.`
         : `You have ${cap} saved layouts here. Delete one first.`, 409);
     }
-    const layout = { id: this.newId(spaceId), name, by, at: new Date().toISOString(), modules, ...(snap ? { snap } : {}), ...(icon ? { icon } : {}) };
+    const layout = { id: this.newId(spaceId), name, by, at: new Date().toISOString(), modules, ...(snap ? { snap } : {}), ...(icon ? { icon } : {}), ...(arrange ? { arrange } : {}) };
     this.listOf(spaceId, owner, true).push(layout);
     this.save();
     return copy(layout);
@@ -476,6 +482,7 @@ class Layouts {
     if (patch.modules !== undefined) layout.modules = patch.modules;
     if (patch.snap !== undefined) layout.snap = patch.snap;
     if (patch.icon !== undefined) layout.icon = patch.icon;
+    if (patch.arrange !== undefined) layout.arrange = patch.arrange;
     layout.at = new Date().toISOString();
     this.save();
     return copy(layout);

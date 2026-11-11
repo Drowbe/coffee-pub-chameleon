@@ -138,7 +138,10 @@ const refused = (input, pattern, label, options) => {
   refused({ ...good(), name: 7 }, /text/, 'a name that is not text');
   refused({ ...good(), name: 'x'.repeat(41) }, /40 characters/, 'a name of 41 characters');
   refused({ ...good(), shared: 'yes' }, /shared with true or false/, 'shared not a boolean');
-  refused({ ...good(), modules: [] }, /List the/, 'no modules');
+  assert.deepEqual(cleanLayout({ name: 'Blank', modules: [], arrange: 'window' }).layout, { name: 'Blank', modules: [], arrange: 'window' }, 'an empty list is a blank layout, and keeps its arrange');
+  assert.ok(!('arrange' in cleanLayout({ ...good() }).layout), 'arrange may be left out');
+  refused({ ...good(), arrange: 'grid' }, /panel or window/, 'arrange must be panel or window');
+  refused({ ...good(), modules: undefined }, /List the/, 'no modules key');
   refused({ ...good(), modules: 'chat' }, /List the/, 'modules not a list');
   refused({ ...good(), modules: Array.from({ length: 21 }, (_, i) => ({ id: `m${i}`, mode: 'dock' })) }, /at most 20/, '21 modules');
   refused({ ...good(), modules: ['chat'] }, /id and a mode/, 'a module that is a string');
@@ -170,7 +173,8 @@ const refused = (input, pattern, label, options) => {
   assert.deepEqual(cleanLayout({ snap: { all: true, pitch: 80 } }, { partial: true }).layout, { snap: { all: true, pitch: 80 } });
   refused({ shared: true }, /moved between/, 'a PUT cannot move a layout between lists', { partial: true });
   refused({ name: '' }, /name/, 'a PUT with a blank name', { partial: true });
-  refused({ modules: [] }, /List the/, 'a PUT with no modules', { partial: true });
+  assert.deepEqual(cleanLayout({ modules: [], arrange: 'panel' }, { partial: true }).layout, { modules: [], arrange: 'panel' }, 'a PUT may empty the list');
+  refused({ modules: 'chat' }, /List the/, 'a PUT with modules not a list', { partial: true });
 }
 
 // --- the file: lists, limits, names, clean-up --------------------------------------------------------------------
@@ -490,7 +494,7 @@ const refused = (input, pattern, label, options) => {
   assert.match(setupSrc, /if \(nowLayout !== wasLayout\) patch\.defaultLayout = nowLayout;/, 'the layout goes only when it changed');
   // The layout tabs (plan-layout-views.md, steps 2 and 3) load the page's own copy, as a row in the menu does: a favorite
   // from the saved lists, Calendar and Map from GET's `system` list (their `modules`, the composite docked).
-  assert.match(space, /const layout = tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/);
+  assert.match(space, /const layout = tab && tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/);
   assert.match(space, /const findSystemLayout = \(id\) => layoutList\.system\.find\(\(l\) => l\.id === id\) \|\| null;/);
   assert.match(space, /system: Array\.isArray\(got\.system\) \? got\.system : \[\],/, 'GET\'s `system` list read for the tabs');
   n += 1;
@@ -844,6 +848,16 @@ try {
   await expect('guest saves shared', 403, 'POST', `${L}${asGuest}`, { body: { ...good(), shared: true } });
   await expect('outsider saves', 403, 'POST', L, { cookie: out, body: good() });
   await expect('bad shape', 400, 'POST', L, { cookie: pat, body: { ...good(), modules: [{ id: 'chat', mode: 'window' }] } });
+  // A blank layout (modules []) is saved like any layout: name required, the unique-name rule, a guest cannot create one.
+  const blank = await expect('member saves a blank layout', 201, 'POST', L, { cookie: pat, body: { name: 'Blank one', modules: [], arrange: 'window' } });
+  assert.deepEqual(blank.json.layout.modules, []);
+  assert.equal(blank.json.layout.arrange, 'window', 'the arrangement mode is kept');
+  assert.equal((await expect('blank name clash', 409, 'POST', L, { cookie: pat, body: { name: 'blank ONE', modules: [] } })).json.id, blank.json.layout.id);
+  await expect('blank without a name', 400, 'POST', L, { cookie: pat, body: { modules: [] } });
+  await expect('blank with a bad arrange', 400, 'POST', L, { cookie: pat, body: { name: 'Blank two', modules: [], arrange: 'x' } });
+  await expect('guest saves a blank layout', 403, 'POST', `${L}${asGuest}`, { body: { name: 'Blank g', modules: [] } });
+  assert.deepEqual((await call('GET', L, { cookie: pat })).json.mine.find((l) => l.id === blank.json.layout.id).modules, [], 'read back blank');
+  await expect('delete the blank one', 204, 'DELETE', `${L}/${blank.json.layout.id}`, { cookie: pat });
   await expect('not JSON fields', 400, 'POST', L, { cookie: pat, body: { name: 'x' } });
   const samShared = await expect('moderator saves shared', 201, 'POST', L, { cookie: sam, body: { ...good(), name: 'Planning', shared: true } });
   const ownerShared = await expect('owner saves shared', 201, 'POST', L, { cookie: owner, body: { ...good(), shared: true } });

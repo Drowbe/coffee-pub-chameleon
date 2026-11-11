@@ -8694,3 +8694,25 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
   padding-top: 0;
   border-top: 0;
 }
+
+/* Modified, beside the layout tab shown (space.js, placeModified): a short word in the muted text and, where this person
+   may change the layout, the Update link in the top bar's link look. The temporary tab's heart pins it as a favorite. */
+.layout-tabs > .layout-modified {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4, 4px);
+  color: var(--text-muted);
+  font-size: var(--text-12);
+  white-space: nowrap;
+}
+.layout-tabs > .layout-modified[hidden] { display: none; }
+.layout-tabs > .layout-modified > .layout-update {
+  all: unset;
+  cursor: pointer;
+  color: var(--text-link);
+  text-decoration: underline;
+  font: inherit;
+}
+.layout-tabs > .layout-modified > .layout-update:hover { color: var(--text); }
+.layout-tabs > .layout-modified > .layout-update:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; border-radius: var(--radius-small, 3px); }
+.layout-tabs > .layout-tab-pin { flex: none; }
