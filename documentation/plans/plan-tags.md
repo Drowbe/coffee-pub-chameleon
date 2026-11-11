@@ -30,6 +30,7 @@ Thomas, 2026-11-11.
 6. **One rule for every module:** 8 tags to an object, any letter (plus digits and dashes), 24 characters, 200 to a list. It replaces Research's own tags and the objects format's 5-tag ASCII rule, with no compatibility layer and no migration. *Reason:* one rule, and the product is unreleased.
 7. **A word that matches no tag is dropped, and the person is told** ("skipped: not a tag in this space"). Nothing creates tags behind anyone's back: only a person, in the picker, makes a tag. *Reason:* a list nobody asked to grow stays clean.
 8. **Rename, recolour and delete live on the space's Manage page, in a Tags section.** *Reason:* Manage is where a space is configured.
+   **Changed in the build, pending Thomas's nod:** the Tags section is in Set up's Settings tab, for the owner, moderators and the admin, not on Manage, because a moderator cannot open Manage and decision 4 gives moderators rename and delete. Edits there take effect at once, not as a draft until Save, and the section says so. Tag colours are the theme's eight tints.
 9. **The Assistant may see the names of the space's tags, nothing else** (no ids, no colours, no counts), and only for objects the person already shares with it. *Reason:* it helps it find things without widening what it can read.
 10. **When an object moves to another space, its tags are re-created by name in the new space:** an existing tag of the same name there is used, else one is made with the same colour. Only when the person has the create right (edit) in the destination space. The 200-per-list and 8-per-object limits still apply; anything that does not fit is dropped and the person is told. Names are re-validated by the one rule. It runs on the server and is never trusted from the client. *Reason:* a moved object keeps its meaning without leaking ids across spaces.
 11. **A module opts in to tags in its manifest** (`"tags": true`); there is no owner approval step. *Reason:* a tag list is small and the create right is already checked per module.
@@ -96,7 +97,7 @@ Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (c
 Waits for Thomas's go.
 
 1. **Server storage and validation:** `server/tags.js`, the routes, the permission, the stream event, export, backup and space erase, `tools/check-tags.mjs`. Owner: server-development. Held for an independent read (core).
-2. **SDK `host.tags`:** the bridge, picker, chip, tone tokens, design system entry, and the Tags section on the space's Manage page for rename, recolour and delete. Owner: experience-design; server-development adds the manifest flag and its check.
+2. **SDK `host.tags`:** the bridge, picker, chip, tone tokens, design system entry, and the Tags section for rename, recolour and delete (in Set up's Settings tab, pending Thomas's nod; decision 8). Owner: experience-design; server-development adds the manifest flag and its check.
 3. **Documents:** the field, chips, picker, filter and search. Owner: experience-design. The first visible result.
 4. **Summary field `tags`, search and the Assistant:** `SUMMARY_FIELDS`, search by tag, `SENT_FIELDS`. Owner: server-development. Names only, and only for objects the person shares with it (decision 9). Held for a security read, since it is new text the model sees.
 5. **Objects format change:** the one rule in `server/object-format.js`, the prompt text and `check-object-format`; a word with no tag is dropped and reported, never created. Owner: server-development.
@@ -124,4 +125,4 @@ None. Decisions 7 to 12 closed the earlier ones.
 
 ## Not decided
 
-The tone names and how many; the exact words on screen beyond those above; the stored file's name; whether a guest sees chips on a shared object; whether the picker offers Suggest tags outside Research; which feature first moves an object between spaces.
+Whether the Tags section stays in Set up's Settings tab or moves to Manage (decision 8); the exact words on screen beyond those above; the stored file's name; whether a guest sees chips on a shared object; whether the picker offers Suggest tags outside Research; which feature first moves an object between spaces.
