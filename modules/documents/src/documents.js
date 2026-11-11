@@ -422,6 +422,44 @@
         if (sheet.hasAttribute('data-narrow')) { sheet.removeAttribute('data-narrow'); if (id === 'read') schedulePaginate(); }
       }
     }
+    sizeEditSoon();
+  }
+  // The editing sheet has no frame of its own: the text box is as tall as its text (scrollHeight, not the text) and the view scrolls.
+  // In Paper the sheet is a whole number of pages tall (at least one). Not real page breaks yet.
+  let sizeQueued = false;
+  function sizeEditSoon() {
+    if (sizeQueued) return;
+    sizeQueued = true;
+    requestAnimationFrame(() => { sizeQueued = false; sizeEdit(); });
+  }
+  function sizeEdit() {
+    const box = $('editor');
+    const sheet = box.querySelector('.sheet-edit');
+    if (box.hidden || !sheet) return;
+    const top = box.scrollTop; // measuring collapses the box for a moment; the view must not lose its place
+    sheet.style.minHeight = '';
+    const ta = $('edit-text');
+    if (!ta.hidden) {
+      ta.style.flexGrow = '0'; ta.style.height = 'auto';
+      const h = ta.scrollHeight;
+      ta.style.height = `${h}px`; ta.style.flexGrow = '';
+    }
+    if (sheet.dataset.layout === 'paper' && !sheet.hasAttribute('data-narrow')) {
+      const ph = dlPageGeometry(sheet.dataset.size).h;
+      const keep = sheet.style.flexGrow; sheet.style.flexGrow = '0';
+      const h = sheet.offsetHeight;
+      sheet.style.flexGrow = keep;
+      sheet.style.minHeight = `${Math.max(1, Math.ceil((h - 1) / ph)) * ph}px`;
+    }
+    box.scrollTop = top;
+  }
+  // typing at the end of the text box: keep the caret in view (the view scrolls, not the box); the rich editor scrolls its own selection
+  function keepCaret() {
+    const ta = $('edit-text');
+    if (ta.hidden || ta.getRootNode().activeElement !== ta || ta.selectionEnd !== ta.textLength) return;
+    sizeEdit();
+    const r = ta.getBoundingClientRect(); const v = $('editor').getBoundingClientRect();
+    if (r.bottom > v.bottom - 24) $('editor').scrollTop += r.bottom - v.bottom + 24;
   }
   function chooseLayout(v) {
     if (!ed || ed.lost) return;
@@ -781,12 +819,15 @@
   function mountEditor(text) {
     const ta = $('edit-text');
     const box = $('edit-rich');
+    $('editor').scrollTop = 0; // a new document starts at its top, not where the last one was scrolled to
     ta.hidden = rich; box.hidden = !rich;
     ed.editor = rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
     ed.editor.onChange(typed);
+    ed.editor.onChange(() => { sizeEditSoon(); keepCaret(); });
     if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
     if (ed.editor.onLink) ed.editor.onLink(() => linkWith(null));
     ed.editor.setText(text); ed.editor.setReadOnly(Boolean(ed.lost));
+    sizeEditSoon();
     ed.inexact = false;
     paintActive();
   }
@@ -1076,7 +1117,8 @@
     renderStatus();
   }
   // A Paper sheet at Fit width follows the window's width.
-  if (typeof ResizeObserver === 'function') { const watch = new ResizeObserver(() => fitPaper()); watch.observe($('read')); watch.observe($('editor')); }
+  if (typeof ResizeObserver === 'function') { const watch = new ResizeObserver(() => fitPaper()); watch.observe($('read')); watch.observe($('editor')); const grown = new ResizeObserver(() => sizeEditSoon()); grown.observe($('edit-rich')); }
+  if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => sizeEditSoon()).catch(() => {});
   const viewShown = () => Boolean(ed ? !ed.lost : openId);
   function zoomMenu(e) {
     if (!viewShown()) return;
