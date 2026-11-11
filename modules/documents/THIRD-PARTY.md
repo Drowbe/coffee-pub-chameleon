@@ -7,7 +7,7 @@ Everything here is free for commercial use and redistribution. Nothing is loaded
 | Piece | Where | Licence | Source |
 |---|---|---|---|
 | marked 18.2.0 (Markdown lexer only; its HTML output is never used) | `src/documents-lib-0-marked.js` (the package's `lib/marked.umd.js` with its `sourceMappingURL` comment line removed; its licence header is kept at the top). SHA-256 of the package file: `392f4df89533b50f1dadff3f6dc0952350bd39c9f17def50a0374ef47d6147ef` | MIT (`vendor/LICENSE.marked`, copied from the package) | https://github.com/markedjs/marked, npm `marked@18.2.0` |
-| ProseMirror (the rich editor's document model, editing and Markdown writer): 16 packages in one file. Not wired into the page yet | `src/documents-lib-0-prosemirror.js` (built once with esbuild from the npm packages; the recipe is below). 282,661 bytes, 90,386 gzipped. Its header holds each package's copyright line and the MIT text | MIT, each package (`vendor/LICENSE.<package>`, each copied from its package) | npm, the versions in the table below |
+| ProseMirror (the rich editor's document model, editing and Markdown writer): 16 packages in one file. Used by the opt-in Rich text editor | `src/documents-lib-0-prosemirror.js` (built once with esbuild from the npm packages; the recipe is below). 282,661 bytes, 90,386 gzipped. Its header holds each package's copyright line and the MIT text | MIT, each package (`vendor/LICENSE.<package>`, each copied from its package) | npm, the versions in the table below |
 
 | Name | Version | SPDX | File | SHA-256 | Licence file | Source |
 |---|---|---|---|---|---|---|
