@@ -140,7 +140,10 @@ test('the Set up panel: Save and Cancel are the panel\'s bar, not the top bar\'s
   const save = between(setup, '  async function done() {', '  return { el, open');
   assert.ok(save.indexOf("api('PATCH'") < save.indexOf("api('PUT', `/api/spaces/") && save.indexOf("api('PUT', `/api/spaces/") < save.indexOf("api('PUT', `/api/modules/"), 'in order: the space, the picture, the module settings');
   assert.match(save, /\} catch \(err\) \{\n\s*if \(saved\.length && typeof opts\.onSaved === 'function'\) opts\.onSaved\(answered, saved\);\n\s*return refused\(saved, `module:\$\{change\.id\}`, err\.message\);/, 'a refused module stops the save and says what did save');
-  assert.equal((setup.match(/api\('PATCH'/g) || []).length, 1, 'one PATCH, from Save');
+  assert.equal((setup.match(/api\('PATCH', `/g) || []).length, 1, 'one PATCH of the space, from Save');
+  // The one other thing that goes at once: a space's shared tags, renamed, recoloured and deleted by the people the Roles grid lets (the
+  // Tags section says so in its own line; plan-tags.md, decisions 4 and 8). Through the server's tag routes only; none is made here.
+  assert.deepEqual([...setup.matchAll(/api\('(PATCH|PUT|POST|DELETE)', tagsPath\(/g)].map((m) => m[1]).sort(), ['DELETE', 'PATCH'], 'the tag requests: rename or recolour, and delete');
   assert.match(setup, /function cancel\(\) \{\s*\n\s*if \(!state \|\| state\.saving\) return;\s*\n\s*state\.bar\.requestCancel\(\);/, 'Cancel asks when dirty');
   const outside = between(space, '// --- Set up (space-setup.js)', '// --- end Set up ---');
   assert.ok(!/pointerdown|mousedown|click-?outside/i.test(outside.replace(/\/\/[^\n]*/g, '')), 'no press outside closes the panel');

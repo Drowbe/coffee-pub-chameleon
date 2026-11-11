@@ -1058,6 +1058,28 @@
   --chip-glyph: color-mix(in srgb, var(--chip-tone, var(--text-muted)) 45%, var(--text-primary));
 }
 
+/* A shared tag (host.tags; plan-tags.md): its colour is one of the theme's eight tints by name, drawn as the tint fill of a tag with
+   data-tone="custom" (a plain tag is "neutral"). Never a free colour, so the light and dark themes stay right. */
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="gold"] { --chip-tone: var(--tint-gold); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="blue"] { --chip-tone: var(--tint-blue); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="green"] { --chip-tone: var(--tint-green); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="teal"] { --chip-tone: var(--tint-teal); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="purple"] { --chip-tone: var(--tint-purple); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="red"] { --chip-tone: var(--tint-red); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="orange"] { --chip-tone: var(--tint-orange); }
+:is(.sdk-chip-tag, .sdk-chip-dot)[data-tag-tone="pink"] { --chip-tone: var(--tint-pink); }
+
+.sdk-tag-picker { min-width: 220px; gap: var(--space-1); }
+.sdk-tag-picker > .sdk-search { flex: none; }
+.sdk-tag-picker .sdk-search > input { padding-left: var(--space-3); } /* no magnifier here: the field is a plain one */
+.sdk-tag-picker > .sdk-tag-picker-list { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.sdk-tag-picker-list > p { margin: 0; padding: var(--space-2) var(--pad-menu-item-x); color: var(--text-muted); }
+.sdk-tag-picker > .sdk-tag-picker-status { flex: none; margin: 0; padding: var(--space-1) var(--pad-menu-item-x); }
+.sdk-tag-picker-status[hidden] { display: none; }
+/* A ticked tag: the selected fill and the accent-mix text, as a current row in a menu. */
+.sdk-tag-picker .sdk-menu-item[aria-checked="true"] { --menu-ring: var(--menu-current-fg); background: var(--fill-selected); color: var(--menu-current-fg); }
+.sdk-tag-picker .sdk-menu-item[aria-checked="true"]:is(:hover, :focus-visible) { background: var(--menu-current-hover); }
+
 /* A choice chip never takes the tint as its fill (the selected fill must stay the one clear signal): its tone shows on its icon or dot. */
 :is(.sdk-chip, .sdk-chip-people)[data-tone] { --chip-glyph: var(--chip-tone, var(--text-muted)); }
 
