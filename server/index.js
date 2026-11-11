@@ -83,6 +83,7 @@ const { migrateHost, backupRefusal, refusedAtStartup, refusalSentence, Migration
 const callNames = require('./call-names');
 const { mountOldLinks } = require('./old-links');
 const { currencyCodes } = require('./currencies');
+const agreementsLib = require('./agreements');
 
 const {
   PORT = 3000,
@@ -196,6 +197,13 @@ const {
   // can't start another upload until the oldest of those is that long ago.
   VAULT_SLOW_CUTOFFS = '',
   VAULT_SLOW_MINUTES = '',
+  // Agreements (documentation/plans/plan-access-bundle.md, step 1; server/agreements.js): the paths of the terms of
+  // service and the beta NDA, two text files (plain or Markdown, UTF-8, at most 256 KB) on the server, read once at
+  // start. With either set, every account but the host admin's stand-in agrees to the current texts before it can use
+  // anything; with neither set nobody is asked and nothing changes. One that is set and cannot be read, is empty or is
+  // too big stops the start.
+  TERMS_FILE = '',
+  NDA_FILE = '',
 } = process.env;
 // The product's own name -- configuration, never code: PRODUCT_NAME, or the default when it is unset, empty or only
 // spaces. One rule, productName() in server/product-name.js, for everything the server answers and says.
@@ -387,6 +395,19 @@ const PRODUCT_SITE = (() => {
   }
   return url.href;
 })();
+// The texts people agree to before entering (TERMS_FILE, NDA_FILE; server/agreements.js): read once, here, before
+// anything is written. { required, docs: [{ id, title, version, text }], versions }; with neither set, required is false
+// and nobody is asked. A file that is set and cannot be used stops the start with one sentence.
+const agreementTexts = (() => {
+  try {
+    return agreementsLib.readTexts({ TERMS_FILE, NDA_FILE });
+  } catch (err) {
+    if (!(err instanceof agreementsLib.AgreementTextError)) throw err;
+    console.error(err.message);
+    return process.exit(1);
+  }
+})();
+if (agreementTexts.required) console.log(`Agreements are on: ${agreementTexts.docs.map((d) => `${d.title} (version ${d.version})`).join(', ')}. Every account agrees before entering${BASE_DOMAIN ? ", except the host admin's" : ''}.`);
 // The product host's own label may be an existing environment's slug (the product pages would hide it): read host.json
 // as it is, without opening the registry, so the start that stops writes nothing.
 if (BASE_DOMAIN && domains.productLabel) {
@@ -2343,7 +2364,24 @@ hostRouter.post('/api/host/environments/:slug/template/apply', requireHostAdmin,
 // admin's own stand-in user in that environment. The stand-in needs no password: the session is signed here with the
 // environment's own secret, as a sign-in would, and lives only for this one run. It changes no environment-wide setting.
 // Answers the loader's report, with the demo people's one-time passwords shown once (never logged, never kept).
-const demoRuns = new Set();
+// demoRuns: the runs in progress, environment slug -> that run's mark: 32 random bytes made here for this one run, sent
+// by the loader on each of its own requests (DEMO_RUN_HEADER), kept in memory only and forgotten when the run ends. The
+// agreement gate (agreementGate, below) lets a request through that carries the mark of the run in progress in its own
+// environment: the loader writes as the demo people, who are characters, not people who can agree. Nothing a client
+// sends can stand for it: the mark is never answered, logged or stored, and no account, name or field carries it. A
+// person who later signs in as a demo person is asked like anyone else.
+const demoRuns = new Map();
+const DEMO_RUN_HEADER = 'x-demo-run';
+function demoRunRequest(req) {
+  const mark = demoRuns.get(currentEnvironment().slug || '');
+  const given = req.get(DEMO_RUN_HEADER);
+  if (!mark || typeof given !== 'string') return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(mark);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  // The loader asks this server from this server (loopbackFetch): the connection's own address, never a header's.
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+}
 const DEMO_STANDIN_LOGIN = 'host-demo';
 // fetch cannot set the Host header, and the environment is chosen by it: so the loader's requests go through node's http.
 function loopbackFetch(url, { method = 'GET', headers = {}, body } = {}) {
@@ -2382,12 +2420,13 @@ hostRouter.post('/api/host/environments/:slug/demo', requireHostAdmin, async (re
     let user = env.store.userByLogin(DEMO_STANDIN_LOGIN);
     if (user && (!user.hostAdmin || user.passwordHash)) throw new HostError(`A person called "${DEMO_STANDIN_LOGIN}" already has an account in this ${envWord('environment')}, so the demo cannot be added. Rename or remove that account first.`, 409);
     if (!user) user = env.store.addUser({ login: DEMO_STANDIN_LOGIN, displayName: 'Host (demo)', role: 'admin', passwordHash: null, hostAdmin: true });
-    demoRuns.add(slug);
+    const mark = crypto.randomBytes(32).toString('base64url');
+    demoRuns.set(slug, mark);
     let report;
     try {
       report = await demoLoader.loadDemo({
         base: `http://127.0.0.1:${listener.address().port}`,
-        headers: { host: `${slug}.${BASE_DOMAIN}` },
+        headers: { host: `${slug}.${BASE_DOMAIN}`, [DEMO_RUN_HEADER]: mark },
         templateId: usedTemplate,
         today: new Date().toISOString().slice(0, 10),
         session: { cookie: `${auth.COOKIE}=${auth.issueSession(env.store.sessionSecret, user)}` },
@@ -3043,6 +3082,60 @@ if (BASE_DOMAIN) {
 } else {
   app.use((req, res, next) => envContext.run(environmentFor(DEFAULT_SLUG), next));
 }
+
+// --- the agreement gate (documentation/plans/plan-access-bundle.md, step 1) ------------------------------------------
+// One place, ahead of every route of an environment: a request that carries an account's session (the cookie, or the
+// Studio app's bearer token) whose account has not agreed to the current version of every text gets nothing but what
+// is named here. It asks on every request, so it holds for a session opened before a text changed.
+//   Never asked:  a request with no account session (signed out, the access key, a guest link: an account's rights are
+//                 not in play, and each route still asks for what it needs), the host admin's stand-in
+//                 (hostAdmin, which signs in through the host), and the demo loader's own requests while the host
+//                 console adds the demo space (demoRunRequest: the demo people are characters). With no text set,
+//                 nobody.
+//   Still open:   reading the texts and agreeing (GET /api/agreements, POST /api/agreements/accept), signing out
+//                 (POST /api/logout, GET /logout), branding (GET /api/branding), the agreement page (GET /agree), and
+//                 the files that page is drawn with, which hold nothing of anyone's and are served the same to a person
+//                 who is signed out: the scripts and stylesheets at the root of the pages' folder, /fa/, /fonts/,
+//                 /assets/, /sdk/, /lib/, /theme.css, the site's icon and sign-in background, and the web app manifest.
+//                 Also the first-password page (GET /login/first-password, a hosted install's): it is never
+//                 redirected, since a redirect would carry its one-time token on (plan-first-password.md). The page
+//                 holds nothing; what it asks the API is refused as everything else is.
+//   Everything else: 403 { error, agreementRequired: true }; a page a browser asks for (GET, Accept: text/html) is
+//                 redirected to /agree?next=<where it was going>, or told in a frame.
+// The paths are compared as the router matches them (any case, a trailing slash), and anything not named is refused,
+// so a path written another way is refused too.
+const AGREE_FIRST = 'Agree to the terms first.';
+const AGREEMENT_OPEN = new Set([
+  'GET /api/agreements', 'POST /api/agreements/accept', 'POST /api/logout', 'GET /api/branding',
+  'GET /agree', 'GET /logout', 'GET /login/first-password',
+  'GET /theme.css', 'GET /img/site/icon', 'GET /img/site/background', 'GET /favicon.ico', 'GET /manifest.webmanifest',
+]);
+// A file in one of the open folders, or a script or stylesheet at the root: plain names only, so nothing with "..",
+// "%", "\" or a doubled "/" in it is ever let through to be read some other way.
+const AGREEMENT_OPEN_FILE = /^\/(?:(?:fa|fonts|assets|sdk|lib)\/(?:[a-z0-9_@][a-z0-9_@.-]*\/)*[a-z0-9_@][a-z0-9_@.-]*|[a-z0-9][a-z0-9._-]*\.(?:js|mjs|css))$/;
+const DOT_SEGMENT = /(?:^|\/)\.\.?(?:\/|$)/;
+// The host admin's stand-in: an account an environment keeps for a host admin signed in there (resolveLoginUser, and the
+// demo run's own). It has no sign-in of its own, so nothing inside an environment can become one.
+const agreementExempt = (user) => user.hostAdmin === true;
+// Whether this account still has to agree before it may go on.
+const mustAgree = (user) => agreementTexts.required && !agreementExempt(user) && !agreementsLib.hasAgreed(user.agreed, agreementTexts.docs);
+function agreementGate(req, res, next) {
+  if (!agreementTexts.required || !envContext.getStore()) return next(); // no text set, or no environment (the product host)
+  const user = currentUser(req);
+  if (!user || !mustAgree(user) || demoRunRequest(req)) return next();
+  const reading = req.method === 'GET' || req.method === 'HEAD';
+  const p = framingPath(req.path);
+  if (AGREEMENT_OPEN.has(`${reading ? 'GET' : req.method} ${p}`)) return next();
+  if (reading && AGREEMENT_OPEN_FILE.test(p) && !DOT_SEGMENT.test(p)) return next();
+  res.set('Cache-Control', 'no-store');
+  if (reading && !p.startsWith('/api/') && /\btext\/html\b/i.test(req.get('accept') || '')) {
+    if (framedRefusal(req, res, 403, AGREE_FIRST)) return undefined;
+    return res.redirect(`/agree?next=${encodeURIComponent(auth.safeNext(req.originalUrl))}`);
+  }
+  return res.status(403).json({ error: AGREE_FIRST, agreementRequired: true });
+}
+app.use(agreementGate);
+
 app.get('/api/product', productInfo);
 app.get('/api/product/environment', productEnvironment);
 app.get('/api/product/address', productAddress);
@@ -3107,7 +3200,7 @@ const NOT_FRAMED = { 'Content-Security-Policy': "frame-ancestors 'none'", 'X-Fra
 // /space.html, never framed, as / is.
 const FRAMED_HERE = { 'Content-Security-Policy': "frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN' };
 const FRAMED_HERE_PATHS = new Set([
-  '/profile', '/admin', '/login', '/login/verify', '/login/enrol', '/register',
+  '/profile', '/admin', '/login', '/login/verify', '/login/enrol', '/register', '/agree',
   '/profile.html', '/admin.html', '/module-config.html', '/login.html', '/login-step.html', '/register.html', '/module.html', '/destination.html',
   ...(BASE_DOMAIN ? ['/login/first-password'] : []), // a hosted install's only, and never by its file name (ROUTE_ONLY_FILES; plan-first-password.md)
   ...destinations.DESTINATIONS.map((d) => d.path),
@@ -3145,8 +3238,9 @@ app.get('/guest/:token', (_req, res) => {
   res.set(NOT_FRAMED).sendFile(page('space.html'));
 });
 
+// Someone already signed in goes on to `next`, kept to a path on this site (auth.safeNext), here and on the two step pages.
 app.get('/login', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login.html'));
 });
 
@@ -3154,11 +3248,11 @@ app.get('/login', (req, res) => {
 // /login/verify for an account with a factor already, /login/enrol for one the policy requires but has none
 // yet. Already fully signed in (a real session, not just a pending one) redirects away, same as /login.
 app.get('/login/verify', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login-step.html'));
 });
 app.get('/login/enrol', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login-step.html'));
 });
 // A new owner's first-password page (plan-first-password.md), on a hosted install only. It never redirects, signed in
@@ -3168,6 +3262,20 @@ app.get('/login/first-password', (req, res, next) => {
   if (!BASE_DOMAIN) return next();
   res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   res.sendFile(page('login-first-password.html'), (err) => { if (err && !res.headersSent) res.status(404).type('text').send('not found'); });
+});
+
+// The agreement step's page (plan-access-bundle.md): the step page's panel, which reads the texts from GET
+// /api/agreements and agrees with POST /api/agreements/accept. Only an account that still has to agree stays here:
+// signed out goes to sign in, and anyone with nothing left to agree to goes on to `next`. With no text set there is no
+// such page.
+app.get('/agree', (req, res, next) => {
+  if (!agreementTexts.required) return next();
+  const to = auth.safeNext(req.query.next);
+  const user = currentUser(req);
+  res.set('Cache-Control', 'no-store');
+  if (!user) return res.redirect(to === '/' ? '/login' : `/login?next=${encodeURIComponent(to)}`);
+  if (!mustAgree(user)) return res.redirect(to);
+  res.sendFile(page('login-step.html'));
 });
 
 // Self sign-up (only does anything once an admin turns it on in Settings)
@@ -3411,6 +3519,36 @@ mountStudioLogo(app, STUDIO);
 app.get('/api/branding', (_req, res) => res.json(branding()));
 
 app.get('/api/config', (req, res) => res.json({ livekitUrl: HAS_CALL_SERVICE ? livekitWsUrl(req) : null, ...branding() }));
+
+// Agreements (documentation/plans/plan-access-bundle.md, step 1; the gate is agreementGate, above).
+// The texts, for anyone: { required, docs: [{ id, title, version, text }] }. `docs` holds the texts this server was
+// started with and nothing else (no path is read from a request); the text is plain text or Markdown, for a page to
+// draw through the safe reader, never as HTML. `required`: whether the one asking still has to agree, so true for
+// anyone signed out while a text is set, and false for an account that has agreed or is never asked.
+app.get('/api/agreements', (req, res) => {
+  const user = currentUser(req);
+  res.set('Cache-Control', 'no-store').json({ required: user ? mustAgree(user) : agreementTexts.required, docs: agreementTexts.docs });
+});
+// Agreeing: { versions: { <text id>: "<version>" } }, for the signed-in account and nobody else (the body names no
+// person, and one it names is not read). The versions must be exactly the current ones, every text and nothing more:
+// 409 otherwise, so nobody agrees to a text they were not shown. A person gets 20 tries in 15 minutes, in their own
+// environment. With no text set the route does not exist.
+const AGREEMENT_BODY_BYTES = 1024;
+const agreementLimiter = new auth.LoginLimiter(20, 15 * 60000);
+app.post('/api/agreements/accept', (req, res, next) => {
+  if (!agreementTexts.required) return next();
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: 'sign in first' });
+  const who = `${currentEnvironment().slug || ''}|${user.key}`;
+  if (agreementLimiter.blocked(who)) return res.status(429).json({ error: 'too many attempts, try again in a few minutes' });
+  agreementLimiter.fail(who);
+  if (req.rawBody && req.rawBody.length > AGREEMENT_BODY_BYTES) return res.status(413).json({ error: 'that request is over 1 KB' });
+  const given = req.body?.versions;
+  if (!given || typeof given !== 'object' || Array.isArray(given)) return res.status(400).json({ error: 'Send the version of each text you agree to.' });
+  if (!agreementsLib.versionsMatch(given, agreementTexts.docs)) return res.status(409).json({ error: 'The text has changed. Read it again, then agree.' });
+  const fresh = store.recordAgreement(user.key, agreementTexts.docs);
+  res.set('Cache-Control', 'no-store').json({ ok: true, agreed: fresh.agreed.filter((a) => agreementTexts.versions[a.doc] === a.version) });
+});
 
 app.post('/api/login', (req, res) => {
   const ip = req.ip || 'unknown';

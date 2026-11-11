@@ -54,6 +54,9 @@ services:
       PRODUCT_NAME: "Coffee Pub Chameleon"
       # CONTACT_EMAIL: "you@example.com" # optional: where the start page's "ask" writes to
       # PRODUCT_SITE_URL: "https://www.example.com/collaborator" # optional: the start page's "About" link to the product's page on your website (an http or https address)
+      # Agreements: with either set, every account agrees to the text (plain or Markdown, at most 256 KB) before entering.
+      # TERMS_FILE: "/app/data/terms.md" # the terms of service
+      # NDA_FILE: "/app/data/nda.md" # the beta NDA
       # The About page's studio card; each is optional, and the card shows only what is set. Links are http or https (Contact may be mailto:).
       # STUDIO_NAME: "Coffee Pub Studio"
       # STUDIO_LOGO_FILE: "/app/data/studio-logo.svg" # a png, jpg, webp, svg or gif of at most 512 KB, for light themes

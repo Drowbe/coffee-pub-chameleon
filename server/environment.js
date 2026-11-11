@@ -41,6 +41,7 @@ const { ModuleLive } = require('./module-live');
 const { fetchCalendar } = require('./link-preview');
 const auth = require('./auth');
 const { migrateEnvironment } = require('./migrate-names');
+const { GuestAgreements } = require('./agreements');
 
 // The same read-access guard index.js's route handlers use (its own moduleCan), needed here only for
 // ModuleHooks' resolveRecipients. Duplicated rather than shared, since it is three lines and pure, and this file
@@ -105,6 +106,9 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   const limiter = new auth.LoginLimiter();
   const moduleLimits = new ModuleLimits();
+  // Guests' agreements to the host's texts (server/agreements.js): this environment's own agreements.json, read now
+  // when it is there and made only when a guest first agrees.
+  const guestAgreements = new GuestAgreements(dataDir, { log });
 
   if (admin) {
     const login = admin.login || 'admin';
@@ -278,7 +282,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
     slug, dataDir,
     store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, tags, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
     geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, moduleLive, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
-    moduleActivity, noteActivity, saveActivity, externalCalendars,
+    moduleActivity, noteActivity, saveActivity, externalCalendars, guestAgreements,
   };
 }
 

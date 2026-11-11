@@ -6,7 +6,8 @@
  * rights and the roles an account can hold, and that the Studio alias is gone (step 10).
  * Last, the server's own settings a person picks from a list: the currency is a known ISO 4217 code (GitHub #4).
  * Also: the per-address limits (sign-in, sign-up, the product page's address lookup) count the real address, and after
- * signing in the pages go to `next` only when it is a path on this site (public/next-address.js).
+ * signing in the pages and the server go to `next` only when it is a path on this site (public/next-address.js,
+ * auth.safeNext): one table of hostile addresses through both, and through GET /login, /login/verify and /login/enrol live.
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -390,19 +391,46 @@ await withServer({ BASE_DOMAIN: 'example.test', SIGNUP: 'on' }, async (base) => 
   n += 1;
 });
 
-// Where signing in goes next (public/next-address.js, used by public/login.js and public/login-step.js): only a path on
-// this site. An address a browser reads as another site ("//x", "/\x", a tab or line break inside "//") falls back to
-// "/"; a path with its query is kept. Run from the page's own source; both pages must use it for every `next`.
-test('after signing in, `next` is only ever a path on this site', () => {
+// Where signing in or agreeing goes next: only ever a path on this site, on the pages (sameSiteNext in
+// public/next-address.js, run here from its own source; every page uses it for `next`) and on the server (safeNext in
+// server/auth.js: GET /login, /login/verify and /login/enrol for someone already signed in). One table of addresses a
+// browser reads as another site, or that are no path at all: each comes back as "/", from both, and from the server live.
+const HOSTILE_NEXT = [
+  // another site, written plainly
+  '//evil.example', '///evil.example', '//evil.example/login', '//evil.example:443/x', '//user@evil.example', '/\\evil.example', '/\\\\evil', '/\\/evil.example', '\\\\evil.example', '\\/evil.example',
+  'https://evil.example', 'http://evil.example/login', 'HTTPS://EVIL.EXAMPLE', 'https:evil.example', 'https:/evil.example', 'ftp://evil.example',
+  // one "/" as written, another site once a browser has resolved the dots
+  '/.//evil.example', '/./\\evil.example', '/..//evil.example', '/../..//evil.example', '/a/..//evil.example', '/a/../\\evil.example', '/a/b/../..//evil.example',
+  '/%2e//evil.example', '/%2E%2e//evil.example', '/a/%2e%2e//evil.example', '/.;/..//evil.example',
+  // the same with the slash or backslash percent-encoded
+  '/%2f%2fevil.example', '/%2F%2Fevil.example', '/%2f/evil.example', '/%2fevil.example', '/%5cevil.example', '/%5C%5Cevil.example', '/%5c/evil.example',
+  '/./%2f%2fevil.example', '/a/../%2f%2fevil.example', '/a/../%5cevil.example',
+  // tabs, line ends and other control characters, which a browser drops
+  '/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/\r\n/evil.example', '\t//evil.example', '/\t\\evil.example', '/x\ty', '/\u0000/evil.example', '/\u001f/evil.example', '/x\u007f',
+  // not a path at all
+  'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:x', 'mailto:someone@evil.example',
+  'blob:https://evil.example/x', 'evil.example', 'spaces/x', ' //evil.example', ' /profile', '?next=//evil.example', '#//evil.example', '@evil.example', '.', '..', '',
+  // too long to be one of ours
+  `/${'a'.repeat(2001)}`,
+];
+// Paths on this site, kept as they are (the server leaves a fragment off: it never sees one).
+const SAME_SITE_NEXT = ['/', '/admin', '/spaces/x?y=1', '/login/verify?next=%2Fspaces', '/agree?next=%2Fprofile', '/a%20b', '/@evil.example', '/x//y', '/x/%2f%2fy', '/profile?to=//evil.example'];
+const onThisSite = (to, origin) => /^\/(?![/\\])/.test(to) && new URL(to, origin).origin === origin;
+
+test('after signing in, `next` is only ever a path on this site: the pages\' function, from its own source', () => {
   const pub = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8');
   const fn = /^export function sameSiteNext\([\s\S]*?^}$/m.exec(pub('next-address.js'));
   assert.ok(fn, 'sameSiteNext in public/next-address.js');
   const sameSiteNext = new Function(`${fn[0].replace(/^export /, '')}; return sameSiteNext;`)();
   const origin = 'https://acme.example.com';
-  for (const bad of ['//evil.example', '/\\evil.example', '/\\\\evil', 'https://evil.example', '//evil.example/login', '/\t/evil.example', '/\n/evil.example', '\\\\evil.example', 'javascript:alert(1)', 'spaces/x', '', null, undefined]) {
-    assert.equal(sameSiteNext(bad, origin), '/', JSON.stringify(bad));
+  for (const bad of [...HOSTILE_NEXT, null, undefined]) assert.equal(sameSiteNext(bad, origin), '/', JSON.stringify(bad));
+  for (const good of [...SAME_SITE_NEXT, '/spaces/x?y=1#z']) assert.equal(sameSiteNext(good, origin), good, good);
+  assert.equal(sameSiteNext('/a/../b?c=1#d', origin), '/b?c=1#d', 'answered as the browser resolves it');
+  // Whatever it is given, what it answers is on this site.
+  for (const any of [...HOSTILE_NEXT, ...SAME_SITE_NEXT, ...HOSTILE_NEXT.map((h) => `/x/..${h}`), ...HOSTILE_NEXT.map((h) => `/${h}`)]) {
+    assert.ok(onThisSite(sameSiteNext(any, origin), origin), `${JSON.stringify(any)} -> ${sameSiteNext(any, origin)}`);
   }
-  for (const good of ['/', '/spaces/x?y=1', '/spaces/x?y=1#z', '/admin', '/login/verify?next=%2Fspaces']) assert.equal(sameSiteNext(good, origin), good, good);
+  // Every page that reads `next` reads it through that one function, once.
   for (const page of ['login.js', 'login-step.js']) {
     const js = pub(page);
     assert.ok(js.includes("import { sameSiteNext } from '/next-address.js';"), `${page} does not import sameSiteNext`);
@@ -410,6 +438,56 @@ test('after signing in, `next` is only ever a path on this site', () => {
     assert.ok(js.includes("sameSiteNext(new URLSearchParams(location.search).get('next'))"), `${page} reads next without sameSiteNext`);
     assert.ok(!/startsWith\('\/'\)/.test(js), `${page} still checks next by its first character alone`);
   }
+  for (const f of fs.readdirSync(path.join(ROOT, 'public')).filter((name) => name.endsWith('.js') && name !== 'next-address.js')) {
+    const js = pub(f);
+    if (/\.get\('next'\)/.test(js)) assert.ok(js.includes("import { sameSiteNext } from '/next-address.js';"), `${f} reads next without sameSiteNext`);
+  }
+});
+
+test('the server\'s twin (auth.safeNext) refuses the same addresses, and anything that is not text', () => {
+  for (const bad of [...HOSTILE_NEXT, null, undefined, 7, true, {}, { a: '/x' }, [], ['/x'], ['//evil.example'], ['/x', '//evil.example']]) assert.equal(auth.safeNext(bad), '/', JSON.stringify(bad));
+  for (const good of SAME_SITE_NEXT) assert.equal(auth.safeNext(good), good, good);
+  assert.equal(auth.safeNext('/spaces/x?y=1#z'), '/spaces/x?y=1');
+  for (const any of [...HOSTILE_NEXT, ...SAME_SITE_NEXT, ...HOSTILE_NEXT.map((h) => `/x/..${h}`), ...HOSTILE_NEXT.map((h) => `/${h}`)]) {
+    assert.ok(onThisSite(auth.safeNext(any), 'https://acme.example.com'), `${JSON.stringify(any)} -> ${auth.safeNext(any)}`);
+  }
+  // The server never sends anyone on by the first character alone.
+  const server = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
+  assert.ok(!/query\.next[^\n]*startsWith\('\/'\)/.test(server), 'server/index.js still checks next by its first character alone');
+  assert.ok(!/res\.redirect\([^\n]*req\.query\.next/.test(server.replace(/auth\.safeNext\(req\.query\.next\)/g, 'SAFE')), 'server/index.js redirects to a next it has not checked');
+});
+
+// The same, live: someone already signed in who opens a sign-in page with a hostile `next` is sent to "/", never off this
+// site; a path on this site is kept; signed out, the page is served and nobody is sent anywhere.
+await withServer({}, async (base) => {
+  const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '192.0.2.77' }, body: JSON.stringify({ login: 'admin', password: 'testpass1234' }) });
+  assert.equal(login.status, 200, 'the admin signs in');
+  const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const open = async (url, signedIn = true) => {
+    const res = await fetch(base + url, { redirect: 'manual', headers: { accept: 'text/html', ...(signedIn ? { cookie } : {}) } });
+    await res.arrayBuffer();
+    return { status: res.status, location: res.headers.get('location') };
+  };
+  for (const route of ['/login', '/login/verify', '/login/enrol', '/Login/', '/LOGIN/VERIFY']) {
+    for (const bad of HOSTILE_NEXT) {
+      const res = await open(`${route}?next=${encodeURIComponent(bad)}`);
+      assert.deepEqual(res, { status: 302, location: '/' }, `${route}?next=${JSON.stringify(bad)} answered ${res.status} ${res.location}`);
+    }
+    // As a person might type or a link might carry them: not encoded, encoded twice, given twice, given as a list.
+    for (const q of ['next=//evil.example', 'next=/.//evil.example', 'next=/%2e//evil.example', 'next=%2F%2Fevil.example', 'next=/%252f%252fevil.example', 'next=/%5Cevil.example', 'next=https://evil.example',
+      'next=/profile&next=//evil.example', 'next=//evil.example&next=/profile', 'next[]=//evil.example', 'next[x]=//evil.example', 'next[]=/profile', 'next=', 'other=//evil.example']) {
+      const res = await open(`${route}?${q}`);
+      assert.deepEqual(res, { status: 302, location: '/' }, `${route}?${q} answered ${res.status} ${res.location}`);
+    }
+    assert.deepEqual(await open(route), { status: 302, location: '/' }, `${route} with no next`);
+    for (const good of SAME_SITE_NEXT) {
+      const res = await open(`${route}?next=${encodeURIComponent(good)}`);
+      assert.deepEqual(res, { status: 302, location: good }, `${route}?next=${good}`);
+    }
+    const out = await open(`${route}?next=${encodeURIComponent('//evil.example')}`, false);
+    assert.deepEqual(out, { status: 200, location: null }, `${route}, signed out: the page, and no redirect`);
+  }
+  n += 1;
 });
 
 test('a limiter does not grow with distinct addresses: expired entries go, and the size is capped', () => {

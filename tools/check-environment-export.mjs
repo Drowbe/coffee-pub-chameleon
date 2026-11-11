@@ -61,6 +61,8 @@ function seededApp(secrets = strong) {
         images: { profile: 'profile.png' }, player: {}, callPrefs: { gain: 120 }, themeMode: 'light', createdAt: '2026-01-01T00:00:00.000Z',
         calendarFeed: feed(),
         externalCalendars: [{ id: 'cal1', name: 'Work', url: `aesgcm$${hex(24)}`, readAt: null, error: null }],
+        // What they agreed to (server/agreements.js): left out of the copy, so everyone is asked again after a restore of it.
+        agreed: [{ doc: 'terms', version: hex(8), at: '2026-01-04T00:00:00.000Z' }],
         spaces: { trip01: { images: { player: 'p.png' }, useDefaultImages: false, permissions: {}, calendarFeed: feed() } },
       },
       // A host admin's stand-in, as a zip a person wrote by hand might give it: a password, a link and a factor of its own.

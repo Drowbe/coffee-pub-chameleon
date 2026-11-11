@@ -20,6 +20,7 @@ const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEF
 // The phase timeline rule, the one copy the pages use too (plan-one-bar.md, step 1).
 const phaseRule = require('../public/phases.js');
 const aiPolicy = require('./ai-policy');
+const { cleanAgreed, hasAgreed } = require('./agreements');
 
 // Image slots. Participant: what the video box shows when the camera is
 // off, plus optional overlays drawn on top while they talk, are muted, are
@@ -952,6 +953,9 @@ class Store {
       // { claim, claimedAt, expiresAt } until the password is set (claim: a random id for that use); only the SHA-256 of the token, never the token. Never on a
       // host admin's stand-in or an account that has a password; left off otherwise.
       ...(cleanFirstPassword(u) ? { firstPassword: cleanFirstPassword(u) } : {}),
+      // What they have agreed to (plan-access-bundle.md, step 1; server/agreements.js): [{ doc, version, at }], one per
+      // text and version; left off while they have agreed to nothing.
+      ...(cleanAgreed(u.agreed).length ? { agreed: cleanAgreed(u.agreed) } : {}),
       createdAt: typeof u.createdAt === 'string' ? u.createdAt : new Date().toISOString(),
     };
   }
@@ -1646,6 +1650,23 @@ class Store {
     if (patch.linkToken !== undefined) draft.linkToken = patch.linkToken || null;
     Object.assign(user, draft);
     if (user.passwordHash) delete user.firstPassword; // a password set any other way ends a first-password link
+    this.save();
+    return user;
+  }
+
+  // --- agreements (plan-access-bundle.md, step 1) -------------------------------------------------------------------
+  // Records that this account agrees to the current version of each of `docs` ([{ id, version }], the server's own
+  // texts, never a request's): one entry per text and version, so agreeing again adds nothing. Only ever added to here;
+  // nothing else writes `agreed`. Returns the account.
+  recordAgreement(key, docs, at = new Date().toISOString()) {
+    const user = this.userByKey(key);
+    if (!user) throw new StoreError('no such user', 404);
+    const had = user.agreed || [];
+    const fresh = docs.filter((d) => !had.some((a) => a.doc === d.id && a.version === d.version));
+    if (!fresh.length) return user;
+    const agreed = cleanAgreed([...had, ...fresh.map((d) => ({ doc: d.id, version: d.version, at }))]);
+    if (!hasAgreed(agreed, docs)) throw new StoreError('that is not one of the texts');
+    user.agreed = agreed;
     this.save();
     return user;
   }
