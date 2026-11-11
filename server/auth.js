@@ -118,6 +118,24 @@ function readPending(secret, token, { env, purpose } = {}) {
   return data; // { u, e, p, t }
 }
 
+// Where a sign-in or the agreement step goes next: a path on this site, or "/". Never another site, however it is
+// written. It must start with one "/" and then neither a second one nor a "\", written out or percent-encoded (a
+// browser reads "//x" and "/\x" as another site, and drops tabs and line ends first, so "/<tab>/x" is "//x"). It is
+// answered as a browser resolves it and checked again in that form: "/.//other.site" starts with one "/" as written and
+// resolves to "//other.site". Anything that is not text is "/". The pages' twin is sameSiteNext in
+// public/next-address.js; tools/check-auth.mjs runs one table of hostile addresses through both.
+const ONE_SLASH = /^\/(?![/\\]|%2f|%5c)/i;
+function safeNext(raw) {
+  if (typeof raw !== 'string' || raw.length > 2000 || /[\u0000-\u001f\u007f]/.test(raw) || !ONE_SLASH.test(raw)) return '/';
+  try {
+    const url = new URL(raw, 'http://here.invalid');
+    const to = `${url.pathname}${url.search}`;
+    return url.origin === 'http://here.invalid' && ONE_SLASH.test(to) ? to : '/';
+  } catch {
+    return '/';
+  }
+}
+
 function parseCookies(header) {
   const out = {};
   for (const part of String(header || '').split(';')) {
@@ -345,6 +363,7 @@ module.exports = {
   oneTimeToken,
   tokenHash,
   parseCookies,
+  safeNext,
   setSessionCookie,
   setPendingCookie,
   clearSessionCookie,
