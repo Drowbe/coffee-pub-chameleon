@@ -22,7 +22,7 @@ const NAMES = ['DL', 'dlCleanText', 'dlTrimBreaks', 'dlCleanLine', 'dlCut', 'dlC
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
-  'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView',
+  'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView', 'DL_EDITVIEWS', 'dlEditViewId', 'dlEditViewIsRich',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
   'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
   'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
@@ -94,6 +94,14 @@ test('list view: only thumbs is thumbs; two options with icons', () => {
   for (const v of ['list', '', null, undefined, 'x', 3, {}]) assert.equal(L.dlCleanListView(v), 'list');
   assert.deepEqual(L.DL_LISTVIEWS.map((o) => o.id), ['list', 'thumbs']);
   assert.ok(L.DL_LISTVIEWS.every((o) => o.icon && o.label));
+});
+test('the editor switch: Markdown first, then Rich text, each with an icon and a word; only rich is rich', () => {
+  assert.deepEqual(L.DL_EDITVIEWS.map((o) => [o.id, o.label, o.icon]), [['markdown', 'Markdown', 'hashtag'], ['rich', 'Rich text', 'align-left']]);
+  assert.equal(L.dlEditViewId(true), 'rich');
+  assert.equal(L.dlEditViewId(false), 'markdown');
+  assert.equal(L.dlEditViewIsRich('rich'), true);
+  for (const v of ['markdown', '', null, undefined, 'x', 1, true, {}]) assert.equal(L.dlEditViewIsRich(v), false);
+  assert.ok(Object.isFrozen(L.DL_EDITVIEWS));
 });
 test('doc record: good kept, unknown dropped', () => {
   assert.deepEqual(L.dlCleanDoc({ ...doc, extra: 1 }), doc);
