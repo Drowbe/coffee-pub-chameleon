@@ -161,6 +161,12 @@
     const i = how === 'next' ? state.i + 1 : how === 'back' ? state.i - 1 : how === 'first' ? 0 : how === 'last' ? n - 1 : state.i;
     return { ...state, i: Math.max(0, Math.min(n - 1, i)) };
   }
+  // The Jump to Frame menu: the frames in presentation order, each by its name (else "Frame N"), the one shown marked.
+  // `titleOf(id)` gives a frame's title. Restart goes to the first (wbPresentGo 'first').
+  function wbPresentMenu(state, titleOf) {
+    if (!state) return [];
+    return state.order.map((id, n) => ({ id, label: wbFrameTitle(titleOf(id)).trim() || `Frame ${n + 1}`, current: n === state.i }));
+  }
   // The frames changed while presenting (someone added, moved or deleted one): the order again; the frame shown stays
   // when it is still there, else the one now in its place (the last when it was past the end). null when none is left.
   // `same`: whether the frame shown is the same one.
