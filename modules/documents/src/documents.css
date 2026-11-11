@@ -171,3 +171,9 @@
 /* the menu of a link (Edit link, Remove link): its heading is the address, so it is shown as written, not in capitals, and wraps */
 .dl-link-menu { max-width: min(22rem, calc(100% - var(--space-2))); }
 .dl-link-menu .sdk-menu-heading { text-transform: none; letter-spacing: normal; line-height: 1.3; overflow-wrap: anywhere; }
+
+/* grids in the rich editor: the editor is a .page, so the reading view's grid rules (borders, header fill, scrolling table) already apply; these add what editing needs */
+.rich .ProseMirror table { position: relative; }
+.rich .ProseMirror th, .rich .ProseMirror td { position: relative; min-width: 3em; height: 2em; vertical-align: top; }
+.rich .ProseMirror .selectedCell { background: color-mix(in srgb, var(--accent) 22%, var(--doc-paper)); }
+.rich .ProseMirror th.selectedCell { background: color-mix(in srgb, var(--accent) 30%, var(--doc-field)); }
