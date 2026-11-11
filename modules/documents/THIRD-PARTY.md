@@ -31,7 +31,7 @@ Everything here is free for commercial use and redistribution. Nothing is loaded
 
 The hash in the table is enforced by `tools/check-vendored-hashes.mjs`. For marked it pins the file in this repository (the package's `lib/marked.umd.js` with its `sourceMappingURL` line removed), not the npm package file; the package file's own hash is the one in the first table. For ProseMirror every row pins the one built file: one row for each package, so each package has its version and its own LICENSE file checked by `tools/check-third-party-licences.mjs`.
 
-On any marked or ProseMirror upgrade, re-run both corpus tests (`modules/documents/test/check-documents-lib.mjs` and `modules/documents/test/check-documents-rich.mjs`, the second also with `--fuzz=4000`), and update the pinned hash in the table when a file changes.
+On any marked or ProseMirror upgrade, re-run the corpus tests (`modules/documents/test/check-documents-lib.mjs`, `modules/documents/test/check-documents-rich.mjs`, also with `--fuzz=4000`, and `modules/documents/test/check-documents-rich-write.mjs`, also with `--report`), and update the pinned hash in the table when a file changes.
 
 ## The ProseMirror file: what is in it, and how to build it again
 

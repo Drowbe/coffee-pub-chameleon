@@ -158,7 +158,7 @@
     return out;
   }
 
-  const dlSource = (raw) => ({ t: 'source', v: dlCleanText(String(raw || '')).replace(/\n+$/, '') });
+  const dlSource = (raw) => ({ t: 'source', v: dlTrimBreaks(dlCleanText(String(raw || ''))) });
   const DL_DISPLAY_MATH = /^\$\$([\s\S]+?)\$\$$/;
 
   // A task item whose first line still starts with "[ ] " or "[x] " as words (no box token in front of it): take those words out.

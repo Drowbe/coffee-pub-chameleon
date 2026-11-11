@@ -25,6 +25,9 @@
   const DL_INVISIBLE = /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
   // Text: invisible ones out; control characters out except tab and line breaks (a carriage return becomes nothing).
   const dlCleanText = (s) => (typeof s === 'string' ? s.replace(DL_INVISIBLE, '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '') : '');
+  // A text without the line breaks at its end. A loop on purpose: the pattern /\n+$/ tries every line break of a long run in the
+  // middle of a text as a start, so its cost grows with the square of the run (seconds at 100,000 line breaks).
+  const dlTrimBreaks = (s) => { let e = s.length; while (e > 0 && s.charCodeAt(e - 1) === 10) e -= 1; return e < s.length ? s.slice(0, e) : s; };
   // One line (a title, a name): no control character at all, runs of space collapsed, cut by code points.
   const dlCleanLine = (s, max) => {
     if (typeof s !== 'string') return '';
