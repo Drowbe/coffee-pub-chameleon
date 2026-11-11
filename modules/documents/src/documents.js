@@ -2,7 +2,8 @@
 // record (doc:<id>) and its text in chunks (text:<id>:<chunk>); the rules are in the documents-lib-*.js files, which have no page.
 // One person edits at a time: Edit takes the lock (_lock:<id>, compare-and-set), the editor refreshes it every 10 s and saves
 // 3 s after the last key; the save writes the changed chunks, then the small record under the version read (the commit).
-// Removing a document puts it in the trash (_trash:<id>), where an editor can bring it back or delete it for good.
+// Tags are the space's shared tags (host.tags): a document's tag ids sit in their own small record (tags:<id>), so tagging never
+// competes with a text save. Removing a document puts it in the trash (_trash:<id>), where an editor can bring it back or delete it for good.
 (async function () {
   'use strict';
 
@@ -53,6 +54,11 @@
   let noteTimer = 0;
   const locks = new Map(); // id -> { rec, version, seenAt }: the locks heard, with when this page saw them change
   let ed = null; // the editing session, or null
+  const tagsOf = new Map(); // id -> the tag ids of that document (cleaned; a dead id is dropped when shown)
+  const knownTags = new Map(); // the space's tags now: id -> { id, name, color }
+  let filterTags = []; // the tags chosen in the list's filter (not stored)
+  let tagPicker = null; // the open tag picker, or null
+  let tagQueue = Promise.resolve(); // this page's own tag changes, one after the other
 
   const note = (text) => {
     const n = $('note');
@@ -71,6 +77,10 @@
       const id = idOf(item.key, 'doc:');
       const rec = item.value ? dlCleanDoc(item.value) : null;
       if (rec && rec.id === id) { docs.set(id, rec); unreadable.delete(id); } else { docs.delete(id); unreadable.add(id); }
+    } else if (item.key.startsWith('tags:')) {
+      const id = idOf(item.key, 'tags:');
+      const rec = item.value ? dlCleanTags(item.value, id) : null;
+      if (rec) tagsOf.set(id, rec.tags); else tagsOf.delete(id);
     } else if (item.key.startsWith('_trash:')) {
       const rec = item.value ? dlCleanTrash(item.value) : null;
       if (rec && rec.id === idOf(item.key, '_trash:')) trash.set(rec.id, rec);
@@ -91,11 +101,13 @@
   const liveLock = (id) => { const l = locks.get(id); return l && !dlLockStale(l.seenAt, Date.now()) ? l : null; };
   function forget(key) {
     if (key.startsWith('doc:')) { docs.delete(idOf(key, 'doc:')); unreadable.delete(idOf(key, 'doc:')); } else if (key.startsWith('_trash:')) trash.delete(idOf(key, '_trash:'));
+    else if (key.startsWith('tags:')) tagsOf.delete(idOf(key, 'tags:'));
     else if (key.startsWith('_lock:')) locks.delete(idOf(key, '_lock:'));
   }
   async function load() {
-    docs.clear(); unreadable.clear(); trash.clear();
+    docs.clear(); unreadable.clear(); trash.clear(); tagsOf.clear();
     for (const item of await host.storage.list('doc:')) remember(item);
+    for (const item of await host.storage.list('tags:')) remember(item);
     for (const item of await host.storage.list('_lock:')) remember(item);
     for (const item of await host.storage.list('_trash:')) remember(item);
     if (canEdit) purgeOld();
@@ -166,10 +178,70 @@
   }
   async function removeForGood(id, quiet) {
     for (const it of await host.storage.list(`text:${id}:`)) await host.storage.delete(it.key);
+    await host.storage.delete(dlTagsKey(id)).catch(() => {});
+    tagsOf.delete(id);
     await host.storage.delete(dlTrashKey(id));
     trash.delete(id);
     if (!quiet) render();
   }
+
+  // ---- tags -------------------------------------------------------------------------------------------------------------------
+  // A document's tag ids are kept in tags:<id>, apart from doc:<id>: a text save writes only the small record and the chunks, a tag
+  // change only this one, so neither can 409 or write over the other. Two people tagging at once are merged (dlTagsCommit). Only
+  // the ids of tags the space has now are shown or counted; a tag deleted in Set up simply stops showing.
+  const tagsOn = Boolean(host.tags);
+  const shownTags = (id) => dlKnownTagIds(tagsOf.get(id) || [], knownTags);
+  async function loadTags() {
+    if (!tagsOn) return;
+    try { const list = await host.tags.list(); knownTags.clear(); for (const t of list) knownTags.set(t.id, t); } catch (err) { /* chips stay off */ }
+  }
+  function chipRow(id) {
+    const chips = shownTags(id).map((t) => host.tags.chip(t)).filter(Boolean);
+    if (!chips.length) return null;
+    const row = el('span', 'chips');
+    row.append(...chips);
+    return row;
+  }
+  function paintTags() {
+    if (!openId) return;
+    const holder = $('read-tags');
+    const row = chipRow(openId);
+    holder.replaceChildren(...(row ? [row] : []));
+    holder.hidden = !row;
+  }
+  // Saves the person's ticks as a change on what is stored (so a second person's tag is kept), in order, off the text path.
+  function changeTags(id, ids) {
+    const delta = dlTagsDelta(shownTags(id), dlKnownTagIds(ids, knownTags));
+    if (!delta.add.length && !delta.remove.length) return;
+    tagsOf.set(id, dlKnownTagIds(ids, knownTags));
+    const store = { get: (k) => host.storage.get(k), set: (k, v, o) => host.storage.set(k, v, o) };
+    tagQueue = tagQueue.then(async () => {
+      try {
+        const out = await dlTagsCommit({ store, id, delta, known: knownTags, me, now: new Date().toISOString() });
+        tagsOf.set(id, out.ids);
+        if (out.full) note(`Up to ${DL_TAGS_MAX} tags on one ${host.util.word('object')}.`);
+        if (tagPicker && openId === id) tagPicker.set(out.ids);
+      } catch (err) {
+        note(err.status === 409 ? 'Someone else changed the tags at the same time. Try again.' : cleanMsg(err));
+        const cur = await host.storage.get(dlTagsKey(id)).catch(() => null);
+        const rec = cur && dlCleanTags(cur.value, id);
+        if (rec) tagsOf.set(id, rec.tags); else tagsOf.delete(id);
+        if (tagPicker && openId === id) tagPicker.set(shownTags(id));
+      }
+      if (openId === id) paintTags(); else if (!openId && !ed) render();
+    });
+  }
+  // The picker opens under an invisible point at the button's left edge, at the top of the module (the toolbar button has no element here).
+  function tagsMenu(e) {
+    const id = ed ? ed.id : openId;
+    if (!id || !canEdit || !tagsOn || (ed && ed.lost)) return;
+    const box = host.rootElement.getBoundingClientRect();
+    const a = $('tag-anchor');
+    a.style.left = `${box.left + (e && Number.isFinite(e.x) ? e.x : 0)}px`;
+    a.style.top = `${box.top}px`;
+    try { tagPicker = host.tags.picker(a, { selected: shownTags(id), max: DL_TAGS_MAX, create: canEdit, onChange: (ids) => changeTags(id, ids) }); } catch (err) { note(cleanMsg(err)); }
+  }
+  function closeTagPicker() { if (tagPicker) { try { tagPicker.close(); } catch (err) { /* already closed */ } tagPicker = null; } }
 
   // ---- the list ------------------------------------------------------------------------------------------------------------
   function el(tag, cls, text) { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -181,6 +253,8 @@
     main.append(el('span', 'row-title', rec.title));
     if (rec.excerpt) main.append(el('span', 'row-excerpt', rec.excerpt));
     main.append(el('span', 'meta', trashRec ? `Deleted by ${trashRec.name}, ${when(trashRec.at)}` : `Edited by ${rec.editedByName}, ${when(rec.editedAt)}`));
+    const tagRow = !trashRec && tagsOn && chipRow(rec.id);
+    if (tagRow) main.append(tagRow);
     const held = !trashRec && liveLock(rec.id);
     if (held) main.append(el('span', 'lock-tag', `${held.rec.name} is editing`));
     li.append(main);
@@ -222,6 +296,8 @@
     thumb.append(page);
     main.append(thumb, el('span', 'row-title', rec.title));
     main.append(el('span', 'meta', trashRec ? `Deleted by ${trashRec.name}, ${when(trashRec.at)}` : `Edited by ${rec.editedByName}, ${when(rec.editedAt)}`));
+    const tagRow = !trashRec && tagsOn && chipRow(rec.id);
+    if (tagRow) main.append(tagRow);
     const held = !trashRec && liveLock(rec.id);
     if (held) main.append(el('span', 'lock-tag', `${held.rec.name} is editing`));
     li.append(main);
@@ -246,13 +322,14 @@
     const q = query.trim().toLowerCase();
     const recs = showTrash ? [...trash.values()].sort((a, b) => b.at.localeCompare(a.at)).map((t) => ({ rec: t.doc, t }))
       : [...docs.values()].sort((a, b) => b.editedAt.localeCompare(a.editedAt)).map((rec) => ({ rec }));
-    const shown = recs.filter(({ rec }) => !q || rec.title.toLowerCase().includes(q) || rec.excerpt.toLowerCase().includes(q));
+    const byTag = (rec) => showTrash || dlTagsMatch(tagsOf.get(rec.id) || [], filterTags, knownTags);
+    const shown = recs.filter(({ rec }) => byTag(rec) && (!q || rec.title.toLowerCase().includes(q) || rec.excerpt.toLowerCase().includes(q)));
     const thumbs = listView === 'thumbs';
     $('rows').className = thumbs ? 'cards' : 'rows';
     const items = shown.map(({ rec, t }) => (thumbs ? card(rec, t) : row(rec, t)));
     if (!showTrash) for (const id of unreadable) { const li = el('li', thumbs ? 'card unreadable' : 'row unreadable'); li.append(el('span', 'row-title', 'This document could not be read.')); items.push(li); }
     if (!items.length) {
-      const text = q ? 'Nothing matches that.' : showTrash ? 'The trash is empty.' : canEdit ? 'No documents yet.' : 'Nothing has been written here yet.';
+      const text = q || filterTags.length ? 'Nothing matches that.' : showTrash ? 'The trash is empty.' : canEdit ? 'No documents yet.' : 'Nothing has been written here yet.';
       const li = el('li', 'meta', text);
       li.setAttribute('role', 'status');
       items.push(li);
@@ -305,6 +382,7 @@
     paintPaper($('read').querySelector('.sheet'), got.rec.paper);
     $('read-title').textContent = got.rec.title;
     $('read-meta').textContent = `Edited by ${got.rec.editedByName}, ${when(got.rec.editedAt)}`;
+    paintTags();
     page.replaceChildren(dlBuild(dlDescribe(got.text, lex), doc));
     $('read').scrollTop = top;
   }
@@ -316,12 +394,13 @@
     updateEditButton();
     $('page').replaceChildren();
     $('read-title').textContent = docs.get(id).title;
+    paintTags();
     paintPaper($('read').querySelector('.sheet'), docs.get(id).paper);
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
     renderChrome();
     $('page').focus();
   }
-  function closeDoc() { openId = null; $('read').hidden = true; $('list').hidden = false; render(); }
+  function closeDoc() { closeTagPicker(); openId = null; $('read').hidden = true; $('list').hidden = false; render(); }
 
   // ---- wiring --------------------------------------------------------------------------------------------------------------
   $('make-cancel').addEventListener('click', () => { $('make').hidden = true; });
@@ -354,14 +433,16 @@
   // Another person's change: the small record is the signal. A change to a chunk alone is not heard.
   function applyChange(e) {
     const key = String(e.key || '');
-    if (!/^(doc|_trash|_lock):/.test(key)) return false;
+    if (!/^(doc|_trash|_lock|tags):/.test(key)) return false;
     if (e.deleted) forget(key); else if (e.value !== undefined) remember({ key, value: e.value, version: e.version, heard: true }); else return 'reload';
     return true;
   }
   function afterChange() {
+    if (tagPicker && (openId || ed)) tagPicker.set(shownTags(ed ? ed.id : openId));
     if (ed) { hearLock(); return; }
     if (openId) {
       updateEditButton();
+      paintTags();
       const rec = docs.get(openId);
       if (!rec) { note('This document was deleted.'); closeDoc(); return; }
       if (rec.rev > shownRev) draw(openId).catch(() => {});
@@ -370,11 +451,13 @@
   host.on('change', (e) => { const r = applyChange(e); if (r === 'reload') reload(); else if (r) afterChange(); });
   host.on('changes', (e) => {
     const list = Array.isArray(e.changes) ? e.changes : [];
-    if (!list.some((c) => /^(doc|_trash|_lock):/.test(String(c.key)))) return;
+    if (!list.some((c) => /^(doc|_trash|_lock|tags):/.test(String(c.key)))) return;
     if (list.some((c) => !c.deleted && c.value === undefined)) { reload(); return; }
     for (const c of list) applyChange(c);
     afterChange();
   });
+  // A tag added, renamed, recoloured or deleted in the space: the list is kept by the SDK; draw again.
+  if (tagsOn) host.on('tags', () => { loadTags().then(() => { if (openId) { paintTags(); if (tagPicker) tagPicker.set(shownTags(openId)); } else if (!ed) { render(); } }).catch(() => {}); });
   function reload() { load().then(afterChange).catch(() => {}); }
 
   // ---- the lock and editing ------------------------------------------------------------------------------------------------
@@ -568,6 +651,7 @@
 
   function stopEditing() {
     if (!ed) return;
+    closeTagPicker();
     clearTimeout(ed.timer); clearInterval(ed.beat);
     ed = null;
     $('editor').hidden = true;
@@ -687,6 +771,8 @@
 
   let fmtButtons = [];
   let paperButton = null;
+  let tagButton = null;
+  let backButton = null;
   function formatWith(f, e) {
     if (!ed || ed.lost) return;
     if (f.id === 'heading') {
@@ -707,7 +793,7 @@
         ...zoomItems(),
       ];
     } else if (openId) {
-      items = [{ type: 'button', id: 'back', title: 'Back to the documents', icon: 'arrow-left' }, ...zoomItems()];
+      items = [...zoomItems()];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
         { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
@@ -715,6 +801,12 @@
       );
     } else {
       items = [{ type: 'search', id: 'search', value: query, placeholder: 'Search documents', label: 'Search documents' }];
+      if (tagsOn && !showTrash) {
+        const counts = dlTagCounts([...docs.keys()].map((id) => tagsOf.get(id) || []), knownTags);
+        for (const t of filterTags) if (knownTags.has(t) && !counts.has(t)) counts.set(t, 0);
+        const options = host.tags.filterOptions(counts).map((o) => ({ ...o, on: filterTags.includes(o.id) }));
+        if (options.length) items.push({ type: 'chips', id: 'tag-filter', label: 'Tags', options });
+      }
       if (canEdit) items.push({ type: 'button', id: 'trash', title: showTrash ? 'Back to the documents' : `Trash${trash.size ? ` (${trash.size})` : ''}`, icon: showTrash ? 'file-lines' : 'trash', on: showTrash });
     }
     // The formatting buttons are the shared icon-only toolbar buttons (host.ui.toolbarButton), made while a person is editing.
@@ -723,6 +815,16 @@
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
+    // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
+    // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.
+    const wantBack = Boolean(openId && !ed);
+    const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost)));
+    if (wantBack && !backButton) {
+      if (tagButton) { tagButton.destroy(); tagButton = null; }
+      backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); } });
+    } else if (!wantBack && backButton) { backButton.destroy(); backButton = null; }
+    if (wantTags && !tagButton) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
+    else if (!wantTags && tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); }
     // The list's look switch is there only while the list is.
     const wantSwitch = !ed && !openId;
     if (wantSwitch && !listSwitch) listSwitch = host.ui.viewSwitch({ id: 'listview', label: 'View', options: DL_LISTVIEWS.map((o) => ({ ...o })), value: listView, onChange: setListView });
@@ -742,6 +844,7 @@
   host.on('toolbar', (e) => {
     const id = String(e.id || '');
     if (id === 'search') { query = String(e.value || ''); render(); return; }
+    if (id === 'tag-filter' && typeof e.value === 'string') { filterTags = e.on ? [...new Set([...filterTags, e.value])] : filterTags.filter((t) => t !== e.value); render(); return; }
     if (id === 'trash') { showTrash = !showTrash; render(); return; }
     if (id === 'back') { if (!ed) closeDoc(); return; }
     if (id === 'edit') { startEdit(); return; }
@@ -787,6 +890,7 @@
   });
   window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); } });
 
+  await loadTags();
   try { await load(); } catch (err) { showMsg('Documents could not load', err.message, () => location.reload()); return; }
   paintView();
   render();

@@ -22,11 +22,13 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView',
+  'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
   'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
-function test(name, fn) { try { fn(); passed += 1; } catch (err) { fails.push(`${name}: ${err.message}`); } }
+const pending = [];
+function test(name, fn) { try { const r = fn(); if (r && typeof r.then === 'function') pending.push(r.then(() => { passed += 1; }, (err) => { fails.push(`${name}: ${err.message}`); })); else passed += 1; } catch (err) { fails.push(`${name}: ${err.message}`); } }
 
 const doc = { id: 'abcd1234', type: 'doc', title: 'Plan', rev: 2, chunks: ['aaaa1111'], size: 10, excerpt: 'Hi', paper: 'light-white', by: 'u1', at: '2026-11-11T10:00:00.000Z', editedBy: 'u1', editedByName: 'Ana', editedAt: '2026-11-11T10:00:00.000Z' };
 const lock = { id: 'lock', type: 'lock', doc: 'abcd1234', holder: 'u1', name: 'Ana', at: '2026-11-11T10:00:00.000Z', seq: 1, by: 'u1' };
@@ -596,5 +598,127 @@ test('view: keys', () => {
   assert.equal(L.dlViewKey(null), null);
 });
 
+// ---- tags ----
+const T1 = 'tagaaaa1', T2 = 'tagbbbb2', T3 = 'tagcccc3';
+const known = new Map([T1, T2, T3].map((t) => [t, { id: t }]));
+test('tags: ids cleaned strictly (shape, duplicates, cap 8, never a name)', () => {
+  assert.deepEqual(L.dlCleanTagIds([T1, T1, 'ski-trip', 'Short', 'UPPERCASE1', 5, null, {}, '<b>x</b>', T2]), [T1, T2]);
+  assert.deepEqual(L.dlCleanTagIds('nope'), []);
+  const many = Array.from({ length: 12 }, (_, i) => `tagnum${String(i).padStart(2, '0')}`);
+  assert.equal(L.dlCleanTagIds(many).length, 8);
+  assert.deepEqual(L.dlCleanTagIds(many), many.slice(0, 8));
+  assert.deepEqual(L.dlCleanTagIds(['a'.repeat(13), 'a'.repeat(7), 'a'.repeat(8), 'a'.repeat(12)]), ['a'.repeat(8), 'a'.repeat(12)]);
+});
+test('tags: the record is cleaned on reading (type, id, extra fields dropped)', () => {
+  assert.equal(L.dlCleanTags({ id: 'abcd1234', type: 'tags', tags: [T1, 'x'], by: 'u1', at: '2026-11-11T10:00:00.000Z', evil: '<script>' }, 'abcd1234').tags.length, 1);
+  assert.ok(!('evil' in L.dlCleanTags({ id: 'abcd1234', type: 'tags', tags: [], evil: 1 }, 'abcd1234')));
+  assert.equal(L.dlCleanTags({ id: 'other123', type: 'tags', tags: [] }, 'abcd1234'), null);
+  assert.equal(L.dlCleanTags({ id: 'abcd1234', type: 'doc', tags: [] }, 'abcd1234'), null);
+  assert.equal(L.dlCleanTags([], 'abcd1234'), null);
+  assert.equal(L.dlTagsKey('abcd1234'), 'tags:abcd1234');
+});
+test('tags: the small text record has no tags field; a stray one is dropped', () => {
+  assert.ok(!('tags' in L.dlCleanDoc({ ...doc, tags: [T1] })));
+});
+test('tags: unknown (deleted) ids are dropped on read', () => {
+  assert.deepEqual(L.dlKnownTagIds([T1, 'deleted01', T2], known), [T1, T2]);
+  assert.deepEqual(L.dlKnownTagIds([T1], new Map()), []);
+});
+test('tags: delta and apply: removals out, additions in, dead ids dropped, 8 at most', () => {
+  assert.deepEqual(L.dlTagsDelta([T1], [T1, T2]), { add: [T2], remove: [] });
+  assert.deepEqual(L.dlTagsDelta([T1, T2], [T2, T3]), { add: [T3], remove: [T1] });
+  assert.deepEqual(L.dlTagsApply([T1], { add: [T2], remove: [] }, known), { ids: [T1, T2], full: false });
+  assert.deepEqual(L.dlTagsApply([T1, T2], { add: [], remove: [T1] }, known), { ids: [T2], full: false });
+  assert.deepEqual(L.dlTagsApply([T1, 'deleted01'], { add: [T2], remove: [] }, known).ids, [T1, T2]);
+  const big = new Map(Array.from({ length: 10 }, (_, i) => [`tagnum${String(i).padStart(2, '0')}`, 1]));
+  const ids = [...big.keys()];
+  const r = L.dlTagsApply(ids.slice(0, 8), { add: [ids[8]], remove: [] }, big);
+  assert.equal(r.ids.length, 8); assert.ok(r.full);
+  assert.equal(L.dlTagsApply(ids.slice(0, 8), { add: [ids[8]], remove: [ids[0]] }, big).full, false);
+});
+test('tags: the picker opens ticked with the open record\'s current ids (stored, minus dead ids), also after someone else tags', () => {
+  const stored = [T1, 'deleted01', T3];
+  assert.deepEqual(L.dlKnownTagIds(stored, known), [T1, T3]); // what `selected` carries
+  const afterOther = L.dlTagsApply(stored, { add: [T2], remove: [T1] }, known).ids; // another person's change, then `set(ids)`
+  assert.deepEqual(L.dlKnownTagIds(afterOther, known), [T3, T2]);
+  assert.deepEqual(L.dlKnownTagIds(afterOther, new Map([[T2, 1]])), [T2]); // a tag deleted in Set up is no longer ticked
+});
+// A store with compare-and-set, as host.storage.set with { version }.
+function fakeStore() {
+  const m = new Map();
+  const writes = [];
+  return {
+    m, writes, hook: null,
+    async get(k) { const e = m.get(k); return e ? { value: JSON.parse(JSON.stringify(e.value)), version: e.version } : null; },
+    async set(k, v, o = {}) {
+      if (this.hook) { const h = this.hook; this.hook = null; await h(); }
+      const e = m.get(k);
+      if ((o.version !== undefined) && (e ? e.version : 0) !== o.version) throw Object.assign(new Error('conflict'), { status: 409 });
+      const version = (e ? e.version : 0) + 1;
+      m.set(k, { value: JSON.parse(JSON.stringify(v)), version });
+      writes.push(k);
+      return { version };
+    },
+  };
+}
+test('tags: a tag change is saved; a second person tagging first is merged, not lost (retry on 409)', async () => {
+  const s = fakeStore();
+  const ID = 'abcd1234';
+  await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T1], remove: [] }, known, me: 'u1', now: 'n' });
+  // while u2 is about to write, u3 writes first: u2's write 409s, reads again and adds its own on top
+  s.hook = async () => { await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T3], remove: [] }, known, me: 'u3', now: 'n' }); };
+  const out = await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T2], remove: [] }, known, me: 'u2', now: 'n' });
+  assert.deepEqual([...out.ids].sort(), [T1, T2, T3]);
+  assert.deepEqual([...s.m.get(L.dlTagsKey(ID)).value.tags].sort(), [T1, T2, T3]);
+});
+test('tags: a removal and an addition by two people both stand', async () => {
+  const s = fakeStore();
+  const ID = 'abcd1234';
+  await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T1, T2], remove: [] }, known, me: 'u1', now: 'n' });
+  s.hook = async () => { await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T3], remove: [] }, known, me: 'u3', now: 'n' }); };
+  await L.dlTagsCommit({ store: s, id: ID, delta: { add: [], remove: [T1] }, known, me: 'u2', now: 'n' });
+  assert.deepEqual([...s.m.get(L.dlTagsKey(ID)).value.tags].sort(), [T2, T3]);
+});
+test('tags: a text save and a tag change write different keys, so neither can 409 or lose the other', async () => {
+  const s = fakeStore();
+  const ID = 'abcd1234';
+  await s.set(`doc:${ID}`, { ...doc, id: ID }, { version: 0 });
+  const docVersion = (await s.get(`doc:${ID}`)).version;
+  // a tag change lands between the editor's read and its commit
+  s.hook = async () => { await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T1], remove: [] }, known, me: 'u2', now: 'n' }); };
+  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi there', title: 'Plan', paper: 'light-white', rec: { ...doc, id: ID }, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'zzzz0000' });
+  assert.ok(plan.ok);
+  await s.set(`doc:${ID}`, plan.record, { version: docVersion }); // no 409
+  assert.deepEqual(s.m.get(L.dlTagsKey(ID)).value.tags, [T1]);
+  assert.equal(s.m.get(`doc:${ID}`).value.rev, 3);
+  // and a tag change under a held text lock or a later text save does not disturb the record's rev or the other way round
+  const rev = s.m.get(`doc:${ID}`).value.rev;
+  await L.dlTagsCommit({ store: s, id: ID, delta: { add: [T2], remove: [] }, known, me: 'u2', now: 'n' });
+  assert.equal(s.m.get(`doc:${ID}`).value.rev, rev);
+  assert.equal(s.m.get(`doc:${ID}`).version, 2);
+  // a text save does not write the tags key
+  const before = s.writes.filter((k) => k === L.dlTagsKey(ID)).length;
+  const v2 = (await s.get(`doc:${ID}`)).version;
+  await s.set(`doc:${ID}`, { ...plan.record, rev: rev + 1 }, { version: v2 });
+  assert.equal(s.writes.filter((k) => k === L.dlTagsKey(ID)).length, before);
+  assert.deepEqual([...s.m.get(L.dlTagsKey(ID)).value.tags].sort(), [T1, T2]);
+});
+test('tags: a conflict that never clears gives up with the 409 after the tries', async () => {
+  const s = { async get() { return null; }, async set() { throw Object.assign(new Error('c'), { status: 409 }); } };
+  await assert.rejects(L.dlTagsCommit({ store: s, id: 'abcd1234', delta: { add: [T1], remove: [] }, known, me: 'u', now: 'n', tries: 3 }), (e) => e.status === 409);
+  const s2 = { async get() { return null; }, async set() { throw Object.assign(new Error('no'), { status: 403 }); } };
+  await assert.rejects(L.dlTagsCommit({ store: s2, id: 'abcd1234', delta: { add: [T1], remove: [] }, known, me: 'u', now: 'n' }), (e) => e.status === 403);
+});
+test('tags: the filter is AND over the chosen tags, ignores dead ones, and counts only known tags', () => {
+  assert.ok(L.dlTagsMatch([T1, T2], [T1, T2], known));
+  assert.ok(!L.dlTagsMatch([T1], [T1, T2], known));
+  assert.ok(L.dlTagsMatch([], [], known));
+  assert.ok(L.dlTagsMatch([T1], ['deleted01'], known)); // a deleted chosen tag no longer filters
+  assert.ok(!L.dlTagsMatch([], [T3], known));
+  const c = L.dlTagCounts([[T1, T2], [T1, 'deleted01'], []], known);
+  assert.equal(c.get(T1), 2); assert.equal(c.get(T2), 1); assert.ok(!c.has('deleted01'));
+});
+
+await Promise.all(pending);
 if (fails.length) { console.error(`documents lib: ${fails.length} failed, ${passed} passed`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }
 console.log(`documents lib: ${passed} tests passed`);
