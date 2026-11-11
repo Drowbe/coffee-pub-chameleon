@@ -122,13 +122,16 @@
 /* editing */
 .edit-title { display: block; width: 100%; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; font-family: inherit; }
 .edit-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.sheet-edit { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 20rem; }
-.edit-text { flex: 1 1 auto; width: 100%; min-height: 16rem; resize: none; padding: 0; background: none; border: 0; border-radius: 0; font-family: var(--font-mono, monospace); font-size: var(--text-14); line-height: var(--leading-body, 1.6); color: var(--doc-ink); caret-color: var(--doc-ink); }
+.sheet-edit { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 20rem; }
+/* no frame inside the sheet: the text box and the rich editor grow to their text and the view scrolls (the script sets the box's height, and in Paper the sheet's
+   min-height in whole pages); a hairline marks each page's end (not real page breaks yet) */
+.sheet-edit[data-layout="paper"]:not([data-narrow]) { flex: 0 0 auto; min-height: var(--doc-page-h); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--doc-page-h) - 1px), var(--doc-edge) calc(var(--doc-page-h) - 1px), var(--doc-edge) var(--doc-page-h)); }
+.edit-text { flex: 1 0 auto; width: 100%; min-height: 16rem; resize: none; overflow: hidden; padding: 0; background: none; border: 0; border-radius: 0; font-family: var(--font-mono, monospace); font-size: var(--text-14); line-height: var(--leading-body, 1.6); color: var(--doc-ink); caret-color: var(--doc-ink); }
 .sheet-edit .edit-text, .sheet-edit .edit-text:focus, .sheet-edit .edit-text:focus-visible { outline: none; border: 0; box-shadow: none; background: none; }
 .sheet-edit:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
 /* the rich editor (ProseMirror), in the same sheet as the text box. Its words look as the reading page does (.page). The library's
    own rules (prosemirror.css, the gap cursor, the drop cursor) are here with the theme's tokens, under .rich. Step 5: enough to work. */
-.rich { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 16rem; }
+.rich { position: relative; flex: 1 0 auto; display: flex; flex-direction: column; min-height: 16rem; }
 .rich .ProseMirror { position: relative; flex: 1 1 auto; outline: none; caret-color: var(--doc-ink); word-wrap: break-word; white-space: pre-wrap; white-space: break-spaces; font-variant-ligatures: none; font-feature-settings: "liga" 0; }
 .rich .ProseMirror:focus-visible { outline: none; }
 .rich .ProseMirror pre { white-space: pre-wrap; }
