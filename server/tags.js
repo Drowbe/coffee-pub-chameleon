@@ -24,8 +24,9 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 const LIMITS = { name: 24, perObject: 8, perList: 200, rawName: 200 };
-// The tones a tag may wear: names the theme maps to colours (public/ draws them; not decided in the plan, so one list here).
-const TONES = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'grey'];
+// The tones a tag may wear: the theme's eight tints by name (--tint-<name>; public/sdk/system.css draws them, and
+// public/module-chrome.js's TINT is the same eight). Plain is ''. Not decided in the plan, so one list here.
+const TONES = ['gold', 'blue', 'green', 'teal', 'purple', 'red', 'orange', 'pink'];
 const ID_LENGTH = 10;
 const ID_RE = /^[a-z0-9]{8,12}$/;
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';

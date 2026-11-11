@@ -27,6 +27,18 @@ const THEME_TOKENS = [
   '--tint-gold', '--tint-blue', '--tint-green', '--tint-teal', '--tint-purple', '--tint-red', '--tint-orange', '--tint-pink',
 ];
 
+// The shared tags (plan-tags.md; server/tags.js is the one rule): what a page may pass to a module is a tag of this shape and
+// nothing else. The tones are the theme's eight tints by name; the same list is the server's TONES (tools/check-tags.mjs keeps
+// them equal). A name is a short run of letters, digits and dashes: a word of any other shape is not a tag and is left out.
+export const TAG_TONES = Object.freeze(['gold', 'blue', 'green', 'teal', 'purple', 'red', 'orange', 'pink']);
+const TAG_OPS = ['added', 'changed', 'removed'];
+export function cleanTag(t) {
+  if (!t || typeof t !== 'object' || typeof t.id !== 'string' || !/^[a-z0-9]{8,12}$/.test(t.id)) return null;
+  if (typeof t.name !== 'string' || !/^[\p{L}\p{N}][\p{L}\p{N}\p{M}-]*$/u.test(t.name) || [...t.name].length > 24) return null;
+  return { id: t.id, name: t.name, color: TAG_TONES.includes(t.color) ? t.color : '' };
+}
+export const cleanTagList = (list) => (Array.isArray(list) ? list : []).slice(0, 200).map(cleanTag).filter(Boolean);
+
 export function readTheme() {
   const styles = getComputedStyle(document.documentElement);
   const theme = {};
@@ -1285,6 +1297,14 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     return p;
   };
 
+  // The shared tags' address for this mount's space (host.tags), or a refusal: the flag is the manifest's word, handed in by the
+  // page that mounted the module, and tags are a space's, so not an environment page and not a keyed page.
+  const tagsPlace = () => {
+    if (module.tags !== true) throw Object.assign(new Error(`This ${word('module')} does not use tags.`), { status: 403 });
+    if (scope !== 'space' || !spaceId || keyed) throw Object.assign(new Error(`Tags work inside ${word('space', { a: true })}.`), { status: 400 });
+    return `/api/spaces/${encodeURIComponent(spaceId)}/tags`;
+  };
+
   // Live messages (host.live; plan-module-live.md): only on a space's canvas (and a window or a page about that space),
   // never on an environment page or a keyed page. public/module-live.js cleans every call and event; this mount fixes the
   // module and the space, so a module can't reach another's messages. A guest's calls carry their pass.
@@ -1750,6 +1770,25 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
       try { if (phasesChannel) phasesChannel.postMessage(detail); } catch (err) { /* nobody to hear */ }
       tellSpace(kept);
       return kept;
+    },
+    // The space's shared tags (host.tags; plan-tags.md). Only a module whose manifest says `"tags": true` (the host's own
+    // word for it, never the module's), and only in a space. Every call goes to the server's routes on this module's behalf
+    // (`from`), which decide again: the list for the space's people, making a tag with this module's write right, never a
+    // guest. Renaming, recolouring and deleting are not here: they are the space's Set up panel's, for the people allowed.
+    async 'tags.list'() {
+      const at = tagsPlace();
+      const p = new URLSearchParams({ from: module.id });
+      if (guestToken) p.set('guest', guestToken);
+      return cleanTagList((await api('GET', `${at}?${p}`)).tags);
+    },
+    async 'tags.add'({ name, color }) {
+      const at = tagsPlace();
+      if (typeof name !== 'string') throw Object.assign(new Error('A tag needs a name.'), { status: 400 });
+      const q = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
+      const answer = await api('POST', `${at}${q}`, { from: module.id, name, ...(typeof color === 'string' && color ? { color } : {}) });
+      const tag = cleanTag(answer && answer.tag);
+      if (!tag) throw Object.assign(new Error('The server did not send a tag.'), { status: 502 });
+      return tag;
     },
     // The address of a file an owner placed for this module (see the server's module files), in this module's place.
     async 'files.url'({ name, folder }) {
@@ -2411,6 +2450,13 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // module and the modules approved to link to its files (the server names them) hear which one, and ask again for what they show.
     if (type === 'library') {
       if (Array.isArray(d.modules) && d.modules.includes(module.id)) send('library', { op: d.op, id: d.id, module: d.module, spaceId: d.spaceId });
+      return;
+    }
+    // A tag was made, renamed, recoloured or deleted in this space (server/tags.js, the 'tags' event): the modules that opted in hear
+    // it, once cleaned, and keep to the space this mount is in. A word that is not a tag's shape is not passed on.
+    if (type === 'tags') {
+      const tag = cleanTag(d && d.tag);
+      if (module.tags === true && scope === 'space' && spaceId && d && d.spaceId === spaceId && tag && TAG_OPS.includes(d.op)) send('tags', { op: d.op, tag });
       return;
     }
     // Any module's environment setting may change the environment's facts (host.environment): every mount looks again.
