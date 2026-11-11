@@ -13,7 +13,7 @@
   // an empty string if it is ever reached. The schema has no rule for reading the browser's own changes to the page, so a
   // change the browser makes by itself can only bring words.
   // WHAT GOES OUT. Copy and cut give Markdown as the plain text (the library also writes its own HTML of the selection).
-  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link', 'pagebreak'];
+  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link', 'pagebreak', 'grid'];
   const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Backspace', 'Mod-z', 'Mod-Shift-z', 'Mod-y', 'Mod-b', 'Mod-i', 'Mod-e', 'Mod-Enter', 'Mod-k'];
   const DL_RICH_PASTE = Object.freeze({ htmlMax: 4000000 });
   const dlRichCan = (action) => DL_RICH_ACTIONS.includes(action);
@@ -154,6 +154,36 @@
     if (cd < 0) return null;
     const grid = $f.node(cd - 2);
     return { grid, gridAt: $f.before(cd - 2), row: $f.index(cd - 2), col: $f.index(cd - 1), rows: grid.childCount, cols: grid.child(0).childCount, cellAt: $f.before(cd) };
+  }
+  // Is the selection's head in a grid? From the selection alone.
+  const dlRichInGrid = (PM, state) => Boolean(dlRichGridAt(PM, state));
+  // The grid menu's entries for the selection: null outside a grid, else [{ id (the run() action), label, disabled, current }].
+  // An entry is disabled where run() would refuse it; the current column's alignment is `current`.
+  function dlRichGridMenu(PM, state) {
+    const g = dlRichGridAt(PM, state);
+    if (!g) return null;
+    const align = g.grid.child(g.row).child(g.col).attrs.align;
+    const e = (id, label, disabled, current) => ({ id, label, disabled: Boolean(disabled), current: Boolean(current) });
+    return [
+      e('gridRowBefore', 'Row above', g.row === 0 || g.rows >= DL.gridRows),
+      e('gridRowAfter', 'Row below', g.rows >= DL.gridRows),
+      e('gridColBefore', 'Column before', g.cols >= DL.gridCols),
+      e('gridColAfter', 'Column after', g.cols >= DL.gridCols),
+      e('gridRowDelete', 'Delete row', g.row === 0),
+      e('gridColDelete', 'Delete column', g.cols <= 1),
+      e('gridAlignLeft', 'Align column left', false, align === 'left'),
+      e('gridAlignCentre', 'Align column centre', false, align === 'center'),
+      e('gridAlignRight', 'Align column right', false, align === 'right'),
+      e('gridDelete', 'Delete grid', false),
+    ];
+  }
+  // Marks the cell that holds the caret (class dl-cell-active); a decoration only, so the text and the revision never change.
+  function dlRichCellPlugin(PM) {
+    return new PM.Plugin({ props: { decorations(state) {
+      const g = dlRichGridAt(PM, state);
+      if (!g) return null;
+      return PM.DecorationSet.create(state.doc, [PM.Decoration.node(g.cellAt, g.cellAt + state.doc.nodeAt(g.cellAt).nodeSize, { class: 'dl-cell-active' })]);
+    } } });
   }
   function dlRichGridCommand(PM, action) {
     const N = dlRichSchema(PM).nodes;
@@ -304,7 +334,7 @@
   }
   const dlRichPluginSets = new WeakMap();
   function dlRichPlugins(PM) {
-    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), PM.gridEditing(), dlRichInputRules(PM), PM.history(), PM.gapCursor(), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
+    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), PM.gridEditing(), dlRichInputRules(PM), PM.history(), PM.gapCursor(), dlRichCellPlugin(PM), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
     return dlRichPluginSets.get(PM);
   }
 
@@ -572,6 +602,8 @@
       // active() says which formats the selection is in (dlRichActive). The page asks at most once a frame.
       onSelect: (fn) => { selFns.push(fn); },
       active: () => dlRichActive(PM, now()),
+      gridMenu: () => dlRichGridMenu(PM, now()),
+      inGrid: () => dlRichInGrid(PM, now()),
       revision: () => rev,
       // -> true when the action was applied. A name with no action here (grid, formula), an action that does not fit
       // where the selection is, and a read-only editor: false, and nothing happens. The editor keeps its selection and takes
