@@ -353,6 +353,7 @@ await test('moving an object to another space (step 5b): names re-made there, on
 
 await test('the manifest flag and the permission', () => {
   const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'documents', 'module.json'), 'utf8'));
+  delete base.tags; // Documents opts in itself; this test needs a manifest without the flag as its start
   const read = (extra) => cleanManifest({ ...base, ...extra }, new Set(['module.json', 'canvas.html']));
   assert.equal(read({ tags: true }).tags, true, '"tags": true is kept');
   for (const v of [false, 'true', 1, null, [], {}, 'yes']) assert.equal(read({ tags: v }).tags, false, `${JSON.stringify(v)} is not an opt-in`);
