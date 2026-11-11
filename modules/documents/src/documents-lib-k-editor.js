@@ -9,6 +9,7 @@
   //   run(action)      applies a formatting action by name to the editor's own selection: bold, italic, code, h1..h4, list,
   //                    numbered, checklist, quote, link, grid, formula.
   //   destroy()        lets go of the editor and its listeners.
+  // Two editors implement it: dlTextareaEditor below (the Markdown text box) and dlRichEditor (documents-lib-p-rich-editor.js).
   // Plus revision(): a cheap counter the adapter bumps on every change. "Is it changed" is asked with the counter, never with the
   // text. The counter cannot tell "typed, then deleted back to the same text" from a change, so dirty means "the counter moved";
   // the save then reads the text once and, if it equals the saved text (and the title and paper are unchanged), writes nothing.

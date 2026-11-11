@@ -570,6 +570,50 @@
     throw new Error('This document could not be loaded. Try again.');
   }
 
+  // ---- the editor: the Markdown text box (what people get) or the rich editor (a person's own choice, kept in this browser) ----
+  const RICH_KEY = 'documents-rich';
+  let rich = false;
+  try { rich = window.localStorage.getItem(RICH_KEY) === '1'; } catch { /* no browser storage: the text box */ }
+  const INEXACT = 'This block has formatting Markdown cannot keep exactly; turn off Rich text to check.';
+  // Makes the editor for the choice, with this text, in the sheet: one of the two shows, both behind the same adapter.
+  function mountEditor(text) {
+    const ta = $('edit-text');
+    const box = $('edit-rich');
+    ta.hidden = rich; box.hidden = !rich;
+    ed.editor = rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
+    ed.editor.onChange(typed);
+    ed.editor.setText(text); ed.editor.setReadOnly(Boolean(ed.lost));
+    ed.inexact = false;
+  }
+  // After the text was read from the rich editor: a block that Markdown cannot keep exactly is saved as typed, and said once.
+  function sayInexact(always) {
+    const w = ed && ed.editor.lastWrite ? ed.editor.lastWrite() : null;
+    if (!w) return;
+    if (w.same) { ed.inexact = false; return; }
+    if (always || !ed.inexact) note(INEXACT);
+    ed.inexact = true;
+  }
+  // The switch: the text goes from one editor to the other as Markdown. What is not saved yet stays not saved.
+  function setRich(on) {
+    const next = Boolean(on);
+    const swap = () => {
+      if (next === rich) return;
+      rich = next;
+      try { window.localStorage.setItem(RICH_KEY, rich ? '1' : '0'); } catch { /* kept for this visit only */ }
+      if (ed && !ed.lost) {
+        const text = ed.editor.getText();
+        sayInexact(true);
+        ed.editor.destroy();
+        mountEditor(text);
+        ed.savedRev = text === ed.saved.text ? ed.editor.revision() : NaN;
+        ed.editor.focus();
+        setStatus(); schedule(false);
+      }
+      renderChrome();
+    };
+    if (ed && !ed.lost) serial(swap).catch(() => {}); else swap(); // after a save that is under way, so its counter is not mixed up
+  }
+
   async function openEditor(id, lock) {
     const { rec, version, got } = await readForEdit(id);
     ed = {
@@ -581,10 +625,7 @@
     $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
     $('edit-title').value = rec.title;
     paintPaper($('editor').querySelector('.sheet'), ed.paper);
-    const ta = $('edit-text');
-    ed.editor = dlTextareaEditor(ta, doc);
-    ed.editor.onChange(typed);
-    ed.editor.setText(got.text); ed.editor.setReadOnly(false);
+    mountEditor(got.text);
     ed.savedRev = ed.editor.revision();
     $('edit-title').readOnly = false;
     $('lost').hidden = true;
@@ -646,6 +687,7 @@
     return serial(async () => {
       if (!ed || ed.lost) return 'lost';
       const cur = snapshot();
+      sayInexact(false);
       if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
       const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random), lex });
       if (!plan.ok) {
@@ -706,6 +748,7 @@
     ed.editor.destroy();
     ed = null;
     $('editor').hidden = true;
+    $('edit-rich').hidden = true; $('edit-text').hidden = false;
   }
   async function finish() {
     if (!ed || ed.lost) return;
@@ -813,6 +856,8 @@
   }, true);
 
   let fmtButtons = [];
+  let fmtFor = null; // which editor the format buttons were last drawn for (true: the rich one)
+  let richButton = null;
   let paperButton = null;
   let tagButton = null;
   let backButton = null;
@@ -856,6 +901,16 @@
     const wantFmt = Boolean(ed && !ed.lost);
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
+    // In the rich editor a button with no action there yet (Link, Grid, Formula) is off; Heading's levels are all there.
+    if (!fmtButtons.length) fmtFor = null;
+    else if (fmtFor !== rich) {
+      fmtFor = rich;
+      fmtButtons.forEach((b, i) => b.set({ disabled: rich && FORMATS[i].id !== 'heading' && !dlRichCan(FORMATS[i].id) }));
+    }
+    // The switch between the text box and the rich editor: on while the rich editor shows.
+    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'file-lines', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
+    else if (!wantFmt && richButton) { richButton.destroy(); richButton = null; }
+    else if (richButton) richButton.set({ on: rich });
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
