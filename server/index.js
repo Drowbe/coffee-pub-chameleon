@@ -2364,7 +2364,24 @@ hostRouter.post('/api/host/environments/:slug/template/apply', requireHostAdmin,
 // admin's own stand-in user in that environment. The stand-in needs no password: the session is signed here with the
 // environment's own secret, as a sign-in would, and lives only for this one run. It changes no environment-wide setting.
 // Answers the loader's report, with the demo people's one-time passwords shown once (never logged, never kept).
-const demoRuns = new Set();
+// demoRuns: the runs in progress, environment slug -> that run's mark: 32 random bytes made here for this one run, sent
+// by the loader on each of its own requests (DEMO_RUN_HEADER), kept in memory only and forgotten when the run ends. The
+// agreement gate (agreementGate, below) lets a request through that carries the mark of the run in progress in its own
+// environment: the loader writes as the demo people, who are characters, not people who can agree. Nothing a client
+// sends can stand for it: the mark is never answered, logged or stored, and no account, name or field carries it. A
+// person who later signs in as a demo person is asked like anyone else.
+const demoRuns = new Map();
+const DEMO_RUN_HEADER = 'x-demo-run';
+function demoRunRequest(req) {
+  const mark = demoRuns.get(currentEnvironment().slug || '');
+  const given = req.get(DEMO_RUN_HEADER);
+  if (!mark || typeof given !== 'string') return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(mark);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  // The loader asks this server from this server (loopbackFetch): the connection's own address, never a header's.
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+}
 const DEMO_STANDIN_LOGIN = 'host-demo';
 // fetch cannot set the Host header, and the environment is chosen by it: so the loader's requests go through node's http.
 function loopbackFetch(url, { method = 'GET', headers = {}, body } = {}) {
@@ -2403,12 +2420,13 @@ hostRouter.post('/api/host/environments/:slug/demo', requireHostAdmin, async (re
     let user = env.store.userByLogin(DEMO_STANDIN_LOGIN);
     if (user && (!user.hostAdmin || user.passwordHash)) throw new HostError(`A person called "${DEMO_STANDIN_LOGIN}" already has an account in this ${envWord('environment')}, so the demo cannot be added. Rename or remove that account first.`, 409);
     if (!user) user = env.store.addUser({ login: DEMO_STANDIN_LOGIN, displayName: 'Host (demo)', role: 'admin', passwordHash: null, hostAdmin: true });
-    demoRuns.add(slug);
+    const mark = crypto.randomBytes(32).toString('base64url');
+    demoRuns.set(slug, mark);
     let report;
     try {
       report = await demoLoader.loadDemo({
         base: `http://127.0.0.1:${listener.address().port}`,
-        headers: { host: `${slug}.${BASE_DOMAIN}` },
+        headers: { host: `${slug}.${BASE_DOMAIN}`, [DEMO_RUN_HEADER]: mark },
         templateId: usedTemplate,
         today: new Date().toISOString().slice(0, 10),
         session: { cookie: `${auth.COOKIE}=${auth.issueSession(env.store.sessionSecret, user)}` },
@@ -3070,8 +3088,10 @@ if (BASE_DOMAIN) {
 // Studio app's bearer token) whose account has not agreed to the current version of every text gets nothing but what
 // is named here. It asks on every request, so it holds for a session opened before a text changed.
 //   Never asked:  a request with no account session (signed out, the access key, a guest link: an account's rights are
-//                 not in play, and each route still asks for what it needs), and the host admin's stand-in
-//                 (hostAdmin, which signs in through the host). With no text set, nobody.
+//                 not in play, and each route still asks for what it needs), the host admin's stand-in
+//                 (hostAdmin, which signs in through the host), and the demo loader's own requests while the host
+//                 console adds the demo space (demoRunRequest: the demo people are characters). With no text set,
+//                 nobody.
 //   Still open:   reading the texts and agreeing (GET /api/agreements, POST /api/agreements/accept), signing out
 //                 (POST /api/logout, GET /logout), branding (GET /api/branding), the agreement page (GET /agree), and
 //                 the files that page is drawn with, which hold nothing of anyone's and are served the same to a person
@@ -3102,7 +3122,7 @@ const mustAgree = (user) => agreementTexts.required && !agreementExempt(user) &&
 function agreementGate(req, res, next) {
   if (!agreementTexts.required || !envContext.getStore()) return next(); // no text set, or no environment (the product host)
   const user = currentUser(req);
-  if (!user || !mustAgree(user)) return next();
+  if (!user || !mustAgree(user) || demoRunRequest(req)) return next();
   const reading = req.method === 'GET' || req.method === 'HEAD';
   const p = framingPath(req.path);
   if (AGREEMENT_OPEN.has(`${reading ? 'GET' : req.method} ${p}`)) return next();

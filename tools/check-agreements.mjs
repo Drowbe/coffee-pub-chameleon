@@ -25,6 +25,9 @@
  *     key); a session that has not agreed is refused even when it carries the access key or a guest link;
  *   - a hosted server: the host console and the product host have no agreement routes; agreeing in one environment
  *     says nothing in another, and one environment's session is nobody at another;
+ *   - the demo space on a hosted server: the loader's own requests carry a mark the server makes for that one run, so
+ *     all its chat is posted; a real account is refused before, during and after the run whatever header, field or name
+ *     it sends, and a person who signs in as a demo person is asked;
  *   - guests' agreements (server/agreements.js, GuestAgreements): a typed name is kept as plain text, one line, at
  *     most 40 characters; one record per guest, text and version; the file is private, bounded, and never written over
  *     when it cannot be read; an owner's copy carries neither it nor an account's `agreed`.
@@ -920,6 +923,63 @@ try {
     assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: (await signIn('bbb', 'pretender', OWNER_PASSWORD)).cookie })));
     // An owner is not exempt, whatever their rights.
     assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: owners.bbb.cookie })));
+  });
+
+  await test('the demo space: the loader\'s own requests are let through while it runs; nothing a client sends stands for them', async () => {
+    // A fresh environment with a real owner who has not agreed, to ask as while the demo space is being added.
+    const made = await call('admin', 'POST', '/api/host/environments', { cookie: hostCookie, body: { slug: 'ddd', name: 'Env ddd', plan: { modules: 'all' }, owner: { login: 'dora', displayName: 'Dora', password: OWNER_PASSWORD } } });
+    assert.equal(made.status, 201, made.text);
+    const dora = await signIn('ddd', 'dora', OWNER_PASSWORD);
+    const forged = ['1', 'true', 'yes', 'host-demo', crypto.randomBytes(32).toString('base64url'), '', 'x'.repeat(43)];
+    const stillAsked = async (when) => {
+      for (const mark of forged) {
+        for (const headers of [{ 'x-demo-run': mark }, { 'X-Demo-Run': mark, 'x-demo': '1', 'x-host-admin': '1', 'x-forwarded-for': '127.0.0.1' }]) {
+          assert.ok(isAsked(await call('ddd', 'GET', '/api/me', { cookie: dora.cookie, headers })), `${when}: a forged mark ${JSON.stringify(mark)}`);
+          assert.ok(isAsked(await call('ddd', 'POST', `/api/spaces/lobby/chat?demo=1&hostAdmin=true`, { cookie: dora.cookie, headers, body: { text: 'hello', demo: true, hostAdmin: true } })), `${when}: a forged mark posting chat`);
+        }
+      }
+    };
+    await stillAsked('before the run');
+    const run = call('admin', 'POST', '/api/host/environments/ddd/demo', { cookie: hostCookie });
+    // While it runs (a second ask is told to wait), a real account is still refused, whatever it sends.
+    let during = 0;
+    for (let i = 0; i < 200 && !during; i += 1) {
+      await new Promise((done) => setTimeout(done, 25));
+      const second = await call('admin', 'POST', '/api/host/environments/ddd/demo', { cookie: hostCookie });
+      if (second.status === 409 && /is being added/.test(second.json?.error || '')) during += 1;
+      else if (second.status !== 409) break;
+    }
+    assert.ok(during, 'the run was caught in progress');
+    await stillAsked('during the run');
+    assert.ok(isAsked(await call('ddd', 'GET', '/api/spaces', { cookie: dora.cookie })), 'during the run: no mark at all');
+    assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: owners.bbb.cookie })), 'during the run: another environment is as it was');
+    const report = (await run);
+    assert.equal(report.status, 200, report.text.slice(0, 300));
+    assert.equal(report.json.demo, true);
+    // Everything the loader wrote as the demo people went in: nothing was refused for want of an agreement.
+    assert.ok(report.json.created.chat > 0, `the chat messages were posted: ${JSON.stringify(report.json.created)}`);
+    assert.deepEqual(report.json.refused.filter((r) => r.module === 'chat'), [], 'no chat message was refused');
+    assert.ok(!report.json.refused.some((r) => /Agree to the terms/.test(r.why || '')), JSON.stringify(report.json.refused).slice(0, 300));
+    assert.ok(!report.text.includes('x-demo-run'), 'the answer names no mark');
+    assert.ok(report.json.people.length > 0);
+    // Afterwards: the mark is gone, a real account is refused, and a person who signs in as a demo person is asked.
+    await stillAsked('after the run');
+    for (const person of report.json.people) {
+      const real = await signIn('ddd', person.login, person.password);
+      assert.ok(isAsked(await call('ddd', 'GET', '/api/me', { cookie: real.cookie })), `${person.login}, signed in by a person, is asked`);
+      assert.ok(isAsked(await call('ddd', 'POST', `/api/spaces/${report.json.space.id}/chat`, { cookie: real.cookie, body: { text: 'hello' } })), `${person.login} cannot post before agreeing`);
+      assert.ok(!('agreed' in onDisk(envDir('ddd'), person.login)), `nothing was agreed for ${person.login}`);
+      assert.equal(onDisk(envDir('ddd'), person.login).hostAdmin, false);
+    }
+    const mia = await signIn('ddd', report.json.people[0].login, report.json.people[0].password);
+    assert.equal((await agree('ddd', mia.cookie)).status, 200, 'and agrees like anyone');
+    assert.equal((await call('ddd', 'GET', '/api/me', { cookie: mia.cookie })).status, 200);
+    // The mark is in no file and no log line; an account with the stand-in's name is an account like any other.
+    assert.ok(!server.output().includes('x-demo-run'));
+    const cross = await call('bbb', 'POST', '/api/login', { body: { login: HOST_LOGIN, password: HOST_PASSWORD }, from: nextIp() });
+    const named = await call('bbb', 'POST', '/api/users', { bearer: cross.json.token, body: { login: 'host-demo', displayName: 'Host (demo)', role: 'member', password: OWNER_PASSWORD, hostAdmin: true, demo: true } });
+    assert.equal(named.status, 201, named.text);
+    assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: (await signIn('bbb', 'host-demo', OWNER_PASSWORD)).cookie })), 'an account called host-demo is asked');
   });
 
   await test('every way in ends at the gate: the first password; its page is never redirected', async () => {
