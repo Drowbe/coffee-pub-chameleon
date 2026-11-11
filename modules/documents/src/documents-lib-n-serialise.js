@@ -35,6 +35,10 @@
     const space = (c) => c === '' || /\s/.test(c);
     const mark = (c) => c !== '~' && /[\p{P}\p{S}]/u.test(c);
     const runs = /(?:\u0001\*+|\*+\u0002)+|(?:\u0001~+|~+\u0002)+/g;
+    // A formula right after a closing run: the reader pairs the marks with every formula filled with letters (DL_MARKED_HOOKS),
+    // so what follows the run is a letter to it, not the punctuation a `$` is.
+    const formula = new RegExp(DL_MATH_SPAN.source, 'y');
+    const formulaAt = (i) => { if (text[i] !== '$') return false; formula.lastIndex = i; return formula.test(text); };
     let out = '';
     let last = 0;
     let m;
@@ -55,7 +59,7 @@
       let made;
       if (closing && opening) made = closing + DL_RICH_GAP + opening;
       else if (opening) made = markAfter && !(space(before) || (markBefore && before.length === 1) || before === '~') ? DL_RICH_GAP + opening : opening; // marked sees half of a two-unit character (an emoji) there: a letter
-      else made = markBefore && !(space(after) || markAfter) ? closing + DL_RICH_GAP : closing;
+      else made = markBefore && !(space(after) || (markAfter && !formulaAt(b))) ? closing + DL_RICH_GAP : closing;
       out += text.slice(last, m.index) + made;
       last = m.index + m[0].length;
     }
@@ -262,5 +266,5 @@
       before = block;
     });
     const out = dlRichMarks(parts.join(''));
-    return out ? `${out.replace(/\n+$/, '')}\n` : '';
+    return out ? `${dlTrimBreaks(out)}\n` : '';
   }

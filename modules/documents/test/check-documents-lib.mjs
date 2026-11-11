@@ -15,7 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/documents/src'));
 const files = fs.readdirSync(src).filter((f) => /^documents-lib-[a-z]-.*\.js$/.test(f)).sort();
 const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('\n');
-const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
+const NAMES = ['DL', 'dlCleanText', 'dlTrimBreaks', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
   'dlObjectLinks', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
@@ -53,6 +53,17 @@ test('preview: never splits a surrogate pair', () => {
   const p = L.dlPreview('a'.repeat(399) + '\u{1F600}'.repeat(5));
   assert.equal(p.length, 399);
   assert.ok(!/[\ud800-\udbff]$/.test(L.dlPreview('a'.repeat(398) + '\u{1F600}\u{1F600}')));
+});
+test('line breaks at the end of a text are taken off in one pass, however long a run of them stands in the middle', () => {
+  assert.equal(L.dlTrimBreaks('a\n\nb\n\n\n'), 'a\n\nb');
+  assert.equal(L.dlTrimBreaks('a \n'), 'a ');
+  assert.equal(L.dlTrimBreaks('\n\n'), '');
+  assert.equal(L.dlTrimBreaks(''), '');
+  const md = `<pre>${'\n'.repeat(100000)}x</pre>\n`; // /\n+$/ took seconds on this
+  const s = Date.now();
+  const desc = L.dlDescribe(md, lex);
+  assert.ok(Date.now() - s < 1000, `${Date.now() - s} ms`);
+  assert.deepEqual(desc.map((b) => [b.t, b.v.length]), [['source', md.length - 1]]);
 });
 test('preview: invisible and control characters out', () => {
   assert.equal(L.dlPreview('a\u202eb\u200bc\u0000d\r\ne'), 'abcd\ne');

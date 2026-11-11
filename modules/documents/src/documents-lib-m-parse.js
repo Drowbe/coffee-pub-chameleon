@@ -5,15 +5,28 @@
   // file only turns that description into nodes; it reads no Markdown itself. What the reader shows as text becomes a source node.
   // One bound is added here: a text that would make more than DL_RICH.nodesMax nodes is held whole, as one source block.
   // Nothing is ever dropped: a text over the size bound, or one that fails for any reason, is also held whole as one source block.
+  //
+  // THE TABLE BESIDE THE TEXT (dlRichRead -> { doc, stored }). Reading makes two things: the editor's text, and a table
+  // (`stored`: { text, clean, doc, lead, entries }) with one entry for each top-level block of the stored text, in order:
+  //   { text   the block's own characters, exactly as stored (its slice of the text, without the line breaks at its end)
+  //     gap    what stands between it and the next block (those line breaks and any blank lines), exactly as stored
+  //     from   where the slice starts in the text
+  //     node   the node it reads as, in the whole text (a link through a definition elsewhere reads as that link)
+  //     open   true on a last block that has no end of its own (a code fence or a raw block never closed, a text held whole):
+  //            anything written after it would be read as part of it }
+  // `lead` is the blank lines before the first block, `text` the text as it was given, `clean` whether cleaning left it as it
+  // was. documents-lib-o-write.js writes the text from this table and the editor's text, so an untouched block is written
+  // word for word. `entries` is null when the lexer's tokens do not add up to the text (never seen; then nothing is kept by
+  // the block and a change writes the whole text again).
   const DL_RICH_OVER = { over: true };
 
-  // desc: dlDescribe's output. -> the top-level nodes. Throws DL_RICH_OVER past the node bound.
-  function dlRichBlocks(PM, desc) {
+  // desc: dlDescribe's output. -> the top-level nodes. Throws DL_RICH_OVER past the node bound. `tally` ({ n }) carries the
+  // count of nodes from one call to the next, when a text is turned into nodes block by block.
+  function dlRichBlocks(PM, desc, tally = { n: 0 }) {
     const schema = dlRichSchema(PM);
     const N = schema.nodes;
     const M = schema.marks;
-    let count = 0;
-    const made = (node) => { count += 1; if (count > DL_RICH.nodesMax) throw DL_RICH_OVER; return node; };
+    const made = (node) => { tally.n += 1; if (tally.n > DL_RICH.nodesMax) throw DL_RICH_OVER; return node; };
     const para = (kids) => made(N.paragraph.create(null, kids));
     // Raw Markdown shown as text, in a line: one source node; two in a row with the same marks are one.
     const source = (out, src, marks) => {
@@ -58,7 +71,7 @@
         else if (b.t === 'quote') { const c = blocks(b.c); out.push(made(N.blockquote.create(null, c.length ? c : [para([])]))); }
         else if (b.t === 'rule') out.push(made(N.horizontal_rule.create()));
         else if (b.t === 'codeblock') {
-          const v = String(b.v || '').replace(/\n+$/, '');
+          const v = dlTrimBreaks(String(b.v || ''));
           const lang = /^[A-Za-z0-9_+#.-]{0,40}$/.test(String(b.lang || '')) ? String(b.lang || '') : '';
           out.push(made(N.code_block.create({ lang, info: dlCleanLine(String(b.info || ''), DL_RICH.infoMax) }, v ? [made(schema.text(v))] : [])));
         } else if (b.t === 'source') { if (b.v) out.push(made(N.source_block.create(null, [made(schema.text(String(b.v)))]))); }
@@ -96,13 +109,69 @@
   // A text held whole, word for word, as one source block (an empty text is one empty paragraph).
   function dlRichWhole(PM, text) {
     const schema = dlRichSchema(PM);
-    const v = text.replace(/\n+$/, '');
+    const v = dlTrimBreaks(text);
     return schema.nodes.doc.create(null, [v ? schema.nodes.source_block.create(null, [schema.text(v)]) : schema.nodes.paragraph.create()]);
+  }
+  // The lexer's token types that the reader makes no block of (dlBlocks): every other top-level token is exactly one block.
+  const DL_RICH_NO_BLOCK = ['space', 'checkbox'];
+  // Is a last block without an end of its own? Read it again with a paragraph after it: closed, the paragraph stands alone.
+  function dlRichOpen(token, slice, lex) {
+    if (token.type !== 'html' && !(token.type === 'code' && token.codeBlockStyle !== 'indented')) return false;
+    try {
+      const again = lex(`${slice}\n\nx`).filter((t) => t && t.type !== 'space');
+      return !(again.length === 2 && dlTrimBreaks(String(again[0].raw)) === slice && again[1].type === 'paragraph' && again[1].raw === 'x');
+    } catch (err) { return true; }
+  }
+  // P with its table: Markdown -> { doc, stored }. `lex` is the injected marked lexer, exactly as the reader takes it (with
+  // DL_MARKED_MATH). Never throws and never drops text. The text goes through dlDescribe once, whole; the description's blocks
+  // are then set beside the lexer's top-level tokens, whose `raw` are the slices. The cost grows with the length of the text.
+  function dlRichRead(PM, markdown, lex) {
+    const text = typeof markdown === 'string' ? markdown : '';
+    const md = dlCleanText(text);
+    const N = dlRichSchema(PM).nodes;
+    const result = (doc, lead, entries) => ({ doc, stored: { text, clean: md === text, doc, lead, entries } });
+    const whole = () => {
+      const doc = dlRichWhole(PM, md);
+      const v = dlTrimBreaks(md);
+      return result(doc, v ? '' : md, v ? [{ text: v, gap: md.slice(v.length), from: 0, node: doc.firstChild, open: true }] : []);
+    };
+    if (md.length > DL.sizeMax) return whole();
+    try {
+      let tokens = null;
+      const desc = dlDescribe(md, (v) => { tokens = lex(v); return tokens; });
+      const tally = { n: 0 };
+      const nodes = [];
+      const entries = [];
+      let lead = '';
+      let pos = 0;
+      let next = 0;
+      let last = null;
+      if (!Array.isArray(tokens)) return whole(); // the lexer threw: the reader holds the text whole
+      let ok = true;
+      for (const token of tokens) {
+        const raw = token && typeof token === 'object' && typeof token.raw === 'string' ? token.raw : null;
+        if (raw === null || !md.startsWith(raw, pos)) { ok = false; break; }
+        if (DL_RICH_NO_BLOCK.includes(token.type)) {
+          if (raw.trim()) { ok = false; break; } // only blank lines may stand between two blocks
+          if (entries.length) entries[entries.length - 1].gap += raw; else lead += raw;
+        } else {
+          const made = next < desc.length ? dlRichBlocks(PM, [desc[next]], tally) : [];
+          const slice = dlTrimBreaks(raw);
+          next += 1;
+          if (made.length !== 1 || !slice) { ok = false; break; }
+          entries.push({ text: slice, gap: raw.slice(slice.length), from: pos, node: made[0] });
+          nodes.push(made[0]);
+          last = token;
+        }
+        pos += raw.length;
+      }
+      if (!ok || pos !== md.length || next !== desc.length) return result(dlRichFromDescription(PM, desc), '', null);
+      const doc = N.doc.create(null, nodes.length ? nodes : [N.paragraph.create()]);
+      doc.check();
+      if (last && dlRichOpen(last, entries[entries.length - 1].text, lex)) entries[entries.length - 1].open = true;
+      return result(doc, lead, entries);
+    } catch (err) { return whole(); }
   }
   // P: Markdown -> the editor's text. `lex` is the injected marked lexer, exactly as the reader takes it (with DL_MARKED_MATH).
   // Never throws and never drops text.
-  function dlRichParse(PM, markdown, lex) {
-    const md = dlCleanText(typeof markdown === 'string' ? markdown : '');
-    if (md.length > DL.sizeMax) return dlRichWhole(PM, md);
-    try { return dlRichFromDescription(PM, dlDescribe(md, lex)); } catch (err) { return dlRichWhole(PM, md); }
-  }
+  function dlRichParse(PM, markdown, lex) { return dlRichRead(PM, markdown, lex).doc; }
