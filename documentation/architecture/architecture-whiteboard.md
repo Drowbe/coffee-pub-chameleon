@@ -70,6 +70,8 @@ The sync rules, from the header of `lib-c-sync`:
   echoed, or when the delete is refused. A read answered after a newer read was asked for, or while this page is writing the
   key, is not used. This closed GitHub #471.
 
+**After a dropped connection** (`lib-r-resync`, 0.1.47 to 0.1.49). The host's event stream can drop and come back with changes missed and nothing said. The page hears `host.on('reconnected')`, reads the board's keys again and gives them to `wbResyncPlan(known, remoteList, pending)`, a pure function. `known` is the versions this page last saw, `remoteList` is what the server holds (each value cleaned by `wbClean`) and `pending` is the ids being edited, dragged, held, drafted, waiting to be saved or waiting for a delete to be heard. It returns `{ put, remove }`: a remote block newer than the page's version, or not known, is put; a block the server no longer holds is removed; a block in `pending`, an equal or an older one, and a block this page cannot read are left alone. It is a merge, not `reload()`'s full clear. 0.1.47 did this on a timer as a stopgap; 0.1.49 does it on the event. Tests: `check-whiteboard-resync.mjs` (read from the file list; not rerun here).
+
 The server checks `edit` on every save (`access.write` in the manifest), so `lib-b-policy` is only for what the page shows.
 
 ## Undo and the clipboard
@@ -146,6 +148,8 @@ its own. `whiteboard.js` builds it, left to right:
 - On a narrow board the host folds the row: the last choices of **Tools** go into More first (the tool in use always stays in the row), then the other buttons.
 
 A tool declares `edits: true` when it changes the board; `policy.canUseTool` leaves it out for someone who may only look.
+
+**Since 0.1.25 the tools are families.** The **Tools** switch holds Hand, Select, Pen, Fill, Text, Note, Flowchart, Shape, Table and Frame (`SWITCH` in `whiteboard.js`). Pen (`pen`, `marker`, `brush`, `highlight`), Shape (`rect`, `ellipse`, `line`, `arrow`) and Flowchart (`connector`, `rounded`, `diamond`, `pill`, `parallelogram`) are `FAMILIES`: one choice in the switch, the kinds as buttons on the strip, and the page remembers the last kind used for the session. A kind's own key picks its family with that kind. The Timer is `apart`. Zoom and **Find** are title-bar buttons (`host.toolbar.set`, `placement: 'titlebar'`), and **Overview**, **Grid** and **Snap to grid** are right-zone toolbar buttons. The Grid panel's style (`dots`, `lines`, `off`), size (8 to 96), colour and opacity are kept in this browser under `whiteboard-grid` (`wbGrid`, `lib-a-core`); Snap uses the same size. The board's background is a menu of Default, Light and Dark fixed colours (`WB_FIXED_BACKGROUNDS`) and the tinted washes; a pick asks first and is one save and one undo step.
 
 ## Connectors
 
@@ -287,6 +291,12 @@ A frame is a block type with `container: true` (`lib-e-block-frame.js`; its tool
 - **Save frame as image** exports the frame's own box with everything overlapping it, without the title tab, through `lib-l-export`.
 - **Menus.** A block's own colour reads **Default** (the paint choice `usual` is shown as Default, also in the text size and alignment menus).
 - Tests: `check-whiteboard-frames.mjs` (15 cases).
+
+**Presenting to everyone** (`lib-q-present`, 0.1.41 to 0.1.44). One person presents and the others follow. The state is one bookkeeping record in the module's storage, `_present:<board>:state` = `{ id, type: 'present', presenter, name, frame, move, dim, seq, at, by }`; its leading `_` keeps it out of the blocks' and the settings' sync. Storage is the truth: a late joiner reads it, the others hear its changes, and nothing depends on `host.live`. Who presents is settled by compare-and-set (the first write wins, the loser follows). The presenter rewrites the record every 10 seconds (`beat`); a record nobody has seen change for 35 seconds (`stale`, on the reader's own clock, never a comparison of stored time with another computer's clock) counts as nobody presenting. Rapid Next and Back or the slider are coalesced into one write 150 ms after the last. A guest has no user key and can only follow. **Restart** and **Jump to Frame** are `presentGo('first')` and a menu of the frames; the transition (`move`: `immediate`, `fade`, `pan`) and the dimming (`dim`, 0 to 100 in steps of 5) travel with the record, so a follower sees the presenter's choices. The spotlight is a scrim over the world with a hole the shape of the current frame, rounded as the frame is.
+
+**Speaker notes** (0.1.44, 0.1.45) are the frame's own `notes` field, plain words drawn through the markup reader, never on the board. The notes mark in the frame's title tab (`blockTypes.get('frame').notes`, given `canEdit`, `open` and `icon` by the page) opens them. The presenter's notes box is local to the page and is never sent to followers. Read from code; the box's drag and its keeping inside the board were not run.
+
+**Live pointers** (`lib-p-pointers`, 0.1.23) are `host.live` messages on the topic `pointer`: `{ x, y, tool }` in board units, at most one every 50 ms with the last place always sent, `{ gone: true }` when the pointer leaves. Nothing is stored and nothing touches the history. A person's pointer fades after 5 seconds of silence and is dropped after 20; at most 50 are drawn (the one heard from longest ago goes); a name is cut at 24 characters; the tool must be one of the board's own ids. The module's manifest says `"live": true`. The browser's choice to hide pointers is kept under `whiteboard-pointers`.
 
 ## The overview and Find
 

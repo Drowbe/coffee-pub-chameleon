@@ -8,7 +8,7 @@ the CHANGELOG once fixed.
 
 ## Whiteboard: limits that are known
 
-These are recorded for the Whiteboard 0.1.22 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
+These are recorded for the Whiteboard 0.1.49 ([userguide-whiteboard](userguides/userguide-whiteboard.md),
 [architecture-whiteboard](architecture/architecture-whiteboard.md)).
 
 - **Same block, same moment.** Two people changing one block at the same moment: the last save wins. There is no conflict check yet.
@@ -30,11 +30,30 @@ These are recorded for the Whiteboard 0.1.22 ([userguide-whiteboard](userguides/
 - **Resizing a group.** Picking a group and dragging a handle to resize it as one selection is not built. Resize the blocks one at a time.
 - **Ctrl+L and Ctrl+G** (Cmd on a Mac), the keys for lock and group, were tried with synthetic key events and not in a real browser, where a browser may use them for itself. The same commands are in the right-click menu.
 - **Connectors and frames.** A connector with a free end inside a frame does not move when the frame moves. A connector between two blocks inside the frame does, because it follows its blocks.
-- **Frames: read as code only.** The glide between frames, the reduced-motion jump, Print with frames on the board and a real long press on a frame were read as code and not tried. Presenting is each person's own; there is no "everyone follows me" yet.
+- **Frames: read as code only.** The glide between frames, the reduced-motion jump, Print with frames on the board and a real long press on a frame were read as code and not tried. Presenting to everyone (0.1.41) is checked by tool with fake clocks and pages, not with two real computers.
+- **Pure White swatch on a light menu.** The Pure White choice in the Light backgrounds and fixed colours rows draws a white swatch, which is almost invisible on a light menu. The name beside it is readable. Workaround: read the name, not the swatch.
+- **Charcoal on a fixed fill.** Words in **Ink**-coloured or Charcoal choices on a fixed (Light or Dark) fill do not follow the theme, so a dark colour on a dark fill can be hard to read. Pick a different words colour.
+- **The Present notes box was checked as code only.** Dragging the speaker notes box and keeping it inside the board, and its layout under 640 pixels, were read from the code and not tried in a browser. Shared presenting, Restart and Jump to Frame were checked by tool, not by hand.
+- **Pointers and the resync were not tried with several people** or a real dropped connection.
 - **Align, guides and lock keys** were checked by tool (`check-whiteboard-arrange.mjs`), not by hand in a browser.
 - **The clipboard.** Copy and cut by key replace what is on the computer's clipboard (with the board's mark). Thomas accepted this.
 - **Find and Overview: not verified.** Find was not tried with the formatting bar's link field or a frame's title being edited (the `/` key is meant to type a slash there; this was read as code and checked by a tool on its sums, not by hand). Neither Find nor the overview was tried on a real phone, and neither in a real call.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
+
+## Documents: paths checked as code only
+
+Documents 0.6.1 ([userguide-documents](userguides/userguide-documents.md), [architecture-documents](architecture/architecture-documents.md)).
+
+- **Read as code, not tried:** the lock going stale and being taken over from a second page, the save that loses to someone else's save and keeps the text on the screen, bringing a document back from the trash, and catching up after a dropped connection. The pure rules have tests; the pages were not driven by two people.
+- **No links to other documents, no pictures, no export and no live co-editing yet.** They are in [plan-documents](plans/plan-documents.md) and the [TODO](TODO.md).
+- **Search does not match tag names.** Searching the list matches the text of the list only; use the **Tags** filter for a tag.
+- **Documents has no tag control on a row.** A document is tagged from its open page only.
+
+## Shared tags: pieces the SDK does not have yet
+
+- **The picker needs an element to open under.** `host.tags.picker(anchor, ...)` takes an element, not a point. Documents draws its own invisible 1-pixel element for it. A shared picker piece that takes an x and y is missing. Workaround: none needed; the module does it.
+- **No shared "tag this" control on a row.** Each module places its own button.
+- **No divider or group for action buttons in a toolbar.** A module's toolbar buttons all sit ungrouped; a module that wants a group cannot draw a line between them.
 
 ## Stacked modules and the tab order without moveBefore
 
@@ -49,7 +68,7 @@ Workaround: use the keyboard on the divider and the titlebar menus, which work i
 
 ## Vault: who can see a file has known gaps
 
-The server decides which Vault files a person may see, and the Vault (0.4.4) has the screens to set it ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 1 to 3 and the share link rule, on main; the rest of slice 4 is not built). [Vault](userguides/userguide-vault.md), "Who can see a file", describes what works. These limits are known and accepted for now:
+The server decides which Vault files a person may see, and the Vault (0.4.5) has the screens to set it ([plan-vault-privacy](plans/plan-vault-privacy.md), slices 1 to 3 and the share link rule, on main; the rest of slice 4 is not built). [Vault](userguides/userguide-vault.md), "Who can see a file", describes what works. These limits are known and accepted for now:
 
 - **Space full.** The "space is full" refusal and the storage total can tell a person that files they cannot see take space. Thomas decided to accept this and document it.
 - **A share link comes back.** A share link holds only the files its maker can still see, checked each time it is opened; a file they cannot see drops out of the link, and a link with none left reads "This link has ended." Nothing is stored, so if the file is shown to its maker again it returns to the link. Decision 8 of the plan reads as if the link ended for good; it is kept as built until Thomas says otherwise. Workaround: to end a link for good, turn it off under **Share links**.

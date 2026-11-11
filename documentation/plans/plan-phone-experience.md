@@ -99,9 +99,12 @@ measured earlier and recorded in [architecture-canvas](../architecture/architect
   of the screen (`.sdk-kind-sheet`); the host's menus drill in instead of flying out; the phases sheet has a 52 px band.
   None of these is a shared "sheet" piece: each is styled on its own inside the "Dialogs and sheets" block of
   `system.css`.
-- **The viewport:** `body.in-space` is `position: fixed; top: 0; height: 100dvh`; `syncViewportHeight()` copies
-  `visualViewport.height` into `--app-vh`; the top bar and the tab bar pad by `env(safe-area-inset-top)` and
-  `env(safe-area-inset-bottom)` (about 40 uses of `safe-area-inset` in `public/`). Every page has
+- **The viewport:** `body.in-space` is `position: fixed` to the top of the screen at `100dvh`, and the page itself never
+  scrolls (`html:has(body.in-space)` has `overflow: hidden`; only the modules' own areas scroll, #577). At phone width
+  only (640 px and narrower), `syncViewportHeight()` copies `visualViewport.height` into `--app-vh` so the shell stays
+  above the keyboard and the browser's bars; wider than that it removes `--app-vh` and the shell is plain `100dvh`, so a
+  tablet's keyboard or shortcut bar does not shrink it. The top bar and the tab bar pad by `env(safe-area-inset-top)`
+  and `env(safe-area-inset-bottom)` (about 40 uses of `safe-area-inset` in `public/`). Every page has
   `viewport-fit=cover`. Nothing follows `visualViewport` to keep a focused field above the keyboard.
 - **History:** nothing in `public/` uses `history.pushState` or `popstate`. The phone's back gesture leaves the page,
   whatever sheet is open.

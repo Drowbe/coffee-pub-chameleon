@@ -4,6 +4,8 @@
 
 **Status:** Draft, 2026-11-11. Nothing is built and nothing was run for this plan. The request, as Thomas gave it when asked directly: a bundled **Documents** module for shared notes in a space (session notes, handouts, lesson plans), first used by his two beta clients, for tutoring and for collaborating on a project. Facts marked **(code)** were read in the code, **(docs)** in the documentation; **(memory)** is what the author recalls about a library or a browser and must be checked in the spike. The decisions below are Thomas's; the contract is a draft built on them, and anything in it that he has not decided is also listed under "Open questions".
 
+**Progress (2026-11-11):** Built to Documents 0.6.1 (steps 2 to 4, tables and formulas in the formatting bar, tags, page colour, zoom, List and Thumbnails views, resync). Not built: links to objects and to other documents (step 6), export (step 7), pictures, live co-editing, and the licence, hash and outside-URL checks. The user guide is [userguide-documents](../userguides/userguide-documents.md) and the architecture [architecture-documents](../architecture/architecture-documents.md). The module has a `THIRD-PARTY.md` (marked 18.2.0, MIT). This plan's "What it is today" says `host.live` is not available; it is now in the SDK ([api-module-sdk](../api/api-module-sdk.md)).
+
 ## What it is today
 
 - There is no module for written text. Research keeps notes, but they are research (tags, a place, a date, the AI) and one note is one value, at most about 60 KB **(docs)**. The Whiteboard has text and notes on a board, not documents. Chat's messages are not edited together.

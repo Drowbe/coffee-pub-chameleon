@@ -119,7 +119,13 @@ Two things can pop up in a corner of the page for a few seconds, and they differ
 - A **notice** comes from a module about something you should know, such as a reminder. It shows as a toast for about
   nine seconds, is kept on the bell until you read it, and clicking it opens the module.
 - A **toast** on its own is a short line about what you just did: that a place was saved, or could not be. It goes
-  by itself, or when you click it, and is never kept on the bell.
+  by itself, or when you click its close button, and is never kept on the bell.
+
+Toasts show at the top centre of the canvas, under the top bar, with the newest nearest the top and three showing at
+most. A toast has one of four kinds, shown by its icon and a thin border in the kind's colour: **info** (a plain
+fact), **success** (it worked), **warning** (it worked, with a catch, or needs your attention) and **danger** (it failed).
+They stay a different time: info and success about 4 seconds, warning 6 and danger 7. A note with **Undo** stays along
+the bottom of the screen for the time you have to undo.
 
 What is lasting for a space, such as how far along it is, is in the status strip instead.
 
@@ -345,7 +351,7 @@ The tabs, in this order, with your environment's words for them:
   as Budget) is on in the space, or when one is already set. Leave the amount empty and choose a currency to give the
   space a currency with no target; empty both to clear it. Owners, the admin and the space's moderators can set it
   (see [Budget](userguide-budget.md)).
-- **Settings**: three kinds of section.
+- **Settings**: four kinds of section.
   - **First visit**: what someone sees the first time they enter. Choose the **Workspace**, with its **Opens with**
     switches (the chat, and each module on in the space), or **Calendar**, **Map** or a shared saved layout. Owners and the
     admin choose which; a moderator can change the **Opens with** switches. A switch that cannot open now stays in the
@@ -357,6 +363,12 @@ The tabs, in this order, with your environment's words for them:
     [Modules](userguide-modules.md), "The AI service"; **Let AI look things up** can be turned off for one space, but not
     on when the environment has it off). The switches under **What AI may see** sit at the right, with their words at
     the left.
+  - **Tags** (not on the Lobby): the space's shared tags, which every module that has tags uses (Documents, for one).
+    Each row has the tag's name (type a new one to rename it), a colour list (**Plain**, **Gold**, **Blue**, **Green**,
+    **Teal**, **Purple**, **Red**, **Orange**, **Pink**) and **Delete**. These happen at once and do not wait for **Save**; a new name or colour shows on everything tagged, and deleting a tag takes it off everything.
+    Only people with the **Rename, recolour and delete tags** right see the controls (moderators and owners by default;
+    the admin always; change it on the Roles tab). Everyone else sees the list of tags. Tags are made from a module's tag
+    picker, not here.
   - A section for each module with its settings for this space. Every module that is turned on is in every space; an
     owner turns one on or off on the **Modules** tab of Manage (see [Modules](userguide-modules.md)). A moderator sees the
     module settings only. A file a module holds is deleted at once, not on **Save**. There is no longer a read-only

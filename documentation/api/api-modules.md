@@ -598,6 +598,50 @@ The notices, in the order a page meets them:
 
 With no LiveKit keys, `branding().callService` is false (the pages read it from the branding every page loads), and `PATCH /api/settings` answers 503 `voice and video are not set up on this server` for `conferenceEnabled: true`.
 
+## Live messages
+
+Short messages between the people using one module in one space, over the app's own server and never over the call. Nothing is stored, written to disk or replayed; `server/module-live.js` keeps, per environment and in memory, who has a module stream open in which space, who joined which module's live messages there, the rates and the sequence numbers. The SDK side is [api-module-sdk](api-module-sdk.md), "Live messages"; the plan is [plan-module-live](../plans/plan-module-live.md). All of this is read from the code (`server/index.js`, `server/module-live.js`); the limits were not run under load.
+
+A module takes part when its manifest has `live` ([api-module-sdk](api-module-sdk.md), `module.json`). `{ "publish": "<permission>" }` names the module permission a person needs to send.
+
+| Call | Purpose |
+|---|---|
+| `POST /api/modules/:id/live?space=<id>` | Send. Body `{ topic, data, to? }`; any other field is refused. `topic` is 1 to 40 of `a-z`, `0-9`, `.`, `_`, `-`. `to` is a list of up to `MODULE_LIVE_TO` people (keys, or a guest's id); left out it goes to everyone else in the space who may read the module. `{ ok: true }`. 400 for a bad body or `the data must be plain JSON`; 413 `a live message's data can be at most N bytes`; 429 `too many live messages; wait a moment` with `Retry-After`; 403 `your role can't send live messages in this module` when `publish` is not held. |
+| `POST /api/modules/:id/live/join?space=<id>` | Body `{ stream }`, the id from the stream's `ready`. The person's module stream joins the module's live messages. `{ ok: true, people, limits: { bytes, perSecond, to } }`. 409 when `stream` is not theirs, open, in this space. |
+| `POST /api/modules/:id/live/leave?space=<id>` | Body `{ stream }`. Leaves at once (the module closed on that page). `{ ok: true }`. |
+
+Refusals shared by the three: 404 for no such module or space; 400 `this module doesn't use live messages`, or `live messages are only in a space; say which one`; 401 `sign in first` for a keyed page; 403 when the module is not available in that space for the person, their role can't read it, or it is shut from guests; 403 `that guest pass is not valid; enter again` for a guest without a valid pass.
+
+A guest is known by the id on their guest pass (`POST /api/guest-join`), carried as `?guest=<link>&pass=<pass>` on the stream and on each send, join and leave. A guest stream without a valid pass still receives, but nobody can name it in `to` and it cannot join or send.
+
+**Events** on `GET /api/modules/stream?space=<id>` (each `event:` named, data JSON):
+
+| `event` | Data | When |
+|---|---|---|
+| `ready` | `{ stream }` | First, once. `stream` names this connection to join and leave. |
+| `live` | `{ module, topic, data, from: { key, name, guest }, at, seq, spaceId }` | A message, to every connection in that space whose reader may read the module there now, never the sender's own; for `to`, only those people's. `at` is the server's time in milliseconds and `seq` counts up per module and space. |
+| `joined`, `left` | `{ module, spaceId, person: { key, name, guest }, people }` | Someone joined or left the module's live messages there; `people` is everyone joined now. `left` also comes when access is lost or a stream closed and did not come back within 10 seconds. |
+
+**Limits**, from environment variables (anything but a whole number above 0 is the default): `MODULE_LIVE_BYTES` (256, the most `data` may be as JSON), `MODULE_LIVE_PER_SECOND` (20 messages a second for one person in one module, with a burst of the same), `MODULE_LIVE_PER_PERSON` (40 a second across modules), `MODULE_LIVE_PER_GUEST_LINK` (60 a second for everyone on one guest link together) and `MODULE_LIVE_TO` (20). Joining counts as a message under the first two.
+
+## Tags
+
+One list of tags per space, shared by the modules that opt in with `"tags": true` in their manifest ([api-module-sdk](api-module-sdk.md), "Shared tags"; plan: [plan-tags](../plans/plan-tags.md)). The lists are stored in `tags.json` in the environment's data, so the environment's export and backup carry them, and deleting a space removes its list. The rules live in `server/tags.js` and nowhere else. Read from the code; `tools/check-tags.mjs` and `tools/check-tags-sdk.mjs` check them, and were not rerun for this document.
+
+| Call | Purpose |
+|---|---|
+| `GET /api/spaces/:id/tags` | `{ tags: [{ id, name, color }] }` in name order. For the space's people and a guest of that space. With `?from=<module>` the module must use tags and be available to the person with its `read` right. |
+| `POST /api/spaces/:id/tags` | Body `{ from, name, color? }`. `from` names the calling module, which must use tags and be available to the person, and the person needs its `write` right. Never a guest (403). Finds the tag of that name (200) or makes it (201): `{ tag }`. 429 past the module write limit. |
+| `PATCH /api/spaces/:id/tags/:tag` | Body `{ name?, color? }`, at least one. Needs the `manageTags` permission. `{ tag }`. 409 `Another tag already has that name.` |
+| `DELETE /api/spaces/:id/tags/:tag` | Needs `manageTags`. 204. The tag id stays on objects; modules skip an id that is not in the list. |
+
+- **Who may rename and delete.** `manageTags` ("Rename, recolour and delete tags", in the Moderation group of the Roles tab): off for members and guests, on for moderators and owners by default, always for the admin. It is never on for guests, whatever the Roles tab says. The 403 is `You can't rename, recolour or delete tags in this space.`, sent before the server says whether the tag exists.
+- **A name**: 1 to 24 characters as a person counts them, lower case, letters of any language, digits and dashes; whitespace becomes a dash and invisible characters are taken out; unique in the list. Refusals are one plain sentence with 400: `A tag needs a name.`, `A tag can hold letters, digits and dashes only.`, `A tag can be at most 24 characters.`
+- **A colour** is one of `gold`, `blue`, `green`, `teal`, `purple`, `red`, `orange`, `pink`, or empty for plain.
+- **Limits**: 8 tags on one object (the module's own rule, the SDK's picker stops at it), 200 in a list (409 `This list already holds 200 tags. Delete one first.`). A body over 1,024 bytes is 413.
+- **Other refusals**: 401 `Sign in first.`; 404 `There is no such space.` or `There is no such tag.`; 403 `You are not in that space.`; 403 `That module does not use tags.`
+- **The `tags` event** on the module stream: `{ op: 'added' | 'changed' | 'removed', tag, spaceId }`, sent to modules that opted in, in that space.
+
 ## Calendar feeds
 
 Private addresses that give a calendar app the events of this environment, as an iCalendar file ([plan-google-calendar](../plans/plan-google-calendar.md), Part 1, GitHub #42; [plan-space-calendars](../plans/plan-space-calendars.md), sections 1 and 2, GitHub #179). There are three kinds of address and one route reads them all: a person's **everything address** (every event they may read), a person's **space address** (one space's events only, one token per person per space), and the environment's **published calendar** (one address owners hand out, every space's events, read with nobody's rights). A kind offers itself with `"feed": true` beside `"dated"`; the Calendar's events do, from 1.20.0. Each token is shown once and stored only as its SHA-256.
