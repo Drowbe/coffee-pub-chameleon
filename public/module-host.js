@@ -11,7 +11,7 @@ import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { cleanAddEntries, foldBarItems, cleanStatusItems, statusKey, statusSpoken, statusFrame, createAnnouncer, topmostAt, cleanToolbarItems, cleanHeaderItems, titlebarActions, frameToolbar, frameAdd, cleanStandardActions, cleanShareResult } from '/module-chrome.js';
 import { shareDialog, printFrame } from '/module-actions.js';
-import { createStreamHub, createStreamRelay, createStreamRelayClient } from '/module-stream.js';
+import { createStreamHub, createStreamRelay, createStreamRelayClient, createReconnectWatch } from '/module-stream.js';
 import { createLiveBridge } from '/module-live.js';
 
 // The design tokens a module's frame receives (see design-theme.md).
@@ -2427,11 +2427,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
   // A module on a space's canvas hears that space and the environment; a module's environment page hears the
   // environment and the viewer's spaces (see the stream's scopes on the server). A keyed page has no session for the
   // event stream, so it asks after its settings now and then instead (the one live thing it needs).
+  // After the stream dropped and came back (`lost`, then `ready`) the module missed events: it hears 'reconnected', with no
+  // data, once per drop, and reads what it shows again. Only a mount in a space (a keyed page has no stream).
+  const reconnectWatch = createReconnectWatch(!keyed && scope === 'space' ? spaceId : null);
   const leaveStream = keyed ? pollSettings() : joinStream(scope === 'space' ? spaceId : null, guestToken, (type, d) => {
     // Live messages (plan-module-live.md): the stream's id, its loss, a message, someone joining or leaving. The bridge
     // keeps to this module and this space.
     if (type === 'ready' || type === 'lost' || type === 'live' || type === 'joined' || type === 'left') {
       live.onStream(type, d);
+      if (reconnectWatch(type)) send('reconnected', {});
       return;
     }
     // The person's own other calendars changed (plan-google-calendar.md, Part 2): only the modules the server named,

@@ -37,6 +37,12 @@
 // carries their guest pass (`passFor(guest)`, handed to createStreamHub), so the server knows them apart from others on
 // the same link; the relay hands a window frame the pass with its join answer (only for the guest link it was made for).
 //
+// Reconnected (host.on('reconnected', fn), public/sdk/host.js). While the connection was down the module missed events, so
+// a module that keeps what it shows from them must read it again. createReconnectWatch is one mount's part: it answers true
+// for a `ready` that comes after a `lost` (once per drop: two `lost` then one `ready` is one; a `ready` with no `lost` before it,
+// the first one or a repeat, is not), and only for a mount in a space (a mount without one has no stored data of a space to
+// read again). module-host.js (mountModule) sends the module a 'reconnected' event, with no data, each time it answers true.
+//
 // Pure: nothing here reads the page's globals; module-host.js and canvas.js hand in the windows, and tools/check-streams.mjs
 // runs it against a stand-in EventSource and clock.
 
@@ -241,6 +247,17 @@ export function createStreamHub({ EventSourceImpl = globalThis.EventSource, sche
     },
     // For checks: the connections open now, as their addresses.
     connections: () => [...groups.values()].flatMap((g) => [...g.conns.values()].map((c) => c.url)),
+  };
+}
+
+// One mount's watch: hear(type) for each stream event of its view; true when the module should read again now.
+export function createReconnectWatch(space) {
+  let lost = false;
+  return (type) => {
+    if (!space) return false;
+    if (type === 'lost') { lost = true; return false; }
+    if (type === 'ready' && lost) { lost = false; return true; }
+    return false;
   };
 }
 
