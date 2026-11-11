@@ -3915,6 +3915,13 @@
         text.className = 'sdk-menu-label';
         text.textContent = label;
         b.appendChild(text);
+        if (on && !create) {
+          const tick = document.createElement('span');
+          tick.className = 'sdk-menu-icon';
+          tick.setAttribute('aria-hidden', 'true');
+          b.appendChild(tick);
+          menuIcon('check').then((svg) => { if (svg) tick.innerHTML = svg; });
+        }
         b.addEventListener('click', onClick);
         return b;
       }
@@ -4000,8 +4007,10 @@
           stops[menuStep(stops.length, at, e.key === 'ArrowDown' ? 1 : -1)].focus();
         } else if (e.key === 'Enter' && now === input) {
           e.preventDefault();
-          // Enter ticks the tag named exactly what was typed, else the first match, else makes the tag.
+          // Enter in an empty box does nothing. With text it ticks the tag named exactly that, else the first match; it makes a
+          // tag only when nothing matches and the person may (the one row left is "Create").
           const q = normal(query);
+          if (!q) return;
           const target = rows().find((b) => b.getAttribute('role') === 'menuitemcheckbox' && b.textContent === q) || rows()[0];
           if (target) target.click();
         }

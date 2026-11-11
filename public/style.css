@@ -7563,6 +7563,7 @@ body.in-space .subnav > .nav-left:has(> .sdk-strip:not([hidden])) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: var(--space-3); /* room between the section's hint and the first row */
 }
 
 .setup-tag-row {

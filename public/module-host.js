@@ -2456,7 +2456,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // it, once cleaned, and keep to the space this mount is in. A word that is not a tag's shape is not passed on.
     if (type === 'tags') {
       const tag = cleanTag(d && d.tag);
-      if (module.tags === true && scope === 'space' && spaceId && d && d.spaceId === spaceId && tag && TAG_OPS.includes(d.op)) send('tags', { op: d.op, tag });
+      if (module.tags === true && scope === 'space' && !keyed && spaceId && d && d.spaceId === spaceId && tag && TAG_OPS.includes(d.op)) send('tags', { op: d.op, tag });
       return;
     }
     // Any module's environment setting may change the environment's facts (host.environment): every mount looks again.

@@ -109,11 +109,11 @@ test('the bridge: the mounts hand the flag over and for-space sends it; the stre
   assert.match(rd('server/index.js'), /budget: manifest\.budget === true, tags: manifest\.tags === true, scope: manifest\.scope, runMode/, 'GET /api/modules/for-space says which modules opted in');
   assert.match(rd('public/module-stream.js'), /STREAM_TYPES = Object\.freeze\(\[[^\]]*'tags'[^\]]*\]\)/, 'the shared stream listens for it, or the event never leaves the page (public/module-stream.js)');
   const ev = slice('public/module-host.js', "    if (type === 'tags') {", '      return;\n    }');
-  assert.match(ev, /module\.tags === true && scope === 'space' && spaceId && d && d\.spaceId === spaceId && tag && TAG_OPS\.includes\(d\.op\)/);
+  assert.match(ev, /module\.tags === true && scope === 'space' && !keyed && spaceId && d && d\.spaceId === spaceId && tag && TAG_OPS\.includes\(d\.op\)/);
   assert.ok(bridge.indexOf("if (type === 'tags') {") < bridge.indexOf("if (type !== 'bus' && type !== 'action'"), 'handled before the module filter, which would drop it');
-  const run = (module, scope, spaceId, d) => {
+  const run = (module, scope, spaceId, d, keyed = null) => {
     const sent = [];
-    new Function('module', 'scope', 'spaceId', 'send', 'cleanTag', 'TAG_OPS', 'd', 'type', `${ev.replace(/return;\n    }$/, '}')}`)(module, scope, spaceId, (e, x) => sent.push([e, x]), cleanTag, ['added', 'changed', 'removed'], d, 'tags');
+    new Function('module', 'scope', 'spaceId', 'keyed', 'send', 'cleanTag', 'TAG_OPS', 'd', 'type', `${ev.replace(/return;\n    }$/, '}')}`)(module, scope, spaceId, keyed, (e, x) => sent.push([e, x]), cleanTag, ['added', 'changed', 'removed'], d, 'tags');
     return sent;
   };
   const tag = { id: 'abcd1234ef', name: 'ski', color: 'red', by: 'secret' };
@@ -121,6 +121,10 @@ test('the bridge: the mounts hand the flag over and for-space sends it; the stre
   assert.deepEqual(run({ tags: false }, 'space', 'sp1', { op: 'added', spaceId: 'sp1', tag }), [], 'a module that did not opt in');
   assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'added', spaceId: 'sp2', tag }), [], 'another space');
   assert.deepEqual(run({ tags: true }, 'environment', null, { op: 'added', spaceId: 'sp1', tag }), [], 'an environment page');
+  assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'added', spaceId: 'sp1', tag }, { path: 'x' }), [], 'a keyed page, even one mounted in a space');
+  for (const bad of [undefined, null, 7, {}, ['sp1'], true]) assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'added', spaceId: bad, tag }), [], `spaceId ${JSON.stringify(bad)}`);
+  assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'added', tag }), [], 'no spaceId');
+  assert.deepEqual(run({ tags: true }, 'space', 'sp1', null), [], 'no data');
   assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'explode', spaceId: 'sp1', tag }), [], 'an unknown op');
   assert.deepEqual(run({ tags: true }, 'space', 'sp1', { op: 'added', spaceId: 'sp1', tag: { id: 'abcd1234ef', name: '<script>' } }), [], 'a tag of the wrong shape');
 });
@@ -133,8 +137,8 @@ function sdkWith(callImpl) {
   const document = { createElement: () => el() };
   const calls = [];
   const call = async (m, p) => { calls.push([m, p]); return callImpl(m, p); };
-  const make = new Function('host', 'call', 'readyPromise', 'document', 'openMenu', 'closeMenu', 'editorAt', 'env', 'menuStep', 'window', `${makeSrc}\nreturn host.tags;`);
-  hostStub.tags = make(hostStub, call, Promise.resolve(), document, null, () => {}, () => null, { root: document, rootElement: {} }, () => 0, {});
+  const make = new Function('host', 'call', 'readyPromise', 'document', 'openMenu', 'closeMenu', 'editorAt', 'env', 'menuStep', 'window', 'menuIcon', `${makeSrc}\nreturn host.tags;`);
+  hostStub.tags = make(hostStub, call, Promise.resolve(), document, null, () => {}, () => null, { root: document, rootElement: {} }, () => 0, {}, async () => '<svg/>');
   return { tags: hostStub.tags, calls, hear: (e, d) => { for (const fn of listeners.get(e) || []) fn(d); }, listeners };
 }
 const T = (id, name, color = '') => ({ id, name, color });
@@ -194,8 +198,85 @@ test('host.tags.add asks the page, refuses a colour that is not a tint before as
   await assert.rejects(() => junk.tags.add('a'), (e) => e.status === 502);
 });
 
+test('the bridge ignores a forged from or spaceId sent with tags.add; the host sets them', async () => {
+  const handlers = slice('public/module-host.js', "    async 'tags.list'() {", "      return tag;\n    },");
+  const place = slice('public/module-host.js', '  const tagsPlace = () => {', '\n  };');
+  const calls = [];
+  const api = async (method, url, body) => { calls.push({ method, url, body }); return method === 'GET' ? { tags: [] } : { tag: { id: 'abcd1234ef', name: 'ski' } }; };
+  const h = new Function('module', 'scope', 'spaceId', 'keyed', 'guestToken', 'api', 'word', 'cleanTag', 'cleanTagList', 'URLSearchParams',
+    `${place}\nreturn { ${handlers} };`)({ id: 'docs', tags: true }, 'space', 'sp1', null, null, api, (w) => w, cleanTag, cleanTagList, URLSearchParams);
+  await h['tags.add']({ name: 'ski', from: 'chat', spaceId: 'sp2', space: 'sp2', by: 'admin', id: 'zzzzzzzz99' });
+  assert.equal(calls[0].url, '/api/spaces/sp1/tags');
+  assert.deepEqual(calls[0].body, { from: 'docs', name: 'ski' }, 'only from (the host\'s), name and a colour go to the server');
+  await h['tags.list']({ from: 'chat', spaceId: 'sp2' });
+  assert.equal(calls[1].url, '/api/spaces/sp1/tags?from=docs');
+});
+
+test('a hostile name comes out as text only and within the limits (cleanTag, the SDK chip)', async () => {
+  const hostile = ['<img src=x onerror=alert(1)>', '<b>x</b>', 'a‮b', '‮abc', 'ab​cd', 'a‍b', '⁦x⁩', 'a﻿b', 'x'.repeat(25), '😀'.repeat(25), 'a"onmouseover="x', "a'b", 'a;b', 'a/b', 'a b', '\ta', 'a\nb'];
+  for (const name of hostile) assert.equal(cleanTag({ id: 'abcd1234ef', name }), null, JSON.stringify(name));
+  assert.equal(cleanTag({ id: 'abcd1234ef', name: 'x'.repeat(24) }).name.length, 24, '24 is the limit, allowed');
+  assert.equal(cleanTag({ id: 'abcd1234ef', name: '漢字-été' }).name, '漢字-été');
+  // The SDK's own shape check is the second fence: a name over 24 never gets in, and whatever gets in is drawn with textContent.
+  const s = sdkWith(async () => [T('aaaaaaaa11', 'x'.repeat(25)), T('bbbbbbbb22', '<b>x</b>'), T('cccccccc33', 'ok')]);
+  assert.deepEqual((await s.tags.list()).map((t) => t.name), ['<b>x</b>', 'ok'], 'the bridge is the fence for characters (above); the SDK keeps the length');
+  const chip = s.tags.chip('bbbbbbbb22');
+  assert.equal(chip.children.length, 1);
+  assert.equal(chip.children[0].textContent, '<b>x</b>', 'as text');
+  assert.equal(chip.children[0].children.length, 0, 'no element made from it');
+  assert.equal(s.tags.chip('aaaaaaaa11'), null, 'over 24 characters');
+});
+
+test('Set up\'s tagsManage: admin and owner always, a moderator only with the manageTags right, a member never', () => {
+  const line = slice('public/space-setup.js', 'state.tagsManage = ', ';\n');
+  const run = (role, spaces) => { const state = {}; new Function('state', 'role', 'mine', 'space', line)(state, role, spaces, { id: 'sp1' }); return state.tagsManage; };
+  const eff = (manageTags) => ({ sp1: { effective: { manageTags } } });
+  assert.equal(run('admin', {}), true);
+  assert.equal(run('owner', {}), true);
+  assert.equal(run('moderator', eff(true)), true, 'moderator with the right');
+  assert.equal(run('moderator', eff(false)), false, 'moderator without it');
+  assert.equal(run('moderator', {}), false, 'moderator with no entry for the space');
+  assert.equal(run('moderator', { sp2: { effective: { manageTags: true } } }), false, 'the right in another space');
+  assert.equal(run('moderator', undefined), false);
+  assert.equal(run('member', eff(true)), true, 'a member the Roles grid gives the right to');
+  assert.equal(run('member', eff(false)), false, 'a member without it');
+  assert.equal(run('member', {}), false);
+  assert.equal(run(undefined, undefined), false, 'not signed in');
+});
+
+test('the picker: Enter in an empty box does nothing; with text, an exact match, else the first match', () => {
+  const branch = slice('public/sdk/host.js', "} else if (e.key === 'Enter' && now === input) {", 'if (target) target.click();');
+  const normal = (s) => s.trim().toLowerCase().replace(/\s+/g, '-');
+  const press = (query, labels) => {
+    const clicked = [];
+    const rows = () => labels.map((l) => ({ textContent: l, getAttribute: () => (l.startsWith('Create ') ? 'menuitem' : 'menuitemcheckbox'), click: () => clicked.push(l) }));
+    let prevented = 0;
+    new Function('e', 'now', 'input', 'query', 'normal', 'rows', `if (false) {} ${branch.replace(/^\} else if/, 'else if')} }`.replace('if (false) {} else if', 'if'))({ preventDefault: () => { prevented += 1; }, key: 'Enter' }, 'I', 'I', query, normal, rows);
+    return { clicked, prevented };
+  };
+  assert.deepEqual(press('', ['apple', 'zebra']).clicked, [], 'empty: nothing ticked');
+  assert.deepEqual(press('   ', ['apple', 'zebra']).clicked, [], 'spaces only: nothing');
+  assert.equal(press('', ['apple']).prevented, 1, 'the key is still taken, so the field does not submit');
+  assert.deepEqual(press('ap', ['apple', 'apricot']).clicked, ['apple'], 'the first match');
+  assert.deepEqual(press('apricot', ['apple', 'apricot']).clicked, ['apricot'], 'the exact match over the first');
+  assert.deepEqual(press('Mu Se', ['mu-se', 'museum']).clicked, ['mu-se'], 'typed as the tag is named');
+  assert.deepEqual(press('new', ['Create "new"']).clicked, ['Create "new"'], 'text with no match makes the tag');
+  assert.match(makeSrc, /if \(!q\) return;/);
+});
+
+test('the chip surface has a fallback a framed module has (the tint fill needs it)', () => {
+  assert.match(rd('public/sdk/host.css'), /\.sdk-status\)\[data-tone\] \{\s*background: color-mix\(in srgb, var\(--chip-tone, var\(--text-muted\)\) var\(--chip-tint\), var\(--chip-surface, var\(--bg-section\)\)\);/);
+  assert.match(rd('public/module-host.js'), /'--bg-section'/, 'the host hands --bg-section to a frame');
+});
+
+test('the picker draws a tick mark (the check icon, the shared menu icon) on ticked rows, none on the others', () => {
+  assert.match(makeSrc, /if \(on && !create\) \{[\s\S]*?tick\.className = 'sdk-menu-icon';[\s\S]*?menuIcon\('check'\)/);
+  assert.equal(/#[0-9a-fA-F]{3,8}\b|rgb\(/.test(makeSrc), false);
+});
+
 test('no tag text goes through innerHTML, and the picker is the SDK\'s own pieces', () => {
-  assert.equal(/innerHTML|insertAdjacentHTML|outerHTML/.test(makeSrc), false, 'makeTags');
+  assert.equal(/innerHTML|insertAdjacentHTML|outerHTML/.test(makeSrc.replace('tick.innerHTML = svg;', '')), false, 'makeTags (the one exception is the tick: the host\'s own check icon, never a tag\'s text)');
+  assert.equal((makeSrc.match(/innerHTML/g) || []).length, 1, 'one innerHTML, for the icon');
   assert.equal(/innerHTML|insertAdjacentHTML/.test(slice('public/module-host.js', "    async 'tags.list'() {", "      return tag;\n    },")), false, 'the bridge');
   const tagsSet = slice('public/space-setup.js', '  const TAG_TONES = [', '  // The Modules tab (id `show`)');
   assert.equal(/innerHTML|insertAdjacentHTML/.test(tagsSet.replace(/function tagsSectionHtml[\s\S]*?\n  }\n/, '')), false, 'Set up\'s Tags section (its fixed intro aside)');

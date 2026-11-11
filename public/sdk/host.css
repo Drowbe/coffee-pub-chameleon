@@ -43,6 +43,13 @@
   font-size: var(--text-14);
 }
 
+/* A module in a frame has no --surface-panel (the page's own sheet sets it), and a tag chip tints into that surface: without a surface the
+   tint fill is invalid and the tag draws as bare text. The panel colour the host hands over (--bg-section) stands in; a page that sets
+   --chip-surface (a chip in a card) keeps it. */
+:is(.sdk-chip-tag, .sdk-chip-removable, .sdk-status)[data-tone] {
+  background: color-mix(in srgb, var(--chip-tone, var(--text-muted)) var(--chip-tint), var(--chip-surface, var(--bg-section)));
+}
+
 :root[data-theme-mode="light"],
 :root[data-mode-shown="light"]:not([data-theme-mode="dark"]) {
   --tint-gold: #94680a;
