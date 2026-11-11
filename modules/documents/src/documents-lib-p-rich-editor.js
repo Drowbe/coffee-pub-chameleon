@@ -59,6 +59,25 @@
     return most;
   }
 
+  // How many checklist rows have a heading or a quote as their first block. Markdown reads only words after a box ("- [ ] # a"
+  // is the words "# a"), so such a row cannot be written.
+  function dlRichBoxedHeads(PM, doc) {
+    const N = dlRichSchema(PM).nodes;
+    let n = 0;
+    doc.descendants((node) => { if (node.type === N.list_item && node.attrs.checked !== null && node.firstChild && (node.firstChild.type === N.heading || node.firstChild.type === N.blockquote)) n += 1; });
+    return n;
+  }
+  // A command that does nothing (and says false) when it would put a heading or a quote on the first line of a checklist row.
+  function dlRichRefuseAfterBox(PM, command) {
+    return (state, dispatch, view) => {
+      let made = null;
+      if (!command(state, (tr) => { made = tr; }, view)) return false;
+      if (made && dlRichBoxedHeads(PM, made.doc) > dlRichBoxedHeads(PM, state.doc)) return false;
+      if (dispatch && made) dispatch(made);
+      return true;
+    };
+  }
+
   // An action of the bar, by name -> a ProseMirror command (state, dispatch) => true when it applies; null for a name the rich
   // editor has no action for yet (link, grid, formula). The reader's bounds hold: a list goes four deep.
   function dlRichCommand(PM, action) {
@@ -69,17 +88,17 @@
     const h = /^h([1-4])$/.exec(action);
     if (h) {
       const level = Number(h[1]);
-      return (state, dispatch) => {
+      return dlRichRefuseAfterBox(PM, (state, dispatch) => {
         const { $from, $to } = state.selection;
         const on = $from.sameParent($to) && $from.parent.type === N.heading && $from.parent.attrs.level === level;
         return on ? PM.setBlockType(N.paragraph)(state, dispatch) : PM.setBlockType(N.heading, { level })(state, dispatch);
-      };
+      });
     }
     if (action === 'bold') return PM.toggleMark(M.strong);
     if (action === 'italic') return PM.toggleMark(M.em);
     if (action === 'code') return PM.toggleMark(M.code);
     // A quote goes around the blocks, or comes off them: one press never puts a quote in a quote.
-    if (action === 'quote') return (state, dispatch) => (dlRichDepth(PM, state).quotes ? PM.lift(state, dispatch) : PM.wrapIn(N.blockquote)(state, dispatch));
+    if (action === 'quote') return dlRichRefuseAfterBox(PM, (state, dispatch) => (dlRichDepth(PM, state).quotes ? PM.lift(state, dispatch) : PM.wrapIn(N.blockquote)(state, dispatch)));
     // The three lists. In a list of the kind asked for: the rows leave the list. In a list of another kind: the list changes
     // kind. Outside a list: the blocks become one. A checklist is a bullet list whose rows have a box.
     const kind = action === 'numbered' ? N.ordered_list : N.bullet_list;
@@ -177,16 +196,44 @@
   function dlRichTidy(PM, top, stored) {
     const schema = dlRichSchema(PM);
     const N = schema.nodes;
+    const M = schema.marks;
     const kept = new Set();
     if (stored && stored.entries) for (const e of stored.entries) kept.add(e.node);
     else if (stored && stored.doc) stored.doc.forEach((b) => kept.add(b));
     const blank = (n) => n.type === N.paragraph && n.childCount === 0;
     const isBreak = (n) => n.type === N.hard_break;
+    const empty = (n) => (n.type === N.heading && !n.childCount) || (n.type === N.blockquote && n.childCount === 1 && (blank(n.firstChild) || empty(n.firstChild)));
     const plain = (n) => n.isText && !n.marks.some((m) => m.type.name === 'code');
     function words(node) {
       const heading = node.type === N.heading;
       let kids = [];
       node.forEach((c) => kids.push(heading && isBreak(c) ? schema.text(' ', c.marks) : c));
+      // A space just inside the end or the start of bold, italic or strike ("**word **") is written outside the mark, as the
+      // reader reads it: only that mark comes off the space, the other marks (a link) stay.
+      const spans = (m) => m.type === M.strong || m.type === M.em || m.type === M.strike;
+      const outside = (c, prev, next) => {
+        if (!plain(c) || !c.marks.some(spans)) return [c];
+        const lead = /^[ \t]*/.exec(c.text)[0];
+        const trail = /[ \t]*$/.exec(c.text.slice(lead.length))[0];
+        const body = c.text.slice(lead.length, c.text.length - trail.length);
+        const strip = (marks, test) => marks.filter((m) => !(spans(m) && test(m)));
+        const out = [];
+        const opens = (m) => !(prev && m.isInSet(prev.marks));
+        const closes = (m) => !(next && m.isInSet(next.marks));
+        if (!body) { // only spaces: off every mark that opens or closes here
+          const marks = strip(c.marks, (m) => opens(m) || closes(m));
+          return marks.length === c.marks.length ? [c] : [c.mark(marks)];
+        }
+        if (lead) { const marks = strip(c.marks, opens); out.push(c.type.schema.text(lead, marks)); }
+        out.push(c.type.schema.text(body, c.marks));
+        if (trail) { const marks = strip(c.marks, closes); out.push(c.type.schema.text(trail, marks)); }
+        return out.length === 1 && out[0].text === c.text ? [c] : out;
+      };
+      if (kids.some((c) => plain(c) && /^[ \t]|[ \t]$/.test(c.text) && c.marks.some(spans))) {
+        const next = [];
+        kids.forEach((c, i) => { for (const x of outside(c, kids[i - 1] || null, kids[i + 1] || null)) next.push(x); });
+        kids = PM.Fragment.fromArray(next).content; // adjacent words with the same marks are one again
+      }
       const start = (from) => { // spaces and line breaks at the start of a line
         for (;;) {
           const c = kids[from];
@@ -227,6 +274,8 @@
         if (t !== c) same = false;
         if (t && !(blank(t) && !list && i > 0)) kids.push(t); else if (t) same = false; // an empty paragraph after the first block
       });
+      // A row's first line cannot be an empty heading or quote ("- # " has no words to read): it is an empty paragraph, as typing leaves it.
+      if (node.type === N.list_item && kids.length && empty(kids[0])) { kids[0] = N.paragraph.create(); same = false; }
       if (list) while (kids.length && kids[kids.length - 1].childCount === 1 && blank(kids[kids.length - 1].firstChild)) { kids.pop(); same = false; }
       if (!list && kids.length > 1 && blank(kids[0]) && node.type === N.blockquote) { kids.shift(); same = false; }
       if (same) return node;
