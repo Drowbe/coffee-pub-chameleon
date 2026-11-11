@@ -25,7 +25,7 @@ const NAMES = ['DL', 'dlCleanText', 'dlTrimBreaks', 'dlCleanLine', 'dlCut', 'dlC
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView', 'DL_EDITVIEWS', 'dlEditViewId', 'dlEditViewIsRich',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
   'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
-  'dlCleanLayout', 'dlCleanPageSize', 'dlCleanPageNumbers', 'dlCleanPage', 'dlSamePage', 'DL_PAGE_SIZES', 'dlPageGeometry', 'DL_PAGE_FIT_MAX', 'dlPageFit', 'DL_LAYOUTS', 'dlPageMenuModel', 'dlPageBreak', 'DL_PAGE_BREAK_LINE',
+  'dlCleanLayout', 'dlCleanPageSize', 'dlCleanPageNumbers', 'dlCleanPage', 'dlSamePage', 'DL_PAGE_SIZES', 'dlPageGeometry', 'DL_PAGE_FIT_MAX', 'dlPageFit', 'DL_LAYOUTS', 'dlPageMenuModel', 'dlPageBreak', 'DL_PAGE_BREAK_LINE', 'dlPageBreaks',
   'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
@@ -1162,6 +1162,110 @@ test('editor: the textarea adapter reads and writes the box, counts input events
   ta.setSelectionRange(0, 2); e.run('bold'); assert.equal(ta.value, '**hi**'); assert.equal(n, 2);
   e.destroy(); assert.equal(ls.length, 0);
 });
+
+// ---- the automatic page breaks (documents-lib-s-pages.js) ------------------------------------------------------------------------------
+{
+  const B = (height, kind = 'block', rows) => ({ height, kind, ...(rows ? { rows } : {}) });
+  const BR = { height: 0, kind: 'pagebreak' };
+  const shape = (r) => r.pages.map((p) => p.items.map((x) => (x.from === undefined ? x.i : `${x.i}[${x.from}-${x.to}]`)));
+  const H = L.dlPageGeometry('letter').textH;
+  const H4 = L.dlPageGeometry('a4').textH;
+  test('pages: the text areas are 864 and 931 px', () => { assert.equal(H, 864); assert.equal(H4, 931); });
+  test('pages: nothing is no page', () => { assert.deepEqual(L.dlPageBreaks([], H), { pages: [], before: [] }); assert.deepEqual(L.dlPageBreaks(null, H).pages, []); });
+  test('pages: one block is one page', () => { assert.deepEqual(shape(L.dlPageBreaks([B(40)], H)), [[0]]); });
+  test('pages: an exact fit stays, one px more moves on', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(400), B(464)], H)), [[0, 1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(400), B(465)], H)), [[0], [1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(400), B(531)], H4)), [[0, 1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(400), B(532)], H4)), [[0], [1]]);
+  });
+  test('pages: a block taller than a page has a page of its own and is marked tall', () => {
+    const r = L.dlPageBreaks([B(100), B(2000, 'code'), B(100)], H);
+    assert.deepEqual(shape(r), [[0], [1], [2]]);
+    assert.deepEqual(r.pages.map((p) => p.tall), [false, true, false]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(900), B(10)], H)), [[0], [1]]);
+  });
+  test('pages: a manual break starts a page and is in no items', () => {
+    const r = L.dlPageBreaks([B(10), BR, B(10)], H);
+    assert.deepEqual(shape(r), [[0], [2]]);
+    assert.deepEqual(r.pages[0].breaks, [1]);
+  });
+  test('pages: a break first or last makes no empty page', () => {
+    const a = L.dlPageBreaks([BR, B(10), B(10)], H);
+    assert.deepEqual(shape(a), [[1, 2]]);
+    assert.deepEqual(a.before, [0]);
+    const z = L.dlPageBreaks([B(10), BR], H);
+    assert.deepEqual(shape(z), [[0]]);
+    assert.deepEqual(z.pages[0].breaks, [1]);
+    assert.deepEqual(shape(L.dlPageBreaks([BR], H)), []);
+  });
+  test('pages: consecutive breaks make an empty page each', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(10), BR, BR, B(10)], H)), [[0], [], [3]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(10), BR, BR, BR, B(10)], H)), [[0], [], [], [4]]);
+    assert.deepEqual(shape(L.dlPageBreaks([BR, BR, B(10)], H)), [[], [2]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(10), BR, BR], H)), [[0], []]);
+  });
+  test('pages: a grid breaks between rows and the rest goes on', () => {
+    const rows = [30, 400, 400, 400, 400];
+    const r = L.dlPageBreaks([B(100), B(1630, 'grid', rows)], H);
+    assert.deepEqual(shape(r), [[0, '1[0-2]'], ['1[2-4]'], ['1[4-5]']]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(100), B(830, 'grid', [30, 400, 400])], H)), [[0, '1[0-2]'], ['1[2-3]']]);
+  });
+  test('pages: a grid that fits whole stays whole; the head row is never alone', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(150, 'grid', [30, 60, 60])], H)), [[0], [1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(500, 'grid', [30, 100, 100, 100, 100, 100, 70])], H)), [[0], [1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(700), B(500, 'grid', [30, 100, 100, 100, 100, 100, 70])], H)), [[0, '1[0-2]'], ['1[2-7]']]);
+  });
+  test('pages: a row taller than a page is not cut', () => {
+    const r = L.dlPageBreaks([B(1500, 'grid', [30, 1470])], H);
+    assert.deepEqual(shape(r), [['0[0-1]'], ['0[1-2]']]);
+    assert.ok(r.pages.some((p) => p.tall));
+  });
+  test('pages: a heading goes with what follows it', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(30, 'heading'), B(100)], H)), [[0], [1, 2]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(30, 'heading'), B(30, 'heading'), B(100)], H)), [[0], [1, 2, 3]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(30, 'heading'), B(30)], H)), [[0, 1, 2]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(30, 'heading'), B(30, 'code')], H)), [[0, 1, 2]]);
+  });
+  test('pages: a heading before a grid takes the head row and one more', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(800), B(30, 'heading'), B(500, 'grid', [30, 100, 100, 100, 100, 100, 70])], H)), [[0], [1, 2]]);
+  });
+  test('pages: a heading before a manual break is not held back, and one before a page-sized block goes with it', () => {
+    assert.deepEqual(shape(L.dlPageBreaks([B(820), B(30, 'heading'), BR, B(10)], H)), [[0, 1], [3]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(30, 'heading'), B(3000, 'code')], H)), [[0, 1]]);
+    assert.deepEqual(shape(L.dlPageBreaks([B(100), B(30, 'heading'), B(3000, 'code')], H)), [[0], [1, 2]]);
+  });
+  test('pages: 100 manual pages', () => {
+    const list = [];
+    for (let n = 0; n < 100; n += 1) { list.push(B(300), B(30, 'heading'), B(200)); if (n < 99) list.push(BR); }
+    const r = L.dlPageBreaks(list, H);
+    assert.equal(r.pages.length, 100);
+    assert.ok(r.pages.every((p) => p.items.length === 3));
+  });
+  test('pages: every block is placed once, in order, whatever the heights', () => {
+    let seed = 7;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const kinds = ['block', 'heading', 'code', 'formula', 'grid', 'pagebreak'];
+    for (let round = 0; round < 200; round += 1) {
+      const list = [];
+      for (let n = 0; n < 40; n += 1) {
+        const kind = kinds[Math.floor(rnd() * kinds.length)];
+        if (kind === 'pagebreak') list.push(BR);
+        else if (kind === 'grid') { const rows = Array.from({ length: 1 + Math.floor(rnd() * 12) }, () => 20 + Math.floor(rnd() * 200)); list.push(B(rows.reduce((a, x) => a + x, 0) + 12, 'grid', rows)); }
+        else list.push(B(Math.floor(rnd() * 1200), kind));
+      }
+      const r = L.dlPageBreaks(list, H);
+      const seen = [];
+      for (const p of r.pages) {
+        let used = 0;
+        for (const x of p.items) { if (x.from === undefined || x.from === 0) seen.push(x.i); used += x.from === undefined ? list[x.i].height : list[x.i].rows.slice(x.from, x.to).reduce((a, y) => a + y, 0); }
+        if (!p.tall) assert.ok(used <= H + 12, `a page of ${used} px in round ${round}`);
+      }
+      const want = list.map((b, i) => (b.kind === 'pagebreak' ? -1 : i)).filter((i) => i >= 0);
+      assert.deepEqual(seen, want);
+    }
+  });
+}
 
 await Promise.all(pending);
 if (fails.length) { console.error(`documents lib: ${fails.length} failed, ${passed} passed`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }

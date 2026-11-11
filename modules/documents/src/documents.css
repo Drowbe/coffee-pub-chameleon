@@ -71,6 +71,21 @@
 .view:has(.sheet[data-layout="paper"]) { scrollbar-gutter: stable; }
 .sheet[data-layout="paper"] { width: var(--doc-page-w); max-width: none; padding: var(--doc-page-m); }
 
+/* the reading view's pages (the script sets data-paged on the sheet, which then only holds them): each page is a sheet of the page's size
+   with its margins, in the document's colour; the gap between them is the page background. A block taller than a page makes its page
+   taller (data-tall), never clipped. The number is inside the bottom margin. A manual break is kept for a screen reader, not drawn. */
+.sheet[data-paged] { padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.sheet[data-paged] > .page { display: flex; flex-direction: column; gap: var(--space-4); overflow-wrap: normal; }
+.dl-pg { position: relative; box-sizing: border-box; flex: 0 0 auto; width: var(--doc-page-w); height: var(--doc-page-h); padding: var(--doc-page-m); background: var(--doc-paper); box-shadow: 0 0 0 1px var(--doc-edge), 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent); }
+.dl-pg[data-tall] { height: auto; min-height: var(--doc-page-h); }
+.dl-pg-num { position: absolute; inset: auto 0 0; height: var(--doc-page-m); display: flex; align-items: center; justify-content: center; color: var(--doc-quiet); font-size: var(--text-12); user-select: none; }
+.dl-flow { position: static; display: block; overflow-wrap: anywhere; }
+.dl-blk { display: flow-root; }
+.dl-blk > :first-child { margin-top: 0; }
+.dl-flow .doc-title { margin: 0 0 var(--space-2); font-size: var(--text-28); }
+.dl-flow .dl-pagebreak { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+.dl-measure { position: fixed; top: 0; left: 0; visibility: hidden; pointer-events: none; box-sizing: border-box; }
+
 /* the container is .view (its own width, not the sheet's zoomed one); 50rem is a 48rem page and its margins */
 @container (min-width: 50rem) { .sheet { padding: var(--space-7) var(--space-8); } }
 

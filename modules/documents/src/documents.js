@@ -209,6 +209,7 @@
     const row = chipRow(openId);
     holder.replaceChildren(...(row ? [row] : []));
     holder.hidden = !row;
+    if (flow) schedulePaginate();
   }
   // Saves the person's ticks as a change on what is stored (so a second person's tag is kept), in order, off the text path.
   function changeTags(id, ids) {
@@ -375,7 +376,7 @@
   // ---- the page: layout, size, numbers --------------------------------------------------------------------------------------
   // The sheet wears the document's layout (data-layout: Paper is drawn as one sheet of the page's width with its margins,
   // documents.css) and size (data-size). The page's measures come from dlPageGeometry, set as custom properties so the style
-  // sheet holds no number of its own. Paper is not paged yet: it is one sheet. A Paper sheet at Fit width is scaled to the window's width.
+  // sheet holds no number of its own. Paper is paged in the reading view (below) and one sheet in the editors. A Paper sheet at Fit width is scaled to the window's width.
   function paintPage(sheet, page) {
     if (!sheet) return;
     const p = dlCleanPage(page);
@@ -384,6 +385,7 @@
     sheet.dataset.size = p.pageSize;
     sheet.dataset.numbers = p.pageNumbers ? 'on' : 'off';
     sheet.style.setProperty('--doc-page-w', `${g.w}px`);
+    sheet.style.setProperty('--doc-page-h', `${g.h}px`);
     sheet.style.setProperty('--doc-page-m', `${g.margin}px`);
     fitPaper();
   }
@@ -439,11 +441,121 @@
     host.menu.show({ id: 'page', at, items });
   }
 
+  // ---- Paper in the reading view: separate pages --------------------------------------------------------------------------------
+  // A Paper document is drawn as sheets of the page's size. The blocks are laid out once in a hidden box as wide as the page's text
+  // area (unscaled px, outside the zoomed sheet), each block's height is read, dlPageBreaks says where the pages end, and the same
+  // nodes are moved into the sheets (never rebuilt, never set as HTML). The title, the line under it and the tags are the first blocks
+  // of the first page. Nothing about the breaks is stored. Zoom and Fit width scale the whole sheet (fitPaper) and change no page.
+  // It runs again when the text, the layout, the size, the numbers or the tags change and when fonts have loaded (formulas are not
+  // drawn in the reader, they show as written, so there is nothing else to wait for). A text with more blocks than PAGES_MAX is not
+  // paged: it shows as one sheet with its breaks as dashed lines.
+  const PAGES_MAX = 6000;
+  let flow = null; // { root, entries }: the document shown, its top-level nodes in order
+  let paginateFrame = 0;
+  const HEAD_IDS = ['read-title', 'read-meta', 'read-tags'];
+  function restoreHead() {
+    const sheet = $('read').querySelector('.sheet');
+    for (const id of HEAD_IDS) sheet.insertBefore($(id), $('page'));
+  }
+  function clearPage(content) {
+    restoreHead();
+    flow = null;
+    $('read').querySelector('.sheet').removeAttribute('data-paged');
+    if (content) $('page').replaceChildren(content); else $('page').replaceChildren();
+  }
+  function flowEntries(root) {
+    return [...root.children].map((n) => {
+      let kind = 'block';
+      if (/^H[1-6]$/.test(n.tagName)) kind = 'heading';
+      else if (n.tagName === 'TABLE') kind = 'grid';
+      else if (n.tagName === 'PRE') kind = 'code';
+      else if (n.classList.contains('dl-math-block')) kind = 'formula';
+      else if (n.classList.contains('dl-pagebreak')) kind = 'pagebreak';
+      const e = { node: n, kind };
+      if (kind === 'grid') { e.rows = [...n.rows]; e.head = n.tHead; e.body = n.tBodies[0]; }
+      return e;
+    });
+  }
+  function schedulePaginate() {
+    if (paginateFrame || !flow) return;
+    paginateFrame = window.requestAnimationFrame(() => { paginateFrame = 0; paginateRead(); });
+  }
+  function paginateRead() {
+    if (!flow) return;
+    const sheet = $('read').querySelector('.sheet');
+    const page = $('page');
+    restoreHead();
+    for (const e of flow.entries) if (e.kind === 'grid') e.rows.forEach((tr, i) => (i === 0 ? e.head : e.body).append(tr));
+    if (sheet.dataset.layout !== 'paper' || flow.entries.length > PAGES_MAX) { // one sheet: Fluid, or too long to page
+      flow.root.replaceChildren(...flow.entries.map((e) => e.node));
+      page.replaceChildren(flow.root);
+      sheet.removeAttribute('data-paged');
+      return;
+    }
+    const t0 = performance.now();
+    const g = dlPageGeometry(sheet.dataset.size);
+    const all = [...HEAD_IDS.map($).filter((n) => !n.hidden).map((n) => ({ node: n, kind: n.id === 'read-title' ? 'heading' : 'block' })), ...flow.entries];
+    const measure = el('div', 'page dl-flow dl-measure');
+    measure.setAttribute('aria-hidden', 'true');
+    measure.style.width = `${g.textW}px`;
+    const look = getComputedStyle(sheet); // the sheet's colours (borders and fills use them, so they change a block's size)
+    for (const v of ['--doc-ink', '--doc-paper', '--doc-edge', '--doc-quiet', '--doc-field']) measure.style.setProperty(v, look.getPropertyValue(v));
+    const wraps = all.map((e) => { if (e.kind === 'pagebreak') return null; const w = el('div', 'dl-blk'); w.append(e.node); measure.append(w); return w; });
+    $('app').append(measure);
+    const blocks = all.map((e, i) => {
+      if (e.kind === 'pagebreak') return { height: 0, kind: 'pagebreak' };
+      const b = { height: wraps[i].getBoundingClientRect().height, kind: e.kind };
+      if (e.kind === 'grid') {
+        // a row is the distance to the next row's top (so borders count once); the last one runs to the foot of the block, margin included
+        const tops = e.rows.map((tr) => tr.getBoundingClientRect().top);
+        const foot = wraps[i].getBoundingClientRect().bottom;
+        b.rows = tops.map((top, k) => (k < tops.length - 1 ? tops[k + 1] : foot) - top);
+        e.cols = [...e.rows[0].cells].map((c) => c.getBoundingClientRect().width); // a piece keeps the columns of the whole grid
+      }
+      return b;
+    });
+    const r = dlPageBreaks(blocks, g.textH);
+    const numbers = sheet.dataset.numbers === 'on';
+    const frag = doc.createDocumentFragment();
+    r.pages.forEach((p, n) => {
+      const pg = el('div', 'dl-pg');
+      if (p.tall) pg.dataset.tall = 'on';
+      const text = el('div', 'page dl-flow');
+      if (n === 0) for (const i of r.before) text.append(all[i].node);
+      for (const it of p.items) {
+        if (it.from === undefined) { text.append(wraps[it.i]); continue; }
+        const e = all[it.i];
+        const w = el('div', 'dl-blk');
+        const t = e.node.cloneNode(false);
+        const th = e.head.cloneNode(false);
+        const tb = e.body.cloneNode(false);
+        for (let k = it.from; k < it.to; k += 1) (k === 0 ? th : tb).append(e.rows[k]);
+        if (it.to < e.rows.length) t.style.marginBottom = '0';
+        const first = (th.firstChild || tb.firstChild);
+        if (first) [...first.cells].forEach((c, k) => { c.style.boxSizing = 'border-box'; if (e.cols[k]) c.style.width = `${e.cols[k]}px`; });
+        if (th.firstChild) t.append(th);
+        if (tb.firstChild) t.append(tb);
+        w.append(t);
+        text.append(w);
+      }
+      for (const i of p.breaks) text.append(all[i].node);
+      pg.append(text);
+      if (numbers) { const num = el('div', 'dl-pg-num', String(n + 1)); num.setAttribute('aria-hidden', 'true'); pg.append(num); }
+      frag.append(pg);
+    });
+    measure.remove();
+    page.replaceChildren(frag);
+    sheet.dataset.paged = 'on';
+    try { performance.measure('documents-paginate', { start: t0, end: performance.now(), detail: { blocks: all.length, pages: r.pages.length } }); } catch { /* no timing */ }
+  }
+  if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(schedulePaginate).catch(() => {});
+  if (doc.fonts && doc.fonts.addEventListener) doc.fonts.addEventListener('loadingdone', schedulePaginate);
+
   // ---- reading -------------------------------------------------------------------------------------------------------------
   async function draw(id) {
     const got = await readText(id);
     if (openId !== id) return;
-    if (!got) { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); return; }
+    if (!got) { clearPage(el('p', null, 'This document could not be loaded. Try again.')); return; }
     const page = $('page');
     const top = $('read').scrollTop;
     shownRev = got.rec.rev;
@@ -452,7 +564,10 @@
     $('read-title').textContent = got.rec.title;
     $('read-meta').textContent = `Edited by ${got.rec.editedByName}, ${when(got.rec.editedAt)}`;
     paintTags();
-    page.replaceChildren(dlBuild(dlDescribe(got.text, lex), doc));
+    restoreHead();
+    const built = dlBuild(dlDescribe(got.text, lex), doc);
+    flow = { root: built, entries: flowEntries(built) };
+    paginateRead();
     $('read').scrollTop = top;
   }
   function openDoc(id) {
@@ -461,12 +576,12 @@
     $('list').hidden = true; $('read').hidden = false;
     $('renamer').hidden = true;
     updateEditButton();
-    $('page').replaceChildren();
+    clearPage();
     $('read-title').textContent = docs.get(id).title;
     paintTags();
     paintPaper($('read').querySelector('.sheet'), docs.get(id).paper);
     paintPage($('read').querySelector('.sheet'), docs.get(id));
-    draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
+    draw(id).catch(() => { clearPage(el('p', null, 'This document could not be loaded. Try again.')); });
     renderChrome();
     $('page').focus();
   }
@@ -844,7 +959,7 @@
     locks.delete(mine.id);
     $('read').hidden = false;
     openId = mine.id; shownRev = 0;
-    $('page').replaceChildren();
+    clearPage();
     $('read-title').textContent = docs.get(mine.id) ? docs.get(mine.id).title : '';
     updateEditButton();
     draw(mine.id).catch(() => {});
