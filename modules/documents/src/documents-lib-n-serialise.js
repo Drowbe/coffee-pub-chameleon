@@ -159,6 +159,7 @@
       },
       source_block(state, node) { lines(state, node.textContent); state.closeBlock(node); },
       horizontal_rule(state, node) { state.write('---'); state.closeBlock(node); },
+      page_break(state, node) { state.write(DL_PAGE_BREAK_LINE); state.closeBlock(node); },
       bullet_list(state, node, parent, index) {
         const mark = listMark(state, node, parent, index, ['-', '*', '+']);
         state.renderList(node, '  ', (i) => `${mark} ${box(node.child(i))}`);

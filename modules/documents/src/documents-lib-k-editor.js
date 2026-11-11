@@ -15,12 +15,12 @@
   // Plus revision(): a cheap counter the adapter bumps on every change. "Is it changed" is asked with the counter, never with the
   // text. The counter cannot tell "typed, then deleted back to the same text" from a change, so dirty means "the counter moved";
   // the save then reads the text once and, if it equals the saved text (and the title and paper are unchanged), writes nothing.
-  const DL_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link', 'grid', 'formula'];
+  const DL_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link', 'grid', 'formula', 'pagebreak'];
   const dlActionFn = (action) => {
     const m = /^h([1-4])$/.exec(action);
     if (m) return (s) => dlHeading(s, Number(m[1]));
     return { bold: dlBold, italic: dlItalic, code: dlCode, list: dlList, numbered: dlNumbered, checklist: dlChecklist, quote: dlQuote,
-      link: (s) => dlLink(s), grid: (s) => dlGrid(s), formula: (s) => dlFormula(s) }[action] || null;
+      link: (s) => dlLink(s), grid: (s) => dlGrid(s), formula: (s) => dlFormula(s), pagebreak: (s) => dlPageBreak(s) }[action] || null;
   };
 
   // The plain text box. `ta` is the textarea, `doc` the page's document (for execCommand, which keeps the browser's undo).
@@ -76,11 +76,11 @@
   }
 
   // Dirty without reading the text: the title or paper differs, or the editor's counter moved since the last save.
-  const dlEditorDirty = (editor, savedRev, saved, title, paper) => editor.revision() !== savedRev || saved.title !== title || saved.paper !== paper;
+  const dlEditorDirty = (editor, savedRev, saved, title, paper, page) => editor.revision() !== savedRev || saved.title !== title || saved.paper !== paper || !dlSamePage(saved.page, page);
   // The one read at save time: the text (read once), whether anything really differs from what is saved, and the counter to
   // remember. If nothing differs, the save writes nothing and the counter is simply taken as saved.
-  function dlEditorSnapshot(editor, saved, title, paper) {
+  function dlEditorSnapshot(editor, saved, title, paper, page) {
     const rev = editor.revision();
     const text = editor.getText();
-    return { text, title, paper, rev, changed: dlIsDirty(saved, { text, title, paper }) };
+    return { text, title, paper, page, rev, changed: dlIsDirty(saved, { text, title, paper, page }) };
   }

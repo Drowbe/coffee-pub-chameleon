@@ -18,13 +18,14 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const NAMES = ['DL', 'dlCleanText', 'dlTrimBreaks', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
-  'dlObjectLinks', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
+  'dlObjectLinks', 'dlDescribedText', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView', 'DL_EDITVIEWS', 'dlEditViewId', 'dlEditViewIsRich',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
   'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
+  'dlCleanLayout', 'dlCleanPageSize', 'dlCleanPageNumbers', 'dlCleanPage', 'dlSamePage', 'DL_PAGE_SIZES', 'dlPageGeometry', 'DL_PAGE_FIT_MAX', 'dlPageFit', 'DL_LAYOUTS', 'dlPageMenuModel', 'dlPageBreak', 'DL_PAGE_BREAK_LINE',
   'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
@@ -35,7 +36,7 @@ const fails = [];
 const pending = [];
 function test(name, fn) { try { const r = fn(); if (r && typeof r.then === 'function') pending.push(r.then(() => { passed += 1; }, (err) => { fails.push(`${name}: ${err.message}`); })); else passed += 1; } catch (err) { fails.push(`${name}: ${err.message}`); } }
 
-const doc = { id: 'abcd1234', type: 'doc', title: 'Plan', rev: 2, chunks: ['aaaa1111'], size: 10, excerpt: 'Hi', paper: 'light-white', by: 'u1', at: '2026-11-11T10:00:00.000Z', editedBy: 'u1', editedByName: 'Ana', editedAt: '2026-11-11T10:00:00.000Z' };
+const doc = { id: 'abcd1234', type: 'doc', title: 'Plan', rev: 2, chunks: ['aaaa1111'], size: 10, excerpt: 'Hi', paper: 'light-white', layout: 'fluid', pageSize: 'letter', pageNumbers: false, by: 'u1', at: '2026-11-11T10:00:00.000Z', editedBy: 'u1', editedByName: 'Ana', editedAt: '2026-11-11T10:00:00.000Z' };
 const lock = { id: 'lock', type: 'lock', doc: 'abcd1234', holder: 'u1', name: 'Ana', at: '2026-11-11T10:00:00.000Z', seq: 1, by: 'u1' };
 
 test('the library has no page, host or Documents words', () => {
@@ -102,6 +103,115 @@ test('the editor switch: Markdown first, then Rich text, each with an icon and a
   assert.equal(L.dlEditViewIsRich('rich'), true);
   for (const v of ['markdown', '', null, undefined, 'x', 1, true, {}]) assert.equal(L.dlEditViewIsRich(v), false);
   assert.ok(Object.isFrozen(L.DL_EDITVIEWS));
+});
+
+// ---- the page's layout: Fluid or Paper, the page size, the numbers (plan-documents-paper-layout.md, step 1)
+test('layout fields: cleaned on reading; a missing one reads as Fluid, Letter, no numbers', () => {
+  const bare = { ...doc }; delete bare.layout; delete bare.pageSize; delete bare.pageNumbers;
+  const r = L.dlCleanDoc(bare);
+  assert.deepEqual([r.layout, r.pageSize, r.pageNumbers], ['fluid', 'letter', false]);
+  const paper = L.dlCleanDoc({ ...doc, layout: 'paper', pageSize: 'a4', pageNumbers: true });
+  assert.deepEqual([paper.layout, paper.pageSize, paper.pageNumbers], ['paper', 'a4', true]);
+  for (const v of ['Paper', 'PAPER', 'page', '', 5, null, {}, [], 'paper;x', true]) assert.equal(L.dlCleanDoc({ ...doc, layout: v }).layout, 'fluid', JSON.stringify(v));
+  for (const v of ['A4', 'legal', '', 5, null, {}, 'a4;x']) assert.equal(L.dlCleanDoc({ ...doc, pageSize: v }).pageSize, 'letter', JSON.stringify(v));
+  for (const v of ['true', 1, 'yes', null, {}, [], 'on']) assert.equal(L.dlCleanDoc({ ...doc, pageNumbers: v }).pageNumbers, false, JSON.stringify(v));
+  assert.equal(L.dlCleanDoc({ ...doc, size: 10 }).size, 10); // size is still the text's length
+  assert.deepEqual(L.dlCleanPage(undefined), { layout: 'fluid', pageSize: 'letter', pageNumbers: false });
+});
+test('layout fields: a save carries them, and a change makes the page dirty (the page colour\'s path)', () => {
+  const base = { old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222', lex };
+  const same = L.dlPlanSave(base).record;
+  assert.deepEqual([same.layout, same.pageSize, same.pageNumbers], ['fluid', 'letter', false]);
+  const set = L.dlPlanSave({ ...base, page: { layout: 'paper', pageSize: 'a4', pageNumbers: true } }).record;
+  assert.deepEqual([set.layout, set.pageSize, set.pageNumbers, set.rev, set.size], ['paper', 'a4', true, 3, 2]);
+  assert.deepEqual(L.dlCleanDoc(set), set); // the record cleans to itself
+  assert.equal(L.dlPlanSave({ ...base, page: { layout: 'bogus', pageSize: 'x', pageNumbers: 'y' } }).record.layout, 'fluid');
+  const a = { text: 'a', title: 't', paper: 'p' };
+  assert.equal(L.dlIsDirty(a, { ...a }), false);
+  assert.equal(L.dlIsDirty({ ...a, page: L.dlCleanPage(null) }, { ...a, page: L.dlCleanPage(null) }), false);
+  assert.equal(L.dlIsDirty({ ...a, page: L.dlCleanPage(null) }, { ...a, page: { layout: 'paper', pageSize: 'letter', pageNumbers: false } }), true);
+  assert.equal(L.dlIsDirty({ ...a, page: L.dlCleanPage(null) }, { ...a, page: { layout: 'fluid', pageSize: 'a4', pageNumbers: false } }), true);
+  assert.equal(L.dlIsDirty({ ...a, page: L.dlCleanPage(null) }, { ...a, page: { layout: 'fluid', pageSize: 'letter', pageNumbers: true } }), true);
+  const e = L.dlStubEditor('x');
+  const saved = { text: 'x', title: 'T', paper: 'p', page: L.dlCleanPage(null) };
+  assert.equal(L.dlEditorDirty(e, e.revision(), saved, 'T', 'p', L.dlCleanPage(null)), false);
+  assert.equal(L.dlEditorDirty(e, e.revision(), saved, 'T', 'p', { layout: 'paper' }), true);
+  const snap = L.dlEditorSnapshot(e, saved, 'T', 'p', { layout: 'paper' });
+  assert.equal(snap.changed, true);
+  assert.equal(snap.page.layout, 'paper');
+  assert.equal(L.dlEditorSnapshot(e, saved, 'T', 'p', L.dlCleanPage(null)).changed, false);
+});
+test('page sizes: Letter 816 by 1056, A4 794 by 1123, one inch margins; one place', () => {
+  const l = L.dlPageGeometry('letter');
+  assert.deepEqual([l.w, l.h, l.margin, l.textW, l.textH, l.atPage], [816, 1056, 96, 624, 864, '8.5in 11in']);
+  const a = L.dlPageGeometry('a4');
+  assert.deepEqual([a.w, a.h, a.margin, a.textW, a.textH, a.atPage], [794, 1123, 96, 602, 931, '210mm 297mm']);
+  for (const v of ['', 'legal', null, undefined, 5]) assert.equal(L.dlPageGeometry(v).w, 816);
+  assert.deepEqual(Object.keys(L.DL_PAGE_SIZES), ['letter', 'a4']);
+  assert.ok(Object.isFrozen(L.DL_PAGE_SIZES) && Object.isFrozen(L.DL_PAGE_SIZES.a4));
+  assert.equal(L.dlPageFit(408, 816), 0.5);
+  assert.equal(L.dlPageFit(816, 816), 1);
+  assert.equal(L.dlPageFit(5000, 816), 2); // never more than 200%
+  for (const v of [0, -1, NaN, undefined]) assert.equal(L.dlPageFit(v, 816), 1);
+});
+test('the layout switch: Fluid then Paper, each with an icon and a word, icons not used by the other switches', () => {
+  assert.deepEqual(L.DL_LAYOUTS.map((o) => [o.id, o.label, o.icon]), [['fluid', 'Fluid', 'align-justify'], ['paper', 'Paper', 'file']]);
+  const others = [...L.DL_LISTVIEWS, ...L.DL_EDITVIEWS].map((o) => o.icon);
+  for (const o of L.DL_LAYOUTS) assert.ok(!others.includes(o.icon));
+  assert.ok(Object.isFrozen(L.DL_LAYOUTS));
+  assert.equal(L.dlCleanLayout('paper'), 'paper');
+  assert.equal(L.dlCleanLayout('fluid'), 'fluid');
+});
+test('the Page menu: the size pair (the current one marked), the numbers entry (marked when on), the page break', () => {
+  const m = L.dlPageMenuModel({ layout: 'paper', pageSize: 'a4', pageNumbers: true });
+  assert.deepEqual(m.filter((x) => x.kind === 'size').map((x) => [x.label, x.current]), [['Letter', false], ['A4', true]]);
+  assert.deepEqual(m.filter((x) => x.kind === 'numbers').map((x) => [x.label, x.current]), [['Page numbers', true]]);
+  assert.deepEqual(m.filter((x) => x.kind === 'break').map((x) => [x.label, x.icon]), [['Page break', 'scissors']]);
+  const d = L.dlPageMenuModel(null);
+  assert.deepEqual(d.filter((x) => x.kind === 'size').map((x) => x.current), [true, false]);
+  assert.equal(d.find((x) => x.kind === 'numbers').current, false);
+  assert.ok(!('current' in d.find((x) => x.kind === 'break')));
+});
+
+// ---- the manual page break (step 2): `_ _ _` as a top-level rule line of its own
+test('reader: a top-level `_ _ _` rule is a page break; every other rule stays a rule', () => {
+  const kinds = (md) => L.dlDescribe(md, lex).map((b) => b.t);
+  assert.deepEqual(kinds('a\n\n_ _ _\n\nb\n'), ['paragraph', 'pagebreak', 'paragraph']);
+  assert.deepEqual(kinds('_ _ _'), ['pagebreak']);
+  assert.deepEqual(kinds('_ _ _\n\n\n\n'), ['pagebreak']);
+  assert.deepEqual(kinds('a\n_ _ _\nb'), ['paragraph', 'pagebreak', 'paragraph']);
+  assert.deepEqual(kinds('_ _ _\n\n_ _ _\n'), ['pagebreak', 'pagebreak']);
+  for (const other of ['---', '***', '___', '_ _ _ _', '_  _  _', '__ _ _', '* * *', '- - -', ' _ _ _', '_ _ _ ', '\\_ _ _']) {
+    assert.ok(!kinds(`a\n\n${other}\n\nb`).includes('pagebreak'), JSON.stringify(other));
+  }
+  assert.deepEqual(kinds('---\n\n***\n\n___'), ['rule', 'rule', 'rule']);
+  // inside a list or a quote it is an ordinary rule
+  const inQuote = L.dlDescribe('> a\n>\n> _ _ _\n', lex);
+  assert.deepEqual(inQuote[0].c.map((b) => b.t), ['paragraph', 'rule']);
+  const inList = L.dlDescribe('- a\n\n  _ _ _\n\n  b\n', lex);
+  assert.deepEqual(inList[0].items[0].c.map((b) => b.t), ['paragraph', 'rule', 'paragraph']);
+  assert.ok(!JSON.stringify(L.dlDescribe('> > - _ _ _\n', lex)).includes('pagebreak'));
+  // inside a code block it is words
+  assert.deepEqual(kinds('```\n_ _ _\n```'), ['codeblock']);
+  assert.deepEqual(kinds('    _ _ _'), ['codeblock']);
+});
+test('the Markdown box: Page break puts `_ _ _` on a line of its own after the block with the caret', () => {
+  const at = (value, start, end) => L.dlPageBreak({ value, start, end });
+  assert.equal(L.DL_PAGE_BREAK_LINE, '_ _ _');
+  assert.equal(at('', 0).value, '_ _ _');
+  assert.equal(at('a\n', 1).value, 'a\n\n_ _ _\n');
+  assert.equal(at('a\n\nb\n', 0).value, 'a\n\n_ _ _\n\nb\n');
+  assert.equal(at('a\nb\n\nc\n', 2).value, 'a\nb\n\n_ _ _\n\nc\n');
+  assert.equal(at('abc', 3).value, 'abc\n\n_ _ _');
+  assert.equal(at('```\nx\n\ny\n```\n\nz\n', 5).value, '```\nx\n\ny\n```\n\n_ _ _\n\nz\n'); // not inside a fence
+  const out = at('a\n\nb\n', 0);
+  assert.equal(out.start, out.end);
+  assert.equal(out.value.slice(0, out.start), 'a\n\n_ _ _');
+  assert.deepEqual(L.dlDescribe(out.value, lex).map((b) => b.t), ['paragraph', 'pagebreak', 'paragraph']);
+  assert.ok(L.DL_ACTIONS.includes('pagebreak'));
+  const e = L.dlStubEditor('a\n');
+  e.run('pagebreak');
+  assert.equal(e.getText(), 'a\n[pagebreak]');
 });
 test('doc record: good kept, unknown dropped', () => {
   assert.deepEqual(L.dlCleanDoc({ ...doc, extra: 1 }), doc);
@@ -264,6 +374,19 @@ const fakeDoc = () => {
 const all = (n, out = []) => { out.push(n); (n.kids || []).forEach((k) => all(k, out)); return out; };
 const render = (tokens, hooks) => { const d = fakeDoc(); const root = L.dlBuild(L.dlDescribe('x', () => tokens), d, hooks); return { root, d, nodes: all(root) }; };
 const link = (href, text = 'go') => T('link', { href, text, raw: `[${text}](${href})`, tokens: [txt(text)] });
+test('reader: a page break is a separator named "Page break", with no HTML set and no words in the excerpt', () => {
+  const d = fakeDoc();
+  const root = L.dlBuild(L.dlDescribe('a\n\n_ _ _\n\nb', lex), d);
+  const sep = all(root).find((n) => n.attrs && n.attrs.role === 'separator');
+  assert.ok(sep);
+  assert.deepEqual([sep.tag, sep.className, sep.attrs['aria-label']], ['div', 'dl-pagebreak', 'Page break']);
+  assert.equal(sep.kids[0].attrs['aria-hidden'], 'true');
+  assert.equal(sep.textContent, 'Page break');
+  assert.equal(d.sinks.length, 0);
+  assert.equal(all(root).filter((n) => n.tag === 'hr').length, 0);
+  assert.equal(L.dlDescribedText(L.dlDescribe('a\n\n_ _ _\n\nb', lex)).trim(), 'a b');
+  assert.equal(L.dlExcerpt('a\n\n_ _ _\n\nb', lex), 'a b');
+});
 const para = (...tokens) => T('paragraph', { raw: 'p', tokens });
 
 test('reader: each form becomes elements', () => {

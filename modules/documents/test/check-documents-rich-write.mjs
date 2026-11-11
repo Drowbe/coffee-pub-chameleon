@@ -42,7 +42,8 @@
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { loadRich, CASES, HOSTILE, fuzzDocs, sourceDocs } from './support/rich-corpus.mjs';
+import { breaksText } from './support/rich-corpus.mjs';
+import { loadRich, CASES, BREAK_CASES, HOSTILE, fuzzDocs, sourceDocs } from './support/rich-corpus.mjs';
 
 const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -84,7 +85,7 @@ const moveTo = (doc, i, to) => insertAt(deleteAt(doc, i), to, doc.child(i));
 const spike = fuzzDocs(schema, FUZZ, false).map((d) => S(d));
 const extended = fuzzDocs(schema, FUZZ, true).map((d) => S(d));
 const sourceForm = sourceDocs(FUZZ);
-const SETS = [['corpus', CASES.map((c) => c[1])], ['fuzz, the spike\'s kind', spike], ['fuzz, the extended kind', extended], ['fuzz, source form', sourceForm]];
+const SETS = [['corpus', CASES.map((c) => c[1])], ['fuzz, the spike\'s kind', spike], ['fuzz, the extended kind', extended], ['fuzz, source form', sourceForm], ['page breaks', BREAK_CASES.map((c) => c[1])]];
 const ALL = SETS.flatMap((s) => s[1]).concat(HOSTILE.map((h) => h[1]));
 
 test(`table: slices and gaps add up to the text, one entry for each top-level block (${ALL.length} texts)`, () => {
@@ -430,6 +431,69 @@ test('accepted changes: an edited block is written exactly as the serialiser wri
     }
   }
   assert.ok(n > 300, `only ${n} edits`);
+});
+
+// ---- 5b. the manual page break ---------------------------------------------------------------------------------------------------
+test('page break: kept exactly when untouched, whatever stands around it', () => {
+  const md = 'a\n\n\n_ _ _\n\n\n\nb\n\n_ _ _\n';
+  const { doc, table } = read(md);
+  assert.deepEqual(kids(doc).map((k) => k.b.type.name), ['paragraph', 'page_break', 'paragraph', 'page_break']);
+  const r = write(doc, table);
+  assert.deepEqual([r.text, r.changed], [md, false]);
+  const edited = write(typeIn(doc, 0, ' zq'), table);
+  assert.equal(edited.text, md.replace('a\n', 'a zq\n'));
+  assert.equal(edited.same, true);
+  assert.equal(edited.whole, false);
+});
+test('page break: a new rule typed before a kept break does not take the break\'s stored line (and the reverse)', () => {
+  const md = 'a\n\n_ _ _\n\nb\n';
+  const { doc, table } = read(md);
+  const withRule = insertAt(doc, 1, N.horizontal_rule.create()); // a new rule, before the kept break
+  const r = write(withRule, table);
+  assert.equal(r.text, 'a\n\n---\n\n_ _ _\n\nb\n');
+  assert.equal(r.same, true);
+  assert.deepEqual(kids(P(r.text)).map((k) => k.b.type.name), ['paragraph', 'horizontal_rule', 'page_break', 'paragraph']);
+  // the reverse: a new break before a kept rule written another way
+  const md2 = 'a\n\n***\n\nb\n';
+  const t2 = read(md2);
+  const r2 = write(insertAt(t2.doc, 1, N.page_break.create()), t2.table);
+  assert.equal(r2.text, 'a\n\n_ _ _\n\n***\n\nb\n');
+  assert.equal(r2.same, true);
+  // the kept rule moved after the break keeps its words
+  const r3 = write(moveTo(t2.doc, 1, 3), t2.table);
+  assert.equal(r3.text.includes('***'), true);
+  // a rule typed beside several kept breaks
+  const md4 = '_ _ _\n\n_ _ _\n\n_ _ _\n';
+  const t4 = read(md4);
+  const r4 = write(insertAt(t4.doc, 2, N.horizontal_rule.create()), t4.table);
+  assert.equal(r4.text, '_ _ _\n\n_ _ _\n\n---\n\n_ _ _\n');
+  assert.equal(r4.same, true);
+});
+test('page break: added to a text, only that block is new, byte for byte; taken out, only that block goes', () => {
+  const md = 'Intro __stays__ exact.\n\n* one\n* two\n\n***\n\nEnd _it_ here\n';
+  const { doc, table } = read(md);
+  for (let i = 0; i <= doc.childCount; i += 1) {
+    const r = write(insertAt(doc, i, N.page_break.create()), table);
+    assert.equal(r.same, true);
+    assert.equal(r.whole, false);
+    const parts = md.trimEnd().split('\n\n');
+    const want = [...parts.slice(0, i), '_ _ _', ...parts.slice(i)].join('\n\n') + '\n';
+    assert.equal(r.text, want, `at ${i}`);
+  }
+  const both = read('Intro\n\n_ _ _\n\nEnd\n');
+  assert.equal(write(deleteAt(both.doc, 1), both.table).text, 'Intro\n\nEnd\n');
+});
+test('page break: 5000 of them in a text, one edit among them writes that block and keeps the rest', () => {
+  const md = breaksText(5000);
+  const { doc, table } = read(md);
+  assert.equal(table.entries.length, 10000);
+  assert.deepEqual([write(doc, table).text === md, write(doc, table).changed], [true, false]);
+  const r = write(typeIn(doc, 4000, ' zq'), table);
+  assert.equal(r.text, md.replace('p2000\n', 'p2000 zq\n'));
+  assert.deepEqual([r.same, r.whole], [true, false]);
+  const r2 = write(insertAt(doc, 5001, N.page_break.create()), table);
+  assert.equal(r2.same, true);
+  assert.equal((r2.text.match(/_ _ _/g) || []).length, 5001);
 });
 
 // ---- 6. the hostile corpus -------------------------------------------------------------------------------------------------------

@@ -3,7 +3,7 @@
   // The schema holds exactly what the safe reader draws and nothing else: no node or mark carries HTML. `PM` is the vendored
   // ProseMirror object (documents-lib-0-prosemirror.js makes it as DlPM); it is handed in, as the lexer is handed to the reader,
   // so these files load and run in a test with no page.
-  //   blocks   paragraph, heading (level 1 to 6; 5 and 6 are drawn as 4), blockquote, code_block (lang, info), horizontal_rule,
+  //   blocks   paragraph, heading (level 1 to 6; 5 and 6 are drawn as 4), blockquote, code_block (lang, info), horizontal_rule, page_break (top level only),
   //            bullet_list and ordered_list (order) of list_item (checked: null, or true/false for a checklist row),
   //            grid > grid_row > grid_head | grid_cell (align), formula_block (tex), source_block (its text is raw Markdown)
   //   inline   text, hard_break, object (the chip: module, kind, id, label, title), formula (tex), source (src: raw Markdown)
@@ -48,7 +48,7 @@
       toDOM: (node) => [tag, node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0],
     });
     const nodes = {
-      doc: { content: 'block+' },
+      doc: { content: '(block | page_break)+' }, // a page break stands between the top-level blocks only
       paragraph: { group: 'block', content: 'inline*', toDOM: () => ['p', 0] },
       heading: {
         group: 'block', content: 'inline*', defining: true,
@@ -66,6 +66,9 @@
       },
       source_block: { group: 'block', content: 'text*', marks: '', code: true, defining: true, toDOM: () => ['pre', { class: 'dl-source' }, ['code', 0]] },
       horizontal_rule: { group: 'block', toDOM: () => ['hr'] },
+      // The manual page break: its own node, not the rule's (kept blocks are matched by Node.eq, so a rule typed before a kept
+      // break would take the break's stored line). Top level only, as the reader makes it. Written as the line `_ _ _`.
+      page_break: { toDOM: () => ['div', { class: 'dl-pagebreak', role: 'separator', 'aria-label': 'Page break' }, ['span', { class: 'dl-pagebreak-label', 'aria-hidden': 'true' }, 'Page break']] },
       bullet_list: { group: 'block', content: 'list_item+', toDOM: () => ['ul', 0] },
       ordered_list: {
         group: 'block', content: 'list_item+',

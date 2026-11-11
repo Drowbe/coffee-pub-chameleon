@@ -29,7 +29,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { CASES, HOSTILE, fuzzDocs } from './support/rich-corpus.mjs';
+import { CASES, BREAK_CASES, breaksText, HOSTILE, fuzzDocs } from './support/rich-corpus.mjs';
 
 const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -102,7 +102,7 @@ test('the mapping files have no page, host or HTML words', () => {
 // ---- 2. the schema ---------------------------------------------------------------------------------------------------------------
 test('schema: the nodes and marks the plan names, and no others', () => {
   assert.deepEqual(Object.keys(N).sort(), ['blockquote', 'bullet_list', 'code_block', 'doc', 'formula', 'formula_block', 'grid', 'grid_cell', 'grid_head', 'grid_row', 'hard_break',
-    'heading', 'horizontal_rule', 'list_item', 'object', 'ordered_list', 'paragraph', 'source', 'source_block', 'text']);
+    'heading', 'horizontal_rule', 'list_item', 'object', 'ordered_list', 'page_break', 'paragraph', 'source', 'source_block', 'text']);
   assert.deepEqual(Object.keys(M).sort(), ['code', 'em', 'link', 'strike', 'strong']);
   assert.equal(L.dlRichSchema(PM), schema, 'the schema is made once');
 });
@@ -146,7 +146,7 @@ test('schema: an address is stored in one form, and reading it again changes not
 test('schema: every node draws as elements and text only (toDOM specs hold no HTML string)', () => {
   const doc = P('# H\n\nA **b** [l](https://example.com) [c](object:maps:place:p1) $x$ <b>raw</b>\n\n- [x] t\n\n| a |\n| :-: |\n| b |\n\n$$y$$\n\n<div>z</div>\n\n```js\nc\n```\n\n---\n');
   const walk = (spec) => { if (typeof spec === 'string' || spec === 0) return; assert.ok(Array.isArray(spec) && /^[a-z0-9]+$/.test(spec[0]), `not an element spec: ${JSON.stringify(spec)}`);
-    spec.slice(1).forEach((x, i) => { if (i === 0 && x && typeof x === 'object' && !Array.isArray(x)) { for (const [k, v] of Object.entries(x)) assert.ok(/^(class|href|rel|target|style|start|data-[a-z]+)$/.test(k) && typeof v === 'string', `attribute ${k}`); } else walk(x); }); };
+    spec.slice(1).forEach((x, i) => { if (i === 0 && x && typeof x === 'object' && !Array.isArray(x)) { for (const [k, v] of Object.entries(x)) assert.ok(/^(class|href|rel|target|style|start|role|aria-label|aria-hidden|data-[a-z]+)$/.test(k) && typeof v === 'string', `attribute ${k}`); } else walk(x); }); };
   for (const n of nodesOf(doc)) { if (!n.isText) walk(n.type.spec.toDOM(n)); for (const m of n.marks) walk(m.type.spec.toDOM(m)); }
 });
 
@@ -187,7 +187,7 @@ function lostWords(md, doc) {
 
 
 const results = [];
-for (const [name, md1, want, flag] of CASES) {
+const runCase = ([name, md1, want, flag]) => {
   let row;
   try {
     const doc1 = P(md1);
@@ -202,8 +202,10 @@ for (const [name, md1, want, flag] of CASES) {
     const status = md2 === md1 ? 'EXACT' : !(sameDoc && stable && sameShown) ? 'CHANGED' : lost.length ? 'LOST' : 'CANONICALISED';
     row = { name, status, sameDoc, stable, sameShown, lost, md1, md2, want: want === undefined ? md1 : want, flag };
   } catch (err) { row = { name, status: 'ERROR', err: String(err && err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err), md1, want }; }
-  results.push(row);
-}
+  return row;
+};
+for (const c of CASES) results.push(runCase(c));
+const breakResults = BREAK_CASES.map(runCase);
 const by = (st) => results.filter((r) => r.status === st);
 test('corpus: no case changes in meaning, and none fails', () => {
   const bad = [...by('CHANGED'), ...by('ERROR')];
@@ -230,6 +232,56 @@ test('corpus: a source node writes its Markdown back word for word', () => {
     const out = S(doc);
     for (const s of sourcesOf(doc)) for (const line of s.split('\n')) assert.ok(out.includes(line), `${name}: the source line ${JSON.stringify(line)} is not in ${JSON.stringify(out)}`);
   }
+});
+
+// ---- 3b. the manual page break (plan-documents-paper-layout.md, decision 13) ----------------------------------------------------------
+const kindsOf = (doc) => { const out = []; doc.forEach((b) => out.push(b.type.name)); return out; };
+test('page break: `_ _ _` at the top level is its own node, written as the same line; `---` stays the rule', () => {
+  assert.deepEqual(kindsOf(P('a\n\n_ _ _\n\nb\n')), ['paragraph', 'page_break', 'paragraph']);
+  assert.deepEqual(kindsOf(P('a\n\n---\n\n***\n\n___\n\nb\n')), ['paragraph', 'horizontal_rule', 'horizontal_rule', 'horizontal_rule', 'paragraph']);
+  assert.equal(S(N.doc.create(null, [N.page_break.create()])), '_ _ _\n');
+  assert.equal(S(N.doc.create(null, [N.horizontal_rule.create()])), '---\n');
+  assert.equal(S(N.doc.create(null, [N.paragraph.create(null, [schema.text('a')]), N.page_break.create(), N.paragraph.create(null, [schema.text('b')])])), 'a\n\n_ _ _\n\nb\n');
+  assert.notEqual(N.page_break, N.horizontal_rule);
+  assert.ok(!N.page_break.create().eq(N.horizontal_rule.create()));
+  assert.equal(N.page_break.create().toString(), 'page_break');
+});
+test('page break: top level only (a list, a quote or a row cannot hold one); the reader makes none there', () => {
+  const para = N.paragraph.create(null, [schema.text('a')]);
+  assert.throws(() => N.blockquote.create(null, [para, N.page_break.create()]).check(), undefined, 'in a quote');
+  assert.throws(() => N.bullet_list.create(null, [N.list_item.create(null, [para, N.page_break.create()])]).check(), undefined, 'in a list row');
+  assert.doesNotThrow(() => N.doc.create(null, [N.page_break.create()]).check());
+  for (const md of ['> a\n>\n> _ _ _\n', '- a\n\n  _ _ _\n', '> - _ _ _\n', '1. a\n\n   > _ _ _\n']) assert.ok(!kindsOf(P(md)).includes('page_break') && !JSON.stringify(P(md).toJSON()).includes('page_break'), md);
+  assert.deepEqual(P('> a\n>\n> _ _ _\n').toJSON().content[0].content.map((x) => x.type), ['paragraph', 'horizontal_rule']);
+});
+test('page break: the editor never writes `_ _ _` for an ordinary rule, and an ordinary rule written `_ _ _` is a break', () => {
+  for (const [name, md1] of CASES) assert.ok(!/(^|\n)_ _ _(\n|$)/.test(S(P(md1))), `${name}: a rule was written as _ _ _`);
+  assert.equal(S(P('a\n\n* * *\n\n___\n\n- - -\n')), 'a\n\n---\n\n---\n\n---\n');
+  assert.deepEqual(kindsOf(P('a\n\n_ _ _\n')), ['paragraph', 'page_break']);
+});
+test('page break: the cases (top level, between blocks, start, end, a list, a quote, blank lines) read, write and read again', () => {
+  assert.equal(breakResults.length, BREAK_CASES.length);
+  const bad = breakResults.filter((r) => r.err || r.status === 'CHANGED' || r.status === 'LOST');
+  assert.equal(bad.length, 0, bad.map((r) => `\n    ${r.name}: ${r.status} ${r.err || `same document ${r.sameDoc}, fixed point ${r.stable}, same for a reader ${r.sameShown}\n      in : ${JSON.stringify(r.md1)}\n      out: ${JSON.stringify(r.md2)}`}`).join(''));
+  const off = breakResults.filter((r) => r.md2 !== r.want);
+  assert.equal(off.length, 0, off.map((r) => `\n    ${r.name}\n      wrote : ${JSON.stringify(r.md2)}\n      pinned: ${JSON.stringify(r.want)}`).join(''));
+  for (const r of breakResults) assert.equal((r.md2.match(/(^|\n)_ _ _(?=\n|$)/g) || []).length, (r.want.match(/(^|\n)_ _ _(?=\n|$)/g) || []).length, r.name);
+});
+test('page break: 5000 of them are 5000 nodes, written back as they were read, quickly', () => {
+  const md = breaksText(5000);
+  const t = Date.now();
+  const doc = P(md);
+  assert.equal(doc.childCount, 10000);
+  let n = 0;
+  doc.forEach((b) => { if (b.type === N.page_break) n += 1; });
+  assert.equal(n, 5000);
+  assert.equal(S(doc), md);
+  assert.ok(Date.now() - t < 5000, `${Date.now() - t} ms`);
+});
+test('page break: the fuzz generator makes some', () => {
+  let n = 0;
+  for (const extended of [false, true]) for (const doc of fuzzDocs(schema, 250, extended)) doc.descendants((x) => { if (x.type === N.page_break) n += 1; });
+  assert.ok(n >= 3, `${n} page breaks in 500 documents`);
 });
 
 // A mark that Markdown would not read as written (bold that ends in punctuation against a letter) is written with &#8203; beside it.
@@ -299,7 +351,7 @@ function assertSafe(doc, what) {
     s.slice(1).forEach((x, i) => {
       if (i === 0 && x && typeof x === 'object' && !Array.isArray(x)) {
         for (const [k, v] of Object.entries(x)) {
-          assert.ok(/^(class|href|rel|target|style|start|data-(module|kind|id|task))$/.test(k), `${what}: attribute ${k}`);
+          assert.ok(/^(class|href|rel|target|style|start|role|aria-label|aria-hidden|data-(module|kind|id|task))$/.test(k), `${what}: attribute ${k}`);
           if (k === 'href') assert.ok(/^(https?:\/\/|mailto:)/.test(v) && L.dlRichHref(v) === v, `${what}: href ${v}`);
           if (k === 'style') assert.ok(/^text-align:(left|center|right)$/.test(v), `${what}: style ${v}`);
           if (k === 'class') assert.ok(/^dl-[a-z -]+$/.test(v), `${what}: class ${v}`);
@@ -455,6 +507,6 @@ for (const st of ['EXACT', 'CANONICALISED', 'LOST', 'CHANGED', 'ERROR']) {
   }
 }
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
-const summary = `corpus ${CASES.length}: ${by('EXACT').length} exact, ${by('CANONICALISED').length} canonicalised, ${by('CHANGED').length + by('ERROR').length} changed, ${by('LOST').length} lost; ${fuzzSummary}; hostile ${hostileCount}`;
+const summary = `corpus ${CASES.length}: ${by('EXACT').length} exact, ${by('CANONICALISED').length} canonicalised, ${by('CHANGED').length + by('ERROR').length} changed, ${by('LOST').length} lost; page-break cases ${breakResults.length}: ${breakResults.filter((r) => r.status === 'EXACT').length} exact, ${breakResults.filter((r) => r.status === 'CANONICALISED').length} canonicalised, ${breakResults.filter((r) => r.status !== 'EXACT' && r.status !== 'CANONICALISED').length} changed or lost; ${fuzzSummary}; hostile ${hostileCount}`;
 if (fails.length) { console.error(`documents rich mapping: ${fails.length} failed, ${passed} passed (${summary})`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }
 console.log(`documents rich mapping: ${passed} tests passed in ${secs} s (${summary})`);

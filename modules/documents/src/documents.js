@@ -144,7 +144,7 @@
     const now = new Date().toISOString();
     const plan = dlPlanChunks([], split.chunks, () => dlNewId(Math.random));
     for (const c of plan) await host.storage.set(dlTextKey(id, c.id), { id: c.id, doc: id, text: c.text });
-    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text, lex), preview: dlPreview(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
+    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text, lex), preview: dlPreview(text), paper: DL_PAPER_DEFAULT, ...dlCleanPage(null), by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
     const r = await host.storage.set(dlDocKey(id), rec, { version: 0 });
     remember({ key: dlDocKey(id), value: rec, version: r && r.version });
     return id;
@@ -372,6 +372,73 @@
     host.menu.show({ id: 'paper', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items });
   }
 
+  // ---- the page: layout, size, numbers --------------------------------------------------------------------------------------
+  // The sheet wears the document's layout (data-layout: Paper is drawn as one sheet of the page's width with its margins,
+  // documents.css) and size (data-size). The page's measures come from dlPageGeometry, set as custom properties so the style
+  // sheet holds no number of its own. Paper is not paged yet: it is one sheet. A Paper sheet at Fit width is scaled to the window's width.
+  function paintPage(sheet, page) {
+    if (!sheet) return;
+    const p = dlCleanPage(page);
+    const g = dlPageGeometry(p.pageSize);
+    sheet.dataset.layout = p.layout;
+    sheet.dataset.size = p.pageSize;
+    sheet.dataset.numbers = p.pageNumbers ? 'on' : 'off';
+    sheet.style.setProperty('--doc-page-w', `${g.w}px`);
+    sheet.style.setProperty('--doc-page-m', `${g.margin}px`);
+    fitPaper();
+  }
+  // Fit width on a Paper sheet: the page scaled to the window's width (never above 200%). Other sheets, and a zoom level,
+  // follow the app's --doc-zoom.
+  function fitPaper() {
+    const avail = (box) => {
+      const cs = getComputedStyle(box);
+      return box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    };
+    for (const id of ['read', 'editor']) {
+      const box = $(id);
+      const sheet = box.querySelector('.sheet');
+      if (!sheet) continue;
+      if (sheet.dataset.layout === 'paper' && view === 'fit' && !box.hidden) {
+        sheet.style.setProperty('--doc-zoom', String(dlPageFit(avail(box), dlPageGeometry(sheet.dataset.size).w)));
+      } else sheet.style.removeProperty('--doc-zoom');
+    }
+  }
+  function chooseLayout(v) {
+    if (!ed || ed.lost) return;
+    const layout = dlCleanLayout(v);
+    if (ed.page.layout === layout) return;
+    ed.page = { ...ed.page, layout };
+    pageChanged();
+  }
+  function pageChanged() {
+    paintPage($('editor').querySelector('.sheet'), ed.page);
+    typed();
+    renderChrome();
+    ed.editor.focus();
+  }
+  function choosePageSize(id) {
+    if (!ed || ed.lost || ed.page.pageSize === dlCleanPageSize(id)) return;
+    ed.page = { ...ed.page, pageSize: dlCleanPageSize(id) };
+    pageChanged();
+  }
+  function togglePageNumbers() {
+    if (!ed || ed.lost) return;
+    ed.page = { ...ed.page, pageNumbers: !ed.page.pageNumbers };
+    pageChanged();
+  }
+  // The Page button's menu: the page colour (its own menu), the size, the numbers, and a page break at the caret.
+  function pageMenu(e) {
+    if (!ed || ed.lost) return;
+    const at = { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 };
+    const items = [{ id: 'colour', label: 'Page colour...', icon: 'palette', onClick: () => paperMenu(e) }, ...dlPageMenuModel(ed.page).map((m) => {
+      if (m.kind === 'heading') return { heading: m.label };
+      if (m.kind === 'size') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', chosen' : ''}`, icon: 'ruler-combined', onClick: () => choosePageSize(m.id) };
+      if (m.kind === 'numbers') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', on' : ', off'}`, icon: 'arrow-down-1-9', onClick: togglePageNumbers };
+      return { id: m.id, label: m.label, icon: m.icon, onClick: () => { applyFormat('pagebreak'); } };
+    })];
+    host.menu.show({ id: 'page', at, items });
+  }
+
   // ---- reading -------------------------------------------------------------------------------------------------------------
   async function draw(id) {
     const got = await readText(id);
@@ -381,6 +448,7 @@
     const top = $('read').scrollTop;
     shownRev = got.rec.rev;
     paintPaper($('read').querySelector('.sheet'), got.rec.paper);
+    paintPage($('read').querySelector('.sheet'), got.rec);
     $('read-title').textContent = got.rec.title;
     $('read-meta').textContent = `Edited by ${got.rec.editedByName}, ${when(got.rec.editedAt)}`;
     paintTags();
@@ -397,6 +465,7 @@
     $('read-title').textContent = docs.get(id).title;
     paintTags();
     paintPaper($('read').querySelector('.sheet'), docs.get(id).paper);
+    paintPage($('read').querySelector('.sheet'), docs.get(id));
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
     renderChrome();
     $('page').focus();
@@ -620,7 +689,7 @@
   async function openEditor(id, lock) {
     const { rec, version, got } = await readForEdit(id);
     ed = {
-      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, saved: { text: got.text, title: rec.title, paper: rec.paper }, savedRev: 0,
+      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, page: dlCleanPage(rec), saved: { text: got.text, title: rec.title, paper: rec.paper, page: dlCleanPage(rec) }, savedRev: 0,
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
       timer: 0, beat: 0, queue: Promise.resolve(),
     };
@@ -628,6 +697,7 @@
     $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
     $('edit-title').value = rec.title;
     paintPaper($('editor').querySelector('.sheet'), ed.paper);
+    paintPage($('editor').querySelector('.sheet'), ed.page);
     mountEditor(got.text);
     ed.savedRev = ed.editor.revision();
     $('edit-title').readOnly = false;
@@ -648,8 +718,8 @@
     return run;
   };
   // Never reads the text: the editor's change counter and the title and paper decide (the text is read only by snapshot()).
-  const dirtyNow = () => ed && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper);
-  const snapshot = () => dlEditorSnapshot(ed.editor, ed.saved, $('edit-title').value, ed.paper);
+  const dirtyNow = () => ed && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper, ed.page);
+  const snapshot = () => dlEditorSnapshot(ed.editor, ed.saved, $('edit-title').value, ed.paper, ed.page);
   function setStatus() {
     if (!ed) return;
     renderStatus();
@@ -692,7 +762,7 @@
       const cur = snapshot();
       sayInexact(false);
       if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
-      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random), lex });
+      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, page: cur.page, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random), lex });
       if (!plan.ok) {
         ed.refused = plan.reason;
         note(plan.reason === 'title' ? 'Give the document a title.' : 'This document is too long. Split it into two.');
@@ -719,7 +789,7 @@
       ed.saving = false;
       ed.rec = plan.record;
       ed.old = plan.chunks.map((c) => ({ id: c.id, text: c.text }));
-      ed.saved = { text: cur.text, title: cur.title, paper: cur.paper }; ed.savedRev = cur.rev;
+      ed.saved = { text: cur.text, title: cur.title, paper: cur.paper, page: cur.page }; ed.savedRev = cur.rev;
       remember({ key: dlDocKey(ed.id), value: plan.record });
       const gone = [...plan.dropped, ...ed.stray.filter((x) => !plan.chunks.some((c) => c.id === x))];
       ed.stray = [];
@@ -866,6 +936,7 @@
     app.style.setProperty('--doc-zoom', String(s.zoom));
     app.style.setProperty('--doc-width', s.widthRem === null ? '100%' : `${s.widthRem}rem`);
     app.style.setProperty('--doc-max', `${s.maxRem}rem`);
+    fitPaper();
   }
   function setView(v) {
     view = dlCleanView(v);
@@ -873,6 +944,8 @@
     paintView();
     renderStatus();
   }
+  // A Paper sheet at Fit width follows the window's width.
+  if (typeof ResizeObserver === 'function') { const watch = new ResizeObserver(() => fitPaper()); watch.observe($('read')); watch.observe($('editor')); }
   const viewShown = () => Boolean(ed ? !ed.lost : openId);
   function zoomMenu(e) {
     if (!viewShown()) return;
@@ -926,6 +999,7 @@
     });
   }
   let richSwitch = null;
+  let layoutSwitch = null;
   let paperButton = null;
   let tagButton = null;
   let backButton = null;
@@ -988,7 +1062,12 @@
     if (wantFmt && !richSwitch) richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
     else if (!wantFmt && richSwitch) { richSwitch.destroy(); richSwitch = null; }
     else if (richSwitch) richSwitch.set(dlEditViewId(rich));
-    if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
+    // The layout (Fluid or Paper) is the document's own, set while editing: the same shared switch, beside the editor's.
+    if (wantFmt && !layoutSwitch) layoutSwitch = host.ui.viewSwitch({ id: 'layout', label: 'Layout', options: DL_LAYOUTS.map((o) => ({ ...o })), value: ed.page.layout, zone: 'end', onChange: chooseLayout });
+    else if (!wantFmt && layoutSwitch) { layoutSwitch.destroy(); layoutSwitch = null; }
+    else if (layoutSwitch) layoutSwitch.set(ed.page.layout);
+    // The Page button's menu holds the colour, the size, the numbers and the page break.
+    if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
     // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.

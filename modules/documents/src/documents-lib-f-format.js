@@ -119,3 +119,32 @@
     const at = start + lead.length + 3;
     return { value: `${before}${lead}$$\n${body}\n$$${trail}${after}`, start: at, end: at + body.length };
   }
+
+  // A page break: the line `_ _ _` on a line of its own, after the block that holds the caret (the lines up to the next blank
+  // line, or the end of a code fence the caret is in), with a blank line on each side. Nothing is wrapped or toggled; the caret
+  // ends after the new line. The same spelling is the editor's own page_break node (documents-lib-l-schema.js).
+  function dlPageBreak(sel) {
+    const { value, end } = dlSel(sel);
+    const lines = value.split('\n');
+    let fence = null; // the open fence: { ch, n }
+    let off = 0;
+    let at = lines.length - 1; // the line the block ends on
+    let found = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const to = off + line.length;
+      const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (fence) { if (f && f[1][0] === fence.ch && f[1].length >= fence.n && !f[2].trim()) fence = null; } else if (f) fence = { ch: f[1][0], n: f[1].length };
+      if (!found && end <= to) found = true;
+      if (found && !fence && (i === lines.length - 1 || !lines[i + 1].trim())) { at = i; break; }
+      off = to + 1;
+    }
+    let ins = 0;
+    for (let i = 0; i <= at; i += 1) ins += lines[i].length + (i < at ? 1 : 0);
+    const before = value.slice(0, ins);
+    const after = value.slice(ins);
+    const lead = before === '' || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const trail = after === '' || after === '\n' || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+    const from = before.length + lead.length;
+    return { value: before + lead + DL_PAGE_BREAK_LINE + trail + after, start: from + DL_PAGE_BREAK_LINE.length, end: from + DL_PAGE_BREAK_LINE.length };
+  }
