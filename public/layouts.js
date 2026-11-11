@@ -338,8 +338,8 @@ export function leftOutNote(ids, nameOf = (id) => id, space = 'space') {
 // differences are noise (a width within 2 pixels, a box edge or a stack share within half a percent: a load fitted to
 // the window rounds them). Z-order, scroll, zoom and a module's own content are not part of the shape, so they never
 // count. Pure; compared on arrangement changes, not on every mouse move.
-const arrangeOf = (l) => (l?.arrange === 'window' || l?.arrange === 'panel' ? l.arrange
-  : Array.isArray(l?.modules) && l.modules.length && l.modules.every((m) => m?.mode === 'float') ? 'window' : 'panel');
+const arrangeOf = (l) => (l?.arrange === 'window' || l?.arrange === 'dock' ? l.arrange
+  : Array.isArray(l?.modules) && l.modules.length && l.modules.every((m) => m?.mode === 'float') ? 'window' : 'dock');
 export function layoutDiffers(a, b) {
   const A = Array.isArray(a?.modules) ? a.modules : [];
   const B = Array.isArray(b?.modules) ? b.modules : [];

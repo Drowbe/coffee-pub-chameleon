@@ -2344,7 +2344,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
         ...(stackOf(p) ? { stack: stackOf(p), at: rec.at, h: rec.h, folded: rec.folded === true } : {}),
       };
     });
-    return { ...layoutOf(mods, canvasArea(), { all: snapAllOn(), pitch: snapPitch() }), arrange: arrangeMode() };
+    return { ...layoutOf(mods, canvasArea(), { all: snapAllOn(), pitch: snapPitch() }), arrange: arrangeMode() === 'window' ? 'window' : 'dock' };
   }
 
   // Put a saved layout on the canvas (plan-saved-layouts.md, "Saving and loading"): what may open here (canOpenHere)
@@ -2413,7 +2413,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
       // The column order is the layout's: the modules it names follow whatever stays (the conference on the call).
       for (const want of plan.modules) { const mod = opened.get(want.id); if (mod) mod.order = ++order; }
       // The arrange mode follows the layout: every module a window, Window Mode; any column, Panel Mode.
-      if (layout.arrange === 'panel' || layout.arrange === 'window') saved.__mode = layout.arrange; // a layout that says so (a blank one always does)
+      if (layout.arrange === 'dock' || layout.arrange === 'window') saved.__mode = layout.arrange === 'dock' ? 'panel' : 'window'; // a layout that says so (a blank one always does)
       else if (plan.modules.length) saved.__mode = plan.modules.every((want) => want.mode === 'float') ? 'window' : 'panel';
       if (narrow && plan.modules.length) arrangeOnWide = true; // put on the canvas when the window is wide (placeForWidth)
       if (narrow) {
