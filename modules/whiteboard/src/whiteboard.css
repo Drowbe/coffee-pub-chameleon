@@ -965,12 +965,12 @@
 .wb-size-btn { pointer-events: auto; min-width: 4.5em; }
 .wb-paint-btn .ic { display: block; width: 1em; height: 1em; }
 .wb-paint-btn .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
-@media (max-width: 520px) { .wb-paint-sep { display: none; } .wb-paint { row-gap: var(--space-1); } }
+@media (max-width: 640px) { .wb-paint-sep { display: none; } .wb-paint { row-gap: var(--space-1); } }
 
 /* the formatting bar's groups: the words' marks, then the alignment (and the vertical one), a thin line between */
 .wb-format-group { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; }
 .wb-format-group + .wb-format-group { margin-left: var(--space-1); padding-left: var(--space-1); border-left: 1px solid var(--edge-hairline); }
-@media (max-width: 520px) { .wb-format-group + .wb-format-group { margin-left: 0; padding-left: 0; border-left: none; } }
+@media (max-width: 640px) { .wb-format-group + .wb-format-group { margin-left: 0; padding-left: 0; border-left: none; } }
 
 /* where the words sit from top to bottom (a block's valign; a block without it keeps its type's own look above) */
 .wb-type-note[data-valign] .wb-words { display: flex; flex-direction: column; }
