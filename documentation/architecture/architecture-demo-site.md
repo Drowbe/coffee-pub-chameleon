@@ -2,6 +2,10 @@
 
 **Audience:** developers and operators who fill a server with demo data, run a demo site that resets itself, or need to know what the checks added since 0.4 look at.
 
+## Adding the demo space from the host console
+
+The host console can add the demo space to any environment (#552, #553; `POST /api/host/environments/:slug/demo`, host admin only; [plan-demo-space](../plans/plan-demo-space.md)). The server runs the loader against the environment's template's demo file (the travel one when the template has none), through loopback requests to its own address with the environment's host name, as a stand-in user. The stand-in has the fixed login `host-demo` and the name **Host (demo)**, is an admin of that environment, has no password and is marked as the host's. The session is signed with the environment's own secret and lives for that one run. The route changes no environment-wide setting. It refuses (409) a suspended environment, one that will not open, a run already going, a demo space already there, and an existing ordinary account called `host-demo`. A request that stalls ends the run after 180 seconds; `DEMO_REQUEST_TIMEOUT_SECONDS` changes that. The answer is the loader's report, with the demo people's one-time passwords shown once and never logged or kept. Read from the code; `tools/check-demo-console.mjs` covers it and was not rerun for this document.
+
 ## The demo loader and the seeder
 
 Two parts make the demo. They are kept apart on purpose.

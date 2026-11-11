@@ -12,6 +12,8 @@ first use is the Whiteboard's live pointers (#496): a cursor for each person, in
 serve any module: who is editing, a typing mark, a nudge. Facts marked **(code)** were read in the code for this plan;
 **(inferred)** were not checked; nothing here was run.
 
+**Progress (2026-11-11):** Built on main: the server half (#523), the SDK and guest pass (#524), the `reconnected` event (#591) and the Whiteboard's live pointers (0.1.23). Documented in [api-modules](../api/api-modules.md), "Live messages", and [api-module-sdk](../api/api-module-sdk.md), "Live messages". Read from code; whether the steps held for an independent security read have been read is not recorded here.
+
 ## What it is today
 
 ### The Blacksmith model, and what to design away

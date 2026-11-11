@@ -13,6 +13,8 @@ to Chat's input, the person presses Send), so the attach piece carries words as 
 Later the same day the project manager, under Thomas's delegation, settled the three questions left (decisions 10 to
 12).
 
+**Progress (2026-11-11):** Step 1 is built: `host.chat.attach` for words and an object (#526), documented in [api-module-sdk](../api/api-module-sdk.md), "Asking in Chat". Pictures are not attachable yet, and the Whiteboard has no **Send to Assistant**.
+
 Each fact below is marked **verified in code** (read in this worktree on 2026-11-09, never run against a real service)
 or **inferred**. Nothing about the providers could be checked offline; what must be checked against their own
 documentation at build time is said where it matters.

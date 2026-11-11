@@ -38,7 +38,8 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
 - [Budget](userguides/userguide-budget.md) -- costs planned and paid, the space's target, the burndown and settling up.
 - [Research](userguides/userguide-research.md) -- notes, links and photos a group finds while it plans.
 - [Vault](userguides/userguide-vault.md) -- a space's files: adding, finding, opening, linking from other tools and sharing photos, audio, video, PDFs and notes.
-- [Whiteboard](userguides/userguide-whiteboard.md) -- a shared board for a space: notes, text, shapes, drawings and pictures, colours, snapping, undo and who can change it.
+- [Documents](userguides/userguide-documents.md) -- shared written notes for a space: the list, reading, writing with one editor at a time, tags and the trash.
+- [Whiteboard](userguides/userguide-whiteboard.md) -- a shared board for a space: notes, text, shapes, drawings and pictures, colours, grid, presenting, undo and who can change it.
 - [Places](userguides/userguide-places.md) and [Maps](userguides/userguide-maps.md) -- saved places, the map, and a
   picture map for an invented world.
 - [Assistant](userguides/userguide-assistant.md) -- the AI behind `/ai`, and bringing in research from another AI.
@@ -57,6 +58,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
   are built.
 - [Canvas architecture](architecture/architecture-canvas.md) -- the canvas: its grid of modules, docked
   and floating, and the layout rules.
+- [Documents architecture](architecture/architecture-documents.md) -- the module's stored keys, the edit lock, saving, tags and the licence rules.
 - [Whiteboard architecture](architecture/architecture-whiteboard.md) -- the module's libraries, the block format, how it saves and hears changes, undo, pictures and its checks.
 - [Module window architecture](architecture/architecture-module-window.md) -- the titlebar, toolbar and
   action bar the host draws around every module.

@@ -4,6 +4,8 @@
 
 **Status:** Decided, 2026-11-11 (decisions 1 to 12); nothing is built and nothing was run for this plan. The build waits for Thomas's go. The request, as Thomas gave it: tags on Documents, and "tags should be a shared service". Facts are marked **(code)** (read in the code), **(docs)** (read in the documentation) or **(memory)** (not checked). The decisions are Thomas's; the contract is a draft built on them, and nothing is left open.
 
+**Progress (2026-11-11):** Built on main: the server half (#582: `server/tags.js`, the routes under `/api/spaces/:id/tags`, the `manageTags` right) and the SDK half (#585: `host.tags`, the picker, chips, the `tags` event and the Tags section in Set up). Documents 0.6.0 is the first module to use it (#593). Documented in [api-modules](../api/api-modules.md), "Tags", and [api-module-sdk](../api/api-module-sdk.md), "Shared tags". Research still keeps its own tags. Known gaps are in [known-issues](../known-issues.md).
+
 ## What it is today
 
 - **There is no shared tag service.** No `host.tags`, no route and no stored list **(code, `public/sdk/host.js`, `server/index.js`)**.

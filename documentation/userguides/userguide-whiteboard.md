@@ -24,7 +24,7 @@ The server checks both permissions on every save, so the board's buttons are a h
 
 The Whiteboard is a module like the others: open it from the **Layout** menu, under **Show**, and it opens on the canvas. It works only in a space; anywhere else it says it opens in a space.
 
-The board fills the module. The toolbar above it holds, from the left: one switch named **Tools** (**Select**, **Hand**, **Pen**, **Note**, **Text**, **Rectangle**, **Ellipse**, **Line** and **Arrow**, and **Select many** on touch screens only), then the **Timer** button, the **Paint** and **Flowchart** menu buttons, **Undo**, **Redo**, **Text size and alignment**, **Line style and arrowheads**, **Delete** (while blocks are picked) and **Arrange** (while two or more are picked). **Snap to grid** is the button at the far right. When the board is narrow, the last choices of **Tools** and then the other buttons fold into the toolbar's **More** menu, and the tool you are using stays in the row. The title bar holds the **+**, which adds blocks, the zoom buttons and a menu with **Present**, **Find**, **Show overview** (**Hide overview** once it is on), **Background colour…**, **Save as image…** and **Print**. A small strip under the left end of the toolbar shows the colours and the line width (see "Colours and widths"). The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first. The board's help, read out to a screen reader, is short; this guide has the rest.
+The board fills the module. The toolbar above it holds, from the left: one switch named **Tools** with **Hand**, **Select**, **Pen**, **Fill**, **Text**, **Note**, **Flowchart**, **Shape**, **Table** and **Frame** (and **Select many** on touch screens only), then the **Timer** button, **Undo**, **Redo**, and, while blocks are picked, **Delete** and **Arrange**. **Pen**, **Shape** and **Flowchart** each stand for a family: **Pen** for the Pen, Marker, Brush and Highlighter; **Shape** for the Rectangle, Ellipse, Line and Arrow; **Flowchart** for the Connector and the flowchart shapes. Pick the family, then its kind on the small strip that opens under the toolbar. Each tool shows a strip of its own choices there (colours, width, text size and alignment, line style and arrowheads), and the strip keeps the tool on until you press **Escape**. At the far right of the toolbar are **Overview**, **Grid** and **Snap to grid**. When the board is narrow, the last choices of **Tools** and then the other buttons fold into the toolbar's **More** menu, and the tool you are using stays in the row. The title bar holds the **+**, which adds blocks, the zoom buttons, **Find** (the magnifier) and a menu with **Present**, **Present to everyone** (for people who can change the board), **Background colour…**, **Save as image…** and **Print**. The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first. The board's help, read out to a screen reader, is short; this guide has the rest. The toolbar was reworked in 0.1.25 to 0.1.32; this paragraph and the sections below it were checked against the code, not by using the board, and some older sections still name the earlier toolbar.
 
 ## Draw and add blocks
 
@@ -131,9 +131,20 @@ Paste rows from a spreadsheet (Excel, Google Sheets, Numbers) with **Ctrl+V** (*
 
 Changing a table while someone else changes the same table: the cell you edit is written into the newest table, so cells they changed stay. If the row or column you were in is gone, the words are not kept and the board says so. Two people changing the same cell at once still lose one change, as for any block.
 
+## Grid
+
+The **Grid** button (a small table of cells, at the right of the toolbar) opens a panel for how the board's grid looks. It is your own choice: your browser keeps it, other people do not see it, and it is not in the board's data.
+
+- **Style:** dots (the usual), lines (graph paper) or off.
+- **Size:** the space between grid points, from 8 to 96 pixels (24 at first). Snap to grid uses the same size.
+- **Colour:** **Automatic**, **Muted**, **Accent** or one of the tints.
+- **Opacity:** how strong it draws.
+
+The panel stays open while you click inside it and closes when you click outside or press **Escape**.
+
 ## Snap to grid
 
-The board shows a grid of dots. **Snap to grid** in the toolbar (the grid button, at the far right of the row) puts blocks on those dots as you make, move or resize them:
+The board shows a grid (dots at first; see "Grid"). **Snap to grid** in the toolbar (the grid button, at the far right of the row) puts blocks on those dots as you make, move or resize them:
 
 - A new note or text block lands with its corner on a dot. A shape or a table you drag has its corners on dots, and a line or an arrow its ends. So does a block added with the **+**.
 - A connector's free end, made or moved, lands on a dot. An end on a block follows the block.
@@ -151,9 +162,19 @@ Snap to grid is off at first. It is your own choice, not the board's: your brows
 The whole board has one background colour, the same for everyone. Anyone who can change the board can change it.
 
 1. Right-click an empty place on the board, or open the title bar's menu.
-2. Choose **Background colour**, then a colour. **Default** is the theme's own board colour.
+2. Choose **Background colour**, then a colour.
+3. The board asks you to confirm the change. Confirm to make it.
 
-The colours are the same as a block's (**Ink** and the tints). Each is a light wash of the colour, about 18 percent, so it follows light and dark mode and blocks stay readable on it. A change is one **Undo** step. If someone else changed the background after you, **Undo** leaves it and says "Left the background as it is: someone else changed it since." **Save as image** (with **Board colour** chosen) and **Print** use the background. **Clear** keeps it.
+The choices are in groups:
+
+- **Default** is the theme's own board colour.
+- **Custom background** is a row that is switched off for now, until the page has a colour picker.
+- **Light backgrounds** and **Dark backgrounds** are fixed colours. They look the same in light and dark mode.
+- **Tinted backgrounds** are light washes of the tints and of **Ink**. They follow the theme, so blocks stay readable on them.
+
+The one in use is marked. A change is one **Undo** step. If someone else changed the background after you, **Undo** leaves it and says so.
+
+Blocks keep their own colours on a fixed background. A block's colour menu has the same **Light**, **Dark** and **Tinted** groups for its border, background and words. A block can also have a fixed colour that stays the same in both modes.
 
 ## Pick, move and change blocks
 
@@ -207,14 +228,25 @@ A **frame** is a titled area that holds blocks, such as a slide or a step. Frame
 - Connectors do not join a frame.
 - **Save frame as image…** in a picked frame's menu saves a PNG exactly the frame's size, with everything that overlaps it and without its title tab. It has the same **Background** and **Size** choices as **Save as image**.
 
-**Present** shows the frames one at a time, each fitted to the board. Choose **Present** in the title bar's menu or the board's right-click menu, or **Present from this frame** in a frame's menu.
+**Present** shows the frames one at a time, each fitted to the board and lit, with the rest of the board dimmed. Choose **Present** in the title bar's menu or the board's right-click menu, **Present from this frame** in a frame's menu, or the **Present** (play) button in the toolbar's frame choices.
 
 - Frames go top to bottom and, within a row, left to right. A row is the frames whose tops are within half the first frame's height.
-- A bar at the bottom has **Back**, a count such as "2 of 5", **Next** and **Exit**.
+- A bar at the bottom has **Back**, **Restart** (to the first frame), **Jump to Frame** (a list of the frames to pick from), a count such as "2 of 5", **Next** and **Exit**. It also has a slider that sets how far the rest of the board is dimmed (up to full black; your own choice, kept in your browser), a button for how it moves between frames, **Notes**, and, if you may change the board, **Present to everyone**.
+- **How it moves** is **Immediate**, **Fade** or **Pan**. The one you choose is used (Pan at first). If your system asks for less motion, a change you did not choose jumps, and one you chose still animates.
 - Keys: the right and down arrows, **Page Down** and **Space** go on; the left and up arrows and **Page Up** go back; **Home** and **End** go to the first and last; **Escape** exits. A screen reader hears "Frame 2 of 5: Plan".
-- While presenting, the board cannot be changed, and the wheel, a pinch, a drag and the zoom buttons are ignored. **Exit** puts back the view you had.
-- Presenting is yours alone: nobody follows you yet (that waits on live messages for modules). Someone who can only look can present too.
+- While presenting, the board cannot be changed, and the wheel, a pinch, a drag and the zoom buttons are ignored. **Exit** puts back the view you had. Find is off.
 - With no frames it says "No frames to present. Add a frame first."
+
+**Present to everyone** makes the people on the board follow you. Anyone who can change the board can start it, and only one person presents at a time; if two start together, the first wins and the other follows. Followers see the same frame, the same move and the same dimming, with a line naming who is presenting, and can only **Exit**. A follower who leaves can choose **Rejoin <name>'s presentation** in the title bar's menu. Another person who can change the board can use **Take over**, after a question. When the presenter stops, or their page is gone for about 35 seconds, the others are told and go back to the board. Someone who can only look can follow but not present to everyone. The presentation is kept in the module's stored data, not sent as live messages.
+
+### Speaker notes
+
+A frame can have notes: words for the presenter that are never drawn on the board.
+
+1. Pick a frame and choose **Notes** (the speech-bubble button on the strip for frames), or choose the notes mark in the frame's title tab.
+2. Type the notes. People who can change the board write; others read.
+
+While you present, **Notes** in the bar shows a box with the current frame's notes (or "No notes for this frame."). The box shows on your screen only, and it can be moved. A follower never has it. (Moving it and keeping it inside the board were read from the code, not tried.) Notes are part of the board's stored data, so anyone who can open the board can read them. The box says: "Anyone who can open this board can read notes. Don't put secrets in them."
 
 ## Write words
 
@@ -389,9 +421,15 @@ The picture shows what the board shows, in the colours you see now. The selectio
 
 **Print:** choose **Print** in the title bar's menu. It prints the whole board, fitted to the paper, without the title bar, toolbar or status line, in the light colours. If the board is empty it says "There is nothing on the board to print." **Ctrl+P** (**Cmd+P**) is the browser's own and does not do this; it prints the page as the browser sees it.
 
+## Other people's pointers
+
+While another person moves their pointer over the board, you see it: an arrow in their colour with their name, and what tool they are using. It is the same colour for a person everywhere. Pointers are sent as live messages, not saved: they are not in the board's data, they fade after 5 seconds without a word, and go after 20. They need nothing from the call, so they work with no voice or video. At most 50 are drawn. Your own choice to hide them is kept in your browser. Read from the code; not tried with several people.
+
 ## When other people change the board
 
 Each block is saved on its own, so two people changing different blocks never get in each other's way. A block is saved whole when you let go of it, and the others see it then; they do not see a drag or a stroke while it goes on. If two people change the same block at the same moment, the last save wins. While you are moving or editing a block, a change to it from someone else waits until you let it go.
+
+If your connection drops and comes back, the board reads itself again and takes in what it missed, without touching what you are doing. A block you are editing, dragging or have not yet saved is left alone. Read from the code (0.1.47 to 0.1.49); not tried with a real dropped connection.
 
 If the server asks the board to slow down, it says "Saving a lot at once. The rest is saved in a few seconds." and carries on. A change the server refuses is put back, with "You may not change this whiteboard." or the server's reason.
 
