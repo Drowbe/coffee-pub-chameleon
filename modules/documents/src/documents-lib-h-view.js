@@ -42,3 +42,10 @@ function dlViewKey(e) {
 const DL_LISTVIEWS = Object.freeze([{ id: 'list', label: 'List', icon: 'list' }, { id: 'thumbs', label: 'Thumbnails', icon: 'table-cells-large' }]);
 // -> 'list' or 'thumbs'; anything else (nothing, a stray value) is the list.
 const dlCleanListView = (v) => (v === 'thumbs' ? 'thumbs' : 'list');
+
+// ---- the editor: the Markdown text box or the rich editor (a person's own choice, kept in this browser) -----------------------
+// The two choices of the shared view switch in the editing bar, Markdown first: it is what people get until they choose.
+const DL_EDITVIEWS = Object.freeze([{ id: 'markdown', label: 'Markdown', icon: 'hashtag' }, { id: 'rich', label: 'Rich text', icon: 'align-left' }]);
+// The switch's choice for "is it the rich editor", and back: anything but 'rich' (nothing, a stray value) is Markdown.
+const dlEditViewId = (rich) => (rich ? 'rich' : 'markdown');
+const dlEditViewIsRich = (id) => id === 'rich';

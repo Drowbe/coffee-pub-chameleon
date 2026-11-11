@@ -34,6 +34,21 @@
   // rule makes a code block there (and none makes a heading or a quote in the first line of any row).
   const dlRichAfterBox = (PM, $pos) => { const row = $pos.depth > 1 ? $pos.node(-1) : null; return Boolean(row) && row.type === dlRichSchema(PM).nodes.list_item && $pos.index(-1) === 0 && row.attrs.checked !== null; };
 
+  // What an address makes of the words it is given, for the typing rule and for the Link button alike (the one place a
+  // link is made from an address a person gave): { chip } for an object: address (the chip node, the words its label),
+  // { mark } for an address the reader allows (the link mark, in the one form dlRichHref gives), null for any other address.
+  // `title` is a link's title to keep (the button, when a link's address is changed); the typing rule has none.
+  function dlRichLinkOf(PM, raw, words, title) {
+    const schema = dlRichSchema(PM);
+    const address = dlSafeAddress(raw);
+    if (!address) return null;
+    const kept = dlCleanLine(String(title || ''), DL_RICH.titleMax);
+    if (address.kind === 'object') return { chip: schema.nodes.object.create({ module: address.module, kind: address.objectKind, id: address.id, label: dlCleanLine(String(words || ''), DL_RICH.labelMax), title: kept }) };
+    const href = dlRichHref(raw);
+    if (!href || /^object:/i.test(href)) return null;
+    return { mark: schema.marks.link.create({ href, title: kept }) };
+  }
+
   const dlRichRuleSets = new WeakMap();
   function dlRichRules(PM) {
     if (dlRichRuleSets.has(PM)) return dlRichRuleSets.get(PM);
@@ -134,18 +149,16 @@
         const wordsFrom = from + 1;
         const wordsTo = wordsFrom + match[2].length;
         if (!match[2].trim() || state.doc.rangeHasMark(from, end, M.code)) return null;
-        const address = dlSafeAddress(match[3]); // the reader's own rule: any other address stays the words typed
-        if (!address) return null;
+        const made = dlRichLinkOf(PM, match[3], match[2]); // the reader's own rule: any other address stays the words typed
+        if (!made) return null;
         const $from = state.doc.resolve(from);
-        if (address.kind === 'object') {
-          const chip = N.object.create({ module: address.module, kind: address.objectKind, id: address.id, label: dlCleanLine(match[2], DL_RICH.labelMax) });
+        if (made.chip) {
           if (!$from.parent.canReplaceWith($from.index(), $from.index(), N.object)) return null;
-          return state.tr.replaceWith(from, end, chip);
+          return state.tr.replaceWith(from, end, made.chip);
         }
-        const href = dlRichHref(match[3]);
-        if (!href || /^object:/i.test(href) || !$from.parent.type.allowsMarkType(M.link)) return null;
+        if (!$from.parent.type.allowsMarkType(M.link)) return null;
         const tr = state.tr.delete(wordsTo, end).delete(from, wordsFrom);
-        tr.addMark(from, wordsTo - 1, M.link.create({ href }));
+        tr.addMark(from, wordsTo - 1, made.mark);
         return tr.setStoredMarks(after(state, end, M.link));
       })],
     ].map(([name, made]) => ({ name, rule: made }));

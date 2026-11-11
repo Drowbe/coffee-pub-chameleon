@@ -70,8 +70,10 @@
     return { value: value.slice(0, from) + next + value.slice(to), start: from, end: from + next.length };
   }
 
+  // How an address starts, for a person to type on from: the text box's Link puts it in, the rich editor's prompt hints it.
+  const DL_LINK_START = 'https://';
   // A link: the selection is its text (or a placeholder) and the address is selected to be typed over.
-  function dlLink(sel, address = 'https://') {
+  function dlLink(sel, address = DL_LINK_START) {
     const { value, start, end } = dlSel(sel);
     const text = value.slice(start, end) || 'link';
     const ins = `[${text}](${address})`;

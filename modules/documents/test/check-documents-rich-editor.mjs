@@ -9,7 +9,8 @@
  * 2. OPEN, THEN DONE. For every corpus text: setText then getText gives the stored text character for character.
  * 3. TYPING. Words typed in one paragraph, one heading and one list row change that block's characters and no other.
  * 4. THE ACTIONS. Every name the bar has: the ones the rich editor does (bold, italic, code, h1 to h4, list, numbered,
- *    checklist, quote) do what they say and undo themselves on a second press; link, grid and formula do nothing and say false;
+ *    checklist, quote) do what they say and undo themselves on a second press; grid and formula do nothing and say false, and
+ *    so does link with nobody to ask (it is no command: the page asks for the address first, see 12);
  *    an unknown name does nothing; a read-only editor does nothing. The reader's bounds hold.
  * 5. THE KEYS. Exactly the editor's own keys are bound (Mod-s is not); Enter makes a row, a checklist row an open one; Tab
  *    moves a row in and stops at the fourth level; Shift-Tab moves it out; Shift-Enter is a line break in a paragraph and
@@ -25,7 +26,12 @@
  *    typed characters back and undo takes the rule back. A link is made only of an address the reader allows.
  * 10. WHAT THE BAR SHOWS. dlRichActive from a made selection: in bold, italic, code, a quote, each list, each heading level,
  *    nowhere; it never reads the words.
- * 11. THE NEW KEYS. Mod-b, Mod-i, Mod-e and Mod-Enter (the tick of a checklist row), and nothing else new.
+ * 11. THE NEW KEYS. Mod-b, Mod-i, Mod-e and Mod-Enter (the tick of a checklist row), Mod-k (Link, see 12), and nothing else new.
+ * 12. THE LINK BUTTON (documents-lib-r-rich-link.js), with a stand-in for the page's prompt. The address rule: the reader's
+ *    own, with the space around it off, a blank and a too long one refused, each with its short message. Which link the
+ *    caret or the selection is in. Add (over a selection, at a caret, an object: address), Edit (the title kept), Remove;
+ *    a refused address changes nothing; Cancel changes nothing and the selection is put back; Mod-k asks, a read-only
+ *    editor asks nobody.
  *
  * Usage: node modules/documents/test/check-documents-rich-editor.mjs [path to the src folder]. Exits 1 on any failure.
  */
@@ -38,7 +44,7 @@ const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, 'modules/documents/src'));
 const { PM, L, lex } = loadRich(src, ['DL', 'DL_ACTIONS', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichEditor', 'dlRichTidy',
-  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
+  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
 const schema = L.dlRichSchema(PM);
 const N = schema.nodes;
 const M = schema.marks;
@@ -155,8 +161,8 @@ test('typing in one paragraph, one heading, one list row changes that block only
 
 // ---- 4. the actions ----------------------------------------------------------------------------------------------------------
 test('every action the bar has is known: done by the rich editor, or false and nothing', () => {
-  assert.deepEqual(L.DL_ACTIONS.filter((a) => !L.dlRichCan(a)), ['link', 'grid', 'formula']);
-  for (const a of L.DL_ACTIONS) assert.equal(Boolean(L.dlRichCommand(PM, a)), L.dlRichCan(a), a);
+  assert.deepEqual(L.DL_ACTIONS.filter((a) => !L.dlRichCan(a)), ['grid', 'formula']);
+  for (const a of L.DL_ACTIONS) assert.equal(Boolean(L.dlRichCommand(PM, a)), L.dlRichCan(a) && a !== 'link', a); // link is no command: it asks first
   for (const a of ['link', 'grid', 'formula', 'nope', '', undefined, 'h5', 'constructor', '__proto__']) {
     const ed = open(TEXT);
     select(ed, 0, 0, 5);
@@ -264,7 +270,7 @@ test('the bounds hold: no fifth list level by an action', () => {
 // ---- 5. the keys -------------------------------------------------------------------------------------------------------------
 test('exactly the editor\'s own keys are bound; Mod-s and the zoom keys are not', () => {
   assert.deepEqual(Object.keys(L.dlRichKeys(PM)).sort(), [...L.DL_RICH_KEYS].sort());
-  for (const k of ['Mod-s', 'Mod-=', 'Mod-+', 'Mod--', 'Mod-0', 'Escape', 'Mod-k', 'Mod-u', 'Mod-m', 'Mod-d', 'Mod-Shift-b', 'Space', ' ']) assert.equal(k in L.dlRichKeys(PM), false, k);
+  for (const k of ['Mod-s', 'Mod-=', 'Mod-+', 'Mod--', 'Mod-0', 'Escape', 'Mod-u', 'Mod-l', 'Mod-m', 'Mod-d', 'Mod-Shift-b', 'Space', ' ']) assert.equal(k in L.dlRichKeys(PM), false, k);
   for (const k of Object.keys(L.dlRichKeys(PM))) assert.match(k, /^(Mod-.+|(Shift-)?(Enter|Tab)|Backspace)$/, `${k}: a letter alone is never bound (the call's shortcuts)`);
   for (const k of ['Mod-s', 'Mod-=', 'Mod--', 'Mod-0', 'Escape']) assert.equal(k in PM.baseKeymap, false, `the base keys do not bind ${k}`);
   for (const k of ['Enter', 'Backspace', 'Delete', 'Mod-a']) assert.equal(k in PM.baseKeymap, true, `the base keys bind ${k}`);
@@ -1065,6 +1071,7 @@ test('marks typed at random, at every kind of place in the corpus: the schema ta
 const NOWHERE = { bold: false, italic: false, code: false, heading: 0, list: false, numbered: false, checklist: false, quote: false };
 // The state with the caret (or a selection to `to`) at the word `word` of the text `md`.
 const at = (md, word, len = 0, into = 1) => { const ed = open(md); const p = wordAt(ed.state().doc, word) + into; ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, p, p + len))); return ed; };
+const at_ = at;
 const active = (ed) => L.dlRichActive(PM, ed.state());
 test('the bar: nowhere, nothing is on', () => {
   assert.deepEqual(active(at('plain words\n', 'plain')), NOWHERE);
@@ -1218,6 +1225,327 @@ test('Mod-Enter ticks and clears the checklist row the caret is in', () => {
     assert.ok(not.state().doc === before);
   }
   assert.equal(L.dlRichKeys(PM)['Mod-Enter'](ed.state(), ed.dispatch, { editable: false }), false, 'not in an editor that cannot be typed in');
+});
+
+// ---- 12. the Link button -------------------------------------------------------------------------------------------------------
+// The page's prompt, as host.ui.prompt runs it: each answer goes through `validate`; a message means it is asked again with
+// the answer kept, and null is Cancel. -> what the prompt resolved, and what it showed on the way.
+const promptWith = (answers) => {
+  const asked = [];
+  const prompt = (o) => {
+    let value = o.value;
+    let error;
+    for (const a of answers) {
+      asked.push({ title: o.title, action: o.action, value, error });
+      if (a === null) return null;
+      const problem = o.validate ? o.validate(a) : '';
+      if (typeof problem !== 'string' || !problem.trim()) return a;
+      value = a;
+      error = problem;
+    }
+    throw new Error('the stand-in ran out of answers');
+  };
+  return { prompt, asked };
+};
+// The page's part, as documents.js does it: keep the selection, ask (or pick in the menu), put the selection back, change.
+const linkWith = (ed, answers, pick = 'edit') => {
+  if (!ed.linkFits()) return { asked: [], answer: undefined, fits: false };
+  const kept = ed.selection();
+  const { prompt, asked } = promptWith(answers);
+  const link = ed.linkAt();
+  if (link && pick === 'remove') { ed.restore(kept); return { asked, link, removed: ed.removeLink() }; }
+  const answer = prompt({ title: link ? 'Edit link' : 'Add a link', action: link ? 'Save link' : 'Add link', value: link ? link.href : undefined, validate: (a) => ed.linkProblem(a, kept) });
+  ed.restore(kept);
+  const changed = answer !== null && ed.setLink(answer);
+  return { asked, link, answer, changed };
+};
+const selOf = (ed) => [ed.state().selection.from, ed.state().selection.to];
+const LINK_TEXT = 'Intro __stays__ exact.\n\nsee the site now\n\nEnd _it_ here\n';
+
+test('the address rule: the reader\'s own, the space around it off; blank, too long and refused each say why', () => {
+  assert.equal(L.DL_LINK_SAY.refused, 'Use an address that starts with http, https, mailto or object:');
+  assert.equal(L.DL_LINK_SAY.blank, 'Type an address');
+  for (const scheme of L.DL_SCHEMES) assert.ok(L.DL_LINK_SAY.refused.includes(scheme), `${scheme} is named, from the reader's own list`);
+  for (const a of ['https://example.com/a?b=1&c=2', 'http://example.com', 'mailto:ana@example.com', 'HTTPS://Example.com/x', 'object:maps:place:abc123', '  https://example.com/  ', '\thttps://example.com\n', 'https://example.com/a_(b)', 'https://example.com/)](javascript:alert(1))']) {
+    assert.equal(L.dlLinkProblem(PM, a), '', a);
+    assert.ok(L.dlSafeAddress(L.dlLinkAddress(a)), `${a}: the reader takes it`);
+  }
+  for (const a of ['', ' ', '\t\n ', ' ', null, undefined, 7, {}]) assert.equal(L.dlLinkProblem(PM, a), 'Type an address', JSON.stringify(a));
+  for (const a of [...REFUSED, '//evil.example/x', ' javascript:alert(1) ', 'javascript:alert(1)//https://example.com', 'data:text/html;base64,PHNjcmlwdD4=', 'VBScript:msgbox(1)', 'java\nscript:alert(1)', 'jav&#x61;script:alert(1)', 'javascript&colon;alert(1)', '‮javascript:alert(1)', 'https:/example.com', 'object: maps:place:p1', 'object:maps:place:p1&#32;', 'https://example.com/`x`', 'https://example.com/\\x']) {
+    assert.equal(L.dlLinkProblem(PM, a), L.DL_LINK_SAY.refused, a);
+    assert.equal(L.dlRichLinkOf(PM, L.dlLinkAddress(a), 'x'), null, `${a}: makes nothing`);
+  }
+  const long = `https://example.com/${'a'.repeat(1990)}`;
+  assert.ok(long.length > L.DL_LINK.max);
+  assert.equal(L.dlLinkProblem(PM, long), 'Use a shorter address', '2,000 and more characters');
+  assert.equal(L.dlLinkProblem(PM, `https://example.com/${'a'.repeat(3000)}`), 'Use a shorter address');
+  assert.equal(L.dlLinkProblem(PM, `javascript:${'a'.repeat(3000)}`), 'Use a shorter address');
+  assert.equal(L.dlLinkProblem(PM, `https://example.com/${'a'.repeat(L.DL_LINK.max - 20)}`), '', 'exactly 2,000 is taken');
+  assert.equal(L.dlLinkProblem(PM, ` ${'https://example.com/'.padEnd(L.DL_LINK.max, 'a')} `), '', 'the space around it does not count');
+  for (const m of Object.values(L.DL_LINK_SAY)) assert.ok(m.length <= 200 && !/[<>]/.test(m), 'short and plain');
+  assert.equal(L.dlLinkShown('https://example.com/'), 'https://example.com/');
+  assert.equal(L.dlLinkShown(`https://example.com/${'a'.repeat(200)}`).length, L.DL_LINK.shown);
+});
+test('which link: a caret inside or at either end of a link, a selection the link holds; not one that reaches out of it', () => {
+  const md = 'a [one two](https://one.example/ "T") b [**x** y](https://two.example/)[z](https://three.example/) c\n\nplain\n';
+  const ed = open(md);
+  const d = ed.state().doc;
+  const one = wordAt(d, 'one two');
+  const x = wordAt(d, 'x');
+  const z = wordAt(d, 'z');
+  const linkAt = (from, to = from) => { ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, from, to))); const l = L.dlRichLinkAt(PM, ed.state()); return l ? [l.from, l.to, l.mark.attrs.href] : null; };
+  for (const p of [one, one + 3, one + 7]) assert.deepEqual(linkAt(p), [one, one + 7, 'https://one.example/'], `a caret at ${p - one}`);
+  assert.equal(linkAt(one - 1), null, 'before the link');
+  assert.equal(linkAt(one + 8), null, 'after the link');
+  assert.deepEqual(linkAt(one + 1, one + 4), [one, one + 7, 'https://one.example/'], 'a selection inside');
+  assert.deepEqual(linkAt(one, one + 7), [one, one + 7, 'https://one.example/'], 'the whole link');
+  assert.equal(linkAt(one - 1, one + 3), null, 'a selection that starts before it');
+  assert.equal(linkAt(one + 3, one + 8), null, 'a selection that ends after it');
+  assert.deepEqual(linkAt(x + 1), [x, x + 3, 'https://two.example/'], 'bold words and plain words of one link are one link');
+  assert.deepEqual(linkAt(z), [x, x + 3, 'https://two.example/'], 'between two links: the one before');
+  assert.deepEqual(linkAt(z + 1), [z, z + 1, 'https://three.example/']);
+  assert.equal(linkAt(x, z + 1), null, 'a selection over two links is in neither');
+  assert.equal(linkAt(wordAt(d, 'plain') + 2), null);
+  assert.equal(linkAt(one + 2, wordAt(d, 'plain') + 2), null, 'over two blocks');
+  select(ed, 0, 3);
+  assert.deepEqual(ed.linkAt(), { href: 'https://one.example/', title: 'T' }, 'the editor says the address and the title');
+  ed.dispatch(ed.state().tr.setSelection(new PM.AllSelection(ed.state().doc)));
+  assert.equal(L.dlRichLinkAt(PM, ed.state()), null);
+});
+test('Add a link over a selection: only that block changes, the selection stays, and it is one step of undo', () => {
+  const ed = open(LINK_TEXT);
+  const at = wordAt(ed.state().doc, 'the site');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at, at + 8)));
+  const r = linkWith(ed, ['  https://example.com/a?b=1  ']);
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.asked, [{ title: 'Add a link', action: 'Add link', value: undefined, error: undefined }]);
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\nsee [the site](https://example.com/a?b=1) now\n\nEnd _it_ here\n');
+  assert.equal(ed.lastWrite().same, true);
+  assert.deepEqual(selOf(ed), [at, at + 8], 'the selection is kept');
+  ed.state().doc.check();
+  assert.deepEqual(ed.linkAt(), { href: 'https://example.com/a?b=1', title: '' });
+  assert.equal(key(ed, 'Mod-z'), true);
+  assert.equal(ed.getText(), LINK_TEXT, 'undo: the stored text, exactly');
+  const multi = open('one **two**\n\n```\ncode\n```\n\nthree [o](object:maps:place:p1) four\n');
+  multi.dispatch(multi.state().tr.setSelection(PM.TextSelection.create(multi.state().doc, 1, multi.state().doc.content.size - 1)));
+  assert.equal(linkWith(multi, ['https://example.com/']).changed, true);
+  assert.equal(multi.getText(), '[one **two**](https://example.com/)\n\n```\ncode\n```\n\n[three ](https://example.com/)[o](object:maps:place:p1)[ four](https://example.com/)\n', 'over blocks: words are linked, code is not, a chip stays a chip');
+  assert.equal(multi.lastWrite().same, true);
+  const over = open('a [one](https://one.example/) b\n');
+  over.dispatch(over.state().tr.setSelection(PM.TextSelection.create(over.state().doc, 1, 8)));
+  assert.equal(over.linkAt(), null, 'a selection that reaches out of a link is not in it');
+  assert.equal(linkWith(over, ['https://new.example/']).changed, true);
+  assert.equal(over.getText(), '[a one b](https://new.example/)\n', 'the selection gets the one new link');
+});
+test('Add a link at a caret: the address itself is the words, in the form it is kept in', () => {
+  const ed = open(LINK_TEXT);
+  const at = wordAt(ed.state().doc, 'now');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at)));
+  assert.equal(linkWith(ed, [' HTTPS://Example.com/x ']).changed, true);
+  assert.deepEqual(marksOf(ed).slice(3, 6), [['see the site ', ''], ['https://Example.com/x', 'link'], ['now', '']]);
+  assert.deepEqual(linksOf(ed.state().doc), ['https://Example.com/x']);
+  assert.deepEqual(selOf(ed), [at + 21, at + 21], 'the caret is after it');
+  ed.type(' ');
+  assert.deepEqual(marksOf(ed)[5], [' now', ''], 'what is typed next is not in the link');
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\nsee the site <https://Example.com/x> now\n\nEnd _it_ here\n');
+  assert.equal(ed.lastWrite().same, true);
+  assert.deepEqual(linksOf(L.dlRichRead(PM, ed.getText(), lex).doc), ['https://Example.com/x'], 'and reads back as that link');
+  const mail = open('write to \n');
+  mail.dispatch(mail.state().tr.setSelection(PM.TextSelection.create(mail.state().doc, mail.state().doc.content.size - 1)));
+  assert.equal(linkWith(mail, ['mailto:ana@example.com']).changed, true);
+  assert.deepEqual(linksOf(L.dlRichRead(PM, mail.getText(), lex).doc), ['mailto:ana@example.com']);
+  assert.equal(mail.lastWrite().same, true);
+  const bold = at_('some **bold** words\n', 'bold', 0, 2);
+  assert.equal(linkWith(bold, ['https://example.com/']).changed, true);
+  assert.deepEqual(marksOf(bold), [['some ', ''], ['bo', 'strong'], ['https://example.com/', 'link+strong'], ['ld', 'strong'], [' words', '']]);
+  assert.deepEqual(linksOf(L.dlRichRead(PM, bold.getText(), lex).doc), ['https://example.com/']);
+});
+test('an object: address makes the chip, exactly as typing or reading the same Markdown does', () => {
+  const ed = open(LINK_TEXT);
+  const at = wordAt(ed.state().doc, 'the site');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at, at + 8)));
+  assert.equal(linkWith(ed, ['object:maps:place:abc123']).changed, true);
+  const typed = typedIn('', 'see [the site](object:maps:place:abc123)');
+  const chips = (d) => { const out = []; d.descendants((n) => { if (n.type === N.object) out.push(n); }); return out; };
+  assert.equal(chips(ed.state().doc).length, 1);
+  assert.ok(chips(ed.state().doc)[0].eq(chips(typed.state().doc)[0]), 'the same chip the typing rule makes');
+  assert.ok(chips(ed.state().doc)[0].eq(chips(L.dlRichRead(PM, 'see [the site](object:maps:place:abc123) now\n', lex).doc)[0]), 'and the reader');
+  assert.deepEqual(linksOf(ed.state().doc), [], 'no link mark');
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\nsee [the site](object:maps:place:abc123) now\n\nEnd _it_ here\n');
+  assert.equal(ed.lastWrite().same, true);
+  ed.state().doc.check();
+  const caret = at_('see  now\n', 'see', 0, 4);
+  assert.equal(linkWith(caret, ['object:maps:place:abc123']).changed, true);
+  assert.equal(chips(caret.state().doc)[0].attrs.label, 'object:maps:place:abc123', 'at a caret the address is the label');
+  assert.equal(chips(L.dlRichRead(PM, caret.getText(), lex).doc).length, 1);
+  const two = open('one\n\ntwo\n');
+  two.dispatch(two.state().tr.setSelection(PM.TextSelection.create(two.state().doc, 1, two.state().doc.content.size - 1)));
+  const r = linkWith(two, ['object:maps:place:abc123', null]);
+  assert.equal(r.asked[1].error, 'Select words in one paragraph for this address', 'a chip cannot stand for words of two blocks');
+  assert.equal(two.getText(), 'one\n\ntwo\n');
+});
+test('a refused address is asked for again with what was typed kept, and changes nothing until one is taken', () => {
+  const ed = open(LINK_TEXT);
+  const at = wordAt(ed.state().doc, 'the site');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at, at + 8)));
+  const before = ed.state().doc;
+  const r = linkWith(ed, ['javascript:alert(1)', '   ', '//evil.example', 'https://example.com/']);
+  assert.deepEqual(r.asked.map((a) => [a.value, a.error]), [[undefined, undefined], ['javascript:alert(1)', L.DL_LINK_SAY.refused], ['   ', 'Type an address'], ['//evil.example', L.DL_LINK_SAY.refused]]);
+  assert.equal(r.changed, true);
+  assert.deepEqual(linksOf(ed.state().doc), ['https://example.com/']);
+  for (const hostile of [...REFUSED, ' javascript:alert(1) ', 'data:text/html,<script>alert(1)</script>', 'vbscript:x', '//evil.example']) {
+    const h = open(LINK_TEXT);
+    h.dispatch(h.state().tr.setSelection(PM.TextSelection.create(h.state().doc, at, at + 8)));
+    const doc0 = h.state().doc;
+    const rev = h.revision();
+    assert.equal(h.setLink(hostile), false, `${hostile}: even given straight to the editor`);
+    assert.equal(L.dlRichLinkAdd(PM, h.state(), hostile), null);
+    assert.ok(h.state().doc === doc0 && h.revision() === rev, `${hostile}: nothing changes`);
+    h.dispatch(h.state().tr.setSelection(PM.TextSelection.create(h.state().doc, at)));
+    assert.equal(h.setLink(hostile), false, `${hostile}: nor at a caret`);
+    assert.equal(h.getText(), LINK_TEXT);
+  }
+  assert.ok(before !== ed.state().doc);
+});
+test('an address full of Markdown stays one address: written so that it reads back as the same one link', () => {
+  for (const address of ['https://example.com/)](javascript:alert(1))', 'https://example.com/a_(b)_c', 'https://example.com/[x](y)', 'https://example.com/**b**/*i*/~~s~~', 'https://example.com/a)b(c', 'https://example.com/?q=<x>&r=1'.replace(/[<>]/g, ''), 'mailto:a@b.example?subject=x(y)']) {
+    for (const caret of [false, true]) {
+      const ed = open(LINK_TEXT);
+      const at = wordAt(ed.state().doc, 'the site');
+      ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at, caret ? at : at + 8)));
+      assert.equal(linkWith(ed, [address]).changed, true, address);
+      ed.state().doc.check();
+      const href = linksOf(ed.state().doc)[0];
+      assert.equal(L.dlRichHref(href), href);
+      const back = L.dlRichRead(PM, ed.getText(), lex).doc;
+      assert.deepEqual([...new Set(linksOf(back))], [href], `${address}: one link, the same address, when the saved text is read again`);
+      for (const l of linksOf(back)) assert.ok(/^(https:\/\/example\.com\/|mailto:a@b\.example)/.test(l), l);
+      assert.equal(ed.lastWrite().same, true, address);
+      const out = ed.getText().split('\n\n');
+      assert.equal(out[0], 'Intro __stays__ exact.');
+      assert.equal(out[2], 'End _it_ here\n', 'the other blocks as stored');
+    }
+  }
+});
+test('a mail address with brackets in it, put in at a caret: not kept exactly (the person is told), and never a link to anything else', () => {
+  const address = 'mailto:a@b.example?subject=[x](javascript:alert(1))';
+  const over = at_(LINK_TEXT, 'the site', 8, 0);
+  assert.equal(linkWith(over, [address]).changed, true);
+  assert.deepEqual(linksOf(L.dlRichRead(PM, over.getText(), lex).doc), [address], 'over words it is kept exactly');
+  assert.equal(over.lastWrite().same, true);
+  const caret = at_(LINK_TEXT, 'the site', 0, 0);
+  assert.equal(linkWith(caret, [address]).changed, true);
+  const text = caret.getText();
+  assert.equal(caret.lastWrite().same, false, 'the write says so, and the page tells the person');
+  for (const l of linksOf(L.dlRichRead(PM, text, lex).doc)) assert.ok(/^mailto:a@b\.example/.test(l), `${l}: only the mail address`);
+});
+test('Edit link: the whole link gets the new address, its title is kept; the same address changes nothing', () => {
+  const md = 'Intro __stays__ exact.\n\nsee [the **big** site](https://old.example/ "Old title") now\n\nEnd _it_ here\n';
+  const ed = at_(md, 'big', 1);
+  const r = linkWith(ed, ['https://new.example/x']);
+  assert.deepEqual(r.asked, [{ title: 'Edit link', action: 'Save link', value: 'https://old.example/', error: undefined }], 'the prompt starts with the address the link has');
+  assert.equal(r.changed, true);
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\nsee [the **big** site](https://new.example/x "Old title") now\n\nEnd _it_ here\n');
+  assert.equal(ed.lastWrite().same, true);
+  assert.deepEqual(ed.linkAt(), { href: 'https://new.example/x', title: 'Old title' });
+  const same = at_(md, 'big', 1);
+  const rev = same.revision();
+  const again = linkWith(same, ['https://old.example/']);
+  assert.equal(again.asked.length, 1, 'the same address is fine');
+  assert.equal(again.changed, false);
+  assert.equal(same.revision(), rev, 'and nothing changes');
+  assert.equal(same.getText(), md);
+  const bad = at_(md, 'big', 1);
+  const refused = linkWith(bad, ['javascript:alert(1)', null]);
+  assert.equal(refused.asked[1].error, L.DL_LINK_SAY.refused);
+  assert.equal(refused.asked[1].value, 'javascript:alert(1)', 'what was typed is kept');
+  assert.equal(bad.getText(), md);
+  const chip = at_(md, 'big', 1);
+  assert.equal(linkWith(chip, ['object:maps:place:p1']).changed, true);
+  assert.equal(chip.getText(), 'Intro __stays__ exact.\n\nsee [the big site](object:maps:place:p1 "Old title") now\n\nEnd _it_ here\n', 'an object: address makes the link the chip, its title kept');
+  assert.equal(chip.lastWrite().same, true);
+});
+test('Remove link: the link comes off all of its words, the words and their other marks stay', () => {
+  const md = 'Intro __stays__ exact.\n\nsee [the **big** site](https://old.example/ "Old title") and [more](https://more.example/) now\n\nEnd _it_ here\n';
+  const ed = at_(md, 'big', 1);
+  const at = ed.state().selection.from;
+  const r = linkWith(ed, [], 'remove');
+  assert.equal(r.removed, true);
+  assert.deepEqual(r.asked, [], 'nothing is asked');
+  assert.equal(ed.getText(), 'Intro __stays__ exact.\n\nsee the **big** site and [more](https://more.example/) now\n\nEnd _it_ here\n');
+  assert.equal(ed.lastWrite().same, true);
+  assert.deepEqual(selOf(ed), [at, at + 1], 'the selection stays');
+  assert.equal(ed.linkAt(), null);
+  assert.equal(ed.removeLink(), false, 'with no link there is nothing to remove');
+  assert.equal(key(ed, 'Mod-z'), true);
+  assert.equal(ed.getText(), md, 'undo: the stored text, exactly');
+});
+test('Cancel changes nothing, and the selection is put back as it was', () => {
+  const ed = open(LINK_TEXT);
+  const at = wordAt(ed.state().doc, 'the site');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at + 8, at))); // made backwards: anchor after head
+  const kept = ed.selection();
+  const before = ed.state().doc;
+  const rev = ed.revision();
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, 2))); // the question took the selection away
+  assert.equal(ed.linkProblem('https://example.com/', kept), '', 'the address is checked for the kept selection');
+  ed.restore(kept);
+  assert.deepEqual([ed.state().selection.anchor, ed.state().selection.head], [at + 8, at], 'the selection is back, the same way round');
+  const r = linkWith(ed, [null]);
+  assert.equal(r.answer, null);
+  assert.equal(r.changed, false);
+  assert.ok(ed.state().doc === before && ed.revision() === rev, 'Cancel: nothing changes');
+  assert.deepEqual([ed.state().selection.anchor, ed.state().selection.head], [at + 8, at]);
+  assert.equal(ed.getText(), LINK_TEXT);
+  ed.dispatch(ed.state().tr.insertText('!', 1));
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, 2)));
+  ed.restore(kept);
+  assert.equal(ed.state().selection.from, 2, 'a selection kept for another text is not put back');
+});
+test('where no link can be made nothing is asked: in code, in a raw block, between blocks, over no words', () => {
+  for (const [md, word, len] of [['```\ncodehere\n```\n', 'codehere', 0], ['```\ncodehere\n```\n', 'codehere', 4], ['<div>rawhere</div>\n', 'rawhere', 3], ['a   b\n', 'a', 2]]) {
+    const ed = at_(md, word, len);
+    assert.equal(ed.linkFits(), false, md);
+    assert.equal(linkWith(ed, ['https://example.com/']).fits, false);
+    assert.equal(ed.setLink('https://example.com/'), false);
+    assert.equal(ed.getText(), md);
+  }
+  const rule = open('one\n\n---\n\ntwo\n');
+  rule.dispatch(rule.state().tr.setSelection(PM.NodeSelection.create(rule.state().doc, posOf(rule.state().doc, 1))));
+  assert.equal(rule.linkFits(), false, 'a selected rule');
+  assert.equal(at_('plain words\n', 'plain', 0).linkFits(), true);
+  assert.equal(at_('# A heading\n', 'heading', 3).linkFits(), true);
+  assert.equal(at_('| a | b |\n| - | - |\n| cell | d |\n', 'cell', 2).linkFits(), true);
+});
+test('Mod-k and run("link") ask the page, once; always taken; a read-only editor asks nobody and changes nothing', () => {
+  const ed = open(LINK_TEXT);
+  let asked = 0;
+  assert.equal(ed.run('link'), false, 'with nobody to ask: false');
+  ed.onLink(() => { asked += 1; });
+  assert.equal(ed.run('link'), true);
+  assert.equal(asked, 1);
+  assert.equal(key(ed, 'Mod-k'), true, 'taken with no page too (the browser\'s own never runs)');
+  const view = { editable: true };
+  L.dlRichLinkAsk.set(view, () => { asked += 1; });
+  assert.equal(L.dlRichKeys(PM)['Mod-k'](ed.state(), ed.dispatch, view), true);
+  assert.equal(asked, 2, 'Mod-k asks whoever the view\'s editor named');
+  view.editable = false;
+  assert.equal(L.dlRichKeys(PM)['Mod-k'](ed.state(), ed.dispatch, view), true, 'still taken');
+  assert.equal(asked, 2, 'but nobody is asked in an editor that cannot be typed in');
+  const at = wordAt(ed.state().doc, 'the site');
+  ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, at, at + 8)));
+  ed.setReadOnly(true);
+  const rev = ed.revision();
+  assert.equal(ed.run('link'), false);
+  assert.equal(asked, 2);
+  assert.equal(ed.linkFits(), false);
+  assert.equal(ed.setLink('https://example.com/'), false);
+  assert.equal(ed.removeLink(), false);
+  assert.equal(ed.revision(), rev);
+  assert.equal(ed.getText(), LINK_TEXT);
+  ed.setReadOnly(false);
+  ed.destroy();
+  assert.equal(ed.run('link'), false, 'destroy lets go');
 });
 
 const secs = ((Date.now() - t0) / 1000).toFixed(1);

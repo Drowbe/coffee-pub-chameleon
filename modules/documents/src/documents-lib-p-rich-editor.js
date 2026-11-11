@@ -13,10 +13,13 @@
   // an empty string if it is ever reached. The schema has no rule for reading the browser's own changes to the page, so a
   // change the browser makes by itself can only bring words.
   // WHAT GOES OUT. Copy and cut give Markdown as the plain text (the library also writes its own HTML of the selection).
-  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote'];
-  const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Backspace', 'Mod-z', 'Mod-Shift-z', 'Mod-y', 'Mod-b', 'Mod-i', 'Mod-e', 'Mod-Enter'];
+  const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote', 'link'];
+  const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Backspace', 'Mod-z', 'Mod-Shift-z', 'Mod-y', 'Mod-b', 'Mod-i', 'Mod-e', 'Mod-Enter', 'Mod-k'];
   const DL_RICH_PASTE = Object.freeze({ htmlMax: 4000000 });
   const dlRichCan = (action) => DL_RICH_ACTIONS.includes(action);
+  // Who to ask when Mod-k is pressed: the editor's view -> the function its editor gave (dlRichEditor). A key reaches only
+  // the view; the page that asks for the address is known to the editor alone.
+  const dlRichLinkAsk = new WeakMap();
 
   // Where the selection sits in a list: { list, at (the position before the list), rows: [{ node, at }] } for the rows the
   // selection touches, in the innermost list that holds all of it; null outside a list.
@@ -79,12 +82,13 @@
   }
 
   // An action of the bar, by name -> a ProseMirror command (state, dispatch) => true when it applies; null for a name the rich
-  // editor has no action for yet (link, grid, formula). The reader's bounds hold: a list goes four deep.
+  // editor has no action for yet (grid, formula) and for link, which is no command: the page asks for the address first
+  // (the editor's onLink, documents-lib-r-rich-link.js). The reader's bounds hold: a list goes four deep.
   function dlRichCommand(PM, action) {
     const schema = dlRichSchema(PM);
     const N = schema.nodes;
     const M = schema.marks;
-    if (!dlRichCan(action)) return null;
+    if (!dlRichCan(action) || action === 'link') return null;
     const h = /^h([1-4])$/.exec(action);
     if (h) {
       const level = Number(h[1]);
@@ -130,7 +134,9 @@
   // Enter after "```" makes a code block (dlRichFence); Backspace straight after a typing shortcut puts the typed characters
   // back, and is the library's own Backspace otherwise. Mod-b, Mod-i and Mod-e are Bold, Italic and Code, the bar's own
   // actions; they are always taken while the editor can be typed in, so the browser never does its own bold. Mod-Enter ticks
-  // or clears the checklist row the caret is in, and is the library's own (leave a code block) anywhere else.
+  // or clears the checklist row the caret is in, and is the library's own (leave a code block) anywhere else. Mod-k is Link:
+  // it is always taken, so the browser's own Ctrl K never runs with the keyboard in the editor, and it asks whoever the
+  // editor named (dlRichLinkAsk); in an editor that cannot be typed in it asks nobody.
   // Nothing else is bound: a key the editor does not use goes on to the page (Mod-s, the zoom keys, the call's shortcuts).
   function dlRichKeys(PM) {
     const N = dlRichSchema(PM).nodes;
@@ -178,6 +184,11 @@
           return true;
         }
         return false;
+      },
+      'Mod-k': (state, dispatch, view) => {
+        const ask = view ? dlRichLinkAsk.get(view) : null;
+        if (ask && view.editable !== false) ask();
+        return true;
       },
     };
   }
@@ -343,6 +354,7 @@
     const plugins = dlRichPlugins(PM);
     const fns = [];
     const selFns = [];
+    const linkFns = [];
     let rev = 0;
     let readOnly = false;
     let stored = null;
@@ -379,6 +391,17 @@
       }
       dispatch(tr.scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
       return true;
+    };
+    // The page is asked for a link's address (the Link button, Mod-k): never in a read-only editor. -> was anybody asked
+    const askLink = () => {
+      if (readOnly || !linkFns.length) return false;
+      for (const fn of linkFns) fn();
+      return true;
+    };
+    // The state with a kept selection put back (selection()), when the text is still the text it was kept for.
+    const stateAt = (kept) => {
+      const st = now();
+      return kept && kept.doc === st.doc ? st.apply(st.tr.setSelection(kept.mark.resolve(st.doc))) : st;
     };
     const getText = () => {
       last = dlRichText(PM, dlRichTidy(PM, now().doc, stored), stored, lex);
@@ -427,6 +450,7 @@
         },
       });
       state = null;
+      dlRichLinkAsk.set(view, askLink);
     }
     return {
       getText,
@@ -439,19 +463,59 @@
       onSelect: (fn) => { selFns.push(fn); },
       active: () => dlRichActive(PM, now()),
       revision: () => rev,
-      // -> true when the action was applied. A name with no action here (link, grid, formula), an action that does not fit
+      // -> true when the action was applied. A name with no action here (grid, formula), an action that does not fit
       // where the selection is, and a read-only editor: false, and nothing happens. The editor keeps its selection and takes
-      // the keyboard back, because a press on a toolbar button or a menu takes it away.
+      // the keyboard back, because a press on a toolbar button or a menu takes it away. Link changes nothing by itself:
+      // it asks the page (onLink) for the address, and is true when somebody was asked.
       run(action) {
+        if (action === 'link') return askLink();
         const command = dlRichCommand(PM, action);
         const done = Boolean(command) && !readOnly && command(now(), dispatch, view || undefined);
         if (view && !readOnly) view.focus();
         return done;
       },
       can: dlRichCan,
+      // LINK (documents-lib-r-rich-link.js). onLink(fn): fn is called when a person asks for a link (run('link'), Mod-k);
+      // the page then asks for the address and comes back with setLink or removeLink.
+      //   linkAt()        the link the caret or the selection is in -> { href, title }, or null
+      //   linkFits()      is there a link here, or can one be made here (never in a read-only editor)
+      //   selection()     the selection, to keep while the page asks: a question takes the keyboard out of the editor
+      //   restore(kept)   puts it back (when the text is still the same text) and takes the keyboard back
+      //   linkProblem(raw, kept)  what is wrong with an address for that selection: a short message, or ''
+      //   setLink(raw)    links the selection, or gives the link the caret is in another address -> true when it changed
+      //   removeLink()    takes the link the caret is in off all of its words -> true when it changed
+      //   caretBox()      where the caret is on the screen ({ left, top, bottom }), or null with no page
+      onLink: (fn) => { linkFns.push(fn); },
+      linkAt: () => { const l = dlRichLinkAt(PM, now()); return l ? { href: l.mark.attrs.href, title: l.mark.attrs.title } : null; },
+      linkFits: () => !readOnly && dlRichLinkFits(PM, now()),
+      selection: () => ({ doc: now().doc, mark: now().selection.getBookmark() }),
+      restore(kept) {
+        const st = now();
+        if (kept && kept.doc === st.doc) { const sel = kept.mark.resolve(st.doc); if (!sel.eq(st.selection)) dispatch(st.tr.setSelection(sel)); }
+        if (view && !readOnly) view.focus();
+      },
+      linkProblem: (raw, kept) => dlRichLinkProblem(PM, stateAt(kept), raw),
+      setLink(raw) {
+        if (readOnly) return false;
+        const st = now();
+        const link = dlRichLinkAt(PM, st);
+        const tr = link ? dlRichLinkEdit(PM, st, link, raw) : dlRichLinkAdd(PM, st, raw);
+        if (tr) dispatch(tr.scrollIntoView());
+        if (view) view.focus();
+        return Boolean(tr);
+      },
+      removeLink() {
+        if (readOnly) return false;
+        const st = now();
+        const tr = dlRichLinkRemove(PM, st, dlRichLinkAt(PM, st));
+        if (tr) dispatch(tr);
+        if (view) view.focus();
+        return Boolean(tr);
+      },
+      caretBox: () => { try { return view ? view.coordsAtPos(now().selection.head) : null; } catch (err) { return null; } },
       // Copy's fallback for a browser without the clipboard: select what is there.
       selectAll: () => { dispatch(now().tr.setSelection(new PM.AllSelection(now().doc))); if (view) view.focus(); },
-      destroy: () => { fns.length = 0; selFns.length = 0; if (view) { view.destroy(); view = null; } },
+      destroy: () => { fns.length = 0; selFns.length = 0; linkFns.length = 0; if (view) { view.destroy(); view = null; } },
       // What the last getText found: `same` false means a block was written that does not read back exactly as it stands.
       lastWrite: () => last,
       // For the page's checks and the tests: the editor's state, a change, a plain text put in as a paste puts it, and

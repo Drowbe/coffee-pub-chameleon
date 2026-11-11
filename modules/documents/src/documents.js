@@ -574,7 +574,7 @@
   const RICH_KEY = 'documents-rich';
   let rich = false;
   try { rich = window.localStorage.getItem(RICH_KEY) === '1'; } catch { /* no browser storage: the text box */ }
-  const INEXACT = 'This block has formatting Markdown cannot keep exactly; turn off Rich text to check.';
+  const INEXACT = 'This block has formatting Markdown cannot keep exactly; switch to Markdown to check.';
   // Makes the editor for the choice, with this text, in the sheet: one of the two shows, both behind the same adapter.
   function mountEditor(text) {
     const ta = $('edit-text');
@@ -583,6 +583,7 @@
     ed.editor = rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
     ed.editor.onChange(typed);
     if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
+    if (ed.editor.onLink) ed.editor.onLink(() => linkWith(null));
     ed.editor.setText(text); ed.editor.setReadOnly(Boolean(ed.lost));
     ed.inexact = false;
     paintActive();
@@ -786,7 +787,47 @@
     if (!ed || ed.lost) return;
     ed.editor.run(action);
   }
+  // A link in the rich editor: the Link button and Ctrl or Cmd with K. With no link at the caret or the selection, the shared
+  // prompt asks for the address: the selection is linked, and at a caret the address itself goes in as the words. In a link,
+  // the shared menu offers Edit link and Remove link under the address. The address is checked by the reader's own rule
+  // (dlSafeAddress, through the editor's linkProblem); one it refuses is asked for again, with what was typed kept.
+  // A question takes the keyboard out of the editor, so the selection is kept first and put back after the answer or a
+  // Cancel, and when the menu closes, however it closes (a pick, Escape, a press outside): the menu's onClose.
+  let linking = false;
+  function linkWith(e) {
+    if (!ed || ed.lost || !rich || linking || !ed.editor.linkFits) return;
+    const mine = ed;
+    const editor = ed.editor;
+    if (!editor.linkFits()) { editor.focus(); return; }
+    const kept = editor.selection();
+    const live = () => ed === mine && !mine.lost && mine.editor === editor;
+    const back = () => { if (live()) editor.restore(kept); };
+    const ask = async (o) => {
+      linking = true;
+      let answer = null;
+      try { answer = await host.ui.prompt({ label: 'Address', placeholder: `${DL_LINK_START}...`, maxLength: DL_LINK.max, validate: (a) => editor.linkProblem(a, kept), ...o }); } catch (err) { note(cleanMsg(err)); }
+      linking = false;
+      back();
+      if (answer !== null && live()) editor.setLink(answer);
+    };
+    const link = editor.linkAt();
+    if (!link) { ask({ title: 'Add a link', action: 'Add link' }); return; }
+    // Under the button that was pressed; for the key, under the caret.
+    const box = host.rootElement.getBoundingClientRect();
+    const caret = e && Number.isFinite(e.x) ? null : editor.caretBox();
+    const at = caret ? { x: caret.left - box.left, y: caret.bottom - box.top + 4 } : { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 };
+    host.menu.show({
+      id: 'link', className: 'dl-link-menu', at,
+      onClose: () => { if (!linking) back(); }, // Edit link has its question open by now: the answer puts the selection back
+      items: [
+        { heading: dlLinkShown(link.href) },
+        { id: 'edit', label: 'Edit link', icon: 'pen', onClick: () => { ask({ title: 'Edit link', action: 'Save link', value: link.href }); } },
+        { id: 'remove', label: 'Remove link', icon: 'link-slash', onClick: () => { back(); if (live()) editor.removeLink(); } },
+      ],
+    });
+  }
   // ---- the shared chrome: the toolbar row, the title bar's "+" and menu, the status bar --------------------------------------
+  // `key`: what follows Ctrl or Cmd in the button's name in the rich editor, where there is a keyboard.
   const FORMATS = [
     { id: 'bold', title: 'Bold', icon: 'bold', key: 'B' },
     { id: 'italic', title: 'Italic', icon: 'italic', key: 'I' },
@@ -794,9 +835,9 @@
     { id: 'heading', title: 'Heading', icon: 'heading' },
     { id: 'list', title: 'Bulleted list', icon: 'list-ul' },
     { id: 'numbered', title: 'Numbered list', icon: 'list-ol' },
-    { id: 'checklist', title: 'Checklist', icon: 'list-check' },
+    { id: 'checklist', title: 'Checklist', icon: 'list-check', key: 'Enter ticks a row' },
     { id: 'quote', title: 'Quote', icon: 'quote-left' },
-    { id: 'link', title: 'Link', icon: 'link', richTitle: 'Link (type [text](address))' },
+    { id: 'link', title: 'Link', icon: 'link', key: 'K' },
     { id: 'grid', title: 'Grid', icon: 'table-cells' },
     { id: 'formula', title: 'Formula', icon: 'square-root-variable' },
   ];
@@ -857,6 +898,13 @@
     setView(what === 'actual' ? DL_VIEW.actual : dlViewStep(view, what === 'in' ? 1 : -1));
   }, true);
 
+  // Ctrl or Cmd with K while the rich editor is open, pressed anywhere in this window (the link menu has the keyboard while it
+  // is open): never the browser's own. The editor has taken it already when the keyboard was in it (Mod-k); this runs after.
+  doc.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || String(e.key).toLowerCase() !== 'k') return;
+    if (ed && !ed.lost && rich && e.composedPath().includes(host.rootElement)) e.preventDefault();
+  });
+
   let fmtButtons = [];
   let fmtFor = null; // which editor the format buttons were last drawn for (true: the rich one)
   let fmtOn = []; // which format buttons are drawn `on`, in FORMATS order
@@ -877,7 +925,7 @@
       });
     });
   }
-  let richButton = null;
+  let richSwitch = null;
   let paperButton = null;
   let tagButton = null;
   let backButton = null;
@@ -886,8 +934,9 @@
     if (f.id === 'heading') {
       const active = activeNow();
       const level = active ? active.heading : 0; // the level the caret is in shows as the current one
-      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, ...(level === lv ? { current: true } : {}), onClick: () => applyFormat(`h${lv}`) })) });
-    } else applyFormat(f.id);
+      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, ...(level === lv ? { current: true } : {}), onClick: () => applyFormat(`h${lv}`) })), onClose: () => { if (ed && !ed.lost) ed.editor.focus(); } }); // Escape or a press outside: the keyboard goes back to the editor
+    } else if (f.id === 'link' && rich) linkWith(e);
+    else applyFormat(f.id);
   }
   // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
   const zoomItems = () => [
@@ -923,21 +972,22 @@
     const wantFmt = Boolean(ed && !ed.lost);
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
-    // In the rich editor a button with no action there yet (Link, Grid, Formula) is off; Heading's levels are all there.
-    // There Link says how a link is typed, and Bold, Italic and Code name their keys.
+    // In the rich editor a button with no action there yet (Grid, Formula) is off; Heading's levels are all there.
+    // There Bold, Italic, Code and Link name their keys, and Checklist the key that ticks a row.
     if (!fmtButtons.length) { fmtFor = null; fmtOn = []; }
     else if (fmtFor !== rich) {
       fmtFor = rich;
       fmtButtons.forEach((b, i) => {
         const f = FORMATS[i];
-        b.set({ disabled: rich && f.id !== 'heading' && !dlRichCan(f.id), label: !rich ? f.title : f.richTitle || (f.key ? withKey(f.title, f.key) : f.title) });
+        b.set({ disabled: rich && f.id !== 'heading' && !dlRichCan(f.id), label: rich && f.key ? withKey(f.title, f.key) : f.title });
       });
       paintActive();
     }
-    // The switch between the text box and the rich editor: on while the rich editor shows.
-    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'align-left', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
-    else if (!wantFmt && richButton) { richButton.destroy(); richButton = null; }
-    else if (richButton) richButton.set({ on: rich });
+    // The choice between the Markdown text box and the rich editor: the shared view switch (as the list's List and Thumbnails),
+    // in the bar's end zone before Page colour, there while a person is editing.
+    if (wantFmt && !richSwitch) richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
+    else if (!wantFmt && richSwitch) { richSwitch.destroy(); richSwitch = null; }
+    else if (richSwitch) richSwitch.set(dlEditViewId(rich));
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
