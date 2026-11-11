@@ -6,6 +6,7 @@
 
 import { api, accessKeyHeaders, word, words, withinSpacePage, showNote, progressNote, undoToast } from '/brand.js';
 import { confirmDialog, cleanConfirm } from '/confirm.js';
+import { promptDialog, cleanPrompt } from '/prompt.js';
 import { pickObjects } from '/object-pick.js';
 import { nav as navBar } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
@@ -1572,6 +1573,11 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // A question for the person (host.ui.confirm): the styled confirm over the page. true for the action, false for anything else.
     async 'ui.confirm'(o) {
       return confirmDialog(cleanConfirm(o)); // only the fields a module may ask for (not a page's own list or solid)
+    },
+    // A one-line question with a text field (host.ui.prompt): the styled prompt over the page. The text typed, or null for anything else.
+    // Strings only; validate never comes here (the SDK in the module runs it and asks again with `error`).
+    async 'ui.prompt'(o) {
+      return promptDialog(cleanPrompt(o));
     },
     // The object picker (host.objects.pick): a window the page draws, searching with this module's own permissions (the same search as
     // 'objects.search'). Resolves with a pointer, a list of them (multiple), or null when the person cancels.

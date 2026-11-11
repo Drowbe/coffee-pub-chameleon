@@ -162,12 +162,13 @@ test('the layout sheet: Save is the submit button, Enter saves, Save and Rename 
 // model and has its own discard row; a confirmation is a menu row, not a <dialog>). Anything new must use the bar.
 // The Dialogs family of the design system page opens real <dialog>s only to show how the proposed ones behave (Escape, Tab, the backdrop): a spec demo on a review page, not a surface of the product.
 // The styled confirm (public/confirm.js) is a question, not an edit surface: nothing in it is saved, and a click outside it is the answer No.
+// The styled prompt (public/prompt.js, host.ui.prompt) is the confirm's twin with one text field: a question, nothing in it is saved, and a click outside it is the answer null.
 // The Share dialog (public/module-actions.js, the standard Share) hands out a link to copy: nothing in it is saved, and it closes
 // on Close and Escape only.
 // The Prototype's Vault dialogs (public/design-system/prototype-vault-dialogs.js) are drawings for review: the share sheet, the questions and the file chooser in the
 // confirm look (public/confirm.js, above). They save nothing, and a click outside never closes them; the built module opens them with host.ui and the shared bar.
 // The object picker (public/object-pick.js, host.objects.pick) is a choice, not an edit surface: nothing in it is saved, and a click outside it is the answer "nothing chosen", as the confirm's.
-const EXCEPTIONS = new Set(['public/design-system/prototype-vault-dialogs.js', 'public/sdk/host.js', 'public/action-bar.js', 'public/confirm.js', 'public/object-pick.js', 'public/module-actions.js', 'public/design-system/legacy/system-v1/proposed-dialogs.js']);
+const EXCEPTIONS = new Set(['public/design-system/prototype-vault-dialogs.js', 'public/sdk/host.js', 'public/action-bar.js', 'public/confirm.js', 'public/prompt.js', 'public/object-pick.js', 'public/module-actions.js', 'public/design-system/legacy/system-v1/proposed-dialogs.js']);
 const files = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === 'vendor' || e.name === 'node_modules' ? [] : files(`${dir}/${e.name}`)) : [`${dir}/${e.name}`]));
 test('the sweep: every script in public/ that opens a modal dialog or closes one on its backdrop uses the action bar', () => {
   const offenders = [];

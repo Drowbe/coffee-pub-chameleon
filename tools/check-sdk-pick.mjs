@@ -50,7 +50,7 @@ for (const [v, clock, want] of [['20:00', '12', '8:00 PM'], ['00:05', '12', '12:
 }
 ok(/timeField: \(input, o\) =>/.test(sdk) && /host\.ui\.timeField needs an <input>/.test(sdk), 'host.ui.timeField is missing from the SDK');
 ok(/pick: \(o\) => \{[\s\S]{0,900}call\('objects\.pick'/.test(sdk), 'host.objects.pick is missing from the SDK or does not ask the page');
-ok(/method === 'ui\.confirm' \|\| method === 'objects\.pick'/.test(sdk), "the frame's call times a pick out (a person takes as long as they take)");
+ok(/method === 'objects\.pick'/.test(sdk), "the frame's call times a pick out (a person takes as long as they take)");
 const mh = read('public/module-host.js');
 ok(/async 'objects\.pick'\(/.test(mh) && /pickObjects\(/.test(mh), "module-host.js does not answer 'objects.pick' with the picker");
 const travelJs = read('modules/travel/src/travel.js');
