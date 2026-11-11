@@ -772,6 +772,7 @@
   let fmtButtons = [];
   let paperButton = null;
   let tagButton = null;
+  let backButton = null;
   function formatWith(f, e) {
     if (!ed || ed.lost) return;
     if (f.id === 'heading') {
@@ -792,7 +793,7 @@
         ...zoomItems(),
       ];
     } else if (openId) {
-      items = [{ type: 'button', id: 'back', title: 'Back to the documents', icon: 'arrow-left' }, ...zoomItems()];
+      items = [...zoomItems()];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
         { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
@@ -815,7 +816,13 @@
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
+    // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.
+    const wantBack = Boolean(openId && !ed);
     const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost)));
+    if (wantBack && !backButton) {
+      if (tagButton) { tagButton.destroy(); tagButton = null; }
+      backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); } });
+    } else if (!wantBack && backButton) { backButton.destroy(); backButton = null; }
     if (wantTags && !tagButton) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
     else if (!wantTags && tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); }
     // The list's look switch is there only while the list is.

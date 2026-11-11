@@ -636,6 +636,13 @@ test('tags: delta and apply: removals out, additions in, dead ids dropped, 8 at 
   assert.equal(r.ids.length, 8); assert.ok(r.full);
   assert.equal(L.dlTagsApply(ids.slice(0, 8), { add: [ids[8]], remove: [ids[0]] }, big).full, false);
 });
+test('tags: the picker opens ticked with the open record\'s current ids (stored, minus dead ids), also after someone else tags', () => {
+  const stored = [T1, 'deleted01', T3];
+  assert.deepEqual(L.dlKnownTagIds(stored, known), [T1, T3]); // what `selected` carries
+  const afterOther = L.dlTagsApply(stored, { add: [T2], remove: [T1] }, known).ids; // another person's change, then `set(ids)`
+  assert.deepEqual(L.dlKnownTagIds(afterOther, known), [T3, T2]);
+  assert.deepEqual(L.dlKnownTagIds(afterOther, new Map([[T2, 1]])), [T2]); // a tag deleted in Set up is no longer ticked
+});
 // A store with compare-and-set, as host.storage.set with { version }.
 function fakeStore() {
   const m = new Map();
