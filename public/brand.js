@@ -3,6 +3,7 @@ import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { mountEnvironmentBanner } from '/environment-banner.js';
 import '/tooltip.js';
 import { topBarTabs } from '/page-tabs.js';
+import { sameSiteNext } from '/next-address.js';
 import { word, setWords, setVerbs } from '/words.js';
 import { themeSwitch, setEnvironmentMode, setAccountMode, themeChanged, watchThemeWithoutStream, forgetThemeMode, toggleThemeMode, useDefaultMode, themeMode as modeNow } from '/theme-mode.js';
 import { profileEntries, profileDestinationLabel, seesUpdates, hostConsoleUrl, switcherEntries, switchPick, bellState, destinationTools, pageAnchor } from '/primary-nav.js';
@@ -1581,6 +1582,10 @@ export async function api(method, url, body, contentType, signal) {
     data = {};
   }
   if (!res.ok) {
+    // An account that has not agreed to the current texts: the agreement page, then back here (the gate's answer).
+    if (res.status === 403 && data.agreementRequired === true && location.pathname !== '/agree') {
+      location.href = `/agree?next=${encodeURIComponent(sameSiteNext(`${location.pathname}${location.search}${location.hash}`))}`;
+    }
     const err = new Error(data.error || `HTTP ${res.status}`);
     err.status = res.status;
     err.serverSaid = typeof data.error === 'string' && data.error !== ''; // the server's own sentence, not "HTTP 500"
