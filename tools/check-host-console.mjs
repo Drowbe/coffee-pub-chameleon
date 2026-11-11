@@ -121,7 +121,7 @@ async function openTab(port, { width = 1280, mode = 'dark', cookie = '' } = {}) 
         if (r.height >= 44 - 0.5) continue;
         const x = Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2));
         const y = r.top + r.height / 2;
-        const hits = [y - 21, y + 21].every((yy) => { const at = document.elementFromPoint(x, yy); return at === el || el.contains(at); });
+        const hits = [y - 21, y + 21].every((yy) => { const at = document.elementFromPoint(x, yy); const row = el.closest('label'); return at === el || el.contains(at) || (row && row.contains(at)); });
         if (!hits) out.push((el.getAttribute('aria-label') || el.dataset.action || el.id || el.textContent.trim().slice(0, 30) || el.tagName) + ' is ' + Math.round(r.height) + 'px tall, with no 44px hit area');
       }
     }
@@ -585,6 +585,17 @@ try {
     try { fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* a browser still closing may hold its profile a moment longer */ }
   }
   await shutdown(srv);
+}
+
+// Restore: the "host backup" box is off by default and adds ?backup=1 to the restore request.
+{
+  const html = fs.readFileSync(new URL('../public/host.html', import.meta.url), 'utf8');
+  const js = fs.readFileSync(new URL('../public/host.js', import.meta.url), 'utf8');
+  assert.match(html, /<input id="env-restore-backup" type="checkbox">/);
+  assert.ok(!/id="env-restore-backup"[^>]*checked/.test(html));
+  assert.match(js, /\/restore\$\{\$\('env-restore-backup'\)\.checked \? '\?backup=1' : ''\}/);
+  assert.match(js, /\$\('env-restore-backup'\)\.checked = false/);
+  n++;
 }
 
 if (failed) {

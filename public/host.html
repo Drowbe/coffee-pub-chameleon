@@ -270,6 +270,7 @@
                 <h2 class="hc-part-name" id="env-restore-title">Restore</h2>
                 <p class="sdk-hint">Replaces everything in the environment with the backup.</p>
                 <input id="env-restore-file" type="file" accept=".zip,application/zip" aria-label="Backup file">
+                <label class="sdk-choice-row"><input id="env-restore-backup" type="checkbox"><span class="sdk-choice-text">This is a host backup of this environment (keeps who agreed)</span></label>
                 <button class="btn btn-danger" id="env-restore" type="button" disabled><i class="fa-solid fa-rotate-left fa-fw" aria-hidden="true"></i><span>Restore a backup</span></button>
               </section>
               <p class="sdk-hint">Backups are a download. Nothing is kept on the host, and there is no schedule.</p>
