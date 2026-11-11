@@ -861,6 +861,20 @@ try {
   const guestList = (await call('GET', `${L}${asGuest}`)).json;
   assert.deepEqual(guestList.mine, []);
   assert.equal(guestList.shared.length, 2, 'a guest reads the shared ones');
+  assert.deepEqual(guestList.shared.map((l) => l.id), patList.shared.map((l) => l.id), 'the same shared layouts a member reads');
+  assert.deepEqual(guestList.system, [], 'a guest has no system layouts of their own');
+  // Another space (B), with its own guest link: a guest reads only their own space's layouts, and every write is a 403.
+  const spaceB = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Other', members: [] } })).json.space;
+  await expect('B allows guests', 200, 'PATCH', `/api/spaces/${spaceB.id}`, { cookie: owner, body: { allowGuests: true } });
+  const guestB = `?guest=${encodeURIComponent((await expect('B guest link', 200, 'POST', `/api/spaces/${spaceB.id}/guest-link`, { cookie: owner, body: {} })).json.space.guestToken)}`;
+  await expect('B owner saves shared', 201, 'POST', `/api/spaces/${spaceB.id}/layouts`, { cookie: owner, body: { ...good(), name: 'Only B', shared: true } });
+  assert.deepEqual((await expect('guest of B reads B', 200, 'GET', `/api/spaces/${spaceB.id}/layouts${guestB}`)).json.shared.map((l) => l.name), ['Only B']);
+  await expect('guest of A reads B', 403, 'GET', `/api/spaces/${spaceB.id}/layouts${asGuest}`);
+  await expect('guest of B reads A', 403, 'GET', `${L}${guestB}`);
+  assert.match((await expect('guest of A saves', 403, 'POST', `${L}${asGuest}`, { body: good() })).json.error, /load shared layouts but not save or change them/, 'a clear refusal');
+  await expect('guest of A writes to B', 403, 'POST', `/api/spaces/${spaceB.id}/layouts${asGuest}`, { body: good() });
+  const onlyB = (await call('GET', `/api/spaces/${spaceB.id}/layouts`, { cookie: owner })).json.shared[0].id;
+  await expect('B layout removed again', 204, 'DELETE', `/api/spaces/${spaceB.id}/layouts/${onlyB}`, { cookie: owner });
   assert.deepEqual((await call('GET', L, { cookie: sam })).json.mine, [], "sam does not see pat's own");
   n += 1;
 

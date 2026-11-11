@@ -264,7 +264,8 @@ export function destinationTools(list, { path = '', present = false } = {}) {
 const TAB_ICON = /^[a-z0-9-]{1,40}$/;
 const SYSTEM_TAB_DEFAULTS = { workspace: ['Workspace', 'columns'], calendar: ['Calendar', 'calendar-days'], map: ['Map', 'map-location-dot'] };
 export function layoutTabs({ system = [], favorites = [], layouts = [], current = 'workspace', guest = false, aside = false, space = '' } = {}) {
-  if (guest || aside || !space) return [];
+  // A guest keeps no favorites: the Workspace, then every shared layout the list holds, to switch between, read-only.
+  if (aside || !space) return [];
   const name = (s, fallback) => String((s && s.name) || '').trim().slice(0, 40) || fallback;
   const icon = (s, fallback) => (s && TAB_ICON.test(s.icon || '') ? s.icon : fallback);
   const list = Array.isArray(system) ? system.filter((s) => s && SYSTEM_TAB_DEFAULTS[s.id]) : [];
@@ -276,7 +277,7 @@ export function layoutTabs({ system = [], favorites = [], layouts = [], current 
     out.push({ layout: s.id, kind: 'system', icon: icon(s, glyph), label: name(s, word) });
   }
   const known = Array.isArray(layouts) ? layouts.filter((l) => l && typeof l.id === 'string') : [];
-  for (const id of Array.isArray(favorites) ? favorites : []) {
+  for (const id of guest ? known.map((l) => l.id) : Array.isArray(favorites) ? favorites : []) {
     const l = known.find((x) => x.id === id);
     if (!l || SYSTEM_TAB_DEFAULTS[id] || out.some((t) => t.layout === id)) continue;
     out.push({ layout: id, kind: 'user', icon: icon(l, 'object-group'), label: name(l, 'Layout') });

@@ -912,7 +912,8 @@ test('layoutTabs() (plan-layout-views.md, step 2): Workspace first, Calendar and
   assert.deepEqual(layoutTabs({ system, favorites: ['gone', 'la', 'la', 'map'], layouts, space: 'keep' }).map((x) => x.layout), ['workspace', 'calendar', 'map', 'la'], 'a favorite gone, listed twice, or a system id: left out');
   assert.equal(layoutTabs({ system, favorites: ['la'], layouts, space: 'keep', current: 'la' }).find((x) => x.current).layout, 'la');
   assert.equal(layoutTabs({ system, space: 'keep', current: 'map' }).find((x) => x.current).layout, 'map');
-  assert.deepEqual(layoutTabs({ system, favorites: ['la'], layouts, space: 'keep', guest: true }), [], 'a guest: none');
+  assert.deepEqual(layoutTabs({ system: [system[0]], favorites: ['la'], layouts: layouts.slice(0, 2), space: 'keep', guest: true }).map((x) => x.layout), ['workspace', 'la', 'lb'], 'a guest: the Workspace and every shared layout the list holds, no favorites');
+  assert.deepEqual(layoutTabs({ system, layouts, space: 'keep', guest: true, aside: true }), [], 'a guest in an aside: none');
   assert.deepEqual(layoutTabs({ system, favorites: ['la'], layouts, space: 'keep', aside: true }), [], 'an aside: none');
   assert.deepEqual(layoutTabs({ system }), [], 'no space: none');
   const many = Array.from({ length: 12 }, (_, i) => ({ id: `l${i}`, name: `L${i}` }));

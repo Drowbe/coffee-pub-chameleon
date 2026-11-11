@@ -4974,7 +4974,10 @@ app.get('/api/spaces/:id/layouts', (req, res) => {
   const found = layoutSpaceFor(req, res);
   if (!found) return;
   const me = found.who.user ? found.who.user.key : null;
-  const { mine, shared } = store.layouts.list(found.space.id, me);
+  const listed = store.layouts.list(found.space.id, me);
+  // A guest is shown only the modules that are on in this space; a layout never names one they cannot use.
+  const mine = listed.mine;
+  const shared = found.who.user ? listed.shared : listed.shared.map((l) => ({ ...l, modules: l.modules.filter((m) => modules.isOnIn(m.id, found.space.id)) }));
   // defaultLayout: the id of the shared layout this space opens with on a first visit, or null (store.defaultLayoutOf).
   const fallback = store.defaultLayoutOf(found.space.id);
   // favorites: this person's favorite layouts' ids, in the order favorited (plan-favorite-layouts.md); [] for a guest.
