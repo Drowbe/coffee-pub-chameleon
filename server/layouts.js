@@ -16,7 +16,7 @@
 // them, per space, like favorites: "system": { "<user key>": { "<system id>": { "name"?, "icon"?, "tab"?: false } } }.
 // A user layout may carry an `icon`; one stored without reads as kind `user` with the default icon.
 //
-// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }] (empty: a blank layout), snap?: { all, pitch }, arrange?: 'panel' | 'window' }. cleanLayout()
+// A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }] (empty: a blank layout), snap?: { all, pitch }, arrange?: 'dock' | 'window' }. cleanLayout()
 // is the one shape check, pure; the Layouts class keeps the lists, their limits and the clean-up when a space or a
 // person is removed (server/store.js calls forgetSpace and forgetPerson). The browser's own remembered layout
 // (app.canvas.<space id>) is unchanged and separate. An aside has no layouts: index.js only finds spaces.
@@ -57,7 +57,7 @@ const ICON_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const MODULE_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const MODES = ['dock', 'float'];
 const TOP_KEYS = ['name', 'shared', 'modules', 'snap', 'icon', 'arrange'];
-const ARRANGES = ['panel', 'window'];
+const ARRANGES = ['dock', 'window'];
 const MODULE_KEYS = ['id', 'mode', 'dockW', 'box', 'snap', 'stack', 'at', 'h', 'folded'];
 const BOX_KEYS = ['x', 'y', 'w', 'h'];
 const SNAP_KEYS = ['all', 'pitch'];
@@ -188,7 +188,7 @@ function cleanLayout(input, { partial = false, icons = null } = {}) {
   }
 
   if (input.arrange !== undefined) {
-    if (!ARRANGES.includes(input.arrange)) return { error: 'Arrange must be panel or window.' };
+    if (!ARRANGES.includes(input.arrange)) return { error: 'Arrange must be dock or window.' };
     out.arrange = input.arrange;
   }
 

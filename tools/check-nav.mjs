@@ -2388,7 +2388,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.match(space, /else if \(action === 'setup'\) openSetupFor\(id, event\.detail\.tab \|\| ''\);/, 'Manage over a call asks the space page underneath');
   const adminJs = fs.readFileSync(path.join(ROOT, 'public/admin.js'), 'utf8');
   assert.match(adminJs, /const setupHref = \(id\) => `\/\?setup=\$\{encodeURIComponent\(id\)\}`;/);
-  assert.match(adminJs, /row\.querySelector\('\[data-action="edit"\]'\)\.href = setupHref\(space\.id\);/, 'Manage\'s Edit link');
+  assert.match(adminJs, /const edit = row\.querySelector\('\[data-action="edit"\]'\);\n\s*edit\.hidden = space\.isLobby;\n\s*edit\.href = setupHref\(space\.id\);/, 'Manage\'s Edit link (hidden for Home, set up for every other space)');
   assert.match(adminJs, /openSetup\(space\.id\); \/\/ into the new space with Set up open/, 'and its jump after making a space');
   assert.ok(!/`\/spaces\/\$\{/.test(adminJs), 'Manage no longer links to the old page');
   const setup = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
@@ -2800,7 +2800,7 @@ const layoutsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nav-layouts-')); // la
 for (const f of ['layouts.js', 'snap-grid.js']) fs.writeFileSync(path.join(layoutsDir, f.replace('.js', '.mjs')), fs.readFileSync(path.join(ROOT, 'public', f), 'utf8').replace(/from '\/([\w-]+)\.js'/g, "from './$1.mjs'"));
 const { layoutDiffers } = await import(pathToFileURL(path.join(layoutsDir, 'layouts.mjs')).href);
 test('Modified and the temporary tab (layout menu, 2026-11-11): layoutDiffers() compares arrangements; a shown layout that is not pinned gets a temporary tab; Update and who sees it', () => {
-  const base = () => ({ arrange: 'panel', snap: { all: false, pitch: 100 }, modules: [{ id: 'chat', mode: 'dock', dockW: 400 }, { id: 'todo', mode: 'dock', dockW: 360 }] });
+  const base = () => ({ arrange: 'dock', snap: { all: false, pitch: 100 }, modules: [{ id: 'chat', mode: 'dock', dockW: 400 }, { id: 'todo', mode: 'dock', dockW: 360 }] });
   assert.equal(layoutDiffers(base(), base()), false, 'equal');
   assert.equal(layoutDiffers(base(), { ...base(), modules: [{ id: 'chat', mode: 'dock', dockW: 401 }, { id: 'todo', mode: 'dock', dockW: 359 }] }), false, 'a width within 2 pixels is noise');
   assert.equal(layoutDiffers(base(), { ...base(), modules: [{ id: 'chat', mode: 'dock', dockW: 460 }, base().modules[1]] }), true, 'resized');
@@ -2813,8 +2813,8 @@ test('Modified and the temporary tab (layout menu, 2026-11-11): layoutDiffers() 
   assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.2, y: 0.1, w: 0.3, h: 0.4 } }] }), true, 'a window moved');
   assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.1, y: 0.1, w: 0.3, h: 0.5 } }] }), true, 'a window resized');
   assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.1004, y: 0.1, w: 0.3, h: 0.4 }, z: 9, scroll: 40, zoom: 2 }] }), false, 'z-order, scroll, zoom and a hair of movement are noise');
-  assert.equal(layoutDiffers({ modules: [] }, { modules: [], arrange: 'panel' }), false, 'a blank layout without arrange reads as Panel');
-  assert.equal(layoutDiffers({ modules: [], arrange: 'window' }, { modules: [], arrange: 'panel' }), true, 'a blank layout in the other mode');
+  assert.equal(layoutDiffers({ modules: [] }, { modules: [], arrange: 'dock' }), false, 'a blank layout without arrange reads as dock');
+  assert.equal(layoutDiffers({ modules: [], arrange: 'window' }, { modules: [], arrange: 'dock' }), true, 'a blank layout in the other mode');
   // The temporary tab: the layout shown, saved, not a favorite; gone once another is shown; a favorite keeps its own tab.
   const system = [{ id: 'workspace', kind: 'system', name: 'Workspace', icon: 'columns', tab: true }];
   const layouts = [{ id: 'la', name: 'A' }, { id: 'lb', name: 'B' }];

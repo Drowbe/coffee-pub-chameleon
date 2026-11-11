@@ -140,7 +140,7 @@ const refused = (input, pattern, label, options) => {
   refused({ ...good(), shared: 'yes' }, /shared with true or false/, 'shared not a boolean');
   assert.deepEqual(cleanLayout({ name: 'Blank', modules: [], arrange: 'window' }).layout, { name: 'Blank', modules: [], arrange: 'window' }, 'an empty list is a blank layout, and keeps its arrange');
   assert.ok(!('arrange' in cleanLayout({ ...good() }).layout), 'arrange may be left out');
-  refused({ ...good(), arrange: 'grid' }, /panel or window/, 'arrange must be panel or window');
+  refused({ ...good(), arrange: 'grid' }, /dock or window/, 'arrange must be dock or window');
   refused({ ...good(), modules: undefined }, /List the/, 'no modules key');
   refused({ ...good(), modules: 'chat' }, /List the/, 'modules not a list');
   refused({ ...good(), modules: Array.from({ length: 21 }, (_, i) => ({ id: `m${i}`, mode: 'dock' })) }, /at most 20/, '21 modules');
@@ -173,7 +173,7 @@ const refused = (input, pattern, label, options) => {
   assert.deepEqual(cleanLayout({ snap: { all: true, pitch: 80 } }, { partial: true }).layout, { snap: { all: true, pitch: 80 } });
   refused({ shared: true }, /moved between/, 'a PUT cannot move a layout between lists', { partial: true });
   refused({ name: '' }, /name/, 'a PUT with a blank name', { partial: true });
-  assert.deepEqual(cleanLayout({ modules: [], arrange: 'panel' }, { partial: true }).layout, { modules: [], arrange: 'panel' }, 'a PUT may empty the list');
+  assert.deepEqual(cleanLayout({ modules: [], arrange: 'dock' }, { partial: true }).layout, { modules: [], arrange: 'dock' }, 'a PUT may empty the list');
   refused({ modules: 'chat' }, /List the/, 'a PUT with modules not a list', { partial: true });
 }
 
