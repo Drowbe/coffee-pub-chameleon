@@ -582,8 +582,10 @@
     ta.hidden = rich; box.hidden = !rich;
     ed.editor = rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
     ed.editor.onChange(typed);
+    if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
     ed.editor.setText(text); ed.editor.setReadOnly(Boolean(ed.lost));
     ed.inexact = false;
+    paintActive();
   }
   // After the text was read from the rich editor: a block that Markdown cannot keep exactly is saved as typed, and said once.
   function sayInexact(always) {
@@ -786,15 +788,15 @@
   }
   // ---- the shared chrome: the toolbar row, the title bar's "+" and menu, the status bar --------------------------------------
   const FORMATS = [
-    { id: 'bold', title: 'Bold', icon: 'bold' },
-    { id: 'italic', title: 'Italic', icon: 'italic' },
-    { id: 'code', title: 'Code', icon: 'code' },
+    { id: 'bold', title: 'Bold', icon: 'bold', key: 'B' },
+    { id: 'italic', title: 'Italic', icon: 'italic', key: 'I' },
+    { id: 'code', title: 'Code', icon: 'code', key: 'E' },
     { id: 'heading', title: 'Heading', icon: 'heading' },
     { id: 'list', title: 'Bulleted list', icon: 'list-ul' },
     { id: 'numbered', title: 'Numbered list', icon: 'list-ol' },
     { id: 'checklist', title: 'Checklist', icon: 'list-check' },
     { id: 'quote', title: 'Quote', icon: 'quote-left' },
-    { id: 'link', title: 'Link', icon: 'link' },
+    { id: 'link', title: 'Link', icon: 'link', richTitle: 'Link (type [text](address))' },
     { id: 'grid', title: 'Grid', icon: 'table-cells' },
     { id: 'formula', title: 'Formula', icon: 'square-root-variable' },
   ];
@@ -857,6 +859,24 @@
 
   let fmtButtons = [];
   let fmtFor = null; // which editor the format buttons were last drawn for (true: the rich one)
+  let fmtOn = []; // which format buttons are drawn `on`, in FORMATS order
+  let activeFrame = 0;
+  // Which formats the rich selection is in (null in the text box, which has no such thing).
+  const activeNow = () => (ed && !ed.lost && rich && ed.editor.active ? ed.editor.active() : null);
+  // The buttons of the formats the selection is in are drawn `on`. Asked for on every move of the caret; done once a frame,
+  // from the selection alone (the words are never read), and only a button whose state changed is drawn again.
+  function paintActive() {
+    if (activeFrame) return;
+    activeFrame = window.requestAnimationFrame(() => {
+      activeFrame = 0;
+      if (!fmtButtons.length) return;
+      const active = activeNow();
+      FORMATS.forEach((f, i) => {
+        const on = dlRichIsOn(active, f.id);
+        if (on !== Boolean(fmtOn[i])) { fmtOn[i] = on; fmtButtons[i].set({ on }); }
+      });
+    });
+  }
   let richButton = null;
   let paperButton = null;
   let tagButton = null;
@@ -864,7 +884,9 @@
   function formatWith(f, e) {
     if (!ed || ed.lost) return;
     if (f.id === 'heading') {
-      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, onClick: () => applyFormat(`h${lv}`) })) });
+      const active = activeNow();
+      const level = active ? active.heading : 0; // the level the caret is in shows as the current one
+      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, ...(level === lv ? { current: true } : {}), onClick: () => applyFormat(`h${lv}`) })) });
     } else applyFormat(f.id);
   }
   // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
@@ -902,13 +924,18 @@
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
     // In the rich editor a button with no action there yet (Link, Grid, Formula) is off; Heading's levels are all there.
-    if (!fmtButtons.length) fmtFor = null;
+    // There Link says how a link is typed, and Bold, Italic and Code name their keys.
+    if (!fmtButtons.length) { fmtFor = null; fmtOn = []; }
     else if (fmtFor !== rich) {
       fmtFor = rich;
-      fmtButtons.forEach((b, i) => b.set({ disabled: rich && FORMATS[i].id !== 'heading' && !dlRichCan(FORMATS[i].id) }));
+      fmtButtons.forEach((b, i) => {
+        const f = FORMATS[i];
+        b.set({ disabled: rich && f.id !== 'heading' && !dlRichCan(f.id), label: !rich ? f.title : f.richTitle || (f.key ? withKey(f.title, f.key) : f.title) });
+      });
+      paintActive();
     }
     // The switch between the text box and the rich editor: on while the rich editor shows.
-    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'file-lines', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
+    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'align-left', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
     else if (!wantFmt && richButton) { richButton.destroy(); richButton = null; }
     else if (richButton) richButton.set({ on: rich });
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });

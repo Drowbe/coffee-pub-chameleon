@@ -14,7 +14,7 @@
   // change the browser makes by itself can only bring words.
   // WHAT GOES OUT. Copy and cut give Markdown as the plain text (the library also writes its own HTML of the selection).
   const DL_RICH_ACTIONS = ['bold', 'italic', 'code', 'h1', 'h2', 'h3', 'h4', 'list', 'numbered', 'checklist', 'quote'];
-  const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Mod-z', 'Mod-Shift-z', 'Mod-y'];
+  const DL_RICH_KEYS = ['Enter', 'Shift-Enter', 'Tab', 'Shift-Tab', 'Backspace', 'Mod-z', 'Mod-Shift-z', 'Mod-y', 'Mod-b', 'Mod-i', 'Mod-e', 'Mod-Enter'];
   const DL_RICH_PASTE = Object.freeze({ htmlMax: 4000000 });
   const dlRichCan = (action) => DL_RICH_ACTIONS.includes(action);
 
@@ -108,12 +108,26 @@
   // The editor's own keys (everything else is the library's base keys: Enter, Backspace and Delete join and split, Mod-a).
   // Enter in a list row makes the next row (a checklist row an open one), Tab moves a row in, Shift-Tab out, Shift-Enter is a
   // line break in a paragraph and in code; a heading is one line. Mod-z, Mod-Shift-z and Mod-y are undo and redo.
+  // Enter after "```" makes a code block (dlRichFence); Backspace straight after a typing shortcut puts the typed characters
+  // back, and is the library's own Backspace otherwise. Mod-b, Mod-i and Mod-e are Bold, Italic and Code, the bar's own
+  // actions; they are always taken while the editor can be typed in, so the browser never does its own bold. Mod-Enter ticks
+  // or clears the checklist row the caret is in, and is the library's own (leave a code block) anywhere else.
   // Nothing else is bound: a key the editor does not use goes on to the page (Mod-s, the zoom keys, the call's shortcuts).
   function dlRichKeys(PM) {
     const N = dlRichSchema(PM).nodes;
     const rowAt = (state) => { const $from = state.selection.$from; for (let d = $from.depth; d > 0; d -= 1) if ($from.node(d).type === N.list_item) return $from.node(d); return null; };
+    const mark = (action) => (state, dispatch, view) => {
+      if (view && !view.editable) return false;
+      dlRichCommand(PM, action)(state, dispatch, view);
+      return true;
+    };
     return {
-      Enter: (state, dispatch) => { const row = rowAt(state); return PM.splitListItem(N.list_item, row && row.attrs.checked !== null ? { checked: false } : undefined)(state, dispatch); },
+      Enter: (state, dispatch) => {
+        const fence = dlRichFence(PM, state);
+        if (fence) { if (dispatch) dispatch(fence); return true; }
+        const row = rowAt(state);
+        return PM.splitListItem(N.list_item, row && row.attrs.checked !== null ? { checked: false } : undefined)(state, dispatch);
+      },
       'Shift-Enter': (state, dispatch) => {
         if (PM.newlineInCode(state, dispatch)) return true;
         const { $from, $to } = state.selection;
@@ -127,14 +141,30 @@
         return PM.sinkListItem(N.list_item)(state, dispatch);
       },
       'Shift-Tab': PM.liftListItem(N.list_item),
+      Backspace: PM.undoInputRule,
       'Mod-z': PM.undo,
       'Mod-Shift-z': PM.redo,
       'Mod-y': PM.redo,
+      'Mod-b': mark('bold'),
+      'Mod-i': mark('italic'),
+      'Mod-e': mark('code'),
+      'Mod-Enter': (state, dispatch, view) => {
+        const $from = state.selection.$from;
+        if ((view && !view.editable) || $from.parent.type.spec.code) return false;
+        for (let d = $from.depth; d > 0; d -= 1) {
+          const row = $from.node(d);
+          if (row.type !== N.list_item) continue;
+          if (row.attrs.checked === null) return false;
+          if (dispatch) dispatch(state.tr.setNodeMarkup($from.before(d), null, { ...row.attrs, checked: !row.attrs.checked }));
+          return true;
+        }
+        return false;
+      },
     };
   }
   const dlRichPluginSets = new WeakMap();
   function dlRichPlugins(PM) {
-    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), PM.history(), PM.gapCursor(), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
+    if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), dlRichInputRules(PM), PM.history(), PM.gapCursor(), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
     return dlRichPluginSets.get(PM);
   }
 
@@ -263,6 +293,7 @@
     const N = schema.nodes;
     const plugins = dlRichPlugins(PM);
     const fns = [];
+    const selFns = [];
     let rev = 0;
     let readOnly = false;
     let stored = null;
@@ -276,11 +307,12 @@
       last = null;
       return PM.EditorState.create({ doc: read.doc, plugins });
     };
-    // Every change goes through here. Only a change of the text counts: moving the caret does not.
+    // Every change goes through here. Only a change of the text counts: moving the caret does not (onSelect hears both).
     const dispatch = (tr) => {
       const next = now().apply(tr);
       if (view) view.updateState(next); else state = next;
       if (tr.docChanged) { rev += 1; for (const fn of fns) fn(); }
+      for (const fn of selFns) fn();
     };
     // Puts a plain text in as Markdown at the selection (or at `at`); inside code it goes in as it is.
     const insert = (text, at) => {
@@ -349,10 +381,14 @@
     }
     return {
       getText,
-      setText: (text) => { const next = fresh(text); if (view) view.updateState(next); else state = next; rev += 1; },
+      setText: (text) => { const next = fresh(text); if (view) view.updateState(next); else state = next; rev += 1; for (const fn of selFns) fn(); },
       setReadOnly: (on) => { readOnly = Boolean(on); if (view) view.setProps({ editable: () => !readOnly }); },
       focus: () => { if (view) view.focus(); },
       onChange: (fn) => { fns.push(fn); },
+      // For the bar: fn is called after every change of the selection or the text (cheap to call: it reads nothing), and
+      // active() says which formats the selection is in (dlRichActive). The page asks at most once a frame.
+      onSelect: (fn) => { selFns.push(fn); },
+      active: () => dlRichActive(PM, now()),
       revision: () => rev,
       // -> true when the action was applied. A name with no action here (link, grid, formula), an action that does not fit
       // where the selection is, and a read-only editor: false, and nothing happens. The editor keeps its selection and takes
@@ -366,12 +402,23 @@
       can: dlRichCan,
       // Copy's fallback for a browser without the clipboard: select what is there.
       selectAll: () => { dispatch(now().tr.setSelection(new PM.AllSelection(now().doc))); if (view) view.focus(); },
-      destroy: () => { fns.length = 0; if (view) { view.destroy(); view = null; } },
+      destroy: () => { fns.length = 0; selFns.length = 0; if (view) { view.destroy(); view = null; } },
       // What the last getText found: `same` false means a block was written that does not read back exactly as it stands.
       lastWrite: () => last,
-      // For the page's checks and the tests: the editor's state, a change, and a plain text put in as a paste puts it.
+      // For the page's checks and the tests: the editor's state, a change, a plain text put in as a paste puts it, and
+      // words typed one character at a time as the keyboard types them (so the typing shortcuts run).
       state: now,
       dispatch,
       paste: (text) => insert(text),
+      type(text) {
+        if (readOnly) return false;
+        for (const ch of Array.from(String(text == null ? '' : text))) {
+          const st = now();
+          const { from, to } = st.selection;
+          const typing = view || { state: st, composing: false, editable: true, dispatch };
+          if (!plugins.some((p) => p.props.handleTextInput && p.props.handleTextInput(typing, from, to, ch))) dispatch(st.tr.insertText(ch, from, to).scrollIntoView());
+        }
+        return true;
+      },
     };
   }

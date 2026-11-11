@@ -9,6 +9,8 @@
   //   run(action)      applies a formatting action by name to the editor's own selection: bold, italic, code, h1..h4, list,
   //                    numbered, checklist, quote, link, grid, formula.
   //   destroy()        lets go of the editor and its listeners.
+  // An editor may also have onSelect(fn) and active() (the rich one does): fn is called when the selection or the text changes,
+  // and active() says which formats the selection is in, for the bar's buttons.
   // Two editors implement it: dlTextareaEditor below (the Markdown text box) and dlRichEditor (documents-lib-p-rich-editor.js).
   // Plus revision(): a cheap counter the adapter bumps on every change. "Is it changed" is asked with the counter, never with the
   // text. The counter cannot tell "typed, then deleted back to the same text" from a change, so dirty means "the counter moved";

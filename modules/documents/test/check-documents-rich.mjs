@@ -422,6 +422,19 @@ bound('deep and long runs of marks, brackets and backslashes end, and stay words
     assert.ok(P(out).eq(d), `${md.slice(0, 12)}... is not a fixed point`);
   }
 });
+bound('a run of $ of any length is a fixed point, alone, beside words, in a paragraph, a list row and a grid (#611)', () => {
+  const kindsIn = (d) => { const k = []; d.descendants((n) => { k.push(n.type.name); return true; }); return k; };
+  for (const n of [1, 2, 3, 4, 5, 6, 7, 100, 5000]) {
+    const run = '$'.repeat(n);
+    for (const md of [run, `a ${run} b`, `a${run}`, `${run}a`, `${run} x ${run}`, `- ${run} x`, `- [ ] x ${run}`, `> ${run}`, `# ${run}`, `| a |\n| --- |\n| ${run} |`]) {
+      const d = P(md);
+      if (n >= 4) assert.deepEqual(kindsIn(d).filter((k) => k === 'formula' || k === 'formula_block'), [], `${n} dollars read as a formula: ${md.slice(0, 20)}`);
+      const out = S(d);
+      assert.ok(P(out).eq(d), `${n}: ${md.slice(0, 20)} is not a fixed point`);
+      assert.equal(S(P(out)), out, `${n}: ${md.slice(0, 20)} writes differently the second time`);
+    }
+  }
+});
 bound('a lexer that throws, a value that is not text, and an empty text', () => {
   const thrown = L.dlRichParse(PM, '# a <script>', () => { throw new Error('lexer'); });
   assert.deepEqual(kinds(thrown), ['source_block', 'text']);
