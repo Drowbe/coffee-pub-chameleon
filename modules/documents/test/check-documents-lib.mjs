@@ -19,13 +19,14 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
   'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
-  'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord'];
+  'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
+  'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
 function test(name, fn) { try { fn(); passed += 1; } catch (err) { fails.push(`${name}: ${err.message}`); } }
 
-const doc = { id: 'abcd1234', type: 'doc', title: 'Plan', rev: 2, chunks: ['aaaa1111'], size: 10, excerpt: 'Hi', by: 'u1', at: '2026-11-11T10:00:00.000Z', editedBy: 'u1', editedByName: 'Ana', editedAt: '2026-11-11T10:00:00.000Z' };
+const doc = { id: 'abcd1234', type: 'doc', title: 'Plan', rev: 2, chunks: ['aaaa1111'], size: 10, excerpt: 'Hi', paper: 'light-white', by: 'u1', at: '2026-11-11T10:00:00.000Z', editedBy: 'u1', editedByName: 'Ana', editedAt: '2026-11-11T10:00:00.000Z' };
 const lock = { id: 'lock', type: 'lock', doc: 'abcd1234', holder: 'u1', name: 'Ana', at: '2026-11-11T10:00:00.000Z', seq: 1, by: 'u1' };
 
 test('the library has no page, host or Documents words', () => {
@@ -457,6 +458,56 @@ test('format: link, object link, grid, formula', () => {
     assert.equal(L.dlSaveWord({ dirty: true, saving: false, failed: true }), 'Not saved');
   });
 }
+
+test('page colour: cleaning keeps known ids only, the default otherwise', () => {
+  for (const p of L.DL_PAPERS) assert.equal(L.dlCleanDoc({ ...doc, paper: p.id }).paper, p.id);
+  const { paper, ...old } = doc;
+  assert.equal(L.dlCleanDoc(old).paper, 'light-white', 'a record without the field is white');
+  for (const v of ['red', 'LIGHT-WHITE', '#000', 'url(x)', '', 5, null, {}, [], 'light-white;x']) assert.equal(L.dlCleanDoc({ ...doc, paper: v }).paper, L.DL_PAPER_DEFAULT, JSON.stringify(v));
+  assert.equal(L.DL_PAPER_DEFAULT, 'light-white');
+  assert.ok(L.DL_PAPERS.length >= 3 && L.DL_PAPERS.length <= 8);
+});
+test('page colour: a save carries it, and a change makes the page dirty', () => {
+  const base = { old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222' };
+  assert.equal(L.dlPlanSave(base).record.paper, 'light-white');
+  assert.equal(L.dlPlanSave({ ...base, paper: 'dark-slate' }).record.paper, 'dark-slate');
+  assert.equal(L.dlPlanSave({ ...base, paper: 'bogus' }).record.paper, 'light-white');
+  assert.equal(L.dlIsDirty({ text: 'a', title: 't', paper: 'light-white' }, { text: 'a', title: 't', paper: 'dark-black' }), true);
+  assert.equal(L.dlIsDirty({ text: 'a', title: 't', paper: 'light-white' }, { text: 'a', title: 't', paper: 'light-white' }), false);
+});
+test('page colour: the menu model has both groups and every colour once', () => {
+  const m = L.dlPaperMenuModel();
+  assert.deepEqual(m.filter((e) => e.kind === 'heading').map((e) => e.label), ['Light colours', 'Dark colours']);
+  assert.deepEqual(m.filter((e) => e.kind === 'paper').map((e) => e.id).sort(), L.DL_PAPERS.map((p) => p.id).sort());
+  assert.equal(m[0].kind, 'heading');
+  assert.equal(m.find((e) => e.id === 'light-white').label, 'Pure White');
+  const heads = m.map((e, i) => (e.kind === 'heading' ? i : -1)).filter((i) => i >= 0);
+  assert.ok(m.slice(heads[0] + 1, heads[1]).every((e) => L.DL_PAPERS.find((p) => p.id === e.id).family === 'light'));
+});
+test('page colour: the ink reads at 4.5:1 or better on every colour (values read from documents.css)', () => {
+  const css = fs.readFileSync(path.join(src, 'documents.css'), 'utf8');
+  const val = (name) => { const m = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,6})`).exec(css); assert.ok(m, `${name} defined`); return L.dlHexRgb(m[1]); };
+  const dark = val('--doc-fixed-ink-light');
+  const light = val('--doc-fixed-ink-dark');
+  for (const p of L.DL_PAPERS) {
+    const fill = val(p.css);
+    const pick = L.dlInkFor(fill, dark, light);
+    assert.equal(pick, p.family === 'light' ? 'dark' : 'light', `${p.id} ink for a ${p.family} colour`);
+    assert.ok(L.dlContrast(fill, pick === 'dark' ? dark : light) >= 4.5, `${p.id} contrast`);
+  }
+  for (const p of L.DL_PAPERS) assert.ok(css.includes(`.sheet[data-paper="${p.id}"]`), `${p.id} has a rule`);
+});
+test('contrast helpers', () => {
+  assert.equal(Math.round(L.dlContrast([0, 0, 0], [255, 255, 255])), 21);
+  assert.equal(L.dlInkFor([255, 255, 255], [0, 0, 0], [255, 255, 255]), 'dark');
+  assert.equal(L.dlInkFor([0, 0, 0], [0, 0, 0], [255, 255, 255]), 'light');
+  assert.equal(L.dlInkFor(null, [0, 0, 0], [1, 1, 1]), null);
+  assert.equal(L.dlInkFor([1, 2], [0, 0, 0], [1, 1, 1]), null);
+  assert.deepEqual(L.dlHexRgb('#f5eedb'), [245, 238, 219]);
+  assert.deepEqual(L.dlHexRgb('#fff'), [255, 255, 255]);
+  assert.equal(L.dlHexRgb('red'), null);
+  assert.equal(L.dlHexRgb(5), null);
+});
 
 if (fails.length) { console.error(`documents lib: ${fails.length} failed, ${passed} passed`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }
 console.log(`documents lib: ${passed} tests passed`);

@@ -1,6 +1,6 @@
   // ---- documents-lib-a-records.js: cleaning the three stored records (no page, no host) ------------------------------------
   //
-  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, by, at, editedBy, editedByName, editedAt }
+  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, paper, by, at, editedBy, editedByName, editedAt }
   //   text:<id>:<c>   { id:<chunk>, doc:<id>, text }
   //   _lock:<id>      { id:'lock', type:'lock', doc, holder, name, at, seq, by }
   // Every record is cleaned on reading as well as on writing: a wrong type, unknown fields dropped, strings cut, control
@@ -39,6 +39,54 @@
     return s.slice(0, n);
   }
 
+  // The page colour: one of a small fixed set, named as the Whiteboard names its fixed backgrounds (--wb-fixed-*), so a later move
+  // to shared tokens is a rename. `css` is the custom property in documents.css that holds the colour (read by name, never a
+  // free string in CSS). A missing or unknown id reads as the default.
+  const DL_PAPERS = Object.freeze([
+    { id: 'light-white', label: 'Pure White', family: 'light', css: '--doc-fixed-light-white' },
+    { id: 'light-creme', label: 'Creme', family: 'light', css: '--doc-fixed-light-creme' },
+    { id: 'light-grey', label: 'Light Grey', family: 'light', css: '--doc-fixed-light-grey' },
+    { id: 'light-blue', label: 'Light Blue', family: 'light', css: '--doc-fixed-light-blue' },
+    { id: 'dark-slate', label: 'Slate', family: 'dark', css: '--doc-fixed-dark-slate' },
+    { id: 'dark-blue', label: 'Dark Blue', family: 'dark', css: '--doc-fixed-dark-blue' },
+    { id: 'dark-black', label: 'Black', family: 'dark', css: '--doc-fixed-dark-black' },
+  ].map((p) => Object.freeze(p)));
+  const DL_PAPER_DEFAULT = 'light-white';
+  const DL_PAPER_BY_ID = new Map(DL_PAPERS.map((p) => [p.id, p]));
+  const dlCleanPaper = (v) => (typeof v === 'string' && DL_PAPER_BY_ID.has(v) ? v : DL_PAPER_DEFAULT);
+  // The colour menu's entries in order: { kind:'heading', label } and { kind:'paper', id, label, css }.
+  function dlPaperMenuModel() {
+    const out = [];
+    for (const family of ['light', 'dark']) {
+      out.push({ kind: 'heading', label: family === 'light' ? 'Light colours' : 'Dark colours' });
+      for (const p of DL_PAPERS) if (p.family === family) out.push({ kind: 'paper', id: p.id, label: p.label, css: p.css });
+    }
+    return out;
+  }
+  // Contrast (WCAG), as the Whiteboard's wbContrast: colours are [r, g, b] (0-255); a ratio from 1 to 21.
+  function dlLuminance(rgb) {
+    const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+  }
+  function dlContrast(a, b) {
+    const x = dlLuminance(a);
+    const y = dlLuminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  // 'dark' or 'light': whichever of the two inks reads better on `fill` (the dark one on a tie); null when a colour is not three numbers.
+  function dlInkFor(fill, dark, light) {
+    const ok = (c) => Array.isArray(c) && c.length === 3 && c.every((n) => Number.isFinite(n));
+    if (!ok(fill) || !ok(dark) || !ok(light)) return null;
+    return dlContrast(fill, dark) >= dlContrast(fill, light) ? 'dark' : 'light';
+  }
+  // "#rrggbb" or "#rgb" to [r, g, b], else null.
+  function dlHexRgb(s) {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(typeof s === 'string' ? s.trim() : '');
+    if (!m) return null;
+    const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  }
+
   const dlIsRecord = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   const dlDocId = (s) => (typeof s === 'string' && /^[a-z0-9]{8,16}$/.test(s) ? s : null);
   const dlChunkId = (s) => (typeof s === 'string' && /^[a-z0-9]{8}$/.test(s) ? s : null);
@@ -67,6 +115,7 @@
     return {
       id, type: 'doc', title, rev, chunks, size,
       excerpt: dlCut(dlCleanLine(v.excerpt, DL.excerptMax * 2), DL.excerptMax),
+      paper: dlCleanPaper(v.paper),
       by, at, editedBy,
       editedByName: dlCleanLine(v.editedByName, DL.nameMax) || 'Someone',
       editedAt,
