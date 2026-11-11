@@ -1598,7 +1598,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
     const m = mod.m;
     if (compositeOf(m)) return compositeMount(mod, frame);
     return mountModule({
-      module: { id: m.id, version: m.version, scope: m.scope, budget: m.budget === true, content: m.content },
+      module: { id: m.id, version: m.version, scope: m.scope, budget: m.budget === true, tags: m.tags === true, content: m.content },
       ...(frame.tagName === 'IFRAME' ? { frame } : { container: frame }),
       chrome: mod.frame,
       onOpenRef: openRef,

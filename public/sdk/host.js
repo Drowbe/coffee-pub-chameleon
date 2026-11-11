@@ -3786,6 +3786,290 @@
   }
   host.live = makeLive();
 
+  // The space's shared tags (plan-tags.md; the rules and the list are the server's, server/tags.js). A module that says
+  // `"tags": true` in its module.json may use them, in a space: the host refuses any other module, an environment page and a
+  // keyed page, and the server decides every call again. An object holds tag ids; the names and colours live in the list, so a
+  // rename reaches every use. Nothing here writes a tag's text into HTML: names are set with textContent.
+  //
+  //   await host.tags.list()                -> [{ id, name, color }] in name order; the SDK keeps it (and keeps it current from
+  //                                            the 'tags' event), so call it once when ready, then chip() and filterOptions() answer at once
+  //   await host.tags.add(name, { color? }) -> the tag: finds the tag of that name or makes it (needs the module's write right
+  //                                            here; never a guest). A refusal rejects with the server's sentence (a bad name, 200 in
+  //                                            the list, no right). `color` is one of the theme's tints, or none.
+  //   host.tags.chip(id)                    -> a tag chip element (.sdk-chip-tag in the tag's tone), or null when the id is not a
+  //                                            tag of this space (deleted, from another space, or list() has not been awaited)
+  //   host.tags.picker(anchor, { selected, max?, create?, onChange }) -> { close(), set(ids) }
+  //                                            a popover under `anchor`: type to filter, tick a tag to add it or take it off, and
+  //                                            "Create 'x'" makes a tag from what was typed (hidden when create is false, as for a
+  //                                            reader). `selected` the object's tag ids; `max` at most 8 (the one rule); onChange(ids)
+  //                                            runs with the ids ticked now, on every change. Only one menu or picker is open at a time.
+  //   host.tags.filterOptions(counts)       -> options for a toolbar 'chips' item (host.toolbar.set): one per tag in `counts`
+  //                                            ({ [id]: number } or a Map), named for the tag, in its tint, with the count. A tag
+  //                                            filter means "has all of them"; the module applies it.
+  //   host.on('tags', ({ op, tag }) => ...) op 'added', 'changed' (renamed or recoloured) or 'removed'; the SDK has already
+  //                                            updated list(). A deleted tag leaves a dead id on objects: chip() returns null for it.
+  // What a tag's name or colour may be, the 8 to an object, 24 characters and 200 to a list are the server's rules; the
+  // picker only stops offering a tick past `max`, and shows the server's sentence for the rest.
+  const TAG_TONES = ['gold', 'blue', 'green', 'teal', 'purple', 'red', 'orange', 'pink'];
+  const TAG_ID = /^[a-z0-9]{8,12}$/;
+  const TAG_MAX = 8;
+  const cleanTagShape = (t) => {
+    if (!t || typeof t !== 'object' || typeof t.id !== 'string' || !TAG_ID.test(t.id)) return null;
+    if (typeof t.name !== 'string' || !t.name || [...t.name].length > 24) return null;
+    return { id: t.id, name: t.name, color: TAG_TONES.includes(t.color) ? t.color : '' };
+  };
+  const byTagName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  function makeTags() {
+    let cache = null; // Map id -> tag, once listed
+    let loading = null;
+    const watchers = new Set();
+    const tell = () => { for (const fn of [...watchers]) { try { fn(); } catch (err) { console.error(err); } } };
+    const sorted = () => (cache ? [...cache.values()].sort(byTagName) : []);
+    const load = () => call('tags.list').then((list) => {
+      cache = new Map();
+      for (const t of Array.isArray(list) ? list : []) { const c = cleanTagShape(t); if (c) cache.set(c.id, c); }
+      tell();
+      return sorted();
+    }).finally(() => { loading = null; });
+    // Registered first, so the list is current before any module listener hears the event.
+    host.on('tags', (e) => {
+      const t = cleanTagShape(e && e.tag);
+      if (!t || !cache) return;
+      if (e.op === 'removed') cache.delete(t.id);
+      else if (e.op === 'added' || e.op === 'changed') cache.set(t.id, t);
+      else return;
+      tell();
+    });
+    const chip = (id) => {
+      const t = typeof id === 'string' && cache ? cache.get(id) : null;
+      if (!t) return null;
+      const el = document.createElement('span');
+      el.className = 'sdk-chip-tag';
+      el.dataset.tone = t.color ? 'custom' : 'neutral';
+      if (t.color) el.dataset.tagTone = t.color;
+      el.dataset.tag = t.id;
+      const label = document.createElement('span');
+      label.className = 'sdk-chip-label';
+      label.textContent = t.name;
+      el.appendChild(label);
+      return el;
+    };
+
+    function picker(anchor, o) {
+      const opts = o && typeof o === 'object' ? o : {};
+      if (!anchor || anchor.nodeType !== 1) throw new Error('host.tags.picker needs an element to open under');
+      const reopening = openMenu && openMenu.id === 'tags-picker';
+      closeMenu();
+      if (reopening) return { close: closeMenu, set() {} };
+      const max = Number.isInteger(opts.max) && opts.max >= 1 ? Math.min(opts.max, TAG_MAX) : TAG_MAX;
+      const mayCreate = opts.create !== false;
+      let ticked = [...new Set(Array.isArray(opts.selected) ? opts.selected.filter((s) => typeof s === 'string') : [])];
+      let query = '';
+      let said = '';
+      let busy = false;
+      let loadFailed = '';
+      const changed = () => { if (typeof opts.onChange === 'function') { try { opts.onChange(ticked.filter((id) => !cache || cache.has(id))); } catch (err) { console.error(err); } } };
+
+      const editor = editorAt(anchor);
+      const container = editor || (env.root === document ? document.body : env.root);
+      const menu = document.createElement('div');
+      menu.className = 'sdk-menu sdk-tag-picker';
+      menu.setAttribute('role', 'dialog');
+      menu.setAttribute('aria-label', 'Tags');
+      const search = document.createElement('div');
+      search.className = 'sdk-search';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.placeholder = mayCreate ? 'Find or add a tag' : 'Find a tag';
+      input.setAttribute('aria-label', input.placeholder);
+      input.maxLength = 60;
+      search.appendChild(input);
+      const list = document.createElement('div');
+      list.className = 'sdk-tag-picker-list';
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Tags');
+      const status = document.createElement('p');
+      status.className = 'sdk-menu-hint sdk-tag-picker-status';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      menu.append(search, list, status);
+
+      const normal = (s) => s.trim().toLowerCase().replace(/\s+/g, '-');
+      const rows = () => [...list.querySelectorAll('.sdk-menu-item')];
+      function row(label, onClick, { tone = '', on = false, create = false } = {}) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sdk-menu-item';
+        b.setAttribute('role', create ? 'menuitem' : 'menuitemcheckbox');
+        if (!create) b.setAttribute('aria-checked', on ? 'true' : 'false');
+        if (!create) {
+          const dot = document.createElement('span');
+          dot.className = 'sdk-chip-dot';
+          dot.dataset.tone = tone ? 'custom' : 'neutral';
+          if (tone) dot.dataset.tagTone = tone;
+          b.appendChild(dot);
+        }
+        const text = document.createElement('span');
+        text.className = 'sdk-menu-label';
+        text.textContent = label;
+        b.appendChild(text);
+        if (on && !create) {
+          const tick = document.createElement('span');
+          tick.className = 'sdk-menu-icon';
+          tick.setAttribute('aria-hidden', 'true');
+          b.appendChild(tick);
+          menuIcon('check').then((svg) => { if (svg) tick.innerHTML = svg; });
+        }
+        b.addEventListener('click', onClick);
+        return b;
+      }
+      function draw() {
+        const q = normal(query);
+        list.replaceChildren();
+        const shown = sorted().filter((t) => !q || t.name.includes(q));
+        for (const t of shown) {
+          list.appendChild(row(t.name, () => toggle(t.id), { tone: t.color, on: ticked.includes(t.id) }));
+        }
+        const exact = Boolean(q) && sorted().some((t) => t.name === q);
+        if (mayCreate && q && !exact && cache) list.appendChild(row(`Create "${query.trim().slice(0, 40)}"`, () => make(query), { create: true }));
+        if (!list.children.length) {
+          const none = document.createElement('p');
+          none.className = 'sdk-menu-hint';
+          none.textContent = loadFailed ? '' : !cache ? 'Loading tags' : q ? 'No tag matches.' : 'No tags yet.';
+          list.appendChild(none);
+        }
+        status.textContent = loadFailed || said;
+        status.hidden = !status.textContent;
+        place();
+      }
+      function toggle(id) {
+        said = '';
+        if (ticked.includes(id)) ticked = ticked.filter((x) => x !== id);
+        else if (ticked.filter((x) => !cache || cache.has(x)).length >= max) said = `Up to ${max} tags on one ${host.util.word('object')}.`;
+        else ticked = [...ticked, id];
+        if (!said) changed();
+        draw();
+      }
+      async function make(text) {
+        if (busy) return;
+        busy = true;
+        said = 'Making the tag.';
+        draw();
+        try {
+          const tag = await tags.add(text);
+          said = '';
+          query = '';
+          input.value = '';
+          if (!ticked.includes(tag.id)) {
+            if (ticked.filter((x) => !cache || cache.has(x)).length >= max) said = `Made "${tag.name}". Up to ${max} tags on one ${host.util.word('object')}.`;
+            else { ticked = [...ticked, tag.id]; changed(); }
+          }
+        } catch (err) {
+          said = (err && err.message) || 'The tag could not be made.'; // the server's own sentence
+        } finally {
+          busy = false;
+        }
+        draw();
+        input.focus();
+      }
+
+      const bounds = () => {
+        const modBox = env.rootElement.getBoundingClientRect();
+        return { box: editor ? { left: 0, top: 0 } : modBox, w: editor ? window.innerWidth : env.rootElement.clientWidth || 400, h: editor ? window.innerHeight : env.rootElement.clientHeight || 400 };
+      };
+      function place() {
+        const { box, w, h } = bounds();
+        if (bounds().w <= 640) menu.classList.add('narrow'); else menu.classList.remove('narrow');
+        const r = anchor.getBoundingClientRect();
+        let x = r.left - box.left;
+        let y = r.bottom - box.top + 4;
+        if (y + menu.offsetHeight > h) y = r.top - box.top - menu.offsetHeight - 4;
+        x = Math.max(4, Math.min(x, w - menu.offsetWidth - 4));
+        y = Math.max(4, Math.min(y, h - menu.offsetHeight - 4));
+        menu.style.left = `${box.left + x}px`;
+        menu.style.top = `${box.top + y}px`;
+      }
+
+      input.addEventListener('input', () => { query = input.value; said = ''; draw(); });
+      const active = () => (env.root && env.root.activeElement) || document.activeElement;
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); return; }
+        if (e.key === 'Tab') { closeMenu(); return; }
+        const now = active();
+        if (!now || !menu.contains(now)) return;
+        const stops = [input, ...rows()];
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          const at = stops.indexOf(now);
+          stops[menuStep(stops.length, at, e.key === 'ArrowDown' ? 1 : -1)].focus();
+        } else if (e.key === 'Enter' && now === input) {
+          e.preventDefault();
+          // Enter in an empty box does nothing. With text it ticks the tag named exactly that, else the first match; it makes a
+          // tag only when nothing matches and the person may (the one row left is "Create").
+          const q = normal(query);
+          if (!q) return;
+          const target = rows().find((b) => b.getAttribute('role') === 'menuitemcheckbox' && b.textContent === q) || rows()[0];
+          if (target) target.click();
+        }
+      };
+      const onOutside = (e) => { if (!menu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) closeMenu(); };
+      watchers.add(draw);
+      document.addEventListener('keydown', onKey, true);
+      env.root.addEventListener('pointerdown', onOutside, true);
+      container.appendChild(menu);
+      openMenu = {
+        id: 'tags-picker',
+        menu,
+        cleanup: () => {
+          watchers.delete(draw);
+          menu.remove();
+          document.removeEventListener('keydown', onKey, true);
+          env.root.removeEventListener('pointerdown', onOutside, true);
+          try { anchor.focus(); } catch (err) { /* not focusable */ }
+        },
+      };
+      draw();
+      input.focus();
+      if (!cache) readyPromise.then(() => tags.list()).then(() => {}, (err) => { loadFailed = (err && err.message) || 'The tags could not be read.'; if (openMenu && openMenu.menu === menu) draw(); });
+      return {
+        close: closeMenu,
+        set(ids) { ticked = [...new Set(Array.isArray(ids) ? ids.filter((s) => typeof s === 'string') : [])]; if (openMenu && openMenu.menu === menu) draw(); },
+      };
+    }
+
+    const tags = {
+      list: ({ fresh } = {}) => {
+        if (cache && fresh !== true) return Promise.resolve(sorted());
+        if (!loading) loading = readyPromise.then(load);
+        return loading;
+      },
+      add: async (name, options) => {
+        if (typeof name !== 'string') throw Object.assign(new Error('A tag needs a name.'), { status: 400 });
+        const color = options && typeof options === 'object' && typeof options.color === 'string' ? options.color : '';
+        if (color && !TAG_TONES.includes(color)) throw Object.assign(new Error(`A tag's colour must be one of ${TAG_TONES.join(', ')}, or left plain.`), { status: 400 });
+        await readyPromise;
+        const tag = cleanTagShape(await call('tags.add', { name, color }));
+        if (!tag) throw Object.assign(new Error('The server did not send a tag.'), { status: 502 });
+        if (cache) { cache.set(tag.id, tag); tell(); }
+        return tag;
+      },
+      chip,
+      picker,
+      filterOptions: (counts) => {
+        const have = counts instanceof Map ? counts : new Map(Object.entries(counts && typeof counts === 'object' ? counts : {}));
+        return sorted().filter((t) => have.has(t.id)).map((t) => {
+          const n = Math.floor(Number(have.get(t.id)));
+          return { id: t.id, label: t.name, default: false, ...(Number.isFinite(n) && n >= 0 ? { count: n } : {}), ...(t.color ? { tint: t.color } : {}) };
+        });
+      },
+    };
+    return tags;
+  }
+  host.tags = makeTags();
+
   const destinationApi = {
     onState: (fn) => {
       let heard = false;

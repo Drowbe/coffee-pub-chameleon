@@ -36,6 +36,7 @@
 // budgetEntryProblem, budgetWanted) touch no
 // document, so tools/check-nav.mjs runs them in node; the page hands the panel what it needs (createSpaceSetup's `deps`).
 import { actionBar } from './action-bar.js';
+import { confirmDialog } from './confirm.js';
 import { mountSees, fullSees, sameSees } from './ai-sees.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
 
@@ -442,8 +443,126 @@ export function createSpaceSetup(deps) {
       parts.push(sectionHtml('ai', '<i class="fa-solid fa-wand-magic-sparkles fa-fw" aria-hidden="true"></i> AI', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Turn AI off in this ${esc(spaceWord())}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-off"></label><p class="hint">${esc(modulesWord(true))} here can use the server's AI service to summarise and answer questions. Turned off, nobody here can, whatever the roles allow. Saved with Save.</p>`, { hidden: true }));
       parts.push(sectionHtml('ai-sees', 'What AI may see', `<p class="hint">What goes to the AI with a question in this ${esc(spaceWord())}. This only narrows it: the AI never sees what the person asking could not open. Saved with Save.</p><label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label" id="setup-ai-sees-follow-label">Same as the ${esc(word('environment'))}'s choice</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-sees-follow"></label><div id="setup-ai-sees-box"></div>`, { hidden: true }));
     }
+    if (!state.space.isLobby) parts.push(tagsSectionHtml());
     parts.push(sectionHtml('module-settings', `${esc(word('module', { cap: true }))} settings`, `<p class="hint">What each ${esc(word('module'))} does in this ${esc(spaceWord())}. Saved with Save; deleting a file happens at once.</p><div class="setup-module-settings" id="setup-module-settings"><p class="hint">Loading…</p></div>`));
     return parts.join('');
+  }
+
+  // Tags (plan-tags.md, decisions 4 and 8): the space's shared tag list, renamed, recoloured and deleted here by the people the
+  // Roles grid lets (the "Rename, recolour and delete tags" right: moderators and owners by default, the admin always). Not a
+  // draft: each change goes to the server at once (PATCH or DELETE /api/spaces/:id/tags/:tag) and the server decides and
+  // answers in a sentence; a tag is made from a module's tag picker, not here. A name is set with textContent or .value.
+  const TAG_TONES = ['gold', 'blue', 'green', 'teal', 'purple', 'red', 'orange', 'pink'];
+  function tagsSectionHtml() {
+    return sectionHtml('tags', 'Tags', `<p class="hint">The shared tags of this ${esc(spaceWord())}, used by every ${esc(word('module'))} that has them. A change happens at once and does not wait for Save. A new name or colour shows on everything tagged; deleting a tag takes it off everything.</p><div class="setup-tags" id="setup-tags" role="list"><p class="hint">Loading…</p></div><p class="setup-tags-status status" id="setup-tags-status" role="status" aria-live="polite"></p>`);
+  }
+  const tagsPath = (spaceId, tag = '') => `/api/spaces/${encodeURIComponent(spaceId)}/tags${tag ? `/${encodeURIComponent(tag)}` : ''}`;
+  function tagsSay(words, bad = false) {
+    const s = q('#setup-tags-status');
+    if (!s) return;
+    s.textContent = '';
+    s.textContent = words;
+    s.classList.toggle('bad', bad);
+  }
+  function paintTags() {
+    const box = q('#setup-tags');
+    if (!box || !state.tags) return;
+    const may = state.tagsManage === true;
+    box.replaceChildren();
+    if (!state.tags.length) {
+      const none = doc.createElement('p');
+      none.className = 'hint';
+      none.textContent = `No tags yet. They are made from a ${word('module')}'s tag picker.`;
+      box.appendChild(none);
+      return;
+    }
+    for (const t of state.tags) {
+      const row = doc.createElement('div');
+      row.className = 'setup-tag-row';
+      row.setAttribute('role', 'listitem');
+      row.dataset.tag = t.id;
+      if (!may) {
+        const chip = doc.createElement('span');
+        chip.className = 'sdk-chip-tag';
+        chip.dataset.tone = t.color ? 'custom' : 'neutral';
+        if (t.color) chip.dataset.tagTone = t.color;
+        chip.textContent = t.name;
+        row.appendChild(chip);
+        box.appendChild(row);
+        continue;
+      }
+      const name = doc.createElement('input');
+      name.type = 'text';
+      name.className = 'setup-tag-name';
+      name.maxLength = 24;
+      name.autocomplete = 'off';
+      name.value = t.name;
+      name.setAttribute('aria-label', `Name of the tag ${t.name}`);
+      name.addEventListener('change', () => changeTag(t, { name: name.value }, name));
+      const tone = doc.createElement('select');
+      tone.className = 'setup-tag-tone';
+      tone.setAttribute('aria-label', `Colour of the tag ${t.name}`);
+      for (const c of ['', ...TAG_TONES]) {
+        const o = doc.createElement('option');
+        o.value = c;
+        o.textContent = c ? c[0].toUpperCase() + c.slice(1) : 'Plain';
+        tone.appendChild(o);
+      }
+      tone.value = t.color || '';
+      tone.addEventListener('change', () => changeTag(t, { color: tone.value }, tone));
+      const del = doc.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-small btn-danger';
+      del.setAttribute('aria-label', `Delete the tag ${t.name}`);
+      del.textContent = 'Delete';
+      del.addEventListener('click', () => deleteTag(t));
+      row.append(name, tone, del);
+      box.appendChild(row);
+    }
+  }
+  async function changeTag(tag, patch, field) {
+    const spaceId = state.space.id;
+    try {
+      const answer = await api('PATCH', tagsPath(spaceId, tag.id), patch);
+      if (!state || state.space.id !== spaceId) return;
+      state.tags = state.tags.map((t) => (t.id === tag.id ? { id: answer.tag.id, name: answer.tag.name, color: answer.tag.color } : t)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      tagsSay(patch.name !== undefined ? `Renamed to ${answer.tag.name}.` : 'Colour changed.');
+      paintTags();
+    } catch (err) {
+      tagsSay(err.message, true); // the server's sentence
+      paintTags(); // the field goes back to what is kept
+      if (field) { const again = q(`.setup-tag-row[data-tag="${tag.id}"] ${field.tagName === 'SELECT' ? 'select' : 'input'}`); if (again) again.focus(); }
+    }
+  }
+  async function deleteTag(tag) {
+    const spaceId = state.space.id;
+    const yes = await confirmDialog({ title: `Delete the tag ${tag.name}?`, message: `It is taken off everything that uses it, in every ${word('module')}. This can't be undone.`, action: 'Delete', kind: 'destructive' }, doc).catch(() => false);
+    if (!yes || !state || state.space.id !== spaceId) return;
+    try {
+      await api('DELETE', tagsPath(spaceId, tag.id));
+      if (!state || state.space.id !== spaceId) return;
+      state.tags = state.tags.filter((t) => t.id !== tag.id);
+      tagsSay(`Deleted the tag ${tag.name}.`);
+      paintTags();
+      const next = q('#setup-tags .setup-tag-name') || q('#setup-content-modules');
+      if (next) next.focus();
+    } catch (err) {
+      tagsSay(err.message, true);
+    }
+  }
+  async function loadTags(space) {
+    if (!q('#setup-tags')) return;
+    const [list, me] = await Promise.all([
+      api('GET', tagsPath(space.id)).then((r) => r.tags || []).catch((err) => { tagsSay(err.message, true); return null; }),
+      api('GET', '/api/me').then((r) => r.user || null).catch(() => null),
+    ]);
+    if (!state || state.space.id !== space.id || !list) return;
+    // Who may change them is the server's to say on each call; this only decides whether the fields are drawn, from the person's
+    // own rights here (an owner and the admin always; else the right the Roles grid gives their role in this space).
+    const { role, spaces: mine } = me || {};
+    state.tagsManage = role === 'admin' || role === 'owner' || Boolean(mine && mine[space.id] && mine[space.id].effective && mine[space.id].effective.manageTags);
+    state.tags = list.map((t) => ({ id: t.id, name: t.name, color: t.color }));
+    paintTags();
   }
 
   // The Modules tab (id `show`): the menu is drawn into #setup-show; an owner and the admin read at its foot where modules are turned on.
@@ -1294,7 +1413,7 @@ export function createSpaceSetup(deps) {
     loadOptions().then(() => { if (state && state.space.id === space.id) { if (q('#setup-opens-with')) paintOpensWith(); if (q('#setup-first-visit')) paintLayouts(); paintBudgetSection(); refresh(); } });
     if (state.owner) loadOwnerParts(space);
     else if (opts.moderator && !space.isLobby) loadModeratorParts(space);
-    if (state.tabs.includes('modules')) loadModuleSettings(space);
+    if (state.tabs.includes('modules')) { loadModuleSettings(space); if (!space.isLobby) loadTags(space); }
     return true;
   }
   // The keyboard goes to the tab's first field: the name, the first member's switch, the first phase's start (or the
