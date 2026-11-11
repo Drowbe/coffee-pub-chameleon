@@ -23,7 +23,7 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
-  'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
+  'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
@@ -717,6 +717,35 @@ test('tags: the filter is AND over the chosen tags, ignores dead ones, and count
   assert.ok(!L.dlTagsMatch([], [T3], known));
   const c = L.dlTagCounts([[T1, T2], [T1, 'deleted01'], []], known);
   assert.equal(c.get(T1), 2); assert.equal(c.get(T2), 1); assert.ok(!c.has('deleted01'));
+});
+
+test('resync: the list state redraws the list', () => {
+  const p = L.dlResyncPlan({ state: 'list', shownRev: 0, rec: null, ok: true });
+  assert.ok(p.apply && p.redrawList && !p.redrawReading && !p.checkLock && !p.touchText);
+});
+test('resync: reading replaces only on a higher rev', () => {
+  assert.ok(L.dlResyncPlan({ state: 'reading', shownRev: 2, rec: { rev: 3 }, ok: true }).redrawReading);
+  assert.ok(!L.dlResyncPlan({ state: 'reading', shownRev: 3, rec: { rev: 3 }, ok: true }).redrawReading);
+  assert.ok(!L.dlResyncPlan({ state: 'reading', shownRev: 4, rec: { rev: 3 }, ok: true }).redrawReading);
+  const gone = L.dlResyncPlan({ state: 'reading', shownRev: 3, rec: null, ok: true });
+  assert.ok(gone.closeReading && !gone.redrawReading);
+});
+test('resync: editing never replaces the text, whatever the stored rev', () => {
+  for (const rec of [null, { rev: 1 }, { rev: 99 }]) {
+    const p = L.dlResyncPlan({ state: 'editing', shownRev: 1, rec, ok: true });
+    assert.ok(p.apply && p.checkLock && !p.touchText && !p.redrawReading && !p.redrawList && !p.closeReading);
+  }
+});
+test('resync: a failed read leaves everything as it was', () => {
+  for (const state of ['list', 'reading', 'editing']) {
+    const p = L.dlResyncPlan({ state, shownRev: 1, rec: { rev: 9 }, ok: false });
+    assert.ok(Object.values(p).every((v) => v === false), state);
+  }
+});
+test('resync: a gap after hiding is more than 30 s', () => {
+  assert.ok(L.dlResyncAfterHidden(1000, 32000));
+  assert.ok(!L.dlResyncAfterHidden(1000, 31000));
+  assert.ok(!L.dlResyncAfterHidden(0, 99999));
 });
 
 await Promise.all(pending);
