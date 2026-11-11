@@ -1,6 +1,6 @@
   // ---- documents-lib-a-records.js: cleaning the three stored records (no page, no host) ------------------------------------
   //
-  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, paper, by, at, editedBy, editedByName, editedAt }
+  //   doc:<id>        { id, type:'doc', title, rev, chunks, size, excerpt, preview?, paper, by, at, editedBy, editedByName, editedAt }
   //   text:<id>:<c>   { id:<chunk>, doc:<id>, text }
   //   _lock:<id>      { id:'lock', type:'lock', doc, holder, name, at, seq, by }
   // Every record is cleaned on reading as well as on writing: a wrong type, unknown fields dropped, strings cut, control
@@ -10,6 +10,7 @@
     titleMax: 120,
     nameMax: 40,
     excerptMax: 300,
+    previewMax: 400,
     sizeMax: 150000,
     chunksMax: 6,
     chunkJson: 48000, // a chunk record's serialized JSON, measured, never estimated
@@ -30,6 +31,20 @@
     const t = s.replace(DL_INVISIBLE, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/ {2,}/g, ' ').trim();
     return dlCut(t, max).trim();
   };
+  // The first lines of a text as short plain Markdown, for a thumbnail: cleaned, at most previewMax characters, cut at a line
+  // boundary where there is one (a cut that keeps at least a quarter of the allowance), never inside a surrogate pair.
+  function dlPreview(text) {
+    const t = dlCleanText(text).replace(/^\n+/, '');
+    if (t.length <= DL.previewMax) return t.trimEnd();
+    const cut = dlCut(t, DL.previewMax);
+    const nl = cut.lastIndexOf('\n');
+    return (nl >= DL.previewMax / 4 && t[cut.length] !== '\n' ? cut.slice(0, nl) : cut).trimEnd();
+  }
+  // A preview read from a record: never trusted, cleaned again and capped (a stray type, or none, is nothing).
+  const dlCleanPreview = (v) => (typeof v === 'string' ? dlPreview(v.slice(0, DL.previewMax * 2)) : '');
+  // What a thumbnail shows: the preview, else (a record saved before previews) the excerpt.
+  const dlThumbText = (rec) => (rec && (rec.preview || rec.excerpt)) || '';
+
   // Cut to `max` characters without splitting a surrogate pair.
   function dlCut(s, max) {
     if (s.length <= max) return s;
@@ -112,9 +127,11 @@
     const at = dlTime(v.at);
     const editedAt = dlTime(v.editedAt);
     if (!by || !editedBy || !at || !editedAt) return null;
+    const preview = dlCleanPreview(v.preview);
     return {
       id, type: 'doc', title, rev, chunks, size,
       excerpt: dlCut(dlCleanLine(v.excerpt, DL.excerptMax * 2), DL.excerptMax),
+      ...(preview ? { preview } : {}),
       paper: dlCleanPaper(v.paper),
       by, at, editedBy,
       editedByName: dlCleanLine(v.editedByName, DL.nameMax) || 'Someone',
