@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documents</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<!--
+  Two states in one window: #list (the documents, or the trash) and #read (one document, rendered). The script fills them;
+  nothing a person wrote is ever set as HTML. #note is a short line for a refusal or a notice.
+-->
+<div id="app" class="app sdk-slot" hidden>
+  <p class="sdk-form-error" id="note" role="status" hidden></p>
+  <section id="list" class="view" aria-label="Documents">
+    <div class="bar">
+      <label class="sdk-search"><input id="search" type="search" placeholder="Search documents" aria-label="Search documents" autocomplete="off"></label>
+      <button type="button" class="btn btn-primary btn-small" id="new" hidden>New document</button>
+      <button type="button" class="btn btn-quiet btn-small" id="trash-toggle" hidden>Trash</button>
+    </div>
+    <form id="make" class="bar make" hidden>
+      <input id="make-title" type="text" maxlength="120" placeholder="Title" aria-label="Title of the new document" autocomplete="off">
+      <button type="submit" class="btn btn-primary btn-small">Create</button>
+      <button type="button" class="btn btn-quiet btn-small" id="make-cancel">Cancel</button>
+    </form>
+    <ul id="rows" class="rows"></ul>
+    <p id="size" class="meta size"></p>
+  </section>
+  <section id="read" class="view" aria-label="Document" hidden>
+    <div class="bar">
+      <button type="button" class="btn btn-quiet btn-small" id="back">Back</button>
+      <h2 id="read-title" class="read-title"></h2>
+      <button type="button" class="btn btn-quiet btn-small" id="rename" hidden>Rename</button>
+      <button type="button" class="btn btn-quiet btn-small" id="remove" hidden>Delete</button>
+    </div>
+    <form id="renamer" class="bar make" hidden>
+      <input id="rename-title" type="text" maxlength="120" aria-label="New title" autocomplete="off">
+      <button type="submit" class="btn btn-primary btn-small">Save</button>
+      <button type="button" class="btn btn-quiet btn-small" id="rename-cancel">Cancel</button>
+    </form>
+    <p id="read-meta" class="meta"></p>
+    <article id="page" class="page" tabindex="0"></article>
+  </section>
+</div>
+<div id="loading" class="msg" aria-busy="true"><div class="sdk-skel-list"><div class="sdk-skel sdk-skel-block"></div><div class="sdk-skel sdk-skel-block"></div></div></div>
+<div id="msg" class="sdk-empty" hidden></div>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>
