@@ -1,0 +1,47 @@
+{
+  "id": "documents",
+  "name": "Documents",
+  "version": "0.1.0",
+  "icon": "file-lines",
+  "color": "purple",
+  "description": "Shared notes for the {space}: session notes, handouts and plans. One person edits at a time and everyone reads along.",
+  "author": "Coffee Pub",
+  "scope": [
+    "space"
+  ],
+  "surfaces": {
+    "canvas": {
+      "entry": "canvas.html",
+      "width": 560,
+      "height": 640,
+      "mode": [
+        "dock",
+        "float"
+      ]
+    }
+  },
+  "permissions": [
+    {
+      "key": "view",
+      "label": "See the documents",
+      "default": {
+        "member": true,
+        "guest": true,
+        "moderator": true
+      }
+    },
+    {
+      "key": "edit",
+      "label": "Write and change documents",
+      "default": {
+        "member": true,
+        "guest": false,
+        "moderator": true
+      }
+    }
+  ],
+  "access": {
+    "read": "view",
+    "write": "edit"
+  }
+}

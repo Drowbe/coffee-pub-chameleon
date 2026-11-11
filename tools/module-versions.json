@@ -11,6 +11,10 @@
     "version": "1.24.39",
     "hash": "801c25a5b9a22e11"
   },
+  "documents": {
+    "version": "0.1.0",
+    "hash": "f538d0f4f771ba39"
+  },
   "maps": {
     "version": "0.9.15",
     "hash": "6931e39de5f68c99"
