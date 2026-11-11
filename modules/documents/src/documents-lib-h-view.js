@@ -71,6 +71,21 @@ function dlPageGeometry(id) {
 // Fit width on a Paper sheet: the scale that makes the page as wide as the window, never more than twice its size.
 const DL_PAGE_FIT_MAX = 2;
 const dlPageFit = (avail, pageW) => (Number.isFinite(avail) && avail > 0 && pageW > 0 ? Math.min(DL_PAGE_FIT_MAX, avail / pageW) : 1);
+// The narrow floor: Fit width never takes a page below 60% of its width; a window narrower than that draws a Paper document as Fluid.
+// `was` is the state now; it leaves the fallback only at DL_PAGE_HYST px above the floor, so a width on the threshold cannot flip it back and forth.
+const DL_PAGE_FLOOR = 0.6;
+const DL_PAGE_HYST = 8;
+function dlPaperNarrow(avail, pageW, was) {
+  if (!Number.isFinite(avail) || avail <= 0 || !(pageW > 0)) return Boolean(was);
+  const floor = DL_PAGE_FLOOR * pageW;
+  return was ? avail < floor + DL_PAGE_HYST : avail < floor;
+}
+// A Paper tile's preview: the text up to a manual break line (the break itself is not drawn).
+function dlThumbPreview(text) {
+  const lines = String(text || '').split('\n');
+  const at = lines.findIndex((l) => l.trim() === DL_PAGE_BREAK_LINE);
+  return (at < 0 ? lines : lines.slice(0, at)).join('\n').trimEnd();
+}
 
 // ---- the layout: Fluid or Paper (the document's own, kept in its record; the shared view switch in the editing bar) ----------------
 const DL_LAYOUTS = Object.freeze([{ id: 'fluid', label: 'Fluid', icon: 'align-justify' }, { id: 'paper', label: 'Paper', icon: 'file' }]);

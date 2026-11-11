@@ -37,6 +37,7 @@
 .thumb-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-medium); }
 .sheet.thumb { zoom: 1; width: 100%; max-width: 100%; height: 11rem; padding: var(--space-3); margin: 0 0 var(--space-1); overflow: hidden; position: relative; pointer-events: none; }
 .thumb-main:hover .thumb { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
+.sheet.thumb[data-layout="paper"] { width: auto; height: 11rem; aspect-ratio: var(--thumb-ar); max-width: 100%; padding: var(--thumb-m); margin: 0 auto var(--space-1); }
 .thumb::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3rem; background: linear-gradient(to bottom, transparent, var(--doc-paper)); }
 .thumb .page { font-size: calc(var(--text-14) * 0.6); line-height: 1.4; }
 .thumb .page h1, .thumb .page h2, .thumb .page h3, .thumb .page h4 { font-size: 1.25em; margin: 0 0 0.4em; }
@@ -68,8 +69,8 @@
    the sheet); at a zoom level it keeps the page's width and scrolls sideways when the window is narrower. The colour, ink and edge
    are the sheet's own, as in Fluid. */
 /* a scrollbar that comes and goes would change the width the page is fitted to, and so the page's height, and so the scrollbar */
-.view:has(.sheet[data-layout="paper"]) { scrollbar-gutter: stable; }
-.sheet[data-layout="paper"] { width: var(--doc-page-w); max-width: none; padding: var(--doc-page-m); }
+.view:has(.sheet[data-layout="paper"]:not([data-narrow])) { scrollbar-gutter: stable; }
+.sheet[data-layout="paper"]:not([data-narrow]) { width: var(--doc-page-w); max-width: none; padding: var(--doc-page-m); }
 
 /* the reading view's pages (the script sets data-paged on the sheet, which then only holds them): each page is a sheet of the page's size
    with its margins, in the document's colour; the gap between them is the page background. A block taller than a page makes its page
