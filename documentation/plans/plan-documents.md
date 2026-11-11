@@ -27,9 +27,16 @@ Thomas, 2026-11-11, asked directly.
 6. **Access:** editors edit; everyone views, including a person who may only view and a guest where the module's permission rules allow it. The same as the Whiteboard.
 7. **Export:** a Markdown file, and Print / Save as PDF.
 
+### Decisions by Thomas, 2026-11-11
+
+These bind every library named below. A licence or a library in this plan that breaks them is out, whatever its lean.
+
+8. **Licence.** Chameleon is commercial and will not pay for a licence. Every vendored library must be MIT, Apache-2.0, BSD, ISC or MPL-2.0 only. No GPL, AGPL or LGPL, no source-available and no paid libraries. Each licence is confirmed from the library's own `LICENSE` file (not from memory), listed in `THIRD-PARTY.md`, and a check fails otherwise. *Reason:* a commercial product cannot carry a licence it would have to pay for or open its source for.
+9. **No outside service.** Everything is vendored and self-hosted: no CDN scripts, fonts or CSS; no keys or accounts; no telemetry or licence checks; no remote rendering (maths, diagrams); no outside image or link fetching at render time. The spike runs with outbound network blocked, and a check scans the vendored files for outside URLs they would load. *Reason:* the product is self-hosted and must work, and keep a client's text private, with nothing outside it.
+
 ## Options and tradeoffs
 
-Each choice lists what it costs and rules out. The lean is a suggestion for Thomas to accept or change.
+Each choice lists what it costs and rules out. The lean is a suggestion for Thomas to accept or change. Every licence named below is **(memory), to confirm in the spike** from the library's own `LICENSE` file; decisions 8 and 9 apply to all of them. A library whose licence is not on the allowed list, or that needs an outside service, is out.
 
 ### Storage
 
@@ -47,9 +54,9 @@ Each choice lists what it costs and rules out. The lean is a suggestion for Thom
 
 **E1. A text box that holds Markdown, with a formatting bar and a rendered preview.** The text is the stored form. The bar is the Whiteboard's `lib-j-markup` idea (each button takes `{ value, start, end }` and returns it changed), extended with Heading, Quote, Checklist, Insert table (a skeleton to fill in) and Maths. Smallest by far, nothing to vendor for editing, works on a phone's own keyboard. Costs: a person sees Markdown marks while writing, and a table is typed as pipes. This is the weak point for people who are not technical.
 
-**E2. A vendored source editor (CodeMirror 6, MIT** **(memory)**). Better selection, folding and highlighting in the source. Needs a bundle built once outside the repository and committed (as MapLibre is for Maps). Still Markdown on the screen, and it is not the editor Thomas named for the later step, so it would be thrown away at co-editing.
+**E2. A vendored source editor (CodeMirror 6, MIT, to confirm in the spike). Better selection, folding and highlighting in the source. Needs a bundle built once outside the repository and committed (as MapLibre is for Maps). Still Markdown on the screen, and it is not the editor Thomas named for the later step, so it would be thrown away at co-editing.
 
-**E3. A rich-text editor now (ProseMirror, MIT** **(memory)** **, with Markdown reading and writing, tables, task lists and a maths node).** A person sees the result as they type, and this is the editor the later step needs anyway. Costs: the most work before first use (a schema for every block, an object-link node, a table editor, phone behaviour), a larger vendored bundle, and the Markdown conversion must round-trip.
+**E3. A rich-text editor now (ProseMirror, MIT, to confirm in the spike, with Markdown reading and writing, tables, task lists and a maths node).** A person sees the result as they type, and this is the editor the later step needs anyway. Costs: the most work before first use (a schema for every block, an object-link node, a table editor, phone behaviour), a larger vendored bundle, and the Markdown conversion must round-trip.
 
 *Lean:* **E1 for the first release, E3 together with co-editing.** The stored form is Markdown in both, so export stays trivial and the editor can change without touching the data. Changing the editor and the sync in one step is one change, not two. The risk is that tutors and clients find E1 too raw; the spike asks for a real tutor's reaction before this is final.
 
@@ -57,19 +64,21 @@ Each choice lists what it costs and rules out. The lean is a suggestion for Thom
 
 Because the module runs in the page with the viewer's session, a document that can run script is a stored attack on every reader, and every editor is trusted by nobody but the person who gave them the role. The rules do not depend on the editor.
 
-**R1. Parse to tokens and build the page with the DOM, never with HTML text.** A parser (`marked`, MIT **(memory)**; `markdown-it` is the other) is used only to make tokens. The module walks the tokens and makes elements with `createElement` and `textContent`. A raw HTML token is shown as text. A link's address is checked against an allow-list (`http:`, `https:`, `mailto:` and the `object:` form below); anything else is shown as plain text. Nothing a person wrote is ever set as `innerHTML`. The one exception is maths, whose output comes from the maths library, not from the text.
+**R1. Parse to tokens and build the page with the DOM, never with HTML text.** A parser (`marked`, MIT, to confirm in the spike; `markdown-it`, MIT, is the other) is used only to make tokens. The module walks the tokens and makes elements with `createElement` and `textContent`. A raw HTML token is shown as text. A link's address is checked against an allow-list (`http:`, `https:`, `mailto:` and the `object:` form below); anything else is shown as plain text. Nothing a person wrote is ever set as `innerHTML`. The one exception is maths, whose output comes from the maths library, not from the text.
 
-**R2. Parse to HTML with the library, then clean it with DOMPurify** (Apache-2.0 or MPL-2.0 **(memory)**). Less code of our own, but a second vendored library and the parser's HTML is trusted up to the cleaner.
+**R2. Parse to HTML with the library, then clean it with DOMPurify** (dual Apache-2.0 or MPL-2.0, both allowed; to confirm in the spike). Less code of our own, but a second vendored library and the parser's HTML is trusted up to the cleaner.
 
 *Lean:* **R1.** It matches how the Whiteboard treats words (one HTML sink, `wbShowWords`), needs no cleaner, and a check can enforce it: fail on `innerHTML`, `insertAdjacentHTML` and `outerHTML` in the module's own source, except one named line for maths.
 
 ### Maths
 
-**M1. KaTeX** (MIT **(memory)**). Fast, no network, the look people know, with the TeX kept as the stored form. It draws with HTML, CSS and its own fonts. A font declared inside a shadow root is not loaded by the browser **(memory)**, and bundled modules run in a shadow root, so the fonts must be registered on the page (the `FontFace` API from data URLs, or the host loading them). Run with `trust: false`, `throwOnError: false` and size and macro-expansion limits.
+**M1. KaTeX** (MIT, to confirm in the spike). Fast, drawn in the page, the look people know, with the TeX kept as the stored form. It draws with HTML, CSS and its own fonts, which must be vendored and served by Chameleon, never from a CDN. A font declared inside a shadow root is not loaded by the browser **(memory)**, and bundled modules run in a shadow root, so the fonts must be registered on the page (the `FontFace` API from data URLs, or the host loading them). Run with `trust: false`, `throwOnError: false` and size and macro-expansion limits.
 
-**M2. Temml** (MIT **(memory)**). Writes MathML and needs no fonts or CSS, so no font problem and a smaller file. Browsers draw MathML themselves, so the look varies and a PDF may differ by browser. Check against the supported browsers before relying on it.
+**M2. Temml** (MIT, to confirm in the spike). Writes MathML and needs no fonts or CSS, so no font problem and a smaller file. Browsers draw MathML themselves, so the look varies and a PDF may differ by browser. Check against the supported browsers before relying on it.
 
-**M3. MathJax** (Apache-2.0 **(memory)**). The most complete and best for screen readers, but the largest, and it loads parts as it needs them, which a single-file module cannot do.
+**M3. MathJax** (Apache-2.0, to confirm in the spike). The most complete and best for screen readers, but the largest, and it loads parts as it needs them, which a single-file module cannot do. Its default setup fetches those parts and fonts from a CDN, which decision 9 forbids; every part would have to be vendored and its loader pointed at Chameleon's own files.
+
+No remote rendering is allowed for any option: a formula is never sent to a service to be drawn.
 
 *Lean:* **M1**, with M2 as the fallback if the font problem proves hard. The spike decides.
 
@@ -165,7 +174,7 @@ Three states in one module window: the list, a document in reading, a document i
 
 ### Server half
 
-Little is needed; this is a module, not a host feature. server-development: the module is accepted by `cleanManifest` with the manifest above; the module's versions entry; the module added to the checks that list bundled modules (`check-modules`, `check-module-versions`, `check-module-live` if it reads manifests, `check-sources-modules`); a safety check (below); and, only if Thomas decides it, a change to the 5 MB module limit (open question 3), which is a change to `server/module-data.js` and its documents, not to the module.
+Little is needed; this is a module, not a host feature. server-development: the module is accepted by `cleanManifest` with the manifest above; the module's versions entry; the module added to the checks that list bundled modules (`check-modules`, `check-module-versions`, `check-module-live` if it reads manifests, `check-sources-modules`); a safety check (below); two checks for decisions 8 and 9, both owned by server-development: a **licence check** (`tools/check-third-party-licences.mjs`: every vendored library has a `LICENSE` file kept beside it, an entry in `THIRD-PARTY.md` with name, version and licence, and a licence on the allowed list of MIT, Apache-2.0, BSD, ISC or MPL-2.0 only; it fails on GPL, AGPL, LGPL, an unknown or a missing licence) and an **outside-URL check** (`tools/check-no-outside-urls.mjs`: scans the module's source and every vendored file for `http:`, `https:` and protocol-relative addresses that would be loaded, such as `<script src>`, `<link href>`, `@import`, `url(...)`, `fetch`, `import()` and `new URL`, and fails on any not on a short named allow-list of inert strings such as a licence header or the MathML namespace); and, only if Thomas decides it, a change to the 5 MB module limit (open question 3), which is a change to `server/module-data.js` and its documents, not to the module.
 
 ## Left to build, in order
 
@@ -173,7 +182,7 @@ Little is needed; this is a module, not a host feature. server-development: the 
 2. **The pure library** in `modules/documents/src/documents-lib-*.js`, no page and no host: cleaning of the three records, the chunk split and join, the lock rules, the reader (Markdown to a plain description, then to DOM), the Markdown export, and the formatting bar's text changes. Tests in `modules/documents/test/` for each, including the safety corpus. Owner: experience-design builds; server-development writes the safety check (`tools/check-documents-safety.mjs`: the source rule in safety rule 1, and a corpus of hostile text that must come out inert). Checkable alone.
 3. **The list and reading** with the manifest, the stored keys, the object kind and live updates: create, list, open, rename, delete, hear another person's change. No editing yet except through a test seed. Owner: experience-design.
 4. **Editing and the lock**: the formatting bar, the preview, autosave, the commit, losing the lock. Owner: experience-design.
-5. **Tables and maths**: the vendored renderer parts, `THIRD-PARTY.md` with licences and versions, pinned hashes as `tools/check-vault.mjs` does for pdf.js. Owner: experience-design; server-development adds the hash check. (Tables and maths come after the rest only so that the first four steps can be tried; they ship together with them.)
+5. **Tables and maths**: the vendored renderer parts, with their fonts and CSS served from Chameleon, `THIRD-PARTY.md` with licences and versions (each licence read from the library's own `LICENSE` file), pinned hashes as `tools/check-vault.mjs` does for pdf.js. Owner: experience-design; server-development adds the hash check, the licence check and the outside-URL check, which must pass before this step is done. (Tables and maths come after the rest only so that the first four steps can be tried; they ship together with them.)
 6. **Object links and document links**: the picker button, the chip, `setLinks`, the draggable rows. Owner: experience-design.
 7. **Export**: the Markdown file and Print. Owner: experience-design.
 8. **Review and documents**: an independent safety read by quality-assurance (stored script in a document, a hostile link, a formula, a huge table, a held lock and a stale one); then content-manager writes the module's `CONTRACT.md`, `architecture-modules.md` and `api-module-sdk.md` notes if anything in them changed, the user guide and the CHANGELOG.
@@ -181,23 +190,24 @@ Little is needed; this is a module, not a host feature. server-development: the 
 ### Later, not built now
 
 - **Pictures.** The module's `uploads` (as the Whiteboard and Research have), shown by the reader as `![](...)` pointing at an upload. Needs the reader's picture rule and a size choice. Not the Vault (see the gap above).
-- **Live co-editing.** Replace the text box with ProseMirror and keep the document with Yjs; vendor the bundle (built once, committed, pinned hashes) with a `THIRD-PARTY.md`; add `"live": { "publish": "edit" }` so only editors can send updates and a viewer cannot inject one. `host.live` messages are lossy and not stored **(code, `host.js`)**, so the document's truth would still be storage: a stored snapshot and a short log under compare-and-set, with a state exchange when a page joins or reconnects. The lock goes away; the Markdown stays the export and a readable snapshot, so the first release's reader and export are kept. The value limit, the 5 MB, the 240 saves a minute and a security read of `host.live` must all be settled first. The stored keys change at that step; the product is unreleased, so there is no migration.
+- **Live co-editing.** Replace the text box with ProseMirror and keep the document with Yjs; vendor the bundle (built once, committed, pinned hashes) with a `THIRD-PARTY.md`, under the same licence and no-outside-service rules (no hosted sync provider); add `"live": { "publish": "edit" }` so only editors can send updates and a viewer cannot inject one. `host.live` messages are lossy and not stored **(code, `host.js`)**, so the document's truth would still be storage: a stored snapshot and a short log under compare-and-set, with a state exchange when a page joins or reconnects. The lock goes away; the Markdown stays the export and a readable snapshot, so the first release's reader and export are kept. The value limit, the 5 MB, the 240 saves a minute and a security read of `host.live` must all be settled first. The stored keys change at that step; the product is unreleased, so there is no migration.
 - **Sharing the shape.** The pure files (record cleaning, chunking, the lock, the reader) carry no Documents words. When a second module wants a list and editor, lift them into an SDK piece then, not before.
 
 ## Verify
 
 Nothing is verified yet. When built:
 
-- **Checked by a tool, on the development server, no LiveKit needed:** the pure library's tests; the safety check; compare-and-set on `doc:<id>` and `_lock:<id>` with two browser pages (take, refuse, refresh, go stale, take after stale, release); a save of a document of several chunks, a failed save halfway (kill after the chunks, before the commit) leaving the old text readable; opening with a leftover chunk; the manifest through `cleanManifest`; `npm run check`; `npm run check:docs`.
-- **Verified live in a browser with two people:** the list and reading following another person's saves; the lock banner; losing the lock with a sleeping tab; tables and maths drawn; an object link chip and its backlink; the Markdown file and Print on a long document; the phone layout.
+- **Checked by a tool, on the development server, no LiveKit needed:** the pure library's tests; the safety check; compare-and-set on `doc:<id>` and `_lock:<id>` with two browser pages (take, refuse, refresh, go stale, take after stale, release); a save of a document of several chunks, a failed save halfway (kill after the chunks, before the commit) leaving the old text readable; opening with a leftover chunk; the manifest through `cleanManifest`; the licence check and the outside-URL check; `npm run check`; `npm run check:docs`.
+- **Verified live in a browser with two people:** the list and reading following another person's saves; the lock banner; losing the lock with a sleeping tab; tables and maths drawn with the network blocked; an object link chip and its backlink; the Markdown file and Print on a long document; the phone layout.
 - **Cannot be checked here:** anything inside a real call (there is no LiveKit server here); how the documents behave with a guest link in a live call (the guest rule is read from the manifest, not exercised); a browser other than the one used; a real tutor's or client's use.
 
 ## The spike: what to prove first
 
+0. **Licences and no outside service.** Read each candidate's licence from its own `LICENSE` file and drop any that is not MIT, Apache-2.0, BSD, ISC or MPL-2.0 (check the library's dependencies too). Run every other item below with outbound network blocked, so a hidden outside fetch shows as a failure: on the development machine with no route out (a network namespace or container with no network, or the network off), or with the browser and server pointed at a proxy that refuses everything (`HTTP_PROXY` and `HTTPS_PROXY` at a closed port). Watch the browser's network panel for any request that is not to the local server. Run the outside-URL scan over the candidate files.
 1. **Compare-and-set and the lock on a real server.** `set` with version 0 on a missing key creates it, and a second 0 gets 409 with `err.current`. Two pages, the Whiteboard's timings, a stale holder taken over. Read as code only until run.
 2. **The 5 MB and the 60 KB as they really are.** What happens at the edge: 48,000-character chunks of quotes and line breaks (the escaped worst case), the cost of rewriting the space's file on every save at 20 documents and at 200, and the exact message when storage is full. Settles open question 3.
 3. **The reader and the safety check.** The chosen parser as a single inline file inside a module's HTML (its size), tokens to DOM for every supported form, and a corpus of hostile inputs (script and event handlers in raw HTML, `javascript:` with tabs and entities, a link inside a table cell, a deeply nested list, a 5 MB line).
-4. **Maths in a shadow root.** KaTeX with fonts registered through `FontFace`, its size with the fonts, and the same formulas through Temml; both printed to PDF.
+4. **Maths in a shadow root.** KaTeX with its fonts vendored and registered through `FontFace`, its size with the fonts, and the same formulas through Temml; both printed to PDF, with the network blocked and no request leaving the server.
 5. **Print of a long document** through the standard Print action: several pages, no cut-off, light colours, a table not split across pages in an ugly place.
 6. **A tutor's reaction to E1.** One real tutor writes a handout with a table and a formula in the text box with the bar and the preview. If it is too raw, E3 moves into the first release and the plan's order changes.
 7. **Typing speed** with a 100 KB document and the preview redrawn, on a phone.
