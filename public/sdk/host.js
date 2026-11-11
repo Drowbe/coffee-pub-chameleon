@@ -1519,7 +1519,7 @@
     return tip && label && tip !== label && tip.toLowerCase().includes(label.toLowerCase()) ? tip : null;
   }
 
-  function showMenu({ id, items, at, anchor, className, maxWidth } = {}) {
+  function showMenu({ id, items, at, anchor, className, maxWidth, onClose } = {}) {
     const reopening = openMenu && openMenu.id === id;
     closeMenu();
     if (reopening) return { close: closeMenu }; // the same trigger clicked again: toggle off, do not reopen
@@ -1791,6 +1791,7 @@
         document.removeEventListener('keydown', onKey, true);
         env.root.removeEventListener('pointerdown', onOutside, true);
         if (anchor && anchor.focus) { try { anchor.focus(); } catch (err) { /* not focusable */ } }
+        if (typeof onClose === 'function') { const done = onClose; onClose = null; try { done(); } catch (err) { console.error(err); } } // once, whatever closed it
       },
     };
     return { close: closeMenu };
@@ -2482,6 +2483,7 @@
       // drawn after the switches made before it. { id, label?, icon?, iconOnly?, on?, disabled?, zone?, onClick }. `zone: 'end'`
       // puts it in the row's right zone, after the search and Filters, in the order made ('start' or none: the left; any other value is ignored). onClick gets the
       // 'toolbar' event, whose `x` (when the host gives it) puts a menu under the button: host.menu.show({ at: { x, y: 4 } }).
+      // `on` left out: not a toggle (no pressed state, no tick in the folded More menu); on: true or false makes it a toggle, and set({ on }) later does too.
       // Returns { set({ label?, icon?, on?, disabled? }), destroy() }; set() redraws only when something changed.
       // The shared "..." button (ellipsis-vertical, icon centered): a card's menu, a day's, a poll's, a
       // place's. Pass a button you already have (its data-action and listeners stay); omit it to make one.
@@ -2504,11 +2506,11 @@
         return btn;
       },
       toolbarButton: ({ id, label, icon, iconOnly, on, disabled, onClick, zone }) => {
-        let state = { label, icon, iconOnly: Boolean(iconOnly), on: Boolean(on), disabled: Boolean(disabled) };
+        let state = { label, icon, iconOnly: Boolean(iconOnly), on: on === undefined || on === null ? undefined : Boolean(on), disabled: Boolean(disabled) };
         const off = host.on('toolbar', (e) => {
           if (e.id === id && typeof onClick === 'function') onClick(e);
         });
-        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, on: state.on, ...(state.disabled ? { disabled: true } : {}), ...zoneOf(zone) }) };
+        const mine = { item: () => ({ type: 'button', id, ...(state.iconOnly && state.icon ? { label: '', title: state.label } : { label: state.label }), icon: state.icon, ...(state.on === undefined ? {} : { on: Boolean(state.on) }), ...(state.disabled ? { disabled: true } : {}), ...zoneOf(zone) }) };
         switches.push(mine);
         drawSwitches();
         return {
@@ -3598,8 +3600,12 @@
     // first. Showing the same id again while it is already open closes it instead of reopening it, so a
     // "..." button toggles rather than always opening a fresh copy. Returns { close }.
     menu: {
-      show({ id, items, at, anchor, className, maxWidth } = {}) {
-        return showMenu({ id, items, at, anchor, className, maxWidth });
+      // host.menu.show({ id, items, at?, anchor?, className?, maxWidth?, onClose? }) opens the one menu a module has open at a time.
+      // `onClose()` is called once when the menu closes, however it closes: a pick, Escape, a press outside it, host.menu.close(),
+      // the same `id` shown again (a toggle off) or another menu opening in its place. It gets no arguments, and a pick's own
+      // onClick has run by then. The menu is drawn by the SDK in the module's own page, so this is a plain function, also in a sandboxed frame.
+      show({ id, items, at, anchor, className, maxWidth, onClose } = {}) {
+        return showMenu({ id, items, at, anchor, className, maxWidth, onClose });
       },
       close: () => closeMenu(),
     },
