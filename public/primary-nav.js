@@ -260,7 +260,7 @@ export function destinationTools(list, { path = '', present = false } = {}) {
 // is GET /api/spaces/:id/layouts's `system` list, `favorites` its favorite ids, `layouts` its shared and own layouts
 // (a favorite not among them is left out). A guest and an aside have none (decision: no tabs there); neither does a
 // page outside a space. `current` is the id of the layout shown. Returns [{ id: 'layout-tab-<layout id>', layout, kind,
-// icon, label, current }]; the ids are the tabs' element ids.
+// icon, label, current, temp? }]; the ids are the tabs' element ids.
 const TAB_ICON = /^[a-z0-9-]{1,40}$/;
 const SYSTEM_TAB_DEFAULTS = { workspace: ['Workspace', 'columns'], calendar: ['Calendar', 'calendar-days'], map: ['Map', 'map-location-dot'] };
 export function layoutTabs({ system = [], favorites = [], layouts = [], current = 'workspace', guest = false, aside = false, space = '' } = {}) {
@@ -281,6 +281,12 @@ export function layoutTabs({ system = [], favorites = [], layouts = [], current 
     const l = known.find((x) => x.id === id);
     if (!l || SYSTEM_TAB_DEFAULTS[id] || out.some((t) => t.layout === id)) continue;
     out.push({ layout: id, kind: 'user', icon: icon(l, 'object-group'), label: name(l, 'Layout') });
+  }
+  // Any layout can be the one shown: a saved one that is not pinned (not a favorite) gets a temporary tab while it is
+  // shown, with its name; it is gone when another layout is shown. Not stored.
+  if (current !== 'workspace' && !out.some((t) => t.layout === current)) {
+    const l = known.find((x) => x.id === current);
+    if (l && !SYSTEM_TAB_DEFAULTS[current]) out.push({ layout: current, kind: 'user', icon: icon(l, 'object-group'), label: name(l, 'Layout'), temp: true });
   }
   return out.map((t) => ({ id: `layout-tab-${t.layout}`, ...t, current: t.layout === current }));
 }
