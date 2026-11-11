@@ -18,7 +18,8 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
   'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
-  'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula'];
+  'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
+  'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
@@ -383,6 +384,79 @@ test('format: link, object link, grid, formula', () => {
   assert.equal(L.dlFormula(S('a', 1), true).value, 'a\n\n$$\nx\n$$');
   assert.equal(L.dlFormula(S('', 0), true).value, '$$\nx\n$$');
 });
+
+// ---- saving: the plan, the commit's outcome, the timing --------------------------------------------------------------------
+{
+  let n = 0;
+  const fresh = () => `new${String(n++).padStart(5, '0')}`;
+  const base = { rec: doc, me: 'u2', name: 'Bo', now: '2026-11-11T11:00:00.000Z', title: 'Plan' };
+  test('save plan: only changed chunks are written, rev goes up, record is filled', () => {
+    const p = L.dlPlanSave({ ...base, old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi', fresh });
+    assert.equal(p.ok, true);
+    assert.equal(p.writes.length, 0);
+    assert.deepEqual(p.record.chunks, ['aaaa1111']);
+    assert.equal(p.record.rev, 3);
+    assert.equal(p.record.editedBy, 'u2');
+    assert.equal(p.record.editedByName, 'Bo');
+    assert.equal(p.record.size, 2);
+    const q = L.dlPlanSave({ ...base, old: [{ id: 'aaaa1111', text: 'Hi' }], text: 'Hi there', fresh });
+    assert.equal(q.writes.length, 1);
+    assert.notEqual(q.writes[0].id, 'aaaa1111');
+    assert.deepEqual(q.dropped, ['aaaa1111']);
+    assert.ok(L.dlCleanDoc(q.record), 'the record cleans');
+  });
+  test('save plan: several chunks, one changed, the rest kept; a shorter text drops chunks', () => {
+    const big = `${'a'.repeat(30000)}\n\n${'b'.repeat(30000)}\n\n${'c'.repeat(1000)}`;
+    const first = L.dlPlanSave({ ...base, old: [{ id: 'aaaa1111', text: '' }], text: big, fresh });
+    assert.ok(first.chunks.length >= 2);
+    const old = first.chunks.map((c) => ({ id: c.id, text: c.text }));
+    const edited = big.slice(0, -1) + 'Z';
+    const next = L.dlPlanSave({ ...base, rec: { ...doc, chunks: old.map((o) => o.id) }, old, text: edited, fresh });
+    assert.equal(next.writes.length, 1);
+    assert.deepEqual(next.dropped, [old[old.length - 1].id]);
+    const short = L.dlPlanSave({ ...base, old, text: 'x', fresh });
+    assert.equal(short.chunks.length, 1);
+    assert.equal(short.dropped.length, old.length);
+  });
+  test('save plan: refuses an empty title and a too long text before any write', () => {
+    assert.deepEqual(L.dlPlanSave({ ...base, title: '  ', old: [], text: 'x', fresh }), { ok: false, reason: 'title' });
+    assert.deepEqual(L.dlPlanSave({ ...base, old: [], text: 'x'.repeat(150001), fresh }), { ok: false, reason: 'long' });
+  });
+  test('dirty: text or title', () => {
+    assert.equal(L.dlIsDirty({ text: 'a', title: 't' }, { text: 'a', title: 't' }), false);
+    assert.equal(L.dlIsDirty({ text: 'a', title: 't' }, { text: 'b', title: 't' }), true);
+    assert.equal(L.dlIsDirty({ text: 'a', title: 't' }, { text: 'a', title: 'u' }), true);
+  });
+  test('commit result: 409 is a conflict, other errors are tried again', () => {
+    assert.equal(L.dlCommitResult(null), 'saved');
+    assert.equal(L.dlCommitResult({ status: 409 }), 'conflict');
+    assert.equal(L.dlCommitResult({ status: 429 }), 'failed');
+    assert.equal(L.dlCommitResult(new Error('x')), 'failed');
+  });
+  test('autosave: 3 s after the last key, never within 3 s of the last save', () => {
+    const d = (o) => L.dlAutosaveDelay({ now: 10000, lastKey: 9000, lastSave: -Infinity, dirty: true, force: false, ...o });
+    assert.equal(d({ dirty: false }), null);
+    assert.equal(d({}), 2000);
+    assert.equal(d({ lastKey: 7000 }), 0);
+    assert.equal(d({ lastKey: 7000, lastSave: 9000 }), 2000);
+    assert.equal(d({ force: true }), 0);
+    assert.equal(d({ force: true, lastSave: 9500 }), 2500);
+    assert.equal(d({ lastKey: NaN }), 0);
+  });
+  test('write budget: a minute of writes stays under the cap', () => {
+    assert.equal(L.dlWriteWait([], 100000, 7), 0);
+    const log = Array.from({ length: 199 }, (_, i) => 100000 + i);
+    assert.equal(L.dlWriteWait(log, 100200, 1), 0);
+    assert.equal(L.dlWriteWait(log, 100200, 3), 100000 + 1 + 60000 - 100200);
+    assert.equal(L.dlWriteWait([1000], 100000, 5), 0, 'old writes do not count');
+  });
+  test('save word', () => {
+    assert.equal(L.dlSaveWord({ dirty: false, saving: false, failed: false }), 'Saved');
+    assert.equal(L.dlSaveWord({ dirty: true, saving: false, failed: false }), 'Not saved yet');
+    assert.equal(L.dlSaveWord({ dirty: true, saving: true, failed: false }), 'Saving');
+    assert.equal(L.dlSaveWord({ dirty: true, saving: false, failed: true }), 'Not saved');
+  });
+}
 
 if (fails.length) { console.error(`documents lib: ${fails.length} failed, ${passed} passed`); for (const f of fails) console.error(`  - ${f}`); process.exit(1); }
 console.log(`documents lib: ${passed} tests passed`);
