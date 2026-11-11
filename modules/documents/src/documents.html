@@ -14,6 +14,7 @@
   nothing a person wrote is ever set as HTML. #note is a short line for a refusal or a notice.
 -->
 <div id="app" class="app sdk-slot" hidden>
+  <span id="tag-anchor" class="tag-anchor" aria-hidden="true"></span>
   <p class="sdk-form-error" id="note" role="status" hidden></p>
   <section id="list" class="view" aria-label="Documents">
     <form id="make" class="bar make col" hidden>
@@ -33,6 +34,7 @@
     <div class="sheet">
       <h1 id="read-title" class="doc-title"></h1>
       <p id="read-meta" class="meta"></p>
+      <div id="read-tags" class="read-tags" hidden></div>
       <article id="page" class="page" tabindex="0"></article>
     </div>
   </section>
