@@ -935,7 +935,7 @@
       paintActive();
     }
     // The switch between the text box and the rich editor: on while the rich editor shows.
-    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'file-lines', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
+    if (wantFmt && !richButton) richButton = host.ui.toolbarButton({ id: 'rich', label: 'Rich text', icon: 'align-left', iconOnly: true, on: rich, zone: 'end', onClick: () => setRich(!rich) });
     else if (!wantFmt && richButton) { richButton.destroy(); richButton = null; }
     else if (richButton) richButton.set({ on: rich });
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
