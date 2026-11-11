@@ -42,9 +42,10 @@
     if (dlRichSchemas.has(PM)) return dlRichSchemas.get(PM);
     const must = (ok, what) => { if (!ok) throw new RangeError(`not a valid ${what}`); };
     const line = (max, what) => (v) => must(typeof v === 'string' && v.length <= max && !/[\n\r]/.test(v), what);
-    const cell = (tag) => ({
-      content: 'inline*', isolating: true,
-      attrs: { align: { default: null, validate: (v) => must(v === null || DL_RICH_ALIGN.includes(v), 'alignment') } },
+    const one = (what) => ({ default: 1, validate: (v) => must(v === 1, what) }); // the grid library reads spans; a grid cell spans exactly one
+    const cell = (tag, role) => ({
+      content: 'inline*', isolating: true, gridRole: role,
+      attrs: { colspan: one('column span'), rowspan: one('row span'), colwidth: { default: null, validate: (v) => must(v === null, 'column width') }, align: { default: null, validate: (v) => must(v === null || DL_RICH_ALIGN.includes(v), 'alignment') } },
       toDOM: (node) => [tag, node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0],
     });
     const nodes = {
@@ -80,10 +81,10 @@
         attrs: { checked: { default: null, validate: (v) => must(v === null || v === true || v === false, 'checklist state') } },
         toDOM: (node) => (node.attrs.checked === null ? ['li', 0] : ['li', { class: 'dl-task', 'data-task': node.attrs.checked ? 'done' : 'open' }, 0]),
       },
-      grid: { group: 'block', content: 'grid_row+', isolating: true, toDOM: () => ['table', ['tbody', 0]] },
-      grid_row: { content: '(grid_head | grid_cell)+', toDOM: () => ['tr', 0] },
-      grid_head: cell('th'),
-      grid_cell: cell('td'),
+      grid: { group: 'block', content: 'grid_row+', isolating: true, gridRole: 'table', toDOM: () => ['table', ['tbody', 0]] },
+      grid_row: { gridRole: 'row', content: '(grid_head | grid_cell)+', toDOM: () => ['tr', 0] },
+      grid_head: cell('th', 'header_cell'),
+      grid_cell: cell('td', 'cell'),
       formula_block: {
         group: 'block', atom: true, selectable: true,
         attrs: { tex: { validate: (v) => must(dlRichTexOk(v, true), 'formula') } },
