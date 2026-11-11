@@ -6753,14 +6753,14 @@ function onKey(event) {
 
 // --- mobile viewport quirks ---------------------------------------------------
 
-// Mobile browsers can be slow to recompute CSS's own `dvh` as their address
-// and tab bar show and hide on scroll -- visualViewport's resize event
-// fires the moment that actually happens, so mirroring it into a custom
-// property keeps the floating controls above the browser's own chrome
-// instead of sliding out from under it (see body.in-space in style.css).
+// On a phone the keyboard overlays the page, and CSS's own `dvh` is slow to follow the browser's address and tab
+// bars: visualViewport.height keeps the shell (and so the Chat input) above both (see body.in-space in style.css).
+// Only at phone width (the max-width: 640px rule). A tablet's keyboard or shortcut bar must not shrink the shell,
+// so wider than that the property is removed and the shell is plain 100dvh.
 function syncViewportHeight() {
-  const h = window.visualViewport?.height || window.innerHeight;
-  document.documentElement.style.setProperty('--app-vh', `${h}px`);
+  const root = document.documentElement;
+  if (window.innerWidth > 640) { root.style.removeProperty('--app-vh'); return; }
+  root.style.setProperty('--app-vh', `${window.visualViewport?.height || window.innerHeight}px`);
 }
 window.visualViewport?.addEventListener('resize', syncViewportHeight);
 window.addEventListener('resize', syncViewportHeight);
