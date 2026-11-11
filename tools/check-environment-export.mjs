@@ -219,12 +219,16 @@ test("a restore's files carry no session or stream key; every other file is as i
   const src = seededApp();
   const app = Buffer.from(JSON.stringify(src));
   const other = Buffer.from('{"a":1}');
-  const out = ex.restoreEntries([['app.json', app], ['./app.json', app], ['chat.json', other], ['bad/app.json', app]]);
+  const out = ex.restoreEntries([['app.json', app], ['./app.json', app], ['chat.json', other], ['bad/app.json', app]], { backup: true });
   const { secrets, ...rest } = src;
   assert.ok(secrets.session);
   for (const i of [0, 1]) assert.deepEqual(JSON.parse(out[i][1].toString('utf8')), rest, 'everything else as it was');
   assert.equal(out[2][1], other);
   assert.equal(out[3][1], app, 'only the environment\'s own record');
+  // An owner's copy (no `backup`) loses what it says people agreed to, and any agreements.json.
+  const copy = ex.restoreEntries([['app.json', app], ['agreements.json', other], ['./agreements.json', other], ['chat.json', other]]);
+  assert.deepEqual(copy.map(([n]) => n), ['app.json', 'chat.json']);
+  assert.ok(JSON.parse(copy[0][1].toString('utf8')).users.every((u) => !('agreed' in u)));
   assert.equal(ex.restoreEntries([['app.json', Buffer.from('not json')]])[0][1].toString(), 'not json');
 });
 

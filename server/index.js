@@ -2698,7 +2698,11 @@ hostRouter.post('/api/host/environments/:slug/restore', requireHostAdmin, rawHos
     if (refusal) return res.status(400).json({ error: refusal });
     // The session and stream keys are never taken from a zip: the restored environment makes new ones (everyone signs
     // in again, and the stream's sources need its new key).
-    files = restoreEntries(files);
+    // agreements.json must be a file: anything inside a folder of that name would make it one.
+    if (files.some(([name]) => /^agreements\.json\//.test(path.posix.normalize(name)))) return res.status(400).json({ error: 'The agreements file in this copy is not a file.' });
+    // `?backup=1`: the host's own backup, kept as written (with what people agreed to). Without it the zip is an owner's
+    // copy, and what it says people agreed to is dropped.
+    files = restoreEntries(files, { backup: req.query.backup === '1' });
     const env = environments.get(req.params.slug);
     if (env) { setAsideEnvironment(env); environments.delete(req.params.slug); } // rebuilt fresh from the restored files, next asked for
     const dir = path.join(DATA_DIR, 'environments', req.params.slug);
@@ -3092,7 +3096,8 @@ if (BASE_DOMAIN) {
 //                 (hostAdmin, which signs in through the host), and the demo loader's own requests while the host
 //                 console adds the demo space (demoRunRequest: the demo people are characters). With no text set,
 //                 nobody.
-//   Still open:   reading the texts and agreeing (GET /api/agreements, POST /api/agreements/accept), signing out
+//   Still open:   reading the texts and agreeing (GET /api/agreements, POST /api/agreements/accept), signing in as
+//                 someone else (POST /api/login), the health check (GET /healthz), signing out
 //                 (POST /api/logout, GET /logout), branding (GET /api/branding), the agreement page (GET /agree), and
 //                 the files that page is drawn with, which hold nothing of anyone's and are served the same to a person
 //                 who is signed out: the scripts and stylesheets at the root of the pages' folder, /fa/, /fonts/,
@@ -3106,7 +3111,7 @@ if (BASE_DOMAIN) {
 // so a path written another way is refused too.
 const AGREE_FIRST = 'Agree to the terms first.';
 const AGREEMENT_OPEN = new Set([
-  'GET /api/agreements', 'POST /api/agreements/accept', 'POST /api/logout', 'GET /api/branding',
+  'GET /api/agreements', 'POST /api/agreements/accept', 'POST /api/login', 'POST /api/logout', 'GET /healthz', 'GET /api/branding',
   'GET /agree', 'GET /logout', 'GET /login/first-password',
   'GET /theme.css', 'GET /img/site/icon', 'GET /img/site/background', 'GET /favicon.ico', 'GET /manifest.webmanifest',
 ]);
@@ -3525,7 +3530,12 @@ app.get('/api/config', (req, res) => res.json({ livekitUrl: HAS_CALL_SERVICE ? l
 // started with and nothing else (no path is read from a request); the text is plain text or Markdown, for a page to
 // draw through the safe reader, never as HTML. `required`: whether the one asking still has to agree, so true for
 // anyone signed out while a text is set, and false for an account that has agreed or is never asked.
+const agreementReadLimiter = new auth.LoginLimiter(60, 15 * 60000);
 app.get('/api/agreements', (req, res) => {
+  const ip = req.ip || 'unknown';
+  if (agreementReadLimiter.blocked(ip)) return res.status(429).set('X-Content-Type-Options', 'nosniff').json({ error: 'too many requests, try again in a few minutes' });
+  agreementReadLimiter.fail(ip);
+  res.set('X-Content-Type-Options', 'nosniff');
   const user = currentUser(req);
   res.set('Cache-Control', 'no-store').json({ required: user ? mustAgree(user) : agreementTexts.required, docs: agreementTexts.docs });
 });

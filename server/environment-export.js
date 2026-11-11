@@ -180,17 +180,23 @@ function exportEntries(files, appData, { declared } = {}) {
 // only admin is the host admin's stand-in (hostAdmin: true), so every other record with role `admin` (a single install's
 // admin, or a hand-made one) is restored as an `owner`, as moving a single install into a host does (ownersFromServerAdmin
 // in index.js). A record that is not JSON is left as it is (the restore refuses it before this).
-function restoreEntries(files) {
-  return files.map(([name, data]) => {
+// `backup`: the zip is the host's own backup (kept complete, with what people agreed to). Otherwise it is taken as an
+// owner's copy, which never carries agreements: any `agreed` on a person and any agreements.json is dropped, so nobody
+// is let in on an agreement a zip says they made.
+function restoreEntries(files, { backup = false } = {}) {
+  const kept = backup ? files : files.filter(([name]) => !/^agreements(\.unreadable-\d+)?\.json$/.test(path.posix.normalize(name)));
+  return kept.map(([name, data]) => {
     const where = path.posix.normalize(name);
     if (where !== APP_FILE && where !== LEGACY_ENVIRONMENT_RECORD) return [name, data];
     let app;
     try { app = JSON.parse(Buffer.from(data).toString('utf8')); } catch { return [name, data]; }
     if (!isObject(app)) return [name, data];
     const admins = Array.isArray(app.users) ? app.users.filter((u) => isObject(u) && u.role === 'admin' && !u.hostAdmin) : [];
-    if (!('secrets' in app) && !admins.length) return [name, data];
+    const agreed = !backup && Array.isArray(app.users) && app.users.some((u) => isObject(u) && 'agreed' in u);
+    if (!('secrets' in app) && !admins.length && !agreed) return [name, data];
     delete app.secrets;
     for (const u of admins) u.role = 'owner';
+    if (!backup && Array.isArray(app.users)) for (const u of app.users) if (isObject(u)) delete u.agreed;
     return [name, Buffer.from(`${JSON.stringify(app, null, 2)}\n`)];
   });
 }

@@ -891,10 +891,11 @@ $('env-restore').addEventListener('click', async () => {
     message: 'Everything in it now is replaced by the backup. This cannot be undone.',
     action: 'Restore',
     kind: 'destructive',
-    run: async () => { answer = await api('POST', `/api/host/environments/${encodeURIComponent(t.slug)}/restore`, file, 'application/zip'); },
+    run: async () => { answer = await api('POST', `/api/host/environments/${encodeURIComponent(t.slug)}/restore${$('env-restore-backup').checked ? '?backup=1' : ''}`, file, 'application/zip'); },
   });
   if (!done) return;
   $('env-restore-file').value = '';
+  $('env-restore-backup').checked = false;
   $('env-restore').disabled = true;
   await reloadEnvironments();
   if (answer && answer.refused) say($('env-status'), `${t.slug} was restored, but still won't open: ${(refusedCopy().words[answer.refused.reason] || refusedCopy().words.failed).replace(/^Won't open: /, '')} Try an older backup.`, true);

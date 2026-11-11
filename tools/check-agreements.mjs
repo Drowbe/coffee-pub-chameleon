@@ -50,6 +50,7 @@ const auth = require('../server/auth.js');
 const lib = require('../server/agreements.js');
 const { Store } = require('../server/store.js');
 const exportLib = require('../server/environment-export.js');
+const { zipFiles } = require('../server/module-build.js');
 
 const AGREE_FIRST = 'Agree to the terms first.';
 const ORIGIN_SENTENCE = 'This request came from another site, so it was refused.';
@@ -80,7 +81,7 @@ const ndaFile = write('nda.md', NDA_1);
 await test('the texts: a version is the first 16 hex of the SHA-256 of the text, and only what is set is asked', () => {
   const none = lib.readTexts({});
   assert.deepEqual({ required: none.required, docs: none.docs, versions: none.versions }, { required: false, docs: [], versions: {} });
-  assert.equal(lib.readTexts({ TERMS_FILE: '  ', NDA_FILE: '' }).required, false, 'only spaces is not set');
+  assert.equal(lib.readTexts({ TERMS_FILE: '', NDA_FILE: undefined }).required, false, 'empty or missing is not set (blank is refused: see below)');
   const both = lib.readTexts({ TERMS_FILE: termsFile, NDA_FILE: ndaFile });
   assert.equal(both.required, true);
   assert.deepEqual(both.docs.map((d) => [d.id, d.title, d.version, d.text]), [['terms', 'Terms of service', sha16(TERMS_1), TERMS_1], ['nda', 'Beta NDA', sha16(NDA_1), NDA_1]]);
@@ -281,7 +282,7 @@ const nextIp = () => { ip += 1; return `198.51.100.${ip}`; };
 // One request. `host`: null for a single-environment server, else a subdomain of localhost ('' is the product host).
 // Nothing is followed: a redirect is read as it is answered.
 function call(host, method, urlPath, { body, type = 'application/json', cookie, bearer, from = '192.0.2.1', headers = {}, srv = server } = {}) {
-  const payload = body === undefined ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+  const payload = body === undefined ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
   const h = { host: host === null ? `127.0.0.1:${srv.port}` : `${host ? `${host}.` : ''}localhost:${srv.port}`, accept: 'application/json', 'x-forwarded-for': from, ...headers };
   if (payload) { h['content-type'] = type; h['content-length'] = payload.length; }
   if (cookie) h.cookie = cookie;
@@ -385,6 +386,45 @@ await test('a text that is set and cannot be read stops the start with one sente
   }
 });
 
+await test('a text variable that is set but blank stops the start with one sentence, before anything is written', async () => {
+  for (const variable of ['TERMS_FILE', 'NDA_FILE']) {
+    for (const blank of [' ', '\t', '   \t ']) {
+      assert.throws(() => lib.readTexts({ [variable]: blank }), (err) => err instanceof lib.AgreementTextError && err.message === `${variable} is set but blank. Name a file, or remove ${variable} to ask nobody.`, `${variable}: ${JSON.stringify(blank)}`);
+    }
+    const dataDir = path.join(tmp, `never-${crypto.randomBytes(4).toString('hex')}`);
+    let stopped = null;
+    try { await (await startServer(dataDir, { ADMIN_PASSWORD, [variable]: '   ' })).stop(); } catch (err) { stopped = err; }
+    assert.ok(stopped && stopped.code === 1, `${variable}: the server must not start`);
+    assert.ok(stopped.output.includes(`${variable} is set but blank.`) && !/listening on/.test(stopped.output), stopped.output);
+    assert.ok(!fs.existsSync(dataDir), 'nothing was written');
+  }
+});
+
+// agreements.json that is a folder (or otherwise cannot be read) at start is set aside like one that is corrupt.
+await test('an agreements.json that is a folder: set aside, said once, and the environment answers as it should', async () => {
+  const dataDir = fs.mkdtempSync(path.join(tmp, 'folder-'));
+  fs.mkdirSync(path.join(dataDir, 'agreements.json'));
+  fs.writeFileSync(path.join(dataDir, 'agreements.json', 'x'), 'x');
+  const said = [];
+  const g = new lib.GuestAgreements(dataDir, { log: (m) => said.push(m) });
+  assert.deepEqual(g.records, []);
+  assert.equal(said.length, 1);
+  assert.ok(!said[0].includes('EISDIR'));
+  assert.ok(fs.readdirSync(dataDir).some((f) => /^agreements\.unreadable-\d+\.json$/.test(f)));
+  assert.ok(!fs.existsSync(path.join(dataDir, 'agreements.json')));
+  // And a whole server started over one.
+  const served = fs.mkdtempSync(path.join(tmp, 'folder-server-'));
+  fs.mkdirSync(path.join(served, 'agreements.json'));
+  const srv = await startServer(served, { ADMIN_PASSWORD, TERMS_FILE: termsFile });
+  try {
+    assert.equal((await call(null, 'GET', '/api/agreements', { srv })).status, 200);
+    assert.equal((await call(null, 'GET', '/api/me', { srv })).status, 401);
+    const login = await call(null, 'POST', '/api/login', { srv, body: { login: 'admin', password: ADMIN_PASSWORD }, from: nextIp() });
+    assert.equal(login.status, 200, login.text);
+    assert.ok(!srv.output().includes('EISDIR') || /could not be read as agreements/.test(srv.output()));
+  } finally { await srv.stop(); }
+});
+
 // --- a single-environment server with both texts ----------------------------------------------------------------------
 const single = fs.mkdtempSync(path.join(tmp, 'single-'));
 const people = {}; // name -> { cookie, token, key }
@@ -398,7 +438,7 @@ const refusedRoutes = (key) => [
   ['GET', '/api/modules'], ['GET', '/api/notifications'], ['GET', '/api/notifications/stream'], ['GET', '/api/live?space=lobby'], ['GET', '/api/status'],
   ['GET', '/api/destinations'], ['GET', '/api/environment/export'], ['GET', '/api/product'], ['GET', '/api/spaces/lobby/chat'], ['GET', '/api/modules/stream/data?scope=environment'],
   ['GET', '/api/modules/stream/context'], ['GET', '/api/bus/events'], ['GET', '/api/guest-link/abc'], ['GET', '/api/shared/abc'], ['GET', '/api/invites/abc'],
-  ['GET', '/healthz'], ['GET', `/img/${key}/profile`], ['GET', '/img/space/lobby'], ['GET', '/img/guest/player'], ['GET', '/img/default/player'],
+  ['POST', '/healthz'], ['GET', '/healthz/x'], ['GET', '/api/login'], ['POST', '/api/login/verify'], ['POST', '/api/login/x'], ['POST', '/api/login/first-password'], ['GET', `/img/${key}/profile`], ['GET', '/img/space/lobby'], ['GET', '/img/guest/player'], ['GET', '/img/default/player'],
   ['GET', '/m/stream/1.0.0/index.html'], ['GET', '/m/stream/1.0.0/app.js'], ['GET', '/modules/stream'], ['GET', '/feed/abc.ics'], ['GET', `/view/${key}`], ['GET', '/shared/abc'],
   ['GET', '/about/studio-logo'], ['GET', '/viewer/pdf'], ['GET', '/design-system/'], ['GET', '/space.html'], ['GET', '/admin.html'], ['GET', '/login.html'],
   // However the path is written.
@@ -408,14 +448,14 @@ const refusedRoutes = (key) => [
   ['GET', '/assets/..'], ['GET', '/assets/./../space.html'], ['GET', '/sdk//system.css'], ['GET', '/fonts/..%5capp.json'], ['GET', '/assets/'], ['GET', '/sdk'], ['GET', '/..js'], ['GET', '/.x.js'], ['GET', '/a%20b.js'], ['GET', '/assets/.hidden'],
   // Whatever the method.
   ['POST', '/api/spaces', { name: 'Camp' }], ['PATCH', '/api/me', { themeMode: 'dark' }], ['PUT', '/api/me/images/profile', {}], ['DELETE', `/api/users/${key}`],
-  ['POST', '/api/login', { login: 'admin', password: ADMIN_PASSWORD }], ['POST', '/api/register', { login: 'x', password: 'y' }], ['POST', '/api/guest-join', { token: 'abc', name: 'G' }],
+  ['POST', '/api/register', { login: 'x', password: 'y' }], ['POST', '/api/guest-join', { token: 'abc', name: 'G' }],
   ['POST', '/api/presence'], ['POST', '/api/me/mfa/start'], ['POST', '/api/stream-key/regenerate'], ['POST', '/api/branding'], ['DELETE', '/api/agreements'], ['PUT', '/api/agreements/accept', { versions: V1 }],
   ['POST', '/api/agreements', { versions: V1 }], ['OPTIONS', '/api/me'], ['POST', '/agree', { versions: V1 }], ['POST', '/logout'], ['DELETE', '/style.css'], ['POST', '/sdk/system.css'],
 ];
 // The pages a browser asks for: each is sent to the agreement page, with where it was going.
-const PAGES = ['/', '/profile', '/admin', '/login', '/login?next=%2Fprofile', '/register', '/login/verify', '/login/enrol', '/calendar', '/map', '/modules/stream', '/guest/abc', '/invite/abc', '/j/abc', '/me', '/space.html', '/admin.html', '/profile.html', '/no-such-page', '/healthz'];
+const PAGES = ['/', '/profile', '/admin', '/login', '/login?next=%2Fprofile', '/register', '/login/verify', '/login/enrol', '/calendar', '/map', '/modules/stream', '/guest/abc', '/invite/abc', '/j/abc', '/me', '/space.html', '/admin.html', '/profile.html', '/no-such-page'];
 // What stays open to them: the texts, branding, the agreement page and the files it is drawn with.
-const OPEN = ['/api/agreements', '/API/Agreements/', '/api/branding', '/api/branding/', '/agree', '/Agree/', '/style.css', '/brand.js', '/login-step.js', '/next-address.js', '/theme-head.js', '/mfa-enrol.js', '/theme.css', '/fa/css/all.min.css', '/sdk/system.css', '/img/site/icon', '/favicon.ico', '/manifest.webmanifest', '/assets/images/brand/favicon.svg'];
+const OPEN = ['/api/agreements', '/API/Agreements/', '/api/branding', '/api/branding/', '/agree', '/Agree/', '/style.css', '/brand.js', '/login-step.js', '/next-address.js', '/theme-head.js', '/mfa-enrol.js', '/theme.css', '/fa/css/all.min.css', '/sdk/system.css', '/img/site/icon', '/favicon.ico', '/manifest.webmanifest', '/assets/images/brand/favicon.svg', '/healthz', '/HEALTHZ/'];
 
 async function refusedEverywhere(host, who, label) {
   for (const [method, route, body] of refusedRoutes(who.key)) {
@@ -447,6 +487,41 @@ try {
 
   await test('the texts are read at start and said once', () => {
     assert.ok(server.output().includes(`Agreements are on: Terms of service (version ${V1.terms}), Beta NDA (version ${V1.nda}). Every account agrees before entering.`), server.output());
+  });
+
+  await test('the texts: nosniff, and 60 reads in 15 minutes for each address, 429 after, never touching sign-in or agreeing', async () => {
+    const a = nextIp();
+    const b = nextIp();
+    for (let i = 0; i < 60; i += 1) {
+      const res = await call(null, 'GET', '/api/agreements', { from: a });
+      assert.equal(res.status, 200, `read ${i + 1}`);
+      assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    }
+    const over = await call(null, 'GET', '/api/agreements', { from: a });
+    assert.equal(over.status, 429);
+    assert.deepEqual(over.json, { error: 'too many requests, try again in a few minutes' });
+    assert.equal(over.headers['x-content-type-options'], 'nosniff');
+    assert.equal((await call(null, 'GET', '/api/agreements', { from: b })).status, 200, 'another address is not held up');
+    // The same address can still sign in, and the accept route has its own limit (a wrong version is 409, never 429).
+    const who = await signIn(null, 'admin', ADMIN_PASSWORD, { from: a });
+    assert.equal((await agree(null, who.cookie, { terms: 'wrong' }, { from: a })).status, 409);
+    assert.equal((await call(null, 'GET', '/api/branding', { from: a })).status, 200);
+  });
+
+  await test('an account that has not agreed can still sign in as someone else, and the health check answers', async () => {
+    const who = await signIn(null, 'admin', ADMIN_PASSWORD);
+    assert.ok(isAsked(await call(null, 'GET', '/api/me', { cookie: who.cookie })));
+    const again = await call(null, 'POST', '/api/login', { cookie: who.cookie, body: { login: 'admin', password: ADMIN_PASSWORD }, from: nextIp() });
+    assert.equal(again.status, 200, again.text);
+    const wrong = await call(null, 'POST', '/api/login', { cookie: who.cookie, body: { login: 'admin', password: 'nope' }, from: nextIp() });
+    assert.equal(wrong.status, 401);
+    for (const method of ['GET', 'HEAD']) {
+      const h = await call(null, method, '/healthz', { cookie: who.cookie });
+      assert.equal(h.status, 200, method);
+      if (method === 'GET') assert.deepEqual(h.json, { ok: true });
+    }
+    assert.ok(isAsked(await call(null, 'POST', '/healthz', { cookie: who.cookie })));
+    assert.ok(isAsked(await call(null, 'GET', '/api/me', { cookie: who.cookie })), 'still refused everywhere else');
   });
 
   await test('nobody signed in: the texts are open, exactly as written and as JSON; nothing else changes', async () => {
@@ -923,6 +998,45 @@ try {
     assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: (await signIn('bbb', 'pretender', OWNER_PASSWORD)).cookie })));
     // An owner is not exempt, whatever their rights.
     assert.ok(isAsked(await call('bbb', 'GET', '/api/me', { cookie: owners.bbb.cookie })));
+  });
+
+  await test('a restore: an owner\'s copy loses what it says people agreed to; the host\'s backup keeps it as written', async () => {
+    const made = await call('admin', 'POST', '/api/host/environments', { cookie: hostCookie, body: { slug: 'eee', name: 'Env eee', plan: { modules: 'all' }, owner: { login: 'erin', displayName: 'Erin', password: OWNER_PASSWORD } } });
+    assert.equal(made.status, 201, made.text);
+    await signIn('eee', 'erin', OWNER_PASSWORD); // the environment is open, so app.json is written
+    const backup = await call('admin', 'POST', '/api/host/environments/eee/backup', { cookie: hostCookie });
+    assert.equal(backup.status, 200);
+    const app = appJson(envDir('eee'));
+    const agreed = [{ doc: 'terms', version: V1.terms, at: '2020-01-01T00:00:00.000Z' }, { doc: 'nda', version: V1.nda, at: '2020-01-01T00:00:00.000Z' }];
+    for (const u of app.users) u.agreed = agreed;
+    const guestFile = `${JSON.stringify({ agreements: [{ guest: 'guest-abcd1234', name: 'G', doc: 'terms', version: V1.terms, at: '2020-01-01T00:00:00.000Z' }] })}\n`;
+    const zip = zipFiles([['app.json', Buffer.from(JSON.stringify(app))], ['agreements.json', Buffer.from(guestFile)]]);
+    const restore = (query) => call('admin', 'POST', `/api/host/environments/eee/restore${query}`, { cookie: hostCookie, body: zip, type: 'application/zip' });
+    const owner = await restore('');
+    assert.equal(owner.status, 200, owner.text);
+    assert.ok(appJson(envDir('eee')).users.length > 0);
+    assert.ok(appJson(envDir('eee')).users.every((u) => !('agreed' in u)), 'no agreed from an owner\'s copy');
+    assert.deepEqual(guestFiles(envDir('eee')), [], 'no agreements.json from an owner\'s copy');
+    assert.ok(isAsked(await call('eee', 'GET', '/api/me', { cookie: (await signIn('eee', 'erin', OWNER_PASSWORD)).cookie })), 'everyone is asked again');
+    const host = await restore('?backup=1');
+    assert.equal(host.status, 200, host.text);
+    assert.ok(appJson(envDir('eee')).users.every((u) => JSON.stringify(u.agreed) === JSON.stringify(agreed)), 'kept as written');
+    assert.equal(fs.readFileSync(path.join(envDir('eee'), 'agreements.json'), 'utf8'), guestFile);
+    assert.equal((await call('eee', 'GET', '/api/me', { cookie: (await signIn('eee', 'erin', OWNER_PASSWORD)).cookie })).status, 200);
+  });
+
+  await test('a restore with agreements.json as a folder is refused in one plain sentence and the environment stays healthy', async () => {
+    const app = appJson(envDir('eee'));
+    const zip = zipFiles([['app.json', Buffer.from(JSON.stringify(app))], ['agreements.json/inner.json', Buffer.from('{}')]]);
+    for (const query of ['', '?backup=1']) {
+      const res = await call('admin', 'POST', `/api/host/environments/eee/restore${query}`, { cookie: hostCookie, body: zip, type: 'application/zip' });
+      assert.equal(res.status, 400, res.text);
+      assert.deepEqual(res.json, { error: 'The agreements file in this copy is not a file.' });
+      assert.ok(fs.statSync(path.join(envDir('eee'), 'agreements.json')).isFile(), 'nothing was replaced');
+      assert.equal((await call('eee', 'GET', '/api/agreements')).status, 200);
+      assert.equal((await call('eee', 'GET', '/api/branding')).status, 200);
+      assert.equal((await signIn('eee', 'erin', OWNER_PASSWORD)).cookie.startsWith('app_session='), true);
+    }
   });
 
   await test('the demo space: the loader\'s own requests are let through while it runs; nothing a client sends stands for them', async () => {

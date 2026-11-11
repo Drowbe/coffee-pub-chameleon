@@ -63,8 +63,10 @@ function readText(variable, file) {
 function readTexts(env = process.env) {
   const docs = [];
   for (const { id, variable, title } of DOCS) {
-    const file = String(env[variable] || '').trim();
-    if (!file) continue;
+    const given = String(env[variable] || '');
+    if (!given) continue;
+    const file = given.trim();
+    if (!file) throw new AgreementTextError(`${variable} is set but blank. Name a file, or remove ${variable} to ask nobody.`);
     const text = readText(variable, path.resolve(file));
     docs.push(Object.freeze({ id, title, version: versionOf(text), text }));
   }
@@ -139,13 +141,13 @@ class GuestAgreements {
     let text;
     try { text = fs.readFileSync(this.file, 'utf8'); } catch (err) {
       if (err.code === 'ENOENT') return;
-      throw err; // there, and not readable: never treated as empty
+      text = null; // there, and not a file or not readable (a folder, say): set aside like one that is corrupt, never treated as empty
     }
     let raw = null;
-    try { raw = JSON.parse(text); } catch { raw = null; }
+    if (text !== null) { try { raw = JSON.parse(text); } catch { raw = null; } }
     if (!isObject(raw) || !Array.isArray(raw.agreements)) {
       const aside = path.join(this.dir, `agreements.unreadable-${Date.now()}.json`);
-      fs.renameSync(this.file, aside);
+      try { fs.renameSync(this.file, aside); } catch { throw new Error('The agreements file could not be read or moved out of the way.'); }
       this.log(`${this.file} could not be read as agreements, so it was kept as ${aside} and a new one begun.`);
       return;
     }
