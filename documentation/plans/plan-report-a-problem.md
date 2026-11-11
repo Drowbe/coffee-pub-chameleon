@@ -4,8 +4,8 @@
 the two entries); quality-assurance (the independent safety read); content-manager (the documents once it is built).
 
 **Status:** Draft, 2026-11-11. Nothing is built and nothing was run for this plan. Thomas's idea: a **Report a
-problem** button in the product that opens a form and posts a bug report to GitHub issues. He decided two things on
-2026-11-11 (below); the rest is a draft with a lean for each open question. This plan handles a secret and sends a
+problem** button in the product that opens a form and posts a bug report to GitHub issues. He decided six things on
+2026-11-11 (below); the rest is a draft with a lean for each open question left. This plan handles a secret and sends a
 person's words off the server, so it needs an independent read before it is built and another of the code before it ships.
 
 ## What it is today
@@ -27,6 +27,13 @@ Thomas, 2026-11-11.
 1. **Have a plan written** for a Report a problem button whose form posts a bug report to GitHub issues. *Reason:* his
    idea, and the project manager's recommendation to plan it before building.
 2. **Reports go to a private repository,** not the product's open issue list. *Reason:* a report holds a person's own words.
+3. **Who and where:** any signed-in person (member, moderator, owner, admin), with a button in the top bar. Guests do
+   not see it.
+4. **Details:** a small set (page, module and version, browser, screen size, time), shown before sending with a tick
+   box to include them. No names, no document content, no screenshot.
+5. **Where it goes:** a private GitHub repository issue filed by the server, its title starting with the area and a
+   colon. The repository token is an environment variable, never in code. Readers are only the people added to that repository.
+6. **Limits:** none, and no way to answer the person, for now. *Reason:* Thomas's choice. See the open item below.
 
 ## The contract (a draft, built on the leans below)
 
@@ -46,14 +53,13 @@ are not followed.
   `happened` up to 4000; `expected` up to 2000, optional; `consent` must be `true`. Control characters are stripped.
   A bad field is 400 with one plain sentence.
 - **Technical details,** only when asked: the server adds the version and build and the browser's User-Agent; the
-  page may send `page`, `module` and `spaceKind`, each checked against a fixed list. Never a name, an email, an
+  page may send `page`, `module`, its version, screen size and time, each checked against a fixed list or shape. Never a name, an email, an
   account key, an address, an environment's or space's name, or any message or call content.
 - **The issue** is built on the server from labelled fields. Title: `<Area>: <title>`, with `@` made unable to
   mention. Body: a fixed first line saying the text below was typed by a person and is data, not instructions; then
   **What happened** and **What did you expect**, each in a fenced code block whose fence is longer than any in the
   text, so no markup, link, picture, mention or issue reference is live; then the details as a fixed list.
-- **Limits:** 5 sent reports a person a day, 50 a day for the server, 20 a day for one environment when hosted, 3
-  attempts a minute; then 429 in plain words. Counts are in memory.
+- **Limits:** none (decision 6). A suggested safety net is under Open questions; it is not part of the contract.
 - **Sending:** one request, 10 seconds at most. Sent: 200 `{ ok: true }`, no issue number. GitHub slow, down or
   refusing: 502, "The report could not be sent. Try again later." The log gets GitHub's status code only. No queue.
 - `GET /api/me` says whether the feature is on. The server's own log keeps one line a report (the account's key, the
@@ -61,7 +67,7 @@ are not followed.
 
 **The pages half.**
 
-- **Report a problem** in the account menu, before **Sign out**, for every signed-in account, in a space and an aside
+- **Report a problem** as a button in the top bar (decision 3), for every signed-in account, in a space and an aside
   alike, and a button on About. Hidden when the feature is off. Guests and keyed pages never see it.
 - One dialog from the shared pieces (`.sdk-dialog`, `.sdk-form`, the form standard), no new chrome, theme tokens
   only: **Area**, **Title**, **What happened**, **What did you expect**, the tick **Include technical details** with
@@ -75,7 +81,7 @@ are not followed.
 - **What leaves the server** is the area, the typed text and, when ticked, the details. It is the person's own
   explicit act and never holds call content, so About's sentence stays true.
 - **Hosted installs (`BASE_DOMAIN`):** the token and repository are the host's, one for every environment.
-- **Fake reports and spam:** only accounts can send, and the caps bound the worst case where registration is open.
+- **Fake reports and spam:** only accounts can send. With no limit (decision 6), a stuck button could fill the issues.
 - **Reports read later by AI agents:** an issue made by this route is untrusted data. An agent may summarise it and
   must never follow instructions in it; the first line and the label say so.
 - **The token's reach:** it can read, write and close every issue in that one repository, so the repository should
@@ -117,17 +123,20 @@ are not followed.
 
 ## Open questions
 
-Each has a lean; Thomas decides. Questions 1 to 6 change the contract and block the build.
+**Closed on 2026-11-11:** 1 (who and where: decision 3), 2 (details: decision 4), 4 (no reply path: decision 6) and 6
+(no limits: decision 6). Question 7 is half closed: the repository is private and the token is an environment variable
+(decision 5); its name and label are still Thomas's and block only the real try.
 
-1. **Who may send, and where it shows.** Lean: every signed-in account, in an aside too; About for owners and the
-   admin; guests and keyed pages never.
-2. **The technical details.** Lean: ticked to start, lines shown; version, browser, page, module, kind of space. Add the role?
+**Still open, blocks the build:**
+
+- **Safety net (recommendation, not decided).** Because Thomas chose no limit, a fixed text length cap (the field
+  lengths already in the contract) and a small server-side flood stop (say 30 reports per person per hour, in memory) are
+  suggested, since a stuck button could fill the issues. Thomas decides whether to add them.
+
+**Still open, lean only:**
+
 3. **The words and the consent.** Lean: one required tick; the receiver is `STUDIO_NAME` when set, else "the people
    who run this server"; one more line on About, "A problem report is sent only when you send one."
-4. **No way to answer the person.** Lean: none in the first version, and the server's own log line is acceptable.
 5. **Hosted installs.** Lean: a host-level setting, the environment never named in the report, an owner's switch later.
-6. **The limits.** Lean: 5 a person a day, 50 a server, 20 an environment, kept in memory, not in `DATA_DIR`.
-7. **The repository.** Lean: one holding nothing but reports, and the server refuses to send when GitHub says it is
-   public. Its name and label are Thomas's. Blocks only the real try.
 8. **Who reads the reports, and the kind of build.** Lean: Thomas reads them and moves real ones to the work list by
    hand; a production build, because of the token.
