@@ -1693,10 +1693,22 @@ function escapeXml(text) {
   return String(text).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function initialsSvg(name) {
+// The plate colours come from the environment's theme, in the mode the person sees (their own choice, else the
+// environment's default): the page surface and the accent. No colour is written in code: an SVG served as an image can't read
+// the page's tokens, so the server reads the theme's stored values (the bundled theme's when a set lacks one).
+function plateColours(person) {
+  const mode = person?.themeMode || environmentThemeMode();
+  const set = store.activeThemeSets()[mode] || DEFAULT_THEME[mode] || {};
+  const fallback = DEFAULT_THEME[mode] || {};
+  const pick = (k) => (/^#[0-9a-f]{6}$/i.test(set[k] || '') ? set[k] : fallback[k]);
+  return { bg: pick('surface-page'), fg: pick('accent-fill') };
+}
+
+function initialsSvg(name, person) {
+  const { bg, fg } = plateColours(person);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">` +
-    `<rect width="400" height="400" rx="24" fill="#241c16"/>` +
-    `<text x="200" y="200" text-anchor="middle" dominant-baseline="central" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="140" font-weight="700" fill="#c8873a">${escapeXml(initials(name))}</text>` +
+    `<rect width="400" height="400" rx="24" fill="${bg}"/>` +
+    `<text x="200" y="200" text-anchor="middle" dominant-baseline="central" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="140" font-weight="700" fill="${fg}">${escapeXml(initials(name))}</text>` +
     `</svg>`;
 }
 
@@ -1708,11 +1720,12 @@ function sendImage(res, file) {
 // The generic guest picture, when the admin hasn't set one -- a person
 // glyph rather than initials, since a guest tile has no name to draw from
 // server-side (that only lives in the LiveKit token, not in our data).
-function guestSvg() {
+function guestSvg(person) {
+  const { bg, fg } = plateColours(person);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">` +
-    `<rect width="400" height="400" rx="24" fill="#241c16"/>` +
-    `<circle cx="200" cy="155" r="70" fill="#c8873a"/>` +
-    `<path d="M60 360c0-90 63-150 140-150s140 60 140 150" fill="#c8873a"/>` +
+    `<rect width="400" height="400" rx="24" fill="${bg}"/>` +
+    `<circle cx="200" cy="155" r="70" fill="${fg}"/>` +
+    `<path d="M60 360c0-90 63-150 140-150s140 60 140 150" fill="${fg}"/>` +
     `</svg>`;
 }
 
@@ -3381,7 +3394,7 @@ app.get('/img/guest/:slot', (req, res) => {
   const file = store.guestImagePath(slot);
   if (file) return sendImage(res, file);
   if (slot !== 'player' || req.query.fallback === 'none') return res.status(404).end();
-  res.set('Cache-Control', 'no-cache').type('image/svg+xml').send(guestSvg());
+  res.set('Cache-Control', 'no-cache').type('image/svg+xml').send(guestSvg(currentUser(req)));
 });
 
 // The server-wide Default Images set -- what effectiveImage() falls back
@@ -3419,7 +3432,7 @@ app.get('/img/:key/:slot', (req, res) => {
   const resolved = store.effectiveImage(user.key, slot, spaceId);
   if (resolved) return sendImage(res, resolved.file);
   if (slot !== 'profile' || req.query.fallback === 'none') return res.status(404).end();
-  res.set('Cache-Control', 'no-cache').type('image/svg+xml').send(initialsSvg(user.displayName));
+  res.set('Cache-Control', 'no-cache').type('image/svg+xml').send(initialsSvg(user.displayName, currentUser(req)));
 });
 
 // Web app manifest, so the call page installs as a chromeless window
