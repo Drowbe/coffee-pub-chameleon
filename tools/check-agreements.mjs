@@ -131,11 +131,11 @@ await test('an account\'s record: only { doc, version, at } of a known text is k
 
 await test('where to go after agreeing is only ever a path on this site', () => {
   for (const bad of ['//evil.example', '/\\evil.example', '/\\\\evil', 'https://evil.example', 'javascript:alert(1)', '/\t/evil.example', '/\n/evil.example', '\\\\evil.example', 'spaces/x', '', null, undefined, 7, ['/x'], { a: 1 },
-    '/.//evil.example', '/./\\evil.example', '/a/..//evil.example', '/..//evil.example', '/%2e//evil.example', '/a/../\\evil.example', `/${'a'.repeat(2001)}`]) {
-    assert.equal(lib.safeNext(bad), '/', JSON.stringify(bad));
+    '/.//evil.example', '/./\\evil.example', '/a/..//evil.example', '/..//evil.example', '/%2e//evil.example', '/a/../\\evil.example', '/%2f%2fevil.example', '/%5Cevil.example', `/${'a'.repeat(2001)}`]) {
+    assert.equal(auth.safeNext(bad), '/', JSON.stringify(bad));
   }
-  for (const good of ['/', '/profile', '/spaces/x?y=1', '/login?next=%2Fprofile', '/%2f%2fevil.example']) assert.equal(lib.safeNext(good), good, good);
-  assert.equal(lib.safeNext('/a/../b?c=1#d'), '/b?c=1', 'answered as a browser resolves it, without the fragment');
+  for (const good of ['/', '/profile', '/spaces/x?y=1', '/login?next=%2Fprofile']) assert.equal(auth.safeNext(good), good, good);
+  assert.equal(auth.safeNext('/a/../b?c=1#d'), '/b?c=1', 'answered as a browser resolves it, without the fragment');
 });
 
 // --- unit: guests' agreements ---------------------------------------------------------------------------------------

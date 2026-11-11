@@ -3110,7 +3110,7 @@ function agreementGate(req, res, next) {
   res.set('Cache-Control', 'no-store');
   if (reading && !p.startsWith('/api/') && /\btext\/html\b/i.test(req.get('accept') || '')) {
     if (framedRefusal(req, res, 403, AGREE_FIRST)) return undefined;
-    return res.redirect(`/agree?next=${encodeURIComponent(agreementsLib.safeNext(req.originalUrl))}`);
+    return res.redirect(`/agree?next=${encodeURIComponent(auth.safeNext(req.originalUrl))}`);
   }
   return res.status(403).json({ error: AGREE_FIRST, agreementRequired: true });
 }
@@ -3218,8 +3218,9 @@ app.get('/guest/:token', (_req, res) => {
   res.set(NOT_FRAMED).sendFile(page('space.html'));
 });
 
+// Someone already signed in goes on to `next`, kept to a path on this site (auth.safeNext), here and on the two step pages.
 app.get('/login', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login.html'));
 });
 
@@ -3227,11 +3228,11 @@ app.get('/login', (req, res) => {
 // /login/verify for an account with a factor already, /login/enrol for one the policy requires but has none
 // yet. Already fully signed in (a real session, not just a pending one) redirects away, same as /login.
 app.get('/login/verify', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login-step.html'));
 });
 app.get('/login/enrol', (req, res) => {
-  if (currentUser(req)) return res.redirect(String(req.query.next || '/').startsWith('/') ? String(req.query.next || '/') : '/');
+  if (currentUser(req)) return res.redirect(auth.safeNext(req.query.next));
   res.sendFile(page('login-step.html'));
 });
 // A new owner's first-password page (plan-first-password.md), on a hosted install only. It never redirects, signed in
@@ -3249,7 +3250,7 @@ app.get('/login/first-password', (req, res, next) => {
 // such page.
 app.get('/agree', (req, res, next) => {
   if (!agreementTexts.required) return next();
-  const to = agreementsLib.safeNext(typeof req.query.next === 'string' ? req.query.next : '/');
+  const to = auth.safeNext(req.query.next);
   const user = currentUser(req);
   res.set('Cache-Control', 'no-store');
   if (!user) return res.redirect(to === '/' ? '/login' : `/login?next=${encodeURIComponent(to)}`);

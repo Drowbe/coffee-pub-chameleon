@@ -100,22 +100,6 @@ function versionsMatch(given, docs) {
   return keys.length === docs.length && docs.every((d) => Object.prototype.hasOwnProperty.call(given, d.id) && given[d.id] === d.version);
 }
 
-// Where to go after agreeing: a path on this site, or "/". It must start with one "/" (a second "/" or a "\" makes it
-// another site to a browser, and a browser drops tabs and line ends first), and still be this site read as an address.
-// The address is what is answered, as a browser would resolve it, and it is checked again in that form: "/.//other.site"
-// starts with one "/" as written and resolves to "//other.site", another site.
-const ONE_SLASH = /^\/(?![/\\])/;
-function safeNext(raw) {
-  if (typeof raw !== 'string' || raw.length > 2000 || /[\u0000-\u001f\u007f]/.test(raw) || !ONE_SLASH.test(raw)) return '/';
-  try {
-    const url = new URL(raw, 'http://here.invalid');
-    const to = `${url.pathname}${url.search}`;
-    return url.origin === 'http://here.invalid' && ONE_SLASH.test(to) ? to : '/';
-  } catch {
-    return '/';
-  }
-}
-
 // A guest's typed name as kept: one line, no control characters and none that hide or reorder text, at most 40
 // characters as a person counts them. It is text and is kept as text: "<b>" stays "<b>" for a page to draw as text.
 function cleanGuestName(value) {
@@ -234,6 +218,6 @@ function cleanGuestRecord(a) {
 
 module.exports = {
   DOCS, DOC_IDS, MAX_TEXT_BYTES, MAX_ACCOUNT_RECORDS, MAX_GUEST_RECORDS, GUEST_NAME_MAX,
-  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, safeNext, cleanGuestName,
+  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, cleanGuestName,
   GuestAgreements, AgreementError, AgreementTextError,
 };
