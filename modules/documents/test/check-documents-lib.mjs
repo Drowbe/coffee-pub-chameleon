@@ -21,6 +21,7 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
+  'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView',
   'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
@@ -33,6 +34,48 @@ const lock = { id: 'lock', type: 'lock', doc: 'abcd1234', holder: 'u1', name: 'A
 test('the library has no page, host or Documents words', () => {
   assert.ok(!/\b(host|document)\.|\b(innerHTML|insertAdjacentHTML|outerHTML)\b/.test(code.replace(/\/\/.*$/gm, '')), 'a forbidden word');
   assert.ok(!/documents?\b/i.test(code.replace(/\/\/.*$/gm, '')), 'a Documents word');
+});
+test('preview: short text kept, long text cut at a line boundary within 400', () => {
+  assert.equal(L.dlPreview('# Hi\n\nText'), '# Hi\n\nText');
+  const long = `${'word '.repeat(18)}\n`.repeat(10);
+  const p = L.dlPreview(long);
+  assert.ok(p.length <= 400 && p.length > 300 && !p.endsWith('\n') && long.startsWith(p));
+  assert.equal(L.dlPreview('x'.repeat(900)).length, 400); // no line break: cut at 400
+});
+test('preview: never splits a surrogate pair', () => {
+  const p = L.dlPreview('a'.repeat(399) + '\u{1F600}'.repeat(5));
+  assert.equal(p.length, 399);
+  assert.ok(!/[\ud800-\udbff]$/.test(L.dlPreview('a'.repeat(398) + '\u{1F600}\u{1F600}')));
+});
+test('preview: invisible and control characters out', () => {
+  assert.equal(L.dlPreview('a\u202eb\u200bc\u0000d\r\ne'), 'abcd\ne');
+});
+test('preview: hostile text stays text (the reader makes it safe), and is capped on reading', () => {
+  const hostile = '<img src=x onerror=alert(1)>\n[x](javascript:alert(1))\n' + 'z'.repeat(1e6);
+  const rec = L.dlCleanDoc({ ...doc, preview: hostile });
+  assert.ok(rec.preview.length <= 400 && rec.preview.includes('<img'));
+  const desc = L.dlDescribe(rec.preview, (md) => [{ type: 'html', raw: '<img src=x onerror=alert(1)>' }, { type: 'paragraph', raw: '', tokens: [{ type: 'link', href: 'javascript:alert(1)', text: 'x', raw: '[x](javascript:alert(1))', tokens: [] }] }]);
+  assert.ok(!JSON.stringify(desc).includes('"href"') && desc[0].t === 'source');
+});
+test('preview: not trusted from a record: wrong type, none, or too big', () => {
+  assert.equal(L.dlCleanDoc({ ...doc, preview: 5 }).preview, undefined);
+  assert.equal(L.dlCleanDoc({ ...doc, preview: { a: 1 } }).preview, undefined);
+  assert.equal(L.dlCleanDoc(doc).preview, undefined);
+  assert.equal(L.dlCleanDoc({ ...doc, preview: '\u202e\u200b' }).preview, undefined);
+  assert.ok(L.dlCleanDoc({ ...doc, preview: 'q'.repeat(5e6) }).preview.length === 400);
+});
+test('preview: a record without one shows its excerpt; a save writes one', () => {
+  assert.equal(L.dlThumbText(L.dlCleanDoc(doc)), 'Hi');
+  assert.equal(L.dlThumbText({ preview: 'P', excerpt: 'E' }), 'P');
+  assert.equal(L.dlThumbText(null), '');
+  const plan = L.dlPlanSave({ old: [{ id: 'aaaa1111', text: 'x' }], text: '# T\n\nbody', title: 'Plan', rec: doc, me: 'u1', name: 'Ana', now: '2026-11-11T11:00:00.000Z', fresh: () => 'bbbb2222' });
+  assert.equal(plan.record.preview, '# T\n\nbody');
+});
+test('list view: only thumbs is thumbs; two options with icons', () => {
+  assert.equal(L.dlCleanListView('thumbs'), 'thumbs');
+  for (const v of ['list', '', null, undefined, 'x', 3, {}]) assert.equal(L.dlCleanListView(v), 'list');
+  assert.deepEqual(L.DL_LISTVIEWS.map((o) => o.id), ['list', 'thumbs']);
+  assert.ok(L.DL_LISTVIEWS.every((o) => o.icon && o.label));
 });
 test('doc record: good kept, unknown dropped', () => {
   assert.deepEqual(L.dlCleanDoc({ ...doc, extra: 1 }), doc);

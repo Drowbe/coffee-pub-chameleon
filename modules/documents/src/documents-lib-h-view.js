@@ -37,3 +37,8 @@ function dlViewKey(e) {
   if (e.key === '0') return 'actual';
   return null;
 }
+
+// ---- the list's look: rows or thumbnails (a person's own choice, kept in this browser) ----------------------------------------
+const DL_LISTVIEWS = Object.freeze([{ id: 'list', label: 'List', icon: 'list' }, { id: 'thumbs', label: 'Thumbnails', icon: 'table-cells-large' }]);
+// -> 'list' or 'thumbs'; anything else (nothing, a stray value) is the list.
+const dlCleanListView = (v) => (v === 'thumbs' ? 'thumbs' : 'list');

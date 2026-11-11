@@ -131,7 +131,7 @@
     const now = new Date().toISOString();
     const plan = dlPlanChunks([], split.chunks, () => dlNewId(Math.random));
     for (const c of plan) await host.storage.set(dlTextKey(id, c.id), { id: c.id, doc: id, text: c.text });
-    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
+    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text), preview: dlPreview(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
     const r = await host.storage.set(dlDocKey(id), rec, { version: 0 });
     remember({ key: dlDocKey(id), value: rec, version: r && r.version });
     return id;
@@ -197,6 +197,49 @@
     }
     return li;
   }
+  // A thumbnail card: a small copy of the page in the document's own colour, its first lines through the same safe reader
+  // (tokens to elements, no HTML), the title and who edited it. The description is kept per revision, the elements made fresh.
+  const described = new Map();
+  function thumbDesc(rec) {
+    const k = `${rec.id}:${rec.rev}`;
+    if (!described.has(k)) {
+      if (described.size > 200) described.clear();
+      described.set(k, dlDescribe(dlThumbText(rec), lex));
+    }
+    return described.get(k);
+  }
+  function card(rec, trashRec) {
+    const li = el('li', 'card');
+    li.setAttribute('data-id', rec.id);
+    const main = el(trashRec ? 'div' : 'button', 'card-main');
+    if (!trashRec) { main.type = 'button'; main.addEventListener('click', () => openDoc(rec.id)); }
+    const thumb = el('div', 'sheet thumb');
+    paintPaper(thumb, rec.paper);
+    thumb.setAttribute('aria-hidden', 'true');
+    const page = el('div', 'page');
+    page.append(dlBuild(thumbDesc(rec), doc));
+    for (const a of page.querySelectorAll('a')) { a.removeAttribute('href'); a.removeAttribute('target'); }
+    thumb.append(page);
+    main.append(thumb, el('span', 'row-title', rec.title));
+    main.append(el('span', 'meta', trashRec ? `Deleted by ${trashRec.name}, ${when(trashRec.at)}` : `Edited by ${rec.editedByName}, ${when(rec.editedAt)}`));
+    const held = !trashRec && liveLock(rec.id);
+    if (held) main.append(el('span', 'lock-tag', `${held.rec.name} is editing`));
+    li.append(main);
+    if (trashRec && canEdit) {
+      const bar = el('div', 'bar');
+      const back = el('button', 'btn btn-small', 'Restore');
+      back.type = 'button';
+      back.addEventListener('click', () => restore(rec.id).then(render).catch((e) => note(e.message)));
+      const gone = el('button', 'btn btn-quiet btn-small', 'Delete for good');
+      gone.type = 'button';
+      gone.addEventListener('click', async () => {
+        if (await host.ui.confirm({ title: 'Delete for good?', message: `"${rec.title}" and its text will be gone.`, action: 'Delete for good', kind: 'final' })) removeForGood(rec.id).catch((e) => note(e.message));
+      });
+      bar.append(back, gone);
+      li.append(bar);
+    }
+    return li;
+  }
   function render() {
     if (showTrash) $('make').hidden = true;
     renderChrome();
@@ -204,8 +247,10 @@
     const recs = showTrash ? [...trash.values()].sort((a, b) => b.at.localeCompare(a.at)).map((t) => ({ rec: t.doc, t }))
       : [...docs.values()].sort((a, b) => b.editedAt.localeCompare(a.editedAt)).map((rec) => ({ rec }));
     const shown = recs.filter(({ rec }) => !q || rec.title.toLowerCase().includes(q) || rec.excerpt.toLowerCase().includes(q));
-    const items = shown.map(({ rec, t }) => row(rec, t));
-    if (!showTrash) for (const id of unreadable) { const li = el('li', 'row unreadable'); li.append(el('span', 'row-title', 'This document could not be read.')); items.push(li); }
+    const thumbs = listView === 'thumbs';
+    $('rows').className = thumbs ? 'cards' : 'rows';
+    const items = shown.map(({ rec, t }) => (thumbs ? card(rec, t) : row(rec, t)));
+    if (!showTrash) for (const id of unreadable) { const li = el('li', thumbs ? 'card unreadable' : 'row unreadable'); li.append(el('span', 'row-title', 'This document could not be read.')); items.push(li); }
     if (!items.length) {
       const text = q ? 'Nothing matches that.' : showTrash ? 'The trash is empty.' : canEdit ? 'No documents yet.' : 'Nothing has been written here yet.';
       const li = el('li', 'meta', text);
@@ -220,12 +265,16 @@
   // ---- the page colour -----------------------------------------------------------------------------------------------------
   // The sheet gets the chosen colour (data-paper names it; documents.css holds the value) and the ink that reads best on it
   // (data-ink, picked by contrast from the two inks in documents.css), so every colour is readable.
+  const inks = new Map(); // paper id -> 'dark' | 'light' (the colours are fixed, so each is worked out once)
   function paintPaper(sheet, id) {
     const p = DL_PAPER_BY_ID.get(dlCleanPaper(id));
-    const css = getComputedStyle($('app'));
-    const rgb = (name) => dlHexRgb(css.getPropertyValue(name));
+    if (!inks.has(p.id)) {
+      const css = getComputedStyle($('app'));
+      const rgb = (name) => dlHexRgb(css.getPropertyValue(name));
+      inks.set(p.id, dlInkFor(rgb(p.css), rgb('--doc-fixed-ink-light'), rgb('--doc-fixed-ink-dark')) || 'dark');
+    }
     sheet.dataset.paper = p.id;
-    sheet.dataset.ink = dlInkFor(rgb(p.css), rgb('--doc-fixed-ink-light'), rgb('--doc-fixed-ink-dark')) || 'dark';
+    sheet.dataset.ink = inks.get(p.id);
   }
   function choosePaper(id) {
     if (!ed || ed.lost || ed.paper === dlCleanPaper(id)) return;
@@ -584,6 +633,16 @@
   const VIEW_KEY = 'documents-view';
   let view = 'fit';
   try { view = dlViewRead(window.localStorage.getItem(VIEW_KEY)); } catch { /* no browser storage: Fit width */ }
+  // The list's look: rows or thumbnails, the shared view switch in the list's toolbar, remembered per person in this browser.
+  const LISTVIEW_KEY = 'documents-listview';
+  let listView = 'list';
+  try { listView = dlCleanListView(window.localStorage.getItem(LISTVIEW_KEY)); } catch { /* the list */ }
+  let listSwitch = null;
+  function setListView(v) {
+    listView = dlCleanListView(v);
+    try { window.localStorage.setItem(LISTVIEW_KEY, listView); } catch { /* kept for this visit only */ }
+    render();
+  }
   const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
   const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
   const keyHint = (keys) => (KEYS ? `${MOD} ${keys}` : undefined);
@@ -664,6 +723,11 @@
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
+    // The list's look switch is there only while the list is.
+    const wantSwitch = !ed && !openId;
+    if (wantSwitch && !listSwitch) listSwitch = host.ui.viewSwitch({ id: 'listview', label: 'View', options: DL_LISTVIEWS.map((o) => ({ ...o })), value: listView, onChange: setListView });
+    else if (!wantSwitch && listSwitch) { listSwitch.destroy(); listSwitch = null; }
+    else if (listSwitch) listSwitch.set(listView);
     host.toolbar.set(items).catch(() => {});
     if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }] : []).catch(() => {});
     renderStatus();

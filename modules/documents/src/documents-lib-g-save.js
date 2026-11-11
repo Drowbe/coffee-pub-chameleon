@@ -15,7 +15,7 @@
     const chunks = dlPlanChunks(old, split.chunks, fresh);
     const ids = chunks.map((c) => c.id);
     const record = {
-      ...rec, title: t, rev: rec.rev + 1, paper: dlCleanPaper(paper === undefined ? rec.paper : paper), chunks: ids, size: clean.length, excerpt: dlExcerpt(clean),
+      ...rec, title: t, rev: rec.rev + 1, paper: dlCleanPaper(paper === undefined ? rec.paper : paper), chunks: ids, size: clean.length, excerpt: dlExcerpt(clean), preview: dlPreview(clean),
       editedBy: me, editedByName: dlCleanLine(name, DL.nameMax) || 'Someone', editedAt: now,
     };
     return { ok: true, chunks, writes: chunks.filter((c) => c.write), dropped: dlDroppedChunks(old.map((o) => o.id), ids), record };

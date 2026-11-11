@@ -27,6 +27,21 @@
 .row-title { font-size: var(--text-14); font-weight: var(--weight-strong); overflow-wrap: anywhere; }
 .row-excerpt { color: var(--text-muted); font-size: var(--text-13); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .row.unreadable { opacity: 0.7; }
+.lock-tag { color: var(--accent); font-size: var(--text-12); font-weight: var(--weight-strong); }
+
+/* thumbnails: each card is a small copy of the page, in its own colour, with its first lines at a small scale */
+.cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(12rem, 100%), 1fr)); gap: var(--space-3); }
+.card { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.card.unreadable { opacity: 0.7; padding: var(--space-2) var(--space-3); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-card); }
+.card-main { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: var(--text-primary); font: inherit; cursor: pointer; }
+.card-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-medium); }
+.sheet.thumb { zoom: 1; width: 100%; max-width: 100%; height: 11rem; padding: var(--space-3); margin: 0 0 var(--space-1); overflow: hidden; position: relative; pointer-events: none; }
+.card-main:hover .thumb { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
+.thumb::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3rem; background: linear-gradient(to bottom, transparent, var(--doc-paper)); }
+.thumb .page { font-size: calc(var(--text-14) * 0.6); line-height: 1.4; }
+.thumb .page h1, .thumb .page h2, .thumb .page h3, .thumb .page h4 { font-size: 1.25em; margin: 0 0 0.4em; }
+.thumb .page p, .thumb .page ul, .thumb .page ol, .thumb .page pre, .thumb .page blockquote, .thumb .page table { margin: 0 0 0.5em; }
+.thumb .page table { overflow: hidden; }
 
 /* the page: a calm panel on the module's background, one column; buttons and the status line stay above it */
 .col { width: 100%; max-width: 48rem; margin-inline: auto; flex: 0 0 auto; }
@@ -82,3 +97,6 @@
 .sheet-edit:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
 .lost { border: 1px solid var(--edge-hairline); border-left: 3px solid var(--accent); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); background: var(--surface-card); }
 .lost p { margin: 0 0 var(--space-2); }
+.thumb .page ul, .thumb .page ol { padding-left: 1.6em; }
+.thumb .page li.dl-task { margin-left: -1em; column-gap: 0.4em; }
+.thumb .page li.dl-task > input { width: 1em; height: 1em; margin: 0.15em 0 0; }
