@@ -517,6 +517,10 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.ok(/const zoneOf = \(z\) => \(z === 'start' \|\| z === 'end' \? \{ zone: z \} : \{\}\);/.test(hostSrc), 'the SDK whitelists zone to start or end');
   assert.ok(/toolbarButton: \(\{[^}]*\bzone\b[^}]*\}\) =>/.test(hostSrc) && /viewSwitch: \(\{[^}]*\bzone\b[^}]*\blabel\b[^}]*\}\) =>/.test(hostSrc), 'toolbarButton takes zone, viewSwitch zone and label');
   assert.equal((hostSrc.match(/\.\.\.zoneOf\(zone\)/g) || []).length, 2, 'both draw the whitelisted zone');
+  // A toolbar button with no `on` is not a toggle: the SDK sends no `on`, and the page keeps none (no tick in More); true or false is kept.
+  assert.ok(!/on: Boolean\(on\)/.test(hostSrc), 'toolbarButton does not turn a missing on into false');
+  const plain = R.cleanToolbarItems([{ type: 'button', id: 'b1', label: 'One' }, { type: 'button', id: 'b2', label: 'Two', on: false }, { type: 'button', id: 'b3', label: 'Three', on: true }]);
+  assert.deepEqual(plain.map((i) => i.on), [null, false, true], 'on stays unset, false or true as given');
   assert.deepEqual(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` })), 6).length, 6, 'a page may keep more status items than the default');
   assert.equal(R.cleanStatusItems(Array.from({ length: 8 }, (_, i) => ({ text: `item ${i}` }))).length, 4, 'the default is four');
   // The title bar's actions: the header's icons, then the toolbar buttons placed there; past five, the menu.

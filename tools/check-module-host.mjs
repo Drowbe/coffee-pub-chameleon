@@ -831,3 +831,39 @@ console.log(`check-module-host: OK (${n} groups)`);
   assert.match(fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8'), /'reconnected' \(no data\)/, 'the SDK says what the event is');
   console.log('ok - reconnected: wired in the mount, no data');
 })();
+
+// host.ui.toolbarButton: `on` left out stays out (no pressed state, no tick in the folded More menu); on: true or false is a toggle;
+// set({ on }) makes it one later. Run the SDK's own lines with stand-ins for the toolbar row.
+test('toolbarButton leaves `on` out unless given', () => {
+  const src = slice('public/sdk/host.js', 'toolbarButton: ({ id, label, icon, iconOnly, on, disabled, onClick, zone }) => {', '\n      },\n    },\n\n    // Whether the viewer');
+  const make = () => {
+    const switches = [];
+    const host = { on: () => () => {} };
+    const make = new Function('switches', 'host', 'drawSwitches', 'zoneOf', `const ui = { ${src.replace(/\n    },\n\n    \/\/ Whether the viewer$/, '')} };\nreturn ui.toolbarButton;`);
+    return { switches, fn: make(switches, host, () => {}, () => ({})) };
+  };
+  const { switches, fn } = make();
+  const a = fn({ id: 'a', label: 'A', icon: 'x', iconOnly: true, onClick() {} });
+  assert.ok(!('on' in switches[0].item()), 'no on key when none is given');
+  a.set({ on: true });
+  assert.equal(switches[0].item().on, true, 'set({ on: true }) makes it a toggle');
+  a.set({ on: false });
+  assert.equal(switches[0].item().on, false, 'on: false is kept');
+  const b = fn({ id: 'b', label: 'B', on: false });
+  assert.equal(switches[1].item().on, false, 'on: false given at the start is a toggle that is off');
+  const c = fn({ id: 'c', label: 'C', on: 1 });
+  assert.equal(switches[2].item().on, true, 'on: a truthy value is true');
+  assert.ok(b && c);
+});
+
+// host.menu.show({ onClose }): called once when the menu closes, however it closes (a pick, Escape, an outside press, close(), the same id again,
+// another menu opening). The SDK draws the menu in the module's own page, so a function is fine also in a frame.
+test('host.menu.show takes onClose and calls it once from the one cleanup', () => {
+  const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
+  assert.match(sdk, /function showMenu\(\{ id, items, at, anchor, className, maxWidth, onClose \} = \{\}\)/, 'showMenu takes onClose');
+  assert.match(sdk, /show\(\{ id, items, at, anchor, className, maxWidth, onClose \} = \{\}\) \{\s*return showMenu\(\{ id, items, at, anchor, className, maxWidth, onClose \}\);/, 'host.menu.show passes onClose');
+  assert.match(sdk, /cleanup: \(\) => \{[\s\S]{0,700}const done = onClose; onClose = null; try \{ done\(\);/, 'the cleanup calls onClose once');
+  assert.equal((sdk.match(/done\(\)/g) || []).length, 1, 'onClose is called in one place only');
+  // Every way out goes through closeMenu -> cleanup.
+  assert.match(sdk, /function closeMenu\(\) \{\s*if \(!openMenu\) return;\s*const \{ cleanup \} = openMenu;\s*openMenu = null;\s*cleanup\(\);/, 'closeMenu runs the cleanup once');
+});
