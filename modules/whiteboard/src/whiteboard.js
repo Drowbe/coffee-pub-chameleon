@@ -3895,9 +3895,10 @@
   await reloadBoard(); // the background (Default when it cannot be read)
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
   sweepSoon();
-  // A dropped connection: read the board again when it is back, and when the page shows again after a while hidden. (Later:
-  // the host's 'reconnected' event calls resyncBoard() here too.)
+  // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
+  // browser is back online, and when the page shows again after a while hidden.
   let hiddenAt = 0;
+  host.on('reconnected', () => { resyncBoard(); });
   window.addEventListener('online', () => { resyncBoard(); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hiddenAt = Date.now();
