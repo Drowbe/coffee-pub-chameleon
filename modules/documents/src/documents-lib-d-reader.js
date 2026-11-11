@@ -95,7 +95,7 @@
     return out;
   }
 
-  // A marked inline extension (give it to `new marked.Marked({ extensions: [DL_MARKED_MATH] })`): it reads $...$ and $$...$$ BEFORE
+  // A marked inline extension (give it to `new marked.Marked({ extensions: [DL_MARKED_MATH], hooks: DL_MARKED_HOOKS })`): it reads $...$ and $$...$$ BEFORE
   // marked's escape rule, so a formula keeps its backslashes (\, \{ \% \\). A $ followed by a digit or a space starts nothing,
   // and \$ is a literal dollar (the escape rule takes it first). The token is { type:'math', raw, text } and `text` is the TeX.
   const DL_MARKED_MATH = {
@@ -107,6 +107,11 @@
       return m ? { type: 'math', raw: m[0], text: m[1] } : undefined;
     },
   };
+  // The hook for marked's emphasis pairing (give it as `hooks: DL_MARKED_HOOKS`): before * and _ are paired, every formula span is
+  // filled with letters of the same length, so a * or _ inside a formula can neither open nor close an emphasis around it.
+  // The tokenizer still reads the real text; only the pairing sees the mask. (Code spans and \$ are already masked by marked.)
+  const DL_MATH_SPAN = /\$\$(?=\S)[^$]{1,2000}?\$\$|\$(?![\d\s$])(?:[^$\n]{1,2000}?\S|\S)\$(?!\d)/g;
+  const DL_MARKED_HOOKS = { emStrongMask: (s) => s.replace(DL_MATH_SPAN, (m) => 'a'.repeat(m.length)) };
   // The label of a link as a person reads it: the lexer's decoded inline text (escapes already taken out), not the source.
   function dlPlain(tokens, depth = 0) {
     let s = '';
@@ -220,6 +225,25 @@
     const md = dlCleanText(markdown);
     if (md.length > DL.sizeMax) return [dlSource(md.slice(0, DL.sizeMax))];
     try { return dlBlocks(lex(md), { list: 0, quote: 0 }); } catch (err) { return [dlSource(md)]; }
+  }
+
+  // The words of a description as one run of plain text (blocks and table cells apart by a space, inline pieces joined as written):
+  // what lists and search show.
+  function dlDescribedText(desc, depth = 0) {
+    let out = '';
+    if (!Array.isArray(desc) || depth > 40) return out;
+    for (const n of desc) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.t === 'text' || n.t === 'code') out += n.v;
+      else if (n.t === 'object') out += n.label;
+      else if (n.t === 'br') out += ' ';
+      else if (n.t === 'math') out += `${n.tex} `;
+      else if (n.t === 'source' || n.t === 'codeblock') out += `${n.v} `;
+      else if (n.t === 'table') for (const cell of [...n.head, ...n.rows.flat()]) out += `${dlDescribedText(cell, depth + 1)} `;
+      else if (n.t === 'list') for (const it of n.items) out += `${dlDescribedText(it.c, depth + 1)} `;
+      else if (Array.isArray(n.c)) out += n.t === 'paragraph' || n.t === 'heading' || n.t === 'quote' ? `${dlDescribedText(n.c, depth + 1)} ` : dlDescribedText(n.c, depth + 1);
+    }
+    return out;
   }
 
   // ---- description -> elements --------------------------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 
   // -> { ok:false, reason:'title'|'long' } or { ok:true, chunks:[{ id, text, write }], writes:[...those with write], dropped:[ids], record }.
   // `old` = [{ id, text }] in order (what the small record lists); `rec` the cleaned small record read with the lock.
-  function dlPlanSave({ old, text, title, paper, rec, me, name, now, fresh }) {
+  function dlPlanSave({ old, text, title, paper, rec, me, name, now, fresh, lex }) {
     const t = dlCleanLine(title, DL.titleMax);
     if (!t) return { ok: false, reason: 'title' };
     const clean = dlCleanText(text);
@@ -15,7 +15,7 @@
     const chunks = dlPlanChunks(old, split.chunks, fresh);
     const ids = chunks.map((c) => c.id);
     const record = {
-      ...rec, title: t, rev: rec.rev + 1, paper: dlCleanPaper(paper === undefined ? rec.paper : paper), chunks: ids, size: clean.length, excerpt: dlExcerpt(clean), preview: dlPreview(clean),
+      ...rec, title: t, rev: rec.rev + 1, paper: dlCleanPaper(paper === undefined ? rec.paper : paper), chunks: ids, size: clean.length, excerpt: dlExcerpt(clean, lex), preview: dlPreview(clean),
       editedBy: me, editedByName: dlCleanLine(name, DL.nameMax) || 'Someone', editedAt: now,
     };
     return { ok: true, chunks, writes: chunks.filter((c) => c.write), dropped: dlDroppedChunks(old.map((o) => o.id), ids), record };
