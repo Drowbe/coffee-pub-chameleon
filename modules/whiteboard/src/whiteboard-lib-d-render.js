@@ -321,7 +321,9 @@
     }
     // Pick the blocks with these ids (an array; [] for none); handles only when it is one block.
     function select(ids, handles = null) {
+      const was = selected;
       selected = new Set((ids || []).filter((id) => els.has(id)));
+      for (const id of new Set([...was, ...selected])) { const e = els.get(id); if (e) e.classList.toggle('wb-picked', selected.has(id)); } // the frame's notes mark shows on a picked frame
       grips = selected.size === 1 ? handles : null;
       for (const id of locks.keys()) lockState(id);
       showFrame();

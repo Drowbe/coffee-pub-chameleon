@@ -1037,8 +1037,9 @@
   width: 22rem;
   max-width: calc(100% - var(--space-4));
   max-height: 40%;
-  overflow: auto;
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--mf-edge, var(--edge-bar));
   border-radius: var(--radius-medium);
   background: var(--mf-surface-toolbar, var(--surface-toolbar));
@@ -1047,6 +1048,24 @@
   box-shadow: var(--shadow-2);
 }
 .wb-notes-box[hidden] { display: none; }
+.wb-notes-handle { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); border-bottom: 1px solid var(--edge-hairline); cursor: grab; touch-action: none; user-select: none; color: var(--text-muted); font-size: var(--text-13); }
+.wb-notes-handle:active { cursor: grabbing; }
+.wb-notes-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wb-notes-handle-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-notes-handle button { cursor: pointer; }
+.wb-notes-body { overflow: auto; padding: var(--space-2) var(--space-3); }
+
+/* The notes mark in a frame's title tab: on every frame with notes; for editors, faint on one without, clear on mouseover or when it is picked. Not in Present, Save as image or Print. */
+.wb-fr-notes { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 20px; height: 20px; margin: 0 calc(var(--space-1) * -1) 0 var(--space-1); padding: var(--space-1); border: 0; border-radius: var(--radius-small); background: transparent; color: var(--accent); cursor: pointer; }
+.wb-fr-notes[hidden] { display: none; }
+.wb-fr-notes:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.wb-fr-notes:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wb-fr-notes .ic { display: block; width: 100%; height: 100%; }
+.wb-fr-notes .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.wb-fr-notes[data-kind="add"] { position: absolute; left: 100%; top: 50%; margin: 0 0 0 var(--space-1); transform: translateY(-50%); color: var(--text-muted); opacity: 0; pointer-events: none; }
+.wb-fr-tab:hover .wb-fr-notes[data-kind="add"], .wb-fr-edge:hover ~ .wb-fr-tab .wb-fr-notes[data-kind="add"], .wb-type-frame.wb-picked .wb-fr-notes[data-kind="add"], .wb-fr-notes[data-kind="add"]:focus-visible { opacity: 1; pointer-events: auto; }
+.app.narrow .wb-fr-notes { width: 28px; height: 28px; }
+.wb-type-frame.wb-editing .wb-fr-notes, .app.wb-presenting .wb-fr-notes { display: none; }
 .wb-notes-none { color: var(--text-muted); }
 .wb-notes-dlg {
   position: absolute;
