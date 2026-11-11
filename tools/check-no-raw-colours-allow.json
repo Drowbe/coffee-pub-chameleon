@@ -4,6 +4,9 @@
     "modules/assistant/src/assistant.css": {
       "raw": 1
     },
+    "modules/documents/src/documents.css": {
+      "raw": 9
+    },
     "modules/places/src/places.css": {
       "shadow-scrim": 1
     },

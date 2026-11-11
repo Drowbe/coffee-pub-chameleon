@@ -131,7 +131,7 @@
     const now = new Date().toISOString();
     const plan = dlPlanChunks([], split.chunks, () => dlNewId(Math.random));
     for (const c of plan) await host.storage.set(dlTextKey(id, c.id), { id: c.id, doc: id, text: c.text });
-    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text), by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
+    const rec = { id, type: 'doc', title: t, rev: 1, chunks: plan.map((c) => c.id), size: text.length, excerpt: dlExcerpt(text), paper: DL_PAPER_DEFAULT, by: me, at: now, editedBy: me, editedByName: myName, editedAt: now };
     const r = await host.storage.set(dlDocKey(id), rec, { version: 0 });
     remember({ key: dlDocKey(id), value: rec, version: r && r.version });
     return id;
@@ -217,6 +217,34 @@
     $('size').textContent = `${docs.size} ${docs.size === 1 ? 'document' : 'documents'}, about ${Math.max(1, Math.round(chars / 1000))} KB of text. Documents has 5 MB in all, shared by every ${host.util.word("space")}.`;
   }
 
+  // ---- the page colour -----------------------------------------------------------------------------------------------------
+  // The sheet gets the chosen colour (data-paper names it; documents.css holds the value) and the ink that reads best on it
+  // (data-ink, picked by contrast from the two inks in documents.css), so every colour is readable.
+  function paintPaper(sheet, id) {
+    const p = DL_PAPER_BY_ID.get(dlCleanPaper(id));
+    const css = getComputedStyle($('app'));
+    const rgb = (name) => dlHexRgb(css.getPropertyValue(name));
+    sheet.dataset.paper = p.id;
+    sheet.dataset.ink = dlInkFor(rgb(p.css), rgb('--doc-fixed-ink-light'), rgb('--doc-fixed-ink-dark')) || 'dark';
+  }
+  function choosePaper(id) {
+    if (!ed || ed.lost || ed.paper === dlCleanPaper(id)) return;
+    ed.paper = dlCleanPaper(id);
+    paintPaper($('editor').querySelector('.sheet'), ed.paper);
+    typed();
+  }
+  function paperMenu(e) {
+    if (!ed || ed.lost) return;
+    const swatch = (p) => getComputedStyle($('app')).getPropertyValue(p.css).trim();
+    const items = [{ heading: 'Page colour' }, ...dlPaperMenuModel().map((m) => {
+      if (m.kind === 'heading') return { heading: m.label };
+      const p = DL_PAPER_BY_ID.get(m.id);
+      const now = m.id === ed.paper;
+      return { id: m.id, label: m.label, current: now, ariaLabel: `${m.label} page colour${now ? ', chosen' : ''}`, icon: 'circle', iconColor: swatch(p) || undefined, onClick: () => choosePaper(m.id) };
+    })];
+    host.menu.show({ id: 'paper', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items });
+  }
+
   // ---- reading -------------------------------------------------------------------------------------------------------------
   async function draw(id) {
     const got = await readText(id);
@@ -225,6 +253,7 @@
     const page = $('page');
     const top = $('read').scrollTop;
     shownRev = got.rec.rev;
+    paintPaper($('read').querySelector('.sheet'), got.rec.paper);
     $('read-title').textContent = got.rec.title;
     $('read-meta').textContent = `Edited by ${got.rec.editedByName}, ${when(got.rec.editedAt)}`;
     page.replaceChildren(dlBuild(dlDescribe(got.text, lex), doc));
@@ -238,6 +267,7 @@
     updateEditButton();
     $('page').replaceChildren();
     $('read-title').textContent = docs.get(id).title;
+    paintPaper($('read').querySelector('.sheet'), docs.get(id).paper);
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
     renderChrome();
     $('page').focus();
@@ -365,13 +395,14 @@
   async function openEditor(id, lock) {
     const { rec, version, got } = await readForEdit(id);
     ed = {
-      id, rec, docVersion: version, old: got.parts, lock, text: got.text, saved: { text: got.text, title: rec.title },
+      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, saved: { text: got.text, title: rec.title, paper: rec.paper },
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
       timer: 0, beat: 0, queue: Promise.resolve(),
     };
     for (const cid of dlLeftoverChunks(rec.chunks, got.stored)) host.storage.delete(dlTextKey(id, cid)).catch(() => {});
     $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
     $('edit-title').value = rec.title;
+    paintPaper($('editor').querySelector('.sheet'), ed.paper);
     const ta = $('edit-text');
     ta.value = got.text; ta.readOnly = false;
     $('edit-title').readOnly = false;
@@ -391,7 +422,7 @@
     s.queue = run.catch(() => {});
     return run;
   };
-  const current = () => ({ text: $('edit-text').value, title: $('edit-title').value });
+  const current = () => ({ text: $('edit-text').value, title: $('edit-title').value, paper: ed ? ed.paper : undefined });
   const dirtyNow = () => ed && dlIsDirty(ed.saved, current());
   function setStatus() {
     if (!ed) return;
@@ -434,7 +465,7 @@
       if (!ed || ed.lost) return 'lost';
       const cur = current();
       if (!dlIsDirty(ed.saved, cur)) return 'saved';
-      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random) });
+      const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random) });
       if (!plan.ok) {
         ed.refused = plan.reason;
         note(plan.reason === 'title' ? 'Give the document a title.' : 'This document is too long. Split it into two.');
@@ -461,7 +492,7 @@
       ed.saving = false;
       ed.rec = plan.record;
       ed.old = plan.chunks.map((c) => ({ id: c.id, text: c.text }));
-      ed.saved = { text: cur.text, title: cur.title };
+      ed.saved = { text: cur.text, title: cur.title, paper: cur.paper };
       remember({ key: dlDocKey(ed.id), value: plan.record });
       const gone = [...plan.dropped, ...ed.stray.filter((x) => !plan.chunks.some((c) => c.id === x))];
       ed.stray = [];
@@ -549,6 +580,7 @@
     { id: 'formula', title: 'Formula', icon: 'square-root-variable', fn: (s) => dlFormula(s) },
   ];
   let fmtButtons = [];
+  let paperButton = null;
   function formatWith(f, e) {
     if (!ed || ed.lost) return;
     if (f.id === 'heading') {
@@ -576,6 +608,8 @@
     const wantFmt = Boolean(ed && !ed.lost);
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
+    if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page colour', icon: 'palette', iconOnly: true, zone: 'end', onClick: (e) => paperMenu(e) });
+    else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     host.toolbar.set(items).catch(() => {});
     if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }] : []).catch(() => {});
     renderStatus();
