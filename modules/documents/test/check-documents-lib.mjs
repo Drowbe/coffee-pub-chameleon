@@ -162,15 +162,14 @@ test('the layout switch: Fluid then Paper, each with an icon and a word, icons n
   assert.equal(L.dlCleanLayout('paper'), 'paper');
   assert.equal(L.dlCleanLayout('fluid'), 'fluid');
 });
-test('the Page menu: the size pair (the current one marked), the numbers entry (marked when on), the page break', () => {
+test('the Page menu: the size pair (the current one marked), the numbers entry (marked when on), no page break (it is in Insert)', () => {
   const m = L.dlPageMenuModel({ layout: 'paper', pageSize: 'a4', pageNumbers: true });
   assert.deepEqual(m.filter((x) => x.kind === 'size').map((x) => [x.label, x.current]), [['Letter', false], ['A4', true]]);
   assert.deepEqual(m.filter((x) => x.kind === 'numbers').map((x) => [x.label, x.current]), [['Page numbers', true]]);
-  assert.deepEqual(m.filter((x) => x.kind === 'break').map((x) => [x.label, x.icon]), [['Page break', 'scissors']]);
+  assert.ok(!m.some((x) => x.kind === 'break'));
   const d = L.dlPageMenuModel(null);
   assert.deepEqual(d.filter((x) => x.kind === 'size').map((x) => x.current), [true, false]);
   assert.equal(d.find((x) => x.kind === 'numbers').current, false);
-  assert.ok(!('current' in d.find((x) => x.kind === 'break')));
 });
 
 // ---- the manual page break (step 2): `_ _ _` as a top-level rule line of its own

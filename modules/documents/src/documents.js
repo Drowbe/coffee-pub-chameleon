@@ -426,7 +426,7 @@
     ed.page = { ...ed.page, pageNumbers: !ed.page.pageNumbers };
     pageChanged();
   }
-  // The Page button's menu: the page colour (its own menu), the size, the numbers, and a page break at the caret.
+  // The Page button's menu: the page colour (its own menu), the size and the numbers.
   function pageMenu(e) {
     if (!ed || ed.lost) return;
     const at = { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 };
@@ -434,8 +434,8 @@
       if (m.kind === 'heading') return { heading: m.label };
       if (m.kind === 'size') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', chosen' : ''}`, icon: 'ruler-combined', onClick: () => choosePageSize(m.id) };
       if (m.kind === 'numbers') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', on' : ', off'}`, icon: 'arrow-down-1-9', onClick: togglePageNumbers };
-      return { id: m.id, label: m.label, icon: m.icon, onClick: () => { applyFormat('pagebreak'); } };
-    })];
+      return null;
+    }).filter(Boolean)];
     host.menu.show({ id: 'page', at, items });
   }
 
@@ -908,8 +908,6 @@
     { id: 'checklist', title: 'Checklist', icon: 'list-check', key: 'Enter ticks a row' },
     { id: 'quote', title: 'Quote', icon: 'quote-left' },
     { id: 'link', title: 'Link', icon: 'link', key: 'K' },
-    { id: 'grid', title: 'Grid', icon: 'table-cells' },
-    { id: 'formula', title: 'Formula', icon: 'square-root-variable' },
   ];
   // ---- the view: Fit width or a zoom level, a person's own choice, kept in this browser --------------------------------------
   // The sheet is scaled with CSS zoom (its width and its text together); the caret, the text box and selections follow it.
@@ -999,6 +997,7 @@
     });
   }
   let richSwitch = null;
+  let insertButton = null;
   let layoutSwitch = null;
   let paperButton = null;
   let tagButton = null;
@@ -1011,6 +1010,16 @@
       host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, ...(level === lv ? { current: true } : {}), onClick: () => applyFormat(`h${lv}`) })), onClose: () => { if (ed && !ed.lost) ed.editor.focus(); } }); // Escape or a press outside: the keyboard goes back to the editor
     } else if (f.id === 'link' && rich) linkWith(e);
     else applyFormat(f.id);
+  }
+  // The Insert button's menu: Grid and Formula (Markdown only for now), and a page break at the caret.
+  function insertMenu(e) {
+    if (!ed || ed.lost) return;
+    const entry = (id, label, icon) => ({ id, label, icon, ...(rich && !dlRichCan(id) ? { disabled: true } : {}), onClick: () => applyFormat(id) });
+    host.menu.show({
+      id: 'insert', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
+      items: [entry('grid', 'Grid', 'table-cells'), entry('formula', 'Formula', 'square-root-variable'), { id: 'break', label: 'Page break', icon: 'scissors', onClick: () => applyFormat('pagebreak') }],
+      onClose: () => { if (ed && !ed.lost) ed.editor.focus(); }, // Escape or a press outside: the keyboard goes back to the editor
+    });
   }
   // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
   const zoomItems = () => [
@@ -1046,7 +1055,9 @@
     const wantFmt = Boolean(ed && !ed.lost);
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
-    // In the rich editor a button with no action there yet (Grid, Formula) is off; Heading's levels are all there.
+    if (wantFmt && !insertButton) insertButton = host.ui.toolbarButton({ id: 'insert', label: 'Insert', icon: 'circle-plus', iconOnly: true, onClick: (e) => insertMenu(e) });
+    else if (!wantFmt && insertButton) { insertButton.destroy(); insertButton = null; }
+    // In the rich editor an entry with no action there yet (Grid, Formula) is off; Heading's levels are all there.
     // There Bold, Italic, Code and Link name their keys, and Checklist the key that ticks a row.
     if (!fmtButtons.length) { fmtFor = null; fmtOn = []; }
     else if (fmtFor !== rich) {
@@ -1066,7 +1077,7 @@
     if (wantFmt && !layoutSwitch) layoutSwitch = host.ui.viewSwitch({ id: 'layout', label: 'Layout', options: DL_LAYOUTS.map((o) => ({ ...o })), value: ed.page.layout, zone: 'end', onChange: chooseLayout });
     else if (!wantFmt && layoutSwitch) { layoutSwitch.destroy(); layoutSwitch = null; }
     else if (layoutSwitch) layoutSwitch.set(ed.page.layout);
-    // The Page button's menu holds the colour, the size, the numbers and the page break.
+    // The Page button's menu holds the colour, the size and the numbers.
     if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
