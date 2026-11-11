@@ -15,6 +15,30 @@
       .replace(/&#(\d{1,7});?/g, (m, d) => (Number(d) <= 0x10ffff ? String.fromCodePoint(Number(d)) : ''))
       .replace(/&(tab|newline|colon|nbsp);?/gi, (m, n) => ({ tab: '\t', newline: '\n', colon: ':', nbsp: ' ' }[n.toLowerCase()]));
   }
+  // TEXT as Markdown means it. marked leaves the entities of a text run in its HTML-escaped form (&amp; &lt; &copy;) and decodes
+  // the numeric ones itself; this takes them back to characters. The result is only ever put in a text node, never parsed.
+  // A name that is not in the list, and a lone &, stay as written.
+  const DL_NAMED = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', copy: '\u00a9', reg: '\u00ae', trade: '\u2122', deg: '\u00b0',
+    plusmn: '\u00b1', times: '\u00d7', divide: '\u00f7', middot: '\u00b7', bull: '\u2022', hellip: '\u2026', ndash: '\u2013', mdash: '\u2014',
+    lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d', laquo: '\u00ab', raquo: '\u00bb', euro: '\u20ac', pound: '\u00a3',
+    yen: '\u00a5', cent: '\u00a2', sect: '\u00a7', para: '\u00b6', larr: '\u2190', rarr: '\u2192', uarr: '\u2191', darr: '\u2193',
+    hearts: '\u2665', check: '\u2713', ne: '\u2260', le: '\u2264', ge: '\u2265', infin: '\u221e', frac12: '\u00bd', frac14: '\u00bc', frac34: '\u00be',
+    colon: ':', tab: '\t', newline: '\n', num: '#', dollar: '$', lbrack: '[', rbrack: ']', lsqb: '[', rsqb: ']', bsol: '\\', grave: '`',
+  };
+  function dlDecodeText(s) {
+    if (typeof s !== 'string' || s.indexOf('&') < 0) return s;
+    return s.replace(/&(?:#[xX]([0-9a-fA-F]{1,6})|#(\d{1,7})|([A-Za-z][A-Za-z0-9]{1,31}));/g, (m, h, d, n) => {
+      if (n) return Object.prototype.hasOwnProperty.call(DL_NAMED, n) ? DL_NAMED[n] : m;
+      const c = h ? parseInt(h, 16) : Number(d);
+      return c === 0 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff) ? '\ufffd' : String.fromCodePoint(c);
+    });
+  }
+  // A chip or link label -> Markdown that reads back as the same label: a backslash before every character the reader would take
+  // as syntax or decode (\ [ ] ( ) ` * _ ~ < > & $ ! |). A new line becomes a space (a label is one line).
+  function dlEscapeLabel(text) {
+    return String(text == null ? '' : text).replace(/\s*\n\s*/g, ' ').replace(/[\\\[\]()`*_~<>&$!|]/g, '\\$&');
+  }
   // An address -> { kind:'link', href } | { kind:'object', module, kind2, id } | null (show it as text).
   function dlSafeAddress(raw) {
     if (typeof raw !== 'string' || raw.length > 2048) return null;
@@ -37,6 +61,7 @@
   }
 
   const dlText = (v) => ({ t: 'text', v: dlCleanText(v) });
+  const dlTitle = (t) => (typeof t === 'string' && t ? { title: dlCleanLine(dlDecodeText(t), 200) } : {});
   // Split a text run at $...$ (not "$5 and $6": the closing $ is not followed by a digit; the formula is 2000 characters at most).
   const DL_INLINE_MATH = /\$(?=\S)([^$\n]{1,2000}?\S|\S)\$(?!\d)/g;
   function dlMathSplit(v) {
@@ -74,6 +99,7 @@
       if (Array.isArray(k.tokens) && k.tokens.length) s += dlPlain(k.tokens, depth + 1);
       else if (k.type === 'br') s += ' ';
       else if (k.type === 'math') s += `$${k.text || ''}$`;
+      else if (k.type === 'text') s += dlDecodeText(String(k.text == null ? k.raw || '' : k.text));
       else if (k.type !== 'checkbox') s += String(k.text == null ? k.raw || '' : k.text);
     }
     return s;
@@ -88,7 +114,7 @@
       switch (k.type) {
         case 'text': case 'escape':
           if (Array.isArray(k.tokens) && k.tokens.length) out.push(...sub());
-          else out.push(...dlMathSplit(String(k.text == null ? k.raw || '' : k.text)));
+          else out.push(...dlMathSplit(k.type === 'text' ? dlDecodeText(String(k.text == null ? k.raw || '' : k.text)) : String(k.text == null ? k.raw || '' : k.text)));
           break;
         case 'strong': out.push({ t: 'strong', c: sub() }); break;
         case 'em': out.push({ t: 'em', c: sub() }); break;
@@ -100,8 +126,8 @@
         case 'link': {
           const a = dlSafeAddress(String(k.href || ''));
           if (!a) out.push({ ...dlText(k.raw), raw: true }); // an address that is not allowed: the source, as text
-          else if (a.kind === 'object') out.push({ t: 'object', module: a.module, objectKind: a.objectKind, id: a.id, label: dlCleanLine(Array.isArray(k.tokens) && k.tokens.length ? dlPlain(k.tokens) : String(k.text || ''), 200) });
-          else out.push({ t: 'link', href: a.href, c: sub() });
+          else if (a.kind === 'object') out.push({ t: 'object', module: a.module, objectKind: a.objectKind, id: a.id, label: dlCleanLine(Array.isArray(k.tokens) && k.tokens.length ? dlPlain(k.tokens) : dlDecodeText(String(k.text || '')), 200), ...dlTitle(k.title) });
+          else out.push({ t: 'link', href: a.href, ...dlTitle(k.title), c: sub() });
           break;
         }
         default: out.push({ ...dlText(k.raw != null ? k.raw : k.text), raw: true }); // html, images, footnotes, anything else: its source, as text (raw: a later editor shows it as a source node)
@@ -130,7 +156,7 @@
       if (!k || typeof k !== 'object') continue;
       switch (k.type) {
         case 'space': case 'checkbox': break; // the task box is drawn from the item's own flag
-        case 'heading': out.push({ t: 'heading', depth: Math.min(4, Math.max(1, Number(k.depth) || 1)), c: dlInline(k.tokens) }); break;
+        case 'heading': out.push({ t: 'heading', depth: Math.min(4, Math.max(1, Number(k.depth) || 1)), level: Math.min(6, Math.max(1, Number(k.depth) || 1)), c: dlInline(k.tokens) }); break;
         case 'paragraph': {
           const m = DL_DISPLAY_MATH.exec(String(k.raw || '').trim());
           if (m) out.push(m[1].trim().length <= DL.formulaMax ? { t: 'math', tex: dlCleanText(m[1].trim()), display: true } : dlSource(k.raw));
@@ -142,7 +168,14 @@
           if (ctx.quote >= 8) out.push(dlSource(k.raw));
           else out.push({ t: 'quote', c: dlBlocks(k.tokens, { ...ctx, quote: ctx.quote + 1 }) });
           break;
-        case 'code': out.push({ t: 'codeblock', v: dlCleanText(String(k.text || '')), lang: k.codeBlockStyle === 'indented' ? '' : dlCleanLine(String(k.lang || ''), 40).replace(/[^A-Za-z0-9_+#.-]/g, '') }); break;
+        case 'code': {
+          // The info string: its first word is the language, the rest is the info (kept for writing back; never drawn).
+          const fence = k.codeBlockStyle === 'indented' ? '' : dlCleanLine(String(k.lang || ''), 240);
+          const sp = fence.search(/\s/);
+          const word = sp < 0 ? fence : fence.slice(0, sp);
+          out.push({ t: 'codeblock', v: dlCleanText(String(k.text || '')), lang: word.slice(0, 40).replace(/[^A-Za-z0-9_+#.-]/g, ''), info: sp < 0 ? '' : fence.slice(sp).trim() });
+          break;
+        }
         case 'hr': out.push({ t: 'rule' }); break;
         case 'list': {
           if (ctx.list >= DL.listDepth || ctx.quote > 8) { out.push(dlSource(k.raw)); break; }
