@@ -467,7 +467,7 @@
     return [...root.children].map((n) => {
       let kind = 'block';
       if (/^H[1-6]$/.test(n.tagName)) kind = 'heading';
-      else if (n.tagName === 'TABLE') kind = 'grid';
+      else if (n instanceof HTMLTableElement) kind = 'grid';
       else if (n.tagName === 'PRE') kind = 'code';
       else if (n.classList.contains('dl-math-block')) kind = 'formula';
       else if (n.classList.contains('dl-pagebreak')) kind = 'pagebreak';
