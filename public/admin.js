@@ -1,4 +1,4 @@
-import { loadBranding, api, wireOverlayBack, renderTopbar, renderPageBar, escapeHtml, getIcons, setUpdateBadge, setManageBadge, manageBadgeLabel, hasOwnerRights, roleLabel, word, setWords, applyWords, themeMode, productName, overCall } from '/brand.js';
+import { loadBranding, api, wireOverlayBack, renderTopbar, renderPageBar, escapeHtml, getIcons, setUpdateBadge, setManageBadge, manageBadgeLabel, hasOwnerRights, roleLabel, word, setWords, applyWords, themeMode, productName, productMarkSrc, overCall } from '/brand.js';
 import { pickBackground } from '/background-picker.js';
 import { CHANGEABLE, DEFAULTS, homeDefault, words, fill as fillWords, VERBS, DEFAULT_VERBS, verbs } from '/words.js';
 import { wireFlightSchedule } from '/flight-schedule.js';
@@ -398,14 +398,20 @@ const PROFILE_LABELS = { roleplaying: 'Participant images', participants: 'Parti
 
 function fillSpaceRow(row, space, index) {
   const img = row.querySelector('[data-thumb]');
-  img.hidden = !space.hasImage;
-  if (space.hasImage) img.src = `/img/space/${space.id}?v=${Date.now()}`;
-  row.querySelector('[data-thumb-fallback]').hidden = space.hasImage;
+  // Home (the Lobby) wears the product's mark, set by the product and never stored; a stored picture is not shown for it.
+  const picture = space.isLobby || space.hasImage;
+  img.hidden = !picture;
+  if (space.isLobby) img.src = productMarkSrc();
+  else if (space.hasImage) img.src = `/img/space/${space.id}?v=${Date.now()}`;
+  row.querySelector('[data-thumb-fallback]').hidden = picture;
   row.querySelector('[data-name]').textContent = space.name;
   const count = space.isLobby ? users.length : space.members.length;
   const who = space.isLobby ? 'Everyone' : `${count} ${word('member', { many: count !== 1 })}`;
   row.querySelector('[data-meta]').textContent = `${who} · ${PROFILE_LABELS[space.profile] || 'Roleplaying'}`;
-  row.querySelector('[data-action="edit"]').href = setupHref(space.id);
+  // Home has nothing to set up (no members, modules or layouts; plan-home-lobby.md, step 2): no Edit button for it.
+  const edit = row.querySelector('[data-action="edit"]');
+  edit.hidden = space.isLobby;
+  edit.href = setupHref(space.id);
   row.classList.toggle('lobby', space.isLobby);
   // The Lobby always sits first and isn't reorderable; among the rest, hide
   // whichever arrow would be a no-op at that end of the list.

@@ -128,6 +128,11 @@ function selfTest() {
 
 selfTest();
 const problems = problemsOf(ROOT);
+// Manage > Spaces: Home's row wears the product's mark and has no Edit button (it would open an empty page).
+const adminJs = fs.readFileSync(path.join(ROOT, 'public/admin.js'), 'utf8');
+const rowFn = adminJs.slice(adminJs.indexOf('function fillSpaceRow'), adminJs.indexOf('function renderSpaces'));
+if (!/space\.isLobby\) img\.src = productMarkSrc\(\)/.test(rowFn)) problems.push('public/admin.js: the Home row\'s picture should be productMarkSrc()');
+if (!/edit\.hidden = space\.isLobby/.test(rowFn)) problems.push('public/admin.js: the Home row should have no Edit button');
 if (problems.length) {
   console.error(`check-brand-mark: ${problems.length} problem(s)`);
   for (const p of problems) console.error(`  ${p}`);
