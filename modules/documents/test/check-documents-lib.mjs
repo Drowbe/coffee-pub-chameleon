@@ -18,7 +18,7 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
-  'dlObjectLinks', 'DL_MARKED_MATH', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
+  'dlObjectLinks', 'dlDecodeText', 'dlEscapeLabel', 'DL_MARKED_MATH', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
@@ -806,6 +806,75 @@ test('reader: text shown as source is flagged raw; plain text is not', () => {
   const c = d[0].c;
   assert.equal(c[0].raw, undefined);
   assert.deepEqual(c.slice(1).map((n) => [n.t, n.raw]), [['text', true], ['text', true], ['text', true]]);
+});
+// ---- reader fields for the rich editor: fence word and info, real heading level, link title, entities, formula fields, label escape
+test('real marked: a code fence keeps its first word as lang and the rest as info; the drawing is unchanged', () => {
+  const r = real('```js title="x" {1,3}\nlet a;\n```\n\n```\nplain\n```\n\n~~~ py\nx\n~~~');
+  assert.deepEqual(r.desc.map((b) => [b.lang, b.info]), [['js', 'title="x" {1,3}'], ['', ''], ['py', '']]);
+  const pre = r.nodes.filter((n) => n.tag === 'pre');
+  assert.equal(pre.length, 3);
+  for (const n of r.nodes) assert.ok(!Object.keys(n.attrs || {}).some((k) => /lang|info|title|class|data/.test(k)), 'the code block carries no attribute of the info');
+  assert.equal(pre[0].textContent, 'let a;');
+  const h = real('```"><script> onload=1\nx\n```');
+  assert.equal(h.desc[0].lang, 'script');
+  assert.deepEqual(h.d.sinks, []);
+});
+test('real marked: a heading keeps its real level; levels 5 and 6 are drawn as 4', () => {
+  const r = real('# a\n\n### c\n\n##### e\n\n###### f');
+  assert.deepEqual(r.desc.map((b) => [b.level, b.depth]), [[1, 1], [3, 3], [5, 4], [6, 4]]);
+  assert.deepEqual(r.nodes.filter((n) => /^h\d$/.test(n.tag)).map((n) => n.tag), ['h1', 'h3', 'h4', 'h4']);
+});
+test('real marked: a link title is kept in the description and never drawn', () => {
+  const r = real('[go](https://a.b/ "The title") and [chip](object:m:k:id1 "Tip") and [plain](https://c.d)');
+  const kids = r.desc[0].c;
+  assert.equal(kids.find((n) => n.t === 'link' && n.href === 'https://a.b/').title, 'The title');
+  assert.equal(kids.find((n) => n.t === 'object').title, 'Tip');
+  assert.equal('title' in kids.find((n) => n.t === 'link' && n.href === 'https://c.d'), false);
+  for (const n of r.nodes) assert.ok(!('title' in (n.attrs || {})), 'no title attribute');
+});
+test('real marked: entities read as the characters they mean, in text only', () => {
+  const r = real('A &amp; B &lt;b&gt; &#35; &#x26; &copy; &hellip; AT&T &bogus; x < y &amp;amp; &#0; **&quot;q&quot;**');
+  assert.equal(r.root.textContent, 'A & B <b> # & © … AT&T &bogus; x < y &amp; � "q"');
+  assert.deepEqual(r.d.sinks, []);
+  assert.ok(!r.nodes.some((n) => n.tag === 'b'), 'an entity never becomes a tag');
+  // not in text: code, a fence and a raw source stay as written
+  assert.equal(real('`&amp;`').root.textContent, '&amp;');
+  assert.equal(real('```\n&amp;\n```').root.textContent, '&amp;');
+  assert.equal(real('<b>&amp;</b>').root.textContent, '<b>&</b>'); // the tags are shown as their source; the text between them is text
+  assert.equal(real('\\&amp;').root.textContent, '&amp;');
+  // in a heading, a list item, a table cell and a link label
+  assert.equal(real('# a &amp; b').root.textContent, 'a & b');
+  assert.equal(real('- a &lt; b').root.textContent, 'a < b');
+  assert.equal(real('|a|\n|-|\n|&amp;|').root.textContent, 'a&');
+  assert.equal(real('[x &amp; y](https://a.b/)').root.textContent, 'x & y');
+});
+test('real marked: entities with markup look-alikes stay text', () => {
+  for (const md of ['&lt;script&gt;alert(1)&lt;/script&gt;', '&#60;img src=x onerror=1&#62;', '&#x3c;svg onload=1&#x3e;', '[&lt;i&gt;](object:a:b:c)']) {
+    const r = real(md);
+    assert.deepEqual(r.d.sinks, [], md);
+    for (const n of r.nodes) assert.ok(!['script', 'img', 'svg', 'i'].includes(n.tag), `${n.tag} from ${md}`);
+  }
+  assert.equal(real('&lt;script&gt;alert(1)&lt;/script&gt;').root.textContent, '<script>alert(1)</script>');
+});
+test('real marked: a formula node carries its TeX and whether it is inline or block', () => {
+  const r = real('Is $a\\,b$ here\n\n$$\\frac{1}{2}$$');
+  const inl = r.desc[0].c.find((n) => n.t === 'math');
+  assert.deepEqual([inl.tex, inl.display], ['a\\,b', false]);
+  assert.deepEqual([r.desc[1].t, r.desc[1].tex, r.desc[1].display], ['math', '\\frac{1}{2}', true]);
+});
+test('dlEscapeLabel: a written label reads back as the same label', () => {
+  const labels = ['Plain', 'Board [2]', 'a \\ b', 'trailing \\', '`code`', 'a & b', '&amp; &lt; &#35; &copy;', '*star* _under_ ~tilde~', '<b>x</b>', '$a$ and $b$', '![x]', 'a|b', '\\[x\\]', '[]', ']\\[', '\\\\', '&', 'x &amp', 'one\ntwo', '"quote" \'single\'', 'a (b) [c](d)', '[a](b)', '](x)', 'f(x) = [1](2)'];
+  for (const label of labels) {
+    const want = label.replace(/\s*\n\s*/g, ' ');
+    const r = real(`[${L.dlEscapeLabel(label)}](object:m:k:id)`);
+    const chip = r.desc[0].c[0];
+    assert.equal(chip.t, 'object', JSON.stringify(label));
+    assert.equal(chip.label, want, JSON.stringify(label));
+    assert.equal(r.desc[0].c.length, 1, JSON.stringify(label));
+    assert.deepEqual(r.d.sinks, []);
+  }
+  assert.equal(L.dlEscapeLabel('a[b]\\'), 'a\\[b\\]\\\\');
+  assert.equal(L.dlEscapeLabel(null), '');
 });
 test('corpus (real marked): hostile text never becomes markup or a live address', () => {
   const lines = ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', '[x](javascript:alert(1))', '![a](javascript:alert(1))', '$<img src=x onerror=alert(1)>$', '$$<script>1</script>$$',
