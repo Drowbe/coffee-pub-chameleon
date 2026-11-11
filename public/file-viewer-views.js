@@ -409,18 +409,35 @@ export function fileView(file, source, api) {
   return pdfView(file, source, api);
 }
 
-// ---- Info: what the record holds, and where the file is used ----------------------------------------------------------------------------------
-// info: { who(file) -> name, uses(file) -> Promise<{ uses: [summary], hidden }> | null, open(summary) | null, onClose() }
+// ---- Properties: what the record holds, and where the file is used ----------------------------------------------------------------------------------
+// info: { rename(name) -> Promise<file> | null (null: the name is text), who(file) -> name, uses(file) -> Promise<{ uses: [summary], hidden }> | null, open(summary) | null, onClose() }
 export function infoView(file, info) {
   const box = h('aside', 'fv-info');
-  box.setAttribute('aria-label', 'Information about this file');
+  box.setAttribute('aria-label', 'Properties of this file');
   const head = h('div', 'fv-info-head');
-  const close = iconBtn('xmark', 'Close info');
+  const close = iconBtn('xmark', 'Close properties');
   close.addEventListener('click', () => info.onClose());
-  head.append(h('h3', 'fv-info-title', 'Info'), close);
+  head.append(h('h3', 'fv-info-title', 'Properties'), close);
   const dl = h('dl', 'fv-info-list');
   const row = (k, v) => { if (v === undefined || v === null || v === '') return; dl.append(h('dt', '', k), h('dd', '', v)); };
-  row('Name', file.name);
+  if (info.rename) {
+    // The name is a field: Enter or leaving it saves, Escape puts the old name back; a refused name shows the server's words.
+    const input = h('input', 'fv-info-name');
+    input.type = 'text'; input.maxLength = 120; input.value = file.name; input.autocomplete = 'off'; input.spellcheck = false;
+    input.setAttribute('aria-label', 'Name');
+    const err = h('p', 'sdk-error fv-info-err');
+    err.hidden = true;
+    let current = file.name; let busy = false;
+    const save = async () => {
+      if (busy || input.value.trim() === current) { if (!busy) { input.value = current; err.hidden = true; input.removeAttribute('aria-invalid'); } return; }
+      busy = true;
+      try { const next = await info.rename(input.value); current = next.name; input.value = current; err.hidden = true; input.removeAttribute('aria-invalid'); } catch (e) { input.setAttribute('aria-invalid', 'true'); err.textContent = e.message; err.hidden = false; input.focus(); }
+      busy = false;
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape' && (input.value !== current || !err.hidden)) { e.preventDefault(); e.stopPropagation(); input.value = current; err.hidden = true; input.removeAttribute('aria-invalid'); } });
+    input.addEventListener('blur', () => { if (input.value.trim() !== current) save(); });
+    dl.append(h('dt', '', 'Name'), (() => { const dd = h('dd', ''); dd.append(input, err); return dd; })());
+  } else row('Name', file.name);
   row('Type', `${KINDS[kindOf(file)].word} · ${file.type}`);
   row('Size', size(file.size));
   row('Added by', info.who(file));

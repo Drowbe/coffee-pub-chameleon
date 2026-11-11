@@ -440,7 +440,7 @@
     if (mayDownload && f.viewable !== false && (f.group === 'image' || f.type === 'application/pdf') && host.library.print) items.push({ id: 'print', label: 'Print', icon: 'print', onClick: () => { host.library.print(f.id).catch(fail); } });
     if (mayShare) items.push({ id: 'share', label: 'Share', icon: 'share-nodes', onClick: () => { shareFiles([f]); } });
     if (mayRemove(f)) items.push({ id: 'rename', label: 'Rename', icon: 'pen-to-square', onClick: () => { renameFile(f); } });
-    items.push({ id: 'uses', label: 'Where it is used', icon: 'link', hint: f.uses ? String(f.uses) : undefined, onClick: () => { showFile(f, { uses: true, opener: 'menu' }); } });
+    items.push({ id: 'uses', label: 'Properties', icon: 'sliders', hint: f.uses ? String(f.uses) : undefined, onClick: () => { openFile(f, 'menu', true); } });
     if (mayRemove(f)) items.push({ separator: true }, { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onClick: () => { removeFiles([f]); } });
     return items;
   }
@@ -1181,11 +1181,11 @@
     const to = at && at.isConnected ? at : rowFocus(id);
     if (to) to.focus({ preventScroll: true });
   });
-  function openFile(file, via = 'open') {
+  function openFile(file, via = 'open', info = false) {
     if (host.files && typeof host.files.open === 'function') {
       const at = root.activeElement || (document.activeElement !== document.body ? document.activeElement : null);
       openers.set(file.id, at);
-      return host.files.open(host.objects.make('file', file.id), { list: filtered().map((f) => f.id), name: file.name }).then((opened) => {
+      return host.files.open(host.objects.make('file', file.id), { list: filtered().map((f) => f.id), name: file.name, info }).then((opened) => {
         // Refused at the cap: nothing opened, so nothing will close; focus stays where it was.
         if (opened === false) openers.delete(file.id);
         return opened;

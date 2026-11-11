@@ -1987,7 +1987,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // Open a file of a library in a file window over the page (public/file-viewer.js): `ref` points at the file, `list` is the ids to walk with
     // Previous and Next (the Vault's list as filtered). Focus comes back to this module when the window closes, and the module hears 'fileclosed'.
-    async 'files.open'({ ref, list, name }) {
+    async 'files.open'({ ref, list, name, info }) {
       if (!REF_SHAPE(ref) || ref.kind !== 'file' || ref.scope !== 'space') throw Object.assign(new Error('that is not a file'), { status: 400 });
       // A mount opens files of its own space only, and a module other than the library itself only if its manifest consumes that kind and
       // an owner approved it (the server's resolve answers 403 otherwise; plan-attachments-vault.md, section 5).
@@ -2003,6 +2003,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
         ref: cleanPointer(ref),
         ids,
         name: typeof name === 'string' ? name.slice(0, 200) : '',
+        info: info === true,
         doc: holder.ownerDocument,
         returnFocus: () => {
           try { holder.focus({ preventScroll: true }); } catch { /* not focusable */ }

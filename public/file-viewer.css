@@ -134,3 +134,7 @@
 @media (pointer: coarse) {
   .fv-body :is(input[type="text"], input[type="search"]), .fv-rename input { font-size: var(--text-16); }
 }
+/* The name in Properties, a field the person may change (no shared bare text field exists; this follows the form fields' tokens). */
+.fv-info-name { width: 100%; box-sizing: border-box; font: inherit; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-1) var(--space-2); }
+.fv-info-name[aria-invalid="true"] { border-color: var(--danger); }
+.fv-info-err { margin: var(--space-1) 0 0; }
