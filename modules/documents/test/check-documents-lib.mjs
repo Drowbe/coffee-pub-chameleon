@@ -25,7 +25,7 @@ const NAMES = ['DL', 'dlCleanText', 'dlTrimBreaks', 'dlCleanLine', 'dlCut', 'dlC
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView', 'DL_EDITVIEWS', 'dlEditViewId', 'dlEditViewIsRich',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
   'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
-  'dlCleanLayout', 'dlCleanPageSize', 'dlCleanPageNumbers', 'dlCleanPage', 'dlSamePage', 'DL_PAGE_SIZES', 'dlPageGeometry', 'DL_PAGE_FIT_MAX', 'dlPageFit', 'DL_LAYOUTS', 'dlPageMenuModel', 'dlPageBreak', 'DL_PAGE_BREAK_LINE', 'dlPageBreaks',
+  'dlCleanLayout', 'dlCleanPageSize', 'dlCleanPageNumbers', 'dlCleanPage', 'dlSamePage', 'DL_PAGE_SIZES', 'dlPageGeometry', 'DL_PAGE_FIT_MAX', 'dlPageFit', 'DL_PAGE_FLOOR', 'dlPaperNarrow', 'dlThumbPreview', 'DL_LAYOUTS', 'dlPageMenuModel', 'dlPageBreak', 'DL_PAGE_BREAK_LINE', 'dlPageBreaks',
   'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
@@ -153,6 +153,19 @@ test('page sizes: Letter 816 by 1056, A4 794 by 1123, one inch margins; one plac
   assert.equal(L.dlPageFit(816, 816), 1);
   assert.equal(L.dlPageFit(5000, 816), 2); // never more than 200%
   for (const v of [0, -1, NaN, undefined]) assert.equal(L.dlPageFit(v, 816), 1);
+});
+test('the narrow floor and the Paper tile preview', () => {
+  assert.equal(L.DL_PAGE_FLOOR, 0.6);
+  assert.equal(L.dlPaperNarrow(500, 816, false), false); // 490 is the floor
+  assert.equal(L.dlPaperNarrow(489, 816, false), true);
+  assert.equal(L.dlPaperNarrow(495, 816, true), true); // inside the hysteresis: stays Fluid
+  assert.equal(L.dlPaperNarrow(498, 816, true), false);
+  assert.equal(L.dlPaperNarrow(477, 794, false), false);
+  assert.equal(L.dlPaperNarrow(476, 794, false), true);
+  for (const v of [0, NaN, undefined]) assert.equal(L.dlPaperNarrow(v, 816, true), true);
+  assert.equal(L.dlThumbPreview('One\n\nTwo\n\n_ _ _\n\nThree'), 'One\n\nTwo');
+  assert.equal(L.dlThumbPreview('No break'), 'No break');
+  assert.equal(L.dlThumbPreview('_ _ _\nAfter'), '');
 });
 test('the layout switch: Fluid then Paper, each with an icon and a word, icons not used by the other switches', () => {
   assert.deepEqual(L.DL_LAYOUTS.map((o) => [o.id, o.label, o.icon]), [['fluid', 'Fluid', 'align-justify'], ['paper', 'Paper', 'file']]);

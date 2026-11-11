@@ -292,8 +292,15 @@
     const thumb = el('div', 'sheet thumb');
     paintPaper(thumb, rec.paper);
     thumb.setAttribute('aria-hidden', 'true');
+    const pg = dlCleanPage(rec);
+    if (pg.layout === 'paper') { // the page's shape, its margins scaled to the tile, the top of the first page
+      const g = dlPageGeometry(pg.pageSize);
+      thumb.dataset.layout = 'paper';
+      thumb.style.setProperty('--thumb-ar', `${g.w} / ${g.h}`);
+      thumb.style.setProperty('--thumb-m', `${((g.margin / g.w) * 100).toFixed(2)}%`);
+    }
     const page = el('div', 'page');
-    page.append(dlBuild(thumbDesc(rec), doc));
+    page.append(dlBuild(pg.layout === 'paper' ? dlDescribe(dlThumbPreview(dlThumbText(rec)), lex) : thumbDesc(rec), doc));
     for (const a of page.querySelectorAll('a')) { a.removeAttribute('href'); a.removeAttribute('target'); }
     thumb.append(page);
     main.append(thumb, el('span', 'row-title', rec.title));
@@ -400,9 +407,20 @@
       const box = $(id);
       const sheet = box.querySelector('.sheet');
       if (!sheet) continue;
-      if (sheet.dataset.layout === 'paper' && view === 'fit' && !box.hidden) {
-        sheet.style.setProperty('--doc-zoom', String(dlPageFit(avail(box), dlPageGeometry(sheet.dataset.size).w)));
-      } else sheet.style.removeProperty('--doc-zoom');
+      const paper = sheet.dataset.layout === 'paper';
+      if (paper && view === 'fit' && !box.hidden) {
+        const w = avail(box);
+        const pageW = dlPageGeometry(sheet.dataset.size).w;
+        const narrow = dlPaperNarrow(w, pageW, sheet.hasAttribute('data-narrow'));
+        if (narrow !== sheet.hasAttribute('data-narrow')) { // below the floor the sheet is drawn as Fluid
+          sheet.toggleAttribute('data-narrow', narrow);
+          if (id === 'read') schedulePaginate();
+        }
+        if (narrow) sheet.style.removeProperty('--doc-zoom'); else sheet.style.setProperty('--doc-zoom', String(dlPageFit(w, pageW)));
+      } else {
+        sheet.style.removeProperty('--doc-zoom');
+        if (sheet.hasAttribute('data-narrow')) { sheet.removeAttribute('data-narrow'); if (id === 'read') schedulePaginate(); }
+      }
     }
   }
   function chooseLayout(v) {
@@ -486,7 +504,7 @@
     const page = $('page');
     restoreHead();
     for (const e of flow.entries) if (e.kind === 'grid') e.rows.forEach((tr, i) => (i === 0 ? e.head : e.body).append(tr));
-    if (sheet.dataset.layout !== 'paper' || flow.entries.length > PAGES_MAX) { // one sheet: Fluid, or too long to page
+    if (sheet.dataset.layout !== 'paper' || sheet.hasAttribute('data-narrow') || flow.entries.length > PAGES_MAX) { // one sheet: Fluid, or too long to page
       flow.root.replaceChildren(...flow.entries.map((e) => e.node));
       page.replaceChildren(flow.root);
       sheet.removeAttribute('data-paged');
