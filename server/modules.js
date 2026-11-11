@@ -976,13 +976,16 @@ function cleanManifest(raw, files) {
   // `"budget": true`: the module reads the space's budget target (host.space().budget; #216), so Set up offers the
   // target in every space while the module is on. Absent or anything else: false.
   const budget = raw.budget === true;
+  // `"tags": true`: the module tags its objects from the space's shared tags (server/tags.js), and may create them. Absent or
+  // anything else: false.
+  const tags = raw.tags === true;
 
   // How the module's content sits in the slot the host draws (plan-unified-layout.md): padded (the default) or flush,
   // edge to edge, for a module whose content fills the slot (a map).
   if (raw.content !== undefined && raw.content !== 'padded' && raw.content !== 'flush') throw new ModuleError('module.json: content must be "padded" or "flush"');
   const content = raw.content === 'flush' ? 'flush' : 'padded';
 
-  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, content, install, live };
+  return { id, name, version, description: text(raw.description, 200), author: text(raw.author, 60), icon, color, scope, surfaces, permissions, hooks, refs, storage, guards, events, actions, commands, access, settings, requires, geocoder, uploads, library, regionSource, pictureMap, lookups, budget, tags, content, install, live };
 }
 
 // The sentence for a zip's pages that draw or restyle what the host draws (server/module-layout.js), or null when they do not.
@@ -1178,6 +1181,7 @@ class ModuleManager {
       try { manifest.library = cleanLibrary(manifest.library, manifest.scope || [], manifest.permissions); } catch { manifest.library = false; }
       try { manifest.lookups = cleanLookups(manifest.lookups); } catch { manifest.lookups = []; }
       manifest.budget = manifest.budget === true;
+      manifest.tags = manifest.tags === true;
       // A `live` that no longer reads gives no live messages (it only ever adds them).
       try { manifest.live = cleanLive(manifest.live, manifest.scope || [], manifest.permissions); } catch { manifest.live = null; }
       if (hasPlaceholders(manifest)) this.withPlaceholders.add(manifest);

@@ -2,7 +2,7 @@
 /*
  * check-space-erase.mjs -- deleting a space deletes everything kept for it (GitHub #337), and who may set one up (#285).
  * Part 1 builds an environment, fills one space with module data, uploads, links, requests, schedules, notifications,
- * settings, chat, facts and attention (and a second space that must be left whole), deletes the first through
+ * settings, chat, facts, tags and attention (and a second space that must be left whole), deletes the first through
  * server/space-erase.js and asserts no file under the data folder names it any more. A step that cannot finish refuses
  * with 500 and leaves the space in place. Part 2 runs a throwaway server: DELETE /api/spaces/:id, and the setup rule --
  * owners and the admin set up any space, a moderator only the spaces they belong to, a member never.
@@ -73,6 +73,7 @@ function leftovers(dir, id) {
     env.chatHistory.add(id, { by: ann.key, who: 'Ann', text: 'hello there', visibility: 'public' });
     env.chatHistory.add(id, { by: bo.key, who: 'Bo', text: 'a private word', visibility: 'private' });
     assert.ok(env.facts.set(id, MOD, [{ id: 'f', icon: 'star', text: 'a fact' }]));
+    env.tags.add(id, 'planning', 'blue', ann.key);
     env.attention.set(id, bo.key, MOD, { count: 2, text: 'look' });
     env.noteActivity(MOD, 'saved a', ann.key, `space:${id}`);
     env.invites.set(`${id}-i`, { id: `${id}-i`, from: ann.key, to: bo.key, spaceId: id, at: Date.now() });
@@ -128,6 +129,8 @@ function leftovers(dir, id) {
   assert.equal(env.vault.list(MOD, kept).length, 1, 'and its library file');
   assert.ok(fs.existsSync(env.vault.filePath(kept, env.vault.list(MOD, kept)[0].id)), 'with its bytes');
   assert.ok(env.facts.list(kept).length && env.attention.list(kept, bo.key), 'and its facts and attention');
+  assert.equal(env.tags.list(kept).length, 1, 'and its tags');
+  assert.equal(env.tags.list(gone).length, 0, 'while the deleted space\'s tags went');
   assert.ok(env.chatHistory.list(kept, ann.key).length, 'and its chat');
   assert.equal(eraseSpace.length, 2);
   assert.equal(leftovers(dir, kept).length > 10, true, 'the other space is still on disk');
