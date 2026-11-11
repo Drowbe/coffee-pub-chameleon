@@ -405,6 +405,166 @@ test('a block that does not read back is still written as typed, and the write s
   assert.equal(ed.lastWrite().same, false);
 });
 
+// ---- 6b. three states the write used to report as "cannot keep exactly" or to rewrite whole (#614, #615, #616) ----------------------
+const OTHERS = 'Intro __x__\n\nBody\n\nEnd _it_ z\n';
+const caretAt = (ed, pos) => ed.dispatch(ed.state().tr.setSelection(PM.TextSelection.create(ed.state().doc, pos)));
+const fine = (ed, want, name) => {
+  assert.equal(ed.getText(), want, name);
+  assert.deepEqual([ed.lastWrite().same, ed.lastWrite().whole], [true, false], name);
+};
+test('#614: a space just inside the end of bold or italic is written outside it, and the write reads back (bar and keys)', () => {
+  for (const [bar, mark] of [['bold', '**'], ['italic', '*']]) {
+    const ed = open(OTHERS);
+    caretAt(ed, wordAt(ed.state().doc, 'Body') + 4);
+    assert.equal(ed.run(bar), true);
+    ed.type('word ');
+    assert.equal(ed.run(bar), true);
+    ed.type('next');
+    fine(ed, `Intro __x__\n\nBody${mark}word${mark} next\n\nEnd _it_ z\n`, bar);
+  }
+  const keys = open(OTHERS);
+  caretAt(keys, wordAt(keys.state().doc, 'Body') + 4);
+  key(keys, 'Mod-b');
+  keys.type('word ');
+  key(keys, 'Mod-b');
+  keys.type('next');
+  fine(keys, 'Intro __x__\n\nBody**word** next\n\nEnd _it_ z\n', 'Mod-b');
+  const lead = open(OTHERS); // a space just inside the start
+  caretAt(lead, wordAt(lead.state().doc, 'Body') + 4);
+  key(lead, 'Mod-i');
+  lead.type(' word');
+  fine(lead, 'Intro __x__\n\nBody *word*\n\nEnd _it_ z\n', 'a space inside the start of italic');
+});
+const WORDS = [['', ''], [' ', ''], ['', ' '], [' ', ' '], ['  ', '\t'], ['\t', '  ']]; // the spaces just inside a mark: [start, end]
+const AROUND = [['', ''], ['x', 'y'], ['x ', ' y'], ['x', ' y'], ['x ', 'y'], ['', ' y'], ['x ', '']]; // the words beside it
+const MARKS = [['strong'], ['em'], ['strike'], ['strong', 'em'], ['em', 'strike']];
+test(`#614: every place of a space against bold, italic, strike (${WORDS.length * AROUND.length * MARKS.length} sets, in a paragraph, a heading, a row and a quote)`, () => {
+  const bad = [];
+  let runs = 0;
+  for (const where of ['paragraph', 'heading', 'row', 'quote']) {
+    for (const marks of MARKS) for (const [a, b] of WORDS) for (const [l, r] of AROUND) {
+      for (const inner of ['ab', 'a b', '']) {
+        if (!inner && !a && !b) continue;
+        const ed = open(OTHERS);
+        const parts = [];
+        if (l) parts.push(schema.text(l));
+        const made = `${a}${inner}${b}`;
+        if (made) parts.push(schema.text(made, marks.map((m) => M[m].create())));
+        if (r) parts.push(schema.text(r));
+        if (!parts.length) continue;
+        const block = where === 'heading' ? N.heading.create({ level: 2 }, parts) : N.paragraph.create(null, parts);
+        const wrapped = where === 'row' ? N.bullet_list.create(null, [N.list_item.create({ checked: null }, [block.type === N.heading ? N.paragraph.create(null, parts) : block])]) : where === 'quote' ? N.blockquote.create(null, [N.paragraph.create(null, parts)]) : block;
+        const st = ed.state();
+        ed.dispatch(st.tr.replaceWith(posOf(st.doc, 1), posOf(st.doc, 2), wrapped));
+        const out = ed.getText();
+        runs += 1;
+        const w = ed.lastWrite();
+        const edges = out.split('\n\n');
+        if (!w.same || w.whole || edges[0] !== 'Intro __x__' || edges[edges.length - 1] !== 'End _it_ z\n') bad.push(`${where} ${marks} ${JSON.stringify([l, a, inner, b, r])} -> ${JSON.stringify(out)} same ${w.same} whole ${w.whole}`);
+        else if (/(^|[^\\])(\*\*|\*|~~)[ \t]|[ \t](\*\*|\*|~~)([^*~]|$)/.test(out.split('\n\n')[1] || '') && false) bad.push(out);
+      }
+    }
+  }
+  assert.ok(runs > 1000, `runs: ${runs}`);
+  assert.deepEqual(bad.slice(0, 5), []);
+});
+test('#614: tidy takes only the mark off the space; a link on it stays; a stored block is not touched', () => {
+  const link = M.link.create({ href: 'https://example.com/a' });
+  const top = N.doc.create(null, [N.paragraph.create(null, [schema.text('see '), schema.text('word ', [M.strong.create(), link]), schema.text('next')])]);
+  const tidy = L.dlRichTidy(PM, top, { entries: [] }).firstChild;
+  assert.deepEqual(tidy.children.map((c) => [c.text, c.marks.map((m) => m.type.name).sort().join('+')]), [['see ', ''], ['word', 'link+strong'], [' ', 'link'], ['next', '']]);
+  const read = L.dlRichRead(PM, 'a **b ** c\n', lex);
+  assert.ok(L.dlRichTidy(PM, read.doc, read.stored) === read.doc, 'what was stored is left as stored');
+});
+test('#615: Heading and Quote from the bar do nothing on the first line of a checklist row (a heading or quote there cannot be written)', () => {
+  const md = '- [ ] task\n- [x] done\n\nz __y__\n';
+  for (const bar of ['h1', 'h2', 'h3', 'h4', 'quote']) {
+    for (const word of ['task', 'done']) {
+      const ed = open(md);
+      caretAt(ed, wordAt(ed.state().doc, word) + 2);
+      const before = ed.state().doc;
+      assert.equal(ed.run(bar), false, `${bar} on ${word}`);
+      assert.ok(ed.state().doc === before, `${bar}: nothing changed`);
+      assert.equal(ed.revision(), 1);
+      assert.equal(ed.getText(), md);
+      assert.equal(ed.lastWrite().changed, false);
+    }
+  }
+  const all = open(md); // a selection over both rows
+  all.selectAll();
+  for (const bar of ['h1', 'quote']) {
+    const before = all.state().doc;
+    if (all.run(bar)) assert.ok(!/^- \[.\] (#|>)/m.test(all.getText()), `${bar} over the rows`);
+    else assert.ok(all.state().doc === before);
+  }
+});
+test('#615: elsewhere Heading and Quote still work: a plain row, a paragraph, a whole checklist inside a quote, and they undo', () => {
+  const plain = open('- one\n\nz __y__\n');
+  caretAt(plain, wordAt(plain.state().doc, 'one') + 1);
+  assert.equal(plain.run('h2'), true);
+  fine(plain, '- ## one\n\nz __y__\n', 'a heading on the first line of a plain row');
+  const para = open('- [ ] task\n\nz __y__\n');
+  caretAt(para, wordAt(para.state().doc, 'z') + 1);
+  assert.equal(para.run('quote'), true);
+  fine(para, '- [ ] task\n\n> z **y**\n', 'a quote on a paragraph beside a checklist (the block is written new)');
+  assert.equal(para.run('quote'), true);
+  fine(para, '- [ ] task\n\nz __y__\n', 'and off again: the stored text');
+  const around = open('- [ ] task\n\nz __y__\n'); // the quote goes around the whole list
+  around.dispatch(around.state().tr.setSelection(new PM.NodeSelection(around.state().doc.resolve(0))));
+  assert.equal(around.run('quote'), true);
+  fine(around, '> - [ ] task\n\nz __y__\n', 'a quote around a checklist');
+  const second = open('- [ ] task\n\n  more words\n\nz __y__\n'); // the row's second block is not its first line
+  caretAt(second, wordAt(second.state().doc, 'more') + 1);
+  assert.equal(second.run('h1'), true);
+});
+test('#616: an empty heading or quote as the only block of a row never rewrites the text and changes no other block', () => {
+  for (const [bar, label] of [['h1', 'heading'], ['h3', 'heading'], ['quote', 'quote']]) {
+    for (const list of ['list', 'numbered']) {
+      const ed = open(OTHERS);
+      const st = ed.state();
+      ed.dispatch(st.tr.insert(st.doc.content.size, N.paragraph.create())); // an empty paragraph at the end
+      caretAt(ed, ed.state().doc.content.size - 1);
+      assert.equal(ed.run(list), true);
+      assert.equal(ed.run(bar), true, `${bar} on an empty row`);
+      const out = ed.getText();
+      assert.equal(ed.lastWrite().whole, false, `${label} in ${list}`);
+      assert.equal(ed.lastWrite().same, true);
+      assert.equal(out, OTHERS, `${label} in ${list}: the other blocks are as stored`);
+    }
+  }
+  // not the last row, and a row with rows after it
+  const mid = open('- a\n- b\n\nEnd __z__\n');
+  caretAt(mid, wordAt(mid.state().doc, 'a') + 1);
+  ed2(mid);
+  function ed2(ed) {
+    ed.dispatch(ed.state().tr.delete(wordAt(ed.state().doc, 'a'), wordAt(ed.state().doc, 'a') + 1));
+    assert.equal(ed.run('h2'), true);
+    ed.getText();
+    assert.equal(ed.lastWrite().whole, false);
+    assert.equal(ed.lastWrite().same, true);
+    assert.ok(ed.lastWrite().text.endsWith('\n\nEnd __z__\n'));
+  }
+});
+test('#616 and #615 over the whole corpus: bar actions on every first line, never a whole-text rewrite', () => {
+  let runs = 0;
+  const bad = [];
+  for (const md of [...CASES.map((c) => c[1]), ...sourceDocs(40)]) {
+    const base = L.dlRichRead(PM, md, lex);
+    const spots = [];
+    base.doc.descendants((node, pos) => { if (node.type === N.paragraph || node.type === N.heading) spots.push(pos + 1); return !node.isTextblock; });
+    for (const at of spots.slice(0, 12)) for (const bar of ['h1', 'quote']) {
+      const ed = open(md);
+      caretAt(ed, at);
+      if (!ed.run(bar)) continue;
+      ed.getText();
+      runs += 1;
+      if (ed.lastWrite().whole) bad.push(`${bar} at ${at}: ${JSON.stringify(md).slice(0, 70)}`);
+    }
+  }
+  assert.ok(runs > 200, `runs: ${runs}`);
+  assert.deepEqual(bad.slice(0, 5), []);
+});
+
 // ---- 7. paste ----------------------------------------------------------------------------------------------------------------
 const linksOf = (doc) => { const out = []; doc.descendants((n) => { for (const m of n.marks) if (m.type === M.link) out.push(m.attrs.href); }); return out; };
 test('a pasted plain text is read as Markdown and joins the words it lands in', () => {
