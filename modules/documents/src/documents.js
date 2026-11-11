@@ -573,7 +573,7 @@
   async function openEditor(id, lock) {
     const { rec, version, got } = await readForEdit(id);
     ed = {
-      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, saved: { text: got.text, title: rec.title, paper: rec.paper },
+      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, saved: { text: got.text, title: rec.title, paper: rec.paper }, savedRev: 0,
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
       timer: 0, beat: 0, queue: Promise.resolve(),
     };
@@ -582,7 +582,10 @@
     $('edit-title').value = rec.title;
     paintPaper($('editor').querySelector('.sheet'), ed.paper);
     const ta = $('edit-text');
-    ta.value = got.text; ta.readOnly = false;
+    ed.editor = dlTextareaEditor(ta, doc);
+    ed.editor.onChange(typed);
+    ed.editor.setText(got.text); ed.editor.setReadOnly(false);
+    ed.savedRev = ed.editor.revision();
     $('edit-title').readOnly = false;
     $('lost').hidden = true;
     renderChrome();
@@ -591,7 +594,7 @@
       serial(refreshLock).catch(() => {});
     }, DL_LOCK.beat);
     ed.beat = beat;
-    ta.focus();
+    ed.editor.focus();
   }
 
   const serial = (fn) => {
@@ -600,8 +603,9 @@
     s.queue = run.catch(() => {});
     return run;
   };
-  const current = () => ({ text: $('edit-text').value, title: $('edit-title').value, paper: ed ? ed.paper : undefined });
-  const dirtyNow = () => ed && dlIsDirty(ed.saved, current());
+  // Never reads the text: the editor's change counter and the title and paper decide (the text is read only by snapshot()).
+  const dirtyNow = () => ed && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper);
+  const snapshot = () => dlEditorSnapshot(ed.editor, ed.saved, $('edit-title').value, ed.paper);
   function setStatus() {
     if (!ed) return;
     renderStatus();
@@ -629,7 +633,7 @@
     if (!ed || ed.lost) return;
     ed.lost = true;
     clearTimeout(ed.timer); clearInterval(ed.beat);
-    $('edit-text').readOnly = true; $('edit-title').readOnly = true;
+    ed.editor.setReadOnly(true); $('edit-title').readOnly = true;
     $('lost-text').textContent = 'You stopped editing because someone else saved first. Your changes are kept here.';
     $('lost').hidden = false;
     renderChrome();
@@ -641,8 +645,8 @@
   function saveNow() {
     return serial(async () => {
       if (!ed || ed.lost) return 'lost';
-      const cur = current();
-      if (!dlIsDirty(ed.saved, cur)) return 'saved';
+      const cur = snapshot();
+      if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
       const plan = dlPlanSave({ old: ed.old, text: cur.text, title: cur.title, paper: cur.paper, rec: ed.rec, me, name: myName, now: new Date().toISOString(), fresh: () => dlNewId(Math.random) });
       if (!plan.ok) {
         ed.refused = plan.reason;
@@ -670,7 +674,7 @@
       ed.saving = false;
       ed.rec = plan.record;
       ed.old = plan.chunks.map((c) => ({ id: c.id, text: c.text }));
-      ed.saved = { text: cur.text, title: cur.title, paper: cur.paper };
+      ed.saved = { text: cur.text, title: cur.title, paper: cur.paper }; ed.savedRev = cur.rev;
       remember({ key: dlDocKey(ed.id), value: plan.record });
       const gone = [...plan.dropped, ...ed.stray.filter((x) => !plan.chunks.some((c) => c.id === x))];
       ed.stray = [];
@@ -699,6 +703,7 @@
     if (!ed) return;
     closeTagPicker();
     clearTimeout(ed.timer); clearInterval(ed.beat);
+    ed.editor.destroy();
     ed = null;
     $('editor').hidden = true;
   }
@@ -731,32 +736,24 @@
     $('page').focus();
   }
 
-  // The bar: each button changes the text with the library's function, keeping the browser's undo where it can.
-  function applyFormat(fn) {
+  // The bar: each button runs its action in the editor, which keeps the browser's undo where it can.
+  function applyFormat(action) {
     if (!ed || ed.lost) return;
-    const ta = $('edit-text');
-    const out = fn({ value: ta.value, start: ta.selectionStart, end: ta.selectionEnd });
-    ta.focus();
-    if (out.value !== ta.value) {
-      ta.setSelectionRange(0, ta.value.length);
-      if (!doc.execCommand || !doc.execCommand('insertText', false, out.value)) { ta.value = out.value; typed(); }
-      if (ta.value !== out.value) { ta.value = out.value; typed(); }
-    }
-    ta.setSelectionRange(out.start, out.end);
+    ed.editor.run(action);
   }
   // ---- the shared chrome: the toolbar row, the title bar's "+" and menu, the status bar --------------------------------------
   const FORMATS = [
-    { id: 'bold', title: 'Bold', icon: 'bold', fn: dlBold },
-    { id: 'italic', title: 'Italic', icon: 'italic', fn: dlItalic },
-    { id: 'code', title: 'Code', icon: 'code', fn: dlCode },
+    { id: 'bold', title: 'Bold', icon: 'bold' },
+    { id: 'italic', title: 'Italic', icon: 'italic' },
+    { id: 'code', title: 'Code', icon: 'code' },
     { id: 'heading', title: 'Heading', icon: 'heading' },
-    { id: 'list', title: 'Bulleted list', icon: 'list-ul', fn: dlList },
-    { id: 'numbered', title: 'Numbered list', icon: 'list-ol', fn: dlNumbered },
-    { id: 'checklist', title: 'Checklist', icon: 'list-check', fn: dlChecklist },
-    { id: 'quote', title: 'Quote', icon: 'quote-left', fn: dlQuote },
-    { id: 'link', title: 'Link', icon: 'link', fn: (s) => dlLink(s) },
-    { id: 'grid', title: 'Grid', icon: 'table-cells', fn: (s) => dlGrid(s) },
-    { id: 'formula', title: 'Formula', icon: 'square-root-variable', fn: (s) => dlFormula(s) },
+    { id: 'list', title: 'Bulleted list', icon: 'list-ul' },
+    { id: 'numbered', title: 'Numbered list', icon: 'list-ol' },
+    { id: 'checklist', title: 'Checklist', icon: 'list-check' },
+    { id: 'quote', title: 'Quote', icon: 'quote-left' },
+    { id: 'link', title: 'Link', icon: 'link' },
+    { id: 'grid', title: 'Grid', icon: 'table-cells' },
+    { id: 'formula', title: 'Formula', icon: 'square-root-variable' },
   ];
   // ---- the view: Fit width or a zoom level, a person's own choice, kept in this browser --------------------------------------
   // The sheet is scaled with CSS zoom (its width and its text together); the caret, the text box and selections follow it.
@@ -822,8 +819,8 @@
   function formatWith(f, e) {
     if (!ed || ed.lost) return;
     if (f.id === 'heading') {
-      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, onClick: () => applyFormat((s) => dlHeading(s, lv)) })) });
-    } else applyFormat(f.fn);
+      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, onClick: () => applyFormat(`h${lv}`) })) });
+    } else applyFormat(f.id);
   }
   // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
   const zoomItems = () => [
@@ -902,19 +899,18 @@
     if (id === 'zoom') { zoomMenu(e); return; }
   });
   host.on('add', (e) => { if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
-  $('edit-text').addEventListener('input', typed);
   $('edit-title').addEventListener('input', typed);
 
   $('lost-copy').addEventListener('click', async () => {
-    const text = $('edit-text').value;
+    const text = ed.editor.getText();
     try { await navigator.clipboard.writeText(text); note('Copied.'); } catch (err) {
-      const ta = $('edit-text'); ta.focus(); ta.select();
+      ed.editor.selectAll();
       note(doc.execCommand && doc.execCommand('copy') ? 'Copied.' : 'Select the text and copy it.');
     }
   });
   $('lost-new').addEventListener('click', async () => {
     try {
-      const id = await create(dlCleanLine(`${$('edit-title').value} (copy)`, DL.titleMax), $('edit-text').value);
+      const id = await create(dlCleanLine(`${$('edit-title').value} (copy)`, DL.titleMax), ed.editor.getText());
       stopEditing();
       render();
       $('read').hidden = false; $('list').hidden = true;

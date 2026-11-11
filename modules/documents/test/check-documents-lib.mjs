@@ -24,7 +24,8 @@ const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCle
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
   'dlPreview', 'dlCleanPreview', 'dlThumbText', 'DL_LISTVIEWS', 'dlCleanListView',
   'dlTagsKey', 'dlCleanTagIds', 'dlCleanTags', 'dlKnownTagIds', 'dlTagsDelta', 'dlTagsApply', 'dlTagsCommit', 'dlTagCounts', 'dlTagsMatch', 'DL_TAGS_MAX',
-  'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey'];
+  'dlResyncPlan', 'dlResyncAfterHidden', 'DL_VIEW', 'dlCleanView', 'dlViewStore', 'dlViewRead', 'dlViewLabel', 'dlViewSheet', 'dlViewStep', 'dlViewKey',
+  'DL_ACTIONS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
 const fails = [];
@@ -891,6 +892,64 @@ test('corpus (real marked): hostile text never becomes markup or a live address'
   }
   assert.ok(real(lines[0]).root.textContent.includes('<script>alert(1)</script>'));
   assert.equal(real('$<img src=x onerror=alert(1)>$').root.textContent, '$<img src=x onerror=alert(1)>$');
+});
+const dlStub = L.dlStubEditor;
+
+// ---- the editor adapter: no text per key ----------------------------------------------------------------------------------------
+test('editor: 300 keys, schedule and dirty checks read the text 0 times; save reads it once', () => {
+  const e = dlStub('hello');
+  const saved = { text: 'hello', title: 'T', paper: 'p' };
+  let savedRev = e.revision();
+  let timers = 0;
+  e.onChange(() => { timers += 1; L.dlEditorDirty(e, savedRev, saved, 'T', 'p'); });
+  assert.equal(L.dlEditorDirty(e, savedRev, saved, 'T', 'p'), false);
+  for (let i = 0; i < 300; i++) e.type(`hello${'x'.repeat(i + 1)}`);
+  assert.equal(timers, 300);
+  assert.equal(e.calls.getText, 0);
+  assert.equal(L.dlEditorDirty(e, savedRev, saved, 'T', 'p'), true);
+  const snap = L.dlEditorSnapshot(e, saved, 'T', 'p');
+  assert.equal(e.calls.getText, 1);
+  assert.equal(snap.changed, true);
+  savedRev = snap.rev;
+  assert.equal(L.dlEditorDirty(e, savedRev, saved, 'T', 'p'), false);
+});
+test('editor: typed then deleted back is dirty by counter, but the save finds nothing to write', () => {
+  const e = dlStub('abc');
+  const saved = { text: 'abc', title: 'T', paper: 'p' };
+  const savedRev = e.revision();
+  e.type('abcd'); e.type('abc');
+  assert.equal(L.dlEditorDirty(e, savedRev, saved, 'T', 'p'), true);
+  const snap = L.dlEditorSnapshot(e, saved, 'T', 'p');
+  assert.equal(snap.changed, false);
+  assert.equal(e.calls.getText, 1);
+  assert.equal(L.dlEditorDirty(e, snap.rev, saved, 'T', 'p'), false);
+});
+test('editor: a changed title or paper is dirty without any key, and reads no text', () => {
+  const e = dlStub('abc');
+  const saved = { text: 'abc', title: 'T', paper: 'p' };
+  assert.equal(L.dlEditorDirty(e, e.revision(), saved, 'T2', 'p'), true);
+  assert.equal(L.dlEditorDirty(e, e.revision(), saved, 'T', 'q'), true);
+  assert.equal(e.calls.getText, 0);
+});
+test('editor: setText and run count as changes; every action name has a function', () => {
+  const e = dlStub('a');
+  const r0 = e.revision();
+  e.setText('b'); assert.ok(e.revision() > r0);
+  const r1 = e.revision();
+  e.run('bold'); assert.ok(e.revision() > r1);
+  for (const a of L.DL_ACTIONS) { const q = e.revision(); e.run(a); assert.ok(e.revision() > q, a); }
+  const q = e.revision(); e.run('nonsense'); assert.equal(e.revision(), q);
+});
+test('editor: the textarea adapter reads and writes the box, counts input events and destroys cleanly', () => {
+  const ls = [];
+  const ta = { value: '', readOnly: false, selectionStart: 0, selectionEnd: 0, addEventListener: (t, f) => ls.push(f), removeEventListener: (t, f) => ls.splice(ls.indexOf(f), 1), focus() {}, select() {}, setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; } };
+  const e = L.dlTextareaEditor(ta, {});
+  let n = 0; e.onChange(() => { n += 1; });
+  e.setText('hi'); assert.equal(ta.value, 'hi'); assert.equal(e.getText(), 'hi');
+  e.setReadOnly(true); assert.equal(ta.readOnly, true);
+  const r = e.revision(); ls.forEach((f) => f()); assert.equal(n, 1); assert.equal(e.revision(), r + 1);
+  ta.setSelectionRange(0, 2); e.run('bold'); assert.equal(ta.value, '**hi**'); assert.equal(n, 2);
+  e.destroy(); assert.equal(ls.length, 0);
 });
 
 await Promise.all(pending);
