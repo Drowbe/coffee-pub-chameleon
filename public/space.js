@@ -3314,7 +3314,7 @@ function renderLayoutTabs() {
       pin.className = 'core-link layout-tab-pin';
       pin.dataset.tip = 'Favorite';
       pin.setAttribute('aria-label', `Favorite ${t.label}`);
-      pin.innerHTML = '<i class="fa-regular fa-heart fa-fw" aria-hidden="true"></i>';
+      pin.innerHTML = '<i class="fa-solid fa-heart fa-fw" aria-hidden="true"></i>';
       pin.addEventListener('click', () => { const l = findLayout(t.layout); if (l) setFavorite(l, true); });
       return [b, pin];
     }).flat();
