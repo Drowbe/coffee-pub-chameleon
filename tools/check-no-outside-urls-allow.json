@@ -1,0 +1,10 @@
+{
+  "_about": "Addresses that may appear in a bundled module's scripts, styles and pages without being loaded (tools/check-no-outside-urls.mjs). Per file, the exact address string and why it is inert. Anything else the check finds fails. Only modules in tools/vendored-scope.json 'covered' are scanned.",
+  "modules/documents/src/documents-lib-0-marked.js": [
+    { "url": "https://github.com/markedjs/marked", "reason": "Marked's licence header comment and its 'please report this' error text; shown or read, never fetched" },
+    { "url": "http://", "reason": "marked's autolink code prefixes this to an address typed as www.example.com; the result goes into a token's href text that the Documents reader only checks against its own link rules, and nothing is fetched" }
+  ],
+  "modules/documents/src/documents-lib-f-format.js": [
+    { "url": "https://", "reason": "the default address text that the link button puts inside a Markdown link for the person to overwrite (text in the box, not a request)" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_about": "Which bundled modules the three vendored-library checks cover (tools/vendored-lib.mjs). Every folder under modules/ must be listed in one of the two lists.",
+  "covered": [
+    "documents"
+  ],
+  "notCovered": {
+    "assistant": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "budget": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "calendar": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "maps": "not covered yet: MapLibre GL JS and the PMTiles reader are vendored in src/ with no LICENSE file beside them, no pinned hashes and outside URLs in their text; the project manager decides (a per-check allowed-failures list, or the Maps module is fixed)",
+    "places": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "polls": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "research": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "stream": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "todo": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "travel": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "vault": "not covered yet: no vendored library listed; covered when the project manager widens the scope",
+    "whiteboard": "not covered yet: no vendored library listed; covered when the project manager widens the scope"
+  }
+}
