@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides; experience-design (the editor, the Markdown mapping, the bar); server-development (the licence, outside-URL and hash checks, the names check); quality-assurance (the independent safety read in a real browser); the project manager (the toolbar screenshots at each UI PR); content-manager (the documents once it is built).
 
-**Status:** Draft on Thomas's decisions of 2026-11-11 (1 to 10) and the project manager's decisions under his delegation of the same day (11 to 21), and 22 to 28 from the stored-form design note; all open questions are closed; nothing is built and nothing was run for this plan. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
+**Status:** Draft on Thomas's decisions of 2026-11-11 (1 to 10) and the project manager's decisions under his delegation of the same day (11 to 21), and 22 to 28 from the stored-form design note, and decision 29 from Thomas (via the project manager, 2026-11-11); all open questions are closed. Built so far: step 4a (Documents 0.7.0, the vendored ProseMirror and the mapping), step 4b (0.7.2, the block-level write), step 5 (0.8.0, the opt-in Rich text editor), step 6 (0.9.0, typing shortcuts, bar states and keys; #611) and 0.9.1 (#614, #615, #616); step 6b (Link through the shared `host.ui.prompt`, 0.9.2) is in progress. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
 
 ## What it is today
 
@@ -35,28 +35,29 @@ Decisions 11 to 21 were made by the project manager under Thomas's delegation, 2
 11. **Paste is plain text first,** read through `dlDescribe` (the safe reader). Kept formatting from Word, Docs or the web is its own later PR, after the safety read. *Reason:* kept formatting is a second way in.
 12. **Untouched blocks are stored exactly; the first edit of a block writes that block in the editor's form,** with the fixed written list of changes (rule 4). This is a requirement, no longer priced by the spike. Rule 3 stands: opening a document and pressing Done write nothing.
 13. **Browsers that must pass:** current Chrome, Edge, Firefox and Safari on desktop; Safari on iPhone and iPad; Chrome on Android. Safari and a phone cannot be checked here: Thomas tests his iPad and phone by hand before any beta client uses rich editing. Until then every report says "not verified on Safari/phone".
-14. **Rich becomes what people get** only after steps 5 (text), 6 (bar and links) and 7 (tables) and the independent safety read. Until then the Markdown box stays the default and rich is reachable by a switch for Thomas to try. Maths and the object chip land later; Source covers them meanwhile.
+14. **Rich becomes what people get** only after steps 5 (text), 6 (bar and links) and 7 (tables) and the independent safety read. Until then the Markdown box stays the default and rich is reachable by a switch for Thomas to try. Maths and the object chip land later; the Markdown box covers them meanwhile.
 15. **Toolbar limit:** group buttons into menus, in the module only. No core change to the 16-entry limit.
 16. **Weight:** accept the bundle weight now; revisit loading on Edit later.
 17. **Typing shortcuts** (`# `, `- `, `1. `, `> `, `**bold**`): yes.
 18. **Strikethrough** is kept only, with no button.
 19. **A formula** is typed as TeX in a small box; a typed `$` does not start one.
-20. **Source** is a shared toolbar button, and the choice is remembered per person.
+20. **Source** is a shared toolbar button, and the choice is remembered per person. *Superseded by decision 29.*
 21. **Kind of build:** a try build per step; the safety read step and the final default switch are production builds. Order: wait for the spike's short report (the project manager reads it); then step 2, the three checks, on a held branch with an independent read before any editor code; then steps 3 to 7. Rules: rebase on `origin/main` before every SHA; screenshots next to the Whiteboard and Chat toolbars; the larger model at high effort only for the risky parts (the mapping, the shadow-root work, the safety read), the smaller model for the rest.
 
 Decisions 22 to 28 were made by the project manager under Thomas's delegation, 2026-11-11, from the stored-form design note (block-level source preservation).
 
 22. **Stored form:** untouched blocks are stored exactly; the first edit of a block writes that block in the editor's form; the accepted list is the one in rule 4 (this restates decision 12).
-23. **The text is read back and compared before every save, Done, Copy and Source.** A kept block that reads differently is rewritten alone; a whole-document rewrite is the last resort and is logged in the test corpus.
-24. **No text is read per key.** `typed()` uses a cheap "changed" test (`doc.eq`); `getText()` runs only at save, Done, Copy and Source. *Reason:* phones are slower. Build step 3 adds this.
+23. **The text is read back and compared before every save, Done, Copy and a switch to Markdown.** A kept block that reads differently is rewritten alone; a whole-document rewrite is the last resort and is logged in the test corpus.
+24. **No text is read per key.** `typed()` uses a cheap "changed" test (`doc.eq`); `getText()` runs only at save, Done, Copy and a switch to Markdown. *Reason:* phones are slower. Build step 3 adds this.
 25. **Build step 4 splits into 4a (the mapping) and 4b (the block-level write and the one-block-edit corpus test; the larger model at high effort).** The reader fields land before 4a as their own small Documents PR (smaller model, rebased, with tests): the code fence's first word as `lang` and the rest as `info` (this fixes the 0.6.2 mangling of a fence such as ```` ```js title="x" {1,3} ```` into `jstitlex13`), a heading's own `level` (5 and 6 drawn as 4, kept by a field), a link's `title`, the formula token for edited blocks, and the chip label escaped in the serialiser.
 26. **Entities:** the reader shows what Markdown means. An entity such as `&amp;amp;` reads as `&amp;`, so the reader decodes entities in text and the serialiser escapes a literal ampersand that could form an entity. Corpus cases are added.
 27. **A list is one block for now.** Writing by the row can come later if wanted.
 28. **The corpus is run again on any `marked` upgrade.** This goes into the recipe in `THIRD-PARTY.md`.
+29. **The mode switch is the shared switch, not a toggle button** (Thomas, via the project manager, 2026-11-11). It is `host.ui.viewSwitch`, the segmented pill used by the List and Thumbnails chooser, with two options, "Markdown" (the text box) and "Rich text", each with an icon and a label, in the end zone before Page colour. The choice is remembered per person in the browser (`localStorage`, in a try/catch). The default stays Markdown until the independent safety read and Thomas's Safari, iPad and phone test by hand; when rich becomes the default, only the default value changes. *Supersedes decision 20 (the separate Source toggle button).* *Reason:* the same control people already know from the List and Thumbnails chooser.
 
 ## Scope and non-goals
 
-**In:** the text box in editing is replaced by a rich editor, with a Source button that brings the Markdown text box back.
+**In:** the text box in editing is replaced by a rich editor, with a switch (decision 29) that brings the Markdown text box back.
 
 **Not in:** co-editing and Yjs (the later step of plan-documents; this is the editor that step needs); pictures; colouring in code blocks; comments, suggestions and history; checklist boxes that tick in reading; dropping an object onto the page; any change to the stored keys, the lock, the commit, the server or `host.util.markdown`.
 
@@ -90,7 +91,7 @@ Nothing here was run; licences, sizes and dependencies are all **(memory)** unti
 4. **Untouched blocks exactly, an edited block in the editor's form** (decisions 12 and 22). A document not in the editor's own form is shown faithfully. A block the person did not change is written word for word; a block they edited is written in the editor's form. In an edited block only, these changes are accepted: `__` and `_` to `**` and `*`; `*` and `+` bullets to `-`; indent to 2 spaces; `1)` to `1.`; typed numbers run on from the first; loose to tight; `[X]` to `[x]`; setext to `#`; closing `#` dropped; `***` and `___` to `---`; `~~~` and indented code to a backtick fence; a two-space break to a backslash; a line break inside a paragraph to a space; table pipes and spacing; a reference link to inline (its definition line stays); a bare address to `<address>`; escapes; a block formula on one line. One loss: table cells beyond the header's column count are dropped. Each is covered by rule 2. A heading of level 5 or 6 is drawn as 4 and written with its own level (`#####`), and a link's title and a code block's info string are kept by a field.
 5. **Nothing is dropped or escaped in a source node.** Raw HTML and comments, pictures, footnotes, link-definition lines, a link with a refused address, a list, quote, table or formula past the reader's bounds, and anything the reader does not know, show as the reading view shows them and are held as a source node that writes its Markdown back word for word.
 6. **The reader's bounds hold.** A command that would pass them (a fifth list level, a 201st row) does nothing. A text that grows past 150,000 characters is refused at the save with today's words.
-7. **Read back before it is handed out** (decision 23). `getText()` is read back and compared with the document before a save, Done, Copy or Source; see "Stored form" below.
+7. **Read back before it is handed out** (decision 23). `getText()` is read back and compared with the document before a save, Done, Copy or a switch to Markdown; see "Stored form" below.
 
 ### Stored form: block-level source preservation
 
@@ -107,9 +108,9 @@ The corpus is in `modules/documents/test/`: every supported block, text typed in
 
 Headings 1 to 4; bold, italic, inline code; bullet and numbered lists to 4 levels; checklists; quotes; links; object links (the button opens `host.objects.pick`, drawn as the chip, stored as an ordinary Markdown link whose address is `object:<module>:<kind>:<id>`); tables with a header row and alignment; maths through Temml, `$...$` inline and `$$...$$` as a block, each an editable node (open it, type the TeX, see the result); code blocks, no colouring; rules; hard breaks. Strikethrough is kept because the reader draws it, with no button (decision 18). Typing shortcuts turn `# `, `- `, `1. `, `> ` and `**bold**` into the format as typed (decision 17). A formula is typed as TeX in a small box, and a typed `$` does not start one (decision 19).
 
-### Source
+### The mode switch
 
-A shared toolbar button, `on` while the text box shows; the choice is remembered per person (decision 20). Rich to Source gives `getText()`; Source to rich gives `P(text)`. Lossless both ways: switching with no typing changes neither the text nor the document.
+The shared switch, `host.ui.viewSwitch`, with two options, "Markdown" and "Rich text", icon and label, in the end zone before Page colour; the choice is remembered per person in the browser (`localStorage`, in a try/catch); the default is Markdown until the safety read and the Safari, iPad and phone test (decision 29, which supersedes decision 20). Rich to Markdown gives `getText()`; Markdown to rich gives `P(text)`. Lossless both ways: switching with no typing changes neither the text nor the document.
 
 ### Paste, copy and drop (the project manager's requirement)
 
@@ -153,10 +154,10 @@ Each is one small PR with a module version bump, a try build (decision 21) excep
 2. **The checks** (licence, outside URL, hash; the names skip). server-development, in `core/tools`, on a held branch with an independent read before any editor code.
 3. **The adapter**, with the text box behind it; nothing a person sees changes. It adds the cheap `doc.eq` "changed" test for `typed()` (decision 24). experience-design.
 - **Reader fields** (before 4a; decision 25): its own small Documents PR, smaller model, rebased, with tests. `lang` and `info` for a code fence, a heading's `level`, a link's `title`, the formula token for edited blocks, the chip label escaped in the serialiser, and entities decoded in text (decision 26). experience-design.
-4a. **The vendored file and the mapping** (`P`, `S`, the stored-form table, the corpus tests including the entity cases); no page change. experience-design, larger model at high effort.
-4b. **The block-level write** (`getText()` from the table, the read-back, the one-block-edit corpus test); no page change. experience-design, larger model at high effort.
-5. **The rich editor for text:** paragraphs, headings, bold, italic, code, lists, checklists, quotes, code blocks, rules, hard breaks, the source node, paste, undo, and Source. Rich is reachable by a switch for Thomas; the Markdown box stays the default. experience-design.
-6. **The bar and the keys** on the rich selection; links. experience-design.
+4a. **The vendored file and the mapping** (`P`, `S`, the stored-form table, the corpus tests including the entity cases); no page change. experience-design, larger model at high effort. Built: 0.7.0.
+4b. **The block-level write** (`getText()` from the table, the read-back, the one-block-edit corpus test); no page change. experience-design, larger model at high effort. Built: 0.7.2.
+5. **The rich editor for text:** paragraphs, headings, bold, italic, code, lists, checklists, quotes, code blocks, rules, hard breaks, the source node, paste, undo, and the mode switch (decision 29). Rich is reachable by the switch for Thomas; the Markdown box stays the default. experience-design. Built: 0.8.0.
+6. **The bar and the keys** on the rich selection; links. experience-design. Built: typing shortcuts, bar states and keys in 0.9.0 (#611), fixes in 0.9.1 (#614, #615, #616). Step 6b, Link through the shared `host.ui.prompt` (0.9.2), is in progress.
 7. **Tables.** experience-design.
 8. **The safety read** (production build): the builder tells the project manager when the editor and the renderer are ready, and quality-assurance reads both independently in a real browser. Required before rich becomes the default and before Thomas's beta clients use rich editing.
 9. **The default switch** (production build): rich becomes what people get (decision 14), after Thomas has tested Safari, iPad and phone by hand (decision 13). Then content-manager writes the documents.
@@ -169,7 +170,7 @@ Each is one small PR with a module version bump, a try build (decision 21) excep
 Nothing is verified yet.
 
 - **Checked by a tool:** the round-trip corpus and the hostile corpus in Node; the lock, save and chunk tests unchanged and passing; the licence, outside-URL and hash checks; `npm run check`; `npm run check:docs`.
-- **In a real browser** (Chrome is on this machine; whether a scripted run works here is not known): typing, selection, paste, undo, Source, the lock and losing it with two people, the bar at 390 px, zoom, no request leaving the server.
+- **In a real browser** (Chrome is on this machine; whether a scripted run works here is not known): typing, selection, paste, undo, the mode switch, the lock and losing it with two people, the bar at 390 px, zoom, no request leaving the server.
 - **Not verifiable here (reports say "not verified on Safari/phone" until Thomas has tested by hand):** Safari, an iPhone or Android phone with its real keyboard, a real input method, a screen reader, a real call (there is no LiveKit server), and a tutor's use.
 
 ## Risks
@@ -177,17 +178,17 @@ Nothing is verified yet.
 - **The round trip is the whole risk.** A mapping that is nearly exact changes people's text quietly. Rule 2, the read-back (decision 23) and the corpus are the guard.
 - **A `marked` upgrade** can change how a kept block reads. The corpus is run again on every upgrade (decision 28).
 - **A whole-document rewrite** is the last resort and must stay rare; the corpus logs each one. The one-block-edit rate (95.92% in the source-form fuzz) is the number to improve.
-- **Read-back cost:** about 10 ms on 56 KB and 24 ms on 142 KB, so it runs only at save, Done, Copy and Source.
+- **Read-back cost:** about 10 ms on 56 KB and 24 ms on 142 KB, so it runs only at save, Done, Copy and a switch to Markdown.
 - **A second way in for stored script.** The editor draws what a person typed and pasted. The guard is the one path through `dlDescribe`, the schema's checks and the independent read.
 - **Safari and phones** cannot be checked here and are where a shadow root hurts most.
 - **Weight:** every reader downloads the editor, because the page is one file.
 - **The source rule** (no `innerHTML`) cannot cover a vendored file; the read must.
-- **The order:** maths and the chip are not built yet, so step 10 waits on the current work; Source covers them meanwhile.
+- **The order:** maths and the chip are not built yet, so step 10 waits on the current work; the Markdown box covers them meanwhile.
 
 ## Open questions
 
-None. The eleven questions of the draft are answered by decisions 11 to 21 (stored form further settled by 22 to 28): paste (11), the first-edit rewrite (12), browsers (13), when rich becomes the default (14), the 16-entry limit (15), weight (16), typing shortcuts (17), strikethrough (18), the formula (19), Source (20) and the kind of build (21).
+None. The eleven questions of the draft are answered by decisions 11 to 21 (stored form further settled by 22 to 28): paste (11), the first-edit rewrite (12), browsers (13), when rich becomes the default (14), the 16-entry limit (15), weight (16), typing shortcuts (17), strikethrough (18), the formula (19), the mode switch (20, superseded by 29) and the kind of build (21).
 
 ## Not decided
 
-The keys beyond the draft; the words on screen; the table controls (a menu, or handles on the table); the icon for Source; whether the text box is removed once the rich editor has proved itself.
+The keys beyond the draft; the words on screen; the table controls (a menu, or handles on the table); the icons for the two options of the switch; whether the text box is removed once the rich editor has proved itself.
