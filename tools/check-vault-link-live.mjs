@@ -3,7 +3,7 @@
 //   - The Planner's stay and journey carry file chips on their cards; a click opens the file window over the space's canvas, with Previous and
 //     Next walking that stay's files ("1 of 3"), none for a journey with one file, and the Vault is not brought forward;
 //   - the editor's Attachments row: the chips with Unlink, Add file opening the chooser, a pick shows up as a chip, Save links it
-//     (the Vault's "Where it is used" names the stay) and Unlink + Save takes the link away;
+//     (the Vault's Properties, under "Where it is used", names the stay) and Unlink + Save takes the link away;
 //   - the server's push: a file added, renamed and removed by someone else shows in the Vault's list and an open file window within 2 seconds
 //     (the poll is 15), and a removed file's chip reads "File removed" with Remove link for an editor;
 //   - Cream light too, and 390 wide.
@@ -216,7 +216,7 @@ async function main() {
       if (savedNames.join() !== [files.png.id, files.mp3.id].sort().join()) fail(`the stay was saved with files ${JSON.stringify(savedNames)}`);
       const uses = async (f) => ((await api('GET', `/api/modules/vault/library/${f.id}/uses?space=${trip}`, undefined, 'mia')).json?.uses || []).map((u) => u.title);
       const [usesChime, usesPdf, usesPng] = [await uses(files.mp3), await uses(files.pdf), await uses(files.png)];
-      if (!usesChime.includes(stay.value.title)) fail(`"Where it is used" for the file just added does not name the stay (${JSON.stringify(usesChime)})`);
+      if (!usesChime.includes(stay.value.title)) fail(`Properties, "Where it is used", for the file just added does not name the stay (${JSON.stringify(usesChime)})`);
       if (usesPdf.length) fail(`the file that was unlinked is still used by ${JSON.stringify(usesPdf)}`);
       if (!usesPng.includes(stay.value.title)) fail(`the file that stayed linked lost its link (${JSON.stringify(usesPng)})`);
       say(`the editor: Unlink and a pick, Save; the stay holds Map.png and Flight chime.mp3; "Where it is used": chime ${JSON.stringify(usesChime)}, unlinked pdf ${JSON.stringify(usesPdf)}`);

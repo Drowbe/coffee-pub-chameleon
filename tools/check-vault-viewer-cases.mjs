@@ -40,7 +40,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
   const text = (tab, sel) => tab.eval(`(() => { const e = document.querySelector('.fv-win.is-front ${sel}'); return e ? e.innerText : null; })()`);
   const buttons = (tab) => tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].filter((b) => b.getClientRects().length).map((b) => b.getAttribute('aria-label') || b.textContent.trim())`);
   // The window is up with its title at once (the Vault gives the name); it is loaded when the toolbar has Info.
-  const settleWin = (tab, name) => until(tab, `(() => { const w = document.querySelector('.fv-win.is-front'); return w && w.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)} && [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info'); })()`, Boolean);
+  const settleWin = (tab, name) => until(tab, `(() => { const w = document.querySelector('.fv-win.is-front'); return w && w.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)} && [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Properties'); })()`, Boolean);
   const menuOf = async (tab) => {
     await until(tab, `![...document.querySelectorAll('[role=menuitem]')].some((e) => e.getClientRects().length)`, Boolean);
     await tab.eval(`(() => { const b = [...document.querySelectorAll('.fv-win.is-front .mf-titlebar button')].find((x) => /more/i.test(x.getAttribute('aria-label') || '')); b.click(); })()`);
@@ -59,7 +59,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     const pic = await until(tab, `(() => { const i = document.querySelector('.fv-win.is-front .fv-pic img'); return i ? i.naturalWidth : 0; })()`, (v) => v > 0, 8000);
     if (!(pic > 0)) fail('a picture does not load in its window');
     const tools = await buttons(tab);
-    for (const want of ['Previous', 'Next', 'Info', 'Download', 'Full screen']) if (!tools.includes(want)) fail(`the picture window's toolbar has ${tools.join(', ')}, not ${want}`);
+    for (const want of ['Previous', 'Next', 'Properties', 'Download', 'Full screen']) if (!tools.includes(want)) fail(`the picture window's toolbar has ${tools.join(', ')}, not ${want}`);
     // Share is built (step 5): it is shown only where the person may share (this tab's person may; others' menus are checked in the role cases).
     const pos = ((await text(tab, '.mf-toolbar')) || '').replace(/\s+/g, ' ');
     if (!/\d+ of \d+/.test(pos)) fail(`the toolbar says "${pos}", not where the file is in the list ("n of N")`);
@@ -77,11 +77,12 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     const back = await until(tab, FRONT, (v) => v === before);
     if (back !== before) fail(`the left arrow key did not walk back to ${before} (it shows ${back})`);
     say(`Previous and Next: ${before} -> ${next} -> ${back}`);
-    // Info
-    await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Info').click()`);
+    // Properties
+    await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Properties').click()`);
     const info = await until(tab, `(() => { const i = document.querySelector('.fv-win.is-front .fv-info'); return i ? i.innerText : ''; })()`, (v) => /Where it is used/.test(v) && !/Looking/.test(v));
-    if (!/Picture/.test(info) || !/Added by/.test(info) || !/Not linked from anywhere/.test(info)) fail(`Info says "${info.replace(/\n/g, ' | ')}"`);
-    say(`Info: ${info.replace(/\n/g, ' | ').slice(0, 110)}`);
+    if (!/Picture/.test(info) || !/Added by/.test(info) || !/Not linked from anywhere/.test(info)) fail(`Properties says "${info.replace(/\n/g, ' | ')}"`);
+    if (!(await tab.eval(`!!document.querySelector('.fv-win.is-front .fv-info input.fv-info-name')`))) fail('Properties has no Name field for the person who may rename');
+    say(`Properties: ${info.replace(/\n/g, ' | ').slice(0, 110)}`);
     await tab.key('Escape');
     await until(tab, WINS, (v) => v === 0);
 
@@ -193,7 +194,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     // Close all from a window's menu
     await menuOf(tab);
     const items = await tab.eval(`[...document.querySelectorAll('[role=menuitem]')].filter((e) => e.getClientRects().length).map((e) => e.innerText.trim()).join(' | ')`);
-    for (const want of ['Rename', 'Where it is used', 'Close all', 'Remove']) if (!items.includes(want)) fail(`a window's menu is "${items}", with no ${want}`);
+    for (const want of ['Rename', 'Properties', 'Close all', 'Remove']) if (!items.includes(want)) fail(`a window's menu is "${items}", with no ${want}`);
     await pickMenu(tab, 'Close all');
     await until(tab, WINS, (v) => v === 0);
     if ((await tab.eval(WINS)) !== 0) fail('Close all left windows open');
@@ -243,7 +244,10 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
     await menuOf(tab);
     const items = await tab.eval(`[...document.querySelectorAll('[role=menuitem]')].filter((e) => e.getClientRects().length).map((e) => e.innerText.trim()).join(' | ')`);
     if (/Rename|Remove/.test(items)) fail(`a member's window menu for someone else's file is "${items}"`);
-    if (!items.includes('Where it is used')) fail(`a member's window menu is "${items}", with no Where it is used`);
+    if (!items.includes('Properties')) fail(`a member's window menu is "${items}", with no Properties`);
+    await pickMenu(tab, 'Properties');
+    await until(tab, `!!document.querySelector('.fv-win.is-front .fv-info')`, Boolean);
+    if (await tab.eval(`!!document.querySelector('.fv-win.is-front .fv-info input.fv-info-name')`)) fail("a member sees a Name field in Properties for someone else's file");
     say(`a member's window menu: ${items}`);
   } finally { await tab.close(); }
   const off = await api('PATCH', '/api/roles/member', { 'module.vault.download': false }, 'admin');
@@ -319,7 +323,7 @@ export async function viewerCases({ S, api, say, fail, browser, until, open, dat
         const a = lum(fg.c) + 0.05; const b = lum(bg) + 0.05; return Math.max(a, b) / Math.min(a, b); })()`;
       await openNamed(t, 'tone.mp3');
       await settleWin(t, 'tone.mp3');
-      await t.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Info').click()`);
+      await t.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Properties').click()`);
       await sleep(600);
       const checks = { 'audio size': '.fv-win.is-front .fv-audio-meta', 'info label': '.fv-win.is-front .fv-info-list dt', 'info value': '.fv-win.is-front .fv-info-list dd', 'info none': '.fv-win.is-front .fv-info-none', 'file name': '.fv-win.is-front .fv-audio-name', 'status': '.fv-win.is-front .mf-status-text' };
       const out = [];
@@ -338,7 +342,7 @@ const SHADOW_ACTIVE = `(() => { const r = document.querySelector('#module-frame'
 export async function viewerFixCases({ S, api, say, fail, browser, until, open, trip }) {
   const press = (tab, key, code, vk) => tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vk }, tab.sid).then(() => tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk }, tab.sid));
   const openNamed = (tab, name, then = 'b.click()') => tab.eval(`(() => { const b = __q(${JSON.stringify(ROW)}, ${JSON.stringify(name)}); if (!b) return false; b.focus(); ${then}; return true; })()`);
-  const settleWin = (tab, name) => until(tab, `(() => { const w = [...document.querySelectorAll('.fv-win')].find((x) => x.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)}); return w && [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info'); })()`, Boolean);
+  const settleWin = (tab, name) => until(tab, `(() => { const w = [...document.querySelectorAll('.fv-win')].find((x) => x.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)}); return w && [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Properties'); })()`, Boolean);
   const frontWin = (tab, name) => tab.eval(`(() => { const w = [...document.querySelectorAll('.fv-win')].find((x) => x.querySelector('.mf-titlebar-title').textContent === ${JSON.stringify(name)}); if (!w) return false; w.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); w.querySelector('.mf').focus(); return true; })()`);
   const buttons = (tab) => tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].filter((b) => b.getClientRects().length).map((b) => b.getAttribute('aria-label') || b.textContent.trim())`);
   const frontBox = (tab) => tab.eval(`(() => { const r = document.querySelector('.fv-win.is-front').getBoundingClientRect(); const c = document.getElementById('canvas'); const k = c && !c.hidden ? c.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight }; return { l: r.left, t: r.top, r: r.right, b: r.bottom, cl: k.left, ct: k.top, cr: k.right, cb: k.bottom }; })()`);
@@ -426,7 +430,7 @@ export async function viewerFixCases({ S, api, say, fail, browser, until, open, 
     await tab.mouse('mouseMoved', g.x - 600, g.y - 600);
     await tab.mouse('mouseReleased', g.x - 600, g.y - 600);
     await sleep(300);
-    const small = await tab.eval(`(() => { const w = document.querySelector('.fv-win.is-front'); const r = w.getBoundingClientRect(); const v = w.querySelector('.fv-view').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), view: Math.round(v.height), info: [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info' && b.getClientRects().length) }; })()`);
+    const small = await tab.eval(`(() => { const w = document.querySelector('.fv-win.is-front'); const r = w.getBoundingClientRect(); const v = w.querySelector('.fv-view').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), view: Math.round(v.height), info: [...w.querySelectorAll('.mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Properties' && b.getClientRects().length) }; })()`);
     if (small.w !== 300 || small.h !== 200) fail(`the smallest window is ${small.w}x${small.h}, not 300x200`);
     if (small.info) fail('at 300x200 the toolbar still offers Info, which would hide the file');
     if (small.view < 60) fail(`at 300x200 the file has ${small.view}px of height`);

@@ -170,8 +170,8 @@ export async function openWindow(tab, name) {
   await sleep(500);
 }
 export async function showInfo(tab) {
-  await until(tab, `[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Info')`, Boolean, 10000);
-  if (!(await tab.eval(`!!document.querySelector('.fv-info')`))) await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Info').click()`);
+  await until(tab, `[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].some((b) => b.getAttribute('aria-label') === 'Properties')`, Boolean, 10000);
+  if (!(await tab.eval(`!!document.querySelector('.fv-info')`))) await tab.eval(`[...document.querySelectorAll('.fv-win.is-front .mf-toolbar button')].find((b) => b.getAttribute('aria-label') === 'Properties').click()`);
   await tab.waitFor('.fv-info');
   await sleep(400);
 }

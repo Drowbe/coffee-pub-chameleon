@@ -2619,7 +2619,7 @@
     // and the module hears the event 'fileclosed' ({ id }), so it can put focus back on what opened the file.
     files: {
       url: (name, o) => call('files.url', { name, ...(o && o.folder ? { folder: o.folder } : {}) }),
-      open: (pointer, o) => call('files.open', { ref: pointer, list: o && o.list, name: o && o.name }),
+      open: (pointer, o) => call('files.open', { ref: pointer, list: o && o.list, name: o && o.name, info: Boolean(o && o.info) }),
       // Files of the space's library (the Vault; plan-attachments-vault.md, sections 4 and 5), for a module that links its objects to
       // them. The module's manifest consumes the file kind (`"vault:file"` or `"*"`) and an owner approved it, as for any object; a
       // module that was not approved is refused (403) and finds, resolves and links nothing. Nothing here names the library module.

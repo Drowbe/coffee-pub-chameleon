@@ -6,7 +6,7 @@
 //   openFile({ ref, ids, doc, name, returnFocus, openRef, join })   open the file `ref` points at (a pointer: { module, kind: 'file', id, scope: 'space',
 //                                    space }). `ids`: the files to walk with Previous and Next (the Vault's list as filtered, or the files linked
 //                                    where it was opened from), else none. `returnFocus()`: where focus goes when the window closes.
-//                                    `openRef(pointer)`: shows another module's object (a link in Info). `join(fn)`: listens to the page's
+//                                    `openRef(pointer)`: shows another module's object (a link in Properties). `join(fn)`: listens to the page's
 //                                    module stream (module-host.js joinStream) and answers a stop function; with it a window follows the
 //                                    library live: a rename shows in its title at once, a removal turns it into "File removed".
 //   closeAllFiles(doc), fileWindowCount(doc)   Close all (the Layout menu's), and how many are open.
@@ -26,7 +26,7 @@ import { fileView, infoView, viewState, stopMedia, KINDS, kindOf, size, when, h 
 export const MAX_WINDOWS = 4;
 export const CAP_SENTENCE = 'Close a window to open another.';
 export const CAP_TITLE = 'Four windows are open';
-const SMALL_H = 300; // a window shorter than this has no Info: it would hide the file
+const SMALL_H = 300; // a window shorter than this has no Properties: it would hide the file
 const PHONE = 640;
 // Share (decision 12, step 5): the button shows only where the person has the `share` permission, and opens the same sheet the Vault's Share does.
 const SHARE_READY = true;
@@ -100,7 +100,7 @@ function loadStyles(doc) {
     link.addEventListener('error', resolve);
     doc.head.append(link);
     setTimeout(resolve, 1500);
-  }).then(() => privacyStyles(doc)); // the Info's "Who can see this" is drawn with the privacy stylesheet
+  }).then(() => privacyStyles(doc)); // the Properties "Who can see this" is drawn with the privacy stylesheet
   styled.set(doc, done);
   return done;
 }
@@ -303,7 +303,7 @@ function createManager(doc) {
       list.push({ type: 'button', id: 'next', label: 'Next', icon: 'chevron-right', kind: 'icon', disabled: i < 0 || i >= ids.length - 1 });
       list.push({ type: 'text', text: `${i + 1} of ${ids.length}` });
     }
-    if (f && !w.small) list.push({ type: 'button', id: 'info', label: 'Info', icon: 'circle-info', kind: 'icon', on: w.info, tip: w.info ? 'Hide info' : 'Show info' });
+    if (f && !w.small) list.push({ type: 'button', id: 'info', label: 'Properties', icon: 'sliders', kind: 'icon', on: w.info, tip: w.info ? 'Hide properties' : 'Show properties' });
     const end = (it) => ({ ...it, zone: 'end', pin: true });
     if (f) {
       if (can(w, 'download') && !phone() && !w.missing && f.viewable !== false) list.push(end({ type: 'button', id: 'download', label: 'Download', icon: 'download', kind: 'secondary' }));
@@ -317,7 +317,7 @@ function createManager(doc) {
     const f = w.files.get(w.id);
     const out = [];
     if (f && mayChange(w, f)) out.push({ id: 'rename', label: 'Rename', icon: 'pen', placement: 'menu' });
-    if (f) out.push({ id: 'uses', label: 'Where it is used', icon: 'link', placement: 'menu' });
+    if (f) out.push({ id: 'uses', label: 'Properties', icon: 'sliders', placement: 'menu' });
     out.push({ id: 'closeall', label: 'Close all', icon: 'xmark', placement: 'menu' });
     if (f && mayChange(w, f)) out.push({ id: 'remove', label: 'Remove', icon: 'trash', placement: 'menu', danger: true });
     return out;
@@ -346,6 +346,16 @@ function createManager(doc) {
   }
 
   // ---- Rename and Remove: the same words as the Vault's list ------------------------------------------------------------------------------
+  // The new name, cleaned the way the Vault cleans it; saves it and updates the window. Throws the server's words when refused.
+  async function renameTo(w, f, text) {
+    const name = text.trim().replace(/[\\/\u0000-\u001f]/g, '').slice(0, 120);
+    if (!name) throw new Error('Give the file a name.');
+    const res = await api('PATCH', libUrl(w.place, `/${enc(f.id)}`), { name });
+    if (res.file) w.files.set(f.id, res.file);
+    if (!w.dead && w.id === f.id && res.file) { w.frame.setTitle(res.file.name, KINDS[kindOf(res.file)].icon); w.frame.setStatus({ text: statusOf(w, res.file) }); }
+    showNote(`Renamed to ${res.file ? res.file.name : name}`);
+    return res.file || { ...f, name };
+  }
   function rename(w, f, from) {
     const dlg = doc.createElement('dialog');
     dlg.className = 'sdk-editor fv-rename';
@@ -444,7 +454,7 @@ function createManager(doc) {
         const was = w.files.get(f.id) || f;
         if (res.file) w.files.set(f.id, { ...was, ...res.file });
         if (w.dead || w.id !== f.id) return;
-        const a = doc.activeElement; // in the Info, in the menu just closed, or nowhere: the control comes back with the focus
+        const a = doc.activeElement; // in Properties, in the menu just closed, or nowhere: the control comes back with the focus
         const hadFocus = Boolean(w.infoSide && (!a || a === doc.body || w.infoSide.el.contains(a) || a.closest('.host-menu')));
         drawInfo(w);
         if (hadFocus && w.infoSide) { const c = w.infoSide.el.querySelector('[data-change]'); if (c) c.focus({ preventScroll: true }); }
@@ -453,7 +463,7 @@ function createManager(doc) {
     });
   }
 
-  // ---- Info -------------------------------------------------------------------------------------------------------------------------------
+  // ---- Properties -------------------------------------------------------------------------------------------------------------------------------
   function drawInfo(w) {
     if (w.infoSide) { w.infoSide.destroy(); w.infoSide.el.remove(); w.infoSide = null; }
     const f = w.files.get(w.id);
@@ -462,6 +472,7 @@ function createManager(doc) {
     w.infoSide = infoView(f, {
       privacy: privacyOf(w, f),
       who: whoIs(w),
+      rename: mayChange(w, f) ? (name) => renameTo(w, f, name) : null,
       uses: (file) => api('GET', libUrl(w.place, `/${enc(file.id)}/uses`)),
       open: w.openRef ? (summary) => w.openRef(summary.ref) : null,
       onClose: () => { w.info = false; drawInfo(w); w.frame.setToolbar(toolbar(w)); },
@@ -537,6 +548,7 @@ function createManager(doc) {
       bar.append(b);
       w.body.append(bar);
     }
+    if (w.wantInfo) { w.wantInfo = false; if (!w.small) w.info = true; }
     w.frame.setToolbar(toolbar(w));
     drawInfo(w);
   }
@@ -624,13 +636,19 @@ function createManager(doc) {
   }
 
   // spec: { ref, ids, name, returnFocus, openRef, join }
+  // Already open: to the front, and with Properties showing when it was asked for.
+  function openedOnInfo(w, spec) {
+    front(w);
+    if (spec.info && w.files && w.files.get(w.id) && !w.small && !w.info) { w.info = true; drawInfo(w); w.frame.setToolbar(toolbar(w)); }
+    w.frame.el.focus({ preventScroll: true });
+  }
   async function open(spec) {
     const ref = spec.ref;
     const place = { module: ref.module, space: ref.space };
     const same = (w) => w.place.module === place.module && w.place.space === place.space && w.id === ref.id;
     const key = `${place.module}/${place.space}/${ref.id}`;
     const known = wins.find(same);
-    if (known) { front(known); known.frame.el.focus({ preventScroll: true }); return true; }
+    if (known) { openedOnInfo(known, spec); return true; }
     // The stylesheet may still be loading: a second open of the same file (a double-click) waits on the first, not a window of its own.
     if (pending.has(key)) return true;
     pending.add(key);
@@ -642,12 +660,12 @@ function createManager(doc) {
   function openNow(spec, place, same) {
     const ref = spec.ref;
     const known = wins.find(same);
-    if (known) { front(known); known.frame.el.focus({ preventScroll: true }); return true; }
+    if (known) { openedOnInfo(known, spec); return true; }
     if (phone() && wins.length) {
       // One at a time on a phone: a new file replaces the one shown.
       const w = wins[0];
       listen(place, spec.join);
-      Object.assign(w, { place, ids: spec.ids || null, returnFocus: spec.returnFocus, openRef: spec.openRef, files: new Map(), cx: null });
+      Object.assign(w, { place, ids: spec.ids || null, returnFocus: spec.returnFocus, openRef: spec.openRef, files: new Map(), cx: null, wantInfo: Boolean(spec.info) });
       w.frame.setTitle(spec.name || 'Opening…', 'file');
       w.frame.setStatus({ text: '' });
       stateIn(w, { busy: true, title: 'Opening…' });
@@ -663,7 +681,7 @@ function createManager(doc) {
     }
     ensureLayer();
     listen(place, spec.join);
-    const w = { place, id: ref.id, ids: spec.ids || null, files: new Map(), cx: null, info: false, z: 0, returnFocus: spec.returnFocus, openRef: spec.openRef, dead: false, broken: false };
+    const w = { place, id: ref.id, ids: spec.ids || null, files: new Map(), cx: null, info: false, wantInfo: Boolean(spec.info), z: 0, returnFocus: spec.returnFocus, openRef: spec.openRef, dead: false, broken: false };
     w.el = h('div', 'fv-win');
     w.main = h('div', 'fv-main');
     const body = h('div', 'fv-body');
