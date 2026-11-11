@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/documents/src'));
@@ -17,7 +18,7 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
-  'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
+  'dlObjectLinks', 'DL_MARKED_MATH', 'dlPlain', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula',
   'DL_SAVE', 'dlPlanSave', 'dlIsDirty', 'dlCommitResult', 'dlAutosaveDelay', 'dlWriteWait', 'dlSaveWord',
   'DL_PAPERS', 'DL_PAPER_DEFAULT', 'dlCleanPaper', 'dlPaperMenuModel', 'dlContrast', 'dlInkFor', 'dlHexRgb',
@@ -746,6 +747,81 @@ test('resync: a gap after hiding is more than 30 s', () => {
   assert.ok(L.dlResyncAfterHidden(1000, 32000));
   assert.ok(!L.dlResyncAfterHidden(1000, 31000));
   assert.ok(!L.dlResyncAfterHidden(0, 99999));
+});
+
+// ---- the reader with the real (vendored) marked: formulas, loose checklists, chip labels, and the flags
+const markedLib = createRequire(import.meta.url)(path.join(src, 'documents-lib-0-marked.js'));
+const reader = new markedLib.Marked({ gfm: true, extensions: [L.DL_MARKED_MATH] });
+const real = (md, hooks) => { const d = fakeDoc(); const desc = L.dlDescribe(md, (m) => reader.lexer(m)); const root = L.dlBuild(desc, d, hooks); return { desc, root, d, nodes: all(root) }; };
+test('real marked: a formula keeps its backslashes and is shown as visible TeX', () => {
+  const r = real('Is $\\int x\\,dx$ and $\\{a\\}\\%$ and $a\\\\b$ ok');
+  const maths = r.nodes.filter((n) => n.className === 'dl-math');
+  assert.deepEqual(maths.map((n) => n.textContent), ['$\\int x\\,dx$', '$\\{a\\}\\%$', '$a\\\\b$']);
+  assert.equal(r.root.textContent, 'Is $\\int x\\,dx$ and $\\{a\\}\\%$ and $a\\\\b$ ok');
+});
+test('real marked: $$ in a paragraph, a digit or a space after $, and \\$ are not formulas', () => {
+  const r = real('Costs $5 and $6, then \\$x\\$ and $ y $ end');
+  assert.ok(!r.nodes.some((n) => (n.className || '').startsWith('dl-math')));
+  assert.equal(r.root.textContent, 'Costs $5 and $6, then $x$ and $ y $ end');
+  const d = real('$$\\{a\\}\\%$$');
+  assert.equal(d.nodes.filter((n) => n.className === 'dl-math dl-math-block').length, 1);
+  assert.equal(d.root.textContent, '$$\\{a\\}\\%$$');
+  const m = real('a $$x\\,y$$ b');
+  assert.equal(m.root.textContent, 'a $x\\,y$ b');
+});
+test('real marked: a drawn formula gets its TeX with the backslashes', () => {
+  const seen = [];
+  real('$\\{a\\}\\%$', { math: (el, tex) => { seen.push(tex); return false; } });
+  assert.deepEqual(seen, ['\\{a\\}\\%']);
+});
+test('real marked: a loose checklist has one box per item and no stray words', () => {
+  for (const md of ['- [ ] one\n\n- [x] two\n', '- [ ] one\n- [x] two\n']) {
+    const r = real(md);
+    const boxes = r.nodes.filter((n) => n.tag === 'input');
+    assert.equal(boxes.length, 2, md);
+    assert.equal(boxes[0].attrs.checked, undefined);
+    assert.equal(boxes[1].attrs.checked, '');
+    assert.equal(r.root.textContent, 'onetwo', md);
+  }
+  // words "[ ] " left in front of the text (a lexer that keeps them) are taken out of a task item, and only there
+  const kept = L.dlDescribe('x', () => [T('list', { items: [{ task: true, checked: false, tokens: [T('paragraph', { tokens: [txt('[ ] one')] })] }, { task: false, tokens: [T('paragraph', { tokens: [txt('[ ] plain')] })] }] })]);
+  const r2 = L.dlBuild(kept, fakeDoc());
+  assert.equal(r2.textContent, 'one[ ] plain');
+});
+test('real marked: a chip label is the decoded text, not the source', () => {
+  const r = real('See [Board \\[2\\] \\\\ *old*](object:whiteboard:board:b-1) now', { object: (el, ref) => { el.attrs.label = ref.label; } });
+  const chip = r.nodes.find((n) => n.className === 'dl-object');
+  assert.equal(chip.textContent, 'Board [2] \\ old');
+  assert.equal(chip.attrs['data-id'], 'b-1');
+  assert.equal(L.dlObjectLinks(r.desc).length, 1);
+});
+test('reader: the code fence language is kept in the description only', () => {
+  const d = L.dlDescribe('x', () => [T('code', { text: 'a', lang: 'js' }), T('code', { text: 'b', lang: '"><script>', codeBlockStyle: undefined }), T('code', { text: 'c', codeBlockStyle: 'indented' })]);
+  assert.deepEqual(d.map((b) => b.lang), ['js', 'script', '']);
+  const r = L.dlBuild(d, fakeDoc());
+  for (const n of all(r)) assert.ok(!Object.keys(n.attrs || {}).some((k) => /lang|class/.test(k)), 'no attribute for the language');
+});
+test('reader: text shown as source is flagged raw; plain text is not', () => {
+  const d = L.dlDescribe('x', () => [T('paragraph', { tokens: [txt('plain'), T('html', { raw: '<b>' }), T('image', { raw: '![a](http://x/y.png)', href: 'http://x/y.png', text: 'a' }), link('javascript:alert(1)', 'bad')] })]);
+  const c = d[0].c;
+  assert.equal(c[0].raw, undefined);
+  assert.deepEqual(c.slice(1).map((n) => [n.t, n.raw]), [['text', true], ['text', true], ['text', true]]);
+});
+test('corpus (real marked): hostile text never becomes markup or a live address', () => {
+  const lines = ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', '[x](javascript:alert(1))', '![a](javascript:alert(1))', '$<img src=x onerror=alert(1)>$', '$$<script>1</script>$$',
+    '[$\\{x\\}$](javascript:1)', '- [ ] <b onclick=1>\n\n- [x] [a](data:text/html,x)', '[<i>](object:a:b:c d)', '```"><svg onload=1>\n<x>\n```', '[\\[<script>\\]](object:wb:board:b-1)', '$a\\$ <iframe src=javascript:1> $b$'];
+  for (const md of lines) {
+    const r = real(md);
+    assert.deepEqual(r.d.sinks, [], md);
+    const tags = r.nodes.map((n) => n.tag);
+    for (const bad of ['script', 'img', 'iframe', 'svg', 'b', 'i', 'x']) assert.ok(!tags.includes(bad), `${bad} in ${md}`);
+    for (const n of r.nodes) {
+      if (n.tag === 'a') assert.ok(/^(https?:|mailto:)/.test(n.attrs.href), md);
+      for (const [k, v] of Object.entries(n.attrs || {})) assert.ok(!/^on/i.test(k) && !/javascript:/i.test(v), `${k}=${v} in ${md}`);
+    }
+  }
+  assert.ok(real(lines[0]).root.textContent.includes('<script>alert(1)</script>'));
+  assert.equal(real('$<img src=x onerror=alert(1)>$').root.textContent, '$<img src=x onerror=alert(1)>$');
 });
 
 await Promise.all(pending);

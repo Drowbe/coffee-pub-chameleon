@@ -68,7 +68,8 @@
     if (text) noteTimer = setTimeout(() => note(''), 6000);
   };
   const when = (iso) => { try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch (err) { return ''; } };
-  const lex = (md) => marked.lexer(md, { gfm: true });
+  const reader = new marked.Marked({ gfm: true, extensions: [DL_MARKED_MATH] });
+  const lex = (md) => reader.lexer(md);
   const idOf = (key, prefix) => key.slice(prefix.length);
 
   // ---- storage -------------------------------------------------------------------------------------------------------------

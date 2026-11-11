@@ -78,6 +78,8 @@
 .page pre { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--doc-field); border-radius: var(--radius-small); overflow: auto; white-space: pre-wrap; }
 .page code { font-family: var(--font-mono, monospace); font-size: var(--text-13); background: var(--doc-field); border-radius: var(--radius-min); padding: 0 var(--space-1); }
 .page pre code { background: none; padding: 0; }
+.page .dl-math { font-family: var(--font-mono, monospace); font-size: var(--text-13); background: var(--doc-field); border-radius: var(--radius-min); padding: 0 var(--space-1); }
+.page .dl-math-block { display: block; padding: var(--space-1) var(--space-2); margin: var(--space-2) 0; overflow-x: auto; }
 .page ul, .page ol { margin: 0 0 var(--space-3); padding-left: var(--space-5, 1.5rem); }
 .page li > p { margin: 0 0 var(--space-1); }
 .page li.dl-task { list-style: none; margin-left: calc(-1 * var(--space-4)); display: grid; grid-template-columns: auto 1fr; column-gap: var(--space-2); align-items: start; }
