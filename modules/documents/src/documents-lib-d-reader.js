@@ -63,7 +63,7 @@
   const dlText = (v) => ({ t: 'text', v: dlCleanText(v) });
   const dlTitle = (t) => (typeof t === 'string' && t ? { title: dlCleanLine(dlDecodeText(t), 200) } : {});
   // Split a text run at $...$ (not "$5 and $6": the closing $ is not followed by a digit; the formula is 2000 characters at most).
-  const DL_INLINE_MATH = /\$(?=\S)([^$\n]{1,2000}?\S|\S)\$(?!\d)/g;
+  const DL_INLINE_MATH = /\$(?=[^\s$])([^$\n]{1,2000}?\S|\S)\$(?!\d)/g;
   // A footnote mark ([^1], and [^1]: where its note starts). The reader draws no footnotes: the mark is shown as it is written,
   // as before, and flagged raw so a later editor keeps it word for word instead of escaping its brackets.
   const DL_NOTE_MARK = /\[\^[^\s\[\]^]{1,64}\]:?/g;
@@ -159,7 +159,7 @@
   }
 
   const dlSource = (raw) => ({ t: 'source', v: dlTrimBreaks(dlCleanText(String(raw || ''))) });
-  const DL_DISPLAY_MATH = /^\$\$([\s\S]+?)\$\$$/;
+  const DL_DISPLAY_MATH = /^\$\$(?!\$)([\s\S]+?)\$\$$/;
   const dlTwoFormulas = (tex) => /[^$]\$\$+[^$]/.test(tex); // "$$a$$ and $$b$$": a $$ pair with words on both sides is two formulas in a paragraph, not one block
 
   // A task item whose first line still starts with "[ ] " or "[x] " as words (no box token in front of it): take those words out.

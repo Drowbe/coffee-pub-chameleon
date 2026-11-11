@@ -118,8 +118,10 @@
 .rich .ProseMirror-focused .ProseMirror-gapcursor { display: block; }
 .rich .dl-drop { background: var(--accent); }
 /* a checklist row's box (pressed to tick it), and what Markdown holds that the editor shows as it is written */
-.rich li.dl-task::before { content: ""; grid-column: 1; width: 0.85em; height: 0.85em; margin-top: 0.35em; border: 1px solid var(--doc-ink); border-radius: var(--radius-min); cursor: pointer; }
-.rich li.dl-task[data-task="done"]::before { background: var(--doc-ink); box-shadow: inset 0 0 0 2px var(--doc-paper); }
+.rich li.dl-task::before { content: ""; grid-column: 1; grid-row: 1; width: 0.85em; height: 0.85em; margin-top: 0.35em; border: 1px solid var(--doc-ink); border-radius: var(--radius-min); cursor: pointer; }
+.rich li.dl-task[data-task="done"]::before { background: var(--doc-ink); }
+/* the tick on a ticked box: a rotated corner of two borders, in the box's own cell (the box keeps its size); a row picked as a whole keeps its outline in the same spot */
+.rich li.dl-task[data-task="done"]:not(.ProseMirror-selectednode)::after { content: ""; grid-column: 1; grid-row: 1; justify-self: center; align-self: start; width: 0.2em; height: 0.4em; margin-top: 0.43em; border: solid var(--doc-paper); border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none; }
 .rich .dl-source, .rich .dl-source-inline { color: var(--doc-quiet); font-family: var(--font-mono, monospace); font-size: var(--text-13); background: none; border: 1px dashed var(--doc-edge); border-radius: var(--radius-min); }
 .rich .dl-source-inline { padding: 0 var(--space-1); }
 .rich .dl-source code { background: none; }
