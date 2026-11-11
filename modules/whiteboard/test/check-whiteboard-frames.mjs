@@ -66,6 +66,14 @@ const measure = (b) => (b.type === 'text' ? TEXT_H : 0);
 const ids = (list) => list.map((m) => m.id).sort();
 
 // ---- the block ------------------------------------------------------------------------------------------------------
+await test('clean: speaker notes are a string of at most 2,000 characters, lines and markup kept, nothing else', () => {
+  assert.equal(frame('n0', 0, 0, 100, 100).notes, '', 'none to begin with');
+  const f = frame('n1', 0, 0, 100, 100, { notes: `**Say hi**\r\n- one\n- two\u0000\u0007 [a](https://x.test)` });
+  assert.equal(f.notes, '**Say hi**\n- one\n- two   [a](https://x.test)', 'markup and lines kept, controls out');
+  assert.equal(frame('n2', 0, 0, 100, 100, { notes: 'x'.repeat(5000) }).notes.length, 2000, 'at most 2,000 characters');
+  for (const bad of [5, null, true, ['a'], { a: 1 }]) assert.equal(frame('n3', 0, 0, 100, 100, { notes: bad }).notes, '', `a ${typeof bad} is not notes`);
+  assert.equal(L.wbClean({ z: 1, id: 'p', type: 'note', x: 0, y: 0, w: 100, h: 80, notes: 'no' }).notes, undefined, 'only frames have notes');
+});
 await test('clean: one line of at most 80 characters, at least 80 x 60, usual colours until one is picked', () => {
   const f = clean({ id: 'f', type: 'frame', x: 0, y: 0, w: 10, h: 5, title: `Plan\nfor\r\nthe\tday ${'x'.repeat(200)}` });
   assert.equal(f.w, 80, 'the least width');

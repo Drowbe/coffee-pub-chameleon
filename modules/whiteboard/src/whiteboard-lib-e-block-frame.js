@@ -29,6 +29,9 @@
     bar: 56, // screen pixels at the bottom of the board the present bar takes
   };
   const WB_FRAME_WORD = 'Frame'; // a new frame's title, and what an untitled one is called
+  // Speaker notes: markup like the text tool's, 2,000 characters at most, lines kept, no other control characters.
+  const WB_NOTES_MAX = 2000;
+  const wbFrameNotes = (v) => (typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f\u2028\u2029]/g, ' ').slice(0, WB_NOTES_MAX) : '');
   // A title: one line (any run of line breaks or tabs is a space), at most WB_FRAME.title characters.
   const wbFrameTitle = (v) => (typeof v === 'string' ? v.replace(/[\r\n\t\u2028\u2029]+/g, ' ').slice(0, WB_FRAME.title) : '');
   // Whether a block is a frame (any block type marked container).
@@ -260,8 +263,8 @@
     editLabel: 'Rename',
     paint: { fill: { extra: ['none', 'usual'] }, stroke: { extra: ['none', 'usual'] }, ink: { label: 'Title', extra: ['usual'] } },
     weight: true,
-    create: () => ({ w: WB_FRAME.w, h: WB_FRAME.h, title: WB_FRAME_WORD, fill: 'usual', stroke: 'usual', ink: 'usual', weight: 2 }),
-    clean: (raw) => ({ w: wb.size(raw.w, WB_FRAME.min.w, WB_FRAME.w), h: wb.size(raw.h, WB_FRAME.min.h, WB_FRAME.h), title: wbFrameTitle(raw.title) }),
+    create: () => ({ w: WB_FRAME.w, h: WB_FRAME.h, title: WB_FRAME_WORD, notes: '', fill: 'usual', stroke: 'usual', ink: 'usual', weight: 2 }),
+    clean: (raw) => ({ w: wb.size(raw.w, WB_FRAME.min.w, WB_FRAME.w), h: wb.size(raw.h, WB_FRAME.min.h, WB_FRAME.h), title: wbFrameTitle(raw.title), notes: wbFrameNotes(raw.notes) }),
     box: (b) => ({ x: 0, y: 0, w: b.w, h: b.h }),
     // All it draws: the tab above it too.
     reach: (b) => ({ x: 0, y: -(WB_FRAME.tab + WB_FRAME.gap), w: b.w, h: b.h + WB_FRAME.tab + WB_FRAME.gap }),

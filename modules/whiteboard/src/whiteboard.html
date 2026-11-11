@@ -39,11 +39,13 @@
       <span id="present-count" class="wb-present-count"></span>
       <label class="wb-present-dim"><span id="present-dim-icon" class="ic" aria-hidden="true"></span><input id="present-dim" type="range" min="0" max="100" step="5" value="60" aria-label="Dim the rest of the board"></label>
       <button type="button" id="present-move" class="btn btn-quiet btn-small" aria-haspopup="menu" aria-label="Transition: Pan"><span id="present-move-icon" class="ic" aria-hidden="true"></span><span id="present-move-label" class="wb-present-label"></span></button>
+      <button type="button" id="present-notes" class="btn btn-quiet btn-small" aria-pressed="false" aria-label="Notes"><span id="present-notes-icon" class="ic" aria-hidden="true"></span><span class="wb-present-label">Notes</span></button>
       <button type="button" id="present-share" class="btn btn-quiet btn-small" aria-pressed="false" aria-label="Present to everyone" hidden><span id="present-share-icon" class="ic" aria-hidden="true"></span><span id="present-share-label" class="wb-present-label">Share</span></button>
       <button type="button" id="present-takeover" class="btn btn-quiet btn-small" aria-label="Take over" hidden><span class="wb-present-label">Take over</span></button>
       <button type="button" id="present-next" class="btn btn-quiet btn-small" aria-label="Next"><span class="wb-present-label">Next</span><span class="ic" data-icon="chevron-right" aria-hidden="true"></span></button>
       <button type="button" id="present-exit" class="btn btn-small" aria-label="Exit"><span class="ic" data-icon="xmark" aria-hidden="true"></span><span class="wb-present-label">Exit</span></button>
     </div>
+    <div id="notes-box" class="wb-notes-box" role="region" aria-label="Speaker notes" tabindex="-1" hidden></div>
     <button type="button" id="rejoin" class="btn btn-small wb-rejoin" hidden>Rejoin</button>
     <div id="find" class="wb-find" role="search" aria-label="Find in the board" hidden>
       <input id="find-input" class="wb-find-input" type="text" maxlength="100" placeholder="Find" aria-label="Find in the board" aria-describedby="find-count" autocomplete="off" spellcheck="false" enterkeyhint="search">
