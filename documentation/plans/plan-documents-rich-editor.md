@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides; experience-design (the editor, the Markdown mapping, the bar); server-development (the licence, outside-URL and hash checks, the names check); quality-assurance (the independent safety read in a real browser); the project manager (the toolbar screenshots at each UI PR); content-manager (the documents once it is built).
 
-**Status:** Draft on Thomas's decisions of 2026-11-11; nothing is built and nothing was run for this plan. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
+**Status:** Draft on Thomas's decisions of 2026-11-11 (1 to 10) and the project manager's decisions under his delegation of the same day (11 to 21); all open questions are closed; nothing is built and nothing was run for this plan. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
 
 ## What it is today
 
@@ -30,6 +30,20 @@ Thomas, 2026-11-11.
 9. **The bar uses shared pieces only** (`host.toolbar.set`, `host.ui.toolbarButton` icon buttons, `host.menu.show`). The project manager compares screenshots with the Whiteboard and Chat.
 10. **The page-sheet look, the page colour, zoom and Fit width, the List and Thumbnails views and tags keep working** while editing.
 
+Decisions 11 to 21 were made by the project manager under Thomas's delegation, 2026-11-11.
+
+11. **Paste is plain text first,** read through `dlDescribe` (the safe reader). Kept formatting from Word, Docs or the web is its own later PR, after the safety read. *Reason:* kept formatting is a second way in.
+12. **The first edit rewrites the text into the editor's Markdown form,** accepted, with the fixed written list of changes (rule 4). The spike also prices "keep untouched blocks exactly as stored"; if it is cheap (a modest amount of code, no new risk) it is preferred, otherwise the rewrite is accepted. Rule 3 stands: opening a document and pressing Done write nothing.
+13. **Browsers that must pass:** current Chrome, Edge, Firefox and Safari on desktop; Safari on iPhone and iPad; Chrome on Android. Safari and a phone cannot be checked here: Thomas tests his iPad and phone by hand before any beta client uses rich editing. Until then every report says "not verified on Safari/phone".
+14. **Rich becomes what people get** only after steps 5 (text), 6 (bar and links) and 7 (tables) and the independent safety read. Until then the Markdown box stays the default and rich is reachable by a switch for Thomas to try. Maths and the object chip land later; Source covers them meanwhile.
+15. **Toolbar limit:** group buttons into menus, in the module only. No core change to the 16-entry limit.
+16. **Weight:** accept the bundle weight now; revisit loading on Edit later.
+17. **Typing shortcuts** (`# `, `- `, `1. `, `> `, `**bold**`): yes.
+18. **Strikethrough** is kept only, with no button.
+19. **A formula** is typed as TeX in a small box; a typed `$` does not start one.
+20. **Source** is a shared toolbar button, and the choice is remembered per person.
+21. **Kind of build:** a try build per step; the safety read step and the final default switch are production builds. Order: wait for the spike's short report (the project manager reads it); then step 2, the three checks, on a held branch with an independent read before any editor code; then steps 3 to 7. Rules: rebase on `origin/main` before every SHA; screenshots next to the Whiteboard and Chat toolbars; the larger model at high effort only for the risky parts (the mapping, the shadow-root work, the safety read), the smaller model for the rest.
+
 ## Scope and non-goals
 
 **In:** the text box in editing is replaced by a rich editor, with a Source button that brings the Markdown text box back.
@@ -54,7 +68,7 @@ Nothing here was run; licences, sizes and dependencies are all **(memory)** unti
 
 - **Module only.** The editor replaces `#edit-text` and nothing else. Both the rich editor and the text box sit behind one small adapter: `getText()`, `setText(text)`, `setReadOnly(on)`, `focus()`, `onChange(fn)`, `run(action)`, `destroy()`. The five places above call the adapter.
 - **Unchanged:** the lock, autosave (3 seconds), the commit, the chunks, losing the lock (Copy and Save as a new document take `getText()`), the catch-up, and their tests. The stored record, `preview`, `excerpt`, thumbnails, export and Print are unchanged, because they are made from the Markdown.
-- **The manifest, `server/`, `public/sdk/` and `public/module-host.js`: no change expected.** Needed outside the module: the three checks named above (server-development, before any editor code merges), and the vendored file's path on the skip list of `tools/check-names.mjs`. Two things could force a core change and are open questions: the 16-entry toolbar limit, and loading the editor's code only on Edit.
+- **The manifest, `server/`, `public/sdk/` and `public/module-host.js`: no change expected.** Needed outside the module: the three checks named above (server-development, before any editor code merges), and the vendored file's path on the skip list of `tools/check-names.mjs`. No core change is planned: the 16-entry toolbar limit is met by grouping buttons into menus (decision 15), and the editor loads with the page (decision 16).
 
 ### Markdown in and out: what "exact" means
 
@@ -63,7 +77,7 @@ Nothing here was run; licences, sizes and dependencies are all **(memory)** unti
 1. **A fixed point.** `P(S(P(D)))` equals `P(D)` node for node, and `S(P(S(P(D))))` equals `S(P(D))` character for character.
 2. **The same reading.** `dlDescribe(S(P(D)))` equals `dlDescribe(D)`, so nobody reading sees a difference.
 3. **Opening changes nothing.** `getText()` returns the stored text exactly until the person changes the document. Open and Done writes nothing.
-4. **Normalised once.** A document not in the editor's own form is shown faithfully and saved only when edited. That first save writes the whole text in the editor's form; the difference to the stored text may be the person's edit plus only the changes on a fixed, written list (draft: `-` for bullets, `*` and `**` for emphasis, `#` headings, level 5 and 6 to level 4, backtick fences, `---`, table pipes and spacing, list numbers, one form of hard break, one blank line between blocks, trailing spaces, needless escapes). Each is covered by rule 2. After it, a save differs only where the person edited.
+4. **Normalised once** (decision 12). A document not in the editor's own form is shown faithfully and saved only when edited. That first save writes the whole text in the editor's form, unless the spike shows that keeping untouched blocks exactly as stored is cheap, in which case that is preferred; the difference to the stored text may be the person's edit plus only the changes on a fixed, written list (draft: `-` for bullets, `*` and `**` for emphasis, `#` headings, level 5 and 6 to level 4, backtick fences, `---`, table pipes and spacing, list numbers, one form of hard break, one blank line between blocks, trailing spaces, needless escapes). Each is covered by rule 2. After it, a save differs only where the person edited.
 5. **Nothing is dropped or escaped.** Raw HTML, a picture, a footnote, an address that is not allowed and anything beyond the reader's bounds show as text, as the reader shows them, and are held as a source node that writes its Markdown back unchanged.
 6. **The reader's bounds hold.** A command that would pass them (a fifth list level, a 201st row) does nothing. A text that grows past 150,000 characters is refused at the save with today's words.
 
@@ -71,21 +85,22 @@ The corpus is in `modules/documents/test/`: every supported block, text typed in
 
 ### Blocks
 
-Headings 1 to 4; bold, italic, inline code; bullet and numbered lists to 4 levels; checklists; quotes; links; object links (the button opens `host.objects.pick`, drawn as the chip, stored as an ordinary Markdown link whose address is `object:<module>:<kind>:<id>`); tables with a header row and alignment; maths through Temml, `$...$` inline and `$$...$$` as a block, each an editable node (open it, type the TeX, see the result); code blocks, no colouring; rules; hard breaks. Strikethrough is kept because the reader draws it.
+Headings 1 to 4; bold, italic, inline code; bullet and numbered lists to 4 levels; checklists; quotes; links; object links (the button opens `host.objects.pick`, drawn as the chip, stored as an ordinary Markdown link whose address is `object:<module>:<kind>:<id>`); tables with a header row and alignment; maths through Temml, `$...$` inline and `$$...$$` as a block, each an editable node (open it, type the TeX, see the result); code blocks, no colouring; rules; hard breaks. Strikethrough is kept because the reader draws it, with no button (decision 18). Typing shortcuts turn `# `, `- `, `1. `, `> ` and `**bold**` into the format as typed (decision 17). A formula is typed as TeX in a small box, and a typed `$` does not start one (decision 19).
 
 ### Source
 
-A shared toolbar button, `on` while the text box shows. Rich to Source gives `getText()`; Source to rich gives `P(text)`. Lossless both ways: switching with no typing changes neither the text nor the document.
+A shared toolbar button, `on` while the text box shows; the choice is remembered per person (decision 20). Rich to Source gives `getText()`; Source to rich gives `P(text)`. Lossless both ways: switching with no typing changes neither the text nor the document.
 
 ### Paste, copy and drop (the project manager's requirement)
 
 - The module takes the `paste` and `drop` events before the library does, so the library's own HTML clipboard reader never runs **(memory, to confirm)**. The clipboard's plain text is read as Markdown through `dlDescribe`, the same path as loading: no raw HTML kept, links only `http`, `https`, `mailto` and `object:`, pictures as text, the reader's bounds applied.
 - Every attribute in the schema is checked on every way in (loading, paste, the browser's own changes to the page, undo): an address through `dlSafeAddress`, a chip's ids by the reader's patterns, a formula's length.
 - Copy gives Markdown as the plain text.
+- Only plain text is kept from a paste (decision 11); a paste that keeps formatting is a later PR after the safety read.
 
 ### Bar, keys and undo
 
-The bar's actions apply to the rich selection, and a button is `on` when the selection has that format. Undo and redo are the editor's own history. Draft keys: Ctrl or Cmd with B, I, K (link), Z and Shift+Z; Tab and Shift+Tab indent a list line and move between table cells; Escape leaves the editor so the keyboard is never trapped. Ctrl or Cmd with `+`, `-` and `0` stay the zoom **(code)**.
+Buttons are grouped into `host.menu.show` menus to stay within 16 entries (decision 15). The bar's actions apply to the rich selection, and a button is `on` when the selection has that format. Undo and redo are the editor's own history. Draft keys: Ctrl or Cmd with B, I, K (link), Z and Shift+Z; Tab and Shift+Tab indent a list line and move between table cells; Escape leaves the editor so the keyboard is never trapped. Ctrl or Cmd with `+`, `-` and `0` stay the zoom **(code)**.
 
 ### Phone, input methods and accessibility
 
@@ -112,18 +127,20 @@ Throwaway, outbound network blocked, in Chrome here and Firefox and Safari by ha
 
 ## Left to build, in order
 
-Each is one small PR with a module version bump; every PR that changes what a person sees carries screenshots beside the Whiteboard's and Chat's toolbars for the project manager.
+Each is one small PR with a module version bump, a try build (decision 21) except where marked; each rebases on `origin/main` before its SHA, and every PR that changes what a person sees carries screenshots beside the Whiteboard's and Chat's toolbars for the project manager. The larger model at high effort is for the mapping, the shadow-root work and the safety read; the smaller model for the rest.
 
-1. **Spike.** experience-design. Thomas sees the results.
-2. **The checks** (licence, outside URL, hash; the names skip). server-development.
+1. **Spike.** experience-design. It prices "keep untouched blocks as stored" (decision 12). The project manager reads its short report before step 2.
+2. **The checks** (licence, outside URL, hash; the names skip). server-development, in `core/tools`, on a held branch with an independent read before any editor code.
 3. **The adapter**, with the text box behind it; nothing a person sees changes. experience-design.
 4. **The vendored file and the mapping** (`P`, `S`, the corpus tests); no page change. experience-design.
-5. **The rich editor for text:** paragraphs, headings, bold, italic, code, lists, checklists, quotes, code blocks, rules, hard breaks, the source node, paste, undo, and Source. experience-design.
+5. **The rich editor for text:** paragraphs, headings, bold, italic, code, lists, checklists, quotes, code blocks, rules, hard breaks, the source node, paste, undo, and Source. Rich is reachable by a switch for Thomas; the Markdown box stays the default. experience-design.
 6. **The bar and the keys** on the rich selection; links. experience-design.
 7. **Tables.** experience-design.
-8. **Maths nodes and the object chip** (after Temml and the chip land in the current work). experience-design.
-9. **Phone, input methods and accessibility.** experience-design.
-10. **The safety read:** the builder tells the project manager when the editor and the renderer are ready, and quality-assurance reads both independently in a real browser. Required before Thomas's beta clients use Documents. Then content-manager writes the documents.
+8. **The safety read** (production build): the builder tells the project manager when the editor and the renderer are ready, and quality-assurance reads both independently in a real browser. Required before rich becomes the default and before Thomas's beta clients use rich editing.
+9. **The default switch** (production build): rich becomes what people get (decision 14), after Thomas has tested Safari, iPad and phone by hand (decision 13). Then content-manager writes the documents.
+10. **Maths nodes and the object chip** (after Temml and the chip land in the current work). experience-design.
+11. **Phone, input methods and accessibility.** experience-design.
+12. **Kept formatting on paste** (later, after the safety read). experience-design, with its own safety read.
 
 ## Verify
 
@@ -131,7 +148,7 @@ Nothing is verified yet.
 
 - **Checked by a tool:** the round-trip corpus and the hostile corpus in Node; the lock, save and chunk tests unchanged and passing; the licence, outside-URL and hash checks; `npm run check`; `npm run check:docs`.
 - **In a real browser** (Chrome is on this machine; whether a scripted run works here is not known): typing, selection, paste, undo, Source, the lock and losing it with two people, the bar at 390 px, zoom, no request leaving the server.
-- **Not verifiable here:** Safari, an iPhone or Android phone with its real keyboard, a real input method, a screen reader, a real call (there is no LiveKit server), and a tutor's use.
+- **Not verifiable here (reports say "not verified on Safari/phone" until Thomas has tested by hand):** Safari, an iPhone or Android phone with its real keyboard, a real input method, a screen reader, a real call (there is no LiveKit server), and a tutor's use.
 
 ## Risks
 
@@ -140,24 +157,11 @@ Nothing is verified yet.
 - **Safari and phones** cannot be checked here and are where a shadow root hurts most.
 - **Weight:** every reader downloads the editor, because the page is one file.
 - **The source rule** (no `innerHTML`) cannot cover a vendored file; the read must.
-- **The order:** maths and the chip are not built yet, so step 8 waits on the current work.
+- **The order:** maths and the chip are not built yet, so step 10 waits on the current work; Source covers them meanwhile.
 
 ## Open questions
 
-Blocking the build:
-1. **Paste from Word, Google Docs or a web page:** plain text only, or keep the bold, lists, tables and links? *Lean:* plain text first; kept formatting as its own PR after the safety read, because it is a second way in.
-2. **The first edit rewrites the whole text into the editor's form** (rule 4): a larger difference in the stored text, the same reading. Accept it, or keep every untouched block exactly as stored (more work; the spike can price it)?
-3. **Which browsers and phones must pass,** and who tests Safari and a real phone, since neither can be checked here?
-4. **When does rich become what people get:** at step 5 with Source as the way to the rest, or only once tables and maths are in (step 8)?
-5. **The bar has more buttons than 16 entries allow** once Source, Undo, Redo and the object link are added. Group them into menus (module only), or raise the limit (a core change)?
-
-Not blocking:
-6. **Weight:** accept every reader loading the editor, or load it on Edit (a change to `server/module-build.js` and `public/module-host.js`)?
-7. **Typing shortcuts:** should `# `, `- `, `1. `, `> ` and `**bold**` turn into the format as they are typed?
-8. **Strikethrough:** a button, or only kept?
-9. **A formula:** typed as TeX in a small box (the draft), and does a typed `$` start one or only the button?
-10. **Source:** a toolbar button for every editor, or in the title bar's menu? Is the choice remembered?
-11. **The kind of build** (try, feedback or production) for each step.
+None. The eleven questions of the draft are answered by decisions 11 to 21: paste (11), the first-edit rewrite (12), browsers (13), when rich becomes the default (14), the 16-entry limit (15), weight (16), typing shortcuts (17), strikethrough (18), the formula (19), Source (20) and the kind of build (21).
 
 ## Not decided
 
