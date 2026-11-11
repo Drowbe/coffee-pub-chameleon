@@ -2664,3 +2664,6 @@ async function init() {
   }
 }
 init();
+
+// The sample links in the theme preview do nothing (no inline handler: the page's CSP blocks them).
+document.getElementById('theme-preview')?.addEventListener('click', (e) => { if (e.target.closest('a[href="#"]')) e.preventDefault(); });

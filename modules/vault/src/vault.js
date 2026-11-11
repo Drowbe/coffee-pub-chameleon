@@ -623,7 +623,7 @@
     li.append(by, el('span', 'sdk-row-meta vt-when', when(f.at)), badges(f), menuButton(f));
     return li;
   }
-  const narrow = () => $('app').clientWidth > 0 && $('app').clientWidth <= 480;
+  const narrow = () => { const a = $('app'); return !!a && a.clientWidth > 0 && a.clientWidth <= 480; };
   function cardEl(f) {
     const k = KINDS[kindOf(f)];
     if (narrow()) {
@@ -1230,7 +1230,8 @@
   $('details-close').addEventListener('click', () => detailsEditor.close());
 
   // ---- go -----------------------------------------------------------------------------------------------------------------------------------
-  try { new ResizeObserver(() => { if (!state.loaded) return; if (narrow() !== renderedNarrow && state.view === 'grid') renderBody(); else fitCuts(); }).observe($('app')); } catch { /* no observer */ }
+  try { const ro = new ResizeObserver(() => { if (!$('app')) { ro.disconnect(); return; } if (!state.loaded) return; if (narrow() !== renderedNarrow && state.view === 'grid') renderBody(); else fitCuts(); }).observe($('app')); } catch { /* no observer */ }
+  $('details-body').addEventListener('submit', (e) => e.preventDefault());
   hydrate(root);
   await loadPeople();
   await refresh();
