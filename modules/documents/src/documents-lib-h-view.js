@@ -82,6 +82,5 @@ function dlPageMenuModel(page) {
     ...Object.values(DL_PAGE_SIZES).map((s) => ({ kind: 'size', id: s.id, label: s.label, current: p.pageSize === s.id })),
     { kind: 'heading', label: 'On the page' },
     { kind: 'numbers', id: 'numbers', label: 'Page numbers', current: p.pageNumbers },
-    { kind: 'break', id: 'break', label: 'Page break', icon: 'scissors' },
   ];
 }
