@@ -188,6 +188,31 @@
     return `Frame ${state.i + 1} of ${state.order.length}${t ? `: ${t}` : ''}`;
   }
 
+  // The notes mark in a frame's title tab (a speech bubble, fa-comment-dots): 'shown' (the frame has notes: for everyone who can
+  // see the board), 'add' (an editor, no notes: drawn faint, clear on mouseover or when the frame is picked, whiteboard.css),
+  // or 'none' (view-only, no notes). It is never in Save as image, Print or Present.
+  const wbNotesMark = (hasNotes, canEdit) => (hasNotes ? 'shown' : canEdit ? 'add' : 'none');
+  // The Present notes box, moved by its handle: where it may sit. pos { x, y } is its top left in the board's area (px), size
+  // { w, h } the box, area { w, h } the board's area, bottom the room kept clear at the foot (the Present bar). Whole inside
+  // the area, whatever it is (an area smaller than the box puts it at 0).
+  const wbNotesClamp = (pos, size, area, bottom = WB_FRAME.bar) => {
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const maxX = Math.max(0, num(area.w) - num(size.w));
+    const maxY = Math.max(0, num(area.h) - Math.max(0, num(bottom)) - num(size.h));
+    return { x: Math.round(Math.min(maxX, Math.max(0, num(pos.x)))), y: Math.round(Math.min(maxY, Math.max(0, num(pos.y)))) };
+  };
+  // Where this person left the box (this browser only): { x, y } or null (the usual place). Every access guarded.
+  const WB_NOTES_POS = 'whiteboard-present-notes-pos';
+  function wbNotesPosLoad(store) {
+    try {
+      const s = store(); const v = s ? JSON.parse(s.getItem(WB_NOTES_POS) || 'null') : null;
+      return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? { x: v.x, y: v.y } : null;
+    } catch { return null; }
+  }
+  function wbNotesPosSave(store, pos) {
+    try { const s = store(); if (!s) return false; if (pos) s.setItem(WB_NOTES_POS, JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) })); else s.removeItem(WB_NOTES_POS); return true; } catch { return false; }
+  }
+
   // The dim while presenting (the Present bar's slider): how much of the board outside the frame shown is darkened, 0 to 100
   // in steps of 5, 60 at first. This person's choice in this browser, never in the board's data. store() -> localStorage.
   const WB_DIM = { key: 'whiteboard-present-dim', def: 60 };
@@ -285,6 +310,17 @@
         const words = document.createElement('span');
         words.className = 'wb-words';
         tab.append(words);
+        // The notes mark: a button of its own (.wb-ctl: a press on it is not the frame's), set up by the page (blockTypes 'frame' .notes).
+        const mark = document.createElement('button');
+        mark.type = 'button';
+        mark.className = 'wb-ctl wb-fr-notes';
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.setAttribute('aria-hidden', 'true');
+        mark.append(ic);
+        for (const type of ['dblclick', 'contextmenu']) mark.addEventListener(type, (e) => e.stopPropagation());
+        mark.addEventListener('click', (e) => { e.stopPropagation(); const h = blockTypes.get('frame').notes; if (h && mark.dataset.frame) h.open(mark.dataset.frame); });
+        tab.append(mark);
         el.replaceChildren(face, ...edges, tab);
       }
       el.style.setProperty('--wb-fr-tab', `${WB_FRAME.tab}px`);
@@ -295,6 +331,18 @@
       const t = b.title.trim();
       words.textContent = t || WB_FRAME_WORD;
       if (t) delete tab.dataset.empty; else tab.dataset.empty = 'true';
+      const h = blockTypes.get('frame').notes;
+      const mark = tab.querySelector('.wb-fr-notes');
+      const kind = wbNotesMark(Boolean(b.notes), Boolean(h && h.canEdit()));
+      mark.hidden = kind === 'none';
+      mark.dataset.kind = kind;
+      mark.dataset.frame = b.id;
+      mark.tabIndex = kind === 'shown' ? 0 : -1;
+      const label = kind === 'add' ? 'Add speaker notes' : h && h.canEdit() ? 'Edit speaker notes' : 'Read speaker notes';
+      mark.setAttribute('aria-label', label);
+      mark.dataset.tip = label;
+      const ic = mark.querySelector('.ic');
+      if (h && h.icon && !ic.firstChild) Promise.resolve(h.icon('comment-dots')).then((svg) => { if (svg && !ic.firstChild) ic.innerHTML = svg; }, () => {});
     },
     textOf: (el) => el.querySelector('.wb-fr-tab .wb-words'),
     describe: (b) => { const t = b.title.trim(); return t ? `Frame: ${t}` : 'Frame, untitled'; },

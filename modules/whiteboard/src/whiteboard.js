@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Notes shows your speaker notes to you only; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more; the speech bubble on its title opens its notes). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Notes shows your speaker notes to you only, and you can drag them; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames; Notes: speaker notes). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging flips it. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Notes: yours alone; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Pointers: hide in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames; the speech bubble on its title, or Notes: speaker notes). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging flips it. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Notes: yours alone, draggable; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Pointers: hide in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -1346,7 +1346,7 @@
       startPresenting();
     });
     presentBox.appendChild(presentButton);
-    notesButton = pressButton('Notes', 'clipboard', () => { const f = pickedFrame(); if (f) openNotes(f.id); });
+    notesButton = pressButton('Notes', 'comment-dots', () => { const f = pickedFrame(); if (f) openNotes(f.id); });
     notesButton.removeAttribute('aria-pressed');
     notesButton.dataset.tip = 'Speaker notes for the picked frame';
     notesButton.hidden = true;
@@ -1992,6 +1992,8 @@
     if (next) commit(next, 'now');
   };
   timerDef.icon = (name) => iconSvg(name);
+  // The notes mark in a frame's title tab (lib-e-block-frame): opens that frame's notes (editors write, others read).
+  blockTypes.get('frame').notes = { canEdit: () => policy.canEdit, open: (id) => openNotes(id), icon: (name) => iconSvg(name) };
   timerDef.say = (text) => say(text);
   timerDef.done = () => { say('Time is up.'); if (!muted) chime(); };
   timerDef.act = (id, what, button) => {
@@ -2703,9 +2705,10 @@
   // Notes are in the board's stored data: hiding them only keeps them off the screen; whoever can open the board can read them.
   const NOTES_HELP = 'Anyone who can open this board can read notes. Don\'t put secrets in them.';
   const NOTES_SHOW = 'whiteboard-present-notes';
+  const notesStore = () => window.localStorage;
   let notesOn = false;
   try { notesOn = window.localStorage.getItem(NOTES_SHOW) === '1'; } catch { /* no storage: hidden */ }
-  iconSvg('clipboard').then((svg) => { if (svg) $('present-notes-icon').innerHTML = svg; }, () => {});
+  iconSvg('comment-dots').then((svg) => { if (svg) $('present-notes-icon').innerHTML = svg; }, () => {});
   // The presenter's own box: the current frame's notes, on this screen only (a follower never has it).
   function notesShow() {
     const btn = $('present-notes');
@@ -2719,11 +2722,83 @@
     const f = mine && notesOn ? board.get(presenting.order[presenting.i]) : null;
     box.hidden = !f;
     if (!f) return;
+    notesBoxMake();
     const words = document.createElement('div');
     words.className = 'wb-words';
     if (f.notes) wbShowWords(words, f.notes); else { words.textContent = 'No notes for this frame.'; words.classList.add('wb-notes-none'); }
-    box.replaceChildren(words);
+    box.querySelector('.wb-notes-body').replaceChildren(words);
+    notesPlace();
   }
+  // The box moves by its handle (the header): a mouse, a finger or a pen, or the arrow keys on the handle. Where it was left is
+  // remembered for this person in this browser; it stays whole inside the board's area and clear of the Present bar; Reset
+  // position, or a double-click on the handle, puts it back in its usual place.
+  let notesPos = wbNotesPosLoad(notesStore);
+  function notesBoxMake() {
+    const box = $('notes-box');
+    if (box.querySelector('.wb-notes-handle')) return;
+    const head = document.createElement('div');
+    head.className = 'wb-notes-handle';
+    head.tabIndex = 0;
+    head.setAttribute('role', 'group');
+    head.setAttribute('aria-label', 'Speaker notes. Drag to move; arrow keys move; double-click to reset.');
+    const title = document.createElement('span');
+    title.className = 'wb-notes-handle-title';
+    title.textContent = 'Speaker notes';
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'btn btn-quiet btn-small';
+    reset.textContent = 'Reset position';
+    reset.addEventListener('click', () => notesMove(null));
+    head.append(title, reset);
+    const body = document.createElement('div');
+    body.className = 'wb-notes-body';
+    box.replaceChildren(head, body);
+    head.addEventListener('dblclick', (e) => { if (!e.composedPath().includes(reset)) notesMove(null); });
+    let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.composedPath().includes(reset) || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const a = box.parentElement.getBoundingClientRect();
+      const r = box.getBoundingClientRect();
+      drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, ax: a.left, ay: a.top };
+      try { head.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    head.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      notesMove({ x: e.clientX - drag.ax - drag.dx, y: e.clientY - drag.ay - drag.dy }, false);
+    });
+    const end = (e) => { if (drag && e.pointerId === drag.id) { drag = null; wbNotesPosSave(notesStore, notesPos); } };
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', end);
+    head.addEventListener('keydown', (e) => {
+      const step = { ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] }[e.key];
+      if (!step || e.composedPath()[0] !== head) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = box.getBoundingClientRect();
+      const a = box.parentElement.getBoundingClientRect();
+      notesMove({ x: r.left - a.left + step[0], y: r.top - a.top + step[1] });
+    });
+  }
+  // Put the box at pos (clamped), or back in its usual place (null); save it unless told not to (mid-drag).
+  function notesMove(pos, save = true) {
+    notesPos = pos;
+    if (save) wbNotesPosSave(notesStore, notesPos);
+    notesPlace();
+  }
+  function notesPlace() {
+    const box = $('notes-box');
+    if (box.hidden) return;
+    if (!notesPos) { box.style.left = ''; box.style.top = ''; box.style.right = ''; box.style.bottom = ''; return; }
+    const a = box.parentElement;
+    notesPos = wbNotesClamp(notesPos, { w: box.offsetWidth, h: box.offsetHeight }, { w: a.clientWidth, h: a.clientHeight });
+    box.style.left = `${notesPos.x}px`;
+    box.style.top = `${notesPos.y}px`;
+    box.style.right = 'auto';
+    box.style.bottom = 'auto';
+  }
+  window.addEventListener('resize', notesPlace);
   $('present-notes').addEventListener('click', () => {
     notesOn = !notesOn;
     try { window.localStorage.setItem(NOTES_SHOW, notesOn ? '1' : '0'); } catch { /* kept for this visit only */ }
@@ -3392,7 +3467,7 @@
     const links = ids.length === 1 ? linkRows(id) : [];
     // A frame, picked alone: present from it, and save it as a picture (its own box, with all of the board in it).
     const frameRows = pickedFrame() ? [
-      { id: 'notes', label: policy.canEdit ? 'Notes' : 'Speaker notes', icon: 'clipboard', onClick: () => openNotes(id) },
+      { id: 'notes', label: policy.canEdit ? 'Notes' : 'Speaker notes', icon: 'comment-dots', onClick: () => openNotes(id) },
       { id: 'present-here', label: 'Present from this frame', icon: 'play', onClick: () => startPresenting(id) },
       { id: 'export-frame', label: 'Save frame as image…', icon: 'file-image', onClick: () => { setTimeout(() => openExport('frame'), 0); } },
     ] : [];
@@ -3769,6 +3844,7 @@
     const w = host.rootElement.clientWidth;
     $('app').classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
+    notesPlace(); // the notes box stays whole in the area
     updateStatus(); // the overview: its size, and whether there is room for it
     if (finding) placeFind(); // the find bar clear of the colour strip at the new width
   }).observe(host.rootElement);

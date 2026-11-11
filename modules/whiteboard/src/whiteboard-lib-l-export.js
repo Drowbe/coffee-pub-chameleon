@@ -116,7 +116,7 @@
     // The copy of a block's element, without anything of the selection or of editing, safe for XML.
     function copyOf(el) {
       const c = el.cloneNode(true);
-      for (const n of c.querySelectorAll('.wb-text-edit, .wb-format')) n.remove();
+      for (const n of c.querySelectorAll('.wb-text-edit, .wb-format, .wb-fr-notes')) n.remove();
       for (const n of [c, ...c.querySelectorAll('*')]) {
         n.classList.remove('wb-editing');
         if (n.dataset) delete n.dataset.mark;

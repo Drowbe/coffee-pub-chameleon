@@ -12,8 +12,8 @@
     "hash": "801c25a5b9a22e11"
   },
   "documents": {
-    "version": "0.1.0",
-    "hash": "f3aef2b82d8cfc5f"
+    "version": "0.1.1",
+    "hash": "ec0b61fb13ec6b5a"
   },
   "maps": {
     "version": "0.9.15",
@@ -48,7 +48,7 @@
     "hash": "53c2f70f8c04e58d"
   },
   "whiteboard": {
-    "version": "0.1.44",
-    "hash": "fc5df36a6e34cc47"
+    "version": "0.1.45",
+    "hash": "6cd2902b086ce2ab"
   }
 }

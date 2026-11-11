@@ -33,7 +33,7 @@ const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/
 const NAMES = ['wbClean', 'blockTypes', 'tools', 'wbAttachable', 'wbMoved', 'wbCopies', 'wbDeleteSet', 'createPolicy', 'createHistory',
   'wbApplyChanges', 'wbUndoNote', 'wbArrangeChanges', 'wbExportPick', 'wbExportExtent', 'wbExportSize',
   'WB_FRAME', 'wbFrameTitle', 'wbIsFrame', 'wbFrameContents', 'wbFrameFollow', 'wbFrameMoveChanges', 'wbFrameInRect', 'wbFrameHit',
-  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect', 'WB_MOVE', 'wbMoveValue', 'wbMoveLoad', 'wbMoveChoice', 'wbMoveEffective', 'wbMoveSave', 'wbLerpRect', 'wbLerpWindow', 'wbScrimPath'];
+  'wbFrameZ', 'wbFrameOrder', 'wbFitView', 'wbPresentStart', 'wbPresentGo', 'wbPresentSync', 'wbPresentWords', 'WB_DIM', 'wbDimValue', 'wbDimLoad', 'wbDimSave', 'wbDimStrength', 'wbRoundRect', 'WB_MOVE', 'wbMoveValue', 'wbMoveLoad', 'wbMoveChoice', 'wbMoveEffective', 'wbMoveSave', 'wbLerpRect', 'wbLerpWindow', 'wbScrimPath', 'wbNotesMark', 'wbNotesClamp', 'wbNotesPosLoad', 'wbNotesPosSave', 'WB_NOTES_POS'];
 
 let passed = 0;
 const fails = [];
@@ -66,6 +66,32 @@ const measure = (b) => (b.type === 'text' ? TEXT_H : 0);
 const ids = (list) => list.map((m) => m.id).sort();
 
 // ---- the block ------------------------------------------------------------------------------------------------------
+await test('the notes mark: shown with notes for all, faint for editors without, nothing for view-only', () => {
+  assert.equal(L.wbNotesMark(true, false), 'shown');
+  assert.equal(L.wbNotesMark(true, true), 'shown');
+  assert.equal(L.wbNotesMark(false, true), 'add');
+  assert.equal(L.wbNotesMark(false, false), 'none');
+});
+await test('the notes box: kept whole in the area and clear of the Present bar; storage may fail', () => {
+  const size = { w: 300, h: 100 }; const area = { w: 1000, h: 600 };
+  assert.deepEqual(L.wbNotesClamp({ x: 50, y: 60 }, size, area), { x: 50, y: 60 }, 'inside stays');
+  assert.deepEqual(L.wbNotesClamp({ x: -40, y: -9 }, size, area), { x: 0, y: 0 }, 'not past the top left');
+  assert.deepEqual(L.wbNotesClamp({ x: 9999, y: 9999 }, size, area), { x: 700, y: 600 - L.WB_FRAME.bar - 100 }, 'not past the right, nor over the bar');
+  assert.deepEqual(L.wbNotesClamp({ x: 5, y: 5 }, { w: 2000, h: 900 }, area), { x: 0, y: 0 }, 'a box too big sits at 0');
+  assert.deepEqual(L.wbNotesClamp({ x: NaN, y: 'a' }, size, area), { x: 0, y: 0 }, 'junk is 0');
+  const mem = new Map();
+  const store = () => ({ getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) });
+  assert.equal(L.wbNotesPosLoad(store), null, 'none yet');
+  assert.equal(L.wbNotesPosSave(store, { x: 10.4, y: 20.6 }), true);
+  assert.deepEqual(L.wbNotesPosLoad(store), { x: 10, y: 21 });
+  mem.set(L.WB_NOTES_POS, '{"x":"a"}');
+  assert.equal(L.wbNotesPosLoad(store), null, 'bad data is none');
+  L.wbNotesPosSave(store, null);
+  assert.equal(mem.has(L.WB_NOTES_POS), false, 'reset forgets it');
+  const broken = () => { throw new Error('no storage'); };
+  assert.equal(L.wbNotesPosLoad(broken), null);
+  assert.equal(L.wbNotesPosSave(broken, { x: 1, y: 1 }), false);
+});
 await test('clean: speaker notes are a string of at most 2,000 characters, lines and markup kept, nothing else', () => {
   assert.equal(frame('n0', 0, 0, 100, 100).notes, '', 'none to begin with');
   const f = frame('n1', 0, 0, 100, 100, { notes: `**Say hi**\r\n- one\n- two\u0000\u0007 [a](https://x.test)` });
