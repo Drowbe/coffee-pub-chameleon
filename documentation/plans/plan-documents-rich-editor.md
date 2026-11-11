@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides; experience-design (the editor, the Markdown mapping, the bar); server-development (the licence, outside-URL and hash checks, the names check); quality-assurance (the independent safety read in a real browser); the project manager (the toolbar screenshots at each UI PR); content-manager (the documents once it is built).
 
-**Status:** Draft on Thomas's decisions of 2026-11-11 (1 to 10) and the project manager's decisions under his delegation of the same day (11 to 21); all open questions are closed; nothing is built and nothing was run for this plan. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
+**Status:** Draft on Thomas's decisions of 2026-11-11 (1 to 10) and the project manager's decisions under his delegation of the same day (11 to 21), and 22 to 28 from the stored-form design note; all open questions are closed; nothing is built and nothing was run for this plan. The request, as the project manager passed it on: Thomas regretted the split screen and wants a rich editor, where the person editing sees the finished look while typing. No spike has been run and no spike notes reached this plan, so every statement about a library is from memory. Facts are marked **(code)** (read in the code at `0c5fa780`, Documents 0.6.1), **(docs)** (read in the documentation) or **(memory)** (recalled, to confirm in the spike). This plan builds on [plan-documents](plan-documents.md) and changes only its editor; the contract below is a draft, and what Thomas has not decided is under "Open questions".
 
 ## What it is today
 
@@ -33,7 +33,7 @@ Thomas, 2026-11-11.
 Decisions 11 to 21 were made by the project manager under Thomas's delegation, 2026-11-11.
 
 11. **Paste is plain text first,** read through `dlDescribe` (the safe reader). Kept formatting from Word, Docs or the web is its own later PR, after the safety read. *Reason:* kept formatting is a second way in.
-12. **The first edit rewrites the text into the editor's Markdown form,** accepted, with the fixed written list of changes (rule 4). The spike also prices "keep untouched blocks exactly as stored"; if it is cheap (a modest amount of code, no new risk) it is preferred, otherwise the rewrite is accepted. Rule 3 stands: opening a document and pressing Done write nothing.
+12. **Untouched blocks are stored exactly; the first edit of a block writes that block in the editor's form,** with the fixed written list of changes (rule 4). This is a requirement, no longer priced by the spike. Rule 3 stands: opening a document and pressing Done write nothing.
 13. **Browsers that must pass:** current Chrome, Edge, Firefox and Safari on desktop; Safari on iPhone and iPad; Chrome on Android. Safari and a phone cannot be checked here: Thomas tests his iPad and phone by hand before any beta client uses rich editing. Until then every report says "not verified on Safari/phone".
 14. **Rich becomes what people get** only after steps 5 (text), 6 (bar and links) and 7 (tables) and the independent safety read. Until then the Markdown box stays the default and rich is reachable by a switch for Thomas to try. Maths and the object chip land later; Source covers them meanwhile.
 15. **Toolbar limit:** group buttons into menus, in the module only. No core change to the 16-entry limit.
@@ -43,6 +43,16 @@ Decisions 11 to 21 were made by the project manager under Thomas's delegation, 2
 19. **A formula** is typed as TeX in a small box; a typed `$` does not start one.
 20. **Source** is a shared toolbar button, and the choice is remembered per person.
 21. **Kind of build:** a try build per step; the safety read step and the final default switch are production builds. Order: wait for the spike's short report (the project manager reads it); then step 2, the three checks, on a held branch with an independent read before any editor code; then steps 3 to 7. Rules: rebase on `origin/main` before every SHA; screenshots next to the Whiteboard and Chat toolbars; the larger model at high effort only for the risky parts (the mapping, the shadow-root work, the safety read), the smaller model for the rest.
+
+Decisions 22 to 28 were made by the project manager under Thomas's delegation, 2026-11-11, from the stored-form design note (block-level source preservation).
+
+22. **Stored form:** untouched blocks are stored exactly; the first edit of a block writes that block in the editor's form; the accepted list is the one in rule 4 (this restates decision 12).
+23. **The text is read back and compared before every save, Done, Copy and Source.** A kept block that reads differently is rewritten alone; a whole-document rewrite is the last resort and is logged in the test corpus.
+24. **No text is read per key.** `typed()` uses a cheap "changed" test (`doc.eq`); `getText()` runs only at save, Done, Copy and Source. *Reason:* phones are slower. Build step 3 adds this.
+25. **Build step 4 splits into 4a (the mapping) and 4b (the block-level write and the one-block-edit corpus test; the larger model at high effort).** The reader fields land before 4a as their own small Documents PR (smaller model, rebased, with tests): the code fence's first word as `lang` and the rest as `info` (this fixes the 0.6.2 mangling of a fence such as ```` ```js title="x" {1,3} ```` into `jstitlex13`), a heading's own `level` (5 and 6 drawn as 4, kept by a field), a link's `title`, the formula token for edited blocks, and the chip label escaped in the serialiser.
+26. **Entities:** the reader shows what Markdown means. An entity such as `&amp;amp;` reads as `&amp;`, so the reader decodes entities in text and the serialiser escapes a literal ampersand that could form an entity. Corpus cases are added.
+27. **A list is one block for now.** Writing by the row can come later if wanted.
+28. **The corpus is run again on any `marked` upgrade.** This goes into the recipe in `THIRD-PARTY.md`.
 
 ## Scope and non-goals
 
@@ -77,9 +87,19 @@ Nothing here was run; licences, sizes and dependencies are all **(memory)** unti
 1. **A fixed point.** `P(S(P(D)))` equals `P(D)` node for node, and `S(P(S(P(D))))` equals `S(P(D))` character for character.
 2. **The same reading.** `dlDescribe(S(P(D)))` equals `dlDescribe(D)`, so nobody reading sees a difference.
 3. **Opening changes nothing.** `getText()` returns the stored text exactly until the person changes the document. Open and Done writes nothing.
-4. **Normalised once** (decision 12). A document not in the editor's own form is shown faithfully and saved only when edited. That first save writes the whole text in the editor's form, unless the spike shows that keeping untouched blocks exactly as stored is cheap, in which case that is preferred; the difference to the stored text may be the person's edit plus only the changes on a fixed, written list (draft: `-` for bullets, `*` and `**` for emphasis, `#` headings, level 5 and 6 to level 4, backtick fences, `---`, table pipes and spacing, list numbers, one form of hard break, one blank line between blocks, trailing spaces, needless escapes). Each is covered by rule 2. After it, a save differs only where the person edited.
-5. **Nothing is dropped or escaped.** Raw HTML, a picture, a footnote, an address that is not allowed and anything beyond the reader's bounds show as text, as the reader shows them, and are held as a source node that writes its Markdown back unchanged.
+4. **Untouched blocks exactly, an edited block in the editor's form** (decisions 12 and 22). A document not in the editor's own form is shown faithfully. A block the person did not change is written word for word; a block they edited is written in the editor's form. In an edited block only, these changes are accepted: `__` and `_` to `**` and `*`; `*` and `+` bullets to `-`; indent to 2 spaces; `1)` to `1.`; typed numbers run on from the first; loose to tight; `[X]` to `[x]`; setext to `#`; closing `#` dropped; `***` and `___` to `---`; `~~~` and indented code to a backtick fence; a two-space break to a backslash; a line break inside a paragraph to a space; table pipes and spacing; a reference link to inline (its definition line stays); a bare address to `<address>`; escapes; a block formula on one line. One loss: table cells beyond the header's column count are dropped. Each is covered by rule 2. A heading of level 5 or 6 is drawn as 4 and written with its own level (`#####`), and a link's title and a code block's info string are kept by a field.
+5. **Nothing is dropped or escaped in a source node.** Raw HTML and comments, pictures, footnotes, link-definition lines, a link with a refused address, a list, quote, table or formula past the reader's bounds, and anything the reader does not know, show as the reading view shows them and are held as a source node that writes its Markdown back word for word.
 6. **The reader's bounds hold.** A command that would pass them (a fifth list level, a 201st row) does nothing. A text that grows past 150,000 characters is refused at the save with today's words.
+7. **Read back before it is handed out** (decision 23). `getText()` is read back and compared with the document before a save, Done, Copy or Source; see "Stored form" below.
+
+### Stored form: block-level source preservation
+
+- **The table.** When the text is read, a table is made beside the document: one entry for each top-level marked token, holding its slice of the text, the blank lines after it, and the node it reads as in the whole text. `getText()` is a pure function of that table and the current document.
+- **Unchanged.** A top-level node that is the same object as, or `Node.eq` equal to, a stored node writes its slice word for word. Blocks are matched same-at-start, same-at-end, then by the longest common run. Changed and new blocks go through the serialiser. An unclosed source box is flagged `open`.
+- **Check.** The text is read back and compared before it is handed out (decision 23). A kept block that reads differently is rewritten alone; a whole-document rewrite is the last resort and is logged in the test corpus.
+- **Per key.** `typed()` uses `doc.eq` only (decision 24).
+- **Editor rules still needed in step 5,** because source nodes do not solve them: bold ending in punctuation against a letter, a bare address typed as plain text, and an empty paragraph.
+- **Measured in the design note (not in this repository):** typing in one block leaves every other byte identical in 100% of corpus and fuzz runs of typing; all eight kinds of one-block edit, 99.65% (spike fuzz) and 95.92% (source-form fuzz); open then Done returns the stored text exactly, 8,067 of 8,067; "which blocks are unchanged" costs 0.008 ms a key, and the read-back and compare about 10 ms on a 56 KB document (24 ms on 142 KB).
 
 The corpus is in `modules/documents/test/`: every supported block, text typed in the box in other Markdown forms, the hostile corpus, and the hard cases (a `$` in prose, a `|` or a formula in a table cell, backticks in code, loose and tight lists, a checklist line with blocks under it, emphasis inside a word, an empty paragraph).
 
@@ -129,10 +149,12 @@ Throwaway, outbound network blocked, in Chrome here and Firefox and Safari by ha
 
 Each is one small PR with a module version bump, a try build (decision 21) except where marked; each rebases on `origin/main` before its SHA, and every PR that changes what a person sees carries screenshots beside the Whiteboard's and Chat's toolbars for the project manager. The larger model at high effort is for the mapping, the shadow-root work and the safety read; the smaller model for the rest.
 
-1. **Spike.** experience-design. It prices "keep untouched blocks as stored" (decision 12). The project manager reads its short report before step 2.
+1. **Spike.** experience-design. The project manager reads its short report before step 2.
 2. **The checks** (licence, outside URL, hash; the names skip). server-development, in `core/tools`, on a held branch with an independent read before any editor code.
-3. **The adapter**, with the text box behind it; nothing a person sees changes. experience-design.
-4. **The vendored file and the mapping** (`P`, `S`, the corpus tests); no page change. experience-design.
+3. **The adapter**, with the text box behind it; nothing a person sees changes. It adds the cheap `doc.eq` "changed" test for `typed()` (decision 24). experience-design.
+- **Reader fields** (before 4a; decision 25): its own small Documents PR, smaller model, rebased, with tests. `lang` and `info` for a code fence, a heading's `level`, a link's `title`, the formula token for edited blocks, the chip label escaped in the serialiser, and entities decoded in text (decision 26). experience-design.
+4a. **The vendored file and the mapping** (`P`, `S`, the stored-form table, the corpus tests including the entity cases); no page change. experience-design, larger model at high effort.
+4b. **The block-level write** (`getText()` from the table, the read-back, the one-block-edit corpus test); no page change. experience-design, larger model at high effort.
 5. **The rich editor for text:** paragraphs, headings, bold, italic, code, lists, checklists, quotes, code blocks, rules, hard breaks, the source node, paste, undo, and Source. Rich is reachable by a switch for Thomas; the Markdown box stays the default. experience-design.
 6. **The bar and the keys** on the rich selection; links. experience-design.
 7. **Tables.** experience-design.
@@ -152,7 +174,10 @@ Nothing is verified yet.
 
 ## Risks
 
-- **The round trip is the whole risk.** A mapping that is nearly exact changes people's text quietly. Rule 2 and the corpus are the guard.
+- **The round trip is the whole risk.** A mapping that is nearly exact changes people's text quietly. Rule 2, the read-back (decision 23) and the corpus are the guard.
+- **A `marked` upgrade** can change how a kept block reads. The corpus is run again on every upgrade (decision 28).
+- **A whole-document rewrite** is the last resort and must stay rare; the corpus logs each one. The one-block-edit rate (95.92% in the source-form fuzz) is the number to improve.
+- **Read-back cost:** about 10 ms on 56 KB and 24 ms on 142 KB, so it runs only at save, Done, Copy and Source.
 - **A second way in for stored script.** The editor draws what a person typed and pasted. The guard is the one path through `dlDescribe`, the schema's checks and the independent read.
 - **Safari and phones** cannot be checked here and are where a shadow root hurts most.
 - **Weight:** every reader downloads the editor, because the page is one file.
@@ -161,7 +186,7 @@ Nothing is verified yet.
 
 ## Open questions
 
-None. The eleven questions of the draft are answered by decisions 11 to 21: paste (11), the first-edit rewrite (12), browsers (13), when rich becomes the default (14), the 16-entry limit (15), weight (16), typing shortcuts (17), strikethrough (18), the formula (19), Source (20) and the kind of build (21).
+None. The eleven questions of the draft are answered by decisions 11 to 21 (stored form further settled by 22 to 28): paste (11), the first-edit rewrite (12), browsers (13), when rich becomes the default (14), the 16-entry limit (15), weight (16), typing shortcuts (17), strikethrough (18), the formula (19), Source (20) and the kind of build (21).
 
 ## Not decided
 
