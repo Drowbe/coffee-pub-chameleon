@@ -198,10 +198,8 @@
     return li;
   }
   function render() {
-    $('new').hidden = !canEdit || showTrash;
-    $('trash-toggle').hidden = !canEdit;
-    $('trash-toggle').textContent = showTrash ? 'Documents' : `Trash${trash.size ? ` (${trash.size})` : ''}`;
     if (showTrash) $('make').hidden = true;
+    renderChrome();
     const q = query.trim().toLowerCase();
     const recs = showTrash ? [...trash.values()].sort((a, b) => b.at.localeCompare(a.at)).map((t) => ({ rec: t.doc, t }))
       : [...docs.values()].sort((a, b) => b.editedAt.localeCompare(a.editedAt)).map((rec) => ({ rec }));
@@ -236,38 +234,34 @@
     if (!docs.has(id)) return;
     openId = id; shownRev = 0;
     $('list').hidden = true; $('read').hidden = false;
-    $('rename').hidden = $('remove').hidden = $('edit').hidden = !canEdit;
     $('renamer').hidden = true;
     updateEditButton();
     $('page').replaceChildren();
     $('read-title').textContent = docs.get(id).title;
     draw(id).catch(() => { $('page').replaceChildren(el('p', null, 'This document could not be loaded. Try again.')); });
-    $('back').focus();
+    renderChrome();
+    $('page').focus();
   }
   function closeDoc() { openId = null; $('read').hidden = true; $('list').hidden = false; render(); }
 
   // ---- wiring --------------------------------------------------------------------------------------------------------------
-  $('search').addEventListener('input', (e) => { query = e.target.value; render(); });
-  $('new').addEventListener('click', () => { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); });
   $('make-cancel').addEventListener('click', () => { $('make').hidden = true; });
   $('make').addEventListener('submit', async (e) => {
     e.preventDefault();
     try { const id = await create($('make-title').value, ''); $('make').hidden = true; render(); openDoc(id); } catch (err) { note(err.message); }
   });
-  $('trash-toggle').addEventListener('click', () => { showTrash = !showTrash; render(); });
-  $('back').addEventListener('click', closeDoc);
   const heldByOther = (id) => { const l = liveLock(id); return l && l.rec.holder !== me ? l : null; };
-  $('rename').addEventListener('click', () => {
+  const startRename = () => {
     const l = heldByOther(openId);
     if (l) { note(`${l.rec.name} is editing this. Try again when they are done.`); return; }
     $('renamer').hidden = false; $('rename-title').value = docs.get(openId).title; $('rename-title').focus();
-  });
+  };
   $('rename-cancel').addEventListener('click', () => { $('renamer').hidden = true; });
   $('renamer').addEventListener('submit', async (e) => {
     e.preventDefault();
     try { await rename(openId, $('rename-title').value); $('renamer').hidden = true; draw(openId); } catch (err) { note(err.status === 409 ? 'Someone else changed this first. Try again.' : err.message); }
   });
-  $('remove').addEventListener('click', async () => {
+  const startRemove = async () => {
     const rec = docs.get(openId);
     const l = heldByOther(openId);
     if (l) { note(`${l.rec.name} is editing this. Try again when they are done.`); return; }
@@ -276,7 +270,7 @@
       await moveToTrash(openId);
       closeDoc();
     } catch (err) { note(err.message); }
-  });
+  };
 
   // Another person's change: the small record is the signal. A change to a chunk alone is not heard.
   function applyChange(e) {
@@ -309,14 +303,15 @@
   const cleanMsg = (err) => (err && err.message) || 'That did not work. Try again.';
 
   // The Edit button: on, or off with the reason beside it.
+  let editOff = false;
+  let why = '';
   function updateEditButton() {
     if (!canEdit || !openId || ed) return;
     const l = liveLock(openId);
     const st = dlLockEditState({ canEdit, me, rec: l && l.rec, fresh: Boolean(l), mine: false });
-    $('edit').disabled = !st.enabled;
-    $('edit').title = st.reason;
-    $('edit-why').textContent = st.reason;
-    $('edit-why').hidden = !st.reason;
+    editOff = !st.enabled;
+    why = st.reason;
+    renderChrome();
   }
   // A lock goes stale with no event, so the page looks again every few seconds.
   const looker = setInterval(() => {
@@ -328,7 +323,7 @@
   async function startEdit() {
     const id = openId;
     if (!id || ed || !canEdit) return;
-    $('edit').disabled = true;
+    editOff = true; renderChrome();
     try {
       const cur = await host.storage.get(dlLockKey(id));
       const rec = cur && dlCleanLock(cur.value);
@@ -380,8 +375,8 @@
     const ta = $('edit-text');
     ta.value = got.text; ta.readOnly = false;
     $('edit-title').readOnly = false;
-    $('lost').hidden = true; $('done').hidden = false; $('done').disabled = false; $('fmt').hidden = false;
-    setStatus();
+    $('lost').hidden = true;
+    renderChrome();
     const beat = setInterval(() => {
       if (!$('app')) return void clearInterval(beat);
       serial(refreshLock).catch(() => {});
@@ -400,7 +395,7 @@
   const dirtyNow = () => ed && dlIsDirty(ed.saved, current());
   function setStatus() {
     if (!ed) return;
-    $('edit-status').textContent = ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed });
+    renderStatus();
   }
 
   async function refreshLock() {
@@ -426,10 +421,9 @@
     ed.lost = true;
     clearTimeout(ed.timer); clearInterval(ed.beat);
     $('edit-text').readOnly = true; $('edit-title').readOnly = true;
-    $('done').hidden = true; $('fmt').hidden = true;
     $('lost-text').textContent = 'You stopped editing because someone else saved first. Your changes are kept here.';
     $('lost').hidden = false;
-    setStatus();
+    renderChrome();
     $('lost-copy').focus();
   }
 
@@ -501,14 +495,14 @@
   async function finish() {
     if (!ed || ed.lost) return;
     const mine = ed;
-    $('done').disabled = true;
+    ed.finishing = true; renderChrome();
     clearTimeout(ed.timer);
     const d = dlAutosaveDelay({ now: Date.now(), lastKey: ed.lastKey, lastSave: ed.lastSave, dirty: dirtyNow(), force: true });
     if (d) await sleep(d);
     const r = await saveNow();
     if (ed !== mine || mine.lost) return;
     if (r !== 'saved') {
-      $('done').disabled = false;
+      mine.finishing = false; renderChrome();
       if (r === 'failed') note('Not saved. Try Done again.');
       return;
     }
@@ -523,7 +517,8 @@
     $('read-title').textContent = docs.get(mine.id) ? docs.get(mine.id).title : '';
     updateEditButton();
     draw(mine.id).catch(() => {});
-    $('edit').focus();
+    renderChrome();
+    $('page').focus();
   }
 
   // The bar: each button changes the text with the library's function, keeping the browser's undo where it can.
@@ -539,18 +534,68 @@
     }
     ta.setSelectionRange(out.start, out.end);
   }
-  const FORMATS = { bold: dlBold, italic: dlItalic, code: dlCode, list: dlList, numbered: dlNumbered, checklist: dlChecklist, quote: dlQuote, link: (s) => dlLink(s), grid: (s) => dlGrid(s), formula: (s) => dlFormula(s) };
-  $('fmt').addEventListener('click', (e) => {
-    const b = e.target.closest && e.target.closest('[data-fmt]');
-    if (b && FORMATS[b.dataset.fmt]) applyFormat(FORMATS[b.dataset.fmt]);
+  // ---- the shared chrome: the toolbar row, the title bar's "+" and menu, the status bar --------------------------------------
+  const FORMATS = [
+    { id: 'bold', title: 'Bold', icon: 'bold', fn: dlBold },
+    { id: 'italic', title: 'Italic', icon: 'italic', fn: dlItalic },
+    { id: 'code', title: 'Code', icon: 'code', fn: dlCode },
+    { id: 'heading', title: 'Heading', icon: 'heading' },
+    { id: 'list', title: 'Bulleted list', icon: 'list-ul', fn: dlList },
+    { id: 'numbered', title: 'Numbered list', icon: 'list-ol', fn: dlNumbered },
+    { id: 'checklist', title: 'Checklist', icon: 'list-check', fn: dlChecklist },
+    { id: 'quote', title: 'Quote', icon: 'quote-left', fn: dlQuote },
+    { id: 'link', title: 'Link', icon: 'link', fn: (s) => dlLink(s) },
+    { id: 'grid', title: 'Grid', icon: 'table-cells', fn: (s) => dlGrid(s) },
+    { id: 'formula', title: 'Formula', icon: 'square-root-variable', fn: (s) => dlFormula(s) },
+  ];
+  let fmtButtons = [];
+  function formatWith(f, e) {
+    if (!ed || ed.lost) return;
+    if (f.id === 'heading') {
+      host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, onClick: () => applyFormat((s) => dlHeading(s, lv)) })) });
+    } else applyFormat(f.fn);
+  }
+  function renderChrome() {
+    let items;
+    if (ed) {
+      items = ed.lost ? [] : [
+        { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
+      ];
+    } else if (openId) {
+      items = [{ type: 'button', id: 'back', title: 'Back to the documents', icon: 'arrow-left' }];
+      if (canEdit) items.push(
+        { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
+        { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
+        { type: 'button', id: 'remove', label: 'Delete', icon: 'trash', placement: 'menu' },
+      );
+    } else {
+      items = [{ type: 'search', id: 'search', value: query, placeholder: 'Search documents', label: 'Search documents' }];
+      if (canEdit) items.push({ type: 'button', id: 'trash', title: showTrash ? 'Back to the documents' : `Trash${trash.size ? ` (${trash.size})` : ''}`, icon: showTrash ? 'file-lines' : 'trash', on: showTrash });
+    }
+    // The formatting buttons are the shared icon-only toolbar buttons (host.ui.toolbarButton), made while a person is editing.
+    const wantFmt = Boolean(ed && !ed.lost);
+    if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
+    else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
+    host.toolbar.set(items).catch(() => {});
+    if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }] : []).catch(() => {});
+    renderStatus();
+  }
+  function renderStatus() {
+    if (!host.status) return;
+    const text = ed ? (ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed })) : openId ? why.slice(0, 60) : '';
+    host.status.set(text ? [{ text }] : []).catch(() => {});
+  }
+  host.on('toolbar', (e) => {
+    const id = String(e.id || '');
+    if (id === 'search') { query = String(e.value || ''); render(); return; }
+    if (id === 'trash') { showTrash = !showTrash; render(); return; }
+    if (id === 'back') { if (!ed) closeDoc(); return; }
+    if (id === 'edit') { startEdit(); return; }
+    if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
+    if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
+    if (id === 'done') { finish(); return; }
   });
-  $('fmt-heading').addEventListener('change', (e) => {
-    const lv = Number(e.target.value);
-    e.target.value = '';
-    if (lv) applyFormat((s) => dlHeading(s, lv));
-  });
-  $('edit').addEventListener('click', startEdit);
-  $('done').addEventListener('click', finish);
+  host.on('add', (e) => { if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
   $('edit-text').addEventListener('input', typed);
   $('edit-title').addEventListener('input', typed);
 

@@ -16,12 +16,7 @@
 <div id="app" class="app sdk-slot" hidden>
   <p class="sdk-form-error" id="note" role="status" hidden></p>
   <section id="list" class="view" aria-label="Documents">
-    <div class="bar">
-      <label class="sdk-search"><input id="search" type="search" placeholder="Search documents" aria-label="Search documents" autocomplete="off"></label>
-      <button type="button" class="btn btn-primary btn-small" id="new" hidden>New document</button>
-      <button type="button" class="btn btn-quiet btn-small" id="trash-toggle" hidden>Trash</button>
-    </div>
-    <form id="make" class="bar make" hidden>
+    <form id="make" class="bar make col" hidden>
       <input id="make-title" type="text" maxlength="120" placeholder="Title" aria-label="Title of the new document" autocomplete="off">
       <button type="submit" class="btn btn-primary btn-small">Create</button>
       <button type="button" class="btn btn-quiet btn-small" id="make-cancel">Cancel</button>
@@ -30,19 +25,11 @@
     <p id="size" class="meta size"></p>
   </section>
   <section id="read" class="view" aria-label="Document" hidden>
-    <div class="bar col">
-      <button type="button" class="btn btn-quiet btn-small" id="back">Back</button>
-      <span class="grow"></span>
-      <button type="button" class="btn btn-primary btn-small" id="edit" hidden>Edit</button>
-      <button type="button" class="btn btn-quiet btn-small" id="rename" hidden>Rename</button>
-      <button type="button" class="btn btn-quiet btn-small" id="remove" hidden>Delete</button>
-    </div>
     <form id="renamer" class="bar make col" hidden>
       <input id="rename-title" type="text" maxlength="120" aria-label="New title" autocomplete="off">
       <button type="submit" class="btn btn-primary btn-small">Save</button>
       <button type="button" class="btn btn-quiet btn-small" id="rename-cancel">Cancel</button>
     </form>
-    <p id="edit-why" class="meta col" role="status" hidden></p>
     <div class="sheet">
       <h1 id="read-title" class="doc-title"></h1>
       <p id="read-meta" class="meta"></p>
@@ -50,25 +37,6 @@
     </div>
   </section>
   <section id="editor" class="view" aria-label="Editing" hidden>
-    <div class="bar col">
-      <span id="edit-status" class="meta grow" role="status">Saved</span>
-      <button type="button" class="btn btn-primary btn-small" id="done">Done</button>
-    </div>
-    <div class="bar fmt col" role="toolbar" aria-label="Formatting" id="fmt">
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="bold" aria-label="Bold" title="Bold"><b>B</b></button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="italic" aria-label="Italic" title="Italic"><i>I</i></button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="code" aria-label="Code" title="Code">&lt;/&gt;</button>
-      <select id="fmt-heading" class="fmt-select" aria-label="Heading" title="Heading">
-        <option value="">Heading</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option value="4">Heading 4</option>
-      </select>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="list" aria-label="Bulleted list" title="Bulleted list">List</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="numbered" aria-label="Numbered list" title="Numbered list">1.</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="checklist" aria-label="Checklist" title="Checklist">Tasks</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="quote" aria-label="Quote" title="Quote">Quote</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="link" aria-label="Link" title="Link">Link</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="grid" aria-label="Grid" title="Grid">Grid</button>
-      <button type="button" class="btn btn-quiet btn-small" data-fmt="formula" aria-label="Formula" title="Formula">Formula</button>
-    </div>
     <div id="lost" class="lost col" role="alert" hidden>
       <p id="lost-text"></p>
       <div class="bar">
