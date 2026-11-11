@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides; server-development (the tag list, its routes, the checks); experience-design (the SDK piece, the pages, Documents and Research); quality-assurance (an independent read, because this changes the core); content-manager (the documents once it is built).
 
-**Status:** Decided, 2026-11-11; nothing is built and nothing was run for this plan. The build waits for Thomas's go. The request, as Thomas gave it: tags on Documents, and "tags should be a shared service". Facts are marked **(code)** (read in the code), **(docs)** (read in the documentation) or **(memory)** (not checked). The decisions are Thomas's; the contract is a draft built on them, and what he has not decided is under "Open questions".
+**Status:** Decided, 2026-11-11 (decisions 1 to 9); nothing is built and nothing was run for this plan. The build waits for Thomas's go. The request, as Thomas gave it: tags on Documents, and "tags should be a shared service". Facts are marked **(code)** (read in the code), **(docs)** (read in the documentation) or **(memory)** (not checked). The decisions are Thomas's; the contract is a draft built on them, and what he has not decided is under "Open questions".
 
 ## What it is today
 
@@ -28,6 +28,9 @@ Thomas, 2026-11-11.
 4. **Editors create tags** (whoever may write in the module they are tagging from). **Moderators, the owner and the admin rename, recolour and delete**, and a rename updates every use. *Reason:* a moderator is already scoped to a space, which is where the list lives.
 5. **Objects hold tags by id**; names and colours live only in the list. *Reason:* it is the only way a rename can reach every use.
 6. **One rule for every module:** 8 tags to an object, any letter (plus digits and dashes), 24 characters, 200 to a list. It replaces Research's own tags and the objects format's 5-tag ASCII rule, with no compatibility layer and no migration. *Reason:* one rule, and the product is unreleased.
+7. **A word that matches no tag is dropped, and the person is told** ("skipped: not a tag in this space"). Nothing creates tags behind anyone's back: only a person, in the picker, makes a tag. *Reason:* a list nobody asked to grow stays clean.
+8. **Rename, recolour and delete live on the space's Manage page, in a Tags section.** *Reason:* Manage is where a space is configured.
+9. **The Assistant may see the names of the space's tags, nothing else** (no ids, no colours, no counts), and only for objects the person already shares with it. *Reason:* it helps it find things without widening what it can read.
 
 Any library added for this follows the Documents plan's decisions 8 and 9 (allowed licences only, nothing from outside). None is expected.
 
@@ -61,7 +64,7 @@ Create follows the calling module's `write` (checked as `moduleAccess` does). Re
 
 ### Summary and the objects format
 
-A producing module maps `tags: "tags"` in `refs.produces[].summary`. `SUMMARY_FIELDS` gains `tags`; the server turns ids into `[{ id, name, color }]`, drops dead ids, caps at 8. The search matches tag names and accepts `tag=<id>`. The Assistant's fields (`SENT_FIELDS`, `server/ai-policy.js`) get names only, under **What AI may see**. The objects format takes the one rule: its `tags` are words, which the receiving module matches to the space's tags by name (see open question 1). `check-object-format` and the AI prompt text change with it.
+A producing module maps `tags: "tags"` in `refs.produces[].summary`. `SUMMARY_FIELDS` gains `tags`; the server turns ids into `[{ id, name, color }]`, drops dead ids, caps at 8. The search matches tag names and accepts `tag=<id>`. The Assistant's fields (`SENT_FIELDS`, `server/ai-policy.js`) get names only, under **What AI may see**. The objects format takes the one rule: its `tags` are words, which the receiving module matches to the space's tags by name (a word with no match is dropped and reported, decision 7). `check-object-format` and the AI prompt text change with it.
 
 ### What a person sees
 
@@ -73,7 +76,7 @@ A chip row on an object; an edit-tags button that opens the picker (type to filt
 
 ### Research moves onto it
 
-Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (colours live in the list); Suggest tags offers the AI's words as chips and creates a tag only when the person accepts; the `saveNote` and `savePhoto` paths match words to tags by name. Tags already on Research objects are lost; test data may be reset (CLAUDE.md). Version bump.
+Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (colours live in the list); Suggest tags offers the AI's words that match a tag as chips, and the rest are skipped with a note; the `saveNote` and `savePhoto` paths match words to tags by name and drop the rest with "skipped: not a tag in this space". Tags already on Research objects are lost; test data may be reset (CLAUDE.md). Version bump.
 
 ## What touches the core, and what does not
 
@@ -86,11 +89,11 @@ Replace cleanly: `tags` holds ids; the **Well-known tags** setting is removed (c
 Waits for Thomas's go.
 
 1. **Server storage and validation:** `server/tags.js`, the routes, the permission, the stream event, export, backup and space erase, `tools/check-tags.mjs`. Owner: server-development. Held for an independent read (core).
-2. **SDK `host.tags`:** the bridge, picker, chip, tone tokens, design system entry and the screen for rename, recolour and delete. Owner: experience-design; server-development adds the manifest flag and its check.
+2. **SDK `host.tags`:** the bridge, picker, chip, tone tokens, design system entry, and the Tags section on the space's Manage page for rename, recolour and delete. Owner: experience-design; server-development adds the manifest flag and its check.
 3. **Documents:** the field, chips, picker, filter and search. Owner: experience-design. The first visible result.
-4. **Summary field `tags`, search and the Assistant:** `SUMMARY_FIELDS`, search by tag, `SENT_FIELDS`. Owner: server-development. Held for a security read, since it is new text the model sees.
-5. **Objects format change:** the one rule in `server/object-format.js`, the prompt text and `check-object-format`. Owner: server-development.
-6. **Research moves onto it.** Owner: experience-design.
+4. **Summary field `tags`, search and the Assistant:** `SUMMARY_FIELDS`, search by tag, `SENT_FIELDS`. Owner: server-development. Names only, and only for objects the person shares with it (decision 9). Held for a security read, since it is new text the model sees.
+5. **Objects format change:** the one rule in `server/object-format.js`, the prompt text and `check-object-format`; a word with no tag is dropped and reported, never created. Owner: server-development.
+6. **Research moves onto it,** with the same drop-and-report rule. Owner: experience-design.
 7. **Documentation:** `api-modules.md`, `api-module-sdk.md`, `architecture-modules.md`, the user guides and the CHANGELOG. Owner: content-manager.
 
 ## Verify
@@ -110,12 +113,11 @@ Waits for Thomas's go.
 
 ## Open questions
 
-1. **A word that matches no tag** (from the AI, an import or Research's `saveNote`): create the tag, or drop the word? Blocks steps 5 and 6.
-2. **The place for rename, recolour and delete:** Settings is where configuring lives; which page? Blocks step 2.
-3. **Do moving or copying an object between spaces carry its tags by name?** Not blocking; today none move.
-4. **Does a module need the owner's approval to use tags,** as `refs` do? Draft: no.
-5. **May the Assistant see tag names,** and is it on by default under **What AI may see**? Blocks step 4.
-6. **Does anyone have Research tags to keep?**
+None block the build. Questions 1 to 3 of the earlier draft are decided (7 to 9).
+
+1. **Do moving or copying an object between spaces carry its tags by name?** Today none move.
+2. **Does a module need the owner's approval to use tags,** as `refs` do? Draft: no.
+3. **Does anyone have Research tags to keep?**
 
 ## Not decided
 
