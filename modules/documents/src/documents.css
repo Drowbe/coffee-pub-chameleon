@@ -30,9 +30,13 @@
 
 /* the page: a calm panel on the module's background, one column; buttons and the status line stay above it */
 .col { width: 100%; max-width: 48rem; margin-inline: auto; flex: 0 0 auto; }
+/* the view (Fit width or a zoom level, set by the script on #app): Fit width fills the window up to 120rem; a zoom level is the 48rem sheet scaled, its text with it */
+.app { --doc-zoom: 1; --doc-width: 100%; --doc-max: 100rem; }
+#read .col, #editor .col { max-width: var(--doc-max); }
+.view { container-type: inline-size; }
 .grow { flex: 1 1 auto; }
 #read, #editor { background: var(--surface-page); }
-.sheet { --doc-paper: var(--doc-fixed-light-white); --doc-ink: var(--doc-fixed-ink-light); --doc-edge: color-mix(in srgb, var(--doc-ink) 22%, transparent); --doc-quiet: color-mix(in srgb, var(--doc-ink) 68%, var(--doc-paper)); --doc-field: color-mix(in srgb, var(--doc-ink) 8%, var(--doc-paper)); color: var(--doc-ink); color-scheme: light; width: 100%; max-width: 48rem; margin: var(--space-4) auto var(--space-6); padding: var(--space-7) var(--space-8); flex: 0 0 auto; background: var(--doc-paper); border: 1px solid var(--doc-edge); border-radius: var(--radius-medium); box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent), 0 0 0 1px color-mix(in srgb, var(--doc-ink) 6%, transparent); }
+.sheet { --doc-paper: var(--doc-fixed-light-white); --doc-ink: var(--doc-fixed-ink-light); --doc-edge: color-mix(in srgb, var(--doc-ink) 22%, transparent); --doc-quiet: color-mix(in srgb, var(--doc-ink) 68%, var(--doc-paper)); --doc-field: color-mix(in srgb, var(--doc-ink) 8%, var(--doc-paper)); color: var(--doc-ink); color-scheme: light; zoom: var(--doc-zoom); width: var(--doc-width); max-width: min(100%, var(--doc-max)); margin: 0 auto; padding: var(--space-7) var(--space-8); flex: 0 0 auto; background: var(--doc-paper); border: 1px solid var(--doc-edge); border-radius: var(--radius-medium); box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent), 0 0 0 1px color-mix(in srgb, var(--doc-ink) 6%, transparent); }
 .sheet[data-ink="light"] { --doc-ink: var(--doc-fixed-ink-dark); color-scheme: dark; }
 .sheet[data-paper="light-white"] { --doc-paper: var(--doc-fixed-light-white); }
 .sheet[data-paper="light-creme"] { --doc-paper: var(--doc-fixed-light-creme); }
@@ -42,6 +46,8 @@
 .sheet[data-paper="dark-slate"] { --doc-paper: var(--doc-fixed-dark-slate); }
 .sheet[data-paper="dark-blue"] { --doc-paper: var(--doc-fixed-dark-blue); }
 .doc-title { margin: 0 0 var(--space-2); font-size: var(--text-28); line-height: 1.2; font-weight: var(--weight-strong); color: var(--doc-ink); overflow-wrap: anywhere; }
+
+@container (max-width: 40rem) { .sheet { padding: var(--space-4); } }
 
 /* the rendered document */
 .page { color: var(--doc-ink); font-size: var(--text-14); line-height: var(--leading-body, 1.6); overflow-wrap: anywhere; min-width: 0; }

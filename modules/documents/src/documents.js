@@ -579,6 +579,53 @@
     { id: 'grid', title: 'Grid', icon: 'table-cells', fn: (s) => dlGrid(s) },
     { id: 'formula', title: 'Formula', icon: 'square-root-variable', fn: (s) => dlFormula(s) },
   ];
+  // ---- the view: Fit width or a zoom level, a person's own choice, kept in this browser --------------------------------------
+  // The sheet is scaled with CSS zoom (its width and its text together); the caret, the text box and selections follow it.
+  const VIEW_KEY = 'documents-view';
+  let view = 'fit';
+  try { view = dlViewRead(window.localStorage.getItem(VIEW_KEY)); } catch { /* no browser storage: Fit width */ }
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  const KEYS = Boolean(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+  const keyHint = (keys) => (KEYS ? `${MOD} ${keys}` : undefined);
+  const withKey = (label, keys) => (KEYS ? `${label} (${MOD} ${keys})` : label);
+  function paintView() {
+    const s = dlViewSheet(view);
+    const app = $('app');
+    app.style.setProperty('--doc-zoom', String(s.zoom));
+    app.style.setProperty('--doc-width', s.widthRem === null ? '100%' : `${s.widthRem}rem`);
+    app.style.setProperty('--doc-max', `${s.maxRem}rem`);
+  }
+  function setView(v) {
+    view = dlCleanView(v);
+    try { window.localStorage.setItem(VIEW_KEY, dlViewStore(view)); } catch { /* kept for this visit only */ }
+    paintView();
+    renderStatus();
+  }
+  const viewShown = () => Boolean(ed ? !ed.lost : openId);
+  function zoomMenu(e) {
+    if (!viewShown()) return;
+    const level = (n) => ({ id: `z${n}`, label: `${n}%`, icon: 'magnifying-glass', current: view === n, onClick: () => setView(n) });
+    host.menu.show({
+      id: 'zoom',
+      at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
+      items: [
+        { id: 'in', label: 'Zoom in', icon: 'magnifying-glass-plus', hint: keyHint('+'), onClick: () => setView(dlViewStep(view, 1)) },
+        { id: 'out', label: 'Zoom out', icon: 'magnifying-glass-minus', hint: keyHint('-'), onClick: () => setView(dlViewStep(view, -1)) },
+        { id: 'fit', label: 'Fit width', icon: 'expand', current: view === 'fit', onClick: () => setView('fit') },
+        { id: 'actual', label: 'Actual size', icon: 'magnifying-glass', hint: keyHint('0'), current: view === DL_VIEW.actual, onClick: () => setView(DL_VIEW.actual) },
+        { heading: 'Zoom' },
+        ...DL_VIEW.levels.filter((n) => n !== DL_VIEW.actual).map(level),
+      ],
+    });
+  }
+  // Ctrl or Cmd with + - 0, only when the key press came from inside this window (modules run in a shadow root, so by its path).
+  doc.addEventListener('keydown', (e) => {
+    const what = dlViewKey(e);
+    if (!what || !viewShown() || !e.composedPath().includes(host.rootElement)) return;
+    e.preventDefault();
+    setView(what === 'actual' ? DL_VIEW.actual : dlViewStep(view, what === 'in' ? 1 : -1));
+  }, true);
+
   let fmtButtons = [];
   let paperButton = null;
   function formatWith(f, e) {
@@ -587,14 +634,21 @@
       host.menu.show({ id: 'heading', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 }, items: [1, 2, 3, 4].map((lv) => ({ id: `h${lv}`, label: `Heading ${lv}`, onClick: () => applyFormat((s) => dlHeading(s, lv)) })) });
     } else applyFormat(f.fn);
   }
+  // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
+  const zoomItems = () => [
+    { type: 'button', id: 'zoom-out', title: withKey('Zoom out', '-'), icon: 'magnifying-glass-minus', placement: 'titlebar' },
+    { type: 'button', id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus', placement: 'titlebar' },
+    { type: 'button', id: 'zoom', title: 'Zoom', icon: 'up-right-and-down-left-from-center', placement: 'titlebar' },
+  ];
   function renderChrome() {
     let items;
     if (ed) {
       items = ed.lost ? [] : [
         { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
+        ...zoomItems(),
       ];
     } else if (openId) {
-      items = [{ type: 'button', id: 'back', title: 'Back to the documents', icon: 'arrow-left' }];
+      items = [{ type: 'button', id: 'back', title: 'Back to the documents', icon: 'arrow-left' }, ...zoomItems()];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
         { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
@@ -617,7 +671,9 @@
   function renderStatus() {
     if (!host.status) return;
     const text = ed ? (ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed })) : openId ? why.slice(0, 60) : '';
-    host.status.set(text ? [{ text }] : []).catch(() => {});
+    const items = text ? [{ text }] : [];
+    if (viewShown()) items.push({ text: dlViewLabel(view), quiet: true, end: true, title: 'Zoom' }); // as the Whiteboard's zoom
+    host.status.set(items).catch(() => {});
   }
   host.on('toolbar', (e) => {
     const id = String(e.id || '');
@@ -628,6 +684,9 @@
     if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
     if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
     if (id === 'done') { finish(); return; }
+    if (id === 'zoom-in') { setView(dlViewStep(view, 1)); return; }
+    if (id === 'zoom-out') { setView(dlViewStep(view, -1)); return; }
+    if (id === 'zoom') { zoomMenu(e); return; }
   });
   host.on('add', (e) => { if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
   $('edit-text').addEventListener('input', typed);
@@ -665,6 +724,7 @@
   window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); } });
 
   try { await load(); } catch (err) { showMsg('Documents could not load', err.message, () => location.reload()); return; }
+  paintView();
   render();
   $('loading').hidden = true;
   $('app').hidden = false;
