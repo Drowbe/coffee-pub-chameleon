@@ -91,7 +91,7 @@
     for (const k of tokens) {
       if (!k || typeof k !== 'object') continue;
       switch (k.type) {
-        case 'space': break;
+        case 'space': case 'checkbox': break; // the task box is drawn from the item's own flag
         case 'heading': out.push({ t: 'heading', depth: Math.min(4, Math.max(1, Number(k.depth) || 1)), c: dlInline(k.tokens) }); break;
         case 'paragraph': {
           const m = DL_DISPLAY_MATH.exec(String(k.raw || '').trim());

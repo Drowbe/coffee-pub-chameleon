@@ -108,3 +108,17 @@
     for (let i = 0; i < len; i += 1) s += a[Math.min(a.length - 1, Math.floor(rand() * a.length))];
     return s;
   }
+
+  // A removed document, kept for a while so it can come back: `_trash:<id>` = { id, type:'trash', doc:<the small record>, by,
+  // name, at }. Its text chunks stay where they are. The leading "_" keeps it out of a list of the documents.
+  const DL_TRASH_DAYS = 7;
+  const dlTrashKey = (id) => `_trash:${id}`;
+  function dlCleanTrash(v) {
+    if (!dlIsRecord(v) || v.type !== 'trash') return null;
+    const doc = dlCleanDoc(v.doc);
+    const by = dlUserKey(v.by);
+    const at = dlTime(v.at);
+    if (!doc || !by || !at || v.id !== doc.id) return null;
+    return { id: doc.id, type: 'trash', doc, by, name: dlCleanLine(v.name, DL.nameMax) || 'Someone', at };
+  }
+  const dlTrashExpired = (rec, now) => now - Date.parse(rec.at) >= DL_TRASH_DAYS * 86400000;

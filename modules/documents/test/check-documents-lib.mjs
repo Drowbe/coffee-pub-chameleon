@@ -17,7 +17,7 @@ const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('
 const NAMES = ['DL', 'dlCleanText', 'dlCleanLine', 'dlCut', 'dlCleanDoc', 'dlCleanChunk', 'dlCleanLock', 'dlNewId', 'dlSplit', 'dlJoin',
   'dlPlanChunks', 'dlDroppedChunks', 'dlLeftoverChunks', 'dlExcerpt', 'DL_LOCK', 'dlLockSeenAt', 'dlLockStale', 'dlLockTakePlan',
   'dlLockTakeResult', 'dlLockRefreshResult', 'dlLockNext', 'dlLockHear', 'dlLockEditState', 'dlSafeAddress', 'dlDescribe', 'dlBuild',
-  'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
+  'dlObjectLinks', 'dlExportMarkdown', 'dlExportName', 'dlCleanTrash', 'dlTrashKey', 'dlTrashExpired', 'dlBold', 'dlItalic', 'dlCode', 'dlList', 'dlNumbered', 'dlChecklist', 'dlQuote',
   'dlHeading', 'dlLink', 'dlObjectLink', 'dlGrid', 'dlFormula'];
 const L = new Function(`${code}\nreturn { ${NAMES.join(', ')} };`)();
 let passed = 0;
@@ -63,6 +63,14 @@ test('lock record', () => {
   for (const v of [null, {}, { ...lock, id: 'x' }, { ...lock, type: 'x' }, { ...lock, doc: 'x' }, { ...lock, holder: '' }, { ...lock, holder: 'a b' }]) assert.equal(L.dlCleanLock(v), null);
   const c = L.dlCleanLock({ ...lock, name: '', seq: -3, at: 'x' });
   assert.deepEqual([c.name, c.seq, c.at], ['Someone', 0, '']);
+});
+test('trash record', () => {
+  const t = { id: 'abcd1234', type: 'trash', doc, by: 'u1', name: 'Ana', at: '2026-11-11T10:00:00.000Z' };
+  assert.deepEqual(L.dlCleanTrash({ ...t, extra: 1 }), t);
+  for (const v of [null, {}, { ...t, id: 'zzzzzzzz' }, { ...t, doc: { ...doc, rev: 0 } }, { ...t, by: '' }, { ...t, at: 'x' }]) assert.equal(L.dlCleanTrash(v), null);
+  assert.equal(L.dlTrashKey('abcd1234'), '_trash:abcd1234');
+  assert.equal(L.dlTrashExpired(t, Date.parse(t.at) + 6.9 * 86400000), false);
+  assert.equal(L.dlTrashExpired(t, Date.parse(t.at) + 7 * 86400000), true);
 });
 test('new ids match the pattern', () => {
   let n = 0;
@@ -122,6 +130,7 @@ test('plan: unchanged chunks keep their id and are not written', () => {
   assert.deepEqual(L.dlLeftoverChunks(['a'], ['a', 'z']), ['z']);
 });
 test('excerpt: plain, 300 characters', () => {
+  assert.equal(L.dlExcerpt('| A | B |\n|:--|--:|\n| 1 | 2 |'), 'A B 1 2');
   assert.equal(L.dlExcerpt('# Title\n\n**bold** and [a link](https://x.y) `code`\n- [ ] task'), 'Title bold and a link code task');
   assert.equal(L.dlExcerpt('a'.repeat(400)).length, 300);
 });
@@ -201,6 +210,11 @@ test('reader: each form becomes elements', () => {
   assert.equal(all(root).find((n) => n.tag === 'ol').attrs.start, '3');
   assert.equal(all(root).find((n) => n.tag === 'th').attrs.style, 'text-align:left');
   assert.equal(all(root).find((n) => n.tag === 'input').attrs.checked, '');
+});
+test('reader: a task box token from the lexer inside an item draws nothing of its own', () => {
+  const { root } = render([T('list', { items: [{ task: true, checked: true, tokens: [T('checkbox', { checked: true }), txt('Read')] }] })]);
+  assert.equal(root.textContent, 'Read');
+  assert.equal(all(root).filter((n) => n.tag === 'input').length, 1);
 });
 test('reader: raw html, pictures and footnotes are text, never elements or HTML', () => {
   const evil = '<img src=x onerror=alert(1)><script>alert(1)</script>';

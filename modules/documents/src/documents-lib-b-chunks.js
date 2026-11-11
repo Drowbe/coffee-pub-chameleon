@@ -74,6 +74,7 @@
   function dlExcerpt(text) {
     const t = dlCleanText(text)
       .replace(/^\s*(```|~~~).*$/gm, ' ')
+      .replace(/^[\s|:-]*-[\s|:-]*$/gm, ' ')
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?/gm, '')
       .replace(/[*_`~|]/g, '')
