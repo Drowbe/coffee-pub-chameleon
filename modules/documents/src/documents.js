@@ -460,6 +460,51 @@
   if (tagsOn) host.on('tags', () => { loadTags().then(() => { if (openId) { paintTags(); if (tagPicker) tagPicker.set(shownTags(openId)); } else if (!ed) { render(); } }).catch(() => {}); });
   function reload() { load().then(afterChange).catch(() => {}); }
 
+  // ---- catching up after a dropped connection ---------------------------------------------------------------------------------
+  // When the live stream is back, the browser is online again, or the page shows after a while hidden, read the lists again (reads
+  // only). The rules are dlResyncPlan: the list is redrawn, a text being read only on a higher rev, a text being edited never
+  // (only the lock is looked at). Everything is read first and applied only if every read worked. One at a time; one more queued.
+  let resyncing = false;
+  let resyncAgain = false;
+  async function resyncDocs() {
+    if (resyncing) { resyncAgain = true; return; }
+    resyncing = true;
+    try {
+      do {
+        resyncAgain = false;
+        let read = null;
+        try {
+          read = {};
+          for (const p of ['doc:', 'tags:', '_lock:', '_trash:']) read[p] = await host.storage.list(p);
+        } catch (err) { read = null; }
+        const state = ed ? 'editing' : openId ? 'reading' : 'list';
+        let rec = null;
+        if (read && state === 'reading') {
+          const item = read['doc:'].find((i) => i.key === `doc:${openId}`);
+          rec = item && item.value ? dlCleanDoc(item.value) : null;
+        }
+        const plan = dlResyncPlan({ state, shownRev, rec, ok: Boolean(read) });
+        if (!plan.apply) continue;
+        const top = $('list').scrollTop;
+        const mine = ed && locks.get(ed.id);
+        docs.clear(); unreadable.clear(); trash.clear(); tagsOf.clear();
+        const seen = new Set();
+        for (const p of ['doc:', 'tags:', '_lock:', '_trash:']) for (const item of read[p]) { remember(item); if (p === '_lock:') seen.add(idOf(item.key, p)); }
+        for (const id of [...locks.keys()]) if (!seen.has(id) && !(ed && id === ed.id)) locks.delete(id);
+        if (ed && mine && !seen.has(ed.id)) locks.set(ed.id, mine);
+        if (plan.checkLock) { hearLock(); serial(refreshLock).then(() => schedule(true)).catch(() => {}); } // a lost lock is noticed now
+        else if (plan.closeReading) { note('This document was deleted.'); closeDoc(); } else if (plan.redrawReading) { updateEditButton(); paintTags(); draw(openId).catch(() => {}); } else if (plan.redrawList) { render(); $('list').scrollTop = top; } else if (openId) { updateEditButton(); paintTags(); }
+      } while (resyncAgain);
+    } catch (err) { /* the next change or a reload puts it right */ } finally { resyncing = false; }
+  }
+  let hiddenAt = 0;
+  host.on('reconnected', () => { resyncDocs(); });
+  window.addEventListener('online', () => { resyncDocs(); });
+  doc.addEventListener('visibilitychange', () => {
+    if (doc.visibilityState === 'hidden') hiddenAt = Date.now();
+    else { const gap = dlResyncAfterHidden(hiddenAt, Date.now()); hiddenAt = 0; if (gap) resyncDocs(); }
+  });
+
   // ---- the lock and editing ------------------------------------------------------------------------------------------------
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cleanMsg = (err) => (err && err.message) || 'That did not work. Try again.';
