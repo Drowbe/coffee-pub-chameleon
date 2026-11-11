@@ -12,10 +12,10 @@
 //    `breaks` (so the reader can keep a "Page break" separator for a screen reader). A break at the very start makes no empty page and is
 //    returned in `before`; a break at the very end makes none either (it ends the last page). Each further consecutive break makes one
 //    empty page: a, break, break, b is [a] [] [b]; break, break, a is [] [a].
-//  - A block that fits the room left goes there; otherwise it starts the next page. A block taller than a whole page gets a page of its
+//  - A block that fits the space left goes there; otherwise it starts the next page. A block taller than a whole page gets a page of its
 //    own (`tall`) and runs past the bottom margin, never clipped; only a heading before it may share that page.
-//  - A grid breaks between rows, never inside one (the head row is not repeated). It moves whole when it fits on one page and the room
-//    left is not enough for its head row and one more; otherwise its rows fill the room left, the rest goes on. An item of a split
+//  - A grid breaks between rows, never inside one (the head row is not repeated). It moves whole when it fits on one page and the space
+//    left is not enough for its head row and one more; otherwise its rows fill the space left, the rest goes on. An item of a split
 //    grid is { i, from, to } (rows from..to-1); a whole block or grid is { i }.
 //  - Code blocks and block formulas are whole blocks, like a paragraph.
 //  - A heading is kept with what follows: a run of headings and the first thing after them (a grid's head row and one row) move together,
@@ -23,7 +23,7 @@
 // -> { pages: [{ items: [{ i, from?, to? }], breaks: [i], tall }], before: [i] }
 function dlPageBreaks(blocks, textH) {
   const list = Array.isArray(blocks) ? blocks : [];
-  const room = Number.isFinite(textH) && textH > 0 ? textH : 1;
+  const pageH = Number.isFinite(textH) && textH > 0 ? textH : 1;
   const hOf = (b) => (b && Number.isFinite(b.height) && b.height > 0 ? b.height : 0);
   const rowsOf = (b) => {
     if (!b || b.kind !== 'grid' || !Array.isArray(b.rows) || !b.rows.length) return null;
@@ -39,7 +39,7 @@ function dlPageBreaks(blocks, textH) {
     if (!b || isBreak(b)) return 0;
     const r = rowsOf(b);
     const first = r ? r[0] + (r.length > 1 ? r[1] : 0) : hOf(b);
-    return first > room ? room : first; // a block that is taller than a page starts its own page: its heading goes with it
+    return first > pageH ? pageH : first; // a block that is taller than a page starts its own page: its heading goes with it
   };
   const pages = [];
   const before = [];
@@ -66,16 +66,16 @@ function dlPageBreaks(blocks, textH) {
       let j = i;
       while (j < list.length && list[j] && list[j].kind === 'heading') { need += hOf(list[j]); j += 1; }
       need += lead(j);
-      if (cur && !cur.closed && cur.items.length && cur.used + need > room) cur = null;
+      if (cur && !cur.closed && cur.items.length && cur.used + need > pageH) cur = null;
     }
-    if (h > room && !rows) { // taller than a page: a page of its own
+    if (h > pageH && !rows) { // taller than a page: a page of its own
       if (cur && cur.body) cur = null;
       fresh();
       cur.items.push({ i }); cur.used += h; cur.tall = true; cur.closed = true; cur.body = true;
       continue;
     }
     fresh();
-    if (cur.used + h <= room && !(rows && h > room)) { // fits whole
+    if (cur.used + h <= pageH && !(rows && h > pageH)) { // fits whole
       cur.items.push({ i }); cur.used += h; cur.body = cur.body || kind !== 'heading';
       continue;
     }
@@ -84,16 +84,16 @@ function dlPageBreaks(blocks, textH) {
       cur.items.push({ i }); cur.used += h; cur.body = kind !== 'heading';
       continue;
     }
-    // a grid that does not fit the room left: its rows, page by page
+    // a grid that does not fit the space left: its rows, page by page
     let from = 0;
     while (from < rows.length) {
       fresh();
-      let avail = room - cur.used;
+      let avail = pageH - cur.used;
       let to = from;
       let sum = 0;
       while (to < rows.length && sum + rows[to] <= avail) { sum += rows[to]; to += 1; }
       const need = from === 0 && rows.length > 1 ? 2 : 1;
-      if (to - from < need && cur.items.length) { cur = null; fresh(); avail = room; to = from; sum = 0; while (to < rows.length && sum + rows[to] <= avail) { sum += rows[to]; to += 1; } }
+      if (to - from < need && cur.items.length) { cur = null; fresh(); avail = pageH; to = from; sum = 0; while (to < rows.length && sum + rows[to] <= avail) { sum += rows[to]; to += 1; } }
       if (to === from) { sum = rows[to]; to += 1; cur.tall = true; } // one row taller than a page
       cur.items.push(from === 0 && to === rows.length ? { i } : { i, from, to });
       cur.used += sum; cur.body = true;
