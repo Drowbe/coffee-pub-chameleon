@@ -375,7 +375,7 @@ async function main() {
         const shape = (st) => st.docked.filter((d) => d.stacked).sort((a, b) => a.top - b.top).map((d) => `${d.id}:${d.h}`).join();
         const want = shape(await state());
         await showTab();
-        await pick('Save this layout');
+        await pick('Save as new layout');
         await tab.waitFor('dialog.layout-sheet[open] input');
         await tab.eval(`(() => { const i = document.querySelector('dialog.layout-sheet[open] input:not([type]), dialog.layout-sheet[open] input[type=text]'); i.value = 'Stacked'; i.dispatchEvent(new Event('input', { bubbles: true })); [...document.querySelectorAll('dialog.layout-sheet[open] button')].find((b) => b.textContent.trim() === 'Save').click(); })()`);
         await sleep(1200);
@@ -424,7 +424,7 @@ async function main() {
         const sameStack = (a, b) => { const x = a.split(','); const y = b.split(','); return Boolean(a) && x.length === y.length && x.every((v, i) => { const [ia, ha, fa] = v.split(':'); const [ib, hb, fb] = y[i].split(':'); return ia === ib && fa === fb && Math.abs(Number(ha) - Number(hb)) <= 2; }); };
         const saveLayout = async (name) => {
           await showTab();
-          await pick('Save this layout');
+          await pick('Save as new layout');
           await tab.waitFor('dialog.layout-sheet[open] input');
           await tab.eval(`(() => { const i = document.querySelector('dialog.layout-sheet[open] input:not([type]), dialog.layout-sheet[open] input[type=text]'); i.value = ${JSON.stringify(name)}; i.dispatchEvent(new Event('input', { bubbles: true })); [...document.querySelectorAll('dialog.layout-sheet[open] button')].find((b) => b.textContent.trim() === 'Save').click(); })()`);
           await sleep(1200);

@@ -331,3 +331,27 @@ export function leftOutNote(ids, nameOf = (id) => id, space = 'space') {
   const list = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   return `${list} aren't on in this ${space}, so they were left out.`;
 }
+
+// Whether two arrangements differ, for the Modified mark on the current layout. Each is a layout's shape (a stored layout
+// or canvas.captureLayout()): the modules in column order with their mode and, as stored, width, box, snap and stack;
+// the arrangement mode (`arrange`; absent reads as Window when every module floats, else Panel); the canvas snap. Small
+// differences are noise (a width within 2 pixels, a box edge or a stack share within half a percent: a load fitted to
+// the window rounds them). Z-order, scroll, zoom and a module's own content are not part of the shape, so they never
+// count. Pure; compared on arrangement changes, not on every mouse move.
+const arrangeOf = (l) => (l?.arrange === 'window' || l?.arrange === 'panel' ? l.arrange
+  : Array.isArray(l?.modules) && l.modules.length && l.modules.every((m) => m?.mode === 'float') ? 'window' : 'panel');
+export function layoutDiffers(a, b) {
+  const A = Array.isArray(a?.modules) ? a.modules : [];
+  const B = Array.isArray(b?.modules) ? b.modules : [];
+  if (A.length !== B.length || arrangeOf(a) !== arrangeOf(b)) return true;
+  if (Boolean(a?.snap?.all) !== Boolean(b?.snap?.all) || (a?.snap?.all && Math.round(num(a.snap.pitch)) !== Math.round(num(b.snap.pitch)))) return true;
+  const near = (x, y, tol) => Math.abs(num(x) - num(y)) <= tol;
+  return A.some((m, i) => {
+    const n = B[i];
+    if (!m || !n || m.id !== n.id || m.mode !== n.mode) return true;
+    if (m.mode === 'dock' && (m.dockW !== undefined || n.dockW !== undefined) && !(m.dockW !== undefined && n.dockW !== undefined && near(m.dockW, n.dockW, 2))) return true;
+    if (m.mode === 'float' && (m.box || n.box) && !(m.box && n.box && ['x', 'y', 'w', 'h'].every((k) => near(m.box[k], n.box[k], 0.005)))) return true;
+    if ((m.stack || null) !== (n.stack || null) || num(m.at) !== num(n.at) || Boolean(m.folded) !== Boolean(n.folded)) return true;
+    return Boolean(m.stack) && !near(m.h, n.h, 0.005);
+  });
+}

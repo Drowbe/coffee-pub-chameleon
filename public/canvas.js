@@ -62,7 +62,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // handoff a page over the call gets: from=space and the names for its header), so a link inside it that leads on to
 // another page keeps its way back. `onCompositeLoad(frame)`: each page that loads in a composite's frame, so the page
 // can take the header links inside it (home, which must not navigate the top window away from the call).
-export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null } = {}) {
+export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null, onArrange = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
   // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
@@ -169,6 +169,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
   // canvas once it is wide again (GitHub #268).
   let arrangeOnWide = false;
   function persist() {
+    if (spaceId && !suspended && !restoring) onArrange?.(); // the arrangement changed (space.js checks for Modified, once a frame)
     if (!spaceId || holdStore || held) return; // an aside remembers nothing; another tab than the Workspace neither
     try {
       localStorage.setItem(storeKey(spaceId), JSON.stringify(saved));
@@ -2343,7 +2344,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
         ...(stackOf(p) ? { stack: stackOf(p), at: rec.at, h: rec.h, folded: rec.folded === true } : {}),
       };
     });
-    return layoutOf(mods, canvasArea(), { all: snapAllOn(), pitch: snapPitch() });
+    return { ...layoutOf(mods, canvasArea(), { all: snapAllOn(), pitch: snapPitch() }), arrange: arrangeMode() };
   }
 
   // Put a saved layout on the canvas (plan-saved-layouts.md, "Saving and loading"): what may open here (canOpenHere)
@@ -2412,7 +2413,8 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
       // The column order is the layout's: the modules it names follow whatever stays (the conference on the call).
       for (const want of plan.modules) { const mod = opened.get(want.id); if (mod) mod.order = ++order; }
       // The arrange mode follows the layout: every module a window, Window Mode; any column, Panel Mode.
-      if (plan.modules.length) saved.__mode = plan.modules.every((want) => want.mode === 'float') ? 'window' : 'panel';
+      if (layout.arrange === 'panel' || layout.arrange === 'window') saved.__mode = layout.arrange; // a layout that says so (a blank one always does)
+      else if (plan.modules.length) saved.__mode = plan.modules.every((want) => want.mode === 'float') ? 'window' : 'panel';
       if (narrow && plan.modules.length) arrangeOnWide = true; // put on the canvas when the window is wide (placeForWidth)
       if (narrow) {
         const first = plan.modules.find((want) => opened.has(want.id));

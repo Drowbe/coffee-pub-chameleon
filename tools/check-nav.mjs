@@ -583,7 +583,7 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   assert.match(space, /menuItems: \(\) => layoutMenuItems\(\),/);
 });
 
-test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the shared menu): entries that load and keep the menu open, a ... with Favorite, Make default, Replace, Rename and Delete, Save this layout in a small sheet; read again as the menu opens; hidden on a narrow canvas', () => {
+test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the shared menu): entries that load and keep the menu open, a ... with Favorite, Make default, Replace, Rename and Delete, New layout and Save as new layout in a small sheet; read again as the menu opens; hidden on a narrow canvas', () => {
   const space = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
   const items = space.slice(space.indexOf('function layoutMenuItems() {'), space.indexOf('function layoutRowItems(layoutId) {'));
@@ -591,13 +591,18 @@ test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the 
   // a favorite's heart; a press loads it and keeps the menu open; the ... for those who may do something with it.
   assert.match(items, /const canSave = Boolean\(layoutList\.spaceId\) && !guestToken;/);
   assert.match(items, /if \(empty \|\| canvas\.isNarrow\(\)\) return \[\];/);
-  assert.match(items, /const items = \[\{ heading: 'Layouts' \}\];[\s\S]*for \(const l of layoutList\.system\) \{[\s\S]*\n\s*for \(const l of shared\) items\.push\(entry\(l, true\)\);\n\s*for \(const l of mine\) items\.push\(entry\(l, false\)\);/, 'the system layouts first (plan-layout-views.md, step 2), then shared, then your own');
+  assert.match(items, /const items = \[\{ heading: 'Layouts' \}\];[\s\S]*for \(const l of layoutList\.system\) \{[\s\S]*\n[\s\S]*for \(const l of shared\) withModified\(l, true\);\n\s*for \(const l of mine\) withModified\(l, false\);/, 'the system layouts first (plan-layout-views.md, step 2), then shared, then your own');
   assert.match(items, /tag: l\.id === layoutList\.defaultLayout \? 'Default' : undefined,/);
   assert.match(items, /mark: isFavorite\(l\.id\) \? 'heart' : undefined,/);
-  assert.match(items, /keepOpen: true,\n\s*onPick: \(\) => \{ canvas\.loadLayout\(l\); \},/);
+  assert.match(items, /keepOpen: true,\n\s*radio: true,\n\s*checked: l\.id === currentLayoutTab,[^\n]*\n\s*onPick: \(\) => \{ pressLayoutTab\(l\.id\); \},/, 'a press shows it as current; the row is marked');
   assert.match(items, /more: mayFavorite\(\) \|\| mayChangeLayout\(isShared\) \|\| maySetDefault\(isShared\) \? \(\) => layoutRowItems\(l\.id\) : undefined,/);
   assert.match(items, /No saved layouts yet\./);
-  assert.match(items, /if \(canSave\) items\.push\(\{ icon: 'plus', label: 'Save this layout', onPick: \(\) => openSaveLayout\(\) \}\);/);
+  // Both commands, together, only where canSave holds (a guest never saves): New layout, then Save as new layout.
+  assert.match(items, /if \(canSave\) \{\n\s*items\.push\(\{ icon: 'plus', label: 'New layout', onPick: \(\) => openSaveLayout\(\{ blank: true \}\) \}\);\n\s*items\.push\(\{ icon: 'floppy-disk', label: 'Save as new layout', onPick: \(\) => openSaveLayout\(\) \}\);\n\s*\}/);
+  assert.ok(!items.includes('Save this layout'), 'the old label is gone');
+  // Modified: a row under the layout shown; Update only where this person may change it, else the word alone.
+  assert.match(items, /layoutModified && l\.id === currentLayoutTab/);
+  assert.match(items, /mayChangeLayout\(isShared\)\n\s*\? \{ icon: 'arrows-rotate', label: 'Update', tag: 'Modified', keepOpen: true, onPick: \(\) => updateLayout\(l\.id\) \}\n\s*: \{ label: 'Modified', disabled: true \}/);
   assert.match(space, /const mayChangeLayout = \(shared\) => !guestToken && \(!shared \|\| layoutList\.canShare\);/, 'a guest changes nothing; shared ones only with the right');
   // The ...: Replace with this layout, Rename, Delete (confirmed in the menu's own confirm row, under the Layout button).
   const menuFn = space.slice(space.indexOf('function layoutRowItems(layoutId) {'), space.indexOf('async function setFavorite('));
@@ -611,14 +616,18 @@ test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the 
   // The sheet: a <dialog> with Name, the share switch (a real switch, its words from the space word), the refusal,
   // Save and Cancel; Save this layout and Rename open it; a taken name offers Replace it; the server's refusals are
   // shown as it says them; a guest never saves.
-  const sheet = space.slice(space.indexOf('function openLayoutSheet('), space.indexOf('function openSaveLayout() {'));
+  const sheet = space.slice(space.indexOf('function openLayoutSheet('), space.indexOf('function openSaveLayout({'));
   assert.match(sheet, /dlg\.className = 'layout-sheet';/);
   for (const needle of ['<span class="layout-field-label">Name</span>', 'id="layout-name"', '<input type="checkbox" class="sdk-switch" role="switch" id="layout-shared">', "submit: true,", "ids: { save: 'layout-save', cancel: 'layout-cancel' },"]) assert.ok(sheet.includes(needle), `the sheet has ${needle}`);
   assert.match(sheet, /querySelector\('#layout-shared-label'\)\.textContent = `For everyone in this \$\{word\('space'\)\}`;/);
   assert.match(sheet, /b\.textContent = 'Replace it';/);
   assert.match(sheet, /dlg\.showModal\(\);/);
   assert.match(space, /sheet\.error\(err\.message, err\.status === 409 \? err\.id : null\);/);
-  assert.match(space, /title: 'Save this layout',\n\s*share: layoutList\.canShare \? false : null,/);
+  assert.match(space, /title: blank \? 'New layout' : 'Save as new layout',\n\s*share: layoutList\.canShare \? false : null,/);
+  // New layout saves modules [] with the arrangement mode as it is; Save as new layout saves the canvas; both then show the new layout.
+  assert.match(space, /const captured = blank \? \{ modules: \[\], arrange: now\.arrange,/);
+  assert.match(space, /pressLayoutTab\(layout\.id, null, \{ load: blank \}\);/);
+  assert.ok(!space.includes('nothingOpen'), 'a blank layout is valid: nothing to refuse');
   assert.match(space, /title: 'Rename',\n\s*name: layout\.name,/);
   // The look: the menu's own for the entries; the sheet from the tokens.
   assert.match(fs.readFileSync(path.join(ROOT, 'public/sdk/system.css'), 'utf8'), /:is\(\.sdk-editor, \.layout-sheet, [^)]*\) \{[^}]*background: var\(--surface-panel\);/, 'the sheet is the dialog shell (the Dialogs block of system.css)');
@@ -763,9 +772,9 @@ test('the layout tabs (plan-layout-views.md, steps 2 and 3): after the switcher 
   // composite docked) as a saved favorite, holds the Workspace's memory and loads through canvas.loadLayout; the bars
   // are drawn again (the focused module's own tools change with the layout; the Layout menu, Full screen and Pop out stay).
   const press = space.slice(space.indexOf('function pressLayoutTab('), space.indexOf("layoutTabsEl.addEventListener('click'"));
-  assert.match(press, /currentLayoutTab = 'workspace';\n\s*canvas\.resumeMemory\(\);[^\n]*\n\s*markLayoutTabs\(\);\n\s*nav\.draw\(\);/);
-  assert.match(press, /const layout = tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/, 'Calendar and Map are their system layout, loaded as a saved one is');
-  assert.match(press, /canvas\.holdMemory\(\);[^\n]*\n\s*currentLayoutTab = id;\n\s*markLayoutTabs\(\);\n\s*nav\.draw\(\);[\s\S]*canvas\.loadLayout\(layout\);/);
+  assert.match(press, /currentLayoutTab = 'workspace';\n\s*canvas\.resumeMemory\(\);[^\n]*\n\s*rebaseLayout\(\);\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);\n\s*canvas\.refreshMenu\(\);/);
+  assert.match(press, /const layout = tab && tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/, 'Calendar and Map are their system layout, loaded as a saved one is');
+  assert.match(press, /canvas\.holdMemory\(\);[^\n]*\n\s*currentLayoutTab = id;\n\s*layoutBase = null;\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);[\s\S]*canvas\.loadLayout\(layout\);/);
   assert.ok(press.indexOf('canvas.holdMemory()') < press.indexOf('canvas.loadLayout(layout)'), 'held before the load writes anything');
   assert.ok(!/showView|viewFrame|destinationsNow/.test(press), 'no view code: one path for every tab');
   assert.ok(!/function showView\(|function drawViews\(|function markViews\(|let currentView\b|currentView ===/.test(space), 'the view code is gone');
@@ -825,7 +834,7 @@ test('Rename and Change icon (plan-layout-views.md, step 4): a system row\'s ...
   assert.match(rename, /emptyName: system \? system\.defaultName \|\| '' : '',/);
   assert.match(rename, /if \(system\) await layoutRequest\('PATCH', systemLayoutUrl\(layoutSpaceId\(\), layoutId\), \{ name: name \|\| null \}\);\n\s*else await layoutRequest\('PUT', layoutUrl\(layoutSpaceId\(\), layoutId\), \{ name \}\);/);
   assert.match(rename, /sheet\.close\(\);\n\s*await refreshLayouts\(\);/, 'the tab and the row drawn again');
-  const sheet = space.slice(space.indexOf('function openLayoutSheet('), space.indexOf('function openSaveLayout() {'));
+  const sheet = space.slice(space.indexOf('function openLayoutSheet('), space.indexOf('function openSaveLayout({'));
   assert.match(sheet, /if \(!value && !emptyName\) \{ sheet\.error\('Give the layout a name\.'\); return false; \}/);
   assert.match(sheet, /hint\.textContent = `Leave it empty for \$\{emptyName\}\.`;/);
   assert.match(sheet, /input\.placeholder = emptyName;/);
@@ -847,7 +856,7 @@ test('Rename and Change icon (plan-layout-views.md, step 4): a system row\'s ...
   assert.match(change, /if \(system\) await layoutRequest\('PATCH', systemLayoutUrl\(layoutSpaceId\(\), layoutId\), \{ icon: icon === system\.defaultIcon \? null : icon \}\);\n\s*else await layoutRequest\('PUT', layoutUrl\(layoutSpaceId\(\), layoutId\), \{ icon \}\);/, 'the default icon saved as null, so it follows the default');
   assert.match(change, /await refreshLayouts\(\);/);
   // The tabs redraw on a new icon or name (their key holds both).
-  assert.match(space, /const key = JSON\.stringify\(list\.map\(\(t\) => \[t\.id, t\.icon, t\.label\]\)\);/);
+  assert.match(space, /const key = JSON\.stringify\(list\.map\(\(t\) => \[t\.id, t\.icon, t\.label, t\.temp === true\]\)\);/);
   assert.match(css, /\.layout-icon-grid \{[^}]*overflow-y: auto;/);
   assert.match(css, /\.layout-field-hint \{[^}]*color: var\(--text-dim\);/);
 });
@@ -1415,7 +1424,7 @@ test('the Workspace\'s controls in the top bar (Thomas, 2026-10-13): Workspace t
   const placeSub = space.slice(space.indexOf('function placeSubnav()'), space.indexOf('\nplaceSubnav();'));
   assert.match(placeSub, /nav\.setWorkspace\(\{ bar: tabs \? 'secondary' : 'primary' \}\);/, 'placeSubnav() names the bar by the header\'s own window');
   const pressed = space.slice(space.indexOf('function pressLayoutTab('), space.indexOf("layoutTabsEl.addEventListener('click'"));
-  assert.equal((pressed.match(/markLayoutTabs\(\);\n\s*nav\.draw\(\);/g) || []).length, 2, 'a tab change draws the bars again, to the Workspace and away from it');
+  assert.equal((pressed.match(/renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);/g) || []).length, 2, 'a tab change draws the bars again, to the Workspace and away from it');
   assert.match(space, /function updateRecallButton\(\) \{\n\s*nav\.draw\(\);/, 'Pull participants back is drawn in whichever bar it is in');
   assert.ok(!/nav\.setWorkspace/.test(fs.readFileSync(path.join(ROOT, 'public/brand.js'), 'utf8')), 'only the space page moves the Workspace\'s tools');
   // The stylesheet: the empty second row is not drawn wider than a phone; the top bar's fold and "..." are styled; the
@@ -2787,4 +2796,46 @@ test('a selected, active, on or current state is a fill: no state rule adds a bo
   assert.deepEqual(bad, [], `show the state with a fill token, not a border, outline or ring (--selected-bg):\n  ${bad.join('\n  ')}`);
 });
 
+const layoutsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nav-layouts-')); // layouts.js takes the grid arithmetic from /snap-grid.js; the copy reads it beside it
+for (const f of ['layouts.js', 'snap-grid.js']) fs.writeFileSync(path.join(layoutsDir, f.replace('.js', '.mjs')), fs.readFileSync(path.join(ROOT, 'public', f), 'utf8').replace(/from '\/([\w-]+)\.js'/g, "from './$1.mjs'"));
+const { layoutDiffers } = await import(pathToFileURL(path.join(layoutsDir, 'layouts.mjs')).href);
+test('Modified and the temporary tab (layout menu, 2026-11-11): layoutDiffers() compares arrangements; a shown layout that is not pinned gets a temporary tab; Update and who sees it', () => {
+  const base = () => ({ arrange: 'panel', snap: { all: false, pitch: 100 }, modules: [{ id: 'chat', mode: 'dock', dockW: 400 }, { id: 'todo', mode: 'dock', dockW: 360 }] });
+  assert.equal(layoutDiffers(base(), base()), false, 'equal');
+  assert.equal(layoutDiffers(base(), { ...base(), modules: [{ id: 'chat', mode: 'dock', dockW: 401 }, { id: 'todo', mode: 'dock', dockW: 359 }] }), false, 'a width within 2 pixels is noise');
+  assert.equal(layoutDiffers(base(), { ...base(), modules: [{ id: 'chat', mode: 'dock', dockW: 460 }, base().modules[1]] }), true, 'resized');
+  assert.equal(layoutDiffers(base(), { ...base(), modules: [base().modules[1], base().modules[0]] }), true, 'columns moved');
+  assert.equal(layoutDiffers(base(), { ...base(), modules: base().modules.slice(0, 1) }), true, 'a module closed');
+  assert.equal(layoutDiffers(base(), { ...base(), modules: [...base().modules, { id: 'maps', mode: 'dock' }] }), true, 'a module opened');
+  assert.equal(layoutDiffers(base(), { ...base(), arrange: 'window' }), true, 'the mode changed');
+  const win = () => ({ arrange: 'window', modules: [{ id: 'chat', mode: 'float', box: { x: 0.1, y: 0.1, w: 0.3, h: 0.4 } }] });
+  assert.equal(layoutDiffers(win(), win()), false, 'a window, equal');
+  assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.2, y: 0.1, w: 0.3, h: 0.4 } }] }), true, 'a window moved');
+  assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.1, y: 0.1, w: 0.3, h: 0.5 } }] }), true, 'a window resized');
+  assert.equal(layoutDiffers(win(), { ...win(), modules: [{ id: 'chat', mode: 'float', box: { x: 0.1004, y: 0.1, w: 0.3, h: 0.4 }, z: 9, scroll: 40, zoom: 2 }] }), false, 'z-order, scroll, zoom and a hair of movement are noise');
+  assert.equal(layoutDiffers({ modules: [] }, { modules: [], arrange: 'panel' }), false, 'a blank layout without arrange reads as Panel');
+  assert.equal(layoutDiffers({ modules: [], arrange: 'window' }, { modules: [], arrange: 'panel' }), true, 'a blank layout in the other mode');
+  // The temporary tab: the layout shown, saved, not a favorite; gone once another is shown; a favorite keeps its own tab.
+  const system = [{ id: 'workspace', kind: 'system', name: 'Workspace', icon: 'columns', tab: true }];
+  const layouts = [{ id: 'la', name: 'A' }, { id: 'lb', name: 'B' }];
+  const tabs = layoutTabs({ system, favorites: ['lb'], layouts, current: 'la', space: 'keep' });
+  assert.deepEqual(tabs.map((x) => [x.layout, x.temp === true, x.current]), [['workspace', false, false], ['lb', false, false], ['la', true, true]], 'the shown layout, not pinned, is a temporary tab');
+  assert.deepEqual(layoutTabs({ system, favorites: ['lb'], layouts, current: 'lb', space: 'keep' }).map((x) => [x.layout, x.temp === true]), [['workspace', false], ['lb', false]], 'a favorite is its own tab, none temporary');
+  assert.ok(!layoutTabs({ system, favorites: [], layouts, current: 'gone', space: 'keep' }).some((x) => x.temp), 'an id that is not a layout makes no tab');
+  assert.deepEqual(layoutTabs({ system, layouts, current: 'la', guest: true, space: 'keep' }).map((x) => x.temp === true), [false, false, false], 'a guest sees every shared layout as a tab, none temporary');
+  // The code: Update is a PUT of the canvas, with the toast; Modified is computed once a frame from persist(); a guest has no baseline;
+  // the mark shows Update only where the layouts routes let this person change the layout.
+  const space = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
+  const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
+  assert.match(space, /await layoutRequest\('PUT', layoutUrl\(id, layoutId\), captured\);\n\s*layoutBase = captured;\n\s*layoutNote\(`Updated \$\{layout\.name\}\.`\);\n\s*setModified\(false\);/, 'Update: PUT, then the toast and the mark cleared');
+  assert.match(space, /if \(!layoutBase \|\| layoutCheckFrame\) return;\n\s*layoutCheckFrame = requestAnimationFrame\(/, 'once a frame, never per mouse move');
+  assert.match(space, /if \(!findLayout\(id\) \|\| guestToken \|\| me\?\.role === 'guest'\) return;/, 'a guest, the Workspace, Calendar and Map have no baseline, so no mark');
+  assert.match(space, /if \(mayChangeLayout\(shared\)\) \{\n\s*const b = layoutModifiedEl\.ownerDocument\.createElement\('button'\);/, 'Update only where this person may change the layout; else the word alone');
+  assert.match(space, /onArrange: \(\) => arrangementChanged\(\),/);
+  assert.match(canvasJs, /if \(spaceId && !suspended && !restoring\) onArrange\?\.\(\);/);
+  assert.match(space, /pin\.setAttribute\('aria-label', `Favorite \$\{t\.label\}`\);/, 'the temporary tab\'s heart pins it');
+  assert.ok(!/localStorage[^\n]*layoutBase|layoutModified[^\n]*localStorage/.test(space), 'Modified is not stored');
+});
+
+fs.rmSync(layoutsDir, { recursive: true, force: true });
 console.log(`check-nav: OK (${n} tests)`);

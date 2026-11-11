@@ -7,6 +7,7 @@ import { createSpaceSetup, setupAddress, configurationLabel } from '/space-setup
 import { renderModuleSettings } from '/module-settings.js';
 import { actionBar } from '/action-bar.js';
 import { createCanvas } from '/canvas.js';
+import { layoutDiffers } from '/layouts.js';
 import { conferenceAllowed, opensWithSummary, shouldAutoJoin } from '/opens-with.js';
 import { switchListHtml, wireSwitchList } from '/switch-list.js';
 import { createWhoHere } from '/space-people.js';
@@ -1066,6 +1067,7 @@ const canvas = createCanvas({
   onPopBlocked: () => setStatus(POPUP_BLOCKED, true),
   // The Layouts section is read again each time the menu opens, and drawn from layoutMenuItems() with the note last.
   onMenu: (open) => { if (open) refreshLayouts(); },
+  onArrange: () => arrangementChanged(),
   menuItems: () => layoutMenuItems(),
   noteEl: menuNote,
   // A composite's page (the Calendar and Map tabs' too) gets the handoff a page over the call gets, and its links home
@@ -2746,7 +2748,7 @@ async function refreshLayouts() {
 function renderLayouts() {
   renderLayoutTabs(); // the top bar's layout tabs, from the same list
   // The tab shown was unfavorited or deleted: back to the Workspace, which is the one that remembers.
-  if (currentLayoutTab !== 'workspace' && layoutList.spaceId && layoutList.spaceId === layoutSpaceId() && !layoutTabList().some((t) => t.layout === currentLayoutTab)) pressLayoutTab('workspace');
+  if (currentLayoutTab !== 'workspace' && layoutList.spaceId && layoutList.spaceId === layoutSpaceId() && !layoutTabList().some((t) => t.layout === currentLayoutTab) && !findLayout(currentLayoutTab)) pressLayoutTab('workspace');
   canvas.refreshMenu(); // and the menu's Layouts section, while it is open
 }
 
@@ -2763,7 +2765,9 @@ function layoutMenuItems() {
     mark: isFavorite(l.id) ? 'heart' : undefined,
     tag: l.id === layoutList.defaultLayout ? 'Default' : undefined,
     keepOpen: true,
-    onPick: () => { canvas.loadLayout(l); },
+    radio: true,
+    checked: l.id === currentLayoutTab, // the layout shown now
+    onPick: () => { pressLayoutTab(l.id); },
     more: mayFavorite() || mayChangeLayout(isShared) || maySetDefault(isShared) ? () => layoutRowItems(l.id) : undefined,
   });
   const items = [{ heading: 'Layouts' }];
@@ -2777,14 +2781,28 @@ function layoutMenuItems() {
       label: l.name,
       mark: tabbed ? 'heart' : undefined,
       tag: l.id !== 'workspace' && l.id === layoutList.firstVisit?.layout ? 'Default' : undefined, // Calendar or Map as the first visit (Set up)
+      radio: true,
+      checked: l.id === currentLayoutTab,
       onPick: () => pressLayoutTab(l.id),
       more: mayFavorite() ? () => systemRowItems(l.id) : undefined,
     });
   }
-  for (const l of shared) items.push(entry(l, true));
-  for (const l of mine) items.push(entry(l, false));
+  // Modified: right under the layout shown, with Update where this person may change it (otherwise the word alone).
+  const withModified = (l, isShared) => {
+    items.push(entry(l, isShared));
+    if (layoutModified && l.id === currentLayoutTab) {
+      items.push(mayChangeLayout(isShared)
+        ? { icon: 'arrows-rotate', label: 'Update', tag: 'Modified', keepOpen: true, onPick: () => updateLayout(l.id) }
+        : { label: 'Modified', disabled: true });
+    }
+  };
+  for (const l of shared) withModified(l, true);
+  for (const l of mine) withModified(l, false);
   if (!shared.length && !mine.length && canSave) items.push({ label: 'No saved layouts yet.', disabled: true });
-  if (canSave) items.push({ icon: 'plus', label: 'Save this layout', onPick: () => openSaveLayout() });
+  if (canSave) {
+    items.push({ icon: 'plus', label: 'New layout', onPick: () => openSaveLayout({ blank: true }) });
+    items.push({ icon: 'floppy-disk', label: 'Save as new layout', onPick: () => openSaveLayout() });
+  }
   return items;
 }
 
@@ -2887,23 +2905,17 @@ async function setDefaultLayout(layoutId, layout) {
   await refreshLayouts();
 }
 
-// A layout with nothing open has nothing to save; said here rather than with the server's API sentence.
-const nothingOpen = () => `Open ${word('module', { a: true })} first, then save the layout.`;
-
 // Replaces a layout's modules and places with the canvas as it is now. From the Save sheet, its "Replace it" (a taken
 // name): `sheet` is that sheet, which shows the refusal and closes on success.
 async function replaceLayout(layoutId, sheet = null) {
   const id = layoutSpaceId();
   if (!id) return;
   const captured = canvas.captureLayout();
-  if (!captured.modules.length) {
-    if (sheet) sheet.error(nothingOpen()); else layoutNote(nothingOpen());
-    return;
-  }
   try {
     const { layout } = await layoutRequest('PUT', layoutUrl(id, layoutId), captured);
     if (sheet) sheet.close();
     layoutNote(`${layout.name} now holds this layout.`);
+    if (layoutId === currentLayoutTab) { layoutBase = captured; setModified(false); }
     await refreshLayouts();
   } catch (err) {
     if (sheet) sheet.error(err.message); else layoutNote(err.message);
@@ -3004,20 +3016,24 @@ function openLayoutSheet({ title, name = '', share = null, emptyName = '', onSav
   input.select();
   return sheet;
 }
-function openSaveLayout() {
+// New layout (`blank`): a layout with no module open, the arrangement mode and snap as they are now. Save as new layout:
+// the canvas as it is. Both ask the name in the same sheet, save with POST, then show the new layout (it becomes the one
+// shown: a Save as new layout leaves the canvas as it is, a New layout empties it).
+function openSaveLayout({ blank = false } = {}) {
   const id = layoutSpaceId();
   if (!id) return;
   openLayoutSheet({
-    title: 'Save this layout',
+    title: blank ? 'New layout' : 'Save as new layout',
     share: layoutList.canShare ? false : null,
     onSave: async (name, shared, sheet) => {
-      const captured = canvas.captureLayout();
-      if (!captured.modules.length) { sheet.error(nothingOpen()); return; }
+      const now = canvas.captureLayout();
+      const captured = blank ? { modules: [], arrange: now.arrange, ...(now.snap ? { snap: now.snap } : {}) } : now;
       try {
         const { layout } = await layoutRequest('POST', layoutUrl(id), { name, shared, ...captured });
         sheet.close();
-        layoutNote(`Saved ${layout.name}.`);
+        layoutNote(blank ? `Created ${layout.name}.` : `Saved ${layout.name}.`);
         await refreshLayouts();
+        if (layoutSpaceId() === id) pressLayoutTab(layout.id, null, { load: blank });
       } catch (err) {
         sheet.error(err.message, err.status === 409 ? err.id : null);
       }
@@ -3276,7 +3292,7 @@ const layoutTabsWanted = () => oneBar() && !inAside() && !phoneWidth() && layout
 let layoutTabsDrawn = ''; // what the tabs show now, so an unchanged list keeps its buttons (and the keyboard on one)
 function renderLayoutTabs() {
   const list = layoutTabList();
-  const key = JSON.stringify(list.map((t) => [t.id, t.icon, t.label]));
+  const key = JSON.stringify(list.map((t) => [t.id, t.icon, t.label, t.temp === true]));
   if (key !== layoutTabsDrawn) {
     layoutTabsDrawn = key;
     const doc = layoutTabsEl.ownerDocument;
@@ -3291,8 +3307,17 @@ function renderLayoutTabs() {
       b.title = t.label;
       b.setAttribute('aria-label', t.label);
       b.innerHTML = `<i class="fa-solid fa-${escapeHtml(t.icon)} fa-fw" aria-hidden="true"></i><span class="core-label">${escapeHtml(t.label)}</span>`;
-      return b;
-    });
+      if (!t.temp) return [b];
+      // A temporary tab (a saved layout shown that is not a favorite): a heart beside it pins it as a favorite.
+      const pin = doc.createElement('button');
+      pin.type = 'button';
+      pin.className = 'core-link layout-tab-pin';
+      pin.dataset.tip = 'Favorite';
+      pin.setAttribute('aria-label', `Favorite ${t.label}`);
+      pin.innerHTML = '<i class="fa-regular fa-heart fa-fw" aria-hidden="true"></i>';
+      pin.addEventListener('click', () => { const l = findLayout(t.layout); if (l) setFavorite(l, true); });
+      return [b, pin];
+    }).flat();
     layoutTabsEl.replaceChildren(...buttons, layoutTabsMore, favoritesNote);
     if (hadId) (layoutTabsEl.querySelector(`[data-layout-tab="${CSS.escape(hadId)}"]`) || layoutTabsEl.querySelector('[data-layout-tab]'))?.focus();
   }
@@ -3307,6 +3332,7 @@ function markLayoutTabs() {
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     if (on && b.classList.contains('layout-tab-out')) outCurrent = true;
   }
+  placeModified();
   layoutTabsMore.classList.toggle('layout-tabs-more-current', outCurrent); // the one shown is in the "..."
 }
 // The width the bar gives the group (nav-bar.js's fitLeft, while it measures with nothing shrunk): every tab while they
@@ -3334,32 +3360,112 @@ function fitLayoutTabs(avail) {
 }
 // A press shows the tab's layout, one click, no confirm; the keyboard stays on the tab. The bars are drawn again (the
 // focused module's own tools change with the layout) and the tabs fitted again (the one shown never goes into the "...").
-function pressLayoutTab(id, from = null) {
+function pressLayoutTab(id, from = null, { load = true } = {}) {
   const tab = layoutTabList().find((t) => t.layout === id);
-  if (!tab && id !== 'workspace') return;
+  if (!tab && id !== 'workspace' && !findLayout(id)) return;
   if (id === 'workspace') {
     currentLayoutTab = 'workspace';
     canvas.resumeMemory(); // the Workspace's own arrangement, as it was before another tab was pressed
-    markLayoutTabs();
+    rebaseLayout();
+    renderLayoutTabs(); // the temporary tab goes
     nav.draw();
+    canvas.refreshMenu();
     return;
   }
   // Calendar and Map are system layouts (their `modules`: the composite, docked, filling the canvas), reloaded as saved
   // on every press (decision 15); a favorite is a saved layout. Both load the same way.
-  const layout = tab.kind === 'system' ? findSystemLayout(id) : findLayout(id);
+  const layout = tab && tab.kind === 'system' ? findSystemLayout(id) : findLayout(id);
   if (!layout || !Array.isArray(layout.modules)) return;
   canvas.holdMemory(); // only the Workspace remembers: from here on nothing is written until it is shown again
   currentLayoutTab = id;
-  markLayoutTabs();
+  layoutBase = null;
+  renderLayoutTabs(); // a layout that is not a favorite gets its temporary tab
   nav.draw();
   showFavoritesNote('');
   favoritesNoteAt = from;
   noteUnderFavorites = true;
   try {
-    canvas.loadLayout(layout);
+    if (load) canvas.loadLayout(layout);
   } finally {
     noteUnderFavorites = false;
   }
+  rebaseLayout();
+  canvas.refreshMenu();
+}
+
+// Modified (Thomas, 2026-11-11): the layout shown is a saved one and the arrangement is no longer what it was when it was
+// shown. `layoutBase` is the arrangement a moment after the layout was shown (the canvas fits a load to the window, so
+// the stored definition itself would differ at once); layoutDiffers() (layouts.js) compares it with the canvas now, once a
+// frame after a change (never per mouse move). Update writes the canvas over the layout (PUT, the routes' own rules).
+// Nothing is stored; a guest, the Workspace, Calendar and Map (fixed or remembered by themselves) never show it.
+let layoutBase = null;
+let layoutModified = false;
+let layoutBaseTimer = 0;
+let layoutCheckFrame = 0;
+const layoutModifiedEl = document.createElement('span');
+layoutModifiedEl.id = 'layout-modified';
+layoutModifiedEl.className = 'layout-modified';
+layoutModifiedEl.hidden = true;
+function setModified(on) {
+  layoutModified = on;
+  placeModified();
+  canvas.refreshMenu();
+}
+function rebaseLayout() {
+  clearTimeout(layoutBaseTimer);
+  layoutBase = null;
+  if (layoutModified) setModified(false);
+  const id = currentLayoutTab;
+  if (!findLayout(id) || guestToken || me?.role === 'guest') return;
+  layoutBaseTimer = setTimeout(() => {
+    if (currentLayoutTab !== id) return;
+    layoutBase = canvas.captureLayout();
+    checkModified();
+  }, 400);
+}
+function arrangementChanged() {
+  if (!layoutBase || layoutCheckFrame) return;
+  layoutCheckFrame = requestAnimationFrame(() => { layoutCheckFrame = 0; checkModified(); });
+}
+function checkModified() {
+  if (!layoutBase) return;
+  const cap = canvas.captureLayout();
+  const now = layoutDiffers(layoutBase, cap);
+  if (now !== layoutModified) setModified(now);
+}
+async function updateLayout(layoutId) {
+  const id = layoutSpaceId();
+  const layout = findLayout(layoutId);
+  if (!id || !layout) return;
+  const captured = canvas.captureLayout();
+  try {
+    await layoutRequest('PUT', layoutUrl(id, layoutId), captured);
+    layoutBase = captured;
+    layoutNote(`Updated ${layout.name}.`);
+    setModified(false);
+    await refreshLayouts();
+  } catch (err) {
+    layoutNote(err.message || 'That did not work. Try again.');
+  }
+}
+// The mark beside the tab shown: "Modified" and, where this person may change the layout, the Update link.
+function placeModified() {
+  const layout = layoutModified ? findLayout(currentLayoutTab) : null;
+  const tab = layout ? layoutTabsEl.querySelector(`:scope > [data-layout-tab="${CSS.escape(layout.id)}"]`) : null;
+  if (!layout || !tab) { layoutModifiedEl.hidden = true; return; }
+  const shared = layoutList.shared.includes(layout);
+  layoutModifiedEl.replaceChildren(layoutModifiedEl.ownerDocument.createTextNode('Modified'));
+  if (mayChangeLayout(shared)) {
+    const b = layoutModifiedEl.ownerDocument.createElement('button');
+    b.type = 'button';
+    b.className = 'layout-update';
+    b.textContent = 'Update';
+    b.setAttribute('aria-label', `Update ${layout.name}`);
+    b.addEventListener('click', () => updateLayout(layout.id));
+    layoutModifiedEl.append(' ', b);
+  }
+  (tab.nextElementSibling?.classList.contains('layout-tab-pin') ? tab.nextElementSibling : tab).after(layoutModifiedEl);
+  layoutModifiedEl.hidden = false;
 }
 layoutTabsEl.addEventListener('click', (event) => {
   const button = event.target.closest('[data-layout-tab]');
