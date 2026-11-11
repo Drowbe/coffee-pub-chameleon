@@ -23,6 +23,7 @@ const { liveLimits, readSend, dataBytes } = require('./module-live');
 const { ChatHistory } = require('./chat-history');
 const { cleanReport: cleanAttention } = require('./attention');
 const { cleanFacts, iconKnown } = require('./facts');
+const { TagError } = require('./tags');
 const { LayoutError, cleanLayout, cleanSystemPatch, SYSTEM_IDS, SYSTEM_ICONS } = require('./layouts');
 const { ModuleLimits } = require('./module-limits');
 const { ModuleSettings, SettingError } = require('./module-settings');
@@ -336,6 +337,7 @@ const moduleHooks = proxyFor('moduleHooks');
 const chatHistory = proxyFor('chatHistory');
 const attention = proxyFor('attention');
 const facts = proxyFor('facts');
+const tags = proxyFor('tags');
 const chatPosts = proxyFor('chatPosts');
 const chatPreviewsAsked = proxyFor('chatPreviewsAsked');
 const moduleLinks = proxyFor('moduleLinks');
@@ -4800,6 +4802,107 @@ app.delete('/api/spaces/:id/facts/:module', (req, res) => {
   if (!found) return;
   facts.clear(ctx.space.id, found.manifest.id);
   res.json({ ok: true });
+});
+
+// --- tags (documentation/plans/plan-tags.md, "The contract" and "API"; server/tags.js) ------------------------------
+// One list of tags per space, shared by every module that opts in (`"tags": true`). Reading is for the space's people (and
+// a guest with the link). Making a tag takes the calling module's `write` there (`from` names it) and never a guest;
+// renaming, recolouring and deleting take the `manageTags` permission (moderators and owners by default; the admin
+// always), with no module involved. The rules (names, colours, limits) are server/tags.js's, in one place.
+const TAG_BODY_MAX = 1024; // a tag is a short name: more than this in the body is not one
+const tagRefusal = (what) => `You can't ${what} tags in this ${word('space')}.`;
+function tagsFor(req, res) {
+  const who = moduleViewer(req);
+  if (!who || who.keyed) return void res.status(401).json({ error: 'Sign in first.' });
+  const space = store.spaceById(req.params.id);
+  if (!space) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
+  const allowed = who.user ? hasOwnerRights(who.user) || space.members.includes(who.user.key) : who.guestSpace.id === space.id;
+  if (!allowed) return void res.status(403).json({ error: `You are not in that ${word('space')}.` });
+  return { who, space, perms: modulePerms(who, space.id) };
+}
+// The module a request says it comes from, for a route that has one: on here, opted in to tags, and available to this
+// person in this space; `need` is the module's access they must hold. Sends the refusal and answers null otherwise.
+function tagsModule(ctx, from, res, need) {
+  const found = typeof from === 'string' ? modules.enabled(from) : null;
+  if (!found) return void res.status(404).json({ error: `There is no such ${word('module')}.` });
+  const { manifest, entry } = found;
+  if (manifest.tags !== true) return void res.status(403).json({ error: `That ${word('module')} does not use tags.` });
+  if (!moduleSpaceAccess(entry, ctx.who, ctx.space)) return void res.status(403).json({ error: `That ${word('module')} is not available in this ${word('space')} for you.` });
+  if (!moduleCan(manifest, ctx.perms, 'read') || (need === 'write' && !moduleCan(manifest, ctx.perms, 'write'))) return void res.status(403).json({ error: `Your role can't do that in this ${word('module')}.` });
+  if (shutFromGuests(ctx.who, manifest, ctx.space.id)) return void res.status(403).json({ error: guestsShutRefusal(manifest) });
+  return found;
+}
+function tagsBodyOk(req, res) {
+  if (req.rawBody && req.rawBody.length > TAG_BODY_MAX) { res.status(413).json({ error: 'That is too big to be a tag.' }); return false; }
+  return true;
+}
+// Counts toward the module limits (server/module-limits.js `write`): under the calling module, else under 'tags'.
+function tagsLimited(moduleId, ctx, res) {
+  const limited = overLimit(moduleId, ctx.who.user.key, 'write');
+  if (!limited) return false;
+  res.status(429).set('Retry-After', String(limited.retrySeconds)).json({ error: limitMessage() });
+  return true;
+}
+function sendTagError(err, res) {
+  if (err instanceof TagError) return res.status(err.status).json({ error: err.message });
+  throw err;
+}
+app.get('/api/spaces/:id/tags', (req, res) => {
+  const ctx = tagsFor(req, res);
+  if (!ctx) return;
+  if (req.query.from !== undefined && !tagsModule(ctx, req.query.from, res, 'read')) return;
+  res.json({ tags: tags.list(ctx.space.id) });
+});
+app.post('/api/spaces/:id/tags', (req, res) => {
+  const ctx = tagsFor(req, res);
+  if (!ctx) return;
+  if (!ctx.who.user) return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} can't make tags.` });
+  if (!tagsBodyOk(req, res)) return;
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const found = tagsModule(ctx, body.from, res, 'write');
+  if (!found) return;
+  if (tagsLimited(found.manifest.id, ctx, res)) return;
+  try {
+    const { tag, made } = tags.add(ctx.space.id, body.name, body.color, ctx.who.user.key);
+    if (made) noteActivity(found.manifest.id, 'added a tag', ctx.who.user.key, `space:${ctx.space.id}`);
+    res.status(made ? 201 : 200).json({ tag });
+  } catch (err) {
+    sendTagError(err, res);
+  }
+});
+// Rename, recolour and delete: the permission first (a 403 says nothing of whether the tag exists), then the tag.
+function tagsManager(req, res) {
+  const ctx = tagsFor(req, res);
+  if (!ctx) return null;
+  if (!ctx.who.user || !ctx.perms.manageTags) return void res.status(403).json({ error: tagRefusal('rename, recolour or delete') });
+  if (!tagsBodyOk(req, res)) return null;
+  const from = req.query.from;
+  if (from !== undefined && !tagsModule(ctx, from, res, 'read')) return null;
+  if (tagsLimited(typeof from === 'string' ? from : 'tags', ctx, res)) return null;
+  return ctx;
+}
+app.patch('/api/spaces/:id/tags/:tag', (req, res) => {
+  const ctx = tagsManager(req, res);
+  if (!ctx) return;
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const tag = tags.update(ctx.space.id, req.params.tag, { name: body.name, color: body.color });
+    noteActivity(typeof req.query.from === 'string' ? req.query.from : 'tags', 'changed a tag', ctx.who.user.key, `space:${ctx.space.id}`);
+    res.json({ tag });
+  } catch (err) {
+    sendTagError(err, res);
+  }
+});
+app.delete('/api/spaces/:id/tags/:tag', (req, res) => {
+  const ctx = tagsManager(req, res);
+  if (!ctx) return;
+  try {
+    tags.remove(ctx.space.id, req.params.tag);
+    noteActivity(typeof req.query.from === 'string' ? req.query.from : 'tags', 'deleted a tag', ctx.who.user.key, `space:${ctx.space.id}`);
+    res.status(204).end();
+  } catch (err) {
+    sendTagError(err, res);
+  }
 });
 
 // --- saved layouts ------------------------------------------------------------------------------
@@ -10561,6 +10664,17 @@ app.get('/api/modules/stream', (req, res) => {
   const onMarkersBatch = (batch) => {
     for (const known of markersOfBatch(batch).values()) onMarkers(known.change, known);
   };
+  // A tag was made, changed or deleted in a space this viewer is in (server/tags.js): the tag goes with the space's id, to a
+  // stream of that space and to a page without a space that lists the viewer's own spaces. The viewer is checked now, not
+  // when the stream opened, so someone who has left the space hears nothing more of it.
+  const onTags = listenIn(env, (c) => {
+    const there = store.spaceById(c.spaceId);
+    if (!there) return;
+    const inIt = who.user ? hasOwnerRights(who.user) || there.members.includes(who.user.key) : Boolean(who.guestSpace) && who.guestSpace.id === there.id;
+    if (!inIt) return;
+    for (const v of views) if (v.space ? v.space.id === there.id : Boolean(who.user) && there.members.includes(who.user.key)) send(v, 'tags', c, { op: c.op, spaceId: there.id, tag: c.tag });
+  });
+  tags.on('change', onTags);
   moduleData.on('change', onMarkers);
   moduleData.on('change', onChange);
   moduleData.on('changes', onMarkersBatch);
@@ -10607,6 +10721,7 @@ app.get('/api/modules/stream', (req, res) => {
     giveBack();
     if (liveConnection) liveConnection.close();
     moduleSettings.off('change', onSettings);
+    tags.off('change', onTags);
     moduleData.off('change', onMarkers);
     moduleData.off('change', onChange);
     moduleData.off('changes', onMarkersBatch);

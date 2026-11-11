@@ -243,7 +243,7 @@ test("a restore turns every admin that is not the host admin's stand-in into an 
 // What the server keeps in an environment's folder, one of each kind (and the copy's verdict).
 const FILES = {
   allowed: [
-    'chat.json', 'layouts.json', 'attention.json', 'facts.json', 'ai-usage.json', 'ai-log.jsonl',
+    'chat.json', 'layouts.json', 'attention.json', 'facts.json', 'tags.json', 'ai-usage.json', 'ai-log.jsonl',
     'images/ownerkey/player.png', 'images/site/icon.png', 'images/spaces/trip01.webp',
     'modules/registry.json', 'modules/settings.json', 'modules/activity.json', 'modules/announced.json', 'modules/links.json', 'modules/schedules.json', 'modules/notifications.json', 'modules/bus.json',
     'modules/todo/data/environment.json', 'modules/todo/data/space-trip01.json', 'modules/todo/trash/space-trip01.json',

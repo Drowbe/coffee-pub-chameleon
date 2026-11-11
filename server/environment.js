@@ -24,6 +24,7 @@ const { ModuleHooks } = require('./module-hooks');
 const { ChatHistory } = require('./chat-history');
 const { Attention } = require('./attention');
 const { Facts } = require('./facts');
+const { Tags } = require('./tags');
 const { ModuleLinks } = require('./module-links');
 const { ModuleBus } = require('./module-bus');
 const { ModuleSettings } = require('./module-settings');
@@ -79,8 +80,9 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   // What a Clear took, held for its Undo (server/module-holds.js); index.js sets runIn and onExpire.
   const moduleHolds = new ModuleHolds(modules.dir, { holdSeconds: undoSeconds(process.env.CLEAR_UNDO_SECONDS) });
   store.extraPermissions = () => modules.permissionList(); // enabled modules' permissions join the Roles grid
-  // A library module's permissions that guests never have, whatever is stored for them (server/vault-types.js).
-  store.guestLocked = () => modules.enabledAll().filter(({ manifest }) => manifest.library).flatMap(({ manifest }) => GUEST_LOCKED.map((k) => `module.${manifest.id}.${k}`));
+  // The permissions guests never have, whatever is stored for them: a library module's (server/vault-types.js) and changing the
+  // space's tags (server/tags.js).
+  store.guestLocked = () => [...modules.enabledAll().filter(({ manifest }) => manifest.library).flatMap(({ manifest }) => GUEST_LOCKED.map((k) => `module.${manifest.id}.${k}`)), 'manageTags'];
   // A manifest's text in this environment's words, and a module's display name and icon (server/store.js).
   modules.wordsOf = () => store.resolvedWords();
   modules.beforeOff = (id) => { for (const m of [id, ...modules.dependentsOf(id)]) moduleHolds.expireModule(m); };
@@ -174,6 +176,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   const attention = new Attention(dataDir);
   const facts = new Facts(dataDir);
+  const tags = new Tags(dataDir); // the shared tags, one list per space (server/tags.js)
   const moduleLinks = new ModuleLinks(modules.dir);
   const moduleBus = new ModuleBus(modules.dir);
   const moduleSettings = new ModuleSettings(modules.dir);
@@ -273,7 +276,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
 
   return {
     slug, dataDir,
-    store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
+    store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, tags, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
     geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, moduleLive, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
     moduleActivity, noteActivity, saveActivity, externalCalendars,
   };

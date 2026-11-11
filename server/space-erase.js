@@ -8,6 +8,7 @@
 //   layouts.json                          its shared and personal layouts and favourites
 //   chat.json, chat-private.json          its chat history and the private messages (AI threads) in it
 //   attention.json, facts.json            what is asking for attention, what each module reported
+//   tags.json                             the space's tags (server/tags.js)
 //   modules/settings.json                 module settings for the space
 //   modules/<module>/data/space-<id>.json         every module's records scoped to it
 //   modules/<module>/uploads/space-<id>/          every module's files scoped to it (and their thumbnails)
@@ -43,6 +44,7 @@ function eraseSpace(env, id) {
     ['chat', () => { env.chatHistory.forgetSpace(id); return 0; }],
     ['attention', () => { env.attention.forgetSpace(id); return 0; }],
     ['facts', () => { env.facts.forgetSpace(id); return 0; }],
+    ['tags', () => env.tags.forgetSpace(id)],
     ['activity', () => {
       const scope = `space:${id}`;
       let n = 0;
