@@ -2817,7 +2817,7 @@
   }
   function notesPlace() {
     const box = $('notes-box');
-    if (box.hidden) return;
+    if (!box || box.hidden) return; // no box once the module is gone
     if (!notesPos) { box.style.left = ''; box.style.top = ''; box.style.right = ''; box.style.bottom = ''; return; }
     const a = box.parentElement;
     notesPos = wbNotesClamp(notesPos, { w: box.offsetWidth, h: box.offsetHeight }, { w: a.clientWidth, h: a.clientHeight });
@@ -3262,7 +3262,7 @@
   function placeFind() {
     findBar.style.top = '';
     const strip = $('paint');
-    if (strip.hidden || !strip.offsetWidth) return;
+    if (!strip || strip.hidden || !strip.offsetWidth) return;
     const bar = findBar.getBoundingClientRect();
     const st = strip.getBoundingClientRect();
     if (bar.left < st.right && bar.top < st.bottom) findBar.style.top = `${st.bottom - surface.getBoundingClientRect().top + 4}px`;
@@ -3868,14 +3868,18 @@
   // ---- the width ------------------------------------------------------------------------------------------------------
   // The module's width, not the window's (a bundled module runs in the page). The stylesheet keys on `.app.narrow`.
   let fitted = false;
-  new ResizeObserver(() => {
+  const widthWatch = new ResizeObserver(() => {
+    const app = $('app');
+    if (!app || !host.rootElement) { widthWatch.disconnect(); return; } // its content is gone: nothing to fit, ever
+    if (!host.rootElement.isConnected) return; // moved for a moment (a window or dock change): fit when it is back
     const w = host.rootElement.clientWidth;
-    $('app').classList.toggle('narrow', w > 0 && w < 520);
+    app.classList.toggle('narrow', w > 0 && w < 520);
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
     notesPlace(); // the notes box stays whole in the area
     updateStatus(); // the overview: its size, and whether there is room for it
     if (finding) placeFind(); // the find bar clear of the colour strip at the new width
-  }).observe(host.rootElement);
+  });
+  widthWatch.observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
 
   // ---- start ------------------------------------------------------------------------------------------------------------
