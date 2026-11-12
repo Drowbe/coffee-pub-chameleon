@@ -70,7 +70,7 @@ test('the styles: locked to the bottom, the safe area, tokens only, 44 px on a p
 const SURFACES = [
   { name: 'the phase sheet', file: 'public/phase-sheet.js', from: 'export function openPhaseSheet(' },
   { name: 'the Set up panel', file: 'public/space-setup.js', from: 'export function createSpaceSetup(' },
-  { name: 'the layout sheet', file: 'public/space.js', from: 'function openLayoutSheet(', to: 'function openSaveLayout() {' },
+  { name: 'the layout sheet', file: 'public/space.js', from: 'function openLayoutSheet(', to: 'function openSaveLayout(' },
   { name: 'the layout icon sheet', file: 'public/space.js', from: 'function openIconSheet(', to: 'function startChangeIcon(' },
 ];
 
