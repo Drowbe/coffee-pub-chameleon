@@ -12,22 +12,26 @@ Everything here is free for commercial use and redistribution. Nothing is loaded
 | Name | Version | SPDX | File | SHA-256 | Licence file | Source |
 |---|---|---|---|---|---|---|
 | marked | 18.2.0 | MIT | `src/documents-lib-0-marked.js` | `14a9dd96ae1179e626a9a1df1837b8dccf865333cb8e2fe09355f80fc2410590` | `vendor/LICENSE.marked` | https://github.com/markedjs/marked, npm `marked@18.2.0` |
-| prosemirror-model | 1.25.13 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-model` | npm `prosemirror-model@1.25.13` |
-| prosemirror-transform | 1.12.5 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-transform` | npm `prosemirror-transform@1.12.5` |
-| prosemirror-state | 1.4.4 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-state` | npm `prosemirror-state@1.4.4` |
-| prosemirror-view | 1.42.9 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-view` | npm `prosemirror-view@1.42.9` |
-| prosemirror-commands | 1.7.2 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-commands` | npm `prosemirror-commands@1.7.2` |
-| prosemirror-keymap | 1.2.3 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-keymap` | npm `prosemirror-keymap@1.2.3` |
-| prosemirror-history | 1.5.1 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-history` | npm `prosemirror-history@1.5.1` |
-| prosemirror-inputrules | 1.5.1 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-inputrules` | npm `prosemirror-inputrules@1.5.1` |
-| prosemirror-schema-list | 1.6.0 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-schema-list` | npm `prosemirror-schema-list@1.6.0` |
-| prosemirror-tables | 1.8.5 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-tables` | npm `prosemirror-tables@1.8.5` |
-| prosemirror-dropcursor | 1.8.4 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-dropcursor` | npm `prosemirror-dropcursor@1.8.4` |
-| prosemirror-gapcursor | 1.4.1 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-gapcursor` | npm `prosemirror-gapcursor@1.4.1` |
-| prosemirror-markdown (its `src/to_markdown.ts` only) | 1.13.9 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.prosemirror-markdown` | npm `prosemirror-markdown@1.13.9` |
-| orderedmap | 2.1.1 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.orderedmap` | npm `orderedmap@2.1.1` |
-| rope-sequence | 1.3.4 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.rope-sequence` | npm `rope-sequence@1.3.4` |
-| w3c-keyname | 2.2.8 | MIT | `src/documents-lib-0-prosemirror.js` | `c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d` | `vendor/LICENSE.w3c-keyname` | npm `w3c-keyname@2.2.8` |
+| prosemirror-model | 1.25.13 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-model` | npm `prosemirror-model@1.25.13` |
+| prosemirror-transform | 1.12.5 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-transform` | npm `prosemirror-transform@1.12.5` |
+| prosemirror-state | 1.4.4 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-state` | npm `prosemirror-state@1.4.4` |
+| prosemirror-view | 1.42.9 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-view` | npm `prosemirror-view@1.42.9` |
+| prosemirror-commands | 1.7.2 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-commands` | npm `prosemirror-commands@1.7.2` |
+| prosemirror-keymap | 1.2.3 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-keymap` | npm `prosemirror-keymap@1.2.3` |
+| prosemirror-history | 1.5.1 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-history` | npm `prosemirror-history@1.5.1` |
+| prosemirror-inputrules | 1.5.1 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-inputrules` | npm `prosemirror-inputrules@1.5.1` |
+| prosemirror-schema-list | 1.6.0 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-schema-list` | npm `prosemirror-schema-list@1.6.0` |
+| prosemirror-tables | 1.8.5 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-tables` | npm `prosemirror-tables@1.8.5` |
+| prosemirror-dropcursor | 1.8.4 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-dropcursor` | npm `prosemirror-dropcursor@1.8.4` |
+| prosemirror-gapcursor | 1.4.1 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-gapcursor` | npm `prosemirror-gapcursor@1.4.1` |
+| prosemirror-markdown (its `src/to_markdown.ts` only) | 1.13.9 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.prosemirror-markdown` | npm `prosemirror-markdown@1.13.9` |
+| orderedmap | 2.1.1 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.orderedmap` | npm `orderedmap@2.1.1` |
+| rope-sequence | 1.3.4 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.rope-sequence` | npm `rope-sequence@1.3.4` |
+| w3c-keyname | 2.2.8 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.w3c-keyname` | npm `w3c-keyname@2.2.8` |
+| yjs | 13.6.33 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.yjs` | npm `yjs@13.6.33` |
+| y-prosemirror | 1.3.7 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.y-prosemirror` | npm `y-prosemirror@1.3.7` |
+| lib0 | 0.2.120 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.lib0` | npm `lib0@0.2.120` |
+| isomorphic.js | 0.2.5 | MIT | `src/documents-lib-0-prosemirror.js` | `a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845` | `vendor/LICENSE.isomorphic.js` | npm `isomorphic.js@0.2.5` |
 
 The hash in the table is enforced by `tools/check-vendored-hashes.mjs`. For marked it pins the file in this repository (the package's `lib/marked.umd.js` with its `sourceMappingURL` line removed), not the npm package file; the package file's own hash is the one in the first table. For ProseMirror every row pins the one built file: one row for each package, so each package has its version and its own LICENSE file checked by `tools/check-third-party-licences.mjs`.
 
@@ -113,26 +117,26 @@ Safety rule 1 of the Documents plan: nothing a person wrote reaches `innerHTML`,
 [
   {
     "file": "src/documents-lib-0-prosemirror.js",
-    "sha256": "c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d",
-    "line": "toLowerCase()])&&(n=o.map(s=>\"<\"+s+\">\").join(\"\")+n+o.map(s=>\"</\"+s+\">\").reverse().join(\"\")),r.innerHTML=kc(n),o)for(let s=0;s<o.length;s++)r=r.querySelector(o[s])||r;for(let s=0;s<t.styleSheets.length;s++){",
+    "sha256": "a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845",
+    "line": "toLowerCase()])&&(n=s.map(o=>\"<\"+o+\">\").join(\"\")+n+s.map(o=>\"</\"+o+\">\").reverse().join(\"\")),r.innerHTML=Lg(n),s)for(let o=0;o<s.length;o++)r=r.querySelector(s[o])||r;for(let o=0;o<t.styleSheets.length;o++){",
     "reason": "The one write (prosemirror-view, readHTML, the clipboard reader). The HTML string from a paste or a drop is set on the body of a detached document made with document.implementation.createHTMLDocument: that document is never put in the page, runs no script, fires no event handler and loads nothing. ProseMirror then reads that tree only through the schema's own rules, which can make only the schema's nodes and marks with checked values. The Documents module is to take paste and drop before the library does (plan-documents-rich-editor.md, Paste), so this line is not meant to be reached at all."
   },
   {
     "file": "src/documents-lib-0-prosemirror.js",
-    "sha256": "c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d",
-    "line": "i=t.type==\"cut\";if(r.empty)return;let o=Kt?null:t.clipboardData,s=r.content(),{dom:l,text:a}=zr(n,s);o?(t.preventDefault(),o.clearData(),o.setData(\"text/html\",l.innerHTML),o.setData(\"text/plain\",a)):$c(",
+    "sha256": "a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845",
+    "line": "i=t.type==\"cut\";if(r.empty)return;let s=jr?null:t.clipboardData,o=r.content(),{dom:l,text:c}=El(n,o);s?(t.preventDefault(),s.clearData(),s.setData(\"text/html\",l.innerHTML),s.setData(\"text/plain\",c)):oy(",
     "reason": "A read (prosemirror-view, the copy and cut handler). ProseMirror draws the selection into a detached element from the schema's own drawing rules and reads that element's HTML to put it on the clipboard. Nothing is written into the page."
   },
   {
     "file": "src/documents-lib-0-prosemirror.js",
-    "sha256": "c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d",
-    "line": "null,i,e):Ht(n,r.textContent,r.innerHTML,i,e)},50)}function Ht(n,e,t,r,i){let o=Pr(n,e,t,r,n.state.selection.$from);if(n.someProp(\"handlePaste\",a=>a(n,i,o||x.empty)))return!0;if(!o)return!1;let s=Wc(o),",
+    "sha256": "a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845",
+    "line": "null,i,e):Hr(n,r.textContent,r.innerHTML,i,e)},50)}function Hr(n,e,t,r,i){let s=Nl(n,e,t,r,n.state.selection.$from);if(n.someProp(\"handlePaste\",c=>c(n,i,s||w.empty)))return!0;if(!s)return!1;let o=ly(s),",
     "reason": "A read (prosemirror-view, capturePaste, the fallback for a browser with no clipboard data on the paste event). It reads the HTML of a temporary element the browser pasted into and hands the string to the same reader as the first exemption; this line sets no HTML itself."
   },
   {
     "file": "src/documents-lib-0-prosemirror.js",
-    "sha256": "c54edc678c9ca778b73e8e2299c53a3b998ea95dadf93a2dcadf7c21e346938d",
-    "line": "dataTransfer.clearData(),t.dataTransfer.setData(Kt?\"Text\":\"text/html\",a.innerHTML),t.dataTransfer.effectAllowed=\"copyMove\",Kt||t.dataTransfer.setData(\"text/plain\",c),n.dragging=new Cn(f,gs(n,t),s)};G.",
+    "sha256": "a804ca8966ddd06e32e9e781e942f6f5e27ad7ec3d429eb316775f65bc0b9845",
+    "line": "dataTransfer.clearData(),t.dataTransfer.setData(jr?\"Text\":\"text/html\",c.innerHTML),t.dataTransfer.effectAllowed=\"copyMove\",jr||t.dataTransfer.setData(\"text/plain\",a),n.dragging=new us(h,Af(n,t),o)};me.",
     "reason": "A read (prosemirror-view, the drag start handler). As for copy: the dragged selection is drawn into a detached element from the schema's own drawing rules and its HTML is put on the drag's data. Nothing is written into the page."
   }
 ]
