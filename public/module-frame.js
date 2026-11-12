@@ -227,8 +227,19 @@ export function createModuleFrame(opts = {}) {
     tbFire({ id: a.id, ...(typeof a.on === 'boolean' ? { on: a.on } : {}), el: from || null });
   }
   // The module's one select (host.header.set, kind 'select'): a divider, then a button with the current choice's words and a
-  // caret, after the title. A click is the module's to answer (it opens its own menu under the button); the label is cut
-  // before the title is, and the title before the icons fold.
+  // caret, after the title. A click, Enter, Space or ArrowDown opens the host's menu (host-menu.js) of the select's `items`
+  // right under the button; a pick arrives as the select's event with `value`, the picked item's id. host-menu.js keeps
+  // aria-expanded and gives the focus back to the button. The label is cut before the title is, and the title before the icons fold.
+  const selectItems = (a, b) => {
+    const row = (r, siblings) => {
+      if (r.divider) return { divider: true };
+      if (r.heading) return { heading: r.heading };
+      if (r.items) return { label: r.label, ...(r.disabled ? { disabled: true } : {}), items: r.items.map((k) => row(k, r.items)) };
+      return { label: r.label, ...(r.disabled ? { disabled: true } : {}), ...(siblings.some((x) => x.current) ? { radio: true, checked: Boolean(r.current) } : {}), onPick: () => tbFire({ id: a.id, value: r.id, el: b }) };
+    };
+    const list = Array.isArray(a.items) ? a.items : [];
+    return list.map((r) => row(r, list));
+  };
   let headSelect = null;
   function drawTitleSelect() {
     const a = (Array.isArray(tbOpts.actions) ? tbOpts.actions : []).find((x) => x.kind === 'select');
@@ -242,27 +253,9 @@ export function createModuleFrame(opts = {}) {
     b.dataset.tip = a.tip;
     b.disabled = Boolean(a.disabled);
     b.append(el('span', 'mf-titlebar-select-label', { text: a.label }), icon('caret-down', 'mf-caret'));
-    // The menu is the module's own, drawn in its page, so the frame cannot see it close: it reads as open until the next press
-    // or Escape anywhere, or the button gets focus back. A press on the button itself while open is the module's toggle off.
-    let wasOpen = false;
-    const settle = (e) => {
-      wasOpen = Boolean(e && e.type === 'pointerdown' && b.contains(e.target));
-      b.setAttribute('aria-expanded', 'false');
-      doc.removeEventListener('pointerdown', settle, true);
-      doc.removeEventListener('keydown', settleKey, true);
-      b.removeEventListener('focus', settle);
-      // Escape with the keyboard on the page (not in the module): focus goes back to this button, not to nothing. A press
-      // elsewhere keeps the focus where the person put it.
-      if (e && e.type === 'keydown' && (!doc.activeElement || doc.activeElement === doc.body)) b.focus();
-    };
-    const settleKey = (e) => { if (e.key === 'Escape') settle(e); };
-    b.addEventListener('click', () => {
-      tbFire({ id: a.id, el: b });
-      if (wasOpen) { wasOpen = false; return; }
-      b.setAttribute('aria-expanded', 'true');
-      doc.addEventListener('pointerdown', settle, true);
-      doc.addEventListener('keydown', settleKey, true);
-      b.addEventListener('focus', settle);
+    b.addEventListener('click', () => openHostMenu(b, selectItems(a, b)));
+    b.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' && !hostMenuOpen(b)) { e.preventDefault(); openHostMenu(b, selectItems(a, b)); }
     });
     wrap.append(b);
     if (!headSelect) { headSelect = wrap; headTitle.after(wrap); }
