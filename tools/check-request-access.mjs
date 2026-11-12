@@ -75,8 +75,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-request-access-'));
   const mk = (name, over = {}, limits = {}) => new AccessRequests(path.join(tmp, name), { log() {}, limits: { ...readLimits({}), ...limits }, ...over });
   const DAY = 24 * 3600000;
   await test('limits read from the environment with the decided defaults', () => {
-    assert.deepEqual(readLimits({}), { perDay: 5, perAddress: 20, pendingPerSpace: 50, days: 7 });
-    assert.deepEqual(readLimits({ ACCESS_REQUESTS_PER_DAY: '2', ACCESS_REQUEST_DAYS: '3' }), { perDay: 2, perAddress: 20, pendingPerSpace: 50, days: 3 });
+    assert.deepEqual(readLimits({}), { perDay: 5, perAddress: 20, pendingPerSpace: 50, pendingGuestsPerSpace: 20, days: 7 });
+    assert.deepEqual(readLimits({ ACCESS_REQUESTS_PER_DAY: '2', ACCESS_REQUEST_DAYS: '3' }), { perDay: 2, perAddress: 20, pendingPerSpace: 50, pendingGuestsPerSpace: 20, days: 3 });
     assert.equal(readLimits({ ACCESS_REQUESTS_PER_DAY: '0', ACCESS_REQUEST_DAYS: 'x' }).perDay, 5);
   });
   await test('one pending request per person per space; another space is fine; 409 with a sentence', () => {
@@ -87,13 +87,24 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-request-access-'));
     a.create('s1', who('k2'));
     assert.equal(a.pendingFor('s1').length, 2);
   });
-  await test('the daily limit counts every state, then lifts after a day', () => {
+  await test('the daily limit counts requests that were not withdrawn, then lifts after a day', () => {
     const a = mk('day', {}, { perDay: 3 });
     const t0 = 1_000_000_000_000;
-    for (let i = 0; i < 3; i += 1) { a.create('s1', who('k1'), t0 + i); a.withdraw('s1', who('k1'), t0 + i); }
-    assert.throws(() => a.create('s1', who('k1'), t0 + 10), (e) => e.status === 429 && /today/.test(e.message));
+    for (let i = 0; i < 5; i += 1) { a.create('s1', who('k1'), t0 + i); a.withdraw('s1', who('k1'), t0 + i); }
+    for (let i = 0; i < 3; i += 1) a.create(`p${i}`, who('k1'), t0 + 10 + i);
+    assert.throws(() => a.create('s1', who('k1'), t0 + 20), (e) => e.status === 429 && /today/.test(e.message));
     a.create('s1', who('k2'), t0 + 10);
-    a.create('s1', who('k1'), t0 + DAY + 5);
+    a.create('s1', who('k1'), t0 + DAY + 50);
+  });
+  await test('a denial holds for a day for that person and space only', () => {
+    const a = mk('cool');
+    const t0 = 1_000_000_000_000;
+    const r = a.create('s1', who('k1'), t0);
+    a.decide('s1', r.id, 'deny', 'adm', t0 + 5);
+    assert.throws(() => a.create('s1', who('k1'), t0 + 6), (e) => e.status === 429 && e.message === 'That request was declined. Try again tomorrow.');
+    a.create('s2', who('k1'), t0 + 6);
+    a.create('s1', who('k2'), t0 + 6);
+    a.create('s1', who('k1'), t0 + DAY + 10);
   });
   await test('the pending cap per space bounds what an owner is shown', () => {
     const a = mk('cap', {}, { pendingPerSpace: 2 });
@@ -240,6 +251,7 @@ async function world(srv) {
 
 let A = null;
 let C = null;
+let D = null;
 try {
   A = await startServer('a', { ACCESS_REQUESTS_PER_DAY: '3' });
   const a = await world(A);
@@ -432,7 +444,7 @@ try {
     assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, who.outsider)).status, 409, 'a member cannot ask');
   });
 
-  await test('deny, ask again, withdraw, and the daily limit (3 here)', async () => {
+  await test('deny, the cooldown, and withdrawing nothing', async () => {
     const asker = { token: tokens.out2 };
     const first = await A.call('POST', `/api/spaces/${ids.req}/request`, asker);
     assert.equal(first.status, 201);
@@ -440,19 +452,14 @@ try {
     assert.equal((await A.call('POST', `/api/spaces/${ids.req}/access-requests/${pending.id}`, { ...who.owner, body: { decision: 'deny' } })).status, 200);
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}`, asker)).status, 404, 'declined: still a stranger');
     assert.equal((await note(tokens.out2)).some((x) => /declined/.test(x.title)), true, 'told');
-    assert.equal((await A.call('GET', '/api/spaces', asker)).json.spaces.find((s) => s.id === ids.req).request, 'request', 'may ask again');
-    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, asker)).status, 201);
-    assert.equal((await A.call('GET', '/api/spaces', asker)).json.spaces.find((s) => s.id === ids.req).request, 'pending');
-    assert.equal((await A.call('DELETE', `/api/spaces/${ids.req}/request`, asker)).status, 200, 'withdrawn');
+    const shown = (await A.call('GET', '/api/spaces', asker)).json.spaces.find((s) => s.id === ids.req);
+    assert.deepEqual([shown.request, shown.answer], ['request', 'denied']);
+    const cool = await A.call('POST', `/api/spaces/${ids.req}/request`, asker);
+    assert.equal(cool.status, 429);
+    assert.equal(cool.json.error, 'That request was declined. Try again tomorrow.');
     const gone = await A.call('DELETE', `/api/spaces/${ids.req}/request`, asker);
     assert.equal(gone.status, 404);
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}/access-requests`, who.owner)).json.requests.some((r) => r.name === 'Pia Outside'), false);
-    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, asker)).status, 201, 'the third in a day');
-    const fourth = await A.call('DELETE', `/api/spaces/${ids.req}/request`, asker);
-    assert.equal(fourth.status, 200);
-    const over = await A.call('POST', `/api/spaces/${ids.req}/request`, asker);
-    assert.equal(over.status, 429);
-    assert.match(over.json.error, /today/);
     assert.equal((await A.call('DELETE', `/api/spaces/${UNKNOWN}/request`, asker)).json.error, gone.json.error, 'withdrawing from nothing and from a non-space read alike');
     assert.equal((await A.call('DELETE', `/api/spaces/${ids.closed}/request`, asker)).json.error, gone.json.error);
     assert.equal((await A.call('DELETE', `/api/spaces/${ids.req}/request`, { ...who.none })).status, 401);
@@ -511,7 +518,7 @@ try {
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status, 401);
   });
 
-  await test('a door guest\'s denial is told to them; they may ask again; link and unknown ids are the same refusal', async () => {
+  await test('a door guest\'s denial is told to them; they may not ask again for a day; link and unknown ids are the same refusal', async () => {
     const g = { cookie: `guest_session=${door.issue(A.secret(), { slug: '', id: 'guest-den00001', name: 'Dana', versions: {}, epoch: 1 })}` };
     assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, g)).status, 201);
     const id = (await A.call('GET', `/api/spaces/${ids.req}/access-requests`, who.owner)).json.requests.find((x) => x.name === 'Dana').id;
@@ -520,7 +527,9 @@ try {
     assert.deepEqual([s.state, s.answer], ['request', 'denied']);
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status === 200, false);
     assert.equal(A.access().grants.some((x) => x.guest === 'guest-den00001'), false);
-    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, g)).status, 201, 'again');
+    const again = await A.call('POST', `/api/spaces/${ids.req}/request`, g);
+    assert.equal(again.status, 429, 'a denial holds for a day');
+    assert.equal(again.json.error, 'That request was declined. Try again tomorrow.');
   });
 
   await test('turning the switch off: the space leaves the stranger\'s list and asking is 404; a granted guest and members stay in', async () => {
@@ -571,6 +580,75 @@ try {
     const raw = fs.readFileSync(path.join(C.dataDir, 'access.json'), 'utf8');
     const reread = new AccessRequests(C.dataDir, { log() {} });
     assert.deepEqual(JSON.parse(JSON.stringify({ requests: reread.requests, grants: reread.grants })), JSON.parse(raw));
+  });
+
+  // Server D: the four fixes after the independent read.
+  D = await startServer('d', { ACCESS_REQUESTS_PER_DAY: '3', ACCESS_REQUESTS_PENDING_GUESTS_PER_SPACE: '2', ACCESS_REQUESTS_PENDING_PER_SPACE: '50', ACCESS_REQUESTS_PER_ADDRESS: '1000' });
+  const d = await world(D);
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
+  const dAsk = (id, opts) => D.call('POST', `/api/spaces/${id}/request`, opts);
+  const dGuest = (id, name = 'Gus') => ({ cookie: guestCookie(D, id, name) });
+  await test('the picture: served to someone who may ask, byte-identical 404 for a closed space and an unknown id', async () => {
+    for (const id of [d.ids.req, d.ids.closed]) {
+      const up = await fetch(`http://127.0.0.1:${D.port}/api/spaces/${id}/image`, { method: 'PUT', headers: { authorization: `Bearer ${d.tokens.admin}`, 'content-type': 'image/png' }, body: png });
+      assert.equal(up.status, 200);
+    }
+    const raw = async (url, opts) => { const r = await fetch(`http://127.0.0.1:${D.port}${url}`, { headers: opts.token ? { authorization: `Bearer ${opts.token}` } : { cookie: opts.cookie } }); return { status: r.status, ctype: r.headers.get('content-type'), body: Buffer.from(await r.arrayBuffer()) }; };
+    const stranger = await raw(`/img/space/${d.ids.req}`, { token: d.tokens.out1 });
+    assert.equal(stranger.status, 200);
+    assert.deepEqual(stranger.body, png);
+    const guest = await raw(`/img/space/${d.ids.req}`, dGuest('guest-img00001'));
+    assert.equal(guest.status, 200);
+    for (const opts of [{ token: d.tokens.out1 }, dGuest('guest-img00001')]) {
+      const closed = await raw(`/img/space/${d.ids.closed}`, opts);
+      const unknown = await raw('/img/space/nosuchspace', opts);
+      assert.equal(closed.status, 404);
+      assert.deepEqual(closed, unknown, 'a closed space reads as an unknown id');
+    }
+    assert.equal((await D.call('PATCH', `/api/spaces/${d.ids.req}`, { token: d.tokens.admin, body: { requestAccess: false } })).status, 200);
+    assert.equal((await raw(`/img/space/${d.ids.req}`, { token: d.tokens.out1 })).status, 404, 'the switch off');
+    assert.equal((await D.call('PATCH', `/api/spaces/${d.ids.req}`, { token: d.tokens.admin, body: { requestAccess: true } })).status, 200);
+  });
+  await test('a denial: the same marker (answer: denied) for an account and a guest, other keys exact; a day\'s cooldown', async () => {
+    const g = dGuest('guest-deny0001', 'Dee');
+    assert.equal((await dAsk(d.ids.req, { token: d.tokens.out1 })).status, 201);
+    assert.equal((await dAsk(d.ids.req, g)).status, 201);
+    const list = (await D.call('GET', `/api/spaces/${d.ids.req}/access-requests`, { token: d.tokens.admin })).json.requests;
+    for (const r of list) assert.equal((await D.call('POST', `/api/spaces/${d.ids.req}/access-requests/${r.id}`, { token: d.tokens.admin, body: { decision: 'deny' } })).status, 200);
+    const acct = (await D.call('GET', '/api/spaces', { token: d.tokens.out1 })).json.spaces.find((s) => s.id === d.ids.req);
+    assert.deepEqual(Object.keys(acct).sort(), ['answer', 'description', 'hasImage', 'id', 'name', 'request']);
+    assert.deepEqual([acct.request, acct.answer], ['request', 'denied']);
+    const pres = (await D.call('GET', '/api/presence', { token: d.tokens.out1 })).json.spaces.find((s) => s.id === d.ids.req);
+    assert.deepEqual(pres, acct, 'presence says the same');
+    const gs = (await D.call('GET', '/api/guest-door', g)).json.spaces.find((s) => s.id === d.ids.req);
+    assert.equal(gs.answer, acct.answer, 'one marker for both');
+    const other = (await D.call('GET', '/api/spaces', { token: d.tokens.out2 })).json.spaces.find((s) => s.id === d.ids.req);
+    assert.deepEqual(Object.keys(other).sort(), ['description', 'hasImage', 'id', 'name', 'request'], 'nobody else sees it');
+    for (const o of [{ token: d.tokens.out1 }, g]) {
+      const again = await dAsk(d.ids.req, o);
+      assert.equal(again.status, 429);
+      assert.equal(again.json.error, 'That request was declined. Try again tomorrow.');
+    }
+    assert.equal((await dAsk(d.ids.req, { token: d.tokens.out2 })).status, 201, 'someone else may ask');
+  });
+  await test('a withdrawn request does not count toward the daily limit (3 here)', async () => {
+    const t = { token: d.tokens.out3 };
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal((await dAsk(d.ids.req, t)).status, 201, `ask ${i}`);
+      assert.equal((await D.call('DELETE', `/api/spaces/${d.ids.req}/request`, t)).status, 200);
+    }
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal((await dAsk(d.ids.req, t)).status, 201);
+      if (i < 2) assert.equal((await D.call('DELETE', `/api/spaces/${d.ids.req}/request`, t)).status, 200);
+    }
+    assert.equal((await D.call('DELETE', `/api/spaces/${d.ids.req}/request`, t)).status, 200);
+  });
+  await test('guests wait apart from accounts: a full guest line (2 here) does not block an account', async () => {
+    for (const id of ['guest-cap00001', 'guest-cap00002']) assert.equal((await dAsk(d.ids.req, dGuest(id))).status, 201);
+    const third = await dAsk(d.ids.req, dGuest('guest-cap00003'));
+    assert.equal(third.status, 429);
+    assert.match(third.json.error, /waiting/);
+    assert.equal((await dAsk(d.ids.req, { token: d.tokens.out4 })).status, 201, 'an account still gets in line');
   });
 } catch (err) {
   failed += 1;
