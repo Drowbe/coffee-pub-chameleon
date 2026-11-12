@@ -177,6 +177,10 @@
       e('gridDelete', 'Delete grid', false),
     ];
   }
+  // The Insert menu's order: the Grid group (heading and entries) first while the caret is in a grid, and no Grid group at all otherwise.
+  function dlRichInsertItems(base, grid) {
+    return grid && grid.length ? [{ heading: 'Grid' }, ...grid, ...base] : base.slice();
+  }
   // Marks the cell that holds the caret (class dl-cell-active); a decoration only, so the text and the revision never change.
   function dlRichCellPlugin(PM) {
     return new PM.Plugin({ props: { decorations(state) {

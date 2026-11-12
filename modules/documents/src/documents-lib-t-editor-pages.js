@@ -146,6 +146,17 @@ function dlEditorPagesPlugin(PM, env) {
       };
     },
   });
+  // A spacer set that moves the caret's block can push the caret out of the view: scroll the nearest scrolling ancestor just enough to bring the caret line back, and not at all when it is still in view.
+  const keepInView = (v) => {
+    if (!v.hasFocus || !v.hasFocus() || !v.state.selection.empty) return;
+    let box = v.dom.parentElement;
+    while (box && !(/(auto|scroll)/.test(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight)) box = box.parentElement;
+    if (!box) return;
+    let c; try { c = v.coordsAtPos(v.state.selection.head); } catch (e) { return; }
+    const r = box.getBoundingClientRect(); const pad = 24;
+    if (c.bottom > r.bottom - pad) box.scrollTop += c.bottom - r.bottom + pad;
+    else if (c.top < r.top + pad) box.scrollTop -= r.top + pad - c.top;
+  };
   const ctl = {
     plugin,
     key,
@@ -177,6 +188,7 @@ function dlEditorPagesPlugin(PM, env) {
         && was.spacers.length === spacers.length && spacers.every((s, i) => s.beforeIndex === was.spacers[i].beforeIndex && Math.abs(s.height - was.spacers[i].height) < 0.5 && s.isManualBreak === was.spacers[i].isManualBreak);
       if (same) return false;
       v.dispatch(v.state.tr.setMeta(key, { spacers, lastPad: Math.round(made.lastPad * 100) / 100, pages: made.pages, on: true, sizeKey }).setMeta('addToHistory', false));
+      keepInView(v);
       return true;
     },
     // Paper above the narrow floor pages the editor (on, with the page size); Fluid and narrow hold no spacers.
