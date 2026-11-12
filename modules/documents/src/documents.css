@@ -30,16 +30,16 @@
 .lock-tag { color: var(--accent); font-size: var(--text-12); font-weight: var(--weight-strong); }
 
 /* thumbnails: each one is a small copy of the page, in its own colour, with its first lines at a small scale */
-.thumbs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(12rem, 100%), 1fr)); gap: var(--space-3); }
+.thumbs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr)); gap: var(--space-3); }
 .thumb-item { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .thumb-item.unreadable { opacity: 0.7; padding: var(--space-2) var(--space-3); border: 1px solid var(--edge-hairline); border-radius: var(--radius-medium); background: var(--surface-card); }
 .thumb-main { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: var(--text-primary); font: inherit; cursor: pointer; }
 .thumb-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-medium); }
 .sheet.thumb { zoom: 1; width: 100%; max-width: 100%; height: 11rem; padding: var(--space-3); margin: 0 0 var(--space-1); overflow: hidden; position: relative; pointer-events: none; }
 .thumb-main:hover .thumb { border-color: color-mix(in srgb, var(--accent) 40%, var(--doc-edge)); }
-.sheet.thumb[data-layout="paper"] { width: auto; height: 11rem; aspect-ratio: var(--thumb-ar); max-width: 100%; padding: var(--thumb-m); margin: 0 auto var(--space-1); }
-.thumb::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3rem; background: linear-gradient(to bottom, transparent, var(--doc-paper)); }
-.thumb .page { font-size: calc(var(--text-14) * 0.6); line-height: 1.4; }
+.sheet.thumb[data-layout="paper"]:not([data-narrow]) { width: 100%; height: auto; aspect-ratio: var(--thumb-ar); max-width: 15rem; padding: var(--thumb-m); margin: 0 auto var(--space-1); }
+.thumb::after { content: ""; position: absolute; inset: auto 0 0 0; height: 2rem; background: linear-gradient(to bottom, transparent, var(--doc-paper)); }
+.thumb .page { font-size: calc(var(--text-14) * 0.75); line-height: 1.4; }
 .thumb .page h1, .thumb .page h2, .thumb .page h3, .thumb .page h4 { font-size: 1.25em; margin: 0 0 0.4em; }
 .thumb .page p, .thumb .page ul, .thumb .page ol, .thumb .page pre, .thumb .page blockquote, .thumb .page table { margin: 0 0 0.5em; }
 .thumb .page table { overflow: hidden; }
