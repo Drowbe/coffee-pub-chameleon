@@ -7,7 +7,7 @@
   // messages are not stored: nothing here touches the board's data or the history. The work is plain functions and two
   // small objects with the clock handed in; whiteboard.js has the events and the drawing.
   const WB_LIVE = Object.freeze({
-    topic: 'pointer',
+    topic: 'pointer', // the start of a board's topic: `pointer.<board id>` (wbLiveTopic); the host allows a-z 0-9 . _ - up to 40
     gap: 50, // milliseconds between two messages: 20 a second at most (the host's limit for a module)
     fade: 5000, // milliseconds without a word from a person before their pointer is dimmed
     drop: 20000, // ... and before it is taken away
@@ -20,6 +20,32 @@
       'line', 'arrow', 'rounded', 'diamond', 'pill', 'parallelogram', 'connector', 'frame', 'table']),
     tints: Object.freeze(['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red']),
   });
+  // The live topic of one board's pointers: `pointer.<board id>` (a board id is 'main' or 8 lowercase letters and digits, so this is
+  // always inside the host's rule: 1 to 40 of a-z, 0-9, dot, underscore, dash). null for anything that is not a board id.
+  const wbLiveTopic = (boardId) => (typeof boardId === 'string' && /^[a-z0-9]{1,24}$/.test(boardId) ? `${WB_LIVE.topic}.${boardId}` : null);
+
+  // Which board's pointers this page hears and sends: one topic at a time. use(boardId) closes the old subscription, drops
+  // what was shown (clear()), and opens the new topic; a message that arrives on a topic that is no longer the open one is ignored
+  // (a hard guard), and publish(data, topic) sends only when that topic is still the open one. live: host.live.
+  function createWbLiveFollow({ live, handle, clear = () => {} }) {
+    let topic = null;
+    let off = null;
+    const close = () => { const o = off; off = null; topic = null; if (typeof o === 'function') { try { o(); } catch { /* closed anyway */ } } };
+    return {
+      use(boardId) {
+        close();
+        clear();
+        const t = wbLiveTopic(boardId);
+        if (!t) return null;
+        topic = t;
+        off = live.subscribe(t, (data, from) => { if (topic === t) handle(data, from); });
+        return t;
+      },
+      close,
+      publish(data, forTopic) { if (!topic || (forTopic !== undefined && forTopic !== topic)) return undefined; return live.publish(topic, data); },
+      get topic() { return topic; },
+    };
+  }
   const WB_LIVE_GONE = Object.freeze({ gone: true });
   const wbLiveTool = (t) => (typeof t === 'string' && t.length <= 20 && WB_LIVE.tools.includes(t) ? t : null);
   const wbLiveNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(WB_LIVE.range, Math.max(-WB_LIVE.range, v)) : null);

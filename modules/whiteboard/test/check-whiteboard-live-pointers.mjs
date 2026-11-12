@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
 const NAMES = ['WB_LIVE', 'wbLivePayload', 'wbLiveMaySend', 'createWbLiveSender', 'wbLiveRead', 'wbLiveLabel', 'createWbLiveStore', 'wbLiveDrawn',
-  'wbLiveLoad', 'wbLiveSave', 'tools'];
+  'wbLiveLoad', 'wbLiveSave', 'wbLiveTopic', 'createWbLiveFollow', 'wbPresentKey', 'wbNewBoardId', 'tools'];
 
 let passed = 0;
 const fails = [];
@@ -345,6 +345,70 @@ await test('the choice: shown at first, kept, and no throw when storage throws',
   assert.equal(L.wbLiveSave(blocked, false), false);
   assert.equal(L.wbLiveLoad(() => null), true);
   assert.equal(L.wbLiveSave(() => null, false), false);
+});
+
+// ---- one topic for each board (R5) --------------------------------------------------------------------------------------
+const HOST_TOPIC = /^[a-z0-9._-]{1,40}$/; // server/module-live.js
+await test('the topic is pointer.<board id>, inside the host rule, for main and generated ids', () => {
+  assert.equal(L.wbLiveTopic('main'), 'pointer.main');
+  for (let i = 0; i < 200; i += 1) {
+    const id = L.wbNewBoardId();
+    const t = L.wbLiveTopic(id);
+    assert.equal(t, `pointer.${id}`);
+    assert.ok(HOST_TOPIC.test(t), t);
+  }
+  assert.ok(HOST_TOPIC.test(L.wbLiveTopic('a'.repeat(16))));
+  for (const bad of ['', 'A', 'a.b', 'a b', '../x', null, undefined, 5, 'x'.repeat(30)]) assert.equal(L.wbLiveTopic(bad), null, String(bad));
+  assert.notEqual(L.wbLiveTopic('main'), L.wbLiveTopic('abcd1234'));
+});
+// A fake host.live with topics: deliver(topic, data) reaches the handlers open on that topic.
+function fakeLive() {
+  const subs = new Map(); const sent = [];
+  return {
+    subs, sent,
+    subscribe: (topic, fn) => { if (!subs.has(topic)) subs.set(topic, new Set()); subs.get(topic).add(fn); return () => { subs.get(topic).delete(fn); if (!subs.get(topic).size) subs.delete(topic); }; },
+    publish: (topic, data) => { sent.push([topic, data]); },
+    deliver: (topic, data, from) => { for (const fn of [...(subs.get(topic) || [])]) fn(data, from); },
+    open: () => [...subs.values()].reduce((n, s) => n + s.size, 0),
+  };
+}
+await test('a message for board A is never heard while B is shown; the old subscription closes; the pointers clear', () => {
+  const live = fakeLive(); const heard = []; let cleared = 0;
+  const f = L.createWbLiveFollow({ live, handle: (d) => heard.push(d), clear: () => { cleared += 1; } });
+  assert.equal(f.use('main'), 'pointer.main');
+  live.deliver('pointer.main', { x: 1, y: 1 });
+  assert.equal(heard.length, 1);
+  assert.equal(f.use('b2b2b2b2'), 'pointer.b2b2b2b2');
+  assert.equal(live.open(), 1, 'one open subscription, not two');
+  assert.ok(cleared >= 2, 'cleared on each use');
+  live.deliver('pointer.main', { x: 2, y: 2 });
+  assert.equal(heard.length, 1, 'nothing from the old board');
+  live.deliver('pointer.b2b2b2b2', { x: 3, y: 3 });
+  assert.equal(heard.length, 2);
+  for (let i = 0; i < 20; i += 1) f.use(i % 2 ? 'main' : 'b2b2b2b2');
+  assert.equal(live.open(), 1, 'no leak after many switches');
+  f.close();
+  assert.equal(live.open(), 0);
+});
+await test('a late handler of the old topic is ignored (the guard), and nothing is published for the old board', () => {
+  const live = fakeLive(); const heard = [];
+  let late = null;
+  const sub = live.subscribe.bind(live);
+  live.subscribe = (t, fn) => { if (t === 'pointer.main') late = fn; return sub(t, fn); };
+  const f = L.createWbLiveFollow({ live, handle: (d) => heard.push(d) });
+  f.use('main');
+  f.use('b2b2b2b2');
+  late({ x: 9, y: 9 }, {});
+  assert.equal(heard.length, 0);
+  f.publish({ x: 1, y: 2 }, 'pointer.main');
+  assert.equal(live.sent.length, 0, 'the old sender is dropped');
+  f.publish({ x: 1, y: 2 }, 'pointer.b2b2b2b2');
+  f.publish({ gone: true });
+  assert.deepEqual(live.sent.map((s) => s[0]), ['pointer.b2b2b2b2', 'pointer.b2b2b2b2']);
+});
+await test('present: a record for each board', () => {
+  assert.equal(L.wbPresentKey('main'), '_present:main:state');
+  assert.notEqual(L.wbPresentKey('main'), L.wbPresentKey('abcd1234'));
 });
 
 if (fails.length) {
