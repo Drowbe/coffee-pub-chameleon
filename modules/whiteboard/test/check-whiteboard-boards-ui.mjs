@@ -33,7 +33,7 @@ const ok = (c, m) => { if (c) passed += 1; else fails.push(m); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const NAMES = ['createSync', 'createBoardSession', 'createBoardPurge', 'wbClean', 'wbCleanBoard', 'wbCleanBoardRecord', 'wbCleanBoardName', 'wbBoardList', 'wbBoardNameProblem',
-  'wbDefaultBoardName', 'wbShowSelect', 'wbBoardsMenu', 'wbBoardsSelect', 'wbVisibleBoards', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
+  'wbDefaultBoardName', 'wbShowSelect', 'wbBoardsMenu', 'wbBoardsSelect', 'wbBoardsSelectItems', 'wbVisibleBoards', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
   'wbCanCreateBoard', 'wbNextOrder', 'wbNewBoardId', 'WB_BOARD_MAX', 'WB_BOARD_NAME_MAX', 'WB_TRASH_MS', 'WB_PURGE', 'tools'];
 let L = {};
 try {
@@ -266,10 +266,10 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(!/session\.dropPending\(cur\.id\)/.test(page) && /deleted: true, trashedAt: iso\(\)/.test(page), 'delete sets deleted and trashedAt and keeps the kept writes of the board (a purge drops them)');
   ok(/title: 'New board', label: 'Name'[^}]*action: 'Create'[^}]*validate/.test(page) && /title: 'Delete board\?'/.test(page) && /action: 'Delete'/.test(page), 'New board and Delete board? are the shared prompt and confirm');
   ok(!/id: 'boards', label: 'Boards'/.test(page) && !/boardsSwitch|stripNarrow|wbBoardsStrip|boardRowsMenu|viewerMenuOn/.test(page), 'no board strip in the toolbar and no narrow-strip code: one dropdown at every width');
-  ok(/\{ kind: 'select', id: 'boards-select', label: sel\.label, title: 'Boards' \}/.test(page) && /sel\.show \? \[/.test(page), 'the title bar gets one select with the current board\'s name, only when the selector shows');
-  ok(/\{ id: 'boards', icon: 'layer-group', title: policy\.canEdit \? 'Boards…' : 'Boards', overflow: true \}/.test(page), 'the title bar\'s "..." keeps the Boards entry');
-  ok(/e\.id === 'boards-select'\) boardsMenu\(toolbarAt\(e\)\)/.test(page), 'a click on the select opens the menu under it (the event\'s x)');
-  ok(/const manage = policy\.canEdit \? wbBoardsMenu\(/.test(page) && /label: 'Manage boards…'[^\n]*items: manage\.map/.test(page) && /\.\.\.\(manage\.length \?|const tail = manage\.length \? \[\{ separator: true \}/.test(page), 'the menu: the boards, then for an editor a separator and Manage boards… (a viewer has no manage entries)');
+  ok(/\{ kind: 'select', id: 'boards-select', label: sel\.label, title: 'Boards', items: selectItemsOf\(sel\) \}/.test(page) && /sel\.show \? \[/.test(page), 'the title bar gets one select with the current board\'s name and its menu items as data, only when the selector shows');
+  ok(!/id: 'boards', icon: 'layer-group'/.test(page) && !/host\.menu\.show\(\{ id: 'boards'/.test(page), 'no Boards entry in the "..." (the select is in the bar at every width) and no module-drawn boards menu');
+  ok(/e\.id === 'boards-select'\) boardsPick\(e\.value\)/.test(page) && !/boardsMenu\(/.test(page), 'a pick in the select arrives as the header event with value and runs the handler');
+  ok(/wbBoardsSelectItems\(sel, \{ canEdit: policy\.canEdit/.test(page), 'the menu data comes from wbBoardsSelectItems (a viewer has no manage entries)');
 }
 
 // ---- work in flight at a switch ----------------------------------------------------------------------------------------------
@@ -425,6 +425,24 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(L.wbCanCreateBoard(mkList(25)) === false && L.wbBoardsMenu({ canEdit: true, count: 25, more: 15 }).find((m) => m.id === 'new').disabled === true, 'New board stays off with more than 10 live boards (all counted)');
   const m = L.wbBoardsMenu({ canEdit: true, count: 12, more: 2 }).find((x) => x.id === 'more');
   ok(m && m.disabled && m.label === '2 more boards exist' && L.wbBoardsMenu({ canEdit: true, count: 3 }).every((x) => x.id !== 'more'), 'the Boards… menu has a read-only "2 more boards exist" line only when there are more');
+}
+
+// ---- the select's menu as data (the host draws it) ---------------------------------------------------------------------------
+{
+  const mkList = (n) => Array.from({ length: n }, (_, i) => ({ id: i ? `b${i}` : 'main', name: i ? `Plan ${i}` : 'Board 1' }));
+  const items = (n, active, canEdit, trashed = 0) => L.wbBoardsSelectItems(L.wbBoardsSelect(mkList(n), active, canEdit), { canEdit, count: n, trashed });
+  const ed = items(3, 'b1', true, 2);
+  ok(same(ed.slice(0, 3), [{ id: 'b.main', label: 'Board 1' }, { id: 'b.b1', label: 'Plan 1', current: true }, { id: 'b.b2', label: 'Plan 2' }]), 'editor: the boards, the current one marked');
+  ok(same(ed[3], { divider: true }) && ed[4].id === 'manage' && ed[4].label === 'Manage boards…' && same(ed[4].items.map((x) => x.id), ['new', 'rename', 'delete', 'deleted']), 'editor: a divider, then Manage boards… with New, Rename, Delete, Deleted boards');
+  ok(items(1, 'main', true).find((x) => x.id === 'manage').items.find((x) => x.id === 'delete').disabled === true, 'the last board: Delete is off');
+  ok(items(10, 'main', true).find((x) => x.id === 'manage').items.find((x) => x.id === 'new').disabled === true, '10 boards: New is off');
+  ok(items(3, 'b1', true).find((x) => x.id === 'manage').items.every((x) => !x.disabled), '3 boards: every manage entry is on');
+  const many = items(13, 'main', true);
+  ok(many.find((x) => x.id === 'more').disabled === true && many.find((x) => x.id === 'more').label === '3 more boards exist', 'more than 10: a grey "3 more boards exist" line');
+  const vw = items(3, 'b2', false);
+  ok(vw.length === 3 && vw.every((x) => x.id.startsWith('b.')) && vw.filter((x) => x.current).length === 1, 'a viewer: the boards only, no Manage');
+  ok(items(1, 'main', false).length === 0, 'a viewer of one board: nothing');
+  ok(JSON.stringify(ed).length < 2000 && !/function/.test(JSON.stringify(ed)), 'data only');
 }
 
 finish();
