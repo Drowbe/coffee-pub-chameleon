@@ -19,6 +19,17 @@
 //                                               guard.receive(update, sender) checks, and only an ok update is applied to `doc`. `sender` comes
 //                                               from the TRANSPORT and nowhere else (step 4 passes host.live's `from`): nothing inside the
 //                                               update or in any other argument is read as a sender. opts: { lex, origin, bytes, now, refusals }.
+//                                               A missing sender (undefined, null, '', not a string or number, an object) is NOT free: it is
+//                                               the ONE shared sender 'unknown', counted like any other but with its own budget
+//                                               (limits.unknownRefusals, 3 per window), so a flood with no sender is flagged and cannot
+//                                               spread refusals over named senders.
+//                                               guard.syncRequested() / guard.syncDone() / guard.syncPending(): the SYNC GRACE. When an update is
+//                                               dropped as 'quiet' (or the caller asked for a state-vector sync with syncRequested()), later
+//                                               honest updates have missing predecessors and come back 'pending'. While a sync is pending, a
+//                                               'pending' result is not counted against any sender (it still spends the page budget): otherwise a
+//                                               flood of rotating ids could get honest typists flagged. syncDone() (call it after a state-vector
+//                                               reply was applied) clears it; so does limits.syncGraceMs (10 s, from the last quiet drop or
+//                                               syncRequested(), on the injectable clock). Real refusals are always counted.
 //     rebuildFromGood(snapshotBytes, limits)    a fresh document from the last good snapshot (when applying or drawing an update threw)
 //     verifyBeforeSnapshot(lex, doc, text, limits)  may this state be written as the snapshot? (renders, writes the Markdown, compares)
 //     mendForSnapshot(lex, doc, text, limits)   when it may not: drops the blocks that do not read back, in ONE local transaction
@@ -61,6 +72,8 @@ const DL_COEDIT = Object.freeze({
   refusalsMax: 5, // refusals from one sender within the window flag the sender
   refusalsWindowMs: 60000,
   sendersMax: 1000, // senders the counter remembers at most (the idle ones are forgotten first)
+  unknownRefusals: 3, // refusals within the window that flag the shared 'unknown' sender (a message with no sender from the transport)
+  syncGraceMs: 10000, // after a quiet drop or syncRequested(), 'pending' results are not counted against senders for this long (or until syncDone)
   refusalBudget: 40, // refusals (a pending one counts a tenth) the page decodes in one second, over all senders
   quietMs: 1000, // then it decodes nothing for this long
   marksJsonMax: 4000, // the _marks attribute of an atom
@@ -314,10 +327,10 @@ function dlCoeditGate(PM) {
     const o = opts;
     const rules = { ...lim(limits), lex: o.lex };
     const nowMs = o.now || (() => Date.now());
-    const counter = o.refusals || dlCoeditRefusals({ max: rules.refusalsMax, windowMs: rules.refusalsWindowMs, maxSenders: rules.sendersMax, now: o.now });
+    const counter = o.refusals || dlCoeditRefusals({ max: rules.refusalsMax, maxFor: (who) => (who === 'unknown' ? rules.unknownRefusals : undefined), windowMs: rules.refusalsWindowMs, maxSenders: rules.sendersMax, now: o.now });
     const st = {
       applying: false, shadow: null, dirty: true, nodes: 0, text: 0, sizes: new Map(), accepted: 0, refused: 0, reseeds: 0,
-      lastChanged: null, lastBefore: null, lastTx: null, quietUntil: 0, windowAt: 0, windowN: 0, quietEntered: 0, quietDropped: 0,
+      lastChanged: null, lastBefore: null, lastTx: null, quietUntil: 0, windowAt: 0, windowN: 0, quietEntered: 0, quietDropped: 0, syncUntil: 0,
     };
     const onTx = (tr) => { st.lastChanged = tr.changed; st.lastBefore = tr.beforeState; st.lastTx = tr; };
     const onLive = (u) => {
@@ -361,7 +374,8 @@ function dlCoeditGate(PM) {
       return { blocks, top };
     }
     // The sender is whatever the transport says it is: a string or a number. Nothing else (an object, a field of the update) is a sender.
-    const senderKey = (s) => (s === undefined || s === null ? null : typeof s === 'string' ? s.slice(0, 200) : typeof s === 'number' && Number.isFinite(s) ? String(s) : 'unknown');
+    // Anything else (undefined, null, '', an object) is the one shared sender 'unknown' with its own tight budget: no free bucket.
+    const senderKey = (s) => (typeof s === 'string' && s !== '' ? s.slice(0, 200) : typeof s === 'number' && Number.isFinite(s) ? String(s) : 'unknown');
     const costly = (reason) => (reason === 'too_big' || reason === 'not_an_update' ? 0 : reason === 'pending' ? 0.1 : 1);
     // The page-wide budget: after rules.refusalBudget refusals in one second nothing is decoded for rules.quietMs.
     const spend = (t, w) => {
@@ -370,18 +384,20 @@ function dlCoeditGate(PM) {
       st.windowN += w;
       if (st.windowN >= rules.refusalBudget - 1e-9) { st.quietUntil = t + rules.quietMs; st.quietEntered += 1; st.windowN = 0; }
     };
+    // The sync grace: while a sync is pending, a 'pending' result is not the sender's fault (the page dropped the updates before it).
+    const syncPending = () => nowMs() < st.syncUntil;
     function receive(update, sender) {
       const who = senderKey(sender);
       const t = nowMs();
-      if (t < st.quietUntil) { st.quietDropped += 1; return fail('quiet', 'too many refused updates; not decoding for a moment', { flagged: false, applied: false, quiet: true }); }
-      if (who !== null && counter.flagged(who)) return fail('sender_flagged', 'too many refused updates from this sender', { flagged: true, applied: false });
+      if (t < st.quietUntil) { st.quietDropped += 1; st.syncUntil = t + rules.syncGraceMs; return fail('quiet', 'too many refused updates; not decoding for a moment', { flagged: false, applied: false, quiet: true }); }
+      if (counter.flagged(who)) return fail('sender_flagged', 'too many refused updates from this sender', { flagged: true, applied: false });
       const r = check(update);
-      if (!r.ok) { r.flagged = who !== null ? counter.note(who, r.reason === 'pending' ? 0.1 : 1) : false; r.applied = false; st.refused += 1; spend(t, costly(r.reason)); return r; }
+      if (!r.ok) { r.flagged = r.reason === 'pending' && t < st.syncUntil ? counter.flagged(who) : counter.note(who, r.reason === 'pending' ? 0.1 : 1); r.applied = false; st.refused += 1; spend(t, costly(r.reason)); return r; }
       st.applying = true;
       try { PM.applyUpdate(doc, update, o.origin === undefined ? SELF.LIVE : o.origin); } catch (e) {
         st.dirty = true;
         const f = fail('live_threw', String(e && e.message).slice(0, 160), { applied: false, rebuild: true });
-        f.flagged = who !== null ? counter.note(who) : false; st.refused += 1; spend(t, 1); return f;
+        f.flagged = counter.note(who); st.refused += 1; spend(t, 1); return f;
       } finally { st.applying = false; }
       st.accepted += 1;
       return r;
@@ -423,6 +439,9 @@ function dlCoeditGate(PM) {
     }
     return {
       receive, // -> { ok, applied?, reason, detail, flagged, rebuild, quiet }
+      syncRequested: () => { st.syncUntil = nowMs() + rules.syncGraceMs; }, // a state-vector sync was asked for: 'pending' is not counted until syncDone or the grace ends
+      syncDone: () => { st.syncUntil = 0; }, // the state-vector reply was applied
+      syncPending,
       stats: () => ({ accepted: st.accepted, refused: st.refused, reseeds: st.reseeds, nodes: st.nodes, text: st.text, quietEntered: st.quietEntered, quietDropped: st.quietDropped, senders: counter.size ? counter.size() : 0 }),
       // after the live document was replaced or mended outside the guard, or applyUpdate threw on it
       reseed: () => { st.dirty = true; },
@@ -614,6 +633,7 @@ function dlCoeditRefusals(o) {
   const windowMs = (o && o.windowMs) || DL_COEDIT.refusalsWindowMs;
   const maxSenders = (o && o.maxSenders) || DL_COEDIT.sendersMax;
   const now = (o && o.now) || (() => Date.now());
+  const maxFor = (sender) => (o && o.maxFor && o.maxFor(sender)) || max; // a sender may have its own budget ('unknown')
   const by = new Map();
   const recent = (sender) => { const t = now(); const l = (by.get(sender) || []).filter((x) => t - x.t < windowMs); if (l.length) by.set(sender, l); else by.delete(sender); return l; };
   const sum = (l) => l.reduce((a, x) => a + x.w, 0);
@@ -623,8 +643,8 @@ function dlCoeditRefusals(o) {
     if (by.size > maxSenders) for (const k of Array.from(by.keys())) { if (by.size <= keep) break; by.delete(k); }
   };
   return {
-    note(sender, weight) { const l = recent(sender); l.push({ t: now(), w: weight === undefined ? 1 : weight }); by.set(sender, l); if (by.size > maxSenders) prune(); return sum(l) >= max - 1e-9; },
-    flagged: (sender) => sum(recent(sender)) >= max - 1e-9,
+    note(sender, weight) { const l = recent(sender); l.push({ t: now(), w: weight === undefined ? 1 : weight }); by.set(sender, l); if (by.size > maxSenders) prune(); return sum(l) >= maxFor(sender) - 1e-9; },
+    flagged: (sender) => sum(recent(sender)) >= maxFor(sender) - 1e-9,
     count: (sender) => sum(recent(sender)),
     clear: (sender) => { by.delete(sender); },
     size: () => by.size,
