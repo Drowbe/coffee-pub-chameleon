@@ -76,6 +76,8 @@
    with its margins, in the document's colour; the gap between them is the page background. A block taller than a page makes its page
    taller (data-tall), never clipped. The number is inside the bottom margin. A manual break is kept for a screen reader, not drawn. */
 .sheet[data-paged] { padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+/* the paged sheet holds only its pages, which carry the margin: the Paper sheet's own padding (above) must not add a second one */
+.sheet[data-layout="paper"][data-paged]:not([data-narrow]) { padding: 0; }
 .sheet[data-paged] > .page { display: flex; flex-direction: column; gap: var(--space-4); overflow-wrap: normal; }
 .dl-pg { position: relative; box-sizing: border-box; flex: 0 0 auto; width: var(--doc-page-w); height: var(--doc-page-h); padding: var(--doc-page-m); background: var(--doc-paper); box-shadow: 0 0 0 1px var(--doc-edge), 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent); }
 .dl-pg[data-tall] { height: auto; min-height: var(--doc-page-h); }

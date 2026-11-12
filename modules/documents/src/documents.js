@@ -396,7 +396,7 @@
     sheet.style.setProperty('--doc-page-m', `${g.margin}px`);
     fitPaper();
   }
-  // Fit width on a Paper sheet: the page scaled to the window's width (never above 200%). Other sheets, and a zoom level,
+  // Fit width on a Paper sheet: the page scaled to the window's width (never above 100%). Other sheets, and a zoom level,
   // follow the app's --doc-zoom.
   function fitPaper() {
     const avail = (box) => {
