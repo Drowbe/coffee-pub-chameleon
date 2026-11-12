@@ -244,7 +244,6 @@ async function world(srv) {
     closed: await space('Hidden Trip', 'Nobody knows'),
     open: await space('Open Trip', 'For guests', { entry: 'guests' }),
   };
-  assert.equal((await srv.call('PATCH', '/api/settings', { token: admin, body: { guestDoor: true } })).status, 200);
   assert.equal((await srv.call('PATCH', `/api/users/${keys.mod}/spaces/${ids.req}`, { token: admin, body: { permissions: { moderator: true } } })).status, 200);
   return { admin, keys, tokens, ids };
 }
@@ -368,7 +367,7 @@ try {
     const viaLink = await A.call('POST', `/api/spaces/${ids.req}/request?guest=${token}`, {});
     assert.equal(viaLink.status, 403, 'a guest link opens one space only');
     assert.equal(viaLink.json.error.includes('Secret'), false);
-    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, { cookie: guestCookie(A, 'guest-badsig001', 'X').replace(/.$/, 'A') })).status, 401, 'a forged guest session is nobody');
+    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, { cookie: guestCookie(A, 'guest-badsig001', 'X').replace(/(.)$/, (c) => (c === 'A' ? 'B' : 'A')) })).status, 401, 'a forged guest session is nobody');
     assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request?s=nope`, {})).status, 401);
     assert.equal(A.access().requests.filter((x) => x.state === 'pending').length, 1);
     otto = A.access().requests[0];
@@ -466,7 +465,7 @@ try {
     assert.equal((await A.call('DELETE', `/api/spaces/${ids.req}/request`, { ...who.none })).status, 401);
   });
 
-  const hostile = '<script>alert(1)</script>"&';
+  const hostile = '<script>alert(1)</script>"& (Guest)'; // a guest's name as the door keeps it: the typed name and the mark
   let gus = null;
   await test('a door guest asks; the owners see the typed name as text, marked as a guest; the guest reads their state', async () => {
     const g = asGuest('guest-gus00001', hostile);
@@ -481,7 +480,7 @@ try {
     assert.deepEqual(Object.keys(gus).sort(), ['at', 'expiresAt', 'id', 'kind', 'name']);
     const bell = (await note(tokens.owner)).find((x) => x.body.includes(hostile));
     assert.ok(bell, 'the bell carries the typed name');
-    assert.equal(bell.body, `${hostile} (guest) asks to enter Secret Trip.`);
+    assert.equal(bell.body, `${hostile} asks to enter Secret Trip.`, 'the name carries the mark once');
     assert.equal(bell.href, `/?setup=${ids.req}#members`, 'a typed name cannot change the address');
     // The bell draws the title and body through escapeHtml (read as code).
     const brand = fs.readFileSync(path.join(ROOT, 'public', 'brand.js'), 'utf8');
@@ -509,15 +508,24 @@ try {
     // A session issued 25 hours ago is over: it reads as nobody, and its grant is never read.
     const old = { cookie: guestCookie(A, 'guest-gus00001', hostile, Date.now() - 25 * 3600000) };
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, old)).status, 401);
-    // The door off ends it at once; on again, the grant still holds.
-    assert.equal((await A.call('PATCH', '/api/settings', { token: tokens.admin, body: { guestDoor: false } })).status, 200);
-    assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status === 200, false, 'door off');
-    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, other)).status, 401, 'no asking at a closed door');
-    assert.equal((await A.call('PATCH', '/api/settings', { token: tokens.admin, body: { guestDoor: true } })).status, 200);
-    assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status, 200);
     // A new epoch ends every guest session, and with it the grant's use.
     assert.equal((await A.call('POST', '/api/guest-door/end-all', { token: tokens.admin })).status, 200);
     assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status, 401);
+  });
+
+  await test('#743: a request the owner approved shows as open on the guest\'s next read (no reload of anything but the list); Withdraw then has nothing to take back and the entry stays', async () => {
+    const g = { cookie: `guest_session=${door.issue(A.secret(), { slug: '', id: 'guest-wdr00001', name: 'Wren (Guest)', versions: {}, epoch: 1 })}` };
+    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/request`, g)).status, 201);
+    assert.equal((await A.call('GET', '/api/guest-door', g)).json.spaces.find((x) => x.id === ids.req).state, 'pending');
+    const id = (await A.call('GET', `/api/spaces/${ids.req}/access-requests`, who.owner)).json.requests.find((x) => x.name === 'Wren (Guest)').id;
+    assert.equal((await A.call('POST', `/api/spaces/${ids.req}/access-requests/${id}`, { ...who.owner, body: { decision: 'approve' } })).status, 200);
+    const list = (await A.call('GET', '/api/guest-door', g)).json.spaces.find((x) => x.id === ids.req);
+    assert.equal(list.state, 'open', 'the list the landing polls says open');
+    const withdraw = await A.call('DELETE', `/api/spaces/${ids.req}/request`, g);
+    assert.equal(withdraw.status, 404, 'an approved request cannot be withdrawn');
+    assert.match(withdraw.json.error, /no request/);
+    assert.equal((await A.call('GET', `/api/spaces/${ids.req}/chat`, g)).status, 200, 'the entry stays');
+    assert.equal((await A.call('GET', '/api/guest-door', g)).json.spaces.find((x) => x.id === ids.req).state, 'open');
   });
 
   await test('a door guest\'s denial is told to them; they may not ask again for a day; link and unknown ids are the same refusal', async () => {

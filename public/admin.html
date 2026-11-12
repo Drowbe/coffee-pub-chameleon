@@ -70,19 +70,12 @@
         <button class="btn btn-primary" id="save-registration" type="button">Save</button>
         <span class="status" id="registration-status"></span>
       </div>
-      <!-- The door for people without an account (plan-access-bundle.md, step 4): shown only while the host has turned it on. -->
-      <div id="guest-door-section" hidden>
-        <h2 data-fill>{Guest} door</h2>
-        <div class="row">
-          <label class="sdk-choice-row"><input type="checkbox" id="set-guest-door"><span class="sdk-choice-text" data-fill>Let anyone come in as {a guest} from the sign-in page: a name, no account, for 24 hours, into the {spaces} you open to {guests}</span></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-primary" id="save-guest-door" type="button">Save</button>
-          <button class="btn" id="end-guest-sessions" type="button" data-fill>End all {guest} sessions now</button>
-          <span class="status" id="guest-door-status"></span>
-        </div>
       </div>
-      <p class="hint" data-fill>Or invite someone straight into specific {spaces} without opening sign-up to everyone:</p>
+
+      <!-- The invite link for specific spaces: its own block (it is not part of sign-up). -->
+      <div class="panel" id="invite-section">
+      <h2>Invite link</h2>
+      <p class="hint" data-fill>Invite someone straight into specific {spaces} without opening sign-up to everyone:</p>
       <div class="row">
         <span class="field-label" data-fill>{Spaces}</span>
         <div class="member-checks" id="invite-spaces"></div>
@@ -96,6 +89,21 @@
         <button class="btn btn-small" id="invite-copy" type="button">Copy</button>
         <span class="hint">Expires in 7 days, works once.</span>
       </div>
+      </div>
+
+      <!-- The guest door (plan-access-bundle.md, step 4): the host's switch makes it available; each space is opened in its own
+           Who can enter. There is no owner switch. -->
+      <div class="panel" id="guest-door-section">
+        <h2 data-fill>{Guests}</h2>
+        <p class="hint" id="guest-door-off" hidden></p>
+        <div id="guest-door-on" hidden>
+          <p class="hint" id="guest-door-line"></p>
+          <p class="hint" id="guest-door-next"></p>
+          <div class="row">
+            <button class="btn" id="end-guest-sessions" type="button" data-fill>End all {guest} sessions now</button>
+            <span class="status" id="guest-door-status"></span>
+          </div>
+        </div>
       </div>
     </section>
 

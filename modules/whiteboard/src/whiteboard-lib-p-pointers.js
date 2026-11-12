@@ -140,7 +140,13 @@
 
   // The words on a pointer's tag: the name, and the guest role's word after a guest's (as the environment says it:
   // roleWord is host.util.word for that role), or that word alone for a guest with no name.
-  const wbLiveLabel = (p, roleWord) => (p.guest ? (p.name ? `${p.name} (${roleWord})` : String(roleWord)) : p.name);
+  // A guest's name from the server already ends in the role's word in brackets ("Gil (Guest)"); it is then shown as it is.
+  const wbLiveLabel = (p, roleWord) => {
+    if (!p.guest) return p.name;
+    if (!p.name) return String(roleWord);
+    const marked = String(p.name).toLowerCase().endsWith(`(${String(roleWord).toLowerCase()})`);
+    return marked ? p.name : `${p.name} (${roleWord})`;
+  };
 
   // The pointers heard, by person: a Map keyed by the sender's key, in the order last heard (the oldest first). put() a
   // checked message (lib's wbLiveRead) at a time; a gone one takes the pointer away. Past the cap the oldest goes.

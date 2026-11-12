@@ -4806,8 +4806,8 @@ function messageEl(entry, own) {
   entry.chat = true;
   if (entry.visibility !== 'private') entry.visibility = 'public';
   let body;
-  // A guest's messages all share the sender `guest` (server): the typed name is shown, marked as a guest, as text.
-  let name = entry.by === 'guest' ? `${entry.who} (${word('guest')})` : entry.who;
+  // A guest's messages all share the sender `guest` (server): the name is the typed one with the guest mark once, shown as text.
+  let name = entry.who;
   let look = null;
   if (entry.picture) {
     body = document.createElement('div');
@@ -5545,7 +5545,7 @@ function leaveSpaceNow(said = `left the ${word('space')}`) {
   // members' space list (which they can't do anything with anyway).
   $('join').hidden = guestMode;
   $('guest-join').hidden = !guestToken; // a door guest has typed a name already: their way back is the landing
-  if (doorGuest) { location.href = '/guest'; return; }
+  if (doorGuest) { location.href = '/guest#home'; return; }
   $('away').hidden = true;
   updateCrumb();
   asideSelection.clear();
@@ -7394,7 +7394,7 @@ document.addEventListener('click', (event) => {
 // page (#join), so there's nothing to load: just swap views, the same "away"
 // treatment openOverlay() gives profile/admin, and stay connected underneath.
 function showSpaceList() {
-  if (doorGuest) { location.href = '/guest'; return; } // a guest's list is their landing
+  if (doorGuest) { location.href = '/guest#home'; return; } // a guest's Home is their list of spaces
   if (!document.body.classList.contains('in-space')) return;
   setAway(true);
   viewingHome = true;
@@ -7996,7 +7996,7 @@ async function init() {
     guestSpaceName = doorGuest.space.name;
     me = { key: doorGuest.guest.id, displayName: doorGuest.guest.name, role: 'guest', permissions: doorGuest.permissions };
     const banner = $('guest-banner');
-    $('guest-banner-text').textContent = `You are in as ${me.displayName} (${word('guest')}).`;
+    $('guest-banner-text').textContent = `You are in as ${me.displayName}.`;
     banner.hidden = false;
     $('guest-banner-leave').addEventListener('click', async () => {
       try { await api('DELETE', '/api/guest-door'); } catch { /* the cookie is cleared by the answer, or already gone */ }

@@ -224,6 +224,6 @@ function cleanGuestRecord(a) {
 
 module.exports = {
   DOCS, DOC_IDS, MAX_TEXT_BYTES, MAX_ACCOUNT_RECORDS, MAX_GUEST_RECORDS, GUEST_NAME_MAX,
-  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, cleanGuestName, guestNameTooLong,
+  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, cleanGuestName, guestNameTooLong, guestNameLine,
   GuestAgreements, AgreementError, AgreementTextError,
 };

@@ -8795,6 +8795,9 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
 .guest-space img { border-radius: var(--radius-small); object-fit: cover; }
 a.guest-space { text-decoration: none; }
 .guest-space-go { margin-left: auto; color: var(--text-muted); }
+.guest-space-open { font-weight: var(--weight-strong); color: var(--accent); }
+.guest-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.guest-actions-end { justify-content: flex-end; }
 a.guest-space:hover { background: var(--bg-hover, var(--bg-card)); }
 a.guest-space:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
 .guest-banner { flex: none; }

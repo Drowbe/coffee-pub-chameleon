@@ -189,9 +189,9 @@
                   <label>AI calls a month <span class="sdk-optional">(optional)</span><input name="aiCallsPerMonth" type="number" min="0" placeholder="no cap"></label>
                   <label>Calls at once <span class="sdk-optional">(optional)</span><input name="calls" type="number" min="1" placeholder="no cap"></label>
                 </div>
-                <fieldset class="hc-fieldset">
-                  <legend class="sdk-label" data-fill>{Guest} door</legend>
-                  <label class="sdk-choice-row"><input type="checkbox" name="guestDoor"><span class="sdk-choice-text" data-fill>Offer the {guest} door: the owner may then turn on "Continue as {guest}" on the sign-in page. Off until you turn it on.</span></label>
+                <fieldset class="hc-fieldset hc-guest-door">
+                  <legend class="sdk-label" data-fill>{Guests}</legend>
+                  <label class="sdk-choice-row"><input type="checkbox" name="guestDoor"><span class="sdk-choice-text" data-fill>Allow {guest} sign-in on this {environment}. {Owners} then choose which {spaces} are open to {guests}.</span></label>
                 </fieldset>
                 <fieldset class="hc-fieldset">
                   <legend class="sdk-label">Modules it may run</legend>

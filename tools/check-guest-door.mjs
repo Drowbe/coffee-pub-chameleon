@@ -229,29 +229,30 @@ try {
   // Server O: no switch at all: the door never opens.
   const O = await startServer('off', { TERMS_FILE: TERMS });
   const o = await seed(O, true);
-  await O.call('PATCH', '/api/settings', { token: o.admin, body: { guestDoor: true } });
 
-  await test('both switches start off: the host\'s and the owner\'s', async () => {
-    assert.equal((await A.call('GET', '/api/branding')).json.guestDoor, false, 'host on, owner off: no button');
-    assert.equal((await enterDoor(A)).status, 403);
-    assert.match((await enterDoor(A)).json.error, /closed/);
-    assert.equal((await O.call('GET', '/api/branding')).json.guestDoor, false, 'host off: no button, whatever the owner chose');
-    const refused = await O.call('PATCH', '/api/settings', { token: o.admin, body: { guestDoor: true } });
-    assert.equal(refused.status, 403, 'the owner cannot raise it past the host');
+  await test('one switch, the host\'s: on, the button shows with no owner step; off, the door is shut whatever the spaces say', async () => {
+    assert.equal((await A.call('GET', '/api/branding')).json.guestDoor, true, 'host on: the button shows');
+    assert.equal((await O.call('GET', '/api/branding')).json.guestDoor, false, 'host off: no button');
+    // The owner has no switch any more: the old key is ignored, never stored, never read.
+    const ignored = await O.call('PATCH', '/api/settings', { token: o.admin, body: { guestDoor: true } });
+    assert.equal(ignored.status, 200);
+    assert.equal(ignored.json.settings.guestDoor, false, 'the old owner key is not a setting: this is only the host\'s switch, off here');
+    assert.equal((await O.call('GET', '/api/branding')).json.guestDoor, false, 'the old owner key opens nothing');
     assert.equal((await enterDoor(O)).status, 403);
+    assert.match((await enterDoor(O)).json.error, /closed/);
     const view = await A.call('GET', '/api/settings', { token: a.admin });
     assert.equal(view.json.settings.guestDoorHost, true);
-    assert.equal(view.json.settings.guestDoor, false);
+    assert.equal(view.json.settings.guestDoor, true, 'the same as the host\'s switch; no owner key');
+    assert.equal(view.json.settings.guestHours, 24);
+    assert.equal(view.json.settings.guestDoorOpen, true, 'a space is open to guests');
     assert.equal((await O.call('GET', '/api/settings', { token: o.admin })).json.settings.guestDoorHost, false);
-  });
-
-  await test('the owner turns the door on; branding says so', async () => {
-    assert.equal((await A.call('PATCH', '/api/settings', { token: a.admin, body: { guestDoor: true } })).status, 200);
-    assert.equal((await A.call('GET', '/api/branding')).json.guestDoor, true);
+    // Host off: even a space set to guests lets nobody in.
+    assert.equal((await O.call('GET', '/api/spaces', { token: o.admin })).json.spaces.some((r) => r.entry === 'guests'), true, 'O has a space set to guests');
+    assert.equal((await enterDoor(O)).status, 403, 'door shut regardless of spaces');
   });
 
   let sam = null;
-  await test('entering: texts and a name are required, a wrong version is 409, a member\'s name is 400', async () => {
+  await test('entering: texts and a name are required, a wrong version is 409, names get the guest mark, mixed alphabets are 400', async () => {
     const none = await A.call('POST', '/api/guest-door', { body: { name: 'Sam' } });
     assert.equal(none.status, 403);
     assert.equal(none.json.agreementRequired, true);
@@ -261,30 +262,54 @@ try {
     for (const extra of [{ terms: termsVersion, nda: termsVersion }, {}, { terms: [termsVersion] }]) assert.equal((await A.call('POST', '/api/guest-door', { body: { name: 'Sam', versions: extra } })).status, 409);
     assert.equal((await A.call('POST', '/api/guest-door', { body: { versions: { terms: termsVersion } } })).status, 400);
     assert.equal((await A.call('POST', '/api/guest-door', { body: { name: '   ', versions: { terms: termsVersion } } })).status, 400);
-    for (const clash of ['Mia Member', 'mia member', '  MIA   MEMBER ', 'mia', 'admin', 'Ｍia Member']) {
-      const r = await enterDoor(A, clash);
-      assert.equal(r.status, 400, clash);
-      assert.match(r.json.error, /belongs to a member/);
-    }
-    for (const mixed of ['M\u0430ry Jones', 'Sam \u03bflive', 'Jon \u0531nna']) {
-      const r = await enterDoor(A, mixed);
-      assert.equal(r.status, 400, mixed);
-      assert.match(r.json.error, /mix alphabets/);
-    }
-    const alike = await enterDoor(A, '\u043c\u0456\u0430');
-    assert.equal(alike.status, 400, 'all-Cyrillic lookalike of a member');
-    assert.match(alike.json.error, /belongs to a member/);
-    const long = await enterDoor(A, 'x'.repeat(41));
-    assert.equal(long.status, 400);
-    assert.match(long.json.error, /at most 40/);
-    for (const real of ['\u0418\u0432\u0430\u043d', '\u03a3\u03bf\u03c6\u03af\u03b1']) { assert.equal(door.mixesScripts(real), false, real); assert.notEqual(door.nameSkeleton(real), door.nameSkeleton('mia')); }
-    assert.equal(door.nameSkeleton('\uff2dia'), door.nameSkeleton('m\u0456\u0430'));
     sam = await enterDoor(A, 'Sam');
     assert.equal(sam.status, 201, sam.text);
-    assert.equal(sam.json.guest.name, 'Sam');
+    assert.equal(sam.json.guest.name, 'Sam (Guest)', 'stored and shown with the mark');
     assert.match(sam.json.guest.id, /^guest-/);
     assert.ok(sam.cookie, 'a guest_session cookie');
   });
+
+  // Server N: the same, with room for many sessions from one address, for the names.
+  const N = await startServer('names', { ENABLE_GUEST_DOOR: 'true', TERMS_FILE: TERMS, GUEST_DOOR_PER_ADDRESS: '100' });
+  {
+    const n0 = await seed(N, true);
+    await test('a member\'s display name may not end in the guest mark (any case), so no one passes as a guest', async () => {
+      const bad = await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia Member (GUEST)' } });
+      assert.equal(bad.status, 400, bad.text);
+      assert.match(bad.json.error, /can't end in \(guest\)/);
+      const made = await N.call('POST', '/api/users', { token: n0.admin, body: { login: 'zed', displayName: 'Zed (guest)', role: 'member', password: 'memberpass1234' } });
+      assert.equal(made.status, 400, made.text);
+      assert.equal((await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia Guest' } })).status, 200, 'a name that only contains the word is fine');
+      assert.equal((await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia Member' } })).status, 200);
+    });
+    await test('a guest\'s name: the typed name and the mark once, never doubled; a member\'s name is not refused; mixed alphabets are', async () => {
+      const enter = (name) => enterDoor(N, name);
+    // A member's name is no longer refused: every guest name carries the mark, so no guest passes as a member.
+    for (const same of ['Mia Member', 'mia', 'admin']) {
+      const r = await enter( same);
+      assert.equal(r.status, 201, same);
+      assert.equal(r.json.guest.name, `${same} (Guest)`, 'the typed name and the mark, once');
+    }
+    for (const typed of ['Thomas (Guest)', 'Thomas (guest)', 'Thomas (GUEST) ', 'Thomas  (Guest) (Guest)']) {
+      const r = await enter( typed);
+      assert.equal(r.status, 201, typed);
+      assert.equal(r.json.guest.name, 'Thomas (Guest)', `${typed}: never doubled`);
+    }
+    assert.equal((await enter( '(Guest)')).status, 400, 'only the mark typed is no name');
+    for (const mixed of ['M\u0430ry Jones', 'Sam \u03bflive', 'Jon \u0531nna']) {
+      const r = await enter( mixed);
+      assert.equal(r.status, 400, mixed);
+      assert.match(r.json.error, /mix alphabets/);
+    }
+    const long = await enter( 'x'.repeat(41));
+    assert.equal(long.status, 400);
+    assert.match(long.json.error, /at most 40/);
+    assert.equal((await enter( 'x'.repeat(40))).status, 201, '40 typed characters are allowed (the mark is not counted)');
+    assert.equal((await enter( `${'y'.repeat(40)} (Guest)`)).status, 201, 'a typed mark is not counted either');
+    assert.equal((await enter( `${'z'.repeat(41)} (Guest)`)).status, 400);
+    for (const real of ['\u0418\u0432\u0430\u043d', '\u03a3\u03bf\u03c6\u03af\u03b1']) assert.equal(door.mixesScripts(real), false, real);
+    });
+  }
 
   await test('the cookie: HttpOnly, SameSite, no Domain, Secure only over https, 24 hours', async () => {
     const flags = sam.setCookie.find((c) => c.startsWith('guest_session='));
@@ -325,9 +350,9 @@ try {
     assert.deepEqual(r.json.spaces.map((s) => s.id), [a.ids.open]);
     assert.deepEqual(Object.keys(r.json.spaces[0]).sort(), ['hasImage', 'id', 'name', 'state']);
     assert.equal(r.json.spaces[0].state, 'open');
-    assert.equal(r.json.guest.name, 'Sam');
+    assert.equal(r.json.guest.name, 'Sam (Guest)');
     assert.ok(r.json.unavailable.length > 3);
-    assert.match(r.json.none, /Nothing is open to guests here/);
+    assert.match(r.json.none, /No spaces are open to guests at this time\./);
     // The guest role's permissions, exactly what a guest link's join answers with (the page shows chat and the call by them; a guest link's join answers the same).
     const roles = await A.call('GET', '/api/roles', { token: a.admin });
     assert.ok(r.json.permissions && typeof r.json.permissions === 'object');
@@ -356,6 +381,9 @@ try {
     const last = (history.messages || []).slice(-1)[0];
     assert.ok(last, 'the message is there');
     assert.notEqual(last.name, 'Admin');
+    assert.equal(last.who, 'Sam (Guest)', 'the chat sender is the typed name and the mark, once (the page adds nothing)');
+    assert.equal(last.by, 'guest');
+    assert.equal(/\(guest\).*\(guest\)/i.test(JSON.stringify(last)), false, 'never doubled');
     assert.equal((await A.call('POST', `/api/spaces/${a.ids.closed}/chat`, { cookie, body: { text: 'x' } })).status >= 400, true);
   });
 
@@ -368,6 +396,33 @@ try {
     assert.equal(p.status, 200);
     assert.deepEqual(p.json.spaces.map((s) => s.id), [a.ids.open], 'presence names only the open space');
     assert.equal(/"guestToken":"/.test(JSON.stringify(p.json)), false, 'no guest link in a guest\'s answer');
+  });
+
+  await test('#741: a module window (a frame) never gets the sign-in page: a guest is told it is not for them, a stale session is told it ended; a page of its own still goes to sign in', async () => {
+    const framed = { 'sec-fetch-dest': 'iframe' };
+    const cookie = sam.cookie;
+    for (const url of [`/calendar?space=${a.ids.closed}`, `/map?space=${a.ids.closed}`, `/calendar?space=${a.ids.open}`, `/map?space=${a.ids.open}`]) {
+      const r = await A.call('GET', url, { cookie, headers: framed });
+      assert.notEqual(r.status, 302, `${url}: never a redirect to the sign-in page`);
+      assert.doesNotMatch(String(r.headers.get('location') || ''), /login/);
+      if (r.status >= 400) assert.match(r.text, /Not available to guests\./, url);
+    }
+    const stale = { cookie: `guest_session=${door.issue(A.secret(), { slug: '', id: 'guest-old00001', name: 'Old (Guest)', versions: {}, epoch: 0, at: Date.now() - 25 * 3600000 })}` };
+    for (const who of [stale, {}]) {
+      for (const url of [`/calendar?space=${a.ids.open}`, `/map?space=${a.ids.open}`, '/modules/todo?space=' + a.ids.open]) {
+        const r = await A.call('GET', url, { ...who, headers: framed });
+        assert.equal(r.status, 401, `${url}: a stale or missing session in a frame`);
+        assert.match(r.text, /Your session has ended\. Reload the page\./);
+        assert.doesNotMatch(r.text, /<form|password/i, 'not the sign-in page');
+      }
+      const page = await A.call('GET', `/calendar?space=${a.ids.open}`, who);
+      assert.equal(page.status, 302, 'a page of its own (not framed) still goes to sign in');
+      assert.match(page.headers.get('location'), /^\/login/);
+    }
+    // The frame's page itself draws no sign-in redirect for a guest of the door (read as code: destination.js).
+    const dest = fs.readFileSync(path.join(ROOT, 'public', 'destination.js'), 'utf8');
+    assert.match(dest, /api\('GET', '\/api\/guest-door'\); guestMode = true;/);
+    assert.match(dest, /if \(embedded\) \{ missing\('Your session has ended\. Reload the page\.'\); return; \}/);
   });
 
   await test('pictures: a guest sees a person only from a space they may enter, and only an open space\'s picture', async () => {
@@ -390,6 +445,68 @@ try {
     const open = await A.call('POST', '/api/call/join', { cookie, body: { space: a.ids.open } });
     assert.ok([200, 403, 503].includes(open.status), `open: ${open.status} ${open.text}`);
     assert.equal((await A.call('POST', '/api/call/join', { body: { space: a.ids.open } })).status, 401);
+  });
+
+  // Server E: the host's switch on and no space open to guests yet; the owner has no switch of their own.
+  const E = await startServer('empty', { ENABLE_GUEST_DOOR: 'true', TERMS_FILE: TERMS });
+  const e = await seed(E, true);
+  await E.call('PATCH', `/api/spaces/${e.ids.open}`, { token: e.admin, body: { entry: 'invited' } });
+  await test('host on, no space open to guests: the button shows, a guest gets into nothing and is told so; opening a space lets them in with no owner step; closing it shuts it', async () => {
+    assert.equal((await E.call('GET', '/api/branding')).json.guestDoor, true, 'the button still shows');
+    assert.equal((await E.call('GET', '/api/settings', { token: e.admin })).json.settings.guestDoorOpen, false, 'the owner is told no space is open');
+    const entered = await enterDoor(E, 'Nina');
+    assert.equal(entered.status, 201, entered.text);
+    const cookie = entered.cookie;
+    const home = await E.call('GET', '/api/guest-door', { cookie });
+    assert.equal(home.status, 200);
+    assert.deepEqual(home.json.spaces, [], 'no spaces');
+    assert.equal(home.json.none, 'No spaces are open to guests at this time.');
+    for (const id of [...Object.values(e.ids), 'lobby']) {
+      assert.equal((await E.call('POST', '/api/call/join', { cookie, body: { space: id } })).status, 404, `${id}: no such space`);
+      assert.ok([401, 403, 404].includes((await E.call('GET', `/api/spaces/${id}/chat`, { cookie })).status), `${id}: chat refused`);
+    }
+    // The owner opens a space: Who can enter, Anyone including guests. Nothing else is needed.
+    assert.equal((await E.call('PATCH', `/api/spaces/${e.ids.open}`, { token: e.admin, body: { entry: 'guests' } })).status, 200);
+    assert.equal((await E.call('GET', '/api/settings', { token: e.admin })).json.settings.guestDoorOpen, true);
+    const after = await E.call('GET', '/api/guest-door', { cookie });
+    assert.deepEqual(after.json.spaces.map((x) => x.id), [e.ids.open]);
+    assert.equal((await E.call('GET', `/api/spaces/${e.ids.open}/chat`, { cookie })).status, 200, 'in');
+    assert.notEqual((await E.call('GET', `/api/spaces/${e.ids.accounts}/chat`, { cookie })).status, 200, 'a space open to accounts only: not for a guest');
+    assert.notEqual((await E.call('GET', `/api/spaces/${e.ids.closed}/chat`, { cookie })).status, 200, 'a closed one: not for a guest');
+    assert.notEqual((await E.call('GET', '/api/spaces/lobby/chat', { cookie })).status, 200, 'never the Lobby');
+    assert.equal((await E.call('PATCH', `/api/spaces/${e.ids.open}`, { token: e.admin, body: { entry: 'accounts' } })).status, 200);
+    assert.notEqual((await E.call('GET', `/api/spaces/${e.ids.open}/chat`, { cookie })).status, 200, 'closed again: shut at once');
+    assert.deepEqual((await E.call('GET', '/api/guest-door', { cookie })).json.spaces, []);
+  });
+
+  await test('#743: a door guest asks to enter; the owner approves and the guest can enter (their next read shows it open); withdrawing an approved request is a plain 404 and changes nothing; a denial shows as an answer', async () => {
+    const asked = await E.call('POST', '/api/spaces', { token: e.admin, body: { name: 'Askable', members: [] } });
+    const id = asked.json.space.id;
+    assert.equal((await E.call('PATCH', `/api/spaces/${id}`, { token: e.admin, body: { entry: 'invited', requestAccess: true } })).status, 200);
+    const cookie = (await enterDoor(E, 'Ria')).cookie;
+    const stateOf = async () => (await E.call('GET', '/api/guest-door', { cookie })).json.spaces.find((s) => s.id === id);
+    assert.equal((await stateOf()).state, 'request');
+    assert.equal((await E.call('POST', `/api/spaces/${id}/request`, { cookie })).status, 201);
+    assert.equal((await stateOf()).state, 'pending');
+    assert.notEqual((await E.call('GET', `/api/spaces/${id}/chat`, { cookie })).status, 200, 'not in yet');
+    const list = (await E.call('GET', `/api/spaces/${id}/access-requests`, { token: e.admin })).json.requests;
+    assert.equal(list.length, 1);
+    assert.equal(list[0].name, 'Ria (Guest)', 'the owner reads the name once marked');
+    assert.equal((await E.call('POST', `/api/spaces/${id}/access-requests/${list[0].id}`, { token: e.admin, body: { decision: 'approve' } })).status, 200);
+    assert.equal((await stateOf()).state, 'open', 'the next read of the landing shows it open');
+    assert.equal((await E.call('GET', `/api/spaces/${id}/chat`, { cookie })).status, 200, 'the guest can enter');
+    const withdraw = await E.call('DELETE', `/api/spaces/${id}/request`, { cookie });
+    assert.equal(withdraw.status, 404, 'nothing to take back once approved');
+    assert.equal((await stateOf()).state, 'open', 'still open after Withdraw');
+    // A denial
+    const denied = (await E.call('POST', '/api/spaces', { token: e.admin, body: { name: 'Declined', members: [] } })).json.space.id;
+    await E.call('PATCH', `/api/spaces/${denied}`, { token: e.admin, body: { entry: 'invited', requestAccess: true } });
+    assert.equal((await E.call('POST', `/api/spaces/${denied}/request`, { cookie })).status, 201);
+    const dl = (await E.call('GET', `/api/spaces/${denied}/access-requests`, { token: e.admin })).json.requests;
+    assert.equal((await E.call('POST', `/api/spaces/${denied}/access-requests/${dl[0].id}`, { token: e.admin, body: { decision: 'deny' } })).status, 200);
+    const after = (await E.call('GET', '/api/guest-door', { cookie })).json.spaces.find((s) => s.id === denied);
+    assert.deepEqual([after.state, after.answer], ['request', 'denied']);
+    assert.notEqual((await E.call('GET', `/api/spaces/${denied}/chat`, { cookie })).status, 200);
   });
 
   await test('Set up\'s entry choices: a space switched back to invited-only shuts at once', async () => {
@@ -429,11 +546,9 @@ try {
     assert.equal((await A.call('POST', '/api/guest-door/end-all', { token: a.admin })).status, 200);
     assert.equal((await A.call('GET', '/api/guest-door', { cookie: sam.cookie })).status, 401, 'ended by the epoch');
     assert.equal((await A.call('GET', '/api/guest-door', { cookie: forge({ epoch: 1 }) })).status, 200, 'a session of the new epoch reads');
-    // the owner turns the door off: every session stops reading
-    await A.call('PATCH', '/api/settings', { token: a.admin, body: { guestDoor: false } });
-    assert.equal((await A.call('GET', '/api/guest-door', { cookie: forge({ epoch: 1 }) })).status, 401);
-    assert.equal((await enterDoor(A, 'Late')).status, 403);
-    await A.call('PATCH', '/api/settings', { token: a.admin, body: { guestDoor: true } });
+    // The host's switch off: every session stops reading, even a validly signed one (server O has no ENABLE_GUEST_DOOR).
+    const lateCookie = `guest_session=${door.issue(O.secret(), { slug: '', id: 'guest-late0001', name: 'Late (Guest)', versions: { terms: termsVersion }, epoch: 0 })}`;
+    assert.equal((await O.call('GET', '/api/guest-door', { cookie: lateCookie })).status, 401, 'host off: a signed session reads as nobody');
   });
 
   await test('signing out of the door clears the cookie and the session is not the account\'s', async () => {
@@ -516,7 +631,10 @@ try {
     assert.equal(bare.status, 403);
     assert.equal(bare.json.agreementRequired, true);
     assert.equal((await join({ versions: { terms: '2'.repeat(16) } })).status, 409);
-    assert.equal((await join({ name: 'Mia Member' })).status, 400, 'a member\'s name');
+    const same = await join({ name: 'Mia Member' });
+    assert.equal(same.status, 200, 'a member\'s name is no longer refused: the mark tells them apart');
+    assert.equal(same.json.guest.name, 'Mia Member (Guest)');
+    assert.equal((await join({ name: 'Link (guest)' })).json.guest.name, 'Link (Guest)', 'never doubled');
     const ok = await join({});
     assert.equal(ok.status, 200, ok.text);
     const pass = ok.json.guest.pass;
