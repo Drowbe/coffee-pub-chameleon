@@ -1224,7 +1224,7 @@ export function createFrameBands(frame, { send, box = null, statusLimit = undefi
         if (e.id === 'add') { if (e.value !== undefined) send('add', { id: e.value }); return; }
         const a = actions.find((x) => x.id === e.id);
         if (!a) return;
-        if (a.from === 'header') to(a, 'header', { id: a.id }, e.el);
+        if (a.from === 'header') to(a, 'header', { id: a.id, ...(a.kind === 'select' && e.el ? { x: xOf(e.el) } : {}) }, e.el);
         else to(a, 'toolbar', { id: a.id, ...(e.el ? { x: xOf(e.el) } : {}) }, e.el);
         return;
       }

@@ -306,19 +306,37 @@ export function cleanToolbarItems(items) {
   return out;
 }
 
-// The titlebar's own icons (host.header.set), cleaned: at most 10 of { id, title, icon, regular, on, disabled, overflow,
-// danger }. `overflow` puts one in the title bar's menu; `danger` (a destructive action) is always last in that menu, red.
+// The titlebar's own items (host.header.set), cleaned: at most 10 of { id, title, icon, regular, on, disabled, overflow,
+// danger }, and at most ONE select ({ kind: 'select', id, label, title, disabled }: a divider and a dropdown button after the
+// title, its `label` the current choice's words, up to HEADER_SELECT_LABEL characters; the first one given, a second is
+// dropped). The select counts in the 10 (it is one of the module's items) but not in the five icons beside the menu.
+// `overflow` puts an icon in the title bar's menu; `danger` (a destructive action) is always last in that menu, red.
+export const HEADER_SELECT_LABEL = 40;
 export function cleanHeaderItems(items) {
-  return (Array.isArray(items) ? items : []).slice(0, 10).map((i) => ({
-    id: String(i?.id ?? '').slice(0, 40),
-    title: String(i?.title ?? '').slice(0, 40),
-    icon: ICON.test(i?.icon || '') ? i.icon : '',
-    regular: Boolean(i?.regular),
-    on: Boolean(i?.on),
-    disabled: Boolean(i?.disabled),
-    overflow: Boolean(i?.overflow),
-    danger: Boolean(i?.danger),
-  })).filter((i) => i.id && i.icon);
+  let select = false;
+  const out = [];
+  for (const i of (Array.isArray(items) ? items : []).slice(0, 10)) {
+    if (i && i.kind === 'select') {
+      const id = String(i.id ?? '').slice(0, 40);
+      const label = str(i.label, HEADER_SELECT_LABEL);
+      if (!id || !label || select) continue;
+      select = true;
+      out.push({ kind: 'select', id, label, title: String(i.title ?? '').slice(0, 40), disabled: Boolean(i.disabled) });
+      continue;
+    }
+    const c = {
+      id: String(i?.id ?? '').slice(0, 40),
+      title: String(i?.title ?? '').slice(0, 40),
+      icon: ICON.test(i?.icon || '') ? i.icon : '',
+      regular: Boolean(i?.regular),
+      on: Boolean(i?.on),
+      disabled: Boolean(i?.disabled),
+      overflow: Boolean(i?.overflow),
+      danger: Boolean(i?.danger),
+    };
+    if (c.id && c.icon) out.push(c);
+  }
+  return out;
 }
 
 // The standard actions a module handles itself (host.standard.set): Settings, Share and Print, the engine's, drawn by the
@@ -366,6 +384,7 @@ export function cleanShareResult(r, origin) {
 export function titlebarActions(header, toolbar) {
   const out = [];
   for (const h of header || []) {
+    if (h.kind === 'select') { out.push({ id: h.id, from: 'header', kind: 'select', label: h.label, tip: h.title || h.label, ...(h.disabled ? { disabled: true } : {}) }); continue; }
     out.push({ id: h.id, from: 'header', label: h.title || h.id, icon: h.icon, ...(h.regular ? { regular: true } : {}),
       placement: h.overflow ? 'menu' : 'bar', ...(h.on ? { on: true } : {}), ...(h.disabled ? { disabled: true } : {}), ...(h.danger ? { danger: true } : {}),
       ...(h.send ? { send: h.send } : {}) });
@@ -377,7 +396,7 @@ export function titlebarActions(header, toolbar) {
       ...(b.send ? { send: b.send } : {}) });
   }
   let bar = 0;
-  for (const a of out) if (a.placement === 'bar' && !a.danger && (bar += 1) > 5) a.placement = 'menu';
+  for (const a of out) if (a.kind !== 'select' && a.placement === 'bar' && !a.danger && (bar += 1) > 5) a.placement = 'menu';
   return out;
 }
 
