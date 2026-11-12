@@ -43,6 +43,10 @@
   const me = info.user && info.user.key;
   const myName = (info.user && info.user.name) || 'Someone';
   const canEdit = host.can('edit') && Boolean(me);
+  // THE SWITCH (module setting `coediting`, set by the owner; default off). Off: everything below that says `co` never runs and host.live is never touched.
+  let coediting = false;
+  try { coediting = dlSyncEnabled(await host.settings.get()); } catch (err) { coediting = false; }
+  host.settings.onChange((v) => { coediting = dlSyncEnabled(v); }); // a document already open keeps the mode it opened in
 
   const docs = new Map(); // id -> cleaned small record
   const unreadable = new Set(); // ids whose record did not clean
@@ -640,6 +644,7 @@
   }
   function openDoc(id) {
     if (!docs.has(id)) return;
+    if (coediting && canEdit && host.live) { openCoEditor(id).catch((err) => { note(cleanMsg(err)); }); return; }
     openId = id; shownRev = 0;
     $('list').hidden = true; $('read').hidden = false;
     $('renamer').hidden = true;
@@ -745,13 +750,13 @@
         for (const p of ['doc:', 'tags:', '_lock:', '_trash:']) for (const item of read[p]) { remember(item); if (p === '_lock:') seen.add(idOf(item.key, p)); }
         for (const id of [...locks.keys()]) if (!seen.has(id) && !(ed && id === ed.id)) locks.delete(id);
         if (ed && mine && !seen.has(ed.id)) locks.set(ed.id, mine);
-        if (plan.checkLock) { hearLock(); serial(refreshLock).then(() => schedule(true)).catch(() => {}); } // a lost lock is noticed now
+        if (plan.checkLock) { if (ed && ed.co) schedule(true); else { hearLock(); serial(refreshLock).then(() => schedule(true)).catch(() => {}); } } // a lost lock is noticed now
         else if (plan.closeReading) { note('This document was deleted.'); closeDoc(); } else if (plan.redrawReading) { updateEditButton(); paintTags(); draw(openId).catch(() => {}); } else if (plan.redrawList) { render(); $('list').scrollTop = top; } else if (openId) { updateEditButton(); paintTags(); }
       } while (resyncAgain);
     } catch (err) { /* the next change or a reload puts it right */ } finally { resyncing = false; }
   }
   let hiddenAt = 0;
-  host.on('reconnected', () => { resyncDocs(); });
+  host.on('reconnected', () => { resyncDocs(); if (ed && ed.co) ed.co.session.reconnected(); });
   window.addEventListener('online', () => { resyncDocs(); });
   doc.addEventListener('visibilitychange', () => {
     if (doc.visibilityState === 'hidden') hiddenAt = Date.now();
@@ -828,12 +833,12 @@
   try { rich = window.localStorage.getItem(RICH_KEY) === '1'; } catch { /* no browser storage: the text box */ }
   const INEXACT = 'This block has formatting Markdown cannot keep exactly; switch to Markdown to check.';
   // Makes the editor for the choice, with this text, in the sheet: one of the two shows, both behind the same adapter.
-  function mountEditor(text) {
+  function mountEditor(text, shared) {
     const ta = $('edit-text');
     const box = $('edit-rich');
     $('editor').scrollTop = 0; // a new document starts at its top, not where the last one was scrolled to
-    ta.hidden = rich; box.hidden = !rich;
-    ed.editor = rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
+    ta.hidden = rich || Boolean(shared); box.hidden = !(rich || shared);
+    ed.editor = shared ? dlRichEditor(DlPM, doc, lex, box, { shared }) : rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
     ed.editor.onChange(typed);
     ed.editor.onChange(() => { sizeEditSoon(); keepCaret(); });
     if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
@@ -854,6 +859,7 @@
   }
   // The switch: the text goes from one editor to the other as Markdown. What is not saved yet stays not saved.
   function setRich(on) {
+    if (ed && ed.co) { coSetRich(Boolean(on)); return; }
     const next = Boolean(on);
     const swap = () => {
       if (next === rich) return;
@@ -898,6 +904,175 @@
     ed.editor.focus();
   }
 
+  // ---- co-editing (only with the `coediting` switch on; the channel is documents-lib-u-coedit-sync.js) ----------------------------------
+  // A document is simply editable for anyone with `edit`: no Edit, no Done, no lock. The text is a Y.Doc per open document; the editor draws it (ySync),
+  // every remote update goes through the gate (dlSyncSession), and the text is saved by the old save path while one person is editing (4b brings the writer).
+  const coAlone = () => !ed || !ed.co || ed.co.session.roster.others().length === 0;
+  function coStatus() {
+    const c = ed.co;
+    if (!c.ready) return 'Joining';
+    if (!c.editor) return dlSyncFullNote(DL_SYNC.editorsMax);
+    if (c.channel === 'closed') return 'Offline. Your changes are kept here.';
+    const bad = c.session.status();
+    if (bad) return bad.slice(0, 60);
+    return coAlone() ? dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed }) : 'Shared';
+  }
+  // The channel's counters, readable on the page (data-co-stats) for the tests; painted on every change and twice a second.
+  function coStatsPaint() {
+    try {
+      const st = ed.co.session.stats();
+      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel });
+    } catch (err) { /* only for the tests */ }
+  }
+  async function openCoEditor(id) {
+    if (ed) return;
+    const { rec, version, got } = await readForEdit(id);
+    if (ed) return;
+    // y-prosemirror restores the selection through view.root.createRange(); a shadow root has none (the page's document does).
+    if (root && typeof root.createRange !== 'function') { try { root.createRange = () => doc.createRange(); } catch (err) { /* read-only root: the library then fails on a remote change and the gate rebuilds */ } }
+    const ydoc = new DlPM.Doc();
+    ed = {
+      id, rec, docVersion: version, old: got.parts, lock: null, text: got.text, paper: rec.paper, page: dlCleanPage(rec), saved: { text: got.text, title: rec.title, paper: rec.paper, page: dlCleanPage(rec) }, savedRev: 0,
+      lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
+      timer: 0, beat: 0, queue: Promise.resolve(), co: null,
+    };
+    const c = { ydoc, text: got.text, ready: false, editor: true, box: false, channel: host.live.state, richWas: rich, wasAlone: true, session: null };
+    ed.co = c;
+    rich = true;
+    c.session = dlSyncSession(DlPM, {
+      doc: ydoc, lex, topic: dlSyncTopic(id), me, live: host.live, editor: true,
+      seed: (d) => dlSyncSeed(DlPM, d, dlRichRead(DlPM, got.text, lex).doc, id, got.text),
+      onRebuild: (nd) => coRebuilt(nd),
+      onState: () => coChanged(),
+      onChannel: (s) => { c.channel = s; if (s === 'open') c.session.reconnected(); coChanged(); },
+    });
+    $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
+    $('edit-title').value = rec.title;
+    paintPaper($('editor').querySelector('.sheet'), ed.paper);
+    paintPage($('editor').querySelector('.sheet'), ed.page);
+    $('edit-title').readOnly = false;
+    $('lost').hidden = true;
+    renderChrome();
+    const statsTimer = setInterval(() => { if (!$('app') || !ed || ed.co !== c) return void clearInterval(statsTimer); coStatsPaint(); }, 500);
+    c.statsTimer = statsTimer;
+    c.session.start();
+    c.session.join((how, mayType) => coReady(c, mayType));
+  }
+  function coReady(c, mayType) {
+    if (!ed || ed.co !== c) return;
+    c.ready = true;
+    c.editor = mayType;
+    mountEditor(c.text, { frag: c.session.doc().getXmlFragment('prosemirror') });
+    ed.savedRev = NaN; // the text may differ from the saved text already (a peer's state): decided by the first save check
+    ed.editor.setReadOnly(!c.editor); $('edit-title').readOnly = !c.editor;
+    renderChrome();
+    if (c.editor) ed.editor.focus();
+    $('app').dataset.coedit = 'ready';
+  }
+  // The roster or the channel changed: the cap, the Markdown box, and saving once this page is alone.
+  function coChanged() {
+    const c = ed && ed.co;
+    if (!c) return;
+    if (!c.ready) { renderStatus(); return; }
+    const r = c.session.roster;
+    if (c.editor && r.past(me, c.session.admitted())) coEditorSet(false);
+    else if (!c.editor && r.admit()) coEditorSet(true);
+    if (c.box && r.others().length) { note('Others are editing. The Markdown box is off. Your text is in the document.'); coSetRich(true); }
+    const alone = coAlone();
+    if (alone && !c.wasAlone) schedule(true);
+    c.wasAlone = alone;
+    renderStatus();
+  }
+  function coEditorSet(on) {
+    const c = ed.co;
+    c.editor = on;
+    c.session.setEditor(on);
+    if (!c.box) ed.editor.setReadOnly(!on);
+    $('edit-title').readOnly = !on;
+  }
+  // The Markdown box in a shared document: only while nobody else is editing; its text goes into the document as one replacement.
+  function coSetRich(next) {
+    const c = ed.co;
+    if (!c.ready || next === !c.box) { if (richSwitch) richSwitch.set(dlEditViewId(!c.box)); return; }
+    const frag = () => c.session.doc().getXmlFragment('prosemirror');
+    if (!next) {
+      if (!c.editor || c.session.roster.others().length) {
+        note(c.editor ? 'Others are editing. The Markdown box is off until you are alone.' : dlSyncFullNote(DL_SYNC.editorsMax));
+        if (richSwitch) richSwitch.set(dlEditViewId(true));
+        return;
+      }
+      const text = ed.editor.getText();
+      sayInexact(true);
+      ed.editor.destroy();
+      c.box = true; rich = false;
+      c.session.setEditor(false); // what is typed in the box is not sent until it is put into the document
+      mountEditor(text);
+      ed.savedRev = text === ed.saved.text ? ed.editor.revision() : NaN;
+      ed.editor.focus();
+    } else {
+      const text = ed.editor.getText();
+      ed.editor.destroy();
+      coApplyText(text);
+      c.box = false; rich = true;
+      c.session.setEditor(c.editor);
+      mountEditor(text, { frag: frag() });
+      ed.savedRev = NaN;
+      ed.editor.setReadOnly(!c.editor);
+      if (c.editor) ed.editor.focus();
+    }
+    renderChrome();
+    setStatus(); schedule(false);
+  }
+  // The live document is changed here, outside the gate: one replacement, then the gate looks at the new state again.
+  function coApplyText(text) {
+    const s = ed.co.session;
+    const d = s.doc();
+    const frag = d.getXmlFragment('prosemirror');
+    const read = dlRichRead(DlPM, text, lex);
+    d.transact(() => { frag.delete(0, frag.length); DlPM.prosemirrorToYXmlFragment(read.doc, frag); }, 'dl-sync-box');
+    s.reseed();
+  }
+  // The gate threw the document away and built a new one from the last good state: draw it.
+  function coRebuilt(nd) {
+    const c = ed && ed.co;
+    if (!c) return;
+    c.ydoc = nd;
+    if (c.ready && !c.box) {
+      ed.editor.destroy();
+      mountEditor(c.text, { frag: nd.getXmlFragment('prosemirror') });
+      ed.savedRev = NaN;
+      ed.editor.setReadOnly(!c.editor);
+    }
+    coChanged();
+  }
+  // The save lost the race for the small record: look at the record as it is now and save against it (the lock is not in play here).
+  async function coRebase() {
+    const mine = ed;
+    try {
+      const r = await readForEdit(mine.id);
+      if (ed !== mine) return;
+      mine.rec = r.rec; mine.docVersion = r.version; mine.old = r.got.parts;
+      schedule(true);
+    } catch (err) { /* the next save tries again */ }
+  }
+  async function leaveCo() {
+    const mine = ed;
+    if (!mine || !mine.co || mine.leaving) return;
+    mine.leaving = true;
+    clearTimeout(mine.timer);
+    try { if (mine.co.ready && coAlone()) await saveNow(); } catch (err) { /* the text stays in the other pages, or is lost with this one */ }
+    if (ed !== mine) return;
+    stopEditing();
+    closeDoc();
+  }
+  function coClose(c) {
+    clearInterval(c.statsTimer);
+    c.session.stop();
+    try { c.session.doc().destroy(); } catch (err) { /* already gone */ }
+    rich = c.richWas;
+    delete $('app').dataset.coedit;
+  }
+
   const serial = (fn) => {
     const s = ed;
     const run = s.queue.then(() => (s === ed ? fn() : undefined));
@@ -926,7 +1101,7 @@
   }
   // Another person holds the lock now: the editor stops taking keys and keeps the text on the screen.
   function hearLock() {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || ed.co) return;
     const l = locks.get(ed.id);
     if (l && dlLockHear({ rec: l.rec, fresh: true, me, editing: true }) === 'lost') loseLock();
   }
@@ -946,6 +1121,7 @@
   function saveNow() {
     return serial(async () => {
       if (!ed || ed.lost) return 'lost';
+      if (ed.co && !coAlone()) return 'saved'; // 4a: the text is saved while one person is editing (the writer comes in 4b)
       const cur = snapshot();
       sayInexact(false);
       if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
@@ -969,7 +1145,7 @@
       } catch (err) {
         ed.saving = false;
         ed.stray.push(...wrote);
-        if (dlCommitResult(err) === 'conflict') { loseLock(); return 'conflict'; }
+        if (dlCommitResult(err) === 'conflict') { if (ed.co) { await coRebase(); return 'conflict'; } loseLock(); return 'conflict'; }
         ed.failed = true; setStatus();
         return 'failed';
       }
@@ -990,6 +1166,7 @@
     if (!ed || ed.lost) return;
     clearTimeout(ed.timer);
     if (ed.refused) return;
+    if (ed.co && !coAlone()) return;
     const d = dlAutosaveDelay({ now: Date.now(), lastKey: ed.lastKey, lastSave: ed.lastSave, dirty: dirtyNow(), force: Boolean(force) });
     if (d === null) return;
     const mine = ed;
@@ -1005,7 +1182,9 @@
     if (!ed) return;
     closeTagPicker();
     clearTimeout(ed.timer); clearInterval(ed.beat);
+    const co = ed.co;
     ed.editor.destroy();
+    if (co) coClose(co);
     ed = null;
     $('editor').hidden = true;
     $('edit-rich').hidden = true; $('edit-text').hidden = false;
@@ -1169,7 +1348,7 @@
   let fmtOn = []; // which format buttons are drawn `on`, in FORMATS order
   let activeFrame = 0;
   // Which formats the rich selection is in (null in the text box, which has no such thing).
-  const activeNow = () => (ed && !ed.lost && rich && ed.editor.active ? ed.editor.active() : null);
+  const activeNow = () => (ed && !ed.lost && rich && ed.editor && ed.editor.active ? ed.editor.active() : null);
   // The buttons of the formats the selection is in are drawn `on`. Asked for on every move of the caret; done once a frame,
   // from the selection alone (the words are never read), and only a button whose state changed is drawn again.
   function paintActive() {
@@ -1225,7 +1404,9 @@
   ];
   function renderChrome() {
     let items;
-    if (ed) {
+    if (ed && ed.co) {
+      items = []; // a shared document has no Edit and no Done: it is simply editable
+    } else if (ed) {
       items = ed.lost ? [] : [
         { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
       ];
@@ -1277,11 +1458,11 @@
     else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
     // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.
-    const wantBack = Boolean(openId && !ed);
+    const wantBack = Boolean((openId && !ed) || (ed && ed.co));
     const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost)));
     if (wantBack && !backButton) {
       if (tagButton) { tagButton.destroy(); tagButton = null; }
-      backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); } });
+      backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); else if (ed.co) leaveCo(); } });
     } else if (!wantBack && backButton) { backButton.destroy(); backButton = null; }
     if (wantTags && !tagButton) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
     else if (!wantTags && tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); }
@@ -1296,8 +1477,9 @@
     renderStatus();
   }
   function renderStatus() {
+    if (ed && ed.co) coStatsPaint();
     if (!host.status) return;
-    const text = ed ? (ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed })) : openId ? why.slice(0, 60) : '';
+    const text = ed && ed.co ? coStatus() : ed ? (ed.lost ? 'Stopped' : dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed })) : openId ? why.slice(0, 60) : '';
     const items = text ? [{ text }] : [];
     if (viewShown()) items.push({ text: dlViewLabel(view), quiet: true, end: true, title: 'Zoom' }); // as the Whiteboard's zoom
     host.status.set(items).catch(() => {});
@@ -1307,7 +1489,7 @@
     if (id === 'search') { query = String(e.value || ''); render(); return; }
     if (id === 'tag-filter' && typeof e.value === 'string') { filterTags = e.on ? [...new Set([...filterTags, e.value])] : filterTags.filter((t) => t !== e.value); render(); return; }
     if (id === 'trash') { showTrash = !showTrash; render(); return; }
-    if (id === 'back') { if (!ed) closeDoc(); return; }
+    if (id === 'back') { if (!ed) closeDoc(); else if (ed.co) leaveCo(); return; }
     if (id === 'edit') { startEdit(); return; }
     if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
     if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
@@ -1349,9 +1531,9 @@
   doc.addEventListener('visibilitychange', () => {
     if (!ed || ed.lost) return;
     if (doc.visibilityState === 'hidden') schedule(true);
-    else serial(refreshLock).then(() => schedule(true)).catch(() => {});
+    else if (ed.co) schedule(true); else serial(refreshLock).then(() => schedule(true)).catch(() => {});
   });
-  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); } });
+  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); if (ed.co) ed.co.session.stop(); } });
 
   await loadTags();
   try { await load(); } catch (err) { showMsg('Documents could not load', err.message, () => location.reload()); return; }

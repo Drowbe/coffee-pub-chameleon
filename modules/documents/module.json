@@ -1,7 +1,7 @@
 {
   "id": "documents",
   "name": "Documents",
-  "version": "0.11.17",
+  "version": "0.11.18",
   "icon": "file-lines",
   "color": "orange",
   "description": "Shared notes for the {space}: session notes, handouts and plans. One person edits at a time and everyone reads along.",
@@ -44,5 +44,20 @@
   "access": {
     "read": "view",
     "write": "edit"
-  }
+  },
+  "live": {
+    "publish": "edit",
+    "bytes": 2048,
+    "perSecond": 30
+  },
+  "settings": [
+    {
+      "key": "coediting",
+      "label": "Let several people type in a document at once",
+      "type": "boolean",
+      "scope": "environment",
+      "default": false,
+      "help": "Off: one person edits a document at a time, with Edit and Done. On: a document is simply editable by everyone who may edit, up to eight people at once. This is an early version: with it on, the text is saved only while one person is editing."
+    }
+  ]
 }
