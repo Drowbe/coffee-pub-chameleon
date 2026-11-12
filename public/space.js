@@ -147,6 +147,7 @@ const asideSelection = new Set(); // identities picked to pull aside together, b
 let me = null;
 let spaceName = 'Coffee Pub'; // the space I am in, once joined; the environment's name before that
 const presenceUsers = new Map(); // key -> { displayName, borderColor, online, space, ... } from /api/presence
+let requestSpaces = []; // spaces I may only ask to enter (request access), as the narrow rows the server sends
 let presenceSpaces = []; // the spaces, with `mine` for the ones I may join
 let currentSpace = null; // the space I am in, once joined
 let viewingHome = false; // the space list shown while still connected (showSpaceList); the breadcrumb is empty then
@@ -284,7 +285,10 @@ async function loadPresence() {
     for (const u of users) presenceUsers.set(u.key, u);
     // The asides are their own record (plan-names step 8); the page lists them after the spaces, marked isAside, so
     // everything that finds where someone is reads one list.
-    presenceSpaces = [...(spaces || []), ...(asides || []).map(asideEntry)];
+    // A space I may only ask to enter comes as a narrow row (id, name, description, hasImage, request, no members): kept
+    // apart, so nothing that reads a space's members ever meets one.
+    requestSpaces = (spaces || []).filter((r) => r && r.request);
+    presenceSpaces = [...(spaces || []).filter((r) => !(r && r.request)), ...(asides || []).map(asideEntry)];
     activeSpace = active === undefined ? LOBBY : active; // null: the stream is somewhere I can't see
     ownerOnline = Boolean(hasOwner);
     for (const [key, tile] of tiles) {
@@ -512,6 +516,12 @@ function renderSpaces() {
       card.querySelector('[data-join]').dataset.join = r.id;
       list.insertBefore(card, $('home-add-space')); // the ghost card stays last
     }
+    if (card.classList.contains('requestable')) { // my request was answered: it is a card like the rest now
+      card.classList.remove('requestable');
+      card.querySelector('[data-ask-box]').hidden = true;
+      card.querySelector('.space-choice-actions').hidden = false;
+      card.querySelector('.sdk-members').hidden = false;
+    }
     card.classList.toggle('aside', Boolean(r.isAside));
     // Entering is the primary action; joining the call is a separate choice inside (plan-entering.md). A space's
     // button reads this environment's enter verb; an aside is a call, so its button reads Join with the phone
@@ -549,9 +559,60 @@ function renderSpaces() {
     card.querySelector('.space-choice-count').textContent = r.isAside ? '' : hereCount(members, r.id);
     renderMembers(card.querySelector('.sdk-members'), members, r.id, Boolean(r.isAside));
   }
+  for (const r of requestSpaces) {
+    keep.add(r.id);
+    let card = list.querySelector(`[data-space="${CSS.escape(r.id)}"]`);
+    if (!card) {
+      card = document.getElementById('space-choice').content.firstElementChild.cloneNode(true);
+      card.dataset.space = r.id;
+      list.insertBefore(card, $('home-add-space'));
+    }
+    paintRequestCard(card, r);
+  }
   for (const card of [...list.children]) if (card.id !== 'home-add-space' && !keep.has(card.dataset.space)) card.remove();
   renderSpaceListHead();
   syncHomeChat(); // Home's chat column, with no space entered (plan-home-lobby.md, step 3)
+}
+
+// A space I may only ask to enter: its picture, name and description, and the state of my request. Never entered from the
+// card. Drawn as text. `request` is 'request' (Request access), 'pending' (Requested, Withdraw), and `answer: 'denied'`
+// rides on a 'request' row during the cooldown (Declined, no button).
+function paintRequestCard(card, r) {
+  card.classList.add('requestable');
+  card.classList.remove('joinable', 'aside');
+  for (const a of ['role', 'tabindex', 'aria-label']) card.removeAttribute(a);
+  card.querySelector('.space-choice-actions').hidden = true;
+  card.querySelector('.sdk-members').hidden = true;
+  card.querySelector('.space-choice-count').textContent = '';
+  card.querySelector('.space-choice-name').textContent = r.name;
+  const desc = card.querySelector('.space-choice-desc');
+  desc.textContent = r.description || '';
+  desc.hidden = !r.description;
+  const img = card.querySelector('.space-choice-image');
+  const src = r.hasImage ? `/img/space/${encodeURIComponent(r.id)}` : '';
+  img.hidden = !src;
+  if (src && img.dataset.src !== src) { img.dataset.src = src; img.src = src; }
+  const pending = r.request === 'pending';
+  const declined = !pending && r.answer === 'denied';
+  card.querySelector('[data-ask-box]').hidden = false;
+  card.querySelector('[data-ask]').hidden = pending || declined;
+  card.querySelector('[data-withdraw]').hidden = !pending;
+  const state = card.querySelector('[data-ask-state]');
+  state.textContent = pending ? 'Requested' : declined ? 'Declined' : '';
+  state.hidden = !state.textContent;
+}
+async function askAccess(card, method) {
+  const id = card.dataset.space;
+  const buttons = card.querySelectorAll('[data-ask], [data-withdraw]');
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    await api(method, `/api/spaces/${encodeURIComponent(id)}/request`);
+  } catch (err) {
+    noticeToast(err.message || "Couldn't send that. Try again.", { kind: 'danger' });
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+  await loadPresence();
 }
 
 // The row above the space cards (GitHub #233): the home word with its icon, and "Add <space>" for those who may make
@@ -680,6 +741,12 @@ setInterval(() => {
   if (!$('join').hidden || document.body.classList.contains('in-space')) loadPresence();
 }, 5000);
 $('spaces').addEventListener('click', (event) => {
+  const asking = event.target.closest('.space-choice.requestable');
+  if (asking) { // a space I may only ask to enter: its two buttons, nothing else
+    if (event.target.closest('[data-ask]')) askAccess(asking, 'POST');
+    else if (event.target.closest('[data-withdraw]')) askAccess(asking, 'DELETE');
+    return;
+  }
   if (event.target.closest('a, button:not([data-join])')) return; // the link and Set up do their own thing
   const card = event.target.closest('.space-choice[data-space]');
   if (card && card.classList.contains('joinable')) { if (event.target.closest('[data-join]')) joinOpenSpace(card.dataset.space, event.target.closest('[data-join]')); return; }

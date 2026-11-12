@@ -73,7 +73,7 @@ export function setupAddress(search = '', hash = '') {
 // Which tab each saved field lives on (the dirty dots, and the tab a refusal opens).
 export const FIELD_TAB = Object.freeze({
   name: 'space', description: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
-  members: 'members', allowGuests: 'members', entry: 'members',
+  members: 'members', allowGuests: 'members', entry: 'members', requestAccess: 'members',
   phases: 'phases',
   opensWith: 'modules', defaultLayout: 'modules',
   aiOff: 'modules', aiSees: 'modules',
@@ -154,6 +154,7 @@ export function setupPatch(before = {}, after = {}) {
   if (typeof after.publishCalendar === 'boolean' && after.publishCalendar !== (before.publishCalendar !== false)) patch.publishCalendar = after.publishCalendar;
   if (Array.isArray(after.members) && !sameSet(after.members, Array.isArray(before.members) ? before.members : [])) patch.members = [...after.members];
   if (typeof after.entry === 'string' && after.entry !== (before.entry || 'invited')) patch.entry = after.entry;
+  if (typeof after.requestAccess === 'boolean' && after.requestAccess !== (before.requestAccess === true)) patch.requestAccess = after.requestAccess;
   if (typeof after.allowGuests === 'boolean' && after.allowGuests !== (before.allowGuests !== false)) patch.allowGuests = after.allowGuests;
   if (typeof after.guestsSeeHidden === 'boolean' && after.guestsSeeHidden !== (before.guestsSeeHidden === true)) patch.guestsSeeHidden = after.guestsSeeHidden;
   if (after.phases && typeof after.phases === 'object' && !sameDates(after.phases, datesCopy(before.phases))) patch.phases = datesCopy(after.phases);
@@ -227,6 +228,7 @@ function beforeOf(space = {}) {
     members: Array.isArray(space.members) ? [...space.members] : [],
     allowGuests: space.allowGuests !== false,
     entry: space.entry === 'accounts' || space.entry === 'guests' ? space.entry : 'invited',
+    requestAccess: space.requestAccess === true,
     guestsSeeHidden: space.guestsSeeHidden === true,
     opensWith: listOrNull(space.opensWith),
     defaultLayout: space.defaultLayout || null,
@@ -355,7 +357,9 @@ export function createSpaceSetup(deps) {
       parts.push(sectionHtml('entry', '<span id="setup-entry-heading">Who can enter</span>', `<div class="setup-choices" id="setup-entry" role="radiogroup" aria-labelledby="setup-entry-heading">
           <label class="setup-choice"><input type="radio" name="setup-entry" value="invited"><i class="fa-solid fa-lock fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Invited people only</span></label>
           <label class="setup-choice"><input type="radio" name="setup-entry" value="accounts"><i class="fa-solid fa-user-group fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Anyone with an account</span></label>
-        </div><p class="hint" id="setup-entry-hint">Others with an account see this ${esc(spaceWord())} on Home and can join it. Saved with Save.</p>`));
+        </div><p class="hint" id="setup-entry-hint">Others with an account see this ${esc(spaceWord())} on Home and can join it. Saved with Save.</p>
+        <label class="sdk-choice-row setup-ask-row"><span class="sdk-choice-text"><span class="sdk-choice-label">People can ask to come in</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-request-access"></label><p class="hint">Someone who cannot enter sees this ${esc(spaceWord())}'s name, picture and description, and can ask. Saved with Save.</p>`));
+      parts.push(sectionHtml('waiting', 'Waiting to come in', `<div id="setup-waiting"></div><p class="setup-links-status" id="setup-waiting-status" role="status" aria-live="polite"></p>`));
     }
     parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>
         <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(guests)} can see costs and booking codes</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-guests-see-hidden"></label><p class="hint">Off keeps amounts and booking codes from ${esc(guests.toLowerCase())}. Only ${esc(word('owner', { many: true }))} can change this. Saved with Save.</p>`));
@@ -700,6 +704,8 @@ export function createSpaceSetup(deps) {
     const cal = q('#setup-publish-calendar');
     if (cal) cal.checked = draft.publishCalendar;
     for (const radio of el.querySelectorAll('#setup-entry input')) radio.checked = radio.value === draft.entry;
+    const ask = q('#setup-request-access');
+    if (ask) ask.checked = draft.requestAccess;
     const guests = q('#setup-allow-guests');
     if (guests) guests.checked = draft.allowGuests;
     const seeHidden = q('#setup-guests-see-hidden');
@@ -1148,6 +1154,8 @@ export function createSpaceSetup(deps) {
     if (cal) cal.addEventListener('change', () => { state.draft.publishCalendar = cal.checked; });
     const entryBox = q('#setup-entry');
     if (entryBox) entryBox.addEventListener('change', (event) => { if (event.target.checked) state.draft.entry = event.target.value; });
+    const askBox = q('#setup-request-access');
+    if (askBox) askBox.addEventListener('change', () => { state.draft.requestAccess = askBox.checked; });
     const guests = q('#setup-allow-guests');
     if (guests) guests.addEventListener('change', () => { state.draft.allowGuests = guests.checked; paintGuestLink(); });
     const seeHidden = q('#setup-guests-see-hidden');
@@ -1305,6 +1313,82 @@ export function createSpaceSetup(deps) {
     fillFields();
     refresh();
   }
+  // Waiting to come in: the pending requests for this space (owners and the admin), each with Approve and Deny. Names are
+  // drawn as text. A decision is not part of Save: it goes at once, then the list is read again.
+  const agoText = (at) => {
+    const m = Math.max(0, Math.round((Date.now() - Number(at)) / 60000));
+    if (!Number.isFinite(m)) return '';
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    if (m < 1440) return `${Math.round(m / 60)} h ago`;
+    return `${Math.round(m / 1440)} d ago`;
+  };
+  async function loadWaiting() {
+    const box = q('#setup-waiting');
+    const space = state && state.space;
+    if (!box || !space) return;
+    const say = (text, bad = false) => { const f = q('#setup-waiting-status'); if (f) { f.textContent = text; f.classList.toggle('error', bad); } };
+    let rows;
+    try {
+      rows = (await api('GET', `/api/spaces/${encodeURIComponent(space.id)}/access-requests`)).requests || [];
+    } catch (err) {
+      if (!state || state.space.id !== space.id) return;
+      box.replaceChildren();
+      say(err.message || "Couldn't load the list.", true);
+      return;
+    }
+    if (!state || state.space.id !== space.id || !q('#setup-waiting')) return;
+    box.replaceChildren();
+    if (!rows.length) {
+      const p = doc.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'Nobody is waiting.';
+      box.append(p);
+      return;
+    }
+    const ul = doc.createElement('ul');
+    ul.className = 'setup-waiting';
+    for (const r of rows) {
+      const li = doc.createElement('li');
+      li.className = 'setup-waiting-row';
+      const who = doc.createElement('span');
+      who.className = 'setup-waiting-who';
+      const name = doc.createElement('strong');
+      name.textContent = r.kind === 'guest' ? `${r.name} (${word('guest')})` : r.name;
+      const when = doc.createElement('span');
+      when.className = 'hint';
+      when.textContent = agoText(r.at);
+      who.append(name, when);
+      const actions = doc.createElement('span');
+      actions.className = 'setup-waiting-actions';
+      const decide = async (decision, buttons) => {
+        buttons.forEach((b) => { b.disabled = true; });
+        say('');
+        try {
+          await api('POST', `/api/spaces/${encodeURIComponent(space.id)}/access-requests/${encodeURIComponent(r.id)}`, { decision });
+        } catch (err) {
+          say(err.message || "Couldn't save that. Try again.", true); // a 409 (already answered) and a 429 read as the server says them
+        }
+        loadWaiting();
+      };
+      const button = (label, icon, cls, decision) => {
+        const b = doc.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        b.dataset.decision = decision;
+        const i = doc.createElement('i');
+        i.className = `fa-solid ${icon} fa-fw`;
+        i.setAttribute('aria-hidden', 'true');
+        b.append(i, doc.createTextNode(` ${label}`));
+        b.addEventListener('click', () => decide(decision, [...actions.querySelectorAll('button')]));
+        return b;
+      };
+      actions.append(button('Approve', 'fa-check', 'btn btn-small btn-primary', 'approve'), button('Deny', 'fa-xmark', 'btn btn-small', 'deny'));
+      li.append(who, actions);
+      ul.append(li);
+    }
+    box.append(ul);
+  }
   async function loadOwnerParts(space) {
     const id = encodeURIComponent(space.id);
     const [record, users, installed, ai] = await Promise.all([
@@ -1340,6 +1424,7 @@ export function createSpaceSetup(deps) {
     state.installed = installed;
     state.ownerPartsIn = true; // the stored budget is known now: the Budget section may show (paintBudgetSection)
     fillFields();
+    loadWaiting();
     // Turn AI off is for a server that has an AI service set up (as the old page's).
     const aiSection = q('[data-section="ai"]');
     if (aiSection) aiSection.hidden = !ai || !ai.active || ai.active.provider === 'none';
@@ -1480,7 +1565,7 @@ export function createSpaceSetup(deps) {
   // before it stays saved and is said.
   const FIELD_INPUT = {
     name: '#setup-name', description: '#setup-description', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
-    publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', entry: '#setup-entry input', budget: '#setup-budget-amount',
+    publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', entry: '#setup-entry input', requestAccess: '#setup-request-access', budget: '#setup-budget-amount',
     opensWith: '#setup-opens-with input', defaultLayout: '#setup-first-visit input:checked', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
     phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
   };

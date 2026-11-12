@@ -593,6 +593,22 @@ async function joinFromMenu(id) {
     // the list shows it as joinable still; try again
   }
 }
+// A space I may only ask to enter (request access), in the Spaces menu: Request access; Requested, which withdraws;
+// Declined, which does nothing. The name and description are text (the menu draws labels as text).
+async function askFromMenu(id, method) {
+  try {
+    await api(method, `/api/spaces/${encodeURIComponent(id)}/request`);
+    noticeToast(method === 'POST' ? 'Requested.' : 'Request withdrawn.');
+  } catch (err) {
+    noticeToast(err.message || "Couldn't send that. Try again.", { kind: 'danger' });
+  }
+}
+const askRows = (data) => (data?.spaces || []).filter((r) => r && r.request);
+const askItem = (r) => (r.request === 'pending'
+  ? { icon: 'hand', label: r.name, hint: 'Requested · Withdraw', tip: r.description || undefined, onPick: () => askFromMenu(r.id, 'DELETE') }
+  : r.answer === 'denied'
+    ? { icon: 'hand', label: r.name, hint: 'Declined', tip: r.description || undefined, disabled: true }
+    : { icon: 'hand', label: r.name, hint: 'Request access', tip: r.description || undefined, onPick: () => askFromMenu(r.id, 'POST') });
 export async function openSwitcher(trigger) {
   const data = await presenceNow();
   const entries = switcherEntries({ spaces: data?.spaces, users: data?.users, present: presentSpaceNow() });
@@ -600,6 +616,7 @@ export async function openSwitcher(trigger) {
   const items = entries.filter((e) => !e.leave).map((e) => (e.join
     ? { icon: 'user-plus', label: e.name, hint: 'Join', onPick: () => joinFromMenu(e.id) }
     : { icon: e.here ? 'location-dot' : 'door-open', label: e.name, hint: hereHint(e), onPick: () => pickSpace(e.id) }));
+  items.push(...askRows(data).map(askItem));
   if (!data) items.push({ label: "Couldn't load the list. Try again.", disabled: true });
   if (seesUpdates(account?.role)) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'plus', label: `New ${word('space')}`, onPick: newSpace });
   if (leave) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'right-from-bracket', label: `Leave ${word('space')}`, onPick: () => pickSpace(leave.id, 'leave') });
@@ -612,9 +629,14 @@ async function refreshMenuSpaces() {
   const data = await presenceNow();
   if (!data) return;
   const entries = switcherEntries({ spaces: data.spaces, users: data.users, present: presentSpaceNow() }).filter((e) => !e.leave);
-  const keep = new Set(entries.filter((e) => !e.join).map((e) => `menu-space-${e.id}`));
+  const asks = askRows(data);
+  const keep = new Set([...entries.filter((e) => !e.join).map((e) => `menu-space-${e.id}`), ...asks.map((r) => `menu-space-ask-${r.id}`)]);
   for (const id of menuSpaceIds) if (!keep.has(id)) nav.unregister(id);
   menuSpaceIds = keep;
+  asks.forEach((r, i) => {
+    const item = askItem(r);
+    nav.register({ id: `menu-space-ask-${r.id}`, bar: 'primary', zone: 'right', group: 'menu-where', order: 950 + Math.min(i, 40), icon: 'hand', label: `${r.name} (${item.hint})`, visible: () => onPhone() && account !== null && !pageTabsInBar, ...(item.disabled ? {} : { onClick: item.onPick }) });
+  });
   entries.filter((e) => !e.join).forEach((e, i) => {
     const hint = hereHint(e);
     nav.register({ id: `menu-space-${e.id}`, bar: 'primary', zone: 'right', group: 'menu-where', order: 3 + Math.min(i, 900), icon: e.here ? 'location-dot' : 'door-open', label: hint ? `${e.name} (${hint})` : e.name, visible: () => onPhone() && account !== null && !pageTabsInBar, onClick: () => pickSpace(e.id) });
@@ -870,13 +892,16 @@ function noticeTime(at) {
   return d.toLocaleString([], today ? { hour: 'numeric', minute: '2-digit', hour12: clockHour12 } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: clockHour12 });
 }
 // A notice from the host itself (about the bundled modules) carries href "/admin#<tab>": it opens that tab of Manage.
+// A request to enter a space (href "/?setup=<space>#members"): the notice opens that space's Set up, where the waiting list is.
+const setupHrefOf = (n) => (typeof n.href === 'string' && /^\/\?setup=[A-Za-z0-9_-]{1,64}#members$/.test(n.href) ? n.href : '');
 const manageTabOf = (n) => (typeof n.href === 'string' && n.href.startsWith('/admin#') ? n.href.slice(7) : '');
 function noticeHtml(n) {
   const icon = String(n.icon || 'bell');
   const iconClass = icon.includes(' ') ? icon : `fa-solid fa-${icon}`;
   const when = noticeTime(n.at);
   const tab = manageTabOf(n);
-  return `<li class="bell-notice"${tab ? ` data-manage="${escapeHtml(tab)}" role="link" tabindex="0"` : ''}><i class="${escapeHtml(iconClass)} fa-fw bell-notice-icon" aria-hidden="true"></i><span class="bell-notice-text"><strong>${escapeHtml(n.title || '')}</strong>${n.body ? `<span class="bell-notice-body">${escapeHtml(n.body)}</span>` : ''}<span class="bell-notice-from">${escapeHtml(n.moduleName || n.module || '')}${when ? ` · ${escapeHtml(when)}` : ''}</span></span></li>`;
+  const setup = setupHrefOf(n);
+  return `<li class="bell-notice"${tab ? ` data-manage="${escapeHtml(tab)}" role="link" tabindex="0"` : setup ? ` data-setup="${escapeHtml(setup)}" role="link" tabindex="0"` : ''}><i class="${escapeHtml(iconClass)} fa-fw bell-notice-icon" aria-hidden="true"></i><span class="bell-notice-text"><strong>${escapeHtml(n.title || '')}</strong>${n.body ? `<span class="bell-notice-body">${escapeHtml(n.body)}</span>` : ''}<span class="bell-notice-from">${escapeHtml(n.moduleName || n.module || '')}${when ? ` · ${escapeHtml(when)}` : ''}</span></span></li>`;
 }
 // A notice that arrives while the list is open goes to its top, read at once (the list is what reads them). True when
 // it was shown there.
@@ -993,11 +1018,12 @@ async function toggleNotices(bell) {
   list.innerHTML = parts.join('');
   noticesOpen.loaded = true;
   const openNotice = (event) => {
-    const li = event.target.closest?.('.bell-notice[data-manage]');
+    const li = event.target.closest?.('.bell-notice[data-manage], .bell-notice[data-setup]');
     if (!li || (event.type === 'keydown' && event.key !== 'Enter')) return;
     event.preventDefault();
     closeNotices();
-    openManage(li.dataset.manage);
+    if (li.dataset.setup) window.location.href = li.dataset.setup;
+    else openManage(li.dataset.manage);
   };
   list.addEventListener('click', openNotice);
   list.addEventListener('keydown', openNotice);
@@ -1154,6 +1180,7 @@ function showToast(n) {
     ms: 9000,
     onOpen: () => {
       if (manageTabOf(n)) return openManage(manageTabOf(n));
+      if (setupHrefOf(n)) { window.location.href = setupHrefOf(n); return; }
       // The call page handles opening a space module's panel; anything else goes to the module's page.
       const handled = !document.dispatchEvent(new CustomEvent('app:notification', { detail: n, cancelable: true }));
       if (!handled && n.scope === 'environment') window.location.href = `/modules/${encodeURIComponent(n.module)}`;
