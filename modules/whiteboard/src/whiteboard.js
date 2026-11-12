@@ -458,6 +458,7 @@
   // whose id is session.id (the ONE place the active board lives); useBoard() switches them. The board list is read at the start.
   let sync = null;
   let boardSync = null;
+  let stripNarrow = false; // the module is narrow (a phone): the strip shows the current board only (lib-s wbBoardsStrip)
   const session = createBoardSession({
     host, scope: spaceId, me, clean: wbClean, cleanSettings: wbCleanBoard,
     handlers: { onRemote, onReload: reload, onSettings: takeBoard, onSettingsReload: reloadBoard, onList: (list) => { boardsDraw(list); boardListChanged(list); }, onRefused, onBusy, onSyncs: (a, b) => { sync = a; boardSync = b; } },
@@ -467,8 +468,17 @@
   // Shown to someone who may edit and to anyone while there are several boards (lib-s wbShowTabs). No icon, so the names stay
   // in view; the host folds the row into More when it is too narrow.
   const boardsSwitch = host.ui.viewSwitch({ id: 'boards', label: 'Boards', value: session.id, options: [], onChange: (id) => { useBoard(id).catch(() => {}); } });
+  // Narrow: one tab (the current board); every board is a row in the Boards… menu (a viewer: the title bar's Boards menu).
+  const stripOf = (list = session.visible()) => wbBoardsStrip(list, session.id, stripNarrow, policy.canEdit);
+  let viewerMenuOn = false;
   function boardsDraw(list = session.visible()) {
-    boardsSwitch.set(session.id, wbShowTabs({ canEdit: policy.canEdit, count: list.length }) ? list.map((b) => ({ id: b.id, label: b.name })) : []);
+    const strip = stripOf(list);
+    boardsSwitch.set(session.id, strip.tabs);
+    if (strip.viewerMenu !== viewerMenuOn) { viewerMenuOn = strip.viewerMenu; if (started) setHeader(); }
+  }
+  function boardRowsMenu(where) {
+    const rows = stripOf().rows;
+    if (rows.length) host.menu.show({ id: 'boards-view', ...where, items: rows.map((r) => ({ id: r.id, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } })) });
   }
 
   // ---- the board's background -------------------------------------------------------------------------------------------
@@ -2456,6 +2466,7 @@
     if (!host.header) return;
     host.header.set([
       ...(policy.canEdit ? [{ id: 'boards', icon: 'layer-group', title: 'Boards…', overflow: true }] : []),
+      ...(!policy.canEdit && viewerMenuOn ? [{ id: 'boards-view', icon: 'layer-group', title: 'Boards', overflow: true }] : []),
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
@@ -2467,6 +2478,7 @@
   if (host.header) {
     host.on('header', (e) => {
       if (e && e.id === 'boards' && policy.canEdit) boardsMenu(toolbarAt(null));
+      if (e && e.id === 'boards-view' && !policy.canEdit) boardRowsMenu(toolbarAt(null));
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
@@ -3971,6 +3983,8 @@
     if (!host.rootElement.isConnected) return; // moved for a moment (a window or dock change): fit when it is back
     const w = host.rootElement.clientWidth;
     app.classList.toggle('narrow', w > 0 && w < 520);
+    const nowNarrow = w > 0 && w < 520;
+    if (nowNarrow !== stripNarrow) { stripNarrow = nowNarrow; boardsDraw(); } // the strip follows the width
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
     notesPlace(); // the notes box stays whole in the area
     updateStatus(); // the overview: its size, and whether there is room for it
@@ -4058,9 +4072,8 @@
   // kept for the board that went are dropped (R2).
   function boardListChanged(list) {
     if (!started || list.some((b) => b.id === session.id)) return;
-    const gone = session.id;
     note('This board was deleted.');
-    useBoard(wbLanding(list, null)).then(() => session.dropPending(gone));
+    useBoard(wbLanding(list, null)).catch(() => {}); // its kept writes go on (a trash keeps them; only a purge drops them)
   }
 
   // ---- the Boards… menu: new, rename, delete, deleted boards --------------------------------------------------------------
@@ -4071,7 +4084,9 @@
     if (!policy.canEdit) return;
     const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
     const items = wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length });
-    host.menu.show({ id: 'boards', ...where, items: items.map((m) => ({ ...m, onClick: () => { act[m.id](); } })) /* no promise returned: the menu closes at the pick */ });
+    const rows = stripOf().rows; // narrow: every board as a row at the top, the current one marked
+    const top = rows.length ? [...rows.map((r) => ({ id: `go-${r.id}`, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } })), { separator: true }] : [];
+    host.menu.show({ id: 'boards', ...where, items: [...top, ...items.map((m) => ({ ...m, onClick: () => { act[m.id](); } }))] /* no promise returned: the menu closes at the pick */ });
   }
   async function newBoard() {
     if (!policy.canEdit) return;
@@ -4111,7 +4126,6 @@
     await useBoard(next.id); // the first board is shown, and what waited for this one is sent first
     const base = recordOf(cur);
     session.saveRecord({ id: base.id, type: 'board-record', name: base.name, order: base.order, by: me, at: base.at || iso(), deleted: true, trashedAt: iso() });
-    session.dropPending(cur.id); // R2: whatever of its writes was still waiting is thrown away
     histories.drop(cur.id);
     note(`Board "${cur.name}" is in Deleted boards for ${WB_TRASH_DAYS} days.`);
   }
@@ -4138,7 +4152,7 @@
   function purgeStart() {
     if (!policy.canEdit || !me) return;
     const purge = createBoardPurge({ host, me });
-    const run = () => { if (session.listRead) purge.tick(session.records(), session.id).catch(() => {}); };
+    const run = () => { if (session.listRead) purge.tick(session.records(), session.id).then((r) => { if (r && r.status === 'done' && r.id) session.dropPending(r.id); }).catch(() => {}); }; // R2: only a purged board's kept writes are dropped
     const timer = setInterval(() => { if (!surface.isConnected) return void clearInterval(timer);
       run(); }, WB_PURGE.everyMs); // gone with the page
     setTimeout(run, 4000);
@@ -4160,7 +4174,9 @@
   try { await openBoard(session.epoch); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   sweepSoon();
   started = true;
+  session.replayOthers(); // R4: the kept writes of the other boards, each into its own board
   boardsDraw();
+  if (viewerMenuOn) setHeader();
   purgeStart();
   // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
   // browser is back online, and when the page shows again after a while hidden.

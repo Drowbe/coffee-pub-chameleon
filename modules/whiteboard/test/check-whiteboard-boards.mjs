@@ -498,4 +498,77 @@ const entryKey = (board, kind = 'block') => `wb-pending:sp1:${kind === 'block' ?
   ok(L.wbPurgePlan(session.records(), Date.parse('2026-11-19T10:00:00.000Z')).join() === 'b7' && L.wbPurgePlan(session.records(), Date.parse('2026-11-19T09:59:00.000Z')).length === 0, 'the plan on the stored record: due at 7 days, not a minute before');
 }
 
+// ---- 0.1.57: a trash keeps the parked writes; replay of every board after the list ------------------------------------------
+{
+  // (a) parked writes of a board that is trashed: still sent under its prefix, entry kept until accepted, dropped at purge
+  timers = [];
+  const srv = makeServer(); const store = makeStore();
+  srv.data.set('board:b2', rec('b2'));
+  const o = open(srv, store);
+  await o.session.loadList(); o.session.start('b2');
+  srv.refuse = (k) => k.startsWith('block:b2:');
+  for (let i = 0; i < 30; i += 1) o.session.sync.save(blk(`p${i}`));
+  await settle();
+  o.session.use('main'); // the board is left (a delete switches first) and then trashed
+  o.session.saveRecord(rec('b2', { deleted: true, trashedAt: new Date().toISOString() }));
+  await settle();
+  ok(store.m.has(entryKey('b2')) && o.session.pending() >= 30, 'trash: the parked writes and the kept entry stay');
+  srv.refuse = null;
+  await runTimers(); await settle();
+  ok(srv.keys('block:b2:').length === 30, `trash: all 30 parked writes land under the trashed board's prefix (${srv.keys('block:b2:').length})`);
+  ok(!store.m.has(entryKey('b2')) && o.session.pending() === 0, 'trash: once accepted the entry is gone');
+  ok(!srv.keys('block:main:').length, 'trash: nothing lands in another board');
+  // purge drops what still waits
+  const srv2 = makeServer(); const st2 = makeStore();
+  const o2 = open(srv2, st2); o2.session.start('b2');
+  srv2.refuse = (k) => k.startsWith('block:b2:');
+  o2.session.sync.save(blk('q1')); await settle(); o2.session.use('main'); await settle();
+  ok(st2.m.has(entryKey('b2')), 'purge setup: an entry is kept for the trashed board');
+  o2.session.dropPending('b2'); srv2.refuse = null; await runTimers();
+  ok(!st2.m.has(entryKey('b2')) && !srv2.keys('block:b2:').length, 'purge: dropPending removes the entry and nothing is sent');
+  const page = fs.readFileSync(path.join(src, 'whiteboard.js'), 'utf8');
+  ok(!/dropPending\(cur\.id\)/.test(page) && !/\.then\(\(\) => session\.dropPending\(gone\)\)/.test(page) && /r\.status === 'done' && r\.id\) session\.dropPending\(r\.id\)/.test(page), 'wbDropPending is called at purge, not at trash (page read as code)');
+}
+{
+  // (b) leftovers of boards A, B, C replayed on a fresh load into their own prefixes, whichever board opens
+  timers = [];
+  const srv = makeServer(); const store = makeStore();
+  srv.data.set('board:ba', rec('ba')); srv.data.set('board:bb', rec('bb', { deleted: true, trashedAt: new Date().toISOString() })); srv.data.set('board:bc', rec('bc'));
+  const entry = (board, ids, extra = {}) => store.setItem(entryKey(board), JSON.stringify({ t: Date.now(), by: 'u1', items: Object.fromEntries(ids.map((i) => [`block:${board}:${i}`, { op: 'put', value: blk(i) }])), ...extra }));
+  entry('ba', ['a1', 'a2']); entry('bb', ['b1']); entry('bc', ['c1'], { t: Date.now() - 3 * 3600000 }); // c: older than 10 minutes, never replayed
+  store.setItem(entryKey('main'), JSON.stringify({ t: Date.now(), by: 'u1', items: Object.fromEntries([['block:main:m1', { op: 'put', value: blk('m1') }]]) }));
+  // a hostile entry: under bc's entry, a key of ba
+  store.setItem(entryKey('bc', 'settings'), JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:ba:evil': { op: 'put', value: blk('evil') }, '_board:ba:settings': { op: 'put', value: { id: 'settings', type: 'board', background: 'gold' } } } }));
+  store.setItem(entryKey('zz'), JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:zz:z1': { op: 'put', value: blk('z1') } } })); // neither listed nor trashed
+  store.setItem(entryKey('ba', 'x'), 'unrelated'); // not an entry of any board
+  const o = open(srv, store);
+  await o.session.loadList(); o.session.start('ba');
+  await shown(o.session); o.session.sync.replay(); o.session.boardSync.replay();
+  const tried = o.session.replayOthers();
+  await settle(); await runTimers(); await settle();
+  ok(same(srv.keys('block:ba:'), ['block:ba:a1', 'block:ba:a2']), 'replay: the board opened replays its own, and only its own');
+  ok(same(srv.keys('block:bb:'), ['block:bb:b1']), 'replay: a trashed board\'s leftover lands under its own prefix');
+  ok(same(srv.keys('block:bc:'), ['block:bc:c1']), 'replay: an entry older than 10 minutes that was never replayed is replayed once');
+  ok(same(srv.keys('block:main:'), ['block:main:m1']), 'replay: main\'s too');
+  ok(!srv.data.has('block:ba:evil') && !srv.data.has('_board:ba:settings'), 'replay: an entry holding another board\'s keys is refused');
+  ok(!srv.data.has('block:zz:z1') && !store.m.has(entryKey('zz')), 'replay: a board neither listed nor trashed is swept, not replayed');
+  ok(srv.log.every((l) => /^set (block:(ba|bb|bc|main):|board)/.test(l)) && tried.length === 3, `replay: every write is under its own board (${tried.join(',')})`);
+  ok(o.log.drawn.length === 0 && o.session.id === 'ba' && o.session.epoch === 0, 'replay of the other boards draws nothing and does not switch the page');
+  ok([...store.m.keys()].filter((k) => /block:(bb|bc|main):$/.test(k)).length === 0, 'and their entries are gone once accepted');
+  // opening another board first: the same
+  const srv2 = makeServer(); const st2 = makeStore();
+  srv2.data.set('board:ba', rec('ba')); srv2.data.set('board:bc', rec('bc'));
+  st2.setItem(entryKey('ba'), JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:ba:a1': { op: 'put', value: blk('a1') } } }));
+  const o2 = open(srv2, st2); await o2.session.loadList(); o2.session.start('bc'); o2.session.replayOthers(); await settle();
+  ok(srv2.data.has('block:ba:a1') && !srv2.keys('block:bc:').length, 'replay: opening C replays A into A and nothing into C');
+  // 429: the background writer keeps retrying, the entry stays kept
+  const srv3 = makeServer(); const st3 = makeStore(); srv3.data.set('board:ba', rec('ba'));
+  st3.setItem(entryKey('ba'), JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:ba:a1': { op: 'put', value: blk('a1') } } }));
+  srv3.refuse = () => true;
+  const o3 = open(srv3, st3); await o3.session.loadList(); o3.session.start('main'); o3.session.replayOthers(); await settle();
+  ok(st3.m.has(entryKey('ba')) && o3.session.pending() === 1, 'replay: refused (429) it stays kept and counted');
+  srv3.refuse = null; await runTimers(); await settle();
+  ok(srv3.data.has('block:ba:a1') && !st3.m.has(entryKey('ba')), 'replay: and lands when the server accepts');
+}
+
 finish();

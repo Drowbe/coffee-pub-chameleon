@@ -2,7 +2,7 @@
 
 **Audience:** Thomas, who decides (here the project manager decides for him while he is away, by the defaults in "Questions for Thomas"); experience-design (the Whiteboard page, the switcher, the menus); quality-assurance (an independent read before the last merge, because this is stored data); content-manager (the Whiteboard documents once it is built).
 
-**Status:** Decisions recorded 2026-11-12 by the project manager under Thomas's delegation (he was away): defaults taken; Thomas can revisit. Nothing is built or run. The request is GitHub #555: users asked to do several drawings at once. Facts are marked **(code)** (read in the code at `3d384153`, Whiteboard 0.1.52) or **(docs)**. The Whiteboard's own words are board, block and frame; a block is an object of the Names list. Builds on [plan-module-live](plan-module-live.md) (pointers) and the Whiteboard architecture page.
+**Status:** Decisions recorded 2026-11-12 by the project manager under Thomas's delegation (he was away): defaults taken; Thomas can revisit. Updated 2026-11-12 after job 4 (QA): R2 and R4 changed, three notes added; jobs 1 to 3 built (0.1.54 to 0.1.56), job 5 (fixes + narrow strip) built as 0.1.57. The request is GitHub #555: users asked to do several drawings at once. Facts are marked **(code)** (read in the code at `3d384153`, Whiteboard 0.1.52) or **(docs)**. The Whiteboard's own words are board, block and frame; a block is an object of the Names list. Builds on [plan-module-live](plan-module-live.md) (pointers) and the Whiteboard architecture page.
 
 ## What it is today
 
@@ -149,8 +149,8 @@ A board is not copied by the server; the page copies it. There is no copy call a
 
 **Kept writes (0.1.51) and a deleted board:** the browser entry is `wb-pending:<space>:block:<id>:`. Three rules, all in the page:
 1. A switch calls `flush()` on the old sync first (it sends what is waiting) and the entry stays until the server accepts the intents, as now.
-2. When a board is deleted (here or heard), the page removes that board's `wb-pending` entries in this browser.
-3. When the list loads, the page removes entries for this space whose board id is neither in the list nor in the trash. `replay()` only runs for the board being opened, so an entry for a deleted board is never sent; rule 3 clears what is left in the 10 minutes it would have lived. A person who was offline with writes for a board that has since been deleted loses those writes; the confirm says that the board goes for everyone.
+2. When a board is trashed (here or heard), the page flushes its syncs and keeps its parked writes: the trashed board's retired syncs keep retrying, and the `wb-pending` entries stay until the server accepts them. The entries are dropped only at purge, when the purge of the board finishes. (QA found that dropping them at the trash lost data: delete, undo and Delete board kept only 70 of 130 blocks after a restore, and a board is restorable for 7 days.)
+3. When the list loads, the page removes entries for this space whose board id is neither in the list nor in the trash. An entry is replayed only into its own board prefix (R4), so an entry for a purged board is never sent; rule 3 clears what is left. A person who was offline with writes for a board that has since been purged loses those writes; the confirm says that the board goes for everyone.
 
 **What a person sees:**
 - A new space opens on one board, "Board 1", as today. A space that has the old single board opens on it, under "Board 1", with its blocks as they were.
@@ -159,9 +159,10 @@ A board is not copied by the server; the page copies it. There is no copy call a
 
 **Requirements of the storage job (each with its test):**
 - R1. A switch calls `flush()` on the old sync before anything else. Test: a write waiting on the 600 ms timer when the board is switched is sent under the old board's key and never under the new one.
-- R2. A deleted board's `wb-pending` entries are removed from this browser, on deleting it here or hearing it deleted. Test: after the delete, no entry for that prefix remains and nothing is sent for it.
+- R2. A trash flushes and keeps the board's parked writes: the trashed board's retired syncs keep retrying and keep their `localStorage` entry until the server accepts them. The entries are dropped only at purge, when the purge of the board finishes. Test: trash a board with parked writes, restore it, and all its blocks are there; after the purge, no entry for that prefix remains.
 - R3. When the list loads, entries for this space whose board is neither in the list nor in the trash are removed. Test: a planted entry for an unknown board is gone after the load.
-- R4. `replay()` runs only for the board being opened. Test: with entries for A and B, opening B sends B's only.
+- R4. Replay only into the entry's own board prefix, never into another. After the board list is read, kept entries are replayed for every listed or trashed board of this person, each only into its own prefix through the hard guard, by a short-lived background writer per board that draws nothing and does not switch the page. A board past its 7 days (due for purge) is skipped. Test: with entries for A and B, each goes only under its own prefix, whichever board is open. (QA found that after a switch and a reload the old board's parked writes waited until that board was reopened and expired after 10 minutes.)
+- Entry age (note): an entry's age counts only after its first replay. A leftover never replayed is replayed once at the next load whatever its age, then marked `r:1` with a fresh time, and expires 10 minutes after that. A newer intent clears the mark.
 - R5. Pointers use the topic `pointer.<id>`, and a switch unsubscribes, subscribes and clears the drawn pointers. Test with two pages on two boards: a pointer on board A is never drawn on board B (in `check-whiteboard-live-pointers.mjs`, and again in step 4).
 
 **The core:** no change expected. `host.ui.viewSwitch`, `host.menu.show`, `host.header.set`, `host.ui.prompt`, `host.ui.confirm` and `host.live` topics exist. `module.json` keeps its two permissions; its `description` and version change. If the build needs a change in `public/` or `server/` it is stopped and reported, not made.
@@ -184,6 +185,13 @@ All steps are experience-design (the module page is in `modules/whiteboard/`); n
 - **Checked by a tool:** the pure functions in `lib-s-boards.js`; the sync with a fake host holding two boards (no cross-board write, a switch mid-write, a 429 during a switch, the persisted entry, the replay of a deleted board); the toolbar and header counts; `npm run check`; `npm run check:docs`.
 - **In a browser here (step 4):** two pages on two boards against the local server; the switch, create, rename, delete and restore; a reload on each board.
 - **Not verified here:** Safari, a phone or iPad (the switch folding on a narrow board, touch), a real call. Whether live pointers run without a LiveKit server here has to be checked when step 3 is built; if they do not, the pointers' topic is **read as code only**. Every report says so.
+
+## Notes from the QA of job 4
+
+- **Purging `main`:** the purge deletes its blocks, settings and present keys, then rewrites `board:main` as a live empty record (`deleted` false, `trashedAt` ''), with its old name, written with a version precondition so a restore in the meantime wins. There is exactly one `main`, and never an 11th board by way of the implicit one. For other boards the purge writes the `board:<id>` record last.
+- **Narrow strip:** at narrow widths (the module's own `.app.narrow`, a board width under 520) the strip shows only the current board's tab, because at 390 px the strip pushed the whole Tools switch into More. The boards are rows at the top of the Boards… menu with the current one marked, then a separator, then New, Rename, Delete, Deleted boards. Viewers (no Boards… entry) with more than one board get the current tab and a title-bar entry "Boards" (id `boards-view`) that lists the rows. Wide widths are unchanged.
+- **Counts:** the toolbar is at most 15 of 16 (the four zoom and find buttons are sent through `host.toolbar.set` and share the cap); one slot is left and is not to be used without asking the project manager. The title bar is at most 7 of 10 (8 with the viewer's "Boards" entry, at narrow widths only).
+- **Server rule:** the rule for all keys is `write: "edit"`. Anyone with the edit right may PUT or DELETE any key of the module's space storage, and the server checks neither the key shape nor the limit, so every cross-board guard lives in the page. A viewer gets 403 on every key.
 
 ## Risks
 
@@ -208,6 +216,12 @@ All steps are experience-design (the module page is in `modules/whiteboard/`); n
 - Moving blocks between boards by a menu ("Move to board…"), beyond copy and paste.
 - Reordering the boards (a drag in the list). Until then, the order is the order made.
 - The module's version for this change.
+
+**Known limits, left as they are (the project manager's decision after QA):**
+- The server does not enforce the 10-board limit, and the duplicate-name check is page-only. Two simultaneous renames to the same name give two boards with that name. A real limit race needs a delayed stream. The page copes with 11 boards: 11 tabs, New board off.
+- A space whose only record is a trashed `board:main` shows that board as if live. There is no safe one-line fix; it would need a new generated board id.
+- Entries of a purged board in other people's browsers are removed by the R3 sweep at their next load.
+- The pointers carry no board label.
 
 ## Questions for Thomas
 
