@@ -910,7 +910,7 @@
   const coAlone = () => !ed || !ed.co || ed.co.session.roster.others().length === 0;
   function coStatus() {
     const c = ed.co;
-    if (!c.ready) return 'Joining';
+    if (!c.ready) return 'Joining…';
     if (!c.editor) return dlSyncFullNote(DL_SYNC.editorsMax);
     if (c.channel === 'closed') return 'Offline. Your changes are kept here.';
     const bad = c.session.status();
