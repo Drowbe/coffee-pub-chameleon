@@ -225,6 +225,22 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// Every bell entry that does something (brand.js marks it data-manage or data-setup, with a role and a tab stop) shows it:
+// a pointer, a hover state and a keyboard focus state in style.css.
+await test('a clickable bell notice has a pointer, a hover and a focus-visible rule', () => {
+  const brand = fs.readFileSync(path.join(ROOT, 'public', 'brand.js'), 'utf8');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(brand, /data-manage="[^`]*role="link" tabindex="0"/);
+  assert.match(brand, /data-setup="[^`]*role="link" tabindex="0"/);
+  for (const attr of ['data-manage', 'data-setup']) {
+    const rules = (css.match(/[^{}]+\{[^}]*\}/g) || []).filter((r) => r.split('{')[0].includes(`.bell-notice[${attr}]`));
+    const has = (pseudo, prop) => rules.some((r) => r.split('{')[0].includes(pseudo) && prop.test(r.split('{')[1]));
+    assert.ok(rules.some((r) => !r.split('{')[0].includes(':') && /cursor:\s*pointer/.test(r)), `${attr}: cursor pointer`);
+    assert.ok(has(':hover', /background:/), `${attr}: hover background`);
+    assert.ok(has(':focus-visible', /background:|box-shadow:|outline:\s*2px/), `${attr}: focus-visible state`);
+  }
+});
+
 if (failed) {
   console.error(`${failed} of ${n + failed} module notice checks failed`);
   process.exit(1);

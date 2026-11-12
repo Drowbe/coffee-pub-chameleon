@@ -463,6 +463,26 @@ a:hover {
   border-top: 0;
 }
 
+/* A notice that does something (opens Manage or a space's Set up) shows it: a pointer and the same state as the
+   updates row on hover and on keyboard focus. A notice that does nothing has neither. */
+.bell-notice[data-manage],
+.bell-notice[data-setup] {
+  cursor: pointer;
+}
+
+.bell-notice[data-manage]:hover,
+.bell-notice[data-setup]:hover,
+.bell-notice[data-manage]:focus-visible,
+.bell-notice[data-setup]:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: none;
+}
+
+.bell-notice[data-manage]:focus-visible,
+.bell-notice[data-setup]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .bell-notice-icon {
   flex: none;
   margin-top: 2px;
