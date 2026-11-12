@@ -1659,7 +1659,14 @@ function withoutBudget(space) {
 // The spaces `viewer` is told of (plan-access-bundle.md, step 3): only the ones spaceAccess.mayEnter lets them in. One
 // they may enter but are not in yet (open to accounts or guests) is told as its name, picture and description only.
 function spacesFor(req, viewer, spaces) {
-  return spaceAccess.enterable(viewer, spaces).map((r) => (viewer.all || viewer.owner || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)));
+  return [...spaceAccess.enterable(viewer, spaces).map((r) => (viewer.all || viewer.owner || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r))), ...requestSpacesFor(viewer, spaces)];
+}
+// The spaces a signed-in person may only ask to enter (request access on; step 6), each as spaceAccess.requestView: id, name,
+// picture flag, description and their own request's state, and nothing else. None for owners, the access key and guests.
+function requestSpacesFor(viewer, spaces) {
+  if (!viewer || viewer.all || viewer.owner || !viewer.key) return [];
+  const access = currentEnvironment().accessRequests;
+  return spaces.filter((r) => spaceAccess.mayRequest(viewer, r)).map((r) => spaceAccess.requestView(r, Boolean(access.pendingOf(r.id, { key: viewer.key }))));
 }
 function shownSpace(req, space) {
   const general = withoutBudget(space);
@@ -3956,7 +3963,7 @@ app.post('/api/call/join', async (req, res) => {
     // A guest from the guest door: the space they ask for, when they may enter it, and room in it.
     const door = guestOf(req);
     const theSpace = asked ? store.spaceById(asked) : null;
-    if (!theSpace || !spaceAccess.mayEnter(doorViewer(), theSpace)) return res.status(404).json({ error: `no such ${word('space')}` });
+    if (!theSpace || !spaceAccess.mayEnter(doorViewer(door), theSpace)) return res.status(404).json({ error: `no such ${word('space')}` });
     const full = guestSpaceFull(req, theSpace.id, door.id);
     if (full) return res.status(403).json({ error: full });
     guestRegisterTouch(door);
@@ -4050,7 +4057,7 @@ function guestOf(req) {
   }
   const session = doorSessionOf(req);
   if (!session || doorSessionStale(session)) return null;
-  return { kind: 'door', id: session.id, name: session.name };
+  return { kind: 'door', id: session.id, name: session.name, until: session.at + currentEnvironment().guestLimits.hours * 3600000 };
 }
 // The { id, name } a guest speaks as, or null (a guest link with no valid pass).
 function guestPassOf(req) {
@@ -4063,7 +4070,8 @@ function guestLimitKey(req) {
   return guest && guest.kind === 'door' ? `door|${guest.id}` : `link|${req.query.guest}`;
 }
 // The viewer spaceAccess.mayEnter reads for a door guest.
-const doorViewer = () => ({ doorGuest: true, doorOn: guestDoorOn() });
+// `guest`: the resolver's answer, whose approvals (access requests) let them into spaces beyond the open ones.
+const doorViewer = (guest) => ({ doorGuest: true, doorOn: guestDoorOn(), granted: guest && guest.id ? currentEnvironment().accessRequests.grantedSpaces(guest.id) : [] });
 // The space a request is about, for a door guest: the one in the path (/api/spaces/<id>/...) or ?space=, or null.
 function askedSpaceId(req) {
   const inPath = /^\/api\/spaces\/([^/]+)/i.exec(req.path);
@@ -4076,7 +4084,7 @@ function guestDoorSpace(req, guest) {
   if (guest.kind !== 'door') return null;
   const id = askedSpaceId(req);
   const space = id ? store.spaceById(id) : null;
-  if (!space || !spaceAccess.mayEnter(doorViewer(), space)) return null;
+  if (!space || !spaceAccess.mayEnter(doorViewer(guest), space)) return null;
   guestRegisterTouch(guest);
   return space;
 }
@@ -4093,14 +4101,14 @@ function guestSpaceFull(req, spaceId, guestId) {
 // Whether a guest may be told of this person: a link guest, one who is in their space; a door guest, one who is in a space
 // the guest may enter.
 function guestMaySeePerson(guest, user, req) {
-  const spaces = guest.kind === 'link' ? [guest.space] : store.spaces.filter((r) => spaceAccess.mayEnter(doorViewer(), r));
+  const spaces = guest.kind === 'link' ? [guest.space] : store.spaces.filter((r) => spaceAccess.mayEnter(doorViewer(guest), r));
   const asked = typeof req.query.space === 'string' && req.query.space ? req.query.space : null;
   if (asked && !spaces.some((r) => r.id === asked)) return false;
   return spaces.some((r) => (r.members || []).includes(user.key));
 }
 // A space's picture, to a guest: only of a space they may enter.
 function guestMaySeeSpace(guest, space) {
-  return Boolean(space) && (guest.kind === 'link' ? guest.space.id === space.id : spaceAccess.mayEnter(doorViewer(), space));
+  return Boolean(space) && (guest.kind === 'link' ? guest.space.id === space.id : spaceAccess.mayEnter(doorViewer(guest), space));
 }
 
 // Guests: no account, just a name and a space's guest link (see the
@@ -4162,9 +4170,23 @@ function guestNameRefusal(name) {
   }
   return null;
 }
-// What a guest from the door may be told: the spaces they may enter (id, name, whether it has a picture) and whether any.
-function doorSpacesFor() {
-  return store.spaces.filter((r) => spaceAccess.mayEnter(doorViewer(), r)).map((r) => ({ id: r.id, name: r.name, hasImage: Boolean(r.hasImage), state: 'open' }));
+// What a guest from the door may be told: the spaces they may enter (id, name, whether it has a picture, state 'open'), and
+// those they may only ask to enter (plus the description; state 'request', or 'pending' once asked; `answer: 'denied'` when
+// the last request was declined). A closed space without request access is not here at all.
+function doorSpacesFor(guest) {
+  const viewer = doorViewer(guest);
+  const access = currentEnvironment().accessRequests;
+  const who = { guest: guest.id };
+  const out = [];
+  for (const r of store.spaces) {
+    if (spaceAccess.mayEnter(viewer, r)) out.push({ id: r.id, name: r.name, hasImage: Boolean(r.hasImage), state: 'open' });
+    else if (spaceAccess.mayRequest(viewer, r)) {
+      const asked = Boolean(access.pendingOf(r.id, who));
+      const { id, name, description, hasImage } = spaceAccess.requestView(r, asked);
+      out.push({ id, name, hasImage, description, state: asked ? 'pending' : 'request', ...(!asked && access.lastAnswer(r.id, who)?.state === 'denied' ? { answer: 'denied' } : {}) });
+    }
+  }
+  return out;
 }
 // What a guest can't do, as the landing says it (the guest role, read now; the list is the plan's, "What a guest can do").
 const guestRefusals = () => [`start ${word('aside', { many: true })} or private conversations`, 'mute or remove anyone', 'use AI', 'open library files', 'save or change layouts', 'see the bell, the status line, the calendar or the map', 'have a profile'];
@@ -4207,7 +4229,7 @@ app.get('/api/guest-door', (req, res) => {
   const guest = guestOf(req);
   if (!guest || guest.kind !== 'door') return res.status(401).json({ error: guestDoorOn() ? `Enter as ${word('guest', { a: true })} first.` : guestDoorClosed() });
   currentEnvironment().guestRegister.touch(guest.id, guest.name);
-  res.json({ guest: { id: guest.id, name: guest.name }, permissions: store.roleSet('guest'), spaces: doorSpacesFor(), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
+  res.json({ guest: { id: guest.id, name: guest.name }, permissions: store.roleSet('guest'), spaces: doorSpacesFor(guest), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
 });
 // DELETE /api/guest-door: ends this guest's session (and clears the cookie).
 app.delete('/api/guest-door', (req, res) => {
@@ -4392,6 +4414,7 @@ app.get('/api/presence', async (req, res) => {
     describeSpace: (r) => (viewer.all || viewer.owner || viewer.guestSpace || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)),
     activeSpace: activeSpaceId(byKey),
   });
+  if (viewer.key && !viewer.owner) view.spaces = [...view.spaces, ...requestSpacesFor(viewer, store.spaces)];
   res.json({ ...branding(), ...view, ownerOnline: hasOnlineOwner(byKey) });
 });
 
@@ -4514,6 +4537,91 @@ app.post('/api/spaces/:id/join', requireUser, (req, res) => {
   if (space.isLobby) return res.status(400).json({ error: `everyone is already in the Lobby` });
   const joined = store.joinSpace(user.key, space.id);
   res.json({ space: shownSpace(req, joined) });
+});
+// --- request access (plan-access-bundle.md, step 6; server/access-requests.js) -------------------------------------------
+// The person asking: a signed-in account, or a guest from the door. A guest link opens one space only, so it cannot ask.
+function requesterOf(req) {
+  const user = currentUser(req);
+  if (user) return { viewer: accountViewer(req), who: { key: user.key }, name: user.displayName };
+  const guest = guestOf(req);
+  if (guest && guest.kind === 'door') return { viewer: doorViewer(guest), who: { guest: guest.id, name: guest.name, until: guest.until }, name: `${guest.name} (${word('guest')})` };
+  return { refused: guest ? { status: 403, error: `A ${word('guest')} link opens one ${word('space')} only.` } : { status: 401, error: 'sign in first' } };
+}
+const accessWho = (r) => ({ id: r.id, kind: r.key ? 'account' : 'guest', name: r.key ? store.userByKey(r.key)?.displayName || '' : r.name, at: r.at });
+function tellOwners(space, name) {
+  try {
+    const owners = store.users.filter((u) => hasOwnerRights(u)).map((u) => u.key);
+    moduleHooks.announce(owners, { title: `Request to enter ${space.name}`, body: `${name} asks to enter ${space.name}.` });
+  } catch (err) { console.warn('could not tell the owners of a request:', err.message); }
+}
+// POST /api/spaces/:id/request: ask to enter. 401 signed out, 403 a guest link, 404 for a space they may neither enter nor
+// ask for (the same as an unknown id), 409 when they can enter already or one is pending, 429 past the limits.
+app.post('/api/spaces/:id/request', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const asker = requesterOf(req);
+  if (asker.refused) return res.status(asker.refused.status).json({ error: asker.refused.error });
+  const space = store.spaceById(req.params.id);
+  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (spaceAccess.mayEnter(asker.viewer, space)) return res.status(409).json({ error: `You can enter this ${word('space')} already.` });
+  if (!spaceAccess.mayRequest(asker.viewer, space)) return res.status(404).json({ error: `no such ${word('space')}` });
+  const env = currentEnvironment();
+  const ip = req.ip || 'unknown';
+  if (env.accessAddresses.blocked(ip)) return res.status(429).json({ error: 'Too many requests came from this address today. Try again tomorrow.' });
+  try {
+    env.accessRequests.create(space.id, asker.who);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not take your request; try again' });
+  }
+  env.accessAddresses.count(ip);
+  tellOwners(space, asker.name);
+  res.status(201).json({ ok: true, state: 'pending' });
+});
+// DELETE /api/spaces/:id/request: the asker takes their pending request back. 404 with one sentence for no pending request,
+// whether or not the id is a space.
+app.delete('/api/spaces/:id/request', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const asker = requesterOf(req);
+  if (asker.refused) return res.status(asker.refused.status).json({ error: asker.refused.error });
+  let done = null;
+  try { done = currentEnvironment().accessRequests.withdraw(req.params.id, asker.who); } catch { return res.status(500).json({ error: 'could not take your request back; try again' }); }
+  if (!done) return res.status(404).json({ error: `You have no request for that ${word('space')}.` });
+  res.json({ ok: true });
+});
+// GET /api/spaces/:id/access-requests (owners and the admin): the waiting requests, oldest first.
+app.get('/api/spaces/:id/access-requests', requireUser, (req, res) => {
+  const space = store.spaceById(req.params.id);
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!isOwner(req)) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
+  const access = currentEnvironment().accessRequests;
+  res.set('Cache-Control', 'no-store').json({ requests: access.pendingFor(space.id).map((r) => ({ ...accessWho(r), expiresAt: access.endsAt(r) })) });
+});
+// POST /api/spaces/:id/access-requests/:requestId { decision: 'approve' | 'deny' } (owners and the admin). An account that is
+// approved becomes a member of the space; a guest is let into it until their guest session ends. The same answer twice
+// changes nothing; the other answer, or one to a request that is over, is a 409.
+app.post('/api/spaces/:id/access-requests/:requestId', requireUser, (req, res) => {
+  const space = store.spaceById(req.params.id);
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!isOwner(req)) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
+  const decision = req.body?.decision;
+  if (decision !== 'approve' && decision !== 'deny') return res.status(400).json({ error: 'decision must be approve or deny' });
+  const access = currentEnvironment().accessRequests;
+  const found = access.find(space.id, String(req.params.requestId));
+  if (!found) return res.status(404).json({ error: 'No such request.' });
+  if (decision === 'approve' && found.key && !store.userByKey(found.key)) return res.status(409).json({ error: 'That person no longer has an account here.' });
+  let result;
+  try {
+    result = access.decide(space.id, found.id, decision, currentUser(req).key);
+    // Same step as the answer (nothing awaits between them), so a second approval never finds the first half done.
+    if (result.changed && decision === 'approve' && result.request.key) store.joinSpace(result.request.key, space.id, 'request');
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not save the answer; try again' });
+  }
+  if (result.changed && result.request.key) {
+    try {
+      moduleHooks.announce([result.request.key], { title: decision === 'approve' ? `You can enter ${space.name}` : `Request to enter ${space.name} declined`, body: decision === 'approve' ? `Your request to enter ${space.name} was approved.` : `Your request to enter ${space.name} was declined.` });
+    } catch (err) { console.warn('could not tell a person of the answer to their request:', err.message); }
+  }
+  res.json({ ok: true, changed: result.changed, request: { id: result.request.id, state: result.request.state } });
 });
 app.post('/api/spaces', requireOwner, (req, res) => {
   const { name, description, members, profile, link, linkIcon } = req.body || {};

@@ -844,6 +844,8 @@ class Store {
       // Who can enter (plan-access-bundle.md, step 3): 'accounts' or 'guests'; absent means invited people only.
       // The Lobby takes neither.
       ...(id !== LOBBY && (r.entry === 'accounts' || r.entry === 'guests') ? { entry: r.entry } : {}),
+      // Whether a person who may not enter is told the space exists and may ask to (step 6); absent while off. Not the Lobby.
+      ...(id !== LOBBY && r.requestAccess === true ? { requestAccess: true } : {}),
       // What the space opens with the first time someone enters it; absent while not set (see cleanOpensWith).
       ...(cleanOpensWith(r.opensWith) ? { opensWith: cleanOpensWith(r.opensWith) } : {}),
       // The shared saved layout this space opens with on a first visit (plan-saved-layouts.md, decision 4): its id,
@@ -925,7 +927,7 @@ class Store {
           useDefaultImages: typeof r.useDefaultImages === 'boolean' ? r.useDefaultImages : Object.keys(spaceImages).length === 0,
           permissions: cleanSpacePermissions(r.permissions),
           // How they came in, when they came in on their own through a space's "anyone" setting.
-          ...(r.joined && r.joined.by === 'self' && typeof r.joined.at === 'string' ? { joined: { by: 'self', at: r.joined.at } } : {}),
+          ...(r.joined && (r.joined.by === 'self' || r.joined.by === 'request') && typeof r.joined.at === 'string' ? { joined: { by: r.joined.by, at: r.joined.at } } : {}),
           // Their address for this one space (plan-space-calendars.md, section 1): the SHA-256 of its token, never the
           // token; left off while they have none.
           ...(cleanCalendarFeed(r.calendarFeed) ? { calendarFeed: cleanCalendarFeed(r.calendarFeed) } : {}),
@@ -1952,6 +1954,12 @@ class Store {
       if (patch.entry === 'invited') delete draft.entry;
       else draft.entry = patch.entry;
     }
+    if (patch.requestAccess !== undefined) {
+      if (typeof patch.requestAccess !== 'boolean') throw new StoreError('requestAccess must be true or false');
+      if (id === LOBBY) throw new StoreError(`the Lobby takes no setting for requesting access`);
+      if (patch.requestAccess) draft.requestAccess = true;
+      else delete draft.requestAccess;
+    }
     if (patch.aiOff !== undefined) draft.aiOff = patch.aiOff === true; // this space does not use AI, whatever a role may do
     // What AI may see here (plan-ai-integration.md, "What AI may see"): an object of the setting's keys, or null to go back
     // to the environment's choice. A bad key or value is refused with the policy's sentence.
@@ -2064,6 +2072,7 @@ class Store {
     if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;
     if (!('entry' in draft)) delete space.entry;
+    if (!('requestAccess' in draft)) delete space.requestAccess;
     if (!('aiSees' in draft)) delete space.aiSees;
     // Someone taken off the member list loses their address for this space, as removeMember does.
     for (const u of this.data.users) if (!space.members.includes(u.key)) this.dropSpaceCalendarFeed(u, id);
@@ -2073,13 +2082,13 @@ class Store {
 
   // A signed-in person enters a space that is open to accounts or guests: added to its members, marked as having come
   // in on their own. Already in: nothing changes. The caller has asked space-access.mayEnter first.
-  joinSpace(key, id) {
+  joinSpace(key, id, by = 'self') {
     const space = this.data.spaces.find((r) => r.id === id);
     const user = this.userByKey(key);
     if (!space || !user || id === LOBBY) throw new StoreError(`no such ${this.word('space')}`, 404);
     if (space.members.includes(key)) return this.spaceById(id);
     space.members.push(key);
-    this.spaceEntry(user, id).joined = { by: 'self', at: new Date().toISOString() };
+    this.spaceEntry(user, id).joined = { by: by === 'request' ? 'request' : 'self', at: new Date().toISOString() };
     this.save();
     return this.spaceById(id);
   }
