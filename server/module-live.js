@@ -40,7 +40,12 @@ function wholeAbove0(value, fallback) {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-// The limits, from MODULE_LIVE_BYTES, MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON, MODULE_LIVE_PER_GUEST_LINK and
+// The hard ceilings on the two maxima below: whatever the environment says, MODULE_LIVE_MAX_BYTES is at most 65536 and
+// MODULE_LIVE_MAX_PER_SECOND at most 200 (the most a module.json may ask for).
+const CEILING_BYTES = 65536;
+const CEILING_PER_SECOND = 200;
+
+// The limits, from MODULE_LIVE_SPACE_BYTES_PER_SECOND, MODULE_LIVE_MAX_BYTES, MODULE_LIVE_MAX_PER_SECOND, MODULE_LIVE_BYTES, MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON, MODULE_LIVE_PER_GUEST_LINK and
 // MODULE_LIVE_TO (as process.env has them; index.js hands them in).
 function liveLimits(env = {}) {
   return Object.freeze({
@@ -49,6 +54,22 @@ function liveLimits(env = {}) {
     perPerson: wholeAbove0(env.MODULE_LIVE_PER_PERSON, 40),
     perGuestLink: wholeAbove0(env.MODULE_LIVE_PER_GUEST_LINK, 60),
     to: wholeAbove0(env.MODULE_LIVE_TO, 20),
+    maxBytes: Math.min(wholeAbove0(env.MODULE_LIVE_MAX_BYTES, 4096), CEILING_BYTES),
+    maxPerSecond: Math.min(wholeAbove0(env.MODULE_LIVE_MAX_PER_SECOND, 40), CEILING_PER_SECOND),
+    spaceBytesPerSecond: wholeAbove0(env.MODULE_LIVE_SPACE_BYTES_PER_SECOND, 262144),
+  });
+}
+
+// The limits one module sends under: the one place its numbers are worked out (the send route, the join answer and the rate
+// bucket all read this, so none can drift). A module that asks for a number gets it, kept to the server's maximum
+// (MODULE_LIVE_MAX_BYTES, MODULE_LIVE_MAX_PER_SECOND); one that doesn't gets the server's default, kept to that maximum too. The caps across
+// modules (perPerson, perGuestLink) and `to` are the server's, whatever a module asks.
+function effectiveLiveLimits(live, limits) {
+  const asked = (v) => Number.isInteger(v) && v > 0;
+  return Object.freeze({
+    ...limits,
+    bytes: Math.min(asked(live && live.bytes) ? live.bytes : limits.bytes, limits.maxBytes),
+    perSecond: Math.min(asked(live && live.perSecond) ? live.perSecond : limits.perSecond, limits.maxPerSecond),
   });
 }
 
@@ -215,19 +236,25 @@ class ModuleLive {
     return [...people.values()].filter((p) => p.conns.size || p.until > now).map((p) => ({ key: p.who, guest: p.guest, name: p.name }));
   }
 
-  // The rates: `limits` is [[key, perSecond], ...], each a token bucket that holds perSecond tokens (the burst) and
-  // gains perSecond a second. Answers 0 and takes one token from each when every bucket has one; else the whole seconds
-  // to wait (at least 1) and takes none.
+  // The rates: `limits` is [[key, perSecond, cost = 1, label], ...], each a token bucket that holds perSecond tokens (the
+  // burst) and gains perSecond a second; a send takes `cost` from each (a cost above the burst is the burst). Answers 0 and
+  // takes from every bucket when each has enough; else the whole seconds to wait (at least 1) and takes nothing. After a
+  // wait, `this.blocked` is the label of the bucket that made it longest (undefined if it had none).
   take(limits) {
     const now = this.now();
     let wait = 0;
-    const filled = limits.map(([key, rate]) => {
+    this.blocked = undefined;
+    const filled = limits.map(([key, rate, cost = 1, label]) => {
+      const need = Math.min(cost, rate);
       const b = this.buckets.get(key);
       const tokens = b ? Math.min(rate, b.tokens + ((now - b.at) / 1000) * rate) : rate;
-      if (tokens < 1) wait = Math.max(wait, Math.max(1, Math.ceil((1 - tokens) / rate)));
-      return [key, tokens];
+      if (tokens < need) {
+        const w = Math.max(1, Math.ceil((need - tokens) / rate));
+        if (w > wait) { wait = w; this.blocked = label; }
+      }
+      return [key, tokens, need];
     });
-    if (!wait) for (const [key, tokens] of filled) this.buckets.set(key, { tokens: tokens - 1, at: now });
+    if (!wait) for (const [key, tokens, need] of filled) this.buckets.set(key, { tokens: tokens - need, at: now });
     else for (const [key, tokens] of filled) this.buckets.set(key, { tokens, at: now });
     // Now and then, buckets that are full again are let go, so the map holds only who sent lately.
     this.takes += 1;
@@ -256,4 +283,4 @@ class ModuleLive {
   }
 }
 
-module.exports = { ModuleLive, liveLimits, readSend, dataBytes, TOPIC_RE, PERSON_RE, GRACE_MS };
+module.exports = { ModuleLive, CEILING_BYTES, CEILING_PER_SECOND, liveLimits, effectiveLiveLimits, readSend, dataBytes, TOPIC_RE, PERSON_RE, GRACE_MS };

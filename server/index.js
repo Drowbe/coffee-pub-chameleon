@@ -19,7 +19,7 @@ const http = require('http');
 const { ModuleLinks, objectKey } = require('./module-links');
 const { Backgrounds } = require('./backgrounds');
 const { ModuleBus, BUS_LIMITS } = require('./module-bus');
-const { liveLimits, readSend, dataBytes } = require('./module-live');
+const { liveLimits, effectiveLiveLimits, readSend, dataBytes } = require('./module-live');
 const { ChatHistory } = require('./chat-history');
 const { cleanReport: cleanAttention } = require('./attention');
 const { cleanFacts, iconKnown } = require('./facts');
@@ -11327,6 +11327,16 @@ app.get('/api/modules/stream', (req, res) => {
 //   MODULE_LIVE_PER_PERSON (40): messages a second for one person across all modules.
 //   MODULE_LIVE_PER_GUEST_LINK (60): messages a second for everyone on one guest link together.
 //   MODULE_LIVE_TO (20): the most people one message may name in `to`.
+//   MODULE_LIVE_MAX_BYTES (4096), MODULE_LIVE_MAX_PER_SECOND (40): the most any module's size and rate may be; a module
+//     that asks for more (`live.bytes`, `live.perSecond`) gets these (it is not refused), and a module that asks for
+//     nothing gets MODULE_LIVE_BYTES and MODULE_LIVE_PER_SECOND kept to these too (effective = min(asked or default,
+//     maximum)). The maxima themselves are capped at 65536 and 200 whatever the environment says. effectiveLiveLimits
+//     (server/module-live.js) works out one module's numbers for the send, the rate and the join answer alike. The two
+//     per-person caps and `to` stay the server's.
+//   MODULE_LIVE_SPACE_BYTES_PER_SECOND (262144): the data bytes a second (JSON, as counted for the size check) all
+//     modules and people together may send in one space, with a burst of the same; over it a send is 429 with Retry-After.
+//     A send is taken against it in the same all-or-nothing step as the per-person rates (after the size check), so a send
+//     refused by any of them takes from none; a join is not counted.
 // Joining counts as a message under the first two (and, for a guest, the third).
 //
 // Guests (plan-module-live.md, step 3). A guest is known by the id on their guest pass (POST /api/guest-join), as on GET
@@ -11482,21 +11492,23 @@ function moduleLiveConnection(req, res, ctx) {
 }
 // The rates for one person (or guest) in one module, and for a guest everyone on their space's guest link together: 0, or
 // the seconds to wait (and the 429 is sent).
-function moduleLiveWait(res, ctx) {
+function moduleLiveWait(res, ctx, bytes = null) {
   const key = ctx.me.key;
   const moduleId = ctx.manifest.id;
-  const limits = [[`person:${key}:${moduleId}`, moduleLiveLimits.perSecond], [`person:${key}`, moduleLiveLimits.perPerson]];
+  const limits = [[`person:${key}:${moduleId}`, effectiveLiveLimits(ctx.manifest.live, moduleLiveLimits).perSecond], [`person:${key}`, moduleLiveLimits.perPerson]];
   if (ctx.me.guest) limits.push([`guest-link:${ctx.space.id}`, moduleLiveLimits.perGuestLink]);
+  // A send also draws its data bytes from its space's budget (last, so on a tie the person's own sentence is the one said).
+  if (bytes !== null) limits.push([`space:${ctx.space.id}`, moduleLiveLimits.spaceBytesPerSecond, Math.max(1, bytes), 'space']);
   const wait = moduleLive.take(limits);
-  if (wait) res.status(429).set('Retry-After', String(wait)).json({ error: 'too many live messages; wait a moment' });
+  if (wait) res.status(429).set('Retry-After', String(wait)).json({ error: moduleLive.blocked === 'space' ? `This ${word('space')} is sending too much at once. Try again in a moment.` : 'too many live messages; wait a moment' });
   return wait;
 }
 
 // POST /api/modules/:id/live?space=<id> { topic, data, to? }: a live message. Answers { ok: true } once the server took
 // it (never when it was delivered; nothing confirms that), or 400 (no `live` in the module, a bad topic, data or `to`),
 // 401, 403 (no read there, the `publish` permission missing, a guest without a valid pass), 404, 413 (data over
-// MODULE_LIVE_BYTES) or 429 with Retry-After (past MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON or, for a guest,
-// MODULE_LIVE_PER_GUEST_LINK). The module and the space come from the
+// the module's bytes: MODULE_LIVE_BYTES, or its `live.bytes` kept to MODULE_LIVE_MAX_BYTES) or 429 with Retry-After (past MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON or, for a guest,
+// MODULE_LIVE_PER_GUEST_LINK) or the space's MODULE_LIVE_SPACE_BYTES_PER_SECOND (a different sentence). The module and the space come from the
 // route and the server's own check, never from the message; `from`, `at` and `seq` are the server's.
 app.post('/api/modules/:id/live', (req, res) => {
   const ctx = moduleLiveFor(req, res);
@@ -11504,7 +11516,8 @@ app.post('/api/modules/:id/live', (req, res) => {
   const moduleId = ctx.manifest.id;
   const publish = ctx.manifest.live.publish;
   if (publish && !ctx.perms[`module.${moduleId}.${publish}`]) return res.status(403).json({ error: `your role can't send live messages in this ${word('module')}` });
-  const said = readSend(req.body, moduleLiveLimits);
+  const mine = effectiveLiveLimits(ctx.manifest.live, moduleLiveLimits);
+  const said = readSend(req.body, mine);
   if (said.error) return res.status(400).json({ error: said.error });
   let bytes;
   try {
@@ -11512,8 +11525,8 @@ app.post('/api/modules/:id/live', (req, res) => {
   } catch {
     return res.status(400).json({ error: 'the data must be plain JSON' });
   }
-  if (bytes > moduleLiveLimits.bytes) return res.status(413).json({ error: `a live message's data can be at most ${moduleLiveLimits.bytes} bytes` });
-  if (moduleLiveWait(res, ctx)) return;
+  if (bytes > mine.bytes) return res.status(413).json({ error: `a live message's data can be at most ${mine.bytes} bytes` });
+  if (moduleLiveWait(res, ctx, bytes)) return;
   const { at, seq } = moduleLive.stamp(moduleId, ctx.space.id);
   const message = { module: moduleId, topic: said.topic, data: said.data, from: liveShown(ctx.me), at, seq, spaceId: ctx.space.id };
   tellModuleLive(moduleId, ctx.space.id, liveEventBytes('live', message), { except: ctx.me.key, to: said.to });
@@ -11529,8 +11542,9 @@ app.post('/api/modules/:id/live/join', (req, res) => {
   const conn = moduleLiveConnection(req, res, ctx);
   if (!conn) return;
   if (moduleLiveWait(res, ctx)) return;
+  const mine = effectiveLiveLimits(ctx.manifest.live, moduleLiveLimits);
   if (moduleLive.join(conn.id, ctx.manifest.id)?.joined) tellModuleLivePeople('joined', ctx.manifest.id, ctx.space.id, ctx.me);
-  res.json({ ok: true, people: liveModulePeople(ctx.manifest.id, ctx.space.id), limits: { bytes: moduleLiveLimits.bytes, perSecond: moduleLiveLimits.perSecond, to: moduleLiveLimits.to } });
+  res.json({ ok: true, people: liveModulePeople(ctx.manifest.id, ctx.space.id), limits: { bytes: mine.bytes, perSecond: mine.perSecond, to: mine.to } });
 });
 // POST /api/modules/:id/live/leave?space=<id> { stream }: that stream leaves the module's live messages, at once (the
 // module closed on that page). The others are told `left` when it was the person's last. Answers { ok: true }.
