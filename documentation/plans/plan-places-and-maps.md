@@ -4,7 +4,8 @@
 (the checks, the templates, the stored keys, the seed) and experience-design builds Maps' side (the merged manifest, the
 list view, the picker). content-manager merges the user guides after.
 
-**Status:** Draft for Thomas, updated 2026-11-12: Places folds into Maps. Nothing is built. The first draft (2026-10-30,
+**Status:** Draft for Thomas, updated 2026-11-12: Places folds into Maps. Thomas answered questions 1 and 5 on
+2026-11-12 (decisions 2 and 3 below); questions 2, 3 and 4 are still open. Nothing is built. The first draft (2026-10-30,
 "one module or two", from #374) is kept below under "Earlier draft, kept as history"; its recommendation (keep the id
 `places`) is replaced by Thomas's words below.
 
@@ -17,6 +18,31 @@ Thomas, 2026-11-12:
 So: one module, `maps`, named Maps. `modules/places` is deleted. A place that has no position still exists; Maps lists it.
 Related, not designed here: [plan-workspaces](plan-workspaces.md) keeps the Map layout as Maps, and says `map` does not
 change if Places retires.
+
+## Decisions
+
+Only what Thomas decided. Thomas, 2026-11-12, answered questions 1 and 5 by taking the suggested option each time.
+
+1. **Places retires as a module and folds into Maps** (the brief above). A place without a position still exists, and
+   Maps lists it.
+2. **The stored pointers are renamed and test data is reset (question 1).** The owner of kind `place` becomes `maps`.
+   Pointers are written `{ module: 'maps', kind: 'place', ... }` and actions use `ref:maps:place`. There is no
+   migration, no alias and no script that rewrites old pointers, as CLAUDE.md says while the product is unreleased.
+   Pointers, bookmarks and saved layouts that name `places` stop resolving and are reset with the test data. The kind
+   name `place` and the key `place:{id}` do not change. This rules out options 2 and 3 under "The pointer problem".
+3. **The folded module's name is "Maps" (question 5).** Id `maps`. Not "Places and maps" and not "Map". The Map
+   destination (`map`), the Map layout tab and Global Map keep their names.
+
+What these change in the build:
+
+- **J1** writes `module: 'maps'` in the refs and in every `ref:maps:place` input, and moves the stored keys under the id
+  `maps`. It adds no reader for the old id.
+- **J3** changes Travel's picker to `modules: ['maps']` and removes the `places` aliases, with no fallback.
+- **J4** moves the geocode file to `modules/maps/geocode.json`, drops `places` from the templates and
+  `tools/module-versions.json`, and has `seed-demo` re-seed so the reset test data comes back. It does not extend
+  `migrate-names.js`.
+- **J5** and `check-links` expect `maps` in pointers. The risk "Test data is lost" is accepted, not open.
+- **J6** names the module Maps in the guides.
 
 ## Why
 
@@ -75,10 +101,12 @@ as code only; nothing was run.
 Other modules hold pointers `{ module: 'places', kind: 'place', id, scope, space? }`: Travel's stops, links, bookmarks and
 Vault links. When `modules/places` is deleted, these stop resolving. Actions also name `ref:places:place`.
 
-**Option 1. Rename and reset (the clean option).** The owner of kind `place` becomes `maps`. Pointers are written as
+Decided (decision 2): option 1. Options 2 and 3 are kept so the reasoning stays visible.
+
+**Option 1. Rename and reset (the clean option; decided).** The owner of kind `place` becomes `maps`. Pointers are written as
 `{ module: 'maps', kind: 'place', ... }`; `ref:maps:place` in actions. Existing test pointers stop resolving and test data
 is reset. This is exactly what CLAUDE.md says to do while the product is unreleased. Cost: S in code; every test
-environment must be reset (seed-demo does it). Rules out: nothing. Suggestion: this one.
+environment must be reset (seed-demo does it). Rules out: nothing. Thomas chose this one.
 
 **Option 2. Re-mint pointers once with a script.** A one-off tool rewrites `module: 'places'` to `maps` in the stored
 links. This is a data migration, which CLAUDE.md forbids; it would need Thomas to say so. Cost: M. Not recommended.
@@ -217,17 +245,17 @@ Maps' contract absorbs Places'. Words a person reads: "Maps", "List", "Map", "Ad
 
 ## Open questions for Thomas
 
-Nothing here is decided.
+Questions 1 and 5 are answered (decisions 2 and 3) and removed. The numbers of the rest are kept so earlier messages
+still match. The suggested options below are not yet confirmed.
 
-1. **The pointers.** (a) Rename and let test data reset (suggested). (b) Rewrite stored pointers once with a script (a
-   migration; you would have to allow it). (c) Alias `places` to `maps` until release (a compatibility layer; you would
-   have to allow it).
 2. **The wide Map view.** (a) List beside the map when wide, one mount (suggested). (b) The map alone, with the switch
    to reach the list. (c) Always the switch, wide or narrow.
 3. **The `dest:map` composite.** (a) Keep it with one part this build (suggested). (b) Drop it, so the module is the Map.
 4. **Permissions.** (a) Maps' `edit` covers adding places and putting objects on the map (suggested; the defaults match).
    (b) A third permission for placing objects.
-5. **The module's name.** (a) Maps (suggested; your words). (b) "Places and maps". (c) Map.
+
+What the open questions block: question 2 blocks J2 (the List view). Question 3 blocks J3 (the composite line). Question
+4 blocks J1's permission text. J4 and J5 do not wait on them. Nothing blocks the pointer rename or the name.
 
 ---
 
