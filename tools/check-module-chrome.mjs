@@ -543,6 +543,9 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.equal(withSel[0].kind, 'select');
   const hostJs = read('public/module-host.js');
   assert.match(hostJs, /\{ id: a\.id, \.\.\.\(a\.kind === 'select' && e\.el \? \{ x: xOf\(e\.el\) \} : \{\}\) \}/, 'a click on the select arrives as the header event with its id and x');
+  assert.match(hostJs, /async 'focus\.opener'\(\)[\s\S]*?doc\.activeElement !== frame[\s\S]*?o\.el\.focus\(\)/, 'a menu that closes with no anchor gives focus back to the control it answered, only while the keyboard is in the module');
+  assert.match(frameJs0(), /e\.type === 'keydown' && \(!doc\.activeElement \|\| doc\.activeElement === doc\.body\)\) b\.focus\(\)/, 'Escape that leaves the focus on the page returns it to the select button; a press elsewhere does not');
+  assert.match(read('public/sdk/host.js'), /else if \(!outside && framed\)[^\n]*focus\.opener/, 'the shared menu asks for the focus back only when it was not closed by a press elsewhere');
   assert.match(frameJs0(), /filter\(\(a\) => a\.kind !== 'select'\)/, 'the select is never an icon or a menu entry');
   // The frame draws a destructive action last in its menu, red, never as an icon.
   const frameJs = read('public/module-frame.js');

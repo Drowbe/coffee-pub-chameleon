@@ -2228,6 +2228,15 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     // The module's own actions in its frame's title bar (icons beside the menu, or in it): a window's, popped out too, a
     // module's own page, a destination's page, a composite's window on a space's canvas.
+    // A menu the module drew with no anchor closed (Escape or a pick) and left its focus on nothing: focus goes back to the
+    // host control it was answering (the title bar's select, a toolbar button), if the keyboard is still in the module.
+    async 'focus.opener'() {
+      const o = opener;
+      const doc = frame && frame.ownerDocument;
+      if (pageMode || !o || !doc || doc.activeElement !== frame || !o.el || o.el === doc.body || !o.el.isConnected) return false;
+      try { o.el.focus(); } catch { return false; }
+      return true;
+    },
     async 'header.set'({ items }) {
       if (!headerOut) return false; // a dashboard widget
       headerOut(cleanHeaderItems(items));
