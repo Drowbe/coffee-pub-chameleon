@@ -5718,6 +5718,8 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
   --mf-search-w: 220px; /* the search field's width when there is room */
   --mf-search-min: 120px; /* the least it gives way to before it folds to a magnifier */
   --mf-title-min: 64px; /* the least a title is cut to before what is beside it folds */
+  --mf-select-max: 200px; /* the most the title bar's select (a divider and a dropdown after the title) takes; its words are cut with an ellipsis */
+  --mf-select-min: 88px; /* the least its button is cut to, before the title is cut at all */
   --mf-shadow: var(--shadow-2); /* the panel's own shadow */
   --mf-surface-title: color-mix(in srgb, var(--surface-panel) 70%, black); /* level 1: deeper than the toolbar and the content, the same hue, in light and dark */
   --mf-surface-toolbar: color-mix(in srgb, var(--surface-panel) 93%, var(--text-primary)); /* level 2 */
@@ -5772,6 +5774,22 @@ progress.sdk-progress::-moz-progress-bar { background: var(--pg-fill); border-ra
 .mf-titlebar-tools > [hidden] { display: none; }
 /* No visible action (a page that has no "+" yet, or none): the group takes no room, so the gap before it does not push the title 8 px in from the end. */
 .mf-titlebar-tools:not(:has(> :not([hidden]))) { display: none; }
+/* The module's select (host.header.set, kind 'select'): a divider, then the current choice and a caret, after the title, as the
+   primary nav's space selector looks (bare, the caret small, a fill while its menu is open). Its words are cut before the title is. */
+.mf-titlebar.has-select > .mf-titlebar-title { flex: 0 1 auto; }
+.mf-titlebar-select { display: flex; flex: 0 100 auto; align-items: center; gap: var(--space-2); min-width: var(--mf-select-min); margin-inline-end: auto; }
+.mf-titlebar-divider { flex: none; width: 1px; height: var(--icon-16); background: var(--mf-edge); }
+.mf-titlebar-select-btn {
+  position: relative; display: inline-flex; align-items: center; gap: var(--space-1); box-sizing: border-box; min-width: 0; max-width: var(--mf-select-max);
+  height: var(--mf-ctl-h); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-small);
+  background: transparent; color: var(--ink-chosen); font: inherit; font-size: var(--text-14); font-weight: var(--weight-strong); white-space: nowrap;
+}
+.mf-titlebar-select-btn:hover:not(:disabled), .mf-titlebar-select-btn[aria-expanded="true"] { background: var(--fill-hover); color: var(--text-primary); }
+.mf-titlebar-select-btn:disabled { color: var(--text-muted); }
+.mf-titlebar-select-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.mf-titlebar-select-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mf-titlebar-select-btn .mf-caret { flex: none; font-size: var(--icon-12); }
+
 /* The title bar's buttons, start to end: the module's bar actions, the "+", the menu (More, the host's menu: module-frame.js)
    and the close button. A button whose menu is open keeps the hover fill while it is open. */
 .mf-titlebar-tools > [aria-expanded="true"] { background: var(--fill-hover); color: var(--text-primary); }
@@ -6005,7 +6023,7 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
   .mf-titlebar-tools { gap: var(--space-2); }
   :where(.mf-titlebar-tools > button, .mf-toolbar button) { position: relative; }
   /* The title bar's buttons: from the line under the bar, --mf-hit up; half the gap to each side. */
-  .mf-titlebar-tools > button::after {
+  :is(.mf-titlebar-tools > button, .mf-titlebar-select-btn)::after {
     --mf-hit-end: calc((var(--mf-title-h) - var(--mf-ctl-h) + 1px) / 2);
     content: "";
     position: absolute;

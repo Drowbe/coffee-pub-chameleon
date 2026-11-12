@@ -183,8 +183,9 @@ export function createModuleFrame(opts = {}) {
   };
   let tbFold = null;
   const standardNow = () => (typeof tbOpts.standard === 'function' ? tbOpts.standard() : tbOpts.standard) || {};
+  const iconActions = () => (Array.isArray(tbOpts.actions) ? tbOpts.actions : []).filter((a) => a.kind !== 'select');
   function titlebarMenu() {
-    const actions = Array.isArray(tbOpts.actions) ? tbOpts.actions : [];
+    const actions = iconActions();
     const std = standardNow();
     const mod = tbOpts.moduleStandard && typeof tbOpts.moduleStandard === 'object' ? tbOpts.moduleStandard : {};
     const menuEl = tbFold ? tbFold.menu : null;
@@ -225,12 +226,51 @@ export function createModuleFrame(opts = {}) {
     }
     tbFire({ id: a.id, ...(typeof a.on === 'boolean' ? { on: a.on } : {}), el: from || null });
   }
+  // The module's one select (host.header.set, kind 'select'): a divider, then a button with the current choice's words and a
+  // caret, after the title. A click is the module's to answer (it opens its own menu under the button); the label is cut
+  // before the title is, and the title before the icons fold.
+  let headSelect = null;
+  function drawTitleSelect() {
+    const a = (Array.isArray(tbOpts.actions) ? tbOpts.actions : []).find((x) => x.kind === 'select');
+    head.classList.toggle('has-select', Boolean(a));
+    if (!a) { if (headSelect) { headSelect.remove(); headSelect = null; } return; }
+    const wrap = headSelect || el('div', 'mf-titlebar-select');
+    wrap.textContent = '';
+    wrap.append(el('span', 'mf-titlebar-divider', { 'aria-hidden': 'true' }));
+    const b = el('button', 'mf-titlebar-select-btn', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `${a.tip}: ${a.label}` });
+    b.dataset.key = `action:${a.id}`;
+    b.dataset.tip = a.tip;
+    b.disabled = Boolean(a.disabled);
+    b.append(el('span', 'mf-titlebar-select-label', { text: a.label }), icon('caret-down', 'mf-caret'));
+    // The menu is the module's own, drawn in its page, so the frame cannot see it close: it reads as open until the next press
+    // or Escape anywhere, or the button gets focus back. A press on the button itself while open is the module's toggle off.
+    let wasOpen = false;
+    const settle = (e) => {
+      wasOpen = Boolean(e && e.type === 'pointerdown' && b.contains(e.target));
+      b.setAttribute('aria-expanded', 'false');
+      doc.removeEventListener('pointerdown', settle, true);
+      doc.removeEventListener('keydown', settleKey, true);
+      b.removeEventListener('focus', settle);
+    };
+    const settleKey = (e) => { if (e.key === 'Escape') settle(e); };
+    b.addEventListener('click', () => {
+      tbFire({ id: a.id, el: b });
+      if (wasOpen) { wasOpen = false; return; }
+      b.setAttribute('aria-expanded', 'true');
+      doc.addEventListener('pointerdown', settle, true);
+      doc.addEventListener('keydown', settleKey, true);
+      b.addEventListener('focus', settle);
+    });
+    wrap.append(b);
+    if (!headSelect) { headSelect = wrap; headTitle.after(wrap); }
+  }
   function drawTitlebar() {
     if (!bands.titlebar) return;
     if (hostMenuOpen() && head.contains(doc.activeElement)) closeHostMenu();
     const focusKey = head.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
     headTools.textContent = '';
-    const actions = Array.isArray(tbOpts.actions) ? tbOpts.actions : [];
+    const actions = iconActions();
+    drawTitleSelect();
     // The bar icons: a destructive action is never one (it is always last in the menu).
     const bar = [];
     for (const a of actions) {
@@ -273,7 +313,7 @@ export function createModuleFrame(opts = {}) {
     }
     showMenuButton();
     if (focusKey) {
-      const again = headTools.querySelector(`[data-key="${focusKey}"]`);
+      const again = head.querySelector(`[data-key="${focusKey}"]`);
       if (again && !again.hidden) again.focus();
     }
   }
