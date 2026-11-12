@@ -1,102 +1,250 @@
-# AI Assistant Plan: one module, with the AI service's setup inside it
+# AI Assistant Plan: one module for the Assistant and the AI service
 
-**Audience:** Thomas decides. If he approves, server-development builds the secret handling, the routes and the checks (the secret part gets an independent read), and experience-design builds the module's Manage tab and moves the pages that link to the old AI tab. content-manager documents after.
+**Audience:** Thomas decides the open questions at the end. If he approves, server-development builds the module's server
+side (the secret, the routes, the checks, the host path) and experience-design builds the Manage tab and the Assistant
+surface. A security QA read is needed on the jobs marked below. content-manager documents after.
 
-**Status:** Draft, nothing decided (2026-11-12, by product-planner). Nothing is built. GitHub #731, "combine Assistant and AI service". From Thomas, as a clickable answer: **One module, setup inside it.** Rename Assistant to **AI Assistant** and move the AI service's setup (provider, key, model, usage, what AI may see) into that module's own Manage tab. Chat `/ai` and Research keep working through it. AI stays optional and off by default: no outside service by default. Background: [plan-ai-integration](plan-ai-integration.md), [plan-assistant-module](plan-assistant-module.md), [plan-one-input](plan-one-input.md) (step 8), [plan-ai-pictures](plan-ai-pictures.md).
+**Status:** Draft for Thomas, 2026-11-12, by product-planner. Nothing is built or decided except Thomas's words below.
+Thomas answered the planning question on 2026-11-12: one module, with the setup inside it; Chat `/ai` and Research keep
+working; AI stays optional and off by default.
+
+## The brief
+
+Thomas, 2026-11-12:
+
+> "We need to combine "Assistant" and "AI Service" into a single module called "AI Assistant". They are completely dependent on each other."
+
+His answer: rename Assistant to AI Assistant; move provider, key, model, usage and "what AI may see" into its own Manage
+tab; Chat `/ai` and Research keep working through it; AI optional and off by default.
 
 ## Why
 
-Today there are two things to switch on: the AI service (a card on its own tab, `#modules/ai`, not a module) and the Assistant module, which is already "retired" for new installs ("ask in Chat with /ai") yet still ships. Thomas wants one thing a person turns on and sets up. A module is also the unit a template, a Roles row and the Modules page already understand.
+The service (Manage > Modules > AI service) is a special tab with a reserved id `ai`, apart from the module list. The
+Assistant is a module that is "retired" on new installs and has no window; Chat's `/ai` does its work. Two things for
+one purpose, with special cases in `modules.js` and `admin.js`. Making it one module removes the special cases and puts
+the setup where a person looks for a module.
 
-**Goal.** One module, **AI Assistant** (id `assistant`, kept: no rename for its own sake), that owns the setup of AI, its switch, and its use. **Non-goals.** A new provider; the pictures feature (its plan stays approved and unbuilt); a move of the managed per-company service off the host.
+## Names
 
-## What exists
+Module: AI Assistant (id `assistant`; see question 1 on the id). "AI service" as a word retires. The Assistant surface is
+what Chat's `/ai` shows (below). A module's setting is a "setting"; an object is an object. No "room", "table", "stage",
+"pane" or "item". The role action is `useAi`.
 
-Checked in the code on 2026-11-12 (`80ecd84e`). The spike held unless corrected.
+## What it is today
 
-- **The AI service is not a module.** `RESERVED_IDS = ['ai']` (`server/modules.js` 136, used at 852); `'ai'` appears in `missing` and `aiDependents` (1392 to 1411) and in the hooks cleaner (1146). `admin.js` has a special tab `#modules/ai`, a card with an enable switch (line 1669) and the links "Set it up on its tab" (1663, 1339, 1392).
-- **Assistant** (`modules/assistant`, 0.1.26) is scope `space`, has `use` as both read and write, a canvas with `menu: false`, hooks `ai: "optional"`, and the action `askAssistant`. Its description says it has no window of its own. `server/templates.js` 373 gives it `retired: ask in Chat with /ai`. Research also uses `ai: "optional"`. **No manifest declares `hooks.ai: true`**, so `aiDependents()` is always empty and the `PUT /api/ai` cascade that switches dependents off never runs in practice.
-- **The service.** `server/ai.js` (682 lines), `ai-providers.js` (388), `ai-http.js` (143), `ai-tools.js` (290), `ai-policy.js` (287), `ai-context.js` (276), `prompts/`. One `Ai` object **per environment** (`server/environment.js` 197). Config: `source` (`managed` or `custom`), `managedProvider`, `provider` (`none`, `openai`, `anthropic`, `compatible`), `address`, `model`, `key`, `workspace`, `monthlyTokens`, `enabled`, `sees`. Files in `DATA_DIR`: `ai.json` (the setting and the key, sealed with AES-256-GCM through `auth.encryptSecret`, never sent to a page, emptied by `environment-export.js`), `ai-usage.json`, `ai-log.jsonl` (30 days, no content).
-- **Not set up is the default.** The provider is `none`; `ready()` is `enabled && hasActiveService() && !keyUnreadable`; asking when not ready throws `AiError('AI is not set up here.', 503)`. A module with `hooks.ai: true` would show "missing: ai"; an `optional` one hides its buttons.
-- **Managed AI.** `server/host-registry.js` holds the host's managed service per company; the routes are `/api/host/ai` (get, put) and `/api/host/ai/models`. Hosted installs use it; nothing like it exists for a module.
-- **Routes:** `GET/PUT /api/ai` (owner), `GET /api/ai/usage`, `GET /api/ai/catalog`, `POST /api/ai/models`, `GET/POST /api/spaces/:id/ai` (Chat `/ai`), `GET/POST /api/modules/:id/ai` (the `ai` hook). `PUT /api/ai` refuses switching AI off while dependents exist unless `force: true`.
-- **SDK and pages:** `host.ai.available()`, `host.ai.ask({ task, question, objects })`, `host.chat.ask`; users are `research.js`, `module-host.js`, `chat-input.js`, `ai-form.js`, `ai-sees.js`, `ai-use.js`, `admin.js`, `space-setup.js`. Per-space `aiOff` (`store.js` 855) and `aiSees`; the role action `useAi` (`store.js` 203).
-- **Module settings have no secret type.** `SETTING_TYPES` in `server/modules.js` (614) is `boolean, choice, number, text, url, file, files, list, color, note`. A key cannot be stored as a module setting without a new type.
-- **Environment variables:** `AI_LOG_PROMPTS`, `AI_ALLOW_HTTP`, `AI_ALLOW_PRIVATE_ADDRESSES`.
-- **Checks:** `check-ai` 485, `check-ai-page` 664, `check-ai-prompts` 420, `check-ai-tools` 981, `check-ai-admin-only` 141, `check-assistant` 126: 2,817 lines, plus the golden prompts.
+Read as code on 2026-11-12 (the spike). I re-checked in `server/modules.js`: `SETTING_TYPES` (line 614) has
+boolean, choice, number, text, url, file, files, list, color and note; **there is no secret type**. `RESERVED_IDS = ['ai']`
+at line 136; `server/templates.js` 372 to 373 skips `assistant` on new installs with 'retired: ask in Chat with /ai'
+(plan-one-input step 8); `encryptSecret` is in `server/auth.js` 285 and used by `server/ai.js` 19; the host's routes
+`/api/host/ai` exist at `server/index.js` 2816 to 2829. The rest below is the spike, read as code only.
 
-## Decisions
+- **The service is not a module.** Class `Ai` (`server/ai.js`, 682 lines) per environment, constructed at `environment.js`
+  197 with `(dataDir, process.env, undefined, managed, secretsKey)`. Config `{ source: managed|custom, managedProvider,
+  provider: none|openai|anthropic|compatible (default none), address, model, key, workspace, monthlyTokens, enabled, sees }`.
+  `modules.aiReady = () => ai.ready()` where `ready()` is enabled and has an active service and the key is readable.
+- **Files:** `DATA_DIR/ai.json` (setting and key), `ai-usage.json`, `ai-log.jsonl` (30 days, no content). Support code:
+  `ai-providers.js` 388, `ai-http.js` 143, `ai-tools.js` 290, `ai-policy.js` 287, `ai-context.js` 276,
+  `action-catalog.js`, `prompts/` (index 139, ask 92, object-rule 181, parse 238, inputs 96, others).
+- **The key:** sealed at rest with AES-256-GCM (`aesgcm$...`, `auth.encryptSecret`, the server's secrets key). A plain key
+  is sealed on load. One restored onto another host is unreadable and must be entered again. It is never sent to a page.
+  `environment-export.js` empties the key in `ai.json`. Environment variables: `AI_LOG_PROMPTS=1` (ignored when hosted),
+  `AI_ALLOW_HTTP=1`, `AI_ALLOW_PRIVATE_ADDRESSES=1`. No key variables.
+- **The managed service:** `host-registry.js` holds a managed AI per company (`data.ai[provider]`, sealed), shown on the host
+  console; routes `/api/host/ai` (get, put, models).
+- **Routes:** `GET /api/ai` (owner: view, usage, dependents), `GET /api/ai/usage`, `GET /api/ai/catalog` (signed in,
+  `?space=`, checked by `ai-policy` for `chat`), `POST /api/ai/models`, `PUT /api/ai` (refuses turning AI off while
+  dependents exist unless `force: true`, then cascades them off and remembers them: `rememberCascade`, `takeCascade`),
+  `GET/POST /api/spaces/:id/ai` (Chat's `/ai`, lines 6769 and 6783), `GET/POST /api/modules/:id/ai` (the `ai` hook;
+  9009 and 9071).
+- **SDK:** `host.ai.available()`, `host.ai.ask({ task, question, objects })` (`public/sdk/host.js` 2658), `host.chat.ask`
+  (about 2680). Callers: Research, `module-host.js`, `chat-input.js`, `ai-form.js`, `ai-sees.js`, `ai-use.js`, `admin.js`,
+  `admin.html`, `space-setup.js`.
+- **The Assistant module** (`modules/assistant` 0.1.26): scope space; a canvas only (`menu: false`); permission `use`; hook
+  `ai: "optional"`; local action `askAssistant`; files `assistant.js` 36 lines, `assistant-lib.js` 80, html and css. No
+  manifest declares `hooks.ai: true`, so `aiDependents()` is empty. Research has `ai: "optional"`.
+- **Manage UI:** `admin.js` from 1631: the entry and tab `#modules/ai`, an enable switch (`data-ai-toggle`), the form
+  `/ai-form.js` on `/api/ai`, "What AI may see" (`ai-sees.js`), the month's use (`ai-use.js`); in the Modules filters, never
+  under Updates; `admin.html` 306 to 411. Space setup has a per-space `aiOff` and `sees` (`store.js` 854 to 1964). The role
+  action `useAi` (`store.js` 203).
+- **Not configured:** `ai.ready()` is false; asking throws `AiError('AI is not set up here.', 503)` with reason
+  `not-set-up`; a module with `hooks.ai: true` shows "missing: ai" (`modules.js` 1398) and cannot be turned on; optional
+  ones hide their buttons (`host.ai.available()` is false).
+- **Checks:** `check-ai.mjs` 485, `check-ai-page.mjs` 664, `check-ai-prompts.mjs` 420, `check-ai-tools.mjs` 981,
+  `check-ai-admin-only.mjs` 141, `check-assistant.mjs` 126: about 2,800 lines in 6 files, plus `tools/golden/prompts/`
+  (for example `ask@3`) and `check-prompts`.
+- **plan-ai-pictures** ([plan-ai-pictures](plan-ai-pictures.md), approved 2026-11-09, nothing built) adds Whiteboard "Save as
+  image" and attachments; the Whiteboard has no AI call today.
 
-Only what Thomas decided (2026-11-12):
+## The design in one paragraph
 
-1. **One module, setup inside it.** Assistant is renamed **AI Assistant**, and the setup of the AI service (provider, key, model, usage, what AI may see) moves into that module's own Manage tab.
-2. **Chat `/ai` and Research keep working through it.**
-3. **AI stays optional and off by default.** No outside service is used until an owner sets one up.
+One bundled module, AI Assistant, owns the setup and the Assistant surface. Its Manage tab replaces `#modules/ai`: the
+enable switch, provider, key, model, usage, "What AI may see". Its server code is the existing `Ai` class and routes, moved
+under the module rather than rewritten. The special `ai` id and the cascade become the ordinary `requires` dependency.
+Chat `/ai` and Research keep working through `host.ai`; the questions below say what they do when the module is not
+installed.
 
-Everything else below is for Thomas.
+## The secret key: options
 
-## The contract (on the leaning options)
+The key must stay sealed at rest, never be sent to a page, and be emptied by `environment-export`.
 
-**Server half (server-development)**
+**Option 1. A new module setting type `secret` (suggested).** `SETTING_TYPES` gains `secret`. The host seals the value on
+save (`auth.encryptSecret` with the secrets key), stores `aesgcm$...`, and the settings API returns only
+`{ set: true }` or `{ set: false, unreadable }`, never the value. `environment-export` empties every `secret` setting by
+type, which also protects future modules. The form shows a password field and "Replace key". Cost: M; one new rule, used
+by the next module that needs a key too. Rules out: nothing. Needs a security read.
 
-- **The module owns the setup.** `modules/assistant` is renamed in words only (`name: "AI Assistant"`, id `assistant`). The reserved id `'ai'` goes: remove `RESERVED_IDS`, the `'ai'` branches in `missing` and `aiDependents` (the cascade has never run), and the hooks cleaner's special case. A module with `hooks.ai: true` instead gets `requires: ["assistant"]`, which the module system already understands. Research stays `ai: "optional"`.
-- **The routes keep their paths** (`/api/ai`, `/api/ai/usage`, `/api/ai/catalog`, `/api/ai/models`, `/api/spaces/:id/ai`, `/api/modules/:id/ai`); they are owner-checked as now. What changes is who may reach the setup: the module's Manage tab calls them. This is the leaning in question 2: the secret never becomes a module setting.
-- **`ready()`** gains one condition: the module is installed and on in the environment. Not ready answers the same 503 and the same words.
-- **Chat `/ai`** keeps using `ai.ready()`. If the module is not installed or is off, `/ai` says AI is not set up here (question 3). The hosted managed service is turned on from the host console as now, and the module's Manage tab shows "managed by your host" with no key field.
-- **Files:** `ai.json`, `ai-usage.json` and `ai-log.jsonl` stay where they are, as the environment's own. No migration. A reset (for test data) costs: the key (re-entered), the month's usage and the 30 days of call records, nothing else.
-- **Per-space `aiOff` and `aiSees`** stay on the space (they are the space's own words and set in Space setup). The environment's "What AI may see" moves from its card to the module's Manage tab; the narrowing rule stays in `ai-policy.js`.
-- **Scope.** The module is scope `space` today and the service is environment-wide. The leaning is both scopes: `environment` for the setup and the switch, `space` for the module's canvas, if it keeps one (question 4).
-- **Names.** Words: "AI Assistant", "AI" inside it; no new use of the old words. The role action `useAi` stays.
+**Option 2. A host path outside module settings.** The module's tab calls `/api/ai` (kept as the host's route) and the key
+stays in `ai.json` as now. The module is a front for a host feature. Cost: S. Rules out: a clean "the module owns it";
+`ai.json` and its special cases stay, and the reserved id's reasons stay half alive. Reasonable if Thomas wants the
+smallest change.
 
-**Pages half (experience-design)**
+**Option 3. Environment variables for the key.** Rejected by the existing design (no key variables; owners type keys in
+Manage) and it would break hosted installs. Listed so the choice is visible.
 
-- `public/admin.js`: remove the special tab `#modules/ai` and the AI card; the module's Manage tab shows `ai-form.js`, `ai-sees.js` and `ai-use.js` (reused). Links that said "the AI service" read "AI Assistant" and lead to its Manage tab. The Modules page's switch for AI Assistant replaces the card's switch; turning it off while another module requires it follows the ordinary `requires` message.
-- `space-setup.js`, `chat-input.js` and the hook's missing-text change words only.
-- Templates: `server/templates.js` drops the `retired` line for `assistant`; each template decides whether AI Assistant is on (off in all, per decision 3), so the template versions rise.
+## The managed service for hosted installs
 
-## Left to build, in order
+The host holds a sealed managed key per company (`host-registry.js`, `/api/host/ai`). That is a host thing, not a module
+thing, and it stays a host path under either key option. The module reads "source: managed" from its settings and asks the
+host for the active managed provider through the same `new Ai(..., managed, ...)` hand-in as now. The host console keeps
+its AI tab. The module's Manage tab shows "Provided by your host" and hides the key field when the source is managed.
 
-1. **Server: the service stops being special** (server-development, M, sonnet). Remove the reserved id and the special cases, `requires` instead of the cascade, `ready()` knows the module. `check-ai`, `check-assistant`, `check-modules`, `check-templates`. Ships with step 2 in one release; between them the AI tab would point nowhere.
-2. **Pages: setup in the module's Manage tab** (experience-design, M, sonnet). The tab, the links, the words, `check-ai-page`, `check-ai-admin-only`.
-3. **Independent read of the secret path** (quality-assurance, S). Security: the key stays sealed, is never sent to a page, never logged, emptied by the export, and owner-only; the routes are the same, so the read is on the moved caller and the new `ready()` rule. Model tier: the larger model for the read, since it is security.
-4. **Fold in the retired state** (server-development, S). `templates.js` and the module's description (it now has a Manage tab, not "no window"). Bump the module.
-5. **Documentation** (content-manager, M). The AI guide, the Modules guide, `architecture-ai` and `api` pages, plan-assistant-module and plan-one-input status. Production builds only.
+## Optional, off by default, no outside service
+
+The default provider stays `none`; `enabled` starts false; `ai.ready()` keeps its meaning (enabled, an active service, the
+key readable); asking when not ready is still `AiError('AI is not set up here.', 503)`. Nothing contacts an outside
+service until an owner turns the module on, picks a provider and saves a key (or the host provides one). `hooks.ai: true`
+modules still show as "missing" while not ready. The module is on or off like any module; off means `host.ai.available()`
+answers false.
+
+## Chat `/ai` and Research when the module is not installed
+
+**Option A. Chat `/ai` and Research require the module (suggested).** If AI Assistant is not installed or off,
+`/ai` is hidden (as when AI is not set up) and `host.ai.available()` answers false. One owner of the service. Cost: S.
+This follows Thomas's "completely dependent".
+
+**Option B. A core minimal path.** Chat's `/ai` keeps working through the host with no module. Two homes for the service
+again, which is what Thomas wants gone. Not suggested.
+
+**Option C. Install the module by default and say so.** Like A, with the module on every new install (on, not
+configured). Reverses the template skip below.
+
+## Scope
+
+The Assistant is scope `space`; the service is environment-wide. The module needs scope `environment` and `space`:
+environment for the setup, the usage and the secret; space for the surface and the per-space `aiOff` and `sees` it
+already uses. Manifests already allow several scopes (Calendar and To-do have both). The Manage tab is the
+environment's module settings; the space surface is what a space sees.
+
+## The "retired" template state and the surface
+
+Plan-one-input step 8 retired the Assistant window because Chat's `/ai` does the job. This plan reverses the skip at
+`templates.js` 372 to 373: the module is offered on new installs (on or off per template, question 4). The Assistant
+surface is not a new window: it is **Chat's Assistant view** (the `/ai` answers, the conversation in Chat), and the
+module's canvas, if kept, is a small canvas window that shows the same conversation and the month's use. Question 3
+asks which. The module carries the `ai` hook and the `askAssistant` action. This plan does not design a new chat.
+
+## The reserved id and the cascade
+
+- `RESERVED_IDS = ['ai']` (`modules.js` 136) goes with its checks at 852; the pseudo id `ai` in `missing` and
+  `aiDependents` (1042, 1392 to 1411) goes. A module that needed AI now says `requires: ["assistant"]` (or the new id)
+  and the existing missing/dependents rules apply. "Can use the AI service" in the admin text becomes the module's name.
+- `PUT /api/ai` with its refusal and `rememberCascade`/`takeCascade` becomes the module switch's ordinary dependents
+  warning. The remembered-and-restored behaviour is kept only if the ordinary dependency code has it; if not, it is a
+  small gap (risk 5).
+- `admin.js` loses the special tab, the entry, `data-ai-toggle`, the filter entries and the `needsText` links to
+  `#modules/ai`; they point at the module's own page. `ai-form.js`, `ai-sees.js`, `ai-use.js` move into the module's tab
+  files and `admin.html` 306 to 411 shrinks.
+
+## Files and routes
+
+- **Stored:** `ai.json`, `ai-usage.json`, `ai-log.jsonl` move under `modules/assistant/` in the environment's data (key
+  rename and reset allowed by CLAUDE.md; no migration). `AI_FILE` and `environment.js` 197 follow.
+- **Routes:** `/api/ai`, `/api/spaces/:id/ai`, `/api/modules/:id/ai` may keep their paths: they are Chat's and the SDK's
+  addresses, and renaming them is a separate, optional step (question 5). The owner-only ones (`GET /api/ai`, `usage`,
+  `models`, `PUT`) become the module's settings and its own routes; `check-ai-admin-only` keeps the rule "owner only".
+- **SDK:** `host.ai.available()` and `host.ai.ask` keep their names. The module answers them.
+- **Hosted installs:** `/api/host/ai` and the host console stay.
+
+## Roles and permissions
+
+The module has `use` (today's Assistant permission). The owner (and the admin) manage the setup; no one else sees the key
+or the usage. The role action `useAi` stays and means what it does now. A moderator may not change the key. A guest
+cannot ask unless the owner has given `useAi` to guests.
+
+## Phones and accessibility
+
+The Manage tab is a form: single column, 44 px targets. The key field is a password input with a visible label and a
+"Replace key" button; the status ("key saved", "key unreadable, enter it again") is text, not colour alone. The Chat
+Assistant view keeps what Chat has now.
+
+## What changes in code, by job
+
+| Job | Who | Files | Size | Security read |
+|---|---|---|---|---|
+| J1 `secret` setting type (or the host path) | server-development | `modules.js`, `auth.js` use, settings route, `environment-export.js` | M | **Yes** |
+| J2 Move the `Ai` class and files under the module; settings from `ai.json` | server-development | `ai.js`, `environment.js`, store of files, `environment-export.js` | M | **Yes** |
+| J3 Retire the reserved id and the cascade | server-development | `modules.js`, `index.js` (`PUT /api/ai`), `templates.js` 372 | M | No |
+| J4 The Manage tab | experience-design | `admin.js`, `admin.html`, `ai-form.js`, `ai-sees.js`, `ai-use.js` | M | **Yes** (the field, no echo) |
+| J5 The module: manifest, scope, rename, surface | experience-design | `modules/assistant/*` | S to M | No |
+| J6 Callers and wording | experience-design | `chat-input.js`, Research, `space-setup.js`, `module-host.js` | S | No |
+| J7 Checks | server-development | the 6 files and `golden/prompts` | M | No |
+| J8 Docs | content-manager | `architecture-ai`, `userguide-assistant`, others | S | n/a |
+
+## Build order
+
+1. **J1** alone. Check: a unit case that a saved secret is never in any API answer, is `aesgcm$...` on disk, and is
+   empty in an export.
+2. **J2**. Check: `check-ai`, `check-ai-admin-only`; `new Ai` still gets `managed`; a hosted throwaway server reads the
+   managed key.
+3. **J5** and **J4** (manifest and tab). Live in headless Chromium: the tab saves a provider and a key, the key is not in
+   the page source or the network list, the use bar draws.
+4. **J3**, then **J6**. Live: Chat `/ai` with the module on and off, Research's button present and absent.
+5. **J7**, then `npm run check`. **J8** on production builds only.
 
 ## Verify
 
-- **Checked by tool:** the six ai checks above, `check-modules`, `check-templates`, `check-names`, `check-module-versions`, and a grep that nothing still reads `RESERVED_IDS`.
-- **Live in headless Chromium against a stub provider:** the Manage tab saves a key (never echoed back), shows usage, narrows "What AI may see"; `/ai` answers "not set up" with the module off and answers with a stub provider on; Research's buttons hide when off.
-- **Cannot be verified here:** a real OpenAI, Anthropic or compatible provider (key, model list, answers, token counts), the hosted managed service, and the 30-day log pruning over time. No LiveKit call is involved.
+- **Checked by a tool:** `check-ai`, `check-ai-page`, `check-ai-prompts`, `check-ai-tools`, `check-ai-admin-only`,
+  `check-assistant`, `check-prompts` and the golden prompts, `check-modules`, `check-templates`, `check-names`,
+  `check-docs`. The golden prompt files should not change if the prompt code is only moved.
+- **Live:** the tab, the off state, and `not-set-up` as a 503.
+- **Not verifiable here:** a real call to OpenAI, Anthropic or a compatible service (no outside service and no key here);
+  the answer's quality; a hosted install's managed key beyond a stub. Say so in the report.
+- No LiveKit call is involved.
 
-## Risks
+## Risks, ranked
 
-- **Secrets in a module's page.** The key must never become a module setting or reach the module's frame. Mitigated by keeping the routes and the sealed file as they are.
-- **Hosted installs.** The managed service is a host feature; if the module is off on a hosted environment the managed key is unused. The host console needs a way to turn the module on for the environment (question 5).
-- **Two scopes in one module** has no precedent among the bundled modules; the build confirms the manifest allows it or falls back to one scope.
-- **Check churn.** About 2,800 lines of ai checks name routes and the old tab; most should pass unchanged because the routes stay, but `check-ai-page` and `check-assistant` change.
-- **plan-ai-pictures** lands on `/api/spaces/:id/ai`, which does not move; it needs no change except its words.
+1. **The key.** Any change to how it is stored, shown or exported is security-sensitive. J1, J2 and J4 need a security QA
+   read (the key never in an answer, a page, a log, an export or an error text).
+2. **Chat `/ai` breaks** for people who never installed the module (question 2 decides what they see).
+3. **The managed hand-in** on hosted installs may be missed when the class moves; test with a hosted throwaway server.
+4. **2,800 lines of checks** and the golden prompts: a move that changes a byte fails them.
+5. **The cascade** loses the remember-and-restore behaviour if the ordinary dependency code lacks it.
+6. **Id question:** keeping `assistant` while the word says "AI Assistant" is fine; renaming the id touches layouts and roles.
 
-## Questions for Thomas
+## Not in v1
 
-1. **If AI Assistant is off, does Chat `/ai` still work?**
-   - No: off means off; `/ai` says AI is not set up here (recommended; one switch means one switch)
-   - Yes: `/ai` and Research use the service through a host API even with the module off (the module then only adds its window)
-2. **How is the key kept now that the setup is in a module?**
-   - The module's Manage tab calls the existing owner-only routes; the sealed file is unchanged (recommended; smallest and safest)
-   - A new module setting type `secret`, sealed and never sent back (a core change for any module to use)
-3. **What does a module that needs AI do?**
-   - Declare `requires: ["assistant"]` for a hard need, or `ai: "optional"` as now (recommended; the system already knows both)
-   - Keep a separate `hooks.ai` check next to `requires`
-4. **Which scope does AI Assistant have?**
-   - Environment for the setup and the switch, space for the canvas if it keeps one (recommended)
-   - Environment only; the canvas goes, Chat is the only window
-   - Space only, with the setup in the owner's Manage tab (keeps today's scope but splits the environment's switch)
-5. **Hosted installs and the managed service.**
-   - Keep `/api/host/ai` as it is; the module's tab shows "managed by your host" and the host turns the module on per environment (recommended)
-   - Move the managed service into a host-level module setting (large; later)
-6. **Does the Assistant window itself stay?**
-   - Keep it, off in every template, now with a Manage tab (recommended; no loss for people who use it)
-   - Remove the window and keep the module as setup and Chat only (matches "no window of its own" in its description)
-7. **What happens to the old tab and data?**
-   - Remove the tab; no redirect (the no-compatibility rule); reset the usage and log on test installs (recommended)
-   - Keep a redirect from `#modules/ai` (a compatibility layer the rule forbids)
+New providers, image generation and attachments ([plan-ai-pictures](plan-ai-pictures.md) stays as approved and
+unbuilt), a new chat, per-space keys, spend limits beyond the monthly tokens, renaming the prompt code, anything in
+[plan-workspaces](plan-workspaces.md).
+
+## Doc facts
+
+Words a person reads: "AI Assistant", "Provided by your host", "Replace key", "AI is not set up here." Names in code: module
+`assistant` (or the new id), setting `secret` type, hook `ai`, action `useAi`, `host.ai`. Environment variables kept:
+`AI_LOG_PROMPTS`, `AI_ALLOW_HTTP`, `AI_ALLOW_PRIVATE_ADDRESSES`.
+
+## Open questions for Thomas
+
+Nothing here is decided.
+
+1. **The module id.** (a) Keep `assistant`, show the name "AI Assistant" (suggested; no rename of ids). (b) Rename the id
+   to `ai-assistant`. (c) Rename to `ai`, which needs the reserved id lifted.
+2. **Chat `/ai` and Research without the module.** (a) They need the module (suggested; follows "completely
+   dependent"). (b) Chat `/ai` keeps a minimal core path. (c) The module is on by default in every new environment.
+3. **The Assistant surface.** (a) Chat's Assistant view only; the module has no canvas (suggested; matches the retired
+   window). (b) Chat's view plus a small canvas window. (c) A full canvas conversation again.
+4. **New installs.** (a) Offered, off (suggested; AI stays off by default). (b) On but not configured. (c) Not offered
+   until an owner adds it.
+5. **The key.** (a) A `secret` setting type (suggested). (b) A host path; `/api/ai` stays. (c) Another way you prefer.
+6. **The routes.** (a) Keep `/api/ai` and the other two paths (suggested; no renaming unasked). (b) Rename them under the
+   module.

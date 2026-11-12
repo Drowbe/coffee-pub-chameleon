@@ -1,80 +1,248 @@
-# Places and Maps Plan: one module or two
+# Places and Maps Plan: Places folds into Maps
 
-**Audience:** Thomas decides whether Places and Maps stay two modules or become one, what it is called, and what the
-games template's maps are. experience-design builds the modules, the destination's parts and the composite;
-server-development builds the server's side (the destination rules, the layouts, the shared map folder, the templates
-and the checks); content-manager merges or keeps the two user guides once it lands.
+**Audience:** Thomas decides the open questions at the end. If he approves, server-development builds the host's side
+(the checks, the templates, the stored keys, the seed) and experience-design builds Maps' side (the merged manifest, the
+list view, the picker). content-manager merges the user guides after.
 
-**Status:** Draft, nothing decided except the direction below (2026-11-12): Places is retired into Maps (GitHub #729). The 2026-10-30 draft that follows still stands as the background, but its recommendation (b), "keep the id `places`", is reversed by that direction; "Update 2026-11-12" replaces it. Nothing is built. Earlier text of the draft: the merge into one module is not built. Separate
+**Status:** Draft for Thomas, updated 2026-11-12: Places folds into Maps. Nothing is built. The first draft (2026-10-30,
+"one module or two", from #374) is kept below under "Earlier draft, kept as history"; its recommendation (keep the id
+`places`) is replaced by Thomas's words below.
+
+## The brief
+
+Thomas, 2026-11-12:
+
+> "We need to officially retire "places" as a dedicated module and roll it into "Maps". The idea of a place without a map can be a thing, but it doesn't need to exist as its own module."
+
+So: one module, `maps`, named Maps. `modules/places` is deleted. A place that has no position still exists; Maps lists it.
+Related, not designed here: [plan-workspaces](plan-workspaces.md) keeps the Map layout as Maps, and says `map` does not
+change if Places retires.
+
+## Why
+
+Two modules for one thing on screen costs people two switches, two Roles rows, two settings pages, and the five timed
+local actions between them. The Map destination already shows one search, one Filters button and one "+". The CLAUDE.md
+rule of 2026-10-21 (no compatibility layers, renames allowed, test data may be reset) removes the reason the first draft
+kept the id `places`.
+
+## Names
+
+Module: Maps (`maps`). The thing it holds: a place (kind `place`), an object. The list of places without a position is
+the **List** view; the drawn one is the **Map** view. The Map destination (`map`) and Map layout stay. No "room",
+"table", "stage", "pane" or "item".
+
+## What Places is today
+
+Read as code on 2026-11-12 (the spike, `documentation/plans/` and `modules/*/module.json`). Counts are by module id or
+the `place` kind, because "place" is also an ordinary word.
+
+- **Places 0.12.22** (`modules/places`): scope environment, space and person. A destination panel in `map`; a page
+  (`nav: false`); a canvas 460x600 that docks and floats; permissions `view` and `edit`. Actions `addPlace`,
+  `setPlacePoint`, and the local `sharePlace`, `searchPlaces`, `positionPicked`, `categoryColors`, `mayAdd`, `newPlace`.
+  Refs: produces kind `place` (key `place:{id}`, open and backlinks), consumes `*`. A `geocoder` block (provider
+  `searchProvider`, address `search`, save `saveResults`, custom `custom`, providers `photon`). Four environment settings:
+  `categories` (list of 11; `other` cannot be removed), `searchProvider` (none, photon, custom), `search` (an address,
+  shown when custom), `saveResults` (boolean). No hooks, no uploads.
+- **Maps 0.9.15** (`modules/maps`): `requires: ["places"]` (manifest line 126). Destination `map`, part `main`.
+  Provides `pickPoint` and `showOnMap`. It finds Places' actions by name (`maps.js` 248 to 260: `newPlace`,
+  `searchPlaces`, `positionPicked`, `mayAdd`, `categoryColors`) and reads place summaries from the shared object feed
+  (`maps.js` 186 and 189), not from Places' storage. Its own settings: `map`, `imageMap`, `worldSource`,
+  `regionSource` and `pictureMap`.
+- **Storage.** `place:<id>` sits in one home (space, person or environment). Per-person bookmarks `saved:e:<id>` and
+  `saved:s:<spaceId>:<id>` hold `{ ref, title }`. The environment's geocode cache is
+  `modules/places/geocode.json` (`server/geocode.js`; `server/environment-export.js` 130 has a pattern for it). The
+  person-scope data is a person's private places and their bookmarks, the same in every space.
+- **A place without a map already works at the data level:** a place may have no point, and Maps draws only those with
+  one. What is missing is the screen that lists them once Places' own window is gone.
+- **Who else names Places** (filtered): `travel.js` once as `host.objects.pick({ modules: ['places'], kinds: ['place'] })`
+  (line 2378) and three times looks up `addPlace` by action name (1881, 2348); `maps.js` twice by name. Vault, Budget,
+  Calendar, Polls, Research, Stream and Assistant: none.
+- **Server:** `geocode.js` 1; `index.js` 4 (the geocode route found by `geocoder` in manifests, generic, about line
+  9875; a host-level "Add a region" search at 2900; icon, visit and colour checks at 7779 to 7785; an admin route that
+  counts and removes saved places at 9993). `destinations.js` names no module. `templates.js` and `environment.js` have no
+  Places word. `old-links.js` 2 lines. `migrate-names.js` 12 hits; `check-names-allow.json` 7 `places` lines. The kind `place` is
+  used generically elsewhere (`object-format`, `ai-context`, `ai-tools`, `store`, `modules.js`, `live.js`), mostly as the
+  English word or a `place` field in a summary.
+- **Public:** `public/composites.js` 19 hardcodes `{ id: 'dest:map', dest: 'map', path: '/map', main: 'maps', parts: ['maps', 'places'], ask: true }`
+  (the only page-side join). `opens-with.js` 23 and `layouts.js` 38 carry `{ maps: 'dest:map', places: 'dest:map' }`. One
+  line in `chat-input.js`; a doc example in `sdk/host.js` 2965.
+
+Re-checked by me in code: the composites line and the `requires` line match the spike. Everything else is the spike read
+as code only; nothing was run.
+
+## The pointer problem
+
+Other modules hold pointers `{ module: 'places', kind: 'place', id, scope, space? }`: Travel's stops, links, bookmarks and
+Vault links. When `modules/places` is deleted, these stop resolving. Actions also name `ref:places:place`.
+
+**Option 1. Rename and reset (the clean option).** The owner of kind `place` becomes `maps`. Pointers are written as
+`{ module: 'maps', kind: 'place', ... }`; `ref:maps:place` in actions. Existing test pointers stop resolving and test data
+is reset. This is exactly what CLAUDE.md says to do while the product is unreleased. Cost: S in code; every test
+environment must be reset (seed-demo does it). Rules out: nothing. Suggestion: this one.
+
+**Option 2. Re-mint pointers once with a script.** A one-off tool rewrites `module: 'places'` to `maps` in the stored
+links. This is a data migration, which CLAUDE.md forbids; it would need Thomas to say so. Cost: M. Not recommended.
+
+**Option 3. Keep the kind id `place`, make `maps` its owner, and alias `places` to `maps`.** Old pointers keep working.
+This is a compatibility layer and an alias, which CLAUDE.md forbids until release. It is listed only because the first
+draft's reasoning ("no link moves") pointed here. It is **not allowed unless Thomas says so**; if he does, the alias lives
+in `server/module-links.js` and is removed at release.
+
+Whichever is chosen, the key `place:{id}` and the kind name `place` do not change; only the owning module id does.
+
+## What moves into Maps
+
+Maps 0.10.0 (the version is the builder's call) takes Places' manifest and source:
+
+- **Refs:** produces kind `place` (key `place:{id}`, open, backlinks), consumes `*`.
+- **Actions:** `addPlace`, `setPlacePoint`, `sharePlace`. `searchPlaces`, `positionPicked`, `categoryColors`, `mayAdd`,
+  `newPlace` and `pickPoint` stop being bus actions and become plain calls inside the module. `showOnMap` stays.
+  The few-second `page` and `pageUntil` windows go.
+- **Geocoder block** and the four settings (`categories`, `searchProvider`, `search`, `saveResults`). The `geocoder` block is found by manifest, so
+  `server/index.js` needs no change except the path below.
+- **Scope:** Maps becomes environment, space and person. The `requires: ["places"]` line goes.
+- **Permissions:** both have `view` and `edit` with the same defaults. Maps' `edit` gets Places' words (add, change and
+  delete a place) plus "put an object on the map". Roles' stored choices for `places` are dropped.
+- **Data:** the stored keys move from module id `places` to `maps`: the `place:<id>` homes, `saved:e:` and `saved:s:`
+  bookmarks, and `modules/maps/geocode.json`. No migration (CLAUDE.md); test data is reset. `environment-export.js` 130
+  gets the new path.
+- **Dropped:** the Places page, canvas, destination panel and its manifest; `modules/places` (its `src/CONTRACT.md` and
+  `design/` fold into Maps' contract where still true).
+
+## The List view
+
+Where: the module's own view switch (`host.ui.viewSwitch`), **List | Map**, in Maps' toolbar, as the first draft proposed.
+The List shows every place the person may see, whether it has a position or not, with the same filter field, the
+**Category** chips and the page's Mine, this space and environment group in Filters. One "+" (**Add a place**). Wide, the
+Map view may keep the list beside the map as the destination does now (the old question 4); that is an open question
+below. The shared pieces are `host.ui.viewSwitch`, `host.toolbar.set` and `host.menu.show`; no new pieces. Colours come
+from the theme tokens. Without a map file or a picture map there is no switch: it is a list, and the map libraries
+(MapLibre, about 1 MB inlined) are not loaded until the Map view first opens. A place with no position shows a small
+"not on the map" mark and **Place on the map** in its menu, which starts `pickPoint`.
+
+## Travel's picker
+
+`travel.js` 2378 becomes `host.objects.pick({ modules: ['maps'], kinds: ['place'] })`. The three `addPlace` lookups by
+action name keep working because the action keeps its name and moves to Maps; the builder checks they find it
+(`check-travel`). The doc example at `sdk/host.js` 2965 changes to `modules: ['maps']`.
+
+## The Map destination, composites and layouts
+
+- **Destination:** Maps is `main`; the Places panel goes with the module. `server/destinations.js` needs nothing. The
+  Map page has one part.
+- **`public/composites.js`:** the `dest:map` entry becomes `{ id: 'dest:map', dest: 'map', path: '/map', main: 'maps', parts: ['maps'], ... }`.
+  With one part it may stay a composite (the frame, the Show list entry and the layout tab already read it) or be
+  dropped for the module itself; I suggest it stays this build, to touch less (question below).
+- **`opens-with.js` 23 and `layouts.js` 38:** the `places: 'dest:map'` alias goes. Saved layouts and `opensWith` lists
+  that name `places` die with the test data (CLAUDE.md).
+- **The Map layout tab and Global Map** are unchanged for a person.
+
+## Templates and the host
+
+Travel (`templates/travel.json`, version 7): `places` removed from `modules`, version 8. Games (version 1): Places and Maps
+were off but offered; it offers only Maps, version 2. `tools/template-versions.json` follows. `tools/module-versions.json`
+loses `places` (line 22) and bumps `maps`.
+
+## The tools and the checks
+
+57 check files name Places (spike counts, read as code). The builder moves `check-places` into `check-maps` and
+changes the rest by search for `places` in the module-id sense. Largest: `check-places` 27, `check-stacking` 25,
+`check-geocode` 18, `check-host-registry` 15, `check-canvas` 12, `check-templates` 12. Under 10: `check-modules` 8,
+`check-prompts` 7, `check-picture-map` 6, `check-drop` 5, `check-layouts` 5, `check-sdk-pick` 5, `check-template-switch` 5,
+`check-maps` 3, `check-catalog` 3, `check-travel` 2, and about 25 others with 1 to 4. Tools: `seed-demo.mjs` 5
+(`MODULE_IDS` includes `places` and it sets Places' `searchProvider`), `shots-seed.mjs` 3, `shots-screens.json` 10,
+`vendored-scope.json`. Allow-lists, one line each: `check-module-layout-allow`, `check-no-raw-colours-allow`,
+`check-spacing-allow`. `check-names-allow.json` 7 `places` lines go or change; `migrate-names.js` is not extended.
+
+## The user guides
+
+Merge `userguide-places.md` into `userguide-maps.md` (content-manager). Edit the other 13 that mention Places: accounts,
+calendar, call, chat, environment-settings, getting-started, modules, planner, spaces, templates, themes, vault,
+whiteboard. Architecture and API documents, `plan-map-places`, `plan-places-library` and the other plans that mention
+places get a status line pointing here; about 50 plans mention places, and only status lines change.
+
+## Build order
+
+Small jobs; each leaves the app working. J1 and J2 may be done in either order but not together.
+
+1. **J1. Merge the manifest and source** (experience-design, L but split in two sittings): Maps takes the refs,
+   actions, geocoder, four settings and scope; the by-name lookups become calls; `requires` goes. Check:
+   `check-maps`, `check-modules`, `check-geocode`; live that the Map still draws and a place saves.
+2. **J2. The List view** (experience-design, M): the switch, the list, Filters, the lazy map libraries. Live in headless
+   Chromium without WebGL: the list, a place with no position, the switch absent without a map file, MapLibre not in
+   the network list for a list-only window.
+3. **J3. Remove `modules/places`; destination, composite, alias line** (experience-design, S): `composites.js`,
+   `opens-with.js`, `layouts.js`, Travel's picker. Check: `check-canvas`, `check-layouts`, `check-sdk-pick`,
+   `check-travel`, `check-stacking`.
+4. **J4. Server and tools** (server-development, M): `environment-export.js`, the geocode path, `module-versions`,
+   templates (travel 8, games 2), `seed-demo`, `shots-*`, allow-lists. Check: `check-templates`, `check-template-switch`,
+   `check-host-registry`, `check-names`.
+5. **J5. The checks** (server-development, M, can run in parallel with J4 in a separate worktree): the 57 files, in
+   three batches (largest six; the middle ten; the rest). `npm run check` whole.
+6. **J6. Documentation** (content-manager, M; production builds only): the guides, architecture, API, plan statuses.
+
+## Verify
+
+- **Checked by a tool:** `check-maps` (with Places' cases moved in), `check-geocode`, `check-picture-map`,
+  `check-region-cut`, `check-links` (the pointers use `maps`), `check-drop`, `check-canvas`, `check-layouts`,
+  `check-templates`, `check-names`, `check-docs`.
+- **Live, headless Chromium, no WebGL:** as J2 and J3, plus the Planner's **Save it as a place**, Travel's picker, and a
+  link to a place opening from Chat.
+- **Only in a real browser with WebGL (Thomas):** the map from real tiles, the picture map, pin colours, picking a spot,
+  a dropped object getting a position, real Photon search, a phone.
+- No LiveKit call is involved.
+
+## Risks, ranked
+
+1. **The map cannot be seen here.** All behaviour moved in J1 is read as code until Thomas looks in a real browser.
+2. **J1 is large.** About 2,800 lines of script meet; build it alone.
+3. **Test data is lost** (pointers, bookmarks, saved layouts). Accepted by the rule of 2026-10-21; reset and re-seed.
+4. **Forty check files** edited by many hands may hide a missed pin; `npm run check` whole is the gate.
+5. **Load size** if the map libraries are not lazy.
+
+## Phones and accessibility
+
+The List is the phone's default view (a narrow window has no side-by-side map). The switch and "+" are real buttons with
+names; list rows are focusable and open on Enter; the not-on-the-map mark has text, not colour alone.
+
+## Not in scope
+
+A battle map (grid, tokens), routes and lines between stops, **By day** in #44, a themed name for the games template, and
+anything in [plan-workspaces](plan-workspaces.md). #44 **On the plan** (a Filters group from backlinks) may follow as its own job.
+
+## Doc facts
+
+Maps' contract absorbs Places'. Words a person reads: "Maps", "List", "Map", "Add a place", "Place on the map". Module ids
+`maps`; kind `place`; keys `place:{id}`; action names unchanged.
+
+## Open questions for Thomas
+
+Nothing here is decided.
+
+1. **The pointers.** (a) Rename and let test data reset (suggested). (b) Rewrite stored pointers once with a script (a
+   migration; you would have to allow it). (c) Alias `places` to `maps` until release (a compatibility layer; you would
+   have to allow it).
+2. **The wide Map view.** (a) List beside the map when wide, one mount (suggested). (b) The map alone, with the switch
+   to reach the list. (c) Always the switch, wide or narrow.
+3. **The `dest:map` composite.** (a) Keep it with one part this build (suggested). (b) Drop it, so the module is the Map.
+4. **Permissions.** (a) Maps' `edit` covers adding places and putting objects on the map (suggested; the defaults match).
+   (b) A third permission for placing objects.
+5. **The module's name.** (a) Maps (suggested; your words). (b) "Places and maps". (c) Map.
+
+---
+
+# Earlier draft, kept as history
+
+The text below is the first draft of 2026-10-30. Its options (a), (b), (c) and its recommendation of keeping the id
+`places` are replaced by the brief above. Its facts about the code were true on 2026-10-30; the section on today is
+re-checked above.
+
+**Earlier status:** draft, 2026-10-30, by product-planner. Nothing decided, and the merge into one module is not built. Separate
 fixes from the health audit of Maps and Places (MP-02 to MP-22) have landed (Maps 0.9.14, Places 0.12.18), including the
 map style as `--map-*` tokens that read on every theme; they do not decide this plan. From GitHub #374, raised by Thomas on
 2026-10-25: "Places and Maps may want to be one module." It brings in #293 (Maps should show Place category colours),
-#44 (a map of the trip), the games template (where a picture map is a battle map) and the travel template.
 
-## Update 2026-11-12: Places is retired into Maps (#729)
-
-**Direction from Thomas (a clickable answer, 2026-11-12):** Places is retired into Maps. One module remains, **Maps**, id `maps`. This replaces option (b) and its recommendation to keep the id `places`; the rest of this document is background for the choices below. Under the no-compatibility rule of 2026-10-21 ids and stored keys may be renamed and test data reset.
-
-**Goal.** One module for places and the map: one switch, one Roles row, one settings page, one place to look. **Non-goals.** A battle map with a grid and tokens (its own idea); routes between stops; migrating old data.
-
-### Facts checked against the code on 2026-11-12 (`80ecd84e`)
-
-Right as the spike said: `modules/places` is 0.12.22 with scopes `environment`, `space`, `person`; its manifest has the destination part `map` as `panel`, a page with `nav:false`, and a canvas 460 by 600; `view` and `edit`; Maps 0.9.15 has `requires` (line 126) and finds Places' actions by what they offer, not by module id (`maps.js` 220 to 262: `newPlace`, `searchPlaces`, `positionPicked`, `categoryColors`); `composites.js` line 19 holds `parts: ['maps','places']`; Travel picks with `modules: ['places']` (line 2378) and looks up `addPlace` by name (1881, 2348); `settings` exists in Places' manifest (line 191).
-
-Corrections: Maps reads place summaries at `maps.js` 186 and 189 (`host.objects.search('', { has: 'place' })`), not line 92. `searchNote` is not in the code under that name; the by-name lookups are the action finds at 248 to 260, and those are what go. Counts differ from the spike's: 57 check files in `tools/` mention `places` (the spike said about 40), and `showCalendar` appears in 15 files (the spike said about 11); read them as "many", and the build lists them with a search, not from this plan. The allow-list `tools/check-names-allow.json` has 7 lines that mention `places`, not 4.
-
-### What the retirement means
-
-- **Maps takes over everything Places owns:** the `place` kind and `refs.produces` (key `place:{id}`), the actions `addPlace` and `setPlacePoint`, the geocoder block and its four environment settings (the categories, the search provider, the search address and whether to save results), the place dialog, the categories and the type library, and the person scope. Maps' scopes become `environment`, `space`, `person`. `requires: ["places"]` goes.
-- **The surfaces go from three to what Maps has.** The Map destination's `main` stays Maps. Places' panel, page and canvas are removed. A place without a map point must still be listable and editable, so Maps gets a **List** view beside **Map** (the data already allows a place with no point). Without a map file the destination stays off (`needsFile`), so the List view is also what Maps' own window shows then; the Map view is offered only when there is a map file or a picture map.
-- **Local actions become calls inside the module:** `newPlace`, `searchPlaces`, `positionPicked`, `categoryColors`, `sharePlace`, `showOnMap`, `pickPoint`. The few-second `page` and `pageUntil` windows and the `maps-category-colors` browser cache go, which closes #293.
-- **Stored keys move from module id `places` to `maps`** (`place:<id>` in environment, space and person homes; the per-person bookmarks `saved:e:<id>` and `saved:s:<spaceId>:<id>`; the geocode cache `modules/places/geocode.json`, read by `server/geocode.js` and named by a pattern in `server/environment-export.js` near line 130). No migration. A reset costs the places people have saved on a test install; it costs nothing on a released one because there is none.
-- **Server:** `server/geocode.js` and its route (generic), the "Add a region" path (`index.js` near 2900), the icon, visit and colour validation (near 7779 to 7785), and the admin route that counts and removes saved places (near 9993) change the module id they read. The kind `place` is generic in `object-format.js`, `ai-context.js`, `ai-tools.js`, `store.js` and `modules.js`; those need a search, not a change. `old-links.js` and the `check-names` allow-list lose their `places` lines.
-- **Page side:** `composites.js` `dest:map` parts become `['maps']`, and the composite may go entirely (one module needs no composite). `opens-with.js` and `layouts.js` comments; saved layouts and `opensWith` lists that name `places` keep the id and so stop resolving (see question 2).
-- **Other modules.** Travel: `pick({ modules: ['maps'], kinds: ['place'] })` and its three `addPlace` lookups keep finding the action by name, so only the pick line changes. `seed-demo.mjs` `MODULE_IDS` drops `places`; `tools/module-versions.json` drops it; 15 user guides mention Places (content-manager).
-
-### Pointers held by other modules
-
-Links are `{ module: 'places', kind: 'place', id, scope, space? }`, held by Travel's stops, the Planner, links, bookmarks and vault links. Once `places` is gone they stop resolving. See question 2.
-
-## Left to build (for the retirement), in order
-
-1. **Maps owns the data** (server-development, M). Manifest: scopes, `refs`, `actions`, `geocoder`, the four settings; the server paths above read `maps`. Ships with step 2 if the module cannot run half-moved. `check-geocode`, `check-links`, `check-module-versions`.
-2. **Maps gets the List view and the place dialog** (experience-design, L). The code in `places.js` and its libraries moves into Maps, the actions become calls, and the map's libraries load only when the Map view first opens (MapLibre is about 1 MB inlined). `check-maps`, `check-places` (moved), `check-picture-map`, `check-region-cut`.
-3. **Remove `modules/places`** (server-development, M). `composites.js`, `layouts.js`, `opens-with.js`, `seed-demo.mjs`, the three allow-lists, `old-links.js`, templates (travel and games lists), and the roughly 57 check files that name Places. Model tier: sonnet; this is wide, not risky. The change touches the core, so it gets the independent read.
-4. **Documentation** (content-manager, M). One guide for Places inside Maps, the contract, `CONTRACT.md` and `design/` of Places moved or deleted. Production builds only.
-
-Steps 1 to 3 should land together in one release; between them the product has two half-modules.
-
-## What cannot be verified here
-
-The map drawn from real tiles, pin colours by category, picking a spot, a dropped object getting a position and real Photon search need a real browser with WebGL. The List view, the dialog, the Filters and that a list-only window does not load MapLibre can be checked headless.
-
-## Questions for Thomas
-
-1. **What is the module's name, now that it holds both?**
-   - Keep **Maps** for the module, tab and Global Map; the list inside is labeled Places (recommended)
-   - Rename the module **Places and maps**
-   - Rename it **Places** and keep the tab **Map** (the id would still be `maps`)
-2. **What happens to links that name `places` (Travel stops, the Planner, bookmarks, vault links)?**
-   - Nothing is kept: they stop resolving, test data is reset, and Travel's stops are re-picked (recommended; it follows the 2026-10-21 rule and the product is unreleased)
-   - Re-mint: a one-off script rewrites `module: 'places'` to `maps` in saved pointers on the test installs
-   - Alias: the server treats `places` as `maps` when it resolves a pointer (a compatibility layer the rule forbids)
-3. **Maps' `edit` and Places' `edit`: how many permissions?**
-   - Two, `view` and `edit`, with Maps' "put an object on the map" folded into `edit` (recommended; defaults are the same today)
-   - Three: `view`, `edit` and a separate "place objects on the map"
-4. **What does Maps show when there is no map file?**
-   - The List view alone, with no switch (recommended)
-   - The module stays hidden until a map file is set, and places are managed elsewhere
-5. **Is the picture map or a battle map part of this?**
-   - Keep the picture map as it is; a battle map is a separate idea in `TODO.md` (recommended)
-   - Build a battle map module first
-6. **Do the 2026-10-30 questions on "On the plan" (#44) and the games template still stand?**
-   - Yes, unchanged, answered later; they do not block steps 1 to 3 (recommended)
-   - Drop #44 from this plan
-
-
-## What it is today (2026-10-30 draft)
+## What it is today
 
 Verified in code on 2026-10-30, unless marked otherwise.
 
