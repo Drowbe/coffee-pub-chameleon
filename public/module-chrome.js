@@ -320,15 +320,18 @@ export const HEADER_SELECT_LABEL = 40;
 export const HEADER_ITEM_LABEL = 60;
 export const HEADER_MENU_MAX = 50;
 const MENU_ID = /^[a-z0-9._-]{1,40}$/;
-// Text only: one line, control characters gone, trimmed and cut.
-const plain = (v, n) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
+// Text only: one line. Gone: invisible direction and joining characters (U+061C, U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069,
+// U+FEFF; this includes U+200D, so a joined emoji shows as separate emoji: the safe choice, no emoji-aware exceptions); turned into
+// a space: control characters, U+0085, U+2028 and U+2029. Trimmed and cut. Only the first 1000 characters are looked at.
+const plain = (v, n) => (typeof v === 'string' ? v.slice(0, 1000).replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
 function cleanMenuItems(items) {
   let count = 0;
   let current = false;
   const ids = new Set();
   const level = (list, deep) => {
     const out = [];
-    for (const i of Array.isArray(list) ? list : []) {
+    // Cap the list BEFORE walking it, so a huge array is never iterated.
+    for (const i of Array.isArray(list) ? list.slice(0, HEADER_MENU_MAX) : []) {
       if (count >= HEADER_MENU_MAX) break;
       if (!i || typeof i !== 'object') continue;
       if (i.divider === true) {
@@ -360,10 +363,12 @@ function cleanMenuItems(items) {
   const out = level(items, false);
   return out.some((r) => r.id) ? out : [];
 }
+// The module is untrusted: a getter that throws, a cyclic object or a hostile value drops that item, it never throws out of here.
 export function cleanHeaderItems(items) {
   let select = false;
   const out = [];
   for (const i of (Array.isArray(items) ? items : []).slice(0, 10)) {
+    try {
     if (i && i.kind === 'select') {
       const id = String(i.id ?? '').slice(0, 40);
       const label = plain(i.label, HEADER_SELECT_LABEL);
@@ -385,6 +390,7 @@ export function cleanHeaderItems(items) {
       danger: Boolean(i?.danger),
     };
     if (c.id && c.icon) out.push(c);
+    } catch { /* this item is dropped */ }
   }
   return out;
 }

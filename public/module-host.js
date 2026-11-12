@@ -2242,7 +2242,9 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     },
     async 'header.set'({ items }) {
       if (!headerOut) return false; // a dashboard widget
-      headerOut(cleanHeaderItems(items));
+      let clean = [];
+      try { clean = cleanHeaderItems(items); } catch { /* an items value that cannot be read: no items */ }
+      headerOut(clean);
       return true;
     },
     // The standard actions the module handles itself (host.standard.set: Settings, Share, Print), drawn by the host in the

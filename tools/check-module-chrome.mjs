@@ -571,6 +571,37 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   const hostSel = R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'y\u0000'.repeat(100), title: 'T'.repeat(500), items: IT }])[0];
   assert.ok(hostSel.label.length === R.HEADER_SELECT_LABEL && hostSel.title.length === 40 && !/[\u0000-\u001f]/.test(hostSel.label), 'the select label (40) and title (40) are cut and clean too');
   assert.equal(R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items: 'not a list' }]).length, 0, 'items that are not a list: dropped');
+  // Invisible and direction characters, one case per class: gone from the select label, title, item labels and headings.
+  const classes = { 'bidi override (U+202A-202E)': '‪‫‬‭‮', 'bidi isolate (U+2066-2069)': '⁦⁧⁨⁩', 'marks (U+200E, U+200F, U+061C)': '‎‏؜', 'zero width (U+200B-200D, U+2060, U+FEFF)': '​‌‍⁠﻿' };
+  for (const [name, chars] of Object.entries(classes)) {
+    const s2 = one([{ heading: `H${chars}ead` }, { id: 'a', label: `A${chars}B` }]).length ? R.cleanHeaderItems([{ kind: 'select', id: 's', label: `L${chars}x`, title: `T${chars}t`, items: [{ heading: `H${chars}ead` }, { id: 'a', label: `A${chars}B` }] }])[0] : null;
+    assert.ok(s2 && s2.label === 'Lx' && s2.title === 'Tt' && s2.items[0].heading === 'Head' && s2.items[1].label === 'AB', `${name}: removed from label, title, heading and item label`);
+    assert.equal(one([{ id: 'a', label: chars }]).length, 0, `${name}: a label of only these is empty, so the item is dropped`);
+  }
+  const sep = one([{ id: 'a', label: 'A B C\u0085D' }])[0].items[0];
+  assert.equal(sep.label, 'A B C D', 'line and paragraph separators and U+0085 become spaces');
+  assert.equal(one([{ id: 'a', label: '  \u0085' }]).length, 0, 'line separators only: dropped');
+  assert.equal(one([{ id: 'a', label: 'שלום עולם مرحبا' }])[0].items[0].label, 'שלום עולם مرحبا', 'right-to-left letters (Hebrew, Arabic) survive');
+  assert.equal(one([{ id: 'a', label: 'Fun 🎉 🚀' }])[0].items[0].label, 'Fun 🎉 🚀', 'plain emoji survive');
+  assert.equal(one([{ id: 'a', label: '👩‍🚀' }])[0].items[0].label, '👩🚀', 'U+200D is stripped everywhere (the safe choice), so a joined emoji shows as separate emoji');
+  // Size caps, and an untrusted module never breaks the title bar.
+  const huge = R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'x'.repeat(10240), items: Array.from({ length: 5000 }, (_, i) => ({ id: `i${i}`, label: 'y'.repeat(10240) })) }])[0];
+  assert.ok(huge.label.length === R.HEADER_SELECT_LABEL && huge.items.length === R.HEADER_MENU_MAX && huge.items.every((r) => r.label.length === R.HEADER_ITEM_LABEL), '5000 items and 10 KB labels are cut to 50 entries and 60-character labels, without throwing');
+  const bad = Array.from({ length: 5000 }, () => ({ id: 'BAD ID', label: 'z' }));
+  assert.equal(R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items: [...bad, { id: 'late', label: 'Late' }] }]).length, 0, 'only the first 50 entries are looked at');
+  const cyc = { kind: 'select', id: 's', label: 'L', items: [{ id: 'a', label: 'A' }] };
+  cyc.items[0].items = cyc.items; cyc.self = cyc;
+  assert.doesNotThrow(() => R.cleanHeaderItems([cyc, cyc]), 'a cyclic items object does not throw');
+  assert.equal(R.cleanHeaderItems([cyc])[0].items[0].items, undefined, 'a cycle gives no children (one level, only rows with ids count)');
+  const evil = { kind: 'select', id: 's', label: 'L', items: [{ id: 'a', label: 'A' }] };
+  Object.defineProperty(evil, 'title', { get() { throw new Error('boom'); } });
+  const evilRow = { kind: 'select', id: 's2', label: 'L', items: [{ id: 'a', get label() { throw new Error('boom'); } }] };
+  const okIcon = { id: 'ok', icon: 'star', title: 'Ok' };
+  let evilOut;
+  assert.doesNotThrow(() => { evilOut = R.cleanHeaderItems([evil, evilRow, { get id() { throw new Error('boom'); } }, okIcon]); }, 'getters that throw do not throw out of the cleaner');
+  assert.deepEqual(evilOut.map((i) => i.id), ['ok'], 'the items that threw are dropped, the others stay');
+  assert.doesNotThrow(() => R.cleanHeaderItems({ get length() { throw new Error('boom'); } }), 'a non-array items value is no items');
+  assert.match(read('public/module-host.js'), /try \{ clean = cleanHeaderItems\(items\); \} catch/, 'the header.set handler also catches whatever the cleaner could not');
   const hostJs = read('public/module-host.js');
   assert.match(hostJs, /if \(a\.kind === 'select'\) \{ if \(typeof e\.value === 'string'\) to\(a, 'header', \{ id: a\.id, value: e\.value \}, e\.el\); \}/, 'a pick in the select arrives as the header event with id and value, and the button itself sends nothing');
   assert.ok(!/x: xOf\(e\.el\) \} : \{\}\) \}, e\.el\)/.test(hostJs.split("if (a.from === 'header')")[1].split('\n').slice(0, 4).join('\n')), 'the select\'s old x field is gone');
