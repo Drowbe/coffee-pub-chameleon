@@ -151,7 +151,10 @@ test('page sizes: Letter 816 by 1056, A4 794 by 1123, one inch margins; one plac
   assert.ok(Object.isFrozen(L.DL_PAGE_SIZES) && Object.isFrozen(L.DL_PAGE_SIZES.a4));
   assert.equal(L.dlPageFit(408, 816), 0.5);
   assert.equal(L.dlPageFit(816, 816), 1);
-  assert.equal(L.dlPageFit(5000, 816), 2); // never more than 200%
+  assert.equal(L.dlPageFit(5000, 816), 1); // Paper Fit never scales up
+  assert.equal(L.dlPageFit(1920, 794), 1);
+  assert.equal(L.dlPageFit(500, 816), 500 / 816); // down-scaling unchanged
+  assert.equal(L.DL_PAGE_FIT_MAX, 1);
   for (const v of [0, -1, NaN, undefined]) assert.equal(L.dlPageFit(v, 816), 1);
 });
 test('the narrow floor and the Paper tile preview', () => {

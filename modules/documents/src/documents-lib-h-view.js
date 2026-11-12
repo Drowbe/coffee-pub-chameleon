@@ -68,8 +68,8 @@ function dlPageGeometry(id) {
   const margin = DL_PAGE_MARGIN_IN * DL_PAGE_DPI;
   return { id: s.id, label: s.label, w, h, margin, textW: w - 2 * margin, textH: h - 2 * margin, atPage: s.atPage };
 }
-// Fit width on a Paper sheet: the scale that makes the page as wide as the window, never more than twice its size.
-const DL_PAGE_FIT_MAX = 2;
+// Fit width on a Paper sheet: the scale that makes the page as wide as the window, never more than its true size (the 1 inch margin stays 1 inch; a zoom level can still be larger).
+const DL_PAGE_FIT_MAX = 1;
 const dlPageFit = (avail, pageW) => (Number.isFinite(avail) && avail > 0 && pageW > 0 ? Math.min(DL_PAGE_FIT_MAX, avail / pageW) : 1);
 // The narrow floor: Fit width never takes a page below 60% of its width; a window narrower than that draws a Paper document as Fluid.
 // `was` is the state now; it leaves the fallback only at DL_PAGE_HYST px above the floor, so a width on the threshold cannot flip it back and forth.
