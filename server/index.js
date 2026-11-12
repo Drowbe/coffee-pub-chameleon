@@ -43,6 +43,7 @@ const { watchArrival, slowSenders } = require('./arrival');
 const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
 const { presenceView, belongsToSpace } = require('./presence-view');
+const spaceAccess = require('./space-access');
 const { mergeCall, cleanAwayMessage } = require('./live');
 const { streamWriter } = require('./stream-write');
 const destinations = require('./destinations');
@@ -1645,6 +1646,11 @@ function withoutBudget(space) {
   if (!space || !('budget' in space)) return space;
   const { budget: _budget, ...rest } = space;
   return rest;
+}
+// The spaces `viewer` is told of (plan-access-bundle.md, step 3): only the ones spaceAccess.mayEnter lets them in. One
+// they may enter but are not in yet (open to accounts or guests) is told as its name, picture and description only.
+function spacesFor(req, viewer, spaces) {
+  return spaceAccess.enterable(viewer, spaces).map((r) => (viewer.all || viewer.owner || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)));
 }
 function shownSpace(req, space) {
   const general = withoutBudget(space);
@@ -3378,6 +3384,8 @@ app.get('/img/site/background', (_req, res) => {
 // A space's picture: nothing until one is set.
 app.get('/img/space/:id', (req, res) => {
   if (!currentUser(req) && !hasStreamAccess(req)) return res.status(403).end();
+  // A signed-in person is shown the picture of a space they may enter and no other's (the access key: any).
+  if (!hasStreamKey(req) && !spaceAccess.mayEnter(accountViewer(req), store.spaceById(req.params.id))) return res.status(404).end();
   const file = store.spaceImagePath(req.params.id);
   if (file) return sendImage(res, file);
   res.status(404).end();
@@ -4098,6 +4106,11 @@ app.post('/api/asides/invite/:id/decline', requireUser, (req, res) => {
 // them -- someone in an aside reads as its parent space with `aside: true` to the parent's members, and anyone else's
 // place is `space: null, elsewhere: true`. A guest reads only their own space and its people. The access key (OBS,
 // Studio) reads everything, as before; GET /api/status is unchanged.
+// The signed-in person alone, never the access key: for the routes that are a person's own.
+function accountViewer(req) {
+  const user = currentUser(req);
+  return user ? { key: user.key, owner: hasOwnerRights(user) } : null;
+}
 function presenceViewer(req) {
   if (hasStreamKey(req)) return { all: true };
   const user = currentUser(req);
@@ -4117,7 +4130,7 @@ app.get('/api/presence', async (req, res) => {
     online: byKey,
     present: isPresent,
     describeUser: presenceUser,
-    describeSpace: (r) => shownSpace(req, r),
+    describeSpace: (r) => (viewer.all || viewer.owner || viewer.guestSpace || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)),
     activeSpace: activeSpaceId(byKey),
   });
   res.json({ ...branding(), ...view, ownerOnline: hasOnlineOwner(byKey) });
@@ -4229,8 +4242,19 @@ app.get('/api/pages/:path', requireStream, (req, res) => {
 // Spaces: the Lobby (everyone) plus the spaces an owner curates. Signed-in
 // users and stream key holders can read them; owners change them.
 app.get('/api/spaces', (req, res) => {
-  if (!currentUser(req) && !hasStreamAccess(req)) return res.status(401).json({ error: 'sign in first' });
-  res.json({ spaces: store.spaces.map((r) => shownSpace(req, r)) });
+  const viewer = presenceViewer(req);
+  if (!viewer || viewer.guestSpace) return res.status(401).json({ error: 'sign in first' });
+  res.json({ spaces: spacesFor(req, viewer, store.spaces) });
+});
+// POST /api/spaces/:id/join: a signed-in person enters a space that is open to accounts or to guests: they are added to
+// its members and it is marked as theirs to remove. A space they may not enter answers as an unknown id does.
+app.post('/api/spaces/:id/join', requireUser, (req, res) => {
+  const space = store.spaceById(req.params.id);
+  const user = currentUser(req);
+  if (!space || !spaceAccess.mayEnter(accountViewer(req), space)) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (space.isLobby) return res.status(400).json({ error: `everyone is already in the Lobby` });
+  const joined = store.joinSpace(user.key, space.id);
+  res.json({ space: shownSpace(req, joined) });
 });
 app.post('/api/spaces', requireOwner, (req, res) => {
   const { name, description, members, profile, link, linkIcon } = req.body || {};
@@ -4309,7 +4333,7 @@ app.delete('/api/spaces/:id/image', requireOwner, (req, res) => {
 // (POST) mirror the personal-link routes above; DELETE turns it off.
 function requireSpaceMember(req, res, next) {
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || !spaceAccess.mayEnter(accountViewer(req), space)) return res.status(404).json({ error: `no such ${word('space')}` });
   if (!space.members.includes(currentUser(req).key) && !isOwner(req)) return res.status(403).json({ error: `you are not in that ${word('space')}` });
   next();
 }
@@ -5279,7 +5303,7 @@ function chatAccess(req, spaceId, permission) {
   if (found.error) return found;
   const { who } = found;
   const space = store.spaceById(spaceId);
-  if (!space) return { status: 404, error: `no such ${word('space')}` };
+  if (!space || (who.user && !spaceAccess.mayEnter({ key: who.user.key, owner: hasOwnerRights(who.user) }, space))) return { status: 404, error: `no such ${word('space')}` };
   const allowed = who.user ? hasOwnerRights(who.user) || space.members.includes(who.user.key) : who.guestSpace.id === space.id;
   if (!allowed) return { status: 403, error: `you are not in that ${word('space')}` };
   if (!permission) return { who, space };

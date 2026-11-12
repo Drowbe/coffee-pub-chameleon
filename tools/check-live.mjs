@@ -394,7 +394,7 @@ try {
   // --- who may listen ------------------------------------------------------------------------------------------
   const refused = async (p, cookie) => { const s = await watch(p, cookie); return [s.status, s.error]; };
   same(await refused(K, null), [401, 'sign in first'], 'signed out: 401');
-  same(await refused(K, louC), [403, 'you are not in that space'], 'a non-member: 403');
+  same(await refused(K, louC), [404, 'no such space'], 'a non-member of a closed space: 404, as an unknown id (plan-access-bundle.md, step 3)');
   same(await refused('/api/live?space=nosuch', patC), [404, 'no such space'], 'no such space: 404');
   same(await refused(`${K}&guest=wrong`, null), [401, 'that guest link is off or wrong'], 'a dead guest link: 401');
   same(await refused(`${K}&guest=${encodeURIComponent(towerGuest)}`, null), [403, 'you are not in that space'], 'another space\'s guest: 403');
@@ -431,7 +431,7 @@ try {
 
   // --- refusals on the word -------------------------------------------------------------------------------------
   same((await call('PATCH', P, { body: { away: true } })).status, 401, 'signed out: 401');
-  same((await call('PATCH', P, { cookie: louC, body: { away: true } })).status, 403, 'a non-member: 403');
+  same((await call('PATCH', P, { cookie: louC, body: { away: true } })).status, 404, 'a non-member of a closed space: 404');
   same((await call('PATCH', P, { cookie: patC, body: {} })).json, { error: 'say away, awayMessage or onCall' }, 'nothing to say: 400');
   same((await call('PATCH', P, { cookie: patC, body: { away: 'yes' } })).status, 400, 'away must be true or false');
   const noStream = await call('PATCH', `/api/spaces/${tower.id}/presence`, { cookie: patC, body: { away: true } });
@@ -619,7 +619,7 @@ try {
   // --- the access no longer holding: removed, and the stream ends ------------------------------------------------
   await call('PATCH', `/api/spaces/${keep.id}`, { cookie: owner, body: { members: [pat.key] } });
   const removed = await samS.until((e) => e.type === 'removed', 4000);
-  same([removed.reason, removed.error], ['access', 'you are not in that space'], 'Sam taken out of the Keep: removed, saying why');
+  same([removed.reason, removed.error], ['access', 'no such space'], 'Sam taken out of the Keep: removed, saying why');
   same(await Promise.race([samS.ended, quiet(2000).then(() => false)]), true, 'and the stream ends');
 
   // --- an aside: its members only ----------------------------------------------------------------------------------
@@ -774,7 +774,7 @@ if (!failed) {
     same((await fetchBytes(`${pic.json.url}?${g(tripToken)}&${await pass(tripToken, 'Tia')}`, { ip: '10.0.0.20' })).bytes.equals(PNG), true, 'a guest with a pass fetches it');
     const noPassGet = await fetchBytes(`${pic.json.url}?${g(tripToken)}`, { ip: '10.0.0.20' });
     same([noPassGet.status, noPassGet.error], [403, 'that guest pass is not valid; enter again'], 'a guest without a pass: 403');
-    same((await fetchBytes(pic.json.url, { cookie: tabC })).status, 403, 'someone not in the space: 403');
+    same((await fetchBytes(pic.json.url, { cookie: tabC })).status, 404, 'someone not in the closed space: 404');
     same((await fetchBytes(pic.json.url)).status, 401, 'signed out: 401');
     same((await fetchBytes(`${P}/notapicture`, { cookie: samC })).error, 'that picture is no longer available', 'no such picture: 404');
     await quiet();
