@@ -20,6 +20,8 @@
 </head>
 <body>
   <header class="topbar" id="topbar"></header>
+  <!-- A guest from the guest door (plan-access-bundle.md, step 5): who they are here and the way out. Drawn by space.js. -->
+  <div class="sdk-banner sdk-banner-wide guest-banner" data-kind="info" id="guest-banner" role="note" hidden><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><span class="sdk-banner-text" id="guest-banner-text"></span><button class="btn btn-small sdk-banner-action" type="button" id="guest-banner-leave"><i class="fa-solid fa-right-from-bracket fa-fw" aria-hidden="true"></i> Leave</button></div>
 
   <!-- The spaces page scrolls in here, under the header, so the scrollbar starts below it. -->
   <div class="page-scroll" id="page-scroll">
@@ -60,9 +62,11 @@
   <!-- A guest link (/guest/<token>) shows this instead: a name, nothing else. -->
   <form class="join guest-join" id="guest-join" hidden>
     <h1 id="guest-space-name" data-fill>{enter} as {a guest}</h1>
+    <div class="guest-docs" id="guest-docs" hidden></div>
     <label>Your name<input id="guest-name" type="text" maxlength="40" required autocomplete="name"></label>
     <button class="btn btn-primary" type="submit"><i class="fa-solid fa-door-open fa-fw" aria-hidden="true"></i> <span data-verb="enter"></span></button>
     <p class="status error" id="guest-join-error" hidden></p>
+    <p class="hint join-note" id="guest-docs-note" hidden>Typing your name agrees to the text above.</p>
     <p class="hint join-note">Nothing about you is kept once you leave.</p>
   </form>
   </div>

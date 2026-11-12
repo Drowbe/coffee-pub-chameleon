@@ -28,18 +28,25 @@ function draw(answer) {
   ul.className = 'guest-space-list';
   for (const space of answer.spaces) {
     const li = document.createElement('li');
-    li.className = 'guest-space';
+    const row = document.createElement('a');
+    row.className = 'guest-space';
+    row.href = `/guest/${encodeURIComponent(space.id)}`;
     if (space.hasImage) {
       const img = document.createElement('img');
       img.src = `/img/space/${encodeURIComponent(space.id)}`;
       img.alt = '';
       img.width = 32;
       img.height = 32;
-      li.append(img);
+      row.append(img);
     }
     const name = document.createElement('span');
     name.textContent = space.name;
-    li.append(name);
+    row.append(name);
+    const go = document.createElement('i');
+    go.className = 'fa-solid fa-chevron-right guest-space-go';
+    go.setAttribute('aria-hidden', 'true');
+    row.append(go);
+    li.append(row);
     ul.append(li);
   }
   box.append(ul);
