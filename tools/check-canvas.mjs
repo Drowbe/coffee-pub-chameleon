@@ -61,6 +61,32 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   }
 }
 
+// Where a closed module window returns to (public/pop-return.js, canvas.js's comeBack).
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-check-'));
+  const copy = path.join(tmp, 'pop-return.mjs');
+  fs.copyFileSync(path.join(ROOT, 'public/pop-return.js'), copy);
+  const { returnPlace } = await import(pathToFileURL(copy).href);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  const base = { from: 'dock', narrow: false, canDock: true, canFloat: true, full: false };
+  for (const [name, input, mode, why] of [
+    ['docked, a column free: docks', base, 'dock', ''],
+    ['docked, columns full: floats and says why', { ...base, full: true }, 'float', 'full'],
+    ['docked, columns full, cannot float: docks (it waits)', { ...base, full: true, canFloat: false }, 'dock', ''],
+    ['floating: floats, however full', { ...base, from: 'float', full: true }, 'float', ''],
+    ['floating, cannot float: docks', { ...base, from: 'float', canFloat: false }, 'dock', ''],
+    ['a phone: its tab', { ...base, from: 'float', narrow: true, full: true }, 'dock', ''],
+    ['a phone, cannot dock: floats', { ...base, narrow: true, canDock: false }, 'float', ''],
+    ['cannot dock: floats', { ...base, canDock: false }, 'float', ''],
+  ]) {
+    const got = returnPlace(input);
+    if (got.mode !== mode || got.why !== why) fail('public/pop-return.js', `returnPlace, ${name}: got ${JSON.stringify(got)}, want ${mode}/${why}`);
+  }
+  const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
+  if (!/function popOut[\s\S]*?watchPopup\(win, \(\) => comeBack/.test(canvasJs)) fail('public/canvas.js', 'a module\'s own window must be watched for closing (watchPopup + comeBack)');
+  if (!/watchPopup\(win, \(\) => \{\s*if \(opened\.get\(def\.id\) !== mod\) return;/.test(canvasJs)) fail('public/canvas.js', 'a built-in\'s own window must be watched from the start (watchPopup), not only after it loads');
+}
+
 // What opens on entering. The page's file is plain ES module syntax under a .js name, imported from a .mjs copy as
 // check-nav.mjs does.
 {

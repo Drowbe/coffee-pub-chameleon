@@ -21,6 +21,7 @@ import { nav } from '/nav-bar.js';
 import { whatOpens, readAliased, firstVisitLayout, SYSTEM_TABS } from '/opens-with.js';
 import { layoutOf, placeLayout, leftOutNote, groupColumns, splitHeights, dragShares, evenShares, cleanShares, stackRefusal, STACK, STACK_ID } from '/layouts.js';
 import { TINTS, moduleTint } from '/module-tint.js';
+import { returnPlace } from '/pop-return.js';
 import { MIN_W, MIN_H, SNAP_GAP, gridFor, cellBox, snapCell, leastSpan, clampCell, nearestFree, nextFree, resettle, tidyBoxes, fillBoxes, TIDY_GAP, DOCK_MIN, FLEX_MIN, NARROW, dockLimit, fitDock } from '/snap-grid.js';
 import { composeList, aliasesFor, compositeById, compositesToAsk } from '/composites.js';
 
@@ -1814,28 +1815,28 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       def.onChange?.({ open: true, mode: 'window', moving: opts.moving });
       update();
     };
-    win.addEventListener('load', () => {
-      setup();
-      // Closing the window brings the module back into the page, in the mode it had before it left (docked or
-      // floating), with whatever it holds untouched: a call keeps going, a chat keeps its draft. Closing the
-      // window is not closing the module; a call is left with Hang up, a chat with its own close. Registered
-      // only once the window has loaded: the blank page it starts as also fires pagehide, when it navigates
-      // to the real one, and that must not count as the person closing it. The module the app closed itself
-      // (closeBuiltin) is already gone from `opened` by the time its window's pagehide fires, so it stays closed.
-      win.addEventListener('pagehide', () => {
-        if (opened.get(def.id) !== mod) return;
-        canvas.appendChild(def.el);
-        def.el.hidden = true;
-        def.el.classList.remove('is-flex');
-        opened.delete(def.id);
-        const back = columnMode() ? 'column' : saved[def.id]?.mode === 'float' && supports(mod, 'float') && !isNarrow() ? 'float' : 'dock';
-        if (!openBuiltinIn(def, back, { moving: true })) {
-          syncDock();
-          def.onChange?.({ open: false, mode: 'window' });
-        }
-        update();
-      });
-    }, { once: true });
+    win.addEventListener('load', setup, { once: true });
+    // Closing the window brings the module back into the page, in the mode it had before it left (docked or
+    // floating), with whatever it holds untouched: a call keeps going, a chat keeps its draft. Closing the
+    // window is not closing the module; a call is left with Hang up, a chat with its own close. watchPopup tells
+    // a close from the blank page's first navigation and from a reload. The module the app closed itself
+    // (closeBuiltin) is already gone from `opened`, so it stays closed.
+    watchPopup(win, () => {
+      if (opened.get(def.id) !== mod) return;
+      canvas.appendChild(def.el);
+      def.el.hidden = true;
+      def.el.classList.remove('is-flex');
+      opened.delete(def.id);
+      const back = columnMode() ? 'column' : saved[def.id]?.mode === 'float' && supports(mod, 'float') && !isNarrow() ? 'float' : 'dock';
+      // No room in that place (or it refuses): the next free one, and say so, rather than staying closed.
+      const tries = [back, 'float', 'dock'].filter((x, i, all) => all.indexOf(x) === i);
+      const at = tries.find((x) => openBuiltinIn(def, x, { moving: true }));
+      if (!at) {
+        syncDock();
+        def.onChange?.({ open: false, mode: 'window' });
+      } else if (at !== back && !quiet()) note(`${def.name} came back as a ${at === 'float' ? 'floating window' : 'panel'} because its column could not take it.`);
+      update();
+    });
     return true;
   }
 
@@ -1965,6 +1966,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     if (!mod) return;
     if (!restoring) keepLayout = false;
     if (mod.kind === 'builtin') return closeBuiltin(id);
+    if (!suspended && !restoring) away.delete(id); // closed on purpose: a window it has out does not bring it back
     const left = dropFromStack(id); // a stack left with one module is an ordinary column at once (decision 8)
     mod.mount.destroy();
     mod.frame?.destroy();
@@ -2030,8 +2032,79 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     const url = compositeOf(m) ? compositeSrc(compositeOf(m)) : `/modules/${encodeURIComponent(m.id)}?${q}`;
     const win = window.open(url, `app-module-${m.id}`, `popup,width=${width},height=${height}`);
     if (!win) { onPopBlocked?.(); return; } // the browser refused: the module stays where it is
+    // Where it was, so closing the window puts it back there (comeBack): its mode, the column it was in and, in a stack,
+    // the section next to it.
+    const from = { space: spaceId, mode: mod ? (mod.waiting ? 'dock' : mod.mode) : saved[m.id]?.mode === 'float' ? 'float' : 'dock' };
+    if (mod && mod.mode === 'dock' && !mod.waiting) {
+      const cols = columnsFrom(dockedModules());
+      const col = cols.find((c) => c.mods.includes(mod));
+      if (col) {
+        from.column = cols.indexOf(col);
+        const at = col.mods.indexOf(mod);
+        if (stacked(col)) from.stack = at > 0 ? { target: col.mods[at - 1].id, pos: 'below' } : { target: col.mods[1].id, pos: 'above' };
+      }
+    }
     windows.set(m.id, win);
     if (mod) closeModule(m.id);
+    away.set(m.id, from); // after closeModule, which forgets a module the person closed in the page
+    watchPopup(win, () => comeBack(m.id, win));
+  }
+
+  // Watches a window this page opened for its closing, and calls `gone` once. Two ways, whichever comes first: the window's
+  // `pagehide` (checked again a moment later: a window that is only reloading, or leaving its first blank page, is not
+  // closed) and a check of `closed` every second while it is out, and when the page is shown or focused again (a window
+  // closed while this page was in the background). A navigation drops the listener with the old page, so each check
+  // puts it on the page the window shows now.
+  const POP_POLL_MS = 1000;
+  const POP_SETTLE_MS = 250;
+  function watchPopup(win, gone) {
+    let done = false;
+    let seen = null;
+    const stop = () => {
+      done = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+      window.removeEventListener('focus', tick);
+    };
+    const check = () => { if (!done && win.closed) { stop(); gone(); } };
+    const tick = () => {
+      if (done) return;
+      if (win.closed) return check();
+      try {
+        if (win.document !== seen) {
+          seen = win.document;
+          win.addEventListener('pagehide', () => setTimeout(check, POP_SETTLE_MS));
+        }
+      } catch { /* not ours to read now */ }
+    };
+    const timer = setInterval(tick, POP_POLL_MS);
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('focus', tick);
+    tick();
+    win.addEventListener?.('load', tick);
+  }
+
+  // A module's own window was closed: it comes back where it came from. Not when the app closed it on purpose (the
+  // person closed it in the page since, or the space changed), or it is open in the page again by now.
+  const away = new Map();
+  function comeBack(id, win) {
+    if (windows.get(id) !== win) return;
+    windows.delete(id);
+    const from = away.get(id);
+    away.delete(id);
+    const m = available.find((x) => x.id === id);
+    if (!from || !m || from.space !== spaceId || suspended || restoring || opened.has(id)) return;
+    const p = { id, modes: m.canvas.mode, kind: 'module', m };
+    const next = from.stack && opened.get(from.stack.target)?.mode === 'dock' ? from.stack : null;
+    const place = returnPlace({ from: from.mode, narrow: isNarrow(), canDock: supports(p, 'dock'), canFloat: supports(p, 'float'), full: !next && wouldWait(p) });
+    openModule(m, next ? 'float' : place.mode);
+    if (next) {
+      if (!stackInto(id, next.target, next.pos)) setMode(id, 'dock');
+    } else if (place.mode === 'dock' && from.column !== undefined && !isNarrow()) {
+      const cols = columnsFrom(dockedModules());
+      if (from.column < cols.length - 1) moveToColumn(id, from.column);
+    }
+    if (place.why === 'full') note(`${nameOf(id)} came back as a floating window because the columns are full.`);
   }
 
   // The ways to show a module, the standard actions of its frame's menu (Thomas, 2026-10-13: Panel Mode and Window Mode):
