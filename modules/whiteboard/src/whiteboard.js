@@ -992,10 +992,15 @@
     { id: 'frame', label: 'Frame', icon: 'crop-simple' },
   ];
   const inSwitch = (o) => (FAMILIES.some((f) => f.id === o.id) ? familyHas(FAMILIES.find((f) => f.id === o.id)) : allowed.some((t) => t.id === o.id));
+  // A tool picked with the mouse leaves the focus on the toolbar's button; the board takes it, so the tool's letter and Escape work
+  // at once (wbFocusBoardAfterChange, lib-t). The frame's pointerdown sets pointerAt (see the Escape handler below).
+  let pointerAt = -Infinity;
+  const boardAfterPointer = () => { if (wbFocusBoardAfterChange(pointerAt, performance.now())) surface.focus({ preventScroll: true }); };
   const pickTool = (v) => {
     const f = FAMILIES.find((x) => x.id === v);
     if (f) setTool(allowed.some((t) => t.id === lastKind[v]) ? lastKind[v] : f.kinds.find((id) => allowed.some((t) => t.id === id)), v);
     else setTool(v);
+    boardAfterPointer();
   };
   const toolSwitch = SWITCH.filter(inSwitch).length > 1
     ? host.ui.viewSwitch({ id: 'tool', label: 'Tools', value: tool.id, options: SWITCH.filter(inSwitch), onChange: pickTool })
@@ -1006,7 +1011,7 @@
   const toggleTool = (t) => setTool(tool === t ? toolBefore : t.id);
   const apartButtons = allowed.filter((t) => t.apart).map((t) => ({
     tool: t,
-    button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => toggleTool(t) }),
+    button: host.ui.toolbarButton({ id: `tool-${t.id}`, label: withKey(t.label, t.key.toUpperCase()), icon: t.icon, iconOnly: true, on: false, onClick: () => { toggleTool(t); boardAfterPointer(); } }),
   }));
   const showTool = () => {
     if (toolSwitch) toolSwitch.set(family || (SWITCH.some((o) => o.id === tool.id) ? tool.id : ''));
@@ -3659,6 +3664,29 @@
     const id = renderer.blockAt(e.target);
     if (id && !pointerFocus && !sel.has(id) && !e.target.closest('.wb-text-edit')) select([id]);
   });
+  // Escape clears the pick and goes back to Select, Many off (also from the Hand and the drawing tools); the focus is on the board.
+  function escapeToSelect() {
+    select(null);
+    if (many) { many = false; updatePaint(); }
+    if (tool.id !== 'select') setTool('select');
+    surface.focus({ preventScroll: true });
+  }
+  // The same Escape from the title bar or the toolbar (the frame's, outside the board's shadow root; they are in the frame
+  // element around the Whiteboard, so a key anywhere else is never touched). A menu, a dialog or a panel with its own Escape
+  // keeps it (it marks the key handled, or the key starts inside it), a text edit and present mode keep theirs (wbEscapeRoute, lib-t).
+  const frameEl = (host.rootElement.closest && host.rootElement.closest('.mf')) || host.rootElement;
+  frameEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+    const path = e.composedPath();
+    const within = (sel) => path.some((n) => n && n.matches && n.matches(sel));
+    const from = path.includes(surface) ? (within('.wb-text-edit') ? 'edit' : 'board')
+      : within('dialog, [role="dialog"], [role="menu"], [role="listbox"], [aria-expanded="true"]') ? 'popup'
+        : within('.mf-toolbar, .mf-titlebar') ? 'bars' : 'other';
+    if (wbEscapeRoute({ from, handled: e.defaultPrevented, presenting: Boolean(presenting) }) !== 'select') return;
+    e.preventDefault();
+    escapeToSelect();
+  });
+  frameEl.addEventListener('pointerdown', (e) => { pointerAt = e.timeStamp; }, { capture: true, passive: true });
   surface.addEventListener('keydown', (e) => {
     if (presenting) { if (!onControl(e)) presentKey(e); return; }
     if (e.target.closest('.wb-text-edit') || e.altKey) return;
@@ -3700,13 +3728,7 @@
     // Locked blocks among those picked stay, and the person is told (removeMany, the arrows and the brackets).
     const lockedPicked = policy.canEdit ? [...sel].filter((id) => { const x = board.get(id); return x && x.locked; }).length : 0;
     if ((k === 'Delete' || k === 'Backspace') && (picked.length || lockedPicked)) { e.preventDefault(); removeMany([...sel]); surface.focus({ preventScroll: true }); return; }
-    if (k === 'Escape') {
-      select(null); // Escape clears the pick and goes back to Select, Many off (also from the Hand and the drawing tools)
-      if (many) { many = false; updatePaint(); }
-      if (tool.id !== 'select') setTool('select');
-      surface.focus({ preventScroll: true });
-      return;
-    }
+    if (k === 'Escape') { escapeToSelect(); return; }
     // Enter edits the one picked block, or the block of a picked group that has the keyboard.
     const focused = renderer.blockAt(e.target);
     const toEdit = b || (focused && sel.has(focused) ? board.get(focused) : null);
