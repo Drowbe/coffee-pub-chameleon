@@ -58,6 +58,7 @@ Known defects and their workarounds are in [Known issues](known-issues.md).
   are built.
 - [Canvas architecture](architecture/architecture-canvas.md) -- the canvas: its grid of modules, docked
   and floating, and the layout rules.
+- [Access architecture](architecture/architecture-access.md) -- who may enter a space, the agreements gate, the guest door, request access, and their routes.
 - [Documents architecture](architecture/architecture-documents.md) -- the module's stored keys, the edit lock, saving, tags and the licence rules.
 - [Whiteboard architecture](architecture/architecture-whiteboard.md) -- the module's libraries, the block format, how it saves and hears changes, undo, pictures and its checks.
 - [Module window architecture](architecture/architecture-module-window.md) -- the titlebar, toolbar and

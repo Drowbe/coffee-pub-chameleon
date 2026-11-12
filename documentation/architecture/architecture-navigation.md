@@ -142,6 +142,8 @@ Manage, **New <space word>** and the bell's updates line go through `openPage()`
 
 A guest link's page (`isGuestPage()`, which covers its pop-outs) gets the logo and the environment's name as plain text, not links, and the anchor with the space's name. There is no Spaces slot, no bell, no picture and no profile menu. With nothing in its menu, the menu button is hidden (`wireNavMenu()` hides `#nav-toggle` while every entry is), so a guest's narrow-layout phoneFold has no menu button; the same holds on the host console. The page shows the environment's default mode only: `public/theme-head.js` does not read the remembered mode on a `/guest/` path or with `?guest=`, and `useDefaultMode()` in `public/theme-mode.js` keeps it that way (no switch, no `storage` events followed). A guest's page has no notification stream; it asks after the theme now and then (`watchThemeWithoutStream()`).
 
+A guest from the guest door ([architecture-access](architecture-access.md)) has no link: `/guest` is its landing (the spaces open to it, what a guest cannot do, **Leave**), and inside a space a banner (`#guest-banner`, drawn by `public/space.js`) reads "You are in as <name> (guest)." with **Leave**.
+
 ## The second row: the status strip, and the narrow layout's tab bar
 
 `.subnav` (`#subnav`), built in `public/space.js`, only in a space (`body.in-space`). **Wider than the narrow layout it is not a bar of controls.** It is the header's second row, and its only content is the status strip (`phase-chip`, a left-zone element tool of the `secondary` bar), at `--status-strip-h` (44px); the row hides itself when the strip does ([architecture-canvas](architecture-canvas.md), "The status strip"). What the old space bar held has moved:

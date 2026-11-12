@@ -54,7 +54,7 @@ Who can see what you add is your choice, below the drop area (see "Who can see a
 
 ## Rename or remove a file
 
-Choose the **More** button on a file's row or card. You see **Open**, **Download**, **Print** (pictures and PDFs only), **Rename**, **Where it is used** and **Remove**.
+Choose the **More** button on a file's row or card. You see **Open**, **Download**, **Print** (pictures and PDFs only), **Rename**, **Properties** and **Remove**.
 
 - **Rename** opens a small window. Keep the ending (such as `.pdf`) as it is; a name can be 120 characters.
 - **Remove** asks first. It says where the file is used, and that the places that link to it will show "File removed". The question ends: "It is removed from the Vault for everyone in this space, and from any share link it is in. A link left with no file ends. This can't be undone." (the Vault's and the space's names are your environment's words). After it is removed, the keyboard stays in the list, on the file next to it, or on the empty list's button, not at the top of the page.
@@ -81,8 +81,8 @@ You can have up to four windows open at once. Opening a file that already has a 
 Each window's bar has:
 
 - **Previous** and **Next**, with "3 of 12", to walk the files in the order the Vault's list showed them. The left and right arrow keys do the same.
-- **Info**, which shows the file's type, size, who added it and when, **Where it is used** and **Who can see this** (below). A window that is very short has no Info.
-- **Download**, **Print**, **Full screen** (not on a download-only PDF) and, in the window's menu, **Rename**, **Where it is used**, **Close all** and **Remove**.
+- **Properties**, which shows the file's type, size, who added it and when, **Where it is used** and **Who can see this** (below). The file's name is a field there that people who may change the file can edit; it saves like **Rename**. A window that is very short has no Properties.
+- **Download**, **Print**, **Full screen** (not on a download-only PDF) and, in the window's menu, **Rename**, **Properties**, **Close all** and **Remove**.
 
 **Print.** **Print** is for pictures and PDFs, for people who have **Download files**. It opens your browser's print dialog; choose "Save as PDF" there to keep a copy instead of printing. Other kinds of file have no **Print**. On a phone there is no **Print**, as there is no **Download**, and the public share page has none. A download-only PDF is not printed from the menu. Printing a PDF may not work from a pop-out window ([known issues](../known-issues.md)).
 
@@ -110,7 +110,7 @@ A file for everyone has no mark. Nobody else sees a mark.
 
 The choice is fixed when you pick a file. It goes back to everyone in the space each time **Add files** opens. While files are waiting, going up, or waiting for **Try again**, the choices are switched off and a line says so: a file keeps the choice it was picked with, and you change the choice for the next files after the queue is done. Choosing **Chosen people** and then no one is the same as **Only me**.
 
-**Change it later.** Open the file, choose **Info**, and under **Who can see this** choose the button. Its menu offers **Everyone in this space**, **Only me** and **Chosen people** (which opens the same window, with **Done**). The note "Who can see this changed" confirms it. If you are an owner or the admin and the file was not shared with you, the Info says so: "This file is not shared with you. You can open it because you are an owner."
+**Change it later.** Open the file, choose **Properties**, and under **Who can see this** choose the button. Its menu offers **Everyone in this space**, **Only me** and **Chosen people** (which opens the same window, with **Done**). The note "Who can see this changed" confirms it. If you are an owner or the admin and the file was not shared with you, the Info says so: "This file is not shared with you. You can open it because you are an owner."
 
 **When a change takes sight from people.** The question is asked only when two things are true: the change would stop some people seeing the file, and the file has something that would change for them (a link from another tool, or a share link made by one of them). The window is headed **Change who can see this file?** It names the people who can no longer see it, the places in other tools that link to it (which will show as hidden to those people), and the share links that will stop showing the file because their maker can no longer see it (see **Share links** below). Choose **Make it only me** (when you chose **Only me**) or **Remove those people** (any other narrowing), or **Cancel**. When nobody loses sight, or nobody has a link to lose, nothing is asked; showing a file to more people never asks. The Vault works out the numbers itself from what it can read, so they are an estimate: a moderator who has **See every file** keeps sight and may still be named, and a link the Vault cannot read is described in general words.
 
@@ -120,7 +120,7 @@ The choice is fixed when you pick a file. It goes back to everyone in the space 
 
 ## Where a file is used
 
-Other tools link to files without copying them; the Planner attaches them to a stay or a journey ([Planner](userguide-planner.md), "Attach files to a stay or a journey"). **Where it is used** in a file's menu, and in a file window's **Info**, lists the objects that link to it that you may see, and says how many others there are. Where a link points at a file that was removed, that tool shows **File removed**.
+Other tools link to files without copying them; the Planner attaches them to a stay or a journey ([Planner](userguide-planner.md), "Attach files to a stay or a journey"). **Properties** in a file's menu, and in a file window's **Properties**, lists the objects that link to it that you may see, and says how many others there are. Where a link points at a file that was removed, that tool shows **File removed**.
 
 ## A file that is missing
 

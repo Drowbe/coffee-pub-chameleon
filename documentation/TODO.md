@@ -94,8 +94,8 @@ The open issues labelled `priority: now` or `priority: next`:
 
 ## Planned
 
-- **Documents** ([plan-documents](plans/plan-documents.md)): built to 0.6.1 (list, thumbnails, reading, editing with the lock, trash, page colour, zoom, tags, resync). Left, in the plan's order: a rich editor plan (Thomas has not approved one; live co-editing is a second step), links to objects and to other documents, pictures, and export (a Markdown file, Print). The licence, hash and outside-URL checks the plan names are not built.
-- **An access bundle plan.** One plan for who may see and do what across modules (a bundle of access rights). Not written yet.
+- **Documents** ([plan-documents](plans/plan-documents.md)): built to 0.11.12 (list, thumbnails, reading, editing with the lock, trash, page colour, zoom, tags, resync, the rich editor with grids, Paper layout with pages, page numbers and the Insert menu; [plan-documents-rich-editor](plans/plan-documents-rich-editor.md), [plan-documents-paper-layout](plans/plan-documents-paper-layout.md)). Left: live co-editing ([plan-documents-coediting](plans/plan-documents-coediting.md): decided, nothing built), links to objects and to other documents, pictures, and export (a Markdown file, Print). The Markdown box is not paged in Paper, and Safari, an iPad and a phone were not tried.
+- **The access bundle** ([plan-access-bundle](plans/plan-access-bundle.md)): steps 1 to 7 built (agreements, who can enter, the guest door, the guest pages, request access and its pages; [architecture-access](architecture/architecture-access.md)). Left: step 8, the Trips step (a person leaving a space they entered themselves, and the profile tab), and the whole slice on a `BASE_DOMAIN` server with two environments in a real browser. Nothing here was tried with a real guest in a space with a module open.
 - **Google Drive** (#566, an idea): not planned. The issue holds the detail.
 - **A completeness audit.** A pass over the whole product for what is missing or half-built. Not started.
 - **A marketing agent.** An agent for the product's marketing words. Not started.
@@ -124,7 +124,7 @@ The open issues labelled `priority: now` or `priority: next`:
 - A rollup on each space's tile on home, starting with the Planner, chosen per space, in place of the removed Trips tile ([plan-dashboard](plans/plan-dashboard.md), phase 5): a direction from Thomas (2026-10-02) with open questions, not yet a contract.
 - Rename the dashboard's widgets to **tiles** (Thomas, 2026-09-30): "widget" now means a live piece in the header's bars, such as who is here. A renaming plan with a data migration comes next; not written or built.
 - The call-name fallback goes: `server/call-names.js` still reads the call names from before Names step 3 ([plan-names](plans/plan-names.md), step 10).
-- #132 A document editor (ProseMirror) for the long prose fields: research notes and answers, plan notes, to-dos, places, and calendar details. Markdown stays what is stored. Chat stays a textarea. About two weeks. Building waits on a go-ahead.
+- #132 A document editor (ProseMirror) for the long prose fields: research notes and answers, plan notes, to-dos, places, and calendar details. Markdown stays what is stored. Chat stays a textarea. Built for Documents only (the rich editor, Documents 0.7 to 0.11); the other modules' fields are not started.
 
 ## Verify in a real call
 
@@ -219,7 +219,7 @@ The open issues labelled `priority: now` or `priority: next`:
 - **Budget step 5: the travel template turns Budget on** ([plan-budget-module](plans/plan-budget-module.md)). `modules` in the template gains `budget` (template version 7), so a new travel environment has Budget on. Not built; an owner turns Budget on in Manage until then.
 - **A cross-module change event** for the SDK, so Budget can learn at once that a booking changed instead of asking every 30 seconds ([known-issues](known-issues.md)). Not planned yet.
 - **Planner modes** (#307): travel, design and project modes for the Planner. Not planned yet; Budget is built to stay independent of them.
-- **Whiteboard follow-ups.** Frames with a presentation mode (#498) are built (0.1.19 to 0.1.45). #499 Comments on blocks (needs a plan). #501 Put other modules' objects on the board (needs a plan). #503 An ideas backlog from FigJam and Miro. #555 and #554: open Whiteboard issues; the issues hold the detail. Some items are held for Thomas to decide. The live pointers (#496) are built.
+- **Whiteboard follow-ups.** Frames with a presentation mode (#498) are built (0.1.19 to 0.1.45). Several boards in a space (#555, [plan-whiteboard-boards](plans/plan-whiteboard-boards.md), 0.1.54 to 0.1.59), the Eraser (#662, [plan-whiteboard-eraser](plans/plan-whiteboard-eraser.md), 0.1.50), the tool icon beside the pointer (#673) and the insert-tool click rule (#674) are built. Left: Duplicate board (the plan's later step), erasing parts of a stroke, #499 Comments on blocks (needs a plan), #501 Put other modules' objects on the board (needs a plan), #503 An ideas backlog from FigJam and Miro, and #554. The limits that are known are in [known-issues](known-issues.md). The live pointers (#496) are built.
 - #477 In-app help for a module: help a module can show in the app itself. Not planned yet; the issue holds the detail.
 - #469 Host additions for saving and printing, for modules: additions to what the host offers modules (`host.*`) for saving and printing. Not planned yet; the issue holds the detail.
 - #471 Stream replay. Not planned yet; the issue holds the detail.

@@ -217,7 +217,9 @@ Under 1200 pixels the Modules go under the space cards. At 760 pixels and below 
 then the chat at a height of its own, then the Modules.
 
 The Lobby is no longer a card or a place you enter. Everyone is still in it, behind the scenes: it is what Home's chat
-belongs to, and it is still listed first on Manage's **Spaces** tab.
+belongs to, and it is still listed first on Manage's **Spaces** tab. Its row there wears the product's mark, not a picture, and has no **Edit** button.
+
+A space you are not a member of can still appear on Home: one open to anyone with an account shows a **Join** button, and one you may only ask to enter shows its picture, name and description with **Request access** (see "Who can enter" below).
 
 Going Home from inside a space, with the logo, **Spaces** or the narrow-layout , does not leave the space or the call. You
 stay in the call, set to Away, and the space's card reads **Back to <space>**. Home's chat shows while you are there,
@@ -344,6 +346,8 @@ The tabs, in this order, with your environment's words for them:
   Under **Guests**, **Guests can see costs and booking codes** is off unless an owner turns it on. Off, a guest of
   this space never receives the amounts of Budget's costs or the Itinerary's booking codes, whatever the guest link
   shows. Only owners and the admin can change it. It is saved with **Save**.
+  Owners and the admin also see **Who can enter**, **People can ask to come in** and **Waiting to come in** here
+  (see "Who can enter" below).
 - **Phases**: each phase's **Start** and **End** in rows, as in the phase sheet, then the **Budget** field. Saved with
   **Save**. Left out when the environment has no phases; then the **Budget** field is on the tab named for the space
   (an owner's), or on **Settings** (a moderator's).
@@ -380,6 +384,26 @@ Delete, no member list and no calendar switch.
 
 Older settings addresses still work: `/spaces/<id>` (with `#space`, `#members` or `#modules`; `#modules` opens **Settings**, and `#show` opens **Modules**) and
 `/module-settings?space=<id>` take you to Set up on the same tab. The separate settings pages are gone.
+
+## Who can enter
+
+By default a space is for its members only. **Who can enter**, on the **Members** tab of Set up, changes that. Only owners and the admin can set it; it is saved with **Save**.
+
+- **Invited people only**: members, owners and the admin. The space does not show to anyone else.
+- **Anyone with an account**: everyone with an account in the environment sees the space on Home with **Join**. Choosing it makes them a member.
+- **Anyone, including guests**: also guests who came in by the guest door ([Accounts](userguide-accounts.md), "Guests"). This choice is there only while the guest door is on, or while the space already has it.
+
+The Lobby, behind Home, is always for everyone.
+
+**People can ask to come in** (a switch beside it) lets a person who cannot enter ask. A closed space with this off does not appear to them at all, and its address answers as if it did not exist. With it on they see the space's picture, name and description on Home and in the **Spaces** menu, with **Request access**.
+
+To ask (anyone who cannot enter, signed in or a guest from the door):
+
+1. On Home, or in the **Spaces** menu, choose **Request access** on the space. The card then reads **Requested**, with **Withdraw** to take it back.
+2. Wait. A request ends after 7 days. If an owner denies it, the card reads **Declined** and you cannot ask again for 24 hours.
+3. When approved, a notice in the bell says "You can enter <space>", and the space is yours to enter. A guest's approval lasts until their session ends.
+
+To answer (owner or admin): a notice in the bell, "Request to enter <space>", opens Set up on **Members**. Under **Waiting to come in**, choose **Approve** or **Deny** beside the name. Someone approved becomes a member. There are limits on how many requests a person, an address and a space can have at once; they are the server's, in the [Settings reference](userguide-settings-reference.md), "Agreements, guests and entering".
 
 ## Step aside
 

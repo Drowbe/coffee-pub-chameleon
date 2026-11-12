@@ -198,8 +198,8 @@ chat box is hidden.
   In Panel Mode there is also **Unstack all**, which gives every module in a stack a column of its own (it is
   off while nothing is stacked). Window Mode puts stacks away and Panel Mode brings them back (see "Stacking
   modules" below).
-- **Layouts**: the Workspace, Calendar and Map first, then the space's shared layouts, then your own, with **Save this
-  layout** at the end (see "Saved layouts" below).
+- **Layouts**: the Workspace, Calendar and Map first, then the space's shared layouts, then your own, with **New layout** and
+  **Save as new layout** at the end (see "Saved layouts" below).
 
 The panel stays open while you flip switches; close it with **Cancel** (or **Close**) or Escape. For owners and the admin, a line at the foot says "Modules are turned on for the whole <environment> in Manage." With
 the keyboard, Tab and the arrow keys move through it, and Space or Enter flips a switch or presses a button. In the narrow layout there is no **Modules** tab: the modules are tabs along the bottom.
@@ -257,11 +257,13 @@ Save the way the Workspace is arranged, give it a name, and put it back in one p
 To save one:
 
 1. Arrange the Workspace the way you want it. A layout keeps stacks, with their heights and collapses.
-2. Press **Set up** and, on the **Modules** tab, choose **Save this layout** under **Layouts**.
+2. Press **Set up** and, on the **Modules** tab, under **Layouts**, choose **Save as new layout** (the Workspace as it is now) or **New layout** (an empty one, with no module open).
 3. Type a **Name**. Owners, the admin and the space's moderators can also switch on **For everyone in this space** to
    save a shared layout.
-4. Choose **Save**. The menu says "Saved <name>." If you already have a layout with that name, it offers **Replace
+4. Choose **Save**. The menu says "Saved <name>." (or "Created <name>." for a new one), and the layout is the one shown. If you already have a layout with that name, it offers **Replace
    it**.
+
+**Modified and Update.** When the layout shown is a saved one and you then move, open or close a module, a row **Modified** appears right under it. Where you may change that layout (your own, or a shared one for owners, the admin and moderators), the row reads **Update**: choosing it saves the Workspace over the layout. Otherwise it is only the word, and the layout is left as it was.
 
 To load one, press its name. The menu stays open. Modules the layout doesn't name close; a module in its own window
 comes back to the Workspace. Floating modules are placed to fit this window, snapped ones settle on the grid, and
@@ -271,8 +273,8 @@ left out and the menu says so. The loaded layout becomes the one this space reme
 Every layout has a **⋮** for anyone signed in. It starts with **Favorite** or **Unfavorite** (see "Favorite layouts"
 below). On a layout you may change it also offers **Replace with this layout** (it then holds the Workspace as it is
 now), **Rename**, **Change icon** and **Delete**, which asks first. Anyone may save their own layouts, up to 10 in a
-space; owners, the admin and the space's moderators may save, change and delete the shared ones, up to 10; guests may
-only load shared ones. Names are up to 40 characters. With none saved, the section reads "No saved layouts yet." There
+space; owners, the admin and the space's moderators may save, change and delete the shared ones, up to 10; guests see the
+shared ones and may only load them, with nothing to save or change. Names are up to 40 characters. With none saved, the section reads "No saved layouts yet." There
 are no layouts in the narrow layout or in an aside.
 
 **The space's first visit.** Owners and the admin can choose **Make default** in a shared layout's **⋮**, and **Stop
