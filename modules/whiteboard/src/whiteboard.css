@@ -839,6 +839,8 @@
 /* the Eraser: a circle of the erase size by the pointer (12 screen pixels across), a neutral border and no fill */
 .wb-eraser-ring {
   position: absolute;
+  left: 0;
+  top: 0;
   z-index: 4;
   width: 12px;
   height: 12px;
@@ -846,7 +848,9 @@
   border: 1px solid var(--text-primary);
   border-radius: var(--radius-large); /* 11px on a 12px box: a circle */
   box-shadow: 0 0 0 1px var(--surface-card);
-  transform: translate(-50%, -50%);
+  transform: translate3d(-6px, -6px, 0); /* half its size back: the first place; the script sets the position by transform */
+  will-change: transform;
+  contain: layout style; /* not paint: the halo is outside the box */
   pointer-events: none;
 }
 .wb-swatch {

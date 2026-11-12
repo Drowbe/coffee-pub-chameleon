@@ -171,6 +171,18 @@ const cases = {
       check(board.size === 30, `redo deletes the 100 again (board ${board.size})`);
     })();
   },
+  // The circle moves by transform, never by left/top (layout and repaint of every block on a big board; source-level).
+  ringByTransform() {
+    const render = fs.readFileSync(path.join(src, 'whiteboard-lib-d-render.js'), 'utf8');
+    const css = fs.readFileSync(path.join(src, 'whiteboard.css'), 'utf8');
+    const body = (/function ring\(at\) \{([\s\S]*?)\n    \}\n/.exec(render) || [])[1] || '';
+    check(/ringEl\.style\.transform\s*=/.test(body), 'the ring is placed by style.transform');
+    check(!/ringEl\.style\.(left|top)/.test(body), 'the ring is not placed by left or top');
+    const rule = (/\.wb-eraser-ring \{([^}]*)\}/.exec(css) || [])[1] || '';
+    check(/will-change:\s*transform/.test(rule) && /left:\s*0/.test(rule) && /top:\s*0/.test(rule), 'the ring rule has left 0, top 0 and will-change transform');
+    check(!/contain:[^;]*paint/.test(rule), 'the ring does not contain paint (its halo is outside its box)');
+    check(!/restack\(\)/.test((/shown\.delete\(id\)[^\n]*/.exec(render) || [''])[0]), 'taking a block away does not renumber every z-index');
+  },
 };
 
 for (const [name, run] of Object.entries(cases)) {
