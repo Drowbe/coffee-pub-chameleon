@@ -1200,19 +1200,18 @@
     else applyFormat(f.id);
   }
   // The Insert button's menu: Grid and Formula (Markdown only for now), and a page break at the caret.
-  // Rich text: the Grid group at the bottom of Insert, on only while the caret is in a grid (the editor says which entries fit).
+  // Rich text: the Grid group comes first in Insert while the caret is in a grid (the editor says which entries fit), and is not there otherwise.
   function gridItems() {
-    if (!rich || !ed.editor.gridMenu) return [];
+    if (!rich || !ed.editor.gridMenu) return null;
     const model = ed.editor.gridMenu();
-    const list = model || [['gridRowBefore', 'Row above'], ['gridRowAfter', 'Row below'], ['gridColBefore', 'Column before'], ['gridColAfter', 'Column after'], ['gridRowDelete', 'Delete row'], ['gridColDelete', 'Delete column'], ['gridAlignLeft', 'Align column left'], ['gridAlignCentre', 'Align column centre'], ['gridAlignRight', 'Align column right'], ['gridDelete', 'Delete grid']].map(([id, label]) => ({ id, label, disabled: true }));
-    return [{ heading: 'Grid' }, ...list.map((m) => ({ id: m.id, label: m.label, ...(m.disabled ? { disabled: true } : {}), ...(m.current ? { current: true } : {}), onClick: () => applyFormat(m.id) }))];
+    return model ? model.map((m) => ({ id: m.id, label: m.label, ...(m.disabled ? { disabled: true } : {}), ...(m.current ? { current: true } : {}), onClick: () => applyFormat(m.id) })) : null;
   }
   function insertMenu(e) {
     if (!ed || ed.lost) return;
     const entry = (id, label, icon) => ({ id, label, icon, ...(rich && !dlRichCan(id) ? { disabled: true } : {}), onClick: () => applyFormat(id) });
     host.menu.show({
       id: 'insert', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
-      items: [entry('grid', 'Grid', 'table-cells'), entry('formula', 'Formula', 'square-root-variable'), { id: 'break', label: 'Page break', icon: 'scissors', onClick: () => applyFormat('pagebreak') }, ...gridItems()],
+      items: dlRichInsertItems([entry('grid', 'Grid', 'table-cells'), entry('formula', 'Formula', 'square-root-variable'), { id: 'break', label: 'Page break', icon: 'scissors', onClick: () => applyFormat('pagebreak') }], gridItems()),
       onClose: () => { if (ed && !ed.lost) ed.editor.focus(); }, // Escape or a press outside: the keyboard goes back to the editor
     });
   }

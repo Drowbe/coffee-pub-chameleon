@@ -44,7 +44,7 @@ const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, 'modules/documents/src'));
 const { PM, L, lex } = loadRich(src, ['DL', 'DL_ACTIONS', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichEditor', 'dlRichTidy',
-  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'dlRichInGrid', 'dlRichGridMenu', 'dlRichGridAt', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot', 'dlEditorPages', 'dlEditorPagesPlugin', 'dlPageGeometry', 'dlPageBreaks', 'DL_EDITOR_GAP']);
+  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'dlRichInGrid', 'dlRichGridMenu', 'dlRichInsertItems', 'dlRichGridAt', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot', 'dlEditorPages', 'dlEditorPagesPlugin', 'dlPageGeometry', 'dlPageBreaks', 'DL_EDITOR_GAP']);
 const schema = L.dlRichSchema(PM);
 const N = schema.nodes;
 const M = schema.marks;
@@ -1831,6 +1831,8 @@ test('grid menu: dlRichInGrid, the menu model, the caret-cell decoration', () =>
   const wide = open(bigGrid(2, 2)); caretIn(wide, 0, 0); assert.equal(L.dlRichGridMenu(PM, wide.state()).find((x) => x.id === 'gridColDelete').disabled, false);
   const one = open('| a |\n| - |\n| 1 |\n'); caretIn(one, 1, 0); assert.equal(L.dlRichGridMenu(PM, one.state()).find((x) => x.id === 'gridColDelete').disabled, true, 'last column');
   const big = open(bigGrid(200, 2)); caretIn(big, 1, 0); assert.equal(L.dlRichGridMenu(PM, big.state()).find((x) => x.id === 'gridRowAfter').disabled, true, 'row limit');
+  assert.deepEqual(L.dlRichInsertItems([{ id: 'a' }, { id: 'b' }], null).map((x) => x.id), ['a', 'b'], 'out of a grid: no Grid group');
+  assert.deepEqual(L.dlRichInsertItems([{ id: 'a' }], [{ id: 'g1' }, { id: 'g2' }]).map((x) => x.heading || x.id), ['Grid', 'g1', 'g2', 'a'], 'in a grid: the Grid group first');
   const ins = open('x\n'); assert.equal(ins.run('grid'), true); assert.equal(L.dlRichInGrid(PM, ins.state()), true, 'insert puts the caret in the grid');
   assert.deepEqual(shape(ins), [2, 3]); caretIn(ed, 0, 0);
 });
