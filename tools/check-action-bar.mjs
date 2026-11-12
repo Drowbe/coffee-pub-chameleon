@@ -126,7 +126,7 @@ test('the Set up panel: Save and Cancel are the panel\'s bar, not the top bar\'s
   assert.match(setup, /discardWords: 'Discard your changes\?',/, 'the panel asks host.ui.editor\'s question');
   assert.match(setup, /if \(hideDeleteConfirm\(\{ focus: true \}\)\) return;\n\s*state\.bar\.requestCancel\(\);/, 'Escape: Keep on the Delete question first, else Cancel (which asks when dirty)');
   assert.match(space, /onClick: \(\) => \(settingUp \? spaceSetup\.cancel\(\) : enterSetup\(\{ tab: '#show' \}\)\)/, 'the pressed Set up tool is Cancel too, asking when dirty');
-  // Every field is a draft: the panel sends nothing but from Save, Delete, and the invite and guest link actions.
+  // Every field is a draft: the panel sends nothing but from Save, Delete, and the invite, guest link and Approve or Deny actions.
   const sends = [...setup.matchAll(/api\('(PATCH|PUT|POST|DELETE)', `([^`]*)`/g)].map((m) => `${m[1]} ${m[2]}`);
   assert.deepEqual(sends.sort(), [
     'DELETE /api/spaces/${encodeURIComponent(space.id)}',
@@ -134,9 +134,10 @@ test('the Set up panel: Save and Cancel are the panel\'s bar, not the top bar\'s
     'DELETE /api/spaces/${id}/guest-link',
     'PATCH /api/spaces/${encodeURIComponent(space.id)}',
     'POST /api/spaces/${id}/guest-link',
+    'POST /api/spaces/${encodeURIComponent(space.id)}/access-requests/${encodeURIComponent(r.id)}',
     'PUT /api/modules/${encodeURIComponent(change.id)}/settings/space',
     'PUT /api/spaces/${encodeURIComponent(space.id)}/image',
-  ].sort(), 'the requests: Save\'s PATCH, picture and module settings, Delete, the guest link');
+  ].sort(), 'the requests: Save\'s PATCH, picture and module settings, Delete, the guest link, an answer to a request to come in');
   const save = between(setup, '  async function done() {', '  return { el, open');
   assert.ok(save.indexOf("api('PATCH'") < save.indexOf("api('PUT', `/api/spaces/") && save.indexOf("api('PUT', `/api/spaces/") < save.indexOf("api('PUT', `/api/modules/"), 'in order: the space, the picture, the module settings');
   assert.match(save, /\} catch \(err\) \{\n\s*if \(saved\.length && typeof opts\.onSaved === 'function'\) opts\.onSaved\(answered, saved\);\n\s*return refused\(saved, `module:\$\{change\.id\}`, err\.message\);/, 'a refused module stops the save and says what did save');

@@ -4561,7 +4561,7 @@ const accessWho = (r) => ({ id: r.id, kind: r.key ? 'account' : 'guest', name: r
 function tellOwners(space, name) {
   try {
     const owners = store.users.filter((u) => hasOwnerRights(u)).map((u) => u.key);
-    moduleHooks.announce(owners, { title: `Request to enter ${space.name}`, body: `${name} asks to enter ${space.name}.` });
+    moduleHooks.announce(owners, { title: `Request to enter ${space.name}`, body: `${name} asks to enter ${space.name}.`, href: `/?setup=${space.id}#members` });
   } catch (err) { console.warn('could not tell the owners of a request:', err.message); }
 }
 // POST /api/spaces/:id/request: ask to enter. 401 signed out, 403 a guest link, 404 for a space they may neither enter nor
