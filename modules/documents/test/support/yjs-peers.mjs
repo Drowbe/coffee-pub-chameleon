@@ -13,7 +13,7 @@ import { loadRich } from './rich-corpus.mjs';
 const warn = console.warn;
 console.warn = (...a) => { if (!/^TextSelection endpoint not pointing into a node with inline content/.test(String(a[0]))) warn(...a); };
 
-export const NAMES = ['dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichSerialise', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
+export const NAMES = ['dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichSerialise', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlCoeditGate', 'dlRichPlugins', 'dlEditorPagesPlugin', 'dlRichEditor'];
 
 export function loadYjs(src) {
   const r = loadRich(src, NAMES);
@@ -38,13 +38,14 @@ class FakeView {
 
 export class Net {
   constructor(ctx, seed = 12345) { this.ctx = ctx; this.peers = []; this.R = rng(seed); }
-  // seed: a ProseMirror doc put into the Y.Doc before the view is made (only for the first peer)
-  peer(name, { seed, plugins } = {}) {
+  // seed: a ProseMirror doc put into the Y.Doc before the view is made (only for the first peer). plugins: more plugins after ySync and
+  // yUndo; build(PM, frag): the whole plugin list instead
+  peer(name, { seed, plugins, build } = {}) {
     const { PM, schema } = this.ctx;
     const ydoc = new PM.Doc(); const frag = ydoc.getXmlFragment('prosemirror');
     if (seed) PM.prosemirrorToYXmlFragment(seed, frag);
     const p = { name, ydoc, frag, out: [], bad: 0, exc: 0, lastExc: '' };
-    p.view = new FakeView(PM, PM.EditorState.create({ schema, plugins: [PM.ySyncPlugin(frag), PM.yUndoPlugin(), ...(plugins ? plugins(PM) : [])] }));
+    p.view = new FakeView(PM, PM.EditorState.create({ schema, plugins: build ? build(PM, frag) : [PM.ySyncPlugin(frag), PM.yUndoPlugin(), ...(plugins ? plugins(PM) : [])] }));
     ydoc.on('update', (u, origin) => { if (origin !== 'net') p.out.push(u); });
     this.peers.push(p); return p;
   }

@@ -127,7 +127,16 @@ function dlEditorPagesPlugin(PM, env) {
       apply(tr, value) {
         const m = tr.getMeta(key);
         if (m) return { set: build(tr.doc, m.spacers), spacers: m.spacers, lastPad: m.lastPad, pages: m.pages, on: m.on, sizeKey: m.sizeKey };
-        return tr.docChanged && value.set !== PM.DecorationSet.empty ? { ...value, set: value.set.map(tr.mapping, tr.doc) } : value;
+        if (!tr.docChanged) return value;
+        // A change that came from another person (the shared document's binding, ySyncPluginKey) replaces the whole document in ONE step, and
+        // mapping a decoration through that drops it (its place was deleted): the spacers must be drawn again from the list, by block, until the
+        // next reading puts them where the new heights say. The same when any other change mapped the set to fewer decorations than the list.
+        const remote = Boolean(PM.ySyncPluginKey && tr.getMeta(PM.ySyncPluginKey));
+        if (!value.spacers.length) return value;
+        if (remote) return { ...value, set: build(tr.doc, value.spacers) };
+        const mapped = value.set.map(tr.mapping, tr.doc);
+        const want = value.spacers.filter((s) => s.beforeIndex < tr.doc.childCount).length;
+        return { ...value, set: mapped.find().length === want ? mapped : build(tr.doc, value.spacers) };
       },
     },
     props: { decorations: (state) => key.getState(state).set },
