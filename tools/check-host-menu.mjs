@@ -145,6 +145,10 @@ test('the page\'s shared menu: categories fly out, or drill in on a phone', () =
   const css = read('public/sdk/system.css');
   assert.match(css, /:is\(\.sdk-menu-caret, \.host-menu-caret\) \{[^}]*color: var\(--text-muted\);/, 'the caret, from the roles (the Menus block)');
   assert.match(css, /:is\(\.sdk-menu-item, \.host-menu-item\):is\(\[aria-expanded="true"\], \.open\) \{ background: var\(--menu-hover\); \}/, 'a category keeps the quiet fill while its flyout is open');
+  const surface = css.slice(css.indexOf(':is(.sdk-menu, .host-menu, .chat-command-menu, .sdk-kind-list) {'));
+  const surfaceBlock = surface.slice(0, surface.indexOf('\n}'));
+  assert.match(surfaceBlock, /background-attachment: local, scroll;/, 'a scrolling menu shows a fade at the bottom edge only while more is below (#661)');
+  assert.match(surfaceBlock, /color-mix\(in srgb, var\(--text-primary\)/, 'the scroll cue comes from a theme token');
 });
 
 test('host.menu.show: categories fly out in a module too', () => {

@@ -63,7 +63,7 @@ function seededApp(secrets = strong) {
         externalCalendars: [{ id: 'cal1', name: 'Work', url: `aesgcm$${hex(24)}`, readAt: null, error: null }],
         // What they agreed to (server/agreements.js): left out of the copy, so everyone is asked again after a restore of it.
         agreed: [{ doc: 'terms', version: hex(8), at: '2026-01-04T00:00:00.000Z' }],
-        spaces: { trip01: { images: { player: 'p.png' }, useDefaultImages: false, permissions: {}, calendarFeed: feed() } },
+        spaces: { trip01: { images: { player: 'p.png' }, useDefaultImages: false, permissions: {}, joined: { by: 'self', at: '2026-01-02T00:00:00.000Z' }, calendarFeed: feed() } },
       },
       // A host admin's stand-in, as a zip a person wrote by hand might give it: a password, a link and a factor of its own.
       { key: 'bosskey1', login: 'boss', displayName: 'boss', role: 'admin', hostAdmin: true, passwordHash: `scrypt$${hex(16)}`, linkToken: token(24), mfa, firstPassword: { hash: hex(32), expiresAt: '2099-01-01T00:00:00.000Z' }, createdAt: '2026-01-01T00:00:00.000Z' },
@@ -74,7 +74,7 @@ function seededApp(secrets = strong) {
       { id: 'lobby', name: 'Lobby', members: ['ownerkey'], createdAt: '2026-01-01T00:00:00.000Z' },
       {
         id: 'trip01', name: 'Trip', description: 'A trip', members: ['ownerkey'], createdAt: '2026-01-01T00:00:00.000Z', profile: 'characters',
-        link: 'https://example.com/', linkIcon: 'link', guestToken: token(20), allowGuests: true, opensWith: ['todo'], defaultLayout: 'lay01',
+        link: 'https://example.com/', linkIcon: 'link', guestToken: token(20), allowGuests: true, entry: 'accounts', opensWith: ['todo'], defaultLayout: 'lay01',
         aiOff: true, aiSees: { chat: true }, publishCalendar: false, guestsSeeHidden: true, phases: { main: { start: '2026-02-01', end: '2026-02-05' } },
         budget: { amount: 1200, currency: 'EUR' },
       },

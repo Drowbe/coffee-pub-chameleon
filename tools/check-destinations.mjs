@@ -556,8 +556,8 @@ try {
     assert.equal(stored.json.item.value.title, 'Pack', 'kept in the Keep\'s own data');
     assert.equal((await call('GET', '/api/modules/dest-tasks/data/task:one', { token: aliceT })).status, 404, 'not in the environment\'s');
     const outsider = [await put(carolT), await schedule(carolT), await notify(carolT)];
-    assert.deepEqual(outsider.map((r) => r.status), [403, 403, 403], 'Carol is not in the Keep');
-    assert.equal(outsider[0].json.error, 'this module is not available in that space for you');
+    assert.deepEqual(outsider.map((r) => r.status), [404, 404, 404], 'Carol is not in the Keep, so it is an unknown id to her');
+    assert.equal(outsider[0].json.error, 'no such space');
     await role({ 'module.dest-tasks.edit': false });
     const reader = [await put(aliceT), await schedule(aliceT), await notify(aliceT)];
     assert.deepEqual(reader.map((r) => r.status), [403, 403, 403], 'Alice may only read now');
@@ -603,7 +603,7 @@ try {
       refused(await ask(aliceT, porto), 403, "your role can't do that in this module");
       refused(await ask(aliceT, home), 403, "your role can't do that in this module");
       refused(await ask(bobT, lisbon), 403, "your role can't do that in this module");
-      refused(await ask(carolT, lisbon), 403, 'that module is not available in that space for you');
+      refused(await ask(carolT, lisbon), 404, 'no such space');
       refused(await ask(null, lisbon, { guest }), 403, 'guests can only use a module in a space');
       refused(await call('POST', '/api/bus/actions/request', { token: aliceT, body: { from: 'dest-dates', action: 'dest-tasks:putAfter', input: { task: lisbon, after: porto }, scope: 'environment' } }), 400, 'an action can change objects in only one place at a time');
 
@@ -748,7 +748,7 @@ try {
     const put = (token, id = 'w1') => call('PUT', `/api/modules/dest-pins/data/pin:${id}?scope=space&space=${keep}`, { token, body: { value: { title: 'Harbour', point: { lat: 1, lng: 2 } } } });
     assert.equal((await put(aliceT)).status, 200);
     const outsider = await put(carolT);
-    assert.deepEqual([outsider.status, outsider.json.error], [403, 'this module is not available in that space for you']);
+    assert.deepEqual([outsider.status, outsider.json.error], [404, 'no such space']);
     await role({ 'module.dest-pins.edit': false });
     const reader = await put(aliceT, 'w2');
     assert.deepEqual([reader.status, reader.json.error], [403, "your role can't do that in this module"]);
@@ -987,7 +987,7 @@ try {
     assert.equal((await call('GET', `/api/modules/dest-pins/data?scope=environment&guest=${encodeURIComponent(guest)}`)).status, 403);
     assert.equal((await call('GET', `/api/modules/dest-pins/data?scope=person&guest=${encodeURIComponent(guest)}`)).status, 403);
     // A member never writes into a space he is not in: Bob is not in Tower
-    assert.equal((await put(bobT, `scope=space&space=${tower}`, 'x1', { title: 'Sneaky' })).status, 403);
+    assert.equal((await put(bobT, `scope=space&space=${tower}`, 'x1', { title: 'Sneaky' })).status, 404);
     for (const [q, id] of [['scope=environment', 'h1'], ['scope=person', 'h1']]) await call('DELETE', `/api/modules/dest-pins/data/pin:${id}?${q}`, { token: aliceT });
   });
 

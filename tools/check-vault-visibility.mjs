@@ -400,6 +400,7 @@ try {
       Object.keys(files).forEach((k, i) => {
         const s = r.json?.summaries?.[i] || {};
         if (sees.includes(k)) expect(s.title === files[k].name, `${name}: ${label} of the ${k} file: ${JSON.stringify(s).slice(0, 160)}`);
+        else if (name === 'an outsider') expect(s.state === 'gone' && s.status === 404 && !s.title, `${name}: ${label} of the ${k} file is ${s.state}/${s.status}, wanted gone/404 (a space they may not enter is an unknown id)`);
         else expect(s.state === 'hidden' && s.status === 403 && !s.title, `${name}: ${label} of the hidden ${k} file is ${s.state}/${s.status}, wanted hidden/403`);
       });
     }
@@ -408,6 +409,7 @@ try {
       leakFree(name, one);
       if (!signedIn(name)) expect(one.status === 401, `${name}: one object answered ${one.status}`);
       else if (sees.includes(k)) expect(one.status === 200 && one.json.summary.title === f.name, `${name}: one object, ${k}: ${one.status}`);
+      else if (name === 'an outsider') expect(one.status === 404 && one.json.state === 'gone', `${name}: one object, ${k}: ${one.status} ${one.json?.state}, wanted 404 gone`);
       else expect(one.status === 403 && one.json.state === 'hidden', `${name}: one object, hidden ${k}: ${one.status} ${one.json?.state}`);
       if (!sees.includes(k) && signedIn(name) && name !== 'a guest pass' && name !== 'an outsider') {
         expect(one.json?.error === 'that file is not shared with you', `${name}: one object, hidden ${k}, says "${one.json?.error}"`);

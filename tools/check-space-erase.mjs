@@ -215,12 +215,11 @@ try {
   r = await call('PATCH', `/api/spaces/${spaceA}`, { token: mona, body: { defaultLayout: null } });
   assert.equal(r.status, 200, `a moderator sets up their own space: ${r.text}`);
   r = await call('GET', `/api/spaces/${spaceB}`, { token: mona });
-  assert.equal(r.status, 403, 'a moderator of A cannot read set up for B');
-  assert.match(r.json.error, /only/);
+  assert.equal(r.status, 404, 'a moderator of A cannot read set up for B (a space they may not enter is an unknown id)');
   r = await call('PATCH', `/api/spaces/${spaceB}`, { token: mona, body: { defaultLayout: null } });
-  assert.equal(r.status, 403, 'a moderator of A cannot set up B');
+  assert.equal(r.status, 404, 'a moderator of A cannot set up B (an unknown id to them)');
   r = await call('PATCH', `/api/spaces/${spaceC}`, { token: mona, body: { phases: [] } });
-  assert.equal(r.status, 403, 'nor a space with no members');
+  assert.equal(r.status, 404, 'nor a space with no members (an unknown id to them)');
   r = await call('PATCH', `/api/spaces/${spaceA}`, { token: mona, body: { name: 'Mine now' } });
   assert.equal(r.status, 403, 'a moderator does not change the owner-only fields of their own space');
   r = await call('GET', `/api/spaces/${spaceA}`, { token: mia });
