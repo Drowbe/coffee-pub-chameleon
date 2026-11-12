@@ -1,0 +1,14 @@
+// Recipe step: three patches to y-prosemirror 1.3.7 (src/plugins/sync-plugin.js); each replacement must match exactly once or the build stops.
+// (a) marks on inline atoms kept as a JSON "_marks" attribute (Yjs keeps marks only on text); (b) restoreRelativeSelection ignores a NodeSelection on a node that is gone; (c) default colours are theme tokens.
+import fs from 'node:fs';
+const f = process.argv[2] + '/src/plugins/sync-plugin.js'; let s = fs.readFileSync(f, 'utf8');
+const rep = (a, b) => { if (s.split(a).length !== 2) throw new Error('not exactly once: ' + a.slice(0, 50)); s = s.replace(a, b); };
+rep("      type.setAttribute(key, val)\n    }\n  }\n  type.insert(", "      type.setAttribute(key, val)\n    }\n  }\n  if (node.marks && node.marks.length) type.setAttribute('_marks', JSON.stringify(node.marks.map((m) => m.toJSON())))\n  type.insert(");
+rep("    const attrs = el.getAttributes(snapshot)\n    if (snapshot !== undefined) {\n      if (!isVisible(", "    const attrs = el.getAttributes(snapshot)\n    const mj = attrs._marks; delete attrs._marks\n    const marks = mj ? JSON.parse(mj).map((m) => schema.markFromJSON(m)) : null\n    if (snapshot !== undefined) {\n      if (!isVisible(");
+rep("const node = schema.node(el.nodeName, attrs, children)", "const node = schema.node(el.nodeName, attrs, children, marks)");
+rep("      equalAttrs(ytype.getAttributes(), pnode.attrs) &&", "      equalAttrs((({ _marks, ...rest }) => rest)(ytype.getAttributes()), pnode.attrs) &&\n      (ytype.getAttribute('_marks') || '') === (pnode.marks && pnode.marks.length ? JSON.stringify(pnode.marks.map((m) => m.toJSON())) : '') &&");
+rep("    // remove all keys that are no longer in pAttrs\n    for (const key in yDomAttrs) {\n      if (pAttrs[key] === undefined) {", "    const mk = pNode.marks && pNode.marks.length ? JSON.stringify(pNode.marks.map((m) => m.toJSON())) : undefined\n    if (mk !== yDomAttrs._marks) { if (mk === undefined) yDomFragment.removeAttribute('_marks'); else yDomFragment.setAttribute('_marks', mk) }\n    // remove all keys that are no longer in pAttrs\n    for (const key in yDomAttrs) {\n      if (pAttrs[key] === undefined && key !== '_marks') {");
+rep("      tr.setSelection(NodeSelection.create(tr.doc, anchor))", "      const picked = anchor === null ? null : tr.doc.nodeAt(anchor)\n      if (picked && NodeSelection.isSelectable(picked)) tr.setSelection(NodeSelection.create(tr.doc, anchor))")
+// (c) the library's default highlight colours (used only to draw a snapshot, which Chameleon never does) become theme tokens: the repository allows no raw colour in a module
+rep("const defaultColors = [{ light: '#ecd44433', dark: '#ecd444' }]", "const defaultColors = [{ light: 'var(--selected-bg)', dark: 'var(--accent)' }]");
+fs.writeFileSync(f, s); console.log('y-prosemirror patched (7 replacements)');

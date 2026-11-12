@@ -1,0 +1,46 @@
+/*
+ * ProseMirror, Yjs and y-prosemirror, bundled for one module's editor. DO NOT EDIT: built once by esbuild; the recipe and the pinned
+ * SHA-256 of this file are in the module's THIRD-PARTY.md, and each package's own LICENSE file is in its vendor/ folder.
+ *
+ * prosemirror-model 1.25.13, prosemirror-transform 1.12.5, prosemirror-state 1.4.4, prosemirror-view 1.42.9,
+ * prosemirror-commands 1.7.2, prosemirror-keymap 1.2.3, prosemirror-history 1.5.1, prosemirror-inputrules 1.5.1,
+ * prosemirror-schema-list 1.6.0, prosemirror-dropcursor 1.8.4, prosemirror-gapcursor 1.4.1 and
+ * prosemirror-markdown 1.13.9 (its src/to_markdown.ts only):
+ *   Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+ * prosemirror-tables 1.8.5:
+ *   Copyright (C) 2015-2016 by Marijn Haverbeke <marijnh@gmail.com> and others
+ * orderedmap 2.1.1 and w3c-keyname 2.2.8:
+ *   Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+ * rope-sequence 1.3.4:
+ *   Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin>
+ *
+ * yjs 13.6.33:
+ *   Copyright (c) 2023 Kevin Jahns <kevin.jahns@protonmail.com>, Chair of Computer Science 5 (Databases & Information
+ *   Systems), RWTH Aachen University, Germany
+ * y-prosemirror 1.3.7 and lib0 0.2.120:
+ *   Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>
+ * isomorphic.js 0.2.5:
+ *   Copyright (c) 2020 Kevin Jahns <kevin.jahns@protonmail.com>
+ *
+ * Modified: prosemirror-tables key tableRole renamed gridRole and export gridEditing added; y-prosemirror patched in three
+ * places (marks on inline atoms; a selection on a node that is gone; default colours as theme tokens); one outside address
+ * removed from a Yjs message.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
