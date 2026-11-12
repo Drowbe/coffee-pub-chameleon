@@ -1,8 +1,8 @@
 # Workspaces and a Dedicated Conference Plan
 
-**Audience:** Thomas decides. If he approves, server-development builds the space record, the routes and the checks, and experience-design builds the Conference view, the owner controls and the menu entry. content-manager documents after.
+**Audience:** Thomas decides. If he approves, server-development builds the space record, the routes, the stored last-layout record and the checks, and experience-design builds the Conference view, the owner controls and the menu entry. The stored last-layout record (decision 20) is a core change (`server/`, the stored data format): it is held for an independent read and covered by the full `npm run check`. content-manager documents after.
 
-**Status:** Draft for Thomas, 2026-11-12, by product-planner; updated 2026-11-12 with Thomas's answers to questions 2, 4 and 5 (decisions 12 to 14) and to question 1 (decisions 15 to 18, the last about the collapsed call area). Nothing here is decided except the lines marked "Thomas" and the decisions below. Nothing is built. From the feedback and from Thomas, in his words:
+**Status:** Draft for Thomas, 2026-11-12, by product-planner; updated 2026-11-12 with Thomas's answers to questions 2, 4 and 5 (decisions 12 to 14), to question 1 (decisions 15 to 18, the last about the collapsed call area) and, on 2026-11-12, to questions 3 and 6 to 12 (decisions 19 to 26). Nothing here is decided except the lines marked "Thomas" and the decisions below. Nothing is built. From the feedback and from Thomas, in his words:
 
 > "we've made conference (video) so secondary, there is no way to have a dedicated call without popping it out."
 
@@ -74,6 +74,17 @@ Thomas, 2026-11-12, answer to question 1 (DECIDED), after showing two screenshot
 
 18. **The conference icon stays visible when the call area is collapsed** (Thomas: "we should also show the conf icon when the area is collapsed"). When the column is collapsed, the call's icon stays in the collapsed rail so the person can see the call area exists and reopen it with one click. While a call is active it shows the live state (a dot or the elapsed time as a badge; which one is open). This goes with decision 15.
 
+Thomas, 2026-11-12, answers to questions 3 and 6 to 12 (DECIDED). Two of them differ from the planner's suggestion (decisions 20 and 21).
+
+19. **Only the six fixed layouts (question 3):** Workspace, Conference, Calendar, Map, Whiteboards, Documents. No preset for Budget, Polls, Vault, Research, Planner, Stream or the others. They are reached through the Workspace, or through a saved layout and a heart.
+20. **The last layout is remembered on the server, per person and per space (question 6).** Not the browser-only option the planner suggested. Entering a space opens the layout the person last used there. This reverses today's "entering opens on the Workspace" for a person who has a remembered choice. Decision 8 stands: a person with no remembered choice gets today's default. This adds a stored record and a route, so it is a core change (see "The last layout, on the server").
+21. **Guests follow the owner's default (question 7).** Not the always-Conference option the planner suggested. What a guest sees when the owner's default is a layout a guest can hardly use is an open point (see "What is not decided").
+22. **Owners, the admin and moderators set the default, the tabs and their order (question 8),** as `defaultLayout` is set today.
+23. **Icons (question 9):** each module's own icon where it has one, and a video glyph for Conference.
+24. **Asides stay their own thing (question 10),** sharing the column code with the Conference layout.
+25. **No cap on the main nav (question 11).** The **...** overflow handles a crowded bar.
+26. **"Bring everyone to the Conference" is left out of version 1 (question 12).** It is listed under "Not in version 1".
+
 ## Names
 
 `CLAUDE.md` (Names) does not list **Workspace** or **Layout**, though both are in the product: the Workspace is the first layout tab and the Layout menu is in the top bar. Thomas says "workspaces", "fixed workspaces" and "fixed layouts".
@@ -100,7 +111,7 @@ Fixed means fixed **content**, not fixed position (the owner reorders, below). A
 | Documents | `documents` (new) | The Documents module docked, filling the canvas | Column beside it | Same |
 
 - **Workspace is the free-form layout; the others are presets** that open one thing large. This is how Calendar and Map already work, and it is the suggestion (point 2 of the planner's list). Treating Workspace as a preset too would lose the remembered arrangement.
-- **Modules without a preset** (Budget, Polls, Vault, Research, Planner, Stream, Assistant, Places while it lasts) live in the Workspace, and a person can save any arrangement as their own layout and favorite it. The planner thinks this is right: six fixed layouts is already a lot of tabs. Which modules deserve a preset is Thomas's call (Open question 3).
+- **Modules without a preset** (Budget, Polls, Vault, Research, Planner, Stream, Assistant, Places while it lasts) live in the Workspace, and a person can save any arrangement as their own layout and favorite it. **Decided (Thomas, decision 19):** only the six fixed layouts; no owner-pinned presets and no extra preset for the Planner.
 - **To-do:** if a dedicated To-do list returns, it is one more row in this table with its own id (`todo`) and the same two rules: listed only while the module is on, and the Calendar layout shows its entries when the "show in the calendar" setting says so. Nothing in this plan blocks that: the list of ids is a code list (below), the owner's order and default accept any id in it.
 - **Map and Places as one:** the Map layout is Maps. If Places retires into Maps, `map` does not change.
 - **Call strip in each preset** is the existing column. The two modes and the placement setting cover both: in a preset the setting says where the call sits in the column; in Conference it says where the call sits against the chat on the whole page.
@@ -156,9 +167,9 @@ The owner's choices are a field on the space record, beside `opensWith` and `def
 - `hide`: ids not in the bar for anyone. They stay in the Layout menu's list. `workspace` can never be in `hide`.
 - `defaultLayout` (existing key) also accepts `conference`, `whiteboard` and `documents`, while they are available in the space. `workspace` still means "none" (unchanged).
 - Unset `tabs` means today's order (Workspace, Calendar, Map) with Conference, Whiteboards and Documents added after, and nothing hidden. **Decided (Thomas, decision 14):** Conference, Whiteboards and Documents show for everyone on day one, so every space gains three tabs when this ships. The overflow **...** holds what does not fit, and people can hide them.
-- **Who may write it:** the same people as `defaultLayout`: owners, the admin and moderators (`MODERATOR_SPACE_FIELDS`), suggested. Open question 8.
+- **Who may write it:** the same people as `defaultLayout`: owners, the admin and moderators (`MODERATOR_SPACE_FIELDS`). **Decided (Thomas, decision 22).**
 - **A person's own choices stay** (`system.<user key>`: name, icon, `tab`). Order of precedence, **decided (Thomas, decision 13):** the owner's `hide` wins (a hidden tab is hidden for everyone); a person may hide more for themselves; a person may rename and re-icon any tab. A person cannot reorder; the owner's order is what everyone sees.
-- **Per person, per space:** `view`, the layout last shown, and the placements. See "Where choices are kept".
+- **Per person, per space:** the layout last shown is stored on the server (decision 20; "The last layout, on the server" below). The call placements stay in the browser ("Where choices are kept").
 - **The remembered call position gains two values** (decision 17): `right` (Right of the chat) and `workspace` (In the workspace), beside the existing top, bottom, left, floating and its own window (`prefs.callPosition` in `public/space.js`; the builder uses the existing value names and adds these two). Conference keeps its own remembered value with the Conference choices above. No server field, no environment variable.
 
 Routes:
@@ -166,14 +177,15 @@ Routes:
 - `GET /api/spaces/:id/layouts` adds, to each entry of `system`, the available fixed layouts including `conference`, `whiteboard`, `documents`, in the owner's order, and a `shown` flag (false when the owner hid it). Also adds `tabs` for the owner's controls (`canSetDefault` already says who may set the default; the same flag gates `tabs`). A guest still gets `system: []`.
 - `PATCH /api/spaces/:id { tabs }` and `{ defaultLayout }`: `200` with the space. `400` with a sentence for an unknown id ("There is no such layout here."), for `workspace` in `hide` ("The Workspace is always shown.") and for a `defaultLayout` that is not available now. `403` for a member. Aside ids answer `404`, as the layouts routes do.
 - The existing `PUT` and `DELETE .../layouts/:id/favorite` for system ids set the person's `tab`; they refuse an id the owner hid (`409`, "The owner has hidden this layout." suggested).
-- Code tables to widen together (all four, then one check that they agree): `SYSTEM_IDS` and `SYSTEM_ICONS` in `server/layouts.js`, `SYSTEM_DEFAULTS` in `server/store.js`, `SYSTEM_TAB_DEFAULTS` in `public/primary-nav.js`, `SYSTEM_TABS` in `public/opens-with.js`. Default icons are the module's own icon where one is declared, else a Font Awesome glyph from Thomas's set (Open question 9).
+- Code tables to widen together (all four, then one check that they agree): `SYSTEM_IDS` and `SYSTEM_ICONS` in `server/layouts.js`, `SYSTEM_DEFAULTS` in `server/store.js`, `SYSTEM_TAB_DEFAULTS` in `public/primary-nav.js`, `SYSTEM_TABS` in `public/opens-with.js`. Icons, **decided (Thomas, decision 23):** each fixed layout uses its module's own icon (Whiteboards, Documents, and the Calendar and Map as today), and Conference uses a video glyph from the product's Font Awesome set. Thomas does not pick them one by one.
+- The last layout has its own two routes, `PUT` and `GET`, described under "The last layout, on the server"; `GET /api/spaces/:id/layouts` also answers it, so the page needs no extra request on entering.
 - No new environment variable. No change to LiveKit, tokens or the call's server routes.
 
 ### Pages (experience-design)
 
 - `layoutTabs()` takes the owner's order and `shown`; `tabOverflow()` is unchanged.
 - `pressLayoutTab('conference')` is the one new branch: hold memory, set `body.view-conference`, call `syncCallPlace()` and `applyLayout()`. Whiteboards and Documents are ordinary `loadLayout()` of one docked module, as Calendar and Map are.
-- `firstVisitLayout()` and `SYSTEM_TABS` take the new ids. A guest whose default would be a tab they cannot see gets Conference (see "Roles").
+- `firstVisitLayout()` and `SYSTEM_TABS` take the new ids. A guest follows the owner's default (decision 21); for a default a guest cannot use, the fallback is an open point (see "What is not decided"), and until it is answered the page keeps today's answer, the Workspace.
 - The call title bar is drawn all the time (decision 15), with the title "Call", **Start call** while no call is active, and the call's menu; `callPlaceItems()` and **Pop out the call** move from the chat's menu to it (decision 16), gain the Conference variant, **Right of the chat** and **In the workspace** (decision 17).
 
 ## Where choices are kept
@@ -183,10 +195,42 @@ Routes:
 | Default layout | Owner | Space record, `defaultLayout` | First visit and guests |
 | Which fixed layouts show, and order | Owner | Space record, `tabs` | Everyone in the space |
 | Name, icon and own hide of a tab | Person | `layouts.json`, `system` (exists) | That person's other browsers |
-| Last layout shown | Person | Browser, `localStorage` key `app.canvas.<space id>` (a field `view`) | This browser (suggested) |
-| Call placement beside the work, and in Conference | Person | Browser, with the column's own keys (`app.column.<space id>`) (suggested) | This browser |
+| Last layout shown | Person | **Server**, `layouts.json`, `last` (decision 20) | That person's every browser; never another person |
+| Call placement beside the work, and in Conference | Person | Browser, with the column's own keys (`app.column.<space id>`) (suggested; only the last layout was decided) | This browser |
 
-**Suggested:** keep the last view and placements in the browser, per space, like the column's fold and width, and the arrangement. It needs no server change and matches how the call preferences are kept now (they are per browser, not per space; moving them per space is a small change in `DEFAULT_PREFS` handling). Following the person to another computer would mean `layouts.json` and a route; the planner would leave that for later (Open question 6).
+**Decided (Thomas, decision 20):** the last layout shown is kept on the server so it follows the person to another browser. The planner had suggested the browser; Thomas chose the server. The Workspace's own arrangement (`__open`, `app.canvas.<space id>`) stays in the browser as it is. **Suggested, not decided:** the call placements stay in the browser with the column's own keys, per space, like the column's fold and width. That needs no server change and matches how the call preferences are kept now (they are per browser, not per space; moving them per space is a small change in `DEFAULT_PREFS` handling). If Thomas wants the placements to follow the person too, they would join the `last` record below; that is not planned.
+
+## The last layout, on the server
+
+Core change: `server/layouts.js`, `server/index.js`, the stored data format. Held for an independent read; the full `npm run check` covers it.
+
+**What is stored.** In `layouts.json`, beside `shared`, `people` and `favorites`, one more map per space:
+
+```json
+"last": { "<user key>": { "layout": "<layout id>", "at": 1731400000000 } }
+```
+
+- `layout`: one layout id. A system id (`workspace`, `conference`, `calendar`, `map`, `whiteboard`, `documents`) or the id of a layout the person can see (their own or a shared one). A string of at most 64 characters, checked against the ids that exist.
+- `at`: when it was set, in milliseconds. The server writes it; the request cannot.
+- **Size bounds.** One entry per person per space: about 100 bytes. The file grows by members times spaces and by nothing else. No list, no history. The key is left out of a space's entry while nobody there has one (as `favorites` is). `forgetPerson` and `forgetSpace` remove the entries, so a removed person or space leaves nothing behind. Writes are limited like the other layouts routes; the page writes only when the layout changes, not on every press of the same tab.
+
+**Routes.**
+
+- `PUT /api/spaces/:id/last-layout` `{ layout }` writes the signed-in person's own record. `200 { layout }`. `400` with a sentence for a missing or unknown id ("There is no such layout here."). `403` for a guest. `404` for an Aside or a space the person is not in.
+- The person's record comes back in `GET /api/spaces/:id/layouts` as `last: "<layout id>"` (or absent). Nothing in the answer ever names another person's record.
+- There is no `DELETE`. A person with no remembered choice is a person who has never pressed a tab; a later press overwrites.
+
+**Who may read and write.** Only the person, for their own record. The user key comes from the session (`req`), never from the request body or the address, so one person cannot ask for or set another's, and the admin, owners and moderators have no route to read it either. This is the rule `moduleAccess` follows for the `person` scope.
+
+**Guests.** A guest has no record and gets none. By decision 21 a guest follows the owner's default every time, so there is nothing to remember. A guest session ends on its own (`GUEST_SESSION_HOURS`, the epoch, a text change, a switch going off; see [architecture-access](../architecture/architecture-access.md), "The guest door"), so nothing a guest does outlives it and nothing needs to expire. If Thomas later wants a guest to be remembered inside one session, the key would be the guest's id and the record would be dropped when the session ends; that is not planned.
+
+**When the layout it names is gone or hidden.** The record is not rewritten when this happens; it is read, checked and passed over, so it comes back by itself if the layout does.
+
+- A saved layout that was deleted, a system layout whose module is off or whose permission the person lost, Conference when the call service or the permission is gone: not available. Falls through to the owner's default, then to the Workspace (the order in "First visit and restore").
+- A layout the owner hid from the bar (`tabs.hide`): by decision 13 the owner's hide wins, so it is passed over in the same way. It stays in the Layout menu, where a person can still choose it; choosing it sets the record again.
+- Deleting a saved layout also clears any `last` that names it, as `remove()` already clears favorites.
+
+**How this reverses today's entering, and decision 8.** Today entering always shows the Workspace tab (`currentLayoutTab = 'workspace'`), and `firstVisitLayout()` uses the owner's `defaultLayout` on a first visit only. After this plan the person's `last` is read first. A person with no `last` (never pressed a tab here, or a new member) gets exactly what they get today: the owner's `defaultLayout` on a first visit, else the Workspace with the arrangement they left. Decision 8 therefore holds: today's layout stays the default for anyone with no remembered choice, and nothing changes for anyone until they press a tab other than the Workspace. The Workspace's own arrangement is still the browser's, and it is still held while another layout is shown (decision 15 of plan-layout-views).
 
 ## Behaviour by mode and surface
 
@@ -202,30 +246,30 @@ Routes:
 | Role | Sees tabs | Sets default, tabs, order | Notes |
 |---|---|---|---|
 | Admin, owner | All available | Yes | Same as `defaultLayout` today |
-| Moderator | All available | Yes, suggested (Open question 8) | `MODERATOR_SPACE_FIELDS` |
+| Moderator | All available | Yes (decision 22) | `MODERATOR_SPACE_FIELDS` |
 | Member | Those shown | No | Renames, re-icons and hides tabs for themselves; picks their own Call position |
-| Guest | None (no tabs, as now) | No | Opens in Conference, suggested (Open question 7) |
+| Guest | None (no tabs, as now) | No | Follows the owner's default (decision 21); has no stored last layout; what a guest sees for a default they cannot use is an open point |
 
 Permission to see the call is unchanged: no Conference tab without "See and join the conference". A member without that permission never gets the tab and a default of `conference` falls back to the Workspace for them.
 
 ## Asides
 
-Suggested: an Aside **stays its own thing.** It is already the Conference layout without the work (call only, no modules, column is the whole screen), and it has no space id, no layouts and no tabs. The new Conference layout is the same screen reached from inside a space, with the work one tap away. The two share the column code, so the builder uses `inAside()`'s layout path as the model for Conference. Making an Aside "a space whose default is Conference" would give Asides a space record, members and layouts, which the product deliberately does not have (they are deleted when the last person leaves, `pruneAsides()`). Open question 10.
+**Decided (Thomas, decision 24):** an Aside **stays its own thing.** It is already the Conference layout without the work (call only, no modules, column is the whole screen), and it has no space id, no layouts and no tabs. The new Conference layout is the same screen reached from inside a space, with the work one tap away. The two share the column code, so the builder uses `inAside()`'s layout path as the model for Conference. Making an Aside "a space whose default is Conference" would give Asides a space record, members and layouts, which the product deliberately does not have (they are deleted when the last person leaves, `pruneAsides()`). 
 
 ## Phones
 
 - No layout tabs on a phone, as now (the narrow layout shows module tabs; the composites are among them). Whiteboards and Documents are module tabs there already when on.
 - **Conference on a phone is the call tab,** full screen. Suggested: an owner's default of Conference opens the call tab first on a phone (`restore()` already opens "the first module opened" as the first tab and a guest's first tab is the call).
 - **One-tap way back:** the narrow layout's tab bar stays under the call, so the work is one tap away. If plan-phone-experience decision 16 is built first (call in the top bar), the way back is the bottom bar's module buttons. Either way the plan adds no new chrome. **Not read:** the phone tab bar code, so how the call tab looks full screen is unchecked; a builder checks it at 390px.
-- **Cap on the main nav:** not needed. Phones have no layout tabs, and on a desktop `tabOverflow()` already folds extra tabs into **...** without cutting names. At most six fixed layouts plus favorites. Open question 11 asks only if Thomas wants a hard cap anyway.
+- **Cap on the main nav:** none. Phones have no layout tabs, and on a desktop `tabOverflow()` already folds extra tabs into **...** without cutting names. At most six fixed layouts plus favorites. **Decided (Thomas, decision 25):** no cap.
 
 ## First visit and restore
 
 Today: request, then remembered arrangement, then `opensWith`, then environment, then product default (`restore()`, `whatOpens()`, `firstVisitLayout()`). Suggested order after this plan:
 
 1. A fresh request to open one object (wins, as now).
-2. The person's own last layout for this space (`view`), if they have one and it is still available. This **reverses** line 5837 ("entering a space opens on the Workspace tab", plan-layout-views) and Thomas's decision 15 note that the current tab is not remembered across visits, for the person's choice only. Suggested because the brief says "remember the choice per person and per space". Open question 6.
-3. The owner's `defaultLayout`, on a first visit (and for a guest).
+2. The person's own last layout for this space (`last`, stored on the server, decision 20), if they have one, are not a guest, and it is still available and not hidden by the owner. This **reverses** line 5837 ("entering a space opens on the Workspace tab", plan-layout-views) and Thomas's decision 15 note that the current tab is not remembered across visits, for the person's choice only.
+3. The owner's `defaultLayout`, on a first visit, and for a guest every time (decision 21). A default the person cannot use falls to step 4 (for a guest, the fallback is an open point).
 4. The Workspace with the remembered arrangement or `opensWith`, as now.
 
 A first visit to `conference` opens the Conference layout with the call out of the call (nobody joins by itself unless the environment's auto-join switch is on; `shouldAutoJoin()` is unchanged). The Workspace behind it opens as step 4, so a tap on its tab shows it.
@@ -245,7 +289,7 @@ A call in its own window stays supported and stays the second-monitor answer: **
 
 ## Left to build, in order
 
-Each step is one try build, leaves the app working and can be checked alone. Size by job: S about a short sitting, M about half a day, L a day or more. Steps 8 to 10 come from Thomas's answer to question 1; steps 8 and 10 are small and can be built before step 1.
+Each step is one try build, leaves the app working and can be checked alone. Size by job: S about a short sitting, M about half a day, L a day or more. Steps 8 to 10 come from Thomas's answer to question 1; steps 8 and 10 are small and can be built before step 1. Step 11 comes from decision 20 (the last layout on the server); it is a core change, so it is held for an independent read, and step 6 waits for it.
 
 | Step | Job | Agent | Files | Size | Risk |
 |---|---|---|---|---|---|
@@ -254,10 +298,11 @@ Each step is one try build, leaves the app working and can be checked alone. Siz
 | 3 | **Owner controls in Set up.** The Layouts section: Show in the bar, Move up and down, Opens first | experience-design | `public/space-setup.js`, `public/switch-list.js`, `tools/check-setup-tabs.mjs` | M | Low |
 | 4 | **The Conference layout.** `body.view-conference`, the chat column keeps its current width and the call fills the remaining width (no percentage setting), the lifted 55% cap for this layout, the empty "not in a call" page with the large Start button, hold-memory behaviour | experience-design | `public/space.js`, `public/canvas.js`, `public/style.css` | L | **High:** layout and canvas work |
 | 5 | **The placement option.** The Conference variant of Call position on the call's menu, per-space storage | experience-design | `public/space.js` (`callPlaceItems()`, `DEFAULT_PREFS`), `tools/check-canvas.mjs` | M | Medium |
-| 6 | **First visit and restore.** `view` remembered per person and space, the order in "First visit and restore", the guest default | experience-design | `public/opens-with.js`, `public/canvas.js`, `public/space.js`, `tools/check-canvas.mjs` | M | Medium (changes what opens) |
+| 6 | **First visit and restore.** Read the person's `last` from `GET .../layouts`, write it with `PUT .../last-layout` when the layout changes, the order in "First visit and restore", a guest follows the owner's default (the fallback waits on Thomas). Needs step 11 | experience-design | `public/opens-with.js`, `public/canvas.js`, `public/space.js`, `tools/check-canvas.mjs` | M | Medium (changes what opens) |
 | 7 | **Phones and an Aside check.** Conference as the call tab, a default of Conference at 390px, no change to Asides | experience-design | `public/space.js`, `public/style.css` (the `max-width: 640px` blocks) | S | Medium |
 | 8 | **The call title bar, always shown, with its menu.** Draw the call title bar with no call active (title "Call", **Start call**, the call's menu), and the conference icon stays in the collapsed rail (decision 18); move **Pop out the call** and **Call position** from the chat's menu to the call's menu; the chat's menu keeps **Save the chat** and **Delete the chat** | experience-design | `public/space.js`, `public/style.css`, `tools/check-canvas.mjs` | S | Low |
 | 9 | **Two new positions.** **Right of the chat** and **In the workspace** in Call position, the two new remembered values, the Conference variants, phones behaviour once decided | experience-design | `public/space.js`, `public/canvas.js`, `public/style.css`, `tools/check-canvas.mjs` | M | Medium (layout and canvas work); needs the open points below answered first |
+| 11 | **The last layout on the server.** `last` in `layouts.json` (cleaned layout id and `at`, one entry per person per space), `PUT /api/spaces/:id/last-layout`, `last` in `GET .../layouts`, the clean-up in `forgetPerson`, `forgetSpace` and `remove()`, `403` for a guest, `404` for an Aside. Build it before step 6 | server-development | `server/layouts.js`, `server/index.js`, `tools/check-layouts.mjs` | M | Medium: **core change** (`server/`, stored data format); independent read, full `npm run check` |
 | 10 | **The conference icon in the collapsed rail.** The call's icon stays visible when the column is collapsed, with a live badge while a call is active; one click reopens the area (decision 18) | experience-design | `public/space.js` (the rail beside `#side-column-rail-chat`), `public/style.css`, `tools/check-canvas.mjs` | S | Low |
 
 Documentation after each step is content-manager's: [architecture-navigation](../architecture/architecture-navigation.md) (the layout tabs), [architecture-canvas](../architecture/architecture-canvas.md) (the column, remembered layouts), the API document for `tabs` and `defaultLayout`, [userguide-call](../userguides/userguide-call.md), [userguide-spaces](../userguides/userguide-spaces.md), and the CHANGELOG. The Names section of `CLAUDE.md` is Thomas's.
@@ -269,7 +314,8 @@ Documentation after each step is content-manager's: [architecture-navigation](..
 - **Step 3.** `tools/check-setup-tabs.mjs` for the section's words and switches. Live in Chromium (the planner's expectation for the builder): an owner hides Documents and moves Conference first; a member's bar follows after a reload; keyboard-only reorder works.
 - **Step 4.** `tools/check-canvas.mjs` for the pure clamps (the chat keeps its width, the call takes the rest, the least chat). Live in Chromium at 1280, 900 and 641px, light and dark: the page is the call and the chat; not in a call it shows the Start button; the Workspace comes back as it was (modules, positions); Chat keeps its least width; the fold handle is gone. **Cannot be checked without a real LiveKit call:** the tiles at large size, a screen share in Conference, audio and video, a second person joining.
 - **Step 5.** Check the choices persist across a reload and differ between Conference and the other layouts; Left is disabled below `CALL_LEFT_MIN` with a hint.
-- **Step 6.** `tools/check-canvas.mjs` for the new order (pure `firstVisitLayout()` and `whatOpens()` cases: remembered view wins after a first visit, the owner's default on a first visit and for a guest, a view that is no longer available falls through).
+- **Step 11.** `tools/check-layouts.mjs`: round trip of `last` for one person; a second person's `GET` never shows it and their `PUT` cannot reach it; an unknown id, a missing id and a long id refused (`400`); a guest refused (`403`); an Aside `404`; the entry removed with the person, the space and the layout it names; the file stays small after many writes (one entry). Full `npm run check`, then an independent read. A real browser round trip across two browsers is checked live in Chromium if the build allows.
+- **Step 6.** `tools/check-canvas.mjs` for the new order (pure `firstVisitLayout()` and `whatOpens()` cases: the person's `last` wins, no `last` gives today's answer, the owner's default on a first visit and for a guest, a layout that is gone, off, or hidden by the owner falls through). The guest fallback cases are written once Thomas answers.
 - **Step 8.** Live in Chromium: the title bar shows with no call, **Start call** is there, the call's menu holds the call items, the chat's menu holds only the two chat items; light and dark; the touch-target checks. Starting a call needs LiveKit: cannot be checked here.
 - **Step 10.** Live in Chromium: collapse the column, the conference icon shows in the rail with no call and with the badge in a call, one click reopens, Tab reaches it and it has an accessible name. The live badge in a real call cannot be checked here (no LiveKit).
 - **Step 9.** `tools/check-canvas.mjs` for the pure placement rules (the two new values, the fallback when the column is too narrow). Live in Chromium at 1280, 900 and 641px: Right of the chat and In the workspace place the call, persist across a reload, and return cleanly to the other positions. **Cannot be checked without a real LiveKit call:** the call tile in the workspace at real size, a screen share, audio and video.
@@ -283,33 +329,42 @@ The new id-agreement check (step 1); new cases in `check-layouts`, `check-nav`, 
 ## Risks, ranked
 
 1. **The Conference layout fights the column's rules** (the 55% cap, the fold handle, the Left minimum, the share lift). A wrong change squeezes the chat or leaves a dead page. Mitigation: step 4 alone, behind a flag-free but small change set, checked at three widths; the cap lifts only in Conference.
-2. **What opens changes** (step 6): remembering the last view could open someone on a layout they did not expect, or on Conference with no call. Mitigation: the order above, a fall-through for an unavailable view, and the Workspace as the safe floor.
+2. **What opens changes** (step 6): remembering the last view could open someone on a layout they did not expect, or on Conference with no call. Mitigation: the order above, a fall-through for an unavailable or hidden layout, and the Workspace as the safe floor.
+2a. **A new stored record and route** (step 11, decision 20): a bug could let one person read or set another's record, or let the file grow. Mitigation: the key is taken from the session only, one entry per person per space, a size and id check, the clean-up on removal, an independent read and the full `npm run check`.
+2b. **Guests and the owner's default** (decision 21): an owner's default of Calendar, Map, Whiteboards, Documents or a saved layout is one a guest cannot use. Until Thomas picks the fallback, the page keeps today's answer, the Workspace.
 3. **Four code lists of the same ids** drift apart. Mitigation: the agreement check.
 4. **Three new tabs everywhere** crowd the bar on day one (decided to show, decision 14). Mitigation: the existing overflow, and people can hide them.
 5. **Real-call behaviour is unproven here,** so large tiles and the share are unverified until Thomas or a tester joins a real call.
 
 ## Rollback and off switch
 
-None as a setting. Each step is its own commit; reverting step 4 leaves Conference listed but inert, so revert steps 4 to 6 together. Owners can hide any fixed layout but Workspace, which is the off switch for a space. The product is unreleased, so nothing migrates; unset `tabs` reads as the defaults.
+None as a setting. Each step is its own commit; reverting step 4 leaves Conference listed but inert, so revert steps 4 to 6 together (step 11 can stay; with no page reading it, `last` is unused). Owners can hide any fixed layout but Workspace, which is the off switch for a space. The product is unreleased, so nothing migrates; unset `tabs` reads as the defaults and a space with no `last` entries reads as today.
 
 ## Not in version 1
 
-- A moderator putting everyone into the Conference layout for a briefing. Open question 12 asks whether to include it; the planner would leave it out.
+- **"Bring everyone to the Conference":** a moderator putting everyone into the Conference layout for a briefing. Left out of version 1 (Thomas, decision 26).
 - Cursors, a "follow me" view, shared layouts changing for everyone in real time.
 - Reordering across fixed layouts and favorites (fixed first, then favorites).
 - Per-person order of the fixed tabs.
 - A separate calls-only mode (that is an Aside).
 - Owner-set names and icons for the fixed layouts (plan-layout-views Phase 2, #266 for names and icons; this plan does #267, the order, and the owner's show and default).
 - A To-do layout and Places inside Maps (separate decisions).
-- Storing the last view on the server.
+- Remembering the call placements on the server, and remembering anything for a guest.
+- Presets for modules beyond the six, and owner-pinned presets (decision 19).
 
 ## Doc facts
 
-These are the facts the documents will carry, so content-manager does not guess: the six fixed layouts and their ids; that Workspace is always shown; that Conference needs the call service, the environment switch and the permission; the owner's three controls and who may use them; the precedence rule (owner's hide wins); where the last view is kept; the Conference placement choices; that an Aside is unchanged; that pop-out stays. Words people read: "Conference", "Whiteboards", "Documents", "Layouts", "Show in the bar", "Opens first", "Call position", "Beside the chat", "Above the chat", "Below the chat", "Call only". The Names entries for **Layout** and **Workspace** are Thomas's.
+These are the facts the documents will carry, so content-manager does not guess: the six fixed layouts and their ids; that Workspace is always shown; that Conference needs the call service, the environment switch and the permission; the owner's three controls and who may use them; the precedence rule (owner's hide wins); that the last layout is kept on the server, per person and space, and a guest has none; the Conference placement choices; that an Aside is unchanged; that pop-out stays. Words people read: "Conference", "Whiteboards", "Documents", "Layouts", "Show in the bar", "Opens first", "Call position", "Beside the chat", "Above the chat", "Below the chat", "Call only". The Names entries for **Layout** and **Workspace** are Thomas's.
 
 ## What is not decided
 
-Everything under "Open questions" below. Questions 1, 2, 4 and 5 are decided (decisions 12 to 17) and no longer block.
+Every numbered question is answered (decisions 12 to 26); "Open questions for Thomas" below is empty. What is left are the open points below.
+
+**The guest fallback (new, from decision 21).** A guest follows the owner's default. A guest has no layout tabs and `GET /api/spaces/:id/layouts` answers `system: []` and no saved layouts for a guest, so a guest can open only the Workspace as they have it today (the call and the chat; `whatOpens()` gives a guest the conference and the chat) and, with the permission, Conference. What a guest sees when the owner's default is something else:
+- **Cannot be opened as a layout at all:** Calendar, Map, Whiteboards, Documents, and any saved or shared layout. Today the server and `firstVisitLayout()` answer the Workspace for these.
+- **Modules a guest cannot read by default** (per the manifests' `guest` defaults; an owner can change them per space): Budget, Vault, Stream. A guest sees them as not available (the guest landing notice lists what is not available to guests; [architecture-access](../architecture/architecture-access.md), "The guest door", and plan-access-bundle requirement 4).
+- **Modules a guest can read but not change by default:** Calendar, Documents, Whiteboard, Maps, Places, Polls, Research, To-do, Planner and the Assistant. Documents and Whiteboards are read-only for a guest, so a Documents or Whiteboards default would show a guest something they cannot work in.
+- **Proposed fallback, not decided:** a default a guest cannot use opens the **Conference** for the guest (the call and the chat, which a guest always has with the permission). The alternative is today's behaviour, the Workspace (which for a guest is already the call and the chat in the column). Thomas decides. This blocks step 6 only (the guest default); step 1 is not affected.
 
 Open points from decisions 17 and 18 (the position points block step 9, the rail points step 10; steps 8 and 5 do not wait):
 
@@ -318,53 +373,8 @@ Open points from decisions 17 and 18 (the position points block step 9, the rail
 - **Where **Start call** sits when no call is active.** On the always-shown call title bar (decision 15) is the starting point; whether it also shows as a large button in the call's area (as in "The Conference layout") is open.
 - **Phones.** There is no column and no title bar area on a phone (the call is a tab). Whether Right of the chat and In the workspace are offered there at all, and what the always-shown title bar becomes on a phone, is open.
 - **The collapsed rail (decision 18).** Today the collapsed column is a rail with the chat button (`#side-column-rail-chat`), an unread badge (`#side-column-rail-unread`) and the faces of people (`#side-column-rail-faces`), in `public/space.js` around lines 1711 to 2000; the planner read only a search of it, not the whole collapse code. Open: whether the conference icon sits beside the chat's icon in the rail or on its own; what the live state is (a dot, or the elapsed time as a badge) and how it fits with the faces; whether **Start call** can be pressed from the rail with no call active, or the icon only reopens the area; the keyboard and aria rules (a button in the tab order, an accessible name such as "Show the call", the state said to a screen reader, as the unread badge does); phones, which have no column or rail, so the call tab is the only place, and whether the always-shown title bar needs anything there.
-- **Right of the chat** when the column is narrow: suggested to follow the Left rule (`CALL_LEFT_MIN`, falls back to Top). Question 1 is decided (decisions 15 to 17) and no longer blocks step 5; the open points below block step 9 only; question 3 blocks nothing but the size of step 1; the rest can be answered while steps 1 to 3 are built.
+- **Right of the chat** when the column is narrow: suggested to follow the Left rule (`CALL_LEFT_MIN`, falls back to Top). Question 1 is decided (decisions 15 to 17) and no longer blocks step 5; the position points block step 9 only.
 
 ## Open questions for Thomas
 
-Each has the planner's suggestion first. Marked "blocks" where the build waits.
-
-1. **Where the Call position choice lives. DECIDED (Thomas, 2026-11-12, decisions 15 to 17).**
-   - **Chosen:** on the call's own title bar menu, with the title bar shown all the time; the chat's menu keeps only chat items; two positions are added, Right of the chat and In the workspace
-   - Put **Call position** in the Layout menu under Arrange (not chosen)
-   - Rename the Layout menu **View** (not chosen)
-   - A separate small **View** button beside Layout (not chosen)
-2. **How much of the Conference page the call takes. DECIDED (Thomas, 2026-11-12, decision 12).** Chosen: no fixed percentage; the chat keeps the width it already has and the call fills the rest.
-   - Call about 65%, chat the rest (not chosen)
-   - Call about 75%, the chat a narrow side column (not chosen)
-   - 50 and 50 (not chosen)
-3. **Which modules get a fixed layout besides the six.** Budget, Polls, Vault, Research, Planner and Stream live only in the Workspace.
-   - Only the six; others via a saved layout and a heart (suggested)
-   - Add Planner (it is the travel Space's main module)
-   - Any module can be pinned as a preset by the owner
-4. **Who wins when the owner and a person disagree. DECIDED (Thomas, 2026-11-12, decision 13).**
-   - **Chosen:** the owner decides what shows and in what order; a person may hide more, rename and re-icon; the owner's hide wins
-   - The owner only sets the default; tabs stay each person's own, as now (not chosen)
-   - The owner decides everything, including names and icons (not chosen)
-5. **Do the new tabs show on day one. DECIDED (Thomas, 2026-11-12, decision 14).**
-   - **Chosen:** Conference, Whiteboards and Documents show for everyone until an owner or a person hides them; the overflow **...** keeps the bar from crowding
-   - Only Conference shows; the other two start hidden (not chosen)
-   - All three start hidden; an owner turns them on (not chosen)
-6. **Remember the last layout across visits, and where.**
-   - Remember it in the browser, per person and space (suggested; reverses "entering opens on the Workspace")
-   - Remember it on the server so it follows the person
-   - Don't remember it; the owner's default and the Workspace only
-7. **Guests.** Their link gives a call and little else.
-   - Guests always open in Conference whatever the owner's default (suggested)
-   - Guests follow the owner's default
-   - Guests keep opening the Workspace
-8. **Who may set the default, tabs and order.**
-   - Owners, the admin and moderators, as `defaultLayout` today (suggested)
-   - Owners and the admin only
-9. **Icons for Conference, Whiteboards and Documents.**
-   - The module's own icon where it has one; a video glyph for Conference (suggested)
-   - Thomas picks the three from the icon set
-10. **Asides.**
-    - Stay their own thing, sharing the column code (suggested)
-    - Become a space whose default is Conference
-11. **A cap on the main nav.**
-    - No cap; overflow into **...** already handles it (suggested)
-    - At most five shown by the owner
-12. **A moderator moving everyone into Conference.**
-    - Leave out of version 1 (suggested)
-    - Include as "Bring everyone to the Conference" for moderators
+None. All twelve questions are answered and recorded as decisions 12 to 26. What is still undecided is under "What is not decided".
