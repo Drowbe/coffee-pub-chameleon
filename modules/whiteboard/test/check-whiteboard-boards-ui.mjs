@@ -33,7 +33,7 @@ const ok = (c, m) => { if (c) passed += 1; else fails.push(m); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const NAMES = ['createSync', 'createBoardSession', 'createBoardPurge', 'wbClean', 'wbCleanBoard', 'wbCleanBoardRecord', 'wbCleanBoardName', 'wbBoardList', 'wbBoardNameProblem',
-  'wbDefaultBoardName', 'wbShowTabs', 'wbBoardsMenu', 'wbBoardsStrip', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
+  'wbDefaultBoardName', 'wbShowTabs', 'wbBoardsMenu', 'wbBoardsStrip', 'wbVisibleBoards', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
   'wbCanCreateBoard', 'wbNextOrder', 'wbNewBoardId', 'WB_BOARD_MAX', 'WB_BOARD_NAME_MAX', 'WB_TRASH_MS', 'WB_PURGE', 'tools'];
 let L = {};
 try {
@@ -364,11 +364,11 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   const S = (n, active, narrow, canEdit) => L.wbBoardsStrip(mkList(n), active, narrow, canEdit);
   for (const n of [1, 3, 10, 11]) {
     const wide = S(n, 'main', false, true);
-    ok(wide.tabs.length === n && wide.rows.length === 0 && wide.viewerMenu === false, `wide, editor, ${n} boards: every board a tab, no rows, no viewer menu`);
+    ok(wide.tabs.length === Math.min(n, 10) && wide.rows.length === 0 && wide.viewerMenu === false, `wide, editor, ${n} boards: every board a tab (at most 10), no rows, no viewer menu`);
     const nar = S(n, n > 1 ? 'b1' : 'main', true, true);
-    ok(nar.tabs.length === 1 && nar.tabs[0].id === (n > 1 ? 'b1' : 'main') && nar.rows.length === n && nar.rows.filter((r) => r.current).length === 1 && nar.rows.find((r) => r.current).id === nar.tabs[0].id && nar.viewerMenu === false, `narrow, editor, ${n} boards: the current tab only, ${n} rows with the current marked, no viewer menu`);
+    ok(nar.tabs.length === 1 && nar.tabs[0].id === (n > 1 ? 'b1' : 'main') && nar.rows.length === Math.min(n, 10) && nar.rows.filter((r) => r.current).length === 1 && nar.rows.find((r) => r.current).id === nar.tabs[0].id && nar.viewerMenu === false, `narrow, editor, ${n} boards: the current tab only, ${Math.min(n, 10)} rows with the current marked, no viewer menu`);
   }
-  ok(same(S(1, 'main', true, false), { tabs: [], rows: [], viewerMenu: false }) && same(S(1, 'main', false, false), { tabs: [], rows: [], viewerMenu: false }), 'a viewer of one board: no strip, no menu, wide or narrow');
+  ok(same(S(1, 'main', true, false), { tabs: [], rows: [], viewerMenu: false, more: 0 }) && same(S(1, 'main', false, false), { tabs: [], rows: [], viewerMenu: false, more: 0 }), 'a viewer of one board: no strip, no menu, wide or narrow');
   const vn = S(3, 'b2', true, false);
   ok(vn.tabs.length === 1 && vn.tabs[0].id === 'b2' && vn.rows.length === 3 && vn.viewerMenu === true, 'narrow viewer, 3 boards: the current tab, the rows, the title bar Boards menu');
   const vw = S(3, 'b2', false, false);
@@ -394,6 +394,36 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(list.filter((b) => b.id === 'main').length === 1 && !list.find((b) => b.id === 'main').implicit && list.find((b) => b.id === 'main').name === 'Home' && list.length === 10, `exactly one main, named Home, and 10 boards in all (${list.length})`);
   ok(st.data.has('block:x1:keep') && st.keys('board:').length === 10, 'other boards are untouched');
   ok((await purge.tick(records(st), 'x1')).status === 'idle', 'and main is not due again');
+}
+
+// ---- a forged or skewed lock; more than 10 boards shown ------------------------------------------------------------------------
+{
+  for (const [label, offset, want] of [['120 s old', -121000, 'done'], ['60 s old', -60000, 'busy'], ['10 s ahead (within skew)', 10000, 'busy'], ['1 day ahead (forged)', 86400000, 'done']]) {
+    const st = makeStore();
+    seedBoard(st, 'old', 3);
+    st.put('_purge:lock', { id: 'lock', holder: 'someone-else', at: new Date(T0 + offset).toISOString() });
+    const purge = L.createBoardPurge({ host: st.host, me: 'u1', now: () => T0, perTick: 25 });
+    const r = await purge.tick(records(st), 'main');
+    ok(r.status === want, `purge lock ${label}: ${want} (got ${r.status})`);
+  }
+}
+{
+  const mkList = (n) => Array.from({ length: n }, (_, i) => ({ id: `b${String(i).padStart(2, '0')}`, name: `Board ${i}` }));
+  for (const n of [10, 11, 12, 25]) {
+    const l = mkList(n);
+    const w = L.wbBoardsStrip(l, 'b00', false, true);
+    ok(w.tabs.length === 10 && w.more === Math.max(0, n - 10), `${n} live boards: ${w.tabs.length} tabs, more ${w.more}`);
+    const far = L.wbBoardsStrip(l, `b${String(n - 1).padStart(2, '0')}`, false, true);
+    ok(far.tabs.length === 10 && far.tabs.some((t) => t.id === `b${String(n - 1).padStart(2, '0')}`) === (n > 10 || true) && (n === 10 || far.tabs[9].id === `b${String(n - 1).padStart(2, '0')}`), `${n} boards, the active one is the last: shown in the last tab`);
+    const nar = L.wbBoardsStrip(l, 'b00', true, true);
+    ok(nar.rows.length === 10 && nar.tabs.length === 1 && nar.more === Math.max(0, n - 10), `${n} boards, narrow: 10 rows`);
+  }
+  const live = L.wbBoardList([...Array.from({ length: 12 }, (_, i) => rec(`t${String(i).padStart(2, '0')}`, { order: i + 1 })), rec('gone', { order: 0, trashedAt: '2026-11-11T10:00:00Z' })]);
+  ok(live.length === 13 && !live.some((b) => b.id === 'gone') && L.wbBoardsStrip(live, 'main', false, true).more === 3, 'trashed boards are not counted; main + 12 = 13 live, 3 more');
+  ok(L.wbBoardList([rec('z', { order: 1 }), rec('a', { order: 1 })]).map((b) => b.id).join() === 'main,a,z', 'order ties go by time then id');
+  ok(L.wbCanCreateBoard(mkList(25)) === false && L.wbBoardsMenu({ canEdit: true, count: 25, more: 15 }).find((m) => m.id === 'new').disabled === true, 'New board stays off with more than 10 live boards (all counted)');
+  const m = L.wbBoardsMenu({ canEdit: true, count: 12, more: 2 }).find((x) => x.id === 'more');
+  ok(m && m.disabled && m.label === '2 more boards exist' && L.wbBoardsMenu({ canEdit: true, count: 3 }).every((x) => x.id !== 'more'), 'the Boards… menu has a read-only "2 more boards exist" line only when there are more');
 }
 
 finish();

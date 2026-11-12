@@ -143,9 +143,10 @@
   // several boards; a viewer of a single board sees no strip.
   const wbShowTabs = ({ canEdit, count }) => Boolean(canEdit) || count > 1;
   // The Boards… menu's entries for this person: none for a viewer; New is off at the limit, Delete when this is the last board.
-  function wbBoardsMenu({ canEdit, count, trashed = 0, max = WB_BOARD_MAX }) {
+  function wbBoardsMenu({ canEdit, count, trashed = 0, max = WB_BOARD_MAX, more = 0 }) {
     if (!canEdit) return [];
     return [
+      ...(more > 0 ? [{ id: 'more', label: more === 1 ? '1 more board exists' : `${more} more boards exist`, disabled: true }] : []),
       { id: 'new', label: 'New board…', icon: 'plus', ...(count >= max ? { disabled: true, hint: `${max} boards at most` } : {}) },
       { id: 'rename', label: 'Rename board…', icon: 'pen' },
       { id: 'delete', label: 'Delete board…', icon: 'trash', ...(count <= 1 ? { disabled: true, hint: 'The last board stays' } : {}) },
@@ -156,20 +157,31 @@
   // The strip of boards and the rows of the Boards… menu. Wide: every board is a tab. Narrow (a phone): only the current board's
   // tab, and every board as a row (the current one marked) at the top of the Boards… menu; a viewer, who has no Boards… menu,
   // gets the title bar's one-entry Boards menu (`viewerMenu`) when there is more than one board. `tabs`: the strip's options.
+  // At most WB_BOARD_MAX boards are shown (the first by order); when the active board is beyond them it takes the last place.
+  // The rest stay stored. `more` is how many live boards are not shown.
+  function wbVisibleBoards(list, activeId) {
+    const l = Array.isArray(list) ? list : [];
+    if (l.length <= WB_BOARD_MAX) return { shown: l, more: 0 };
+    const shown = l.slice(0, WB_BOARD_MAX);
+    const cur = l.slice(WB_BOARD_MAX).find((b) => b.id === activeId);
+    if (cur) shown[WB_BOARD_MAX - 1] = cur;
+    return { shown, more: l.length - WB_BOARD_MAX };
+  }
   function wbBoardsStrip(list, activeId, narrow, canEdit) {
     const l = Array.isArray(list) ? list : [];
     const count = l.length;
-    if (!wbShowTabs({ canEdit, count })) return { tabs: [], rows: [], viewerMenu: false };
-    const all = l.map((b) => ({ id: b.id, label: b.name }));
-    if (!narrow) return { tabs: all, rows: [], viewerMenu: false };
+    if (!wbShowTabs({ canEdit, count })) return { tabs: [], rows: [], viewerMenu: false, more: 0 };
+    const { shown, more } = wbVisibleBoards(l, activeId);
+    const all = shown.map((b) => ({ id: b.id, label: b.name }));
+    if (!narrow) return { tabs: all, rows: [], viewerMenu: false, more };
     const cur = all.find((b) => b.id === activeId) || all[0];
-    return { tabs: cur ? [cur] : [], rows: l.map((b) => ({ id: b.id, label: b.name, current: b.id === activeId })), viewerMenu: !canEdit && count > 1 };
+    return { tabs: cur ? [cur] : [], rows: shown.map((b) => ({ id: b.id, label: b.name, current: b.id === activeId })), viewerMenu: !canEdit && count > 1, more };
   }
 
   // ---- the trash, and the purge ------------------------------------------------------------------------------------------
   const WB_TRASH_DAYS = 7;
   const WB_TRASH_MS = WB_TRASH_DAYS * 24 * 3600 * 1000;
-  const WB_PURGE = { perTick: 25, everyMs: 15000, lock: '_purge:lock', stale: 120000 }; // 25 deletes every 15 s: at most 100 a minute
+  const WB_PURGE = { perTick: 25, everyMs: 15000, lock: '_purge:lock', stale: 120000, skew: 30000 }; // 25 deletes every 15 s: at most 100 a minute
   const wbTrashedAtMs = (r) => { const t = r && typeof r.trashedAt === 'string' ? Date.parse(r.trashedAt) : NaN; return Number.isFinite(t) ? t : NaN; };
   // The deleted boards a person may bring back, newest first, with the whole days left (a board past its 7 days is being purged
   // and is not offered).
@@ -200,7 +212,8 @@
       const e = await exact(WB_PURGE.lock);
       const v = e && e.value;
       const t = v && typeof v.at === 'string' ? Date.parse(v.at) : NaN;
-      if (v && v.holder !== holder && Number.isFinite(t) && now() - t < WB_PURGE.stale) return false;
+      const age = now() - t; // a lock stamped in the future (a forged or skewed clock) beyond a little skew is stale, so it cannot block forever
+      if (v && v.holder !== holder && Number.isFinite(t) && age < WB_PURGE.stale && age >= -WB_PURGE.skew) return false;
       try { await host.storage.set(WB_PURGE.lock, { id: 'lock', holder, at: new Date(now()).toISOString() }, { version: e ? e.version : 0 }); return true; } catch { return false; }
     }
     return {

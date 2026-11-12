@@ -58,6 +58,7 @@
   function createSync({ host, board, prefix = `block:${board}:`, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock(), scope = '', store = wbPendingStore(), parkMs = 60000 }) {
     const PREFIX = prefix;
     const STORE_KEY = `wb-pending:${scope}:${PREFIX}`;
+    const fails = new Map(); // key -> failures in a row from the network or a 5xx (for the wait before the next try)
     const pend = new Map(); // key -> the newest intent not accepted yet: a block, or GONE (kept in insertion order = age)
     let persistDirty = false;
     let replayedMark = false; // the entry kept now was read by replay() (its leftovers were tried once); a newer intent clears it
@@ -196,9 +197,13 @@
       if (!l.busy) pump(key);
     }
     // Try a parked intent again after the minute, unless something newer came or it is being sent.
-    function park(key, value) {
-      setTimeout(() => { if (pend.get(key) === value && !active(lanes.get(key))) queue(key, value); }, parkMs);
+    function park(key, value, ms = parkMs) {
+      setTimeout(() => { if (pend.get(key) === value && !active(lanes.get(key))) queue(key, value); }, ms);
     }
+    // A failure that says nothing about the write itself: the network (no status) or the server (5xx). Kept and tried again
+    // after 2 s, 5 s, 15 s, 60 s, then every 60 s (parkMs); a 4xx (but 429, which has its own wait) is refused for good.
+    const WB_RETRY_MS = [2000, 5000, 15000];
+    const keepable = (err) => !err || typeof err.status !== 'number' || err.status === 0 || err.status >= 500;
 
     async function pump(key) {
       const l = lane(key);
@@ -208,6 +213,7 @@
         l.next = undefined;
         l.busy = true;
         try {
+          // (the intent is in the browser's storage before any request can fail or the page can go: intend() queued one write per batch for the next microtask, ahead of any network turn)
           if (value === GONE) {
             const r = await host.storage.delete(key);
             seen.delete(key);
@@ -224,6 +230,7 @@
             if (r) clock.wrote(r.updatedAt, t0, Date.now());
             if (r && Number.isFinite(r.version)) saw(key, r.version, value);
           }
+          fails.delete(key);
           settled(key, value);
         } catch (err) {
           if (err && err.status === 429 && tries >= 8) { // kept, not dropped: parked for a later try and the next replay
@@ -239,7 +246,14 @@
             if (l.next === undefined) l.next = value; // nothing newer came: send this one again
             continue;
           }
-          settled(key, value); // refused for good
+          if (keepable(err)) { // network or server trouble: kept (and in the browser's storage), tried again later
+            const n = (fails.get(key) || 0) + 1;
+            fails.set(key, n);
+            park(key, value, n <= WB_RETRY_MS.length ? Math.min(WB_RETRY_MS[n - 1], parkMs) : parkMs);
+            continue;
+          }
+          fails.delete(key);
+          settled(key, value); // refused for good (a 4xx; a 409 too, as no version is sent here)
           onRefused(err, idOf(key));
           if (value === GONE) gone.delete(key); // not deleted: no delete of this page's to wait for
           await refetch(key, true);
@@ -374,7 +388,7 @@
             try { b = clean(it.value); } catch { b = null; }
             if (!b || keyOf(b.id) !== key) continue;
             out.put.push(b);
-            queue(key, it.value);
+            queue(key, b);
           }
         }
         if (!pend.size) { try { store.removeItem(STORE_KEY); } catch { /* none */ } }

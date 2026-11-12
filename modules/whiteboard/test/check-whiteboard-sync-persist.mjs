@@ -26,6 +26,7 @@ async function runTimers() { for (let i = 0; i < 200 && timers.length; i += 1) {
 let failed = 0;
 const ok = (c, m) => { if (!c) { failed += 1; console.error(`FAIL ${m}`); } else console.log(`ok   ${m}`); };
 
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clean = (v) => (v && typeof v === 'object' && typeof v.id === 'string' ? { ...v } : null);
 const makeStore = () => { const m = new Map(); return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); } }; };
 function makeServer({ refuseFirst = 0 } = {}) {
@@ -186,5 +187,54 @@ const KEYSET = (n) => Array.from({ length: n }, (_, i) => `block:main:b${i}`).so
   const { s: later } = mk(makeServer(), store);
   ok(later.replay().put.length === 0 && store.m.size === 0, 'TTL: a replayed entry older than 10 minutes then expires');
 }
+
+// 9. a failure that is not a refusal keeps the write; a 4xx drops it; replay queues the cleaned value
+{
+  const failWith = (mkErr) => { const server = makeServer(); const orig = server.host.storage.set; let on = true; server.host.storage.set = async (k, v) => { if (on) throw mkErr(); return orig(k, v); }; return { server, heal() { on = false; } }; };
+  for (const [label, mkErr] of [['a network error (no status)', () => new Error('Failed to fetch')], ['a 503', () => Object.assign(new Error('down'), { status: 503 })], ['a 500', () => Object.assign(new Error('down'), { status: 500 })]]) {
+    timers = [];
+    const { server, heal } = failWith(mkErr); const store = makeStore();
+    const { s, log } = mk(server, store, { parkMs: 60000 });
+    s.save(blk(1)); await settle();
+    ok(s.pending() === 1 && log.refused === 0 && JSON.parse(store.getItem('wb-pending:sp1:block:main:')).items['block:main:b1'], `${label}: kept in pend and in the browser, onRefused not called`);
+    ok(timers.length === 1 && timers[0].ms === 2000, `${label}: parked for 2 s`);
+    heal(); await runTimers();
+    ok(server.data.has('block:main:b1') && s.pending() === 0 && !store.getItem('wb-pending:sp1:block:main:'), `${label}: sent when the server is back, then forgotten`);
+  }
+  { // the wait grows: 2, 5, 15, then parkMs
+    timers = [];
+    const { server, heal } = failWith(() => new Error('Failed to fetch')); const store = makeStore();
+    const { s } = mk(server, store, { parkMs: 60000 });
+    s.save(blk(1)); await settle();
+    const waits = [];
+    for (let i = 0; i < 5; i += 1) { waits.push(timers[0].ms); const t = timers.shift(); t.fn(); await settle(); }
+    ok(same(waits, [2000, 5000, 15000, 60000, 60000]), `network waits ${waits.join(',')}`);
+    heal(); await runTimers(); ok(server.data.has('block:main:b1'), 'and it lands at the end');
+  }
+  for (const status of [400, 403, 404, 409, 413]) {
+    timers = [];
+    const { server } = failWith(() => Object.assign(new Error('no'), { status })); const store = makeStore();
+    const { s, log } = mk(server, store);
+    s.save(blk(1)); await settle();
+    ok(s.pending() === 0 && log.refused === 1 && !store.getItem('wb-pending:sp1:block:main:') && timers.length === 0, `a ${status} is refused for good: dropped, onRefused called once, nothing kept`);
+  }
+  { // persisted before the request goes
+    const server = makeServer(); const store = makeStore();
+    let seenAtSend = null;
+    const orig = server.host.storage.set; server.host.storage.set = async (k, v) => { await new Promise((r) => { setImmediate(r); }); if (seenAtSend === null) seenAtSend = store.getItem('wb-pending:sp1:block:main:'); return orig(k, v); };
+    const { s } = mk(server, store);
+    for (let i = 0; i < 100; i += 1) s.save(blk(i));
+    await settle();
+    ok(seenAtSend && Object.keys(JSON.parse(seenAtSend).items).length === 100, 'a batch of 100 is in the browser storage before the first request is answered (before any network turn)');
+  }
+  { // replay sends the cleaned value, and refuses a bad shape
+    const server = makeServer(); const store = makeStore();
+    store.setItem('wb-pending:sp1:block:main:', JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:main:b1': { op: 'put', value: { id: 'b1', type: 'stroke', extra: 'x' } }, 'block:main:b2': { op: 'put', value: 'bad' }, 'block:main:b3': { op: 'put', value: { id: 'other' } } } }));
+    const { s } = mk(server, store, { clean: (v) => (v && typeof v === 'object' && typeof v.id === 'string' ? { id: v.id, type: v.type } : null) });
+    s.replay(); await settle();
+    ok(same(server.data.get('block:main:b1'), { id: 'b1', type: 'stroke' }) && server.data.size === 1, 'replay sends the cleaned value (no extra field) and nothing for a bad shape');
+  }
+}
+
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
 console.log('all ok');
