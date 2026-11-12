@@ -258,8 +258,8 @@ try {
   n += 1;
 
   // Someone not in the space, nobody signed in and a guest are refused; no such space or module.
-  await expect('not in the space reads', 403, 'GET', F, { cookie: out });
-  await expect('not in the space reports', 403, 'PUT', `${F}/todo`, { cookie: out, body: { facts: [next] } });
+  await expect('not in the space reads', 404, 'GET', F, { cookie: out });
+  await expect('not in the space reports', 404, 'PUT', `${F}/todo`, { cookie: out, body: { facts: [next] } });
   await expect('nobody signed in reads', 401, 'GET', F);
   await expect('nobody signed in reports', 401, 'PUT', `${F}/todo`, { body: { facts: [next] } });
   const g = await expect('guest reads', 403, 'GET', `${F}${asGuest}`);
@@ -325,7 +325,7 @@ try {
   const ownersOnly = { error: 'owners only' };
   for (const [label, cookie] of [['a member', pat], ['someone outside', out]]) {
     const r = await call('PATCH', P, { cookie, body: { budget: { amount: 10 } } });
-    assert.deepEqual([r.status, r.json], [403, ownersOnly], `${label} may not set the budget: ${r.text}`);
+    assert.deepEqual([r.status, r.json], label === 'a member' ? [403, ownersOnly] : [404, { error: 'no such space' }], `${label} may not set the budget: ${r.text}`);
     n += 1;
   }
   const guestSet = await call('PATCH', `${P}${asGuest}`, { body: { budget: { amount: 10 } } });
@@ -401,12 +401,13 @@ try {
     const pres = await call('GET', `/api/presence${q}`, { cookie });
     assert.equal(pres.status, 200, `${label} reads presence: ${pres.text}`);
     const rec = spaceIn(pres.json);
-    assert.ok(rec, `${label}: the space is listed`);
-    ok(!('budget' in rec) && !pres.text.includes('"budget"'), `${label}: no budget in /api/presence`);
+    const outside = label === 'someone not in the space'; // a space one may not enter is not listed at all
+    assert.ok(outside ? !rec : rec, `${label}: the space is ${outside ? 'not ' : ''}listed`);
+    ok((outside || !('budget' in rec)) && !pres.text.includes('"budget"'), `${label}: no budget in /api/presence`);
     if (cookie) {
       const list = await call('GET', '/api/spaces', { cookie });
       assert.equal(list.status, 200);
-      ok(!('budget' in spaceIn(list.json)) && !list.text.includes('"budget"'), `${label}: no budget in GET /api/spaces`);
+      ok((outside ? !spaceIn(list.json) : !('budget' in spaceIn(list.json))) && !list.text.includes('"budget"'), `${label}: no budget in GET /api/spaces`);
     }
   }
   const guestList = await call('GET', `/api/spaces?guest=${encodeURIComponent(guestNow)}`);
@@ -423,7 +424,7 @@ try {
   ok(Object.keys(moRead).every((k) => ['id', 'phases', 'opensWith', 'defaultLayout', 'budget'].includes(k)) && !('name' in moRead) && !('guestToken' in moRead), `only the moderator's fields (${Object.keys(moRead)})`);
   for (const [label, cookie] of [['a member', pat], ['someone outside', out]]) {
     const r = await call('GET', P, { cookie });
-    ok(r.status === 403 && !r.text.includes('budget') && r.json?.error === 'owners only', `${label} cannot read Set up's record (${r.status})`);
+    ok((label === 'a member' ? r.status === 403 && r.json?.error === 'owners only' : r.status === 404 && r.json?.error === 'no such space') && !r.text.includes('budget'), `${label} cannot read Set up's record (${r.status})`);
   }
   const guestRead = await call('GET', `${P}?guest=${encodeURIComponent(guestNow)}`);
   ok(guestRead.status === 401 && !guestRead.text.includes('budget'), `a guest cannot read Set up's record (${guestRead.status})`);
@@ -451,7 +452,7 @@ try {
   ok(!guestCtx.text.includes('500'), 'not even its amount');
   for (const [label, cookie] of [['a member without the view', sam], ['someone outside', out]]) {
     const r = await planCtx(cookie);
-    assert.equal(r.status, 403, `${label}: ${r.text}`);
+    assert.equal(r.status, label === 'someone outside' ? 404 : 403, `${label}: ${r.text}`);
     ok(!r.text.includes('budget'), `${label}: no budget`);
   }
   await expect('give members the view back', 200, 'PATCH', '/api/roles/member', { cookie: admin, body: { 'module.travel.view': true } });

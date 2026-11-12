@@ -166,7 +166,7 @@ try {
     for (const route of ['/api/spaces', '/api/presence']) {
       assert.deepEqual(tokensIn((await call('GET', route, { token: aliceT })).json.spaces), { One: tokenOne, Two: null }, `alice, ${route}`);
       assert.deepEqual(tokensIn((await call('GET', route, { token: bobT })).json.spaces), { One: null, Two: null }, `bob, ${route}`);
-      assert.deepEqual(tokensIn((await call('GET', route, { token: carolT })).json.spaces), { One: null, Two: null }, `carol, ${route}`);
+      assert.deepEqual(tokensIn((await call('GET', route, { token: carolT })).json.spaces), { Two: null }, `carol, ${route}`);
     }
   });
 

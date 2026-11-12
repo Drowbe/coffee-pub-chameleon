@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['WB_PRESENT', 'wbCleanPresent', 'wbPresentSeenAt', 'wbPresentStale', 'wbPresentStartPlan', 'wbPresentStartResult',
+const NAMES = ['WB_PRESENT', 'wbPresentKey', 'wbCleanPresent', 'wbPresentSeenAt', 'wbPresentStale', 'wbPresentStartPlan', 'wbPresentStartResult',
   'wbPresentCanTakeOver', 'wbPresentAcceptLive', 'wbPresentHear', 'wbPresentNext', 'createWbPresentSender', 'wbPresentMenu', 'wbPresentGo'];
 let passed = 0;
 const fails = [];
@@ -32,8 +32,10 @@ async function test(name, fn) {
 const good = { id: 'state', type: 'present', presenter: 'ab12cd34', name: 'Ana', frame: 'F1', move: 'fade', dim: 40, seq: 3, at: '2026-11-10T10:00:00.000Z', by: 'ab12cd34' };
 
 await test('the key is a bookkeeping key outside the blocks and the settings', () => {
-  assert.equal(L.WB_PRESENT.key, '_present:main:state');
-  assert.ok(L.WB_PRESENT.key.startsWith('_') && !L.WB_PRESENT.key.startsWith('block:main:') && !L.WB_PRESENT.key.startsWith('_board:main:'));
+  const key = L.wbPresentKey('main');
+  assert.equal(key, '_present:main:state');
+  assert.equal(L.wbPresentKey('b2'), '_present:b2:state');
+  assert.ok(key.startsWith('_') && !key.startsWith('block:main:') && !key.startsWith('_board:main:'));
 });
 await test('wbCleanPresent keeps a good record and drops unknown fields', () => {
   assert.deepEqual(L.wbCleanPresent({ ...good, extra: 1, __proto__: { x: 1 } }), good);

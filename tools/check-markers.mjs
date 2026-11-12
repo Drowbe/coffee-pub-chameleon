@@ -349,7 +349,7 @@ try {
     assert.deepEqual(a.json.markers.map((m) => m.ref.scope), ['space', 'space', 'environment']);
     assert.deepEqual(titles(await markers(bobC, OCT)), ['Tower poll', 'Tower task', 'Everyone\'s task'], 'in time order');
     const notHis = await markers(bobC, `scope=space&space=${spaceA}&${OCT}`);
-    assert.equal(notHis.status, 403, 'bob is not in space A');
+    assert.equal(notHis.status, 404, 'bob is not in space A');
     assert.equal(typeof notHis.json.error, 'string');
   });
 

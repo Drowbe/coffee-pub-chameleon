@@ -222,7 +222,7 @@
       const lock = locks.get(id);
       if (lock) { lock.remove(); locks.delete(id); lockHot.delete(id); }
       const was = shown.get(id);
-      if (shown.delete(id)) restack();
+      shown.delete(id); // no restack: taking one away leaves the others in the same order (a gap in the z-indexes is harmless; the next add or move numbers them again)
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
       if (refsOf.has(id)) linkRefs({ id }, {});
       if (marked === id) marked = null;
@@ -403,6 +403,19 @@
       if (el) el.dataset.mark = kind;
     }
     // A small swatch of a colour by the pointer ({ sx, sy } on the screen, and the colour's token), or null to take it away.
+    // The Eraser's circle by the pointer ({ sx, sy } on the screen, or null to take it away): 12 screen pixels across (css).
+    let ringEl = null;
+    function ring(at) {
+      if (!at) { if (ringEl) ringEl.hidden = true; return; }
+      if (!ringEl) {
+        ringEl = document.createElement('div');
+        ringEl.className = 'wb-eraser-ring';
+        ringEl.setAttribute('aria-hidden', 'true');
+        surface.append(ringEl);
+      }
+      ringEl.hidden = false;
+      ringEl.style.transform = `translate3d(${at.sx - 6}px, ${at.sy - 6}px, 0)`; // moved by transform: no layout, no repaint of the blocks
+    }
     let swatchEl = null;
     function swatch(at, token) {
       if (!at) { if (swatchEl) swatchEl.hidden = true; return; }
@@ -486,6 +499,7 @@
       pending,
       mark,
       swatch,
+      ring,
       element: (id) => els.get(id) || null,
       // A connector as it is drawn now ({ points, box, mid, head }), or null while it is not drawn.
       geometry: (id) => geoms.get(id) || null,

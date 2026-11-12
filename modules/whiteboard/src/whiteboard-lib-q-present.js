@@ -12,8 +12,8 @@
   // stored time with a clock of another computer; only the first read of an old record uses the server's stamp (its age).
   //
   // The functions here are plain, tested on their own (test/check-whiteboard-present.mjs); whiteboard.js draws and listens.
+  // The record's key is one for each board: wbPresentKey(<board id>) in lib-s, `_present:<id>:state`.
   const WB_PRESENT = Object.freeze({
-    key: `_present:${WB_BOARD}:state`,
     beat: 10000, // the presenter rewrites the record this often (ms)
     stale: 35000, // a record nobody has seen change for this long is nobody's
     wait: 12000, // an old record read at load: how long to wait for it to change before it counts as stale
