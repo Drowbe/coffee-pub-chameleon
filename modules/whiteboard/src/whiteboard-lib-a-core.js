@@ -16,8 +16,8 @@
   // (whiteboard-lib-f-tool-*.js) that ends with tools.register({...}). Neither holds storage, sync or permission code:
   // storage and live changes are the sync manager's (lib-c), who may do what is the policy's (lib-b).
 
-  // One board per space today. Its id is part of every key, so several named boards is a list of ids and a switch.
-  const WB_BOARD = 'main';
+  // Several boards in a space (lib-s): the board's id is part of every key (wbBlockPrefix, wbSettingsPrefix, wbPresentKey);
+  // the first board, and today's one, is `main` (WB_BOARD_FIRST).
 
   // The colours a person can give a role: the theme's text colour (id 'ink', read as Charcoal) and the eight tints. Stored as the name,
   // never as a colour, so a block follows the theme and both modes (the renderer hands the token to whiteboard.css).
@@ -81,7 +81,7 @@
     out.push({ kind: 'custom', label: 'Custom colour (coming with the colour picker)' });
     return out;
   }
-  const WB_BOARD_PREFIX = `_board:${WB_BOARD}:`;
+  // The settings' key is wbSettingsPrefix(<board>) + WB_BOARD_ID (lib-s).
   const WB_BOARD_ID = 'settings';
   const WB_BOARD_STEP = ':board';
   function wbCleanBoard(raw) {

@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv[2] || path.join(root, 'modules/whiteboard/src'));
-const NAMES = ['WB_DOT', 'WB_PALETTE', 'WB_FIXED_BACKGROUNDS', 'WB_FIXED_BY_ID', 'WB_BOARD_PREFIX', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wbContrast', 'wbContrastInk', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
+const NAMES = ['WB_DOT', 'WB_PALETTE', 'WB_FIXED_BACKGROUNDS', 'WB_FIXED_BY_ID', 'wbSettingsPrefix', 'WB_BOARD_ID', 'WB_BOARD_STEP', 'WB_BOARD_USUAL', 'wbCleanBoard', 'wbBackdrop', 'wbContrast', 'wbContrastInk', 'wb', 'createSync', 'createHistory', 'wbApplyChanges', 'wbUndoNote', 'wbClean'];
 
 let passed = 0;
 const fails = [];
@@ -27,7 +27,7 @@ const check = (ok, what) => { if (ok) passed += 1; else fails.push(what); };
 
 let lib = {};
 try {
-  const parts = fs.readdirSync(src).filter((f) => /^whiteboard-lib-(a|c|e|g)-.*\.js$/.test(f)).sort().map((f) => fs.readFileSync(path.join(src, f), 'utf8'));
+  const parts = fs.readdirSync(src).filter((f) => /^whiteboard-lib-(a|c|e|g|s)-.*\.js$/.test(f)).sort().map((f) => fs.readFileSync(path.join(src, f), 'utf8'));
   const grab = NAMES.map((n) => `${n}: typeof ${n} === 'undefined' ? undefined : ${n}`).join(', ');
   lib = new Function(`${parts.join('\n')}\nreturn { ${grab} };`)();
 } catch (err) {
@@ -40,7 +40,7 @@ const settle = async () => { for (let i = 0; i < 6; i += 1) await new Promise((r
 // ---- the format: the key, the clean ----
 function format() {
   const { wbCleanBoard: clean, WB_BOARD_USUAL: usual } = lib;
-  check(lib.WB_BOARD_PREFIX === '_board:main:' && lib.WB_BOARD_ID === 'settings', 'the key is _board:main:settings (a bookkeeping key, next to block:main:<id>)');
+  check(lib.wbSettingsPrefix('main') === '_board:main:' && lib.WB_BOARD_ID === 'settings', 'the key is _board:main:settings (a bookkeeping key, next to block:main:<id>)');
   check(lib.wb.id(lib.WB_BOARD_STEP) === null, 'the history id of the settings is no block id');
   check(usual.background === 'default', 'a new board is Default');
   check(clean({ id: 'settings', background: 'blue' }).background === 'blue', 'a palette colour is kept');
@@ -174,7 +174,7 @@ function createPage(server, name) {
   };
   const history = lib.createHistory({ cap: 100 });
   const take = (change) => { page.settings = change.op === 'put' ? change.block : lib.WB_BOARD_USUAL; };
-  const boardSync = lib.createSync({ host, board: 'main', prefix: lib.WB_BOARD_PREFIX, clean: lib.wbCleanBoard, me: name, onRemote: take, onReload: () => page.reload(), onRefused: () => {} });
+  const boardSync = lib.createSync({ host, board: 'main', prefix: lib.wbSettingsPrefix('main'), clean: lib.wbCleanBoard, me: name, onRemote: take, onReload: () => page.reload(), onRefused: () => {} });
   const blockSync = lib.createSync({ host, board: 'main', clean: lib.wbClean, me: name, onRemote: (c) => page.blocksHeard.push(c), onReload: () => {}, onRefused: () => {} });
   function commitBoard(next) {
     const stamped = { ...lib.wbCleanBoard(next), by: name, at: new Date().toISOString() };
@@ -220,7 +220,7 @@ async function syncing() {
   const server = createServer();
   const a = createPage(server, 'ann');
   const b = createPage(server, 'bob');
-  const KEY = `${lib.WB_BOARD_PREFIX}${lib.WB_BOARD_ID}`;
+  const KEY = `${lib.wbSettingsPrefix('main')}${lib.WB_BOARD_ID}`;
 
   // A picks Blue: one write, B sees it, A's echo changes nothing.
   a.pick('blue');
@@ -301,7 +301,7 @@ async function fixing() {
   const server = createServer();
   const a = createPage(server, 'ann');
   const b = createPage(server, 'bob');
-  const KEY = `${lib.WB_BOARD_PREFIX}${lib.WB_BOARD_ID}`;
+  const KEY = `${lib.wbSettingsPrefix('main')}${lib.WB_BOARD_ID}`;
   a.pick('light-white');
   await settle(); a.deliver(); b.deliver(); await settle();
   check(server.data.get(KEY).value.background === 'light-white' && !('override' in server.data.get(KEY).value), 'a fixed pick is one whole write, with no override field');

@@ -50,7 +50,7 @@
   // It also keeps the page's guess of the server's clock (createServerClock, below), from the time the server stamps on
   // every write (updatedAt): what a timer counts from, so pages whose own clocks differ still show the same time.
   //
-  // The same code keeps the board's settings (lib-a, WB_BOARD_PREFIX): a second sync for that prefix, whose one "block" is
+  // The same code keeps the board's settings (lib-a, lib-s wbSettingsPrefix): a second sync for that prefix, whose one "block" is
   // the settings value. `prefix` names the keys a sync owns (block:<board>: unless given); it hears only those.
   const WB_PENDING_CAP = 2000000; // characters kept in the browser for writes not saved yet
   const WB_PENDING_TTL = 10 * 60 * 1000; // ms: an older leftover is ignored
@@ -61,6 +61,18 @@
     const pend = new Map(); // key -> the newest intent not accepted yet: a block, or GONE (kept in insertion order = age)
     let persistDirty = false;
     const keyOf = (id) => PREFIX + id;
+    let dropped = false; // discard(): the board was deleted; what waits for it is thrown away
+    let closed = false; // close(): the board was switched away from; nothing is reported or written for it any more
+    const emit = (change) => { if (!closed) onRemote(change); };
+    // The keys this sync owns, and the ids it may write under them: a write for another board's keys is refused here.
+    const owns = (key) => typeof key === 'string' && key.startsWith(PREFIX) && key.length > PREFIX.length && !key.slice(PREFIX.length).includes(':');
+    const ownId = (id) => typeof id === 'string' && owns(PREFIX + id);
+    const allowed = (id) => {
+      if (closed) return false;
+      if (ownId(id)) return true;
+      try { onRefused(Object.assign(new Error('That block does not belong to this board.'), { status: 0 }), String(id)); } catch { /* none */ }
+      return false;
+    };
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
     const seen = new Map(); // key -> the newest version this page knows of
@@ -145,12 +157,12 @@
           const shows = block ? JSON.stringify(got.value) : null;
           if (shows === g.shows) return;
           g.shows = shows;
-          onRemote(block ? { op: 'put', block } : { op: 'remove', id: idOf(key) });
+          emit(block ? { op: 'put', block } : { op: 'remove', id: idOf(key) });
           return;
         }
-        if (!got) { seen.delete(key); onRemote({ op: 'remove', id: idOf(key) }); return; }
+        if (!got) { seen.delete(key); emit({ op: 'remove', id: idOf(key) }); return; }
         seen.set(key, version);
-        if (block) onRemote({ op: 'put', block });
+        if (block) emit({ op: 'put', block });
       } catch { /* the next change or a reload puts it right */ }
     }
 
@@ -222,6 +234,7 @@
             tries += 1;
             onBusy(err);
             await new Promise((r) => { setTimeout(r, Math.max(1, Number(err.retryAfter) || 5) * 1000); });
+            if (dropped) continue;
             if (l.next === undefined) l.next = value; // nothing newer came: send this one again
             continue;
           }
@@ -261,7 +274,7 @@
         return;
       }
       const have = seen.get(e.key);
-      if (e.deleted) { bump(e.key); seen.delete(e.key); onRemote({ op: 'remove', id: idOf(e.key) }); return; }
+      if (e.deleted) { bump(e.key); seen.delete(e.key); emit({ op: 'remove', id: idOf(e.key) }); return; }
       if (have !== undefined && Number.isFinite(e.version) && e.version <= have) return; // our own echo, or a repeat
       if (Number.isFinite(e.version)) seen.set(e.key, e.version);
       const id = idOf(e.key);
@@ -269,7 +282,7 @@
       const b = clean(e.value);
       if (!b || b.id !== id) return; // not a block this page can draw
       bump(e.key);
-      onRemote({ op: 'put', block: b });
+      emit({ op: 'put', block: b });
     }
 
     return {
@@ -281,16 +294,35 @@
       adopt,
       // The server's time now, as this page best knows it (ms).
       now: () => clock.now(),
-      save(block) { queue(keyOf(block.id), block); },
+      // A write is accepted only for a key this sync owns (its own prefix) and while it is open; else it is refused here (never
+      // another board's block under this board's keys). The refusal is told to onRefused (a wrong key), or silent (closed).
+      save(block) { if (!allowed(block && block.id)) return false; queue(keyOf(block.id), block); return true; },
       saveSoon(block, ms = 600) {
+        if (!allowed(block && block.id)) return false;
         const key = keyOf(block.id);
         const l = lane(key);
         intend(key, block);
         l.soon = block;
         if (l.timer) clearTimeout(l.timer);
         l.timer = setTimeout(() => { l.timer = 0; const v = l.soon; l.soon = undefined; if (v) queue(key, v); }, ms);
+        return true;
       },
-      remove(id) { queue(keyOf(id), GONE); },
+      remove(id) { if (!allowed(id)) return false; queue(keyOf(id), GONE); return true; },
+      owns,
+      get closed() { return closed; },
+      // The board was deleted: close, and throw away every write not accepted yet (a timer, a wait, a parked one, the kept
+      // entry in the browser). A write already on its way finishes.
+      discard() {
+        closed = true;
+        dropped = true;
+        for (const l of lanes.values()) { if (l.timer) clearTimeout(l.timer); l.timer = 0; l.soon = undefined; l.next = undefined; }
+        pend.clear();
+        persistDirty = false;
+        try { if (store) store.removeItem(STORE_KEY); } catch { /* none */ }
+      },
+      // The page leaves this board: what waits is sent now (flush), then this sync reports nothing and takes no more writes.
+      // A write already on its way, or parked after a 429, goes on under this sync's own keys and stays kept in the browser.
+      close() { if (closed) return; this.flush(); closed = true; },
       // Whether the server holds a block (a connector's block that is not on this page: gone, or only late). When it
       // cannot be asked, true: nothing is removed on a guess. (A list by the key, not a get: a key that is not there is an
       // empty list rather than a 404 in the browser's console.)
@@ -346,7 +378,7 @@
       },
       // A 'change' event.
       handle(e) {
-        if (!e || typeof e.key !== 'string' || !e.key.startsWith(PREFIX)) return;
+        if (closed || !e || typeof e.key !== 'string' || !e.key.startsWith(PREFIX)) return;
         if (e.scope && e.scope !== 'space') return;
         heard += 1;
         clock.heard(e.updatedAt, Date.now());
@@ -358,7 +390,7 @@
       },
       // A 'changes' event (a Clear, its Undo): read the board again.
       handleMany(e) {
-        if (!e || (e.scope && e.scope !== 'space')) return;
+        if (closed || !e || (e.scope && e.scope !== 'space')) return;
         const list = Array.isArray(e.changes) ? e.changes : [];
         if (e.cleared || e.restored || list.some((c) => !c.deleted && c.value === undefined)) { onReload(); return; }
         for (const c of list) this.handle({ ...c, scope: e.scope });

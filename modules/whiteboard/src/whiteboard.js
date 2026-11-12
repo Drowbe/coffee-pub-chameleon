@@ -58,7 +58,8 @@
 
   const policy = createPolicy(host);
   const me = (info.user && info.user.key) || '';
-  const spaceId = String((info.context.space && info.context.space.id) || '');
+  // The host's context is { scope, spaceId } (host.ready). The kept writes and the last board are keyed by it, so another space's are never touched.
+  const spaceId = String(info.context.spaceId || '');
   const board = createBoard();
   const surface = $('board');
   let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
@@ -135,7 +136,10 @@
   // Every local change lands here: drawn at once, and saved now, soon (after a pause) or not yet (while a drag or a stroke
   // goes on). Each save, and each delete (remove), is told to the history as { before, after }, the whole block (lib-g):
   // undo and redo put back from them the fields that changed, through this same path.
-  const history = policy.canEdit ? createHistory({ cap: 100, onChange: () => historyButtons() }) : null;
+  // One history for each board, kept in memory while the page is open (lib-s wbPerBoard): switching back finds the steps of
+  // that board, and undo only acts on the board shown. A viewer has none.
+  const histories = wbPerBoard(() => (policy.canEdit ? createHistory({ cap: 100, onChange: () => historyButtons() }) : null));
+  let history = histories.get(WB_BOARD_FIRST); // the board shown's (set again when the board is opened or switched)
   function commit(next, save) {
     board.put(next);
     renderer.draw(next);
@@ -344,10 +348,13 @@
   function sweepSoon() { if (policy.canEdit && !sweepTimer) sweepTimer = setTimeout(sweep, 2500); }
   async function sweep() {
     sweepTimer = 0;
+    const my = session.epoch;
+    const s = sync;
     const orphans = board.all().filter((b) => !drafts.has(b.id) && !held.has(b.id) && missingRefs(b).length);
     for (const c of orphans) {
       let gone = false;
-      for (const id of missingRefs(c)) if (!(await sync.exists(id))) gone = true;
+      for (const id of missingRefs(c)) if (!(await s.exists(id))) gone = true;
+      if (!session.current(my)) return; // the board was switched meanwhile: these blocks are not on the screen any more
       const now = board.get(c.id);
       if (!gone || !now || held.has(c.id) || !missingRefs(now).length) continue;
       if (editing && editing.id === c.id) { const e = editing; editing = null; e.finish(false); }
@@ -355,7 +362,7 @@
       board.remove(c.id);
       renderer.remove(c.id);
       waiting.delete(c.id);
-      sync.remove(c.id);
+      s.remove(c.id);
       unpick(c.id);
       updateStatus();
     }
@@ -398,8 +405,10 @@
   }
   function onBusy() { note('Saving a lot at once. The rest is saved in a few seconds.'); }
   async function reload() {
+    const my = session.epoch;
     let list;
     try { list = await sync.load(); } catch (err) { host.ui.toast('The whiteboard could not be read again. Reload the page.').catch(() => {}); return; }
+    if (!session.current(my)) return; // another board is shown now: this read is of the old one
     if (editing) { const e = editing; editing = null; e.finish(false); }
     board.clear();
     renderer.clear();
@@ -425,8 +434,10 @@
     try {
       do {
         resyncAgain = false;
+        const my = session.epoch;
         let got = null;
         for (let i = 0; i < 3 && !(got && got.quiet); i += 1) got = await sync.read();
+        if (!session.current(my)) { resyncAgain = true; continue; } // switched meanwhile: read the board now shown
         if (!got || !got.quiet) continue; // changes kept coming: they are drawn as they come
         const pending = sync.busyIds();
         for (const id of drafts) pending.add(id);
@@ -443,7 +454,15 @@
     } catch { /* the next change or a reload puts it right */ } finally { resyncing = false; }
   }
 
-  const sync = createSync({ host, board: WB_BOARD, scope: spaceId, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
+  // The board shown and its syncs (lib-s createBoardSession): `sync` is the blocks' and `boardSync` the settings' of the board
+  // whose id is session.id (the ONE place the active board lives); useBoard() switches them. The board list is read at the start.
+  let sync = null;
+  let boardSync = null;
+  const session = createBoardSession({
+    host, scope: spaceId, me, clean: wbClean, cleanSettings: wbCleanBoard,
+    handlers: { onRemote, onReload: reload, onSettings: takeBoard, onSettingsReload: reloadBoard, onList: (list) => boardListChanged(list), onRefused, onBusy, onSyncs: (a, b) => { sync = a; boardSync = b; } },
+  });
+  const presentRecKey = () => wbPresentKey(session.id);
 
   // ---- the board's background -------------------------------------------------------------------------------------------
   // One setting for the whole board, seen by everyone (lib-a, WB_BOARD_PREFIX): its own sync, the same as the blocks' (one
@@ -483,10 +502,10 @@
     showBackdrop();
   }
   async function reloadBoard() {
-    try { const list = await boardSync.load(); boardSettings = list[0] || WB_BOARD_USUAL; } catch { return; }
+    const my = session.epoch;
+    try { const list = await boardSync.load(); if (!session.current(my)) return; boardSettings = list[0] || WB_BOARD_USUAL; } catch { return; }
     showBackdrop();
   }
-  const boardSync = createSync({ host, board: WB_BOARD, scope: spaceId, prefix: WB_BOARD_PREFIX, clean: wbCleanBoard, me, onRemote: takeBoard, onReload: reloadBoard, onRefused, onBusy });
   // Put the settings as `next` (a background picked, or an undo): drawn at once, saved whole, told to the history.
   function commitBoard(next) {
     const stamped = { ...wbCleanBoard(next), by: me, at: new Date().toISOString() };
@@ -1977,9 +1996,10 @@
   // A locked timer still runs: its controls are using it, not changing it (lib-b, canLock).
   timerDef.controls = (b) => policy.canLock(b);
   const TIMER_POS = 'whiteboard-timer-pos';
-  const TIMER_HIDE = `whiteboard-timer-hidden:${WB_BOARD}`;
+  const timerHideKey = () => `whiteboard-timer-hidden:${session.id}`; // the timer is a block, so it is one for each board
   let timerHidden = false;
-  try { timerHidden = localStorage.getItem(TIMER_HIDE) === '1'; } catch { /* no storage: shown */ }
+  const timerHiddenRead = () => { try { timerHidden = localStorage.getItem(timerHideKey()) === '1'; } catch { timerHidden = false; /* no storage: shown */ } };
+  timerHiddenRead();
   timerDef.hidden = () => timerHidden;
   timerDef.canHide = () => policy.canEdit; // the toolbar's Timer brings it back, for those who have it
   timerDef.store = () => ({
@@ -1988,7 +2008,7 @@
   });
   function showTimer(on) {
     timerHidden = !on;
-    try { if (on) localStorage.removeItem(TIMER_HIDE); else localStorage.setItem(TIMER_HIDE, '1'); } catch { /* not kept */ }
+    try { if (on) localStorage.removeItem(timerHideKey()); else localStorage.setItem(timerHideKey(), '1'); } catch { /* not kept */ }
     // Shown again: a place that no longer fits is put back inside (the clock does it as it shows).
     timerDef.redraw();
     timerButton.set({ on });
@@ -2013,6 +2033,8 @@
     : { set() {} };
   timerButton.set({ on: Boolean(timerDef.current()) && !timerHidden });
   timerDef.changed = () => timerButton.set({ on: Boolean(timerDef.current()) && !timerHidden });
+  // Another board is shown: its timer (if it has one) and whether this person hid it.
+  function timerForBoard() { timerHiddenRead(); timerDef.redraw(); timerButton.set({ on: Boolean(timerDef.current()) && !timerHidden }); }
   timerDef.menu = (e) => {
     if (!policy.canEdit || !timerDef.current()) return;
     const box = host.rootElement.getBoundingClientRect();
@@ -2732,7 +2754,7 @@
   // someone who may edit the board starts, stops or takes over; a view-only person or guest only follows and never writes.
   // Nothing here touches the board's data or its history.
   const sender = createWbPresentSender({
-    put: (value, version) => host.storage.set(WB_PRESENT.key, value, { version }),
+    put: (value, version) => host.storage.set(presentRecKey(), value, { version }),
     later: (fn, ms) => setTimeout(fn, ms),
     cancel: (t) => clearTimeout(t),
     stamp: () => new Date(sync.now()).toISOString(),
@@ -3010,8 +3032,9 @@
   }
   // The record in storage now (read by its key: a key that is not there is an empty list, not an error).
   async function readShared() {
-    const list = await host.storage.list(WB_PRESENT.key);
-    const e = (Array.isArray(list) ? list : []).find((x) => x.key === WB_PRESENT.key);
+    const key = presentRecKey();
+    const list = await host.storage.list(key);
+    const e = (Array.isArray(list) ? list : []).find((x) => x.key === key);
     const rec = e ? wbCleanPresent(e.value) : null;
     return { rec, version: e && Number.isFinite(e.version) ? e.version : 0, updatedAt: e ? e.updatedAt : null };
   }
@@ -3031,7 +3054,7 @@
   }
   // A storage 'change' for the record.
   function hearShared(e) {
-    if (!e || e.key !== WB_PRESENT.key || (e.scope && e.scope !== 'space')) return;
+    if (!e || e.key !== presentRecKey() || (e.scope && e.scope !== 'space')) return;
     if (e.deleted) {
       shared.rec = null; shared.version = 0; shared.seenAt = NaN;
       if (sender.active) { sender.stop(); note('Presenting to everyone stopped.'); lostShare(null); return; } // a Clear, or someone removed it
@@ -3072,8 +3095,11 @@
       frame: cur, move: from ? from.move : presentMove(), dim: from ? from.dim : presentDim, seq: old ? old.seq + 1 : 1,
       at: new Date(sync.now()).toISOString(), by: me,
     };
+    const key = presentRecKey();
+    const my = session.epoch;
     try {
-      const r = await host.storage.set(WB_PRESENT.key, value, { version });
+      const r = await host.storage.set(key, value, { version });
+      if (!session.current(my)) { host.storage.delete(key, { version: r && Number.isFinite(r.version) ? r.version : version + 1 }).catch(() => {}); return; } // the board was switched: not presenting there
       const rec = wbCleanPresent(value);
       shared.rec = rec; shared.version = r && Number.isFinite(r.version) ? r.version : version + 1; shared.seenAt = Date.now();
       sender.start(rec, shared.version);
@@ -3096,14 +3122,15 @@
   async function stopSharing() {
     if (!sender.active) return;
     const v = sender.version;
+    const key = presentRecKey(); // the board it was started on, whatever is shown when the answer comes
     sender.stop();
     shared.rec = null; shared.version = 0; shared.seenAt = NaN;
     if (presenting) barShow();
     rejoinShow();
-    try { await host.storage.delete(WB_PRESENT.key, { version: v }); } catch (err) {
+    try { await host.storage.delete(key, { version: v }); } catch (err) {
       // Our own newer write was in flight: delete that one. Someone else's record is left alone.
       const cur = err && err.current && wbCleanPresent(err.current.value);
-      if (cur && cur.presenter === me && Number.isFinite(err.current.version)) host.storage.delete(WB_PRESENT.key, { version: err.current.version }).catch(() => {});
+      if (cur && cur.presenter === me && Number.isFinite(err.current.version)) host.storage.delete(key, { version: err.current.version }).catch(() => {});
     }
   }
   async function takeOver() {
@@ -3915,37 +3942,102 @@
     if (finding) placeFind(); // the find bar clear of the colour strip at the new width
   });
   widthWatch.observe(host.rootElement);
-  window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
+  window.addEventListener('pagehide', () => { session.flush(); });
   // Going away: send what waits at once (host.storage goes through the host, which has no keepalive request, so what is
   // refused or cut off stays kept in the browser and the next load sends it). The browser's own prompt while writes wait.
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { sync.flush(); boardSync.flush(); } });
-  window.addEventListener('beforeunload', (e) => { if (sync.pending() + boardSync.pending() > 0) { sync.beforeUnload(e) || boardSync.beforeUnload(e); } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') session.flush(); });
+  window.addEventListener('beforeunload', (e) => { if (session.pending() > 0) { sync.beforeUnload(e) || boardSync.beforeUnload(e) || session.listSync.beforeUnload(e); } });
 
-  // ---- start ------------------------------------------------------------------------------------------------------------
-  host.on('change', (e) => { sync.handle(e); boardSync.handle(e); hearShared(e); });
-  host.on('changes', (e) => {
-    keepBackground(e); sync.handleMany(e); boardSync.handleMany(e);
-    if (e && (!e.scope || e.scope === 'space')) { // a Clear takes the record with the rest, a put-back may bring it
-      if (e.cleared || e.restored) loadShared(); else for (const c of Array.isArray(e.changes) ? e.changes : []) hearShared({ ...c, scope: e.scope });
-    }
-  });
-  let first;
-  try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
-  await reloadBoard(); // the background (Default when it cannot be read)
-  for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
-  { // writes an earlier page of this person left unsaved (see lib-c): shown and sent again
+  // ---- the boards: which one is shown, and the switch ---------------------------------------------------------------------
+  // The board shown is session.id (lib-s), kept in one place. useBoard(id) leaves one board for another: it ends a
+  // presentation, finishes an edit, sends what waits for the old board (R1, under the old board's keys), clears the screen,
+  // takes the other board's history (one for each board, in memory), and reads and draws the new board as the start does.
+  // Nothing the old board's syncs report after that is used (lib-s: epoch), and a read still on its way is dropped.
+  // The board used last is this browser's (WB_BOARD_LAST), read at the start (the landing). No switcher yet: job 2.
+  const lastBoard = () => { try { return localStorage.getItem(WB_BOARD_LAST(spaceId)); } catch { return null; } };
+  let started = false;
+  // Read the board shown and draw it, then send what an earlier page of this person left unsaved for it (lib-c replay: only
+  // this board's entry is read). false when another board was shown before the read came.
+  async function openBoard(my) {
+    timerHiddenRead(); // whether this person hid this board's timer
+    const list = await sync.load();
+    if (!session.current(my)) return false;
+    await reloadBoard(); // the background (Default when it cannot be read)
+    if (!session.current(my)) return false;
+    for (const b of list) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
     const left = sync.replay();
     for (const b of left.put) if (policy.canSee(b)) onRemote({ op: 'put', block: b });
     for (const id of left.remove) onRemote({ op: 'remove', id });
     const lb = boardSync.replay();
     if (lb.put[0]) takeBoard({ op: 'put', block: lb.put[0] });
+    return true;
   }
+  let switching = Promise.resolve();
+  function useBoard(id) {
+    const run = switching.then(() => switchTo(id), () => switchTo(id));
+    switching = run.catch(() => {});
+    return run;
+  }
+  async function switchTo(id) {
+    if (typeof id !== 'string' || !WB_BOARD_ID_RE.test(id) || id === session.id) return false;
+    if (presenting) stopPresenting(); else if (sender.active) stopSharing();
+    shared.rec = null; shared.version = 0; shared.seenAt = NaN; shared.left = false;
+    if (editing) { const e = editing; editing = null; e.finish(true); } // saved on the board it is on
+    if (history) history.close();
+    session.use(id); // R1: the old board's waiting writes are sent first, under its keys
+    history = histories.get(id);
+    try { localStorage.setItem(WB_BOARD_LAST(spaceId), id); } catch { /* not kept */ }
+    board.clear();
+    renderer.clear();
+    drafts.clear();
+    held.clear();
+    waiting.clear();
+    known.clear();
+    boardSettings = WB_BOARD_USUAL;
+    showBackdrop();
+    select(null);
+    historyButtons();
+    const my = session.epoch;
+    try { await openBoard(my); } catch { if (session.current(my)) host.ui.toast('That board could not be read. Reload the page.').catch(() => {}); return true; }
+    if (!session.current(my)) return true;
+    timerForBoard();
+    sweepSoon();
+    presentSync();
+    rejoinShow();
+    updateStatus();
+    loadShared(); // someone may be presenting on this board
+    return true;
+  }
+  // The list changed (read, or heard): the board shown must still be in it, else the first board is shown, and the writes
+  // kept for the board that went are dropped (R2).
+  function boardListChanged(list) {
+    if (!started || list.some((b) => b.id === session.id)) return;
+    const gone = session.id;
+    note('This board was deleted.');
+    useBoard(wbLanding(list, null)).then(() => session.dropPending(gone));
+  }
+
+  // ---- start ------------------------------------------------------------------------------------------------------------
+  host.on('change', (e) => { session.handle(e); hearShared(e); });
+  host.on('changes', (e) => {
+    keepBackground(e); session.handleMany(e);
+    if (e && (!e.scope || e.scope === 'space')) { // a Clear takes the record with the rest, a put-back may bring it
+      if (e.cleared || e.restored) loadShared(); else for (const c of Array.isArray(e.changes) ? e.changes : []) hearShared({ ...c, scope: e.scope });
+    }
+  });
+  // The board list, then the board to open: the one used last in this browser if it is listed, else the first (lib-s).
+  let landing = WB_BOARD_FIRST;
+  try { landing = wbLanding(await session.loadList(), lastBoard()); } catch { /* the list could not be read: the first board; nothing is swept */ }
+  session.start(landing);
+  history = histories.get(landing);
+  try { await openBoard(session.epoch); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   sweepSoon();
+  started = true;
   // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
   // browser is back online, and when the page shows again after a while hidden.
   let hiddenAt = 0;
-  host.on('reconnected', () => { resyncBoard(); });
-  window.addEventListener('online', () => { resyncBoard(); });
+  host.on('reconnected', () => { resyncBoard(); session.loadList().catch(() => {}); });
+  window.addEventListener('online', () => { resyncBoard(); session.loadList().catch(() => {}); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hiddenAt = Date.now();
     else if (hiddenAt && Date.now() - hiddenAt > 30000) { hiddenAt = 0; resyncBoard(); } else hiddenAt = 0;
