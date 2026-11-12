@@ -74,6 +74,7 @@
   let many = false; // "Many", a mode of the Select tool (on its strip): a click or tap adds to what is picked, a drag on the board draws a rectangle that adds
   let presenting = null; // while the frames are presented: lib-e-block-frame's state ({ order, i, view }), see "presenting"
   let tool = tools.get('select');
+  let lent = null; // an insert tool's press on a block, lent to Select for that press (lib-f-tool-insert)
   // The colours and width picked for new blocks, by role; null: each type's usual. They go to a new block only where its
   // usual is a colour (a text block keeps no background, a note its matching border); weight goes with the stroke.
   const next = { stroke: null, fill: null, ink: null, weight: null };
@@ -3386,7 +3387,8 @@
     const p = pointOf(e);
     pointers.set(e.pointerId, p);
     if (pointers.size === 2) {
-      if (down !== null && tool.cancel) tool.cancel(ctx);
+      if (down !== null && (lent ? lent.tool : tool).cancel) (lent ? lent.tool : tool).cancel(ctx);
+      lent = null;
       down = null;
       pinch = { ...twoFingers(), s: renderer.view.s };
       return;
@@ -3398,6 +3400,16 @@
     pointerFocus = false;
     if (tool.edits && !policy.canUseTool(tool)) return;
     down = e.pointerId;
+    lent = null;
+    // An insert tool pressed on a block already there: Select takes this one press (lib-f-tool-insert).
+    const hit = p.id && !p.handle && tool.edits ? board.get(p.id) : null;
+    const act = hit ? wbInsertClickAction(hit, tool, { canChange: (b) => policy.canChange(b) }) : 'place';
+    if (act !== 'place') {
+      lent = { tool: tools.get('select'), edit: act === 'edit' ? p.id : null, sx: p.sx, sy: p.sy, moved: false, target: e.target };
+      lent.tool.down(p, ctx);
+      onCells();
+      return;
+    }
     tool.down(p, ctx);
     onCells();
   });
@@ -3423,6 +3435,7 @@
       updateStatus();
       return;
     }
+    if (lent && down === e.pointerId) { if (Math.hypot(p.sx - lent.sx, p.sy - lent.sy) >= 6) lent.moved = true; if (lent.tool.move) lent.tool.move(p, ctx); return; }
     if (down === e.pointerId && tool.move) tool.move(p, ctx);
   });
   const lift = (e) => {
@@ -3446,6 +3459,14 @@
     if (pinch) { if (pointers.size < 2) pinch = null; return; }
     if (down !== e.pointerId) return;
     down = null;
+    if (lent) {
+      const l = lent;
+      lent = null;
+      if (e.type === 'pointercancel') { if (l.tool.cancel) l.tool.cancel(ctx); return; }
+      if (l.tool.up) l.tool.up(pointOf(e), ctx);
+      if (l.edit && !l.moved && board.get(l.edit)) { ctx.select(l.edit); ctx.edit(l.edit, { target: l.target }); }
+      return;
+    }
     if (e.type === 'pointercancel') { if (tool.cancel) tool.cancel(ctx); } else if (tool.up) tool.up(pointOf(e), ctx);
   };
   surface.addEventListener('pointerup', lift);
