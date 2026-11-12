@@ -1926,6 +1926,15 @@ test('grid menu: dlRichInGrid, the menu model, the caret-cell decoration', () =>
     ctl.setPaged(view, false); assert.equal(ctl.info(view.state).spacers.length, 0); assert.equal(ctl.plugin.props.decorations(view.state).find().length, 0); assert.equal(ctl.paged(), false);
     const n = view.dispatched; ctl.setPaged(view, false); assert.equal(view.dispatched, n);
   });
+  test('pages 13o: a trailing break is marked as the end (no band, no number); a middle break carries its page number', () => {
+    const kinds = (v) => { const out = []; v.state.doc.forEach((n) => out.push({ height: n.type.name === 'page_break' ? 0 : 100, kind: n.type.name === 'page_break' ? 'pagebreak' : 'block' })); return out; };
+    const tail = stubView('para\n\n_ _ _', kinds); tail.ctl.setPaged(tail.view, true, 'letter');
+    const found = tail.ctl.plugin.props.decorations(tail.view.state).find();
+    assert.equal(found.length, 1); assert.match(found[0].type.attrs.class, /dl-pgsp-end/);
+    const mid = stubView('para\n\n_ _ _\n\nmore', kinds); mid.ctl.setPaged(mid.view, true, 'letter');
+    const m = mid.ctl.plugin.props.decorations(mid.view.state).find();
+    assert.equal(m.length, 1); assert.doesNotMatch(m[0].type.attrs.class, /dl-pgsp-end/); assert.equal(m[0].type.attrs['data-num'], '1');
+  });
   test('pages 13n: not paged, nothing is read; while composing, nothing is read and it tries again later', () => {
     let reads = 0; const { ctl, view, timers } = stubView(many(4), (v) => { reads += 1; return heights(300)(v); });
     assert.equal(ctl.measure(view), false); assert.equal(reads, 0);

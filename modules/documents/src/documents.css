@@ -140,13 +140,21 @@
 .rich .ProseMirror li { position: relative; }
 /* real pages while typing (Paper above the narrow floor; documents-lib-t-editor-pages.js): a spacer is a decoration, not text. Its height carries
    the rest of the page, the margins and the gap; a plain grey band marks the gap (the page look comes in a later step). A manual break is its own spacer. */
-.sheet-edit[data-epaged] { background-image: none; }
-.rich .ProseMirror .dl-pgsp { display: block; box-sizing: border-box; margin: 0 calc(-1 * var(--doc-page-m)); user-select: none; pointer-events: none; background: linear-gradient(to bottom, transparent var(--sp-top, 0), var(--surface-page) var(--sp-top, 0), var(--surface-page) calc(var(--sp-top, 0) + var(--doc-gap, 16px)), transparent calc(var(--sp-top, 0) + var(--doc-gap, 16px))); }
-.rich .ProseMirror .dl-pgsp-break { margin-top: 0; margin-bottom: 0; background: linear-gradient(to bottom, transparent calc(100% - var(--doc-page-m) - var(--doc-gap, 16px)), var(--surface-page) calc(100% - var(--doc-page-m) - var(--doc-gap, 16px)), var(--surface-page) calc(100% - var(--doc-page-m)), transparent calc(100% - var(--doc-page-m))); }
+.sheet-edit[data-layout="paper"][data-epaged]:not([data-narrow]) { background-image: none; }
+.rich .ProseMirror .dl-pgsp { --sp-gap: var(--doc-gap, 16px); --sp-edge: var(--doc-edge); position: relative; display: block; box-sizing: border-box; margin: 0 calc(-1 * var(--doc-page-m) - 1px); user-select: none; pointer-events: none; background: linear-gradient(to bottom, transparent var(--sp-top, 0), var(--sp-edge) var(--sp-top, 0), var(--sp-edge) calc(var(--sp-top, 0) + 1px), var(--surface-page) calc(var(--sp-top, 0) + 1px), var(--surface-page) calc(var(--sp-top, 0) + var(--sp-gap) - 1px), var(--sp-edge) calc(var(--sp-top, 0) + var(--sp-gap) - 1px), var(--sp-edge) calc(var(--sp-top, 0) + var(--sp-gap)), transparent calc(var(--sp-top, 0) + var(--sp-gap))); }
+.rich .ProseMirror .dl-pgsp-break { margin-top: 0; margin-bottom: 0; background: linear-gradient(to bottom, transparent calc(100% - var(--doc-page-m) - var(--sp-gap)), var(--sp-edge) calc(100% - var(--doc-page-m) - var(--sp-gap)), var(--sp-edge) calc(100% - var(--doc-page-m) - var(--sp-gap) + 1px), var(--surface-page) calc(100% - var(--doc-page-m) - var(--sp-gap) + 1px), var(--surface-page) calc(100% - var(--doc-page-m) - 1px), var(--sp-edge) calc(100% - var(--doc-page-m) - 1px), var(--sp-edge) calc(100% - var(--doc-page-m)), transparent calc(100% - var(--doc-page-m))); }
+.rich .ProseMirror .dl-pgsp-break.dl-pgsp-end { background: none; }
 .rich .ProseMirror .dl-pgsp-break > * { display: none; }
 .rich .ProseMirror.dl-measuring .dl-pgsp:not(.dl-pgsp-break) { display: none !important; }
 .rich .ProseMirror.dl-measuring .dl-pgsp-break { height: auto !important; }
 .rich .ProseMirror:not(.dl-measuring) .dl-pgsp + *, .rich .ProseMirror:not(.dl-measuring) .dl-pgsp-break + * { margin-top: 0; }
+/* the reading view's blocks each sit in a flow-root wrapper whose first child has no top margin, so a block's height is its own plus its bottom margin; the paged editor lays its blocks out the same way, so the pages break in the same places */
+.sheet-edit[data-epaged] .rich .ProseMirror > :not(.dl-pgsp) { margin-top: 0; }
+/* the page number: alone, bottom centre of the bottom margin of the page that ends at the spacer (the last page's, below the editor) */
+.sheet-edit[data-epaged][data-numbers="on"] .rich .ProseMirror .dl-pgsp[data-num]:not(.dl-pgsp-end)::after,
+.sheet-edit[data-epaged][data-numbers="on"] .rich .ProseMirror[data-lastnum]::after { content: attr(data-num); position: absolute; left: 0; right: 0; bottom: calc(var(--doc-page-m) + var(--sp-gap)); height: var(--doc-page-m); display: flex; align-items: center; justify-content: center; color: var(--doc-quiet); font-size: var(--text-12); line-height: 1; user-select: none; pointer-events: none; }
+.sheet-edit[data-epaged][data-numbers="on"] .rich .ProseMirror[data-lastnum]::after { content: attr(data-lastnum); bottom: calc(-1 * var(--doc-page-m)); }
+.rich .ProseMirror.dl-measuring::after { display: none; }
 .rich .ProseMirror-hideselection *::selection { background: transparent; }
 .rich .ProseMirror-hideselection { caret-color: transparent; }
 .rich .ProseMirror [draggable][contenteditable="false"] { user-select: text; }
