@@ -40,10 +40,10 @@ const APP_LEFT_OUT = ['secrets', 'invites'];
 const USER_FIELDS = ['key', 'login', 'displayName', 'role', 'hostAdmin', 'images', 'spaces', 'player', 'callPrefs', 'themeMode', 'createdAt'];
 const USER_LEFT_OUT = ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 'calendarFeed', 'firstPassword', 'agreed'];
 // A person's own record for one space (user.spaces[<space id>]).
-const USER_SPACE_FIELDS = ['images', 'useDefaultImages', 'permissions'];
+const USER_SPACE_FIELDS = ['images', 'useDefaultImages', 'permissions', 'joined'];
 const USER_SPACE_LEFT_OUT = ['calendarFeed'];
 // A space (Store#sanitizeSpace).
-const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
+const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'entry', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
 const SPACE_LEFT_OUT = ['guestToken'];
 // An aside (Store#sanitizeAside).
 const ASIDE_FIELDS = ['id', 'members', 'origin', 'private', 'createdAt'];

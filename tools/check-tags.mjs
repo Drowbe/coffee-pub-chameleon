@@ -492,7 +492,7 @@ try {
     await expect('admin', 200, 'GET', L, { cookie: admin });
     await expect('owner', 200, 'GET', L, { cookie: sessions.owner });
     await expect('guest with the link', 200, 'GET', `${L}${guestS}`);
-    await expect('not in the space', 403, 'GET', L, { cookie: sessions.out });
+    await expect('not in the space', 404, 'GET', L, { cookie: sessions.out });
     await expect('a guest of another space', 403, 'GET', `${L}${guestT}`);
     assert.ok([401, 403].includes((await call('GET', `${L}?guest=nonsense`)).status), 'a made-up guest token');
     await expect('nobody', 401, 'GET', L);
@@ -520,7 +520,7 @@ try {
     const body = JSON.stringify((await call('GET', L, { cookie: sessions.sam })).json);
     assert.ok(!body.includes(pat.key) && !/"by"|"at"/.test(body), 'who made a tag and when are not sent');
     // not allowed
-    await expect('not in the space', 403, 'POST', L, { cookie: sessions.out, body: { name: 'x', from: 'tagnotes' } });
+    await expect('not in the space', 404, 'POST', L, { cookie: sessions.out, body: { name: 'x', from: 'tagnotes' } });
     await expect('nobody', 401, 'POST', L, { body: { name: 'x', from: 'tagnotes' } });
     const g = await expect('a guest', 403, 'POST', `${L}${guestS}`, { body: { name: 'guest-tag', from: 'tagnotes' } });
     assert.match(g.json.error, /^Guests can't make tags/);
@@ -589,7 +589,7 @@ try {
     // without it
     await expect('a member', 403, 'PATCH', P, { cookie: sessions.pat, body: { name: 'nope' } });
     await expect('a member deleting', 403, 'DELETE', P, { cookie: sessions.pat });
-    await expect('outside the space', 403, 'PATCH', P, { cookie: sessions.out, body: { name: 'nope' } });
+    await expect('outside the space', 404, 'PATCH', P, { cookie: sessions.out, body: { name: 'nope' } });
     await expect('nobody', 401, 'PATCH', P, { body: { name: 'nope' } });
     await expect('nobody deleting', 401, 'DELETE', P);
     const g = await expect('a guest', 403, 'PATCH', `${P}${guestS}`, { body: { name: 'nope' } });
@@ -622,13 +622,13 @@ try {
     await expect('give moderators it back', 200, 'PATCH', '/api/roles/moderator', { cookie: admin, body: { manageTags: true } });
     await expect('give it to members', 200, 'PATCH', '/api/roles/member', { cookie: admin, body: { manageTags: true } });
     await expect('a member with it', 200, 'PATCH', P, { cookie: sessions.pat, body: { color: 'teal' } });
-    await expect('but not in a space they are not in', 403, 'PATCH', P, { cookie: sessions.out, body: { color: 'blue' } });
+    await expect('but not in a space they are not in', 404, 'PATCH', P, { cookie: sessions.out, body: { color: 'blue' } });
     await expect('take it from members', 200, 'PATCH', '/api/roles/member', { cookie: admin, body: { manageTags: false } });
     const noGuests = await expect('guests can never have it', 400, 'PATCH', '/api/roles/guest', { cookie: admin, body: { manageTags: true } });
     assert.match(noGuests.json.error, /Guests can never have/);
     await expect('a member who is not a moderator here (sam)', 403, 'PATCH', P, { cookie: sessions.sam, body: { name: 'nope' } });
     // another space's moderator has it in theirs only
-    await expect('a moderator of one space is nobody in another', 403, 'GET', `/api/spaces/${T}/tags`, { cookie: sessions.mo });
+    await expect('a moderator of one space is nobody in another', 404, 'GET', `/api/spaces/${T}/tags`, { cookie: sessions.mo });
     // delete
     await expect('the moderator deletes', 204, 'DELETE', P, { cookie: sessions.mo });
     assert.ok(!(await list()).some((t) => t.id === tag.id), 'gone');
@@ -651,23 +651,24 @@ try {
     assert.equal(other.status, 201);
     assert.notEqual(other.json.tag.id, mine.id);
     await expect('the other space\'s member makes there', 201, 'POST', M, { cookie: sessions.out, body: { name: 'mine', from: 'tagnotes' } });
-    await expect('but not in the first', 403, 'POST', L, { cookie: sessions.out, body: { name: 'mine', from: 'tagnotes' } });
+    await expect('but not in the first', 404, 'POST', L, { cookie: sessions.out, body: { name: 'mine', from: 'tagnotes' } });
     assert.deepEqual((await call('GET', `${M}${guestT}`)).json.tags.map((t) => t.name), ['mine', 'only-in-trip'], 'its guest reads its list');
     assert.ok(!(await call('GET', `${M}${guestT}`)).text.includes(mine.id), 'and not the first space\'s');
   });
 
   await test('the module stream tells the space\'s people of a tag made, changed or removed, and nobody else', async () => {
-    const listen = async (query, headers) => {
+    const listen = async (query, headers, refused = false) => {
       const ac = new AbortController();
       let text = '';
       const res = await fetch(`http://127.0.0.1:${server.port}/api/modules/stream${query}`, { headers: { accept: 'text/event-stream', ...headers }, signal: ac.signal });
+      if (refused) { assert.equal(res.status, 404, 'a person who may not enter the space is told it is not there'); return { text: () => '', stop: () => ac.abort() }; }
       assert.equal(res.status, 200);
       (async () => { try { for await (const c of res.body) text += Buffer.from(c).toString('utf8'); } catch { /* closed */ } })();
       return { text: () => text, stop: () => ac.abort() };
     };
     const member = await listen(`?space=${S}`, { cookie: sessions.sam });
     const guest = await listen(`?space=${S}&guest=${encodeURIComponent(guestS.slice(7))}`, {});
-    const outsider = await listen(`?space=${S}`, { cookie: sessions.out });
+    const outsider = await listen(`?space=${S}`, { cookie: sessions.out }, true);
     const elsewhere = await listen(`?space=${T}`, { cookie: sessions.out });
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await wait(300);

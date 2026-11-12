@@ -442,8 +442,10 @@ try {
   const towerG = await openStream(MS(tower.id, `&guest=${encodeURIComponent(towerLink)}`));
   const crossG = await openStream(MS(keep.id, `&guest=${encodeURIComponent(towerLink)}`));
   const home = await openStream('/api/modules/stream', { cookie: patC });
-  const all = [pat1, pat2, samS, ivyS, ownS, guestS, louT, louK, towerG, crossG];
+  // A signed-in person who may not enter the space (Lou on the Keep) is told it is not there, as for an unknown id.
+  const all = [pat1, pat2, samS, ivyS, ownS, guestS, louT, towerG, crossG];
   for (const s of all) same(s.status, 200, 'a module stream opens');
+  same(louK.status, 404, 'a stream for a space they may not enter is refused as an unknown space');
   const ids = await Promise.all(all.map(ready));
   ok(ids.every((id) => typeof id === 'string' && id.length >= 16) && new Set(ids).size === ids.length, 'each stream with a space says its own id first (`ready`), long enough not to be guessed');
   await quiet(200);
@@ -480,7 +482,7 @@ try {
   await pat1.until((e) => e.event === 'live' && e.data.topic === 'nudge');
   await pat2.until((e) => e.event === 'live' && e.data.topic === 'nudge');
   await quiet(300);
-  for (const s of [ivyS, ownS, guestS, samS, louK]) same(s.lives().filter((e) => e.data.topic === 'nudge').length, 0, '`to` reaches only the named one');
+  for (const s of [ivyS, ownS, guestS, samS]) same(s.lives().filter((e) => e.data.topic === 'nudge').length, 0, '`to` reaches only the named one');
   same((await send('live-a', keep.id, { topic: 'nudge', data: {}, to: [sam.key] }, samC)).status, 200, 'to only themselves');
   same((await send('live-a', keep.id, { topic: 'nudge2', data: {}, to: [lou.key, 'guest-abcdef'] }, samC)).status, 200, 'to people not there: taken, and skipped silently');
   await quiet(300);
@@ -506,7 +508,7 @@ try {
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null), 401, 'sign in first', 'signed out: 401');
   await refusal(await call('POST', '/api/modules/live-a/live', { cookie: samC, body: { topic: 'a' } }), 400, 'live messages are only in a space; say which one', 'no space: 400');
   await refusal(await send('live-a', 'nosuch', { topic: 'a' }, samC), 404, 'no such space', 'no such space: 404');
-  await refusal(await send('live-a', tower.id, { topic: 'a' }, samC), 403, 'this module is not available in that space for you', 'another space: 403');
+  await refusal(await send('live-a', tower.id, { topic: 'a' }, samC), 404, 'no such space', 'another space: 404');
   await refusal(await send('live-p', keep.id, { topic: 'a' }, samC), 403, 'your role can\'t send live messages in this module', 'the publish permission missing: 403');
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}`), 403, 'that guest pass is not valid; enter again', 'a guest without a pass: 403');
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, `&guest=${encodeURIComponent(keepLink)}&pass=anything`), 403, 'that guest pass is not valid; enter again', 'a guest with a pass that is not one: 403');
@@ -545,11 +547,11 @@ try {
   same(samS.events.filter((e) => e.event === 'joined').length, 1, 'a second tab of Pat\'s tells nobody');
   same(pat1.events.filter((e) => e.event === 'joined' && e.data.person.key === pat.key).length, 0, 'nor Pat\'s own tabs');
   await refusal(await join('live-a', samId, patC), 409, 'open the space first; there is no module stream of yours there', 'Sam\'s stream is not Pat\'s: 409');
-  await refusal(await join('live-a', ids[7], louC, keep.id), 403, 'this module is not available in that space for you', 'Lou can\'t join the Keep with his stream there: 403');
-  await refusal(await join('live-a', ids[6], louC, keep.id), 403, 'this module is not available in that space for you', 'nor with his Tower stream');
+  await refusal(await join('live-a', ids[7], louC, keep.id), 404, 'no such space', 'Lou can\'t join the Keep with his stream there: 404');
+  await refusal(await join('live-a', ids[6], louC, keep.id), 404, 'no such space', 'nor with his Tower stream');
   same((await join('live-a', ids[6], louC, tower.id)).status, 200, 'Lou joins in the Tower');
   await refusal(await join('live-a', ids[6], patC, keep.id), 409, 'open the space first; there is no module stream of yours there', 'Lou\'s stream is not Pat\'s, and not in the Keep: 409');
-  await refusal(await join('live-a', patId1, patC, tower.id), 403, 'this module is not available in that space for you', 'Pat can\'t join the Tower');
+  await refusal(await join('live-a', patId1, patC, tower.id), 404, 'no such space', 'Pat can\'t join the Tower');
   await refusal(await join('live-a', 'nosuch', patC), 409, 'open the space first; there is no module stream of yours there', 'an unknown stream: 409');
   await refusal(await join('live-a', 42, patC), 400, 'stream must be the id the module stream gave', 'a stream that is not text: 400');
   await refusal(await join('live-off', patId1, patC), 400, 'this module doesn\'t use live messages', 'a module without live: 400');
@@ -609,7 +611,7 @@ try {
   await guestS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
   await quiet(300);
   same(giaS.lives().filter((e) => e.data.topic === 'g.point').length, 0, 'the other guest and a guest with no pass receive it; never the guest who sent it');
-  for (const [st, who] of [[louK, 'Lou on the Keep\'s stream'], [towerG, 'the Tower\'s guest'], [crossG, 'the Keep\'s stream on the Tower\'s link']]) same(st.lives().filter((e) => e.data.topic === 'g.point').length, 0, `nor ${who}`);
+  for (const [st, who] of [[towerG, 'the Tower\'s guest'], [crossG, 'the Keep\'s stream on the Tower\'s link']]) same(st.lives().filter((e) => e.data.topic === 'g.point').length, 0, `nor ${who}`);
   same((await send('live-a', keep.id, { topic: 'g.nudge', data: {}, to: [gus.id] }, samC)).status, 200, 'Sam sends to Gus by his id');
   await gusS.until((e) => e.event === 'live' && e.data.topic === 'g.nudge');
   same((await send('live-a', keep.id, { topic: 'g.back', data: {}, to: [sam.key] }, null, gq(keepLink, gus.pass))).status, 200, 'Gus answers Sam alone');
@@ -671,7 +673,7 @@ try {
   await ivyS.until((e) => e.event === 'live' && e.data.topic === 'after.remove');
   await quiet(400);
   same(samS.lives().length, samBefore, 'Sam\'s module stream gets nothing more, at once');
-  await refusal(await send('live-a', keep.id, { topic: 'a' }, samC), 403, 'this module is not available in that space for you', 'and his next send is refused');
+  await refusal(await send('live-a', keep.id, { topic: 'a' }, samC), 404, 'no such space', 'and his next send is refused');
 
   // A role that loses the module's read: Pat and Ivy (members) stop receiving at once; the owner still does.
   same((await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.live-a.view': false } })).status, 200, 'members lose live-a\'s read');

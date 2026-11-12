@@ -833,7 +833,7 @@ try {
   assert.deepEqual((await expect('owner reads', 200, 'GET', L, { cookie: owner })).json, { mine: [], shared: [], system: [workspace], defaultLayout: null, firstVisit: { layout: 'workspace', opensWith: null }, favorites: [], canShare: true, canSetDefault: true });
   assert.deepEqual((await expect('guest reads', 200, 'GET', `${L}${asGuest}`)).json, { mine: [], shared: [], system: [], defaultLayout: null, firstVisit: { layout: 'workspace', opensWith: null }, favorites: [], canShare: false, canSetDefault: false });
   await expect('nobody signed in', 401, 'GET', L);
-  await expect('a member of another space', 403, 'GET', L, { cookie: out });
+  await expect('a member of another space', 404, 'GET', L, { cookie: out });
   await expect('no such space', 404, 'GET', '/api/spaces/nosuchsp/layouts', { cookie: pat });
   await expect('a guest of this space reading another', 403, 'GET', `/api/spaces/${(await call('GET', '/api/spaces', { cookie: owner })).json.spaces.find((s) => s.isLobby).id}/layouts${asGuest}`);
   n += 1;
@@ -846,7 +846,7 @@ try {
   assert.equal(refusal.json.error, "Only owners, the admin and this space's moderators can change shared layouts.");
   await expect('guest saves', 403, 'POST', `${L}${asGuest}`, { body: good() });
   await expect('guest saves shared', 403, 'POST', `${L}${asGuest}`, { body: { ...good(), shared: true } });
-  await expect('outsider saves', 403, 'POST', L, { cookie: out, body: good() });
+  await expect('outsider saves', 404, 'POST', L, { cookie: out, body: good() });
   await expect('bad shape', 400, 'POST', L, { cookie: pat, body: { ...good(), modules: [{ id: 'chat', mode: 'window' }] } });
   // A blank layout (modules []) is saved like any layout: name required, the unique-name rule, a guest cannot create one.
   const blank = await expect('member saves a blank layout', 201, 'POST', L, { cookie: pat, body: { name: 'Blank one', modules: [], arrange: 'window' } });
@@ -954,11 +954,11 @@ try {
   assert.deepEqual((await call('GET', L, { cookie: owner })).json.favorites, [], 'the owner has none');
   assert.deepEqual((await call('GET', `${L}${asGuest}`)).json.favorites, [], 'a guest reads []');
 
-  // Refusals: a guest 403, someone not in the space 403, nobody signed in 401; a layout this person cannot see 404.
+  // Refusals: a guest 403, someone not in the space 404, nobody signed in 401; a layout this person cannot see 404.
   const guestFav = await expect('guest favorites', 403, 'PUT', `${fav(sharedIds[0])}${asGuest}`);
   assert.equal(guestFav.json.error, 'Guests can load shared layouts but not keep favorites.');
   await expect('guest unfavorites', 403, 'DELETE', `${fav(sharedIds[0])}${asGuest}`);
-  await expect('outsider favorites', 403, 'PUT', fav(sharedIds[0]), { cookie: out });
+  await expect('outsider favorites', 404, 'PUT', fav(sharedIds[0]), { cookie: out });
   await expect('nobody signed in', 401, 'PUT', fav(sharedIds[0]));
   const notThere = await expect("another person's own", 404, 'PUT', fav(samMine.id), { cookie: pat });
   assert.equal(notThere.json.error, 'There is no such layout here.');
@@ -1153,7 +1153,7 @@ try {
   await sysBad('a field it does not take', 400, { modules: [] }, 'A system layout does not take "modules".');
   await expect('the Workspace tab off', 400, 'PATCH', `${SYS}/workspace`, { cookie: pat3, body: { tab: false } }).then((x) => assert.equal(x.json.error, 'The Workspace is always shown.'));
   await expect('guest changes a system layout', 403, 'PATCH', `${SYS}/calendar${asGuest}`, { body: { name: 'Guest' } });
-  await expect('outsider changes a system layout', 403, 'PATCH', `${SYS}/calendar`, { cookie: out, body: { name: 'x' } });
+  await expect('outsider changes a system layout', 404, 'PATCH', `${SYS}/calendar`, { cookie: out, body: { name: 'x' } });
   await expect('nobody signed in', 401, 'PATCH', `${SYS}/calendar`, { body: { name: 'x' } });
   assert.equal((await call('GET', L, { cookie: pat3 })).json.system[1].name, 'Our plans', 'refusals changed nothing');
 
@@ -1210,7 +1210,7 @@ try {
   r = await expect('favorite Workspace', 200, 'PUT', fav('workspace'), { cookie: pat3 });
   assert.equal(r.json.layout.tab, true, 'it always has its tab');
   await expect('guest favorites Calendar', 403, 'PUT', `${fav('calendar')}${asGuest}`);
-  await expect('outsider favorites Calendar', 403, 'PUT', fav('calendar'), { cookie: out });
+  await expect('outsider favorites Calendar', 404, 'PUT', fav('calendar'), { cookie: out });
 
   // More than three saved favorites in a space where the system layouts also have tabs: all accepted.
   const many = (await call('GET', L, { cookie: pat3 })).json;
