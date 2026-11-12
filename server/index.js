@@ -4131,8 +4131,9 @@ function guestAgreementRefusal(versions) {
 app.post('/api/guest-join', (req, res) => {
   const theSpace = store.spaceByGuestToken(req.body?.token);
   if (!theSpace) return res.status(404).json({ error: `that ${word('guest')} link is off or wrong` });
-  const name = cleanText(req.body?.name, 40);
+  const name = agreementsLib.cleanGuestName(req.body?.name);
   if (!name) return res.status(400).json({ error: 'a name is required' });
+  if (agreementsLib.guestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
   const refused = newGuestSessionRefusal(req);
   if (refused) return res.status(429).json({ error: refused });
   const nameClash = guestNameRefusal(name);
@@ -4152,9 +4153,11 @@ app.post('/api/guest-join', (req, res) => {
 
 // A typed name that is an account's (its display name or its login, however it is cased or spaced) is refused: a guest
 // must not pass as a member. The sentence, or null.
+const GUEST_NAME_LONG = `A name can be at most ${agreementsLib.GUEST_NAME_MAX} characters.`;
 function guestNameRefusal(name) {
-  const mine = guestDoorLib.nameKey(name);
-  if (store.users.some((u) => guestDoorLib.nameKey(u.displayName) === mine || guestDoorLib.nameKey(u.login) === mine)) {
+  if (guestDoorLib.mixesScripts(name)) return 'A name cannot mix alphabets. Type it in one.';
+  const mine = guestDoorLib.nameSkeleton(name);
+  if (store.users.some((u) => guestDoorLib.nameSkeleton(u.displayName) === mine || guestDoorLib.nameSkeleton(u.login) === mine)) {
     return `That name belongs to ${word('member', { a: true })} here. Type another.`;
   }
   return null;
@@ -4176,6 +4179,7 @@ app.post('/api/guest-door', (req, res) => {
   if (refused) return res.status(429).json({ error: refused });
   const name = guestAgreementsName(req.body?.name);
   if (!name) return res.status(400).json({ error: 'A name is required.' });
+  if (agreementsLib.guestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
   const clash = guestNameRefusal(name);
   if (clash) return res.status(400).json({ error: clash });
   const disagree = guestAgreementRefusal(req.body?.versions);

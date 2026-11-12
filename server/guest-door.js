@@ -99,4 +99,16 @@ class NewSessionLimiter {
 // A typed name as compared with the members': case, accents and spacing do not make it another name.
 const nameKey = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 
-module.exports = { COOKIE, ACTIVE_MS, WINDOW_MS, GUEST_ID_RE, readLimits, issue, read, GuestRegister, NewSessionLimiter, nameKey };
+// Letters that pass for Latin ones, from Cyrillic, Greek and full-width forms, folded to the Latin letter.
+const LOOKALIKES = Object.fromEntries([
+  ...'а:a в:b е:e к:k м:m н:h о:o р:p с:c т:t у:y х:x і:i ј:j ѕ:s ү:y һ:h ԁ:d ԛ:q ԝ:w ο:o ν:v α:a ρ:p ι:i κ:k τ:t υ:u χ:x ϲ:c'.split(' ').map((p) => [...p]).map((a) => [a[0], a[2]]),
+].concat([['ı', 'i'], ['ɑ', 'a']]));
+// A name compared with another for lookalikes: NFKC (full-width becomes plain), lowercase, lookalikes folded.
+const nameSkeleton = (value) => [...nameKey(value)].map((c) => LOOKALIKES[c] || c).join('');
+// True when a name has Latin letters and also letters of a script that has Latin lookalikes (a single script is fine).
+const mixesScripts = (value) => {
+  const s = String(value || '').normalize('NFKC');
+  return /\p{Script=Latin}/u.test(s) && /[\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}\p{Script=Cherokee}\p{Script=Coptic}\p{Script=Georgian}\p{Script=Lisu}]/u.test(s);
+};
+
+module.exports = { nameSkeleton, mixesScripts, COOKIE, ACTIVE_MS, WINDOW_MS, GUEST_ID_RE, readLimits, issue, read, GuestRegister, NewSessionLimiter, nameKey };

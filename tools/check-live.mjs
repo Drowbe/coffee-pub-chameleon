@@ -866,7 +866,9 @@ if (!failed) {
     same([dead.status, dead.json.error], [401, 'that guest link is off or wrong'], 'a token that names no space says so');
 
     // --- the length cap (as for everyone: cut at 1000 characters; the request body is at most 64 KB) ---------------------
-    const longPass = (await call('POST', '/api/guest-join', { body: { token: tripToken, name: 'V'.repeat(80) } })).json.guest.pass;
+    const longName = await call('POST', '/api/guest-join', { body: { token: tripToken, name: 'V'.repeat(80) } });
+    assert.equal(longName.status, 400, 'an over-long guest name is refused, not cut');
+    const longPass = (await call('POST', '/api/guest-join', { body: { token: tripToken, name: 'V'.repeat(40) } })).json.guest.pass;
     const long = await call('POST', `${T}?${g(tripToken)}&pass=${encodeURIComponent(longPass)}`, { ip: '10.0.0.5', body: { text: 'a'.repeat(5000) } });
     same([long.status, long.json.message.text.length, long.json.message.who.length], [200, 1000, 40], "a guest's long message is cut to 1000 characters, the name on their pass to 40");
     same((await call('POST', `${T}?${g(tripToken)}&${await pass(tripToken)}`, { ip: '10.0.0.5', body: { text: 'a'.repeat(70 * 1024) } })).status, 413, 'a body over 64 KB is refused');
