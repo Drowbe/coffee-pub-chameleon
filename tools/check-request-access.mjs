@@ -380,6 +380,7 @@ try {
       const mine = (await note(tokens[k])).filter((x) => /Secret Trip/.test(x.title));
       assert.equal(mine.length, 1, k);
       assert.match(mine[0].body, /Otto Outside asks to enter Secret Trip/);
+      assert.equal(mine[0].href, `/?setup=${ids.req}#members`, `${k}: the notice opens that space's Set up, Members`);
     }
     for (const k of ['member', 'mod', 'out1']) assert.equal((await note(tokens[k])).some((x) => /Secret Trip/.test(x.title)), false, `${k} is not told`);
   });
@@ -481,6 +482,7 @@ try {
     const bell = (await note(tokens.owner)).find((x) => x.body.includes(hostile));
     assert.ok(bell, 'the bell carries the typed name');
     assert.equal(bell.body, `${hostile} (guest) asks to enter Secret Trip.`);
+    assert.equal(bell.href, `/?setup=${ids.req}#members`, 'a typed name cannot change the address');
     // The bell draws the title and body through escapeHtml (read as code).
     const brand = fs.readFileSync(path.join(ROOT, 'public', 'brand.js'), 'utf8');
     assert.match(brand, /<strong>\$\{escapeHtml\(n\.title \|\| ''\)\}<\/strong>\$\{n\.body \? `<span class="bell-notice-body">\$\{escapeHtml\(n\.body\)\}<\/span>`/);
