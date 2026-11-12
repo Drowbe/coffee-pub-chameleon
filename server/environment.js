@@ -42,6 +42,7 @@ const { fetchCalendar } = require('./link-preview');
 const auth = require('./auth');
 const { migrateEnvironment } = require('./migrate-names');
 const { GuestAgreements } = require('./agreements');
+const accessRequestsLib = require('./access-requests');
 const guestDoorLib = require('./guest-door');
 
 // The same read-access guard index.js's route handlers use (its own moduleCan), needed here only for
@@ -111,6 +112,9 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   // when it is there and made only when a guest first agrees.
   const guestAgreements = new GuestAgreements(dataDir, { log });
   // Who is here as a guest, and how many new guest sessions each address has opened lately (server/guest-door.js).
+  const accessLimits = accessRequestsLib.readLimits();
+  const accessRequests = new accessRequestsLib.AccessRequests(dataDir, { log, limits: accessLimits });
+  const accessAddresses = new guestDoorLib.NewSessionLimiter(accessLimits.perAddress, 24 * 3600000);
   const guestRegister = new guestDoorLib.GuestRegister();
   const guestLimits = guestDoorLib.readLimits();
   const newGuestSessions = new guestDoorLib.NewSessionLimiter(guestLimits.perAddress);
@@ -287,7 +291,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
     slug, dataDir,
     store, modules, moduleData, moduleHolds, moduleHooks, chatHistory, attention, facts, tags, moduleLinks, moduleBus, moduleSettings, ai, moduleUploads, vault,
     geocodeCache, regionCutJobs, moduleLimits, limiter, live, liveEvents, moduleLive, invites, inviteEvents, themeEvents, moduleEvents, chatPictures, chatPosts, chatPreviewsAsked, iconSvgs,
-    moduleActivity, noteActivity, saveActivity, externalCalendars, guestAgreements, guestRegister, guestLimits, newGuestSessions,
+    moduleActivity, noteActivity, saveActivity, externalCalendars, guestAgreements, accessRequests, accessAddresses, guestRegister, guestLimits, newGuestSessions,
   };
 }
 

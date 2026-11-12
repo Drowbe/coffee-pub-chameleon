@@ -16,7 +16,8 @@
 //   ai.json    key (sealed with the same key): emptied, so the AI service has to be given its key again.
 //   files      everything not on FILE_RULES: among them secrets.key (the key a single install sealed with), pre-names/
 //              (copies of the data from before the Names migration, which hold the same secrets), agreements.json
-//              (guests' agreements: the host's backup carries them, never an owner's copy), chat-private.json and
+//              (guests' agreements: the host's backup carries them, never an owner's copy), access.json (requests to enter
+//              a space, by people and guests, and a guest's approvals: the same), chat-private.json and
 //              ai-threads.moved.json (other people's private chat), each person's own module data, held clears and
 //              uploads (modules/<id>/data/person-<key>.json, modules/<id>/trash/person-<key>.json,
 //              modules/<id>/uploads/person-<key>/...: private to that person), a library module's share links
@@ -43,7 +44,7 @@ const USER_LEFT_OUT = ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 
 const USER_SPACE_FIELDS = ['images', 'useDefaultImages', 'permissions', 'joined'];
 const USER_SPACE_LEFT_OUT = ['calendarFeed'];
 // A space (Store#sanitizeSpace).
-const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'entry', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
+const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'entry', 'requestAccess', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
 const SPACE_LEFT_OUT = ['guestToken'];
 // An aside (Store#sanitizeAside).
 const ASIDE_FIELDS = ['id', 'members', 'origin', 'private', 'createdAt'];
@@ -136,6 +137,7 @@ const FILE_LEFT_OUT = [
   new RegExp(`^${ENVIRONMENT_COPY_DIR}/`),
   /^chat-private\.json$/,
   /^agreements(\.unreadable-\d+)?\.json$/, // guests' agreements (server/agreements.js): the host's backup only
+  /^access(\.unreadable-\d+)?\.json$/, // access requests and the grants a guest holds (server/access-requests.js): the host's backup only
   /^ai-threads(\.moved)?\.json$/,
   (name) => name === LEGACY_ENVIRONMENT_RECORD, // the older name of app.json: only app.json speaks for the environment
   /^tmp\//,
@@ -184,7 +186,7 @@ function exportEntries(files, appData, { declared } = {}) {
 // owner's copy, which never carries agreements: any `agreed` on a person and any agreements.json is dropped, so nobody
 // is let in on an agreement a zip says they made.
 function restoreEntries(files, { backup = false } = {}) {
-  const kept = backup ? files : files.filter(([name]) => !/^agreements(\.unreadable-\d+)?\.json$/.test(path.posix.normalize(name)));
+  const kept = backup ? files : files.filter(([name]) => !/^(agreements|access)(\.unreadable-\d+)?\.json$/.test(path.posix.normalize(name)));
   return kept.map(([name, data]) => {
     const where = path.posix.normalize(name);
     if (where !== APP_FILE && where !== LEGACY_ENVIRONMENT_RECORD) return [name, data];

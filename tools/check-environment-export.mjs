@@ -74,7 +74,7 @@ function seededApp(secrets = strong) {
       { id: 'lobby', name: 'Lobby', members: ['ownerkey'], createdAt: '2026-01-01T00:00:00.000Z' },
       {
         id: 'trip01', name: 'Trip', description: 'A trip', members: ['ownerkey'], createdAt: '2026-01-01T00:00:00.000Z', profile: 'characters',
-        link: 'https://example.com/', linkIcon: 'link', guestToken: token(20), allowGuests: true, entry: 'accounts', opensWith: ['todo'], defaultLayout: 'lay01',
+        link: 'https://example.com/', linkIcon: 'link', guestToken: token(20), allowGuests: true, entry: 'accounts', requestAccess: true, opensWith: ['todo'], defaultLayout: 'lay01',
         aiOff: true, aiSees: { chat: true }, publishCalendar: false, guestsSeeHidden: true, phases: { main: { start: '2026-02-01', end: '2026-02-05' } },
         budget: { amount: 1200, currency: 'EUR' },
       },
@@ -228,6 +228,10 @@ test("a restore's files carry no session or stream key; every other file is as i
   // An owner's copy (no `backup`) loses what it says people agreed to, and any agreements.json.
   const copy = ex.restoreEntries([['app.json', app], ['agreements.json', other], ['./agreements.json', other], ['chat.json', other]]);
   assert.deepEqual(copy.map(([n]) => n), ['app.json', 'chat.json']);
+  // Likewise access.json (requests to enter and a guest's approvals): the host's backup keeps it, an owner's copy never carries it.
+  assert.deepEqual(ex.restoreEntries([['app.json', app], ['access.json', other], ['./access.json', other]]).map(([n]) => n), ['app.json']);
+  assert.deepEqual(ex.restoreEntries([['app.json', app], ['access.json', other]], { backup: true }).map(([n]) => n), ['app.json', 'access.json']);
+  assert.equal(ex.fileAllowed('access.json'), false, 'never in an owner\'s copy');
   assert.ok(JSON.parse(copy[0][1].toString('utf8')).users.every((u) => !('agreed' in u)));
   assert.equal(ex.restoreEntries([['app.json', Buffer.from('not json')]])[0][1].toString(), 'not json');
 });
