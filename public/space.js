@@ -4739,7 +4739,8 @@ function messageEl(entry, own) {
   entry.chat = true;
   if (entry.visibility !== 'private') entry.visibility = 'public';
   let body;
-  let name = entry.who;
+  // A guest's messages all share the sender `guest` (server): the typed name is shown, marked as a guest, as text.
+  let name = entry.by === 'guest' ? `${entry.who} (${word('guest')})` : entry.who;
   let look = null;
   if (entry.picture) {
     body = document.createElement('div');

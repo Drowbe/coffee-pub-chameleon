@@ -35,6 +35,8 @@ ok(/if \(doorGuest\) \{[\s\S]{0,900}api\('DELETE', '\/api\/guest-door'\)/.test(s
 ok(!/initDashboard[^\n]*\n/.test(space.split('\n').filter((l) => /if \(!guestToken\) initDashboard/.test(l)).join('\n')), 'space: the member dashboard is not drawn for any guest');
 ok(/versions: Object\.fromEntries\(guestDocs/.test(space) && /api\('GET', '\/api\/agreements'\)/.test(space), 'space: a guest link sends the versions of the texts');
 ok(/textContent = d\.title/.test(space) && !/guest-docs'\)\.innerHTML/.test(space), 'space: the texts are drawn as text');
+ok(/entry\.by === 'guest' \? `\$\{entry\.who\} \(\$\{word\('guest'\)\}\)`/.test(space) && /nameEl\.textContent = name/.test(space), 'space: a guest\'s chat sender is marked as a guest and drawn as text');
+ok(/setup-entry-hint/.test(read('public/space-setup.js')) && /can come in from the sign-in page/.test(read('public/space-setup.js')), 'set up: the hint names guests while the door is on');
 const html = read('public/space.html');
 ok(/id="guest-banner"/.test(html) && /id="guest-banner-leave"/.test(html) && /fa-solid fa-right-from-bracket/.test(html), 'space.html: banner with Leave, solid icon');
 
