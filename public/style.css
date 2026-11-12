@@ -5586,9 +5586,6 @@ body.chat-window {
 }
 .space-choice-ask[hidden], .space-choice-ask [hidden] { display: none; }
 .space-choice-ask-state { font-weight: var(--weight-strong); color: var(--text); }
-@media (max-width: 640px) {
-  .space-choice-ask .btn { min-height: 44px; }
-}
 
 /* A request in the guest landing and in Set up: a row with the person or space, its state and its buttons. */
 .guest-space-ask { align-items: flex-start; flex-wrap: wrap; }
@@ -5596,18 +5593,12 @@ body.chat-window {
 .guest-space-text .hint { margin: 0; }
 .guest-space-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .guest-space-state { font-weight: var(--weight-strong); }
-@media (max-width: 640px) {
-  .guest-space-actions .btn { min-height: 44px; }
-}
 .setup-ask-row { margin-top: 12px; }
 .setup-waiting { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
 .setup-waiting-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--bg-card); }
 .setup-waiting-who { flex: 1 1 10rem; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
 .setup-waiting-who .hint { margin: 0; }
 .setup-waiting-actions { display: flex; gap: 8px; }
-@media (max-width: 640px) {
-  .setup-waiting-actions .btn { min-height: 44px; }
-}
 
 /* The whole card enters the space (GitHub #225): a pointer; the hover fill and the focus outline are the card's (system.css). */
 .space-choice[role='button'] {

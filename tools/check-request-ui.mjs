@@ -60,7 +60,7 @@ ok(!/fa-regular|fa-light|fa-thin|\bfar fa-/.test(askRow + waiting + paint), 'ico
 const OLD = ['ro' + 'om', 'ta' + 'ble', 'sta' + 'ge', 'pa' + 'ne', 'ten' + 'ant', 'it' + 'em'].join('|');
 ok(!new RegExp(`\\b(${OLD})s?\\b`, 'i').test(askRow + waiting + paint.replace(/\.space-choice-[a-z-]+/g, '')), 'no old names in the new words');
 const css = read('public/style.css');
-for (const sel of ['.space-choice-ask .btn', '.guest-space-actions .btn', '.setup-waiting-actions .btn']) ok(css.includes(`${sel} { min-height: 44px; }`), `phone: ${sel} is 44px tall`);
+for (const sel of ['.space-choice-ask .btn', '.guest-space-actions .btn', '.setup-waiting-actions .btn']) ok(!css.includes(`${sel} {`), `phone: ${sel} gets its size from the shared button rules (--btn-h; check-phone-targets measures it), not its own min-height`);
 ok(!/#[0-9a-fA-F]{3,8}\b/.test(css.slice(css.indexOf('.space-choice-ask {'), css.indexOf('/* The whole card enters the space'))), 'styles: theme tokens only');
 void all;
 
