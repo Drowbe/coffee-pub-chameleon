@@ -650,18 +650,30 @@ function cleanLibrary(raw, scope, permissions) {
 }
 
 // A module's `live` (documentation/plans/plan-module-live.md): short live messages between the people using it in a
-// space (server/module-live.js). `true`, or `{ "publish": "<permission>" }` naming one of the module's own permissions
-// that sending needs (without it, seeing the module is enough). It needs the space scope. Answers { publish } (null for
-// none), or null when the module has no live messages. No approval: the messages never leave the module.
+// space (server/module-live.js). `true`, or `{ "publish": "<permission>", "bytes": n, "perSecond": n }`, every key
+// optional: `publish` names one of the module's own permissions that sending needs (without it, seeing the module is
+// enough); `bytes` (1 to 65536) is the most a message's data may be and `perSecond` (1 to 200) the messages a second for one
+// person in this module, each kept to the server's maximum when it sends (server/module-live.js effectiveLiveLimits). It
+// needs the space scope. Answers { publish, bytes, perSecond } (null for none), or null when the module has no live messages.
+// No approval: the messages never leave the module.
+const LIVE_KEYS = ['publish', 'bytes', 'perSecond'];
+const LIVE_SHAPE = 'module.json: live must be true, or { "publish": "<permission>", "bytes": <1 to 65536>, "perSecond": <1 to 200> }';
+function cleanLiveNumber(raw, name, max) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > max) throw new ModuleError(`module.json: live.${name} must be a whole number from 1 to ${max}`);
+  return raw;
+}
 function cleanLive(raw, scope, permissions) {
   if (raw === undefined || raw === null || raw === false) return null;
-  if (raw !== true && (typeof raw !== 'object' || Array.isArray(raw))) throw new ModuleError('module.json: live must be true, or { "publish": "<permission>" }');
+  if (raw !== true && (typeof raw !== 'object' || Array.isArray(raw))) throw new ModuleError(LIVE_SHAPE);
+  if (raw !== true && Object.keys(raw).some((k) => !LIVE_KEYS.includes(k))) throw new ModuleError(LIVE_SHAPE);
   if (!scope.includes('space')) throw new ModuleError('module.json: live needs the "space" scope');
-  const publish = raw === true || raw.publish === undefined || raw.publish === null ? null : raw.publish;
+  const own = (k) => (raw !== true && Object.prototype.hasOwnProperty.call(raw, k) ? raw[k] : undefined);
+  const publish = own('publish') === undefined || own('publish') === null ? null : own('publish');
   if (publish !== null && (typeof publish !== 'string' || !permissions.some((p) => p && p.key === publish))) {
     throw new ModuleError('module.json: live.publish must name one of the module\'s own permissions');
   }
-  return { publish };
+  return { publish, bytes: cleanLiveNumber(own('bytes'), 'bytes', 65536), perSecond: cleanLiveNumber(own('perSecond'), 'perSecond', 200) };
 }
 
 // A module's own `regionSource`: cutting a region out of a larger PMTiles file into one of its own file folders (see
@@ -1608,4 +1620,4 @@ class ModuleManager {
   }
 }
 
-module.exports = { ModuleManager, ModuleError, fillManifest, manifestTexts, cleanManifest, cleanCommands, TINTS, cleanStorage, oldNameIn, OUTDATED, permissionDefaults, pendingWidensNothing, PERMISSION_KEY_RE, readZip, compareVersions, LIMITS };
+module.exports = { ModuleManager, ModuleError, cleanLive, fillManifest, manifestTexts, cleanManifest, cleanCommands, TINTS, cleanStorage, oldNameIn, OUTDATED, permissionDefaults, pendingWidensNothing, PERMISSION_KEY_RE, readZip, compareVersions, LIMITS };

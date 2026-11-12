@@ -46,6 +46,8 @@
  *   3. Two environments (BASE_DOMAIN): a message in one never reaches a reader of the same module in the other, and the
  *      host console resetting an owner's two-step sign-in ends their stream in that environment at once. A guest's pass
  *      from one environment is refused in the other.
+ *   2b. A module's own live.bytes and live.perSecond (kept to MODULE_LIVE_MAX_BYTES, _MAX_PER_SECOND): the join answer, the 413 naming the
+ *      module's number, a 2 KB message to one person, the module's own rate, the size check before the rate token, a module asking 65536.
  * What can't be checked here: the feel of live pointers between two real browsers on a real network, and load beyond a
  * handful of people.
  */
@@ -60,7 +62,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { ModuleLive, liveLimits, readSend, dataBytes } = require('../server/module-live.js');
+const { ModuleLive, liveLimits, effectiveLiveLimits, readSend, dataBytes } = require('../server/module-live.js');
+const { cleanLive } = require('../server/modules.js');
 const { buildModule } = require('../server/module-build.js');
 const { totpCode } = require('../server/auth.js');
 let n = 0;
@@ -150,8 +153,8 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 // --- a send's body, and the limits -----------------------------------------------------------------------------------
 {
   const L = liveLimits({});
-  same(L, { bytes: 256, perSecond: 20, perPerson: 40, perGuestLink: 60, to: 20 }, 'the defaults');
-  same(liveLimits({ MODULE_LIVE_BYTES: '64', MODULE_LIVE_PER_SECOND: '0', MODULE_LIVE_PER_PERSON: '2.5', MODULE_LIVE_PER_GUEST_LINK: 'x', MODULE_LIVE_TO: '3' }), { bytes: 64, perSecond: 20, perPerson: 40, perGuestLink: 60, to: 3 }, 'set from the environment; anything but a whole number above 0 is the default');
+  same(L, { bytes: 256, perSecond: 20, perPerson: 40, perGuestLink: 60, to: 20, maxBytes: 4096, maxPerSecond: 40 }, 'the defaults');
+  same(liveLimits({ MODULE_LIVE_BYTES: '64', MODULE_LIVE_PER_SECOND: '0', MODULE_LIVE_PER_PERSON: '2.5', MODULE_LIVE_PER_GUEST_LINK: 'x', MODULE_LIVE_TO: '3' }), { bytes: 64, perSecond: 20, perPerson: 40, perGuestLink: 60, to: 3, maxBytes: 4096, maxPerSecond: 40 }, 'set from the environment; anything but a whole number above 0 is the default');
   same(readSend({ topic: 'pointer', data: { x: 1 } }, L), { topic: 'pointer', data: { x: 1 }, to: null }, 'topic and data');
   same(readSend({ topic: 'nudge' }, L), { topic: 'nudge', data: null, to: null }, 'no data is null');
   same(readSend({ topic: 'a', to: ['abcd', 'abcd', 'guest-Ab_9'] }, L).to, ['abcd', 'guest-Ab_9'], 'to: keys and guest ids, once each');
@@ -224,6 +227,39 @@ const CALL_WORDS = /livekit|callService|HAS_CALL_SERVICE|publishData|\/api\/call
   ok(/openModuleLive\(/.test(index.slice(streamFrom, streamTo)), 'and opens the live register from inside it');
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   ok(pkg.scripts.check.includes('node tools/check-module-live.mjs'), 'npm run check runs this check');
+
+  // A module's own numbers (live.bytes, live.perSecond): read from module.json, then kept to the server's maximum.
+  {
+    const perms = [{ key: 'point' }];
+    const read = (live, scope = ['space']) => cleanLive(live, scope, perms);
+    same(read(true), { publish: null, bytes: null, perSecond: null }, 'live: true has no numbers of its own');
+    same(read({ publish: 'point' }), { publish: 'point', bytes: null, perSecond: null }, '{ publish } has no numbers of its own');
+    same(read({}), { publish: null, bytes: null, perSecond: null }, '{} is the same as true');
+    same(read({ bytes: 2048, perSecond: 5 }), { publish: null, bytes: 2048, perSecond: 5 }, 'bytes and perSecond read');
+    same(read({ bytes: 65536, perSecond: 200 }), { publish: null, bytes: 65536, perSecond: 200 }, 'the top of each range reads (kept to the server maximum when it sends)');
+    same(read({ bytes: 1, perSecond: 1 }), { publish: null, bytes: 1, perSecond: 1 }, 'the bottom of each range reads');
+    same(read(undefined), null, 'no live is null');
+    const refused = (live, said) => { let got = null; try { read(live); } catch (e) { got = e.message; } same(got, said, `refused: ${JSON.stringify(live)}`); };
+    for (const v of [0, -1, 1.5, 65537, 100000, '2048', [2048], NaN, Infinity, true, {}]) refused({ bytes: v }, 'module.json: live.bytes must be a whole number from 1 to 65536');
+    for (const v of [0, -1, 2.5, 201, 1e9, '20', [20], NaN, false, {}]) refused({ perSecond: v }, 'module.json: live.perSecond must be a whole number from 1 to 200');
+    const SHAPE = 'module.json: live must be true, or { "publish": "<permission>", "bytes": <1 to 65536>, "perSecond": <1 to 200> }';
+    refused({ bytes: 100, extra: 1 }, SHAPE);
+    refused(JSON.parse('{"bytes":100,"__proto__":{"x":1}}'), SHAPE);
+    refused('yes', SHAPE);
+    refused([], SHAPE);
+  }
+  {
+    const E = liveLimits({});
+    const eff = (live, env = E) => { const l = effectiveLiveLimits(live, env); return [l.bytes, l.perSecond, l.perPerson, l.perGuestLink, l.to]; };
+    same(eff(null), [256, 20, 40, 60, 20], 'no live: the defaults');
+    same(eff({ publish: null, bytes: null, perSecond: null }), [256, 20, 40, 60, 20], 'no numbers: the defaults, unchanged');
+    same(eff({ bytes: 2048, perSecond: 5 }), [2048, 5, 40, 60, 20], 'asked, under the maximum: as asked (the caps and `to` stay the server\'s)');
+    same(eff({ bytes: 100, perSecond: 1 }), [100, 1, 40, 60, 20], 'a module may ask for less than the default');
+    same(eff({ bytes: 65536, perSecond: 200 }), [4096, 40, 40, 60, 20], 'asked above the maximum: the maximum (4096, 40)');
+    const small = liveLimits({ MODULE_LIVE_MAX_BYTES: '512', MODULE_LIVE_MAX_PER_SECOND: '10', MODULE_LIVE_BYTES: '64' });
+    same(eff({ bytes: 2048, perSecond: 200 }, small), [512, 10, 40, 60, 20], 'a lower maximum from the environment holds');
+    same(eff({ bytes: null, perSecond: null }, small), [64, 20, 40, 60, 20], 'no numbers: MODULE_LIVE_BYTES and MODULE_LIVE_PER_SECOND, even past the maximum');
+  }
 }
 
 // --- the servers ---------------------------------------------------------------------------------------------------------
@@ -252,13 +288,18 @@ const ZIPS = {
   'live-off': writeModule('live-off', {}),
   // Read only by moderators (and owners): `point` guards reading.
   'live-m': writeModule('live-m', { live: true, access: { read: 'point' } }),
+  // Their own numbers: 2048 bytes and 5 a second; and a module asking for the most the manifest allows.
+  'live-big': writeModule('live-big', { live: { bytes: 2048, perSecond: 5 } }),
+  'live-huge': writeModule('live-huge', { live: { bytes: 65536, perSecond: 200 } }),
 };
 // A module whose 1.0.0 has no `live` and whose 1.1.0 has: rolled back, it has none.
 const ROLL = [writeModule('live-r', {}), writeModule('live-r', { version: '1.1.0', live: true })];
 const BAD_ZIPS = [
   [writeModule('live-env', { scope: ['person'], live: true }), 'module.json: live needs the "space" scope'],
   [writeModule('live-bad', { live: { publish: 'nosuch' } }), 'module.json: live.publish must name one of the module\'s own permissions'],
-  [writeModule('live-odd', { live: 'yes' }), 'module.json: live must be true, or { "publish": "<permission>" }'],
+  [writeModule('live-odd', { live: 'yes' }), 'module.json: live must be true, or { "publish": "<permission>", "bytes": <1 to 65536>, "perSecond": <1 to 200> }'],
+  [writeModule('live-over', { live: { bytes: 100000 } }), 'module.json: live.bytes must be a whole number from 1 to 65536'],
+  [writeModule('live-frac', { live: { perSecond: 2.5 } }), 'module.json: live.perSecond must be a whole number from 1 to 200'],
 ];
 
 // The stand-in for the call service's API: answers nobody and counts every request.
@@ -908,6 +949,83 @@ try {
     gs[0].close();
     await quiet(300);
     same((await openStream(MS(sp.id, g))).status, 200, 'one closed, one more opens');
+    for (const s of open) s.close();
+  }
+  await stopServer();
+
+  // === 2b. a module's own limits, over the real HTTP path (defaults: 256 and 20; the maximum 4096 and 40) =================
+  open.length = 0;
+  await startServer({});
+  {
+    const own = await login('admin', 'testpass1234');
+    await installModules(own);
+    const mkU = async (l) => (await call('POST', '/api/users', { cookie: own, body: { login: l, displayName: l, role: 'member', password: 'memberpass1234' } })).json.user;
+    const [a, b, c] = [await mkU('ann'), await mkU('ben'), await mkU('cat')];
+    const [aC, bC, cC] = [await login('ann', 'memberpass1234'), await login('ben', 'memberpass1234'), await login('cat', 'memberpass1234')];
+    const sp = (await call('POST', '/api/spaces', { cookie: own, body: { name: 'Hall', members: [a.key, b.key, c.key] } })).json.space;
+    await call('PATCH', `/api/spaces/${sp.id}`, { cookie: own, body: { members: [a.key, b.key, c.key] } });
+    await quiet(500);
+    const aS = await openStream(MS(sp.id), { cookie: aC });
+    const bS = await openStream(MS(sp.id), { cookie: bC });
+    const cS = await openStream(MS(sp.id), { cookie: cC });
+    const ids = [await ready(aS), await ready(bS), await ready(cS)];
+    const joinAs = (moduleId, cookie, stream) => call('POST', `/api/modules/${moduleId}/live/join?space=${sp.id}`, { cookie, body: { stream } });
+    const limitsOf = async (moduleId) => { const r = await joinAs(moduleId, aC, ids[0]); same(r.status, 200, `joins ${moduleId}`); await quiet(1100); return r.json.limits; };
+    same(await limitsOf('live-a'), { bytes: 256, perSecond: 20, to: 20 }, 'the join answer for a module with no numbers: 256 and 20, as before');
+    same(await limitsOf('live-big'), { bytes: 2048, perSecond: 5, to: 20 }, 'the join answer carries this module\'s numbers (2048, 5)');
+    same(await limitsOf('live-huge'), { bytes: 4096, perSecond: 40, to: 20 }, 'a module that asked for 65536 and 200 is told 4096 and 40 (the maximums)');
+    await joinAs('live-big', bC, ids[1]);
+    await joinAs('live-big', cC, ids[2]);
+    await joinAs('live-a', bC, ids[1]);
+    await joinAs('live-huge', bC, ids[1]);
+    await quiet(1100);
+    const data = (bytes) => 'x'.repeat(bytes - 2); // JSON adds the two quotes
+    same(dataBytes(data(2000)), 2000, 'the helper sizes data as the server does');
+
+    // No field: 256 and 20 exactly as before.
+    same((await send('live-a', sp.id, { topic: 'a', data: data(256) }, aC)).status, 200, 'live-a: 256 bytes taken');
+    const r257 = await send('live-a', sp.id, { topic: 'a', data: data(257) }, aC);
+    same([r257.status, r257.json.error], [413, 'a live message\'s data can be at most 256 bytes'], 'live-a: 257 bytes is 413, naming 256');
+    await quiet(1100);
+
+    // live-big: 2048.
+    same((await send('live-big', sp.id, { topic: 'a', data: data(2000) }, aC)).status, 200, 'live-big: a 2000-byte message passes');
+    const r2100 = await send('live-big', sp.id, { topic: 'a', data: data(2100) }, aC);
+    same([r2100.status, r2100.json.error], [413, 'a live message\'s data can be at most 2048 bytes'], 'live-big: a 2100-byte message is 413, naming 2048');
+    await quiet(1100);
+
+    // A 2 KB message to one person reaches only that person.
+    const before = [bS.lives('live-big').length, cS.lives('live-big').length];
+    same((await send('live-big', sp.id, { topic: 'direct', data: data(2000), to: [b.key] }, aC)).status, 200, 'live-big: 2 KB to one person is taken');
+    const got = await bS.until((e) => e.event === 'live' && e.data.topic === 'direct');
+    same(dataBytes(got.data.data), 2000, 'Ben gets all 2000 bytes');
+    await quiet(300);
+    same([bS.lives('live-big').length - before[0], cS.lives('live-big').length - before[1]], [1, 0], 'and Cat, in the same space and module, gets nothing');
+    await quiet(1100);
+
+    // The module's own rate: 5 a second in live-big (the default 20 is not used), apart from live-a's bucket.
+    const burst = await Promise.all(Array.from({ length: 9 }, () => send('live-big', sp.id, { topic: 'r', data: 1 }, aC)));
+    same(burst.filter((r) => r.status === 200).length, 5, 'live-big: five at once (its perSecond), the rest 429');
+    ok(burst.filter((r) => r.status === 429).every((r) => r.json.error === 'too many live messages; wait a moment'), 'the rest say so in a plain sentence');
+    // The size check comes before a token is taken: oversize is 413 even with no tokens, and takes none.
+    const over = await send('live-big', sp.id, { topic: 'r', data: data(2100) }, aC);
+    same(over.status, 413, 'with the bucket empty an oversize message is 413, not 429');
+    await quiet(1100);
+    const fill = await Promise.all(Array.from({ length: 5 }, () => send('live-big', sp.id, { topic: 'r', data: 1 }, aC)));
+    same(fill.filter((r) => r.status === 200).length, 5, 'and the oversize ones took no token: five more at once after the refill');
+    await quiet(1100);
+    const other = await Promise.all(Array.from({ length: 8 }, () => send('live-a', sp.id, { topic: 'r', data: 1 }, aC)));
+    same(other.filter((r) => r.status === 200).length, 8, 'live-a is not held to live-big\'s rate (its own bucket)');
+    await quiet(1100);
+
+    // A module that asked for 65536 gets exactly MODULE_LIVE_MAX_BYTES (4096): bytes counted as JSON.
+    const ok4096 = await send('live-huge', sp.id, { topic: 'h', data: data(4096) }, aC);
+    same(ok4096.status, 200, 'live-huge: a 4096-byte message is 200');
+    await bS.until((e) => e.event === 'live' && e.data.module === 'live-huge');
+    const r4097 = await send('live-huge', sp.id, { topic: 'h', data: data(4097) }, aC);
+    same([r4097.status, r4097.json.error], [413, 'a live message\'s data can be at most 4096 bytes'], 'live-huge: 4097 bytes is 413, naming 4096');
+    same((await send('live-huge', sp.id, { topic: 'h', data: data(65536) }, aC)).status, 413, 'and 65536 bytes is 413 too (the JSON body limit of 64 KB is not what stops it)');
+    ok(!/server error|failed/i.test(out), 'the server logged no failure');
     for (const s of open) s.close();
   }
   await stopServer();

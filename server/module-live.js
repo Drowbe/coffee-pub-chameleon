@@ -40,7 +40,7 @@ function wholeAbove0(value, fallback) {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-// The limits, from MODULE_LIVE_BYTES, MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON, MODULE_LIVE_PER_GUEST_LINK and
+// The limits, from MODULE_LIVE_MAX_BYTES, MODULE_LIVE_MAX_PER_SECOND, MODULE_LIVE_BYTES, MODULE_LIVE_PER_SECOND, MODULE_LIVE_PER_PERSON, MODULE_LIVE_PER_GUEST_LINK and
 // MODULE_LIVE_TO (as process.env has them; index.js hands them in).
 function liveLimits(env = {}) {
   return Object.freeze({
@@ -49,6 +49,21 @@ function liveLimits(env = {}) {
     perPerson: wholeAbove0(env.MODULE_LIVE_PER_PERSON, 40),
     perGuestLink: wholeAbove0(env.MODULE_LIVE_PER_GUEST_LINK, 60),
     to: wholeAbove0(env.MODULE_LIVE_TO, 20),
+    maxBytes: wholeAbove0(env.MODULE_LIVE_MAX_BYTES, 4096),
+    maxPerSecond: wholeAbove0(env.MODULE_LIVE_MAX_PER_SECOND, 40),
+  });
+}
+
+// The limits one module sends under: the one place its numbers are worked out (the send route, the join answer and the rate
+// bucket all read this, so none can drift). A module that asks for a number gets it, kept to the server's maximum
+// (MODULE_LIVE_MAX_BYTES, MODULE_LIVE_MAX_PER_SECOND); one that doesn't keeps the server's default. The caps across
+// modules (perPerson, perGuestLink) and `to` are the server's, whatever a module asks.
+function effectiveLiveLimits(live, limits) {
+  const asked = (v) => Number.isInteger(v) && v > 0;
+  return Object.freeze({
+    ...limits,
+    bytes: asked(live && live.bytes) ? Math.min(live.bytes, limits.maxBytes) : limits.bytes,
+    perSecond: asked(live && live.perSecond) ? Math.min(live.perSecond, limits.maxPerSecond) : limits.perSecond,
   });
 }
 
@@ -256,4 +271,4 @@ class ModuleLive {
   }
 }
 
-module.exports = { ModuleLive, liveLimits, readSend, dataBytes, TOPIC_RE, PERSON_RE, GRACE_MS };
+module.exports = { ModuleLive, liveLimits, effectiveLiveLimits, readSend, dataBytes, TOPIC_RE, PERSON_RE, GRACE_MS };
