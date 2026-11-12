@@ -18,6 +18,8 @@
  *    checked by both the reference and the live check, one to three updates per document, each accepted one verified after the writer's grid padding.
  * 6. THE MEND (mendForSnapshot) for a state that got past the gate anyway: built directly in the shared document, dropped in one transaction.
  * 7. THE SENDER (from the transport only), THE PAGE-WIDE REFUSAL BUDGET and FLOODS from rotating senders (time, shadow rebuilds, memory).
+ * 7b. THE SYNC GRACE and THE UNKNOWN SENDER: a 'pending' result after a quiet drop (or while a sync is requested) is not counted against anyone;
+ *    an honest 10/s typist beside a hostile 40/s flood of rotating ids is never flagged (and is when the grace is off); no sender = one tight bucket.
  * 8. A DOCUMENT NEAR THE NODE CAP: exact totals, cheap updates, the first update past the cap refused.
  * The gate needs the reader's lexer (opts.lex); every check here passes the one the writer is given (LEX).
  *
@@ -479,7 +481,7 @@ await test('the sender comes from the transport: nothing in the update or in ano
   g.receive(forged, { id: 'alice', toString: () => 'alice' }); // an object is not a sender: one shared bucket, never its fields
   assert.equal(g.refusals.count('alice'), 0); assert.equal(g.refusals.count('unknown'), 1);
   g.receive(forged, ['alice']); assert.equal(g.refusals.count('unknown'), 2);
-  assert.equal(g.receive(forged, undefined).flagged, false); assert.equal(g.stats().senders, 2, 'no sender: nothing counted');
+  assert.equal(g.receive(forged, undefined).flagged, false); assert.equal(g.refusals.count('unknown'), 3, 'no sender counts as the shared unknown sender');
   g.receive(forged, 'x'.repeat(5000)); assert.equal(g.refusals.count('x'.repeat(200)), 1, 'a sender id is cut to 200 characters');
   g.destroy();
 });
@@ -516,6 +518,68 @@ await test('a flood of hostile updates from 500 rotating senders: bounded time, 
     // and it still takes honest updates: the shadow was never poisoned
     assert.equal(g.receive(cheap, 'friend').ok, true, 'an honest update after the flood'); assert.equal(g.stats().reseeds, 1);
     facts.push(`flood (5,000 undecodable, pending and over-cap updates, 500 rotating senders, no budget): ${ms.toFixed(0)} ms, ${st.reseeds} shadow made, ${st.senders} of 500 senders remembered (cap 100), reasons ${[...kinds].map(([k, n]) => `${k} ${n}`).join(' ')}`); g.destroy(); }
+});
+
+await test('sync grace: an honest 10/s typist beside a hostile 40/s flood of rotating ids is never flagged; without the grace it is', () => {
+  const run = (limits) => {
+    let clock = 1000; const live = victim(); const g = G.guard(live, limits, { now: () => clock, lex });
+    const honest = victim(); const ups = []; honest.on('update', (u) => ups.push(u));
+    const bad = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), live);
+    let n = 0, typed = 0, exchanges = 0, flaggedAt = -1, quiet = 0, pending = 0, lastExchange = -1e9, hostile = 0;
+    const exchange = () => { // one state-vector exchange: ask, apply the reply, say done
+      g.syncRequested(); const diff = PM.encodeStateAsUpdate(honest, PM.encodeStateVector(live)); const r = g.receive(diff, 'honest');
+      if (r.ok) { g.syncDone(); exchanges += 1; } return r;
+    };
+    for (let tick = 0; tick < 2400; tick += 1) { // 60 s in 25 ms steps: 40 hostile a second, 10 honest a second
+      clock += 25; hostile += 1; g.receive(bad, `h${hostile}`);
+      if (tick % 4 === 0) {
+        const f = honest.getXmlFragment(FRAG); const para = f.get(0).get(0); para.insert(para.length, 'k'); typed += 1;
+        while (ups.length) { const r = g.receive(ups.shift(), 'honest'); if (r.reason === 'quiet') quiet += 1; if (r.reason === 'pending') pending += 1; }
+      }
+      if (flaggedAt < 0 && g.refusals.flagged('honest')) flaggedAt = clock - 1000;
+      if (pending && clock - lastExchange > 15000) { lastExchange = clock; pending = 0; exchange(); } // the page asks again every 15 s while it is behind
+    }
+    clock += 2000; const r = exchange(); // the flood stops: ONE exchange brings the live copy level
+    const level = textOfDoc(live) === textOfDoc(honest); g.destroy();
+    return { flaggedAt, exchanges, quiet, level, final: r.ok, typed };
+  };
+  const withGrace = run({}); const without = run({ syncGraceMs: 0 });
+  assert.equal(withGrace.flaggedAt, -1, 'the honest typist was flagged with the grace'); assert.ok(withGrace.level && withGrace.final, 'one exchange after the flood levels the copy');
+  assert.ok(withGrace.quiet > 0, 'the flood did not cause quiet drops');
+  assert.ok(without.flaggedAt >= 0, 'without the grace the honest typist should be flagged (the old behaviour was the problem)');
+  facts.push(`honest 10/s vs hostile 40/s rotating ids, 60 s: with the grace never flagged (${withGrace.typed} typed, ${withGrace.quiet} dropped in quiet, ${withGrace.exchanges} exchanges, level after one more); without it flagged at ${(without.flaggedAt / 1000).toFixed(1)} s`);
+});
+await test('sync grace: the hooks. quiet starts it, syncRequested starts it, syncDone and the timeout end it; real refusals always count', () => {
+  let clock = 0; const live = victim(); const g = G.guard(live, { refusalBudget: 3, quietMs: 500, syncGraceMs: 4000 }, { now: () => clock, lex });
+  const peer = victim(); const ups = []; peer.on('update', (u) => ups.push(u)); const pf = peer.getXmlFragment(FRAG);
+  const type = () => { pf.get(0).get(0).insert(1, 'k'); return ups.pop(); };
+  const lost = type(); const next = () => type(); // `lost` never arrives; what follows is pending
+  assert.equal(g.syncPending(), false);
+  assert.equal(g.receive(next(), 'ann').reason, 'pending'); assert.equal(g.refusals.count('ann'), 0.1, 'no grace: a pending result counts a tenth');
+  g.syncRequested(); assert.equal(g.syncPending(), true);
+  g.receive(next(), 'ann'); assert.equal(g.refusals.count('ann'), 0.1, 'a sync is requested: pending is not counted');
+  g.syncDone(); assert.equal(g.syncPending(), false); g.receive(next(), 'ann'); assert.ok(Math.abs(g.refusals.count('ann') - 0.2) < 1e-9, 'counted again after syncDone');
+  const bad = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), live);
+  for (let i = 0; i < 3; i += 1) g.receive(bad, `r${i}`); // the budget: quiet
+  assert.equal(g.receive(next(), 'ann').reason, 'quiet'); assert.equal(g.syncPending(), true, 'a quiet drop starts the grace');
+  clock += 600; g.receive(next(), 'ann'); assert.ok(Math.abs(g.refusals.count('ann') - 0.2) < 1e-9, 'pending after a quiet drop is not counted');
+  g.syncRequested(); g.receive(bad, 'mallory'); assert.equal(g.refusals.count('mallory'), 1, 'a real refusal always counts');
+  clock += 4001; assert.equal(g.syncPending(), false, 'the grace ends after syncGraceMs');
+  g.receive(next(), 'ann'); assert.ok(g.refusals.count('ann') > 0.25 - 1e-9, 'counted again after the timeout');
+  g.destroy();
+});
+await test('unknown sender: no sender is one shared bucket with a tight budget; named senders are not touched', () => {
+  const doc = victim(); const g = G.guard(doc, { refusalBudget: Infinity }, LEX);
+  const bad = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), doc); const good = rogue((f) => f.insert(1, [el('paragraph', {}, [tx('fine')])]), doc);
+  const nobody = [undefined, null, '', {}, [], true, NaN, () => 1];
+  let flaggedAfter = -1;
+  for (let i = 0; i < 40; i += 1) { const r = g.receive(bad, nobody[i % nobody.length]); if (r.flagged && flaggedAfter < 0) flaggedAfter = i + 1; }
+  assert.equal(flaggedAfter, 10, `the shared unknown sender is flagged after 10 refusals, not ${flaggedAfter}`);
+  assert.equal(g.receive(good, undefined).reason, 'sender_flagged'); assert.equal(g.receive(good, null).reason, 'sender_flagged');
+  assert.equal(g.refusals.count('alice'), 0); assert.equal(g.receive(good, 'alice').ok, true, 'a named honest sender is unaffected');
+  const g2 = G.guard(victim(), { unknownRefusals: 3 }, LEX); const b2 = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), victim());
+  for (let i = 0; i < 3; i += 1) g2.receive(b2, ''); assert.equal(g2.refusals.flagged('unknown'), true, 'limits.unknownRefusals is the budget');
+  g.destroy(); g2.destroy();
 });
 
 // ---- 8. a document near the node cap ---------------------------------------------------------------------------------------------------
