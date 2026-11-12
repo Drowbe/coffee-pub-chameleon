@@ -486,7 +486,7 @@ function renderSpaces() {
   if (!list) return;
   const keep = new Set();
   // The Lobby is Home itself (plan-home-lobby.md, step 2): its record stays, its card is not drawn.
-  for (const r of presenceSpaces.filter((x) => x.mine && !x.isLobby)) {
+  for (const r of [...presenceSpaces.filter((x) => x.mine && !x.isLobby), ...presenceSpaces.filter((x) => !x.mine && x.entry && !x.isAside && !x.isLobby)]) {
     keep.add(r.id);
     let card = list.querySelector(`[data-space="${CSS.escape(r.id)}"]`);
     if (!card) {
@@ -502,13 +502,15 @@ function renderSpaces() {
     // (plan-environment-templates.md, addendum 4). Still connected to this one (just browsing the space list -- see
     // showSpaceList()): offer to go back instead.
     const back = entered && currentSpace?.id === r.id;
-    const action = r.isAside ? 'Join' : verb('enter');
+    const joinable = !r.mine; // a space I may enter but have not joined: Join, then it is a space like the rest
+    card.classList.toggle('joinable', joinable);
+    const action = r.isAside || joinable ? 'Join' : verb('enter');
     const enterLabel = back ? `Back to ${spaceDisplayName(r)}` : action;
     const enter = card.querySelector('[data-join]');
-    card.querySelector('[data-join-icon]').className = `fa-solid fa-${back ? 'circle-left' : r.isAside ? 'phone' : 'door-open'} fa-fw`;
+    card.querySelector('[data-join-icon]').className = `fa-solid fa-${back ? 'circle-left' : r.isAside ? 'phone' : joinable ? 'user-plus' : 'door-open'} fa-fw`;
     card.querySelector('[data-join-label]').textContent = enterLabel;
     // The whole card enters the space (GitHub #225): a button by role, named for the space; an aside's card stays as it was.
-    if (r.isAside) { card.removeAttribute('role'); card.removeAttribute('tabindex'); card.removeAttribute('aria-label'); }
+    if (r.isAside || joinable) { card.removeAttribute('role'); card.removeAttribute('tabindex'); card.removeAttribute('aria-label'); }
     else { card.setAttribute('role', 'button'); card.tabIndex = 0; card.setAttribute('aria-label', spaceDisplayName(r)); }
     if (enter.title !== enterLabel) enter.title = enterLabel; // the whole label, wherever a narrow card cuts it short
     const link = card.querySelector('[data-link]');
@@ -664,6 +666,7 @@ setInterval(() => {
 $('spaces').addEventListener('click', (event) => {
   if (event.target.closest('a, button:not([data-join])')) return; // the link and Set up do their own thing
   const card = event.target.closest('.space-choice[data-space]');
+  if (card && card.classList.contains('joinable')) { if (event.target.closest('[data-join]')) joinOpenSpace(card.dataset.space, event.target.closest('[data-join]')); return; }
   if (!card || (card.classList.contains('aside') && !event.target.closest('[data-join]'))) return;
   enterFromCard(card.dataset.space);
 });
@@ -675,6 +678,18 @@ $('spaces').addEventListener('keydown', (event) => {
   event.preventDefault();
   enterFromCard(card.dataset.space);
 });
+// Join a space I may enter: the server adds me, then it is one of mine (Enter) on the next list.
+async function joinOpenSpace(spaceId, button) {
+  button.disabled = true;
+  try {
+    await api('POST', `/api/spaces/${encodeURIComponent(spaceId)}/join`);
+    await loadPresence();
+  } catch (err) {
+    button.disabled = false;
+    $('join-error').textContent = err.message || "Couldn't join. Try again.";
+    $('join-error').hidden = false;
+  }
+}
 function enterFromCard(spaceId) {
   if (entered && currentSpace?.id === spaceId) returnToCanvas();
   else if (entered) reconnectTo(spaceId);

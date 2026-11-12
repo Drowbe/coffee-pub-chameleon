@@ -73,7 +73,7 @@ export function setupAddress(search = '', hash = '') {
 // Which tab each saved field lives on (the dirty dots, and the tab a refusal opens).
 export const FIELD_TAB = Object.freeze({
   name: 'space', description: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
-  members: 'members', allowGuests: 'members',
+  members: 'members', allowGuests: 'members', entry: 'members',
   phases: 'phases',
   opensWith: 'modules', defaultLayout: 'modules',
   aiOff: 'modules', aiSees: 'modules',
@@ -153,6 +153,7 @@ export function setupPatch(before = {}, after = {}) {
   if (typeof after.linkIcon === 'string' && after.linkIcon && after.linkIcon !== before.linkIcon) patch.linkIcon = after.linkIcon;
   if (typeof after.publishCalendar === 'boolean' && after.publishCalendar !== (before.publishCalendar !== false)) patch.publishCalendar = after.publishCalendar;
   if (Array.isArray(after.members) && !sameSet(after.members, Array.isArray(before.members) ? before.members : [])) patch.members = [...after.members];
+  if (typeof after.entry === 'string' && after.entry !== (before.entry || 'invited')) patch.entry = after.entry;
   if (typeof after.allowGuests === 'boolean' && after.allowGuests !== (before.allowGuests !== false)) patch.allowGuests = after.allowGuests;
   if (typeof after.guestsSeeHidden === 'boolean' && after.guestsSeeHidden !== (before.guestsSeeHidden === true)) patch.guestsSeeHidden = after.guestsSeeHidden;
   if (after.phases && typeof after.phases === 'object' && !sameDates(after.phases, datesCopy(before.phases))) patch.phases = datesCopy(after.phases);
@@ -225,6 +226,7 @@ function beforeOf(space = {}) {
     publishCalendar: space.publishCalendar !== false,
     members: Array.isArray(space.members) ? [...space.members] : [],
     allowGuests: space.allowGuests !== false,
+    entry: space.entry === 'accounts' || space.entry === 'guests' ? space.entry : 'invited',
     guestsSeeHidden: space.guestsSeeHidden === true,
     opensWith: listOrNull(space.opensWith),
     defaultLayout: space.defaultLayout || null,
@@ -349,6 +351,12 @@ export function createSpaceSetup(deps) {
     parts.push(sectionHtml('members', `<span id="setup-members-heading">${esc(membersWord(true))}</span>`, space.isLobby
       ? `<p class="hint">Everyone belongs to the ${esc(space.name || 'Lobby')}.</p>`
       : `<div class="setup-members" id="setup-members" role="group" aria-labelledby="setup-members-heading"></div><p class="hint">Who is in this ${esc(spaceWord())}. Saved with Save.</p>`));
+    if (state.owner && !space.isLobby) {
+      parts.push(sectionHtml('entry', '<span id="setup-entry-heading">Who can enter</span>', `<div class="setup-choices" id="setup-entry" role="radiogroup" aria-labelledby="setup-entry-heading">
+          <label class="setup-choice"><input type="radio" name="setup-entry" value="invited"><i class="fa-solid fa-lock fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Invited people only</span></label>
+          <label class="setup-choice"><input type="radio" name="setup-entry" value="accounts"><i class="fa-solid fa-user-group fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Anyone with an account</span></label>
+        </div><p class="hint">Others with an account see this ${esc(spaceWord())} on Home and can join it. Saved with Save.</p>`));
+    }
     parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>
         <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(guests)} can see costs and booking codes</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-guests-see-hidden"></label><p class="hint">Off keeps amounts and booking codes from ${esc(guests.toLowerCase())}. Only ${esc(word('owner', { many: true }))} can change this. Saved with Save.</p>`));
     parts.push(sectionHtml('links', 'Links', `
@@ -691,6 +699,7 @@ export function createSpaceSetup(deps) {
     set('#setup-link', draft.link);
     const cal = q('#setup-publish-calendar');
     if (cal) cal.checked = draft.publishCalendar;
+    for (const radio of el.querySelectorAll('#setup-entry input')) radio.checked = radio.value === draft.entry;
     const guests = q('#setup-allow-guests');
     if (guests) guests.checked = draft.allowGuests;
     const seeHidden = q('#setup-guests-see-hidden');
@@ -1137,6 +1146,8 @@ export function createSpaceSetup(deps) {
     if (budgetCurrency) budgetCurrency.addEventListener('change', () => { state.draft.budget = { ...state.draft.budget, currency: budgetCurrency.value }; });
     const cal = q('#setup-publish-calendar');
     if (cal) cal.addEventListener('change', () => { state.draft.publishCalendar = cal.checked; });
+    const entryBox = q('#setup-entry');
+    if (entryBox) entryBox.addEventListener('change', (event) => { if (event.target.checked) state.draft.entry = event.target.value; });
     const guests = q('#setup-allow-guests');
     if (guests) guests.addEventListener('change', () => { state.draft.allowGuests = guests.checked; paintGuestLink(); });
     const seeHidden = q('#setup-guests-see-hidden');
@@ -1450,7 +1461,7 @@ export function createSpaceSetup(deps) {
   // before it stays saved and is said.
   const FIELD_INPUT = {
     name: '#setup-name', description: '#setup-description', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
-    publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', budget: '#setup-budget-amount',
+    publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', entry: '#setup-entry input', budget: '#setup-budget-amount',
     opensWith: '#setup-opens-with input', defaultLayout: '#setup-first-visit input:checked', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
     phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
   };

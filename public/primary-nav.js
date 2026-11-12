@@ -62,6 +62,8 @@ export function switcherEntries({ spaces = [], users = [], present = null } = {}
       here: s.id === present,
       count: users.filter((u) => isHere(u, s.id)).length,
     }));
+  // Spaces I may enter but have not joined come after mine, to be joined from the menu (`join: true`).
+  for (const s of spaces) if (s && !s.mine && s.entry && !s.isAside && !s.isLobby) out.push({ id: s.id, name: s.name, here: false, count: 0, join: true });
   if (present && out.some((e) => e.here)) out.push({ id: present, leave: true });
   return out;
 }
