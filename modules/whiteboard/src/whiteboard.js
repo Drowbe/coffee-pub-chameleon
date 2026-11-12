@@ -460,9 +460,16 @@
   let boardSync = null;
   const session = createBoardSession({
     host, scope: spaceId, me, clean: wbClean, cleanSettings: wbCleanBoard,
-    handlers: { onRemote, onReload: reload, onSettings: takeBoard, onSettingsReload: reloadBoard, onList: (list) => boardListChanged(list), onRefused, onBusy, onSyncs: (a, b) => { sync = a; boardSync = b; } },
+    handlers: { onRemote, onReload: reload, onSettings: takeBoard, onSettingsReload: reloadBoard, onList: (list) => { boardsDraw(list); boardListChanged(list); }, onRefused, onBusy, onSyncs: (a, b) => { sync = a; boardSync = b; } },
   });
   const presentRecKey = () => wbPresentKey(session.id);
+  // The boards' tabs: the first entry of the toolbar (made before any other, and kept: with no choices the host leaves it out).
+  // Shown to someone who may edit and to anyone while there are several boards (lib-s wbShowTabs). No icon, so the names stay
+  // in view; the host folds the row into More when it is too narrow.
+  const boardsSwitch = host.ui.viewSwitch({ id: 'boards', label: 'Boards', value: session.id, options: [], onChange: (id) => { useBoard(id).catch(() => {}); } });
+  function boardsDraw(list = session.visible()) {
+    boardsSwitch.set(session.id, wbShowTabs({ canEdit: policy.canEdit, count: list.length }) ? list.map((b) => ({ id: b.id, label: b.name })) : []);
+  }
 
   // ---- the board's background -------------------------------------------------------------------------------------------
   // One setting for the whole board, seen by everyone (lib-a, WB_BOARD_PREFIX): its own sync, the same as the blocks' (one
@@ -2172,9 +2179,17 @@
       renderer.pending(job.id, null);
       updateStatus();
       if (!policy.canCreate()) return false;
+      // The upload may finish after a switch of board: the picture is for the board it was started on (lib-s wbLateHome).
+      const home = job.batch && job.batch.home;
+      const where = wbLateHome(home, session);
       const def = blockTypes.get('image');
       const b = wbClean({ ...def.create(), id: job.id, type: 'image', x: job.box.x, y: job.box.y, w: job.box.w, h: job.box.h, upload: file.id, z: Math.floor(board.topZ()) + 1 });
       if (!b) return false;
+      if (where === 'drop') { note('A picture finished after you changed board, and its board is gone. It was not added.'); return false; }
+      if (where === 'there') {
+        wbWriteThere(host, home, { ...b, by: me, at: new Date().toISOString() }).then(() => note('A picture finished after you changed board. It was added to the board you started it on.'), () => note('A picture finished after you changed board and could not be added there.'));
+        return true; // not drawn, not on this board's undo
+      }
       // Saved once, the upload there already. The pictures added together are one step of the undo history, however long
       // apart their uploads finish.
       const batch = job.batch;
@@ -2203,7 +2218,7 @@
     if (others) note('Only pictures can go on the board.');
     if (!list.length) return;
     // The pictures added together share a batch, so they are picked together as they arrive.
-    pictures.add(list, at || renderer.center(), { batch: { tag: `pictures:${host.util.id()}`, made: [], picked: [...sel] } });
+    pictures.add(list, at || renderer.center(), { batch: { tag: `pictures:${host.util.id()}`, made: [], picked: [...sel], home: { board: session.id, epoch: session.epoch } } });
   }
   // The computer's own file chooser, for "Add a picture" (touch and the keyboard too).
   $('picker').accept = WB_PICTURE_ACCEPT;
@@ -2440,6 +2455,7 @@
   function setHeader() {
     if (!host.header) return;
     host.header.set([
+      ...(policy.canEdit ? [{ id: 'boards', icon: 'layer-group', title: 'Boards…', overflow: true }] : []),
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
@@ -2450,6 +2466,7 @@
   }
   if (host.header) {
     host.on('header', (e) => {
+      if (e && e.id === 'boards' && policy.canEdit) boardsMenu(toolbarAt(null));
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
@@ -3946,7 +3963,7 @@
   // Going away: send what waits at once (host.storage goes through the host, which has no keepalive request, so what is
   // refused or cut off stays kept in the browser and the next load sends it). The browser's own prompt while writes wait.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') session.flush(); });
-  window.addEventListener('beforeunload', (e) => { if (session.pending() > 0) { sync.beforeUnload(e) || boardSync.beforeUnload(e) || session.listSync.beforeUnload(e); } });
+  window.addEventListener('beforeunload', (e) => { session.beforeUnload(e); }); // counts the boards switched away from too
 
   // ---- the boards: which one is shown, and the switch ---------------------------------------------------------------------
   // The board shown is session.id (lib-s), kept in one place. useBoard(id) leaves one board for another: it ends a
@@ -3972,6 +3989,14 @@
     if (lb.put[0]) takeBoard({ op: 'put', block: lb.put[0] });
     return true;
   }
+  // A stroke or a drag still going at the moment of a switch: finished at the last point it reached, on the board it began on (the
+  // old board's sync takes the save, and the switch sends it first), else cancelled. The late pointer-up finds nothing to do.
+  function finishGesture() {
+    if (down === null) return false;
+    wbEndGesture({ tool: lent ? lent.tool : tool, point: pointers.get(down), ctx });
+    lent = null; down = null; pinch = null; pointers.clear();
+    return true;
+  }
   let switching = Promise.resolve();
   function useBoard(id) {
     const run = switching.then(() => switchTo(id), () => switchTo(id));
@@ -3983,6 +4008,7 @@
     if (presenting) stopPresenting(); else if (sender.active) stopSharing();
     shared.rec = null; shared.version = 0; shared.seenAt = NaN; shared.left = false;
     if (editing) { const e = editing; editing = null; e.finish(true); } // saved on the board it is on
+    finishGesture(); // a stroke or a drag in progress ends on the board it is on
     if (history) history.close();
     session.use(id); // R1: the old board's waiting writes are sent first, under its keys
     history = histories.get(id);
@@ -3997,6 +4023,7 @@
     showBackdrop();
     select(null);
     historyButtons();
+    boardsDraw();
     const my = session.epoch;
     try { await openBoard(my); } catch { if (session.current(my)) host.ui.toast('That board could not be read. Reload the page.').catch(() => {}); return true; }
     if (!session.current(my)) return true;
@@ -4017,6 +4044,85 @@
     useBoard(wbLanding(list, null)).then(() => session.dropPending(gone));
   }
 
+  // ---- the Boards… menu: new, rename, delete, deleted boards --------------------------------------------------------------
+  // Anyone who may edit does all of these. Records are written by this page only, through the list sync (session.saveRecord).
+  const recordOf = (b) => session.records().find((r) => r.id === b.id) || b; // the implicit first board has none until it is written
+  const iso = () => new Date().toISOString();
+  function boardsMenu(where) {
+    if (!policy.canEdit) return;
+    const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
+    const items = wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length });
+    host.menu.show({ id: 'boards', ...where, items: items.map((m) => ({ ...m, onClick: () => { act[m.id](); } })) /* no promise returned: the menu closes at the pick */ });
+  }
+  async function newBoard() {
+    if (!policy.canEdit) return;
+    if (!wbCanCreateBoard(session.visible())) { note(`You can have ${WB_BOARD_MAX} boards at most.`); return; }
+    const name = await host.ui.prompt({ title: 'New board', label: 'Name', value: wbDefaultBoardName(session.visible()), action: 'Create', maxLength: WB_BOARD_NAME_MAX, validate: (v) => wbBoardNameProblem(v, session.visible()) });
+    if (name === null) return;
+    const list = session.visible(); // read again: someone may have added one while the question was open
+    if (!wbCanCreateBoard(list)) { note(`You can have ${WB_BOARD_MAX} boards at most.`); return; }
+    if (wbBoardNameProblem(name, list)) { note(wbBoardNameProblem(name, list)); return; }
+    const id = wbNewBoardId(Math.random, session.records().map((r) => r.id));
+    if (!session.saveRecord({ id, type: 'board-record', name: wbCleanBoardName(name), order: wbNextOrder(list), by: me, at: iso(), deleted: false, trashedAt: '' })) return;
+    await useBoard(id);
+  }
+  async function renameBoard() {
+    if (!policy.canEdit) return;
+    const cur = session.visible().find((b) => b.id === session.id);
+    if (!cur) return;
+    const name = await host.ui.prompt({ title: 'Rename board', label: 'Name', value: cur.name, action: 'Rename', maxLength: WB_BOARD_NAME_MAX, validate: (v) => wbBoardNameProblem(v, session.visible(), cur.id) });
+    if (name === null) return;
+    const clean = wbCleanBoardName(name);
+    if (!clean || clean === cur.name || wbBoardNameProblem(name, session.visible(), cur.id)) return;
+    const base = recordOf(cur);
+    session.saveRecord({ id: base.id, type: 'board-record', name: clean, order: base.order, by: me, at: base.at || iso(), deleted: false, trashedAt: '' });
+  }
+  async function deleteBoard() {
+    if (!policy.canEdit) return;
+    const list = session.visible();
+    const cur = list.find((b) => b.id === session.id);
+    if (!cur || list.length <= 1) return;
+    const n = board.all().length;
+    const yes = await host.ui.confirm({ title: 'Delete board?', message: `Board "${cur.name}" and its ${n === 1 ? '1 block' : `${n} blocks`} go to Deleted boards for ${WB_TRASH_DAYS} days.`, action: 'Delete', kind: 'destructive' });
+    if (!yes || session.id !== cur.id) return;
+    const next = session.visible().find((b) => b.id !== cur.id);
+    if (!next) return;
+    await useBoard(next.id); // the first board is shown, and what waited for this one is sent first
+    const base = recordOf(cur);
+    session.saveRecord({ id: base.id, type: 'board-record', name: base.name, order: base.order, by: me, at: base.at || iso(), deleted: true, trashedAt: iso() });
+    session.dropPending(cur.id); // R2: whatever of its writes was still waiting is thrown away
+    histories.drop(cur.id);
+    note(`Board "${cur.name}" is in Deleted boards for ${WB_TRASH_DAYS} days.`);
+  }
+  function deletedMenu(where) {
+    const gone = wbTrashedBoards(session.records(), Date.now());
+    host.menu.show({
+      id: 'boards-deleted',
+      ...where,
+      items: [{ heading: 'Deleted boards' }, ...(gone.length
+        ? gone.map((g) => ({ id: g.id, label: g.name, hint: wbDaysLeftWord(g.left), icon: 'trash-can-arrow-up', onClick: () => { restoreBoard(g); } }))
+        : [{ id: 'none', label: 'No deleted boards', disabled: true }])],
+    });
+  }
+  async function restoreBoard(g) {
+    if (!policy.canEdit) return;
+    if (!wbCanCreateBoard(session.visible())) { note(`You can have ${WB_BOARD_MAX} boards at most. Delete one first.`); return; }
+    const taken = wbBoardNameProblem(g.name, session.visible()) !== '';
+    const name = taken ? wbCleanBoardName(`${g.name.slice(0, WB_BOARD_NAME_MAX - 9)} restored`) : g.name;
+    if (!session.saveRecord({ ...g.record, name, by: me, deleted: false, trashedAt: '' })) return;
+    await useBoard(g.id);
+  }
+  // The purge of boards 7 days in the Deleted boards (lib-s createBoardPurge): from one page at a time, a few deletes every
+  // 15 seconds, never the board shown. Only a page that may edit.
+  function purgeStart() {
+    if (!policy.canEdit || !me) return;
+    const purge = createBoardPurge({ host, me });
+    const run = () => { if (session.listRead) purge.tick(session.records(), session.id).catch(() => {}); };
+    const timer = setInterval(() => { if (!surface.isConnected) return void clearInterval(timer);
+      run(); }, WB_PURGE.everyMs); // gone with the page
+    setTimeout(run, 4000);
+  }
+
   // ---- start ------------------------------------------------------------------------------------------------------------
   host.on('change', (e) => { session.handle(e); hearShared(e); });
   host.on('changes', (e) => {
@@ -4033,6 +4139,8 @@
   try { await openBoard(session.epoch); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   sweepSoon();
   started = true;
+  boardsDraw();
+  purgeStart();
   // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
   // browser is back online, and when the page shows again after a while hidden.
   let hiddenAt = 0;

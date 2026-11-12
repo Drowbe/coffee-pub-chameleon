@@ -24,13 +24,15 @@
   const wbSettingsPrefix = (id) => `_board:${id}:`;
   const wbPresentKey = (id) => `_present:${id}:state`;
 
+  // A board's name as it is kept: control and direction characters out (they can hide or reorder the words), spaces folded, cut.
+  const wbCleanBoardName = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, WB_BOARD_NAME_MAX).trim() : '');
   // The record as it is held, or null when it is not a board. Unknown fields are dropped, the name cleaned (control
   // characters out, spaces folded) and cut, the order a finite number, the trash fields plain.
   function wbCleanBoardRecord(v) {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     if (typeof v.id !== 'string' || !WB_BOARD_ID_RE.test(v.id)) return null;
     if (typeof v.name !== 'string') return null;
-    const name = v.name.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, WB_BOARD_NAME_MAX).trim();
+    const name = wbCleanBoardName(v.name);
     if (!name) return null;
     if (typeof v.order !== 'number' || !Number.isFinite(v.order)) return null;
     const trashedAt = typeof v.trashedAt === 'string' ? v.trashedAt.slice(0, 40) : '';
@@ -115,6 +117,132 @@
     for (const k of wbPendingKeys(store, space)) if (!ids.has(wbPendingBoardOf(k, space))) { try { store.removeItem(k); n += 1; } catch { /* none */ } }
     return n;
   }
+
+  // ---- the switcher's rules (pure) ----------------------------------------------------------------------------------------
+  // Why a name is not allowed ('' when it is): empty after trimming, longer than the limit, or the same as another visible
+  // board's (letters of either case alike). `exceptId`: the board being renamed (its own name may stay).
+  function wbBoardNameProblem(name, list, exceptId = '') {
+    const raw = typeof name === 'string' ? name : '';
+    const clean = wbCleanBoardName(raw);
+    if (!clean) return 'Give the board a name.';
+    if (raw.trim().length > WB_BOARD_NAME_MAX) return `Use ${WB_BOARD_NAME_MAX} characters or fewer.`;
+    const low = clean.toLocaleLowerCase();
+    if ((Array.isArray(list) ? list : []).some((b) => b && b.id !== exceptId && String(b.name).toLocaleLowerCase() === low)) return 'A board with that name is here already.';
+    return '';
+  }
+  // The name a new board starts with: "Board N" for the first N not used.
+  function wbDefaultBoardName(list) {
+    const used = new Set((Array.isArray(list) ? list : []).map((b) => String(b.name).toLocaleLowerCase()));
+    for (let n = (Array.isArray(list) ? list.length : 0) + 1; n < 1000; n += 1) if (!used.has(`board ${n}`)) return `Board ${n}`;
+    return 'New board';
+  }
+  // The tabs: shown to someone who may edit (even for one board, so they can add a second) and to anyone when there are
+  // several boards; a viewer of a single board sees no strip.
+  const wbShowTabs = ({ canEdit, count }) => Boolean(canEdit) || count > 1;
+  // The Boards… menu's entries for this person: none for a viewer; New is off at the limit, Delete when this is the last board.
+  function wbBoardsMenu({ canEdit, count, trashed = 0, max = WB_BOARD_MAX }) {
+    if (!canEdit) return [];
+    return [
+      { id: 'new', label: 'New board…', icon: 'plus', ...(count >= max ? { disabled: true, hint: `${max} boards at most` } : {}) },
+      { id: 'rename', label: 'Rename board…', icon: 'pen' },
+      { id: 'delete', label: 'Delete board…', icon: 'trash', ...(count <= 1 ? { disabled: true, hint: 'The last board stays' } : {}) },
+      { id: 'deleted', label: 'Deleted boards…', icon: 'trash-can-arrow-up', ...(trashed ? { hint: String(trashed) } : {}) },
+    ];
+  }
+
+  // ---- the trash, and the purge ------------------------------------------------------------------------------------------
+  const WB_TRASH_DAYS = 7;
+  const WB_TRASH_MS = WB_TRASH_DAYS * 24 * 3600 * 1000;
+  const WB_PURGE = { perTick: 25, everyMs: 15000, lock: '_purge:lock', stale: 120000 }; // 25 deletes every 15 s: at most 100 a minute
+  const wbTrashedAtMs = (r) => { const t = r && typeof r.trashedAt === 'string' ? Date.parse(r.trashedAt) : NaN; return Number.isFinite(t) ? t : NaN; };
+  // The deleted boards a person may bring back, newest first, with the whole days left (a board past its 7 days is being purged
+  // and is not offered).
+  function wbTrashedBoards(records, now) {
+    return (Array.isArray(records) ? records : []).map((r) => wbCleanBoardRecord(r)).filter((r) => r && r.deleted)
+      .map((r) => { const t = wbTrashedAtMs(r); return { id: r.id, name: r.name, record: r, at: t, left: Number.isFinite(t) ? Math.ceil((t + WB_TRASH_MS - now) / 86400000) : WB_TRASH_DAYS }; })
+      .filter((r) => !Number.isFinite(r.at) || r.at + WB_TRASH_MS > now)
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+      .map(({ id, name, record, left }) => ({ id, name, record, left }));
+  }
+  const wbDaysLeftWord = (n) => (n <= 1 ? '1 day left' : `${n} days left`);
+  // The boards to purge: in the trash for 7 days or more (a record with no valid time is never purged), oldest first.
+  function wbPurgePlan(records, now) {
+    return (Array.isArray(records) ? records : []).map((r) => wbCleanBoardRecord(r)).filter((r) => r && r.deleted && Number.isFinite(wbTrashedAtMs(r)) && now - wbTrashedAtMs(r) >= WB_TRASH_MS)
+      .sort((a, b) => wbTrashedAtMs(a) - wbTrashedAtMs(b) || (a.id < b.id ? -1 : 1)).map((r) => r.id);
+  }
+  // Every key a purge may delete for one board, and nothing else.
+  const wbPurgeOwns = (id, key) => typeof key === 'string' && WB_BOARD_ID_RE.test(id) && (key.startsWith(wbBlockPrefix(id)) || key.startsWith(wbSettingsPrefix(id)) || key === wbPresentKey(id) || key === `${WB_BOARD_LIST_PREFIX}${id}`);
+  // The purge: one page at a time (a claim in `_purge:lock`, taken with the version read, stale after 2 minutes), at most
+  // `perTick` deletes a tick, a board's blocks first and its record last (so a purge that stops half way is found again). It
+  // reads the board's record again before every tick: a board restored meanwhile, or the one shown, is left alone.
+  function createBoardPurge({ host, me = '', now = Date.now, perTick = WB_PURGE.perTick, random = Math.random }) {
+    const holder = `${String(me).slice(0, 40)}.${Math.floor(random() * 1e9).toString(36)}`;
+    let work = null; // { id, keys }
+    let running = false;
+    const exact = async (key) => { const l = await host.storage.list(key); return (Array.isArray(l) ? l : []).find((e) => e && e.key === key) || null; };
+    async function claim() {
+      const e = await exact(WB_PURGE.lock);
+      const v = e && e.value;
+      const t = v && typeof v.at === 'string' ? Date.parse(v.at) : NaN;
+      if (v && v.holder !== holder && Number.isFinite(t) && now() - t < WB_PURGE.stale) return false;
+      try { await host.storage.set(WB_PURGE.lock, { id: 'lock', holder, at: new Date(now()).toISOString() }, { version: e ? e.version : 0 }); return true; } catch { return false; }
+    }
+    return {
+      get holder() { return holder; },
+      get working() { return work ? work.id : ''; },
+      // status: 'idle' | 'busy' | 'skipped' | 'working' | 'done' | 'error'
+      async tick(records, activeId) {
+        if (running) return { status: 'busy', deleted: 0 };
+        running = true;
+        try {
+          const due = wbPurgePlan(records, now()).filter((id) => id !== activeId);
+          if (work && (work.id === activeId || !due.includes(work.id))) work = null;
+          const id = work ? work.id : due[0];
+          if (!id) return { status: 'idle', deleted: 0 };
+          if (!(await claim())) return { status: 'busy', deleted: 0 };
+          const fresh = await exact(`${WB_BOARD_LIST_PREFIX}${id}`);
+          const r = fresh ? wbCleanBoardRecord(fresh.value) : null;
+          if (!r || !r.deleted || !(now() - wbTrashedAtMs(r) >= WB_TRASH_MS)) { work = null; return { status: 'skipped', deleted: 0 }; }
+          if (!work) {
+            const keys = [];
+            for (const p of [wbBlockPrefix(id), wbSettingsPrefix(id), wbPresentKey(id)]) for (const e of await host.storage.list(p)) if (wbPurgeOwns(id, e.key) && !keys.includes(e.key)) keys.push(e.key);
+            work = { id, keys };
+          }
+          let n = 0;
+          try {
+            while (n < perTick && work.keys.length) {
+              const key = work.keys[0];
+              if (!wbPurgeOwns(id, key)) { work.keys.shift(); continue; }
+              try { await host.storage.delete(key); } catch (err) { if (!err || err.status !== 404) throw err; }
+              work.keys.shift(); n += 1;
+            }
+            if (!work.keys.length && n < perTick) { await host.storage.delete(`${WB_BOARD_LIST_PREFIX}${id}`).catch((err) => { if (!err || err.status !== 404) throw err; }); n += 1; work = null; return { status: 'done', id, deleted: n }; }
+          } catch { return { status: 'error', deleted: n }; }
+          return { status: 'working', id, deleted: n, left: work.keys.length };
+        } finally { running = false; }
+      },
+    };
+  }
+
+  // ---- a save that finishes after a switch (a picture's upload) ---------------------------------------------------------
+  // `home` = { board, epoch } taken when the work began. 'here': the board is still shown (the block is drawn and saved as
+  // any); 'there': another board is shown now and the first one is still listed, so the block is written under ITS keys and not
+  // drawn; 'drop': that board is gone, nothing is written. Never a key of the board shown now.
+  function wbLateHome(home, session) {
+    if (!home || typeof home.board !== 'string') return 'here';
+    if (home.epoch === session.epoch || home.board === session.id) return 'here'; // (switched away and back: the board is shown again)
+    return session.visible().some((b) => b.id === home.board) ? 'there' : 'drop';
+  }
+  // A stroke or a drag still going at the moment of a switch: finished at the last point it reached (the tool's up, so it is
+  // saved through the old board's sync, which the switch sends first), else cancelled. `tool` is the tool following the press
+  // (the one lent to Select, if any), `point` its last point. Returns 'up', 'cancel' or 'none'.
+  function wbEndGesture({ tool, point, ctx }) {
+    if (!tool) return 'none';
+    if (point && typeof tool.up === 'function') { tool.up(point, ctx); return 'up'; }
+    if (typeof tool.cancel === 'function') { tool.cancel(ctx); return 'cancel'; }
+    return 'none';
+  }
+  const wbWriteThere = (host, home, block) => host.storage.set(`${wbBlockPrefix(home.board)}${block.id}`, block);
 
   // One thing for each board, made when first asked for and kept while the page is open (the history of each board).
   function wbPerBoard(make) {
@@ -203,7 +331,29 @@
       handle(e) { listSync.handle(e); if (sync) sync.handle(e); if (boardSync) boardSync.handle(e); },
       handleMany(e) { listSync.handleMany(e); if (sync) sync.handleMany(e); if (boardSync) boardSync.handleMany(e); },
       flush() { listSync.flush(); if (sync) sync.flush(); if (boardSync) boardSync.flush(); },
-      pending: () => listSync.pending() + (sync ? sync.pending() : 0) + (boardSync ? boardSync.pending() : 0),
+      // Writes not accepted yet, of the board shown, the list AND the boards switched away from (they go on under their own keys).
+      pending() {
+        let n = listSync.pending() + (sync ? sync.pending() : 0) + (boardSync ? boardSync.pending() : 0);
+        for (const list of retired.values()) for (const s of list) n += s.pending();
+        return n;
+      },
+      // 'beforeunload': the browser's own prompt while anything waits (a closed page right after a switch still warns).
+      beforeUnload(e) {
+        if (!e || session.pending() <= 0) return false;
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        e.returnValue = '';
+        return true;
+      },
+      // A change this page makes to the board list (create, rename, trash, restore): held at once, written through the list
+      // sync, and reported as a list change. Returns the cleaned record, or null when it is not one.
+      saveRecord(r) {
+        const c = wbCleanBoardRecord(r);
+        if (!c) return null;
+        records.set(c.id, c);
+        listSync.save(c);
+        h.onList(visible());
+        return c;
+      },
     };
     return session;
   }
