@@ -1024,6 +1024,7 @@
     if (tool.activate) tool.activate(ctx);
     surface.dataset.tool = tool.id;
     surface.style.cursor = tool.cursor || '';
+    renderer.cursorIcon(null); // the next mouse move shows the new tool's icon
     renderer.select([...sel], handlesOf(one()));
     showTool();
     updateHint();
@@ -3783,10 +3784,17 @@
   surface.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'touch') return;
     hover = { cx: e.clientX, cy: e.clientY };
+    showToolCursor(e);
     // A tool that shows something under a resting pointer (the Connector: the connection points of the block there).
     if (tool.hover && down === null && !panning && !pinch && !editing) tool.hover(pointOf(e), ctx);
   });
-  surface.addEventListener('pointerleave', () => { hover = null; if (tool.hover && down === null) tool.hover(null, ctx); });
+  // The tool's icon beside the mouse (lib-t; at is the pointer on the screen): hidden for touch, a text edit, a pan or a pinch, and when the pointer leaves.
+  const toolCursorName = () => wbToolCursorIcon(tool.id, KIND_ICONS[tool.id] || tool.icon, { canEdit: policy.canEdit, presenting: Boolean(presenting) });
+  function showToolCursor(e) {
+    const name = e && !editing && !panning && !pinch ? toolCursorName() : null;
+    renderer.cursorIcon(name ? { sx: e.clientX, sy: e.clientY } : null, name);
+  }
+  surface.addEventListener('pointerleave', () => { renderer.cursorIcon(null); hover = null; if (tool.hover && down === null) tool.hover(null, ctx); });
   surface.addEventListener('paste', (e) => {
     if (inField(e) || !policy.canEdit || presenting) return;
     clearTimeout(clipTimer);
