@@ -222,7 +222,7 @@
       const lock = locks.get(id);
       if (lock) { lock.remove(); locks.delete(id); lockHot.delete(id); }
       const was = shown.get(id);
-      if (shown.delete(id)) restack();
+      shown.delete(id); // no restack: taking one away leaves the others in the same order (a gap in the z-indexes is harmless; the next add or move numbers them again)
       if (selected.has(id)) { selected.delete(id); if (selected.size !== 1) grips = null; frameSoon(); }
       if (refsOf.has(id)) linkRefs({ id }, {});
       if (marked === id) marked = null;
@@ -414,8 +414,7 @@
         surface.append(ringEl);
       }
       ringEl.hidden = false;
-      ringEl.style.left = `${at.sx}px`;
-      ringEl.style.top = `${at.sy}px`;
+      ringEl.style.transform = `translate3d(${at.sx - 6}px, ${at.sy - 6}px, 0)`; // moved by transform: no layout, no repaint of the blocks
     }
     let swatchEl = null;
     function swatch(at, token) {
