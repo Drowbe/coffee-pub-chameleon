@@ -1,0 +1,18 @@
+/* Print (documents-lib-u-output.js): the host prints the module's content; this leaves out everything but the printout, which is a plain
+   page: white paper, dark ink, no frames, the browser breaking the pages (the @page rules are in the head, from the document's page settings). */
+.dl-print { display: none; }
+@media print {
+  .app.dl-printing { display: block; height: auto; overflow: visible; background: none; }
+  .app.dl-printing > :not(#dl-print) { display: none !important; }
+  .app.dl-printing > #dl-print { display: block; zoom: 1; width: auto; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: none; overflow: visible; height: auto; }
+  .dl-print .page { overflow: visible; font-size: 11pt; }
+  .dl-print .doc-title { break-after: avoid; }
+  .dl-print :is(h1, h2, h3, h4, h5, h6) { break-after: avoid; break-inside: avoid; }
+  .dl-print :is(p, li, blockquote) { orphans: 3; widows: 3; }
+  .dl-print table { break-inside: auto; }
+  .dl-print tr, .dl-print pre, .dl-print img { break-inside: avoid; }
+  .dl-print thead { display: table-header-group; }
+  .dl-print a { color: inherit; text-decoration: underline; }
+  .dl-print .dl-flow .dl-pagebreak { position: static; display: block; width: auto; height: 0; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: none; break-after: page; }
+  .dl-print .dl-flow .dl-pagebreak > * { display: none; }
+}
