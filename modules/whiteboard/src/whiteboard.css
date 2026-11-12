@@ -853,6 +853,27 @@
   contain: layout style; /* not paint: the halo is outside the box */
   pointer-events: none;
 }
+.wb-tool-cursor {
+  position: fixed; /* by the pointer's screen place, so the board's blocks are never part of its layout */
+  left: 0;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 1px solid var(--edge-hairline);
+  border-radius: var(--radius-large);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  transform: translate3d(-100px, -100px, 0); /* off the board until the script sets the position by transform */
+  will-change: transform;
+  contain: layout style;
+  pointer-events: none;
+}
+.wb-tool-cursor .ic { display: grid; width: 16px; height: 16px; }
+.wb-tool-cursor .ic svg { width: 16px; height: 16px; fill: currentColor; }
 .wb-swatch {
   position: absolute;
   z-index: 4;

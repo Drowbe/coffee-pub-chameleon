@@ -404,6 +404,31 @@
     }
     // A small swatch of a colour by the pointer ({ sx, sy } on the screen, and the colour's token), or null to take it away.
     // The Eraser's circle by the pointer ({ sx, sy } on the screen, or null to take it away): 12 screen pixels across (css).
+    // The tool's icon beside the mouse: one element, moved by transform like the ring; the glyph is set only when the icon changes.
+    let curEl = null, curName = null, curNext = null, curFrame = 0;
+    function cursorIcon(at, name) {
+      if (!at || !name) { curNext = null; if (curEl) curEl.hidden = true; return; }
+      if (!curEl) {
+        curEl = document.createElement('div');
+        curEl.className = 'wb-tool-cursor';
+        curEl.setAttribute('aria-hidden', 'true');
+        curEl.innerHTML = '<span class="ic"></span>';
+        surface.append(curEl);
+      }
+      if (name !== curName) {
+        curName = name;
+        curEl.firstChild.innerHTML = '';
+        if (icon) Promise.resolve(icon(name)).then((svg) => { if (svg && curName === name) curEl.firstChild.innerHTML = svg; }, () => {});
+      }
+      curNext = at;
+      if (curFrame) return;
+      curFrame = requestAnimationFrame(() => {
+        curFrame = 0;
+        if (!curNext) return;
+        curEl.hidden = false;
+        curEl.style.transform = `translate3d(${curNext.sx + 14}px, ${curNext.sy + 14}px, 0)`; // transform only; the size is screen pixels at any zoom
+      });
+    }
     let ringEl = null;
     function ring(at) {
       if (!at) { if (ringEl) ringEl.hidden = true; return; }
@@ -500,6 +525,7 @@
       mark,
       swatch,
       ring,
+      cursorIcon,
       element: (id) => els.get(id) || null,
       // A connector as it is drawn now ({ points, box, mid, head }), or null while it is not drawn.
       geometry: (id) => geoms.get(id) || null,
