@@ -458,27 +458,31 @@
   // whose id is session.id (the ONE place the active board lives); useBoard() switches them. The board list is read at the start.
   let sync = null;
   let boardSync = null;
-  let stripNarrow = false; // the module is narrow (a phone): the strip shows the current board only (lib-s wbBoardsStrip)
   const session = createBoardSession({
     host, scope: spaceId, me, clean: wbClean, cleanSettings: wbCleanBoard,
     handlers: { onRemote, onReload: reload, onSettings: takeBoard, onSettingsReload: reloadBoard, onList: (list) => { boardsDraw(list); boardListChanged(list); }, onRefused, onBusy, onSyncs: (a, b) => { sync = a; boardSync = b; } },
   });
   const presentRecKey = () => wbPresentKey(session.id);
-  // The boards' tabs: the first entry of the toolbar (made before any other, and kept: with no choices the host leaves it out).
-  // Shown to someone who may edit and to anyone while there are several boards (lib-s wbShowTabs). No icon, so the names stay
-  // in view; the host folds the row into More when it is too narrow.
-  const boardsSwitch = host.ui.viewSwitch({ id: 'boards', label: 'Boards', value: session.id, options: [], onChange: (id) => { useBoard(id).catch(() => {}); } });
-  // Narrow: one tab (the current board); every board is a row in the Boards… menu (a viewer: the title bar's Boards menu).
-  const stripOf = (list = session.visible()) => wbBoardsStrip(list, session.id, stripNarrow, policy.canEdit);
-  let viewerMenuOn = false;
+  // The board selector: after the title, a divider and a dropdown button with the current board's name (host.header.set,
+  // kind 'select'; lib-s wbBoardsSelect). Shown to someone who may edit and to anyone while there are several boards. One
+  // dropdown at every width. Its menu: the boards, then (for an editor) Manage boards…; the title bar's own "..." keeps
+  // a Boards entry that opens the same menu.
+  const selectOf = (list = session.visible()) => wbBoardsSelect(list, session.id, policy.canEdit);
+  let selectKey = '';
   function boardsDraw(list = session.visible()) {
-    const strip = stripOf(list);
-    boardsSwitch.set(session.id, strip.tabs);
-    if (strip.viewerMenu !== viewerMenuOn) { viewerMenuOn = strip.viewerMenu; if (started) setHeader(); }
+    const sel = selectOf(list);
+    const key = JSON.stringify([sel.show, sel.label]);
+    if (key !== selectKey) { selectKey = key; if (started) setHeader(); }
   }
-  function boardRowsMenu(where) {
-    const rows = stripOf().rows;
-    if (rows.length) host.menu.show({ id: 'boards-view', ...where, items: rows.map((r) => ({ id: r.id, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } })) });
+  function boardsMenu(where) {
+    const sel = selectOf();
+    if (!sel.show) return;
+    const manage = policy.canEdit ? wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length }) : [];
+    const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
+    const rows = sel.rows.map((r) => ({ id: `go-${r.id}`, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } }));
+    const more = sel.more > 0 ? [{ id: 'more', label: sel.more === 1 ? '1 more board exists' : `${sel.more} more boards exist`, disabled: true }] : [];
+    const tail = manage.length ? [{ separator: true }, { id: 'manage', label: 'Manage boards…', icon: 'gear', items: manage.map((m) => ({ ...m, onClick: () => { if (act[m.id]) act[m.id](); } })) }] : [];
+    host.menu.show({ id: 'boards', ...where, items: [...rows, ...more, ...tail] /* no promise returned: the menu closes at the pick */ });
   }
 
   // ---- the board's background -------------------------------------------------------------------------------------------
@@ -2465,9 +2469,9 @@
   // The title bar's menu: set again when the pointers entry changes.
   function setHeader() {
     if (!host.header) return;
+    const sel = selectOf();
     host.header.set([
-      ...(policy.canEdit ? [{ id: 'boards', icon: 'layer-group', title: 'Boards…', overflow: true }] : []),
-      ...(!policy.canEdit && viewerMenuOn ? [{ id: 'boards-view', icon: 'layer-group', title: 'Boards', overflow: true }] : []),
+      ...(sel.show ? [{ kind: 'select', id: 'boards-select', label: sel.label, title: 'Boards' }, { id: 'boards', icon: 'layer-group', title: policy.canEdit ? 'Boards…' : 'Boards', overflow: true }] : []),
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
@@ -2478,8 +2482,8 @@
   }
   if (host.header) {
     host.on('header', (e) => {
-      if (e && e.id === 'boards' && policy.canEdit) boardsMenu(toolbarAt(null));
-      if (e && e.id === 'boards-view' && !policy.canEdit) boardRowsMenu(toolbarAt(null));
+      if (e && e.id === 'boards-select') boardsMenu(toolbarAt(e));
+      if (e && e.id === 'boards') boardsMenu(toolbarAt(null));
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }
@@ -3991,8 +3995,6 @@
     if (!host.rootElement.isConnected) return; // moved for a moment (a window or dock change): fit when it is back
     const w = host.rootElement.clientWidth;
     app.classList.toggle('narrow', w > 0 && w < 520);
-    const nowNarrow = w > 0 && w < 520;
-    if (nowNarrow !== stripNarrow) { stripNarrow = nowNarrow; boardsDraw(); } // the strip follows the width
     if (!fitted && surface.clientWidth > 0) { fitted = true; renderer.fit(); }
     notesPlace(); // the notes box stays whole in the area
     updateStatus(); // the overview: its size, and whether there is room for it
@@ -4088,14 +4090,6 @@
   // Anyone who may edit does all of these. Records are written by this page only, through the list sync (session.saveRecord).
   const recordOf = (b) => session.records().find((r) => r.id === b.id) || b; // the implicit first board has none until it is written
   const iso = () => new Date().toISOString();
-  function boardsMenu(where) {
-    if (!policy.canEdit) return;
-    const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
-    const items = wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length, more: stripOf().more });
-    const rows = stripOf().rows; // narrow: every board as a row at the top, the current one marked
-    const top = rows.length ? [...rows.map((r) => ({ id: `go-${r.id}`, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } })), { separator: true }] : [];
-    host.menu.show({ id: 'boards', ...where, items: [...top, ...items.map((m) => ({ ...m, onClick: () => { if (act[m.id]) act[m.id](); } }))] /* no promise returned: the menu closes at the pick */ });
-  }
   async function newBoard() {
     if (!policy.canEdit) return;
     if (!wbCanCreateBoard(session.visible())) { note(`You can have ${WB_BOARD_MAX} boards at most.`); return; }
@@ -4184,7 +4178,7 @@
   started = true;
   session.replayOthers(); // R4: the kept writes of the other boards, each into its own board
   boardsDraw();
-  if (viewerMenuOn) setHeader();
+  setHeader();
   purgeStart();
   // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
   // browser is back online, and when the page shows again after a while hidden.

@@ -139,10 +139,10 @@
     for (let n = (Array.isArray(list) ? list.length : 0) + 1; n < 1000; n += 1) if (!used.has(`board ${n}`)) return `Board ${n}`;
     return 'New board';
   }
-  // The tabs: shown to someone who may edit (even for one board, so they can add a second) and to anyone when there are
-  // several boards; a viewer of a single board sees no strip.
-  const wbShowTabs = ({ canEdit, count }) => Boolean(canEdit) || count > 1;
-  // The Boards… menu's entries for this person: none for a viewer; New is off at the limit, Delete when this is the last board.
+  // The board selector in the title bar (host.header.set, kind 'select'): shown to someone who may edit (even for one board,
+  // so they can add a second) and to anyone when there are several boards; a viewer of a single board sees none.
+  const wbShowSelect = ({ canEdit, count }) => Boolean(canEdit) || count > 1;
+  // The manage entries (the menu's Manage boards… flyout) for this person: none for a viewer; New is off at the limit, Delete when this is the last board.
   function wbBoardsMenu({ canEdit, count, trashed = 0, max = WB_BOARD_MAX, more = 0 }) {
     if (!canEdit) return [];
     return [
@@ -154,11 +154,8 @@
     ];
   }
 
-  // The strip of boards and the rows of the Boards… menu. Wide: every board is a tab. Narrow (a phone): only the current board's
-  // tab, and every board as a row (the current one marked) at the top of the Boards… menu; a viewer, who has no Boards… menu,
-  // gets the title bar's one-entry Boards menu (`viewerMenu`) when there is more than one board. `tabs`: the strip's options.
-  // At most WB_BOARD_MAX boards are shown (the first by order); when the active board is beyond them it takes the last place.
-  // The rest stay stored. `more` is how many live boards are not shown.
+  // The boards the selector lists. At most WB_BOARD_MAX boards are shown (the first by order); when the active board is beyond
+  // them it takes the last place. The rest stay stored. `more` is how many live boards are not shown.
   function wbVisibleBoards(list, activeId) {
     const l = Array.isArray(list) ? list : [];
     if (l.length <= WB_BOARD_MAX) return { shown: l, more: 0 };
@@ -167,15 +164,14 @@
     if (cur) shown[WB_BOARD_MAX - 1] = cur;
     return { shown, more: l.length - WB_BOARD_MAX };
   }
-  function wbBoardsStrip(list, activeId, narrow, canEdit) {
+  // The selector: { show, label, rows, more }. `label` is the current board's name (the first board's for an unknown id), `rows`
+  // the boards listed in its menu with the current one marked, `more` how many live boards are not listed.
+  function wbBoardsSelect(list, activeId, canEdit) {
     const l = Array.isArray(list) ? list : [];
-    const count = l.length;
-    if (!wbShowTabs({ canEdit, count })) return { tabs: [], rows: [], viewerMenu: false, more: 0 };
+    if (!wbShowSelect({ canEdit, count: l.length })) return { show: false, label: '', rows: [], more: 0 };
     const { shown, more } = wbVisibleBoards(l, activeId);
-    const all = shown.map((b) => ({ id: b.id, label: b.name }));
-    if (!narrow) return { tabs: all, rows: [], viewerMenu: false, more };
-    const cur = all.find((b) => b.id === activeId) || all[0];
-    return { tabs: cur ? [cur] : [], rows: shown.map((b) => ({ id: b.id, label: b.name, current: b.id === activeId })), viewerMenu: !canEdit && count > 1, more };
+    const cur = shown.find((b) => b.id === activeId) || shown[0];
+    return { show: Boolean(cur), label: cur ? cur.name : '', rows: shown.map((b) => ({ id: b.id, label: b.name, current: cur ? b.id === cur.id : false })), more };
   }
 
   // ---- the trash, and the purge ------------------------------------------------------------------------------------------

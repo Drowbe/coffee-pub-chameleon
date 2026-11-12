@@ -33,7 +33,7 @@ const ok = (c, m) => { if (c) passed += 1; else fails.push(m); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const NAMES = ['createSync', 'createBoardSession', 'createBoardPurge', 'wbClean', 'wbCleanBoard', 'wbCleanBoardRecord', 'wbCleanBoardName', 'wbBoardList', 'wbBoardNameProblem',
-  'wbDefaultBoardName', 'wbShowTabs', 'wbBoardsMenu', 'wbBoardsStrip', 'wbVisibleBoards', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
+  'wbDefaultBoardName', 'wbShowSelect', 'wbBoardsMenu', 'wbBoardsSelect', 'wbVisibleBoards', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
   'wbCanCreateBoard', 'wbNextOrder', 'wbNewBoardId', 'WB_BOARD_MAX', 'WB_BOARD_NAME_MAX', 'WB_TRASH_MS', 'WB_PURGE', 'tools'];
 let L = {};
 try {
@@ -65,7 +65,7 @@ const trashed = (id, ago, extra = {}) => rec(id, { deleted: true, trashedAt: new
   const ten = L.wbBoardsMenu({ canEdit: true, count: 10 });
   ok(ten.find((x) => x.id === 'new').disabled === true && /10/.test(ten.find((x) => x.id === 'new').hint) && !ten.find((x) => x.id === 'delete').disabled, 'with 10 boards New is off with a hint, Delete is on');
   ok(!L.wbBoardsMenu({ canEdit: true, count: 9 }).find((x) => x.id === 'new').disabled, 'with 9 boards New is on');
-  ok(L.wbShowTabs({ canEdit: false, count: 1 }) === false && L.wbShowTabs({ canEdit: false, count: 2 }) === true && L.wbShowTabs({ canEdit: true, count: 1 }) === true, 'tabs: none for a viewer of one board, shown for two, shown to an editor of one');
+  ok(L.wbShowSelect({ canEdit: false, count: 1 }) === false && L.wbShowSelect({ canEdit: false, count: 2 }) === true && L.wbShowSelect({ canEdit: true, count: 1 }) === true, 'selector: none for a viewer of one board, shown for two, shown to an editor of one');
 }
 
 // ---- names -------------------------------------------------------------------------------------------------------------
@@ -265,8 +265,11 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(/if \(!cur \|\| list\.length <= 1\) return;/.test(page), 'the page does not delete the last board');
   ok(!/session\.dropPending\(cur\.id\)/.test(page) && /deleted: true, trashedAt: iso\(\)/.test(page), 'delete sets deleted and trashedAt and keeps the kept writes of the board (a purge drops them)');
   ok(/title: 'New board', label: 'Name'[^}]*action: 'Create'[^}]*validate/.test(page) && /title: 'Delete board\?'/.test(page) && /action: 'Delete'/.test(page), 'New board and Delete board? are the shared prompt and confirm');
-  ok(/boardsSwitch = host\.ui\.viewSwitch\(\{ id: 'boards'/.test(page) && page.indexOf("id: 'boards', label: 'Boards'") < page.indexOf("id: 'tool', label: 'Tools'"), 'the boards switch is made before the Tools switch');
-  ok(/\{ id: 'boards', icon: 'layer-group', title: 'Boards…', overflow: true \}/.test(page), 'one title-bar entry, Boards…');
+  ok(!/id: 'boards', label: 'Boards'/.test(page) && !/boardsSwitch|stripNarrow|wbBoardsStrip|boardRowsMenu|viewerMenuOn/.test(page), 'no board strip in the toolbar and no narrow-strip code: one dropdown at every width');
+  ok(/\{ kind: 'select', id: 'boards-select', label: sel\.label, title: 'Boards' \}/.test(page) && /sel\.show \? \[/.test(page), 'the title bar gets one select with the current board\'s name, only when the selector shows');
+  ok(/\{ id: 'boards', icon: 'layer-group', title: policy\.canEdit \? 'Boards…' : 'Boards', overflow: true \}/.test(page), 'the title bar\'s "..." keeps the Boards entry');
+  ok(/e\.id === 'boards-select'\) boardsMenu\(toolbarAt\(e\)\)/.test(page), 'a click on the select opens the menu under it (the event\'s x)');
+  ok(/const manage = policy\.canEdit \? wbBoardsMenu\(/.test(page) && /label: 'Manage boards…'[^\n]*items: manage\.map/.test(page) && /\.\.\.\(manage\.length \?|const tail = manage\.length \? \[\{ separator: true \}/.test(page), 'the menu: the boards, then for an editor a separator and Manage boards… (a viewer has no manage entries)');
 }
 
 // ---- work in flight at a switch ----------------------------------------------------------------------------------------------
@@ -358,23 +361,22 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(session.pending() === 0, 'a deleted board\'s unsent writes are dropped, and then the count is clear');
 }
 
-// ---- 0.1.57: the strip, and purging main -------------------------------------------------------------------------------------
+// ---- 0.1.60: the title bar's board selector, and purging main -----------------------------------------------------------------
 {
   const mkList = (n) => Array.from({ length: n }, (_, i) => ({ id: i ? `b${i}` : 'main', name: i ? `Plan ${i}` : 'Board 1' }));
-  const S = (n, active, narrow, canEdit) => L.wbBoardsStrip(mkList(n), active, narrow, canEdit);
+  const S = (n, active, canEdit) => L.wbBoardsSelect(mkList(n), active, canEdit);
   for (const n of [1, 3, 10, 11]) {
-    const wide = S(n, 'main', false, true);
-    ok(wide.tabs.length === Math.min(n, 10) && wide.rows.length === 0 && wide.viewerMenu === false, `wide, editor, ${n} boards: every board a tab (at most 10), no rows, no viewer menu`);
-    const nar = S(n, n > 1 ? 'b1' : 'main', true, true);
-    ok(nar.tabs.length === 1 && nar.tabs[0].id === (n > 1 ? 'b1' : 'main') && nar.rows.length === Math.min(n, 10) && nar.rows.filter((r) => r.current).length === 1 && nar.rows.find((r) => r.current).id === nar.tabs[0].id && nar.viewerMenu === false, `narrow, editor, ${n} boards: the current tab only, ${Math.min(n, 10)} rows with the current marked, no viewer menu`);
+    const cur = n > 1 ? 'b1' : 'main';
+    const e = S(n, cur, true);
+    ok(e.show && e.rows.length === Math.min(n, 10) && e.rows.filter((r) => r.current).length === 1 && e.rows.find((r) => r.current).id === cur && e.label === (n > 1 ? 'Plan 1' : 'Board 1'), `editor, ${n} boards: shown, ${Math.min(n, 10)} rows with the current marked, the label is the current board's name`);
   }
-  ok(same(S(1, 'main', true, false), { tabs: [], rows: [], viewerMenu: false, more: 0 }) && same(S(1, 'main', false, false), { tabs: [], rows: [], viewerMenu: false, more: 0 }), 'a viewer of one board: no strip, no menu, wide or narrow');
-  const vn = S(3, 'b2', true, false);
-  ok(vn.tabs.length === 1 && vn.tabs[0].id === 'b2' && vn.rows.length === 3 && vn.viewerMenu === true, 'narrow viewer, 3 boards: the current tab, the rows, the title bar Boards menu');
-  const vw = S(3, 'b2', false, false);
-  ok(vw.tabs.length === 3 && vw.rows.length === 0 && vw.viewerMenu === false, 'wide viewer, 3 boards: all tabs, as before, no menu');
-  ok(S(3, 'gone', true, true).tabs.length === 1 && S(3, 'gone', true, true).tabs[0].id === 'main', 'narrow with an unknown active board: the first board');
-  ok(same(L.wbBoardsStrip(null, 'main', true, true), { tabs: [], rows: [], viewerMenu: false }) || L.wbBoardsStrip(null, 'main', true, true).tabs.length === 0, 'no list, no tabs');
+  ok(same(S(1, 'main', false), { show: false, label: '', rows: [], more: 0 }), 'a viewer of one board: no selector');
+  const v = S(3, 'b2', false);
+  ok(v.show && v.label === 'Plan 2' && v.rows.length === 3 && v.rows.find((r) => r.current).id === 'b2', 'a viewer of 3 boards: the selector, the current board marked');
+  ok(S(3, 'gone', true).label === 'Board 1' && S(3, 'gone', true).rows.find((r) => r.current).id === 'main', 'an unknown active board: the first board is the current one');
+  ok(L.wbBoardsSelect(null, 'main', true).show === false, 'no list, no selector');
+  const named = L.wbBoardsSelect([{ id: 'main', name: 'x'.repeat(L.WB_BOARD_NAME_MAX) }], 'main', true);
+  ok(named.label.length === 40, 'the longest board name fits the selector\'s 40-character label');
 }
 {
   // (c) purging main: its keys go, then board:main is written again live and empty with its old name
@@ -411,15 +413,14 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   const mkList = (n) => Array.from({ length: n }, (_, i) => ({ id: `b${String(i).padStart(2, '0')}`, name: `Board ${i}` }));
   for (const n of [10, 11, 12, 25]) {
     const l = mkList(n);
-    const w = L.wbBoardsStrip(l, 'b00', false, true);
-    ok(w.tabs.length === 10 && w.more === Math.max(0, n - 10), `${n} live boards: ${w.tabs.length} tabs, more ${w.more}`);
-    const far = L.wbBoardsStrip(l, `b${String(n - 1).padStart(2, '0')}`, false, true);
-    ok(far.tabs.length === 10 && far.tabs.some((t) => t.id === `b${String(n - 1).padStart(2, '0')}`) === (n > 10 || true) && (n === 10 || far.tabs[9].id === `b${String(n - 1).padStart(2, '0')}`), `${n} boards, the active one is the last: shown in the last tab`);
-    const nar = L.wbBoardsStrip(l, 'b00', true, true);
-    ok(nar.rows.length === 10 && nar.tabs.length === 1 && nar.more === Math.max(0, n - 10), `${n} boards, narrow: 10 rows`);
+    const w = L.wbBoardsSelect(l, 'b00', true);
+    ok(w.rows.length === 10 && w.more === Math.max(0, n - 10), `${n} live boards: ${w.rows.length} rows, more ${w.more}`);
+    const lastId = `b${String(n - 1).padStart(2, '0')}`;
+    const far = L.wbBoardsSelect(l, lastId, true);
+    ok(far.rows.length === 10 && far.rows.some((t) => t.id === lastId && t.current) && (n === 10 || far.rows[9].id === lastId) && far.label === `Board ${n - 1}`, `${n} boards, the active one is the last: shown in the last row, as the label`);
   }
   const live = L.wbBoardList([...Array.from({ length: 12 }, (_, i) => rec(`t${String(i).padStart(2, '0')}`, { order: i + 1 })), rec('gone', { order: 0, trashedAt: '2026-11-11T10:00:00Z' })]);
-  ok(live.length === 13 && !live.some((b) => b.id === 'gone') && L.wbBoardsStrip(live, 'main', false, true).more === 3, 'trashed boards are not counted; main + 12 = 13 live, 3 more');
+  ok(live.length === 13 && !live.some((b) => b.id === 'gone') && L.wbBoardsSelect(live, 'main', true).more === 3, 'trashed boards are not counted; main + 12 = 13 live, 3 more');
   ok(L.wbBoardList([rec('z', { order: 1 }), rec('a', { order: 1 })]).map((b) => b.id).join() === 'main,a,z', 'order ties go by time then id');
   ok(L.wbCanCreateBoard(mkList(25)) === false && L.wbBoardsMenu({ canEdit: true, count: 25, more: 15 }).find((m) => m.id === 'new').disabled === true, 'New board stays off with more than 10 live boards (all counted)');
   const m = L.wbBoardsMenu({ canEdit: true, count: 12, more: 2 }).find((x) => x.id === 'more');
