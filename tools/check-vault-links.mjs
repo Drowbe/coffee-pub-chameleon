@@ -202,7 +202,7 @@ try {
   await test('another reader of the space sees it; an outsider, a guest pass and a module not approved do not', async () => {
     assert.equal((await resolve(people.sam.cookie, [ref(doc.id)])).json.summaries[0].title, 'booking.pdf');
     const outsider = (await resolve(people.lou.cookie, [ref(doc.id)])).json.summaries[0];
-    assert.equal(outsider.state, 'hidden');
+    assert.equal(outsider.state, 'gone', 'a space they may not enter is an unknown id to them');
     assert.ok(!JSON.stringify(outsider).includes('booking'), 'and says nothing of it');
     const guest = await resolve('', [ref(doc.id)], 'holder', `?guest=${guestToken}`);
     assert.equal(guest.json.summaries[0].state, 'hidden', 'a guest pass resolves it as hidden, always');

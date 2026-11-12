@@ -805,7 +805,7 @@ try {
     assert.equal(r.status, 401, `a keyed viewer, ${method} ${route}: ${r.status} ${r.text}`);
   }
   const outsider = await call('DELETE', `/api/spaces/${C}/chat/messages?type=all&scope=mine`, { cookie: pat });
-  assert.deepEqual([outsider.status, outsider.json.error], [403, 'you are not in that space']);
+  assert.deepEqual([outsider.status, outsider.json.error], [404, 'no such space']);
   const guestC = `?guest=${encodeURIComponent((await call('POST', `/api/spaces/${C}/guest-link`, { cookie: owner, body: {} })).json.space.guestToken)}`;
   for (const scope of ['mine', 'everyone']) {
     const r = await call('DELETE', `/api/spaces/${C}/chat/messages${guestC}&type=all&scope=${scope}`);

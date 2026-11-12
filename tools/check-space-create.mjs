@@ -26,7 +26,7 @@ const css = read('public/style.css');
 assert.ok(!/data-join-popout/.test(html + js), 'no pop-out button on a space card (#226)');
 assert.ok(!/joinInPopout/.test(js), 'the card pop-out handler is gone (#226)');
 assert.ok(/setAttribute\('role', 'button'\); card\.tabIndex = 0; card\.setAttribute\('aria-label', spaceDisplayName\(r\)\)/.test(js), 'a space card is a button named for the space (#225)');
-assert.ok(/if \(r\.isAside\) \{ card\.removeAttribute\('role'\)/.test(js), 'an aside card is not made a button (#225)');
+assert.ok(/if \(r\.isAside \|\| joinable\) \{ card\.removeAttribute\('role'\)/.test(js), 'an aside card, and a card to Join, is not made a button (#225)');
 assert.ok(/closest\('a, button:not\(\[data-join\]\)'\)\) return;/.test(js), 'the link and Set up do not also enter (#225)');
 assert.ok(/matches\?\.\('\.space-choice\[role="button"\]'\)/.test(js) && /event\.key !== 'Enter' && event\.key !== ' '/.test(js), 'Enter and Space on the focused card enter (#225)');
 const sysCss = read('public/sdk/system.css');
