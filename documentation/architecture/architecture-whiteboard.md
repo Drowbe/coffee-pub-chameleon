@@ -5,7 +5,7 @@
 What a person does with the board is [userguide-whiteboard](../userguides/userguide-whiteboard.md). The module's
 permissions and storage rules are those of every module ([api-modules](../api/api-modules.md)); the SDK it calls is
 [api-module-sdk](../api/api-module-sdk.md). This document is the shape of the module and the reasons for it. The code is
-in `modules/whiteboard/`, version 0.1.22.
+in `modules/whiteboard/`, version 0.1.59 (the sections written for earlier versions are read as before; "Boards" and "The Eraser" below are 0.1.50 to 0.1.59).
 
 ## Shape
 
@@ -53,7 +53,7 @@ line `[x, y, dx, dy]`, a drawing `[x, y, points]`, a picture `[x, y, w, h]`. Und
 
 ## Storage and sync
 
-One board for each space: `WB_BOARD = 'main'`. Each block is one key, `block:main:<id>`, and the whole block is written
+A space holds several boards (see "Boards" below); the first is `main`. Each block is one key, `block:main:<id>`, and the whole block is written
 each time. Last write wins: no version is sent, and a 409 path is marked in `lib-c-sync`. Two people changing
 the same block at once is therefore a lost change, which the user guide says.
 
@@ -304,10 +304,28 @@ A frame is a block type with `container: true` (`lib-e-block-frame.js`; its tool
 
 **Find** (`lib-o-find`, **Find** in the title bar's menu or the `/` key). `wbFindWords` gives the plain words of a block: notes, text and shapes through the markup's plain reading, a table cell by cell (each cell on its own line, so a match never runs across two), a frame's title, a connector's label and a picture's description; a timer or a drawing has none. Matching folds case and accents (`wbFindFold`), searches for at most 100 characters, counts a block once however often the words are in it, and goes in reading order (top to bottom, then left to right). Changes to the board are searched again 250 ms after the last one, keeping the current match, else the one in its place. The matches are outlined on a layer of their own, the current one stronger; the view glides to a match out of sight and never zooms in; what is picked is kept. The `/` key is taken only when the board has the keyboard and nothing is being edited (`e.isComposing`, ctrl, meta and alt are ignored), so it still types in a note editor or a table cell. Escape or Close returns the keyboard to the board. Find is off while presenting. A screen reader hears "Match 2 of 7: <the first 80 characters of the words>".
 
+## Boards
+
+Written from `whiteboard-lib-s-boards.js` and [plan-whiteboard-boards](../plans/plan-whiteboard-boards.md) (0.1.54 to 0.1.59).
+
+- **Keys.** A board is a record `board:<id>` = `{ id, type: 'board-record', name, order, by, at, deleted, trashedAt }`. Its blocks are `block:<id>:<block id>`, its settings `_board:<id>:settings` and its presentation `_present:<id>:state`. Today's one board keeps the id `main` and its keys; a space with no `board:main` record reads as one board named "Board 1" (opening a space writes nothing). A new board gets an id of 1 to 16 lower-case letters and digits, never `main`.
+- **Trash.** Delete sets `deleted` and `trashedAt`; the blocks stay where they are. A board is kept 7 days, then purged: a claim in `_purge:lock` (stale after 2 minutes), at most 25 deletes every 15 seconds, the board's blocks first and its record last, so a purge that stops half way is found again. The page of anyone who can edit does the purge. The `main` board is rewritten as a live, empty board instead of removed.
+- **The page's rules, not the server's.** The 10-board limit, the name rules (1 to 40 characters, control and direction characters removed, unique) and the trash time are enforced by the page (`wbCanCreateBoard`, `wbBoardNameProblem`), and the server takes any key an editor writes, so an editor can overwrite or delete any board, forge a trash time or write many records.
+- **One session.** `createBoardSession` owns the syncs of the board shown and switches them; the board list is read and heard through a sync with the prefix `board:`. A switch sends what waits first, under the old board's keys.
+- **Live pointers** use one topic for each board, `pointer.<board id>`.
+- **Unsent changes** are kept in `localStorage` as `wb-pending:<space>:<prefix>` (the prefix has the board id in it), so they survive a reload or a closed tab. A board switch and a trash keep them; they are removed only when a board's keys are purged, or when the entry's board is neither listed nor in the trash. After the list is read, `replayOthers()` replays every other listed or trashed board's entries, each by its own short-lived writer, without switching the page. An entry's 10 minutes count from its first replay. A network error or a 5xx keeps the write and retries after 2, 5 and 15 seconds, then every 60.
+- **The toolbar and the menu.** The tabs are a `host.ui.viewSwitch`, the first entry of the toolbar. **Boards…** is a title-bar menu entry (`host.menu.show`); New and Rename ask with `host.ui.prompt`, Delete with `host.ui.confirm`. On a narrow board the strip is the current tab only and the others are rows at the top of the menu. The last board shown is kept in the browser as `wb-board:<space>`.
+
+## The Eraser
+
+`whiteboard-lib-f-tool-eraser.js` ([plan-whiteboard-eraser](../plans/plan-whiteboard-eraser.md), 0.1.50, 0.1.52). A choice in the Tools switch, key E. `wbEraserHits` finds the blocks whose drawn line is within the circle's radius of the segment the pointer moved along, of kinds `stroke` and `highlight` only; locked blocks are counted and passed over, and frames and connectors are never hit. Each removal goes through the page's `erase(id, tag)`, which joins the drag's history tag so a drag is one undo step. The cap is 100 removals to a drag (`WB_ERASER.cap`). The circle moves by a transform, and a removal does not renumber every z-index (0.1.52). The ring and the tool icon beside the pointer (0.1.58, `check-whiteboard-cursor-icon.mjs`) cost frame time on a very large board at a slow CPU.
+
+**Insert tools** (`whiteboard-lib-f-tool-insert.js`, 0.1.53): with Note, Text, Table, Rectangle, Ellipse or a flowchart shape on, `wbInsertClickAction` decides a press on a block: a block that takes words (`def.edit` is `text` or `cells`) opens its words, any other block or a locked one is picked, and a frame, an empty board or a person who may not edit places as before.
+
 ## Checks
 
 The module's own tests are in `modules/whiteboard/test/`: `check-whiteboard-sync.mjs`, `-history.mjs`, `-pictures.mjs`,
-`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs`, `-export.mjs`, `-background.mjs`, `-arrange.mjs`, `-frames.mjs`, `-minimap.mjs` (the overview's sums) and `-find.mjs` (Find's words, matching, order and count). `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
+`-rightdrag.mjs`, `-live.mjs`, `-connector.mjs`, `-timer.mjs`, `-markup.mjs`, `-pointer.mjs`, `-table.mjs`, `-export.mjs`, `-background.mjs`, `-arrange.mjs`, `-frames.mjs`, `-boards.mjs` and `-boards-ui.mjs` (the board records, trash, purge, kept writes and the menu), `-eraser.mjs`, `-insert-click.mjs`, `-cursor-icon.mjs`, `-live-pointers.mjs`, `-sync-persist.mjs` (kept writes), `-minimap.mjs` (the overview's sums) and `-find.mjs` (Find's words, matching, order and count). `npm run check:module -- whiteboard` runs them, and `tools/check-module-tests.mjs` runs
 them inside `npm run check`. They are not in the module's zip. The right-drag and paste tests send synthetic events; a
 headless browser has no computer clipboard and the suite has not run on Windows. The export test covers the sums only
 (which blocks, the part of the board, the size, the file's name); drawing the picture needs a browser and is not in the

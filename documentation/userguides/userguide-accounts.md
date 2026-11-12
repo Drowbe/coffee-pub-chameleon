@@ -79,6 +79,31 @@ Guests can't install Chameleon as an app. On a guest link there is no install hi
 offer to install; see "Install it as an app, and pop it out" in
 [The call](userguide-call.md).
 
+### Guests without a link: the guest door
+
+A guest can also come in from the sign-in page, with no link. This is off until two people turn it on: the server's host (`ENABLE_GUEST_DOOR`, or the checkbox for the environment in the host console) and then the owner.
+
+**To turn it on (owner):**
+
+1. In **Manage**, open the **Users** tab and find the section named for guests, with the word **door** (**Guest door** in the usual words).
+2. Switch on **Let anyone come in as a guest from the sign-in page** and choose **Save**. If the section is not there, the host has not offered the door.
+3. In each space you want to open to guests, choose **Anyone, including guests** under **Who can enter** (see [Spaces](userguide-spaces.md), "Who can enter").
+
+**To come in as a guest:** on the sign-in page choose **Continue as guest**, read and agree to the terms if the server has any, type a name, and choose the button. A guest lands on a page that lists the spaces open to them, what a guest cannot do, and **Leave**. Inside a space a banner says "You are in as <name> (guest)." with **Leave**, and the name shows as "(guest)" on every chat message.
+
+- A guest session lasts 24 hours by default, then they come in again.
+- A name is at most 40 characters, cannot mix alphabets (Latin letters with Cyrillic ones, say), and cannot look like a member's name.
+- A guest can ask to enter a space that allows requests (see [Spaces](userguide-spaces.md), "Ask to come in"). If an owner approves, the guest can enter it until their session ends.
+- A guest has the rights of the guest role on the **Roles** tab.
+- **End all guest sessions now** (beside the switch) signs every guest out at once, the door's and the links'.
+- A person who is signed in must sign out first.
+
+The limits (how many guests at once, how many new sessions from one address) are the server's, in the [Settings reference](userguide-settings-reference.md), "Agreements, guests and entering".
+
+### Terms and the beta NDA
+
+If the host has set a terms file or an NDA file, everyone sees the text after signing in (or before coming in as a guest), on a page that asks them to type their first and last name and choose **Agree**. They must agree before going further. When the text changes, everyone is asked again. Until you agree, every page sends you back to it. Who agreed, and to which version, is kept with the account; an owner's copy of an environment does not carry it, so a copy restored on another server asks again.
+
 ## Roles and what they can do
 
 Open **Roles** on the Manage page to see a grid of checkboxes: one row per permission, and the columns

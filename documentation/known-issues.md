@@ -40,9 +40,42 @@ These are recorded for the Whiteboard 0.1.49 ([userguide-whiteboard](userguides/
 - **Find and Overview: not verified.** Find was not tried with the formatting bar's link field or a frame's title being edited (the `/` key is meant to type a slash there; this was read as code and checked by a tool on its sums, not by hand). Neither Find nor the overview was tried on a real phone, and neither in a real call.
 - **Not verified.** Right-drag with a real mouse on Windows, pasting from another program with a real clipboard (both tested only with synthetic events), wheel and trackpad zoom on a real Mac, and a screen reader. The real print dialog, Print in Safari and Firefox, and a real LiveKit call were not verified either. There is no LiveKit server in the checks, so nothing about a call applies.
 
+## Whiteboard: boards, the Eraser and unsent changes
+
+Whiteboard 0.1.50 to 0.1.59 ([userguide-whiteboard](userguides/userguide-whiteboard.md), "Boards" and "Eraser"; [architecture-whiteboard](architecture/architecture-whiteboard.md)). Read from the code and the build reports; Safari, an iPad and a phone were not tried.
+
+- **The board rules are the page's, not the server's.** The limit of 10 boards, the rule that a name is unique and the 40-character name cap are checked by the page. The server takes any key an editor writes, so an editor with a modified page can overwrite or delete any board, forge the time a board went to the trash, or write thousands of records. Anyone who may change the board can already change any block on it.
+- **A space whose only record is a trashed `main` board shows it as live.** The first board, `main`, is read as "Board 1" when it has no record; if its only record is a trashed one, the page still shows it.
+- **Two people renaming different boards to the same name at once** can leave two boards with one name. The page checks the name when it is typed, not when both saves land.
+- **A heavy Undo takes about 115 seconds to settle on the server** (240 saves a minute). It is kept in the browser meanwhile, and survives a reload.
+- **The Eraser's ring and the tool icon beside the pointer cost frame time** on a very large board (2000 strokes) with the CPU slowed six times. Nothing fails; the pointer follows later.
+- **Last write wins.** A recolour that lands at the instant of another person's erase brings the stroke back (#694). Decided: leave it.
+- **Unsent changes** are replayed for every listed or trashed board, for 10 minutes after the first replay; a network error or a 5xx keeps them and retries after 2, 5, 15, then every 60 seconds. Before 0.1.54, writes kept for a reload were stored under an empty space key and could not be found again (fixed).
+
+## Guests and entering: gaps
+
+The access bundle, steps 1 to 7 ([architecture-access](architecture/architecture-access.md)). Read from the code; checked by tools; not tried by a person in a browser, on a phone, or on a hosted server with several environments.
+
+- **The bell labels a request notice "Modules".** A request to enter a space, and its answer, show under the wrong label.
+- **An owner can make a member whose name ends in "(guest)"** (#709), who then reads as a guest in the chat.
+- **No module open in a guest's canvas was tested.** A guest from the door sees a space; what a module does for that guest was checked for the guest link only.
+- **The guest door's count is in memory.** A restart forgets who is here; a session still in date is counted again when it next asks.
+- **The Trips step is not built** (step 8 of the plan): a person who joined a space cannot yet remove it themselves from their profile.
+
+## Documents: Paper and the rich editor
+
+Documents 0.7 to 0.11.12 ([userguide-documents](userguides/userguide-documents.md), [architecture-documents](architecture/architecture-documents.md)). Read from the code and the build reports; Safari, an iPad and a phone were not tried.
+
+- **The Markdown box is not paged.** In Paper it shows one sheet; the pages appear in reading and in the rich editor.
+- **The editor and the reading view can count pages differently** for a very large grid: the editor does not split a grid between pages, reading does.
+
+## Checks
+
+- **`check-module-guards` fails on main** (#686). It is not caused by the documents of this batch; the cause is open.
+
 ## Documents: paths checked as code only
 
-Documents 0.6.1 ([userguide-documents](userguides/userguide-documents.md), [architecture-documents](architecture/architecture-documents.md)).
+Documents up to 0.6.1 ([userguide-documents](userguides/userguide-documents.md), [architecture-documents](architecture/architecture-documents.md)).
 
 - **Read as code, not tried:** the lock going stale and being taken over from a second page, the save that loses to someone else's save and keeps the text on the screen, bringing a document back from the trash, and catching up after a dropped connection. The pure rules have tests; the pages were not driven by two people.
 - **No links to other documents, no pictures, no export and no live co-editing yet.** They are in [plan-documents](plans/plan-documents.md) and the [TODO](TODO.md).

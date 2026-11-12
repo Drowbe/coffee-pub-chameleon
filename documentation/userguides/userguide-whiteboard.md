@@ -2,7 +2,7 @@
 
 **Audience:** members, moderators and owners who draw, plan and sketch together on a space's whiteboard, and anyone who only looks at it.
 
-The Whiteboard is a shared board for a space. Draw on it, put notes, words, shapes and pictures on it, and move them around together. Everyone in the space sees the same board, and what one person changes shows for the others as soon as it is saved. Each space has one board.
+The Whiteboard is a shared board for a space. Draw on it, put notes, words, shapes and pictures on it, and move them around together. Everyone in the space sees the same board, and what one person changes shows for the others as soon as it is saved. Each space has one board to begin with, and can have up to ten (see "Boards").
 
 Everything on the board is a **block**: a note, a text block, a shape, a connector, a line, an arrow, a drawing, a highlight, a timer, a table or a picture. Most of what this guide says about blocks works the same for every kind.
 
@@ -24,7 +24,7 @@ The server checks both permissions on every save, so the board's buttons are a h
 
 The Whiteboard is a module like the others: open it from the **Layout** menu, under **Show**, and it opens on the canvas. It works only in a space; anywhere else it says it opens in a space.
 
-The board fills the module. The toolbar above it holds, from the left: one switch named **Tools** with **Hand**, **Select**, **Pen**, **Fill**, **Text**, **Note**, **Flowchart**, **Shape**, **Table** and **Frame** (and **Select many** on touch screens only), then the **Timer** button, **Undo**, **Redo**, and, while blocks are picked, **Delete** and **Arrange**. **Pen**, **Shape** and **Flowchart** each stand for a family: **Pen** for the Pen, Marker, Brush and Highlighter; **Shape** for the Rectangle, Ellipse, Line and Arrow; **Flowchart** for the Connector and the flowchart shapes. Pick the family, then its kind on the small strip that opens under the toolbar. Each tool shows a strip of its own choices there (colours, width, text size and alignment, line style and arrowheads), and the strip keeps the tool on until you press **Escape**. At the far right of the toolbar are **Overview**, **Grid** and **Snap to grid**. When the board is narrow, the last choices of **Tools** and then the other buttons fold into the toolbar's **More** menu, and the tool you are using stays in the row. The title bar holds the **+**, which adds blocks, the zoom buttons, **Find** (the magnifier) and a menu with **Present**, **Present to everyone** (for people who can change the board), **Background colour…**, **Save as image…** and **Print**. The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first. The board's help, read out to a screen reader, is short; this guide has the rest. The toolbar was reworked in 0.1.25 to 0.1.32; this paragraph and the sections below it were checked against the code, not by using the board, and some older sections still name the earlier toolbar.
+The board fills the module. The toolbar above it holds, from the left: the board tabs when there is more than one board (see "Boards"), one switch named **Tools** with **Hand**, **Select**, **Pen**, **Fill**, **Eraser**, **Text**, **Note**, **Flowchart**, **Shape**, **Table** and **Frame** (and **Select many** on touch screens only), then the **Timer** button, **Undo**, **Redo**, and, while blocks are picked, **Delete** and **Arrange**. **Pen**, **Shape** and **Flowchart** each stand for a family: **Pen** for the Pen, Marker, Brush and Highlighter; **Shape** for the Rectangle, Ellipse, Line and Arrow; **Flowchart** for the Connector and the flowchart shapes. Pick the family, then its kind on the small strip that opens under the toolbar. Each tool shows a strip of its own choices there (colours, width, text size and alignment, line style and arrowheads), and the strip keeps the tool on until you press **Escape**. At the far right of the toolbar are **Overview**, **Grid** and **Snap to grid**. When the board is narrow, the last choices of **Tools** and then the other buttons fold into the toolbar's **More** menu, and the tool you are using stays in the row. The title bar holds the **+**, which adds blocks, the zoom buttons, **Find** (the magnifier) and a menu with **Boards…** (for people who can change the board), **Present**, **Present to everyone** (for people who can change the board), **Background colour…**, **Save as image…** and **Print**. The status line at the bottom says how many blocks there are, how many are selected, the zoom, and **View only** when you can look but not change the board. When the board is empty, a short line in the middle says what to do first. The board's help, read out to a screen reader, is short; this guide has the rest. The toolbar was reworked in 0.1.25 to 0.1.32; this paragraph and the sections below it were checked against the code, not by using the board, and some older sections still name the earlier toolbar.
 
 ## Draw and add blocks
 
@@ -37,6 +37,10 @@ Pick a tool in the toolbar, then click or drag on the board.
 - **Text** (T): click to put words there, then type them. A text block left empty is taken away.
 - **Rectangle** (R) and **Ellipse** (O): drag to draw one to size, or click for the usual size.
 - **Line** (L) and **Arrow** (A): drag from one end to the other.
+
+- **Eraser** (E): drag over drawings and highlights to remove them (see "Eraser").
+
+A click with a tool that puts a block on the board (**Note**, **Text**, **Rectangle**, **Ellipse**, **Table** and the other insert tools) on a block that takes words edits that block, and on another block picks it, instead of placing a new block on top. Click on an empty place to put one; a click on a frame still puts the block inside it. While a drawing or insert tool is on, a small icon of the tool follows the pointer.
 
 The **Paint** and **Flowchart** buttons open menus of more tools, and the **Timer** button puts a countdown on the board; each has its own section below: "Paint", "Flowchart and connectors", "Timer" and "Tables".
 
@@ -55,6 +59,25 @@ The **Paint** button in the toolbar opens a menu of the tools that put colour on
 - **Highlighter** (U): drag over words or shapes to lay a see-through band over them. It starts **Yellow** and **Extra heavy**. Hold **Shift** to make a straight band, across or down, whichever is the longer way. The band is a block of its own: move, copy, layer and delete it as a drawing, and double-click it to change its colour. It stays where you put it; it does not follow the words if they move.
 
 The Pen, Marker, Brush and Highlighter stay on for the next line. A drawing and a highlight are saved when you let go. Pick the colour and width in the strip or with a right-click as for any block.
+
+## Eraser
+
+The **Eraser** (E) is a choice in the **Tools** switch. With it on, press and drag: a circle follows the pointer, and every drawing (Pen, Marker or Brush) and every highlight it touches is removed. Nothing else is: notes, text, shapes, pictures, frames, connectors and locked blocks are passed over. One drag is one **Undo** step, so one **Undo** brings the whole sweep back. A single sweep removes at most 100; at the 101st the status line says "Erased 100. Lift and sweep again." and you lift and sweep again. The Eraser stays on until you press **Escape**.
+
+## Boards
+
+A space can hold up to ten boards, so a session's drawings do not have to share one canvas. The first board is called **Board 1** until it is renamed. When there is more than one board, a strip of tabs, first in the toolbar, shows them; choose a tab to switch. Each board has its own blocks, background, timer and Present state, and other people's pointers show only on the board they are on. The board you used last is the one you land on, in this browser.
+
+People who can change the board open **Boards…** in the title bar's menu:
+
+- **New board…** asks for a name (up to 40 characters, not the same as another board's) and opens the new board. At ten boards it says "You can have 10 boards at most."
+- **Rename board…** renames the board you are on.
+- **Delete board…** asks first ("Board "<name>" and its N blocks go to Deleted boards for 7 days."). The last board cannot be deleted.
+- **Deleted boards…** lists the boards in the trash with the days left; choose one to restore it. After 7 days a deleted board is removed for good, the next time someone who can change the board has the page open.
+
+On a narrow board only the current tab shows, and the other boards are rows at the top of **Boards…**. **Save as image** names the file after the board.
+
+If your connection or the server fails while you change a board, your unsent changes are kept in your browser, also if you reload or close the tab, and sent again when the page opens (for up to 10 minutes after the first try). Refused-for-now answers are tried again after 2, 5, 15 and 60 seconds. A very large **Undo** can take about two minutes to reach the server; it is kept in the browser meanwhile. The limits that are the page's own are in [known-issues](../known-issues.md).
 
 ## Flowchart and connectors
 
@@ -415,7 +438,7 @@ Anyone who can see the board can save it as a picture or print it. Nothing on th
 2. Under **What to save**, choose **Everything**, **What is selected** or **What is in sight**. **What is selected** is off until something is picked; it takes the connectors between the picked blocks too.
 3. Choose the **Background**: **Board colour** or **Transparent**.
 4. Choose the **Size**: **Normal (1x)** or **Double (2x)**. The window says the picture's size in pixels, and says when it is made smaller to fit.
-5. Choose **Save**. A PNG file named for the module and the date and time, such as "Whiteboard 2026-11-09 1432.png", goes to your computer, and the board says so.
+5. Choose **Save**. A PNG file named for the board and the date and time, such as "Board 1 2026-11-09 1432.png", goes to your computer, and the board says so.
 
 The picture shows what the board shows, in the colours you see now. The selection frame, handles, connection points and any open text box are left out. A picture block that cannot be loaded is drawn as "Picture not found". There is no SVG file and no way yet to save the picture to the Vault. If there is nothing to save, the window says "There is nothing on the board to save." (or "Select what to save first.", "There is nothing in sight to save.").
 
@@ -448,12 +471,13 @@ If the server asks the board to slow down, it says "Saving a lot at once. The re
 | Copy, paste, duplicate, undo and redo | No | Yes |
 | Add pictures | No | Yes |
 | Save as image and print | Yes | Yes |
+| Eraser, and making, renaming, deleting and restoring boards | No | Yes |
 
 Anyone who may change the board may change or delete any block on it, whoever made it.
 
 ## Limits
 
-- One board for each space.
+- Up to ten boards for each space, each name up to 40 characters; a deleted board is kept 7 days.
 - A block can be at most 60 KB as it is saved. A long drawing is thinned to fit.
 - **Stored board data: 5 MB in all.** Everything the Whiteboard saves (the blocks of every space's board together) can be at most 5 MB: that limit is for the whole module, not each space. Pictures are kept apart and do not count toward it. Past it, a change is refused with the server's reason.
 - The words of a note, a text block or a shape can be at most 4000 characters, and a picture's description one line of at most 300.
@@ -481,6 +505,7 @@ These work while the board has the keyboard (click it, or Tab to it). Key names 
 | Line | L | L |
 | Arrow | A | A |
 | Fill, Marker, Highlighter | F, M, U | F, M, U |
+| Eraser | E | E |
 | Connector | C | C |
 | Rounded box, Diamond | B, D | B, D |
 | Table | G | G |

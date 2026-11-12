@@ -85,7 +85,28 @@ the server's defaults; an owner may set lower ones. See [Vault](userguide-vault.
 | `VAULT_SCAN_SECONDS` | `5` | The most the check of one file may take. |
 | `VAULT_SWEEP_SECONDS` | `10` | The most the tidy-up on start may take (bytes with no record, leftovers). |
 
+## Agreements, guests and entering
+
+These settings are the server's, not an environment's. A value that is not a whole number above zero uses the default. How it works is in [Access architecture](../architecture/architecture-access.md).
+
+| Setting | Default | What it does |
+|---|---|---|
+| `TERMS_FILE` | unset | The path of a text file (plain or Markdown, UTF-8, at most 256 KB) with the terms of service. Everyone, in every environment, must agree to it before entering, once for each version of the text. Changing the file asks everyone again. A file that is missing, empty or too big, or a setting left blank, stops the server from starting. A commented example is in the file. |
+| `NDA_FILE` | unset | The same for a beta NDA. With neither file set, nobody is asked. |
+| `ENABLE_GUEST_DOOR` | `false` | On a single-environment install, whether the guest door is offered. The owner then turns it on in Manage. On a server with environments this is the host console's checkbox for each environment. |
+| `GUEST_SESSION_HOURS` | `24` | How long a guest from the door stays in. |
+| `GUEST_DOOR_PER_ADDRESS` | `5` | New guest sessions one address may open in 15 minutes. |
+| `GUESTS_PER_SPACE` | `10` | Guests from the door who may be in one space at once. |
+| `GUESTS_PER_ENVIRONMENT` | `50` | Guests from the door who may be in one environment at once. |
+| `ACCESS_REQUESTS_PER_DAY` | `5` | Requests to enter a space that one person may make in 24 hours. |
+| `ACCESS_REQUESTS_PER_ADDRESS` | `20` | Requests that one address may make in 24 hours. |
+| `ACCESS_REQUESTS_PENDING_PER_SPACE` | `50` | People with an account who may be waiting to enter one space. |
+| `ACCESS_REQUESTS_PENDING_GUESTS_PER_SPACE` | `20` | Guests who may be waiting to enter one space, counted apart. |
+| `ACCESS_REQUEST_DAYS` | `7` | How long a request waits before it ends. |
+
 ## Other
 
 `SHARE_UNLOCKS_PER_MINUTE` (default `60`) caps how many share-link password checks an environment does a minute. It is
 described in [Getting Started](userguide-getting-started.md), "Environments: one server, several groups".
+
+The About page's studio card is set with `STUDIO_NAME` (default "Coffee Pub Studio"), `STUDIO_LOGO_FILE` and `STUDIO_LOGO_DARK_FILE` (a picture file on the server; with only one, it is used for both), and `STUDIO_URL`, `STUDIO_PRODUCT_URL`, `STUDIO_CONTACT_URL` and `STUDIO_SUPPORT_URL` (web addresses, and `STUDIO_CONTACT_URL` may be a `mailto:` address; an empty link is not shown and one that is not valid is dropped with a warning). They are read once at start.
