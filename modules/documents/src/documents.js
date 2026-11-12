@@ -422,7 +422,17 @@
         if (sheet.hasAttribute('data-narrow')) { sheet.removeAttribute('data-narrow'); if (id === 'read') schedulePaginate(); }
       }
     }
+    pageEditor();
     sizeEditSoon();
+  }
+  // Paper above the narrow floor shows real pages in the rich editor while typing (spacers; documents-lib-t-editor-pages.js). The Markdown box,
+  // Fluid and a narrow window are not paged.
+  function pageEditor() {
+    const sheet = $('editor').querySelector('.sheet-edit');
+    if (!sheet) return;
+    const on = Boolean(rich && ed && ed.editor && ed.editor.setPaged && !$('editor').hidden && sheet.dataset.layout === 'paper' && !sheet.hasAttribute('data-narrow'));
+    sheet.toggleAttribute('data-epaged', on);
+    if (ed && ed.editor && ed.editor.setPaged) ed.editor.setPaged(on, sheet.dataset.size);
   }
   // The editing sheet has no frame of its own: the text box is as tall as its text (scrollHeight, not the text) and the view scrolls.
   // In Paper the sheet is a whole number of pages tall (at least one). Not real page breaks yet.
@@ -444,7 +454,7 @@
       const h = ta.scrollHeight;
       ta.style.height = `${h}px`; ta.style.flexGrow = '';
     }
-    if (sheet.dataset.layout === 'paper' && !sheet.hasAttribute('data-narrow')) {
+    if (sheet.dataset.layout === 'paper' && !sheet.hasAttribute('data-narrow') && !sheet.hasAttribute('data-epaged')) {
       const ph = dlPageGeometry(sheet.dataset.size).h;
       const keep = sheet.style.flexGrow; sheet.style.flexGrow = '0';
       const h = sheet.offsetHeight;
@@ -604,7 +614,7 @@
     sheet.dataset.paged = 'on';
     try { performance.measure('documents-paginate', { start: t0, end: performance.now(), detail: { blocks: all.length, pages: r.pages.length } }); } catch { /* no timing */ }
   }
-  if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(schedulePaginate).catch(() => {});
+  if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => { schedulePaginate(); if (ed && ed.editor && ed.editor.measurePages) ed.editor.measurePages(); }).catch(() => {});
   if (doc.fonts && doc.fonts.addEventListener) doc.fonts.addEventListener('loadingdone', schedulePaginate);
 
   // ---- reading -------------------------------------------------------------------------------------------------------------
@@ -827,6 +837,7 @@
     if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
     if (ed.editor.onLink) ed.editor.onLink(() => linkWith(null));
     ed.editor.setText(text); ed.editor.setReadOnly(Boolean(ed.lost));
+    pageEditor();
     sizeEditSoon();
     ed.inexact = false;
     paintActive();
@@ -1117,7 +1128,7 @@
     renderStatus();
   }
   // A Paper sheet at Fit width follows the window's width.
-  if (typeof ResizeObserver === 'function') { const watch = new ResizeObserver(() => fitPaper()); watch.observe($('read')); watch.observe($('editor')); const grown = new ResizeObserver(() => sizeEditSoon()); grown.observe($('edit-rich')); }
+  if (typeof ResizeObserver === 'function') { const watch = new ResizeObserver(() => fitPaper()); watch.observe($('read')); watch.observe($('editor')); let richW = 0; const grown = new ResizeObserver(() => { sizeEditSoon(); const w = $('edit-rich').offsetWidth; if (w !== richW) { richW = w; if (ed && ed.editor && ed.editor.measurePages) ed.editor.measurePages(); } }); grown.observe($('edit-rich')); }
   if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => sizeEditSoon()).catch(() => {});
   const viewShown = () => Boolean(ed ? !ed.lost : openId);
   function zoomMenu(e) {

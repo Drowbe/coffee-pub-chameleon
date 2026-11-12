@@ -44,7 +44,7 @@ const t0 = Date.now();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, 'modules/documents/src'));
 const { PM, L, lex } = loadRich(src, ['DL', 'DL_ACTIONS', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS', 'dlRichHref', 'dlRichSchema', 'dlRichRead', 'dlRichText', 'dlRichEditor', 'dlRichTidy',
-  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'dlRichInGrid', 'dlRichGridMenu', 'dlRichGridAt', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot']);
+  'dlRichCommand', 'dlRichCan', 'dlRichKeys', 'dlRichLinkAsk', 'dlRichLinkOf', 'dlRichLinkAt', 'dlRichLinkFits', 'dlRichLinkAdd', 'dlRichLinkEdit', 'dlRichLinkRemove', 'dlRichLinkProblem', 'dlLinkProblem', 'dlLinkAddress', 'dlLinkShown', 'DL_LINK', 'DL_LINK_SAY', 'DL_SCHEMES', 'dlRichRules', 'dlRichInputRules', 'dlRichFence', 'dlRichActive', 'dlRichIsOn', 'dlRichInGrid', 'dlRichGridMenu', 'dlRichGridAt', 'DL_RICH_RULES', 'dlSafeAddress', 'dlRichPasteSlice', 'dlRichCopy', 'dlRichInertText', 'dlRichClipText', 'DL_RICH_ACTIONS', 'DL_RICH_KEYS', 'dlTextareaEditor', 'dlStubEditor', 'dlEditorDirty', 'dlEditorSnapshot', 'dlEditorPages', 'dlEditorPagesPlugin', 'dlPageGeometry', 'dlPageBreaks', 'DL_EDITOR_GAP']);
 const schema = L.dlRichSchema(PM);
 const N = schema.nodes;
 const M = schema.marks;
@@ -1834,6 +1834,118 @@ test('grid menu: dlRichInGrid, the menu model, the caret-cell decoration', () =>
   const ins = open('x\n'); assert.equal(ins.run('grid'), true); assert.equal(L.dlRichInGrid(PM, ins.state()), true, 'insert puts the caret in the grid');
   assert.deepEqual(shape(ins), [2, 3]); caretIn(ed, 0, 0);
 });
+
+
+// ---- 13. PAGES WHILE TYPING (documents-lib-t-editor-pages.js): the spacer function, and the plugin that keeps the spacers ----------------------
+{
+  const G = L.dlPageGeometry('letter');
+  const geo = { textH: G.textH, margin: G.margin, gap: L.DL_EDITOR_GAP };
+  const pitch = geo.textH + 2 * geo.margin + geo.gap;
+  const B = (height, kind = 'block') => ({ height, kind });
+  const BR = { height: 0, kind: 'pagebreak' };
+  const sp = (blocks) => L.dlEditorPages(blocks, geo);
+  test('pages 13a: an empty document is one page, no spacers, a whole page below', () => {
+    const r = sp([]); assert.deepEqual(r.spacers, []); assert.equal(r.pages, 1); assert.equal(r.lastPad, geo.textH);
+  });
+  test('pages 13b: one block is one page; the last page is padded to a whole page', () => {
+    const r = sp([B(100)]); assert.deepEqual(r.spacers, []); assert.equal(r.pages, 1); assert.equal(r.lastPad, geo.textH - 100);
+  });
+  test('pages 13c: an exact fit stays on the page, one px more starts the next', () => {
+    const fit = sp([B(400), B(464)]); assert.deepEqual(fit.spacers, []); assert.equal(fit.lastPad, 0); assert.equal(fit.pages, 1);
+    const over = sp([B(400), B(465)]);
+    assert.equal(over.pages, 2); assert.equal(over.spacers.length, 1);
+    assert.deepEqual(over.spacers[0], { beforeIndex: 1, height: pitch - 400, pageNumber: 1, isManualBreak: false });
+    assert.equal(over.lastPad, geo.textH - 465);
+  });
+  test('pages 13d: a spacer fills the rest of the text area, the bottom margin, the gap and the next top margin', () => {
+    const r = sp([B(300), B(300), B(300), B(300)]);
+    assert.equal(r.spacers[0].height, (geo.textH - 600) + 2 * geo.margin + geo.gap); assert.equal(r.spacers[0].beforeIndex, 2);
+  });
+  test('pages 13e: a block taller than a page has its own pages and the next starts after it', () => {
+    const r = sp([B(100), B(2000, 'code'), B(100)]);
+    assert.equal(r.spacers.length, 2); assert.equal(r.spacers[0].beforeIndex, 1); assert.equal(r.spacers[0].height, pitch - 100);
+    const k = Math.ceil((2000 + pitch - geo.textH) / pitch);
+    assert.equal(r.spacers[1].beforeIndex, 2); assert.equal(r.spacers[1].height, k * pitch - 2000); assert.equal(r.spacers[1].pageNumber, 1 + k);
+    assert.equal(r.pages, 1 + k + 1);
+    assert.ok(1 + k > 2, 'it spans more than one page');
+  });
+  test('pages 13f: a manual break is its own spacer and ends the page', () => {
+    const r = sp([B(100), BR, B(100)]);
+    assert.deepEqual(r.spacers, [{ beforeIndex: 1, height: pitch - 100, pageNumber: 1, isManualBreak: true }]); assert.equal(r.pages, 2); assert.equal(r.lastPad, geo.textH - 100);
+  });
+  test('pages 13g: consecutive breaks make an empty page; a break at the start makes none; one at the end ends the last page', () => {
+    const r = sp([B(100), BR, BR, B(100)]);
+    assert.deepEqual(r.spacers.map((x) => [x.beforeIndex, x.height, x.pageNumber, x.isManualBreak]), [[1, pitch - 100, 1, true], [2, pitch, 2, true]]); assert.equal(r.pages, 3);
+    const lead = sp([BR, B(100)]); assert.deepEqual(lead.spacers, [{ beforeIndex: 0, height: 0, pageNumber: 0, isManualBreak: true }]); assert.equal(lead.pages, 1);
+    const end = sp([B(100), BR]); assert.equal(end.pages, 1); assert.equal(end.spacers[0].height, geo.textH - 100); assert.equal(end.lastPad, 0);
+  });
+  test('pages 13h: 100 pages', () => {
+    const r = sp(Array.from({ length: 100 }, () => B(geo.textH))); assert.equal(r.pages, 100); assert.equal(r.spacers.length, 99);
+    assert.ok(r.spacers.every((x, i) => x.beforeIndex === i + 1 && x.pageNumber === i + 1 && x.height === 2 * geo.margin + geo.gap)); assert.equal(r.lastPad, 0);
+  });
+  test('pages 13i: a heading stays with the next block', () => {
+    const r = sp([B(800), B(40, 'heading'), B(100)]); assert.equal(r.spacers.length, 1); assert.equal(r.spacers[0].beforeIndex, 1);
+  });
+  test('pages 13j: a grid is one block: it moves whole, and one taller than a page runs past the margin on its own page', () => {
+    assert.equal(sp([B(500, 'grid'), B(200)]).spacers.length, 0);
+    assert.equal(sp([B(500, 'grid'), B(400, 'grid')]).spacers[0].beforeIndex, 1);
+    const tall = sp([B(100), B(1500, 'grid'), B(100)]);
+    assert.deepEqual(tall.spacers.map((x) => x.beforeIndex), [1, 2]);
+  });
+  // The plugin, on a stub view (no page): the state, a dispatch that applies, a composing flag.
+  const stubView = (md, blocksOf) => {
+    const ed = L.dlRichEditor(PM, null, lex, null); ed.setText(md);
+    const timers = [];
+    const ctl = L.dlEditorPagesPlugin(PM, { read: blocksOf, after: (fn, ms) => { const t = { fn, ms, off: false }; timers.push(t); return () => { t.off = true; }; } });
+    const plugins = [...ed.state().plugins, ctl.plugin];
+    let state = PM.EditorState.create({ doc: ed.state().doc, plugins });
+    const view = { composing: false, dom: null, dispatched: 0, get state() { return state; }, dispatch(tr) { this.dispatched += 1; state = state.apply(tr); } };
+    return { ctl, view, timers };
+  };
+  const many = (n) => Array.from({ length: n }, (_, i) => `para ${i}`).join('\n\n');
+  const heights = (h) => (view) => Array.from({ length: view.state.doc.childCount }, () => ({ height: h, kind: 'block' }));
+  test('pages 13k: setPaged(true) puts spacers in as decorations only; the text, the count of steps and undo are untouched', () => {
+    const { ctl, view } = stubView(many(10), heights(300));
+    const doc = view.state.doc;
+    ctl.setPaged(view, true, 'letter');
+    const info = ctl.info(view.state);
+    assert.equal(info.pages, 5); assert.equal(info.spacers.length, 4);
+    assert.equal(view.state.doc, doc, 'the document object is the same'); assert.equal(PM.undoDepth(view.state), 0);
+    const found = ctl.plugin.props.decorations(view.state).find();
+    assert.equal(found.length, 4); assert.ok(found.every((d) => d.from === d.to), 'widgets, not content');
+  });
+  test('pages 13l: a measure that changes nothing dispatches nothing', () => {
+    const { ctl, view } = stubView(many(10), heights(300));
+    ctl.setPaged(view, true, 'letter'); const n = view.dispatched;
+    assert.equal(ctl.measure(view), false); assert.equal(ctl.measure(view), false); assert.equal(view.dispatched, n);
+  });
+  test('pages 13m: a changed height changes the spacers; setPaged(false) clears them', () => {
+    let h = 300; const { ctl, view } = stubView(many(10), (v) => heights(h)(v));
+    ctl.setPaged(view, true, 'letter'); h = 100; assert.equal(ctl.measure(view), true);
+    assert.equal(ctl.info(view.state).spacers.length, 1); assert.equal(ctl.info(view.state).pages, 2);
+    ctl.setPaged(view, false); assert.equal(ctl.info(view.state).spacers.length, 0); assert.equal(ctl.plugin.props.decorations(view.state).find().length, 0); assert.equal(ctl.paged(), false);
+    const n = view.dispatched; ctl.setPaged(view, false); assert.equal(view.dispatched, n);
+  });
+  test('pages 13n: not paged, nothing is read; while composing, nothing is read and it tries again later', () => {
+    let reads = 0; const { ctl, view, timers } = stubView(many(4), (v) => { reads += 1; return heights(300)(v); });
+    assert.equal(ctl.measure(view), false); assert.equal(reads, 0);
+    ctl.setPaged(view, true, 'letter'); assert.equal(reads, 1);
+    view.composing = true; reads = 0; assert.equal(ctl.measure(view), false); assert.equal(reads, 0); assert.ok(timers.some((t) => !t.off && t.ms >= 100), 'a later try is waiting');
+    view.composing = false; assert.equal(ctl.measure(view), false); assert.equal(reads, 1);
+  });
+  test('pages 13o: a document change moves the spacers with the text; the page size is kept', () => {
+    const { ctl, view } = stubView(many(10), heights(300));
+    ctl.setPaged(view, true, 'a4');
+    const before = ctl.plugin.props.decorations(view.state).find().map((d) => d.from);
+    view.dispatch(view.state.tr.insertText('abc', 3)); // typing in the first paragraph
+    const after = ctl.plugin.props.decorations(view.state).find().map((d) => d.from);
+    assert.deepEqual(after, before.map((x) => x + 3)); assert.equal(PM.undoDepth(view.state), 1, 'only the typing is a step');
+  });
+  test('pages 13p: the editor API: setPaged and pagesInfo exist; with no page there is nothing to measure', () => {
+    const ed = open(many(3)); ed.setPaged(true, 'letter'); assert.deepEqual(ed.pagesInfo(), { pages: 1, spacers: [] });
+    const rev = ed.revision(); ed.setPaged(false); assert.equal(ed.revision(), rev); ed.destroy();
+  });
+}
 
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
 if (fails.length) {
