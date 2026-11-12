@@ -1228,9 +1228,10 @@
     if (ed) {
       items = ed.lost ? [] : [
         { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
+        { type: 'button', id: 'save-md', label: 'Save as Markdown file', icon: 'file-arrow-down', placement: 'menu' },
       ];
     } else if (openId) {
-      items = [];
+      items = [{ type: 'button', id: 'save-md', label: 'Save as Markdown file', icon: 'file-arrow-down', placement: 'menu' }];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
         { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
@@ -1292,7 +1293,8 @@
     else if (listSwitch) listSwitch.set(listView);
     host.toolbar.set(items).catch(() => {});
     if (host.header) host.header.set(openId || (ed && !ed.lost) ? zoomItems() : []).catch(() => {});
-    if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }] : []).catch(() => {});
+    if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }, { id: 'open', label: 'Open Markdown file', icon: 'file-import' }] : []).catch(() => {});
+    output.offerPrint(viewShown());
     renderStatus();
   }
   function renderStatus() {
@@ -1312,6 +1314,7 @@
     if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
     if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
     if (id === 'done') { finish(); return; }
+    if (id === 'save-md') { output.save(); return; }
   });
   host.on('header', (e) => {
     const id = String((e && e.id) || '');
@@ -1319,7 +1322,7 @@
     if (id === 'zoom-out') { setView(dlViewStep(view, -1)); return; }
     if (id === 'zoom') { zoomMenu(e); return; }
   });
-  host.on('add', (e) => { if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
+  host.on('add', (e) => { if (e.id === 'open') { if (!ed && !openId) output.pick(); return; } if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
   $('edit-title').addEventListener('input', typed);
 
   $('lost-copy').addEventListener('click', async () => {
@@ -1352,6 +1355,117 @@
     else serial(refreshLock).then(() => schedule(true)).catch(() => {});
   });
   window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); } });
+
+  // The page side of Print, Save as Markdown file and Open Markdown file (the rules are in documents-lib-u-output.js).
+  // env: { current, create, open, afterOpen }
+  //   current(): the document in view as { title, text, page } (a promise), or null when no document is open.
+  //   create(title, text) -> id; open(id) shows it; afterOpen() draws the list again.
+  function outputWire(env) {
+    const app = $('app');
+    let rules = null; // the style in the document's head while a printout is on
+    const endPrint = () => {
+      app.classList.remove('dl-printing');
+      if (rules) { rules.remove(); rules = null; }
+      const sheet = app.querySelector('#dl-print');
+      if (sheet) sheet.remove();
+    };
+    async function prepare() {
+      const cur = await env.current();
+      if (!cur) return false;
+      endPrint();
+      const sheet = el('div', 'sheet dl-print');
+      sheet.id = 'dl-print';
+      sheet.append(el('h1', 'doc-title', cur.title));
+      const body = el('div', 'page dl-flow');
+      body.append(dlBuild(dlDescribe(cur.text, lex), doc));
+      sheet.append(body);
+      app.append(sheet);
+      rules = doc.createElement('style');
+      rules.textContent = dlPrintRules(cur.page);
+      doc.head.append(rules);
+      app.classList.add('dl-printing');
+      return true;
+    }
+    if (host.standard) host.on('printed', endPrint);
+    // Print is offered while a document is open (reading or editing); the list has none.
+    const offerPrint = (on) => { if (host.standard) host.standard.set(on ? { print: { run: prepare } } : {}).catch(() => {}); };
+
+    // Hands over the file: the SDK's own call when there is one (#469), else a download link in the page.
+    async function deliver(blob, name) {
+      if (host.files && typeof host.files.save === 'function') return host.files.save(blob, { name });
+      const address = URL.createObjectURL(blob);
+      const a = doc.createElement('a');
+      a.href = address;
+      a.download = name;
+      a.rel = 'noopener';
+      a.hidden = true;
+      app.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(address), 60000);
+      return true;
+    }
+    async function save() {
+      const cur = await env.current();
+      if (!cur) return;
+      try {
+        await deliver(new Blob([dlExportMarkdown(cur.text)], { type: 'text/markdown;charset=utf-8' }), dlExportName(cur.title, 'Document'));
+      } catch { note('This browser would not save the file.'); }
+    }
+
+    // Open a file: read in the page, never run, never uploaded.
+    const TOO_BIG = 'That file is too big for a document.';
+    const NOT_TEXT = 'That does not look like a text file.';
+    let busy = false;
+    async function openFile(file) {
+      if (!canEdit || busy || !file) return;
+      busy = true;
+      try {
+        if (file.size > DL.sizeMax * 4) { note(TOO_BIG); return; }
+        const got = dlFileText(await file.arrayBuffer());
+        if (!got.ok) { note(got.reason === 'big' ? TOO_BIG : NOT_TEXT); return; }
+        const id = await env.create(dlFileTitle(file.name, 'Document'), got.text);
+        env.afterOpen();
+        env.open(id);
+      } catch (err) { note(err && err.message ? err.message : 'That file could not be opened.'); } finally { busy = false; }
+    }
+    let input = null;
+    function pick() {
+      if (!canEdit) return;
+      if (!input) {
+        input = doc.createElement('input');
+        input.type = 'file';
+        input.accept = '.md,.markdown,.txt,text/markdown,text/plain';
+        input.hidden = true;
+        input.setAttribute('aria-label', 'Markdown file');
+        input.addEventListener('change', () => { const f = input.files && input.files[0]; input.value = ''; openFile(f); });
+        app.append(input);
+      }
+      input.click();
+    }
+    // A file dropped on the list.
+    const list = app.querySelector('#list');
+    if (list && canEdit) {
+      const hasFile = (e) => Boolean(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
+      list.addEventListener('dragover', (e) => { if (hasFile(e)) e.preventDefault(); });
+      list.addEventListener('drop', (e) => {
+        if (!hasFile(e)) return;
+        e.preventDefault();
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) openFile(f);
+      });
+    }
+    return { offerPrint, save, pick, openFile };
+  }
+  // The document in view for Print and Save as Markdown file: the editor's text as it is now (unsaved typing too), or the saved text.
+  const output = outputWire({
+    async current() {
+      if (ed) return ed.lost ? null : { title: $('edit-title').value || ed.saved.title, text: ed.editor.getText(), page: ed.page };
+      const got = openId ? await readText(openId) : null;
+      return got ? { title: got.rec.title, text: got.text, page: got.rec } : null;
+    },
+    create, open: (id) => openDoc(id), afterOpen: () => { $('read').hidden = false; $('list').hidden = true; render(); },
+  });
 
   await loadTags();
   try { await load(); } catch (err) { showMsg('Documents could not load', err.message, () => location.reload()); return; }
