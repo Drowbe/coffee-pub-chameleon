@@ -9,9 +9,12 @@
   //
   // The kept writes (lib-c, localStorage `wb-pending:<space>:<prefix>`) belong to a board by their prefix:
   //   R1 a switch flushes the old board's syncs first (what waits is sent under the old board's keys, and kept until accepted);
-  //   R2 wbDropPending(store, space, id) removes a deleted board's entries;
+  //   R2 a trash keeps them (flushed like a switch, retried in memory, the entry kept until accepted); wbDropPending(store,
+  //      space, id) removes a board's entries only when its keys are PURGED;
   //   R3 wbSweepPending(...) removes entries whose board is neither listed nor in the trash (never before the list is read);
-  //   R4 replay (lib-c) reads the entry of its own prefix only, so only the board being opened is replayed.
+  //   R4 replay only into the entry's own board prefix, never into another: the board opened replays its own at its open;
+  //      after the list is read replayOthers() replays every other listed or trashed board's, each by its own short-lived
+  //      writer, without switching the page. An entry's age counts only after its first replay (lib-c).
   const WB_BOARD_FIRST = 'main'; // the reserved first board's id; never given to a new board
   const WB_BOARD_MAX = 10; // boards in a space (the page's rule; the server does not check it)
   const WB_BOARD_NAME_MAX = 40;
@@ -150,6 +153,19 @@
     ];
   }
 
+  // The strip of boards and the rows of the Boards… menu. Wide: every board is a tab. Narrow (a phone): only the current board's
+  // tab, and every board as a row (the current one marked) at the top of the Boards… menu; a viewer, who has no Boards… menu,
+  // gets the title bar's one-entry Boards menu (`viewerMenu`) when there is more than one board. `tabs`: the strip's options.
+  function wbBoardsStrip(list, activeId, narrow, canEdit) {
+    const l = Array.isArray(list) ? list : [];
+    const count = l.length;
+    if (!wbShowTabs({ canEdit, count })) return { tabs: [], rows: [], viewerMenu: false };
+    const all = l.map((b) => ({ id: b.id, label: b.name }));
+    if (!narrow) return { tabs: all, rows: [], viewerMenu: false };
+    const cur = all.find((b) => b.id === activeId) || all[0];
+    return { tabs: cur ? [cur] : [], rows: l.map((b) => ({ id: b.id, label: b.name, current: b.id === activeId })), viewerMenu: !canEdit && count > 1 };
+  }
+
   // ---- the trash, and the purge ------------------------------------------------------------------------------------------
   const WB_TRASH_DAYS = 7;
   const WB_TRASH_MS = WB_TRASH_DAYS * 24 * 3600 * 1000;
@@ -216,7 +232,14 @@
               try { await host.storage.delete(key); } catch (err) { if (!err || err.status !== 404) throw err; }
               work.keys.shift(); n += 1;
             }
-            if (!work.keys.length && n < perTick) { await host.storage.delete(`${WB_BOARD_LIST_PREFIX}${id}`).catch((err) => { if (!err || err.status !== 404) throw err; }); n += 1; work = null; return { status: 'done', id, deleted: n }; }
+            if (!work.keys.length && n < perTick) {
+              if (id === WB_BOARD_FIRST) {
+                // main is never deleted: its record is written again live and empty, under its old name, so there is one main and
+                // the implicit "Board 1" does not come back as a second (an 11th) board. Written only if the record is as read.
+                await host.storage.set(`${WB_BOARD_LIST_PREFIX}${id}`, { id: r.id, type: 'board-record', name: r.name, order: r.order, by: r.by, at: r.at, deleted: false, trashedAt: '' }, { version: fresh.version });
+              } else await host.storage.delete(`${WB_BOARD_LIST_PREFIX}${id}`).catch((err) => { if (!err || err.status !== 404) throw err; });
+              n += 1; work = null; return { status: 'done', id, deleted: n };
+            }
           } catch { return { status: 'error', deleted: n }; }
           return { status: 'working', id, deleted: n, left: work.keys.length };
         } finally { running = false; }
@@ -306,13 +329,30 @@
       current: (e) => e === epoch,
       loadList,
       sweep,
-      // R2: a deleted board's writes not accepted yet are thrown away, in memory (its syncs, shown or switched away from) and
-      // in this browser (the kept entries). Nothing is sent for it afterwards.
+      // R2: a board's kept writes are thrown away, in memory (its syncs, shown or switched away from) and in this browser (the
+      // entries). Only when its keys are purged: a trash keeps them (they go on being sent, under the board's own keys).
       dropPending(boardId) {
         for (const s of retired.get(boardId) || []) s.discard();
         retired.delete(boardId);
         if (boardId === id) { if (sync) sync.discard(); if (boardSync) boardSync.discard(); }
         return wbDropPending(store, scope, boardId);
+      },
+      // R4: after the list is read, replay this person's kept writes of every other listed or trashed board, each into its own
+      // prefix by a writer of its own (kept in `retired` while it works, so it retries a 429 and the page still counts it). The
+      // board shown replays at its open. Nothing is drawn, nothing of the board shown is touched. Returns the board ids tried.
+      replayOthers() {
+        if (!listRead) return [];
+        const due = new Set(wbPurgePlan([...records.values()], Date.now()));
+        const done = [];
+        for (const bid of wbKnownBoardIds([...records.values()])) {
+          if (bid === id || due.has(bid) || retired.has(bid) || !WB_BOARD_ID_RE.test(bid)) continue;
+          const mk = (prefix, cl) => createSync({ host, board: bid, prefix, scope, clean: cl, me, store, clock, onRemote: noop, onReload: noop, onRefused: noop, onBusy: noop, ...extra });
+          const a = mk(wbBlockPrefix(bid), clean);
+          const b = mk(wbSettingsPrefix(bid), cleanSettings);
+          a.replay(); b.replay();
+          if (a.pending() || b.pending()) { retired.set(bid, [a, b]); done.push(bid); }
+        }
+        return done;
       },
       // Start on a board (the first one, or the landing).
       start(boardId = WB_BOARD_FIRST) { if (!WB_BOARD_ID_RE.test(boardId)) throw new Error('not a board id'); id = boardId; build(id); return epoch; },

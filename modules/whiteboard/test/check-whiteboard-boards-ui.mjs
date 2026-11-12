@@ -33,7 +33,7 @@ const ok = (c, m) => { if (c) passed += 1; else fails.push(m); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const NAMES = ['createSync', 'createBoardSession', 'createBoardPurge', 'wbClean', 'wbCleanBoard', 'wbCleanBoardRecord', 'wbCleanBoardName', 'wbBoardList', 'wbBoardNameProblem',
-  'wbDefaultBoardName', 'wbShowTabs', 'wbBoardsMenu', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
+  'wbDefaultBoardName', 'wbShowTabs', 'wbBoardsMenu', 'wbBoardsStrip', 'wbBoardList', 'wbTrashedBoards', 'wbDaysLeftWord', 'wbPurgePlan', 'wbPurgeOwns', 'wbLateHome', 'wbWriteThere', 'wbEndGesture',
   'wbCanCreateBoard', 'wbNextOrder', 'wbNewBoardId', 'WB_BOARD_MAX', 'WB_BOARD_NAME_MAX', 'WB_TRASH_MS', 'WB_PURGE', 'tools'];
 let L = {};
 try {
@@ -263,7 +263,7 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   const page = fs.readFileSync(path.join(src, 'whiteboard.js'), 'utf8');
   ok((page.match(/wbCanCreateBoard\(/g) || []).length >= 3, 'the page checks the limit when the menu opens, before the question and again after it');
   ok(/if \(!cur \|\| list\.length <= 1\) return;/.test(page), 'the page does not delete the last board');
-  ok(/session\.dropPending\(cur\.id\)/.test(page) && /deleted: true, trashedAt: iso\(\)/.test(page), 'delete sets deleted and trashedAt and drops the kept writes of the board');
+  ok(!/session\.dropPending\(cur\.id\)/.test(page) && /deleted: true, trashedAt: iso\(\)/.test(page), 'delete sets deleted and trashedAt and keeps the kept writes of the board (a purge drops them)');
   ok(/title: 'New board', label: 'Name'[^}]*action: 'Create'[^}]*validate/.test(page) && /title: 'Delete board\?'/.test(page) && /action: 'Delete'/.test(page), 'New board and Delete board? are the shared prompt and confirm');
   ok(/boardsSwitch = host\.ui\.viewSwitch\(\{ id: 'boards'/.test(page) && page.indexOf("id: 'boards', label: 'Boards'") < page.indexOf("id: 'tool', label: 'Tools'"), 'the boards switch is made before the Tools switch');
   ok(/\{ id: 'boards', icon: 'layer-group', title: 'Boards…', overflow: true \}/.test(page), 'one title-bar entry, Boards…');
@@ -356,6 +356,44 @@ const note = (id, extra = {}) => ({ id, type: 'note', x: 0, y: 0, z: 1, w: 180, 
   ok(quiet.session.beforeUnload(ev2) === false && ev2.returnValue === undefined, 'with nothing unsent there is no prompt');
   session.dropPending('main');
   ok(session.pending() === 0, 'a deleted board\'s unsent writes are dropped, and then the count is clear');
+}
+
+// ---- 0.1.57: the strip, and purging main -------------------------------------------------------------------------------------
+{
+  const mkList = (n) => Array.from({ length: n }, (_, i) => ({ id: i ? `b${i}` : 'main', name: i ? `Plan ${i}` : 'Board 1' }));
+  const S = (n, active, narrow, canEdit) => L.wbBoardsStrip(mkList(n), active, narrow, canEdit);
+  for (const n of [1, 3, 10, 11]) {
+    const wide = S(n, 'main', false, true);
+    ok(wide.tabs.length === n && wide.rows.length === 0 && wide.viewerMenu === false, `wide, editor, ${n} boards: every board a tab, no rows, no viewer menu`);
+    const nar = S(n, n > 1 ? 'b1' : 'main', true, true);
+    ok(nar.tabs.length === 1 && nar.tabs[0].id === (n > 1 ? 'b1' : 'main') && nar.rows.length === n && nar.rows.filter((r) => r.current).length === 1 && nar.rows.find((r) => r.current).id === nar.tabs[0].id && nar.viewerMenu === false, `narrow, editor, ${n} boards: the current tab only, ${n} rows with the current marked, no viewer menu`);
+  }
+  ok(same(S(1, 'main', true, false), { tabs: [], rows: [], viewerMenu: false }) && same(S(1, 'main', false, false), { tabs: [], rows: [], viewerMenu: false }), 'a viewer of one board: no strip, no menu, wide or narrow');
+  const vn = S(3, 'b2', true, false);
+  ok(vn.tabs.length === 1 && vn.tabs[0].id === 'b2' && vn.rows.length === 3 && vn.viewerMenu === true, 'narrow viewer, 3 boards: the current tab, the rows, the title bar Boards menu');
+  const vw = S(3, 'b2', false, false);
+  ok(vw.tabs.length === 3 && vw.rows.length === 0 && vw.viewerMenu === false, 'wide viewer, 3 boards: all tabs, as before, no menu');
+  ok(S(3, 'gone', true, true).tabs.length === 1 && S(3, 'gone', true, true).tabs[0].id === 'main', 'narrow with an unknown active board: the first board');
+  ok(same(L.wbBoardsStrip(null, 'main', true, true), { tabs: [], rows: [], viewerMenu: false }) || L.wbBoardsStrip(null, 'main', true, true).tabs.length === 0, 'no list, no tabs');
+}
+{
+  // (c) purging main: its keys go, then board:main is written again live and empty with its old name
+  const st = makeStore();
+  seedBoard(st, 'main', 40, { name: 'Home', order: 0 });
+  for (let i = 1; i <= 9; i += 1) st.put(`board:x${i}`, rec(`x${i}`, { order: i }));
+  st.put('block:x1:keep', { id: 'keep', type: 'note' });
+  const purge = L.createBoardPurge({ host: st.host, me: 'u1', now: () => T0, perTick: 25 });
+  let status = ''; let last = null;
+  for (let i = 0; i < 20 && status !== 'done'; i += 1) { last = await purge.tick(records(st), 'x1'); status = last.status; }
+  const r = st.data.get('board:main').value;
+  ok(status === 'done' && st.keys('block:main:').length === 0 && st.keys('_board:main:').length === 0 && !st.data.has('_present:main:state'), 'purging main deletes its blocks, settings and presentation');
+  ok(r.id === 'main' && r.deleted === false && r.trashedAt === '' && r.name === 'Home' && r.order === 0, `and the final write is board:main, live, with its old name (${JSON.stringify(r)})`);
+  const dels = st.log.filter((l) => l.startsWith('delete ')); const sets = st.log.filter((l) => l.startsWith('set board:main'));
+  ok(!dels.includes('delete board:main') && sets.length === 1 && st.log[st.log.length - 1] === 'set board:main', 'the record is never deleted, and written once, last');
+  const list = L.wbBoardList(records(st));
+  ok(list.filter((b) => b.id === 'main').length === 1 && !list.find((b) => b.id === 'main').implicit && list.find((b) => b.id === 'main').name === 'Home' && list.length === 10, `exactly one main, named Home, and 10 boards in all (${list.length})`);
+  ok(st.data.has('block:x1:keep') && st.keys('board:').length === 10, 'other boards are untouched');
+  ok((await purge.tick(records(st), 'x1')).status === 'idle', 'and main is not due again');
 }
 
 finish();

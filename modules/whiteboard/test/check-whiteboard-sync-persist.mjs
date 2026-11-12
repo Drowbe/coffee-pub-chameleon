@@ -130,7 +130,7 @@ const KEYSET = (n) => Array.from({ length: n }, (_, i) => `block:main:b${i}`).so
 // 7. hostile store content is ignored
 {
   const garbage = ['not json', '{"t":1}', 'null', '[]', '"s"', JSON.stringify({ t: Date.now(), by: 'u1', items: [] }), JSON.stringify({ t: Date.now(), by: 'u1', items: { 'block:main:b1': 5, 'block:main:b2': { op: 'put', value: 7 }, 'block:main:b3': { op: 'put', value: blk(9) }, 'other:b4': { op: 'put', value: blk(4) }, 'block:main:b6': { op: 'zap' } } }),
-    JSON.stringify({ t: Date.now(), by: 'someone', items: { 'block:main:b1': { op: 'put', value: blk(1) } } }), JSON.stringify({ t: Date.now() - 11 * 60000, by: 'u1', items: { 'block:main:b1': { op: 'put', value: blk(1) } } }), JSON.stringify({ t: Date.now() + 1e9, by: 'u1', items: {} })];
+    JSON.stringify({ t: Date.now(), by: 'someone', items: { 'block:main:b1': { op: 'put', value: blk(1) } } }), JSON.stringify({ t: Date.now() - 11 * 60000, r: 1, by: 'u1', items: { 'block:main:b1': { op: 'put', value: blk(1) } } }), JSON.stringify({ t: Date.now() + 1e9, by: 'u1', items: {} })];
   for (const g of garbage) {
     const server = makeServer(); const store = makeStore();
     store.setItem('wb-pending:sp1:block:main:', g);
@@ -171,6 +171,20 @@ const KEYSET = (n) => Array.from({ length: n }, (_, i) => `block:main:b${i}`).so
   c.close(); await settle();
   ok(srv2.data.has('block:main:b7') && c.closed === true && c.save(blk(8)) === false && !srv2.data.has('block:main:b8'), 'close() sends what waits (R1), then takes no more writes');
   ok(c.owns('block:main:x') && !c.owns('block:b2:x'), 'a sync owns only its own board\'s keys');
+}
+// 10. the age counts only after the first replay: a leftover never replayed is replayed once whatever its age, then marked and fresh
+{
+  const old = JSON.stringify({ t: Date.now() - 3 * 3600000, by: 'u1', items: { 'block:main:b1': { op: 'put', value: blk(1) } } });
+  const server = makeServer({ refuseFirst: 1e6 }); const store = makeStore();
+  store.setItem('wb-pending:sp1:block:main:', old);
+  const { s } = mk(server, store);
+  const left = s.replay(); await settle();
+  ok(left.put.length === 1, 'TTL: a 3 hour old leftover that was never replayed is replayed once');
+  const kept = JSON.parse(store.getItem('wb-pending:sp1:block:main:'));
+  ok(kept.r === 1 && Date.now() - kept.t < 60000, 'TTL: it stays kept (the server refused), marked as replayed, with a fresh time');
+  store.setItem('wb-pending:sp1:block:main:', JSON.stringify({ ...kept, t: Date.now() - 11 * 60000 }));
+  const { s: later } = mk(makeServer(), store);
+  ok(later.replay().put.length === 0 && store.m.size === 0, 'TTL: a replayed entry older than 10 minutes then expires');
 }
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
 console.log('all ok');

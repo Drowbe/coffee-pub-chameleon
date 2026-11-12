@@ -40,7 +40,7 @@
   // Nothing a person did is lost to a wait or a closed page. Every write not yet accepted (waiting on the 600 ms timer, on
   // its way, parked by a 429) is also kept in the browser's localStorage under `scope` (the space) and the key prefix: the
   // newest intent per key (a put with its block, or a delete), at most WB_PENDING_CAP characters (when over, the oldest
-  // intents are left out first), for WB_PENDING_TTL ms. localStorage rather than sessionStorage because a closed tab must be
+  // intents are left out first), for WB_PENDING_TTL ms after its first replay (a leftover not yet replayed does not age). localStorage rather than sessionStorage because a closed tab must be
   // rescued too (sessionStorage is per tab). replay() after the first read sends what an earlier page of the same person left
   // (never another person's, never an old one, never anything that is not shaped like a block) and returns what to draw.
   // A key is forgotten when the server accepted that very intent, or refused it for good. After 8 waits for a key the intent
@@ -60,6 +60,7 @@
     const STORE_KEY = `wb-pending:${scope}:${PREFIX}`;
     const pend = new Map(); // key -> the newest intent not accepted yet: a block, or GONE (kept in insertion order = age)
     let persistDirty = false;
+    let replayedMark = false; // the entry kept now was read by replay() (its leftovers were tried once); a newer intent clears it
     const keyOf = (id) => PREFIX + id;
     let dropped = false; // discard(): the board was deleted; what waits for it is thrown away
     let closed = false; // close(): the board was switched away from; nothing is reported or written for it any more
@@ -172,7 +173,7 @@
       try {
         if (!pend.size) { store.removeItem(STORE_KEY); return; }
         const items = [...pend].map(([k, v]) => [k, v === GONE ? { op: 'del' } : { op: 'put', value: v }]);
-        const wrap = (list) => JSON.stringify({ t: Date.now(), by: me, items: Object.fromEntries(list) });
+        const wrap = (list) => JSON.stringify({ t: Date.now(), by: me, ...(replayedMark ? { r: 1 } : {}), items: Object.fromEntries(list) });
         let text = wrap(items);
         while (text.length > WB_PENDING_CAP && items.length > 1) { items.shift(); text = wrap(items); } // the oldest go first
         if (text.length > WB_PENDING_CAP) { store.removeItem(STORE_KEY); return; }
@@ -184,7 +185,7 @@
       persistDirty = true;
       Promise.resolve().then(() => { if (persistDirty) persistNow(); });
     }
-    function intend(key, value) { pend.delete(key); pend.set(key, value); persistSoon(); }
+    function intend(key, value) { replayedMark = false; pend.delete(key); pend.set(key, value); persistSoon(); }
     function settled(key, value) { const l = lanes.get(key); if (l && (l.next !== undefined || l.soon !== undefined)) return; if (pend.get(key) === value) { pend.delete(key); persistSoon(); } }
 
     function queue(key, value) {
@@ -358,7 +359,11 @@
         if (!store) return out;
         let saved = null;
         try { saved = JSON.parse(store.getItem(STORE_KEY)); } catch { saved = null; }
-        const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && typeof saved.t === 'number' && Date.now() - saved.t >= 0 && Date.now() - saved.t <= WB_PENDING_TTL
+        // The age counts only once the entry has been replayed: a leftover never replayed (its page was switched away from
+        // and closed, or the board was never reopened) is replayed once at the next load whatever its age; it is then kept
+        // marked (`r`) with a fresh time, and expires WB_PENDING_TTL after that.
+        const fresh = saved && typeof saved.t === 'number' && (saved.r !== 1 || (Date.now() - saved.t >= 0 && Date.now() - saved.t <= WB_PENDING_TTL));
+        const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && fresh
           && (!me || saved.by === me) && saved.items && typeof saved.items === 'object' && !Array.isArray(saved.items);
         if (ok) {
           for (const [key, it] of Object.entries(saved.items)) {
@@ -373,7 +378,7 @@
           }
         }
         if (!pend.size) { try { store.removeItem(STORE_KEY); } catch { /* none */ } }
-        else persistSoon();
+        else { replayedMark = true; persistSoon(); }
         return out;
       },
       // A 'change' event.
