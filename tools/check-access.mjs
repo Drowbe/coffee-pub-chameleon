@@ -161,6 +161,7 @@ try {
   await test('PATCH entry: owners and the admin only; a moderator and a member are refused', async () => {
     for (const who of ['mod', 'member', 'outsider']) {
       const r = await call('PATCH', `/api/spaces/${inv}`, { token: T[who], body: { entry: 'accounts' } });
+      if (who === 'outsider') { assert.equal(r.status, 404, `${who}: ${r.text}`); continue; }
       assert.equal(r.status, 403, `${who}: ${r.text}`);
       assert.match(r.json.error, /only/);
     }
@@ -217,9 +218,9 @@ try {
       assert.deepEqual(r.json.error, unknown.json.error, 'the same sentence as an unknown id');
     }
     assert.equal(await liveStatus(`/api/live?space=${inv}`, T.outsider), 404);
-    // routes with their own membership test (layouts, tags, facts, attention, modules) refuse an outsider, 403
+    // these routes answer an outsider as an unknown id, 404
     for (const p of [`/api/spaces/${inv}/layouts`, `/api/spaces/${inv}/tags`, `/api/spaces/${inv}/facts`, `/api/spaces/${inv}/attention`]) {
-      assert.equal((await call('GET', p, { token: T.outsider })).status, 403, p);
+      assert.equal((await call('GET', p, { token: T.outsider })).status, 404, p);
       assert.equal((await call('GET', p, { token: T.member })).status, 200, p);
     }
     // may enter but not in yet: refused, not told "no such"
@@ -233,6 +234,30 @@ try {
       assert.equal((await call('GET', `/api/spaces/${inv}/chat`, { token: T[who] })).status, 200, who);
       assert.equal(await liveStatus(`/api/live?space=${inv}`, T[who]), 200, who);
     }
+  });
+
+  await test('every id-taking route: a closed space answers an outsider exactly as an unknown id (status and body)', async () => {
+    const unknownId = 'zzzz9999';
+    const routes = [
+      ['GET', '/api/spaces/ID'], ['PATCH', '/api/spaces/ID', { name: 'x' }], ['POST', '/api/spaces/ID/join'],
+      ['GET', '/api/spaces/ID/attention'], ['GET', '/api/spaces/ID/facts'], ['GET', '/api/spaces/ID/tags'],
+      ['GET', '/api/spaces/ID/layouts'], ['GET', '/api/spaces/ID/objects/check'], ['GET', '/api/spaces/ID/ai'],
+      ['GET', '/api/spaces/ID/chat'], ['POST', '/api/spaces/ID/guest-link', {}], ['POST', '/api/spaces/ID/phases/cover', { day: '2030-01-01' }],
+      ['POST', '/api/me/spaces/ID/feed', {}], ['GET', '/api/modules/for-space?space=ID'], ['GET', '/api/ai/catalog?space=ID'],
+    ];
+    for (const [method, route, body] of routes) {
+      const closed = await call(method, route.replace('ID', inv), { token: T.outsider, body });
+      const none = await call(method, route.replace('ID', unknownId), { token: T.outsider, body });
+      assert.equal(closed.status, none.status, `${method} ${route}: status ${closed.status} vs ${none.status}`);
+      assert.equal(closed.text, none.text, `${method} ${route}: body`);
+      assert.equal(none.status, 404, `${method} ${route}: unknown is 404`);
+      // a member of it is not turned away as unknown
+      const mem = await call(method, route.replace('ID', inv), { token: T.member, body: method === 'PATCH' ? {} : body });
+      assert.notEqual(mem.status, 404, `${method} ${route}: a member is not told it is unknown`);
+    }
+    assert.equal(await liveStatus(`/api/live?space=${inv}`, T.outsider), await liveStatus(`/api/live?space=${unknownId}`, T.outsider));
+    // may enter but not joined keeps its 403
+    assert.equal((await call('GET', `/api/spaces/${acc}/attention`, { token: T.outsider })).status, 403);
   });
 
   await test('GET /api/spaces/:id (Set up): owners whole; a moderator theirs; a member or outsider refused', async () => {
