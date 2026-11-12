@@ -2,7 +2,7 @@
 
 **Audience:** Thomas decides. If he approves, server-development builds the space record, the routes and the checks, and experience-design builds the Conference view, the owner controls and the menu entry. content-manager documents after.
 
-**Status:** Draft for Thomas, 2026-11-12, by product-planner. Nothing here is decided except the lines marked "Thomas". Nothing is built. From the feedback and from Thomas, in his words:
+**Status:** Draft for Thomas, 2026-11-12, by product-planner; updated 2026-11-12 with Thomas's answers to questions 2, 4 and 5 (decisions 12 to 14). Question 1 waits for Thomas's message with images. Nothing here is decided except the lines marked "Thomas" and the decisions below. Nothing is built. From the feedback and from Thomas, in his words:
 
 > "we've made conference (video) so secondary, there is no way to have a dedicated call without popping it out."
 
@@ -60,6 +60,14 @@ Thomas, agreeing with the planner's opinion ("I think you are correct"), the sta
 10. **Pop-out stays** for second monitors.
 11. **No separate calls-only product mode.** That is what an Aside is. The gap is choosing it inside an ordinary space.
 
+Thomas, 2026-11-12, answers to the open questions (DECIDED):
+
+12. **The call's share of the Conference page (question 2): no fixed percentage.** In his words: "it should honor whatever the chat area already takes and then fill the workspace area." In the Conference layout the chat column keeps the width it already has and the call takes all the rest of the page. There is no percentage setting.
+13. **Who controls tabs (question 4): the owner sets what shows and the order.** A person may hide more, rename and re-icon. The owner's hide wins. A person cannot reorder. This builds the planned "Phase 2" owner override of plan-layout-views (issues #266 and #267).
+14. **New tabs on day one (question 5): all three new tabs show** (Conference, Whiteboards, Documents). The **...** overflow keeps the bar from crowding, and people can hide them.
+
+Question 1 (where the View or call position choice lives) is not answered: waiting for Thomas's message with images.
+
 ## Names
 
 `CLAUDE.md` (Names) does not list **Workspace** or **Layout**, though both are in the product: the Workspace is the first layout tab and the Layout menu is in the top bar. Thomas says "workspaces", "fixed workspaces" and "fixed layouts".
@@ -95,8 +103,8 @@ Fixed means fixed **content**, not fixed position (the owner reorders, below). A
 
 - **What it is.** Pressing the **Conference** tab hides the canvas (`#canvas`, not closed: its modules and its remembered arrangement stay) and gives the always-on column the whole work area. The call and the chat are both there. No new frame, no new module, no new call code: the same `#side-column`, called wider.
 - **The layout rules change in this layout only:**
-  - The column is the whole width; its splitter and its fold handle (`#side-column-toggle`) are hidden, because there is nothing to fold to.
-  - The 55% rule (`CALL_MAX_SHARE`) is lifted. In Conference the call may take up to the share in Open question 2 and the chat keeps `COLUMN_MIN` (220px) or its share, whichever is more.
+  - The chat keeps the width it already has in the column (Thomas, decision 12); the call takes all the rest of the page. The fold handle (`#side-column-toggle`) is hidden, because there is nothing to fold to. The builder decides whether the splitter stays to change the chat width, and says so in the report.
+  - The 55% rule (`CALL_MAX_SHARE`) is lifted. There is no call percentage: the call is whatever the chat leaves, and the chat keeps at least `COLUMN_MIN` (220px).
   - The tiles grow with the space (the strip height clamp, `clampStripHeight()`, gets a Conference ceiling).
   - Not in a call: the page shows the chat and one large **Start call** (or **Join call**) button, not an empty page. This is the Communication mode's front door.
 - **Placement, the menu option.** The View menu entry (below) offers: **Beside the chat** (call left, chat right; the default in Conference), **Above the chat**, **Below the chat**, and **Call only** (the chat is folded away, one tap brings it back). In the other layouts the same entry is today's Top, Bottom, Left, Floating, Its own window.
@@ -139,9 +147,9 @@ The owner's choices are a field on the space record, beside `opensWith` and `def
 - `order`: ids in the owner's order. Any known id left out is added at the end in the default order. Unknown ids are dropped.
 - `hide`: ids not in the bar for anyone. They stay in the Layout menu's list. `workspace` can never be in `hide`.
 - `defaultLayout` (existing key) also accepts `conference`, `whiteboard` and `documents`, while they are available in the space. `workspace` still means "none" (unchanged).
-- Unset `tabs` means today's order (Workspace, Calendar, Map) with Conference, Whiteboards and Documents added after, and nothing hidden. **Suggested:** Conference, Whiteboards and Documents show for everyone on day one, so every space gains three tabs when this ships. If Thomas would rather new tabs start hidden, say so (Open question 5).
+- Unset `tabs` means today's order (Workspace, Calendar, Map) with Conference, Whiteboards and Documents added after, and nothing hidden. **Decided (Thomas, decision 14):** Conference, Whiteboards and Documents show for everyone on day one, so every space gains three tabs when this ships. The overflow **...** holds what does not fit, and people can hide them.
 - **Who may write it:** the same people as `defaultLayout`: owners, the admin and moderators (`MODERATOR_SPACE_FIELDS`), suggested. Open question 8.
-- **A person's own choices stay** (`system.<user key>`: name, icon, `tab`). Order of precedence, suggested: the owner's `hide` wins (a hidden tab is hidden for everyone); a person may hide more for themselves; a person may rename and re-icon any tab. A person cannot reorder; the owner's order is what everyone sees. Open question 4.
+- **A person's own choices stay** (`system.<user key>`: name, icon, `tab`). Order of precedence, **decided (Thomas, decision 13):** the owner's `hide` wins (a hidden tab is hidden for everyone); a person may hide more for themselves; a person may rename and re-icon any tab. A person cannot reorder; the owner's order is what everyone sees.
 - **Per person, per space:** `view`, the layout last shown, and the placements. See "Where choices are kept".
 
 Routes:
@@ -175,7 +183,7 @@ Routes:
 
 | Surface | Collaboration (any layout but Conference) | Communication (Conference) |
 |---|---|---|
-| Desktop, 1280px | Work left, column right, as today. Call per Call position | The page is the call and the chat. Beside the chat by default: about 65% call, rest chat. A tab "Conference" is current |
+| Desktop, 1280px | Work left, column right, as today. Call per Call position | The page is the call and the chat. Beside the chat by default: the chat keeps its width, the call fills the rest. A tab "Conference" is current |
 | Narrow desktop window (641 to 1000px) | The column keeps its `CALL_LEFT_MIN` rule; Left falls back to Top | Beside the chat needs about 560px; narrower, it stacks above the chat and the saved choice is kept (the `callPlaceFor()` rule) |
 | Phone, 390px | Tab bar as today; the call is a tab | Same: the call tab is full screen (see "Phones") |
 | Light and dark | The tiles, the Start button and the tab use theme tokens only (`design-theme.md`); no raw colours (`check-no-raw-colours`) | The same; the empty "not in a call" page uses the card surface and the accent button |
@@ -235,7 +243,7 @@ Each step is one try build, leaves the app working and can be checked alone. Siz
 | 1 | **The ids.** Add `conference`, `whiteboard`, `documents` to `systemLayoutsFor()` (available rules above), the four code lists, the icons; `defaultLayout` accepts them. Whiteboards and Documents tabs work as Calendar and Map do. Conference is listed but pressing it only loads an empty layout | server-development, then experience-design for the tab | `server/layouts.js`, `server/index.js`, `server/store.js`, `public/primary-nav.js`, `public/opens-with.js`, `public/space.js` | M | Low |
 | 2 | **Owner's tabs.** `tabs` on the space record, `PATCH` rules, `GET` returns the owner's order and `shown`; precedence with the person's `tab` | server-development | `server/store.js`, `server/index.js`, `tools/check-layouts.mjs` | M | Low |
 | 3 | **Owner controls in Set up.** The Layouts section: Show in the bar, Move up and down, Opens first | experience-design | `public/space-setup.js`, `public/switch-list.js`, `tools/check-setup-tabs.mjs` | M | Low |
-| 4 | **The Conference layout.** `body.view-conference`, the column to full width, the lifted 55% cap for this layout, the empty "not in a call" page with the large Start button, hold-memory behaviour | experience-design | `public/space.js`, `public/canvas.js`, `public/style.css` | L | **High:** layout and canvas work |
+| 4 | **The Conference layout.** `body.view-conference`, the chat column keeps its current width and the call fills the remaining width (no percentage setting), the lifted 55% cap for this layout, the empty "not in a call" page with the large Start button, hold-memory behaviour | experience-design | `public/space.js`, `public/canvas.js`, `public/style.css` | L | **High:** layout and canvas work |
 | 5 | **The placement option.** Call position entries in the Layout menu, the Conference variant, per-space storage | experience-design | `public/space.js` (`callPlaceItems()`, `DEFAULT_PREFS`), `tools/check-canvas.mjs` | M | Medium |
 | 6 | **First visit and restore.** `view` remembered per person and space, the order in "First visit and restore", the guest default | experience-design | `public/opens-with.js`, `public/canvas.js`, `public/space.js`, `tools/check-canvas.mjs` | M | Medium (changes what opens) |
 | 7 | **Phones and an Aside check.** Conference as the call tab, a default of Conference at 390px, no change to Asides | experience-design | `public/space.js`, `public/style.css` (the `max-width: 640px` blocks) | S | Medium |
@@ -247,7 +255,7 @@ Documentation after each step is content-manager's: [architecture-navigation](..
 - **Step 1.** `tools/check-layouts.mjs`: the three new ids come and go with their module, the permission and the switch; a guest gets `system: []`; `defaultLayout: 'conference'` is accepted while available and refused after. `tools/check-nav.mjs`: the tabs and their order. A check that the four code lists name the same ids (new, small).
 - **Step 2.** `tools/check-layouts.mjs`: `tabs` round trip; unknown id, `workspace` in `hide` and a member's write refused; a missing id is added at the end; the person's `tab` is overridden by the owner's `hide`; an Aside answers `404`.
 - **Step 3.** `tools/check-setup-tabs.mjs` for the section's words and switches. Live in Chromium (the planner's expectation for the builder): an owner hides Documents and moves Conference first; a member's bar follows after a reload; keyboard-only reorder works.
-- **Step 4.** `tools/check-canvas.mjs` for the pure clamps (the Conference ceiling and the least chat). Live in Chromium at 1280, 900 and 641px, light and dark: the page is the call and the chat; not in a call it shows the Start button; the Workspace comes back as it was (modules, positions); Chat keeps its least width; the fold handle is gone. **Cannot be checked without a real LiveKit call:** the tiles at large size, a screen share in Conference, audio and video, a second person joining.
+- **Step 4.** `tools/check-canvas.mjs` for the pure clamps (the chat keeps its width, the call takes the rest, the least chat). Live in Chromium at 1280, 900 and 641px, light and dark: the page is the call and the chat; not in a call it shows the Start button; the Workspace comes back as it was (modules, positions); Chat keeps its least width; the fold handle is gone. **Cannot be checked without a real LiveKit call:** the tiles at large size, a screen share in Conference, audio and video, a second person joining.
 - **Step 5.** Check the choices persist across a reload and differ between Conference and the other layouts; Left is disabled below `CALL_LEFT_MIN` with a hint.
 - **Step 6.** `tools/check-canvas.mjs` for the new order (pure `firstVisitLayout()` and `whatOpens()` cases: remembered view wins after a first visit, the owner's default on a first visit and for a guest, a view that is no longer available falls through).
 - **Step 7.** Live at 390px (headless Chromium): the call tab is full screen, the tab bar is one tap to the work; `tools/check-narrow.mjs`, `tools/check-phone-targets.mjs`.
@@ -262,7 +270,7 @@ The new id-agreement check (step 1); new cases in `check-layouts`, `check-nav`, 
 1. **The Conference layout fights the column's rules** (the 55% cap, the fold handle, the Left minimum, the share lift). A wrong change squeezes the chat or leaves a dead page. Mitigation: step 4 alone, behind a flag-free but small change set, checked at three widths; the cap lifts only in Conference.
 2. **What opens changes** (step 6): remembering the last view could open someone on a layout they did not expect, or on Conference with no call. Mitigation: the order above, a fall-through for an unavailable view, and the Workspace as the safe floor.
 3. **Four code lists of the same ids** drift apart. Mitigation: the agreement check.
-4. **Three new tabs everywhere** crowd the bar on day one. Mitigation: the existing overflow; Open question 5 can start them hidden.
+4. **Three new tabs everywhere** crowd the bar on day one (decided to show, decision 14). Mitigation: the existing overflow, and people can hide them.
 5. **Real-call behaviour is unproven here,** so large tiles and the share are unverified until Thomas or a tester joins a real call.
 
 ## Rollback and off switch
@@ -286,32 +294,32 @@ These are the facts the documents will carry, so content-manager does not guess:
 
 ## What is not decided
 
-Everything under "Open questions" below. Question 1 (the name of the menu) and 2 (the call's share in Conference) block step 4 and 5; question 3 blocks nothing but the size of step 1; questions 4 and 5 block step 2; the rest can be answered while steps 1 to 3 are built.
+Everything under "Open questions" below. Questions 2, 4 and 5 are decided (decisions 12 to 14) and no longer block. Question 1 (the name of the menu) is waiting for Thomas's message with images and blocks step 5; question 3 blocks nothing but the size of step 1; the rest can be answered while steps 1 to 3 are built.
 
 ## Open questions for Thomas
 
 Each has the planner's suggestion first. Marked "blocks" where the build waits.
 
-1. **The menu's name (blocks step 5).** There is no View menu; the Layout menu is the nearest.
+1. **The menu's name (blocks step 5). NOT ANSWERED: waiting for Thomas's message with images.** There is no View menu; the Layout menu is the nearest.
    - Put **Call position** in the Layout menu under Arrange, keep the name Layout (suggested)
    - Rename the Layout menu **View**
    - A separate small **View** button beside Layout
-2. **How much of the Conference page the call takes (blocks step 4).** Beside the chat by default.
-   - Call about 65%, chat the rest, both adjustable by the splitter (suggested)
-   - Call about 75%, the chat a narrow side column
-   - 50 and 50
+2. **How much of the Conference page the call takes. DECIDED (Thomas, 2026-11-12, decision 12).** Chosen: no fixed percentage; the chat keeps the width it already has and the call fills the rest.
+   - Call about 65%, chat the rest (not chosen)
+   - Call about 75%, the chat a narrow side column (not chosen)
+   - 50 and 50 (not chosen)
 3. **Which modules get a fixed layout besides the six.** Budget, Polls, Vault, Research, Planner and Stream live only in the Workspace.
    - Only the six; others via a saved layout and a heart (suggested)
    - Add Planner (it is the travel Space's main module)
    - Any module can be pinned as a preset by the owner
-4. **Who wins when the owner and a person disagree (blocks step 2).**
-   - The owner decides what shows and in what order; a person may hide more, rename and re-icon (suggested)
-   - The owner only sets the default; tabs stay each person's own, as now
-   - The owner decides everything, including names and icons
-5. **Do the new tabs show on day one (blocks step 2).**
-   - Conference, Whiteboards and Documents show for everyone until an owner hides them (suggested)
-   - Only Conference shows; the other two start hidden
-   - All three start hidden; an owner turns them on
+4. **Who wins when the owner and a person disagree. DECIDED (Thomas, 2026-11-12, decision 13).**
+   - **Chosen:** the owner decides what shows and in what order; a person may hide more, rename and re-icon; the owner's hide wins
+   - The owner only sets the default; tabs stay each person's own, as now (not chosen)
+   - The owner decides everything, including names and icons (not chosen)
+5. **Do the new tabs show on day one. DECIDED (Thomas, 2026-11-12, decision 14).**
+   - **Chosen:** Conference, Whiteboards and Documents show for everyone until an owner or a person hides them; the overflow **...** keeps the bar from crowding
+   - Only Conference shows; the other two start hidden (not chosen)
+   - All three start hidden; an owner turns them on (not chosen)
 6. **Remember the last layout across visits, and where.**
    - Remember it in the browser, per person and space (suggested; reverses "entering opens on the Workspace")
    - Remember it on the server so it follows the person
