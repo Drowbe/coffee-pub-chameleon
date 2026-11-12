@@ -95,6 +95,8 @@ test('the wiring: Save for readers, Open and the file picker for editors only, n
   const lib = page.slice(page.indexOf('function outputWire('), page.indexOf('const output = outputWire('));
   assert.ok(lib.length > 500, 'outputWire is in documents.js');
   assert.match(page, /items = \[\{ type: 'button', id: 'save-md'[^\]]*placement: 'menu' \}\];\n\s+if \(canEdit\)/); // reading: not behind canEdit
+  // a shared document offers Save as Markdown file once it is shown, not while joining
+  assert.match(page, /items = joining\(\) \? \[\] : \[\{ type: 'button', id: 'save-md'[^\]]*placement: 'menu' \}\];/);
   assert.match(page, /canEdit && !showTrash \? \[\{ id: 'new'[^\]]*\{ id: 'open', label: 'Open Markdown file'/);
   assert.match(lib, /if \(!canEdit \|\| busy \|\| !file\) return;/);
   assert.match(lib, /if \(!canEdit\) return;\n\s+if \(!input\)/);

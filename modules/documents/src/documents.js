@@ -1411,7 +1411,9 @@
   function renderChrome() {
     let items;
     if (ed && ed.co) {
-      items = []; // a shared document has no Edit and no Done: it is simply editable
+      // a shared document has no Edit and no Done: it is simply editable. Save as Markdown file is there once the text is shown.
+      // (Open Markdown file is not offered in an open document, shared or not: it makes a new document.)
+      items = joining() ? [] : [{ type: 'button', id: 'save-md', label: 'Save as Markdown file', icon: 'file-arrow-down', placement: 'menu' }];
     } else if (ed) {
       items = ed.lost ? [] : [
         { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
@@ -1451,8 +1453,6 @@
       });
       paintActive();
     }
-    // While a shared document is still joining there is no editor: what edits is off until coReady draws the bar again.
-    for (const b of [insertButton, paperButton, tagButton]) if (b) b.set({ disabled: joining() });
     // The choice between the Markdown text box and the rich editor: the shared view switch (as the list's List and Thumbnails),
     // in the bar's end zone before Page colour, there while a person is editing.
     if (wantFmt && !richSwitch) richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
@@ -1475,6 +1475,9 @@
     } else if (!wantBack && backButton) { backButton.destroy(); backButton = null; }
     if (wantTags && !tagButton) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
     else if (!wantTags && tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); }
+    // While a shared document is still joining there is no editor: what edits is off until coReady draws the bar again.
+    // After every button is made, so none stays on (Page and Tags are made above).
+    for (const b of [insertButton, paperButton, tagButton]) if (b) b.set({ disabled: joining() });
     // The list's look switch is there only while the list is.
     const wantSwitch = !ed && !openId;
     if (wantSwitch && !listSwitch) listSwitch = host.ui.viewSwitch({ id: 'listview', label: 'View', options: DL_LISTVIEWS.map((o) => ({ ...o })), value: listView, onChange: setListView });
