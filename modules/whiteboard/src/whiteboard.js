@@ -4091,10 +4091,10 @@
   function boardsMenu(where) {
     if (!policy.canEdit) return;
     const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
-    const items = wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length });
+    const items = wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length, more: stripOf().more });
     const rows = stripOf().rows; // narrow: every board as a row at the top, the current one marked
     const top = rows.length ? [...rows.map((r) => ({ id: `go-${r.id}`, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } })), { separator: true }] : [];
-    host.menu.show({ id: 'boards', ...where, items: [...top, ...items.map((m) => ({ ...m, onClick: () => { act[m.id](); } }))] /* no promise returned: the menu closes at the pick */ });
+    host.menu.show({ id: 'boards', ...where, items: [...top, ...items.map((m) => ({ ...m, onClick: () => { if (act[m.id]) act[m.id](); } }))] /* no promise returned: the menu closes at the pick */ });
   }
   async function newBoard() {
     if (!policy.canEdit) return;
