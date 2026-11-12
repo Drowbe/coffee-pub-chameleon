@@ -66,7 +66,7 @@ decide those.
   (the full flow: plan, QA, docs, version bumps). Never treat a try build as production.
 - Start every GitHub issue title with its area and a colon, then the title (`Settings: Profile photo won't save`).
   The areas: Settings, Chat, Call, Home, Phases, Planner, Calendar, Places, Maps, Budget, Research, To-do,
-  Polls, Forms, Whiteboard, Design, Layout, Server, Docs, Verify, Ideas. Settings covers anything about configuring
+  Polls, Forms, Whiteboard, Documents, Design, Layout, Server, Docs, Verify, Ideas. Settings covers anything about configuring
   things: Set up, Manage, Profile, module and template settings, overridable words, permissions settings
   and the Modules page. Every agent files issues this way (Thomas, 2026-10-15).
 - The project manager picks the smaller model for small jobs and a larger one only for risky work (layout and
