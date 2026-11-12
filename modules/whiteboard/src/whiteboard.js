@@ -2388,7 +2388,7 @@
     updateStatus();
     try {
       const blob = await exporter.png(plan.items, plan.extent, size, { background: fill, step: (words) => { exporting = words; updateStatus(); } });
-      const name = wbExportName(info.module.name, new Date(), 'png');
+      const name = wbExportName(activeBoardName(), new Date(), 'png');
       await deliver(blob, name);
       return { name, size };
     } finally {
@@ -3057,8 +3057,9 @@
   }
   async function loadShared() {
     let got;
+    const my = session.epoch; // the board it was asked for: an answer for another board is not used
     try { got = await readShared(); } catch { return; }
-    if (sender.active) return;
+    if (!session.current(my) || sender.active) return;
     if (!got.rec) { shared.rec = null; shared.version = 0; shared.seenAt = NaN; applyShared(); return; }
     if (shared.rec && got.version === shared.version && JSON.stringify(shared.rec) === JSON.stringify(got.rec)) { applyShared(); return; } // the same: no news
     const stamp = typeof got.updatedAt === 'string' ? Date.parse(got.updatedAt) : NaN;
@@ -3835,6 +3836,16 @@
   $('world').append(liveLayer);
   const liveEls = new Map(); // a person's key -> { el, name, tool, x, y, toolId, faded }
   const liveState = () => (liveApi ? liveApi.state : 'closed');
+  const liveFollow = liveApi ? createWbLiveFollow({
+    live: liveApi,
+    clear: () => liveStore.clear(),
+    handle: (data, from) => {
+      const msg = wbLiveRead(data, from, { me, tint: (k) => liveApi.tint(k) });
+      if (!msg || (!pointersOn && !msg.gone)) return;
+      liveStore.put(msg, Date.now());
+      liveDraw();
+    },
+  }) : null;
   const guestWord = host.util.word('guest');
   const ARROW = 'M1 1 L1 17 L5.5 13 L8.5 20 L11.5 18.7 L8.6 12 L14.5 12 Z';
   function livePointerEl(p) {
@@ -3909,8 +3920,20 @@
 
   // Sending. Not over the find bar, the presenting bar, the overview or the formatting bar: only the board itself.
   const NOT_BOARD = '.wb-find, .wb-present, .wb-rejoin, .wb-overview, .wb-format, .wb-drop';
-  const liveSender = liveApi ? createWbLiveSender({ send: (data) => liveApi.publish(WB_LIVE.topic, data) }) : null;
+  // One topic for each board (`pointer.<board id>`, lib-p): the sender and the hearing follow the board shown (liveBoard()).
+  const newLiveSender = (topic) => createWbLiveSender({ send: (data) => liveFollow.publish(data, topic) });
+  let liveSender = null;
   const liveLeave = () => { if (liveSender) liveSender.leave(); };
+  // The board changed: the old board's people are told this one left, then its pointers go and its topic closes; the new
+  // board's topic opens. Nothing more goes to the old topic (the old sender is dropped; its late send finds another topic).
+  function liveBoard() {
+    if (!liveApi) return;
+    try { if (liveSender && (liveSender.shown || liveSender.busy)) liveFollow.publish(WB_LIVE_GONE); } catch { /* dropped */ }
+    liveSender = null;
+    const t = liveFollow.use(session.id);
+    liveSender = t ? newLiveSender(t) : null;
+    liveDraw();
+  }
   function livePoint(e) {
     if (!liveSender || !e.isPrimary) return;
     const over = !(e.target && e.target.closest && e.target.closest(NOT_BOARD));
@@ -3930,12 +3953,7 @@
     window.addEventListener('pagehide', liveLeave);
     // Hearing. Only the fields a pointer sends, each checked (lib-p); a message that is not one is ignored.
     try {
-      liveApi.subscribe(WB_LIVE.topic, (data, from) => {
-        const msg = wbLiveRead(data, from, { me, tint: (k) => liveApi.tint(k) });
-        if (!msg || (!pointersOn && !msg.gone)) return;
-        liveStore.put(msg, Date.now());
-        liveDraw();
-      });
+      liveBoard();
       liveApi.on('people', (e) => {
         const left = e && e.left;
         if (left && typeof left.key === 'string' && liveStore.remove(left.key)) liveDraw();
@@ -4011,6 +4029,7 @@
     finishGesture(); // a stroke or a drag in progress ends on the board it is on
     if (history) history.close();
     session.use(id); // R1: the old board's waiting writes are sent first, under its keys
+    liveBoard(); // the pointers: the old board's topic closes and its pointers go; the new board's opens
     history = histories.get(id);
     try { localStorage.setItem(WB_BOARD_LAST(spaceId), id); } catch { /* not kept */ }
     board.clear();
@@ -4066,6 +4085,8 @@
     if (!session.saveRecord({ id, type: 'board-record', name: wbCleanBoardName(name), order: wbNextOrder(list), by: me, at: iso(), deleted: false, trashedAt: '' })) return;
     await useBoard(id);
   }
+  // The shown board's name (the file name of Save as image and the title of a print): 'Board 1' for the implicit first.
+  const activeBoardName = () => { const b = session.visible().find((r) => r.id === session.id); return b ? b.name : ''; };
   async function renameBoard() {
     if (!policy.canEdit) return;
     const cur = session.visible().find((b) => b.id === session.id);
