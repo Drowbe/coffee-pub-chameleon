@@ -224,7 +224,7 @@
   // Hand has no strip; Select has the selection group only): { selection: Single, Many, Select all, Clear selection, fonts: size and alignment, line: line style and arrowheads, present: the Present
   // button, colours: the colour buttons }. The Fill tool has its colour only.
   function wbStripPlan(tool, def, family = null) {
-    if (!tool || tool.mode) return null;
+    if (!tool || tool.mode || tool.id === 'eraser') return null; // the Hand and the Eraser have no strip
     if (tool.id === 'select') return { selection: true, fonts: false, line: false, present: false, colours: false };
     return { selection: false, fonts: wbBearsWords(def), line: tool.id === 'connector' || family === 'flowchart', present: tool.id === 'frame', colours: true };
   }

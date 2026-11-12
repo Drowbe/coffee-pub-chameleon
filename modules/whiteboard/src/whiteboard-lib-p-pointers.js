@@ -16,7 +16,7 @@
     name: 24, // the most characters of a name shown (a longer one ends in …)
     key: 'whiteboard-pointers', // this browser's choice: '0' hides other people's pointers
     // The tools a pointer may say it is using: the board's own tool ids, nothing else.
-    tools: Object.freeze(['select', 'hand', 'pen', 'marker', 'brush', 'highlight', 'fill', 'note', 'text', 'rect', 'ellipse',
+    tools: Object.freeze(['select', 'hand', 'pen', 'marker', 'brush', 'highlight', 'fill', 'eraser', 'note', 'text', 'rect', 'ellipse',
       'line', 'arrow', 'rounded', 'diamond', 'pill', 'parallelogram', 'connector', 'frame', 'table']),
     tints: Object.freeze(['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red']),
   });
