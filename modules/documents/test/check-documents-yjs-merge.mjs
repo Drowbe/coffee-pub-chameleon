@@ -8,13 +8,14 @@
  *    deletes a block the other types in; two add a row at one spot; two delete one column; row against column. Every one
  *    converges to one document the schema accepts. Blocks nobody touched are written back word for word.
  * 2. THE KNOWN LIMITS, asserted so they cannot change unseen: text typed into a block, row or column another person deletes is gone
- *    (no breakage); a row added while a column is added leaves a grid that is not rectangular until a writer repairs it (step 3 of
- *    the plan: one writer repairs, no fixTables on every page).
+ *    (no breakage); a row added while a column is added leaves a grid that is not rectangular until the writer's page repairs it
+ *    (dlCoeditGate(PM).repairGrids; the repair, the plugin set without fixTables and the gate are tested in check-documents-coedit-*.mjs).
  * 3. FUZZ. Three peers make random edits with shuffled and duplicated updates; one state-vector exchange; all converge and are valid.
  *    Dropped updates are not fixed by more of the same (pending structs) and ARE fixed by one state-vector exchange.
- * 4. HOSTILE UPDATES. An update from a peer that is not our editor: what y-prosemirror throws away itself (unknown node, wrong
- *    nesting, bad attributes, a javascript: link) leaves a valid document and shows nothing hostile. What it does NOT catch
- *    (a top-level XmlText throws out of applyUpdate) is asserted as a known gap that the step-3 gate must close.
+ * 4. HOSTILE UPDATES, THE LIBRARY ALONE. An update from a peer that is not our editor: what y-prosemirror throws away itself (unknown node,
+ *    wrong nesting, bad attributes, a javascript: link) leaves a valid document and shows nothing hostile. What it does NOT catch
+ *    (a top-level XmlText throws out of applyUpdate) is asserted so the layer under the gate cannot change unseen; the gate that
+ *    closes it, and the whole hostile corpus, are in check-documents-coedit-gate.mjs.
  * 5. UNDO. yUndo undoes only the person's own edits, never another person's; redo; typed characters are grouped in 500 ms.
  *    (The ProseMirror history plugin must not be used together with ySyncPlugin: after a remote change its undo does nothing.)
  *
@@ -108,11 +109,13 @@ await test('grid: both add a row at one spot keeps both rows and stays rectangul
   assert.ok(net.converged()); assert.equal(nodesOfType(A.view.state.doc, 'grid')[0].n.childCount, 6); assert.equal(ragged(A), 0); assert.ok(valid(A, B));
   net.destroy();
 });
-await test('grid: a row added while a column is added converges; the grid is not rectangular until a writer repairs it (known)', () => {
+await test('grid: a row added while a column is added converges; the grid is not rectangular until the writer\'s page repairs it (known); the repair makes it so', () => {
   const { net, ps: [A, B] } = fresh(); inCell(A, 'a1'); run(A, PM.addRowAfter); inCell(B, 'b3'); run(B, PM.addColumnAfter); net.quiesce({ shuffle: true });
   assert.ok(net.converged()); assert.ok(valid(A, B));
   facts.push(`row against column: widths ${widths(A).join(',')} (${ragged(A)} short rows)`);
-  assert.ok(ragged(A) > 0, 'the grid is now rectangular by itself: the step-3 repair may not be needed, read the plan again');
+  assert.ok(ragged(A) > 0, 'the grid is now rectangular by itself: the writer\'s repair may not be needed, read the plan again');
+  assert.ok(L.dlCoeditGate(PM).repairGrids(A.ydoc) > 0); net.quiesce({ shuffle: true });
+  assert.ok(net.converged()); assert.equal(ragged(A), 0); assert.equal(ragged(B), 0); assert.ok(valid(A, B));
   net.destroy();
 });
 await test('grid: delete a row or a column while the other types in it: converges, valid, rectangular', () => {
@@ -205,10 +208,10 @@ await test('hostile update, a 5 MB text in one paragraph: a valid update is appl
   const t = Date.now(); const o = attack((f) => f.insert(1, [el('paragraph', {}, [tx('HOSTILE' + 'x'.repeat(5 * 1024 * 1024))])]));
   assert.equal(o.threw, null); assert.ok(o.valid); assert.ok(Date.now() - t < 5000, 'took ' + (Date.now() - t) + ' ms');
 });
-await test('hostile update, text directly in the document (a top-level XmlText): KNOWN GAP, it throws out of applyUpdate (the step-3 gate must catch it)', () => {
+await test('hostile update, text directly in the document (a top-level XmlText): the library alone throws out of applyUpdate; the gate (check-documents-coedit-gate.mjs) refuses it before', () => {
   const o = attack((f) => f.insert(1, [tx('HOSTILE')]));
-  assert.ok(o.threw !== null, 'the gap is closed in the library: remove this test and the gate\'s special case');
-  facts.push(`top-level XmlText: applyUpdate throws (${String(o.threw).slice(0, 40)}): gate needed`);
+  assert.ok(o.threw !== null, 'the gap is closed in the library: the gate\'s special case (top_level_text) is then a second guard only');
+  facts.push(`top-level XmlText: applyUpdate throws (${String(o.threw).slice(0, 40)}) without the gate`);
 });
 
 // ---- 5. undo ----------------------------------------------------------------------------------------------------------------------
