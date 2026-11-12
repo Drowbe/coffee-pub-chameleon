@@ -705,6 +705,88 @@ test('Settings, Share and Print: drawn by the host for the handlers a module gav
   assert.match(read('public/design-system/prototype.js'), /moduleStandard: \{ settings: true, share: true, print: true, onPick:/, 'the Prototype shows all three');
 });
 
+test('module-given text everywhere is cleaned like the title bar select\'s (toolbar, "+", old bar, status, share)', () => {
+  const hostile = (w) => `${w}‮​ ؜\u0007x`; // override, zero-width space, line separator, Arabic mark, control char
+  const clean = (w) => `${w} x`; // the separator and the control become one space; the rest is gone
+  const tb = (item) => R.cleanToolbarItems([item])[0];
+  const L = R.TOOLBAR_LIMITS;
+  // toolbar sites
+  for (const type of ['text', 'title']) {
+    assert.equal(tb({ type, text: hostile('ab') }).text, clean('ab'), `${type}: text cleaned`);
+    assert.equal(tb({ type, text: 'שלום' }).text, 'שלום', `${type}: RTL stays`);
+    assert.equal(tb({ type, text: 'y'.repeat(10240) }).text.length, L[type], `${type}: 10 KB cut to its cap`);
+    assert.equal(tb({ type, text: '‮​ ؜' }), undefined, `${type}: invisible only is empty, dropped`);
+  }
+  const tabs = (label) => tb({ type: 'tabs', id: 't', label, options: [{ id: 'a', label, icon: 'star' }] });
+  assert.equal(tabs(hostile('ab')).options[0].label, clean('ab'), 'tab option label cleaned');
+  assert.equal(tabs(hostile('ab')).label, clean('ab'), 'switch label cleaned');
+  assert.equal(tabs('שלום').options[0].label, 'שלום', 'tab label: RTL stays');
+  assert.equal(tabs('y'.repeat(10240)).options[0].label.length, L.label, 'tab label: 10 KB cut to its cap');
+  assert.equal(tabs('‮​ ؜').options[0].label, '', 'tab label: invisible only is empty (the icon keeps the option)');
+  assert.equal(tabs('‮​ ؜').label, undefined, 'switch label: invisible only is left out');
+  const search = (o) => tb({ type: 'search', id: 'q', ...o });
+  assert.equal(search({ placeholder: hostile('ab') }).placeholder, clean('ab'), 'search placeholder cleaned');
+  assert.equal(search({ label: hostile('ab') }).label, clean('ab'), 'search label cleaned');
+  assert.equal(search({ label: 'שלום', placeholder: 'שלום' }).label, 'שלום', 'search: RTL stays');
+  assert.equal(search({ placeholder: 'y'.repeat(10240) }).placeholder.length, L.placeholder, 'search placeholder: 10 KB cut');
+  assert.equal(search({ label: 'y'.repeat(10240) }).label.length, L.placeholder, 'search label: 10 KB cut');
+  assert.equal(search({ label: '‮​', placeholder: '​' }).label, 'Search', 'search: invisible only falls back to the default');
+  const chips = (o) => tb({ type: 'chips', id: 'c', label: 'L', options: [{ id: 'a', label: 'A' }], ...o });
+  assert.equal(chips({ options: [{ id: 'a', label: hostile('ab'), note: hostile('n') }] }).options[0].label, clean('ab'), 'chip option label cleaned');
+  assert.equal(chips({ options: [{ id: 'a', label: 'A', note: hostile('n') }] }).options[0].note, clean('n'), 'chip note cleaned');
+  assert.equal(chips({ label: hostile('ab') }).label, clean('ab'), 'chips label cleaned');
+  assert.equal(chips({ label: 'שלום', options: [{ id: 'a', label: 'שלום' }] }).options[0].label, 'שלום', 'chips: RTL stays');
+  assert.equal(chips({ label: 'y'.repeat(10240), options: [{ id: 'a', label: 'y'.repeat(10240) }] }).label.length, 60, 'chips label: 10 KB cut to 60');
+  assert.equal(chips({ options: [{ id: 'a', label: 'y'.repeat(10240) }] }).options[0].label.length, 40, 'chip option label: 10 KB cut to 40');
+  assert.equal(chips({ label: '‮​' }).label, 'Filter', 'chips label: invisible only falls back to the default');
+  assert.equal(tb({ type: 'chips', id: 'c', options: [{ id: 'a', label: '‮​ ' }] }), undefined, 'chip option: invisible only is empty, dropped');
+  const button = (o) => tb({ id: 'b', label: 'B', ...o });
+  assert.equal(button({ label: hostile('ab') }).label, clean('ab'), 'button label cleaned');
+  assert.equal(button({ title: hostile('ab') }).title, clean('ab'), 'button title cleaned');
+  assert.equal(button({ label: 'שלום', title: 'שלום' }).title, 'שלום', 'button: RTL stays');
+  assert.equal(button({ label: 'y'.repeat(10240) }).label.length, L.label, 'button label: 10 KB cut');
+  assert.equal(button({ title: 'y'.repeat(10240) }).title.length, 40, 'button title: 10 KB cut to 40');
+  assert.equal(tb({ id: 'b', label: '‮​' }), undefined, 'button label: invisible only is empty, no icon: dropped');
+  assert.equal(tb({ id: 'b', label: '‮​', icon: 'star' }).label, '', 'button label: invisible only is empty, the icon keeps it');
+  // ids and values are not text: left as they were
+  assert.equal(search({ value: 'a‮b' }).value, 'a‮b', 'a search value is not cleaned');
+  // "+" entries, old bar, status, share, standard hint
+  const add = R.cleanAddEntries([{ id: 'a', label: hostile('ab'), hint: hostile('h') }, { label: hostile('cat'), items: [{ id: 'c1', label: 'C1' }, { id: 'c2', label: 'C2' }] }]);
+  assert.equal(add[0].label, clean('ab'), '"+" label cleaned');
+  assert.equal(add[0].hint, clean('h'), '"+" hint cleaned');
+  assert.equal(add[1].label, clean('cat'), '"+" category label cleaned');
+  assert.equal(R.cleanAddEntries([{ id: 'a', label: 'שלום' }])[0].label, 'שלום', '"+": RTL stays');
+  assert.equal(R.cleanAddEntries([{ id: 'a', label: 'y'.repeat(10240), hint: 'y'.repeat(10240) }])[0].label.length, R.ADD_LIMITS.label, '"+": 10 KB cut');
+  assert.equal(R.cleanAddEntries([{ id: 'a', label: '‮​' }]).length, 0, '"+": invisible only label is dropped');
+  const bar = R.foldBarItems([{ id: 'a', label: hostile('ab') }, { id: 'q', type: 'quickadd', label: '​', placeholder: hostile('ph') }]).entries;
+  assert.deepEqual(bar.map((e) => e.label), [clean('ab'), clean('ph')], 'old bar: label and quick-add placeholder cleaned');
+  const st = R.cleanStatusItems([{ text: hostile('ab'), title: hostile('tt') }, { text: '‮​' }, { text: 'שלום' }, { text: 'y'.repeat(10240), title: 'y'.repeat(10240) }]);
+  assert.deepEqual([st[0].text, st[0].title], [clean('ab'), clean('tt')], 'status text and title cleaned');
+  assert.equal(st.length, 3, 'status: invisible only text is dropped');
+  assert.equal(st[1].text, 'שלום', 'status: RTL stays');
+  assert.deepEqual([st[2].text.length, st[2].title.length], [R.STATUS_LIMITS.text, R.STATUS_LIMITS.title], 'status: 10 KB cut to the caps');
+  assert.equal(R.cleanShareResult({ url: 'https://example.com/a', title: hostile('ab') }).title, clean('ab'), 'share title cleaned');
+  assert.equal(R.cleanStandardActions({ share: { hint: hostile('ab') } }).share.hint, clean('ab'), 'standard action hint cleaned');
+  // a throwing getter or a cyclic object drops that item (or entry), the others stay, nothing throws
+  const boom = { get type() { throw new Error('boom'); } };
+  const boomText = { type: 'text', get text() { throw new Error('boom'); } };
+  const cyc = { type: 'text', text: 'c' }; cyc.self = cyc; cyc.options = [cyc];
+  const cycTabs = { type: 'tabs', id: 't', options: [{ id: 'a', label: 'A' }] }; cycTabs.options.push(cycTabs);
+  const ok = { type: 'text', text: 'ok' };
+  let out;
+  assert.doesNotThrow(() => { out = R.cleanToolbarItems([boom, boomText, ok, cycTabs]); }, 'toolbar: hostile items do not throw');
+  assert.deepEqual(out.map((i) => i.text || i.id), ['ok', 't'], 'toolbar: the throwing items are dropped, the rest stay');
+  assert.doesNotThrow(() => R.cleanToolbarItems(new Proxy([], { get() { throw new Error('boom'); } })), 'toolbar: an unreadable list does not throw');
+  assert.equal(R.cleanToolbarItems(cyc).length, 0, 'toolbar: not a list');
+  assert.deepEqual(R.cleanToolbarItems([cyc]).map((i) => i.text), ['c'], 'toolbar: a cyclic object is fine');
+  const boomAdd = { id: 'a', get label() { throw new Error('boom'); } };
+  assert.deepEqual(R.cleanAddEntries([boomAdd, { id: 'b', label: 'B' }, { get items() { throw new Error('boom'); } }]).map((e) => e.id), ['b'], '"+": throwing entries dropped');
+  assert.deepEqual(R.foldBarItems([{ get id() { throw new Error('boom'); } }, { id: 'b', label: 'B' }]).entries.map((e) => e.id), ['b'], 'old bar: a throwing item dropped');
+  assert.deepEqual(R.cleanStatusItems([{ get text() { throw new Error('boom'); } }, { text: 'ok' }]).map((i) => i.text), ['ok'], 'status: a throwing item dropped');
+  // the host: toolbar.set never throws out
+  assert.match(read('public/module-host.js'), /try \{ toolbarOut\(items\); \} catch/, 'toolbar.set: the handler does not throw out');
+});
+
 if (failures.length) {
   console.error(`check-module-chrome: ${failures.length} failed`);
   for (const f of failures) console.error(`  - ${f}`);
