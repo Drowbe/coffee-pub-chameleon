@@ -17,6 +17,11 @@ html, body { background: transparent; } /* the dashboard card is the background 
 .mini-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .mini-head strong { font-size: var(--text-13); }
 .mini-head button { width: 26px; height: 26px; border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text-dim); font: inherit; font-size: var(--text-16); cursor: pointer; }
+/* On a touch screen the month buttons keep their look and get a 44px tap area. */
+@media (pointer: coarse) {
+  .mini-head button { position: relative; }
+  .mini-head button::after { content: ""; position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+}
 .mini-head button:hover { background: var(--bg-card); color: var(--text); }
 .mini-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .mini-dow { text-align: center; color: var(--text-dim); font-size: var(--text-11); text-transform: uppercase; }

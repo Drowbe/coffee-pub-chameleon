@@ -820,7 +820,29 @@
 /* On a phone a small tab keeps its 30px look and gets a 44px target: a strip of them is 44px high and the hit area fills it. */
 @media (max-width: 640px) {
   :is(.sdk-tabs-small, .page-bar .subtabs):not(.sdk-tabs-bar, .tb-tabs, .layout-tabs) { padding-block: var(--tab-phone-pad); }
-  :is(.sdk-tabs-small, .tb-tabs, .layout-tabs, .page-bar .subtabs) > :is(.sdk-tab, .tb-tab, .subtab, .setup-tab, .core-link)::after { content: ""; position: absolute; inset: -8px 0; }
+  :is(.sdk-tabs-small, .tb-tabs, .layout-tabs, .setup-tabs, .page-bar .subtabs) > :is(.sdk-tab, .tb-tab, .subtab, .setup-tab, .core-link)::after { content: ""; position: absolute; inset: -8px 0; }
+}
+
+/* On a phone, three small things keep their look and get a 44px target (--mf-hit): a switch, the paste button on an image slot,
+   and a chip in the status strip. The hit area is centred on the control and grows past its box. */
+@media (max-width: 640px) {
+  input[type="checkbox"].sdk-switch::after,
+  .slot-paste::after,
+  .sdk-strip-chip::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--mf-hit);
+    height: var(--mf-hit);
+    transform: translate(-50%, -50%);
+  }
+
+  .sdk-strip-chip::after {
+    left: 0;
+    width: 100%;
+    transform: translateY(-50%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5976,7 +5998,7 @@ body:has(> .sdk-slot) { height: 100dvh; margin: 0; display: flex; flex-direction
 :root[data-phone] .mf-toolbar .mf-switch { height: calc(var(--mf-ctl-h) + 2px + 2 * var(--space-0)); }
 /* A part is 44 tall and at least --mf-hit-w wide (a row of five icon parts, the Calendar's Month / Week / Day and Agenda / To-do, beside
    Filters and More, must fit a 360 px window); the row's gap is 4 px. The tap area is still 44 tall (below). */
-:root[data-phone] .mf-toolbar .mf-switch > .mf-switch-btn { min-width: var(--mf-hit-w); }
+:root[data-phone] .mf-toolbar .mf-switch > .mf-switch-btn { min-width: var(--mf-hit); }
 :root[data-phone] .mf-toolbar { --mf-gap: var(--space-1); }
 @media (max-width: 640px), (pointer: coarse) {
   .mf:is(.mf-page, .mf-docked) { overflow: clip; overflow-clip-margin: max(0px, calc(var(--mf-hit) - var(--mf-title-h))); }

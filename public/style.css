@@ -5711,14 +5711,15 @@ body.chat-window {
   }
 
   body.in-space .topbar {
+    --bar-pad-x: 10px; /* the bar's side padding in a space on a phone; the logo and the brand link cancel it */
     min-height: calc(40px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 10px 0;
+    padding: env(safe-area-inset-top) var(--bar-pad-x) 0;
   }
 
   body.in-space .topbar .brand-logo {
     width: 39px;
     height: 39px;
-    margin-left: -10px;
+    margin-left: calc(-1 * var(--bar-pad-x));
   }
 
   /* The tab bar sits under the toolbar, so the toolbar has no home indicator to clear. */
@@ -5834,6 +5835,45 @@ body.chat-window {
     width: 40px;
     height: 36px;
     font-size: var(--text-18);
+  }
+
+  /* The menu button and the bell keep their look and get a 44px target: the hit area grows past the box. */
+  .topbar .nav-toggle,
+  .topbar .nav-bell {
+    position: relative;
+  }
+
+  .topbar .nav-toggle::after,
+  .topbar .nav-bell::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--mf-hit);
+    height: var(--mf-hit);
+    transform: translate(-50%, -50%);
+  }
+
+  /* In a space the bar's padding is 10px, not 16: the brand link and its zone cancel that, not 16, so the logo sits flush
+     at the left edge instead of 6px past it. */
+  body.in-space .topbar .nav-left,
+  body.in-space .topbar > .nav-left > .brand-home {
+    margin-left: calc(-1 * var(--bar-pad-x));
+    padding-left: var(--bar-pad-x);
+  }
+
+  .whos-around .dashboard-invite {
+    position: relative;
+  }
+
+  .whos-around .dashboard-invite::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--mf-hit);
+    height: var(--mf-hit);
+    transform: translate(-50%, -50%);
   }
 
   /* Nothing in the menu (a guest's page): no menu button (brand.js hides it). */
@@ -8019,6 +8059,7 @@ h4.setup-subheading {
 
   .topbar .setup-bar-name {
     width: 10em;
+    height: var(--mf-hit);
     font-size: var(--text-16);
   }
 
