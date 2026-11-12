@@ -529,6 +529,8 @@
     // Puts a plain text in as Markdown at the selection (or at `at`); inside code it goes in as it is.
     const insert = (text, at) => {
       if (readOnly) return false;
+      // A shared document over the saver's cap: the paste is refused before it is a change, so it is never shared and never shown as unsaved.
+      if (shared && env.sizeMax && String(text || '').length + now().doc.textContent.length > env.sizeMax) { if (env.onTooBig) env.onTooBig(); return false; }
       const tr = now().tr;
       if (Number.isInteger(at)) tr.setSelection(PM.Selection.near(tr.doc.resolve(Math.max(0, Math.min(at, tr.doc.content.size)))));
       if (tr.selection.$from.parent.type.spec.code) {

@@ -100,7 +100,7 @@ test('the wiring: Save for readers, Open and the file picker for editors only, n
   assert.match(lib, /if \(!canEdit\) return;\n\s+if \(!input\)/);
   assert.match(lib, /offerPrint[\s\S]*host\.standard\.set\(on \? \{ print/);
   assert.doesNotMatch(lib, /innerHTML|insertAdjacentHTML|outerHTML|host\.uploads|fetch\(/);
-  assert.match(lib, /That file is too big for a document\./);
+  assert.match(page, /const TOO_BIG = 'That file is too big for a document\.'/);
   assert.match(lib, /That does not look like a text file\./);
 });
 

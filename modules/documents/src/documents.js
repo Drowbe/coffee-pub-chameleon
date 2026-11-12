@@ -240,7 +240,7 @@
   // The picker opens under an invisible point at the button's left edge, at the top of the module (the toolbar button has no element here).
   function tagsMenu(e) {
     const id = ed ? ed.id : openId;
-    if (!id || !canEdit || !tagsOn || (ed && ed.lost)) return;
+    if (!id || !canEdit || !tagsOn || (ed && ed.lost) || joining()) return;
     const box = host.rootElement.getBoundingClientRect();
     const a = $('tag-anchor');
     a.style.left = `${box.left + (e && Number.isFinite(e.x) ? e.x : 0)}px`;
@@ -476,7 +476,7 @@
     if (r.bottom > v.bottom - 24) $('editor').scrollTop += r.bottom - v.bottom + 24;
   }
   function chooseLayout(v) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     const layout = dlCleanLayout(v);
     if (ed.page.layout === layout) return;
     ed.page = { ...ed.page, layout };
@@ -500,7 +500,7 @@
   }
   // The Page button's menu: the page colour (its own menu), the size and the numbers.
   function pageMenu(e) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     const at = { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 };
     const items = [{ id: 'colour', label: 'Page colour...', icon: 'palette', onClick: () => paperMenu(e) }, ...dlPageMenuModel(ed.page).map((m) => {
       if (m.kind === 'heading') return { heading: m.label };
@@ -831,6 +831,7 @@
   const RICH_KEY = 'documents-rich';
   let rich = false;
   try { rich = window.localStorage.getItem(RICH_KEY) === '1'; } catch { /* no browser storage: the text box */ }
+  const TOO_BIG = 'That file is too big for a document.'; // Open Markdown file, and a paste into a shared document
   const INEXACT = 'This block has formatting Markdown cannot keep exactly; switch to Markdown to check.';
   // Makes the editor for the choice, with this text, in the sheet: one of the two shows, both behind the same adapter.
   function mountEditor(text, shared) {
@@ -838,7 +839,7 @@
     const box = $('edit-rich');
     $('editor').scrollTop = 0; // a new document starts at its top, not where the last one was scrolled to
     ta.hidden = rich || Boolean(shared); box.hidden = !(rich || shared);
-    ed.editor = shared ? dlRichEditor(DlPM, doc, lex, box, { shared }) : rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
+    ed.editor = shared ? dlRichEditor(DlPM, doc, lex, box, { shared, sizeMax: DL.sizeMax, onTooBig: () => note(TOO_BIG) }) : rich ? dlRichEditor(DlPM, doc, lex, box) : dlTextareaEditor(ta, doc);
     ed.editor.onChange(typed);
     ed.editor.onChange(() => { sizeEditSoon(); keepCaret(); });
     if (ed.editor.onSelect) ed.editor.onSelect(paintActive);
@@ -907,6 +908,7 @@
   // ---- co-editing (only with the `coediting` switch on; the channel is documents-lib-u-coedit-sync.js) ----------------------------------
   // A document is simply editable for anyone with `edit`: no Edit, no Done, no lock. The text is a Y.Doc per open document; the editor draws it (ySync),
   // every remote update goes through the gate (dlSyncSession), and the text is saved by the old save path while one person is editing (4b brings the writer).
+  const joining = () => Boolean(ed && ed.co && !ed.co.ready); // no editor is mounted yet: nothing that edits may run
   const coAlone = () => !ed || !ed.co || ed.co.session.roster.others().length === 0;
   function coStatus() {
     const c = ed.co;
@@ -950,7 +952,7 @@
     $('edit-title').value = rec.title;
     paintPaper($('editor').querySelector('.sheet'), ed.paper);
     paintPage($('editor').querySelector('.sheet'), ed.page);
-    $('edit-title').readOnly = false;
+    $('edit-title').readOnly = true; // read-only until the join is done (coReady)
     $('lost').hidden = true;
     renderChrome();
     const statsTimer = setInterval(() => { if (!$('app') || !ed || ed.co !== c) return void clearInterval(statsTimer); coStatsPaint(); }, 500);
@@ -1059,11 +1061,15 @@
     const mine = ed;
     if (!mine || !mine.co || mine.leaving) return;
     mine.leaving = true;
-    clearTimeout(mine.timer);
-    try { if (mine.co.ready && coAlone()) await saveNow(); } catch (err) { /* the text stays in the other pages, or is lost with this one */ }
-    if (ed !== mine) return;
-    stopEditing();
-    closeDoc();
+    let done = false;
+    try {
+      clearTimeout(mine.timer);
+      try { if (mine.co.ready && coAlone()) await saveNow(); } catch (err) { /* the text stays in the other pages, or is lost with this one */ }
+      if (ed !== mine) { done = true; return; }
+      stopEditing(); // while joining there is no editor and nothing to save: the session just stops
+      closeDoc();
+      done = true;
+    } finally { if (!done) mine.leaving = false; } // if anything threw, Back works again
   }
   function coClose(c) {
     clearInterval(c.statsTimer);
@@ -1080,7 +1086,7 @@
     return run;
   };
   // Never reads the text: the editor's change counter and the title and paper decide (the text is read only by snapshot()).
-  const dirtyNow = () => ed && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper, ed.page);
+  const dirtyNow = () => ed && !joining() && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper, ed.page);
   const snapshot = () => dlEditorSnapshot(ed.editor, ed.saved, $('edit-title').value, ed.paper, ed.page);
   function setStatus() {
     if (!ed) return;
@@ -1121,6 +1127,7 @@
   function saveNow() {
     return serial(async () => {
       if (!ed || ed.lost) return 'lost';
+      if (joining()) return 'saved'; // nothing is shown yet, so nothing to save
       if (ed.co && !coAlone()) return 'saved'; // 4a: the text is saved while one person is editing (the writer comes in 4b)
       const cur = snapshot();
       sayInexact(false);
@@ -1163,7 +1170,7 @@
   }
   // Plans the next autosave: 3 s after the last key, never within 3 s of the last save.
   function schedule(force) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     clearTimeout(ed.timer);
     if (ed.refused) return;
     if (ed.co && !coAlone()) return;
@@ -1183,8 +1190,7 @@
     closeTagPicker();
     clearTimeout(ed.timer); clearInterval(ed.beat);
     const co = ed.co;
-    ed.editor.destroy();
-    if (co) coClose(co);
+    try { if (ed.editor) ed.editor.destroy(); } finally { if (co) coClose(co); }
     ed = null;
     $('editor').hidden = true;
     $('edit-rich').hidden = true; $('edit-text').hidden = false;
@@ -1220,7 +1226,7 @@
 
   // The bar: each button runs its action in the editor, which keeps the browser's undo where it can.
   function applyFormat(action) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     ed.editor.run(action);
   }
   // A link in the rich editor: the Link button and Ctrl or Cmd with K. With no link at the caret or the selection, the shared
@@ -1231,7 +1237,7 @@
   // Cancel, and when the menu closes, however it closes (a pick, Escape, a press outside): the menu's onClose.
   let linking = false;
   function linkWith(e) {
-    if (!ed || ed.lost || !rich || linking || !ed.editor.linkFits) return;
+    if (!ed || ed.lost || joining() || !rich || linking || !ed.editor.linkFits) return;
     const mine = ed;
     const editor = ed.editor;
     if (!editor.linkFits()) { editor.focus(); return; }
@@ -1370,7 +1376,7 @@
   let tagButton = null;
   let backButton = null;
   function formatWith(f, e) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     if (f.id === 'heading') {
       const active = activeNow();
       const level = active ? active.heading : 0; // the level the caret is in shows as the current one
@@ -1386,7 +1392,7 @@
     return model ? model.map((m) => ({ id: m.id, label: m.label, ...(m.disabled ? { disabled: true } : {}), ...(m.current ? { current: true } : {}), onClick: () => applyFormat(m.id) })) : null;
   }
   function insertMenu(e) {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || joining()) return;
     const entry = (id, label, icon) => ({ id, label, icon, ...(rich && !dlRichCan(id) ? { disabled: true } : {}), onClick: () => applyFormat(id) });
     host.menu.show({
       id: 'insert', at: { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 },
@@ -1437,14 +1443,16 @@
     // In the rich editor an entry with no action there yet (Grid, Formula) is off; Heading's levels are all there.
     // There Bold, Italic, Code and Link name their keys, and Checklist the key that ticks a row.
     if (!fmtButtons.length) { fmtFor = null; fmtOn = []; }
-    else if (fmtFor !== rich) {
-      fmtFor = rich;
+    else if (fmtFor !== `${rich}${joining()}`) {
+      fmtFor = `${rich}${joining()}`;
       fmtButtons.forEach((b, i) => {
         const f = FORMATS[i];
-        b.set({ disabled: rich && f.id !== 'heading' && !dlRichCan(f.id), label: rich && f.key ? withKey(f.title, f.key) : f.title });
+        b.set({ disabled: joining() || (rich && f.id !== 'heading' && !dlRichCan(f.id)), label: rich && f.key ? withKey(f.title, f.key) : f.title });
       });
       paintActive();
     }
+    // While a shared document is still joining there is no editor: what edits is off until coReady draws the bar again.
+    for (const b of [insertButton, paperButton, tagButton]) if (b) b.set({ disabled: joining() });
     // The choice between the Markdown text box and the rich editor: the shared view switch (as the list's List and Thumbnails),
     // in the bar's end zone before Page colour, there while a person is editing.
     if (wantFmt && !richSwitch) richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
@@ -1596,7 +1604,6 @@
     }
 
     // Open a file: read in the page, never run, never uploaded.
-    const TOO_BIG = 'That file is too big for a document.';
     const NOT_TEXT = 'That does not look like a text file.';
     let busy = false;
     async function openFile(file) {
@@ -1642,7 +1649,7 @@
   // The document in view for Print and Save as Markdown file: the editor's text as it is now (unsaved typing too), or the saved text.
   const output = outputWire({
     async current() {
-      if (ed) return ed.lost ? null : { title: $('edit-title').value || ed.saved.title, text: ed.editor.getText(), page: ed.page };
+      if (ed) return ed.lost || joining() ? null : { title: $('edit-title').value || ed.saved.title, text: ed.editor.getText(), page: ed.page };
       const got = openId ? await readText(openId) : null;
       return got ? { title: got.rec.title, text: got.text, page: got.rec } : null;
     },
