@@ -156,5 +156,21 @@ const KEYSET = (n) => Array.from({ length: n }, (_, i) => `block:main:b${i}`).so
   const { s: other } = mk(makeServer(), store, { scope: 'sp2' });
   ok(other.replay().put.length === 0, 'another space leaves the kept writes alone');
 }
+// 9. a board of the same space does not see it either (the entry is keyed by the board's prefix); a closed sync sends what waits
+{
+  const server = makeServer({ refuseFirst: 5 }); const store = makeStore();
+  const { s } = mk(server, store);
+  s.save(blk(1)); await settle();
+  ok([...store.m.keys()].join() === 'wb-pending:sp1:block:main:', 'the kept entry is keyed by the space and the board\'s prefix');
+  const { s: b2 } = mk(server, store, { board: 'b2' });
+  ok(b2.replay().put.length === 0 && store.m.has('wb-pending:sp1:block:main:'), 'another board of the same space replays nothing and leaves the entry');
+  timers = [];
+  const srv2 = makeServer(); const st2 = makeStore();
+  const { s: c } = mk(srv2, st2);
+  c.saveSoon(blk(7));
+  c.close(); await settle();
+  ok(srv2.data.has('block:main:b7') && c.closed === true && c.save(blk(8)) === false && !srv2.data.has('block:main:b8'), 'close() sends what waits (R1), then takes no more writes');
+  ok(c.owns('block:main:x') && !c.owns('block:b2:x'), 'a sync owns only its own board\'s keys');
+}
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
 console.log('all ok');
