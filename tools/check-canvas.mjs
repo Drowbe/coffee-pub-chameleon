@@ -208,7 +208,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/opensWithSummary\(\{\s*list: state\.draft\.opensWith/.test(settingsJs)) fail('public/space-setup.js', 'the Opens with sentence must come from the list being edited (opensWithSummary with list: state.draft.opensWith)');
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
   const restore = canvasJs.slice(canvasJs.indexOf('function restore()'), canvasJs.indexOf('// --- the toolbar button'));
-  if (!/whatOpens\(\{[^}]*guest: Boolean\(guestToken\)/s.test(restore)) fail('public/canvas.js', 'restore() must ask whatOpens (opens-with.js) for what to open, with whether this is a guest');
+  if (!/whatOpens\(\{[^}]*\bguest,/s.test(restore)) fail('public/canvas.js', 'restore() must ask whatOpens (opens-with.js) for what to open, with whether this is a guest');
   if (/opened\.has\('conference'\)\) view = 'conference'/.test(restore)) fail('public/canvas.js', 'restore() must start a phone on the first module opened, not always the call');
   // The always-on column (plan-one-bar.md, step 6): wider than a phone restore() opens the conference and the chat in
   // the column, whatever the lists say, and asks whatOpens with `column` so neither goes on the canvas.
@@ -216,7 +216,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/whatOpens\(\{[^}]*column: columnMode\(\)/s.test(restore)) fail('public/canvas.js', 'restore() must ask whatOpens with column: columnMode()');
   // The first visit's layout (plan-layout-views.md, step 5): restore() asks firstVisitLayout, and no longer asks for Opens
   // with to be set before a layout opens; a phone opens Calendar's or Map's composite first.
-  if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest: Boolean\(guestToken\), entering: enteringNow \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
+  if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
   if (/spaceDefaultLayout && Array\.isArray\(spaceOpensWith\)/.test(restore)) fail('public/canvas.js', 'a layout as the first visit must not need Opens with to be set');
   if (!/const lead = tab && isNarrow\(\) \? readAliased\(\[tab === 'map' \? 'maps' : 'calendar'\], aliases\)/.test(restore)) fail('public/canvas.js', 'on a phone, Calendar or Map as the first visit opens its composite first');
   if (!/const builtinList = columnMode\(\) \? \[\] :/.test(canvasJs)) fail('public/canvas.js', 'the Show list leaves the conference and the chat out in column mode');
@@ -1583,7 +1583,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // Home's chat rides the live stream (plan-realtime-optional-livekit.md, step 3): on Home one in no space, in a space its own.
   const homeSync = spaceJs.slice(spaceJs.indexOf('function syncHomeChatStream() {'), spaceJs.indexOf('function liveChatNotice(data) {'));
   if (!/if \(liveSpaceId\) return;/.test(homeSync) || !/if \(!liveStream\) openLive\(null\);/.test(homeSync)) fail(F, 'Home\'s chat hears others live from the live stream: on Home one in no space, in a space the space\'s carries it');
-  if (!/else if \(data\.space === HOME_CHAT && !guestToken\) homeChatNotice\(data\);/.test(spaceJs)) fail(F, 'the Lobby\'s chat on the live stream is Home\'s chat, never a guest\'s');
+  if (!/else if \(data\.space === HOME_CHAT && !guestMode\) homeChatNotice\(data\);/.test(spaceJs)) fail(F, 'the Lobby\'s chat on the live stream is Home\'s chat, never a guest\'s');
   if (!/homeChatEntering = true;[^\n]*\n\s*hideHomeChat\(\);/.test(spaceJs.slice(spaceJs.indexOf('async function join('), spaceJs.indexOf('async function joinAsGuest(')))) fail(F, 'entering a space takes the chat out of Home\'s column first');
   if (!/word\('module', \{ many: true, cap: true \}\)/.test(spaceJs.slice(spaceJs.indexOf('function renderSpaceListHead('), spaceJs.indexOf('async function addSpace(')))) fail(F, 'the Modules column is headed with the module word (the template\'s, else Modules)');
 
@@ -1592,7 +1592,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // address) lands on Home. A guest link still enters it (joinAsGuest never asks isHomeRecord).
   const body = (head) => { const at = spaceJs.indexOf(head); return at < 0 ? '' : spaceJs.slice(at, spaceJs.indexOf('\n}\n', at)); };
   if (!/presenceSpaces\.filter\(\(x\) => x\.mine && !x\.isLobby\)/.test(body('function renderSpaces() {'))) fail(F, 'Home draws no card for the Lobby (renderSpaces leaves out isLobby)');
-  if (!/return !guestToken && id === LOBBY;/.test(body('function isHomeRecord(id) {'))) fail(F, 'isHomeRecord: the Lobby, for anyone but a guest link');
+  if (!/return !guestMode && id === LOBBY;/.test(body('function isHomeRecord(id) {'))) fail(F, 'isHomeRecord: the Lobby, for anyone but a guest link');
   if (!/^\s*if \(isHomeRecord\(spaceId\)\) return landOnHome\(\);/m.test(body("async function join(spaceId = 'lobby'"))) fail(F, 'join() never enters the Lobby: it lands on Home');
   if (!/^\s*if \(isHomeRecord\(spaceId\)\) return landOnHome\(\);/m.test(body('async function joinInvitedSpace(spaceId) {'))) fail(F, 'an invitation or /#join=lobby lands on Home');
   if (!/if \(isHomeRecord\(id\)\) \{\s*landOnHome\(\);\s*if \(hasOwnerRights\(me\)\) openOverlay\('\/admin#spaces'\);/.test(body('async function openSetupFor('))) fail(F, '/?setup=lobby opens Manage at Spaces for owners and the admin, never the Lobby\'s Set up');
