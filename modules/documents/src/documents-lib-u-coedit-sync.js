@@ -32,9 +32,15 @@ const DL_SYNC = Object.freeze({
   gapMinMs: 1000, // at least this long between two vectors sent because of a gap or a quiet period
   answerMinMs: 400, // a person's vector is answered at most this often
   settleMs: 250, // after the state came, this long for the others' presence to arrive before the cap is decided
-  joinWaitMs: 1200, // a page that joins with other people there waits this long for their state before it seeds the document from the saved text
-  assemblyMs: 20000, // pieces of one difference are dropped when the last one has not come after this long
-  assemblies: 4, // differences being put together at once
+  joinWaitMs: 1200, // a page that joins waits this long to hear anyone; if no one on this document was heard, it is alone and seeds from the saved text
+  joinQuietMs: 6000, // a page that heard someone seeds only after nothing at all has come from anyone for this long (and after joinMaxMs, and with them gone)
+  joinMaxMs: 30000, // ... and not before the join has lasted this long
+  joinAskMs: 15000, // a page still joining asks again by vector this often (not while pieces are still coming)
+  joinBusyMs: 3000, // pieces or an update came in this lately: the ask waits
+  joinTickMs: 500, // how often a joining page looks at the clock
+  assemblyMs: 30000, // pieces of one difference are dropped when the next one has not come after this long (the slot is free again)
+  assembliesPerSender: 2, // differences being put together at once, from one person (a new one drops that person's oldest)
+  assemblies: 8, // ... and from everyone together (past it, the oldest of whoever holds most goes)
   presenceMs: 40000, // someone not heard on this document for this long is no longer counted
   vectorBytes: 1400, // a vector longer than this is not sent or taken
   pieces: 900, // the most pieces one difference may have (a difference is at most DL_COEDIT.snapshotBytes)
@@ -242,6 +248,10 @@ function dlSyncSession(PM, o) {
   let quietSince = 0;
   let quietFrom = null; // the last sender whose update was dropped in the quiet period: the vector after it goes to them
   let joinCheck = null; // the join wait, while there is one
+  let joining = false; // a join is waiting for its content
+  let peerSeen = false; // during the join: someone else's state is, or may be, on its way (their vector had content, or a piece or an update came)
+  let peerAt = 0; // during the join: when anything last came from anyone else
+  let pieceAt = 0; // when a piece or an update last came from anyone else
   let atModule = null; // keys at the module now, from host.live's people
   const othersAtModule = () => (atModule || []).some((k) => k !== o.me);
 
@@ -388,13 +398,27 @@ function dlSyncSession(PM, o) {
     if (size(data) <= bytesMax) { direct.push({ data, to: [from] }); } else if (!pieces(diff, [from])) { stats.failed += 1; reason('difference_too_big'); }
     pump();
   }
+  // The pieces of a difference are put together per sender and per id. A sender holds at most `assembliesPerSender` at once (a new one drops that
+  // sender's oldest), everyone together at most `assemblies` (past it the oldest of whoever holds most, another sender than this one, goes), and one
+  // that has had no piece for `assemblyMs` is dropped: a made-up set of pieces from one person cannot refuse the pieces of another.
+  function dropAssembly(k) { assemblies.delete(k); stats.assemblyLost += 1; }
   function takePiece(m, from) {
     stats.piecesIn += 1;
     let a = assemblies.get(`${from}:${m.id}`);
     const t = clock.now();
-    for (const [k, x] of assemblies) if (t - x.at > cfg.assemblyMs) { assemblies.delete(k); stats.assemblyLost += 1; }
+    for (const [k, x] of assemblies) if (t - x.at > cfg.assemblyMs) dropAssembly(k);
     if (!a) {
-      if (assemblies.size >= cfg.assemblies) { stats.bad += 1; reason('too_many_assemblies'); return; }
+      const mine = [...assemblies].filter(([, x]) => x.from === from);
+      if (mine.length >= cfg.assembliesPerSender) dropAssembly(mine[0][0]); // Map order is the order they began: the oldest
+      if (assemblies.size >= cfg.assemblies) {
+        const per = new Map();
+        for (const x of assemblies.values()) if (x.from !== from) per.set(x.from, (per.get(x.from) || 0) + 1);
+        let most = null;
+        for (const [who, n] of per) if (!most || n > per.get(most)) most = who;
+        const victim = most === null ? null : [...assemblies].find(([, x]) => x.from === most);
+        if (!victim) { stats.bad += 1; reason('too_many_assemblies'); return; }
+        dropAssembly(victim[0]);
+      }
       a = { from, n: m.n, parts: new Map(), at: t, bytes: 0 };
       assemblies.set(`${from}:${m.id}`, a);
     }
@@ -424,6 +448,10 @@ function dlSyncSession(PM, o) {
     if (m.t === 'x') { roster.forget(key); changed(); return; }
     const known = roster.has(key);
     roster.hear(key, m.t === 'v' ? { editor: m.editor, admitted: m.admitted } : undefined);
+    if (joining && key !== o.me) {
+      peerAt = clock.now();
+      if (m.t === 'u' || m.t === 'k') { peerSeen = true; pieceAt = peerAt; }
+    }
     if (m.t === 'u') {
       const bytes = dlSyncUnb64(m.b64, cfg.messageBytes);
       if (!bytes) { stats.bad += 1; reason('not_base64'); changed(); return; }
@@ -434,6 +462,8 @@ function dlSyncSession(PM, o) {
       const bytes = dlSyncUnb64(m.b64, cfg.vectorBytes);
       const map = bytes ? dlSyncVector(bytes, cfg.clients) : null;
       if (!map) { stats.bad += 1; reason('vector_unreadable'); changed(); return; }
+      // a vector with content is someone with a state to give; an empty one is another page that is joining, or a document with nothing in it
+      if (joining && key !== o.me && map.size > 0) peerSeen = true;
       answer({ bytes, map }, key);
       if (!known) sendVector(key); // someone new: say who this page is (the cap is counted from these)
       const mine = dlSyncVector(PM.encodeStateVector(doc), 100000);
@@ -495,17 +525,25 @@ function dlSyncSession(PM, o) {
       for (const off of o.off || []) { try { off(); } catch (e) { /* gone */ } }
       detach();
     },
-    // The first state of a page: with other people at the module it waits (up to joinWaitMs) for their state, else it seeds the document with
-    // o.seed(doc) (the same bytes on every page that reads the same saved text). done(how, mayType) once the document has its content: how is 'alone', 'state' or
-    // 'timeout'; mayType is false when eight others are editing already (the page then reads along). Until then this page says it is not an editor.
+    // The first state of a page. It never seeds while someone's state may be on its way (a seed made beside a peer's makes a second copy of the text).
+    // After joinWaitMs: if no one on this document was heard, the page is alone and seeds with o.seed(doc) (the same bytes on every page that reads the
+    // same saved text, so two pages that open at once make one copy). If someone was heard, the page stays joining and keeps asking by vector until
+    // the state has come; it seeds only when nothing has come from anyone for joinQuietMs, joinMaxMs have passed and they are gone (left, or not heard
+    // for presenceMs). If they are still there it keeps asking every joinAskMs and does not seed: the page stays unable to type, which can be
+    // recovered, and a doubled document cannot.
+    // done(how, mayType) once the document has its content: how is 'alone', 'state' or 'timeout' (nobody heard in time, or the peers gone);
+    // mayType is false when eight others are editing already (the page then reads along). Until then this page says it is not an editor.
     join(done) {
-      let finished = false; let wait = null; let settle = null;
+      let finished = false; let wait = null; let settle = null; let tick = null;
+      const t0 = clock.now(); let askedAt = t0;
+      joining = true; peerSeen = false; peerAt = 0; pieceAt = 0;
       const content = () => doc.getXmlFragment(gateApi.limits.root).length > 0;
       const finish = (how) => {
         if (finished) return;
-        finished = true; joinCheck = null;
+        finished = true; joinCheck = null; joining = false;
         if (wait !== null) clearTimer(wait);
         if (settle !== null) clearTimer(settle);
+        if (tick !== null) clearTimer(tick);
         if (!content()) { o.seed(doc); if (guard) guard.reseed(); goodDirty = true; take(); }
         admitted = roster.others().length;
         if (!roster.admit()) editor = false; // the cap: this page reads along
@@ -514,11 +552,23 @@ function dlSyncSession(PM, o) {
         sendVector(null);
         done(how, editor);
       };
+      const look = () => {
+        tick = null;
+        if (finished || stopped) return;
+        const t = clock.now();
+        if (content()) { if (settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); }
+        else if (peerSeen && t - t0 >= cfg.joinWaitMs) {
+          if (t - peerAt >= cfg.joinQuietMs && t - t0 >= cfg.joinMaxMs && !roster.anyone()) { finish('timeout'); return; }
+          if (t - askedAt >= cfg.joinAskMs && t - pieceAt >= cfg.joinBusyMs) { askedAt = t; sendVector(null); }
+        }
+        tick = setTimer(look, cfg.joinTickMs);
+      };
       joinCheck = (why) => {
         if (why === 'applied') { if (content() && settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); return; }
-        if (!roster.others().length && !roster.anyone() && !othersAtModule()) finish('alone');
+        if (!peerSeen && !roster.others().length && !roster.anyone() && !othersAtModule()) finish('alone');
       };
-      wait = setTimer(() => finish('timeout'), cfg.joinWaitMs);
+      wait = setTimer(() => { wait = null; if (!peerSeen) finish('timeout'); }, cfg.joinWaitMs);
+      tick = setTimer(look, cfg.joinTickMs);
     },
     // After the channel came back: both sides say what they have.
     reconnected() { if (started && !stopped) { lastSeq = 0; sendVector(null); } },

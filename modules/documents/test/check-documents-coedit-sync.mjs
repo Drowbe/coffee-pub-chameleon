@@ -42,7 +42,7 @@ class Clock {
 }
 const micro = async (n = 6) => { for (let i = 0; i < n; i += 1) await Promise.resolve(); };
 class Bus {
-  constructor(clock, { bytes = 2048 } = {}) { this.clock = clock; this.members = new Map(); this.seq = 0; this.bytes = bytes; this.drop = () => false; this.dup = () => false; this.log = []; this.held = null; this.refuse = null; }
+  constructor(clock, { bytes = 2048, paceMs = 0 } = {}) { this.paceMs = paceMs; this.clock = clock; this.members = new Map(); this.seq = 0; this.bytes = bytes; this.drop = () => false; this.dup = () => false; this.log = []; this.held = null; this.refuse = null; }
   connect(key, name = key) {
     const m = { key, name, subs: new Map(), people: [], state: 'open', ups: [] };
     this.members.set(key, m);
@@ -64,6 +64,8 @@ class Bus {
         bus.seq += 1;
         const msg = { topic, data: JSON.parse(JSON.stringify(data)), from: { key: m.key, name: m.name, guest: false, tint: 'blue' }, seq: bus.seq, to: opt && opt.to ? opt.to : null, bytes: n };
         bus.log.push({ topic, bytes: n, from: key, to: msg.to, kind: Object.keys(data).join('') });
+        // paceMs: the module's rate (30 messages a second is 33 ms): the publish is answered, and the message goes, after that long
+        if (bus.paceMs) return new Promise((resolve) => { bus.clock.set(() => { bus.pending.push(msg); resolve(true); }, bus.paceMs); });
         bus.pending.push(msg);
         return Promise.resolve(true);
       },
@@ -113,14 +115,14 @@ function page(bus, clock, key, o = {}) {
   const doc = new PM.Doc();
   const s = L.dlSyncSession(PM, {
     doc, lex, topic: L.dlSyncTopic(ID), me: key, live: m.live, editor: true, clock: clock.api(),
-    seed: (d) => L.dlSyncSeed(PM, d, pmDoc(), ID, TEXT),
+    seed: (d) => L.dlSyncSeed(PM, d, o.text ? L.dlRichRead(PM, o.text, lex).doc : pmDoc(), ID, o.text || TEXT),
     onRebuild: () => { m.rebuilt = (m.rebuilt || 0) + 1; },
     config: o.config,
   });
   m.session = s; m.doc = () => s.doc();
   s.start();
   let how = null;
-  s.join((h) => { how = h; });
+  s.join((h) => { how = h; m.at = clock.now(); });
   m.how = () => how;
   return m;
 }
@@ -507,6 +509,155 @@ await test('stop: says goodbye, drops its timers, and is quiet after', async () 
   assert.equal(b.session.roster.others().length, 0, 'the goodbye took a out of the roster');
   const n = bus.log.length; typeAt(a.doc(), 0, 'x'); await run(clock, bus, 20000);
   assert.equal(bus.log.slice(n).filter((x) => x.from === 'aaaa1111').length, 0, 'a stopped page sends nothing');
+});
+
+// ---- 6. the join never seeds beside a state that may be on its way; the pieces of one sender cannot starve another's -------------------------------
+const bigText = (n) => Array.from({ length: n }, (_, i) => `Paragraph ${i} of a long document, with some more words in it to make it heavier.`).join('\n\n');
+const fragLen = (d) => d.getXmlFragment(FRAG).length;
+const ghostVector = () => { const d = new PM.Doc(); L.dlSyncSeed(PM, d, pmDoc(), ID, TEXT); return L.dlSyncB64(PM.encodeStateVector(d)); };
+const fake = (rogue, id, i = 899) => { rogue.live.publish(L.dlSyncTopic(ID), { k: id, i, n: 900, c: 'AAAA' }).catch(() => {}); };
+await test('a joiner takes a big state that arrives in more than 60 paced pieces (30 messages a second) and does not double it', async () => {
+  const lens = [];
+  for (const paras of [900, 1500]) {
+    const clock = new Clock(); const bus = new Bus(clock, { paceMs: 33 });
+    const a = page(bus, clock, 'aaaa1111', { text: 'Ann saved this.\n' }); await run(clock, bus, 100);
+    assert.equal(a.how(), 'alone');
+    a.doc().transact(() => { PM.prosemirrorToYXmlFragment(L.dlRichRead(PM, bigText(paras), lex).doc, a.doc().getXmlFragment(FRAG)); }, 'paste');
+    await run(clock, bus, 4000);
+    const before = bus.log.length;
+    const t0 = clock.t;
+    const b = page(bus, clock, 'bbbb2222', { text: 'Ben saved something else.\n' }); // the saved text differs from Ann's seed: a second seed would show
+    for (let i = 0; i < 4000 && !b.how(); i += 1) await run(clock, bus, 20);
+    const sentPieces = bus.log.slice(before).filter((x) => x.from === 'aaaa1111' && x.kind.startsWith('k')).length;
+    assert.ok(sentPieces > 60, `${sentPieces} pieces`);
+    assert.equal(b.how(), 'state', `joined by ${b.how()}`);
+    assert.ok(b.at - t0 > cfgJoinWait(), `the join took ${b.at - t0} ms, longer than the old fixed wait`);
+    await run(clock, bus, 3000);
+    assert.equal(textOf(b.doc()), textOf(a.doc()), 'Ben ends with exactly Ann\'s text');
+    assert.ok(!textOf(b.doc()).includes('Ben saved'), 'no second seed');
+    assert.equal(fragLen(b.doc()), fragLen(a.doc()));
+    assert.equal(b.session.stats().assembled >= 1, true);
+    lens.push(`${paras} paragraphs: ${sentPieces} pieces, joined by state in ${b.at - t0} virtual ms, both ${textOf(a.doc()).length} characters`);
+  }
+  facts.push(`joiner on a 30-messages-per-second bus: ${lens.join('; ')}`);
+});
+function cfgJoinWait() { return L.DL_SYNC.joinWaitMs; }
+await test('a joiner that is really alone seeds after the short wait', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const b = page(bus, clock, 'bbbb2222'); await run(clock, bus, 3000);
+  assert.ok(['alone', 'timeout'].includes(b.how()), String(b.how()));
+  assert.ok(b.at - 1000 <= L.DL_SYNC.joinWaitMs + 50, `${b.at - 1000} ms`);
+  assert.equal(textOf(b.doc()).split('Alpha one.').length, 2);
+  // someone at the module who never speaks about this document is not a peer: still seeds at the short wait
+  const clock2 = new Clock(); const bus2 = new Bus(clock2);
+  bus2.connect('silent01');
+  const c = page(bus2, clock2, 'cccc3333'); await run(clock2, bus2, 3000);
+  assert.equal(c.how(), 'timeout'); assert.equal(textOf(c.doc()).split('Alpha one.').length, 2);
+});
+await test('a peer that is heard but never gives its state: the joiner stays read-only, does not seed, and keeps asking', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const ghost = bus.connect('ghost000');
+  const topic = L.dlSyncTopic(ID);
+  const beat = () => { ghost.live.publish(topic, { v: ghostVector(), e: 1, a: 0 }).catch(() => {}); clock.set(beat, 10000); };
+  clock.set(beat, 300);
+  const b = page(bus, clock, 'bbbb2222');
+  await run(clock, bus, 70000, 20);
+  assert.equal(b.how(), null, 'still joining after 70 s');
+  assert.equal(fragLen(b.doc()), 0, 'nothing was seeded');
+  assert.equal(b.session.stats().joinedBy, undefined);
+  const asks = bus.log.filter((x) => x.from === 'bbbb2222' && x.kind.startsWith('v')).length;
+  assert.ok(asks >= 4, `${asks} vectors from the joiner in 70 s`);
+  // when the state does come, it is taken and still not seeded
+  const a = new PM.Doc(); L.dlSyncSeed(PM, a, pmDoc(), ID, TEXT);
+  ghost.live.publish(topic, { u: L.dlSyncB64(PM.encodeStateAsUpdate(a)) }); await run(clock, bus, 1500, 20);
+  assert.equal(b.how(), 'state'); assert.equal(textOf(b.doc()).split('Alpha one.').length, 2);
+});
+await test('a joiner seeds after the peer left, once nothing has come for the quiet window and the hard cap has passed', async () => {
+  const out = [];
+  for (const how of ['left', 'silent']) {
+    const clock = new Clock(); const bus = new Bus(clock);
+    const ghost = bus.connect('ghost000');
+    const topic = L.dlSyncTopic(ID);
+    clock.set(() => ghost.live.publish(topic, { v: ghostVector(), e: 1, a: 0 }).catch(() => {}), 300);
+    const b = page(bus, clock, 'bbbb2222');
+    await run(clock, bus, 2000, 20);
+    if (how === 'left') { ghost.live.publish(topic, { x: 1 }).catch(() => {}); bus.disconnect('ghost000'); }
+    const t0 = 1000;
+    for (let i = 0; i < 4000 && !b.how(); i += 1) await run(clock, bus, 20);
+    const took = b.at - t0;
+    assert.equal(b.how(), 'timeout');
+    assert.ok(took >= L.DL_SYNC.joinMaxMs, `not before the hard cap: ${took}`);
+    if (how === 'left') assert.ok(took < L.DL_SYNC.joinMaxMs + 1500, `after the cap: ${took}`);
+    else assert.ok(took <= L.DL_SYNC.presenceMs + L.DL_SYNC.joinQuietMs + 2000, `a peer that stopped answering counts as gone after the presence time: ${took}`);
+    assert.equal(textOf(b.doc()).split('Alpha one.').length, 2, 'seeded once');
+    out.push(`${how}: ${took} ms`);
+  }
+  facts.push(`joiner after a peer that gave no state (virtual): ${out.join('; ')}`);
+});
+await test('a joiner never seeds while pieces are still coming, even past the hard cap', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const ghost = bus.connect('ghost000'); const topic = L.dlSyncTopic(ID);
+  const b = page(bus, clock, 'bbbb2222', { config: { joinMaxMs: 3000, joinQuietMs: 1500 } });
+  let n = 0;
+  const drip = () => { ghost.live.publish(topic, { k: 'abcd0001', i: n % 400, n: 400, c: 'AAAA' }).catch(() => {}); n += 1; if (n < 300) clock.set(drip, 100); };
+  clock.set(drip, 100); // a piece every 100 ms for 30 s, never completing
+  await run(clock, bus, 25000, 20);
+  assert.equal(b.how(), null); assert.equal(fragLen(b.doc()), 0);
+});
+await test('pieces of one sender cannot starve another: four made-up sets of 900, then an honest transfer of 28+ pieces completes', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const a = page(bus, clock, 'aaaa1111'); await run(clock, bus, 50); const b = page(bus, clock, 'bbbb2222'); await run(clock, bus, 1500);
+  const rogue = bus.connect('rogue001');
+  for (let i = 1; i <= 4; i += 1) fake(rogue, `fake000${i}`);
+  await run(clock, bus, 200);
+  const st = b.session.stats();
+  assert.equal(st.assembling, 2, 'the rogue holds two slots, not all');
+  assert.equal(st.reasons.too_many_assemblies || 0, 0);
+  const big = bigText(500);
+  a.doc().transact(() => { PM.prosemirrorToYXmlFragment(L.dlRichRead(PM, big, lex).doc, a.doc().getXmlFragment(FRAG)); }, 'paste');
+  await run(clock, bus, 6000);
+  assert.ok(same(a, b), 'the honest transfer arrived');
+  assert.ok(b.session.stats().assembled >= 1);
+  assert.equal(b.session.stats().reasons.too_many_assemblies || 0, 0);
+});
+await test('an assembly that has stalled is dropped after its time and frees the slot', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const a = page(bus, clock, 'aaaa1111'); await run(clock, bus, 50); const b = page(bus, clock, 'bbbb2222'); await run(clock, bus, 1500);
+  const rogue = bus.connect('rogue001');
+  fake(rogue, 'fake0001'); fake(rogue, 'fake0002'); await run(clock, bus, 200);
+  assert.equal(b.session.stats().assembling, 2);
+  const lost0 = b.session.stats().assemblyLost;
+  await run(clock, bus, L.DL_SYNC.assemblyMs - 1000, 50);
+  fake(rogue, 'fake0002', 898); await run(clock, bus, 200); // a new piece of the second set keeps that one alive
+  await run(clock, bus, 2000, 50);
+  fake(rogue, 'fake0003'); await run(clock, bus, 200);
+  const st = b.session.stats();
+  assert.ok(st.assemblyLost >= lost0 + 1, 'the stalled set was dropped');
+  assert.equal(st.assembling, 2, 'the live set and the new one');
+  await run(clock, bus, L.DL_SYNC.assemblyMs + 1000, 50);
+  fake(rogue, 'fake0004'); await run(clock, bus, 200);
+  assert.equal(b.session.stats().assembling, 1, 'both older sets expired');
+});
+await test('the caps: two assemblies per sender (the oldest goes), eight in all (the oldest of whoever holds most, another sender, goes)', async () => {
+  const clock = new Clock(); const bus = new Bus(clock);
+  const a = page(bus, clock, 'aaaa1111'); await run(clock, bus, 50); const b = page(bus, clock, 'bbbb2222'); await run(clock, bus, 1500);
+  const one = bus.connect('rogue001');
+  fake(one, 'fake0001'); fake(one, 'fake0002'); fake(one, 'fake0003'); await run(clock, bus, 200);
+  let st = b.session.stats();
+  assert.equal(st.assembling, 2); assert.equal(st.assemblyLost, 1);
+  const rogues = [2, 3, 4, 5].map((i) => bus.connect(`rogue00${i}`));
+  for (const r of rogues) { fake(r, 'fake0001'); fake(r, 'fake0002'); }
+  await run(clock, bus, 300);
+  st = b.session.stats();
+  assert.equal(st.assembling, 8, 'eight at most');
+  assert.equal(st.reasons.too_many_assemblies || 0, 0, 'a new sender is never turned away: a slot of the fullest is given');
+  const sixth = bus.connect('rogue006'); fake(sixth, 'fake0001'); await run(clock, bus, 200);
+  assert.equal(b.session.stats().assembling, 8);
+  const big = bigText(400);
+  a.doc().transact(() => { PM.prosemirrorToYXmlFragment(L.dlRichRead(PM, big, lex).doc, a.doc().getXmlFragment(FRAG)); }, 'paste');
+  await run(clock, bus, 6000);
+  assert.ok(same(a, b), 'an honest sender still gets through a full table');
+  facts.push('assembly caps: 2 per sender, 8 in all, 30 s to expire; made-up pieces from 6 senders did not stop an honest transfer');
 });
 
 console.log(`documents coedit sync: ${passed} tests passed in ${((Date.now() - t0) / 1000).toFixed(1)} s${facts.length ? ` (${facts.join('; ')})` : ''}`);
