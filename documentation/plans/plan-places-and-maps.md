@@ -5,13 +5,76 @@ games template's maps are. experience-design builds the modules, the destination
 server-development builds the server's side (the destination rules, the layouts, the shared map folder, the templates
 and the checks); content-manager merges or keeps the two user guides once it lands.
 
-**Status:** draft, 2026-10-30, by product-planner. Nothing decided, and the merge into one module is not built. Separate
+**Status:** Draft, nothing decided except the direction below (2026-11-12): Places is retired into Maps (GitHub #729). The 2026-10-30 draft that follows still stands as the background, but its recommendation (b), "keep the id `places`", is reversed by that direction; "Update 2026-11-12" replaces it. Nothing is built. Earlier text of the draft: the merge into one module is not built. Separate
 fixes from the health audit of Maps and Places (MP-02 to MP-22) have landed (Maps 0.9.14, Places 0.12.18), including the
 map style as `--map-*` tokens that read on every theme; they do not decide this plan. From GitHub #374, raised by Thomas on
 2026-10-25: "Places and Maps may want to be one module." It brings in #293 (Maps should show Place category colours),
 #44 (a map of the trip), the games template (where a picture map is a battle map) and the travel template.
 
-## What it is today
+## Update 2026-11-12: Places is retired into Maps (#729)
+
+**Direction from Thomas (a clickable answer, 2026-11-12):** Places is retired into Maps. One module remains, **Maps**, id `maps`. This replaces option (b) and its recommendation to keep the id `places`; the rest of this document is background for the choices below. Under the no-compatibility rule of 2026-10-21 ids and stored keys may be renamed and test data reset.
+
+**Goal.** One module for places and the map: one switch, one Roles row, one settings page, one place to look. **Non-goals.** A battle map with a grid and tokens (its own idea); routes between stops; migrating old data.
+
+### Facts checked against the code on 2026-11-12 (`80ecd84e`)
+
+Right as the spike said: `modules/places` is 0.12.22 with scopes `environment`, `space`, `person`; its manifest has the destination part `map` as `panel`, a page with `nav:false`, and a canvas 460 by 600; `view` and `edit`; Maps 0.9.15 has `requires` (line 126) and finds Places' actions by what they offer, not by module id (`maps.js` 220 to 262: `newPlace`, `searchPlaces`, `positionPicked`, `categoryColors`); `composites.js` line 19 holds `parts: ['maps','places']`; Travel picks with `modules: ['places']` (line 2378) and looks up `addPlace` by name (1881, 2348); `settings` exists in Places' manifest (line 191).
+
+Corrections: Maps reads place summaries at `maps.js` 186 and 189 (`host.objects.search('', { has: 'place' })`), not line 92. `searchNote` is not in the code under that name; the by-name lookups are the action finds at 248 to 260, and those are what go. Counts differ from the spike's: 57 check files in `tools/` mention `places` (the spike said about 40), and `showCalendar` appears in 15 files (the spike said about 11); read them as "many", and the build lists them with a search, not from this plan. The allow-list `tools/check-names-allow.json` has 7 lines that mention `places`, not 4.
+
+### What the retirement means
+
+- **Maps takes over everything Places owns:** the `place` kind and `refs.produces` (key `place:{id}`), the actions `addPlace` and `setPlacePoint`, the geocoder block and its four environment settings (the categories, the search provider, the search address and whether to save results), the place dialog, the categories and the type library, and the person scope. Maps' scopes become `environment`, `space`, `person`. `requires: ["places"]` goes.
+- **The surfaces go from three to what Maps has.** The Map destination's `main` stays Maps. Places' panel, page and canvas are removed. A place without a map point must still be listable and editable, so Maps gets a **List** view beside **Map** (the data already allows a place with no point). Without a map file the destination stays off (`needsFile`), so the List view is also what Maps' own window shows then; the Map view is offered only when there is a map file or a picture map.
+- **Local actions become calls inside the module:** `newPlace`, `searchPlaces`, `positionPicked`, `categoryColors`, `sharePlace`, `showOnMap`, `pickPoint`. The few-second `page` and `pageUntil` windows and the `maps-category-colors` browser cache go, which closes #293.
+- **Stored keys move from module id `places` to `maps`** (`place:<id>` in environment, space and person homes; the per-person bookmarks `saved:e:<id>` and `saved:s:<spaceId>:<id>`; the geocode cache `modules/places/geocode.json`, read by `server/geocode.js` and named by a pattern in `server/environment-export.js` near line 130). No migration. A reset costs the places people have saved on a test install; it costs nothing on a released one because there is none.
+- **Server:** `server/geocode.js` and its route (generic), the "Add a region" path (`index.js` near 2900), the icon, visit and colour validation (near 7779 to 7785), and the admin route that counts and removes saved places (near 9993) change the module id they read. The kind `place` is generic in `object-format.js`, `ai-context.js`, `ai-tools.js`, `store.js` and `modules.js`; those need a search, not a change. `old-links.js` and the `check-names` allow-list lose their `places` lines.
+- **Page side:** `composites.js` `dest:map` parts become `['maps']`, and the composite may go entirely (one module needs no composite). `opens-with.js` and `layouts.js` comments; saved layouts and `opensWith` lists that name `places` keep the id and so stop resolving (see question 2).
+- **Other modules.** Travel: `pick({ modules: ['maps'], kinds: ['place'] })` and its three `addPlace` lookups keep finding the action by name, so only the pick line changes. `seed-demo.mjs` `MODULE_IDS` drops `places`; `tools/module-versions.json` drops it; 15 user guides mention Places (content-manager).
+
+### Pointers held by other modules
+
+Links are `{ module: 'places', kind: 'place', id, scope, space? }`, held by Travel's stops, the Planner, links, bookmarks and vault links. Once `places` is gone they stop resolving. See question 2.
+
+## Left to build (for the retirement), in order
+
+1. **Maps owns the data** (server-development, M). Manifest: scopes, `refs`, `actions`, `geocoder`, the four settings; the server paths above read `maps`. Ships with step 2 if the module cannot run half-moved. `check-geocode`, `check-links`, `check-module-versions`.
+2. **Maps gets the List view and the place dialog** (experience-design, L). The code in `places.js` and its libraries moves into Maps, the actions become calls, and the map's libraries load only when the Map view first opens (MapLibre is about 1 MB inlined). `check-maps`, `check-places` (moved), `check-picture-map`, `check-region-cut`.
+3. **Remove `modules/places`** (server-development, M). `composites.js`, `layouts.js`, `opens-with.js`, `seed-demo.mjs`, the three allow-lists, `old-links.js`, templates (travel and games lists), and the roughly 57 check files that name Places. Model tier: sonnet; this is wide, not risky. The change touches the core, so it gets the independent read.
+4. **Documentation** (content-manager, M). One guide for Places inside Maps, the contract, `CONTRACT.md` and `design/` of Places moved or deleted. Production builds only.
+
+Steps 1 to 3 should land together in one release; between them the product has two half-modules.
+
+## What cannot be verified here
+
+The map drawn from real tiles, pin colours by category, picking a spot, a dropped object getting a position and real Photon search need a real browser with WebGL. The List view, the dialog, the Filters and that a list-only window does not load MapLibre can be checked headless.
+
+## Questions for Thomas
+
+1. **What is the module's name, now that it holds both?**
+   - Keep **Maps** for the module, tab and Global Map; the list inside is labeled Places (recommended)
+   - Rename the module **Places and maps**
+   - Rename it **Places** and keep the tab **Map** (the id would still be `maps`)
+2. **What happens to links that name `places` (Travel stops, the Planner, bookmarks, vault links)?**
+   - Nothing is kept: they stop resolving, test data is reset, and Travel's stops are re-picked (recommended; it follows the 2026-10-21 rule and the product is unreleased)
+   - Re-mint: a one-off script rewrites `module: 'places'` to `maps` in saved pointers on the test installs
+   - Alias: the server treats `places` as `maps` when it resolves a pointer (a compatibility layer the rule forbids)
+3. **Maps' `edit` and Places' `edit`: how many permissions?**
+   - Two, `view` and `edit`, with Maps' "put an object on the map" folded into `edit` (recommended; defaults are the same today)
+   - Three: `view`, `edit` and a separate "place objects on the map"
+4. **What does Maps show when there is no map file?**
+   - The List view alone, with no switch (recommended)
+   - The module stays hidden until a map file is set, and places are managed elsewhere
+5. **Is the picture map or a battle map part of this?**
+   - Keep the picture map as it is; a battle map is a separate idea in `TODO.md` (recommended)
+   - Build a battle map module first
+6. **Do the 2026-10-30 questions on "On the plan" (#44) and the games template still stand?**
+   - Yes, unchanged, answered later; they do not block steps 1 to 3 (recommended)
+   - Drop #44 from this plan
+
+
+## What it is today (2026-10-30 draft)
 
 Verified in code on 2026-10-30, unless marked otherwise.
 
