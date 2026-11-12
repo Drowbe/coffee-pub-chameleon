@@ -21,7 +21,7 @@
 //                                               update or in any other argument is read as a sender. opts: { lex, origin, bytes, now, refusals }.
 //                                               A missing sender (undefined, null, '', not a string or number, an object) is NOT free: it is
 //                                               the ONE shared sender 'unknown', counted like any other but with its own budget
-//                                               (limits.unknownRefusals, 10 per window), so a flood with no sender is flagged and cannot
+//                                               (limits.unknownRefusals, 3 per window), so a flood with no sender is flagged and cannot
 //                                               spread refusals over named senders.
 //                                               guard.syncRequested() / guard.syncDone() / guard.syncPending(): the SYNC GRACE. When an update is
 //                                               dropped as 'quiet' (or the caller asked for a state-vector sync with syncRequested()), later
@@ -72,7 +72,7 @@ const DL_COEDIT = Object.freeze({
   refusalsMax: 5, // refusals from one sender within the window flag the sender
   refusalsWindowMs: 60000,
   sendersMax: 1000, // senders the counter remembers at most (the idle ones are forgotten first)
-  unknownRefusals: 10, // refusals within the window that flag the shared 'unknown' sender (a message with no sender from the transport)
+  unknownRefusals: 3, // refusals within the window that flag the shared 'unknown' sender (a message with no sender from the transport)
   syncGraceMs: 10000, // after a quiet drop or syncRequested(), 'pending' results are not counted against senders for this long (or until syncDone)
   refusalBudget: 40, // refusals (a pending one counts a tenth) the page decodes in one second, over all senders
   quietMs: 1000, // then it decodes nothing for this long

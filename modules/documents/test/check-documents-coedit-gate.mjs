@@ -481,7 +481,7 @@ await test('the sender comes from the transport: nothing in the update or in ano
   g.receive(forged, { id: 'alice', toString: () => 'alice' }); // an object is not a sender: one shared bucket, never its fields
   assert.equal(g.refusals.count('alice'), 0); assert.equal(g.refusals.count('unknown'), 1);
   g.receive(forged, ['alice']); assert.equal(g.refusals.count('unknown'), 2);
-  assert.equal(g.receive(forged, undefined).flagged, false); assert.equal(g.refusals.count('unknown'), 3, 'no sender counts as the shared unknown sender');
+  assert.equal(g.receive(forged, undefined).flagged, true, 'the third refusal flags the shared unknown sender (default 3)'); assert.equal(g.refusals.count('unknown'), 3, 'no sender counts as the shared unknown sender');
   g.receive(forged, 'x'.repeat(5000)); assert.equal(g.refusals.count('x'.repeat(200)), 1, 'a sender id is cut to 200 characters');
   g.destroy();
 });
@@ -574,11 +574,11 @@ await test('unknown sender: no sender is one shared bucket with a tight budget; 
   const nobody = [undefined, null, '', {}, [], true, NaN, () => 1];
   let flaggedAfter = -1;
   for (let i = 0; i < 40; i += 1) { const r = g.receive(bad, nobody[i % nobody.length]); if (r.flagged && flaggedAfter < 0) flaggedAfter = i + 1; }
-  assert.equal(flaggedAfter, 10, `the shared unknown sender is flagged after 10 refusals, not ${flaggedAfter}`);
+  assert.equal(flaggedAfter, 3, `the shared unknown sender is flagged after 3 refusals (the default), not ${flaggedAfter}`);
   assert.equal(g.receive(good, undefined).reason, 'sender_flagged'); assert.equal(g.receive(good, null).reason, 'sender_flagged');
   assert.equal(g.refusals.count('alice'), 0); assert.equal(g.receive(good, 'alice').ok, true, 'a named honest sender is unaffected');
-  const g2 = G.guard(victim(), { unknownRefusals: 3 }, LEX); const b2 = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), victim());
-  for (let i = 0; i < 3; i += 1) g2.receive(b2, ''); assert.equal(g2.refusals.flagged('unknown'), true, 'limits.unknownRefusals is the budget');
+  const g2 = G.guard(victim(), { unknownRefusals: 5 }, LEX); const b2 = rogue((f) => f.insert(1, [el('nonsense', {}, [tx('x')])]), victim());
+  for (let i = 0; i < 4; i += 1) g2.receive(b2, ''); assert.equal(g2.refusals.flagged('unknown'), false, 'limits.unknownRefusals is the budget: 4 of 5 does not flag'); g2.receive(b2, ''); assert.equal(g2.refusals.flagged('unknown'), true, 'the fifth refusal flags with unknownRefusals: 5');
   g.destroy(); g2.destroy();
 });
 
