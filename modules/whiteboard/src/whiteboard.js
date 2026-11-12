@@ -465,24 +465,21 @@
   const presentRecKey = () => wbPresentKey(session.id);
   // The board selector: after the title, a divider and a dropdown button with the current board's name (host.header.set,
   // kind 'select'; lib-s wbBoardsSelect). Shown to someone who may edit and to anyone while there are several boards. One
-  // dropdown at every width. Its menu: the boards, then (for an editor) Manage boards…; the title bar's own "..." keeps
-  // a Boards entry that opens the same menu.
+  // dropdown at every width. Its menu is the host's (items as data, lib-s wbBoardsSelectItems): the boards, then (for an editor)
+  // Manage boards…. The select is in the bar at every width, so the "..." has no Boards entry of its own.
   const selectOf = (list = session.visible()) => wbBoardsSelect(list, session.id, policy.canEdit);
   let selectKey = '';
   function boardsDraw(list = session.visible()) {
     const sel = selectOf(list);
-    const key = JSON.stringify([sel.show, sel.label]);
+    const key = JSON.stringify([sel.show, sel.label, sel.show ? selectItemsOf(sel) : null]);
     if (key !== selectKey) { selectKey = key; if (started) setHeader(); }
   }
-  function boardsMenu(where) {
-    const sel = selectOf();
-    if (!sel.show) return;
-    const manage = policy.canEdit ? wbBoardsMenu({ canEdit: true, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length }) : [];
-    const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(where), 0) };
-    const rows = sel.rows.map((r) => ({ id: `go-${r.id}`, label: r.label, icon: 'layer-group', ...(r.current ? { current: true } : {}), onClick: () => { useBoard(r.id).catch(() => {}); } }));
-    const more = sel.more > 0 ? [{ id: 'more', label: sel.more === 1 ? '1 more board exists' : `${sel.more} more boards exist`, disabled: true }] : [];
-    const tail = manage.length ? [{ separator: true }, { id: 'manage', label: 'Manage boards…', icon: 'gear', items: manage.map((m) => ({ ...m, onClick: () => { if (act[m.id]) act[m.id](); } })) }] : [];
-    host.menu.show({ id: 'boards', ...where, items: [...rows, ...more, ...tail] /* no promise returned: the menu closes at the pick */ });
+  // A pick in the select's menu (the 'header' event: id = the select's, value = the picked row's id). The menu itself is the host's.
+  const selectItemsOf = (sel) => wbBoardsSelectItems(sel, { canEdit: policy.canEdit, count: session.visible().length, trashed: wbTrashedBoards(session.records(), Date.now()).length });
+  function boardsPick(value) {
+    const act = { new: newBoard, rename: renameBoard, delete: deleteBoard, deleted: () => setTimeout(() => deletedMenu(toolbarAt(null)), 0) };
+    if (typeof value === 'string' && value.startsWith('b.')) { const id = value.slice(2); if (session.visible().some((b) => b.id === id)) useBoard(id).catch(() => {}); return; }
+    if (policy.canEdit && Object.prototype.hasOwnProperty.call(act, value)) act[value]();
   }
 
   // ---- the board's background -------------------------------------------------------------------------------------------
@@ -2476,7 +2473,7 @@
     if (!host.header) return;
     const sel = selectOf();
     host.header.set([
-      ...(sel.show ? [{ kind: 'select', id: 'boards-select', label: sel.label, title: 'Boards' }, { id: 'boards', icon: 'layer-group', title: policy.canEdit ? 'Boards…' : 'Boards', overflow: true }] : []),
+      ...(sel.show ? [{ kind: 'select', id: 'boards-select', label: sel.label, title: 'Boards', items: selectItemsOf(sel) }] : []),
       ...(policy.canEdit ? [{ id: 'background', icon: 'palette', title: 'Background colour…', overflow: true }] : []),
       { id: 'export', icon: 'file-image', title: 'Save as image…', overflow: true },
       { id: 'present', icon: 'play', title: 'Present', overflow: true },
@@ -2487,8 +2484,7 @@
   }
   if (host.header) {
     host.on('header', (e) => {
-      if (e && e.id === 'boards-select') boardsMenu(toolbarAt(e));
-      if (e && e.id === 'boards') boardsMenu(toolbarAt(null));
+      if (e && e.id === 'boards-select') boardsPick(e.value);
       if (e && e.id === 'export') openExport();
       if (e && e.id === 'background' && !presenting) backgroundMenu(toolbarAt(null)); // under the title bar, at its right end
       if (e && e.id === 'present') { if (presenting) stopPresenting(); else startPresenting(); }

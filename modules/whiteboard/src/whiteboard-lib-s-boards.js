@@ -174,6 +174,19 @@
     return { show: Boolean(cur), label: cur ? cur.name : '', rows: shown.map((b) => ({ id: b.id, label: b.name, current: cur ? b.id === cur.id : false })), more };
   }
 
+  // The select's menu as DATA for host.header.set (the host draws it under the button): the boards (the current one marked, ids
+  // `b.<board id>`), the grey "n more boards exist" line, then for an editor a divider and Manage boards… (id `manage`) whose
+  // children are New / Rename / Delete / Deleted boards (ids new, rename, delete, deleted) with wbBoardsMenu's enable rules.
+  // `sel` is wbBoardsSelect's answer. A viewer gets the boards only.
+  function wbBoardsSelectItems(sel, { canEdit, count, trashed = 0 }) {
+    const manage = canEdit ? wbBoardsMenu({ canEdit: true, count, trashed }) : [];
+    return [
+      ...sel.rows.map((r) => ({ id: `b.${r.id}`, label: r.label, ...(r.current ? { current: true } : {}) })),
+      ...(sel.more > 0 ? [{ id: 'more', label: sel.more === 1 ? '1 more board exists' : `${sel.more} more boards exist`, disabled: true }] : []),
+      ...(manage.length ? [{ divider: true }, { id: 'manage', label: 'Manage boards…', items: manage.map((m) => ({ id: m.id, label: m.label, ...(m.disabled ? { disabled: true } : {}) })) }] : []),
+    ];
+  }
+
   // ---- the trash, and the purge ------------------------------------------------------------------------------------------
   const WB_TRASH_DAYS = 7;
   const WB_TRASH_MS = WB_TRASH_DAYS * 24 * 3600 * 1000;
