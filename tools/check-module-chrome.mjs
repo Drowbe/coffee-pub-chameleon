@@ -530,6 +530,20 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   assert.equal(acts[0].on, true);
   const many = R.titlebarActions(R.cleanHeaderItems(Array.from({ length: 7 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: `H${i}` }))), []);
   assert.deepEqual(many.map((a) => a.placement), ['bar', 'bar', 'bar', 'bar', 'bar', 'menu', 'menu'], 'more than five icons: the rest in the menu');
+  const frameJs0 = () => read('public/module-frame.js');
+  // The title bar's select (host.header.set, kind 'select'): a clean shape, only the first, its label cut, not an icon.
+  const sel = R.cleanHeaderItems([{ id: 'a', icon: 'star', title: 'A' }, { kind: 'select', id: 'boards-pick', label: `  Board\n 1 ${'x'.repeat(80)}`, title: 'Boards', disabled: 1, icon: 'star', danger: true }, { kind: 'select', id: 'second', label: 'Two' }, { kind: 'select', id: '', label: 'No id' }, { kind: 'select', id: 'nolabel', label: '  ' }]);
+  assert.deepEqual(sel.map((i) => i.id), ['a', 'boards-pick'], 'only the first select is kept; one with no id or no label is dropped');
+  assert.deepEqual(sel[1], { kind: 'select', id: 'boards-pick', label: sel[1].label, title: 'Boards', disabled: true }, 'a select is { kind, id, label, title, disabled } and nothing else (no icon, no danger)');
+  assert.ok(sel[1].label.length === R.HEADER_SELECT_LABEL && sel[1].label.startsWith('Board 1 x'), `the label is one line, trimmed and cut to ${R.HEADER_SELECT_LABEL}`);
+  assert.equal(R.cleanHeaderItems(Array.from({ length: 12 }, (_, i) => ({ kind: 'select', id: `s${i}`, label: 'L' }))).length, 1, 'twelve selects give one');
+  assert.equal(R.cleanHeaderItems([...Array.from({ length: 10 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: 'H' })), { kind: 'select', id: 's', label: 'L' }]).some((i) => i.kind === 'select'), false, 'the select counts in the 10 items');
+  const withSel = R.titlebarActions(R.cleanHeaderItems([{ kind: 'select', id: 'pick', label: 'Board 1', title: 'Boards' }, ...Array.from({ length: 6 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: `H${i}` }))]), []);
+  assert.deepEqual(withSel.map((a) => a.placement), [undefined, 'bar', 'bar', 'bar', 'bar', 'bar', 'menu'], 'the select is not one of the five icons beside the menu');
+  assert.equal(withSel[0].kind, 'select');
+  const hostJs = read('public/module-host.js');
+  assert.match(hostJs, /\{ id: a\.id, \.\.\.\(a\.kind === 'select' && e\.el \? \{ x: xOf\(e\.el\) \} : \{\}\) \}/, 'a click on the select arrives as the header event with its id and x');
+  assert.match(frameJs0(), /filter\(\(a\) => a\.kind !== 'select'\)/, 'the select is never an icon or a menu entry');
   // The frame draws a destructive action last in its menu, red, never as an icon.
   const frameJs = read('public/module-frame.js');
   assert.match(frameJs, /if \(a\.placement !== 'bar' \|\| a\.danger\) continue;/, 'a destructive action is never an icon');
