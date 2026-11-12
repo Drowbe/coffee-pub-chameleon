@@ -280,7 +280,7 @@
   // it is always taken, so the browser's own Ctrl K never runs with the keyboard in the editor, and it asks whoever the
   // editor named (dlRichLinkAsk); in an editor that cannot be typed in it asks nobody.
   // Nothing else is bound: a key the editor does not use goes on to the page (Mod-s, the zoom keys, the call's shortcuts).
-  function dlRichKeys(PM) {
+  function dlRichKeys(PM, shared) {
     const N = dlRichSchema(PM).nodes;
     const rowAt = (state) => { const $from = state.selection.$from; for (let d = $from.depth; d > 0; d -= 1) if ($from.node(d).type === N.list_item) return $from.node(d); return null; };
     const mark = (action) => (state, dispatch, view) => {
@@ -311,9 +311,10 @@
       },
       'Shift-Tab': (state, dispatch, view) => (dlRichGridAt(PM, state) ? dlRichGridCommand(PM, 'gridPrevious')(state, dispatch, view) : PM.liftListItem(N.list_item)(state, dispatch, view)),
       Backspace: PM.undoInputRule,
-      'Mod-z': PM.undo,
-      'Mod-Shift-z': PM.redo,
-      'Mod-y': PM.redo,
+      // In a shared document undo is the person's own (Yjs' undo manager); it answers true even with nothing to undo, so the browser's own undo never runs.
+      'Mod-z': shared ? (state) => { PM.yUndo(state); return true; } : PM.undo,
+      'Mod-Shift-z': shared ? (state) => { PM.yRedo(state); return true; } : PM.redo,
+      'Mod-y': shared ? (state) => { PM.yRedo(state); return true; } : PM.redo,
       'Mod-b': mark('bold'),
       'Mod-i': mark('italic'),
       'Mod-e': mark('code'),
@@ -337,7 +338,9 @@
     };
   }
   const dlRichPluginSets = new WeakMap();
-  function dlRichPlugins(PM) {
+  // `shared`: the plugins of a shared document, a new list each time (the keys undo through Yjs); the page-spacer plugin and the shared ones are added by the caller.
+  function dlRichPlugins(PM, shared) {
+    if (shared) return [PM.keymap(dlRichKeys(PM, true)), PM.keymap(PM.baseKeymap), PM.gridEditing(), dlRichInputRules(PM), PM.history(), PM.gapCursor(), dlRichCellPlugin(PM), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })];
     if (!dlRichPluginSets.has(PM)) dlRichPluginSets.set(PM, [PM.keymap(dlRichKeys(PM)), PM.keymap(PM.baseKeymap), PM.gridEditing(), dlRichInputRules(PM), PM.history(), PM.gapCursor(), dlRichCellPlugin(PM), PM.dropCursor({ color: false, class: 'dl-drop', width: 2 })]);
     return dlRichPluginSets.get(PM);
   }
@@ -496,7 +499,10 @@
     const schema = dlRichSchema(PM);
     const N = schema.nodes;
     const pages = dlEditorPagesPlugin(PM, { doc, ...env });
-    const plugins = [...dlRichPlugins(PM), pages.plugin];
+    // env.shared = { frag }: the editor shows a shared document (a Y fragment): ySync and yUndo first, no history, no grid repair of its own (the gate's
+    // plugins), the undo keys on the person's own undo. The text is the fragment's, never set from here; without env.shared nothing below changes.
+    const shared = env && env.shared ? env.shared : null;
+    const plugins = shared ? dlCoeditGate(PM).plugins(shared.frag, { base: [...dlRichPlugins(PM, true), pages.plugin] }) : [...dlRichPlugins(PM), pages.plugin];
     const fns = [];
     const selFns = [];
     const linkFns = [];
@@ -511,7 +517,7 @@
       const read = dlRichRead(PM, text, lex);
       stored = read.stored;
       last = null;
-      return PM.EditorState.create({ doc: read.doc, plugins });
+      return shared ? PM.EditorState.create({ schema, plugins }) : PM.EditorState.create({ doc: read.doc, plugins });
     };
     // Every change goes through here. Only a change of the text counts: moving the caret does not (onSelect hears both).
     const dispatch = (tr) => {
@@ -523,6 +529,8 @@
     // Puts a plain text in as Markdown at the selection (or at `at`); inside code it goes in as it is.
     const insert = (text, at) => {
       if (readOnly) return false;
+      // A shared document over the saver's cap: the paste is refused before it is a change, so it is never shared and never shown as unsaved.
+      if (shared && env.sizeMax && String(text || '').length + now().doc.textContent.length > env.sizeMax) { if (env.onTooBig) env.onTooBig(); return false; }
       const tr = now().tr;
       if (Number.isInteger(at)) tr.setSelection(PM.Selection.near(tr.doc.resolve(Math.max(0, Math.min(at, tr.doc.content.size)))));
       if (tr.selection.$from.parent.type.spec.code) {
@@ -554,6 +562,7 @@
     };
     state = fresh('');
     if (element) {
+      const first = state;
       view = new PM.EditorView(element, {
         state,
         dispatchTransaction: dispatch,
@@ -594,12 +603,15 @@
           return true;
         },
       });
+      // A shared document draws itself while the view is being made (ySync's first render is a transaction); it came to `state`, not to the view.
+      if (state !== first) view.updateState(state);
       state = null;
       dlRichLinkAsk.set(view, askLink);
     }
     return {
       getText,
-      setText: (text) => { const next = fresh(text); if (view) view.updateState(next); else state = next; rev += 1; for (const fn of selFns) fn(); },
+      // In a shared document the text is the fragment's; this only keeps the saved text the writer matches blocks against.
+      setText: (text) => { if (shared) { stored = dlRichRead(PM, text, lex).stored; last = null; return; } const next = fresh(text); if (view) view.updateState(next); else state = next; rev += 1; for (const fn of selFns) fn(); },
       setReadOnly: (on) => { readOnly = Boolean(on); if (view) view.setProps({ editable: () => !readOnly }); },
       focus: () => { if (view) view.focus(); },
       onChange: (fn) => { fns.push(fn); },
