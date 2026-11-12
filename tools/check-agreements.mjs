@@ -764,9 +764,12 @@ try {
     assert.ok(token, link.text);
     const open = await call(null, 'GET', `/api/guest-link/${token}`);
     assert.equal(open.status, 200, 'a guest link is not asked until the guest session exists (step 4)');
-    const join = await call(null, 'POST', '/api/guest-join', { body: { token, name: 'Guest' } });
+    // Step 4: a guest link's guest agrees too (the versions come with the name, and are recorded for that guest).
+    const bare = await call(null, 'POST', '/api/guest-join', { body: { token, name: 'Guest' } });
+    assert.equal(bare.status, 403, bare.text);
+    assert.equal(bare.json.agreementRequired, true);
+    const join = await call(null, 'POST', '/api/guest-join', { body: { token, name: 'Guest', versions: await versionsOf(null) } });
     assert.equal(join.status, 200, join.text);
-    notes.push('A guest link is not asked yet: guests go through the gate with the guest session (step 4 of the plan).');
     assert.ok(isAsked(await call(null, 'GET', `/api/guest-link/${token}`, { cookie: people.target.cookie })));
     assert.ok(isAsked(await call(null, 'GET', `/img/guest/player?guest=${token}`, { cookie: people.target.cookie })));
     assert.ok(isAsked(await call(null, 'GET', `/api/presence?guest=${token}`, { cookie: people.target.cookie })));
@@ -846,8 +849,10 @@ try {
     assert.ok(recoveryCode);
   });
 
-  await test('nothing wrote a guests\' agreements file, and no answer or log line carried a text but the texts route', async () => {
-    assert.deepEqual(guestFiles(single), []);
+  await test('only the one guest link\'s guest wrote the guests\' agreements file, and no answer or log line carried a text but the texts route', async () => {
+    const written = guestFiles(single);
+    assert.equal(written.length, 1, 'the guest link\'s guest (step 4) and nobody else');
+    assert.equal(JSON.parse(fs.readFileSync(written[0], 'utf8')).agreements.every((a) => a.name === 'Guest'), true);
     assert.ok(!server.output().includes('Be kind'), 'a text is never logged');
   });
 

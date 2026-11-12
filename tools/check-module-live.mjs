@@ -179,7 +179,11 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   };
   const src = ['function guestPassKey()', 'function guestPassSignature(', 'function makeGuestPass(', 'function readGuestPass('].map(fnSrc).join('\n');
   let slug = 'aaa';
-  const passes = new Function('crypto', 'secretsKeyBuf', 'currentEnvironment', `${src}\nreturn { makeGuestPass, readGuestPass };`)(require('crypto'), () => Buffer.alloc(32, 7), () => ({ slug }));
+  let epoch = 0;
+  let hours = 24;
+  const passes = new Function('crypto', 'secretsKeyBuf', 'currentEnvironment', 'guestEpoch', 'guestDoorLib', 'agreementTexts', 'agreementsLib', `${src}\nreturn { makeGuestPass, readGuestPass };`)(
+    require('crypto'), () => Buffer.alloc(32, 7), () => ({ slug, guestLimits: { hours } }), () => epoch, require('../server/guest-door.js'), { required: false, docs: [], versions: {} }, require('../server/agreements.js'),
+  );
   const pass = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
   same(passes.readGuestPass('LINKTOKEN1', pass), { id: 'guest-Abcd1234', name: 'Ada' }, 'a pass reads back in its own environment, with its own link');
   same(passes.readGuestPass('LINKTOKEN2', pass), null, 'not with another link');
@@ -190,6 +194,12 @@ const quiet = (ms = 300) => new Promise((r) => setTimeout(r, ms));
   const plain = passes.makeGuestPass('LINKTOKEN1', 'guest-Abcd1234', 'Ada');
   slug = 'aaa';
   same(passes.readGuestPass('LINKTOKEN1', plain), null, 'and a single-environment pass is refused in an environment');
+  epoch = 1;
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'a pass of an older epoch is refused');
+  epoch = 0;
+  hours = 0.0000001;
+  await new Promise((r) => setTimeout(r, 20));
+  same(passes.readGuestPass('LINKTOKEN1', pass), null, 'a pass past GUEST_SESSION_HOURS is refused');
 }
 
 // --- not the call: read as code ----------------------------------------------------------------------------------------

@@ -4,9 +4,12 @@
 // A viewer is one of (the shape server/presence-view.js already uses):
 //   { all: true }                     the access key (OBS, Studio): every space, as before;
 //   { key, owner }                    a signed-in person; `owner` for owners and the admin;
-//   { guestSpace }                    a link guest, by their guest link's space id.
+//   { guestSpace }                    a link guest, by their guest link's space id;
+//   { doorGuest: true, doorOn }       a guest who came through the guest door (server/guest-door.js): let into a space whose
+//                                     entry is 'guests' while the door is on (`doorOn`: the host's switch and the owner's
+//                                     both), and never the Lobby.
 // A space's `entry` is 'invited' (absent), 'accounts' (anyone with an account here) or 'guests' (the same for an
-// account; a door guest is a later step and is not let in by this function yet).
+// account and for a door guest while the door is on).
 'use strict';
 
 const ENTRIES = ['invited', 'accounts', 'guests'];
@@ -24,6 +27,7 @@ function mayEnter(viewer, space) {
   if (!viewer || !space) return false;
   if (viewer.all) return true;
   if (viewer.guestSpace) return space.id === viewer.guestSpace;
+  if (viewer.doorGuest) return viewer.doorOn === true && !space.isLobby && space.id !== 'lobby' && entryOf(space) === 'guests';
   if (!viewer.key) return false;
   if (viewer.owner || space.isLobby || space.id === 'lobby') return true;
   return isMember(viewer, space) || entryOf(space) !== 'invited';

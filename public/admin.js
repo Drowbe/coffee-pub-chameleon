@@ -1177,6 +1177,15 @@ $('theme-delete').addEventListener('click', async () => {
     say($('theme-status'), err.message, true);
   }
 });
+$('save-guest-door').addEventListener('click', () => saveSettings({ guestDoor: $('set-guest-door').checked }, $('guest-door-status')));
+$('end-guest-sessions').addEventListener('click', async () => {
+  try {
+    await api('POST', '/api/guest-door/end-all');
+    say($('guest-door-status'), 'ended');
+  } catch (err) {
+    say($('guest-door-status'), err.message, true);
+  }
+});
 $('save-registration').addEventListener('click', () => saveSettings({ allowRegistration: $('set-allow-registration').checked }, $('registration-status')));
 
 // --- invites -----------------------------------------------------------------
@@ -2653,6 +2662,8 @@ async function init() {
     $('set-login-text').value = settings.loginText;
     $('set-mfa-required').checked = Boolean(settings.mfaRequired);
     $('set-allow-registration').checked = Boolean(settings.allowRegistration);
+    $('guest-door-section').hidden = settings.guestDoorHost !== true;
+    $('set-guest-door').checked = settings.guestDoor === true;
     renderReactionRows(settings.reactions);
     renderIconRows(settings.icons);
     renderSiteImages(settings);

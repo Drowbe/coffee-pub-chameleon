@@ -4,6 +4,7 @@
 import { loadBranding, api } from '/brand.js';
 import { mountEnrolment } from '/mfa-enrol.js';
 import { sameSiteNext } from '/next-address.js';
+import { word } from '/words.js';
 
 const $ = (id) => document.getElementById(id);
 const mode = location.pathname.endsWith('/agree') ? 'agree' : location.pathname.endsWith('/enrol') ? 'enrol' : 'verify';
@@ -36,20 +37,36 @@ if (mode === 'agree') {
       box.append(section);
     }
   };
+  // The guest door (plan-access-bundle.md, step 4): with no account and the door open, the same page asks for a name and
+  // enters through POST /api/guest-door, which records the typed name, the versions and the date.
+  let guest = false;
   api('GET', '/api/agreements').then((a) => {
-    if (!a.required || !a.docs.length) { location.href = next; return; }
-    docs = a.docs;
+    guest = a.mode === 'guest';
+    if (guest) {
+      document.title = `Continue as ${word('guest')}`;
+      $('agree-lede').textContent = a.required && a.docs.length ? `Read this, then type a name to come in as ${word('guest', { a: true })}.` : `Type a name to come in as ${word('guest', { a: true })}.`;
+      $('agree-name').closest('label').firstChild.textContent = 'Your name';
+      $('agree-name').autocomplete = 'nickname';
+      $('agree-note').textContent = a.required && a.docs.length ? 'Type your name to agree to the text above.' : '';
+      $('agree-out').textContent = 'Back to sign in';
+      $('agree-out').href = '/login';
+      if (!(a.required && a.docs.length)) $('agree-go').lastChild.textContent = ' Continue';
+    } else if (!a.required || !a.docs.length) { location.href = next; return; }
+    docs = a.docs || [];
     draw(docs);
   }, (err) => fail(err.message));
   $('agree').addEventListener('submit', async (event) => {
     event.preventDefault();
     $('agree-error').hidden = true;
-    if (!docs.length) return;
-    if (!/\S+\s+\S+/.test($('agree-name').value.trim())) { fail('Type your first and last name.'); $('agree-name').focus(); return; }
+    if (!guest && !docs.length) return;
+    const typed = $('agree-name').value.trim();
+    if (guest ? !typed : !/\S+\s+\S+/.test(typed)) { fail(guest ? 'Type a name.' : 'Type your first and last name.'); $('agree-name').focus(); return; }
     $('agree-go').disabled = true;
     try {
-      await api('POST', '/api/agreements/accept', { versions: Object.fromEntries(docs.map((d) => [d.id, d.version])) });
-      location.href = next;
+      const versions = Object.fromEntries(docs.map((d) => [d.id, d.version]));
+      if (guest) await api('POST', '/api/guest-door', { name: typed, ...(docs.length ? { versions } : {}) });
+      else await api('POST', '/api/agreements/accept', { versions });
+      location.href = guest && next === '/' ? '/guest' : next;
     } catch (err) {
       fail(err.status === 409 ? 'The text has changed. It is shown again below; read it, then agree.' : err.message);
       if (err.status === 409) api('GET', '/api/agreements').then((a) => { docs = a.docs; draw(docs); }, () => {});

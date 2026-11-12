@@ -8763,3 +8763,10 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
 .layout-tabs > .layout-tab-pin { flex: none; }
 .layout-tabs > .layout-tab-pin > i { opacity: 0.55; }
 .layout-tabs > .layout-tab-pin:hover > i, .layout-tabs > .layout-tab-pin:focus-visible > i { opacity: 1; }
+
+/* The guest door's landing (/guest, public/guest.html): the spaces open to a guest, one row each. */
+.guest-space-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+.guest-space { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--bg-card); color: var(--text); }
+.guest-space img { border-radius: var(--radius-small); object-fit: cover; }
+#guest-unavailable { margin: 6px 0 0; padding-left: 18px; }
+#guest-leave { margin-top: 12px; }

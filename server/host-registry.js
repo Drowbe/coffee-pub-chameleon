@@ -156,6 +156,9 @@ function cleanEnvironmentRecord(raw) {
     // own app.json records it too, with what was skipped.
     template: typeof raw.template === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(raw.template) ? raw.template : null,
     status: STATUSES.includes(raw.status) ? raw.status : 'active',
+    // The host's switch for the guest door (plan-access-bundle.md, step 4): off until the host turns it on for this
+    // environment. The owner's own switch (settings.guestDoor) works only while this one is on.
+    guestDoor: raw.guestDoor === true,
     pastDueSince: typeof raw.pastDueSince === 'string' ? raw.pastDueSince : null,
     // Set once, by the hourly sweep, the moment a pastDue environment is degraded to the free plan's caps
     // (plan-environments.md, "Phase 5: the grace") -- never cleared except by a fresh "paid" billing event.
@@ -434,6 +437,7 @@ class HostRegistry {
     if (patch && typeof patch === 'object') {
       if (patch.name !== undefined) draft.name = cleanText(patch.name, 80) || draft.name;
       if (patch.plan !== undefined) draft.plan = cleanPlan(patch.plan, draft.plan);
+      if (patch.guestDoor !== undefined) draft.guestDoor = patch.guestDoor === true;
       if (patch.status !== undefined) {
         if (!STATUSES.includes(patch.status)) throw new HostError(`status must be one of ${STATUSES.join(', ')}`);
         if (patch.status === 'pastDue' && draft.status !== 'pastDue') draft.pastDueSince = new Date().toISOString();

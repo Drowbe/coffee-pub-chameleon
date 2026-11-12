@@ -2,6 +2,7 @@ import { nav } from '/nav-bar.js';
 import { openHostMenu, closeHostMenu } from '/host-menu.js';
 import { mountEnvironmentBanner } from '/environment-banner.js';
 import '/tooltip.js';
+import '/agreement-redirect.js';
 import { topBarTabs } from '/page-tabs.js';
 import { sameSiteNext } from '/next-address.js';
 import { word, setWords, setVerbs } from '/words.js';

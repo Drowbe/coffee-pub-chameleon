@@ -492,7 +492,7 @@ async function signInHost(server) {
 }
 
 const liveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'host-registry-live-'));
-const hostedEnv = { BASE_DOMAIN: 'localhost', ADMIN_LOGIN: HOST_LOGIN, ADMIN_PASSWORD: HOST_PASSWORD };
+const hostedEnv = { BASE_DOMAIN: 'localhost', ADMIN_LOGIN: HOST_LOGIN, ADMIN_PASSWORD: HOST_PASSWORD, GUEST_DOOR_PER_ADDRESS: '1000' };
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 let server = null;
 try {

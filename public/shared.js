@@ -5,6 +5,7 @@
 //                     Previous and Next, and Download only where the link allows it. A password first, when the link has one.
 // The views are the file windows' own (file-viewer-views.js); the bytes come from /api/shared/<token>/files/..., and the password cookie goes
 // along with those requests by itself. A PDF is fetched here and handed to the sandboxed /viewer/pdf frame, which needs no cookie.
+import '/agreement-redirect.js';
 import { fileView, viewState, stopMedia, KINDS, kindOf, size, h, fa, btn, iconBtn, DOWNLOAD_ONLY } from '/file-viewer-views.js';
 
 const root = document.getElementById('shared');
