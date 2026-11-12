@@ -1779,7 +1779,8 @@
       const next = menuStep(set.length, set.indexOf(now), action === 'next' ? 1 : action === 'prev' ? -1 : action);
       if (set[next]) set[next].focus();
     };
-    const onOutside = (e) => { if (!menu.contains(e.target) && !(fly && fly.el.contains(e.target)) && e.target !== anchor) closeMenu(); };
+    let outside = false; // closed by a press elsewhere: the person put the focus there
+    const onOutside = (e) => { if (!menu.contains(e.target) && !(fly && fly.el.contains(e.target)) && e.target !== anchor) { outside = true; closeMenu(); } };
     document.addEventListener('keydown', onKey, true);
     env.root.addEventListener('pointerdown', onOutside, true);
     openMenu = {
@@ -1791,6 +1792,7 @@
         document.removeEventListener('keydown', onKey, true);
         env.root.removeEventListener('pointerdown', onOutside, true);
         if (anchor && anchor.focus) { try { anchor.focus(); } catch (err) { /* not focusable */ } }
+        else if (!outside && framed) { const now = document.activeElement; if (!now || now === document.body) Promise.resolve(call('focus.opener', {})).catch(() => {}); } // no anchor: the host control that opened it
         if (typeof onClose === 'function') { const done = onClose; onClose = null; try { done(); } catch (err) { console.error(err); } } // once, whatever closed it
       },
     };
@@ -3499,7 +3501,8 @@
     // One item may instead be a select, { kind: 'select', id, label, title?, disabled? }: a divider and a dropdown button after
     // the title, `label` (up to 40 characters, cut with an ellipsis when there is no room) the current choice's words, then a
     // caret. A click arrives as the 'header' event with its id and `x` (the button's left edge in the module's area), and the
-    // module opens its own menu: host.menu.show({ id, at: { x, y: 4 }, items }). Only the first select is kept; it is one of
+    // module opens its own menu: host.menu.show({ id, at: { x, y: 4 }, items }) (it opens at the top of the module's area: a menu
+    // cannot leave the module's box); Escape or a pick returns the keyboard to the button. Only the first select is kept; it is one of
     // the ten items but not one of the five icons, and the label is cut before the title is.
     header: {
       set: (items) => call('header.set', { items }),

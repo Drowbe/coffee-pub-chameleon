@@ -251,6 +251,9 @@ export function createModuleFrame(opts = {}) {
       doc.removeEventListener('pointerdown', settle, true);
       doc.removeEventListener('keydown', settleKey, true);
       b.removeEventListener('focus', settle);
+      // Escape with the keyboard on the page (not in the module): focus goes back to this button, not to nothing. A press
+      // elsewhere keeps the focus where the person put it.
+      if (e && e.type === 'keydown' && (!doc.activeElement || doc.activeElement === doc.body)) b.focus();
     };
     const settleKey = (e) => { if (e.key === 'Escape') settle(e); };
     b.addEventListener('click', () => {
